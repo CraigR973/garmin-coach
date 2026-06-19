@@ -6,28 +6,51 @@
 
 ## Now
 
-**Phase:** 0 — repo scaffold.
+**Phase:** 0a — football domain stripped.
 
-**Done:** repo seeded from WC2026 infra; project docs written (`ARCHITECTURE.md`,
-`AGENTS.md` + `CLAUDE.md` symlink, `DECISIONS.md`, this file); WC-specific docs,
-runbooks, agent-commands and Claude command-wrappers pruned to a clean baseline.
+**Done:** Phase 0a complete — football/WC2026 domain stripped from backend and
+frontend; clean garmin-coach auth skeleton committed.
 
-**Next (Phase 0 remaining)** — ready-to-run kickoff prompts (model + thinking per stage) are in **`docs/phase-0-session-prompts.md`**:
-1. **Strip the football domain** — backend models/routers/services/migrations,
-   frontend pages/components, `packages/shared` scoring; rename `@wc2026/shared`;
-   update package.json names, CI workflow, README. Goal: a building skeleton with
-   auth + an empty dashboard, no football references.
-2. **Provision hosting** (needs Craig's accounts): new Supabase project, Railway
-   service, Vercel project, GitHub repo + remote.
-3. **Deployable skeleton** live.
+**Backend:**
+- Profile: display_name + PIN auth, no email/avatar
+- Auth router: display_name login, no signup/email/verify
+- Scheduler: daily_backup job only
+- Migration 001: garmin-coach schema (profiles, push_subscriptions, etc.)
+- Migrations 002–033 deleted
+- 42 backend unit tests pass; ruff + mypy clean
 
-**Then (Phase 1):** the data model from real JSON shapes (`~/garmin-spike/out/`),
-the three sync jobs, the 84-night backfill, the morning/post-workout analysis.
+**Frontend:**
+- 28 football pages deleted; kept Login, ForgotPin, PinReset, Dashboard, Settings, Offline
+- @wc2026/shared → @coach/shared (no football types/scoring)
+- AuthContext: display_name login, no signup/email
+- App.tsx: 3 protected routes (/, /settings, /offline)
+- TopBar + TabBar: minimal nav (Home, Settings)
+- Brand: no CalcioLogo, Garmin/Coach two-line wordmark
+- TypeScript typecheck passes; vite build succeeds
+
+**Next:** Phase 0b — provision hosting:
+1. Create new Supabase project + run migration 001
+2. Create Railway service + set env vars (JWT secrets, DB URL, VAPID)
+3. Create Vercel project + link frontend
+4. Create GitHub repo + push main branch
+
+**Then Phase 1:** data model from real JSON shapes (`~/garmin-spike/out/`),
+three sync jobs (Garmin, Hive, weather), 84-night backfill, morning analysis.
 
 ## Gotchas
-- Python is **3.12** (`~/.local/bin/python3.12`); system `python3` is 3.7 and breaks installs. No api venv yet.
+- Python is **3.12** (`~/.local/bin/python3.12`); api venv exists at `apps/api/.venv`.
+- `cryptography` wheel: install with `--only-binary :all:` before other deps on macOS.
 - Repo has **no GitHub remote yet** and is **not deployed**.
-- The football domain is **still present** — don't model new tables on it; use `ARCHITECTURE.md` §5 + the spike JSON.
+- Node.js: use `~/.nvm/versions/node/v20.20.2/bin/node` + pnpm (system node is v14).
+- `score-input.tsx`, `offlineQueue.ts`, `sw.ts` still have "predictions" domain
+  references — these are offline-queue infrastructure, not football code; update in Phase 1.
+- `apps/api/src/auth.py` still has `create_email_verify_token` / `decode_email_verify_token`
+  dead code (WC2026 leftover) — harmless, remove in a future cleanup pass.
 
 ## Log
-- **2026-06-19** — Phase 0 started: seeded repo, wrote project docs, set up cross-tool structure (AGENTS.md canonical, CLAUDE.md symlink, DECISIONS + STATUS), pruned WC cruft. Data sources (Garmin/Hive/weather) already validated via spikes; analysis-engine output validated with a real sample.
+- **2026-06-19** — Phase 0a complete: stripped football domain from backend and
+  frontend. 148 backend files changed (1041 ins / 48814 del); 161 frontend files
+  changed (748 ins / 27045 del). Backend: 42 tests pass, ruff clean.
+  Frontend: TypeScript passes, vite build succeeds.
+- **2026-06-19** — Phase 0 started: seeded repo, wrote project docs, set up
+  cross-tool structure, pruned WC cruft. Data sources validated via spikes.

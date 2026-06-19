@@ -43,3 +43,10 @@ decision — if you change course, add a new entry that supersedes the old one.
     | 🟢 **Mid** | well-specified implementation — CRUD, components, migrations, tests, mechanical refactors | Sonnet | GPT-5.4 |
 
     `batch-start` states the tier; `next-batch-prompt` notes the tier + this map. *Why:* decouples work-difficulty (the batch's call) from tool-choice (yours, per session), so any batch can run in either tool at the right capability level. (Codex model names per Craig's setup — update here if they change.)
+
+### 2026-06-19 — Phase 0a (football domain strip)
+20. **Display-name login, not email.** Profile has `display_name` + `pin_hash`; no email, no avatar, no site_role. *Why:* 1–2 private users; email auth adds complexity that buys nothing.
+21. **No signup endpoint.** Admin seeds profiles directly in the DB (or via a future admin panel in Phase 2). *Why:* this is a private app — open signup is never needed; simpler security surface.
+22. **`@coach/shared` package is a stub until Phase 1.** Only exports `Role` type. Scoring helpers, schemas, and Garmin/Hive types will be added in Phase 1 once the data model is settled from real spike JSON. *Why:* premature typing bakes in wrong shapes.
+23. **Brand wordmark: text-only for Phase 0.** "GARMIN / COACH" two-line mono wordmark instead of the Calcio SVG icon. *Why:* no designer available yet; icon assets added in Phase 1/2 when identity is designed.
+24. **`score-input.tsx`, `offlineQueue.ts`, `sw.ts` "predictions" references left in.** These are offline-queue infrastructure — the word "predictions" refers to offline-queued API writes, not football predictions. They will be renamed when the coaching submission flow ships in Phase 1. *Why:* renaming now with no replacement use is noise.
