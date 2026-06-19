@@ -1,16 +1,14 @@
 const KEYS = {
-  access: 'wc2026_access',
-  refresh: 'wc2026_refresh',
-  player: 'wc2026_player',
+  access: 'coach_access',
+  refresh: 'coach_refresh',
+  player: 'coach_player',
 } as const;
 
 export interface StoredPlayer {
   id: string;
   displayName: string;
-  email?: string | null;
   role: 'player' | 'admin';
   timezone: string;
-  avatarUrl?: string | null;
 }
 
 export function storeTokens(access: string, refresh: string, player: StoredPlayer): void {

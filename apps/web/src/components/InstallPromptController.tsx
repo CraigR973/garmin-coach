@@ -4,9 +4,8 @@ import { useInstallPrompt } from '@/hooks/useInstallPrompt';
 import { BrowserOnboarding } from './BrowserOnboarding';
 import { Brand } from './Brand';
 
-// Routes that manage their own onboarding experience (e.g. /join/:token renders
-// BrowserOnboarding itself and should not be double-rendered by this controller).
-const SELF_MANAGED = ['/join/', '/welcome'];
+// Routes that manage their own onboarding experience.
+const SELF_MANAGED: string[] = [];
 
 /**
  * Shown on Android immediately after install while the user is still in the
@@ -23,10 +22,10 @@ function PostInstallScreen() {
             <Home className="h-7 w-7 text-success" aria-hidden />
           </div>
           <h2 className="text-lg font-semibold text-text-primary font-sans">
-            Calcio is installed!
+            Garmin Coach is installed!
           </h2>
           <p className="text-sm font-sans text-text-secondary leading-relaxed">
-            Tap the <strong className="text-text-primary">Calcio icon</strong> on your home
+            Tap the <strong className="text-text-primary">Garmin Coach icon</strong> on your home
             screen to open the app and get started.
           </p>
           <p className="text-xs font-sans text-text-muted leading-relaxed">

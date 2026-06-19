@@ -1,5 +1,5 @@
 /**
- * Single source of truth for visual design tokens — "Calcio" identity.
+ * Single source of truth for visual design tokens — Garmin Coach identity.
  * CSS variables in `index.css` mirror these values, Tailwind utilities
  * resolve to `var(--*)` references, and JS consumers (sonner toasts,
  * framer-motion variants, inline gradients) import these constants directly.
@@ -102,10 +102,10 @@ export const z = {
 } as const;
 
 export const brand = {
-  full: 'Calcio',
-  short: 'Calcio',
-  wordmarkTop: 'Calcio',
-  wordmarkBottom: '',
-  tagline: 'Predict once, compete everywhere.',
-  taglineSub: 'Scotland qualify once every 28 years — best make it count.',
+  full: 'Garmin Coach',
+  short: 'Coach',
+  wordmarkTop: 'Garmin',
+  wordmarkBottom: 'Coach',
+  tagline: 'Your daily coaching brief.',
+  taglineSub: 'Powered by your Garmin data.',
 } as const;

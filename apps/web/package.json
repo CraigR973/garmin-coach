@@ -1,5 +1,5 @@
 {
-  "name": "@wc2026/web",
+  "name": "@coach/web",
   "private": true,
   "version": "0.0.1",
   "type": "module",
@@ -30,7 +30,7 @@
     "@sentry/react": "^10.51.0",
     "@supabase/supabase-js": "^2.105.4",
     "@tanstack/react-query": "^5.45.1",
-    "@wc2026/shared": "workspace:*",
+    "@coach/shared": "workspace:*",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
