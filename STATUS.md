@@ -12,7 +12,7 @@
 `AGENTS.md` + `CLAUDE.md` symlink, `DECISIONS.md`, this file); WC-specific docs,
 runbooks, agent-commands and Claude command-wrappers pruned to a clean baseline.
 
-**Next (Phase 0 remaining):**
+**Next (Phase 0 remaining)** — ready-to-run kickoff prompts (model + thinking per stage) are in **`docs/phase-0-session-prompts.md`**:
 1. **Strip the football domain** — backend models/routers/services/migrations,
    frontend pages/components, `packages/shared` scoring; rename `@wc2026/shared`;
    update package.json names, CI workflow, README. Goal: a building skeleton with
