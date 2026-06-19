@@ -16,14 +16,13 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # Database
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/wc2026"
+    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/garmin_coach"
 
     # Auth
     jwt_access_secret: str
     jwt_refresh_secret: str
 
     # External APIs
-    football_data_api_key: str = ""
     supabase_url: str = ""
     supabase_anon_key: str = ""
     supabase_service_key: str = ""
@@ -38,17 +37,12 @@ class Settings(BaseSettings):
     sentry_dsn_backend: str = ""
     log_level: str = "INFO"
     # Unknown strings are rejected by the enum (fail-closed).
-    # Explicit development value required to mount test helpers; staging is treated as production.
     environment: Environment = Environment.development
     # Railway injects this into the deploy env so /health can expose the running SHA.
     railway_git_commit_sha: str | None = None
 
     # Backup
-    backup_dir: str = "/tmp/wc2026_backups"
-
-    # Email (Resend)
-    resend_api_key: str = ""
-    email_from: str = "WC2026 Predictor <noreply@example.com>"
+    backup_dir: str = "/tmp/garmin_coach_backups"
 
     # Background scheduler (APScheduler) — disable in tests / one-off scripts.
     scheduler_enabled: bool = True
@@ -66,8 +60,6 @@ class Settings(BaseSettings):
             errors.append("vapid_private_key is empty")
         if not self.supabase_service_key:
             errors.append("supabase_service_key is empty")
-        if not self.football_data_api_key:
-            errors.append("football_data_api_key is empty")
         if not self.database_url:
             errors.append("database_url is empty")
         if not self.frontend_origin or self.frontend_origin.startswith("http://localhost"):

@@ -27,7 +27,7 @@ def _pg_dsn(database_url: str) -> str:
 
 def _safe_filename(filename: str) -> bool:
     """Accept only filenames that look like our own backup files."""
-    return bool(re.fullmatch(r"wc2026_\d{8}_\d{6}\.sql", filename))
+    return bool(re.fullmatch(r"coach_\d{8}_\d{6}\.sql", filename))
 
 
 async def create_backup(backup_dir: str, database_url: str) -> BackupInfo:
@@ -35,7 +35,7 @@ async def create_backup(backup_dir: str, database_url: str) -> BackupInfo:
     path.mkdir(parents=True, exist_ok=True)
 
     now = datetime.now(UTC)
-    filename = f"wc2026_{now.strftime('%Y%m%d_%H%M%S')}.sql"
+    filename = f"coach_{now.strftime('%Y%m%d_%H%M%S')}.sql"
     filepath = path / filename
 
     proc = await asyncio.create_subprocess_exec(
@@ -64,7 +64,7 @@ def list_backups(backup_dir: str) -> list[BackupInfo]:
     if not path.exists():
         return []
     files = sorted(
-        (f for f in path.glob("wc2026_*.sql") if _safe_filename(f.name)),
+        (f for f in path.glob("coach_*.sql") if _safe_filename(f.name)),
         reverse=True,
     )
     return [

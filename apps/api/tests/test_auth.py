@@ -23,7 +23,7 @@ from src.auth import (
 from src.config import settings
 from src.database import get_db
 from src.main import app
-from src.models.profile import PlayerRole, Profile, SiteRole
+from src.models.profile import PlayerRole, Profile
 from src.models.refresh_token import RefreshToken
 
 # ---------------------------------------------------------------------------
@@ -39,17 +39,12 @@ def _make_player(
     role: PlayerRole = PlayerRole.player,
     failed: int = 0,
     locked_until: datetime | None = None,
-    avatar_url: str | None = None,
 ) -> Profile:
     p = MagicMock(spec=Profile)
-    p.avatar_url = avatar_url
     p.id = uuid.uuid4()
     p.display_name = "Test Player"
-    p.email = "testplayer@example.com"
     p.pin_hash = hash_pin("1234")
     p.role = role
-    # Keep site_role consistent with role: admin ↔ superadmin, player ↔ user.
-    p.site_role = SiteRole.superadmin if role == PlayerRole.admin else SiteRole.user
     p.timezone = "UTC"
     p.failed_login_count = failed
     p.locked_until = locked_until
@@ -138,15 +133,13 @@ def test_refresh_token_roundtrip() -> None:
 
 
 async def test_login_success(client: AsyncClient) -> None:
-    avatar_url = "https://example.supabase.co/storage/v1/object/public/avatars/p1/face.jpg"
-    player = _make_player(role=PlayerRole.admin, avatar_url=avatar_url)
-    mock_db = _stub_db([_scalar(player), _scalar(None)])  # login lookup + any extra
-    # add() + commit() will be called for the refresh token record
+    player = _make_player(role=PlayerRole.admin)
+    mock_db = _stub_db([_scalar(player), _scalar(None)])
 
     async with _override_db(mock_db):
         resp = await client.post(
             "/api/v1/auth/login",
-            json={"email": "testplayer@example.com", "pin": "1234"},
+            json={"display_name": "Test Player", "pin": "1234"},
         )
 
     assert resp.status_code == 200, resp.text
@@ -155,7 +148,8 @@ async def test_login_success(client: AsyncClient) -> None:
     assert "refresh_token" in data
     assert data["player"]["role"] == "admin"
     assert data["player"]["display_name"] == "Test Player"
-    assert data["player"]["avatar_url"] == avatar_url
+    assert "email" not in data["player"]
+    assert "avatar_url" not in data["player"]
 
 
 async def test_login_wrong_pin(client: AsyncClient) -> None:
@@ -165,7 +159,7 @@ async def test_login_wrong_pin(client: AsyncClient) -> None:
     async with _override_db(mock_db):
         resp = await client.post(
             "/api/v1/auth/login",
-            json={"email": "testplayer@example.com", "pin": "0000"},
+            json={"display_name": "Test Player", "pin": "0000"},
         )
 
     assert resp.status_code == 401
@@ -177,21 +171,21 @@ async def test_login_player_not_found(client: AsyncClient) -> None:
     async with _override_db(mock_db):
         resp = await client.post(
             "/api/v1/auth/login",
-            json={"email": "nobody@example.com", "pin": "1234"},
+            json={"display_name": "nobody", "pin": "1234"},
         )
 
     assert resp.status_code == 401
 
 
-async def test_login_wrong_pin_no_lockout(client: AsyncClient) -> None:
-    """Wrong PIN always returns 401 — no lockout, no counter increment."""
-    player = _make_player(failed=99)  # even with high count, no lockout
+async def test_login_wrong_pin_returns_401(client: AsyncClient) -> None:
+    """Wrong PIN always returns 401."""
+    player = _make_player(failed=99)
     mock_db = _stub_db([_scalar(player)])
 
     async with _override_db(mock_db):
         resp = await client.post(
             "/api/v1/auth/login",
-            json={"email": "testplayer@example.com", "pin": "9999"},
+            json={"display_name": "Test Player", "pin": "9999"},
         )
 
     assert resp.status_code == 401
@@ -306,9 +300,7 @@ async def test_require_admin_rejects_player_role() -> None:
 
 
 async def test_require_admin_passes_admin_role() -> None:
-    """require_admin returns the player when site_role is superadmin."""
-    from src.auth import require_admin
-
-    player = _make_player(role=PlayerRole.admin)  # sets site_role=superadmin via _make_player
+    """require_admin returns the player when role is admin."""
+    player = _make_player(role=PlayerRole.admin)
     result = await require_admin(player)
     assert result is player

@@ -1,8 +1,8 @@
-"""core schema: groups, profiles, teams, refresh_tokens, invites
+"""core schema: profiles, refresh_tokens, push_subscriptions, notification_preferences, audit_log
 
 Revision ID: 001
 Revises:
-Create Date: 2026-05-06
+Create Date: 2026-06-19
 
 """
 
@@ -11,7 +11,7 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import ENUM as PgENUM
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 revision: str = "001"
 down_revision: Union[str, None] = None
@@ -21,8 +21,6 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # --- ENUM types ---
-    # Wrapped in DO blocks so re-running is idempotent (Alembic 1.18+ may emit
-    # an extra CREATE TYPE despite create_type=False on the column definition).
     op.execute("""
         DO $$ BEGIN
             CREATE TYPE player_role AS ENUM ('player', 'admin');
@@ -31,30 +29,16 @@ def upgrade() -> None:
     """)
     op.execute("""
         DO $$ BEGIN
-            CREATE TYPE tournament_stage AS ENUM
-                ('group', 'r32', 'r16', 'qf', 'sf', 'third_place', 'final', 'winner');
+            CREATE TYPE actor_type AS ENUM ('admin', 'player', 'system');
         EXCEPTION WHEN duplicate_object THEN null;
         END $$;
     """)
-
-    # --- groups ---
-    op.create_table(
-        "groups",
-        sa.Column(
-            "id",
-            UUID(as_uuid=True),
-            primary_key=True,
-            server_default=sa.text("gen_random_uuid()"),
-        ),
-        sa.Column("name", sa.String(1), nullable=False),
-        sa.Column(
-            "created_at",
-            sa.DateTime(),
-            nullable=False,
-            server_default=sa.text("NOW()"),
-        ),
-        sa.UniqueConstraint("name", name="uq_groups_name"),
-    )
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE action_type AS ENUM ('backup_failed', 'backup_downloaded', 'player_pin_reset');
+        EXCEPTION WHEN duplicate_object THEN null;
+        END $$;
+    """)
 
     # --- profiles ---
     op.create_table(
@@ -74,9 +58,8 @@ def upgrade() -> None:
             server_default="player",
         ),
         sa.Column("timezone", sa.String(100), nullable=False, server_default="UTC"),
-        sa.Column(
-            "failed_login_count", sa.Integer(), nullable=False, server_default="0"
-        ),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default="true"),
+        sa.Column("failed_login_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("locked_until", sa.DateTime(), nullable=True),
         sa.Column("deleted_at", sa.DateTime(), nullable=True),
         sa.Column(
@@ -92,36 +75,6 @@ def upgrade() -> None:
             server_default=sa.text("NOW()"),
         ),
         sa.UniqueConstraint("display_name", name="uq_profiles_display_name"),
-    )
-
-    # --- teams ---
-    op.create_table(
-        "teams",
-        sa.Column(
-            "id",
-            UUID(as_uuid=True),
-            primary_key=True,
-            server_default=sa.text("gen_random_uuid()"),
-        ),
-        sa.Column("name", sa.String(100), nullable=False),
-        sa.Column("code", sa.String(3), nullable=False),
-        sa.Column("flag_emoji", sa.String(10), nullable=False),
-        sa.Column(
-            "group_id", UUID(as_uuid=True), sa.ForeignKey("groups.id"), nullable=True
-        ),
-        sa.Column(
-            "eliminated_at_stage",
-            PgENUM(name="tournament_stage", create_type=False),
-            nullable=True,
-        ),
-        sa.Column("is_host", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("football_data_team_id", sa.Integer(), nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(),
-            nullable=False,
-            server_default=sa.text("NOW()"),
-        ),
     )
 
     # --- refresh_tokens ---
@@ -151,40 +104,92 @@ def upgrade() -> None:
         ),
     )
 
-    # --- invites ---
+    # --- push_subscriptions ---
     op.create_table(
-        "invites",
+        "push_subscriptions",
         sa.Column(
             "id",
             UUID(as_uuid=True),
             primary_key=True,
             server_default=sa.text("gen_random_uuid()"),
         ),
-        sa.Column("token", sa.String(64), nullable=False),
-        sa.Column("display_name_hint", sa.String(100), nullable=True),
         sa.Column(
-            "created_by",
+            "player_id",
             UUID(as_uuid=True),
-            sa.ForeignKey("profiles.id"),
+            sa.ForeignKey("profiles.id", ondelete="CASCADE"),
             nullable=False,
         ),
-        sa.Column(
-            "claimed_by",
-            UUID(as_uuid=True),
-            sa.ForeignKey("profiles.id"),
-            nullable=True,
-        ),
-        sa.Column("claimed_at", sa.DateTime(), nullable=True),
-        sa.Column("expires_at", sa.DateTime(), nullable=True),
+        sa.Column("subscription", JSONB, nullable=False),
+        sa.Column("device_hint", sa.String(100), nullable=True),
+        sa.Column("failed_send_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default="true"),
+        sa.Column("last_used_at", sa.DateTime(), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(),
             nullable=False,
             server_default=sa.text("NOW()"),
         ),
-        sa.UniqueConstraint("token", name="uq_invites_token"),
     )
+
+    # --- notification_preferences ---
+    op.create_table(
+        "notification_preferences",
+        sa.Column(
+            "player_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("profiles.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
+        sa.Column("global_mute", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column("quiet_hours_start", sa.DateTime(), nullable=True),
+        sa.Column("quiet_hours_end", sa.DateTime(), nullable=True),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(),
+            nullable=False,
+            server_default=sa.text("NOW()"),
+        ),
+    )
+
+    # --- audit_log ---
+    op.create_table(
+        "audit_log",
+        sa.Column(
+            "id",
+            UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
+        sa.Column(
+            "actor_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("profiles.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        sa.Column(
+            "actor_type",
+            PgENUM(name="actor_type", create_type=False),
+            nullable=False,
+        ),
+        sa.Column(
+            "action_type",
+            PgENUM(name="action_type", create_type=False),
+            nullable=False,
+        ),
+        sa.Column("target_table", sa.String(50), nullable=False),
+        sa.Column("target_id", UUID(as_uuid=True), nullable=True),
+        sa.Column("changes", JSONB, nullable=True),
+        sa.Column(
+            "timestamp",
+            sa.DateTime(),
+            nullable=False,
+            server_default=sa.text("NOW()"),
+        ),
+    )
+    op.create_index("ix_audit_log_actor_id", "audit_log", ["actor_id"])
+    op.create_index("ix_audit_log_timestamp", "audit_log", ["timestamp"])
+    op.create_index("ix_audit_log_action_type", "audit_log", ["action_type"])
 
     # --- updated_at trigger (profiles) ---
     op.execute(
@@ -214,17 +219,11 @@ def upgrade() -> None:
             IF EXISTS (
                 SELECT FROM information_schema.schemata WHERE schema_name = 'auth'
             ) THEN
-                ALTER TABLE groups ENABLE ROW LEVEL SECURITY;
                 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-                ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
                 ALTER TABLE refresh_tokens ENABLE ROW LEVEL SECURITY;
-                ALTER TABLE invites ENABLE ROW LEVEL SECURITY;
-
-                -- groups / teams: public read
-                CREATE POLICY "groups_select_all"
-                    ON groups FOR SELECT USING (true);
-                CREATE POLICY "teams_select_all"
-                    ON teams FOR SELECT USING (true);
+                ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
+                ALTER TABLE notification_preferences ENABLE ROW LEVEL SECURITY;
+                ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
 
                 -- profiles: own row read/update; service role bypasses RLS
                 CREATE POLICY "profiles_select_own"
@@ -240,9 +239,17 @@ def upgrade() -> None:
                 CREATE POLICY "refresh_tokens_delete_own"
                     ON refresh_tokens FOR DELETE USING (auth.uid() = player_id);
 
-                -- invites: authenticated users can read; insert handled by service role
-                CREATE POLICY "invites_select_authenticated"
-                    ON invites FOR SELECT TO authenticated USING (true);
+                -- push_subscriptions: own only
+                CREATE POLICY "push_subscriptions_select_own"
+                    ON push_subscriptions FOR SELECT USING (auth.uid() = player_id);
+                CREATE POLICY "push_subscriptions_insert_own"
+                    ON push_subscriptions FOR INSERT WITH CHECK (auth.uid() = player_id);
+
+                -- notification_preferences: own only
+                CREATE POLICY "notification_preferences_select_own"
+                    ON notification_preferences FOR SELECT USING (auth.uid() = player_id);
+                CREATE POLICY "notification_preferences_update_own"
+                    ON notification_preferences FOR UPDATE USING (auth.uid() = player_id);
             END IF;
         END $$;
         """
@@ -250,11 +257,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table("invites")
+    op.drop_table("audit_log")
+    op.drop_table("notification_preferences")
+    op.drop_table("push_subscriptions")
     op.drop_table("refresh_tokens")
-    op.drop_table("teams")
     op.drop_table("profiles")
-    op.drop_table("groups")
     op.execute("DROP FUNCTION IF EXISTS set_updated_at() CASCADE")
-    op.execute("DROP TYPE IF EXISTS tournament_stage")
+    op.execute("DROP TYPE IF EXISTS action_type")
+    op.execute("DROP TYPE IF EXISTS actor_type")
     op.execute("DROP TYPE IF EXISTS player_role")
