@@ -1,7 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import * as Sentry from '@sentry/react';
 import { Button } from './ui/button';
-import { EmptyState } from './EmptyState';
 
 interface Props {
   children: ReactNode;
@@ -34,23 +33,18 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.props.fallback) return this.props.fallback(error, this.reset);
 
     return (
-      <EmptyState
-        title="Something went wrong"
-        description={
-          <span>
-            We hit an unexpected error rendering this view. Try reloading — if it keeps happening,
-            let an admin know.
-          </span>
-        }
-        action={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={this.reset}>
-              Try again
-            </Button>
-            <Button onClick={() => window.location.reload()}>Reload</Button>
-          </div>
-        }
-      />
+      <div className="flex flex-col items-center justify-center gap-4 p-8 text-center">
+        <p className="text-text-primary font-semibold">Something went wrong</p>
+        <p className="text-text-secondary text-sm">
+          An unexpected error occurred. Try reloading the page.
+        </p>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={this.reset}>
+            Try again
+          </Button>
+          <Button onClick={() => window.location.reload()}>Reload</Button>
+        </div>
+      </div>
     );
   }
 }

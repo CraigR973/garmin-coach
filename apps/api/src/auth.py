@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
 from src.database import get_db
-from src.models.profile import PlayerRole, Profile, SiteRole
+from src.models.profile import PlayerRole, Profile
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -82,12 +82,6 @@ def generate_opaque_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-_JOIN_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no I, O, 0, 1
-
-
-def generate_join_code() -> str:
-    """6-character human-typable league join code (unambiguous alphabet)."""
-    return "".join(secrets.choice(_JOIN_CODE_ALPHABET) for _ in range(6))
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
@@ -186,9 +180,7 @@ async def get_current_player(
 async def require_admin(
     player: Annotated[Profile, Depends(get_current_player)],
 ) -> Profile:
-    # Single source of truth for site-admin authority: site_role (SiteRole.superadmin).
-    # PlayerRole.admin is legacy; prefer site_role for all admin-gate decisions.
-    if player.site_role != SiteRole.superadmin:
+    if player.role != PlayerRole.admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return player
 

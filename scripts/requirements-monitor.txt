@@ -1,5 +1,0 @@
-# Dependencies for the prod monitor scripts (prod_healthcheck / prod_remediate / monitor_ci).
-# Kept separate from the API app so the GitHub Actions runner installs only what it needs.
-asyncpg>=0.29
-httpx>=0.27
-pyjwt>=2.8

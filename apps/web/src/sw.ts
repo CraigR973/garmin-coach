@@ -2,7 +2,7 @@
 import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching';
 import { clientsClaim } from 'workbox-core';
 import { NavigationRoute, registerRoute } from 'workbox-routing';
-import { NetworkFirst, StaleWhileRevalidate } from 'workbox-strategies';
+import { NetworkFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 
@@ -34,50 +34,18 @@ registerRoute(
   ),
 );
 
-// ─── API caching (Phase 11.2 — offline support) ───────────────────────────────
-// Group data (group-stage assignments) is shared and essentially static →
-// stale-while-revalidate. Match data carries live status/score and must not
-// serve a stale cycle while online → network-first with a 3s timeout (U59).
-// Per-player data (predictions, leaderboard, stats) is dynamic → network-first with
-// a 3s timeout so cached data is used when offline. All restrict cached responses
-// to GET 200s; auth-rejected (401/403) and mutating verbs are never cached.
+// ─── API caching — Phase 1 will add garmin-coach route rules here ─────────────
+// Auth endpoints (me/profile, push/vapid-public-key) are network-first with a
+// short timeout; all restrict cached responses to GET 200s.
 
 registerRoute(
   ({ url, request }) =>
-    request.method === 'GET' && /^\/api\/v1\/groups(\/|$|\?)/.test(url.pathname),
-  new StaleWhileRevalidate({
-    cacheName: 'api-groups',
-    plugins: [
-      new ExpirationPlugin({ maxEntries: 80, maxAgeSeconds: 60 * 60 * 24 }),
-      new CacheableResponsePlugin({ statuses: [200] }),
-    ],
-  }),
-);
-
-registerRoute(
-  ({ url, request }) =>
-    request.method === 'GET' && /^\/api\/v1\/matches(\/|$|\?)/.test(url.pathname),
+    request.method === 'GET' && /^\/api\/v1\/me(\/|$|\?)/.test(url.pathname),
   new NetworkFirst({
-    cacheName: 'api-matches',
+    cacheName: 'api-me',
     networkTimeoutSeconds: 3,
     plugins: [
-      new ExpirationPlugin({ maxEntries: 80, maxAgeSeconds: 60 * 60 * 24 }),
-      new CacheableResponsePlugin({ statuses: [200] }),
-    ],
-  }),
-);
-
-registerRoute(
-  ({ url, request }) =>
-    request.method === 'GET' &&
-    /^\/api\/v1\/(predictions|leaderboard|players|stats|specials|knockout-predictions)(\/|$|\?)/.test(
-      url.pathname,
-    ),
-  new NetworkFirst({
-    cacheName: 'api-user-data',
-    networkTimeoutSeconds: 3,
-    plugins: [
-      new ExpirationPlugin({ maxEntries: 80, maxAgeSeconds: 60 * 60 }),
+      new ExpirationPlugin({ maxEntries: 10, maxAgeSeconds: 60 * 5 }),
       new CacheableResponsePlugin({ statuses: [200] }),
     ],
   }),
