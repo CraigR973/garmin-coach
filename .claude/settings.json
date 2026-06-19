@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ruff check *)",
+      "Bash(mypy *)",
+      "Bash(git fetch *)",
+      "mcp__Claude_Preview__preview_screenshot",
+      "mcp__Claude_Preview__preview_console_logs",
+      "mcp__Claude_Preview__preview_snapshot",
+      "mcp__Claude_Preview__preview_list",
+      "mcp__Claude_Preview__preview_network"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "DIR=${CLAUDE_PROJECT_DIR:-/Users/craigrobinson/wc_2026_predictor}; B=$(git -C \"$DIR\" symbolic-ref --short HEAD 2>/dev/null); [ -n \"$B\" ] && [ \"$B\" != \"main\" ] && [ -z \"$(git -C \"$DIR\" status --porcelain 2>/dev/null)\" ] && [ \"$(git -C \"$DIR\" rev-list @{u}..HEAD --count 2>/dev/null)\" = \"0\" ] && echo '⚠️  Branch clean and pushed — run /phase-closeout <ids> if ready to close out' || true"
+          }
+        ]
+      }
+    ]
+  }
+}

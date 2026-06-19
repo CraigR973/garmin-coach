@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Calcio">
+  <title>Calcio — favicon</title>
+  <rect width="512" height="512" rx="96" ry="96" fill="#0B0E13"/>
+  <path d="M 341 139 A 148 148 0 1 0 341 373"
+        fill="none" stroke="#D4A24A" stroke-width="60" stroke-linecap="round"/>
+  <circle cx="380" cy="256" r="56" fill="#D4A24A"/>
+  <path d="M 380 218 L 348 242 L 360 280 L 400 280 L 412 242 Z" fill="#0B0E13"/>
+</svg>

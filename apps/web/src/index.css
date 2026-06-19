@@ -1,0 +1,373 @@
+/*
+ * Self-hosted fonts — latin subset only (sufficient for this app's English UI).
+ * Files live in apps/web/public/fonts/ and are precached by the service worker.
+ *
+ * JetBrains Mono 600 is the LCP element (wordmark on /login) — preloaded in
+ * index.html so it is available before the first paint.
+ */
+
+/* Outfit 400 — body text */
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/outfit-400.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
+    U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Outfit 600 — headings, buttons, semibold UI */
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/outfit-600.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
+    U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* JetBrains Mono 600 — wordmark (LCP element on /login) — preloaded */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-600.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
+    U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* JetBrains Mono 700 — bold mono labels */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-700.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
+    U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Design tokens — mirrors apps/web/src/theme/tokens.ts.
+ *
+ * Two palettes:
+ *   :root, html.dark   → dark (default)
+ *   html.light         → light
+ *
+ * The pre-mount script in index.html sets the right class before React
+ * renders, so there's no FOUC on cold load. The ThemeProvider keeps the
+ * class in sync at runtime.
+ */
+@layer base {
+  :root,
+  html.dark {
+    /* Surface tiers */
+    --bg: #0B0E13;
+    --surface: #131720;
+    --surface-elevated: #1B2030;
+    --surface-overlay: #242938;
+    --border: #2A3142;
+    --border-strong: #3A4258;
+
+    /* Text */
+    --text-primary: #F0F4FF;
+    --text-secondary: #94A3B8;
+    --text-muted: #7B859B;
+    --text-inverse: #0B0E13;
+
+    /* On-brand text — locked dark in both modes so primary/accent
+       buttons always clear WCAG AA 4.5:1 regardless of theme.
+       Verified: dark text on primary (#10B981 / #059669) and accent
+       (#C8943C / #A77C2A) all ≥ 4.9:1. */
+    --on-primary: #0B0E13;
+    --on-accent: #0B0E13;
+
+    /* Brand */
+    --primary: #10B981;
+    --primary-dark: #059669;
+    --primary-glow: rgba(16, 185, 129, 0.35);
+    --accent: #C8943C;
+    --accent-dark: #A77C2A;
+    --accent-glow: rgba(200, 148, 60, 0.35);
+    --steele: #E8EBF0;
+    --steele-mid: #B0B8C4;
+    --steele-dark: #7A828F;
+    --steele-gradient: linear-gradient(180deg, #E8EBF0 0%, #B0B8C4 60%, #7A828F 100%);
+    --steele-gradient-h: linear-gradient(90deg, #E8EBF0 0%, #B0B8C4 100%);
+
+    /* Wordmark — premium brass gold gradient applied to the
+       "THE STEELE / SPREADSHEET SYSTEM" mark. Separate from Steele so
+       Avatar tints + other Steele uses stay metallic-silver. */
+    --wordmark-gradient: linear-gradient(180deg, #F0DDA6 0%, #D4A24A 55%, #A77C2A 100%);
+    --wordmark-gradient-h: linear-gradient(90deg, #F0DDA6 0%, #D4A24A 50%, #A77C2A 100%);
+
+    /* Semantic */
+    --success: #10B981;
+    --warning: #F59E0B;
+    --error: #EF4444;
+    --live: #EF4444;
+    --locked: #7B859B;
+
+    /* Rank medals */
+    --gold: #E5C46B;
+    --silver: #B8C0CC;
+    --bronze: #C28B5C;
+
+    /* Elevation — heavy shadows on dark bg */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 16px -2px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 12px 40px -8px rgba(0, 0, 0, 0.6);
+    --shadow-sheet: 0 -8px 32px -4px rgba(0, 0, 0, 0.6);
+    --shadow-glow: 0 0 0 3px rgba(16, 185, 129, 0.25);
+    --shadow-glow-accent: 0 0 0 3px rgba(200, 148, 60, 0.25);
+
+    /* Shimmer keyframe colour tuned for dark bg */
+    --shimmer-stripe: rgba(255, 255, 255, 0.04);
+  }
+
+  html.light {
+    /* Surface tiers — off-white base, true white surfaces */
+    --bg: #F7F8FA;
+    --surface: #FFFFFF;
+    --surface-elevated: #F1F3F5;
+    --surface-overlay: #FFFFFF;
+    --border: #E5E8EB;
+    --border-strong: #D1D5DB;
+
+    /* Text */
+    --text-primary: #14181F;
+    --text-secondary: #4B5563;
+    --text-muted: #8A93A1;
+    --text-inverse: #FFFFFF;
+
+    /* On-brand text — same dark value as dark mode; light primary/accent
+       greens and brasses are still dark enough that dark text clears AA. */
+    --on-primary: #0B0E13;
+    --on-accent: #0B0E13;
+
+    /* Brand — slightly darker variants for AA contrast on white */
+    --primary: #059669;
+    --primary-dark: #047857;
+    --primary-glow: rgba(5, 150, 105, 0.20);
+    --accent: #A77C2A;
+    --accent-dark: #8B6320;
+    --accent-glow: rgba(167, 124, 42, 0.22);
+
+    /* Steele in light mode is a dark slate gradient — keeps the
+       metallic-character of the wordmark legible against white. */
+    --steele: #4B5563;
+    --steele-mid: #6B7280;
+    --steele-dark: #9CA3AF;
+    --steele-gradient: linear-gradient(180deg, #374151 0%, #6B7280 60%, #9CA3AF 100%);
+    --steele-gradient-h: linear-gradient(90deg, #374151 0%, #6B7280 100%);
+
+    /* Wordmark — deeper brass for AA contrast on white. */
+    --wordmark-gradient: linear-gradient(180deg, #D9A968 0%, #A77C2A 55%, #6E4F18 100%);
+    --wordmark-gradient-h: linear-gradient(90deg, #D9A968 0%, #A77C2A 50%, #6E4F18 100%);
+
+    /* Semantic */
+    --success: #059669;
+    --warning: #D97706;
+    --error: #DC2626;
+    --live: #DC2626;
+    --locked: #9CA3AF;
+
+    /* Rank medals — slightly darker for contrast on light bg */
+    --gold: #B8862E;
+    --silver: #8A93A1;
+    --bronze: #A65E2A;
+
+    /* Elevation — much softer on light bg */
+    --shadow-sm: 0 1px 2px 0 rgba(20, 24, 31, 0.06);
+    --shadow-md: 0 4px 16px -4px rgba(20, 24, 31, 0.10);
+    --shadow-lg: 0 12px 40px -8px rgba(20, 24, 31, 0.16);
+    --shadow-sheet: 0 -8px 32px -4px rgba(20, 24, 31, 0.16);
+    --shadow-glow: 0 0 0 3px rgba(5, 150, 105, 0.20);
+    --shadow-glow-accent: 0 0 0 3px rgba(167, 124, 42, 0.22);
+
+    /* Shimmer keyframe colour tuned for light bg */
+    --shimmer-stripe: rgba(20, 24, 31, 0.05);
+  }
+
+  :root {
+    /* Radius scale — palette-agnostic */
+    --radius-xs: 6px;
+    --radius-sm: 10px;
+    --radius-md: 14px;
+    --radius-lg: 18px;
+    --radius-xl: 22px;
+    --radius-2xl: 28px;
+
+    /* Native safe-area helpers */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+
+    /* App chrome heights */
+    --header-height: 56px;
+    --tabbar-height: 60px;
+  }
+
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    background-color: var(--bg);
+    -webkit-tap-highlight-color: transparent;
+  }
+  html.dark { color-scheme: dark; }
+  html.light { color-scheme: light; }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text-primary);
+    font-family: 'Outfit', system-ui, sans-serif;
+    font-feature-settings: 'cv11', 'ss01';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior-y: none;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Outfit', system-ui, sans-serif;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+  }
+
+  /* Native-app feel: disable user-select + long-press callout on chrome, allow on content */
+  header, nav, button, [role='tab'], [role='button'] {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+}
+
+@layer utilities {
+  .font-mono-custom {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+  }
+
+  /* Hide scrollbars on the main window for a native-app feel. */
+  html, body {
+    scrollbar-width: none;     /* Firefox */
+    -ms-overflow-style: none;  /* IE 10+ */
+  }
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .text-steele {
+    background: var(--steele-gradient);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  .text-steele-h {
+    background: var(--steele-gradient-h);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  /* Premium brass gold for the brand wordmark. */
+  .text-wordmark {
+    background: var(--wordmark-gradient);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.15);
+  }
+
+  .text-wordmark-h {
+    background: var(--wordmark-gradient-h);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  /* Touch-target floor — 44 px Apple HIG */
+  .tap-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Safe-area padding helpers */
+  .pt-safe { padding-top: var(--safe-top); }
+  .pb-safe { padding-bottom: var(--safe-bottom); }
+  .pl-safe { padding-left: var(--safe-left); }
+  .pr-safe { padding-right: var(--safe-right); }
+
+  .h-tabbar-safe { height: calc(var(--tabbar-height) + var(--safe-bottom)); }
+  .pb-tabbar-safe { padding-bottom: calc(var(--tabbar-height) + var(--safe-bottom)); }
+  .pt-header-safe { padding-top: calc(var(--header-height) + var(--safe-top)); }
+
+  /* Animations */
+  @keyframes pulse-live {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  .animate-pulse-live {
+    animation: pulse-live 1.2s ease-in-out infinite;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  .animate-shimmer {
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      var(--shimmer-stripe) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.8s ease-in-out infinite;
+  }
+
+  /* Press-down feedback for native feel */
+  .press-down {
+    transition: transform 80ms ease-out, opacity 80ms ease-out;
+  }
+  .press-down:active {
+    transform: scale(0.97);
+    opacity: 0.85;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,100 @@
+name: claude
+
+# Auto-fix companion to prod-monitor: when an issue (or comment) mentions @claude
+# — or a monitor issue is opened with the `auto-fix` label — Claude investigates
+# and opens a DRAFT pull request with a minimal fix for review. Nothing deploys
+# until you review and merge the PR (merging `main` auto-deploys prod).
+#
+# Note: an issue created by the monitor using the default GITHUB_TOKEN will NOT
+# trigger this workflow (GitHub suppresses recursive triggers). Either set a
+# MONITOR_PAT secret on prod-monitor (so its issues are authored by you and do
+# trigger this), or simply reply "@claude" on the issue from your phone.
+
+on:
+  issue_comment:
+    types: [created]
+  issues:
+    types: [opened, labeled]
+
+concurrency:
+  group: claude-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  claude:
+    # Only on an explicit @claude mention or the auto-fix label, and only from the
+    # repo owner (this is a private, single-admin league).
+    if: >
+      (github.event_name == 'issue_comment'
+        && contains(github.event.comment.body, '@claude')
+        && github.event.comment.author_association == 'OWNER')
+      || (github.event_name == 'issues' && github.event.action == 'opened'
+        && contains(github.event.issue.body, '@claude')
+        && github.event.issue.author_association == 'OWNER')
+      || (github.event_name == 'issues' && github.event.action == 'labeled'
+        && github.event.label.name == 'auto-fix')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Two Pro subscriptions, pooled. Run on the primary token; if it errors —
+      # e.g. its allowance is exhausted — the fallback step retries on the second
+      # Pro token. `continue-on-error` stops a primary failure from hard-failing
+      # the job so the fallback can take over; if BOTH fail, the job fails and you
+      # get paged (both accounts are dry).
+      - name: Claude
+        id: primary
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Primary Pro subscription token (generated with `claude setup-token`),
+          # not pay-as-you-go API credits. Runs draw on this account's allowance.
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+      - name: Claude (fallback on second Pro)
+        if: steps.primary.outcome == 'failure'
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Second Pro account's token — only used when the primary errors/runs dry.
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
+
+      # The action pushes a branch + a "Create PR" link by design. This step opens
+      # the draft PR for you, so a code fix is just review -> merge from your phone.
+      - name: Open draft PR for Claude's branch
+        if: always()
+        env:
+          # Prefer a user PAT so the draft PR fires a `pull_request` event and runs
+          # CI before you merge; a PR opened with the built-in GITHUB_TOKEN does NOT
+          # trigger workflows. Falls back to GITHUB_TOKEN if PR_PAT is unset (then the
+          # PR won't run CI and needs the repo "Allow GitHub Actions to create and
+          # approve pull requests" setting enabled).
+          PR_PAT: ${{ secrets.PR_PAT }}
+          DEFAULT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          if [ -n "$PR_PAT" ]; then
+            export GH_TOKEN="$PR_PAT"; echo "Auth: PR_PAT — draft PR will trigger CI."
+          else
+            export GH_TOKEN="$DEFAULT_TOKEN"
+            echo "Auth: GITHUB_TOKEN — PR_PAT unset; PR won't run CI and needs the repo PR-create setting."
+          fi
+          BR=$(gh api "repos/$REPO/branches" --paginate --jq '.[].name' \
+                | grep -E "^claude/issue-${ISSUE}-" | sort | tail -1 || true)
+          if [ -z "$BR" ]; then echo "No claude/issue-${ISSUE}-* branch — nothing to PR."; exit 0; fi
+          if [ "$(gh pr list --repo "$REPO" --head "$BR" --json number --jq 'length')" = "0" ]; then
+            TITLE=$(gh issue view "$ISSUE" --repo "$REPO" --json title --jq .title)
+            gh pr create --repo "$REPO" --draft --base main --head "$BR" \
+              --title "fix: ${TITLE}" \
+              --body "Automated fix drafted by @claude for #${ISSUE}. Review the diff and merge to deploy (merging \`main\` auto-deploys prod). Closes #${ISSUE}."
+          else
+            echo "PR already exists for $BR"
+          fi

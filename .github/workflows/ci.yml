@@ -1,0 +1,350 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+      - 'claude/**'
+      - 'feat/**'
+      - 'fix/**'
+      - 'chore/**'
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-api:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check .
+      - run: ruff format --check .
+
+  typecheck-api:
+    name: Typecheck (mypy)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - run: mypy src
+        env:
+          PYTHONPATH: .
+
+  test-api:
+    name: Unit tests (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wc2026_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/wc2026_test
+      JWT_ACCESS_SECRET: ci-test-access-secret-not-used-in-prod
+      JWT_REFRESH_SECRET: ci-test-refresh-secret-not-used-in-prod
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - run: alembic upgrade head
+      - run: pytest --cov=src --cov-report=term-missing
+        env:
+          PYTHONPATH: .
+
+  migration-check:
+    name: Migration check (alembic)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wc2026_migration
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - run: alembic upgrade head
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/wc2026_migration
+      - run: alembic downgrade base
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/wc2026_migration
+
+  test-web:
+    name: Unit tests (vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm test
+        working-directory: apps/web
+
+  build-web:
+    name: Build web (lint + typecheck + vite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm lint
+        working-directory: apps/web
+      - run: pnpm typecheck
+        working-directory: apps/web
+      - run: pnpm build
+        working-directory: apps/web
+
+  prod-bundle-check:
+    name: Prod bundle check (VITE_API_URL guard)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+      - run: pnpm install
+      - name: Install Playwright Chromium
+        run: pnpm e2e:prod-bundle:install
+        working-directory: apps/web
+
+      # ── Positive case: VITE_API_URL set — bundle must load without errors ────
+      - name: "Build prod bundle (VITE_API_URL set)"
+        working-directory: apps/web
+        env:
+          VITE_API_URL: https://wc2026-api-production-a0f4.up.railway.app
+          VITE_SUPABASE_URL: https://placeholder.supabase.co
+          VITE_SUPABASE_ANON_KEY: placeholder-anon-key
+        run: pnpm build
+      - name: "Start vite preview (positive)"
+        working-directory: apps/web
+        run: |
+          pnpm preview --port 4173 &
+          echo $! > /tmp/vite-preview.pid
+          for i in $(seq 1 20); do curl -sf http://localhost:4173 && break || sleep 1; done
+      - name: "Load prod bundle — assert no page errors"
+        working-directory: apps/web
+        run: pnpm e2e:prod-bundle
+      - name: "Stop vite preview (positive)"
+        run: kill "$(cat /tmp/vite-preview.pid)" || true
+
+      # ── Negative case: VITE_API_URL unset — R5.1 guard must fire ─────────────
+      - name: "Build prod bundle (VITE_API_URL unset)"
+        working-directory: apps/web
+        env:
+          VITE_SUPABASE_URL: https://placeholder.supabase.co
+          VITE_SUPABASE_ANON_KEY: placeholder-anon-key
+        run: pnpm build
+      - name: "Start vite preview (negative)"
+        working-directory: apps/web
+        run: |
+          pnpm preview --port 4173 &
+          echo $! > /tmp/vite-preview.pid
+          for i in $(seq 1 20); do curl -sf http://localhost:4173 && break || sleep 1; done
+      - name: "Assert VITE_API_URL guard fires on module load"
+        working-directory: apps/web
+        run: pnpm e2e:prod-bundle:guard
+      - name: "Stop vite preview (negative)"
+        if: always()
+        run: kill "$(cat /tmp/vite-preview.pid)" || true
+
+  e2e:
+    name: E2E tests (Playwright — mocked)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm e2e:install
+        working-directory: apps/web
+      - run: pnpm e2e
+        working-directory: apps/web
+        env:
+          VITE_SUPABASE_URL: https://placeholder.supabase.co
+          VITE_SUPABASE_ANON_KEY: placeholder-anon-key
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7
+
+  smoke:
+    name: Smoke test (Playwright — full stack)
+    needs: [test-api]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wc2026_smoke
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/wc2026_smoke
+      JWT_ACCESS_SECRET: ci-smoke-access-secret-not-used-in-prod
+      JWT_REFRESH_SECRET: ci-smoke-refresh-secret-not-used-in-prod
+      ENVIRONMENT: development
+      SCHEDULER_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Backend ────────────────────────────────────────────────────────────
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - run: alembic upgrade head
+      - name: Start FastAPI
+        run: |
+          uvicorn src.main:app --host 0.0.0.0 --port 8000 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/api/v1/health && break
+            sleep 1
+          done
+        env:
+          PYTHONPATH: .
+
+      # ── Frontend + Playwright ──────────────────────────────────────────────
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+      - run: pnpm install
+        working-directory: .
+      - run: pnpm e2e:smoke:install
+        working-directory: apps/web
+      - run: pnpm e2e:smoke
+        working-directory: apps/web
+        env:
+          VITE_SUPABASE_URL: https://placeholder.supabase.co
+          VITE_SUPABASE_ANON_KEY: placeholder-anon-key
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: smoke-report
+          path: apps/web/playwright-report/
+          retention-days: 7
+
+  # ─── Deploy ─────────────────────────────────────────────────────────────────
+  # Only runs on the staging branch, after every other job has succeeded.
+  # Builds + deploys to wc2026-staging.vercel.app as a PRODUCTION-target
+  # deployment (so it lands on the canonical URL the staging API CORS allows).
+  # Requires repo secret VERCEL_TOKEN.
+  deploy-staging:
+    name: Deploy → wc2026-staging.vercel.app
+    if: github.ref == 'refs/heads/staging' && github.event_name == 'push'
+    needs: [lint-api, typecheck-api, test-api, migration-check, build-web, test-web, prod-bundle-check, e2e, smoke]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: true
+    env:
+      VERCEL_ORG_ID: team_MVQMOaFtYHlwO5QVzSOZQ0Ud
+      VERCEL_PROJECT_ID: prj_hVMpuWm33XjuNrVUWrCti27ZfIX7
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+      # Deploy via Vercel's REMOTE builder (not --prebuilt) so that
+      # env vars marked "Sensitive" on the project — which `vercel pull`
+      # can't return locally — are available during the build. Earlier
+      # attempts with --prebuilt produced a bundle without VITE_API_URL,
+      # causing the R5 hard-assert to throw at module load → blank page.
+      - name: Deploy
+        id: deploy
+        run: |
+          URL=$(vercel deploy --prod --yes --token="$VERCEL_TOKEN")
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "Deployed to: $URL"
+      - name: Summary
+        run: |
+          echo "### Staging deploy ✅" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **URL**: https://wc2026-staging.vercel.app" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Direct**: ${{ steps.deploy.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **SHA**: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"

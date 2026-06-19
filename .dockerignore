@@ -1,0 +1,48 @@
+# The backend image is built from the repo root (see railway.toml + Dockerfile)
+# so the build context can include /migrations. Keep that context lean: the
+# Dockerfile only needs apps/api/{requirements.txt,src,alembic.ini} + migrations/.
+
+# Node / frontend — never needed for the Python API image
+node_modules/
+**/node_modules/
+apps/web/
+packages/
+pnpm-lock.yaml
+*.tsbuildinfo
+
+# Python virtualenvs and caches
+**/.venv/
+**/venv/
+**/__pycache__/
+**/*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Backend tests are not needed at runtime
+apps/api/tests/
+
+# VCS, tooling, docs, secrets
+.git/
+.github/
+.claude/
+.vercel/
+docs/
+*.md
+.env
+.env.*
+!.env.example
+
+# Test/report artifacts
+playwright-report/
+test-results/
+coverage/
+lcov.info
+*.log
+logs/
+
+# OS cruft
+.DS_Store
+Thumbs.db

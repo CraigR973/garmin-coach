@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="The Steele Spreadsheet System — pitch as spreadsheet">
+  <title>The Steele Spreadsheet System — pitch as spreadsheet</title>
+
+  <!-- Dark variant background with iOS icon corner radius -->
+  <rect width="512" height="512" rx="96" ry="96" fill="#0B0E13"/>
+
+  <!--
+    Concept: a football pitch whose horizontal markings double as
+    spreadsheet rows. The pitch outline is the dominant brass shape;
+    the row hints are a quieter second voice (50 % opacity).
+    Penalty boxes anchor the football reading; the solid ball at
+    centre seals it.
+  -->
+
+  <!-- ── Pitch boundary ─────────────────────────────────────────────── -->
+  <rect x="68" y="118" width="376" height="276"
+        rx="10" ry="10"
+        stroke="#D4A24A" stroke-width="10" fill="none"/>
+
+  <!-- ── Centre line (vertical) ────────────────────────────────────── -->
+  <line x1="256" y1="118" x2="256" y2="394"
+        stroke="#D4A24A" stroke-width="10"/>
+
+  <!-- ── Penalty boxes ──────────────────────────────────────────────── -->
+  <!-- Left box -->
+  <path d="M 68 182 H 142 V 330 H 68"
+        stroke="#D4A24A" stroke-width="7" fill="none"/>
+  <!-- Right box -->
+  <path d="M 444 182 H 370 V 330 H 444"
+        stroke="#D4A24A" stroke-width="7" fill="none"/>
+
+  <!-- ── Centre circle ──────────────────────────────────────────────── -->
+  <circle cx="256" cy="256" r="56"
+          stroke="#D4A24A" stroke-width="10" fill="none"/>
+
+  <!-- ── Spreadsheet row hints ─────────────────────────────────────── -->
+  <!-- Three horizontal rules spaced evenly across the pitch height.
+       Solid but at 50 % opacity — present as structure, not noise. -->
+  <g stroke="#D4A24A" stroke-width="3.5" opacity="0.50">
+    <line x1="68"  y1="187" x2="444" y2="187"/>
+    <line x1="68"  y1="256" x2="444" y2="256"/>
+    <line x1="68"  y1="325" x2="444" y2="325"/>
+  </g>
+
+  <!-- ── Football at centre ─────────────────────────────────────────── -->
+  <!-- Disc -->
+  <circle cx="256" cy="256" r="18" fill="#D4A24A"/>
+  <!-- Single pentagon panel cutout — the "found detail" on close inspection -->
+  <path d="M 256 244 L 246 252 L 250 264 L 262 264 L 266 252 Z"
+        fill="#0B0E13"/>
+</svg>

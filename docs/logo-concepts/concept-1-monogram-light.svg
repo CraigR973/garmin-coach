@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="The Steele Spreadsheet System — S-cubed monogram (light)">
+  <title>The Steele Spreadsheet System — S³ monogram (light variant)</title>
+  <rect width="512" height="512" rx="96" ry="96" fill="#F7F8FA"/>
+  <g fill="#A77C2A" font-family="'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace">
+    <text x="206" y="368" font-size="340" font-weight="700" letter-spacing="-0.06em">S</text>
+    <text x="358" y="226" font-size="148" font-weight="600">3</text>
+  </g>
+</svg>

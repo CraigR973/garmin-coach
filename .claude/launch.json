@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["apps/web/dev.sh"],
+      "port": 5173,
+      "autoPort": true
+    }
+  ]
+}

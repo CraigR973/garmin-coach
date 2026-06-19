@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="The Steele Spreadsheet System — spreadsheet cell with ball">
+  <title>The Steele Spreadsheet System — spreadsheet cell with ball</title>
+  <!-- Dark variant -->
+  <rect width="512" height="512" rx="96" ry="96" fill="#0B0E13"/>
+
+  <!-- 3×3 spreadsheet grid (suggests a sheet without being literal) -->
+  <g stroke="#3A4258" stroke-width="3" fill="none" stroke-linecap="square">
+    <!-- Outer cell -->
+    <rect x="96" y="96" width="320" height="320" rx="14"/>
+    <!-- Inner grid lines -->
+    <path d="M 96 202 H 416 M 96 310 H 416"/>
+    <path d="M 202 96 V 416 M 310 96 V 416"/>
+  </g>
+
+  <!-- Centre cell highlight = the "play" cell -->
+  <rect x="202" y="202" width="108" height="108" fill="#0B0E13" stroke="#D4A24A" stroke-width="5"/>
+
+  <!-- Football inside the centre cell: circle + a single pentagon panel hint -->
+  <g transform="translate(256 256)">
+    <circle r="36" fill="#D4A24A"/>
+    <path d="M 0 -22 L -20 -8 L -12 16 L 12 16 L 20 -8 Z"
+          fill="#0B0E13" stroke="#0B0E13" stroke-width="1" stroke-linejoin="round"/>
+  </g>
+</svg>

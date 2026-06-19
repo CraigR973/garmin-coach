@@ -1,0 +1,22 @@
+# Canonical Railway build config for the FastAPI backend.
+#
+# Builder is pinned to the repo-root Dockerfile (not nixpacks) for two reasons:
+#   1. The Dockerfile's CMD runs `alembic upgrade head` before uvicorn, so every
+#      deploy migrates its own database automatically — no manual migration step.
+#   2. Pinning the builder disables Railway's project auto-detection, which used
+#      to misidentify the monorepo root as a Node project.
+#
+# The service Root Directory must be the repo root (not apps/api) so the build
+# context can see /migrations. See docs/runbooks/deploys-ongoing.md.
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Generous timeout: the healthcheck only goes green after `alembic upgrade head`
+# completes, so allow headroom for a migration on boot.
+healthcheckPath = "/api/v1/health"
+healthcheckTimeout = 300
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
