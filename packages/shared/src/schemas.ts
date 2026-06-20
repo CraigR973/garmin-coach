@@ -145,6 +145,8 @@ export const weatherDailySchema = z.object({
   tempHighC: z.number().nullable().optional(),
   tempLowC: z.number().nullable().optional(),
   overnightLowC: z.number().nullable().optional(),
+  overnightWindMaxMph: z.number().nullable().optional(),
+  overnightWindGustMph: z.number().nullable().optional(),
   windMaxMph: z.number().nullable().optional(),
   windGustMph: z.number().nullable().optional(),
   precipitationMm: z.number().nullable().optional(),

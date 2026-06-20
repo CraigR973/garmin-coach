@@ -6,7 +6,8 @@
 
 ## Now
 
-**Phase:** 1 Batch 2 shipped — Garmin sync foundation live.
+**Phase:** 1 Batch 3 implementation ready — Hive + weather syncs on
+`feat/batch-3-hive-weather-syncs`.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -20,7 +21,8 @@
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Run Phase 1 Batch 3 via `/batch-start 3`.
+**Next:** Review/verify Phase 1 Batch 3, then run `/closeout 3` only after the
+branch is accepted.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -41,6 +43,13 @@
   Garmin secrets in Postgres.
 
 ## Log
+- **2026-06-20** — Phase 1 Batch 3 implementation ready on
+  `feat/batch-3-hive-weather-syncs`: added Hive `pyhiveapi` re-login wrapper,
+  real-fixture Hive temperature parsing/upserts, Open-Meteo Kilmarnock daily +
+  overnight weather parsing/upserts, overnight wind columns, and scheduler jobs
+  for 15-minute Hive polling plus 06:30 Europe/London weather sync. Verified
+  backend pytest/ruff/mypy and shared package test/typecheck locally; DB-backed
+  idempotency tests skipped without `DATABASE_URL`.
 - **2026-06-20** — Phase 1 Batch 2 closed out: merged
   `feat/batch-2-garmin-sync-foundation` to `main`, GitHub CI passed on merge
   commit `8ab4e27`, Railway deployed the backend and `/api/v1/health` reported

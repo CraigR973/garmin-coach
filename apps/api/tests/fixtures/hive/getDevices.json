@@ -1,0 +1,141 @@
+{
+  "original": 200,
+  "parsed": [
+    {
+      "id": "d3837ff0-3e07-4c28-bf33-20149d5a789c",
+      "type": "hub",
+      "sortOrder": 0,
+      "created": 1678803015339,
+      "lastSeen": 1781809542489,
+      "parent": "d3837ff0-3e07-4c28-bf33-20149d5a789c",
+      "props": {
+        "online": true,
+        "model": "NANO2",
+        "version": "1.0.0-7052-ORION19-gg-free",
+        "manufacturer": "AlertMe",
+        "hardwareIdentifier": "LUZ-041",
+        "upgrade": {
+          "available": false,
+          "version": "1.0.0-7052-ORION19-gg-free",
+          "upgrading": false
+        },
+        "power": "mains",
+        "uptime": 1404000,
+        "operation": "DEPLOYED",
+        "ipAddress": "192.168.1.35",
+        "macAddress": "00:1C:2B:4C:B5:4B",
+        "capabilities": [
+          "INFORMATION",
+          "RENAME",
+          "REBOOT_HUB",
+          "MIMIC_MODE",
+          "ActionsDaylight",
+          "ActionsMultiOutput",
+          "SLT5_INSTALL",
+          "ACTIONS_2",
+          "INSTALL_PHILIPS_HUE",
+          "PRODUCT_GROUP",
+          "HOMEKIT"
+        ],
+        "pmz": "OK",
+        "connection": "wired",
+        "mimicMode": {
+          "enabled": false,
+          "firstTime": true,
+          "start": "18:00",
+          "end": "22:30",
+          "consumers": []
+        },
+        "assistedLiving": {
+          "noMorningActivity": false,
+          "noRecentActivity": false,
+          "nightTime": false,
+          "learning": true
+        },
+        "homeKit": {
+          "status": "ENABLED",
+          "paired": false
+        }
+      },
+      "state": {
+        "name": "Hub",
+        "homeKitEnabled": true,
+        "homeKitPaired": false,
+        "discovery": false
+      }
+    },
+    {
+      "id": "1f56cad1-b481-4242-9b59-1fb4d964fdf6",
+      "type": "boilermodule",
+      "sortOrder": 1,
+      "created": 1678804213809,
+      "lastSeen": 1781622656874,
+      "parent": "d3837ff0-3e07-4c28-bf33-20149d5a789c",
+      "props": {
+        "online": true,
+        "presenceLastChanged": 1781623098934,
+        "model": "SLR2",
+        "version": "00136620",
+        "manufacturer": "Computime",
+        "upgrade": {
+          "available": false,
+          "upgrading": false
+        },
+        "power": "mains",
+        "signal": 100,
+        "zone": "1f56cad1-b481-4242-9b59-1fb4d964fdf6",
+        "tui": "2ddfd99f-70e8-4487-a012-179572a8a4c9",
+        "modelVariant": "SLR2c",
+        "capabilities": [
+          "INFORMATION"
+        ],
+        "reset": false,
+        "initialisedStatus": "INITIALISED"
+      },
+      "state": {
+        "name": "Thermostat 1",
+        "zoneName": ""
+      }
+    },
+    {
+      "id": "2ddfd99f-70e8-4487-a012-179572a8a4c9",
+      "type": "thermostatui",
+      "sortOrder": 1,
+      "created": 1678804249640,
+      "lastSeen": 1778444002660,
+      "parent": "d3837ff0-3e07-4c28-bf33-20149d5a789c",
+      "props": {
+        "online": true,
+        "presenceLastChanged": 1780405637058,
+        "model": "SLT3",
+        "version": "02040105",
+        "manufacturer": "Computime",
+        "upgrade": {
+          "available": false,
+          "version": "02040105",
+          "progress": 0,
+          "upgrading": false,
+          "status": "COMPLETE"
+        },
+        "power": "battery",
+        "signal": 100,
+        "battery": 100,
+        "capabilities": [
+          "INFORMATION",
+          "RENAME",
+          "HEATING_ALERTS",
+          "GEOLOCATION",
+          "HOLIDAY_MODE",
+          "SLT_REPLACEMENT",
+          "OPTIMUM_START"
+        ],
+        "modelVariant": "SLT3c",
+        "zone": "1f56cad1-b481-4242-9b59-1fb4d964fdf6"
+      },
+      "state": {
+        "name": "Thermostat 2",
+        "zoneName": ""
+      }
+    }
+  ]
+}

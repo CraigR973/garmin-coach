@@ -207,6 +207,8 @@ class WeatherDaily(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     temp_high_c: Mapped[float | None] = mapped_column(Float, nullable=True)
     temp_low_c: Mapped[float | None] = mapped_column(Float, nullable=True)
     overnight_low_c: Mapped[float | None] = mapped_column(Float, nullable=True)
+    overnight_wind_max_mph: Mapped[float | None] = mapped_column(Float, nullable=True)
+    overnight_wind_gust_mph: Mapped[float | None] = mapped_column(Float, nullable=True)
     wind_max_mph: Mapped[float | None] = mapped_column(Float, nullable=True)
     wind_gust_mph: Mapped[float | None] = mapped_column(Float, nullable=True)
     precipitation_mm: Mapped[float | None] = mapped_column(Float, nullable=True)

@@ -1,5 +1,5 @@
 from src.models import Base
-from src.models.coaching import Activity, ActivityTimeSeries, DailyMetric, Sleep
+from src.models.coaching import Activity, ActivityTimeSeries, DailyMetric, Sleep, WeatherDaily
 from src.models.profile import Profile
 
 
@@ -69,3 +69,12 @@ def test_activity_columns_cover_summary_and_time_series_channels() -> None:
     assert "performance_condition" in series_columns
     assert "available_stamina" in series_columns
     assert "potential_stamina" in series_columns
+
+
+def test_weather_daily_columns_cover_overnight_wind() -> None:
+    columns = WeatherDaily.__table__.columns.keys()
+
+    assert "overnight_low_c" in columns
+    assert "overnight_wind_max_mph" in columns
+    assert "overnight_wind_gust_mph" in columns
+    assert "wind_max_mph" in columns
