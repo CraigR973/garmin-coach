@@ -7,7 +7,10 @@ real procedure lives in this folder — never duplicate the steps into a wrapper
 
 | Command | Purpose |
 |---|---|
+| `batch-start.md` | Start an implementation batch from `docs/phase-batches.md` |
+| `batch-verify.md` | Check a batch against acceptance criteria before closeout |
+| `closeout.md` | Explicit reviewed batch closeout: commit, CI, merge, deploy, docs, strike row |
 | `handoff.md` | End-of-session handoff: update STATUS + DECISIONS, commit |
+| `next-batch-prompt.md` | Generate a copy-ready prompt for the next batch |
 
-Add more as real workflows emerge (e.g. `deploy.md`, `new-migration.md`) — keep
-them here, not in any one tool's config.
+Keep the real procedures here, not in any one tool's config.
