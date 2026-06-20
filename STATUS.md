@@ -6,8 +6,7 @@
 
 ## Now
 
-**Phase:** 1 Batch 8 implementation ready — post-workout analysis on
-`feat/batch-8-post-workout-analysis`.
+**Phase:** 1 Batch 8 shipped — post-workout analysis live.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -21,8 +20,7 @@
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Review the Batch 8 branch/preview, then run `/closeout 8` when ready
-to promote.
+**Next:** Run Phase 1 Batch 9 via `/batch-start 9`.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -55,6 +53,17 @@ to promote.
   analysis. Strength sessions remain excluded from recovery decisions.
 
 ## Log
+- **2026-06-20** — Phase 1 Batch 8 closed out: fast-forwarded
+  `feat/batch-8-post-workout-analysis` to `main`, fixed the branch CI mypy
+  portability issue in commit `f202093`, and GitHub CI passed on `main` run
+  `27886013267`. Railway deployed the backend and `/api/v1/health` reported
+  SHA `f202093d195746937f207180feb1b963450b204d`; Vercel production returned
+  `HTTP 200`; the same-origin `/api/v1/health` rewrite returned the same SHA;
+  and the protected `/api/v1/daily-loop` endpoint returned `401` without
+  credentials. Batch 8's non-mutating production smoke check passed by
+  confirming the deployed OpenAPI exposes `postWorkoutAnalyses` and
+  `PostWorkoutAnalysisOut`. Batch 8 marked shipped; next up is Batch 9 nudges
+  + thermal monitoring.
 - **2026-06-20** — Phase 1 Batch 8 implementation ready on
   `feat/batch-8-post-workout-analysis`: added an hourly Garmin activity poll,
   idempotent post-workout ride analysis generation stored in `analyses` against
