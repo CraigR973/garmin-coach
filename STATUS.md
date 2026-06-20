@@ -6,49 +6,42 @@
 
 ## Now
 
-**Phase:** 0a — football domain stripped.
+**Phase:** 0 COMPLETE — skeleton is live.
 
-**Done:** Phase 0a complete — football/WC2026 domain stripped from backend and
-frontend; clean garmin-coach auth skeleton committed.
+**Live endpoints:**
+- Frontend: https://garmin-coach-one.vercel.app (Vercel, deploy via `~/.local/bin/vercel --prod` from repo root)
+- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health → `{"status":"ok"}`
+- DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migration 001 applied
 
-**Backend:**
-- Profile: display_name + PIN auth, no email/avatar
-- Auth router: display_name login, no signup/email/verify
-- Scheduler: daily_backup job only
-- Migration 001: garmin-coach schema (profiles, push_subscriptions, etc.)
-- Migrations 002–033 deleted
-- 42 backend unit tests pass; ruff + mypy clean
+**Hosting identifiers (non-secret):**
+- GitHub repo: https://github.com/CraigR973/garmin-coach (private)
+- Supabase project ref: `pzqmswvozjnkxbqqowuj` (shared with movie app via `coach` schema isolation)
+- Railway project: `d43542f3-5165-420d-a14d-298832d23904`, service `api`
+- Vercel project: `garmin-coach-one.vercel.app`
+- DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Frontend:**
-- 28 football pages deleted; kept Login, ForgotPin, PinReset, Dashboard, Settings, Offline
-- @wc2026/shared → @coach/shared (no football types/scoring)
-- AuthContext: display_name login, no signup/email
-- App.tsx: 3 protected routes (/, /settings, /offline)
-- TopBar + TabBar: minimal nav (Home, Settings)
-- Brand: no CalcioLogo, Garmin/Coach two-line wordmark
-- TypeScript typecheck passes; vite build succeeds
-
-**Next:** Phase 0b — provision hosting:
-1. Create new Supabase project + run migration 001
-2. Create Railway service + set env vars (JWT secrets, DB URL, VAPID)
-3. Create Vercel project + link frontend
-4. Create GitHub repo + push main branch
-
-**Then Phase 1:** data model from real JSON shapes (`~/garmin-spike/out/`),
-three sync jobs (Garmin, Hive, weather), 84-night backfill, morning analysis.
+**Next:** Phase 1 — data model + sync jobs:
+1. Seed Mark's profile (admin) and optionally a 2nd user directly in DB
+2. Define Garmin/Hive/weather data model from `~/garmin-spike/out/` JSON shapes
+3. Three sync jobs: Garmin (garth), Hive (pyhiveapi), Open-Meteo
+4. 84-night Garmin backfill
+5. Morning analysis prompt + Claude call
 
 ## Gotchas
-- Python is **3.12** (`~/.local/bin/python3.12`); api venv exists at `apps/api/.venv`.
-- `cryptography` wheel: install with `--only-binary :all:` before other deps on macOS.
-- Repo has **no GitHub remote yet** and is **not deployed**.
-- Node.js: use `~/.nvm/versions/node/v20.20.2/bin/node` + pnpm (system node is v14).
-- `score-input.tsx`, `offlineQueue.ts`, `sw.ts` still have "predictions" domain
-  references — these are offline-queue infrastructure, not football code; update in Phase 1.
-- `apps/api/src/auth.py` still has `create_email_verify_token` / `decode_email_verify_token`
-  dead code (WC2026 leftover) — harmless, remove in a future cleanup pass.
+- Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
+- Node.js: use `~/.nvm/versions/node/v20.20.2/bin/node` + pnpm (system node v14).
+- `score-input.tsx`, `offlineQueue.ts`, `sw.ts` still have "predictions" refs — offline-queue infra, rename in Phase 1.
+- `apps/api/src/auth.py` has dead `create_email_verify_token` / `decode_email_verify_token` — remove in a future pass.
+- Railway is **NOT** connected to GitHub auto-deploy. To deploy: `railway up --service api` (builds from local source), or connect in Railway dashboard Settings > Source Repo.
+- Supabase pooler: **session mode (port 5432)** only — asyncpg named prepared statements conflict in transaction mode (port 6543).
+- Admin profiles must be seeded directly in DB (no signup endpoint by design — Decision #21).
 
 ## Log
-- **2026-06-19** — Zwift delivery validated end-to-end (app→intervals.icu→Zwift; power/timing exact, cadence nuance noted). Folded Zwift/intervals.icu relay, executable-coaching, Rønnestad 30/15 + softened lead-time into ARCHITECTURE.md §2/§6 + DECISIONS #25–33. (No code change — spec only.)
+- **2026-06-20** — Phase 0b complete: GitHub repo created, Supabase `coach` schema live,
+  Railway backend healthy, Vercel frontend live. Main connectivity blocker was Railway's
+  IPv6-only networking vs Supabase's IPv4-only direct host; resolved via Supabase session-mode
+  pooler (`aws-1-eu-north-1.pooler.supabase.com:5432`). See DECISIONS #34-38.
+- **2026-06-19** — Zwift delivery validated end-to-end (app→intervals.icu→Zwift; power/timing exact, cadence nuance noted). Folded Zwift/intervals.icu relay, executable-coaching, Ronnestad 30/15 + softened lead-time into ARCHITECTURE.md §2/§6 + DECISIONS #25-33. (No code change — spec only.)
 - **2026-06-19** — Phase 0a complete: stripped football domain from backend and
   frontend. 148 backend files changed (1041 ins / 48814 del); 161 frontend files
   changed (748 ins / 27045 del). Backend: 42 tests pass, ruff clean.
