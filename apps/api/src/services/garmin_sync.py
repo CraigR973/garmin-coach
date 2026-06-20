@@ -96,7 +96,7 @@ class GarminConnectClient:
         self.credentials.validate()
         tokenstore = str(self.credentials.tokenstore)
         try:
-            from garminconnect import Garmin  # type: ignore[import-not-found,import-untyped]
+            from garminconnect import Garmin  # type: ignore[import-untyped]
         except ImportError as exc:  # pragma: no cover - exercised only in missing envs
             raise GarminSyncError("garminconnect is not installed.") from exc
 

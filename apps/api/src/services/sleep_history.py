@@ -9,7 +9,7 @@ from statistics import mean, median, pstdev, quantiles
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from openpyxl import load_workbook  # type: ignore[import-untyped]
+from openpyxl import load_workbook
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -131,9 +131,7 @@ def parse_sleep_history_workbook(
 
     for values in sheet.iter_rows(min_row=2, values_only=True):
         row_map = {
-            str(headers[index]): value
-            for index, value in enumerate(values)
-            if index < len(headers)
+            str(headers[index]): value for index, value in enumerate(values) if index < len(headers)
         }
         parsed = _parse_sleep_history_row(row_map, timezone_name)
         if parsed is None:
@@ -344,9 +342,7 @@ def _apply_fields(instance: Any, fields: dict[str, Any], *, apply: bool = True) 
     return changed
 
 
-def _parse_sleep_history_row(
-    row_map: dict[str, Any], timezone_name: str
-) -> SleepHistoryRow | None:
+def _parse_sleep_history_row(row_map: dict[str, Any], timezone_name: str) -> SleepHistoryRow | None:
     calendar_date = _parse_excel_date(row_map.get("Sleep Score 4 Weeks"))
     if calendar_date is None:
         return None
