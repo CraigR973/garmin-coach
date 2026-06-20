@@ -14,9 +14,5 @@ builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-# Generous timeout: the healthcheck only goes green after `alembic upgrade head`
-# completes, so allow headroom for a migration on boot.
-healthcheckPath = "/api/v1/health"
-healthcheckTimeout = 300
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
