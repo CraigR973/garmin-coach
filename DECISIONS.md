@@ -91,3 +91,6 @@ decision — if you change course, add a new entry that supersedes the old one.
 
 ### 2026-06-20 — Phase 1 Batch 6
 47. **Morning analysis uses a thin Anthropic Messages HTTP boundary with explicit prompt/version metadata, not an SDK wrapper or hidden prompt.** `MorningAnalysisService` assembles a stored context packet, stores `prompt_version`, `model_name`, raw response, verdict, and markdown in `analyses`, and the model/key/max-token settings come from environment variables. *Why:* this keeps the Claude call inspectable and fakeable in tests, avoids adding another runtime dependency, and preserves the packet that explains every daily verdict.
+
+### 2026-06-20 — Phase 1 Batch 7
+48. **Daily-loop adherence lives on `manual_entries`, linked to the active `planned_workouts` row and its version, instead of mutating the plan row itself or adding a separate table.** Manual check-ins still use `manual_entries` rows with no workout link; adherence rows set `planned_workout_id`, `planned_workout_version`, `adherence_status`, and `actual_workout_json`. *Why:* Batch 7 needed phone-friendly "did he do it / what changed?" capture tied to the exact planned version without overwriting the plan history. Reusing `manual_entries` keeps the schema small and lets later analyses read both subjective check-ins and adherence notes from one source of truth.

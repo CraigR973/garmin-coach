@@ -257,11 +257,16 @@ class ManualEntry(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     __table_args__ = (
         Index("ix_manual_entries_user_entry_at", "user_id", "entry_at_utc"),
         Index("ix_manual_entries_user_date", "user_id", "entry_date"),
+        Index("ix_manual_entries_planned_workout", "planned_workout_id"),
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
     )
+    planned_workout_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("planned_workouts.id", ondelete="SET NULL"), nullable=True
+    )
+    planned_workout_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     entry_date: Mapped[date] = mapped_column(Date, nullable=False)
     entry_at_utc: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False)
     bp_systolic: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -269,6 +274,8 @@ class ManualEntry(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     subjective_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rpe: Mapped[float | None] = mapped_column(Float, nullable=True)
     feel: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    adherence_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    actual_workout_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     supplements_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     food_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

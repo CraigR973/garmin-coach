@@ -158,6 +158,8 @@ export const weatherDailySchema = z.object({
 export const manualEntrySchema = z.object({
   id: z.string().uuid(),
   userId: z.string().uuid(),
+  plannedWorkoutId: z.string().uuid().nullable().optional(),
+  plannedWorkoutVersion: z.number().int().nullable().optional(),
   entryDate: isoDateSchema,
   entryAtUtc: isoDateTimeSchema,
   bpSystolic: z.number().int().nullable().optional(),
@@ -165,9 +167,32 @@ export const manualEntrySchema = z.object({
   subjectiveScore: z.number().int().min(1).max(10).nullable().optional(),
   rpe: z.number().min(0).max(10).nullable().optional(),
   feel: z.string().nullable().optional(),
+  adherenceStatus: z.enum(['completed', 'modified', 'skipped']).nullable().optional(),
+  actualWorkoutJson: jsonObjectSchema.default({}),
   supplementsJson: jsonObjectSchema.default({}),
   foodJson: jsonObjectSchema.default({}),
   notes: z.string().nullable().optional(),
+});
+
+export const manualEntryInputSchema = z.object({
+  bpSystolic: z.number().int().positive().nullable().optional(),
+  bpDiastolic: z.number().int().positive().nullable().optional(),
+  subjectiveScore: z.number().int().min(1).max(10).nullable().optional(),
+  rpe: z.number().min(0).max(10).nullable().optional(),
+  feel: z.string().max(80).nullable().optional(),
+  supplementsJson: jsonObjectSchema.default({}),
+  foodJson: jsonObjectSchema.default({}),
+  notes: z.string().nullable().optional(),
+});
+
+export const adherenceStatusSchema = z.enum(['completed', 'modified', 'skipped']);
+
+export const plannedWorkoutAdherenceInputSchema = z.object({
+  status: adherenceStatusSchema,
+  rpe: z.number().min(0).max(10).nullable().optional(),
+  feel: z.string().max(80).nullable().optional(),
+  notes: z.string().nullable().optional(),
+  actualWorkoutJson: jsonObjectSchema.default({}),
 });
 
 export const planBlockSchema = z.object({
@@ -295,4 +320,57 @@ export const plannedWorkoutOverrideInputSchema = z.object({
   intensityTarget: z.string().nullable().optional(),
   structuredWorkout: jsonObjectSchema,
   source: z.string().min(1).nullable().optional(),
+});
+
+export const dailyLoopWarningSchema = z.object({
+  id: z.string().min(1),
+  summary: z.string().min(1),
+  reason: z.string().min(1),
+  status: z.enum(['info', 'active']),
+  detail: z.string().nullable().optional(),
+});
+
+export const dailyLoopAnalysisSchema = z.object({
+  id: z.string().uuid(),
+  generatedAtUtc: isoDateTimeSchema,
+  verdict: verdictSchema,
+  promptVersion: z.string().min(1),
+  modelName: z.string().nullable().optional(),
+  outputMarkdown: z.string(),
+  planAdjustments: z.array(z.string()).default([]),
+  reasons: z.array(z.string()).default([]),
+  readinessInterpretation: z.string().nullable().optional(),
+  thermalReview: jsonObjectSchema.default({}),
+});
+
+export const dailyLoopPlannedWorkoutSchema = plannedWorkoutSchema.extend({
+  adherence: manualEntrySchema.nullable().optional(),
+});
+
+export const dailyLoopThermalStateSchema = z.object({
+  latestTemperatureC: z.number().nullable().optional(),
+  targetTemperatureC: z.number().nullable().optional(),
+  capturedAtUtc: isoDateTimeSchema.nullable().optional(),
+  overnightLowC: z.number().nullable().optional(),
+  overnightWindMaxMph: z.number().nullable().optional(),
+  overnightWindGustMph: z.number().nullable().optional(),
+  thermalReview: jsonObjectSchema.default({}),
+});
+
+export const dailyLoopSchema = z.object({
+  subjectDate: isoDateSchema,
+  timezone: z.string().min(1),
+  morningAnalysis: dailyLoopAnalysisSchema.nullable(),
+  dailyMetrics: dailyMetricSchema.nullable(),
+  sleep: sleepSchema.nullable(),
+  manualEntry: manualEntrySchema.nullable(),
+  plannedWorkouts: z.array(dailyLoopPlannedWorkoutSchema),
+  thermalState: dailyLoopThermalStateSchema,
+  dataQualityWarnings: z.array(dailyLoopWarningSchema),
+});
+
+export const dailyLoopEnvelopeSchema = z.object({
+  data: dailyLoopSchema,
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
 });

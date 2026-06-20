@@ -6,12 +6,12 @@
 
 ## Now
 
-**Phase:** 1 Batch 6 shipped — morning analysis engine live.
+**Phase:** 1 Batch 7 implementation ready on `feat/batch-7-daily-app-loop-surfaces`.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
 - Backend: https://api-production-e2bc7.up.railway.app/api/v1/health → `{"status":"ok"}` plus current deployed SHA
-- DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-004 applied
+- DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-004 applied on production; migration `005` pending Batch 7 closeout
 
 **Hosting identifiers (non-secret):**
 - GitHub repo: https://github.com/CraigR973/garmin-coach (private)
@@ -20,7 +20,7 @@
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Run Phase 1 Batch 7 via `/batch-start 7`.
+**Next:** Review Batch 7's daily-loop UI/API on `feat/batch-7-daily-app-loop-surfaces`, then run `/closeout 7` once the branch is accepted.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -49,6 +49,18 @@
   per-profile analysis failures without failing the whole weather job.
 
 ## Log
+- **2026-06-20** — Phase 1 Batch 7 implementation ready on
+  `feat/batch-7-daily-app-loop-surfaces`: added a player-facing
+  `/api/v1/daily-loop` envelope API for today's verdict, metrics, plan,
+  thermal state, manual check-in, adherence capture, and data-quality
+  guardrails; stored adherence on `manual_entries` linked to the planned
+  workout/version via migration `005`; and replaced the placeholder dashboard
+  with the phone-first daily loop UI plus targeted backend/frontend tests.
+  Verified backend `pytest` (DB-backed tests skipped without `DATABASE_URL`),
+  `ruff check`, and targeted `mypy` on the new daily-loop files; full
+  `mypy src` in this shell still reports the existing untyped third-party
+  imports for `garminconnect` and `pyhiveapi`. Verified shared `vitest` +
+  `tsc`; frontend `vitest`, `eslint` (existing warnings only), and `vite build`.
 - **2026-06-20** — Phase 1 Batch 6 closed out: fast-forwarded
   `feat/batch-6-morning-analysis-engine` to `main`, GitHub CI passed on commit
   `9be8b40`, Railway deployed the backend and `/api/v1/health` reported that

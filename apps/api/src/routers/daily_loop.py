@@ -1,0 +1,457 @@
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, date, datetime
+from typing import Any
+
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.auth import CurrentPlayer
+from src.database import get_db
+from src.models.coaching import Analysis, DailyMetric, ManualEntry, PlannedWorkout, Sleep
+from src.services.daily_loop import DailyLoopService
+
+router = APIRouter(prefix="/api/v1/daily-loop", tags=["daily-loop"])
+
+
+def _generated_at() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _dt(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return value.replace(tzinfo=UTC).isoformat().replace("+00:00", "Z")
+
+
+class ApiError(BaseModel):
+    code: str
+    detail: str
+
+
+class ApiMeta(BaseModel):
+    generatedAtUtc: str
+
+
+class ManualEntryBody(BaseModel):
+    bpSystolic: int | None = None
+    bpDiastolic: int | None = None
+    subjectiveScore: int | None = None
+    rpe: float | None = None
+    feel: str | None = None
+    supplementsJson: dict[str, Any] = Field(default_factory=dict)
+    foodJson: dict[str, Any] = Field(default_factory=dict)
+    notes: str | None = None
+
+
+class AdherenceBody(BaseModel):
+    status: str
+    rpe: float | None = None
+    feel: str | None = None
+    notes: str | None = None
+    actualWorkoutJson: dict[str, Any] = Field(default_factory=dict)
+
+
+class ManualEntryOut(BaseModel):
+    id: str
+    userId: str
+    plannedWorkoutId: str | None
+    plannedWorkoutVersion: int | None
+    entryDate: str
+    entryAtUtc: str
+    bpSystolic: int | None
+    bpDiastolic: int | None
+    subjectiveScore: int | None
+    rpe: float | None
+    feel: str | None
+    adherenceStatus: str | None
+    actualWorkoutJson: dict[str, Any]
+    supplementsJson: dict[str, Any]
+    foodJson: dict[str, Any]
+    notes: str | None
+
+
+class AnalysisOut(BaseModel):
+    id: str
+    generatedAtUtc: str
+    verdict: str | None
+    promptVersion: str
+    modelName: str | None
+    outputMarkdown: str
+    planAdjustments: list[str]
+    reasons: list[str]
+    readinessInterpretation: str | None
+    thermalReview: dict[str, Any]
+
+
+class DailyMetricOut(BaseModel):
+    id: str
+    userId: str
+    calendarDate: str
+    recordedAtUtc: str | None
+    readinessScore: int | None
+    readinessLevel: str | None
+    readinessSleepScore: int | None
+    recoveryTimeMin: int | None
+    acuteLoad: float | None
+    trainingStatus: str | None
+    hrvLastNightAvgMs: int | None
+    hrvWeeklyAvgMs: int | None
+    hrvStatus: str | None
+    hrvBaselineLowMs: int | None
+    hrvBaselineHighMs: int | None
+    restingHeartRateBpm: int | None
+    stressAvg: float | None
+    bodyBatteryCharged: int | None
+    bodyBatteryDrained: int | None
+    bodyBatteryEnd: int | None
+    weightKg: float | None
+    vo2max: float | None
+    rawPayload: dict[str, Any]
+
+
+class SleepOut(BaseModel):
+    id: str
+    userId: str
+    calendarDate: str
+    sleepStartUtc: str | None
+    sleepEndUtc: str | None
+    score: int | None
+    ageAdjustedScore: int | None
+    qualifier: str | None
+    durationSec: int | None
+    deepSleepSec: int | None
+    lightSleepSec: int | None
+    remSleepSec: int | None
+    awakeSleepSec: int | None
+    unmeasurableSleepSec: int | None
+    averageSpo2Pct: float | None
+    lowestSpo2Pct: float | None
+    averageRespiration: float | None
+    restingHeartRateBpm: int | None
+    avgOvernightHrvMs: int | None
+    hrvStatus: str | None
+    avgSleepStress: float | None
+    restlessMomentsCount: int | None
+    bodyBatteryChange: int | None
+    factorsJson: dict[str, Any]
+    rawPayload: dict[str, Any]
+
+
+class PlannedWorkoutOut(BaseModel):
+    id: str
+    userId: str
+    planBlockId: str | None
+    workoutDate: str
+    version: int
+    title: str
+    workoutType: str
+    status: str
+    isActive: bool
+    plannedDurationMin: int | None
+    intensityTarget: str | None
+    structuredWorkout: dict[str, Any]
+    source: str | None
+    adherence: ManualEntryOut | None = None
+
+
+class ThermalStateOut(BaseModel):
+    latestTemperatureC: float | None
+    targetTemperatureC: float | None
+    capturedAtUtc: str | None
+    overnightLowC: float | None
+    overnightWindMaxMph: float | None
+    overnightWindGustMph: float | None
+    thermalReview: dict[str, Any]
+
+
+class DataQualityWarningOut(BaseModel):
+    id: str
+    summary: str
+    reason: str
+    status: str
+    detail: str | None = None
+
+
+class DailyLoopData(BaseModel):
+    subjectDate: str
+    timezone: str
+    morningAnalysis: AnalysisOut | None
+    dailyMetrics: DailyMetricOut | None
+    sleep: SleepOut | None
+    manualEntry: ManualEntryOut | None
+    plannedWorkouts: list[PlannedWorkoutOut]
+    thermalState: ThermalStateOut
+    dataQualityWarnings: list[DataQualityWarningOut]
+
+
+class DailyLoopEnvelope(BaseModel):
+    data: DailyLoopData
+    meta: ApiMeta
+    errors: list[ApiError]
+
+
+def _serialize_manual_entry(entry: ManualEntry | None) -> ManualEntryOut | None:
+    if entry is None:
+        return None
+    return ManualEntryOut(
+        id=str(entry.id),
+        userId=str(entry.user_id),
+        plannedWorkoutId=str(entry.planned_workout_id) if entry.planned_workout_id else None,
+        plannedWorkoutVersion=entry.planned_workout_version,
+        entryDate=entry.entry_date.isoformat(),
+        entryAtUtc=_dt(entry.entry_at_utc) or "",
+        bpSystolic=entry.bp_systolic,
+        bpDiastolic=entry.bp_diastolic,
+        subjectiveScore=entry.subjective_score,
+        rpe=entry.rpe,
+        feel=entry.feel,
+        adherenceStatus=entry.adherence_status,
+        actualWorkoutJson=entry.actual_workout_json,
+        supplementsJson=entry.supplements_json,
+        foodJson=entry.food_json,
+        notes=entry.notes,
+    )
+
+
+def _serialize_analysis(analysis: Analysis | None) -> AnalysisOut | None:
+    if analysis is None:
+        return None
+    verdict = (
+        analysis.context_packet.get("verdict", {})
+        if isinstance(analysis.context_packet, dict)
+        else {}
+    )
+    environment = (
+        analysis.context_packet.get("environment", {})
+        if isinstance(analysis.context_packet, dict)
+        else {}
+    )
+    thermal_review = (
+        environment.get("thermalReview", {}) if isinstance(environment, dict) else {}
+    )
+    return AnalysisOut(
+        id=str(analysis.id),
+        generatedAtUtc=_dt(analysis.generated_at_utc) or "",
+        verdict=analysis.verdict,
+        promptVersion=analysis.prompt_version,
+        modelName=analysis.model_name,
+        outputMarkdown=analysis.output_markdown,
+        planAdjustments=(
+            verdict.get("planAdjustments", []) if isinstance(verdict, dict) else []
+        ),
+        reasons=verdict.get("reasons", []) if isinstance(verdict, dict) else [],
+        readinessInterpretation=verdict.get("readinessInterpretation")
+        if isinstance(verdict, dict)
+        else None,
+        thermalReview=thermal_review if isinstance(thermal_review, dict) else {},
+    )
+
+
+def _serialize_daily_metric(metric: DailyMetric | None) -> DailyMetricOut | None:
+    if metric is None:
+        return None
+    return DailyMetricOut(
+        id=str(metric.id),
+        userId=str(metric.user_id),
+        calendarDate=metric.calendar_date.isoformat(),
+        recordedAtUtc=_dt(metric.recorded_at_utc),
+        readinessScore=metric.readiness_score,
+        readinessLevel=metric.readiness_level,
+        readinessSleepScore=metric.readiness_sleep_score,
+        recoveryTimeMin=metric.recovery_time_min,
+        acuteLoad=metric.acute_load,
+        trainingStatus=metric.training_status,
+        hrvLastNightAvgMs=metric.hrv_last_night_avg_ms,
+        hrvWeeklyAvgMs=metric.hrv_weekly_avg_ms,
+        hrvStatus=metric.hrv_status,
+        hrvBaselineLowMs=metric.hrv_baseline_low_ms,
+        hrvBaselineHighMs=metric.hrv_baseline_high_ms,
+        restingHeartRateBpm=metric.resting_heart_rate_bpm,
+        stressAvg=metric.stress_avg,
+        bodyBatteryCharged=metric.body_battery_charged,
+        bodyBatteryDrained=metric.body_battery_drained,
+        bodyBatteryEnd=metric.body_battery_end,
+        weightKg=metric.weight_kg,
+        vo2max=metric.vo2max,
+        rawPayload=metric.raw_payload,
+    )
+
+
+def _serialize_sleep(sleep: Sleep | None) -> SleepOut | None:
+    if sleep is None:
+        return None
+    return SleepOut(
+        id=str(sleep.id),
+        userId=str(sleep.user_id),
+        calendarDate=sleep.calendar_date.isoformat(),
+        sleepStartUtc=_dt(sleep.sleep_start_utc),
+        sleepEndUtc=_dt(sleep.sleep_end_utc),
+        score=sleep.score,
+        ageAdjustedScore=sleep.age_adjusted_score,
+        qualifier=sleep.qualifier,
+        durationSec=sleep.duration_sec,
+        deepSleepSec=sleep.deep_sleep_sec,
+        lightSleepSec=sleep.light_sleep_sec,
+        remSleepSec=sleep.rem_sleep_sec,
+        awakeSleepSec=sleep.awake_sleep_sec,
+        unmeasurableSleepSec=sleep.unmeasurable_sleep_sec,
+        averageSpo2Pct=sleep.average_spo2_pct,
+        lowestSpo2Pct=sleep.lowest_spo2_pct,
+        averageRespiration=sleep.average_respiration,
+        restingHeartRateBpm=sleep.resting_heart_rate_bpm,
+        avgOvernightHrvMs=sleep.avg_overnight_hrv_ms,
+        hrvStatus=sleep.hrv_status,
+        avgSleepStress=sleep.avg_sleep_stress,
+        restlessMomentsCount=sleep.restless_moments_count,
+        bodyBatteryChange=sleep.body_battery_change,
+        factorsJson=sleep.factors_json,
+        rawPayload=sleep.raw_payload,
+    )
+
+
+def _serialize_planned_workout(
+    workout: PlannedWorkout,
+    adherence: ManualEntry | None,
+) -> PlannedWorkoutOut:
+    return PlannedWorkoutOut(
+        id=str(workout.id),
+        userId=str(workout.user_id),
+        planBlockId=str(workout.plan_block_id) if workout.plan_block_id else None,
+        workoutDate=workout.workout_date.isoformat(),
+        version=workout.version,
+        title=workout.title,
+        workoutType=workout.workout_type,
+        status=workout.status,
+        isActive=workout.is_active,
+        plannedDurationMin=workout.planned_duration_min,
+        intensityTarget=workout.intensity_target,
+        structuredWorkout=workout.structured_workout,
+        source=workout.source,
+        adherence=_serialize_manual_entry(adherence),
+    )
+
+
+def _envelope(player: CurrentPlayer, snapshot: Any) -> DailyLoopEnvelope:
+    morning_analysis = _serialize_analysis(snapshot.morning_analysis)
+    planned_workouts = [
+        _serialize_planned_workout(
+            workout,
+            snapshot.adherence_entries.get(workout.id),
+        )
+        for workout in snapshot.planned_workouts
+    ]
+    thermal_review = morning_analysis.thermalReview if morning_analysis is not None else {}
+    return DailyLoopEnvelope(
+        data=DailyLoopData(
+            subjectDate=snapshot.subject_date.isoformat(),
+            timezone=player.timezone,
+            morningAnalysis=morning_analysis,
+            dailyMetrics=_serialize_daily_metric(snapshot.daily_metric),
+            sleep=_serialize_sleep(snapshot.sleep),
+            manualEntry=_serialize_manual_entry(snapshot.manual_entry),
+            plannedWorkouts=planned_workouts,
+            thermalState=ThermalStateOut(
+                latestTemperatureC=(
+                    snapshot.latest_temperature.temperature_c
+                    if snapshot.latest_temperature
+                    else None
+                ),
+                targetTemperatureC=(
+                    snapshot.latest_temperature.target_temperature_c
+                    if snapshot.latest_temperature
+                    else None
+                ),
+                capturedAtUtc=(
+                    _dt(snapshot.latest_temperature.captured_at_utc)
+                    if snapshot.latest_temperature
+                    else None
+                ),
+                overnightLowC=(
+                    snapshot.weather.overnight_low_c if snapshot.weather else None
+                ),
+                overnightWindMaxMph=snapshot.weather.overnight_wind_max_mph
+                if snapshot.weather
+                else None,
+                overnightWindGustMph=(
+                    snapshot.weather.overnight_wind_gust_mph if snapshot.weather else None
+                ),
+                thermalReview=thermal_review,
+            ),
+            dataQualityWarnings=[
+                DataQualityWarningOut(
+                    id=warning["id"],
+                    summary=warning["summary"],
+                    reason=warning["reason"],
+                    status=warning["status"],
+                    detail=warning["detail"] or None,
+                )
+                for warning in snapshot.data_quality_warnings
+            ],
+        ),
+        meta=ApiMeta(generatedAtUtc=_generated_at()),
+        errors=[],
+    )
+
+
+@router.get("", response_model=DailyLoopEnvelope)
+async def get_daily_loop(
+    player: CurrentPlayer,
+    subject_date: date | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> DailyLoopEnvelope:
+    service = DailyLoopService(db)
+    snapshot = await service.get_snapshot(player, subject_date=subject_date)
+    return _envelope(player, snapshot)
+
+
+@router.put("/{subject_date}/manual-entry", response_model=DailyLoopEnvelope)
+async def upsert_manual_entry(
+    subject_date: date,
+    body: ManualEntryBody,
+    player: CurrentPlayer,
+    db: AsyncSession = Depends(get_db),
+) -> DailyLoopEnvelope:
+    service = DailyLoopService(db)
+    await service.upsert_manual_entry(
+        player,
+        subject_date=subject_date,
+        bp_systolic=body.bpSystolic,
+        bp_diastolic=body.bpDiastolic,
+        subjective_score=body.subjectiveScore,
+        rpe=body.rpe,
+        feel=body.feel,
+        supplements_json=body.supplementsJson,
+        food_json=body.foodJson,
+        notes=body.notes,
+    )
+    snapshot = await service.get_snapshot(player, subject_date=subject_date)
+    return _envelope(player, snapshot)
+
+
+@router.put(
+    "/{subject_date}/planned-workouts/{planned_workout_id}/adherence",
+    response_model=DailyLoopEnvelope,
+)
+async def upsert_workout_adherence(
+    subject_date: date,
+    planned_workout_id: uuid.UUID,
+    body: AdherenceBody,
+    player: CurrentPlayer,
+    db: AsyncSession = Depends(get_db),
+) -> DailyLoopEnvelope:
+    service = DailyLoopService(db)
+    await service.upsert_adherence(
+        player,
+        subject_date=subject_date,
+        planned_workout_id=planned_workout_id,
+        adherence_status=body.status,
+        rpe=body.rpe,
+        feel=body.feel,
+        notes=body.notes,
+        actual_workout_json=body.actualWorkoutJson,
+    )
+    snapshot = await service.get_snapshot(player, subject_date=subject_date)
+    return _envelope(player, snapshot)

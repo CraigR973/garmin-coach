@@ -16,7 +16,7 @@ from src.config import Environment, settings
 from src.logging_config import configure_logging
 from src.middleware import CorrelationIdMiddleware, SecurityHeadersMiddleware
 from src.rate_limit import limiter
-from src.routers import auth, coaching_state, health, me, notifications
+from src.routers import auth, coaching_state, daily_loop, health, me, notifications
 from src.scheduler import create_scheduler
 
 configure_logging(settings.log_level)
@@ -87,3 +87,4 @@ app.include_router(auth.router)
 app.include_router(me.router)
 app.include_router(notifications.router)
 app.include_router(coaching_state.router)
+app.include_router(daily_loop.router)
