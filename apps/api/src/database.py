@@ -12,6 +12,9 @@ engine = create_async_engine(
     pool_pre_ping=True,
     pool_recycle=1800,
     echo=False,
+    # All connections land in the coach schema; public is the fallback for
+    # Supabase system functions (gen_random_uuid etc).
+    connect_args={"server_settings": {"search_path": "coach,public"}},
 )
 
 AsyncSessionLocal = async_sessionmaker(

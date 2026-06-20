@@ -40,8 +40,15 @@ def run_migrations_offline() -> None:
 
 
 def _do_run_migrations(connection):  # type: ignore[no-untyped-def]
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        version_table_schema="coach",
+        include_schemas=True,
+    )
     with context.begin_transaction():
+        connection.execute(text("CREATE SCHEMA IF NOT EXISTS coach"))
+        connection.execute(text("SET search_path TO coach, public"))
         # Fail fast if another connection holds a lock (e.g. long-running query).
         # Transactional DDL rolls back cleanly on timeout.
         connection.execute(text("SET lock_timeout = '5s'"))

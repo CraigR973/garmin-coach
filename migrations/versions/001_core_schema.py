@@ -20,22 +20,27 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Ensure the coach schema exists and is the active search path for this migration.
+    # All objects created below land in coach.*; the public schema is untouched.
+    op.execute("CREATE SCHEMA IF NOT EXISTS coach")
+    op.execute("SET search_path TO coach, public")
+
     # --- ENUM types ---
     op.execute("""
         DO $$ BEGIN
-            CREATE TYPE player_role AS ENUM ('player', 'admin');
+            CREATE TYPE coach.player_role AS ENUM ('player', 'admin');
         EXCEPTION WHEN duplicate_object THEN null;
         END $$;
     """)
     op.execute("""
         DO $$ BEGIN
-            CREATE TYPE actor_type AS ENUM ('admin', 'player', 'system');
+            CREATE TYPE coach.actor_type AS ENUM ('admin', 'player', 'system');
         EXCEPTION WHEN duplicate_object THEN null;
         END $$;
     """)
     op.execute("""
         DO $$ BEGIN
-            CREATE TYPE action_type AS ENUM ('backup_failed', 'backup_downloaded', 'player_pin_reset');
+            CREATE TYPE coach.action_type AS ENUM ('backup_failed', 'backup_downloaded', 'player_pin_reset');
         EXCEPTION WHEN duplicate_object THEN null;
         END $$;
     """)
@@ -53,7 +58,7 @@ def upgrade() -> None:
         sa.Column("pin_hash", sa.String(60), nullable=False),
         sa.Column(
             "role",
-            PgENUM(name="player_role", create_type=False),
+            PgENUM(name="player_role", schema="coach", create_type=False),
             nullable=False,
             server_default="player",
         ),
@@ -169,12 +174,12 @@ def upgrade() -> None:
         ),
         sa.Column(
             "actor_type",
-            PgENUM(name="actor_type", create_type=False),
+            PgENUM(name="actor_type", schema="coach", create_type=False),
             nullable=False,
         ),
         sa.Column(
             "action_type",
-            PgENUM(name="action_type", create_type=False),
+            PgENUM(name="action_type", schema="coach", create_type=False),
             nullable=False,
         ),
         sa.Column("target_table", sa.String(50), nullable=False),
@@ -257,12 +262,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table("audit_log")
-    op.drop_table("notification_preferences")
-    op.drop_table("push_subscriptions")
-    op.drop_table("refresh_tokens")
-    op.drop_table("profiles")
-    op.execute("DROP FUNCTION IF EXISTS set_updated_at() CASCADE")
-    op.execute("DROP TYPE IF EXISTS action_type")
-    op.execute("DROP TYPE IF EXISTS actor_type")
-    op.execute("DROP TYPE IF EXISTS player_role")
+    op.execute("SET search_path TO coach, public")
+    op.drop_table("audit_log", schema="coach")
+    op.drop_table("notification_preferences", schema="coach")
+    op.drop_table("push_subscriptions", schema="coach")
+    op.drop_table("refresh_tokens", schema="coach")
+    op.drop_table("profiles", schema="coach")
+    op.execute("DROP FUNCTION IF EXISTS coach.set_updated_at() CASCADE")
+    op.execute("DROP TYPE IF EXISTS coach.action_type")
+    op.execute("DROP TYPE IF EXISTS coach.actor_type")
+    op.execute("DROP TYPE IF EXISTS coach.player_role")
