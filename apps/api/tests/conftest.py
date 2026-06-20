@@ -53,6 +53,7 @@ async def db_conn(db_engine: AsyncEngine) -> AsyncIterator[AsyncConnection]:
     the suite hermetic even when tests insert rows.
     """
     async with db_engine.connect() as conn:
+        await conn.execute(text("SET search_path TO coach, public"))
         await conn.execute(text("UPDATE profiles SET deleted_at = now() WHERE deleted_at IS NULL"))
         try:
             yield conn

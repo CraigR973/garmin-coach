@@ -481,9 +481,7 @@ def parse_activity_timeseries_fields(details: Mapping[str, Any]) -> list[JsonDic
                     else metric_map.get("directFractionalCadence")
                 ),
                 "respiration": _to_float(metric_map.get("directRespirationRate")),
-                "performance_condition": _to_float(
-                    metric_map.get("directPerformanceCondition")
-                ),
+                "performance_condition": _to_float(metric_map.get("directPerformanceCondition")),
                 "available_stamina": _to_float(metric_map.get("directAvailableStamina")),
                 "potential_stamina": _to_float(metric_map.get("directPotentialStamina")),
                 "speed_mps": _to_float(metric_map.get("directSpeed")),

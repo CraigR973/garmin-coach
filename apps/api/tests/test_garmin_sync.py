@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 
 from src.models.coaching import Activity, ActivityTimeSeries, DailyMetric, Sleep
+from src.models.profile import PlayerRole, Profile
 from src.services.garmin_sync import (
     GarminActivityPayloads,
     GarminConnectClient,
@@ -154,6 +155,18 @@ async def test_garmin_sync_upserts_without_duplicate_rows(db_conn: AsyncConnecti
     )
 
     async with session_factory() as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Garmin Sync Test",
+                pin_hash="x" * 60,
+                role=PlayerRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+
         service = GarminSyncService(session)
         await service.sync_daily(user_id, date(2026, 6, 18), daily_payloads(), commit=False)
         await service.sync_activities(user_id, activity_payloads, commit=False)
@@ -161,21 +174,29 @@ async def test_garmin_sync_upserts_without_duplicate_rows(db_conn: AsyncConnecti
         await service.sync_activities(user_id, activity_payloads, commit=False)
 
         metrics = (
-            await session.execute(select(DailyMetric).where(DailyMetric.user_id == user_id))
-        ).scalars().all()
+            (await session.execute(select(DailyMetric).where(DailyMetric.user_id == user_id)))
+            .scalars()
+            .all()
+        )
         sleeps = (
-            await session.execute(select(Sleep).where(Sleep.user_id == user_id))
-        ).scalars().all()
+            (await session.execute(select(Sleep).where(Sleep.user_id == user_id))).scalars().all()
+        )
         activities = (
-            await session.execute(select(Activity).where(Activity.user_id == user_id))
-        ).scalars().all()
+            (await session.execute(select(Activity).where(Activity.user_id == user_id)))
+            .scalars()
+            .all()
+        )
         samples = (
-            await session.execute(
-                select(ActivityTimeSeries).where(
-                    ActivityTimeSeries.activity_id == activities[0].id
+            (
+                await session.execute(
+                    select(ActivityTimeSeries).where(
+                        ActivityTimeSeries.activity_id == activities[0].id
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
     assert len(metrics) == 1
     assert len(sleeps) == 1
