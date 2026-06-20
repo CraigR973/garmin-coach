@@ -1,4 +1,8 @@
 {
+  "buildCommand": "pnpm --dir apps/web build",
+  "outputDirectory": "apps/web/dist",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "framework": "vite",
   "rewrites": [
     {
       "source": "/api/:path*",
