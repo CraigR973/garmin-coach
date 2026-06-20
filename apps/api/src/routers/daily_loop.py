@@ -229,9 +229,7 @@ def _serialize_analysis(analysis: Analysis | None) -> AnalysisOut | None:
         if isinstance(analysis.context_packet, dict)
         else {}
     )
-    thermal_review = (
-        environment.get("thermalReview", {}) if isinstance(environment, dict) else {}
-    )
+    thermal_review = environment.get("thermalReview", {}) if isinstance(environment, dict) else {}
     return AnalysisOut(
         id=str(analysis.id),
         generatedAtUtc=_dt(analysis.generated_at_utc) or "",
@@ -239,9 +237,7 @@ def _serialize_analysis(analysis: Analysis | None) -> AnalysisOut | None:
         promptVersion=analysis.prompt_version,
         modelName=analysis.model_name,
         outputMarkdown=analysis.output_markdown,
-        planAdjustments=(
-            verdict.get("planAdjustments", []) if isinstance(verdict, dict) else []
-        ),
+        planAdjustments=(verdict.get("planAdjustments", []) if isinstance(verdict, dict) else []),
         reasons=verdict.get("reasons", []) if isinstance(verdict, dict) else [],
         readinessInterpretation=verdict.get("readinessInterpretation")
         if isinstance(verdict, dict)
@@ -369,9 +365,7 @@ def _envelope(player: CurrentPlayer, snapshot: Any) -> DailyLoopEnvelope:
                     if snapshot.latest_temperature
                     else None
                 ),
-                overnightLowC=(
-                    snapshot.weather.overnight_low_c if snapshot.weather else None
-                ),
+                overnightLowC=(snapshot.weather.overnight_low_c if snapshot.weather else None),
                 overnightWindMaxMph=snapshot.weather.overnight_wind_max_mph
                 if snapshot.weather
                 else None,

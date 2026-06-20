@@ -48,6 +48,9 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
             is_active=True,
         )
         session.add(player)
+        await session.commit()
+
+    async with session_factory() as session:
         session.add(
             KnowledgeBase(
                 user_id=user_id,
@@ -59,8 +62,7 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
                         {
                             "id": "exclude_wrist_hr_strength",
                             "summary": (
-                                "Exclude wrist-HR strength sessions from recovery "
-                                "decisions."
+                                "Exclude wrist-HR strength sessions from recovery decisions."
                             ),
                             "reason": (
                                 "Strength HR from the wrist is too noisy for "
@@ -169,6 +171,9 @@ async def test_manual_entry_and_adherence_upserts_persist(db_conn: AsyncConnecti
             is_active=True,
         )
         session.add(player)
+        await session.commit()
+
+    async with session_factory() as session:
         session.add(
             PlannedWorkout(
                 id=workout_id,
