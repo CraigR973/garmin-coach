@@ -6,7 +6,7 @@
 
 ## Now
 
-**Phase:** 0 COMPLETE — skeleton is live; GitHub auto-deploy wired for Railway + Vercel.
+**Phase:** 1 PREP — batch workflow ready.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -20,12 +20,7 @@
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Phase 1 — data model + sync jobs:
-1. Seed Mark's profile (admin) and optionally a 2nd user directly in DB
-2. Define Garmin/Hive/weather data model from `~/garmin-spike/out/` JSON shapes
-3. Three sync jobs: Garmin (garth), Hive (pyhiveapi), Open-Meteo
-4. 84-night Garmin backfill
-5. Morning analysis prompt + Claude call
+**Next:** Run Phase 1 Batch 1 via `/batch-start`.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -40,6 +35,10 @@
 - Admin profiles must be seeded directly in DB (no signup endpoint by design — Decision #21).
 
 ## Log
+- **2026-06-20** — Phase 1 prep complete: added `docs/phase-batches.md`,
+  tool-agnostic batch procedures, Claude wrappers, Codex prompt-source wrappers
+  with the user-level `~/.codex/prompts` caveat, and fixed stop hooks to point at
+  `garmin-coach` + `/closeout`.
 - **2026-06-20** — Auto-deploy verified end-to-end on `main` before this handoff
   log commit: GitHub CI green on `05f3c71`; Railway auto-deployed it and
   `/api/v1/health` returned that SHA; Vercel production deploy was Ready.
