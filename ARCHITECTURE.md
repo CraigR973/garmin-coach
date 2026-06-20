@@ -91,4 +91,4 @@ added to it, and the v1 domain tables live beside it. Data-shape evidence is in
 - [x] **Phase 0a** — football domain stripped; clean auth skeleton (`@coach/shared`)
 - [x] **Phase 0b** — provision Supabase + Railway + Vercel + GitHub
 - [x] Deployable skeleton: auth + empty dashboard live
-- [ ] **Phase 1 Batch 1** — data model + profile seed branch in review
+- [x] **Phase 1 Batch 1** — data model + profile seed shipped

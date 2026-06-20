@@ -6,12 +6,12 @@
 
 ## Now
 
-**Phase:** 1 Batch 1 — data model + profile seed branch ready for review.
+**Phase:** 1 Batch 1 shipped — data model + profile seed live.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
-- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health → `{"status":"ok"}`
-- DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migration 001 applied
+- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health → `{"status":"ok"}` plus current deployed SHA
+- DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-002 applied
 
 **Hosting identifiers (non-secret):**
 - GitHub repo: https://github.com/CraigR973/garmin-coach (private)
@@ -20,7 +20,7 @@
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Review branch `feat/batch-1-data-model`; when approved, run `/closeout`.
+**Next:** Run Phase 1 Batch 2 via `/batch-start 2`.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -38,6 +38,11 @@
   after migration `002` is applied; replace `1234` with the real PIN and never commit it.
 
 ## Log
+- **2026-06-20** — Phase 1 Batch 1 closed out: merged
+  `feat/batch-1-data-model` to `main`, GitHub CI passed on merge commit
+  `b2733ca`, Railway deployed the backend and `/api/v1/health` reported that
+  SHA, Vercel production was Ready and the web URL loaded. Batch 1 marked
+  shipped; next up is Batch 2 Garmin sync foundation.
 - **2026-06-20** — Phase 1 Batch 1 implementation ready on
   `feat/batch-1-data-model`: added `002` v1 coaching schema, SQLAlchemy domain
   models, Mark profile seed helper, shared Zod/TS schemas, data-shape audit, and
