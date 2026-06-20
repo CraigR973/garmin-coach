@@ -20,6 +20,10 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app
 
+# Railway routes inbound traffic to the EXPOSE'd port. Without this,
+# Railway's healthcheck can't reach the service ("service unavailable").
+EXPOSE 8000
+
 # Apply pending Alembic migrations before starting the API. If migrations
 # fail the container exits — Railway's restartPolicy will retry, surfacing
 # the failure in logs rather than masking it with a broken-but-up service.
