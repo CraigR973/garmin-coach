@@ -361,7 +361,7 @@ class MorningAnalysisService:
                 )
                 .order_by(desc(WeatherDaily.updated_at))
                 .limit(1)
-            )
+            ),
         )
 
     async def _overnight_temperature_rows(
@@ -575,9 +575,7 @@ def _metrics_vs_baselines(
         current = current_values.get(baseline.metric_key)
         center = _first_not_none(baseline.median_value, baseline.mean_value)
         delta = (
-            None
-            if current is None or center is None
-            else round(float(current) - float(center), 2)
+            None if current is None or center is None else round(float(current) - float(center), 2)
         )
         rows.append(
             {

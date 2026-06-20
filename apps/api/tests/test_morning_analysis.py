@@ -77,6 +77,7 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
             is_active=True,
         )
         session.add(player)
+        await session.flush()
         session.add_all(
             [
                 DailyMetric(
