@@ -48,6 +48,7 @@ three sync jobs (Garmin, Hive, weather), 84-night backfill, morning analysis.
   dead code (WC2026 leftover) — harmless, remove in a future cleanup pass.
 
 ## Log
+- **2026-06-19** — Zwift delivery validated end-to-end (app→intervals.icu→Zwift; power/timing exact, cadence nuance noted). Folded Zwift/intervals.icu relay, executable-coaching, Rønnestad 30/15 + softened lead-time into ARCHITECTURE.md §2/§6 + DECISIONS #25–33. (No code change — spec only.)
 - **2026-06-19** — Phase 0a complete: stripped football domain from backend and
   frontend. 148 backend files changed (1041 ins / 48814 del); 161 frontend files
   changed (748 ins / 27045 del). Backend: 42 tests pass, ruff clean.

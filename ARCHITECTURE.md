@@ -32,6 +32,10 @@ Spikes live in `~/garmin-spike/` (outside this repo). Raw sample JSON in `~/garm
 
 **Sync jobs (APScheduler):** Hive temp poll every ~15 min; morning Garmin+weather sync ~06:30 local → triggers morning analysis; hourly activity poll → on new ride triggers post-workout analysis. NB Training Readiness is time-of-day live → morning analysis must read in the morning. `recoveryTime` is in MINUTES.
 
+### Workout delivery — OUTPUT (validated 19 Jun 26)
+
+Push direction only — *not* a data source (ingestion stays direct-from-Garmin). The app emits a structured workout → POST to his **intervals.icu** calendar (free API; athlete `i618709`) → intervals.icu's approved Zwift Training-Connections integration delivers it into Zwift's Custom Workouts automatically. **Power + timing proven exact** end-to-end. intervals.icu is a **delivery rail, NOT the system-of-record** (our DB owns the plan). Deterministic **`.ZWO` export** is the no-dependency fallback. Any write to his trainer is **propose → approve → push**, never silent. Cadence nuance: Zwift overrides cadence on repeated-interval blocks with defaults (100/90) — emit cadence-critical reps as individual steps (confirm on PC). Spike: `~/garmin-spike/intervals_spike.py`.
+
 ## 3. Knowledge Base (the persistent context — replaces his handover docs)
 
 Editable structured state fed into every analysis. Source: his handover doc (see
@@ -72,13 +76,13 @@ Seed `sleep`/`daily_metrics` with his **84-night backfill** (`12 Weeks Sleep Dat
 
 **v1 — daily loop:** 3 syncs + 84-night backfill; store plans (ingested from his docs) + per-day override; morning + post-workout analysis; manual check-in; adherence ("did he do it?"); evening nudges; data-quality guardian; thermal monitoring.
 
-**v2 — the coach:** dynamic weekly restructuring (never stack VO2+Sweet-Spot; defer on fatigue); holiday pause/resume (holiday=recovery-week-equiv; pre-holiday Build1→Build2 on return, Build2→repeat Build1); app-generated 13-wk blocks (refine-then-lock, conversational); real-time evening thermal alerts; early-warning drift alerts; driver/correlation analysis; experiment tracker; FTP-drift detection.
+**v2 — the coach:** **Zwift workout delivery** (via intervals.icu) + **executable coaching** — on an Amber morning or a week-restructure, regenerate the adjusted workout and (on approval) push it straight to his trainer, so coaching is *acted on*, not just advised; dynamic weekly restructuring (never stack VO2+Sweet-Spot; defer on fatigue); holiday pause/resume (holiday=recovery-week-equiv; pre-holiday Build1→Build2 on return, Build2→repeat Build1); app-generated 13-wk blocks (refine-then-lock, conversational; Rønnestad 30/15 in the VO2 progression toolkit); real-time evening thermal alerts; early-warning drift alerts; driver/correlation analysis; experiment tracker; FTP-drift detection. `.ZWO` export as no-dependency fallback.
 
 **v3 — long game:** strength watching-brief; hypothesis tracking; weekly/monthly deep reviews; year-on-year/seasonal; auto-generated handover-doc export.
 
-## 7. Phase 0 status
+## 7. Phase 0 status (live state in `STATUS.md`)
 
-- [x] Repo seeded from WC2026 infra
-- [ ] Strip football domain (models/routers/pages/scoring/leagues), rename `@wc2026/shared`
-- [ ] Provision Supabase + Railway + Vercel (needs Craig's account access)
+- [x] Repo seeded from WC2026 infra + cross-tool structure
+- [x] **Phase 0a** — football domain stripped; clean auth skeleton (`@coach/shared`)
+- [ ] **Phase 0b** — provision Supabase + Railway + Vercel + GitHub (needs Craig's accounts)
 - [ ] Deployable skeleton: auth + empty dashboard live
