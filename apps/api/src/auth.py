@@ -82,8 +82,6 @@ def generate_opaque_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-
-
 def decode_access_token(token: str) -> dict[str, Any]:
     try:
         return jwt.decode(token, settings.jwt_access_secret, algorithms=["HS256"])

@@ -111,9 +111,7 @@ async def test_send_notification_suppressed_when_global_mute() -> None:
     prefs = _prefs(player_id, global_mute=True)
 
     session = AsyncMock()
-    session.execute.return_value = MagicMock(
-        scalar_one_or_none=MagicMock(return_value=prefs)
-    )
+    session.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=prefs))
 
     with (
         patch.object(settings, "vapid_private_key", "private"),
@@ -155,9 +153,7 @@ async def test_send_notification_suppressed_during_quiet_hours() -> None:
     )
 
     session = AsyncMock()
-    session.execute.return_value = MagicMock(
-        scalar_one_or_none=MagicMock(return_value=prefs)
-    )
+    session.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=prefs))
 
     with (
         patch.object(settings, "vapid_private_key", "private"),
