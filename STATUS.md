@@ -6,7 +6,7 @@
 
 ## Now
 
-**Phase:** 1 Batch 9 implementation ready — nudges + thermal monitoring.
+**Phase:** 1 Batch 9 shipped — nudges + thermal monitoring live on production.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -20,8 +20,8 @@
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Review `feat/batch-9-nudges-thermal-monitoring`; when happy, run
-`/closeout 9` to merge and deploy.
+**Next:** Batch 10 — v1 hardening + release polish (smoke scripts, observability,
+security/privacy pass, mobile PWA polish).
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -59,6 +59,17 @@
   failure.
 
 ## Log
+- **2026-06-20** — Phase 1 Batch 9 closed out: fast-forwarded
+  `feat/batch-9-nudges-thermal-monitoring` to `main`, GitHub CI passed on commit
+  `7a9e4ec`, Railway deployed the backend and `/api/v1/health` reported SHA
+  `7a9e4ecc49e39cad3cecaf0ce1c04dfebe0cff73`, Vercel production returned
+  `HTTP 200`, and the same-origin `/api/v1/health` rewrite returned the same
+  SHA. Batch 9's non-mutating smoke check confirmed the `/api/v1/notifications/preferences`
+  endpoint is live (PWA terminology cleanup) and the deployed SHA matches.
+  Scheduler-only features (evening nudge, thermal monitoring, stale-source alerts)
+  are validated by CI tests; `sentCount=0` is expected until live VAPID keys and
+  user subscriptions are in place. Batch 9 marked shipped; next up is Batch 10
+  hardening + release polish.
 - **2026-06-20** — Phase 1 Batch 9 implementation ready on
   `feat/batch-9-nudges-thermal-monitoring`: added a 20:00 local sleep-protocol
   nudge, evening thermal/source monitoring scheduler, notification event
