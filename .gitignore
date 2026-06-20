@@ -60,3 +60,6 @@ test-results/
 .claude/worktrees/
 .mcp.json
 .vercel
+
+# Supabase CLI scratch files (project-ref, pooler-url, version probes)
+supabase/.temp/

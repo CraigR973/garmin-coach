@@ -6,7 +6,7 @@
 
 ## Now
 
-**Phase:** 0 COMPLETE — skeleton is live.
+**Phase:** 0 COMPLETE — skeleton is live; Phase 0b deploy runbooks added.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, deploy via `~/.local/bin/vercel --prod` from repo root)
@@ -20,7 +20,7 @@
 - Vercel project: `garmin-coach-one.vercel.app`
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Phase 1 — data model + sync jobs:
+**Next:** Decide whether to connect Railway + Vercel to GitHub auto-deploy. Recommendation is `main` → production on both, Vercel PR/branch previews only, Railway main-only. Then Phase 1 — data model + sync jobs:
 1. Seed Mark's profile (admin) and optionally a 2nd user directly in DB
 2. Define Garmin/Hive/weather data model from `~/garmin-spike/out/` JSON shapes
 3. Three sync jobs: Garmin (garth), Hive (pyhiveapi), Open-Meteo
@@ -33,10 +33,17 @@
 - `score-input.tsx`, `offlineQueue.ts`, `sw.ts` still have "predictions" refs — offline-queue infra, rename in Phase 1.
 - `apps/api/src/auth.py` has dead `create_email_verify_token` / `decode_email_verify_token` — remove in a future pass.
 - Railway is **NOT** connected to GitHub auto-deploy. To deploy: `railway up --service api` (builds from local source), or connect in Railway dashboard Settings > Source Repo.
+- Treat Vercel as manual unless/until the dashboard shows a Git provider link. Deploy frontend with `~/.local/bin/vercel --prod` from repo root.
+- Production web API wiring is intentionally same-origin: `VITE_API_URL=""`, calls go to `/api/*`, and root `vercel.json` rewrites to Railway. Do not set it to the Railway URL unless deliberately switching to cross-origin.
 - Supabase pooler: **session mode (port 5432)** only — asyncpg named prepared statements conflict in transaction mode (port 6543).
 - Admin profiles must be seeded directly in DB (no signup endpoint by design — Decision #21).
 
 ## Log
+- **2026-06-20** — Phase 0b deploy review follow-up: added fresh/ongoing deploy runbooks,
+  fixed stale `.env.example` Supabase pooler guidance, ignored Supabase CLI scratch files,
+  pinned Node to 20.x for Vercel, made production `VITE_API_URL=""` same-origin wiring
+  explicit in code/config, and ticked Phase 0b complete in ARCHITECTURE. Auto-deploy remains
+  a pending explicit decision; no Decision #39 recorded yet.
 - **2026-06-20** — Phase 0b complete: GitHub repo created, Supabase `coach` schema live,
   Railway backend healthy, Vercel frontend live. Main connectivity blocker was Railway's
   IPv6-only networking vs Supabase's IPv4-only direct host; resolved via Supabase session-mode

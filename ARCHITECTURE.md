@@ -84,5 +84,5 @@ Seed `sleep`/`daily_metrics` with his **84-night backfill** (`12 Weeks Sleep Dat
 
 - [x] Repo seeded from WC2026 infra + cross-tool structure
 - [x] **Phase 0a** — football domain stripped; clean auth skeleton (`@coach/shared`)
-- [ ] **Phase 0b** — provision Supabase + Railway + Vercel + GitHub (needs Craig's accounts)
-- [ ] Deployable skeleton: auth + empty dashboard live
+- [x] **Phase 0b** — provision Supabase + Railway + Vercel + GitHub
+- [x] Deployable skeleton: auth + empty dashboard live

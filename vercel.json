@@ -3,6 +3,9 @@
   "outputDirectory": "apps/web/dist",
   "installCommand": "pnpm install --frozen-lockfile",
   "framework": "vite",
+  "env": {
+    "VITE_API_URL": ""
+  },
   "rewrites": [
     {
       "source": "/api/:path*",
