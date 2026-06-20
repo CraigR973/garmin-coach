@@ -63,3 +63,7 @@ test-results/
 
 # Supabase CLI scratch files (project-ref, pooler-url, version probes)
 supabase/.temp/
+
+# Backfill / data import artifacts
+*.xlsx
+apps/api/*.xlsx
