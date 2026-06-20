@@ -6,7 +6,7 @@
 
 ## Now
 
-**Phase:** 1 Batch 6 implementation ready — morning analysis engine on review branch.
+**Phase:** 1 Batch 6 shipped — morning analysis engine live.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -20,7 +20,7 @@
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Review `feat/batch-6-morning-analysis-engine`, then run `/batch-verify 6`.
+**Next:** Run Phase 1 Batch 7 via `/batch-start 7`.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -49,6 +49,15 @@
   per-profile analysis failures without failing the whole weather job.
 
 ## Log
+- **2026-06-20** — Phase 1 Batch 6 closed out: fast-forwarded
+  `feat/batch-6-morning-analysis-engine` to `main`, GitHub CI passed on commit
+  `9be8b40`, Railway deployed the backend and `/api/v1/health` reported that
+  SHA, Vercel production returned `HTTP 200`, and the same-origin
+  `/api/v1/health` rewrite returned the deployed SHA. Batch 6's non-mutating
+  production smoke check passed by confirming the deployed backend SHA plus CI's
+  Postgres-backed packet assembly/storage/verdict coverage for the morning
+  analysis engine. Batch 6 marked shipped; next up is Batch 7 daily app loop
+  surfaces.
 - **2026-06-20** — Phase 1 Batch 6 implementation ready on
   `feat/batch-6-morning-analysis-engine`: added the morning analysis packet
   assembler from active KB, daily/sleep/manual/environment/baseline/plan data;
