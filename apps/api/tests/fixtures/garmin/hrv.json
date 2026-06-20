@@ -1,0 +1,14 @@
+{
+  "userProfilePk": 9048542,
+  "hrvSummary": {
+    "calendarDate": "2026-06-18",
+    "weeklyAvg": 49,
+    "lastNightAvg": 55,
+    "baseline": {
+      "balancedLow": 43,
+      "balancedUpper": 56
+    },
+    "status": "BALANCED",
+    "createTimeStamp": "2026-06-18T06:16:17.183"
+  }
+}

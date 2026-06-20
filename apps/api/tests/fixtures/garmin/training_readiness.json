@@ -1,0 +1,13 @@
+[
+  {
+    "userProfilePK": 9048542,
+    "calendarDate": "2026-06-18",
+    "timestamp": "2026-06-18T12:34:40.0",
+    "level": "POOR",
+    "score": 12,
+    "sleepScore": 79,
+    "recoveryTime": 4317,
+    "acuteLoad": 1074,
+    "hrvWeeklyAverage": 49
+  }
+]

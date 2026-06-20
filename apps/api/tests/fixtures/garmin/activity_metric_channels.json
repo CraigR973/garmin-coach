@@ -1,0 +1,18 @@
+[
+  "sumElapsedDuration",
+  "sumAccumulatedPower",
+  "sumDistance",
+  "directFractionalCadence",
+  "directBikeCadence",
+  "directAvailableStamina",
+  "sumMovingDuration",
+  "directPower",
+  "directHeartRate",
+  "directSpeed",
+  "directPotentialStamina",
+  "sumDuration",
+  "directTimestamp",
+  "directAirTemperature",
+  "directRespirationRate",
+  "directPerformanceCondition"
+]

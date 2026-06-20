@@ -1,0 +1,29 @@
+{
+  "activityId": 23294062909,
+  "metricDescriptors": [
+    {"metricsIndex": 0, "key": "sumElapsedDuration"},
+    {"metricsIndex": 1, "key": "sumAccumulatedPower"},
+    {"metricsIndex": 2, "key": "sumDistance"},
+    {"metricsIndex": 3, "key": "directFractionalCadence"},
+    {"metricsIndex": 4, "key": "directBikeCadence"},
+    {"metricsIndex": 5, "key": "directAvailableStamina"},
+    {"metricsIndex": 6, "key": "sumMovingDuration"},
+    {"metricsIndex": 7, "key": "directPower"},
+    {"metricsIndex": 8, "key": "directHeartRate"},
+    {"metricsIndex": 9, "key": "directSpeed"},
+    {"metricsIndex": 10, "key": "directPotentialStamina"},
+    {"metricsIndex": 11, "key": "sumDuration"},
+    {"metricsIndex": 12, "key": "directTimestamp"},
+    {"metricsIndex": 13, "key": "directAirTemperature"},
+    {"metricsIndex": 14, "key": "directRespirationRate"},
+    {"metricsIndex": 15, "key": "directPerformanceCondition"}
+  ],
+  "activityDetailMetrics": [
+    {
+      "metrics": [0.0, 56.0, 7.48, 0.0, 73.0, 96.0, 0.0, 56.0, 68.0, 7.483, 96.0, 0.0, 1781780405000.0, 20.0, null, null]
+    },
+    {
+      "metrics": [297.0, 51304.0, 2702.59, 0.0, 91.0, 95.0, 297.0, 212.0, 117.0, 10.702, 95.0, 297.0, 1781780702000.0, 20.0, 32.0, -1.0]
+    }
+  ]
+}

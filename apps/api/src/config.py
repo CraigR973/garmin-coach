@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     supabase_service_key: str = ""
     resend_api_key: str = ""
     email_from: str = "Garmin Coach <noreply@example.com>"
+    garmin_email: str = ""
+    garmin_password: str = ""
+    garmin_tokenstore: str = "~/.garminconnect"
 
     # Web Push
     vapid_public_key: str = ""

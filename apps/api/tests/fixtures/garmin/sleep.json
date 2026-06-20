@@ -1,0 +1,31 @@
+{
+  "avgOvernightHrv": 55.0,
+  "bodyBatteryChange": 66,
+  "dailySleepDTO": {
+    "calendarDate": "2026-06-18",
+    "sleepStartTimestampGMT": 1781737464000,
+    "sleepEndTimestampGMT": 1781761704000,
+    "deepSleepSeconds": 3720,
+    "lightSleepSeconds": 15960,
+    "remSleepSeconds": 3780,
+    "awakeSleepSeconds": 780,
+    "unmeasurableSleepSeconds": 0,
+    "averageSpO2Value": 96.0,
+    "lowestSpO2Value": 86,
+    "averageRespirationValue": 11.0,
+    "avgSleepStress": 11.0,
+    "sleepScores": {
+      "overall": {
+        "value": 79,
+        "qualifierKey": "FAIR"
+      },
+      "remPercentage": {
+        "value": 16,
+        "qualifierKey": "FAIR"
+      }
+    }
+  },
+  "hrvStatus": "BALANCED",
+  "restingHeartRate": 45,
+  "restlessMomentsCount": 45
+}
