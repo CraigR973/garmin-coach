@@ -1,0 +1,753 @@
+{
+  "original": 200,
+  "parsed": {
+    "user": {
+      "id": "532b0525-de00-42be-9368-784178c8f3a3",
+      "username": "mark.robinson7@sky.com",
+      "firstName": "Andrea",
+      "lastName": "Robinson",
+      "address": "45 Jean Armour Drive, Annandale",
+      "city": "Kilmarnock",
+      "country": "United Kingdom",
+      "countryCode": "GB",
+      "postcode": "KA1 2SD",
+      "longitude": -4.525695,
+      "latitude": 55.6049778,
+      "email": "mark.robinson7@sky.com",
+      "mobile": "+447790709026",
+      "phone": "+447790709026",
+      "timezone": "Europe/London",
+      "locale": "en-GB",
+      "temperatureUnit": "C"
+    },
+    "status": "OK",
+    "alerts": {
+      "failuresEmail": false,
+      "failuresSMS": false,
+      "warningsEmail": false,
+      "warningsSMS": false,
+      "nightAlerts": false
+    },
+    "media": {
+      "allowAnalyticsSharing": false
+    },
+    "products": [
+      {
+        "id": "f3e3c059-308c-411b-9bcc-d5bb5cc54c8b",
+        "type": "heating",
+        "sortOrder": 1,
+        "created": 1678804223442,
+        "lastSeen": 1781622656874,
+        "parent": "1f56cad1-b481-4242-9b59-1fb4d964fdf6",
+        "props": {
+          "online": true,
+          "model": "SLR2",
+          "version": "00136620",
+          "upgrade": {
+            "available": false,
+            "upgrading": false
+          },
+          "capabilities": [
+            "INFORMATION",
+            "RENAME",
+            "HEATING_ALERTS",
+            "GEOLOCATION",
+            "HOLIDAY_MODE",
+            "BOOST",
+            "OPTIMUM_START"
+          ],
+          "holidayMode": {
+            "active": false,
+            "enabled": false,
+            "start": null,
+            "end": null,
+            "temperature": 7
+          },
+          "modelVariant": "SLR2c",
+          "working": false,
+          "pmz": "OK",
+          "previous": {
+            "mode": "MANUAL",
+            "target": 9
+          },
+          "scheduleOverride": false,
+          "temperature": 18.66,
+          "zone": "1f56cad1-b481-4242-9b59-1fb4d964fdf6",
+          "autoBoost": {
+            "active": false,
+            "duration": 30,
+            "trvs": []
+          },
+          "readyBy": false
+        },
+        "state": {
+          "name": "Thermostat 1",
+          "boost": null,
+          "frostProtection": 7,
+          "mode": "MANUAL",
+          "schedule": {
+            "monday": [
+              {
+                "value": {
+                  "target": 20
+                },
+                "start": 480
+              },
+              {
+                "value": {
+                  "target": 7
+                },
+                "start": 540
+              }
+            ],
+            "tuesday": [
+              {
+                "value": {
+                  "target": 20
+                },
+                "start": 480
+              },
+              {
+                "value": {
+                  "target": 7
+                },
+                "start": 540
+              }
+            ],
+            "wednesday": [
+              {
+                "value": {
+                  "target": 20
+                },
+                "start": 480
+              },
+              {
+                "value": {
+                  "target": 7
+                },
+                "start": 540
+              }
+            ],
+            "thursday": [
+              {
+                "value": {
+                  "target": 20
+                },
+                "start": 480
+              },
+              {
+                "value": {
+                  "target": 7
+                },
+                "start": 540
+              }
+            ],
+            "friday": [
+              {
+                "value": {
+                  "target": 20
+                },
+                "start": 480
+              },
+              {
+                "value": {
+                  "target": 7
+                },
+                "start": 540
+              }
+            ],
+            "saturday": [
+              {
+                "value": {
+                  "target": 20
+                },
+                "start": 480
+              },
+              {
+                "value": {
+                  "target": 7
+                },
+                "start": 540
+              }
+            ],
+            "sunday": [
+              {
+                "value": {
+                  "target": 20
+                },
+                "start": 480
+              },
+              {
+                "value": {
+                  "target": 7
+                },
+                "start": 540
+              }
+            ]
+          },
+          "target": 9,
+          "optimumStart": false,
+          "autoBoost": "ENABLED"
+        }
+      },
+      {
+        "id": "e8e628d8-f3e7-441b-b724-5a54d30b899e",
+        "type": "hotwater",
+        "sortOrder": 2,
+        "created": 1678804223909,
+        "lastSeen": 1781622656874,
+        "parent": "1f56cad1-b481-4242-9b59-1fb4d964fdf6",
+        "props": {
+          "online": true,
+          "model": "SLR2",
+          "version": "00136620",
+          "upgrade": {
+            "available": false,
+            "upgrading": false
+          },
+          "modelVariant": "SLR2c",
+          "zone": "1f56cad1-b481-4242-9b59-1fb4d964fdf6",
+          "working": false,
+          "holidayMode": {
+            "active": false,
+            "enabled": false,
+            "start": null,
+            "end": null
+          },
+          "capabilities": [
+            "INFORMATION",
+            "HOLIDAY_MODE",
+            "BOOST"
+          ],
+          "previous": {
+            "mode": "SCHEDULE"
+          },
+          "pmz": "OK"
+        },
+        "state": {
+          "name": "Thermostat 1",
+          "mode": "SCHEDULE",
+          "schedule": {
+            "monday": [
+              {
+                "value": {
+                  "status": "ON"
+                },
+                "start": 480
+              },
+              {
+                "value": {
+                  "status": "OFF"
+                },
+                "start": 540
+              },
+              {
+                "value": {
+                  "status": "ON"
+                },
+                "start": 990
+              },
+              {
+                "value": {
+                  "status": "OFF"
+                },
+                "start": 1050
+              }
+            ],
+            "tuesday": [
+              {
+                "value": {
+                  "status": "ON"
+                },
+                "start": 480
+              },
+              {
+                "value": {
+                  "status": "OFF"
+                },
+                "start": 540
+              },
+              {
+                "value": {
+                  "status": "ON"
+                },
+                "start": 990
+              },
+              {
+                "value": {
+                  "status": "OFF"
+                },
+                "start": 1050
+              }
+            ],
+            "wednesday": [
+              {
+                "value": {
+                  "status": "ON"
+                },
+                "start": 480
+              },
+              {
+                "value": {
+                  "status": "OFF"
+                },
+                "start": 540
+              },
+              {
+                "value": {
+                  "status": "ON"
+                },
+                "start": 990
+              },
+              {
+                "value": {
+                  "status": "OFF"
+                },
+                "start": 1050
+              }
+            ],
+            "thursday": [
+              {
+                "value": {
+                  "status": "ON"
+                },
+                "start": 480
+              },
+              {
+                "value": {
+                  "status": "OFF"
+                },
+                "start": 540
+              },
+              {
+                "value": {
+                  "status": "ON"
+                },
+                "start": 990
+              },
+              {
+                "value": {
+                  "status": "OFF"
+                },
+                "start": 1050
+              }
+            ],
+            "friday": [
+              {
+                "value": {
+                  "status": "ON"
+                },
+                "start": 480
+              },
+              {
+                "value": {
+                  "status": "OFF"
+                },
+                "start": 540
+              },
+              {
+                "value": {
+                  "status": "ON"
+                },
+                "start": 990
+              },
+              {
+                "value": {
+                  "status": "OFF"
+                },
+                "start": 1050
+              }
+            ],
+            "saturday": [
+              {
+                "value": {
+                  "status": "ON"
+                },
+                "start": 480
+              },
+              {
+                "value": {
+                  "status": "OFF"
+                },
+                "start": 540
+              },
+              {
+                "value": {
+                  "status": "ON"
+                },
+                "start": 990
+              },
+              {
+                "value": {
+                  "status": "OFF"
+                },
+                "start": 1050
+              }
+            ],
+            "sunday": [
+              {
+                "value": {
+                  "status": "ON"
+                },
+                "start": 480
+              },
+              {
+                "value": {
+                  "status": "OFF"
+                },
+                "start": 540
+              },
+              {
+                "value": {
+                  "status": "ON"
+                },
+                "start": 990
+              },
+              {
+                "value": {
+                  "status": "OFF"
+                },
+                "start": 1050
+              }
+            ]
+          },
+          "boost": null,
+          "status": "OFF"
+        }
+      }
+    ],
+    "devices": [
+      {
+        "id": "d3837ff0-3e07-4c28-bf33-20149d5a789c",
+        "type": "hub",
+        "sortOrder": 0,
+        "created": 1678803015339,
+        "lastSeen": 1781809542489,
+        "parent": "d3837ff0-3e07-4c28-bf33-20149d5a789c",
+        "props": {
+          "online": true,
+          "model": "NANO2",
+          "version": "1.0.0-7052-ORION19-gg-free",
+          "manufacturer": "AlertMe",
+          "hardwareIdentifier": "LUZ-041",
+          "upgrade": {
+            "available": false,
+            "version": "1.0.0-7052-ORION19-gg-free",
+            "upgrading": false
+          },
+          "power": "mains",
+          "uptime": 1404000,
+          "operation": "DEPLOYED",
+          "ipAddress": "192.168.1.35",
+          "macAddress": "00:1C:2B:4C:B5:4B",
+          "capabilities": [
+            "INFORMATION",
+            "RENAME",
+            "REBOOT_HUB",
+            "MIMIC_MODE",
+            "ActionsDaylight",
+            "ActionsMultiOutput",
+            "SLT5_INSTALL",
+            "ACTIONS_2",
+            "INSTALL_PHILIPS_HUE",
+            "PRODUCT_GROUP",
+            "HOMEKIT"
+          ],
+          "pmz": "OK",
+          "connection": "wired",
+          "mimicMode": {
+            "enabled": false,
+            "firstTime": true,
+            "start": "18:00",
+            "end": "22:30",
+            "consumers": []
+          },
+          "assistedLiving": {
+            "noMorningActivity": false,
+            "noRecentActivity": false,
+            "nightTime": false,
+            "learning": true
+          },
+          "homeKit": {
+            "status": "ENABLED",
+            "paired": false
+          }
+        },
+        "state": {
+          "name": "Hub",
+          "homeKitEnabled": true,
+          "homeKitPaired": false,
+          "discovery": false
+        }
+      },
+      {
+        "id": "1f56cad1-b481-4242-9b59-1fb4d964fdf6",
+        "type": "boilermodule",
+        "sortOrder": 1,
+        "created": 1678804213809,
+        "lastSeen": 1781622656874,
+        "parent": "d3837ff0-3e07-4c28-bf33-20149d5a789c",
+        "props": {
+          "online": true,
+          "presenceLastChanged": 1781623098934,
+          "model": "SLR2",
+          "version": "00136620",
+          "manufacturer": "Computime",
+          "upgrade": {
+            "available": false,
+            "upgrading": false
+          },
+          "power": "mains",
+          "signal": 100,
+          "zone": "1f56cad1-b481-4242-9b59-1fb4d964fdf6",
+          "tui": "2ddfd99f-70e8-4487-a012-179572a8a4c9",
+          "modelVariant": "SLR2c",
+          "capabilities": [
+            "INFORMATION"
+          ],
+          "reset": false,
+          "initialisedStatus": "INITIALISED"
+        },
+        "state": {
+          "name": "Thermostat 1",
+          "zoneName": ""
+        }
+      },
+      {
+        "id": "2ddfd99f-70e8-4487-a012-179572a8a4c9",
+        "type": "thermostatui",
+        "sortOrder": 1,
+        "created": 1678804249640,
+        "lastSeen": 1778444002660,
+        "parent": "d3837ff0-3e07-4c28-bf33-20149d5a789c",
+        "props": {
+          "online": true,
+          "presenceLastChanged": 1780405637058,
+          "model": "SLT3",
+          "version": "02040105",
+          "manufacturer": "Computime",
+          "upgrade": {
+            "available": false,
+            "version": "02040105",
+            "progress": 0,
+            "upgrading": false,
+            "status": "COMPLETE"
+          },
+          "power": "battery",
+          "signal": 100,
+          "battery": 100,
+          "capabilities": [
+            "INFORMATION",
+            "RENAME",
+            "HEATING_ALERTS",
+            "GEOLOCATION",
+            "HOLIDAY_MODE",
+            "SLT_REPLACEMENT",
+            "OPTIMUM_START"
+          ],
+          "modelVariant": "SLT3c",
+          "zone": "1f56cad1-b481-4242-9b59-1fb4d964fdf6"
+        },
+        "state": {
+          "name": "Thermostat 2",
+          "zoneName": ""
+        }
+      }
+    ],
+    "holidayMode": {
+      "active": false,
+      "enabled": false,
+      "start": null,
+      "end": null,
+      "temperature": 7,
+      "status": "OK"
+    },
+    "security": {
+      "hasSecurityDevice": false
+    },
+    "actions": [
+      {
+        "id": "c9e21798-afd4-4858-9c31-b4c36541c07d",
+        "created": 1750298692517,
+        "name": "Boost hot water",
+        "enabled": true,
+        "entitlements": [],
+        "entitled": true,
+        "template": "quick-action-hotwater-boost.3",
+        "events": [
+          {
+            "group": "when",
+            "type": "quick-action"
+          },
+          {
+            "id": "e8e628d8-f3e7-441b-b724-5a54d30b899e",
+            "group": "then",
+            "type": "hotwater",
+            "settings": {
+              "mode": "BOOST",
+              "duration": 1800
+            }
+          }
+        ]
+      },
+      {
+        "id": "9a6b53a1-d2ee-4a2c-ba80-ec7208c7af52",
+        "created": 1775321478242,
+        "name": "Boost Heating",
+        "enabled": true,
+        "entitlements": [],
+        "entitled": true,
+        "template": "quick-action-canvas.3",
+        "events": [
+          {
+            "group": "when",
+            "type": "quick-action"
+          },
+          {
+            "id": "f3e3c059-308c-411b-9bcc-d5bb5cc54c8b",
+            "group": "then",
+            "type": "heating",
+            "settings": {
+              "mode": "BOOST",
+              "target": 23,
+              "duration": 1800
+            }
+          }
+        ]
+      }
+    ],
+    "homes": {
+      "homes": [
+        {
+          "id": "aa1fbb37-6b65-4622-b609-5d75534fafd3",
+          "name": "Home",
+          "address": "45 Jean Armour Drive, Annandale",
+          "location": {
+            "country": "GB",
+            "state": null,
+            "timeZone": "Europe/London",
+            "latitude": 55.605,
+            "longitude": -4.526,
+            "addressFirstLine": "45 Jean Armour Drive, Annandale",
+            "addressSecondLine": null,
+            "city": "Kilmarnock",
+            "postcode": "KA1 2SD"
+          },
+          "primary": true,
+          "userType": "OWNER",
+          "homeUsers": {
+            "OWNER": [
+              "532b0525-de00-42be-9368-784178c8f3a3"
+            ]
+          },
+          "owner": true,
+          "users": [],
+          "owners": [
+            "532b0525-de00-42be-9368-784178c8f3a3"
+          ],
+          "homeTypes": [
+            "HIVE"
+          ],
+          "invitations": [
+            {
+              "invitationId": "53c0ac1f-a267-4e7e-ad97-9cd5fbda1f4e",
+              "recipient": "Mark Robinson",
+              "accepted": false,
+              "declined": false,
+              "expired": true,
+              "revoked": false,
+              "homeId": "aa1fbb37-6b65-4622-b609-5d75534fafd3",
+              "userType": "SUPERUSER",
+              "invitedBy": "user:532b0525-de00-42be-9368-784178c8f3a3",
+              "invitationType": null,
+              "expiresOn": 1678991289292,
+              "inviterFirstName": null,
+              "homeOwnerFirstName": null
+            }
+          ],
+          "homePicture": null,
+          "shareOption": "FLEXIBLE",
+          "pets": null,
+          "notificationChannels": [
+            "PUSH"
+          ],
+          "pinId": null,
+          "userNicknames": {},
+          "proResponseProviders": [],
+          "homePhase": "Live",
+          "localisation": {
+            "currency": {
+              "code": "GBP",
+              "symbol": "\u00a3",
+              "subunits": "pence",
+              "subunitSymbol": "p"
+            },
+            "locale": "en_GB",
+            "tariff": {
+              "code": "GBPp",
+              "unit": "p/kWh",
+              "electricity": {
+                "minRate": 1,
+                "maxRate": 100,
+                "minAnnumkWh": 1000,
+                "maxAnnumkWh": 15000,
+                "minStandingCharge": 0,
+                "maxStandingCharge": 99
+              },
+              "gas": {
+                "minRate": 1,
+                "maxRate": 50,
+                "minAnnumkWh": 4000,
+                "maxAnnumkWh": 60000,
+                "minStandingCharge": 9,
+                "maxStandingCharge": 99
+              }
+            },
+            "customerSupport": {
+              "ev": {
+                "supportNumber": "03332021054"
+              }
+            }
+          }
+        }
+      ],
+      "entitlements": {
+        "homeTypeEntitlements": {
+          "HIVE": {
+            "homes": 2,
+            "usersPerType": {
+              "SECONDARY_USER": 2147483647,
+              "OUTER_CIRCLE_USER": 0,
+              "SUPERUSER": 2147483647,
+              "EXTERNAL_USER": 0
+            },
+            "usersPerHome": 2147483647
+          },
+          "ASSISTED_LIVING": {
+            "homes": 2147483647,
+            "usersPerType": {
+              "SECONDARY_USER": 2147483647,
+              "OUTER_CIRCLE_USER": 5,
+              "SUPERUSER": 5,
+              "EXTERNAL_USER": 3
+            },
+            "usersPerHome": 2147483647
+          },
+          "SECURITY": {
+            "homes": 0,
+            "usersPerType": {
+              "SECONDARY_USER": 0,
+              "OUTER_CIRCLE_USER": 0,
+              "SUPERUSER": 0,
+              "EXTERNAL_USER": 0
+            },
+            "usersPerHome": 0
+          }
+        },
+        "proResponseEntitlements": {},
+        "propertyEntitlements": 2,
+        "userEntitlements": 2147483647
+      }
+    }
+  }
+}

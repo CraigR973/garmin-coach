@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     garmin_email: str = ""
     garmin_password: str = ""
     garmin_tokenstore: str = "~/.garminconnect"
+    hive_email: str = ""
+    hive_password: str = ""
+    weather_latitude: float = 55.6045
+    weather_longitude: float = -4.5249
+    weather_timezone: str = "Europe/London"
 
     # Web Push
     vapid_public_key: str = ""

@@ -66,7 +66,8 @@ Validated 19 Jun with a real sample → his verdict "fantastic." Demonstrated 5 
 - `daily_metrics` (readiness, recovery_time_min, training_status, stress, body_battery, hrv_*, rhr_*, weight_kg, vo2max)
 - `sleep` (score, qualifier, stage secs, spo2, resp, restless, factors_json)
 - `activities` (+ `activity_timeseries`: power/hr/cadence/resp/performance_condition/stamina)
-- `temperature_readings` (Hive poll) · `weather_daily`
+- `temperature_readings` (Hive poll) · `weather_daily` (daily high/low,
+  overnight low/wind, precipitation, sunrise/sunset)
 - `manual_entries` (BP, subjective, RPE, feel, supplements, food)
 - `planned_workouts` (structured intervals; **versioned** — VO2 sessions get revised mid-block) · `plan_blocks` (13-wk 2121: 2 build/1 recovery/wk12 taper/wk13 consolidation)
 - `analyses` (stored Claude outputs) · `experiments` (tracked hypotheses) · `knowledge_base`

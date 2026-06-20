@@ -78,3 +78,6 @@ decision — if you change course, add a new entry that supersedes the old one.
 
 ### 2026-06-20 — Phase 1 Batch 2
 42. **Garmin credentials stay in environment/secrets; Postgres stores only non-secret user metadata.** The app logs into `garminconnect` with `GARMIN_EMAIL` / `GARMIN_PASSWORD` and persists Garmin's own garth token cache under `GARMIN_TOKENSTORE` (default `~/.garminconnect`). *Why:* v1 has 1-2 private users and no admin secret-management UI yet; this keeps credentials out of the repo, DB rows, logs, and tests while preserving unattended sync through Garmin's long-lived token cache.
+
+### 2026-06-20 — Phase 1 Batch 3
+43. **`weather_daily` stores explicit overnight wind max/gust columns, not only raw Open-Meteo JSON.** *Why:* sleep disruption depends on overnight environment, and Batch 3's acceptance criteria require overnight low/wind to be first-class queryable context for later morning analysis and thermal monitoring.

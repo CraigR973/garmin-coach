@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.models.notification import ActionType, ActorType, AuditLog
-from src.scheduler import create_scheduler, run_scheduled_backup
+from src.scheduler import _retry_async, _retry_sync, create_scheduler, run_scheduled_backup
 
 # ---------------------------------------------------------------------------
 # run_scheduled_backup
@@ -69,6 +69,40 @@ async def test_run_scheduled_backup_success_does_not_raise() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
+async def test_retry_sync_retries_transient_failure() -> None:
+    calls = 0
+
+    def operation() -> str:
+        nonlocal calls
+        calls += 1
+        if calls < 2:
+            raise RuntimeError("temporary")
+        return "ok"
+
+    result = await _retry_sync(operation, attempts=3, delay_sec=0)
+
+    assert result == "ok"
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_retry_async_retries_transient_failure() -> None:
+    calls = 0
+
+    async def operation() -> str:
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            raise RuntimeError("temporary")
+        return "ok"
+
+    result = await _retry_async(operation, attempts=3, delay_sec=0)
+
+    assert result == "ok"
+    assert calls == 3
+
+
 def test_create_scheduler_registers_daily_backup_job() -> None:
     scheduler = create_scheduler()
     try:
@@ -82,13 +116,22 @@ def test_create_scheduler_registers_daily_backup_job() -> None:
             scheduler.shutdown(wait=False)
 
 
-def test_create_scheduler_has_only_backup_job() -> None:
-    """Phase 0: only the daily backup job should be registered."""
+def test_create_scheduler_registers_environment_jobs() -> None:
+    """Phase 1 Batch 3 registers Hive and weather jobs without analysis triggers."""
     scheduler = create_scheduler()
     try:
         jobs = scheduler.get_jobs()
         job_ids = {j.id for j in jobs}
-        assert job_ids == {"daily_backup"}
+        assert job_ids == {"daily_backup", "hive_temperature_poll", "morning_weather_sync"}
+
+        hive_job = scheduler.get_job("hive_temperature_poll")
+        weather_job = scheduler.get_job("morning_weather_sync")
+        assert hive_job is not None
+        assert weather_job is not None
+        assert str(hive_job.trigger) == "interval[0:15:00]"
+        assert "hour='6', minute='30'" in str(weather_job.trigger)
+        assert hive_job.coalesce is True
+        assert weather_job.max_instances == 1
     finally:
         if scheduler.running:
             scheduler.shutdown(wait=False)
@@ -113,6 +156,8 @@ async def test_scheduler_lifespan_starts_and_stops(monkeypatch: pytest.MonkeyPat
         scheduler = app.state.scheduler
         assert scheduler.running is True
         assert scheduler.get_job("daily_backup") is not None
+        assert scheduler.get_job("hive_temperature_poll") is not None
+        assert scheduler.get_job("morning_weather_sync") is not None
 
     await asyncio.sleep(0)
     assert scheduler.running is False

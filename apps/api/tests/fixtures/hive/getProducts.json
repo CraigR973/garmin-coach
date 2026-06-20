@@ -1,0 +1,388 @@
+{
+  "original": 200,
+  "parsed": [
+    {
+      "id": "f3e3c059-308c-411b-9bcc-d5bb5cc54c8b",
+      "type": "heating",
+      "sortOrder": 1,
+      "created": 1678804223442,
+      "lastSeen": 1781622656874,
+      "parent": "1f56cad1-b481-4242-9b59-1fb4d964fdf6",
+      "props": {
+        "online": true,
+        "model": "SLR2",
+        "version": "00136620",
+        "upgrade": {
+          "available": false,
+          "upgrading": false
+        },
+        "capabilities": [
+          "INFORMATION",
+          "RENAME",
+          "HEATING_ALERTS",
+          "GEOLOCATION",
+          "HOLIDAY_MODE",
+          "BOOST",
+          "OPTIMUM_START"
+        ],
+        "holidayMode": {
+          "active": false,
+          "enabled": false,
+          "start": null,
+          "end": null,
+          "temperature": 7
+        },
+        "modelVariant": "SLR2c",
+        "working": false,
+        "pmz": "OK",
+        "previous": {
+          "mode": "MANUAL",
+          "target": 9
+        },
+        "scheduleOverride": false,
+        "temperature": 18.66,
+        "zone": "1f56cad1-b481-4242-9b59-1fb4d964fdf6",
+        "autoBoost": {
+          "active": false,
+          "duration": 30,
+          "trvs": []
+        },
+        "readyBy": false
+      },
+      "state": {
+        "name": "Thermostat 1",
+        "boost": null,
+        "frostProtection": 7,
+        "mode": "MANUAL",
+        "schedule": {
+          "monday": [
+            {
+              "value": {
+                "target": 20
+              },
+              "start": 480
+            },
+            {
+              "value": {
+                "target": 7
+              },
+              "start": 540
+            }
+          ],
+          "tuesday": [
+            {
+              "value": {
+                "target": 20
+              },
+              "start": 480
+            },
+            {
+              "value": {
+                "target": 7
+              },
+              "start": 540
+            }
+          ],
+          "wednesday": [
+            {
+              "value": {
+                "target": 20
+              },
+              "start": 480
+            },
+            {
+              "value": {
+                "target": 7
+              },
+              "start": 540
+            }
+          ],
+          "thursday": [
+            {
+              "value": {
+                "target": 20
+              },
+              "start": 480
+            },
+            {
+              "value": {
+                "target": 7
+              },
+              "start": 540
+            }
+          ],
+          "friday": [
+            {
+              "value": {
+                "target": 20
+              },
+              "start": 480
+            },
+            {
+              "value": {
+                "target": 7
+              },
+              "start": 540
+            }
+          ],
+          "saturday": [
+            {
+              "value": {
+                "target": 20
+              },
+              "start": 480
+            },
+            {
+              "value": {
+                "target": 7
+              },
+              "start": 540
+            }
+          ],
+          "sunday": [
+            {
+              "value": {
+                "target": 20
+              },
+              "start": 480
+            },
+            {
+              "value": {
+                "target": 7
+              },
+              "start": 540
+            }
+          ]
+        },
+        "target": 9,
+        "optimumStart": false,
+        "autoBoost": "ENABLED"
+      }
+    },
+    {
+      "id": "e8e628d8-f3e7-441b-b724-5a54d30b899e",
+      "type": "hotwater",
+      "sortOrder": 2,
+      "created": 1678804223909,
+      "lastSeen": 1781622656874,
+      "parent": "1f56cad1-b481-4242-9b59-1fb4d964fdf6",
+      "props": {
+        "online": true,
+        "model": "SLR2",
+        "version": "00136620",
+        "upgrade": {
+          "available": false,
+          "upgrading": false
+        },
+        "modelVariant": "SLR2c",
+        "zone": "1f56cad1-b481-4242-9b59-1fb4d964fdf6",
+        "working": false,
+        "holidayMode": {
+          "active": false,
+          "enabled": false,
+          "start": null,
+          "end": null
+        },
+        "capabilities": [
+          "INFORMATION",
+          "HOLIDAY_MODE",
+          "BOOST"
+        ],
+        "previous": {
+          "mode": "SCHEDULE"
+        },
+        "pmz": "OK"
+      },
+      "state": {
+        "name": "Thermostat 1",
+        "mode": "SCHEDULE",
+        "schedule": {
+          "monday": [
+            {
+              "value": {
+                "status": "ON"
+              },
+              "start": 480
+            },
+            {
+              "value": {
+                "status": "OFF"
+              },
+              "start": 540
+            },
+            {
+              "value": {
+                "status": "ON"
+              },
+              "start": 990
+            },
+            {
+              "value": {
+                "status": "OFF"
+              },
+              "start": 1050
+            }
+          ],
+          "tuesday": [
+            {
+              "value": {
+                "status": "ON"
+              },
+              "start": 480
+            },
+            {
+              "value": {
+                "status": "OFF"
+              },
+              "start": 540
+            },
+            {
+              "value": {
+                "status": "ON"
+              },
+              "start": 990
+            },
+            {
+              "value": {
+                "status": "OFF"
+              },
+              "start": 1050
+            }
+          ],
+          "wednesday": [
+            {
+              "value": {
+                "status": "ON"
+              },
+              "start": 480
+            },
+            {
+              "value": {
+                "status": "OFF"
+              },
+              "start": 540
+            },
+            {
+              "value": {
+                "status": "ON"
+              },
+              "start": 990
+            },
+            {
+              "value": {
+                "status": "OFF"
+              },
+              "start": 1050
+            }
+          ],
+          "thursday": [
+            {
+              "value": {
+                "status": "ON"
+              },
+              "start": 480
+            },
+            {
+              "value": {
+                "status": "OFF"
+              },
+              "start": 540
+            },
+            {
+              "value": {
+                "status": "ON"
+              },
+              "start": 990
+            },
+            {
+              "value": {
+                "status": "OFF"
+              },
+              "start": 1050
+            }
+          ],
+          "friday": [
+            {
+              "value": {
+                "status": "ON"
+              },
+              "start": 480
+            },
+            {
+              "value": {
+                "status": "OFF"
+              },
+              "start": 540
+            },
+            {
+              "value": {
+                "status": "ON"
+              },
+              "start": 990
+            },
+            {
+              "value": {
+                "status": "OFF"
+              },
+              "start": 1050
+            }
+          ],
+          "saturday": [
+            {
+              "value": {
+                "status": "ON"
+              },
+              "start": 480
+            },
+            {
+              "value": {
+                "status": "OFF"
+              },
+              "start": 540
+            },
+            {
+              "value": {
+                "status": "ON"
+              },
+              "start": 990
+            },
+            {
+              "value": {
+                "status": "OFF"
+              },
+              "start": 1050
+            }
+          ],
+          "sunday": [
+            {
+              "value": {
+                "status": "ON"
+              },
+              "start": 480
+            },
+            {
+              "value": {
+                "status": "OFF"
+              },
+              "start": 540
+            },
+            {
+              "value": {
+                "status": "ON"
+              },
+              "start": 990
+            },
+            {
+              "value": {
+                "status": "OFF"
+              },
+              "start": 1050
+            }
+          ]
+        },
+        "boost": null,
+        "status": "OFF"
+      }
+    }
+  ]
+}

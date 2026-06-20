@@ -33,7 +33,8 @@ Source files inspected on 2026-06-20:
 - `temperature_readings` stores Hive heating product samples from
   `parsed[i].props.temperature`, keyed by source/product/time.
 - `weather_daily` is date-grained for Open-Meteo Kilmarnock history/forecast:
-  high/low, overnight low, wind in mph, precipitation, sunrise, and sunset.
+  high/low, overnight low, overnight wind max/gust, daily wind in mph,
+  precipitation, sunrise, and sunset.
 - `manual_entries`, `plan_blocks`, `planned_workouts`, `analyses`,
   `experiments`, and `knowledge_base` are app-owned state. Structured JSONB is
   used where the product needs versioned and editable content before the exact

@@ -5,6 +5,7 @@ import {
   dailyMetricSchema,
   profileSchema,
   sleepSchema,
+  weatherDailySchema,
 } from './schemas';
 
 const userId = '11111111-1111-4111-8111-111111111111';
@@ -74,5 +75,26 @@ describe('v1 shared schemas', () => {
 
     expect(parsed.performanceCondition).toBeCloseTo(21.26);
     expect(parsed.availableStamina).toBe(96);
+  });
+
+  it('captures Kilmarnock daily weather and overnight wind context', () => {
+    const parsed = weatherDailySchema.parse({
+      id: rowId,
+      userId,
+      calendarDate: '2026-06-18',
+      source: 'open_meteo',
+      latitude: 55.6045,
+      longitude: -4.5249,
+      tempHighC: 17.8,
+      tempLowC: 8.9,
+      overnightLowC: 8.4,
+      overnightWindMaxMph: 8,
+      overnightWindGustMph: 15.5,
+      windMaxMph: 14.2,
+      windGustMph: 24.1,
+      rawPayload: {},
+    });
+
+    expect(parsed.overnightWindGustMph).toBe(15.5);
   });
 });
