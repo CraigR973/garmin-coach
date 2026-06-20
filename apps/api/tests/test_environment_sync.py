@@ -173,9 +173,7 @@ async def test_environment_sync_upserts_without_duplicate_rows(
             .all()
         )
         weather = (
-            (
-                await session.execute(select(WeatherDaily).where(WeatherDaily.user_id == user_id))
-            )
+            (await session.execute(select(WeatherDaily).where(WeatherDaily.user_id == user_id)))
             .scalars()
             .all()
         )
