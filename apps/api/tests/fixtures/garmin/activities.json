@@ -1,0 +1,32 @@
+[
+  {
+    "activityId": 23294062909,
+    "activityUUID": "5b98f253-751f-412a-9180-b6c5a6bfa5a0",
+    "activityName": "2121 W11 WO3 Thu Sweet Spot",
+    "activityType": {
+      "typeKey": "indoor_cycling"
+    },
+    "startTimeGMT": "2026-06-18 11:00:05",
+    "endTimeGMT": "2026-06-18 12:32:05",
+    "duration": 5520.47314453125,
+    "elapsedDuration": 5520.47314453125,
+    "movingDuration": 5520.47314453125,
+    "distance": 52679.46875,
+    "calories": 1350.0,
+    "averageHR": 130.0,
+    "maxHR": 143.0,
+    "avgPower": 221.0,
+    "maxPower": 284.0,
+    "normPower": 234.0,
+    "intensityFactor": 0.835,
+    "activityTrainingLoad": 253.04,
+    "aerobicTrainingEffect": 4.7,
+    "anaerobicTrainingEffect": 0.0,
+    "averageBikingCadenceInRevPerMinute": 85.0,
+    "maxBikingCadenceInRevPerMinute": 103.0,
+    "avgRespirationRate": 38.12,
+    "maxRespirationRate": 47.85,
+    "minTemperature": 19.0,
+    "maxTemperature": 20.0
+  }
+]

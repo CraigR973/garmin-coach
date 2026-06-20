@@ -61,7 +61,8 @@ Validated 19 Jun with a real sample → his verdict "fantastic." Demonstrated 5 
 
 ## 5. Data model (sketch — build from real JSON shapes in `~/garmin-spike/out/`)
 
-- `users` (pin_hash, timezone, lat/long, garmin/hive cred refs)
+- `profiles` (pin_hash, timezone, lat/long, Garmin user profile pk, Hive home id;
+  Garmin secrets stay in environment/secrets and garth token cache for v1)
 - `daily_metrics` (readiness, recovery_time_min, training_status, stress, body_battery, hrv_*, rhr_*, weight_kg, vo2max)
 - `sleep` (score, qualifier, stage secs, spo2, resp, restless, factors_json)
 - `activities` (+ `activity_timeseries`: power/hr/cadence/resp/performance_condition/stamina)

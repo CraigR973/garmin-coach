@@ -6,7 +6,7 @@
 
 ## Now
 
-**Phase:** 1 Batch 1 shipped — data model + profile seed live.
+**Phase:** 1 Batch 2 implemented on `feat/batch-2-garmin-sync-foundation` — ready for review.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -20,7 +20,7 @@
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Run Phase 1 Batch 2 via `/batch-start 2`.
+**Next:** Review Batch 2 branch, then run `/closeout 2` when ready to promote.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -36,8 +36,18 @@
 - Mark seed helper is
   `MARK_PIN=1234 PYTHONPATH=/Users/craigrobinson/garmin-coach/apps/api /Users/craigrobinson/garmin-coach/apps/api/.venv/bin/python -m src.seeds`
   after migration `002` is applied; replace `1234` with the real PIN and never commit it.
+- Garmin sync uses `GARMIN_EMAIL` / `GARMIN_PASSWORD` from the environment plus
+  `GARMIN_TOKENSTORE` for garth's persisted token cache; the app does not store
+  Garmin secrets in Postgres.
 
 ## Log
+- **2026-06-20** — Phase 1 Batch 2 implementation ready on
+  `feat/batch-2-garmin-sync-foundation`: added Garmin Connect client/login
+  wrapper with token-cache strategy, Garmin fixture parsers, daily/sleep/activity
+  sync upserts, time-series channel extraction for power/HR/cadence/respiration/
+  Performance Condition/Stamina, and no-secret failure tests. Verified backend
+  pytest/ruff/mypy locally; one Postgres idempotency test skipped without
+  `DATABASE_URL`.
 - **2026-06-20** — Phase 1 Batch 1 closed out: merged
   `feat/batch-1-data-model` to `main`, GitHub CI passed on merge commit
   `b2733ca`, Railway deployed the backend and `/api/v1/health` reported that

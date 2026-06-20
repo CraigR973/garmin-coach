@@ -75,3 +75,6 @@ decision — if you change course, add a new entry that supersedes the old one.
 
 ### 2026-06-20 — Phase 1 Batch 1
 41. **`profiles` remains the private user table for v1, instead of renaming it to `users`.** Batch 1 extends `profiles` with Garmin/Hive/location metadata and adds the v1 coaching tables around it. *Why:* the stripped auth skeleton, refresh tokens, notification preferences, audit log, and live migration `001` already depend on `profiles`; renaming a live auth table during the data-model batch would add deployment risk without improving the product. The product/API can still describe these rows as users.
+
+### 2026-06-20 — Phase 1 Batch 2
+42. **Garmin credentials stay in environment/secrets; Postgres stores only non-secret user metadata.** The app logs into `garminconnect` with `GARMIN_EMAIL` / `GARMIN_PASSWORD` and persists Garmin's own garth token cache under `GARMIN_TOKENSTORE` (default `~/.garminconnect`). *Why:* v1 has 1-2 private users and no admin secret-management UI yet; this keeps credentials out of the repo, DB rows, logs, and tests while preserving unattended sync through Garmin's long-lived token cache.

@@ -1,0 +1,12 @@
+{
+  "mostRecentTrainingStatus": {
+    "latestTrainingStatusData": {
+      "3508557070": {
+        "calendarDate": "2026-06-18",
+        "trainingStatus": 7,
+        "trainingStatusFeedbackPhrase": "PRODUCTIVE_9",
+        "primaryTrainingDevice": true
+      }
+    }
+  }
+}
