@@ -117,7 +117,7 @@ def test_create_scheduler_registers_daily_backup_job() -> None:
 
 
 def test_create_scheduler_registers_environment_jobs() -> None:
-    """Phase 1 Batch 3 registers Hive and weather jobs without analysis triggers."""
+    """Environment cadence stays stable; morning weather job now triggers analysis internally."""
     scheduler = create_scheduler()
     try:
         jobs = scheduler.get_jobs()

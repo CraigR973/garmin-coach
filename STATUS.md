@@ -6,7 +6,7 @@
 
 ## Now
 
-**Phase:** 1 Batch 5 shipped — coaching state editor live.
+**Phase:** 1 Batch 6 implementation ready — morning analysis engine on review branch.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -20,7 +20,7 @@
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Run Phase 1 Batch 6 via `/batch-start 6`.
+**Next:** Review `feat/batch-6-morning-analysis-engine`, then run `/batch-verify 6`.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -43,8 +43,21 @@
   `PYTHONPATH=/Users/craigrobinson/garmin-coach/apps/api /Users/craigrobinson/garmin-coach/apps/api/.venv/bin/python -m src.sleep_history_backfill --dry-run "/Users/craigrobinson/Downloads/Dad Fitness/12 Weeks Sleep Data 15.06.26.xlsx"`
   then rerun without `--dry-run` to write the backfill.
 - Batch 5 adds an admin-only retained-state editor at `/coach-state`; its first load seeds the knowledge-base sections plus a 13-week 2121 workout slate if the user has no existing retained state yet.
+- Batch 6 adds the morning analysis engine. It requires `ANTHROPIC_API_KEY`
+  for live generation; `ANTHROPIC_MODEL` defaults to `claude-sonnet-4-6`.
+  The 06:30 weather sync triggers analysis after weather data lands, but logs
+  per-profile analysis failures without failing the whole weather job.
 
 ## Log
+- **2026-06-20** — Phase 1 Batch 6 implementation ready on
+  `feat/batch-6-morning-analysis-engine`: added the morning analysis packet
+  assembler from active KB, daily/sleep/manual/environment/baseline/plan data;
+  encoded the Green/Amber/Red verdict framework including Red-never-VO2 and
+  guarded Low-readiness reconciliation; added a thin Anthropic Messages boundary
+  with prompt/version metadata stored in `analyses`; and wired the 06:30 local
+  weather sync to trigger morning analysis. Verified backend `pytest`,
+  `ruff check`, and `mypy src` locally; DB-backed tests skipped without
+  `DATABASE_URL`.
 - **2026-06-20** — Phase 1 Batch 5 closed out: fast-forwarded
   `feat/batch-5-training-plan-kb` to `main`, GitHub CI passed on commit
   `82015cd`, Railway deployed the backend and `/api/v1/health` reported that

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from datetime import date, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 from apscheduler.schedulers.asyncio import (  # type: ignore[import-untyped,unused-ignore]
@@ -28,6 +30,7 @@ from src.services.environment_sync import (
     OpenMeteoClient,
     WeatherRequest,
 )
+from src.services.morning_analysis import MorningAnalysisService
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -89,7 +92,7 @@ async def run_hive_temperature_poll() -> None:
 
 
 async def run_morning_weather_sync() -> None:
-    """Sync Open-Meteo daily weather without triggering analysis yet."""
+    """Sync Open-Meteo daily weather, then trigger the morning analysis engine."""
     try:
         async with AsyncSessionLocal() as session:
             profiles = (
@@ -106,6 +109,8 @@ async def run_morning_weather_sync() -> None:
             )
             service = EnvironmentSyncService(session)
             synced = 0
+            analyses_generated = 0
+            analyses_existing = 0
             client = OpenMeteoClient()
             for profile in profiles:
                 request = WeatherRequest(
@@ -122,9 +127,42 @@ async def run_morning_weather_sync() -> None:
                 )
                 synced += result.weather_days_synced
             await session.commit()
-        log.info("morning weather sync complete", profiles=len(profiles), days=synced)
+
+            analysis_service = MorningAnalysisService(session)
+            for profile in profiles:
+                subject_date = _profile_today(profile)
+                try:
+                    analysis_result = await analysis_service.generate_and_store(
+                        profile,
+                        subject_date,
+                    )
+                    if analysis_result.generated:
+                        analyses_generated += 1
+                    else:
+                        analyses_existing += 1
+                except Exception:
+                    log.exception(
+                        "morning analysis failed",
+                        profile_id=str(profile.id),
+                        subject_date=subject_date.isoformat(),
+                    )
+        log.info(
+            "morning weather sync complete",
+            profiles=len(profiles),
+            days=synced,
+            analyses_generated=analyses_generated,
+            analyses_existing=analyses_existing,
+        )
     except Exception:
         log.exception("morning weather sync failed")
+
+
+def _profile_today(profile: Profile) -> date:
+    try:
+        timezone = ZoneInfo(profile.timezone)
+    except ZoneInfoNotFoundError:
+        timezone = ZoneInfo("UTC")
+    return datetime.now(timezone).date()
 
 
 async def _retry_sync[T](
