@@ -1,5 +1,12 @@
 from src.models import Base
-from src.models.coaching import Activity, ActivityTimeSeries, DailyMetric, Sleep, WeatherDaily
+from src.models.coaching import (
+    Activity,
+    ActivityTimeSeries,
+    DailyMetric,
+    MetricBaseline,
+    Sleep,
+    WeatherDaily,
+)
 from src.models.profile import Profile
 
 
@@ -12,6 +19,7 @@ def test_v1_domain_tables_are_registered() -> None:
         "temperature_readings",
         "weather_daily",
         "manual_entries",
+        "metric_baselines",
         "planned_workouts",
         "plan_blocks",
         "analyses",
@@ -78,3 +86,14 @@ def test_weather_daily_columns_cover_overnight_wind() -> None:
     assert "overnight_wind_max_mph" in columns
     assert "overnight_wind_gust_mph" in columns
     assert "wind_max_mph" in columns
+
+
+def test_metric_baseline_columns_cover_reliable_window_stats() -> None:
+    columns = MetricBaseline.__table__.columns.keys()
+
+    assert "metric_key" in columns
+    assert "reliability_start_date" in columns
+    assert "sample_count" in columns
+    assert "excluded_sample_count" in columns
+    assert "lower_quartile_value" in columns
+    assert "upper_quartile_value" in columns

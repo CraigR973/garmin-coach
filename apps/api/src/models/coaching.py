@@ -217,6 +217,41 @@ class WeatherDaily(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     raw_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
 
 
+class MetricBaseline(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
+    __tablename__ = "metric_baselines"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "metric_key",
+            "source",
+            name="uq_metric_baselines_user_metric_source",
+        ),
+        Index("ix_metric_baselines_user_metric", "user_id", "metric_key"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    metric_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    metric_label: Mapped[str] = mapped_column(String(120), nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(50), nullable=False, server_default="sleep_history_xlsx"
+    )
+    window_start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    window_end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    reliability_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    sample_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    excluded_sample_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    mean_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    median_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    min_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lower_quartile_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    upper_quartile_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    stddev_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    raw_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+
+
 class ManualEntry(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     __tablename__ = "manual_entries"
     __table_args__ = (
