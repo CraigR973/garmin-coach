@@ -7,7 +7,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.models.notification import ActionType, ActorType, AuditLog
-from src.scheduler import _retry_async, _retry_sync, create_scheduler, run_scheduled_backup
+from src.scheduler import (
+    _retry_async,
+    _retry_sync,
+    create_scheduler,
+    run_scheduled_backup,
+)
 
 # ---------------------------------------------------------------------------
 # run_scheduled_backup
@@ -117,7 +122,7 @@ def test_create_scheduler_registers_daily_backup_job() -> None:
 
 
 def test_create_scheduler_registers_environment_jobs() -> None:
-    """Environment cadence stays stable; Garmin activity poll triggers post-workout analysis."""
+    """Environment and evening-alert cadences stay stable."""
     scheduler = create_scheduler()
     try:
         jobs = scheduler.get_jobs()
@@ -127,21 +132,31 @@ def test_create_scheduler_registers_environment_jobs() -> None:
             "hive_temperature_poll",
             "morning_weather_sync",
             "garmin_activity_poll",
+            "evening_sleep_nudge",
+            "evening_monitoring_alerts",
         }
 
         hive_job = scheduler.get_job("hive_temperature_poll")
         weather_job = scheduler.get_job("morning_weather_sync")
         garmin_job = scheduler.get_job("garmin_activity_poll")
+        nudge_job = scheduler.get_job("evening_sleep_nudge")
+        monitoring_job = scheduler.get_job("evening_monitoring_alerts")
         assert hive_job is not None
         assert weather_job is not None
         assert garmin_job is not None
+        assert nudge_job is not None
+        assert monitoring_job is not None
         assert str(hive_job.trigger) == "interval[0:15:00]"
         assert "hour='6', minute='30'" in str(weather_job.trigger)
         assert str(garmin_job.trigger) == "interval[1:00:00]"
+        assert "hour='20', minute='0'" in str(nudge_job.trigger)
+        assert "hour='19-22', minute='0,15,30,45'" in str(monitoring_job.trigger)
         assert hive_job.coalesce is True
         assert weather_job.max_instances == 1
         assert garmin_job.coalesce is True
         assert garmin_job.max_instances == 1
+        assert nudge_job.coalesce is True
+        assert monitoring_job.max_instances == 1
     finally:
         if scheduler.running:
             scheduler.shutdown(wait=False)
@@ -169,6 +184,8 @@ async def test_scheduler_lifespan_starts_and_stops(monkeypatch: pytest.MonkeyPat
         assert scheduler.get_job("hive_temperature_poll") is not None
         assert scheduler.get_job("morning_weather_sync") is not None
         assert scheduler.get_job("garmin_activity_poll") is not None
+        assert scheduler.get_job("evening_sleep_nudge") is not None
+        assert scheduler.get_job("evening_monitoring_alerts") is not None
 
     await asyncio.sleep(0)
     assert scheduler.running is False

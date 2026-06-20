@@ -39,7 +39,7 @@ export async function clearApiCaches(): Promise<void> {
   if (typeof caches !== 'undefined') {
     await Promise.all([
       caches.delete('api-user-data'),
-      caches.delete('api-matches'),
+      caches.delete('api-daily-loop'),
     ]);
   }
 }

@@ -61,8 +61,8 @@ interface PushPayload {
   body: string;
   data?: { url?: string; [key: string]: unknown };
   // When set, a newer notification with the same tag replaces an older one in
-  // the tray rather than stacking (e.g. reminders for one match, the daily
-  // digest, or a result superseded by the reader's leaderboard move).
+  // the tray rather than stacking (e.g. evening nudges, thermal alerts, or
+  // stale data-source warnings).
   tag?: string;
 }
 

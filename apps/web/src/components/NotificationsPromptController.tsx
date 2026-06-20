@@ -31,22 +31,23 @@ function markPromptSeen(playerId: string): void {
  */
 export function NotificationsPromptController() {
   const { player } = useAuth();
+  const playerId = player?.id;
   const [asked, setAsked] = useState(false);
 
   useEffect(() => {
-    if (!player || asked) return;
+    if (!playerId || asked) return;
     if (!isStandalone()) return;
-    if (isPromptSeen(player.id)) return;
+    if (isPromptSeen(playerId)) return;
     if (typeof Notification === 'undefined' || Notification.permission !== 'default') return;
 
     const t = setTimeout(async () => {
       setAsked(true);
-      markPromptSeen(player.id);
+      markPromptSeen(playerId);
       await Notification.requestPermission();
     }, 3_000);
 
     return () => clearTimeout(t);
-  }, [player?.id, asked]);
+  }, [playerId, asked]);
 
   return null;
 }

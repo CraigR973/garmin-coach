@@ -6,7 +6,7 @@
 
 ## Now
 
-**Phase:** 1 Batch 8 shipped — post-workout analysis live.
+**Phase:** 1 Batch 9 implementation ready — nudges + thermal monitoring.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -20,7 +20,8 @@
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Run Phase 1 Batch 9 via `/batch-start 9`.
+**Next:** Review `feat/batch-9-nudges-thermal-monitoring`; when happy, run
+`/closeout 9` to merge and deploy.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -51,8 +52,22 @@
   syncs recent activities and triggers ride analyses once per activity; live
   generation uses the same `ANTHROPIC_API_KEY` / model settings as morning
   analysis. Strength sessions remain excluded from recovery decisions.
+- Batch 9 adds notification-backed evening nudges and alerts. `analyses` now
+  stores non-Claude notification audit rows with `analysis_type` values
+  `evening_nudge`, `thermal_alert`, and `stale_source_alert`; `sentCount=0`
+  can mean muted/quiet-hours/no subscription/no VAPID, not necessarily a rule
+  failure.
 
 ## Log
+- **2026-06-20** — Phase 1 Batch 9 implementation ready on
+  `feat/batch-9-nudges-thermal-monitoring`: added a 20:00 local sleep-protocol
+  nudge, evening thermal/source monitoring scheduler, notification event
+  idempotency/audit storage in `analyses`, timezone-aware quiet-hours delivery,
+  thermal rules for pre-cool/seal/>19.5-20C thresholds, distinct stale-source
+  alerts for Garmin/Hive/weather, and PWA notification terminology cleanup.
+  Verified backend `pytest` (DB-backed tests skipped without `DATABASE_URL`),
+  `ruff check`, `ruff format --check`, and `mypy src`; frontend `vitest`, `eslint` (existing
+  fast-refresh warnings only), and `vite build`.
 - **2026-06-20** — Phase 1 Batch 8 closed out: fast-forwarded
   `feat/batch-8-post-workout-analysis` to `main`, fixed the branch CI mypy
   portability issue in commit `f202093`, and GitHub CI passed on `main` run

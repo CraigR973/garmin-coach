@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from functools import partial
 from typing import Any
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 from pywebpush import WebPushException, webpush  # type: ignore[import-untyped,unused-ignore]
@@ -32,8 +33,19 @@ def _utc_now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
+def _local_now(timezone_name: str, now_utc: datetime | None = None) -> datetime:
+    now = now_utc or datetime.now(UTC)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=UTC)
+    try:
+        timezone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        timezone = ZoneInfo("UTC")
+    return now.astimezone(timezone).replace(tzinfo=None)
+
+
 def _is_quiet(prefs: NotificationPreferences, now: datetime) -> bool:
-    """Return True if now falls within the player's configured quiet hours."""
+    """Return True if local now falls within the configured quiet hours."""
     if prefs.quiet_hours_start is None or prefs.quiet_hours_end is None:
         return False
     start = prefs.quiet_hours_start.time()
@@ -63,6 +75,8 @@ async def send_notification(
     body: str,
     data: dict[str, Any] | None = None,
     tag: str | None = None,
+    timezone_name: str = "UTC",
+    now_utc: datetime | None = None,
 ) -> int:
     """Deliver a push notification to all active subscriptions for player_id.
 
@@ -74,7 +88,8 @@ async def send_notification(
         log.debug("VAPID keys not configured — skipping push", player_id=str(player_id))
         return 0
 
-    now = _utc_now()
+    now = now_utc.replace(tzinfo=None) if now_utc is not None else _utc_now()
+    local_current = _local_now(timezone_name, now)
 
     # ── Check preferences ─────────────────────────────────────────────────────
     prefs_result = await session.execute(
@@ -84,7 +99,7 @@ async def send_notification(
 
     suppressed = False
     if prefs is not None:
-        suppressed = prefs.global_mute or _is_quiet(prefs, now)
+        suppressed = prefs.global_mute or _is_quiet(prefs, local_current)
 
     if suppressed:
         log.debug("notification suppressed by preferences", player_id=str(player_id))

@@ -168,6 +168,33 @@ async def test_send_notification_suppressed_during_quiet_hours() -> None:
 
 
 @pytest.mark.asyncio
+async def test_send_notification_quiet_hours_use_player_timezone() -> None:
+    player_id = uuid.uuid4()
+    prefs = _prefs(
+        player_id,
+        quiet_hours_start=datetime(2000, 1, 1, 23, 0),
+        quiet_hours_end=datetime(2000, 1, 1, 7, 0),
+    )
+
+    session = AsyncMock()
+    session.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=prefs))
+
+    with (
+        patch.object(settings, "vapid_private_key", "private"),
+        patch.object(settings, "vapid_public_key", "public"),
+    ):
+        sent = await send_notification(
+            session,
+            player_id,
+            title="T",
+            body="B",
+            timezone_name="Europe/London",
+            now_utc=datetime(2026, 6, 20, 22, 30),
+        )
+    assert sent == 0
+
+
+@pytest.mark.asyncio
 async def test_send_notification_auto_disables_after_3_failures() -> None:
     from pywebpush import WebPushException
 

@@ -5,6 +5,8 @@ Current jobs:
   - hive_temperature_poll: polls Hive indoor temperature every 15 minutes
   - morning_weather_sync: pulls Kilmarnock weather at 06:30 Europe/London
   - garmin_activity_poll: polls Garmin hourly for new rides and triggers analysis
+  - evening_sleep_nudge: sends the 20:00 sleep-protocol push
+  - evening_monitoring_alerts: checks thermal and source freshness before bed
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from apscheduler.schedulers.asyncio import (  # type: ignore[import-untyped,unus
     AsyncIOScheduler,
 )
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
 from src.database import AsyncSessionLocal
@@ -33,6 +36,7 @@ from src.services.environment_sync import (
 )
 from src.services.garmin_sync import GarminConnectClient, GarminSyncService
 from src.services.morning_analysis import MorningAnalysisService
+from src.services.nudge_alerts import NudgeAlertService
 from src.services.post_workout_analysis import PostWorkoutAnalysisService
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
@@ -92,6 +96,49 @@ async def run_hive_temperature_poll() -> None:
         log.info("hive temperature poll complete", profiles=len(profiles), readings=synced)
     except Exception:
         log.exception("hive temperature poll failed")
+
+
+async def run_evening_sleep_nudge() -> None:
+    """Send the daily sleep-protocol nudge in each active profile's timezone."""
+    try:
+        async with AsyncSessionLocal() as session:
+            profiles = await _active_profiles(session)
+            if not profiles:
+                log.info("evening sleep nudge skipped", reason="no_active_profiles")
+                return
+
+            service = NudgeAlertService(session)
+            nudges_recorded = 0
+            for profile in profiles:
+                if await service.run_evening_nudge(profile, commit=False):
+                    nudges_recorded += 1
+            await session.commit()
+        log.info("evening sleep nudge complete", profiles=len(profiles), nudges=nudges_recorded)
+    except Exception:
+        log.exception("evening sleep nudge failed")
+
+
+async def run_evening_monitoring_alerts() -> None:
+    """Check bedtime thermal state and source freshness for active profiles."""
+    try:
+        async with AsyncSessionLocal() as session:
+            profiles = await _active_profiles(session)
+            if not profiles:
+                log.info("evening monitoring alerts skipped", reason="no_active_profiles")
+                return
+
+            service = NudgeAlertService(session)
+            alerts_recorded = 0
+            for profile in profiles:
+                alerts_recorded += await service.run_monitoring_alerts(profile, commit=False)
+            await session.commit()
+        log.info(
+            "evening monitoring alerts complete",
+            profiles=len(profiles),
+            alerts=alerts_recorded,
+        )
+    except Exception:
+        log.exception("evening monitoring alerts failed")
 
 
 async def run_morning_weather_sync() -> None:
@@ -230,6 +277,21 @@ async def run_garmin_activity_poll() -> None:
         log.exception("garmin activity poll failed")
 
 
+async def _active_profiles(session: AsyncSession) -> list[Profile]:
+    return list(
+        (
+            await session.execute(
+                select(Profile).where(
+                    Profile.is_active.is_(True),
+                    Profile.deleted_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
 def _profile_today(profile: Profile) -> date:
     try:
         timezone = ZoneInfo(profile.timezone)
@@ -311,5 +373,27 @@ def create_scheduler() -> AsyncIOScheduler:
         coalesce=True,
         max_instances=1,
         next_run_time=datetime.now(UTC) + timedelta(minutes=5),
+    )
+    scheduler.add_job(
+        run_evening_sleep_nudge,
+        trigger="cron",
+        hour=20,
+        minute=0,
+        timezone=settings.weather_timezone,
+        id="evening_sleep_nudge",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        run_evening_monitoring_alerts,
+        trigger="cron",
+        hour="19-22",
+        minute="0,15,30,45",
+        timezone=settings.weather_timezone,
+        id="evening_monitoring_alerts",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
     )
     return scheduler
