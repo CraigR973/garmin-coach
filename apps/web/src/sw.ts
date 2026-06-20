@@ -34,9 +34,10 @@ registerRoute(
   ),
 );
 
-// ─── API caching — Phase 1 will add garmin-coach route rules here ─────────────
-// Auth endpoints (me/profile, push/vapid-public-key) are network-first with a
-// short timeout; all restrict cached responses to GET 200s.
+// ─── API caching ─────────────────────────────────────────────────────────────
+// All routes are network-first: fresh data on a good connection; cached
+// fallback when the device is offline. Restricted to GET 200s so auth errors
+// and 4xx responses are never served from cache.
 
 registerRoute(
   ({ url, request }) =>
@@ -46,6 +47,21 @@ registerRoute(
     networkTimeoutSeconds: 3,
     plugins: [
       new ExpirationPlugin({ maxEntries: 10, maxAgeSeconds: 60 * 5 }),
+      new CacheableResponsePlugin({ statuses: [200] }),
+    ],
+  }),
+);
+
+// Daily-loop: cached for up to 24 h so the coaching brief is readable offline.
+// The network-first strategy with a 5 s timeout means online users always get
+// the freshest data; the stale copy is the offline fallback.
+registerRoute(
+  ({ url, request }) => request.method === 'GET' && url.pathname === '/api/v1/daily-loop',
+  new NetworkFirst({
+    cacheName: 'api-daily-loop',
+    networkTimeoutSeconds: 5,
+    plugins: [
+      new ExpirationPlugin({ maxEntries: 5, maxAgeSeconds: 60 * 60 * 24 }),
       new CacheableResponsePlugin({ statuses: [200] }),
     ],
   }),

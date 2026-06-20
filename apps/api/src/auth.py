@@ -24,7 +24,6 @@ _bearer = HTTPBearer(auto_error=True)
 
 ACCESS_TTL = timedelta(hours=24)
 REFRESH_TTL = timedelta(days=30)
-EMAIL_VERIFY_TTL = timedelta(hours=24)
 PIN_RESET_TTL = timedelta(minutes=30)
 MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_DURATION = timedelta(minutes=15)
@@ -102,30 +101,6 @@ def decode_refresh_token(token: str) -> dict[str, Any]:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
         )
-
-
-def create_email_verify_token(email: str) -> str:
-    payload = {
-        "sub": email.lower(),
-        "scope": "email_verify",
-        "exp": _now() + EMAIL_VERIFY_TTL,
-        "iat": _now(),
-    }
-    return jwt.encode(payload, settings.jwt_access_secret, algorithm="HS256")
-
-
-def decode_email_verify_token(token: str) -> dict[str, Any]:
-    try:
-        payload = jwt.decode(token, settings.jwt_access_secret, algorithms=["HS256"])
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Verification link expired"
-        )
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
-    if payload.get("scope") != "email_verify":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
-    return payload
 
 
 def create_pin_reset_token(player_id: uuid.UUID) -> str:

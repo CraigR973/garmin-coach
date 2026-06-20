@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiFetch } from '@/lib/api';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 const textareaClassName =
   'min-h-[120px] w-full rounded-md border border-border bg-bg px-3 py-3 text-sm text-text-primary shadow-sm focus-visible:outline-none focus-visible:shadow-glow';
@@ -126,6 +127,7 @@ async function fetchDailyLoop() {
 export function DashboardPage() {
   const { player } = useAuth();
   const queryClient = useQueryClient();
+  const isOnline = useOnlineStatus();
   const [manualForm, setManualForm] = useState<ManualFormState>(emptyManualForm);
   const [adherenceForms, setAdherenceForms] = useState<Record<string, AdherenceFormState>>({});
 
@@ -270,6 +272,14 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {!isOnline && (
+        <div
+          role="status"
+          className="rounded-xl border border-amber-700/60 bg-amber-900/20 px-4 py-3 text-sm text-amber-200"
+        >
+          You&apos;re offline — showing cached data for {data.subjectDate}
+        </div>
+      )}
       <PageHeader
         title={`Good morning${player ? `, ${player.displayName}` : ''}`}
         eyebrow="Daily Loop"
