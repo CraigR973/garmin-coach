@@ -1,7 +1,7 @@
 import { useId } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Home, Settings as SettingsIcon, type LucideIcon } from 'lucide-react';
+import { ClipboardList, Home, Settings as SettingsIcon, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface TabDef {
@@ -12,6 +12,7 @@ interface TabDef {
 
 const TABS: ReadonlyArray<TabDef> = [
   { to: '/', label: 'Home', Icon: Home },
+  { to: '/coach-state', label: 'Coach', Icon: ClipboardList },
   { to: '/settings', label: 'Settings', Icon: SettingsIcon },
 ];
 

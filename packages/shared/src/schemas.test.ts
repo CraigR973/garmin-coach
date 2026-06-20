@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   activityTimeSeriesSchema,
+  coachingStateEnvelopeSchema,
   dailyMetricSchema,
+  knowledgeBaseUpdateInputSchema,
+  plannedWorkoutOverrideInputSchema,
   profileSchema,
   sleepSchema,
   weatherDailySchema,
@@ -96,5 +99,83 @@ describe('v1 shared schemas', () => {
     });
 
     expect(parsed.overnightWindGustMph).toBe(15.5);
+  });
+
+  it('parses the coaching-state envelope used by the internal editor', () => {
+    const parsed = coachingStateEnvelopeSchema.parse({
+      data: {
+        knowledgeBaseSections: [
+          {
+            id: rowId,
+            userId,
+            section: 'profile',
+            version: 1,
+            isActive: true,
+            source: 'batch_5_seed',
+            content: { ftpWatts: 280, vo2max: 54 },
+            updatedByProfileId: userId,
+          },
+        ],
+        planBlocks: [
+          {
+            id: rowId,
+            userId,
+            name: 'Week 01 Build 1',
+            version: 1,
+            sequenceIndex: 1,
+            blockType: 'build',
+            startDate: '2026-06-22',
+            endDate: '2026-06-28',
+            goalsJson: { focus: 'Aerobic build' },
+            rawPlan: {},
+          },
+        ],
+        plannedWorkouts: [
+          {
+            id: rowId,
+            userId,
+            planBlockId: rowId,
+            workoutDate: '2026-06-23',
+            version: 1,
+            title: 'VO2 Max 30/30',
+            workoutType: 'bike_vo2',
+            status: 'planned',
+            isActive: true,
+            plannedDurationMin: 60,
+            intensityTarget: '105-110% FTP',
+            structuredWorkout: { steps: [] },
+            source: 'batch_5_seed',
+          },
+        ],
+      },
+      meta: {
+        generatedAtUtc: '2026-06-20T09:00:00.000Z',
+        seeded: true,
+      },
+      errors: [],
+    });
+
+    expect(parsed.data.knowledgeBaseSections[0]?.section).toBe('profile');
+    expect(parsed.meta.seeded).toBe(true);
+  });
+
+  it('validates knowledge-base updates and workout override inputs', () => {
+    const kb = knowledgeBaseUpdateInputSchema.parse({
+      source: 'manual_edit',
+      content: { bedtime: '23:15' },
+    });
+    const workout = plannedWorkoutOverrideInputSchema.parse({
+      planBlockId: null,
+      title: 'Sweet Spot Builder',
+      workoutType: 'bike_sweet_spot',
+      status: 'planned',
+      plannedDurationMin: 75,
+      intensityTarget: '88-94% FTP',
+      structuredWorkout: { steps: [{ label: 'Main set', minutes: 24 }] },
+      source: 'coach_override',
+    });
+
+    expect(kb.content.bedtime).toBe('23:15');
+    expect(workout.structuredWorkout.steps).toHaveLength(1);
   });
 });

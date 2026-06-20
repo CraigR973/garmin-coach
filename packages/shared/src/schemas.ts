@@ -258,3 +258,41 @@ export const knowledgeBaseSchema = z.object({
   content: jsonObjectSchema.default({}),
   updatedByProfileId: z.string().uuid().nullable().optional(),
 });
+
+export const apiErrorSchema = z.object({
+  code: z.string().min(1),
+  detail: z.string().min(1),
+});
+
+export const apiMetaSchema = z.object({
+  generatedAtUtc: isoDateTimeSchema,
+  seeded: z.boolean().optional(),
+});
+
+export const coachingStateSchema = z.object({
+  knowledgeBaseSections: z.array(knowledgeBaseSchema),
+  planBlocks: z.array(planBlockSchema),
+  plannedWorkouts: z.array(plannedWorkoutSchema),
+});
+
+export const coachingStateEnvelopeSchema = z.object({
+  data: coachingStateSchema,
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
+
+export const knowledgeBaseUpdateInputSchema = z.object({
+  source: z.string().min(1).nullable().optional(),
+  content: jsonObjectSchema,
+});
+
+export const plannedWorkoutOverrideInputSchema = z.object({
+  planBlockId: z.string().uuid().nullable().optional(),
+  title: z.string().min(1),
+  workoutType: z.string().min(1),
+  status: plannedWorkoutStatusSchema.default('planned'),
+  plannedDurationMin: z.number().int().positive().nullable().optional(),
+  intensityTarget: z.string().nullable().optional(),
+  structuredWorkout: jsonObjectSchema,
+  source: z.string().min(1).nullable().optional(),
+});

@@ -1,5 +1,5 @@
 import { NavLink, Link } from 'react-router-dom';
-import { Moon, Sun, Settings, LogOut } from 'lucide-react';
+import { ClipboardList, Moon, Sun, Settings, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Brand } from '@/components/Brand';
@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 
 const DESKTOP_NAV = [
   { to: '/', label: 'Home', exact: true },
+  { to: '/coach-state', label: 'Coach', exact: false },
   { to: '/settings', label: 'Settings', exact: false },
 ];
 
@@ -48,7 +49,13 @@ export function TopBar() {
       >
         <span className="text-sm text-text-secondary font-sans">{player.displayName}</span>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+        <DropdownMenuContent align="end">
+        <DropdownMenuItem asChild>
+          <Link to="/coach-state">
+            <ClipboardList className="h-4 w-4" aria-hidden />
+            Coach State
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link to="/settings">
             <Settings className="h-4 w-4" aria-hidden />

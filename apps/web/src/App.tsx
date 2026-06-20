@@ -22,6 +22,9 @@ const DashboardPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 );
+const CoachStatePage = lazy(() =>
+  import('./pages/CoachStatePage').then((m) => ({ default: m.CoachStatePage })),
+);
 const OfflinePage = lazy(() =>
   import('./pages/OfflinePage').then((m) => ({ default: m.OfflinePage })),
 );
@@ -76,6 +79,7 @@ export function App() {
                   <Route element={<ProtectedRoute />}>
                     <Route element={<Layout />}>
                       <Route path="/" element={<DashboardPage />} />
+                      <Route path="/coach-state" element={<CoachStatePage />} />
                       <Route path="/settings" element={<SettingsPage />} />
                       <Route path="/offline" element={<OfflinePage />} />
                     </Route>
