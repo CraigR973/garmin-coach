@@ -72,3 +72,6 @@ decision — if you change course, add a new entry that supersedes the old one.
 
 ### 2026-06-20 — Phase 1 prep
 40. **Codex has no shared project-level custom-prompt path to rely on.** Current OpenAI docs say Codex custom prompts are deprecated and loaded from the user-level `~/.codex/prompts`, while project `.codex/` layers cover config/hooks/rules. This repo keeps reviewable Codex wrapper sources in `.codex/prompts/`, but they must be copied or symlinked into `~/.codex/prompts/` to be invokable. *Why:* keeps the cross-tool procedures in-repo without pretending Codex will auto-load a project prompt folder that the official docs do not promise.
+
+### 2026-06-20 — Phase 1 Batch 1
+41. **`profiles` remains the private user table for v1, instead of renaming it to `users`.** Batch 1 extends `profiles` with Garmin/Hive/location metadata and adds the v1 coaching tables around it. *Why:* the stripped auth skeleton, refresh tokens, notification preferences, audit log, and live migration `001` already depend on `profiles`; renaming a live auth table during the data-model batch would add deployment risk without improving the product. The product/API can still describe these rows as users.

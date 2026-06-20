@@ -72,6 +72,11 @@ Validated 19 Jun with a real sample → his verdict "fantastic." Demonstrated 5 
 
 Seed `sleep`/`daily_metrics` with his **84-night backfill** (`12 Weeks Sleep Data` xlsx, 24 Mar–15 Jun; trust all cols except Duration).
 
+Phase 1 Batch 1 implements this as additive migration `002`: the inherited
+`profiles` table remains the private auth/user table, with Garmin Coach metadata
+added to it, and the v1 domain tables live beside it. Data-shape evidence is in
+`docs/v1-data-shape-audit.md`.
+
 ## 6. Roadmap
 
 **v1 — daily loop:** 3 syncs + 84-night backfill; store plans (ingested from his docs) + per-day override; morning + post-workout analysis; manual check-in; adherence ("did he do it?"); evening nudges; data-quality guardian; thermal monitoring.
@@ -86,3 +91,4 @@ Seed `sleep`/`daily_metrics` with his **84-night backfill** (`12 Weeks Sleep Dat
 - [x] **Phase 0a** — football domain stripped; clean auth skeleton (`@coach/shared`)
 - [x] **Phase 0b** — provision Supabase + Railway + Vercel + GitHub
 - [x] Deployable skeleton: auth + empty dashboard live
+- [ ] **Phase 1 Batch 1** — data model + profile seed branch in review

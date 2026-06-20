@@ -6,7 +6,7 @@
 
 ## Now
 
-**Phase:** 1 PREP — batch workflow ready.
+**Phase:** 1 Batch 1 — data model + profile seed branch ready for review.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -20,7 +20,7 @@
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Run Phase 1 Batch 1 via `/batch-start`.
+**Next:** Review branch `feat/batch-1-data-model`; when approved, run `/closeout`.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -33,8 +33,15 @@
 - Vercel previews currently proxy `/api/*` to the production Railway API/DB, so use previews for visual review and avoid mutating real data there.
 - Supabase pooler: **session mode (port 5432)** only — asyncpg named prepared statements conflict in transaction mode (port 6543).
 - Admin profiles must be seeded directly in DB (no signup endpoint by design — Decision #21).
+- Mark seed helper is
+  `MARK_PIN=1234 PYTHONPATH=/Users/craigrobinson/garmin-coach/apps/api /Users/craigrobinson/garmin-coach/apps/api/.venv/bin/python -m src.seeds`
+  after migration `002` is applied; replace `1234` with the real PIN and never commit it.
 
 ## Log
+- **2026-06-20** — Phase 1 Batch 1 implementation ready on
+  `feat/batch-1-data-model`: added `002` v1 coaching schema, SQLAlchemy domain
+  models, Mark profile seed helper, shared Zod/TS schemas, data-shape audit, and
+  tests. Verified backend pytest/ruff/mypy plus shared package test/typecheck.
 - **2026-06-20** — Phase 1 prep complete: added `docs/phase-batches.md`,
   tool-agnostic batch procedures, Claude wrappers, Codex prompt-source wrappers
   with the user-level `~/.codex/prompts` caveat, and fixed stop hooks to point at
