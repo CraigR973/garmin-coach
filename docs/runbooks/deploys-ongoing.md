@@ -4,19 +4,20 @@ Day-to-day deploy and recovery notes for the live Phase 0b stack.
 
 ## Current Posture
 
-Production is live, but deploys are still manual:
+Production is live and GitHub-connected:
 
-- Backend: Railway service `api`, deployed with `railway up --service api`
-- Frontend: Vercel project `garmin-coach-one`, deployed with `~/.local/bin/vercel --prod`
+- Backend: Railway service `api`, auto-deployed from `CraigR973/garmin-coach` branch `main`
+- Frontend: Vercel project `garmin-coach`, auto-deployed from `CraigR973/garmin-coach` production branch `main`
+- Frontend previews: Vercel creates PR/branch preview deployments
 - Database: Supabase project `pzqmswvozjnkxbqqowuj`, schema `coach`
 
-Railway is not connected to GitHub auto-deploy yet. Vercel should be treated as manual unless the dashboard shows a Git provider link.
-
-Recommended next operational decision: connect both Railway and Vercel to GitHub, with production deploys from `main` and Vercel preview deploys for PRs/branches. If that is chosen, append a new `DECISIONS.md` entry superseding Decision #37.
+Manual CLI deploys are break-glass only. See Decision #39.
 
 ## Backend Deploy
 
-For backend code, migrations, or backend env changes:
+For backend code or migrations, push/merge to `main`. Railway builds the repo-root Dockerfile and deploys service `api`.
+
+Break-glass manual deploy:
 
 ```bash
 railway up --service api
@@ -43,7 +44,9 @@ Notes:
 
 ## Frontend Deploy
 
-For frontend code/config changes:
+For frontend code/config changes, push/merge to `main`. Vercel builds from the repo-root project with root `vercel.json`.
+
+Break-glass manual deploy:
 
 ```bash
 ~/.local/bin/vercel --prod
@@ -96,26 +99,31 @@ Supabase:
 - Treat DB rollback as a migration exercise, not a dashboard click.
 - Use Alembic downgrade only after checking whether live data would be lost.
 
-## Optional GitHub Auto-Deploy Checklist
-
-Only do this after Craig explicitly chooses auto-deploy.
+## GitHub Auto-Deploy Verification
 
 Railway:
 
-1. Open the Railway project.
-2. Go to service `api` > Settings > Source Repo.
-3. Connect `CraigR973/garmin-coach`.
-4. Set branch to `main`.
-5. Keep Root Directory as repo root.
-6. Trigger one deploy and verify `/api/v1/health`.
+```bash
+railway status
+railway service source connect --repo CraigR973/garmin-coach --branch main --service api --json
+```
+
+The second command is idempotent; it should report repo `CraigR973/garmin-coach`, branch `main`, and `disconnected: false`.
 
 Vercel:
 
-1. Open the Vercel project settings.
-2. Connect Git provider repo `CraigR973/garmin-coach`.
-3. Keep project root at repo root.
-4. Confirm Node 20 is selected/respected.
-5. Confirm production branch is `main`.
-6. Confirm PR/branch preview deploys are enabled.
+```bash
+~/.local/bin/vercel git connect --cwd /Users/craigrobinson/garmin-coach
+~/.local/bin/vercel api /v9/projects/prj_fHufaAaQq2jGuDX8nvI6LwUQOIdL --cwd /Users/craigrobinson/garmin-coach
+```
+
+Expected Vercel project fields:
+
+- `link.type`: `github`
+- `link.org`: `CraigR973`
+- `link.repo`: `garmin-coach`
+- `link.productionBranch`: `main`
+- `gitProviderOptions.createDeployments`: `enabled`
+- `nodeVersion`: `20.x`
 
 With the current single-backend posture, Vercel preview deploys proxy to the production Railway API and production database. Preview is fine for visual review; avoid mutating production data from previews.
