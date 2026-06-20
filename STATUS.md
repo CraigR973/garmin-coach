@@ -6,7 +6,7 @@
 
 ## Now
 
-**Phase:** 1 Batch 5 implemented on `feat/batch-5-training-plan-kb` — coaching state editor ready for review.
+**Phase:** 1 Batch 5 shipped — coaching state editor live.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -20,7 +20,7 @@
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Review the new `/coach-state` admin surface on the branch preview, then use `/closeout` for Batch 5 if it looks good.
+**Next:** Run Phase 1 Batch 6 via `/batch-start 6`.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -45,6 +45,15 @@
 - Batch 5 adds an admin-only retained-state editor at `/coach-state`; its first load seeds the knowledge-base sections plus a 13-week 2121 workout slate if the user has no existing retained state yet.
 
 ## Log
+- **2026-06-20** — Phase 1 Batch 5 closed out: fast-forwarded
+  `feat/batch-5-training-plan-kb` to `main`, GitHub CI passed on commit
+  `82015cd`, Railway deployed the backend and `/api/v1/health` reported that
+  SHA, Vercel production returned `HTTP 200`, and the same-origin
+  `/api/v1/health` rewrite returned the deployed SHA. Batch 5's non-mutating
+  production smoke check passed by confirming the deployed OpenAPI exposes the
+  new `/api/v1/admin/coaching-state`, knowledge-base, and planned-workout
+  override routes. Batch 5 marked shipped; next up is Batch 6 morning analysis
+  engine.
 - **2026-06-20** — Phase 1 Batch 5 implementation ready on
   `feat/batch-5-training-plan-kb`: added an admin-only `/api/v1/admin/coaching-state`
   envelope API that lazily seeds the knowledge base and a 13-week 2121 plan,
