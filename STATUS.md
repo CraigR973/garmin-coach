@@ -6,7 +6,7 @@
 
 ## Now
 
-**Phase:** 1 Batch 3 shipped — Hive + weather syncs live.
+**Phase:** 1 Batch 4 implementation ready on `feat/batch-4-backfill-baselines`.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -20,7 +20,7 @@
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Run Phase 1 Batch 4 via `/batch-start 4`.
+**Next:** Review Batch 4's spreadsheet backfill/baseline flow, then run `/closeout 4` when you're happy to merge and ship it.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -39,8 +39,19 @@
 - Garmin sync uses `GARMIN_EMAIL` / `GARMIN_PASSWORD` from the environment plus
   `GARMIN_TOKENSTORE` for garth's persisted token cache; the app does not store
   Garmin secrets in Postgres.
+- Batch 4 one-shot import command is
+  `PYTHONPATH=/Users/craigrobinson/garmin-coach/apps/api /Users/craigrobinson/garmin-coach/apps/api/.venv/bin/python -m src.sleep_history_backfill --dry-run "/Users/craigrobinson/Downloads/Dad Fitness/12 Weeks Sleep Data 15.06.26.xlsx"`
+  then rerun without `--dry-run` to write the backfill.
 
 ## Log
+- **2026-06-20** — Phase 1 Batch 4 implementation ready on
+  `feat/batch-4-backfill-baselines`: added an admin-only XLSX backfill command
+  for `12 Weeks Sleep Data 15.06.26.xlsx`, imported 84-night historical
+  `sleep` + `daily_metrics` rows with rerun-safe dry-run/apply behavior,
+  persisted queryable `metric_baselines` summaries for morning analysis, and
+  excluded pre-2026-06-11 SpO2/HRV rows from baseline calculations per the
+  existing data-quality rule. Verified backend `pytest`, `ruff check`, and
+  `mypy src` locally.
 - **2026-06-20** — Phase 1 Batch 3 closed out: merged PR #1
   `feat/batch-3-hive-weather-syncs` to `main`, GitHub CI passed on merge commit
   `7f06d1f`, Railway deployed the backend and `/api/v1/health` reported that

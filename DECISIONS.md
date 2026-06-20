@@ -81,3 +81,7 @@ decision — if you change course, add a new entry that supersedes the old one.
 
 ### 2026-06-20 — Phase 1 Batch 3
 43. **`weather_daily` stores explicit overnight wind max/gust columns, not only raw Open-Meteo JSON.** *Why:* sleep disruption depends on overnight environment, and Batch 3's acceptance criteria require overnight low/wind to be first-class queryable context for later morning analysis and thermal monitoring.
+
+### 2026-06-20 — Phase 1 Batch 4
+44. **Backfilled morning-analysis baselines live in a dedicated `metric_baselines` table, not ad-hoc JSON on `profiles` or recalculation-only code.** The 84-night spreadsheet importer upserts historical `sleep` + `daily_metrics` rows and then persists reproducible summary stats per metric (mean/median/quartiles/range/stddev) with the source window recorded. *Why:* Batch 6 needs inspectable, queryable baseline helpers, and storing them separately keeps the import rerunnable, the provenance explicit, and future baseline recomputes/admin refreshes simple.
+45. **SpO2 and HRV baselines exclude spreadsheet rows before 2026-06-11, while the raw backfill still imports the full 84 nights.** *Why:* Mark's documented data-quality rule says strap-tightening on 11 Jun is the reliability boundary for those metrics; preserving all source rows keeps history intact, but baseline comparisons should not normalize against known-bad physiology data.

@@ -28,6 +28,7 @@ dependencies = [
     "structlog>=24.4.0",
     "slowapi>=0.1.9",
     "sentry-sdk[fastapi]>=2.10.0",
+    "openpyxl>=3.1.5",
 ]
 
 [project.optional-dependencies]
@@ -49,6 +50,10 @@ select = ["E", "F", "I", "UP"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["garminconnect", "pyhiveapi"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
