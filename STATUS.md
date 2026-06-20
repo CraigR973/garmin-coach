@@ -6,13 +6,12 @@
 
 ## Now
 
-**Phase:** 1 Batch 3 implementation ready — Hive + weather syncs on
-`feat/batch-3-hive-weather-syncs`.
+**Phase:** 1 Batch 3 shipped — Hive + weather syncs live.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
 - Backend: https://api-production-e2bc7.up.railway.app/api/v1/health → `{"status":"ok"}` plus current deployed SHA
-- DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-002 applied
+- DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-003 applied
 
 **Hosting identifiers (non-secret):**
 - GitHub repo: https://github.com/CraigR973/garmin-coach (private)
@@ -21,8 +20,7 @@
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Review/verify Phase 1 Batch 3, then run `/closeout 3` only after the
-branch is accepted.
+**Next:** Run Phase 1 Batch 4 via `/batch-start 4`.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -37,12 +35,18 @@ branch is accepted.
 - Admin profiles must be seeded directly in DB (no signup endpoint by design — Decision #21).
 - Mark seed helper is
   `MARK_PIN=1234 PYTHONPATH=/Users/craigrobinson/garmin-coach/apps/api /Users/craigrobinson/garmin-coach/apps/api/.venv/bin/python -m src.seeds`
-  after migration `002` is applied; replace `1234` with the real PIN and never commit it.
+  after migration `003` is applied; replace `1234` with the real PIN and never commit it.
 - Garmin sync uses `GARMIN_EMAIL` / `GARMIN_PASSWORD` from the environment plus
   `GARMIN_TOKENSTORE` for garth's persisted token cache; the app does not store
   Garmin secrets in Postgres.
 
 ## Log
+- **2026-06-20** — Phase 1 Batch 3 closed out: merged PR #1
+  `feat/batch-3-hive-weather-syncs` to `main`, GitHub CI passed on merge commit
+  `7f06d1f`, Railway deployed the backend and `/api/v1/health` reported that
+  SHA, Vercel production returned `HTTP 200`, and the same-origin
+  `/api/v1/health` rewrite returned the deployed SHA. Batch 3 marked shipped;
+  next up is Batch 4 84-night backfill + baselines.
 - **2026-06-20** — Phase 1 Batch 3 implementation ready on
   `feat/batch-3-hive-weather-syncs`: added Hive `pyhiveapi` re-login wrapper,
   real-fixture Hive temperature parsing/upserts, Open-Meteo Kilmarnock daily +

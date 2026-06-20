@@ -95,3 +95,4 @@ added to it, and the v1 domain tables live beside it. Data-shape evidence is in
 - [x] Deployable skeleton: auth + empty dashboard live
 - [x] **Phase 1 Batch 1** — data model + profile seed shipped
 - [x] **Phase 1 Batch 2** — Garmin sync foundation shipped
+- [x] **Phase 1 Batch 3** — Hive + weather syncs shipped
