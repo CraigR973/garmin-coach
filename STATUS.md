@@ -40,6 +40,11 @@
 - Admin profiles must be seeded directly in DB (no signup endpoint by design — Decision #21).
 
 ## Log
+- **2026-06-20** — Auto-deploy verified end-to-end on `main` before this handoff
+  log commit: GitHub CI green on `05f3c71`; Railway auto-deployed it and
+  `/api/v1/health` returned that SHA; Vercel production deploy was Ready.
+  Incidental CI cleanup: formatted two API files and added typed `RESEND_API_KEY`
+  / `EMAIL_FROM` settings defaults used by the email service.
 - **2026-06-20** — Auto-deploy enabled after Craig approved the switch: Railway service
   `api` connected to GitHub `CraigR973/garmin-coach` branch `main`; Vercel project
   `garmin-coach` connected to the same repo with production branch `main`, Git
