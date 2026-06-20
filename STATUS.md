@@ -6,12 +6,12 @@
 
 ## Now
 
-**Phase:** 1 Batch 7 implementation ready on `feat/batch-7-daily-app-loop-surfaces`.
+**Phase:** 1 Batch 7 shipped — daily app loop live.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
 - Backend: https://api-production-e2bc7.up.railway.app/api/v1/health → `{"status":"ok"}` plus current deployed SHA
-- DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-004 applied on production; migration `005` pending Batch 7 closeout
+- DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-005 applied
 
 **Hosting identifiers (non-secret):**
 - GitHub repo: https://github.com/CraigR973/garmin-coach (private)
@@ -20,7 +20,7 @@
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Review Batch 7's daily-loop UI/API on `feat/batch-7-daily-app-loop-surfaces`, then run `/closeout 7` once the branch is accepted.
+**Next:** Run Phase 1 Batch 8 via `/batch-start 8`.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -49,6 +49,15 @@
   per-profile analysis failures without failing the whole weather job.
 
 ## Log
+- **2026-06-20** — Phase 1 Batch 7 closed out: fast-forwarded
+  `feat/batch-7-daily-app-loop-surfaces` to `main`, GitHub CI passed on commit
+  `cb65532`, Railway deployed the backend and `/api/v1/health` reported that
+  SHA, Vercel production returned `HTTP 200`, and the same-origin
+  `/api/v1/health` rewrite returned the deployed SHA. Batch 7's non-mutating
+  production smoke check passed by confirming the shipped OpenAPI exposes the
+  new `/api/v1/daily-loop`, manual-entry, and adherence routes, and the live
+  protected `/api/v1/daily-loop` endpoint returned `401` without credentials.
+  Batch 7 marked shipped; next up is Batch 8 post-workout analysis.
 - **2026-06-20** — Phase 1 Batch 7 implementation ready on
   `feat/batch-7-daily-app-loop-surfaces`: added a player-facing
   `/api/v1/daily-loop` envelope API for today's verdict, metrics, plan,
