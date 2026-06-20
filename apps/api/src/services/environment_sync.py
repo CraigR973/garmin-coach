@@ -104,7 +104,7 @@ class HiveClient:
 
         self.credentials.validate()
         try:
-            from pyhiveapi import API, Auth  # type: ignore[import-untyped]
+            from pyhiveapi import API, Auth
         except ImportError as exc:  # pragma: no cover - exercised only in missing envs
             raise EnvironmentSyncError("pyhiveapi is not installed.") from exc
 
