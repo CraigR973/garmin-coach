@@ -159,9 +159,7 @@ def _envelope(
                 _serialize_knowledge_base(section) for section in knowledge_base_sections
             ],
             planBlocks=[_serialize_plan_block(block) for block in plan_blocks],
-            plannedWorkouts=[
-                _serialize_planned_workout(workout) for workout in planned_workouts
-            ],
+            plannedWorkouts=[_serialize_planned_workout(workout) for workout in planned_workouts],
         ),
         meta=ApiMeta(generatedAtUtc=_generated_at(), seeded=seeded),
         errors=[],
