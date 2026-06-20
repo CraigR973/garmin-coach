@@ -6,12 +6,12 @@
 
 ## Now
 
-**Phase:** 1 Batch 4 implementation ready on `feat/batch-4-backfill-baselines`.
+**Phase:** 1 Batch 4 shipped — historical backfill + baselines live.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
 - Backend: https://api-production-e2bc7.up.railway.app/api/v1/health → `{"status":"ok"}` plus current deployed SHA
-- DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-003 applied
+- DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-004 applied
 
 **Hosting identifiers (non-secret):**
 - GitHub repo: https://github.com/CraigR973/garmin-coach (private)
@@ -20,7 +20,7 @@
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Review Batch 4's spreadsheet backfill/baseline flow, then run `/closeout 4` when you're happy to merge and ship it.
+**Next:** Run Phase 1 Batch 5 via `/batch-start 5`.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -44,6 +44,15 @@
   then rerun without `--dry-run` to write the backfill.
 
 ## Log
+- **2026-06-20** — Phase 1 Batch 4 closed out: merged PR #2
+  `feat/batch-4-backfill-baselines` to `main`, GitHub CI passed on merge commit
+  `8f3a125`, Railway deployed the backend and `/api/v1/health` reported that
+  SHA, Vercel production returned `HTTP 200`, and the same-origin
+  `/api/v1/health` rewrite returned the deployed SHA. Batch 4's non-mutating
+  smoke check passed by parsing the real `12 Weeks Sleep Data 15.06.26.xlsx`
+  workbook on `main` (84 rows, 24 Mar-15 Jun window, expected SpO2/HRV
+  reliability exclusions). Batch 4 marked shipped; next up is Batch 5 training
+  plan + knowledge base.
 - **2026-06-20** — Phase 1 Batch 4 implementation ready on
   `feat/batch-4-backfill-baselines`: added an admin-only XLSX backfill command
   for `12 Weeks Sleep Data 15.06.26.xlsx`, imported 84-night historical
