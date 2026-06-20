@@ -86,6 +86,20 @@ class AnalysisOut(BaseModel):
     thermalReview: dict[str, Any]
 
 
+class PostWorkoutAnalysisOut(BaseModel):
+    id: str
+    activityId: str | None
+    activityName: str | None
+    activityType: str | None
+    generatedAtUtc: str
+    promptVersion: str
+    modelName: str | None
+    outputMarkdown: str
+    recoveryDecision: dict[str, Any]
+    timeSeriesSummary: dict[str, Any]
+    tomorrowImpact: str | None
+
+
 class DailyMetricOut(BaseModel):
     id: str
     userId: str
@@ -182,6 +196,7 @@ class DailyLoopData(BaseModel):
     dailyMetrics: DailyMetricOut | None
     sleep: SleepOut | None
     manualEntry: ManualEntryOut | None
+    postWorkoutAnalyses: list[PostWorkoutAnalysisOut]
     plannedWorkouts: list[PlannedWorkoutOut]
     thermalState: ThermalStateOut
     dataQualityWarnings: list[DataQualityWarningOut]
@@ -243,6 +258,39 @@ def _serialize_analysis(analysis: Analysis | None) -> AnalysisOut | None:
         if isinstance(verdict, dict)
         else None,
         thermalReview=thermal_review if isinstance(thermal_review, dict) else {},
+    )
+
+
+def _serialize_post_workout_analysis(analysis: Analysis) -> PostWorkoutAnalysisOut:
+    packet = analysis.context_packet if isinstance(analysis.context_packet, dict) else {}
+    activity = packet.get("activity", {}) if isinstance(packet.get("activity", {}), dict) else {}
+    recovery_decision = (
+        packet.get("recoveryDecision", {})
+        if isinstance(packet.get("recoveryDecision", {}), dict)
+        else {}
+    )
+    time_series_summary = (
+        packet.get("timeSeriesSummary", {})
+        if isinstance(packet.get("timeSeriesSummary", {}), dict)
+        else {}
+    )
+    tomorrow_impact = packet.get("tomorrowImpact")
+    return PostWorkoutAnalysisOut(
+        id=str(analysis.id),
+        activityId=str(analysis.activity_id) if analysis.activity_id else None,
+        activityName=(
+            activity.get("activityName") if isinstance(activity.get("activityName"), str) else None
+        ),
+        activityType=(
+            activity.get("activityType") if isinstance(activity.get("activityType"), str) else None
+        ),
+        generatedAtUtc=_dt(analysis.generated_at_utc) or "",
+        promptVersion=analysis.prompt_version,
+        modelName=analysis.model_name,
+        outputMarkdown=analysis.output_markdown,
+        recoveryDecision=recovery_decision,
+        timeSeriesSummary=time_series_summary,
+        tomorrowImpact=tomorrow_impact if isinstance(tomorrow_impact, str) else None,
     )
 
 
@@ -348,6 +396,10 @@ def _envelope(player: CurrentPlayer, snapshot: Any) -> DailyLoopEnvelope:
             dailyMetrics=_serialize_daily_metric(snapshot.daily_metric),
             sleep=_serialize_sleep(snapshot.sleep),
             manualEntry=_serialize_manual_entry(snapshot.manual_entry),
+            postWorkoutAnalyses=[
+                _serialize_post_workout_analysis(analysis)
+                for analysis in snapshot.post_workout_analyses
+            ],
             plannedWorkouts=planned_workouts,
             thermalState=ThermalStateOut(
                 latestTemperatureC=(

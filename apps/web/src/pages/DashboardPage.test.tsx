@@ -98,6 +98,21 @@ const snapshot = {
       rawPayload: {},
     },
     manualEntry: null,
+    postWorkoutAnalyses: [
+      {
+        id: '66666666-6666-4666-8666-666666666666',
+        activityId: '77777777-7777-4777-8777-777777777777',
+        activityName: 'Tempo ride',
+        activityType: 'indoor_cycling',
+        generatedAtUtc: '2026-06-20T12:20:00Z',
+        promptVersion: 'post-workout-v1',
+        modelName: 'claude-sonnet-4-6',
+        outputMarkdown: '**Recovery protocol:** refuel within 20 minutes.\n\n**Tomorrow impact:** easy endurance.',
+        recoveryDecision: { excluded: false, status: 'ready_for_review' },
+        timeSeriesSummary: { power: { avg: 220 } },
+        tomorrowImpact: null,
+      },
+    ],
     plannedWorkouts: [
       {
         id: '55555555-5555-4555-8555-555555555555',
@@ -165,7 +180,9 @@ describe('DashboardPage', () => {
     );
 
     expect(await screen.findByText('Morning verdict')).toBeTruthy();
-    expect(screen.getByText('Tempo ride')).toBeTruthy();
+    expect(screen.getAllByText('Tempo ride').length).toBeGreaterThan(0);
+    expect(screen.getByText('Post-workout analysis')).toBeTruthy();
+    expect(screen.getByText(/refuel within 20 minutes/)).toBeTruthy();
 
     await user.type(screen.getByLabelText('BP systolic'), '108');
     await user.click(screen.getByRole('button', { name: 'Save check-in' }));

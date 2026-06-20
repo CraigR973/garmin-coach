@@ -13,6 +13,7 @@ from src.auth import get_current_player
 from src.database import get_db
 from src.main import app
 from src.models.coaching import (
+    Activity,
     Analysis,
     DailyMetric,
     KnowledgeBase,
@@ -37,6 +38,7 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
     user_id = uuid.uuid4()
     subject_date = date(2026, 6, 20)
     workout_id = uuid.uuid4()
+    activity_id = uuid.uuid4()
 
     async with session_factory() as session:
         player = Profile(
@@ -110,6 +112,19 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
             )
         )
         session.add(
+            Activity(
+                id=activity_id,
+                user_id=user_id,
+                garmin_activity_id=998877,
+                activity_name="Tempo ride",
+                activity_type="indoor_cycling",
+                start_utc=datetime(2026, 6, 20, 11, 0),
+                avg_power_watts=220,
+                aerobic_training_effect=4.1,
+                raw_summary={},
+            )
+        )
+        session.add(
             Analysis(
                 user_id=user_id,
                 analysis_type="morning",
@@ -132,6 +147,32 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
                 raw_response={},
             )
         )
+        session.add(
+            Analysis(
+                user_id=user_id,
+                activity_id=activity_id,
+                analysis_type="post_workout",
+                subject_date=subject_date,
+                generated_at_utc=datetime(2026, 6, 20, 12, 20),
+                prompt_version="post-workout-v1",
+                model_name="claude-sonnet-4-6",
+                verdict="ready_for_review",
+                output_markdown=(
+                    "**Workout rating:** controlled.\n\n"
+                    "- **Recovery protocol:** refuel and mobility.\n"
+                    "- **Tomorrow impact:** keep endurance easy."
+                ),
+                context_packet={
+                    "activity": {
+                        "activityName": "Tempo ride",
+                        "activityType": "indoor_cycling",
+                    },
+                    "recoveryDecision": {"excluded": False, "status": "ready_for_review"},
+                    "timeSeriesSummary": {"power": {"avg": 220}},
+                },
+                raw_response={},
+            )
+        )
         await session.commit()
 
     app.dependency_overrides[get_current_player] = lambda: player
@@ -150,6 +191,8 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
     assert payload["data"]["morningAnalysis"]["verdict"] == "Green"
     assert payload["data"]["dailyMetrics"]["readinessScore"] == 71
     assert payload["data"]["sleep"]["ageAdjustedScore"] == 74
+    assert payload["data"]["postWorkoutAnalyses"][0]["activityName"] == "Tempo ride"
+    assert "Recovery protocol" in payload["data"]["postWorkoutAnalyses"][0]["outputMarkdown"]
     assert payload["data"]["plannedWorkouts"][0]["title"] == "Strength maintenance"
     assert payload["data"]["dataQualityWarnings"][0]["status"] == "active"
 

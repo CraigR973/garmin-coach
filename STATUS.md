@@ -6,7 +6,8 @@
 
 ## Now
 
-**Phase:** 1 Batch 7 shipped — daily app loop live.
+**Phase:** 1 Batch 8 implementation ready — post-workout analysis on
+`feat/batch-8-post-workout-analysis`.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -20,7 +21,8 @@
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Run Phase 1 Batch 8 via `/batch-start 8`.
+**Next:** Review the Batch 8 branch/preview, then run `/closeout 8` when ready
+to promote.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -47,8 +49,23 @@
   for live generation; `ANTHROPIC_MODEL` defaults to `claude-sonnet-4-6`.
   The 06:30 weather sync triggers analysis after weather data lands, but logs
   per-profile analysis failures without failing the whole weather job.
+- Batch 8 adds the post-workout analysis engine. The hourly Garmin activity poll
+  syncs recent activities and triggers ride analyses once per activity; live
+  generation uses the same `ANTHROPIC_API_KEY` / model settings as morning
+  analysis. Strength sessions remain excluded from recovery decisions.
 
 ## Log
+- **2026-06-20** — Phase 1 Batch 8 implementation ready on
+  `feat/batch-8-post-workout-analysis`: added an hourly Garmin activity poll,
+  idempotent post-workout ride analysis generation stored in `analyses` against
+  `activity_id`, context packets covering activity summary, FTP-based power
+  zones, HR/cadence/respiration, Performance Condition, Stamina, Training
+  Effect, the active plan, and the morning verdict, plus daily-dashboard
+  surfacing for recovery protocol and tomorrow impact. Strength/wrist-HR
+  activities are excluded from recovery decisions. Verified backend `pytest`
+  (DB-backed tests skipped without `DATABASE_URL`), `ruff check`, and
+  `mypy src`; shared `vitest` + `tsc`; frontend `vitest`, `eslint` (existing
+  warnings only), and `vite build`.
 - **2026-06-20** — Phase 1 Batch 7 closed out: fast-forwarded
   `feat/batch-7-daily-app-loop-surfaces` to `main`, GitHub CI passed on commit
   `cb65532`, Railway deployed the backend and `/api/v1/health` reported that

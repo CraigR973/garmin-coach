@@ -343,6 +343,20 @@ export const dailyLoopAnalysisSchema = z.object({
   thermalReview: jsonObjectSchema.default({}),
 });
 
+export const dailyLoopPostWorkoutAnalysisSchema = z.object({
+  id: z.string().uuid(),
+  activityId: z.string().uuid().nullable().optional(),
+  activityName: z.string().nullable().optional(),
+  activityType: z.string().nullable().optional(),
+  generatedAtUtc: isoDateTimeSchema,
+  promptVersion: z.string().min(1),
+  modelName: z.string().nullable().optional(),
+  outputMarkdown: z.string(),
+  recoveryDecision: jsonObjectSchema.default({}),
+  timeSeriesSummary: jsonObjectSchema.default({}),
+  tomorrowImpact: z.string().nullable().optional(),
+});
+
 export const dailyLoopPlannedWorkoutSchema = plannedWorkoutSchema.extend({
   adherence: manualEntrySchema.nullable().optional(),
 });
@@ -364,6 +378,7 @@ export const dailyLoopSchema = z.object({
   dailyMetrics: dailyMetricSchema.nullable(),
   sleep: sleepSchema.nullable(),
   manualEntry: manualEntrySchema.nullable(),
+  postWorkoutAnalyses: z.array(dailyLoopPostWorkoutAnalysisSchema).default([]),
   plannedWorkouts: z.array(dailyLoopPlannedWorkoutSchema),
   thermalState: dailyLoopThermalStateSchema,
   dataQualityWarnings: z.array(dailyLoopWarningSchema),

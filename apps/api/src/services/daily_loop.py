@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import (
+    Activity,
     Analysis,
     DailyMetric,
     KnowledgeBase,
@@ -22,6 +23,7 @@ from src.models.coaching import (
 from src.models.profile import Profile
 
 ANALYSIS_TYPE_MORNING = "morning"
+ANALYSIS_TYPE_POST_WORKOUT = "post_workout"
 
 
 def _utcnow() -> datetime:
@@ -43,6 +45,7 @@ class DailyLoopSnapshot:
     daily_metric: DailyMetric | None
     sleep: Sleep | None
     manual_entry: ManualEntry | None
+    post_workout_analyses: list[Analysis]
     planned_workouts: list[PlannedWorkout]
     adherence_entries: dict[uuid.UUID, ManualEntry]
     latest_temperature: TemperatureReading | None
@@ -66,6 +69,7 @@ class DailyLoopService:
         daily_metric = await self._daily_metric(player.id, target_date)
         sleep = await self._sleep(player.id, target_date)
         manual_entry = await self._manual_entry(player.id, target_date)
+        post_workout_analyses = await self._post_workout_analyses(player.id, target_date)
         planned_workouts = await self._planned_workouts(player.id, target_date)
         adherence_entries = await self._adherence_entries(player.id, target_date)
         latest_temperature = await self._latest_temperature(player.id)
@@ -78,6 +82,7 @@ class DailyLoopService:
             daily_metric=daily_metric,
             sleep=sleep,
             manual_entry=manual_entry,
+            post_workout_analyses=post_workout_analyses,
             planned_workouts=planned_workouts,
             adherence_entries=adherence_entries,
             latest_temperature=latest_temperature,
@@ -194,6 +199,29 @@ class DailyLoopService:
             .scalars()
             .first()
         )
+
+    async def _post_workout_analyses(
+        self,
+        user_id: uuid.UUID,
+        subject_date: date,
+    ) -> list[Analysis]:
+        rows = (
+            (
+                await self.session.execute(
+                    select(Analysis)
+                    .join(Activity, Analysis.activity_id == Activity.id)
+                    .where(
+                        Analysis.user_id == user_id,
+                        Analysis.analysis_type == ANALYSIS_TYPE_POST_WORKOUT,
+                        Analysis.subject_date == subject_date,
+                    )
+                    .order_by(Activity.start_utc.desc(), Analysis.generated_at_utc.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows)
 
     async def _sleep(self, user_id: uuid.UUID, subject_date: date) -> Sleep | None:
         return (

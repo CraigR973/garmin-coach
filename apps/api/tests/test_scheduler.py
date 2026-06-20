@@ -117,21 +117,31 @@ def test_create_scheduler_registers_daily_backup_job() -> None:
 
 
 def test_create_scheduler_registers_environment_jobs() -> None:
-    """Environment cadence stays stable; morning weather job now triggers analysis internally."""
+    """Environment cadence stays stable; Garmin activity poll triggers post-workout analysis."""
     scheduler = create_scheduler()
     try:
         jobs = scheduler.get_jobs()
         job_ids = {j.id for j in jobs}
-        assert job_ids == {"daily_backup", "hive_temperature_poll", "morning_weather_sync"}
+        assert job_ids == {
+            "daily_backup",
+            "hive_temperature_poll",
+            "morning_weather_sync",
+            "garmin_activity_poll",
+        }
 
         hive_job = scheduler.get_job("hive_temperature_poll")
         weather_job = scheduler.get_job("morning_weather_sync")
+        garmin_job = scheduler.get_job("garmin_activity_poll")
         assert hive_job is not None
         assert weather_job is not None
+        assert garmin_job is not None
         assert str(hive_job.trigger) == "interval[0:15:00]"
         assert "hour='6', minute='30'" in str(weather_job.trigger)
+        assert str(garmin_job.trigger) == "interval[1:00:00]"
         assert hive_job.coalesce is True
         assert weather_job.max_instances == 1
+        assert garmin_job.coalesce is True
+        assert garmin_job.max_instances == 1
     finally:
         if scheduler.running:
             scheduler.shutdown(wait=False)
@@ -158,6 +168,7 @@ async def test_scheduler_lifespan_starts_and_stops(monkeypatch: pytest.MonkeyPat
         assert scheduler.get_job("daily_backup") is not None
         assert scheduler.get_job("hive_temperature_poll") is not None
         assert scheduler.get_job("morning_weather_sync") is not None
+        assert scheduler.get_job("garmin_activity_poll") is not None
 
     await asyncio.sleep(0)
     assert scheduler.running is False

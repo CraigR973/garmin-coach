@@ -4,13 +4,14 @@ Current jobs:
   - daily_backup: runs at 03:00 UTC
   - hive_temperature_poll: polls Hive indoor temperature every 15 minutes
   - morning_weather_sync: pulls Kilmarnock weather at 06:30 Europe/London
+  - garmin_activity_poll: polls Garmin hourly for new rides and triggers analysis
 """
 
 from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
@@ -30,7 +31,9 @@ from src.services.environment_sync import (
     OpenMeteoClient,
     WeatherRequest,
 )
+from src.services.garmin_sync import GarminConnectClient, GarminSyncService
 from src.services.morning_analysis import MorningAnalysisService
+from src.services.post_workout_analysis import PostWorkoutAnalysisService
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -157,6 +160,76 @@ async def run_morning_weather_sync() -> None:
         log.exception("morning weather sync failed")
 
 
+async def run_garmin_activity_poll() -> None:
+    """Poll Garmin for recent activities, then trigger post-workout ride analysis."""
+    try:
+        async with AsyncSessionLocal() as session:
+            profiles = (
+                (
+                    await session.execute(
+                        select(Profile).where(
+                            Profile.is_active.is_(True),
+                            Profile.deleted_at.is_(None),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if not profiles:
+                log.info("garmin activity poll skipped", reason="no_active_profiles")
+                return
+
+            client = GarminConnectClient()
+            sync_service = GarminSyncService(session)
+            analysis_service = PostWorkoutAnalysisService(session)
+            activities_synced = 0
+            timeseries_synced = 0
+            analyses_generated = 0
+            analyses_existing = 0
+
+            for profile in profiles:
+                today = _profile_today(profile)
+                start_date = today - timedelta(days=3)
+                payloads = await _retry_sync(
+                    lambda: client.fetch_activity_payloads(start_date, today)
+                )
+                sync_result = await sync_service.sync_activities(
+                    profile.id,
+                    payloads,
+                    commit=False,
+                )
+                activities_synced += sync_result.activities_synced
+                timeseries_synced += sync_result.timeseries_samples_synced
+
+                since = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=None)
+                try:
+                    analysis_results = await analysis_service.generate_for_pending_rides(
+                        profile,
+                        since=since,
+                        commit=False,
+                    )
+                    analyses_generated += sum(1 for item in analysis_results if item.generated)
+                    analyses_existing += sum(1 for item in analysis_results if not item.generated)
+                except Exception:
+                    log.exception(
+                        "post-workout analysis failed",
+                        profile_id=str(profile.id),
+                    )
+
+            await session.commit()
+        log.info(
+            "garmin activity poll complete",
+            profiles=len(profiles),
+            activities=activities_synced,
+            timeseries_samples=timeseries_synced,
+            analyses_generated=analyses_generated,
+            analyses_existing=analyses_existing,
+        )
+    except Exception:
+        log.exception("garmin activity poll failed")
+
+
 def _profile_today(profile: Profile) -> date:
     try:
         timezone = ZoneInfo(profile.timezone)
@@ -228,5 +301,15 @@ def create_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
         coalesce=True,
         max_instances=1,
+    )
+    scheduler.add_job(
+        run_garmin_activity_poll,
+        trigger="interval",
+        hours=1,
+        id="garmin_activity_poll",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        next_run_time=datetime.now(UTC) + timedelta(minutes=5),
     )
     return scheduler

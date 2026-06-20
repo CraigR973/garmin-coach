@@ -5,7 +5,7 @@ import {
   manualEntryInputSchema,
   plannedWorkoutAdherenceInputSchema,
 } from '@coach/shared';
-import { Activity, ClipboardCheck, ShieldAlert, Thermometer, Wind } from 'lucide-react';
+import { Activity, Bike, ClipboardCheck, ShieldAlert, Thermometer, Wind } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
@@ -266,6 +266,7 @@ export function DashboardPage() {
   const data: DailyLoopData = query.data.data;
   const analysis = data.morningAnalysis;
   const thermal = data.thermalState;
+  const postWorkoutAnalyses = data.postWorkoutAnalyses ?? [];
 
   return (
     <div className="space-y-6">
@@ -391,6 +392,45 @@ export function DashboardPage() {
           </Card>
         </div>
       </div>
+
+      {postWorkoutAnalyses.length ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Bike className="h-4 w-4 text-primary" aria-hidden />
+              Post-workout analysis
+            </CardTitle>
+            <CardDescription>
+              {postWorkoutAnalyses.length === 1
+                ? 'Latest ride analysis, recovery protocol, and tomorrow impact.'
+                : `${postWorkoutAnalyses.length} ride analyses for ${data.subjectDate}.`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {postWorkoutAnalyses.map((item) => (
+              <div key={item.id} className="rounded-2xl border border-border bg-bg px-4 py-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-base font-semibold text-text-primary">
+                      {item.activityName ?? 'Garmin ride'}
+                    </p>
+                    <p className="text-sm text-text-secondary">
+                      Generated {formatDateTime(item.generatedAtUtc)}
+                      {item.activityType ? ` · ${item.activityType}` : ''}
+                    </p>
+                  </div>
+                  <Badge variant={item.recoveryDecision?.excluded ? 'warning' : 'accent'}>
+                    {item.recoveryDecision?.excluded ? 'Recovery excluded' : 'Recovery ready'}
+                  </Badge>
+                </div>
+                <div className="mt-4 rounded-xl border border-border bg-surface px-4 py-3 text-sm leading-6 text-text-primary whitespace-pre-wrap">
+                  {item.outputMarkdown}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[1fr,1fr]">
         <Card>
