@@ -215,6 +215,9 @@ async def test_get_daily_loop_hides_stale_hive_temperature(db_conn: AsyncConnect
             is_active=True,
         )
         session.add(player)
+        await session.commit()
+
+    async with session_factory() as session:
         session.add(
             TemperatureReading(
                 user_id=user_id,
