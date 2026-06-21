@@ -38,6 +38,7 @@ class GarminCredentials:
     email: str
     password: str
     tokenstore: Path
+    tokenstore_b64: str = ""
 
     @classmethod
     def from_settings(cls) -> GarminCredentials:
@@ -45,12 +46,16 @@ class GarminCredentials:
             email=settings.garmin_email,
             password=settings.garmin_password,
             tokenstore=Path(os.path.expanduser(settings.garmin_tokenstore)),
+            tokenstore_b64=settings.garmin_tokenstore_b64,
         )
 
     def validate(self) -> None:
+        if self.tokenstore_b64:
+            return
         if not self.email or not self.password:
             raise GarminCredentialsError(
-                "Garmin credentials are not configured; set GARMIN_EMAIL and GARMIN_PASSWORD."
+                "Garmin credentials are not configured; set GARMIN_EMAIL and GARMIN_PASSWORD "
+                "or GARMIN_TOKENSTORE_B64."
             )
 
 
@@ -93,12 +98,24 @@ class GarminConnectClient:
         if self._client is not None:
             return self._client
 
-        self.credentials.validate()
         tokenstore = str(self.credentials.tokenstore)
         try:
             from garminconnect import Garmin  # type: ignore[import-untyped, unused-ignore]
         except ImportError as exc:  # pragma: no cover - exercised only in missing envs
             raise GarminSyncError("garminconnect is not installed.") from exc
+
+        if self.credentials.tokenstore_b64:
+            try:
+                client = Garmin()
+                client.login(self.credentials.tokenstore_b64)
+                self._client = client
+                return client
+            except Exception:
+                if not self.credentials.email or not self.credentials.password:
+                    raise GarminLoginError(
+                        "Garmin token blob failed and credentials are not configured; "
+                        "refresh GARMIN_TOKENSTORE_B64 or set GARMIN_EMAIL/GARMIN_PASSWORD."
+                    ) from None
 
         try:
             client = Garmin()
@@ -110,6 +127,7 @@ class GarminConnectClient:
         return client
 
     def _fresh_login(self, garmin_cls: Any, tokenstore: str) -> Any:
+        self.credentials.validate()
         try:
             params = inspect.signature(garmin_cls.__init__).parameters
             if "prompt_mfa" in params:

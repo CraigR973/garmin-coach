@@ -1,4 +1,6 @@
 import json
+import sys
+import types
 import uuid
 from datetime import date, datetime
 from pathlib import Path
@@ -141,6 +143,34 @@ def test_garmin_login_error_does_not_expose_credentials(tmp_path: Path) -> None:
     message = str(exc_info.value)
     assert "super-secret-password" not in message
     assert "mark@example.com" not in message
+
+
+def test_garmin_login_uses_token_blob_without_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+
+    class TokenGarmin:
+        def login(self, tokenstore: str) -> None:
+            calls.append(tokenstore)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "garminconnect",
+        types.SimpleNamespace(Garmin=TokenGarmin),
+    )
+
+    credentials = GarminCredentials(
+        email="",
+        password="",
+        tokenstore=tmp_path / "garmin",
+        tokenstore_b64="x" * 600,
+    )
+    client = GarminConnectClient(credentials)
+
+    assert isinstance(client.login(), TokenGarmin)
+    assert calls == ["x" * 600]
 
 
 @pytest.mark.asyncio

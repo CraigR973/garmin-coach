@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     garmin_email: str = ""
     garmin_password: str = ""
     garmin_tokenstore: str = "~/.garminconnect"
+    garmin_tokenstore_b64: str = ""
     hive_email: str = ""
     hive_password: str = ""
     weather_latitude: float = 55.6045
@@ -74,6 +75,8 @@ class Settings(BaseSettings):
             errors.append("vapid_private_key is empty")
         if not self.supabase_service_key:
             errors.append("supabase_service_key is empty")
+        if not self.anthropic_api_key:
+            errors.append("anthropic_api_key is empty")
         if not self.database_url:
             errors.append("database_url is empty")
         if not self.frontend_origin or self.frontend_origin.startswith("http://localhost"):
