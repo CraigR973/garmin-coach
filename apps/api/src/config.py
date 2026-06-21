@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     garmin_tokenstore_b64: str = ""
     hive_email: str = ""
     hive_password: str = ""
+    # Hive uses AWS Cognito SMS_MFA, so a full password login cannot run headlessly.
+    # Seed this base64 {username, refresh_token} blob once via a SMS-2FA login
+    # (scripts/bootstrap_hive_tokenstore.py) so the poller can resume unattended.
+    hive_tokenstore_b64: str = ""
     weather_latitude: float = 55.6045
     weather_longitude: float = -4.5249
     weather_timezone: str = "Europe/London"

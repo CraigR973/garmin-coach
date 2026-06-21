@@ -27,6 +27,9 @@ def configure_logging(log_level: str = "INFO") -> None:
         foreign_pre_chain=shared_processors,
         processors=[
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            # Render exc_info into a traceback string; without this, log.exception()
+            # serializes exc_info as a bare `true` and the traceback is lost.
+            structlog.processors.format_exc_info,
             structlog.processors.JSONRenderer(),
         ],
     )

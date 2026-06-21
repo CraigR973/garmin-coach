@@ -39,7 +39,7 @@ FastAPI + async SQLAlchemy + asyncpg + Postgres (Supabase) + Alembic + APSchedul
 
 ## Data sources (all validated 18–19 Jun 26)
 - **Garmin** `garminconnect` — email+pw, garth token cache persists ~1yr (no re-MFA).
-- **Hive** `pyhiveapi` (sync) — no 2FA on his account → headless re-login; live indoor temp from `API(token).getAll()`.
+- **Hive** `pyhiveapi` (sync) — account uses AWS Cognito **SMS_MFA**, so headless operation resumes from a cached Cognito **refresh token** (`HIVE_TOKENSTORE_B64`, seeded once via `scripts/bootstrap_hive_tokenstore.py`), *not* a password login (DECISIONS #59); live indoor temp from `API(token).getAll()`.
 - **Weather** Open-Meteo (keyless), Kilmarnock lat 55.6045 / long -4.5249.
 
 ## Conventions

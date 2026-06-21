@@ -21,14 +21,29 @@ analysis. Closes the *code* side of the data gate deferred from Batch 12
 (DECISIONS #57, #58).
 
 **Open acceptance item — 18.3 strict smoke (NOT verified):** the strict
-daily-loop smoke (`SMOKE_STRICT_DAILY_LOOP=1`) has not been run/passed in
-production. It needs Mark's real PIN plus, in Railway, a valid
-`GARMIN_TOKENSTORE_B64` (last seen hitting Garmin 429) and Anthropic credits
-(last seen "credit balance too low"), and the 06:30 job (or a manual daily sync)
-to have run post-deploy so today's rows exist. Until that smoke shows non-null
-daily metrics/sleep/morningAnalysis + Hive thermal + weather, **do not strike the
-Batch 18 row as Shipped.** Anyone with Mark's PIN can run it (command under
-"Next"); deciding the gate is met is the only thing left.
+daily-loop smoke (`SMOKE_STRICT_DAILY_LOOP=1`) has not passed in production. The
+2026-06-21 evening verification (Railway logs + Hive spike) refreshed the blocker
+picture:
+- Env is now fully provisioned (`ENVIRONMENT=production` + all Garmin/Hive/
+  Anthropic/Supabase/intervals secrets present).
+- **Garmin token: CONFIRMED WORKING** — the 17:16 UTC hourly poll logged
+  `garmin activity poll complete` (16 activities, 11,407 timeseries samples, no
+  429). The old 429 blocker is cleared.
+- **Hive: BROKEN (root-caused) — the live critical-path blocker.** Every 15-min
+  poll logs `hive temperature poll failed`. Cause: Mark's Hive account requires
+  AWS Cognito **SMS_MFA** for a full login, but prod `HiveClient.login()`
+  (`services/environment_sync.py`) does a full email/password login each poll and
+  rejects SMS_MFA, with **no persisted Hive refresh-token store** (no Hive
+  equivalent of `GARMIN_TOKENSTORE_B64`). The spike's cached refresh token is now
+  invalid too, so Hive has no headless path until re-seeded. This fails the 18.3
+  gate twice: null `thermalState.latestTemperatureC` AND a scheduler ERROR line.
+- **Anthropic credits: still UNCONFIRMED** (no analysis ran in the captured logs).
+- Today's daily metrics/sleep are still unsynced — the new 06:30 job deployed
+  *after* today's 06:30 run; next natural run is tomorrow 06:30 BST.
+
+**Do not strike the Batch 18 row as Shipped** until the strict smoke is green.
+The critical-path blocker is now Hive headless auth (needs a one-time SMS-2FA
+re-seed on Mark's phone + a refresh-token store in code), not Garmin.
 
 Batch 12 (Zwift delivery rail) is **shipped (rail-only)**: merged PR #6 to
 `main` (merge commit `67f9ad4`), CI green, Railway + Vercel auto-deployed. Live:
@@ -48,15 +63,27 @@ the Anthropic fail-closed validator.
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Finish Batch 18 closeout by clearing 18.3 — run the strict smoke
-against production (needs Mark's PIN; ensure the Railway `GARMIN_TOKENSTORE_B64`
-is a live token and Anthropic credits are topped up, then let the 06:30 job run
-or trigger a daily sync so today's rows exist):
-`API_URL=https://api-production-e2bc7.up.railway.app SMOKE_DISPLAY_NAME=Mark SMOKE_PIN=<real-pin> SMOKE_STRICT_DAILY_LOOP=1 python3 scripts/smoke_daily_loop.py`.
-When it passes (non-null daily metrics/sleep/morningAnalysis + Hive thermal +
-weather, no scheduler ERROR lines), strike the Batch 18 row in
-`docs/phase-batches.md` as `Shipped` and prepend a dated Log line here. The code,
-CI, and deploy are already done — only this production verification remains.
+**Next:** Clear 18.3. Remaining blockers, in priority order:
+1. **Hive headless auth (18.4) — CODE DONE, needs deploy + SMS seed.** Built on
+   this desktop session (uncommitted): `HiveClient` now resumes via Cognito
+   `REFRESH_TOKEN_AUTH` from `HIVE_TOKENSTORE_B64` (full password login still
+   rejects SMS_MFA with a pointer to the blob); added
+   `scripts/bootstrap_hive_tokenstore.py` to mint the blob from a one-time
+   SMS-2FA login; added `structlog.processors.format_exc_info` to
+   `logging_config.py` so scheduler tracebacks render. Tests + ruff + mypy green
+   (115 passed). Remaining: (a) commit → PR → merge so Railway deploys it;
+   (b) Mark runs the bootstrap script (SMS to his phone), then set the resulting
+   `HIVE_TOKENSTORE_B64` in Railway; (c) confirm the next poll logs
+   `hive temperature poll complete`.
+2. **Confirm Anthropic credit balance** is topped up (console, or proven by
+   tomorrow's 06:30 analysis).
+3. Let tomorrow's 06:30 BST `morning_weather_sync` run so today's Garmin daily
+   metrics + sleep + morning analysis exist.
+4. Run the strict smoke with Mark's PIN:
+   `API_URL=https://api-production-e2bc7.up.railway.app SMOKE_DISPLAY_NAME=Mark SMOKE_PIN=<real-pin> SMOKE_STRICT_DAILY_LOOP=1 python3 scripts/smoke_daily_loop.py`.
+   When green (non-null daily metrics/sleep/morningAnalysis + Hive thermal +
+   weather, no scheduler ERROR lines), strike the Batch 18 row in
+   `docs/phase-batches.md` as `Shipped` and prepend a dated Log line here.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -91,6 +118,20 @@ CI, and deploy are already done — only this production verification remains.
 - Garmin sync uses `GARMIN_EMAIL` / `GARMIN_PASSWORD` from the environment plus
   `GARMIN_TOKENSTORE` for garth's persisted token cache; the app does not store
   Garmin secrets in Postgres.
+- **Hive needs SMS_MFA — the prod Hive client cannot log in headlessly.** Mark's
+  Hive account uses AWS Cognito `SMS_MFA`, so a full email/password login returns
+  an SMS challenge. The spike (`~/garmin-spike/hive_spike.py`) works headlessly
+  only by caching the Cognito **refresh token** and resuming via
+  `REFRESH_TOKEN_AUTH`; prod `HiveClient.login()` does a full login each poll,
+  rejects SMS_MFA, and has no refresh-token store, so `hive_temperature_poll`
+  fails every cycle. (Contradicts the "Hive — no 2FA" line in `AGENTS.md`/
+  `CLAUDE.md`, which is inaccurate and should be corrected.) Fix = port the
+  spike's refresh-token resume into `HiveClient` + persist a `HIVE_TOKENSTORE_B64`,
+  seeded by a one-time SMS-2FA login on Mark's phone.
+- `logging_config.py` omits `structlog.processors.format_exc_info`, so
+  `log.exception(...)` serializes `exc_info` as a bare `true` and the traceback is
+  dropped — prod scheduler errors are currently undiagnosable from logs. Add the
+  processor to render tracebacks.
 - Batch 4 one-shot import command is
   `PYTHONPATH=/Users/craigrobinson/garmin-coach/apps/api /Users/craigrobinson/garmin-coach/apps/api/.venv/bin/python -m src.sleep_history_backfill --dry-run "/Users/craigrobinson/Downloads/Dad Fitness/12 Weeks Sleep Data 15.06.26.xlsx"`
   then rerun without `--dry-run` to write the backfill.
@@ -110,6 +151,32 @@ CI, and deploy are already done — only this production verification remains.
   failure.
 
 ## Log
+- **2026-06-21** — Built the Hive headless-auth fix (sub-task 18.4) after
+  root-causing the poll failure (desktop session, **uncommitted**). `HiveClient`
+  now resumes via Cognito `REFRESH_TOKEN_AUTH` from a base64 `HIVE_TOKENSTORE_B64`
+  {username, refresh_token} blob, mirroring the Garmin token-blob pattern; full
+  password login is kept only as a fallback and rejects SMS_MFA with a pointer to
+  the blob. Added `scripts/bootstrap_hive_tokenstore.py` (one-time SMS-2FA seed),
+  the `hive_tokenstore_b64` setting + `.env.example`, and
+  `structlog.processors.format_exc_info` in `logging_config.py` so scheduler
+  tracebacks stop being dropped. New tests cover the resume path, the SMS_MFA
+  rejection, no-secret error surfaces, and traceback rendering; backend 115
+  passed / 11 skipped, ruff + mypy clean. Not yet committed/deployed; Hive in prod
+  stays broken until this ships and Mark seeds `HIVE_TOKENSTORE_B64` via SMS.
+- **2026-06-21** — Batch 18 18.3 verification (desktop session). Code side green:
+  scheduler tests 25 pass, ruff/mypy clean, prod serves SHA `12ccc99`. Checked
+  live prod via Railway CLI: env now fully provisioned, and the **Garmin token is
+  confirmed working** — the 17:16 UTC hourly poll logged `garmin activity poll
+  complete` (16 activities, 11,407 samples, no 429), clearing the old 429 blocker.
+  **Root-caused the recurring Hive failure:** prod `HiveClient` only does a full
+  email/password login, but Mark's Hive account requires Cognito SMS_MFA and prod
+  has no refresh-token store, so every poll raises `HiveLoginError`
+  (`hive temperature poll failed`); the spike's cached refresh token is now invalid
+  too, so Hive has no headless path until re-seeded via SMS-2FA. Also found
+  `logging_config.py` drops exception tracebacks (no `format_exc_info`), which hid
+  the cause. Anthropic credits still unconfirmed. 18.3 stays open; the critical
+  path is now Hive headless auth, not Garmin. `AGENTS.md`/`CLAUDE.md` "Hive — no
+  2FA" note is inaccurate and should be corrected.
 - **2026-06-21** — Batch 18 code merged + deployed (closeout partial). Merged
   PR #7 `claude/start-batch-18-dbwx9r` → `main` (merge commit `08d3010`), main CI
   run #79 green (pytest/ruff/mypy/alembic/web build), Railway auto-deployed and
