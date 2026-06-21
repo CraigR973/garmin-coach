@@ -52,6 +52,18 @@ proposals a couple of days ahead. Proposal/push provenance lives in the IR
 snapshot and every step is audited in `analyses` (`workout_proposed` /
 `workout_pushed`), so no schema change was needed.
 
+Batch 14 makes the *week* adaptive (`services/weekly_restructure.py`): a
+deterministic permutation engine reorders the week's bike sessions so VO2 and
+Sweet-Spot are never on the same/adjacent days (hard rule), and, when a recovery
+signal (readiness / HRV / morning-verdict trend) shows fatigue, defers hard
+sessions later in the week. Applying a restructure versions the changed
+`planned_workouts` days, audits it in `analyses` (`weekly_restructure`), and
+proposes the changed bike workouts through the same rail — reaching Zwift only on
+approval. It is human-triggered via `GET/POST /api/v1/restructure/*`, not the
+scheduler. The VO2 progression (incl. Rønnestad 30/15 from ~Wk7, ERG off) is a
+shared `services/vo2_progression.py` toolkit used by both the plan seed and the
+restructurer. No new migration.
+
 ## 3. Knowledge Base (the persistent context — replaces his handover docs)
 
 Editable structured state fed into every analysis. Source: his handover doc (see
