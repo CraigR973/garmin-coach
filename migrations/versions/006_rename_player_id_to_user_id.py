@@ -16,8 +16,9 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # push_subscriptions
-    op.drop_index("ix_push_subscriptions_player_id", table_name="push_subscriptions", schema="coach")
+    # push_subscriptions — drop the old index if it exists; migration 001 never
+    # created it explicitly so fresh installs won't have it.
+    op.drop_index("ix_push_subscriptions_player_id", table_name="push_subscriptions", schema="coach", if_exists=True)
     op.alter_column("push_subscriptions", "player_id", new_column_name="user_id", schema="coach")
     op.create_index("ix_push_subscriptions_user_id", "push_subscriptions", ["user_id"], schema="coach")
 
@@ -36,6 +37,6 @@ def downgrade() -> None:
     op.alter_column("notification_preferences", "user_id", new_column_name="player_id", schema="coach")
 
     # push_subscriptions
-    op.drop_index("ix_push_subscriptions_user_id", table_name="push_subscriptions", schema="coach")
+    op.drop_index("ix_push_subscriptions_user_id", table_name="push_subscriptions", schema="coach", if_exists=True)
     op.alter_column("push_subscriptions", "user_id", new_column_name="player_id", schema="coach")
     op.create_index("ix_push_subscriptions_player_id", "push_subscriptions", ["player_id"], schema="coach")
