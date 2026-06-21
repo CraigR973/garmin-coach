@@ -19,8 +19,8 @@ log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 
 
-def per_player_key(request: Request) -> str:
-    """Rate-limit key derived from the bearer token's player_id.
+def per_user_key(request: Request) -> str:
+    """Rate-limit key derived from the bearer token's user id.
 
     Falls back to remote address when no valid token is present so
     unauthenticated requests are still bounded (by IP).
@@ -33,18 +33,18 @@ def per_player_key(request: Request) -> str:
                 token,
                 settings.jwt_access_secret,
                 algorithms=["HS256"],
-                # Allow expired tokens so the player is still rate-limited
+                # Allow expired tokens so the user is still rate-limited
                 # by ID rather than falling through to the shared IP bucket.
                 options={"verify_exp": False},
             )
-            return f"player:{payload['sub']}"
+            return f"user:{payload['sub']}"
         except Exception:
             pass
     return get_remote_address(request)
 
 
 def login_key(request: Request) -> str:
-    """Key for login: email + IP to limit per-credential brute-force.
+    """Key for login: display_name + IP to limit per-credential brute-force.
 
     FastAPI reads and caches the request body in request._body before calling
     the route handler, so accessing it synchronously here is safe.
@@ -52,10 +52,10 @@ def login_key(request: Request) -> str:
     try:
         body_bytes: bytes = getattr(request, "_body", b"") or b""
         data = json.loads(body_bytes)
-        email = str(data.get("email", "")).lower()
+        name = str(data.get("display_name", "")).lower()
     except Exception:
-        email = ""
-    return f"login:{email}:{get_remote_address(request)}"
+        name = ""
+    return f"login:{name}:{get_remote_address(request)}"
 
 
 def refresh_token_key(request: Request) -> str:

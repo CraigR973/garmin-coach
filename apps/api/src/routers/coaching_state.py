@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.auth import AdminPlayer
+from src.auth import AdminUser
 from src.database import get_db
 from src.models.coaching import KnowledgeBase, PlanBlock, PlannedWorkout
 from src.services.coaching_state import CoachingStateService
@@ -168,7 +168,7 @@ def _envelope(
 
 @router.get("", response_model=CoachingStateEnvelope)
 async def get_coaching_state(
-    player: AdminPlayer,
+    player: AdminUser,
     db: AsyncSession = Depends(get_db),
 ) -> CoachingStateEnvelope:
     service = CoachingStateService(db)
@@ -185,7 +185,7 @@ async def get_coaching_state(
 async def update_knowledge_base_section(
     section: str,
     body: KnowledgeBaseUpdateBody,
-    player: AdminPlayer,
+    player: AdminUser,
     db: AsyncSession = Depends(get_db),
 ) -> CoachingStateEnvelope:
     service = CoachingStateService(db)
@@ -208,7 +208,7 @@ async def update_knowledge_base_section(
 async def override_planned_workout(
     workout_date: date,
     body: PlannedWorkoutOverrideBody,
-    player: AdminPlayer,
+    player: AdminUser,
     db: AsyncSession = Depends(get_db),
 ) -> CoachingStateEnvelope:
     service = CoachingStateService(db)

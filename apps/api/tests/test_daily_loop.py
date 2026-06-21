@@ -9,7 +9,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker
 
-from src.auth import get_current_player
+from src.auth import get_current_user
 from src.database import get_db
 from src.main import app
 from src.models.coaching import (
@@ -21,7 +21,7 @@ from src.models.coaching import (
     PlannedWorkout,
     Sleep,
 )
-from src.models.profile import PlayerRole, Profile
+from src.models.profile import Profile, UserRole
 
 
 def _db_override(session_factory: async_sessionmaker[AsyncSession]):
@@ -45,7 +45,7 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
             id=user_id,
             display_name="Daily Loop Test",
             pin_hash="x" * 60,
-            role=PlayerRole.player,
+            role=UserRole.player,
             timezone="Europe/London",
             is_active=True,
         )
@@ -175,7 +175,7 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
         )
         await session.commit()
 
-    app.dependency_overrides[get_current_player] = lambda: player
+    app.dependency_overrides[get_current_user] = lambda: player
     app.dependency_overrides[get_db] = _db_override(session_factory)
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -209,7 +209,7 @@ async def test_manual_entry_and_adherence_upserts_persist(db_conn: AsyncConnecti
             id=user_id,
             display_name="Daily Loop Mutations",
             pin_hash="x" * 60,
-            role=PlayerRole.player,
+            role=UserRole.player,
             timezone="Europe/London",
             is_active=True,
         )
@@ -233,7 +233,7 @@ async def test_manual_entry_and_adherence_upserts_persist(db_conn: AsyncConnecti
         )
         await session.commit()
 
-    app.dependency_overrides[get_current_player] = lambda: player
+    app.dependency_overrides[get_current_user] = lambda: player
     app.dependency_overrides[get_db] = _db_override(session_factory)
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

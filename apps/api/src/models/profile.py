@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from src.models.base import Base, UpdatedAtMixin, UUIDPrimaryKeyMixin
 
 
-class PlayerRole(StrEnum):
+class UserRole(StrEnum):
     player = "player"
     admin = "admin"
 
@@ -24,8 +24,8 @@ class Profile(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
 
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)
     pin_hash: Mapped[str] = mapped_column(String(60), nullable=False)
-    role: Mapped[PlayerRole] = mapped_column(
-        Enum(PlayerRole, name="player_role", create_type=False),
+    role: Mapped[UserRole] = mapped_column(
+        Enum(UserRole, name="player_role", create_type=False),
         nullable=False,
         server_default="player",
     )

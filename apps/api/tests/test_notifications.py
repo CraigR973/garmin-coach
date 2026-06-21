@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from src.auth import get_current_player
+from src.auth import get_current_user
 from src.config import settings
 from src.database import get_db
 from src.main import app
@@ -24,7 +24,7 @@ from src.services.push_notification_service import (
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _player(display_name: str = "Alice") -> MagicMock:
+def _user(display_name: str = "Alice") -> MagicMock:
     p = MagicMock(spec=Profile)
     p.id = uuid.uuid4()
     p.display_name = display_name
@@ -41,10 +41,10 @@ def _db_with(mock_db: AsyncMock):  # type: ignore[no-untyped-def]
     return _override
 
 
-def _sub(player_id: uuid.UUID, endpoint: str = "https://fcm.example/push/abc") -> MagicMock:
+def _sub(user_id: uuid.UUID, endpoint: str = "https://fcm.example/push/abc") -> MagicMock:
     s = MagicMock(spec=PushSubscription)
     s.id = uuid.uuid4()
-    s.player_id = player_id
+    s.user_id = user_id
     s.subscription = {"endpoint": endpoint, "keys": {"auth": "x", "p256dh": "y"}}
     s.is_active = True
     s.failed_send_count = 0
@@ -52,9 +52,9 @@ def _sub(player_id: uuid.UUID, endpoint: str = "https://fcm.example/push/abc") -
     return s
 
 
-def _prefs(player_id: uuid.UUID, **overrides: Any) -> MagicMock:
+def _prefs(user_id: uuid.UUID, **overrides: Any) -> MagicMock:
     p = MagicMock(spec=NotificationPreferences)
-    p.player_id = player_id
+    p.user_id = user_id
     p.global_mute = False
     p.quiet_hours_start = None
     p.quiet_hours_end = None
@@ -107,8 +107,8 @@ async def test_send_notification_skips_when_no_vapid() -> None:
 
 @pytest.mark.asyncio
 async def test_send_notification_suppressed_when_global_mute() -> None:
-    player_id = uuid.uuid4()
-    prefs = _prefs(player_id, global_mute=True)
+    user_id = uuid.uuid4()
+    prefs = _prefs(user_id, global_mute=True)
 
     session = AsyncMock()
     session.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=prefs))
@@ -117,15 +117,15 @@ async def test_send_notification_suppressed_when_global_mute() -> None:
         patch.object(settings, "vapid_private_key", "private"),
         patch.object(settings, "vapid_public_key", "public"),
     ):
-        sent = await send_notification(session, player_id, title="T", body="B")
+        sent = await send_notification(session, user_id, title="T", body="B")
     assert sent == 0
 
 
 @pytest.mark.asyncio
 async def test_send_notification_delivers_when_no_prefs() -> None:
     """No preferences row → defaults (not muted), should attempt delivery."""
-    player_id = uuid.uuid4()
-    sub = _sub(player_id)
+    user_id = uuid.uuid4()
+    sub = _sub(user_id)
 
     session = AsyncMock()
     session.execute.side_effect = [
@@ -138,16 +138,16 @@ async def test_send_notification_delivers_when_no_prefs() -> None:
         patch.object(settings, "vapid_public_key", "pub"),
         patch("src.services.push_notification_service._send_push_sync"),
     ):
-        sent = await send_notification(session, player_id, title="Title", body="Body")
+        sent = await send_notification(session, user_id, title="Title", body="Body")
 
     assert sent == 1
 
 
 @pytest.mark.asyncio
 async def test_send_notification_suppressed_during_quiet_hours() -> None:
-    player_id = uuid.uuid4()
+    user_id = uuid.uuid4()
     prefs = _prefs(
-        player_id,
+        user_id,
         quiet_hours_start=datetime(2000, 1, 1, 9, 0),
         quiet_hours_end=datetime(2000, 1, 1, 17, 0),
     )
@@ -163,15 +163,15 @@ async def test_send_notification_suppressed_during_quiet_hours() -> None:
             return_value=datetime(2026, 6, 1, 10, 0),
         ),
     ):
-        sent = await send_notification(session, player_id, title="T", body="B")
+        sent = await send_notification(session, user_id, title="T", body="B")
     assert sent == 0
 
 
 @pytest.mark.asyncio
-async def test_send_notification_quiet_hours_use_player_timezone() -> None:
-    player_id = uuid.uuid4()
+async def test_send_notification_quiet_hours_use_user_timezone() -> None:
+    user_id = uuid.uuid4()
     prefs = _prefs(
-        player_id,
+        user_id,
         quiet_hours_start=datetime(2000, 1, 1, 23, 0),
         quiet_hours_end=datetime(2000, 1, 1, 7, 0),
     )
@@ -185,7 +185,7 @@ async def test_send_notification_quiet_hours_use_player_timezone() -> None:
     ):
         sent = await send_notification(
             session,
-            player_id,
+            user_id,
             title="T",
             body="B",
             timezone_name="Europe/London",
@@ -198,10 +198,10 @@ async def test_send_notification_quiet_hours_use_player_timezone() -> None:
 async def test_send_notification_auto_disables_after_3_failures() -> None:
     from pywebpush import WebPushException
 
-    player_id = uuid.uuid4()
-    sub = _sub(player_id)
+    user_id = uuid.uuid4()
+    sub = _sub(user_id)
     sub.failed_send_count = 2
-    prefs = _prefs(player_id)
+    prefs = _prefs(user_id)
 
     session = AsyncMock()
     session.execute.side_effect = [
@@ -217,7 +217,7 @@ async def test_send_notification_auto_disables_after_3_failures() -> None:
         patch.object(settings, "vapid_public_key", "pub"),
         patch("src.services.push_notification_service._send_push_sync", side_effect=_fail),
     ):
-        sent = await send_notification(session, player_id, title="T", body="B")
+        sent = await send_notification(session, user_id, title="T", body="B")
 
     assert sent == 0
     assert sub.is_active is False
@@ -246,11 +246,11 @@ async def test_get_vapid_public_key_503_when_not_configured() -> None:
 
 @pytest.mark.asyncio
 async def test_subscribe_push() -> None:
-    player = _player()
+    user = _user()
     mock_db = AsyncMock()
     mock_db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=None))
 
-    app.dependency_overrides[get_current_player] = lambda: player
+    app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_db] = _db_with(mock_db)
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -271,12 +271,12 @@ async def test_subscribe_push() -> None:
 
 @pytest.mark.asyncio
 async def test_unsubscribe_push_deactivates() -> None:
-    player = _player()
-    sub = _sub(player.id)
+    user = _user()
+    sub = _sub(user.id)
     mock_db = AsyncMock()
     mock_db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=sub))
 
-    app.dependency_overrides[get_current_player] = lambda: player
+    app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_db] = _db_with(mock_db)
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -293,7 +293,7 @@ async def test_unsubscribe_push_deactivates() -> None:
 
 @pytest.mark.asyncio
 async def test_get_preferences_creates_defaults() -> None:
-    player = _player()
+    user = _user()
     mock_db = AsyncMock()
     mock_db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=None))
 
@@ -305,7 +305,7 @@ async def test_get_preferences_creates_defaults() -> None:
 
     mock_db.refresh = _refresh
 
-    app.dependency_overrides[get_current_player] = lambda: player
+    app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_db] = _db_with(mock_db)
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -320,9 +320,9 @@ async def test_get_preferences_creates_defaults() -> None:
 
 @pytest.mark.asyncio
 async def test_patch_preferences() -> None:
-    player = _player()
+    user = _user()
     prefs = MagicMock(spec=NotificationPreferences)
-    prefs.player_id = player.id
+    prefs.user_id = user.id
     prefs.global_mute = False
     prefs.quiet_hours_start = None
     prefs.quiet_hours_end = None
@@ -335,7 +335,7 @@ async def test_patch_preferences() -> None:
 
     mock_db.refresh = _refresh
 
-    app.dependency_overrides[get_current_player] = lambda: player
+    app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_db] = _db_with(mock_db)
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

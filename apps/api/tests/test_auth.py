@@ -23,7 +23,7 @@ from src.auth import (
 from src.config import settings
 from src.database import get_db
 from src.main import app
-from src.models.profile import PlayerRole, Profile
+from src.models.profile import Profile, UserRole
 from src.models.refresh_token import RefreshToken
 
 # ---------------------------------------------------------------------------
@@ -35,14 +35,14 @@ def _now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-def _make_player(
-    role: PlayerRole = PlayerRole.player,
+def _make_user(
+    role: UserRole = UserRole.player,
     failed: int = 0,
     locked_until: datetime | None = None,
 ) -> Profile:
     p = MagicMock(spec=Profile)
     p.id = uuid.uuid4()
-    p.display_name = "Test Player"
+    p.display_name = "Test User"
     p.pin_hash = hash_pin("1234")
     p.role = role
     p.timezone = "UTC"
@@ -52,10 +52,10 @@ def _make_player(
     return p
 
 
-def _make_refresh_record(player_id: uuid.UUID, refresh_jwt: str) -> MagicMock:
+def _make_refresh_record(user_id: uuid.UUID, refresh_jwt: str) -> MagicMock:
     r = MagicMock(spec=RefreshToken)
     r.id = uuid.uuid4()
-    r.player_id = player_id
+    r.user_id = user_id
     r.token_hash = hash_token(refresh_jwt)
     r.device_hint = "TestAgent"
     r.expires_at = _now() + timedelta(days=30)
@@ -111,19 +111,19 @@ def test_hash_and_verify_pin() -> None:
 
 
 def test_access_token_roundtrip() -> None:
-    player_id = uuid.uuid4()
-    token = create_access_token(player_id, PlayerRole.admin)
+    user_id = uuid.uuid4()
+    token = create_access_token(user_id, UserRole.admin)
     payload = pyjwt.decode(token, settings.jwt_access_secret, algorithms=["HS256"])
-    assert payload["sub"] == str(player_id)
+    assert payload["sub"] == str(user_id)
     assert payload["role"] == "admin"
 
 
 def test_refresh_token_roundtrip() -> None:
-    player_id = uuid.uuid4()
+    user_id = uuid.uuid4()
     record_id = uuid.uuid4()
-    token = create_refresh_token(player_id, record_id)
+    token = create_refresh_token(user_id, record_id)
     payload = pyjwt.decode(token, settings.jwt_refresh_secret, algorithms=["HS256"])
-    assert payload["sub"] == str(player_id)
+    assert payload["sub"] == str(user_id)
     assert payload["jti"] == str(record_id)
 
 
@@ -133,13 +133,13 @@ def test_refresh_token_roundtrip() -> None:
 
 
 async def test_login_success(client: AsyncClient) -> None:
-    player = _make_player(role=PlayerRole.admin)
-    mock_db = _stub_db([_scalar(player), _scalar(None)])
+    user = _make_user(role=UserRole.admin)
+    mock_db = _stub_db([_scalar(user), _scalar(None)])
 
     async with _override_db(mock_db):
         resp = await client.post(
             "/api/v1/auth/login",
-            json={"display_name": "Test Player", "pin": "1234"},
+            json={"display_name": "Test User", "pin": "1234"},
         )
 
     assert resp.status_code == 200, resp.text
@@ -147,25 +147,25 @@ async def test_login_success(client: AsyncClient) -> None:
     assert "access_token" in data
     assert "refresh_token" in data
     assert data["player"]["role"] == "admin"
-    assert data["player"]["display_name"] == "Test Player"
+    assert data["player"]["display_name"] == "Test User"
     assert "email" not in data["player"]
     assert "avatar_url" not in data["player"]
 
 
 async def test_login_wrong_pin(client: AsyncClient) -> None:
-    player = _make_player()
-    mock_db = _stub_db([_scalar(player)])
+    user = _make_user()
+    mock_db = _stub_db([_scalar(user)])
 
     async with _override_db(mock_db):
         resp = await client.post(
             "/api/v1/auth/login",
-            json={"display_name": "Test Player", "pin": "0000"},
+            json={"display_name": "Test User", "pin": "0000"},
         )
 
     assert resp.status_code == 401
 
 
-async def test_login_player_not_found(client: AsyncClient) -> None:
+async def test_login_user_not_found(client: AsyncClient) -> None:
     mock_db = _stub_db([_scalar(None)])
 
     async with _override_db(mock_db):
@@ -179,13 +179,13 @@ async def test_login_player_not_found(client: AsyncClient) -> None:
 
 async def test_login_wrong_pin_returns_401(client: AsyncClient) -> None:
     """Wrong PIN always returns 401."""
-    player = _make_player(failed=99)
-    mock_db = _stub_db([_scalar(player)])
+    user = _make_user(failed=99)
+    mock_db = _stub_db([_scalar(user)])
 
     async with _override_db(mock_db):
         resp = await client.post(
             "/api/v1/auth/login",
-            json={"display_name": "Test Player", "pin": "9999"},
+            json={"display_name": "Test User", "pin": "9999"},
         )
 
     assert resp.status_code == 401
@@ -198,13 +198,13 @@ async def test_login_wrong_pin_returns_401(client: AsyncClient) -> None:
 
 
 async def test_refresh_success(client: AsyncClient) -> None:
-    player = _make_player()
+    user = _make_user()
     record_id = uuid.uuid4()
-    refresh_jwt = create_refresh_token(player.id, record_id)
-    token_record = _make_refresh_record(player.id, refresh_jwt)
+    refresh_jwt = create_refresh_token(user.id, record_id)
+    token_record = _make_refresh_record(user.id, refresh_jwt)
     token_record.id = record_id
 
-    mock_db = _stub_db([_scalar(token_record), _scalar(player)])
+    mock_db = _stub_db([_scalar(token_record), _scalar(user)])
 
     async with _override_db(mock_db):
         resp = await client.post(
@@ -233,9 +233,9 @@ async def test_refresh_invalid_token(client: AsyncClient) -> None:
 
 
 async def test_refresh_revoked_token(client: AsyncClient) -> None:
-    player = _make_player()
+    user = _make_user()
     record_id = uuid.uuid4()
-    refresh_jwt = create_refresh_token(player.id, record_id)
+    refresh_jwt = create_refresh_token(user.id, record_id)
 
     mock_db = _stub_db([_scalar(None)])  # token not found / revoked
 
@@ -254,10 +254,10 @@ async def test_refresh_revoked_token(client: AsyncClient) -> None:
 
 
 async def test_logout_success(client: AsyncClient) -> None:
-    player = _make_player()
+    user = _make_user()
     record_id = uuid.uuid4()
-    refresh_jwt = create_refresh_token(player.id, record_id)
-    token_record = _make_refresh_record(player.id, refresh_jwt)
+    refresh_jwt = create_refresh_token(user.id, record_id)
+    token_record = _make_refresh_record(user.id, refresh_jwt)
 
     mock_db = _stub_db([_scalar(token_record)])
 
@@ -291,16 +291,16 @@ async def test_logout_bad_token_still_204(client: AsyncClient) -> None:
 
 async def test_require_admin_rejects_player_role() -> None:
     """require_admin raises 403 for a player-role token."""
-    player = _make_player(role=PlayerRole.player)
+    user = _make_user(role=UserRole.player)
 
     with pytest.raises(HTTPException) as exc_info:
-        await require_admin(player)
+        await require_admin(user)
 
     assert exc_info.value.status_code == 403
 
 
 async def test_require_admin_passes_admin_role() -> None:
-    """require_admin returns the player when role is admin."""
-    player = _make_player(role=PlayerRole.admin)
-    result = await require_admin(player)
-    assert result is player
+    """require_admin returns the user when role is admin."""
+    user = _make_user(role=UserRole.admin)
+    result = await require_admin(user)
+    assert result is user

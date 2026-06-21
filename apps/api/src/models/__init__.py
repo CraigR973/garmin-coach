@@ -21,7 +21,7 @@ from src.models.notification import (
     NotificationPreferences,
     PushSubscription,
 )
-from src.models.profile import PlayerRole, Profile, SiteRole
+from src.models.profile import Profile, SiteRole, UserRole
 from src.models.refresh_token import RefreshToken
 
 __all__ = [
@@ -40,8 +40,8 @@ __all__ = [
     "NotificationPreferences",
     "PlanBlock",
     "PlannedWorkout",
-    "PlayerRole",
     "Profile",
+    "UserRole",
     "PushSubscription",
     "RefreshToken",
     "SiteRole",

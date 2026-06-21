@@ -24,9 +24,9 @@ class ActionType(StrEnum):
 
 class PushSubscription(Base, UUIDPrimaryKeyMixin):
     __tablename__ = "push_subscriptions"
-    __table_args__ = (Index("ix_push_subscriptions_player_id", "player_id"),)
+    __table_args__ = (Index("ix_push_subscriptions_user_id", "user_id"),)
 
-    player_id: Mapped[uuid.UUID] = mapped_column(
+    user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
     )
     subscription: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
@@ -39,7 +39,7 @@ class PushSubscription(Base, UUIDPrimaryKeyMixin):
 class NotificationPreferences(Base):
     __tablename__ = "notification_preferences"
 
-    player_id: Mapped[uuid.UUID] = mapped_column(
+    user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("profiles.id", ondelete="CASCADE"),
         primary_key=True,

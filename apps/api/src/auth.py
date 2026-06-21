@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
 from src.database import get_db
-from src.models.profile import PlayerRole, Profile
+from src.models.profile import Profile, UserRole
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -51,9 +51,9 @@ def _now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-def create_access_token(player_id: uuid.UUID, role: PlayerRole) -> str:
+def create_access_token(user_id: uuid.UUID, role: UserRole) -> str:
     payload = {
-        "sub": str(player_id),
+        "sub": str(user_id),
         "role": role.value,
         "exp": _now() + ACCESS_TTL,
         "iat": _now(),
@@ -61,9 +61,9 @@ def create_access_token(player_id: uuid.UUID, role: PlayerRole) -> str:
     return jwt.encode(payload, settings.jwt_access_secret, algorithm="HS256")
 
 
-def create_refresh_token(player_id: uuid.UUID, token_record_id: uuid.UUID) -> str:
+def create_refresh_token(user_id: uuid.UUID, token_record_id: uuid.UUID) -> str:
     payload = {
-        "sub": str(player_id),
+        "sub": str(user_id),
         "jti": str(token_record_id),
         "exp": _now() + REFRESH_TTL,
         "iat": _now(),
@@ -103,9 +103,9 @@ def decode_refresh_token(token: str) -> dict[str, Any]:
         )
 
 
-def create_pin_reset_token(player_id: uuid.UUID) -> str:
+def create_pin_reset_token(user_id: uuid.UUID) -> str:
     payload = {
-        "sub": str(player_id),
+        "sub": str(user_id),
         "scope": "pin_reset",
         "exp": _now() + PIN_RESET_TTL,
         "iat": _now(),
@@ -130,33 +130,33 @@ def decode_pin_reset_token(token: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-async def get_current_player(
+async def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(_bearer)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Profile:
     payload = decode_access_token(credentials.credentials)
-    player_id = uuid.UUID(payload["sub"])
+    user_id = uuid.UUID(payload["sub"])
 
     result = await db.execute(
         select(Profile).where(
-            Profile.id == player_id,
+            Profile.id == user_id,
             Profile.deleted_at.is_(None),
             Profile.is_active.is_(True),
         )
     )
-    player = result.scalar_one_or_none()
-    if player is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Player not found")
-    return player
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    return user
 
 
 async def require_admin(
-    player: Annotated[Profile, Depends(get_current_player)],
+    user: Annotated[Profile, Depends(get_current_user)],
 ) -> Profile:
-    if player.role != PlayerRole.admin:
+    if user.role != UserRole.admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
-    return player
+    return user
 
 
-CurrentPlayer = Annotated[Profile, Depends(get_current_player)]
-AdminPlayer = Annotated[Profile, Depends(require_admin)]
+CurrentUser = Annotated[Profile, Depends(get_current_user)]
+AdminUser = Annotated[Profile, Depends(require_admin)]

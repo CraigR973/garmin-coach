@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import (
     REFRESH_TTL,
-    CurrentPlayer,
+    CurrentUser,
     create_access_token,
     create_pin_reset_token,
     create_refresh_token,
@@ -27,13 +27,13 @@ from src.auth import (
 from src.database import get_db
 from src.models.profile import Profile
 from src.models.refresh_token import RefreshToken
-from src.rate_limit import limiter, login_key, per_player_key, refresh_token_key
+from src.rate_limit import limiter, login_key, per_user_key, refresh_token_key
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
-# Pre-computed dummy hash for constant-time login response when player not found.
+# Pre-computed dummy hash for constant-time login response when user not found.
 _DUMMY_HASH: str = _bcrypt.hashpw(b"dummy-timing-guard", _bcrypt.gensalt()).decode()
 
 
@@ -102,17 +102,17 @@ _PIN_RESET_GENERIC = {
 
 
 async def _issue_token_pair(
-    player: Profile,
+    user: Profile,
     db: AsyncSession,
     device_hint: str | None = None,
 ) -> tuple[str, str]:
     """Create a new refresh token record and return (access_token, refresh_token)."""
     record_id = uuid.uuid4()
-    refresh_jwt = create_refresh_token(player.id, record_id)
+    refresh_jwt = create_refresh_token(user.id, record_id)
 
     token_record = RefreshToken(
         id=record_id,
-        player_id=player.id,
+        user_id=user.id,
         token_hash=hash_token(refresh_jwt),
         device_hint=device_hint,
         expires_at=_now() + REFRESH_TTL,
@@ -120,7 +120,7 @@ async def _issue_token_pair(
     db.add(token_record)
     await db.commit()
 
-    access = create_access_token(player.id, player.role)
+    access = create_access_token(user.id, user.role)
     return access, refresh_jwt
 
 
@@ -143,36 +143,36 @@ async def login(
         )
     )
 
-    player = result.scalar_one_or_none()
+    user = result.scalar_one_or_none()
 
-    if player is None:
+    if user is None:
         verify_pin(body.pin, _DUMMY_HASH)
-        log.info("login failed — player not found")
+        log.info("login failed — user not found")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-    if not verify_pin(body.pin, player.pin_hash):
-        log.info("login failed — wrong pin", player_id=str(player.id))
+    if not verify_pin(body.pin, user.pin_hash):
+        log.info("login failed — wrong pin", user_id=str(user.id))
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     await db.commit()
-    await db.refresh(player)
+    await db.refresh(user)
 
     device_hint = request.headers.get("User-Agent", "")[:100]
-    access, refresh = await _issue_token_pair(player, db, device_hint)
+    access, refresh = await _issue_token_pair(user, db, device_hint)
 
     log.info(
         "login successful",
-        player_id=str(player.id),
-        role=player.role.value,
+        user_id=str(user.id),
+        role=user.role.value,
     )
     return TokenResponse(
         access_token=access,
         refresh_token=refresh,
         player=PlayerInfo(
-            id=str(player.id),
-            display_name=player.display_name,
-            role=player.role.value,
-            timezone=player.timezone,
+            id=str(user.id),
+            display_name=user.display_name,
+            role=user.role.value,
+            timezone=user.timezone,
         ),
     )
 
@@ -186,13 +186,13 @@ async def refresh(
 ) -> AccessTokenResponse:
     payload = decode_refresh_token(body.refresh_token)
     jti = uuid.UUID(payload["jti"])
-    player_id = uuid.UUID(payload["sub"])
+    user_id = uuid.UUID(payload["sub"])
 
     token_hash = hash_token(body.refresh_token)
     result = await db.execute(
         select(RefreshToken).where(
             RefreshToken.id == jti,
-            RefreshToken.player_id == player_id,
+            RefreshToken.user_id == user_id,
             RefreshToken.token_hash == token_hash,
             RefreshToken.revoked_at.is_(None),
         )
@@ -206,17 +206,17 @@ async def refresh(
     token_record.revoked_at = _now()
     await db.commit()
 
-    player_result = await db.execute(
-        select(Profile).where(Profile.id == player_id, Profile.deleted_at.is_(None))
+    user_result = await db.execute(
+        select(Profile).where(Profile.id == user_id, Profile.deleted_at.is_(None))
     )
-    player = player_result.scalar_one_or_none()
-    if player is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Player not found")
+    user = user_result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
     device_hint = token_record.device_hint
-    access, new_refresh = await _issue_token_pair(player, db, device_hint)
+    access, new_refresh = await _issue_token_pair(user, db, device_hint)
 
-    log.info("tokens refreshed", player_id=str(player_id))
+    log.info("tokens refreshed", user_id=str(user_id))
     return AccessTokenResponse(access_token=access, refresh_token=new_refresh)
 
 
@@ -251,12 +251,12 @@ async def logout(
 
 
 @router.get("/me", response_model=PlayerInfo)
-async def me(player: CurrentPlayer) -> PlayerInfo:
+async def me(user: CurrentUser) -> PlayerInfo:
     return PlayerInfo(
-        id=str(player.id),
-        display_name=player.display_name,
-        role=player.role.value,
-        timezone=player.timezone,
+        id=str(user.id),
+        display_name=user.display_name,
+        role=user.role.value,
+        timezone=user.timezone,
     )
 
 
@@ -267,10 +267,10 @@ class ProfileUpdateRequest(BaseModel):
 @router.patch("/me", response_model=PlayerInfo)
 async def update_profile(
     body: ProfileUpdateRequest,
-    player: CurrentPlayer,
+    user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> PlayerInfo:
-    """Update the authenticated player's mutable profile fields."""
+    """Update the authenticated user's mutable profile fields."""
     try:
         ZoneInfo(body.timezone)
     except (ZoneInfoNotFoundError, KeyError):
@@ -278,31 +278,31 @@ async def update_profile(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Invalid IANA timezone identifier",
         )
-    await db.execute(update(Profile).where(Profile.id == player.id).values(timezone=body.timezone))
+    await db.execute(update(Profile).where(Profile.id == user.id).values(timezone=body.timezone))
     await db.commit()
     return PlayerInfo(
-        id=str(player.id),
-        display_name=player.display_name,
-        role=player.role.value,
+        id=str(user.id),
+        display_name=user.display_name,
+        role=user.role.value,
         timezone=body.timezone,
     )
 
 
 @router.put("/me/pin", status_code=status.HTTP_204_NO_CONTENT)
-@limiter.limit("3/hour", key_func=per_player_key)
+@limiter.limit("3/hour", key_func=per_user_key)
 async def change_pin(
     request: Request,
     body: ChangePinRequest,
-    player: CurrentPlayer,
+    user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
-    if not verify_pin(body.current_pin, player.pin_hash):
+    if not verify_pin(body.current_pin, user.pin_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Current PIN is incorrect"
         )
-    player.pin_hash = hash_pin(body.new_pin)
+    user.pin_hash = hash_pin(body.new_pin)
     await db.commit()
-    log.info("pin changed", player_id=str(player.id))
+    log.info("pin changed", user_id=str(user.id))
 
 
 @router.post("/pin/reset-request")
@@ -318,16 +318,16 @@ async def pin_reset_request(
             Profile.deleted_at.is_(None),
         )
     )
-    player = result.scalar_one_or_none()
+    user = result.scalar_one_or_none()
 
-    if player is None:
+    if user is None:
         return _PIN_RESET_GENERIC
 
     # Admin-only reset: log the token for the admin to use manually.
-    reset_token = create_pin_reset_token(player.id)
+    reset_token = create_pin_reset_token(user.id)
     log.info(
         "pin reset requested — token generated for admin",
-        player_id=str(player.id),
+        user_id=str(user.id),
         token=reset_token,
     )
     return _PIN_RESET_GENERIC
@@ -339,23 +339,23 @@ async def pin_reset(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
     payload = decode_pin_reset_token(body.token)
-    player_id = uuid.UUID(payload["sub"])
+    user_id = uuid.UUID(payload["sub"])
 
     result = await db.execute(
-        select(Profile).where(Profile.id == player_id, Profile.deleted_at.is_(None))
+        select(Profile).where(Profile.id == user_id, Profile.deleted_at.is_(None))
     )
-    player = result.scalar_one_or_none()
-    if player is None:
+    user = result.scalar_one_or_none()
+    if user is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
 
-    player.pin_hash = hash_pin(body.new_pin)
-    player.failed_login_count = 0
-    player.locked_until = None
+    user.pin_hash = hash_pin(body.new_pin)
+    user.failed_login_count = 0
+    user.locked_until = None
 
     await db.execute(
         update(RefreshToken)
-        .where(RefreshToken.player_id == player_id, RefreshToken.revoked_at.is_(None))
+        .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
         .values(revoked_at=_now())
     )
     await db.commit()
-    log.info("pin reset complete — all tokens revoked", player_id=str(player_id))
+    log.info("pin reset complete — all tokens revoked", user_id=str(user_id))

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.auth import CurrentPlayer
+from src.auth import CurrentUser
 from src.database import get_db
 from src.models.coaching import Analysis, DailyMetric, ManualEntry, PlannedWorkout, Sleep
 from src.services.daily_loop import DailyLoopService
@@ -378,7 +378,7 @@ def _serialize_planned_workout(
     )
 
 
-def _envelope(player: CurrentPlayer, snapshot: Any) -> DailyLoopEnvelope:
+def _envelope(player: CurrentUser, snapshot: Any) -> DailyLoopEnvelope:
     morning_analysis = _serialize_analysis(snapshot.morning_analysis)
     planned_workouts = [
         _serialize_planned_workout(
@@ -444,7 +444,7 @@ def _envelope(player: CurrentPlayer, snapshot: Any) -> DailyLoopEnvelope:
 
 @router.get("", response_model=DailyLoopEnvelope)
 async def get_daily_loop(
-    player: CurrentPlayer,
+    player: CurrentUser,
     subject_date: date | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> DailyLoopEnvelope:
@@ -457,7 +457,7 @@ async def get_daily_loop(
 async def upsert_manual_entry(
     subject_date: date,
     body: ManualEntryBody,
-    player: CurrentPlayer,
+    player: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> DailyLoopEnvelope:
     service = DailyLoopService(db)
@@ -485,7 +485,7 @@ async def upsert_workout_adherence(
     subject_date: date,
     planned_workout_id: uuid.UUID,
     body: AdherenceBody,
-    player: CurrentPlayer,
+    player: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> DailyLoopEnvelope:
     service = DailyLoopService(db)

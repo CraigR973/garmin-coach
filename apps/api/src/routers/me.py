@@ -1,9 +1,9 @@
-"""Endpoints scoped to the authenticated player (/api/v1/me)."""
+"""Endpoints scoped to the authenticated user (/api/v1/me)."""
 
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from src.auth import CurrentPlayer
+from src.auth import CurrentUser
 
 router = APIRouter(prefix="/api/v1/me", tags=["me"])
 
@@ -16,11 +16,11 @@ class ProfileOut(BaseModel):
 
 
 @router.get("/profile", response_model=ProfileOut)
-async def get_profile(player: CurrentPlayer) -> ProfileOut:
-    """Return the authenticated player's basic profile."""
+async def get_profile(user: CurrentUser) -> ProfileOut:
+    """Return the authenticated user's basic profile."""
     return ProfileOut(
-        id=str(player.id),
-        display_name=player.display_name,
-        role=player.role.value,
-        timezone=player.timezone,
+        id=str(user.id),
+        display_name=user.display_name,
+        role=user.role.value,
+        timezone=user.timezone,
     )
