@@ -6,15 +6,26 @@
 
 ## Now
 
-**Phase:** 2 in progress — Batch 12 (Zwift delivery rail) **shipped (rail-only)**:
-merged PR #6 to `main` (merge commit `67f9ad4`), CI green, Railway + Vercel
-auto-deployed. Live: the delivery rail (intervals.icu push + `.ZWO` fallback,
-propose→approve→push, migration `007`), the Garmin `GARMIN_TOKENSTORE_B64`
-token-blob auth path, and the Anthropic fail-closed validator. **Deferred to
-Batch 18:** the production daily-loop *data* gate (non-null daily
-metrics/sleep/morning analysis) — production has no Garmin daily-metrics/sleep
-sync (`sync_daily` was never wired into the scheduler), so the strict smoke
-can't pass yet. See DECISIONS #57.
+**Phase:** 2 in progress — Batch 18 (production daily-loop data sync)
+**implementation ready on `claude/start-batch-18-dbwx9r`** (not shipped — awaits
+`/closeout`). Wired `GarminSyncService.sync_daily` into the 06:30
+`morning_weather_sync` job: the job now runs weather sync → commit →
+`_sync_garmin_daily` (today's daily metrics + sleep for each active profile) →
+commit → morning analysis, so the verdict reads real readiness/sleep instead of
+empty inputs. The fetch uses `_retry_sync(..., backoff=2.0)` (new exponential
+backoff) to survive a transient Garmin 429, and each profile's sync is isolated
+so one Garmin failure (429/MFA/token) is logged and skipped without blocking the
+others or the analysis. Closes the data gate deferred from Batch 12
+(DECISIONS #57, #58). Local verification: backend pytest `111 passed, 11
+skipped`; ruff check + format clean; mypy clean (38 files). **Still gated on
+production:** the strict smoke (18.3) needs the Railway job to run with a live
+Garmin token + Mark's PIN — run it at closeout, not here.
+
+Batch 12 (Zwift delivery rail) is **shipped (rail-only)**: merged PR #6 to
+`main` (merge commit `67f9ad4`), CI green, Railway + Vercel auto-deployed. Live:
+the delivery rail (intervals.icu push + `.ZWO` fallback, propose→approve→push,
+migration `007`), the Garmin `GARMIN_TOKENSTORE_B64` token-blob auth path, and
+the Anthropic fail-closed validator.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -28,14 +39,14 @@ can't pass yet. See DECISIONS #57.
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Batch 18 — wire a production Garmin daily-metrics/sleep sync.
-`GarminSyncService.sync_daily` exists (Batch 2) but has no caller in `src/`: the
-06:30 job only does weather→analysis and the hourly job only does activities, so
-today's daily metrics + sleep are never synced and the morning verdict runs on
-empty readiness/sleep data. Wire `sync_daily` into the 06:30 path (before
-analysis) with 429-safe retry, then rerun the strict smoke (the deferred Batch 12
-data gate):
+**Next:** `/closeout` Batch 18 — merge `claude/start-batch-18-dbwx9r` to `main`,
+let Railway redeploy, then run the strict smoke (18.3, the deferred Batch 12 data
+gate) against production after the first post-deploy 06:30 job (or a manual
+trigger) has run with a live Garmin token:
 `API_URL=https://api-production-e2bc7.up.railway.app SMOKE_DISPLAY_NAME=Mark SMOKE_PIN=<real-pin> SMOKE_STRICT_DAILY_LOOP=1 python3 scripts/smoke_daily_loop.py`.
+The smoke needs non-null daily metrics/sleep/morningAnalysis + Hive thermal +
+weather; it still depends on Anthropic credits and a valid `GARMIN_TOKENSTORE_B64`
+in Railway (the two production blockers noted below).
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -89,6 +100,20 @@ data gate):
   failure.
 
 ## Log
+- **2026-06-21** — Phase 2 Batch 18 implementation ready on
+  `claude/start-batch-18-dbwx9r`: wired `GarminSyncService.sync_daily` into the
+  06:30 `morning_weather_sync` job via a new `_sync_garmin_daily` helper that runs
+  *before* the analysis loop (weather → commit → garmin daily → commit →
+  analysis), so the morning verdict reads today's real readiness + sleep. Made
+  the fetch 429-safe by adding an exponential-backoff `backoff` option to
+  `_retry_sync` (used at `backoff=2.0`), and isolated each profile's sync in its
+  own try/except so one Garmin failure (429/MFA/token) is logged and skipped.
+  Added scheduler tests (daily-sync counts, per-profile error isolation, empty
+  short-circuit, backoff growth, and weather→daily-sync→analysis ordering).
+  Recorded DECISIONS #58. Verified backend pytest (111 passed, 11 DB-skipped),
+  ruff check + format, and mypy (clean, 38 files). The strict production smoke
+  (18.3) is deferred to `/closeout` — it needs the deployed Railway job to run
+  with a live Garmin token + Mark's PIN.
 - **2026-06-21** — Batch 12 closed out **rail-only** (Craig's call): merged PR #6
   to `main` (merge commit `67f9ad4`), CI green (pytest/ruff/mypy/alembic/web
   build), Railway + Vercel auto-deployed. Shipped the Zwift delivery rail
