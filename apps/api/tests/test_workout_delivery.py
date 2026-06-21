@@ -179,7 +179,9 @@ async def test_delivery_service_requires_approval_before_push(db_conn: AsyncConn
             },
             source="test",
         )
-        session.add_all([user, workout])
+        session.add(user)
+        await session.flush()
+        session.add(workout)
         await session.commit()
 
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
