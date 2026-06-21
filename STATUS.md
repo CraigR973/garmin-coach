@@ -6,9 +6,16 @@
 
 ## Now
 
-**Phase:** 2 in progress — Batch 14 (dynamic weekly restructuring) **implementation
-ready on `claude/batch-start-14-gajkdx`, not yet committed/merged** — awaiting
-`/closeout 14`. Batch 13 (executable coaching) is shipped on `main` (`e6e3107`).
+**Phase:** 2 in progress — Batch 14 (dynamic weekly restructuring) **shipped via
+explicit closeout.** Merged PR #10 to `main` (merge commit `efc2d7a`), CI run #95
+green on the branch HEAD, Railway + Vercel auto-deployed. Production verified on the
+merge SHA:
+- Railway `/api/v1/health` returns `efc2d7a`;
+- Vercel serves `https://garmin-coach-one.vercel.app` (`HTTP 200`) and its
+  same-origin `/api/v1/health` rewrite returns the same SHA;
+- non-mutating Batch 14 smoke: `GET /api/v1/restructure/week-ahead` and
+  `POST /api/v1/restructure/apply` are live and 401 unauthenticated, and the
+  deployed OpenAPI exposes both.
 
 Batch 14 makes the *week* adaptive on top of the Batch 12/13 rail:
 - new `services/weekly_restructure.py`. `plan_week_restructure` is a **pure,
@@ -41,10 +48,12 @@ run against a real local Postgres so the DB-backed restructure tests actually
 exercise versioning/delivery), `ruff check` + `ruff format --check` clean, `mypy src`
 clean (43 files). Frontend untouched (Batch 14 is backend-only per its acceptance).
 
-**Next:** `/closeout 14`, then Batch 15 (holiday pause/resume). Operational
-follow-ups (not blocking): rotate Mark's production PIN off the temporary smoke
-value (`1234`); set `INTERVALS_API_KEY` in Railway so `auto_push_due` (and an
-approved restructure proposal) can actually deliver — without it, push returns 503.
+**Next:** Batch 15 (holiday pause/resume — holiday window = recovery-week
+equivalent; on return Build1→Build2, Build2→repeat Build1; versioned plan updates +
+pause/resume UI). Operational follow-ups (not blocking): rotate Mark's production
+PIN off the temporary smoke value (`1234`); set `INTERVALS_API_KEY` in Railway so
+`auto_push_due` (and an approved restructure proposal) can actually deliver —
+without it, push returns 503.
 
 Batch 18 (production daily-loop data sync) is **shipped** on `main` at `707850d`
 (strict smoke green: `health`/`login`/`daily_loop`, `verdict=Red`). Batch 12
@@ -55,7 +64,7 @@ fail-closed validator.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
-- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (serves `main`; latest verified deploy `e6e3107` = Batch 13 closeout merge)
+- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (serves `main`; latest verified deploy `efc2d7a` = Batch 14 closeout merge)
 - DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-007 applied (007 = workout_delivery_proposals, deployed with Batch 12)
 
 **Hosting identifiers (non-secret):**
@@ -139,6 +148,15 @@ fail-closed validator.
   rows (`subject_date=week_start`).
 
 ## Log
+- **2026-06-21** — Closed out Batch 14. Opened + merged PR #10 to `main` (merge
+  commit `efc2d7a`); CI run #95 was already green on the branch HEAD (`1ac1838`).
+  Railway + Vercel auto-deployed `efc2d7a`: `/api/v1/health` returns the merge SHA,
+  the Vercel same-origin `/api/v1/health` rewrite returns the same SHA, the web URL
+  is `HTTP 200`, and the non-mutating Batch 14 smoke passed — `GET
+  /api/v1/restructure/week-ahead` + `POST /api/v1/restructure/apply` are live, 401
+  unauthenticated, and exposed in the deployed OpenAPI. Struck the Batch 14 row
+  `Shipped`, ticked `ARCHITECTURE.md` §7, recorded DECISIONS #63-65. Next unshipped
+  batch: Batch 15 (holiday pause/resume).
 - **2026-06-21** — Batch 14 (dynamic weekly restructuring) implementation ready on
   `claude/batch-start-14-gajkdx`. Added `services/weekly_restructure.py` (pure
   permutation engine `plan_week_restructure` enforcing the VO2↔Sweet-Spot no-stack
