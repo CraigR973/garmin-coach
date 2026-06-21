@@ -37,6 +37,34 @@ railway logs --service api --tail
 
 All job failures are swallowed at the top level (the log event includes the traceback) so one failing job does not stop others.
 
+## Production daily-loop gate
+
+Batch 12 and later coaching-delivery work depend on the production daily loop
+containing real data, not just returning HTTP 200. Use the strict smoke mode
+after setting Railway source/analysis variables and allowing or manually
+triggering the jobs:
+
+```bash
+API_URL=https://api-production-e2bc7.up.railway.app \
+SMOKE_DISPLAY_NAME=Mark \
+SMOKE_PIN=<real-pin> \
+SMOKE_STRICT_DAILY_LOOP=1 \
+python3 scripts/smoke_daily_loop.py
+```
+
+Strict mode fails unless `/api/v1/daily-loop` has all of:
+
+- non-null `dailyMetrics`
+- non-null `sleep`
+- non-null `morningAnalysis`
+- Hive `thermalState.latestTemperatureC`
+- weather `thermalState.overnightLowC`
+- weather `thermalState.overnightWindMaxMph`
+
+Required Railway variables for this gate are `ENVIRONMENT=production`,
+`GARMIN_EMAIL`, `GARMIN_PASSWORD`, `GARMIN_TOKENSTORE`, `HIVE_EMAIL`,
+`HIVE_PASSWORD`, `SUPABASE_SERVICE_KEY`, and `ANTHROPIC_API_KEY`.
+
 ## Garmin sync
 
 **Common failures:**
@@ -113,6 +141,29 @@ The hourly Garmin poll detects new rides and generates post-workout analysis onc
 | `post-workout analysis failed` per-profile log | `ANTHROPIC_API_KEY` invalid, or Claude API error | Verify key; the next hourly Garmin poll will retry for activities within the last 3 days |
 | `analyses_generated: 0` after a ride | Activity was a strength session (wrist HR) — excluded by design | Expected; strength recovery is excluded per data-quality rules |
 | Duplicate analyses | Should not occur; `activity_id` idempotency guard prevents it | If seen, check for duplicate `analyses` rows with same `activity_id` |
+
+## Zwift workout delivery
+
+Workout delivery is output-only: the app proposes a workout from
+`planned_workouts`, approval records the explicit human gate, and only then does
+`push` create an intervals.icu calendar event. Garmin remains the only activity
+ingestion source.
+
+Required Railway variables:
+
+- `INTERVALS_API_KEY`
+- `INTERVALS_ATHLETE_ID=i618709`
+- `INTERVALS_BASE_URL=https://intervals.icu/api/v1`
+
+Operational notes:
+
+- Push uses `POST /api/v1/workout-delivery/proposals/{proposal_id}/push`.
+- `.ZWO` fallback is available from
+  `GET /api/v1/workout-delivery/proposals/{proposal_id}/zwo`.
+- Cadence-critical repeats are emitted as individual steps, not an `IntervalsT`
+  repeat block, because Zwift overrides cadence on repeated blocks. PC Zwift
+  cadence override behaviour still needs manual verification before treating
+  cadence as locked.
 
 ## Evening nudge and monitoring alerts
 

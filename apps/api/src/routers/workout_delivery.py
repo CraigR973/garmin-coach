@@ -1,0 +1,160 @@
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime
+from typing import Any
+
+from fastapi import APIRouter, Depends
+from fastapi.responses import Response
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.auth import CurrentUser
+from src.database import get_db
+from src.models.coaching import WorkoutDeliveryProposal
+from src.services.workout_delivery import WorkoutDeliveryService
+
+router = APIRouter(prefix="/api/v1/workout-delivery", tags=["workout-delivery"])
+
+
+def _generated_at() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _dt(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return value.replace(tzinfo=UTC).isoformat().replace("+00:00", "Z")
+
+
+class ApiError(BaseModel):
+    code: str
+    detail: str
+
+
+class ApiMeta(BaseModel):
+    generatedAtUtc: str
+
+
+class WorkoutDeliveryProposalOut(BaseModel):
+    id: str
+    userId: str
+    plannedWorkoutId: str | None
+    plannedWorkoutVersion: int
+    workoutDate: str
+    provider: str
+    status: str
+    proposedAtUtc: str
+    approvedAtUtc: str | None
+    approvedByProfileId: str | None
+    pushedAtUtc: str | None
+    intervalsEventId: str | None
+    structuredWorkoutIr: dict[str, Any]
+    intervalsPayload: dict[str, Any]
+    zwoXml: str
+    lastError: str | None
+
+
+class WorkoutDeliveryData(BaseModel):
+    proposals: list[WorkoutDeliveryProposalOut]
+
+
+class WorkoutDeliveryEnvelope(BaseModel):
+    data: WorkoutDeliveryData
+    meta: ApiMeta
+    errors: list[ApiError]
+
+
+def _serialize(proposal: WorkoutDeliveryProposal) -> WorkoutDeliveryProposalOut:
+    return WorkoutDeliveryProposalOut(
+        id=str(proposal.id),
+        userId=str(proposal.user_id),
+        plannedWorkoutId=(
+            str(proposal.planned_workout_id) if proposal.planned_workout_id else None
+        ),
+        plannedWorkoutVersion=proposal.planned_workout_version,
+        workoutDate=proposal.workout_date.isoformat(),
+        provider=proposal.provider,
+        status=proposal.status,
+        proposedAtUtc=_dt(proposal.proposed_at_utc) or "",
+        approvedAtUtc=_dt(proposal.approved_at_utc),
+        approvedByProfileId=(
+            str(proposal.approved_by_profile_id) if proposal.approved_by_profile_id else None
+        ),
+        pushedAtUtc=_dt(proposal.pushed_at_utc),
+        intervalsEventId=proposal.intervals_event_id,
+        structuredWorkoutIr=proposal.structured_workout_ir,
+        intervalsPayload=proposal.intervals_payload,
+        zwoXml=proposal.zwo_xml,
+        lastError=proposal.last_error,
+    )
+
+
+def _envelope(proposals: list[WorkoutDeliveryProposal]) -> WorkoutDeliveryEnvelope:
+    return WorkoutDeliveryEnvelope(
+        data=WorkoutDeliveryData(proposals=[_serialize(proposal) for proposal in proposals]),
+        meta=ApiMeta(generatedAtUtc=_generated_at()),
+        errors=[],
+    )
+
+
+@router.get("/proposals", response_model=WorkoutDeliveryEnvelope)
+async def list_workout_delivery_proposals(
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> WorkoutDeliveryEnvelope:
+    service = WorkoutDeliveryService(db)
+    proposals = await service.list_proposals(player)
+    return _envelope(proposals)
+
+
+@router.post(
+    "/planned-workouts/{planned_workout_id}/proposals",
+    response_model=WorkoutDeliveryEnvelope,
+)
+async def propose_workout_delivery(
+    planned_workout_id: uuid.UUID,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> WorkoutDeliveryEnvelope:
+    service = WorkoutDeliveryService(db)
+    proposal = await service.propose(player=player, planned_workout_id=planned_workout_id)
+    return _envelope([proposal])
+
+
+@router.post("/proposals/{proposal_id}/approve", response_model=WorkoutDeliveryEnvelope)
+async def approve_workout_delivery_proposal(
+    proposal_id: uuid.UUID,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> WorkoutDeliveryEnvelope:
+    service = WorkoutDeliveryService(db)
+    proposal = await service.approve(player=player, proposal_id=proposal_id)
+    return _envelope([proposal])
+
+
+@router.post("/proposals/{proposal_id}/push", response_model=WorkoutDeliveryEnvelope)
+async def push_workout_delivery_proposal(
+    proposal_id: uuid.UUID,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> WorkoutDeliveryEnvelope:
+    service = WorkoutDeliveryService(db)
+    proposal = await service.push(player=player, proposal_id=proposal_id)
+    return _envelope([proposal])
+
+
+@router.get("/proposals/{proposal_id}/zwo")
+async def download_workout_delivery_zwo(
+    proposal_id: uuid.UUID,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    service = WorkoutDeliveryService(db)
+    proposal = await service._proposal(player.id, proposal_id)
+    filename = f"{proposal.workout_date.isoformat()}-garmin-coach.zwo"
+    return Response(
+        proposal.zwo_xml,
+        media_type="application/xml",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
