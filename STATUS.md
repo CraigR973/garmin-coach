@@ -6,20 +6,29 @@
 
 ## Now
 
-**Phase:** 2 in progress — Batch 18 (production daily-loop data sync)
-**implementation ready on `claude/start-batch-18-dbwx9r`** (not shipped — awaits
-`/closeout`). Wired `GarminSyncService.sync_daily` into the 06:30
-`morning_weather_sync` job: the job now runs weather sync → commit →
-`_sync_garmin_daily` (today's daily metrics + sleep for each active profile) →
-commit → morning analysis, so the verdict reads real readiness/sleep instead of
-empty inputs. The fetch uses `_retry_sync(..., backoff=2.0)` (new exponential
-backoff) to survive a transient Garmin 429, and each profile's sync is isolated
-so one Garmin failure (429/MFA/token) is logged and skipped without blocking the
-others or the analysis. Closes the data gate deferred from Batch 12
-(DECISIONS #57, #58). Local verification: backend pytest `111 passed, 11
-skipped`; ruff check + format clean; mypy clean (38 files). **Still gated on
-production:** the strict smoke (18.3) needs the Railway job to run with a live
-Garmin token + Mark's PIN — run it at closeout, not here.
+**Phase:** 2 in progress — Batch 18 (production daily-loop data sync) **code
+merged + deployed; row NOT yet struck (one acceptance item open).** Merged PR #7
+to `main` (merge commit `08d3010`), main CI run #79 green (pytest/ruff/mypy/
+alembic/web build), Railway auto-deployed and `/api/v1/health` reports
+`08d3010`, non-mutating smoke 1/1. Wired `GarminSyncService.sync_daily` into the
+06:30 `morning_weather_sync` job: weather sync → commit → `_sync_garmin_daily`
+(today's daily metrics + sleep per active profile) → commit → morning analysis,
+so the verdict reads real readiness/sleep instead of empty inputs. The fetch uses
+`_retry_sync(..., backoff=2.0)` (new exponential backoff) to survive a transient
+Garmin 429, and each profile's sync is isolated so one Garmin failure
+(429/MFA/token) is logged and skipped without blocking the others or the
+analysis. Closes the *code* side of the data gate deferred from Batch 12
+(DECISIONS #57, #58).
+
+**Open acceptance item — 18.3 strict smoke (NOT verified):** the strict
+daily-loop smoke (`SMOKE_STRICT_DAILY_LOOP=1`) has not been run/passed in
+production. It needs Mark's real PIN plus, in Railway, a valid
+`GARMIN_TOKENSTORE_B64` (last seen hitting Garmin 429) and Anthropic credits
+(last seen "credit balance too low"), and the 06:30 job (or a manual daily sync)
+to have run post-deploy so today's rows exist. Until that smoke shows non-null
+daily metrics/sleep/morningAnalysis + Hive thermal + weather, **do not strike the
+Batch 18 row as Shipped.** Anyone with Mark's PIN can run it (command under
+"Next"); deciding the gate is met is the only thing left.
 
 Batch 12 (Zwift delivery rail) is **shipped (rail-only)**: merged PR #6 to
 `main` (merge commit `67f9ad4`), CI green, Railway + Vercel auto-deployed. Live:
@@ -29,7 +38,7 @@ the Anthropic fail-closed validator.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
-- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (serves `main`; Batch 12 merged as `67f9ad4`)
+- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (serves `main`; Batch 18 merged as `08d3010`)
 - DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-007 applied (007 = workout_delivery_proposals, deployed with Batch 12)
 
 **Hosting identifiers (non-secret):**
@@ -39,14 +48,15 @@ the Anthropic fail-closed validator.
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** `/closeout` Batch 18 — merge `claude/start-batch-18-dbwx9r` to `main`,
-let Railway redeploy, then run the strict smoke (18.3, the deferred Batch 12 data
-gate) against production after the first post-deploy 06:30 job (or a manual
-trigger) has run with a live Garmin token:
+**Next:** Finish Batch 18 closeout by clearing 18.3 — run the strict smoke
+against production (needs Mark's PIN; ensure the Railway `GARMIN_TOKENSTORE_B64`
+is a live token and Anthropic credits are topped up, then let the 06:30 job run
+or trigger a daily sync so today's rows exist):
 `API_URL=https://api-production-e2bc7.up.railway.app SMOKE_DISPLAY_NAME=Mark SMOKE_PIN=<real-pin> SMOKE_STRICT_DAILY_LOOP=1 python3 scripts/smoke_daily_loop.py`.
-The smoke needs non-null daily metrics/sleep/morningAnalysis + Hive thermal +
-weather; it still depends on Anthropic credits and a valid `GARMIN_TOKENSTORE_B64`
-in Railway (the two production blockers noted below).
+When it passes (non-null daily metrics/sleep/morningAnalysis + Hive thermal +
+weather, no scheduler ERROR lines), strike the Batch 18 row in
+`docs/phase-batches.md` as `Shipped` and prepend a dated Log line here. The code,
+CI, and deploy are already done — only this production verification remains.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -100,6 +110,16 @@ in Railway (the two production blockers noted below).
   failure.
 
 ## Log
+- **2026-06-21** — Batch 18 code merged + deployed (closeout partial). Merged
+  PR #7 `claude/start-batch-18-dbwx9r` → `main` (merge commit `08d3010`), main CI
+  run #79 green (pytest/ruff/mypy/alembic/web build), Railway auto-deployed and
+  `/api/v1/health` reports `08d3010`, non-mutating smoke 1/1. **Did not strike the
+  row Shipped:** the strict daily-loop smoke (18.3) could not be run from the work
+  session — it needs Mark's PIN plus a live Railway `GARMIN_TOKENSTORE_B64` and
+  Anthropic credits, which were the standing production blockers. Honest state:
+  the sync wiring is implemented, tested, and live, but the gate that the live
+  verdict runs on real readiness/sleep is verified only by unit tests, not yet by
+  a production smoke. Run the strict smoke with Mark's PIN to finish closeout.
 - **2026-06-21** — Phase 2 Batch 18 implementation ready on
   `claude/start-batch-18-dbwx9r`: wired `GarminSyncService.sync_daily` into the
   06:30 `morning_weather_sync` job via a new `_sync_garmin_daily` helper that runs
