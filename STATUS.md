@@ -6,13 +6,14 @@
 
 ## Now
 
-**Phase:** 2 in progress — Batch 13 (executable coaching, closed loop)
-**implementation ready** on `feat/batch-13-executable-coaching`; not yet merged
-(awaiting `/phase-closeout 13`). All checks green locally:
-- backend `pytest` 124 passed / 16 DB-skipped, `ruff check` + `ruff format --check`
-  clean, `mypy` clean (40 files);
-- frontend `pnpm --dir apps/web test` 3/3, `build` succeeds, `lint` only the
-  pre-existing fast-refresh warnings; shared `typecheck` + `test` green.
+**Phase:** 2 in progress — Batch 13 (executable coaching, closed loop) **shipped
+via explicit closeout.** Merged PR #9 to `main` (merge commit `e6e3107`), CI green,
+Railway + Vercel auto-deployed. Production verified on the merge SHA:
+- Railway `/api/v1/health` returns `e6e3107`;
+- Vercel serves `https://garmin-coach-one.vercel.app` (`HTTP 200`) and its
+  same-origin `/api/v1/health` rewrite returns the same SHA;
+- non-mutating Batch 13 smoke: the new `GET /api/v1/workout-delivery/week-ahead`
+  is live and 401s unauthenticated, and the deployed OpenAPI exposes it.
 
 Batch 13 closes the v2 executable-coaching loop on top of the Batch 12 rail:
 - an **Amber** morning verdict regenerates today's bike workout via the
@@ -29,14 +30,19 @@ Batch 13 closes the v2 executable-coaching loop on top of the Batch 12 rail:
   idempotent on a per-row `tag`;
 - **no migration** — adjustment/origin metadata lives in the existing
   `structured_workout_ir` JSONB snapshot (DECISIONS #61-62).
-- Incidental, to keep CI's `ruff format --check .` green: reformatted two
-  pre-existing files newer ruff flagged (`routers/daily_loop.py`,
-  `services/environment_freshness.py`) — collapsed now-fitting ternaries, no logic
-  change.
+- Incidental, folded into the closeout: reformatted two pre-existing files newer
+  ruff flagged (`routers/daily_loop.py`, `services/environment_freshness.py`), and
+  fixed a pre-existing broken test that had left `main` CI **red since Batch 18** —
+  `test_get_daily_loop_hides_stale_hive_temperature` seeded a Profile and its FK
+  children in one flush, which CI's current SQLAlchemy orders child-before-parent;
+  it now commits the profile first (commit `c596114`).
 
-**Next:** `/phase-closeout 13` (commit → CI → merge to `main` → deploy → strike
-the row). Outstanding operational follow-up carried from Batch 18: rotate Mark's
-production PIN off the temporary smoke value (`1234`).
+**Next:** Batch 14 — Dynamic weekly restructuring (never stack VO2 + Sweet-Spot;
+defer-on-fatigue; add Rønnestad 30/15 to the VO2 toolkit; versioned restructures
+delivered only via propose→approve→push). Operational follow-ups (not blocking
+Batch 14): rotate Mark's production PIN off the temporary smoke value (`1234`);
+set `INTERVALS_API_KEY` in Railway so `auto_push_due` can actually deliver —
+without it, push returns 503 and approved proposals stay un-delivered.
 
 Batch 18 (production daily-loop data sync) is **shipped** on `main` at `707850d`
 (strict smoke green: `health`/`login`/`daily_loop`, `verdict=Red`). Batch 12
@@ -47,7 +53,7 @@ fail-closed validator.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
-- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (serves `main`; latest verified deploy `707850d` = Batch 18 closeout docs commit)
+- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (serves `main`; latest verified deploy `e6e3107` = Batch 13 closeout merge)
 - DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-007 applied (007 = workout_delivery_proposals, deployed with Batch 12)
 
 **Hosting identifiers (non-secret):**
@@ -122,6 +128,19 @@ fail-closed validator.
   `red_substitution` and `structured_workout_ir.adjustment` records the cut.
 
 ## Log
+- **2026-06-21** — Closed out Batch 13. Opened + merged PR #9 to `main` (merge
+  commit `e6e3107`). CI on the branch HEAD initially failed on a **pre-existing**
+  broken test (`test_get_daily_loop_hides_stale_hive_temperature`) that had left
+  `main` CI red since Batch 18 — it seeded a Profile and its FK children in a single
+  flush, which CI's current SQLAlchemy orders child-before-parent; fixed by
+  committing the profile first (`c596114`), after which all five CI jobs went green.
+  Railway + Vercel auto-deployed `e6e3107`: `/api/v1/health` returns the merge SHA,
+  the Vercel same-origin `/api/v1/health` rewrite returns the same SHA, and the
+  non-mutating Batch 13 smoke passed — `GET /api/v1/workout-delivery/week-ahead` is
+  live and 401s unauthenticated, and the deployed OpenAPI exposes it. Struck the
+  Batch 13 row `Shipped`, ticked `ARCHITECTURE.md` §2/§7, recorded DECISIONS #61-62.
+  Next unshipped batch: Batch 14 (dynamic weekly restructuring). Follow-ups: rotate
+  Mark's PIN off `1234`; set `INTERVALS_API_KEY` in Railway for live auto-push.
 - **2026-06-21** — Batch 13 (executable coaching) implementation ready on
   `feat/batch-13-executable-coaching`. Built the closed loop on the Batch 12 rail:
   `services/executable_coaching.py` with a deterministic `adjust_ir_for_verdict`
