@@ -16,6 +16,7 @@ from src.scheduler import (
     run_hive_temperature_poll,
     run_morning_weather_sync,
     run_scheduled_backup,
+    run_workout_autopush,
 )
 
 
@@ -212,6 +213,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
             "hive_temperature_poll",
             "morning_weather_sync",
             "garmin_activity_poll",
+            "workout_autopush",
             "evening_sleep_nudge",
             "evening_monitoring_alerts",
         }
@@ -219,22 +221,27 @@ def test_create_scheduler_registers_environment_jobs() -> None:
         hive_job = scheduler.get_job("hive_temperature_poll")
         weather_job = scheduler.get_job("morning_weather_sync")
         garmin_job = scheduler.get_job("garmin_activity_poll")
+        autopush_job = scheduler.get_job("workout_autopush")
         nudge_job = scheduler.get_job("evening_sleep_nudge")
         monitoring_job = scheduler.get_job("evening_monitoring_alerts")
         assert hive_job is not None
         assert weather_job is not None
         assert garmin_job is not None
+        assert autopush_job is not None
         assert nudge_job is not None
         assert monitoring_job is not None
         assert str(hive_job.trigger) == "interval[0:15:00]"
         assert "hour='6', minute='30'" in str(weather_job.trigger)
         assert str(garmin_job.trigger) == "interval[1:00:00]"
+        assert "hour='7,13,19', minute='0'" in str(autopush_job.trigger)
         assert "hour='20', minute='0'" in str(nudge_job.trigger)
         assert "hour='19-22', minute='0,15,30,45'" in str(monitoring_job.trigger)
         assert hive_job.coalesce is True
         assert weather_job.max_instances == 1
         assert garmin_job.coalesce is True
         assert garmin_job.max_instances == 1
+        assert autopush_job.coalesce is True
+        assert autopush_job.max_instances == 1
         assert nudge_job.coalesce is True
         assert monitoring_job.max_instances == 1
     finally:
@@ -357,6 +364,82 @@ async def test_morning_weather_sync_runs_daily_sync_before_analysis() -> None:
     assert "garmin_daily" in calls
     assert "analysis" in calls
     assert calls.index("garmin_daily") < calls.index("analysis")
+
+
+@pytest.mark.asyncio
+async def test_run_workout_autopush_pushes_per_profile() -> None:
+    """The autopush job delegates to auto_push_due for each active profile."""
+    profiles = [_profile(), _profile()]
+
+    session = AsyncMock()
+
+    class _ExecuteResult:
+        def scalars(self) -> _ExecuteResult:
+            return self
+
+        def all(self) -> list[MagicMock]:
+            return profiles
+
+    session.execute = AsyncMock(return_value=_ExecuteResult())
+
+    class _Ctx:
+        async def __aenter__(self) -> AsyncMock:
+            return session
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+    coaching_service = MagicMock()
+    coaching_service.auto_push_due = AsyncMock(return_value=[MagicMock()])
+
+    with (
+        patch("src.scheduler.AsyncSessionLocal", return_value=_Ctx()),
+        patch("src.scheduler.ExecutableCoachingService", return_value=coaching_service),
+    ):
+        await run_workout_autopush()
+
+    assert coaching_service.auto_push_due.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_run_workout_autopush_isolates_profile_failure() -> None:
+    """One profile's push failure is logged and skipped; others still run."""
+    good, bad = _profile(), _profile()
+
+    session = AsyncMock()
+
+    class _ExecuteResult:
+        def scalars(self) -> _ExecuteResult:
+            return self
+
+        def all(self) -> list[MagicMock]:
+            return [bad, good]
+
+    session.execute = AsyncMock(return_value=_ExecuteResult())
+
+    class _Ctx:
+        async def __aenter__(self) -> AsyncMock:
+            return session
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+    coaching_service = MagicMock()
+
+    async def auto_push(profile: object, **_k: object) -> list[MagicMock]:
+        if profile is bad:
+            raise RuntimeError("intervals.icu 503")
+        return [MagicMock()]
+
+    coaching_service.auto_push_due = AsyncMock(side_effect=auto_push)
+
+    with (
+        patch("src.scheduler.AsyncSessionLocal", return_value=_Ctx()),
+        patch("src.scheduler.ExecutableCoachingService", return_value=coaching_service),
+    ):
+        await run_workout_autopush()
+
+    assert coaching_service.auto_push_due.await_count == 2
 
 
 # ---------------------------------------------------------------------------

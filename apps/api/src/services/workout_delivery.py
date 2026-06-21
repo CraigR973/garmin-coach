@@ -4,7 +4,7 @@ import html
 import re
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Protocol
 
 import httpx
@@ -32,6 +32,12 @@ def _utcnow() -> datetime:
 class IntervalsCreateResult:
     event_id: str
     raw_response: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class WeekAheadEntry:
+    workout: PlannedWorkout
+    proposal: WorkoutDeliveryProposal | None
 
 
 class IntervalsEventClient(Protocol):
@@ -198,8 +204,22 @@ class WorkoutDeliveryService:
         workout = await self._planned_workout(player.id, planned_workout_id)
         ftp_watts = await self._ftp_watts(player.id)
         ir = build_structured_workout_ir(workout, ftp_watts=ftp_watts)
-        payload = build_intervals_payload(ir)
-        zwo_xml = build_zwo_xml(ir)
+        return await self.propose_from_ir(player=player, workout=workout, ir=ir)
+
+    async def propose_from_ir(
+        self,
+        *,
+        player: Profile,
+        workout: PlannedWorkout,
+        ir: dict[str, Any],
+        commit: bool = True,
+    ) -> WorkoutDeliveryProposal:
+        """Persist a delivery proposal from an already-built IR.
+
+        Shared by the manual propose path (base IR) and Batch 13's executable
+        coaching path (an Amber-adjusted or Red-substituted IR). The IR snapshot
+        is the source of truth for the intervals.icu payload + ``.ZWO`` fallback.
+        """
         proposal = WorkoutDeliveryProposal(
             user_id=player.id,
             planned_workout_id=workout.id,
@@ -209,13 +229,92 @@ class WorkoutDeliveryService:
             status=STATUS_PROPOSED,
             proposed_at_utc=_utcnow(),
             structured_workout_ir=ir,
-            intervals_payload=payload,
-            zwo_xml=zwo_xml,
+            intervals_payload=build_intervals_payload(ir),
+            zwo_xml=build_zwo_xml(ir),
         )
         self.session.add(proposal)
-        await self.session.commit()
-        await self.session.refresh(proposal)
+        if commit:
+            await self.session.commit()
+            await self.session.refresh(proposal)
+        else:
+            await self.session.flush()
         return proposal
+
+    async def list_week_ahead(
+        self,
+        player: Profile,
+        *,
+        start_date: date,
+        days: int = 7,
+    ) -> list[WeekAheadEntry]:
+        """Upcoming deliverable (bike) workouts with their latest proposal.
+
+        Powers the PWA week-ahead surface (Decision #31): the human sees the
+        week, then propose → approve drives delivery. Strength/mobility days are
+        omitted because only bike workouts can be delivered to Zwift.
+        """
+        end_date = start_date + timedelta(days=max(1, days) - 1)
+        workouts = (
+            (
+                await self.session.execute(
+                    select(PlannedWorkout)
+                    .where(
+                        PlannedWorkout.user_id == player.id,
+                        PlannedWorkout.is_active.is_(True),
+                        PlannedWorkout.workout_date >= start_date,
+                        PlannedWorkout.workout_date <= end_date,
+                    )
+                    .order_by(
+                        PlannedWorkout.workout_date.asc(),
+                        PlannedWorkout.version.desc(),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        latest_by_workout = await self._latest_proposals_by_workout(player.id, start_date, end_date)
+
+        entries: list[WeekAheadEntry] = []
+        for workout in workouts:
+            structured = workout.structured_workout or {}
+            if structured.get("format") != "bike":
+                continue
+            entries.append(
+                WeekAheadEntry(
+                    workout=workout,
+                    proposal=latest_by_workout.get(workout.id),
+                )
+            )
+        return entries
+
+    async def _latest_proposals_by_workout(
+        self,
+        user_id: uuid.UUID,
+        start_date: date,
+        end_date: date,
+    ) -> dict[uuid.UUID, WorkoutDeliveryProposal]:
+        proposals = (
+            (
+                await self.session.execute(
+                    select(WorkoutDeliveryProposal)
+                    .where(
+                        WorkoutDeliveryProposal.user_id == user_id,
+                        WorkoutDeliveryProposal.workout_date >= start_date,
+                        WorkoutDeliveryProposal.workout_date <= end_date,
+                    )
+                    .order_by(WorkoutDeliveryProposal.created_at.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        latest: dict[uuid.UUID, WorkoutDeliveryProposal] = {}
+        for proposal in proposals:
+            if proposal.planned_workout_id is None:
+                continue
+            latest.setdefault(proposal.planned_workout_id, proposal)
+        return latest
 
     async def approve(
         self,

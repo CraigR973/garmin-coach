@@ -4,8 +4,10 @@ Current jobs:
   - daily_backup: runs at 03:00 UTC
   - hive_temperature_poll: polls Hive indoor temperature every 15 minutes
   - morning_weather_sync: at 06:30 Europe/London, syncs Kilmarnock weather, then
-    today's Garmin daily metrics + sleep, then triggers the morning analysis
+    today's Garmin daily metrics + sleep, triggers the morning analysis, then
+    regenerates an adjusted workout proposal on an Amber verdict (Batch 13)
   - garmin_activity_poll: polls Garmin hourly for new rides and triggers analysis
+  - workout_autopush: pushes approved workout proposals due a couple of days ahead
   - evening_sleep_nudge: sends the 20:00 sleep-protocol push
   - evening_monitoring_alerts: checks thermal and source freshness before bed
 """
@@ -35,6 +37,7 @@ from src.services.environment_sync import (
     OpenMeteoClient,
     WeatherRequest,
 )
+from src.services.executable_coaching import ExecutableCoachingService
 from src.services.garmin_sync import (
     GarminConnectClient,
     GarminDailyPayloads,
@@ -242,6 +245,8 @@ async def run_morning_weather_sync() -> None:
             await session.commit()
 
             analysis_service = MorningAnalysisService(session)
+            coaching_service = ExecutableCoachingService(session)
+            proposals_regenerated = 0
             for profile in profiles:
                 subject_date = _profile_today(profile)
                 try:
@@ -259,6 +264,20 @@ async def run_morning_weather_sync() -> None:
                         profile_id=str(profile.id),
                         subject_date=subject_date.isoformat(),
                     )
+                    continue
+                try:
+                    proposals = await coaching_service.regenerate_for_verdict(
+                        profile,
+                        subject_date,
+                        analysis=analysis_result.analysis,
+                    )
+                    proposals_regenerated += len(proposals)
+                except Exception:
+                    log.exception(
+                        "amber regeneration failed",
+                        profile_id=str(profile.id),
+                        subject_date=subject_date.isoformat(),
+                    )
         log.info(
             "morning weather sync complete",
             profiles=len(profiles),
@@ -267,6 +286,7 @@ async def run_morning_weather_sync() -> None:
             sleep=sleep_synced,
             analyses_generated=analyses_generated,
             analyses_existing=analyses_existing,
+            proposals_regenerated=proposals_regenerated,
         )
     except Exception:
         log.exception("morning weather sync failed")
@@ -340,6 +360,37 @@ async def run_garmin_activity_poll() -> None:
         )
     except Exception:
         log.exception("garmin activity poll failed")
+
+
+async def run_workout_autopush() -> None:
+    """Push approved-but-unpushed workout proposals due a couple of days ahead.
+
+    Only proposals the user already approved are eligible (Decision #29), so this
+    delivers the week-ahead automatically (Decision #31) without ever pushing
+    something unapproved. Each profile and each push is isolated so one failure
+    (e.g. a missing intervals.icu key) cannot block the rest.
+    """
+    try:
+        async with AsyncSessionLocal() as session:
+            profiles = await _active_profiles(session)
+            if not profiles:
+                log.info("workout autopush skipped", reason="no_active_profiles")
+                return
+
+            service = ExecutableCoachingService(session)
+            pushed = 0
+            for profile in profiles:
+                try:
+                    results = await service.auto_push_due(profile)
+                    pushed += len(results)
+                except Exception:
+                    log.exception(
+                        "workout autopush failed for profile",
+                        profile_id=str(profile.id),
+                    )
+        log.info("workout autopush complete", profiles=len(profiles), pushed=pushed)
+    except Exception:
+        log.exception("workout autopush failed")
 
 
 async def _active_profiles(session: AsyncSession) -> list[Profile]:
@@ -446,6 +497,17 @@ def create_scheduler() -> AsyncIOScheduler:
         coalesce=True,
         max_instances=1,
         next_run_time=datetime.now(UTC) + timedelta(minutes=5),
+    )
+    scheduler.add_job(
+        run_workout_autopush,
+        trigger="cron",
+        hour="7,13,19",
+        minute=0,
+        timezone=settings.weather_timezone,
+        id="workout_autopush",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
     )
     scheduler.add_job(
         run_evening_sleep_nudge,
