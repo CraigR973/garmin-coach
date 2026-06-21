@@ -23,10 +23,10 @@ the production daily-loop gate is fixed and strict smoke passes.
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Re-auth Railway CLI or use the Railway dashboard, set production
-`ENVIRONMENT=production`, `GARMIN_EMAIL`, `GARMIN_PASSWORD`, `GARMIN_TOKENSTORE`,
-`HIVE_EMAIL`, `HIVE_PASSWORD`, `ANTHROPIC_API_KEY`, `SUPABASE_SERVICE_KEY`,
-`INTERVALS_API_KEY`, and `INTERVALS_ATHLETE_ID=i618709`; then run the strict production smoke:
+**Next:** Set the remaining production secrets in Railway:
+`GARMIN_EMAIL`, `GARMIN_PASSWORD`, `HIVE_EMAIL`, `HIVE_PASSWORD`,
+`ANTHROPIC_API_KEY`, `SUPABASE_SERVICE_KEY`, and `INTERVALS_API_KEY`. After
+those are present, set `ENVIRONMENT=production` and run the strict production smoke:
 `API_URL=https://api-production-e2bc7.up.railway.app SMOKE_DISPLAY_NAME=Mark SMOKE_PIN=<real-pin> SMOKE_STRICT_DAILY_LOOP=1 python3 scripts/smoke_daily_loop.py`.
 Only after that passes should Batch 12 be pushed/reviewed for `/closeout`.
 
@@ -56,8 +56,10 @@ Only after that passes should Batch 12 be pushed/reviewed for `/closeout`.
 - Batch 12 adds `INTERVALS_API_KEY`, `INTERVALS_ATHLETE_ID` (default `i618709`),
   and `INTERVALS_BASE_URL` for the output-only intervals.icu rail. Missing
   `INTERVALS_API_KEY` makes push return 503; proposal and `.ZWO` export still work.
-- Railway CLI token refresh failed in this shell with `invalid_grant`; use
-  `railway login` or the dashboard before trying to set/check production vars.
+- Railway CLI auth is valid again as of 2026-06-21. Non-secret production vars
+  set with `--skip-deploys`: `GARMIN_TOKENSTORE=/app/.garminconnect`,
+  `INTERVALS_ATHLETE_ID=i618709`, and
+  `INTERVALS_BASE_URL=https://intervals.icu/api/v1`.
 - Garmin sync uses `GARMIN_EMAIL` / `GARMIN_PASSWORD` from the environment plus
   `GARMIN_TOKENSTORE` for garth's persisted token cache; the app does not store
   Garmin secrets in Postgres.
@@ -80,6 +82,15 @@ Only after that passes should Batch 12 be pushed/reviewed for `/closeout`.
   failure.
 
 ## Log
+- **2026-06-21** — Railway CLI re-auth completed via browserless device code.
+  Set safe non-secret production defaults with `--skip-deploys`:
+  `GARMIN_TOKENSTORE=/app/.garminconnect`, `INTERVALS_ATHLETE_ID=i618709`, and
+  `INTERVALS_BASE_URL=https://intervals.icu/api/v1`. Masked production env audit
+  now shows these remaining missing values: `ENVIRONMENT`, `GARMIN_EMAIL`,
+  `GARMIN_PASSWORD`, `HIVE_EMAIL`, `HIVE_PASSWORD`, `ANTHROPIC_API_KEY`,
+  `SUPABASE_SERVICE_KEY`, and `INTERVALS_API_KEY`. Do not set
+  `ENVIRONMENT=production` until `SUPABASE_SERVICE_KEY` is present because the
+  production settings validator will reject startup without it.
 - **2026-06-21** — Batch 12 started on
   `feat/batch-12-zwift-delivery-rail`: added migration `007` and
   `workout_delivery_proposals` to snapshot planned workout version, structured
