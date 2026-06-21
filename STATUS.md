@@ -6,36 +6,44 @@
 
 ## Now
 
-**Phase:** 2 in progress — Batch 18 (production daily-loop data sync) **shipped
-via explicit closeout.** Closeout docs are now on `main` at commit `707850d`, and
-both production deploys verified on that exact SHA: Railway `/api/v1/health`
-returns `707850d`, Vercel serves `https://garmin-coach-one.vercel.app` with
-`HTTP 200`, and the strict authenticated smoke still passes on the docs-only
-closeout deploy:
-- `health` PASS on `707850d`
-- `login` PASS
-- `daily_loop` PASS (`subjectDate=2026-06-21`, `verdict=Red`)
+**Phase:** 2 in progress — Batch 13 (executable coaching, closed loop)
+**implementation ready** on `feat/batch-13-executable-coaching`; not yet merged
+(awaiting `/phase-closeout 13`). All checks green locally:
+- backend `pytest` 124 passed / 16 DB-skipped, `ruff check` + `ruff format --check`
+  clean, `mypy` clean (40 files);
+- frontend `pnpm --dir apps/web test` 3/3, `build` succeeds, `lint` only the
+  pre-existing fast-refresh warnings; shared `typecheck` + `test` green.
 
-Batch 18 closes the production daily-loop data gate deferred from Batch 12:
-- the 06:30 `morning_weather_sync` job now syncs Garmin daily metrics/sleep before
-  morning analysis;
-- Hive production auth resumes from `HIVE_TOKENSTORE_B64` and scheduler tracebacks
-  render correctly;
-- `/api/v1/daily-loop` hides stale Hive temperatures instead of treating any
-  non-null row as current;
-- `run_hive_temperature_poll()` now stamps a fresh poll time when Hive's
-  temperature-bearing `heating` product reports a stale `lastSeen`, which let the
-  live poll create a fresh `temperature_readings.captured_at_utc` row again.
+Batch 13 closes the v2 executable-coaching loop on top of the Batch 12 rail:
+- an **Amber** morning verdict regenerates today's bike workout via the
+  deterministic `adjust_ir_for_verdict` (75% duration, drop a zone, no HIT) into an
+  approval-gated `workout_delivery_proposals` row (the 06:30 job calls
+  `ExecutableCoachingService.regenerate_for_verdict` after the analysis); **Red can
+  never emit VO2** (transform caps every step ≤60% FTP);
+- approved proposals auto-push a couple of days ahead — new `workout_autopush`
+  scheduler job (07/13/19 local) `auto_push_due`, which only ever pushes proposals
+  the human already approved within `today+2` (#29/#31);
+- the new `/delivery` PWA page (tab "Plan") surfaces the week-ahead +
+  propose→approve→push, wired to `GET /api/v1/workout-delivery/week-ahead`;
+- every proposal/push is audited in `analyses` (`workout_proposed`/`workout_pushed`),
+  idempotent on a per-row `tag`;
+- **no migration** — adjustment/origin metadata lives in the existing
+  `structured_workout_ir` JSONB snapshot (DECISIONS #61-62).
+- Incidental, to keep CI's `ruff format --check .` green: reformatted two
+  pre-existing files newer ruff flagged (`routers/daily_loop.py`,
+  `services/environment_freshness.py`) — collapsed now-fitting ternaries, no logic
+  change.
 
-**Next:** Batch 13 — Executable coaching (closed loop). The operational cleanup
-that carries forward from verification is rotating Mark's production PIN away from
-the temporary smoke value (`1234`).
+**Next:** `/phase-closeout 13` (commit → CI → merge to `main` → deploy → strike
+the row). Outstanding operational follow-up carried from Batch 18: rotate Mark's
+production PIN off the temporary smoke value (`1234`).
 
-Batch 12 (Zwift delivery rail) is **shipped (rail-only)**: merged PR #6 to
-`main` (merge commit `67f9ad4`), CI green, Railway + Vercel auto-deployed. Live:
-the delivery rail (intervals.icu push + `.ZWO` fallback, propose→approve→push,
-migration `007`), the Garmin `GARMIN_TOKENSTORE_B64` token-blob auth path, and
-the Anthropic fail-closed validator.
+Batch 18 (production daily-loop data sync) is **shipped** on `main` at `707850d`
+(strict smoke green: `health`/`login`/`daily_loop`, `verdict=Red`). Batch 12
+(Zwift delivery rail) is **shipped (rail-only)** (merge `67f9ad4`): the delivery
+rail (intervals.icu push + `.ZWO` fallback, propose→approve→push, migration
+`007`), the Garmin `GARMIN_TOKENSTORE_B64` token-blob auth path, and the Anthropic
+fail-closed validator.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -49,9 +57,10 @@ the Anthropic fail-closed validator.
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Batch 13 — Executable coaching (closed loop).
+**Post-closeout follow-ups (not blocking Batch 13):**
 1. Rotate Mark's production PIN away from the temporary smoke value (`1234`).
-2. Start Batch 13 from the now-shipped Batch 12 rail + Batch 18 fresh-data gate.
+2. After Batch 13 ships, set `INTERVALS_API_KEY` in Railway so `auto_push_due`
+   can actually deliver (without it, push returns 503 and proposals stay approved).
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -102,8 +111,34 @@ the Anthropic fail-closed validator.
   `evening_nudge`, `thermal_alert`, and `stale_source_alert`; `sentCount=0`
   can mean muted/quiet-hours/no subscription/no VAPID, not necessarily a rule
   failure.
+- Batch 13 adds executable coaching. `analyses` now also stores delivery audit
+  rows with `analysis_type` `workout_proposed` / `workout_pushed`. The new
+  `workout_autopush` scheduler job (07/13/19 `Europe/London`) only pushes
+  **already-approved** proposals within `today+2`; with `INTERVALS_API_KEY` unset
+  the push returns 503 and proposals correctly stay `approved` (un-delivered) —
+  Amber regeneration and approval still work without the key because they never
+  call intervals.icu. Adjusted proposals are ordinary `workout_delivery_proposals`
+  rows; their `structured_workout_ir.origin` is `amber_regeneration` /
+  `red_substitution` and `structured_workout_ir.adjustment` records the cut.
 
 ## Log
+- **2026-06-21** — Batch 13 (executable coaching) implementation ready on
+  `feat/batch-13-executable-coaching`. Built the closed loop on the Batch 12 rail:
+  `services/executable_coaching.py` with a deterministic `adjust_ir_for_verdict`
+  (Amber = 75% duration + drop a zone + cap at threshold/no HIT; Red = half
+  duration + cap ≤60% FTP so VO2 is structurally impossible; Green = pass-through)
+  and `ExecutableCoachingService` (`regenerate_for_verdict` Amber-only + idempotent,
+  `auto_push_due` approved-only within `today+2`, `analyses` audit). Refactored the
+  rail with `WorkoutDeliveryService.propose_from_ir` + `list_week_ahead`; added
+  `GET /api/v1/workout-delivery/week-ahead`; wired the 06:30 job to regenerate on
+  Amber and a new `workout_autopush` cron (07/13/19 local). Frontend: shared
+  workout-delivery/week-ahead zod schemas, a new `/delivery` PWA page (tab "Plan")
+  for propose→approve→push + the week-ahead, and its test. No migration (DECISIONS
+  #61-62). Verified: backend pytest 124 passed / 16 DB-skipped, ruff + format +
+  mypy clean; web test 3/3, build, lint (pre-existing warnings only); shared
+  typecheck + test green. Incidentally reformatted two pre-existing files newer
+  ruff flagged to keep CI's `ruff format --check .` green. Not yet committed/merged;
+  awaiting `/phase-closeout 13`.
 - **2026-06-21** — Closed out Batch 18. Verified the docs-only closeout deploy on
   live `707850d`: Railway `/api/v1/health` returned the closeout SHA, Vercel
   served `HTTP 200`, and the strict authenticated smoke still passed

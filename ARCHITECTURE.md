@@ -43,6 +43,15 @@ XML, approval state, and pushed event id. intervals.icu credentials live only in
 environment variables (`INTERVALS_API_KEY`, `INTERVALS_ATHLETE_ID`) and the app
 never ingests activity data from intervals.icu.
 
+Batch 13 makes the rail *executable* (`services/executable_coaching.py`): on an
+Amber morning verdict the 06:30 job regenerates today's bike workout into an
+adjusted proposal (deterministic IR transform — cut duration 20-30%, drop a
+zone, remove HIT; Red can never emit VO2), the human approves it on the
+`/delivery` week-ahead PWA page, and a `workout_autopush` job pushes approved
+proposals a couple of days ahead. Proposal/push provenance lives in the IR
+snapshot and every step is audited in `analyses` (`workout_proposed` /
+`workout_pushed`), so no schema change was needed.
+
 ## 3. Knowledge Base (the persistent context — replaces his handover docs)
 
 Editable structured state fed into every analysis. Source: his handover doc (see
@@ -116,4 +125,5 @@ added to it, and the v1 domain tables live beside it. Data-shape evidence is in
 - [x] **Phase 1 Batch 10** — v1 hardening + release polish shipped
 - [x] **Phase 2 Batch 11** — Phase 1 debt clean-up shipped (player→user rename, migration 006, dead email service, ForgotPin, score-input JSDoc)
 - [x] **Phase 2 Batch 12** — Zwift delivery rail shipped (intervals.icu push + `.ZWO` fallback, propose→approve→push, migration 007; Garmin `GARMIN_TOKENSTORE_B64` auth + Anthropic fail-closed validator). Production daily-loop *data* gate (non-null daily metrics/sleep/morning analysis) deferred to Batch 18 — prod has no Garmin daily-metrics/sleep sync yet (DECISIONS #57)
+- [x] **Phase 2 Batch 13** — executable coaching (closed loop): an Amber morning verdict deterministically regenerates today's bike workout (75% duration, drop a zone, no HIT — `adjust_ir_for_verdict`) into an approval-gated proposal; Red can never emit VO2; approved proposals auto-push a couple of days ahead (`workout_autopush` job); the week-ahead + propose→approve→push surface is the `/delivery` PWA page; every proposal/push is audited in `analyses` (DECISIONS #61-62). No new migration
 - [x] **Phase 2 Batch 18** — production daily-loop data sync shipped (06:30 job now syncs Garmin daily metrics/sleep before morning analysis; Hive uses refresh-token auth and honest freshness gating; strict production smoke green on commit `707850d`)
