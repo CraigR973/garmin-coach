@@ -23,6 +23,7 @@ from src.routers import (
     health,
     me,
     notifications,
+    restructure,
     workout_delivery,
 )
 from src.scheduler import create_scheduler
@@ -97,3 +98,4 @@ app.include_router(notifications.router)
 app.include_router(coaching_state.router)
 app.include_router(daily_loop.router)
 app.include_router(workout_delivery.router)
+app.include_router(restructure.router)

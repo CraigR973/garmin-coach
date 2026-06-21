@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import KnowledgeBase, PlanBlock, PlannedWorkout
 from src.models.profile import Profile
+from src.services.vo2_progression import build_vo2_structured_workout, select_vo2_protocol
 
 
 def _utcnow() -> datetime:
@@ -169,29 +170,11 @@ class WorkoutTemplate:
 
 
 def _build_templates(week_number: int) -> list[WorkoutTemplate]:
-    vo2_label = "VO2 Max 30/30"
-    vo2_steps: list[dict[str, Any]] = [
-        {"label": "Warm-up", "minutes": 15, "target": "easy spin"},
-        {
-            "label": "Main set",
-            "repeats": 3,
-            "pattern": "5x 30s on / 30s off",
-            "target": "105-110% FTP",
-        },
-        {"label": "Cool-down", "minutes": 10, "target": "easy spin"},
-    ]
-    if week_number >= 7:
-        vo2_label = "VO2 Max Ronnestad 30/15"
-        vo2_steps = [
-            {"label": "Warm-up", "minutes": 15, "target": "easy spin"},
-            {
-                "label": "Main set",
-                "repeats": 3,
-                "pattern": "13x 30s on / 15s easy",
-                "target": "105-110% FTP",
-            },
-            {"label": "Cool-down", "minutes": 10, "target": "easy spin"},
-        ]
+    # The VO2 progression (incl. Rønnestad 30/15 from ~Week 7) is owned by the
+    # shared toolkit so the seed and the dynamic restructurer agree (Batch 14.3).
+    vo2_protocol = select_vo2_protocol(week_number, block_type="build")
+    vo2_label = vo2_protocol.title
+    vo2_structured = build_vo2_structured_workout(week_number, block_type="build")
 
     return [
         WorkoutTemplate(
@@ -218,8 +201,8 @@ def _build_templates(week_number: int) -> list[WorkoutTemplate]:
             title=vo2_label,
             workout_type="bike_vo2",
             planned_duration_min=60,
-            intensity_target="105-110% FTP, ERG off",
-            structured_workout={"format": "bike", "steps": vo2_steps},
+            intensity_target=vo2_protocol.intensity_target,
+            structured_workout=vo2_structured,
         ),
         WorkoutTemplate(
             day_offset=3,

@@ -6,43 +6,45 @@
 
 ## Now
 
-**Phase:** 2 in progress — Batch 13 (executable coaching, closed loop) **shipped
-via explicit closeout.** Merged PR #9 to `main` (merge commit `e6e3107`), CI green,
-Railway + Vercel auto-deployed. Production verified on the merge SHA:
-- Railway `/api/v1/health` returns `e6e3107`;
-- Vercel serves `https://garmin-coach-one.vercel.app` (`HTTP 200`) and its
-  same-origin `/api/v1/health` rewrite returns the same SHA;
-- non-mutating Batch 13 smoke: the new `GET /api/v1/workout-delivery/week-ahead`
-  is live and 401s unauthenticated, and the deployed OpenAPI exposes it.
+**Phase:** 2 in progress — Batch 14 (dynamic weekly restructuring) **implementation
+ready on `claude/batch-start-14-gajkdx`, not yet committed/merged** — awaiting
+`/closeout 14`. Batch 13 (executable coaching) is shipped on `main` (`e6e3107`).
 
-Batch 13 closes the v2 executable-coaching loop on top of the Batch 12 rail:
-- an **Amber** morning verdict regenerates today's bike workout via the
-  deterministic `adjust_ir_for_verdict` (75% duration, drop a zone, no HIT) into an
-  approval-gated `workout_delivery_proposals` row (the 06:30 job calls
-  `ExecutableCoachingService.regenerate_for_verdict` after the analysis); **Red can
-  never emit VO2** (transform caps every step ≤60% FTP);
-- approved proposals auto-push a couple of days ahead — new `workout_autopush`
-  scheduler job (07/13/19 local) `auto_push_due`, which only ever pushes proposals
-  the human already approved within `today+2` (#29/#31);
-- the new `/delivery` PWA page (tab "Plan") surfaces the week-ahead +
-  propose→approve→push, wired to `GET /api/v1/workout-delivery/week-ahead`;
-- every proposal/push is audited in `analyses` (`workout_proposed`/`workout_pushed`),
-  idempotent on a per-row `tag`;
-- **no migration** — adjustment/origin metadata lives in the existing
-  `structured_workout_ir` JSONB snapshot (DECISIONS #61-62).
-- Incidental, folded into the closeout: reformatted two pre-existing files newer
-  ruff flagged (`routers/daily_loop.py`, `services/environment_freshness.py`), and
-  fixed a pre-existing broken test that had left `main` CI **red since Batch 18** —
-  `test_get_daily_loop_hides_stale_hive_temperature` seeded a Profile and its FK
-  children in one flush, which CI's current SQLAlchemy orders child-before-parent;
-  it now commits the profile first (commit `c596114`).
+Batch 14 makes the *week* adaptive on top of the Batch 12/13 rail:
+- new `services/weekly_restructure.py`. `plan_week_restructure` is a **pure,
+  deterministic permutation engine** over the week's bike sessions: VO2↔Sweet-Spot
+  are never same/adjacent days (hard constraint, `MIN_GAP_DAYS=2`); strength/mobility
+  days stay put as spacers. When **fatigued** the cost key is
+  `(infeasible?, defer_cost, moves, shift)` (defer hard sessions later = primary);
+  when fresh it is `(infeasible?, moves, shift, defer_cost)` (fix conflicts with
+  minimal disruption; an already-spaced fresh week is a no-op);
+- `assess_recovery_signal` derives fatigue from latest readiness, HRV status, and
+  the morning-verdict trend (a Red / ≥2 Ambers in a 4-day window / low readiness /
+  unbalanced HRV);
+- `WeeklyRestructureService.apply_for_week` versions only the changed
+  `planned_workouts` dates (new active version per date, prior deactivated),
+  audits the restructure in `analyses` (`analysis_type="weekly_restructure"`,
+  `subject_date=week_start`), and proposes the changed bike workouts via
+  `WorkoutDeliveryService.propose_from_ir` (`origin="weekly_restructure"`) — they
+  stay `proposed` until the human approves (Decision #29). **Nothing is pushed.**
+- exposed via **`GET/POST /api/v1/restructure/*`** (preview / apply) — human-triggered,
+  **not** wired into a scheduler job (DECISIONS #64);
+- new shared **`services/vo2_progression.py`** toolkit: `select_vo2_protocol` /
+  `build_vo2_structured_workout` (30/30 early build, **Rønnestad 30/15** from Wk7+,
+  `ergMode="off"`, even-paced 105-110% / 15s easy — Decision #33). `coaching_state`
+  now seeds VO2 days from the toolkit, and a deferred late-build VO2 is regenerated
+  through it so it keeps the 30/15 / ERG-off constraints;
+- **no migration** (DECISIONS #63-65).
 
-**Next:** Batch 14 — Dynamic weekly restructuring (never stack VO2 + Sweet-Spot;
-defer-on-fatigue; add Rønnestad 30/15 to the VO2 toolkit; versioned restructures
-delivered only via propose→approve→push). Operational follow-ups (not blocking
-Batch 14): rotate Mark's production PIN off the temporary smoke value (`1234`);
-set `INTERVALS_API_KEY` in Railway so `auto_push_due` can actually deliver —
-without it, push returns 503 and approved proposals stay un-delivered.
+Verified locally: backend pytest **150 passed** (10 new in `test_weekly_restructure.py`,
+run against a real local Postgres so the DB-backed restructure tests actually
+exercise versioning/delivery), `ruff check` + `ruff format --check` clean, `mypy src`
+clean (43 files). Frontend untouched (Batch 14 is backend-only per its acceptance).
+
+**Next:** `/closeout 14`, then Batch 15 (holiday pause/resume). Operational
+follow-ups (not blocking): rotate Mark's production PIN off the temporary smoke
+value (`1234`); set `INTERVALS_API_KEY` in Railway so `auto_push_due` (and an
+approved restructure proposal) can actually deliver — without it, push returns 503.
 
 Batch 18 (production daily-loop data sync) is **shipped** on `main` at `707850d`
 (strict smoke green: `health`/`login`/`daily_loop`, `verdict=Red`). Batch 12
@@ -126,8 +128,32 @@ fail-closed validator.
   call intervals.icu. Adjusted proposals are ordinary `workout_delivery_proposals`
   rows; their `structured_workout_ir.origin` is `amber_regeneration` /
   `red_substitution` and `structured_workout_ir.adjustment` records the cut.
+- Batch 14 adds dynamic weekly restructuring. It is **human-triggered via
+  `GET/POST /api/v1/restructure/*`, not a scheduler job** (DECISIONS #64) — there is
+  no automatic weekly restructure cron by design. `apply_for_week` versions changed
+  `planned_workouts` days and creates `proposed` `workout_delivery_proposals` with
+  `structured_workout_ir.origin="weekly_restructure"`; they only reach Zwift via the
+  existing approve→push rail. The VO2 progression now lives in
+  `services/vo2_progression.py` — edit protocols/`RONNESTAD_FROM_WEEK` there, not
+  inline in `coaching_state`. `analyses` now also stores `weekly_restructure` audit
+  rows (`subject_date=week_start`).
 
 ## Log
+- **2026-06-21** — Batch 14 (dynamic weekly restructuring) implementation ready on
+  `claude/batch-start-14-gajkdx`. Added `services/weekly_restructure.py` (pure
+  permutation engine `plan_week_restructure` enforcing the VO2↔Sweet-Spot no-stack
+  rule as a hard constraint and defer-on-fatigue as a lexicographic objective;
+  `assess_recovery_signal` from readiness/HRV/verdict-trend; `WeeklyRestructureService`
+  that versions changed `planned_workouts` days, audits in `analyses`
+  `weekly_restructure`, and proposes changed bike workouts via the Batch 12/13 rail —
+  never pushed), the shared `services/vo2_progression.py` VO2 toolkit (30/30 → Rønnestad
+  30/15 from Wk7, ERG off) wired into both `coaching_state` seeding and the deferred-VO2
+  regeneration, and `routers/restructure.py` (`GET/POST /api/v1/restructure/*`,
+  human-triggered, not a scheduler job). No migration. Recorded DECISIONS #63-65; added
+  the Batch 14 paragraph to `ARCHITECTURE.md` §2. Verified backend pytest **150 passed**
+  (10 new, run against a real local Postgres so the DB-backed versioning/delivery tests
+  actually run), ruff check + format clean, mypy clean. Not yet committed/merged; awaiting
+  `/closeout 14`.
 - **2026-06-21** — Closed out Batch 13. Opened + merged PR #9 to `main` (merge
   commit `e6e3107`). CI on the branch HEAD initially failed on a **pre-existing**
   broken test (`test_get_daily_loop_hides_stale_hive_temperature`) that had left
