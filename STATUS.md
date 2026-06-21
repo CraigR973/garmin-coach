@@ -6,7 +6,9 @@
 
 ## Now
 
-**Phase:** 1 complete — all 10 batches shipped to `main`. v1 is in daily use.
+**Phase:** 2 planned — Phase 1 (all 10 batches) shipped to `main` and in daily
+use. The v2 batch plan (Batches 11–17) is now in `docs/phase-batches.md`, all
+rows `Planned`.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -20,7 +22,12 @@
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Phase 2 planning — or iterate on v1 as Mark starts daily use and surfaces friction points.
+**Next:** Phase 2 Batch 11 — Phase 1 debt clean-up (ForgotPin flow, dead
+`email.py`, WC2026 "player"→user rename with notification-column migration,
+`score-input.tsx` JSDoc + residual "predictions" offline-queue refs). Sequenced
+first so the player→user rename lands before Batch 12 onward expand the API
+surface. Then Batch 12 — the Zwift delivery rail — the foundational dependency
+for all substantive v2 coaching. Run `/batch-start` on Batch 11 to begin.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -57,6 +64,16 @@
   failure.
 
 ## Log
+- **2026-06-21** — Phase 2 planning session: decomposed the `ARCHITECTURE.md`
+  §6 v2 roadmap (and Decisions #25–33) into Batches 11–17, appended as the
+  `## v2 batch plan` section in `docs/phase-batches.md` (all rows `Planned`).
+  Sequencing: Batch 11 clears the Phase 1 retrospective tech debt first — chiefly
+  the WC2026 "player"→user rename, which gets more expensive per added endpoint —
+  then Batch 12 (Zwift delivery rail) lands as the foundational dependency for
+  executable coaching (13), dynamic restructuring + Rønnestad 30/15 (14), holiday
+  pause/resume (15), app-generated 13-week blocks (16), and monitoring/insight
+  (17). v2's "real-time evening thermal alerts" roadmap item is already covered by
+  the shipped Batch 9, so no separate batch. Docs-only change; no code touched.
 - **2026-06-21** — Phase 1 Batch 10 closed out: merged PR #3
   `claude/batch-start-config-bz2y11` to `main` (merge commit `8c47869`), GitHub
   CI run #60 passed (`conclusion: success`). Batch 10 delivered: non-mutating
