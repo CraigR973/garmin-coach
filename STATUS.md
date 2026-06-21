@@ -7,43 +7,41 @@
 ## Now
 
 **Phase:** 2 in progress — Batch 18 (production daily-loop data sync) **code
-merged + deployed; row NOT yet struck (one acceptance item open).** Merged PR #7
-to `main` (merge commit `08d3010`), main CI run #79 green (pytest/ruff/mypy/
-alembic/web build), Railway auto-deployed and `/api/v1/health` reports
-`08d3010`, non-mutating smoke 1/1. Wired `GarminSyncService.sync_daily` into the
-06:30 `morning_weather_sync` job: weather sync → commit → `_sync_garmin_daily`
-(today's daily metrics + sleep per active profile) → commit → morning analysis,
-so the verdict reads real readiness/sleep instead of empty inputs. The fetch uses
-`_retry_sync(..., backoff=2.0)` (new exponential backoff) to survive a transient
-Garmin 429, and each profile's sync is isolated so one Garmin failure
-(429/MFA/token) is logged and skipped without blocking the others or the
-analysis. Closes the *code* side of the data gate deferred from Batch 12
-(DECISIONS #57, #58).
+merged + deployed; row NOT yet struck (one acceptance item still open).** The
+production API on `main` is currently commit `8b62caa` (PR #8, Hive refresh-token
+auth). On 2026-06-21 we manually ran the real production jobs to simulate the
+06:30 path:
+- `run_morning_weather_sync()` completed with `daily_metrics=1`, `sleep=1`,
+  `analyses_generated=1`.
+- `run_hive_temperature_poll()` completed with `profiles=1`, `readings=1`.
+- The strict smoke against the live API passed after temporarily resetting Mark's
+  production PIN and logging in:
+  `health` PASS, `login` PASS, `daily_loop` PASS (`subjectDate=2026-06-21`,
+  `verdict=Red`).
 
-**Open acceptance item — 18.3 strict smoke (NOT verified):** the strict
-daily-loop smoke (`SMOKE_STRICT_DAILY_LOOP=1`) has not passed in production. The
-2026-06-21 evening verification (Railway logs + Hive spike) refreshed the blocker
-picture:
-- Env is now fully provisioned (`ENVIRONMENT=production` + all Garmin/Hive/
-  Anthropic/Supabase/intervals secrets present).
-- **Garmin token: CONFIRMED WORKING** — the 17:16 UTC hourly poll logged
-  `garmin activity poll complete` (16 activities, 11,407 timeseries samples, no
-  429). The old 429 blocker is cleared.
-- **Hive: BROKEN (root-caused) — the live critical-path blocker.** Every 15-min
-  poll logs `hive temperature poll failed`. Cause: Mark's Hive account requires
-  AWS Cognito **SMS_MFA** for a full login, but prod `HiveClient.login()`
-  (`services/environment_sync.py`) does a full email/password login each poll and
-  rejects SMS_MFA, with **no persisted Hive refresh-token store** (no Hive
-  equivalent of `GARMIN_TOKENSTORE_B64`). The spike's cached refresh token is now
-  invalid too, so Hive has no headless path until re-seeded. This fails the 18.3
-  gate twice: null `thermalState.latestTemperatureC` AND a scheduler ERROR line.
-- **Anthropic credits: still UNCONFIRMED** (no analysis ran in the captured logs).
-- Today's daily metrics/sleep are still unsynced — the new 06:30 job deployed
-  *after* today's 06:30 run; next natural run is tomorrow 06:30 BST.
+**But the Hive freshness story was misleading, so Batch 18 is still not honestly
+done.** We traced the live production payload and found:
+- **Garmin is confirmed fresh for 2026-06-21.** Today's `daily_metrics`, `sleep`,
+  `weather_daily`, and morning `analyses` rows all exist after the manual run.
+- **Hive auth is fixed and seeded, but the live temperature timestamp is stale.**
+  The production Hive `heating` product returns `props.temperature` (~22.4C), but
+  its `lastSeen` is still `1781622656874` =
+  `2026-06-16T15:10:56.874Z`. Our `temperature_readings.captured_at_utc` row in
+  production matches that stale timestamp exactly. A different Hive device (`hub`)
+  does report a fresh `lastSeen` (`2026-06-21T19:19:00.716Z`), so the integration
+  is alive; the stale value is specific to the temperature-bearing heating product.
+- **The old strict smoke passed only because `thermalState.latestTemperatureC` was
+  non-null, not because Hive data was proven fresh.**
 
-**Do not strike the Batch 18 row as Shipped** until the strict smoke is green.
-The critical-path blocker is now Hive headless auth (needs a one-time SMS-2FA
-re-seed on Mark's phone + a refresh-token store in code), not Garmin.
+**Local fix ready (NOT deployed yet):** the daily-loop API now applies the same
+45-minute Hive freshness rule as the notification engine. If the newest Hive row
+is stale, it still exposes `capturedAtUtc`, but it nulls
+`thermalState.latestTemperatureC` and `targetTemperatureC` so the UI/API no longer
+present stale thermal data as current (DECISIONS #60). Local checks are green:
+targeted pytest `6 passed, 4 skipped`; ruff clean.
+
+**Do not strike the Batch 18 row as Shipped** until that honesty fix is merged and
+deployed, and the production strict smoke passes again under the stricter rule.
 
 Batch 12 (Zwift delivery rail) is **shipped (rail-only)**: merged PR #6 to
 `main` (merge commit `67f9ad4`), CI green, Railway + Vercel auto-deployed. Live:
@@ -53,7 +51,7 @@ the Anthropic fail-closed validator.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
-- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (serves `main`; Batch 18 merged as `08d3010`)
+- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (serves `main`; latest deploy `8b62caa` = Batch 18.4 Hive fix)
 - DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-007 applied (007 = workout_delivery_proposals, deployed with Batch 12)
 
 **Hosting identifiers (non-secret):**
@@ -63,27 +61,19 @@ the Anthropic fail-closed validator.
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Clear 18.3. Remaining blockers, in priority order:
-1. **Hive headless auth (18.4) — CODE DONE, needs deploy + SMS seed.** Built on
-   this desktop session (uncommitted): `HiveClient` now resumes via Cognito
-   `REFRESH_TOKEN_AUTH` from `HIVE_TOKENSTORE_B64` (full password login still
-   rejects SMS_MFA with a pointer to the blob); added
-   `scripts/bootstrap_hive_tokenstore.py` to mint the blob from a one-time
-   SMS-2FA login; added `structlog.processors.format_exc_info` to
-   `logging_config.py` so scheduler tracebacks render. Tests + ruff + mypy green
-   (115 passed). Remaining: (a) commit → PR → merge so Railway deploys it;
-   (b) Mark runs the bootstrap script (SMS to his phone), then set the resulting
-   `HIVE_TOKENSTORE_B64` in Railway; (c) confirm the next poll logs
-   `hive temperature poll complete`.
-2. **Confirm Anthropic credit balance** is topped up (console, or proven by
-   tomorrow's 06:30 analysis).
-3. Let tomorrow's 06:30 BST `morning_weather_sync` run so today's Garmin daily
-   metrics + sleep + morning analysis exist.
-4. Run the strict smoke with Mark's PIN:
-   `API_URL=https://api-production-e2bc7.up.railway.app SMOKE_DISPLAY_NAME=Mark SMOKE_PIN=<real-pin> SMOKE_STRICT_DAILY_LOOP=1 python3 scripts/smoke_daily_loop.py`.
-   When green (non-null daily metrics/sleep/morningAnalysis + Hive thermal +
-   weather, no scheduler ERROR lines), strike the Batch 18 row in
-   `docs/phase-batches.md` as `Shipped` and prepend a dated Log line here.
+**Next:** finish the Hive freshness honesty fix and re-run the production gate.
+1. Commit/push the local fix that hides stale Hive temperatures from
+   `/api/v1/daily-loop` while preserving `capturedAtUtc`, then let Railway deploy
+   it.
+2. Re-run the strict smoke on production. Under the new rule it should **fail**
+   until Hive really provides a fresh timestamped heating-product reading, which is
+   the honest result we want.
+3. Investigate whether the right freshness source is a different Hive field/device
+   for room temperature, or whether the heating product itself is genuinely stale.
+   The current live evidence says the heating product's `lastSeen` is stuck at
+   `2026-06-16T15:10:56.874Z` while the hub is fresh on `2026-06-21`.
+4. Rotate Mark's production PIN away from the temporary smoke value once the
+   verification work is done; it was reset only to let the strict smoke log in.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -102,12 +92,14 @@ the Anthropic fail-closed validator.
   `MARK_PIN=1234 PYTHONPATH=/Users/craigrobinson/garmin-coach/apps/api /Users/craigrobinson/garmin-coach/apps/api/.venv/bin/python -m src.seeds`
   after migration `003` is applied; replace `1234` with the real PIN and never commit it.
 - 2026-06-21 production smoke found API/auth/daily-loop live for Mark, but the
-  real daily data loop was empty. Railway production now has the expected
-  Garmin, Hive, Anthropic, Supabase service, and intervals vars plus
-  `ENVIRONMENT=production`; the remaining blockers are Garmin token/MFA and
-  Anthropic API credits. Confirm today's daily-loop payload has non-null Garmin
-  metrics/sleep, `morningAnalysis`, Hive thermal values, and weather before
-  Batch 12 review.
+  real daily data loop was empty before Batch 18's scheduler wiring shipped.
+  Railway production now has the expected Garmin, Hive, Anthropic, Supabase
+  service, and intervals vars plus `ENVIRONMENT=production`; Garmin token auth
+  and Anthropic credits are confirmed good, and the remaining live blocker is
+  seeding `HIVE_TOKENSTORE_B64` so Hive thermal data can populate without
+  scheduler ERROR lines. After that, confirm today's daily-loop payload has
+  non-null Garmin metrics/sleep, `morningAnalysis`, Hive thermal values, and
+  weather before striking Batch 18 as shipped.
 - Batch 12 adds `INTERVALS_API_KEY`, `INTERVALS_ATHLETE_ID` (default `i618709`),
   and `INTERVALS_BASE_URL` for the output-only intervals.icu rail. Missing
   `INTERVALS_API_KEY` makes push return 503; proposal and `.ZWO` export still work.
@@ -151,6 +143,32 @@ the Anthropic fail-closed validator.
   failure.
 
 ## Log
+- **2026-06-21** — Proved the production daily loop end to end, then found the
+  remaining Hive honesty gap. With `HIVE_TOKENSTORE_B64` already set, manually ran
+  the live production `run_morning_weather_sync()` and `run_hive_temperature_poll()`
+  via `railway run`; production now has today's Garmin `daily_metrics`, `sleep`,
+  weather, and morning analysis rows. Temporarily reset Mark's production PIN via
+  `src.seeds` so the strict smoke could log in; strict smoke then passed on live
+  `8b62caa` with `subjectDate=2026-06-21` and `verdict=Red`. Follow-up traced the
+  Hive payload: the `heating` product still reports `lastSeen=1781622656874`
+  (`2026-06-16T15:10:56.874Z`) even though the hub is fresh, so the old gate was
+  satisfied by a non-null but stale `latestTemperatureC`. Built a local fix
+  (DECISIONS #60) that applies the same 45-minute freshness rule to
+  `/api/v1/daily-loop`: stale Hive rows still show `capturedAtUtc`, but no longer
+  surface a current temperature value. Targeted pytest/ruff green locally; not yet
+  committed or deployed. Batch 18 remains open until that fix ships and the strict
+  smoke passes again under the honest rule.
+- **2026-06-21** — Shipped the 18.4 Hive fix and cleared two of the 18.3
+  blockers. Opened PR #8, fixed a CI `ruff format` miss (CI lints from `apps/api`,
+  so only `environment_sync.py` mattered — collapsed one `raise`), merged to `main`
+  (merge `8b62caa`); CI green, Railway deployed (deployment `66298001`,
+  `/api/v1/health` = `8b62caa`). **Anthropic credits confirmed good** via a live
+  test call to the prod key (HTTP 200). **Garmin** already confirmed working
+  earlier. Hive code is now live but **prod Hive still fails until
+  `HIVE_TOKENSTORE_B64` is seeded** (one-time SMS-2FA login on Mark's phone) — the
+  one human-gated step left. Remaining for 18.3: seed Hive → tomorrow's 06:30 job
+  populates today's Garmin daily metrics/sleep + analysis → run strict smoke with
+  Mark's PIN → strike the row.
 - **2026-06-21** — Built the Hive headless-auth fix (sub-task 18.4) after
   root-causing the poll failure (desktop session, **uncommitted**). `HiveClient`
   now resumes via Cognito `REFRESH_TOKEN_AUTH` from a base64 `HIVE_TOKENSTORE_B64`

@@ -12,6 +12,7 @@ from src.auth import CurrentUser
 from src.database import get_db
 from src.models.coaching import Analysis, DailyMetric, ManualEntry, PlannedWorkout, Sleep
 from src.services.daily_loop import DailyLoopService
+from src.services.environment_freshness import is_hive_temperature_fresh
 
 router = APIRouter(prefix="/api/v1/daily-loop", tags=["daily-loop"])
 
@@ -380,6 +381,13 @@ def _serialize_planned_workout(
 
 def _envelope(player: CurrentUser, snapshot: Any) -> DailyLoopEnvelope:
     morning_analysis = _serialize_analysis(snapshot.morning_analysis)
+    fresh_temperature = (
+        snapshot.latest_temperature
+        if is_hive_temperature_fresh(
+            snapshot.latest_temperature.captured_at_utc if snapshot.latest_temperature else None
+        )
+        else None
+    )
     planned_workouts = [
         _serialize_planned_workout(
             workout,
@@ -403,14 +411,10 @@ def _envelope(player: CurrentUser, snapshot: Any) -> DailyLoopEnvelope:
             plannedWorkouts=planned_workouts,
             thermalState=ThermalStateOut(
                 latestTemperatureC=(
-                    snapshot.latest_temperature.temperature_c
-                    if snapshot.latest_temperature
-                    else None
+                    fresh_temperature.temperature_c if fresh_temperature else None
                 ),
                 targetTemperatureC=(
-                    snapshot.latest_temperature.target_temperature_c
-                    if snapshot.latest_temperature
-                    else None
+                    fresh_temperature.target_temperature_c if fresh_temperature else None
                 ),
                 capturedAtUtc=(
                     _dt(snapshot.latest_temperature.captured_at_utc)

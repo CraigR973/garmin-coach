@@ -20,6 +20,8 @@ from src.models.coaching import (
     ManualEntry,
     PlannedWorkout,
     Sleep,
+    TemperatureReading,
+    WeatherDaily,
 )
 from src.models.profile import Profile, UserRole
 
@@ -195,6 +197,68 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
     assert "Recovery protocol" in payload["data"]["postWorkoutAnalyses"][0]["outputMarkdown"]
     assert payload["data"]["plannedWorkouts"][0]["title"] == "Strength maintenance"
     assert payload["data"]["dataQualityWarnings"][0]["status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_get_daily_loop_hides_stale_hive_temperature(db_conn: AsyncConnection) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 6, 21)
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Daily Loop Thermal Freshness",
+            pin_hash="x" * 60,
+            role=UserRole.player,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        session.add(
+            TemperatureReading(
+                user_id=user_id,
+                source="hive",
+                product_id="product-1",
+                device_id="device-1",
+                captured_at_utc=datetime(2026, 6, 16, 15, 10, 56, 874000),
+                temperature_c=22.4,
+                target_temperature_c=9.0,
+                raw_payload={},
+            )
+        )
+        session.add(
+            WeatherDaily(
+                user_id=user_id,
+                calendar_date=subject_date,
+                source="open_meteo",
+                latitude=55.6045,
+                longitude=-4.5249,
+                overnight_low_c=10.1,
+                overnight_wind_max_mph=12.0,
+                overnight_wind_gust_mph=18.0,
+                raw_payload={},
+            )
+        )
+        await session.commit()
+
+    app.dependency_overrides[get_current_user] = lambda: player
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get(
+                f"/api/v1/daily-loop?subject_date={subject_date.isoformat()}"
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    thermal = payload["data"]["thermalState"]
+    assert thermal["latestTemperatureC"] is None
+    assert thermal["targetTemperatureC"] is None
+    assert thermal["capturedAtUtc"] == "2026-06-16T15:10:56.874000Z"
+    assert thermal["overnightLowC"] == 10.1
 
 
 @pytest.mark.asyncio

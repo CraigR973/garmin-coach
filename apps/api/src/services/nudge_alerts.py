@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import Analysis, DailyMetric, TemperatureReading, WeatherDaily
 from src.models.profile import Profile
+from src.services.environment_freshness import HIVE_FRESHNESS_LIMIT, is_hive_temperature_fresh
 from src.services.push_notification_service import send_notification
 
 ANALYSIS_TYPE_EVENING_NUDGE = "evening_nudge"
@@ -21,7 +22,6 @@ PROMPT_VERSION = "notification-rules:v1"
 
 EVENING_NUDGE_TIME = time(20, 0)
 EVENING_NUDGE_WINDOW_MIN = 20
-HIVE_FRESHNESS_LIMIT = timedelta(minutes=45)
 GARMIN_FRESHNESS_HOUR = 8
 
 
@@ -98,7 +98,7 @@ def evaluate_thermal_alert(
         now = now.replace(tzinfo=UTC)
     captured = reading.captured_at_utc
     captured_aware = captured.replace(tzinfo=UTC) if captured.tzinfo is None else captured
-    if now - captured_aware > HIVE_FRESHNESS_LIMIT:
+    if not is_hive_temperature_fresh(captured_aware, now_utc=now):
         return None
 
     current = local_now(timezone_name, now)

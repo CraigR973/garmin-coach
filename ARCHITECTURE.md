@@ -25,7 +25,7 @@ living, editable state** so he never writes one again.
 | Source | Library/API | Auth | Notes |
 |---|---|---|---|
 | **Garmin** | `garminconnect` (unofficial) | email+pw, garth token cache (~1yr, no re-MFA) | Full coverage incl. Performance Condition (`directPerformanceCondition`) + Stamina (`directAvailable/PotentialStamina`) in activity time-series |
-| **Hive** | `pyhiveapi` (sync) | email+pw, **no 2FA on his account** → headless re-login | Live indoor temp via `API(token).getAll()` → `parsed[i].props.temperature`. Refresh-token path bugged + device-tracked; just re-login (no 2FA) |
+| **Hive** | `pyhiveapi` (sync) | email+pw, account uses AWS Cognito **SMS_MFA** | Live indoor temp via `API(token).getAll()` → `parsed[i].props.temperature`. Headless operation resumes from a cached Cognito refresh token (`HIVE_TOKENSTORE_B64`) via `REFRESH_TOKEN_AUTH`; seed once with `scripts/bootstrap_hive_tokenstore.py` (DECISIONS #59). |
 | **Weather** | Open-Meteo | none (keyless) | KA1 2SD = Kilmarnock, **lat 55.6045, long -4.5249**. `past_days` + `wind_speed_unit=mph` gives daily high/low + overnight low/wind |
 
 Spikes live in `~/garmin-spike/` (outside this repo). Raw sample JSON in `~/garmin-spike/out/` (Garmin) and `out_hive/` (Hive) — **canonical reference for real field shapes**.
