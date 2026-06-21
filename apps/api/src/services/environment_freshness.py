@@ -14,9 +14,7 @@ def is_hive_temperature_fresh(
         return False
 
     captured = (
-        captured_at_utc.replace(tzinfo=UTC)
-        if captured_at_utc.tzinfo is None
-        else captured_at_utc
+        captured_at_utc.replace(tzinfo=UTC) if captured_at_utc.tzinfo is None else captured_at_utc
     )
     now = now_utc or datetime.now(UTC)
     if now.tzinfo is None:

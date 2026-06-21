@@ -1,0 +1,407 @@
+"""Executable coaching — close the loop from morning verdict to Zwift delivery.
+
+Batch 13 turns the daily verdict into an *acted-on* workout (Decision #30):
+
+  * On an **Amber** morning verdict, ``regenerate_for_verdict`` rebuilds today's
+    bike workout as an adjusted structured-workout proposal (cut duration
+    20-30%, drop a zone, remove HIT) and stores it through the Batch 12 rail.
+  * ``adjust_ir_for_verdict`` is a deterministic transform on the normalized
+    ``%FTP`` IR, so the verdict framework — and the hard guarantee that **Red
+    never emits VO2** — is testable rule code, not an LLM call.
+  * ``auto_push_due`` delivers already-**approved** proposals a couple of days
+    ahead (Decision #31); it never pushes anything unapproved (Decision #29).
+  * Every proposal and push is written to the ``analyses`` audit log (Batch 9
+    pattern) so each delivery has inspectable evidence.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.models.coaching import Analysis, PlannedWorkout, WorkoutDeliveryProposal
+from src.models.profile import Profile
+from src.services.workout_delivery import (
+    STATUS_APPROVED,
+    IntervalsEventClient,
+    WorkoutDeliveryService,
+    build_structured_workout_ir,
+)
+
+PROMPT_VERSION = "executable-coaching:v1"
+AUDIT_TYPE_PROPOSED = "workout_proposed"
+AUDIT_TYPE_PUSHED = "workout_pushed"
+DEFAULT_LEAD_DAYS = 2
+
+# Verdict-driven adjustment knobs (percentage points of FTP unless noted).
+AMBER_DURATION_SCALE = 0.75  # 25% cut keeps inside the 20-30% Amber band
+RED_DURATION_SCALE = 0.5
+ZONE_DROP_PCT = 13  # one training zone is ~13 percentage points of FTP
+HIT_FLOOR_PCT = 106  # VO2/anaerobic work begins around 106% FTP
+AMBER_POWER_CAP_PCT = 98  # Amber removes HIT: cap at threshold
+RECOVERY_CAP_PCT = 60  # Red easy-spin ceiling — guarantees no VO2
+MIN_POWER_PCT = 45
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _local_today(timezone_name: str, now_utc: datetime | None = None) -> date:
+    now = now_utc or datetime.now(UTC)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=UTC)
+    try:
+        timezone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        timezone = ZoneInfo("UTC")
+    return now.astimezone(timezone).date()
+
+
+def _normalize_verdict(value: str | None) -> str | None:
+    if not value:
+        return None
+    return {"green": "Green", "amber": "Amber", "red": "Red"}.get(value.strip().lower())
+
+
+def _step_power(step: dict[str, Any]) -> int:
+    return max(int(step.get("powerStartPct", 0)), int(step.get("powerEndPct", 0)))
+
+
+def _clamp_power(value: int, cap: int) -> int:
+    return max(MIN_POWER_PCT, min(value, cap))
+
+
+def _adjust_step(
+    step: dict[str, Any],
+    *,
+    duration_scale: float,
+    power_cap: int,
+    zone_drop: int,
+) -> dict[str, Any]:
+    phase = str(step.get("phase") or "interval")
+    duration = max(1, round(int(step.get("durationSec", 0)) * duration_scale))
+    # "Drop a zone" applies to the working intervals; warm-up/cool-down ramps
+    # are already easy, so they keep their shape but still honour the HIT cap.
+    drop = zone_drop if phase == "interval" else 0
+    start = _clamp_power(int(step.get("powerStartPct", 0)) - drop, power_cap)
+    end = _clamp_power(int(step.get("powerEndPct", 0)) - drop, power_cap)
+    new_step: dict[str, Any] = {
+        "label": step.get("label", "Step"),
+        "phase": phase,
+        "kind": "ramp" if start != end else "steady",
+        "durationSec": duration,
+        "powerStartPct": start,
+        "powerEndPct": end,
+    }
+    cadence = step.get("cadenceRpm")
+    if cadence:
+        new_step["cadenceRpm"] = cadence
+    return new_step
+
+
+def adjust_ir_for_verdict(base_ir: dict[str, Any], verdict: str | None) -> dict[str, Any]:
+    """Return a verdict-adjusted copy of a structured-workout IR.
+
+    * **Green** (or unknown): proceed as planned — the IR is returned unchanged
+      apart from an ``origin``/``adjustment`` annotation.
+    * **Amber**: cut every step to 75% duration, drop the working intervals by a
+      zone, and cap power at threshold so no HIT/VO2 survives.
+    * **Red**: substitute an easy recovery spin — half duration and every step
+      capped at ``RECOVERY_CAP_PCT``, which guarantees the output can never be a
+      VO2 push.
+    """
+    status = _normalize_verdict(verdict)
+    raw_steps = base_ir.get("steps")
+    steps = [s for s in raw_steps if isinstance(s, dict)] if isinstance(raw_steps, list) else []
+    original_name = str(base_ir.get("name") or "Workout")
+
+    if status == "Amber":
+        duration_scale, power_cap, zone_drop = (
+            AMBER_DURATION_SCALE,
+            AMBER_POWER_CAP_PCT,
+            ZONE_DROP_PCT,
+        )
+        origin, name_prefix = "amber_regeneration", "Amber-adjusted"
+    elif status == "Red":
+        duration_scale, power_cap, zone_drop = RED_DURATION_SCALE, RECOVERY_CAP_PCT, 0
+        origin, name_prefix = "red_substitution", "Recovery substitution"
+    else:
+        unchanged = dict(base_ir)
+        unchanged["origin"] = "as_planned"
+        unchanged["adjustment"] = {"verdict": status or "Unknown", "changed": False}
+        return unchanged
+
+    removed_hit = any(_step_power(step) >= HIT_FLOOR_PCT for step in steps)
+    new_steps = [
+        _adjust_step(step, duration_scale=duration_scale, power_cap=power_cap, zone_drop=zone_drop)
+        for step in steps
+    ]
+    basis_total = int(
+        base_ir.get("totalDurationSec") or sum(int(step.get("durationSec", 0)) for step in steps)
+    )
+
+    adjusted = dict(base_ir)
+    adjusted["steps"] = new_steps
+    adjusted["totalDurationSec"] = sum(int(step["durationSec"]) for step in new_steps)
+    adjusted["name"] = f"{name_prefix}: {original_name}"
+    adjusted["origin"] = origin
+    adjusted["cadenceCriticalExpanded"] = True
+    adjusted["adjustment"] = {
+        "verdict": status,
+        "changed": True,
+        "durationScalePct": round(duration_scale * 100),
+        "zoneDropPct": zone_drop,
+        "powerCapPct": power_cap,
+        "removedHit": removed_hit,
+        "basisName": original_name,
+        "basisTotalDurationSec": basis_total,
+    }
+    return adjusted
+
+
+class ExecutableCoachingService:
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        intervals_client: IntervalsEventClient | None = None,
+    ) -> None:
+        self.session = session
+        self.rail = WorkoutDeliveryService(session, intervals_client=intervals_client)
+
+    async def regenerate_for_verdict(
+        self,
+        player: Profile,
+        subject_date: date,
+        *,
+        analysis: Analysis,
+        commit: bool = True,
+    ) -> list[WorkoutDeliveryProposal]:
+        """Propose an adjusted workout when the morning verdict is Amber.
+
+        Idempotent: a second run for the same planned workout (id + version) is a
+        no-op because the audit row guards against a duplicate proposal. Only
+        Amber triggers regeneration; the Red-never-VO2 rule lives in the
+        transform and is exercised directly by tests.
+        """
+        verdict = self._verdict_status(analysis)
+        if verdict != "Amber":
+            return []
+
+        created: list[WorkoutDeliveryProposal] = []
+        for workout in await self._deliverable_bike_workouts(player.id, subject_date):
+            tag = _regen_tag(workout)
+            if await self._already_recorded(player.id, AUDIT_TYPE_PROPOSED, tag, subject_date):
+                continue
+            try:
+                ftp_watts = await self.rail._ftp_watts(player.id)
+                base_ir = build_structured_workout_ir(workout, ftp_watts=ftp_watts)
+            except HTTPException:
+                continue  # malformed/non-deliverable workout — skip safely
+            adjusted = adjust_ir_for_verdict(base_ir, verdict)
+            proposal = await self.rail.propose_from_ir(
+                player=player, workout=workout, ir=adjusted, commit=False
+            )
+            self._record_delivery_audit(
+                player,
+                proposal,
+                analysis_type=AUDIT_TYPE_PROPOSED,
+                tag=tag,
+                subject_date=subject_date,
+                verdict=verdict,
+                summary=f"Amber regeneration proposed for {workout.title}.",
+            )
+            created.append(proposal)
+
+        if commit:
+            await self.session.commit()
+        return created
+
+    async def auto_push_due(
+        self,
+        player: Profile,
+        *,
+        now_utc: datetime | None = None,
+        lead_days: int = DEFAULT_LEAD_DAYS,
+        commit: bool = True,
+    ) -> list[WorkoutDeliveryProposal]:
+        """Push approved-but-unpushed proposals due within ``lead_days``.
+
+        Honours propose → approve → push (Decision #29): only proposals a human
+        already approved are eligible. Each push is isolated so one delivery
+        failure (e.g. a missing intervals.icu key → 503) cannot block the rest.
+        """
+        window_end = _local_today(player.timezone, now_utc) + timedelta(days=max(0, lead_days))
+        pushed: list[WorkoutDeliveryProposal] = []
+        for proposal in await self._approved_unpushed(player.id, window_end):
+            try:
+                result = await self.rail.push(player=player, proposal_id=proposal.id)
+            except HTTPException:
+                continue
+            tag = _push_tag(result)
+            if not await self._already_recorded(
+                player.id, AUDIT_TYPE_PUSHED, tag, result.workout_date
+            ):
+                self._record_delivery_audit(
+                    player,
+                    result,
+                    analysis_type=AUDIT_TYPE_PUSHED,
+                    tag=tag,
+                    subject_date=result.workout_date,
+                    verdict=_proposal_verdict(result),
+                    summary=f"Auto-pushed approved workout for {result.workout_date.isoformat()}.",
+                )
+            pushed.append(result)
+
+        if commit:
+            await self.session.commit()
+        return pushed
+
+    def _record_delivery_audit(
+        self,
+        player: Profile,
+        proposal: WorkoutDeliveryProposal,
+        *,
+        analysis_type: str,
+        tag: str,
+        subject_date: date,
+        verdict: str | None,
+        summary: str,
+    ) -> None:
+        ir = (
+            proposal.structured_workout_ir
+            if isinstance(proposal.structured_workout_ir, dict)
+            else {}
+        )
+        self.session.add(
+            Analysis(
+                user_id=player.id,
+                activity_id=None,
+                analysis_type=analysis_type,
+                subject_date=subject_date,
+                generated_at_utc=_utcnow(),
+                prompt_version=PROMPT_VERSION,
+                model_name=None,
+                verdict=verdict,
+                context_packet={
+                    "tag": tag,
+                    "proposalId": str(proposal.id),
+                    "plannedWorkoutId": (
+                        str(proposal.planned_workout_id) if proposal.planned_workout_id else None
+                    ),
+                    "plannedWorkoutVersion": proposal.planned_workout_version,
+                    "workoutDate": proposal.workout_date.isoformat(),
+                    "status": proposal.status,
+                    "provider": proposal.provider,
+                    "origin": ir.get("origin"),
+                    "adjustment": ir.get("adjustment"),
+                    "intervalsEventId": proposal.intervals_event_id,
+                },
+                output_markdown=summary,
+                raw_response={},
+            )
+        )
+
+    def _verdict_status(self, analysis: Analysis) -> str | None:
+        status = _normalize_verdict(analysis.verdict)
+        if status is not None:
+            return status
+        packet = analysis.context_packet if isinstance(analysis.context_packet, dict) else {}
+        verdict = packet.get("verdict")
+        if isinstance(verdict, dict):
+            return _normalize_verdict(verdict.get("status"))
+        return None
+
+    async def _deliverable_bike_workouts(
+        self, user_id: uuid.UUID, subject_date: date
+    ) -> list[PlannedWorkout]:
+        workouts = (
+            (
+                await self.session.execute(
+                    select(PlannedWorkout)
+                    .where(
+                        PlannedWorkout.user_id == user_id,
+                        PlannedWorkout.workout_date == subject_date,
+                        PlannedWorkout.is_active.is_(True),
+                    )
+                    .order_by(PlannedWorkout.version.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return [
+            workout
+            for workout in workouts
+            if isinstance(workout.structured_workout, dict)
+            and workout.structured_workout.get("format") == "bike"
+        ]
+
+    async def _approved_unpushed(
+        self, user_id: uuid.UUID, window_end: date
+    ) -> list[WorkoutDeliveryProposal]:
+        rows = (
+            (
+                await self.session.execute(
+                    select(WorkoutDeliveryProposal)
+                    .where(
+                        WorkoutDeliveryProposal.user_id == user_id,
+                        WorkoutDeliveryProposal.status == STATUS_APPROVED,
+                        WorkoutDeliveryProposal.pushed_at_utc.is_(None),
+                        WorkoutDeliveryProposal.workout_date <= window_end,
+                    )
+                    .order_by(WorkoutDeliveryProposal.workout_date.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows)
+
+    async def _already_recorded(
+        self,
+        user_id: uuid.UUID,
+        analysis_type: str,
+        tag: str,
+        subject_date: date,
+    ) -> bool:
+        rows = (
+            (
+                await self.session.execute(
+                    select(Analysis).where(
+                        Analysis.user_id == user_id,
+                        Analysis.analysis_type == analysis_type,
+                        Analysis.subject_date == subject_date,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return any(
+            isinstance(row.context_packet, dict) and row.context_packet.get("tag") == tag
+            for row in rows
+        )
+
+
+def _regen_tag(workout: PlannedWorkout) -> str:
+    return f"amber-regen:{workout.id}:v{workout.version}"
+
+
+def _push_tag(proposal: WorkoutDeliveryProposal) -> str:
+    return f"auto-push:{proposal.id}"
+
+
+def _proposal_verdict(proposal: WorkoutDeliveryProposal) -> str | None:
+    ir = proposal.structured_workout_ir if isinstance(proposal.structured_workout_ir, dict) else {}
+    adjustment = ir.get("adjustment")
+    if isinstance(adjustment, dict):
+        return _normalize_verdict(adjustment.get("verdict"))
+    return None

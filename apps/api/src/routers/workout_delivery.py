@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth import CurrentUser
 from src.database import get_db
 from src.models.coaching import WorkoutDeliveryProposal
-from src.services.workout_delivery import WorkoutDeliveryService
+from src.services.workout_delivery import WeekAheadEntry, WorkoutDeliveryService
 
 router = APIRouter(prefix="/api/v1/workout-delivery", tags=["workout-delivery"])
 
@@ -25,6 +26,14 @@ def _dt(value: datetime | None) -> str | None:
     if value is None:
         return None
     return value.replace(tzinfo=UTC).isoformat().replace("+00:00", "Z")
+
+
+def _local_today(timezone_name: str) -> date:
+    try:
+        timezone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        timezone = ZoneInfo("UTC")
+    return datetime.now(timezone).date()
 
 
 class ApiError(BaseModel):
@@ -65,6 +74,31 @@ class WorkoutDeliveryEnvelope(BaseModel):
     errors: list[ApiError]
 
 
+class WeekAheadWorkoutOut(BaseModel):
+    plannedWorkoutId: str
+    workoutDate: str
+    version: int
+    title: str
+    workoutType: str
+    status: str
+    plannedDurationMin: int | None
+    intensityTarget: str | None
+    deliverable: bool
+    proposal: WorkoutDeliveryProposalOut | None
+
+
+class WeekAheadData(BaseModel):
+    startDate: str
+    days: int
+    workouts: list[WeekAheadWorkoutOut]
+
+
+class WeekAheadEnvelope(BaseModel):
+    data: WeekAheadData
+    meta: ApiMeta
+    errors: list[ApiError]
+
+
 def _serialize(proposal: WorkoutDeliveryProposal) -> WorkoutDeliveryProposalOut:
     return WorkoutDeliveryProposalOut(
         id=str(proposal.id),
@@ -98,6 +132,22 @@ def _envelope(proposals: list[WorkoutDeliveryProposal]) -> WorkoutDeliveryEnvelo
     )
 
 
+def _serialize_week_ahead(entry: WeekAheadEntry) -> WeekAheadWorkoutOut:
+    workout = entry.workout
+    return WeekAheadWorkoutOut(
+        plannedWorkoutId=str(workout.id),
+        workoutDate=workout.workout_date.isoformat(),
+        version=workout.version,
+        title=workout.title,
+        workoutType=workout.workout_type,
+        status=workout.status,
+        plannedDurationMin=workout.planned_duration_min,
+        intensityTarget=workout.intensity_target,
+        deliverable=True,
+        proposal=_serialize(entry.proposal) if entry.proposal is not None else None,
+    )
+
+
 @router.get("/proposals", response_model=WorkoutDeliveryEnvelope)
 async def list_workout_delivery_proposals(
     player: CurrentUser,
@@ -106,6 +156,27 @@ async def list_workout_delivery_proposals(
     service = WorkoutDeliveryService(db)
     proposals = await service.list_proposals(player)
     return _envelope(proposals)
+
+
+@router.get("/week-ahead", response_model=WeekAheadEnvelope)
+async def list_workout_delivery_week_ahead(
+    player: CurrentUser,
+    start_date: date | None = None,
+    days: int = Query(default=7, ge=1, le=14),
+    db: AsyncSession = Depends(get_db),
+) -> WeekAheadEnvelope:
+    service = WorkoutDeliveryService(db)
+    start = start_date or _local_today(player.timezone)
+    entries = await service.list_week_ahead(player, start_date=start, days=days)
+    return WeekAheadEnvelope(
+        data=WeekAheadData(
+            startDate=start.isoformat(),
+            days=days,
+            workouts=[_serialize_week_ahead(entry) for entry in entries],
+        ),
+        meta=ApiMeta(generatedAtUtc=_generated_at()),
+        errors=[],
+    )
 
 
 @router.post(

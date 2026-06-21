@@ -410,9 +410,7 @@ def _envelope(player: CurrentUser, snapshot: Any) -> DailyLoopEnvelope:
             ],
             plannedWorkouts=planned_workouts,
             thermalState=ThermalStateOut(
-                latestTemperatureC=(
-                    fresh_temperature.temperature_c if fresh_temperature else None
-                ),
+                latestTemperatureC=(fresh_temperature.temperature_c if fresh_temperature else None),
                 targetTemperatureC=(
                     fresh_temperature.target_temperature_c if fresh_temperature else None
                 ),

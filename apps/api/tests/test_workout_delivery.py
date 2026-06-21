@@ -203,3 +203,110 @@ async def test_delivery_service_requires_approval_before_push(db_conn: AsyncConn
         assert pushed.status == "pushed"
         assert pushed.intervals_event_id == "evt_123"
         assert len(fake_client.payloads) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_week_ahead_returns_bike_workouts_with_latest_proposal(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    bike_id = uuid.uuid4()
+    strength_id = uuid.uuid4()
+    bike2_id = uuid.uuid4()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Week Ahead",
+                pin_hash="x" * 60,
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+        session.add(
+            PlannedWorkout(
+                id=bike_id,
+                user_id=user_id,
+                workout_date=date(2026, 6, 24),
+                version=1,
+                title="VO2 Max 30/30",
+                workout_type="bike_vo2",
+                status="planned",
+                is_active=True,
+                planned_duration_min=60,
+                intensity_target="105-110% FTP",
+                structured_workout={
+                    "format": "bike",
+                    "steps": [
+                        {"label": "Warm-up", "minutes": 10, "target": "easy spin"},
+                        {"label": "Main set", "repeats": 1, "pattern": "3x 30s on / 30s off"},
+                    ],
+                },
+                source="test",
+            )
+        )
+        session.add(
+            PlannedWorkout(
+                id=strength_id,
+                user_id=user_id,
+                workout_date=date(2026, 6, 25),
+                version=1,
+                title="Strength Maintenance",
+                workout_type="strength_maintenance",
+                status="planned",
+                is_active=True,
+                planned_duration_min=40,
+                intensity_target="Moderate full-body strength",
+                structured_workout={
+                    "format": "strength",
+                    "steps": [{"label": "Lift", "minutes": 30}],
+                },
+                source="test",
+            )
+        )
+        session.add(
+            PlannedWorkout(
+                id=bike2_id,
+                user_id=user_id,
+                workout_date=date(2026, 6, 26),
+                version=1,
+                title="Sweet Spot Builder",
+                workout_type="bike_sweet_spot",
+                status="planned",
+                is_active=True,
+                planned_duration_min=75,
+                intensity_target="88-94% FTP",
+                structured_workout={
+                    "format": "bike",
+                    "steps": [
+                        {"label": "Warm-up", "minutes": 10, "target": "easy spin"},
+                        {
+                            "label": "Main set",
+                            "repeats": 1,
+                            "pattern": "8 min on / 4 min easy",
+                            "target": "88-94% FTP",
+                        },
+                    ],
+                },
+                source="test",
+            )
+        )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = WorkoutDeliveryService(session)
+        await service.propose(player=user, planned_workout_id=bike_id)
+
+        entries = await service.list_week_ahead(user, start_date=date(2026, 6, 23), days=7)
+
+        by_id = {str(entry.workout.id): entry for entry in entries}
+        # Strength days are not deliverable, so they are excluded.
+        assert set(by_id) == {str(bike_id), str(bike2_id)}
+        assert by_id[str(bike_id)].proposal is not None
+        assert by_id[str(bike_id)].proposal.status == "proposed"
+        assert by_id[str(bike2_id)].proposal is None
