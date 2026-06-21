@@ -22,8 +22,9 @@ and renames `player_id`→`user_id` in three tables.
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Batch 12 — the Zwift delivery rail — the foundational dependency for
-all substantive v2 coaching. Run `/batch-start 12`.
+**Next:** Batch 12 — start with the production daily-loop gate from the
+2026-06-21 smoke check, then continue into the Zwift delivery rail. Run
+`/batch-start 12`.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -41,6 +42,12 @@ all substantive v2 coaching. Run `/batch-start 12`.
 - Mark seed helper is
   `MARK_PIN=1234 PYTHONPATH=/Users/craigrobinson/garmin-coach/apps/api /Users/craigrobinson/garmin-coach/apps/api/.venv/bin/python -m src.seeds`
   after migration `003` is applied; replace `1234` with the real PIN and never commit it.
+- 2026-06-21 production smoke found API/auth/daily-loop live for Mark, but the
+  real daily data loop was empty. Before substantive Batch 12 work, verify
+  Railway has `ENVIRONMENT=production`, `GARMIN_EMAIL`, `GARMIN_PASSWORD`,
+  `GARMIN_TOKENSTORE`, `HIVE_EMAIL`, `HIVE_PASSWORD`, and `ANTHROPIC_API_KEY`;
+  then confirm today's daily-loop payload has non-null Garmin metrics/sleep,
+  `morningAnalysis`, Hive thermal values, and weather.
 - Garmin sync uses `GARMIN_EMAIL` / `GARMIN_PASSWORD` from the environment plus
   `GARMIN_TOKENSTORE` for garth's persisted token cache; the app does not store
   Garmin secrets in Postgres.
@@ -63,6 +70,15 @@ all substantive v2 coaching. Run `/batch-start 12`.
   failure.
 
 ## Log
+- **2026-06-21** — Baked the production daily-loop smoke findings into Phase 2
+  planning. The live Railway API served SHA `72a84b4`, Mark could log in after
+  direct seed, and `/api/v1/daily-loop` returned `subjectDate=2026-06-21`, but
+  Garmin daily metrics/sleep, morning analysis, Hive thermal values, weather,
+  and analysis rows were all empty; the first post-seed Hive poll logged
+  `hive temperature poll failed`; Railway was missing the expected Garmin/Hive/
+  Anthropic vars and logged `environment="development"`. `docs/phase-batches.md`
+  now treats this as Batch 12 phase `12.0` and as a hard production gate before
+  substantive Zwift delivery work.
 - **2026-06-21** — Phase 2 Batch 11 closed out: merged PR #5
   `claude/batch-start-11-2l9lof` to `main` (merge commit `652723b`), GitHub CI
   run #66 passed (`conclusion: success`). All 5 jobs green: ruff, mypy, alembic
