@@ -6,32 +6,30 @@
 
 ## Now
 
-**Phase:** 2 in progress — Batch 18 (production daily-loop data sync) **code
-merged + deployed; acceptance is now honestly green, but the row is NOT struck
-because explicit closeout has not been run.** Production `main` is now commit
-`38cecb6`, which does two important things:
-- `/api/v1/daily-loop` hides stale Hive temperatures using the same 45-minute
-  freshness rule as the notification engine (DECISIONS #60), so stale rows still
-  expose `capturedAtUtc` but no longer masquerade as current thermal data.
-- `run_hive_temperature_poll()` timestamps a successful poll from the fresh sync
-  run when Hive's `heating` product `lastSeen` is stale, so a live temperature
-  poll can create a fresh `temperature_readings.captured_at_utc` row again.
+**Phase:** 2 in progress — Batch 18 (production daily-loop data sync) **shipped
+via explicit closeout.** Closeout docs are now on `main` at commit `707850d`, and
+both production deploys verified on that exact SHA: Railway `/api/v1/health`
+returns `707850d`, Vercel serves `https://garmin-coach-one.vercel.app` with
+`HTTP 200`, and the strict authenticated smoke still passes on the docs-only
+closeout deploy:
+- `health` PASS on `707850d`
+- `login` PASS
+- `daily_loop` PASS (`subjectDate=2026-06-21`, `verdict=Red`)
 
-**Production verification completed on 2026-06-21:**
-- Manual `run_morning_weather_sync()` on production completed with
-  `daily_metrics=1`, `sleep=1`, `analyses_generated=1`.
-- Manual `run_hive_temperature_poll()` on production completed with
-  `profiles=1`, `readings=1`.
-- Latest production Hive row is now fresh:
-  `2026-06-21T19:31:54.566473`.
-- The strict smoke against the live API now passes under the honest freshness rule:
-  `health` PASS on `38cecb6`, `login` PASS, `daily_loop` PASS
-  (`subjectDate=2026-06-21`, `verdict=Red`).
+Batch 18 closes the production daily-loop data gate deferred from Batch 12:
+- the 06:30 `morning_weather_sync` job now syncs Garmin daily metrics/sleep before
+  morning analysis;
+- Hive production auth resumes from `HIVE_TOKENSTORE_B64` and scheduler tracebacks
+  render correctly;
+- `/api/v1/daily-loop` hides stale Hive temperatures instead of treating any
+  non-null row as current;
+- `run_hive_temperature_poll()` now stamps a fresh poll time when Hive's
+  temperature-bearing `heating` product reports a stale `lastSeen`, which let the
+  live poll create a fresh `temperature_readings.captured_at_utc` row again.
 
-**Batch 18 is ready for explicit closeout, but do not strike the row yet** until
-the user explicitly asks for the closeout command flow. The one operational
-cleanup left from verification is rotating Mark's production PIN away from the
-temporary smoke value (`1234`).
+**Next:** Batch 13 — Executable coaching (closed loop). The operational cleanup
+that carries forward from verification is rotating Mark's production PIN away from
+the temporary smoke value (`1234`).
 
 Batch 12 (Zwift delivery rail) is **shipped (rail-only)**: merged PR #6 to
 `main` (merge commit `67f9ad4`), CI green, Railway + Vercel auto-deployed. Live:
@@ -41,7 +39,7 @@ the Anthropic fail-closed validator.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
-- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (serves `main`; latest deploy `8b62caa` = Batch 18.4 Hive fix)
+- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (serves `main`; latest verified deploy `707850d` = Batch 18 closeout docs commit)
 - DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-007 applied (007 = workout_delivery_proposals, deployed with Batch 12)
 
 **Hosting identifiers (non-secret):**
@@ -51,13 +49,9 @@ the Anthropic fail-closed validator.
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** when you want to ship this batch formally, run the repo's explicit
-closeout flow for Batch 18. Before or during that closeout:
+**Next:** Batch 13 — Executable coaching (closed loop).
 1. Rotate Mark's production PIN away from the temporary smoke value (`1234`).
-2. Strike the Batch 18 row and set it to `Shipped` only as part of explicit
-   closeout, not before.
-3. Re-check Railway/Vercel after the docs-only closeout commit if that flow
-   triggers another deploy.
+2. Start Batch 13 from the now-shipped Batch 12 rail + Batch 18 fresh-data gate.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -75,15 +69,9 @@ closeout flow for Batch 18. Before or during that closeout:
 - Mark seed helper is
   `MARK_PIN=1234 PYTHONPATH=/Users/craigrobinson/garmin-coach/apps/api /Users/craigrobinson/garmin-coach/apps/api/.venv/bin/python -m src.seeds`
   after migration `003` is applied; replace `1234` with the real PIN and never commit it.
-- 2026-06-21 production smoke found API/auth/daily-loop live for Mark, but the
-  real daily data loop was empty before Batch 18's scheduler wiring shipped.
-  Railway production now has the expected Garmin, Hive, Anthropic, Supabase
-  service, and intervals vars plus `ENVIRONMENT=production`; Garmin token auth
-  and Anthropic credits are confirmed good, and the remaining live blocker is
-  seeding `HIVE_TOKENSTORE_B64` so Hive thermal data can populate without
-  scheduler ERROR lines. After that, confirm today's daily-loop payload has
-  non-null Garmin metrics/sleep, `morningAnalysis`, Hive thermal values, and
-  weather before striking Batch 18 as shipped.
+- Historical note: the 2026-06-21 production smoke initially found API/auth/
+  daily-loop live for Mark, but the real daily data loop was empty before Batch
+  18's scheduler wiring shipped. That gap is now closed and shipped.
 - Batch 12 adds `INTERVALS_API_KEY`, `INTERVALS_ATHLETE_ID` (default `i618709`),
   and `INTERVALS_BASE_URL` for the output-only intervals.icu rail. Missing
   `INTERVALS_API_KEY` makes push return 503; proposal and `.ZWO` export still work.
@@ -94,20 +82,9 @@ closeout flow for Batch 18. Before or during that closeout:
 - Garmin sync uses `GARMIN_EMAIL` / `GARMIN_PASSWORD` from the environment plus
   `GARMIN_TOKENSTORE` for garth's persisted token cache; the app does not store
   Garmin secrets in Postgres.
-- **Hive needs SMS_MFA — the prod Hive client cannot log in headlessly.** Mark's
-  Hive account uses AWS Cognito `SMS_MFA`, so a full email/password login returns
-  an SMS challenge. The spike (`~/garmin-spike/hive_spike.py`) works headlessly
-  only by caching the Cognito **refresh token** and resuming via
-  `REFRESH_TOKEN_AUTH`; prod `HiveClient.login()` does a full login each poll,
-  rejects SMS_MFA, and has no refresh-token store, so `hive_temperature_poll`
-  fails every cycle. (Contradicts the "Hive — no 2FA" line in `AGENTS.md`/
-  `CLAUDE.md`, which is inaccurate and should be corrected.) Fix = port the
-  spike's refresh-token resume into `HiveClient` + persist a `HIVE_TOKENSTORE_B64`,
-  seeded by a one-time SMS-2FA login on Mark's phone.
-- `logging_config.py` omits `structlog.processors.format_exc_info`, so
-  `log.exception(...)` serializes `exc_info` as a bare `true` and the traceback is
-  dropped — prod scheduler errors are currently undiagnosable from logs. Add the
-  processor to render tracebacks.
+- Hive production auth now depends on `HIVE_TOKENSTORE_B64` because Mark's account
+  uses AWS Cognito `SMS_MFA`; if the token blob is cleared or expires, reseed it
+  with `scripts/bootstrap_hive_tokenstore.py` and Mark's phone.
 - Batch 4 one-shot import command is
   `PYTHONPATH=/Users/craigrobinson/garmin-coach/apps/api /Users/craigrobinson/garmin-coach/apps/api/.venv/bin/python -m src.sleep_history_backfill --dry-run "/Users/craigrobinson/Downloads/Dad Fitness/12 Weeks Sleep Data 15.06.26.xlsx"`
   then rerun without `--dry-run` to write the backfill.
@@ -127,6 +104,13 @@ closeout flow for Batch 18. Before or during that closeout:
   failure.
 
 ## Log
+- **2026-06-21** — Closed out Batch 18. Verified the docs-only closeout deploy on
+  live `707850d`: Railway `/api/v1/health` returned the closeout SHA, Vercel
+  served `HTTP 200`, and the strict authenticated smoke still passed
+  (`health`/`login`/`daily_loop`, `subjectDate=2026-06-21`, `verdict=Red`). Struck
+  the Batch 18 row as `Shipped`, ticked `ARCHITECTURE.md`, and moved the handoff
+  target to Batch 13. One operational follow-up remains outside the shipped batch:
+  rotate Mark's production PIN off the temporary smoke value `1234`.
 - **2026-06-21** — Closed the real Hive freshness gap for Batch 18. After
   deploying `41defe9`, the honest strict smoke correctly failed because
   `thermalState.latestTemperatureC` was now hidden when stale. Built and shipped a

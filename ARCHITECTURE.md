@@ -116,3 +116,4 @@ added to it, and the v1 domain tables live beside it. Data-shape evidence is in
 - [x] **Phase 1 Batch 10** — v1 hardening + release polish shipped
 - [x] **Phase 2 Batch 11** — Phase 1 debt clean-up shipped (player→user rename, migration 006, dead email service, ForgotPin, score-input JSDoc)
 - [x] **Phase 2 Batch 12** — Zwift delivery rail shipped (intervals.icu push + `.ZWO` fallback, propose→approve→push, migration 007; Garmin `GARMIN_TOKENSTORE_B64` auth + Anthropic fail-closed validator). Production daily-loop *data* gate (non-null daily metrics/sleep/morning analysis) deferred to Batch 18 — prod has no Garmin daily-metrics/sleep sync yet (DECISIONS #57)
+- [x] **Phase 2 Batch 18** — production daily-loop data sync shipped (06:30 job now syncs Garmin daily metrics/sleep before morning analysis; Hive uses refresh-token auth and honest freshness gating; strict production smoke green on commit `707850d`)
