@@ -6,13 +6,14 @@
 
 ## Now
 
-**Phase:** 2 in progress — Batch 11 (Phase 1 debt clean-up) complete on
-`claude/batch-start-11-2l9lof`, pending PR merge to `main`.
+**Phase:** 2 in progress — Batch 11 (Phase 1 debt clean-up) shipped to `main`
+(PR #5, merge commit `652723b`). Migration 006 runs on next Railway deploy startup
+and renames `player_id`→`user_id` in three tables.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
-- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health → `{"status":"ok","sha":"8c47869..."}` (Batch 10 merge commit)
-- DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-005 applied; migration 006 ready on branch
+- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (SHA should show `652723b` after Railway deploys)
+- DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-006 applied after Railway startup
 
 **Hosting identifiers (non-secret):**
 - GitHub repo: https://github.com/CraigR973/garmin-coach (private)
@@ -21,15 +22,12 @@
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Merge Batch 11 PR to `main` (migration 006 renames `player_id`→`user_id`
-in `push_subscriptions`, `notification_preferences`, `refresh_tokens`; must apply
-against live DB after merge). Then Batch 12 — the Zwift delivery rail — the
-foundational dependency for all substantive v2 coaching. Run `/batch-start 12`.
+**Next:** Batch 12 — the Zwift delivery rail — the foundational dependency for
+all substantive v2 coaching. Run `/batch-start 12`.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
 - Node.js: use `~/.nvm/versions/node/v20.20.2/bin/node` + pnpm (system node v14).
-- Migration 006 renames `player_id`→`user_id` in three `coach` schema tables; apply it against the live Supabase DB after merging Batch 11.
 - `TokenResponse.player` and `PlayerInfo` schema class names in `routers/auth.py` are intentionally kept unchanged — the frontend `AuthContext.tsx` reads `data.player.*` and changing the field names would break the auth flow.
 - `ActorType.player` and `ActionType.player_pin_reset` enum values in `models/notification.py` are intentionally unchanged — they are stored DB enum strings; renaming would require a DB enum migration + data migration.
 - DB Postgres enum type `player_role` (for the `role` column on `profiles`) is unchanged — only the Python class was renamed to `UserRole`. The `Enum(UserRole, name="player_role", create_type=False)` constructor keeps the DB type name.
@@ -65,6 +63,11 @@ foundational dependency for all substantive v2 coaching. Run `/batch-start 12`.
   failure.
 
 ## Log
+- **2026-06-21** — Phase 2 Batch 11 closed out: merged PR #5
+  `claude/batch-start-11-2l9lof` to `main` (merge commit `652723b`), GitHub CI
+  run #66 passed (`conclusion: success`). All 5 jobs green: ruff, mypy, alembic
+  upgrade+downgrade (migration 006 `if_exists=True` fix required after first
+  push), pytest, web build. Railway auto-deploys migration 006 on startup.
 - **2026-06-21** — Phase 2 Batch 11 implementation complete on
   `claude/batch-start-11-2l9lof`: (11.1) replaced broken ForgotPin email-form
   with static "Contact Craig" card; (11.2) deleted dead `services/email.py` and

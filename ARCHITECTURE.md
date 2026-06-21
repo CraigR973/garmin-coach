@@ -105,3 +105,4 @@ added to it, and the v1 domain tables live beside it. Data-shape evidence is in
 - [x] **Phase 1 Batch 8** — post-workout analysis shipped
 - [x] **Phase 1 Batch 9** — nudges + thermal monitoring shipped
 - [x] **Phase 1 Batch 10** — v1 hardening + release polish shipped
+- [x] **Phase 2 Batch 11** — Phase 1 debt clean-up shipped (player→user rename, migration 006, dead email service, ForgotPin, score-input JSDoc)
