@@ -6,12 +6,11 @@
 
 ## Now
 
-**Phase:** 1 Batch 10 implementation ready — v1 hardening + release polish on
-`claude/batch-start-config-bz2y11`. Awaiting review and `/closeout`.
+**Phase:** 1 complete — all 10 batches shipped to `main`. v1 is in daily use.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
-- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health → `{"status":"ok"}` plus current deployed SHA
+- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health → `{"status":"ok","sha":"8c47869..."}` (Batch 10 merge commit)
 - DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-005 applied
 
 **Hosting identifiers (non-secret):**
@@ -21,13 +20,12 @@
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** `/closeout` Batch 10 once review passes.
+**Next:** Phase 2 planning — or iterate on v1 as Mark starts daily use and surfaces friction points.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
 - Node.js: use `~/.nvm/versions/node/v20.20.2/bin/node` + pnpm (system node v14).
-- `score-input.tsx`, `offlineQueue.ts`, `sw.ts` still have "predictions" refs — offline-queue infra, rename in Phase 1.
-- `apps/api/src/auth.py` has dead `create_email_verify_token` / `decode_email_verify_token` — remove in a future pass.
+- `score-input.tsx`, `offlineQueue.ts`, `sw.ts` still have "predictions" refs — offline-queue infra, rename in Phase 2.
 - Railway service `api` is connected to GitHub `CraigR973/garmin-coach`, branch `main`. Push to `main` deploys production backend; `railway up --service api` is break-glass.
 - Vercel project `garmin-coach` is connected to GitHub `CraigR973/garmin-coach`, production branch `main`, Node `20.x`. Push to `main` deploys production frontend; PR/branch pushes create previews.
 - Production web API wiring is intentionally same-origin: `VITE_API_URL=""`, calls go to `/api/*`, and root `vercel.json` rewrites to Railway. Do not set it to the Railway URL unless deliberately switching to cross-origin.
@@ -59,6 +57,16 @@
   failure.
 
 ## Log
+- **2026-06-21** — Phase 1 Batch 10 closed out: merged PR #3
+  `claude/batch-start-config-bz2y11` to `main` (merge commit `8c47869`), GitHub
+  CI run #60 passed (`conclusion: success`). Batch 10 delivered: non-mutating
+  smoke script (`scripts/smoke_daily_loop.py`) with 10 unit tests; full
+  observability runbook (`docs/runbooks/sync-and-analysis.md`); security pass —
+  removed dead email-verify token helpers from `auth.py`, added
+  `Permissions-Policy` header with middleware tests; PWA polish — daily-loop
+  `NetworkFirst` SW caching and offline stale-data banner in the dashboard.
+  96 backend tests pass, ruff/mypy clean, vite build succeeds. All 10 Phase 1
+  batches are now shipped; v1 is live for daily use.
 - **2026-06-20** — Phase 1 Batch 10 implementation ready on
   `claude/batch-start-config-bz2y11`: added non-mutating smoke script
   (`scripts/smoke_daily_loop.py`) with testable parser helpers and unit tests;
