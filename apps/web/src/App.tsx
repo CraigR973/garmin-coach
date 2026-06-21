@@ -28,6 +28,9 @@ const CoachStatePage = lazy(() =>
 const WeekAheadPage = lazy(() =>
   import('./pages/WeekAheadPage').then((m) => ({ default: m.WeekAheadPage })),
 );
+const HolidayPage = lazy(() =>
+  import('./pages/HolidayPage').then((m) => ({ default: m.HolidayPage })),
+);
 const OfflinePage = lazy(() =>
   import('./pages/OfflinePage').then((m) => ({ default: m.OfflinePage })),
 );
@@ -83,6 +86,7 @@ export function App() {
                     <Route element={<Layout />}>
                       <Route path="/" element={<DashboardPage />} />
                       <Route path="/delivery" element={<WeekAheadPage />} />
+                      <Route path="/holiday" element={<HolidayPage />} />
                       <Route path="/coach-state" element={<CoachStatePage />} />
                       <Route path="/settings" element={<SettingsPage />} />
                       <Route path="/offline" element={<OfflinePage />} />

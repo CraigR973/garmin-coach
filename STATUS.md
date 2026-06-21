@@ -6,54 +6,32 @@
 
 ## Now
 
-**Phase:** 2 in progress — Batch 14 (dynamic weekly restructuring) **shipped via
-explicit closeout.** Merged PR #10 to `main` (merge commit `efc2d7a`), CI run #95
-green on the branch HEAD, Railway + Vercel auto-deployed. Production verified on the
-merge SHA:
-- Railway `/api/v1/health` returns `efc2d7a`;
-- Vercel serves `https://garmin-coach-one.vercel.app` (`HTTP 200`) and its
-  same-origin `/api/v1/health` rewrite returns the same SHA;
-- non-mutating Batch 14 smoke: `GET /api/v1/restructure/week-ahead` and
-  `POST /api/v1/restructure/apply` are live and 401 unauthenticated, and the
-  deployed OpenAPI exposes both.
+**Phase:** 2 in progress — Batch 15 (holiday pause/resume) **implementation ready on
+`claude/batch-start-15-l8yuvm`**. Not yet merged to `main`.
 
-Batch 14 makes the *week* adaptive on top of the Batch 12/13 rail:
-- new `services/weekly_restructure.py`. `plan_week_restructure` is a **pure,
-  deterministic permutation engine** over the week's bike sessions: VO2↔Sweet-Spot
-  are never same/adjacent days (hard constraint, `MIN_GAP_DAYS=2`); strength/mobility
-  days stay put as spacers. When **fatigued** the cost key is
-  `(infeasible?, defer_cost, moves, shift)` (defer hard sessions later = primary);
-  when fresh it is `(infeasible?, moves, shift, defer_cost)` (fix conflicts with
-  minimal disruption; an already-spaced fresh week is a no-op);
-- `assess_recovery_signal` derives fatigue from latest readiness, HRV status, and
-  the morning-verdict trend (a Red / ≥2 Ambers in a 4-day window / low readiness /
-  unbalanced HRV);
-- `WeeklyRestructureService.apply_for_week` versions only the changed
-  `planned_workouts` dates (new active version per date, prior deactivated),
-  audits the restructure in `analyses` (`analysis_type="weekly_restructure"`,
-  `subject_date=week_start`), and proposes the changed bike workouts via
-  `WorkoutDeliveryService.propose_from_ir` (`origin="weekly_restructure"`) — they
-  stay `proposed` until the human approves (Decision #29). **Nothing is pushed.**
-- exposed via **`GET/POST /api/v1/restructure/*`** (preview / apply) — human-triggered,
-  **not** wired into a scheduler job (DECISIONS #64);
-- new shared **`services/vo2_progression.py`** toolkit: `select_vo2_protocol` /
-  `build_vo2_structured_workout` (30/30 early build, **Rønnestad 30/15** from Wk7+,
-  `ergMode="off"`, even-paced 105-110% / 15s easy — Decision #33). `coaching_state`
-  now seeds VO2 days from the toolkit, and a deferred late-build VO2 is regenerated
-  through it so it keeps the 30/15 / ERG-off constraints;
-- **no migration** (DECISIONS #63-65).
+Batch 15 treats a holiday window as a recovery-week equivalent:
+- new `services/holiday_pause.py` — `HolidayPauseService` with `pause` (versions
+  workouts as `status='skipped'`, `source='holiday_pause'`) and `resume` (applies
+  2121 block continuation: Build1→Build2 at week S+1, Build2→repeat Build1 at S-1)
+  plus pure helpers `is_build1`, `continuation_label`, `continuation_week_number`;
+- holiday windows stored as JSONB in `knowledge_base` at `section='holiday_windows'` —
+  **no migration** (DECISIONS #66-68);
+- `routers/holiday.py` — `GET/POST /api/v1/holiday` (list), `/pause`, `/resume`;
+- `packages/shared/src/schemas.ts` — 5 new Zod schemas for holiday envelopes;
+- `apps/web/src/pages/HolidayPage.tsx` — pause/resume UI with date picker + history;
+- `apps/web/src/pages/HolidayPage.test.tsx` — 4 vitest tests;
+- `apps/web/src/components/TabBar.tsx` / `App.tsx` — Holiday tab + route added.
 
-Verified locally: backend pytest **150 passed** (10 new in `test_weekly_restructure.py`,
-run against a real local Postgres so the DB-backed restructure tests actually
-exercise versioning/delivery), `ruff check` + `ruff format --check` clean, `mypy src`
-clean (43 files). Frontend untouched (Batch 14 is backend-only per its acceptance).
+Verified locally: backend `7 passed, 7 skipped` (DB tests skip without DATABASE_URL),
+`ruff check` + `ruff format --check` clean, `mypy` clean on all new files. Frontend:
+`7 passed` (4 new HolidayPage tests), `eslint` 0 errors (5 pre-existing warnings),
+`vite build` succeeds.
 
-**Next:** Batch 15 (holiday pause/resume — holiday window = recovery-week
-equivalent; on return Build1→Build2, Build2→repeat Build1; versioned plan updates +
-pause/resume UI). Operational follow-ups (not blocking): rotate Mark's production
+**Next:** `/closeout 15` — open PR, merge to `main`, verify CI + Railway + Vercel,
+update `docs/phase-batches.md` to strike Batch 15. Then Batch 16 (app-generated
+13-week blocks). Operational follow-ups (not blocking): rotate Mark's production
 PIN off the temporary smoke value (`1234`); set `INTERVALS_API_KEY` in Railway so
-`auto_push_due` (and an approved restructure proposal) can actually deliver —
-without it, push returns 503.
+`auto_push_due` can actually deliver — without it, push returns 503.
 
 Batch 18 (production daily-loop data sync) is **shipped** on `main` at `707850d`
 (strict smoke green: `health`/`login`/`daily_loop`, `verdict=Red`). Batch 12
@@ -148,6 +126,16 @@ fail-closed validator.
   rows (`subject_date=week_start`).
 
 ## Log
+- **2026-06-21** — Batch 15 (holiday pause/resume) implementation ready on
+  `claude/batch-start-15-l8yuvm`. Built `services/holiday_pause.py` (pure helpers +
+  `HolidayPauseService.pause`/`resume` — holiday = recovery-week equivalent, 2121
+  continuation: Build1→Build2, Build2→repeat Build1), `routers/holiday.py`
+  (`GET/POST /api/v1/holiday{/pause,/resume}`), 7 pure-function + 7 DB-backed tests,
+  5 shared Zod schemas, `HolidayPage.tsx` + 4 vitest tests, TabBar Holiday tab.
+  No migration (windows in `knowledge_base` JSONB, DECISIONS #66-68). Verified:
+  backend 7 passed / 7 skipped (DB tests skip without DATABASE_URL), ruff check +
+  format clean, mypy clean; frontend 7 passed, eslint 0 errors, vite build succeeds.
+  Awaiting `/closeout 15`.
 - **2026-06-21** — Closed out Batch 14. Opened + merged PR #10 to `main` (merge
   commit `efc2d7a`); CI run #95 was already green on the branch HEAD (`1ac1838`).
   Railway + Vercel auto-deployed `efc2d7a`: `/api/v1/health` returns the merge SHA,

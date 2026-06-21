@@ -439,3 +439,44 @@ export const weekAheadEnvelopeSchema = z.object({
   meta: apiMetaSchema,
   errors: z.array(apiErrorSchema),
 });
+
+export const holidayWindowSchema = z.object({
+  startDate: isoDateSchema,
+  endDate: isoDateSchema,
+  pausedAtUtc: z.string().min(1),
+  resumedAtUtc: z.string().nullable(),
+  isActive: z.boolean(),
+});
+
+export const holidayEnvelopeSchema = z.object({
+  data: z.object({
+    windows: z.array(holidayWindowSchema),
+    activeWindow: holidayWindowSchema.nullable(),
+  }),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
+
+export const pauseInputSchema = z.object({
+  startDate: isoDateSchema,
+  endDate: isoDateSchema,
+});
+
+export const pauseEnvelopeSchema = z.object({
+  data: z.object({
+    window: holidayWindowSchema,
+    skippedCount: z.number().int(),
+  }),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
+
+export const resumeEnvelopeSchema = z.object({
+  data: z.object({
+    window: holidayWindowSchema,
+    continuationLabel: z.string().min(1),
+    regeneratedCount: z.number().int(),
+  }),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
