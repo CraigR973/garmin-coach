@@ -6,7 +6,8 @@
 
 ## Now
 
-**Phase:** 1 Batch 9 shipped — nudges + thermal monitoring live on production.
+**Phase:** 1 Batch 10 implementation ready — v1 hardening + release polish on
+`claude/batch-start-config-bz2y11`. Awaiting review and `/closeout`.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -20,8 +21,7 @@
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Batch 10 — v1 hardening + release polish (smoke scripts, observability,
-security/privacy pass, mobile PWA polish).
+**Next:** `/closeout` Batch 10 once review passes.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -59,6 +59,18 @@ security/privacy pass, mobile PWA polish).
   failure.
 
 ## Log
+- **2026-06-20** — Phase 1 Batch 10 implementation ready on
+  `claude/batch-start-config-bz2y11`: added non-mutating smoke script
+  (`scripts/smoke_daily_loop.py`) with testable parser helpers and unit tests;
+  new `docs/runbooks/sync-and-analysis.md` covering per-job log events, failure
+  modes, and recovery for all six scheduler jobs; security pass — removed dead
+  `create_email_verify_token`/`decode_email_verify_token` from `auth.py`, added
+  `Permissions-Policy` header restricting camera/microphone/geolocation with
+  middleware tests; PWA polish — daily-loop NetworkFirst SW caching (24 h offline
+  fallback) and offline stale-data notice in the dashboard. Verified backend
+  `pytest` (96 pass, 10 DB-skipped), `ruff check`, `ruff format --check`, and
+  `mypy src`; frontend `vitest`, `eslint` (pre-existing fast-refresh warnings
+  only), and `vite build`.
 - **2026-06-20** — Phase 1 Batch 9 closed out: fast-forwarded
   `feat/batch-9-nudges-thermal-monitoring` to `main`, GitHub CI passed on commit
   `7a9e4ec`, Railway deployed the backend and `/api/v1/health` reported SHA

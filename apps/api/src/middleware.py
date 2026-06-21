@@ -33,4 +33,5 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # token. The frontend is a single-page app served from Vercel; this API
         # only serves JSON so there is no script/style/img surface here.
         response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         return response
