@@ -63,7 +63,9 @@ Strict mode fails unless `/api/v1/daily-loop` has all of:
 
 Required Railway variables for this gate are `ENVIRONMENT=production`,
 `GARMIN_EMAIL`, `GARMIN_PASSWORD`, `GARMIN_TOKENSTORE`, `HIVE_EMAIL`,
-`HIVE_PASSWORD`, `SUPABASE_SERVICE_KEY`, and `ANTHROPIC_API_KEY`.
+`HIVE_PASSWORD`, `SUPABASE_SERVICE_KEY`, and `ANTHROPIC_API_KEY`. Hosted
+deployments should also set `GARMIN_TOKENSTORE_B64` after an interactive
+bootstrap because Railway's app filesystem is not a durable Garmin tokenstore.
 
 ## Garmin sync
 
@@ -71,9 +73,9 @@ Required Railway variables for this gate are `ENVIRONMENT=production`,
 
 | Symptom | Cause | Recovery |
 |---|---|---|
-| `garmin activity poll failed` with `LoginRequiredException` | garth token cache expired or missing | Set `GARMIN_EMAIL` / `GARMIN_PASSWORD` in Railway env and restart; garth will re-authenticate and write a fresh token cache |
+| `garmin activity poll failed` with `LoginRequiredException` | garth token cache expired or missing | Run `PYTHONPATH=apps/api apps/api/.venv/bin/python scripts/bootstrap_garmin_tokenstore.py --env-output /tmp/garmin-token.env`, paste/set `GARMIN_TOKENSTORE_B64` in Railway, then restart |
 | `garmin activity poll failed` with `GarminConnectTooManyRequestsError` | rate-limited by Garmin | Wait 5–10 minutes; the next hourly poll will retry automatically |
-| `activities: 0` in success log consistently | garth token cache present but stale | Delete `GARMIN_TOKENSTORE` path (default `~/.garminconnect`) and restart so garth re-authenticates |
+| `activities: 0` in success log consistently | garth token cache present but stale | Refresh `GARMIN_TOKENSTORE_B64` with `scripts/bootstrap_garmin_tokenstore.py` or delete the local `GARMIN_TOKENSTORE` path before re-bootstrap |
 | Activities sync but time-series empty | activity does not have power/HR data | Expected for indoor strength or GPS-only activities |
 
 **Confirming sync health:**

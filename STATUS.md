@@ -6,15 +6,20 @@
 
 ## Now
 
-**Phase:** 2 in progress — Batch 12 (Zwift delivery rail) started on branch
-`feat/batch-12-zwift-delivery-rail`. The backend delivery rail is implemented
-locally with migration `007`, but Batch 12 is **not ready for closeout** until
-the production daily-loop gate is fixed and strict smoke passes.
+**Phase:** 2 in progress — Batch 12 (Zwift delivery rail) **shipped (rail-only)**:
+merged PR #6 to `main` (merge commit `67f9ad4`), CI green, Railway + Vercel
+auto-deployed. Live: the delivery rail (intervals.icu push + `.ZWO` fallback,
+propose→approve→push, migration `007`), the Garmin `GARMIN_TOKENSTORE_B64`
+token-blob auth path, and the Anthropic fail-closed validator. **Deferred to
+Batch 18:** the production daily-loop *data* gate (non-null daily
+metrics/sleep/morning analysis) — production has no Garmin daily-metrics/sleep
+sync (`sync_daily` was never wired into the scheduler), so the strict smoke
+can't pass yet. See DECISIONS #57.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
-- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (currently reports SHA `ee54fd5`)
-- DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-006 applied; migration 007 is pending on the Batch 12 branch
+- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (serves `main`; Batch 12 merged as `67f9ad4`)
+- DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-007 applied (007 = workout_delivery_proposals, deployed with Batch 12)
 
 **Hosting identifiers (non-secret):**
 - GitHub repo: https://github.com/CraigR973/garmin-coach (private)
@@ -23,12 +28,14 @@ the production daily-loop gate is fixed and strict smoke passes.
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Fix the two remaining production daily-loop blockers before Batch 12
-review/`/closeout`: seed a reusable Garmin garth token cache or persistent
-Railway tokenstore so daily metrics/sleep can sync without MFA, and add
-Anthropic API credits (or swap to a funded key). Then rerun the strict smoke:
+**Next:** Batch 18 — wire a production Garmin daily-metrics/sleep sync.
+`GarminSyncService.sync_daily` exists (Batch 2) but has no caller in `src/`: the
+06:30 job only does weather→analysis and the hourly job only does activities, so
+today's daily metrics + sleep are never synced and the morning verdict runs on
+empty readiness/sleep data. Wire `sync_daily` into the 06:30 path (before
+analysis) with 429-safe retry, then rerun the strict smoke (the deferred Batch 12
+data gate):
 `API_URL=https://api-production-e2bc7.up.railway.app SMOKE_DISPLAY_NAME=Mark SMOKE_PIN=<real-pin> SMOKE_STRICT_DAILY_LOOP=1 python3 scripts/smoke_daily_loop.py`.
-Only after that passes should Batch 12 be pushed/reviewed for `/closeout`.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -82,6 +89,17 @@ Only after that passes should Batch 12 be pushed/reviewed for `/closeout`.
   failure.
 
 ## Log
+- **2026-06-21** — Batch 12 closed out **rail-only** (Craig's call): merged PR #6
+  to `main` (merge commit `67f9ad4`), CI green (pytest/ruff/mypy/alembic/web
+  build), Railway + Vercel auto-deployed. Shipped the Zwift delivery rail
+  (migration `007`, propose→approve→push), the `GARMIN_TOKENSTORE_B64` token-blob
+  auth path, and the Anthropic fail-closed validator (DECISIONS #56). CI caught a
+  latent Batch 12 DB test bug (FK violation from `add_all([profile, workout])` in
+  one flush) — fixed by seeding the profile first. **Found + deferred:** the
+  strict daily-loop data gate is unmet because production has no Garmin
+  daily-metrics/sleep sync (`sync_daily` unwired); split into Batch 18 and
+  recorded as DECISIONS #57. Strict smoke not run (needs Mark's PIN and the
+  missing daily sync).
 - **2026-06-21** — Rechecked Batch 12 production gate after the Railway secrets
   were added. Masked env audit shows `ENVIRONMENT=production` plus Garmin, Hive,
   Anthropic, Supabase service, and intervals vars present; API health reports
