@@ -23,10 +23,10 @@ the production daily-loop gate is fixed and strict smoke passes.
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Set the remaining production secrets in Railway:
-`GARMIN_EMAIL`, `GARMIN_PASSWORD`, `HIVE_EMAIL`, `HIVE_PASSWORD`,
-`ANTHROPIC_API_KEY`, `SUPABASE_SERVICE_KEY`, and `INTERVALS_API_KEY`. After
-those are present, set `ENVIRONMENT=production` and run the strict production smoke:
+**Next:** Fix the two remaining production daily-loop blockers before Batch 12
+review/`/closeout`: seed a reusable Garmin garth token cache or persistent
+Railway tokenstore so daily metrics/sleep can sync without MFA, and add
+Anthropic API credits (or swap to a funded key). Then rerun the strict smoke:
 `API_URL=https://api-production-e2bc7.up.railway.app SMOKE_DISPLAY_NAME=Mark SMOKE_PIN=<real-pin> SMOKE_STRICT_DAILY_LOOP=1 python3 scripts/smoke_daily_loop.py`.
 Only after that passes should Batch 12 be pushed/reviewed for `/closeout`.
 
@@ -47,12 +47,12 @@ Only after that passes should Batch 12 be pushed/reviewed for `/closeout`.
   `MARK_PIN=1234 PYTHONPATH=/Users/craigrobinson/garmin-coach/apps/api /Users/craigrobinson/garmin-coach/apps/api/.venv/bin/python -m src.seeds`
   after migration `003` is applied; replace `1234` with the real PIN and never commit it.
 - 2026-06-21 production smoke found API/auth/daily-loop live for Mark, but the
-  real daily data loop was empty. Before substantive Batch 12 work, verify
-  Railway has `ENVIRONMENT=production`, `GARMIN_EMAIL`, `GARMIN_PASSWORD`,
-  `GARMIN_TOKENSTORE`, `HIVE_EMAIL`, `HIVE_PASSWORD`, `SUPABASE_SERVICE_KEY`,
-  and `ANTHROPIC_API_KEY`;
-  then confirm today's daily-loop payload has non-null Garmin metrics/sleep,
-  `morningAnalysis`, Hive thermal values, and weather.
+  real daily data loop was empty. Railway production now has the expected
+  Garmin, Hive, Anthropic, Supabase service, and intervals vars plus
+  `ENVIRONMENT=production`; the remaining blockers are Garmin token/MFA and
+  Anthropic API credits. Confirm today's daily-loop payload has non-null Garmin
+  metrics/sleep, `morningAnalysis`, Hive thermal values, and weather before
+  Batch 12 review.
 - Batch 12 adds `INTERVALS_API_KEY`, `INTERVALS_ATHLETE_ID` (default `i618709`),
   and `INTERVALS_BASE_URL` for the output-only intervals.icu rail. Missing
   `INTERVALS_API_KEY` makes push return 503; proposal and `.ZWO` export still work.
@@ -82,6 +82,17 @@ Only after that passes should Batch 12 be pushed/reviewed for `/closeout`.
   failure.
 
 ## Log
+- **2026-06-21** — Rechecked Batch 12 production gate after the Railway secrets
+  were added. Masked env audit shows `ENVIRONMENT=production` plus Garmin, Hive,
+  Anthropic, Supabase service, and intervals vars present; API health reports
+  SHA `ee54fd5`. Hive/weather one-off run completed (`profiles=1`,
+  `readings=1`, `days=9`), but morning analysis failed because Anthropic
+  returned HTTP 400 `credit balance is too low`, and Garmin daily sync is still
+  blocked by an empty `/app/.garminconnect` tokenstore: fresh login hit Garmin
+  429/MFA in the non-interactive run and no reusable local garth token cache was
+  found under the expected home/spike paths. DB snapshot for Mark still shows no
+  2026-06-21 daily metrics, sleep, or morning analysis, so the strict
+  daily-loop gate is not passed yet.
 - **2026-06-21** — Railway CLI re-auth completed via browserless device code.
   Set safe non-secret production defaults with `--skip-deploys`:
   `GARMIN_TOKENSTORE=/app/.garminconnect`, `INTERVALS_ATHLETE_ID=i618709`, and
