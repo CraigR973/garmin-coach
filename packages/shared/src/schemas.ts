@@ -389,3 +389,53 @@ export const dailyLoopEnvelopeSchema = z.object({
   meta: apiMetaSchema,
   errors: z.array(apiErrorSchema),
 });
+
+export const workoutDeliveryStatusSchema = z.enum(['proposed', 'approved', 'pushed', 'failed']);
+
+export const workoutDeliveryProposalSchema = z.object({
+  id: z.string().uuid(),
+  userId: z.string().uuid(),
+  plannedWorkoutId: z.string().uuid().nullable(),
+  plannedWorkoutVersion: z.number().int(),
+  workoutDate: isoDateSchema,
+  provider: z.string().min(1),
+  status: workoutDeliveryStatusSchema,
+  proposedAtUtc: isoDateTimeSchema,
+  approvedAtUtc: isoDateTimeSchema.nullable(),
+  approvedByProfileId: z.string().uuid().nullable(),
+  pushedAtUtc: isoDateTimeSchema.nullable(),
+  intervalsEventId: z.string().nullable(),
+  structuredWorkoutIr: jsonObjectSchema.default({}),
+  intervalsPayload: jsonObjectSchema.default({}),
+  zwoXml: z.string(),
+  lastError: z.string().nullable(),
+});
+
+export const workoutDeliveryEnvelopeSchema = z.object({
+  data: z.object({ proposals: z.array(workoutDeliveryProposalSchema) }),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
+
+export const weekAheadWorkoutSchema = z.object({
+  plannedWorkoutId: z.string().uuid(),
+  workoutDate: isoDateSchema,
+  version: z.number().int(),
+  title: z.string().min(1),
+  workoutType: z.string().min(1),
+  status: z.string().min(1),
+  plannedDurationMin: z.number().int().nullable().optional(),
+  intensityTarget: z.string().nullable().optional(),
+  deliverable: z.boolean(),
+  proposal: workoutDeliveryProposalSchema.nullable(),
+});
+
+export const weekAheadEnvelopeSchema = z.object({
+  data: z.object({
+    startDate: isoDateSchema,
+    days: z.number().int(),
+    workouts: z.array(weekAheadWorkoutSchema),
+  }),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
