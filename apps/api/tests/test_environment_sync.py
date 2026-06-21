@@ -1,4 +1,7 @@
+import base64
 import json
+import sys
+import types
 import uuid
 from datetime import date, datetime
 from pathlib import Path
@@ -108,6 +111,109 @@ def test_hive_login_error_does_not_expose_credentials(monkeypatch: pytest.Monkey
     message = str(exc_info.value)
     assert "super-secret" not in message
     assert "mark@example.com" not in message
+
+
+def _hive_token_blob(username: str, refresh_token: str) -> str:
+    return base64.b64encode(
+        json.dumps({"username": username, "refresh_token": refresh_token}).encode()
+    ).decode()
+
+
+def test_hive_resumes_via_refresh_token_blob(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeCognito:
+        def initiate_auth(
+            self, *, ClientId: str, AuthFlow: str, AuthParameters: dict[str, str]
+        ) -> dict[str, object]:
+            captured["client_id"] = ClientId
+            captured["flow"] = AuthFlow
+            captured["params"] = AuthParameters
+            return {"AuthenticationResult": {"IdToken": "fresh-id-token"}}
+
+    class FakeAuth:
+        def __init__(self, username: str, password: str) -> None:
+            captured["auth_args"] = (username, password)
+            self.device_key = None
+            self._HiveAuth__client_id = "client-xyz"
+            self.client = FakeCognito()
+
+        def login(self) -> None:  # pragma: no cover - resume path must not call this
+            raise AssertionError("full login must not run when a token blob is present")
+
+    class FakeApi:
+        def __init__(self, token: str) -> None:
+            self.token = token
+
+    module = types.SimpleNamespace(Auth=FakeAuth, API=FakeApi)
+    monkeypatch.setitem(sys.modules, "pyhiveapi", module)
+
+    blob = _hive_token_blob("mark@example.com", "r3fr3sh-t0ken")
+    client = HiveClient(HiveCredentials(email="", password="", tokenstore_b64=blob))
+    api = client.login()
+
+    assert isinstance(api, FakeApi)
+    assert api.token == "fresh-id-token"
+    assert captured["flow"] == "REFRESH_TOKEN_AUTH"
+    assert captured["client_id"] == "client-xyz"
+    assert captured["params"] == {"REFRESH_TOKEN": "r3fr3sh-t0ken"}
+    # Resume builds Auth with the blob username and an empty password.
+    assert captured["auth_args"] == ("mark@example.com", "")
+
+
+def test_hive_full_login_rejects_sms_mfa_without_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeAuth:
+        def __init__(self, username: str, password: str) -> None:
+            pass
+
+        def login(self) -> dict[str, str]:
+            return {"ChallengeName": "SMS_MFA"}
+
+    class FakeApi:
+        def __init__(self, token: str) -> None:  # pragma: no cover - never built
+            pass
+
+    module = types.SimpleNamespace(Auth=FakeAuth, API=FakeApi)
+    monkeypatch.setitem(sys.modules, "pyhiveapi", module)
+
+    client = HiveClient(HiveCredentials(email="mark@example.com", password="pw"))
+    with pytest.raises(HiveLoginError) as exc_info:
+        client.login()
+
+    assert "HIVE_TOKENSTORE_B64" in str(exc_info.value)
+
+
+def test_hive_token_refresh_failure_without_credentials_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeCognito:
+        def initiate_auth(self, **kwargs: object) -> dict[str, object]:
+            raise RuntimeError("cognito rejected r3fr3sh-t0ken")
+
+    class FakeAuth:
+        def __init__(self, username: str, password: str) -> None:
+            self.device_key = None
+            self._HiveAuth__client_id = "cid"
+            self.client = FakeCognito()
+
+    class FakeApi:
+        def __init__(self, token: str) -> None:  # pragma: no cover - never built
+            pass
+
+    module = types.SimpleNamespace(Auth=FakeAuth, API=FakeApi)
+    monkeypatch.setitem(sys.modules, "pyhiveapi", module)
+
+    blob = _hive_token_blob("mark@example.com", "r3fr3sh-t0ken")
+    client = HiveClient(HiveCredentials(email="", password="", tokenstore_b64=blob))
+    with pytest.raises(HiveLoginError) as exc_info:
+        client.login()
+
+    message = str(exc_info.value)
+    assert "re-seed HIVE_TOKENSTORE_B64" in message
+    # The refresh token must never leak into the surfaced error message.
+    assert "r3fr3sh-t0ken" not in message
 
 
 def test_parse_open_meteo_daily_fields_captures_daily_and_overnight_weather() -> None:

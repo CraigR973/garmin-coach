@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import json
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -41,15 +43,23 @@ class HiveLoginError(EnvironmentSyncError):
 class HiveCredentials:
     email: str
     password: str
+    tokenstore_b64: str = ""
 
     @classmethod
     def from_settings(cls) -> HiveCredentials:
-        return cls(email=settings.hive_email, password=settings.hive_password)
+        return cls(
+            email=settings.hive_email,
+            password=settings.hive_password,
+            tokenstore_b64=settings.hive_tokenstore_b64,
+        )
 
     def validate(self) -> None:
+        if self.tokenstore_b64:
+            return
         if not self.email or not self.password:
             raise HiveCredentialsError(
-                "Hive credentials are not configured; set HIVE_EMAIL and HIVE_PASSWORD."
+                "Hive credentials are not configured; set HIVE_TOKENSTORE_B64 "
+                "(preferred — full login needs SMS MFA) or HIVE_EMAIL and HIVE_PASSWORD."
             )
 
 
@@ -92,7 +102,16 @@ class WeatherNightStats:
 
 
 class HiveClient:
-    """Thin wrapper around sync pyhiveapi using full email/password re-login."""
+    """Sync pyhiveapi wrapper with a headless Cognito refresh-token resume path.
+
+    Mark's Hive account authenticates through AWS Cognito with ``SMS_MFA``, so a
+    headless email/password login is impossible — it returns an SMS challenge.
+    The unattended path resumes from a persisted Cognito **refresh token**
+    (``HIVE_TOKENSTORE_B64``) via ``REFRESH_TOKEN_AUTH``; seed it once with a
+    one-time SMS-2FA login (``scripts/bootstrap_hive_tokenstore.py``). A full
+    email/password login remains only as a last-ditch fallback and will fail on
+    SMS_MFA accounts.
+    """
 
     def __init__(self, credentials: HiveCredentials | None = None) -> None:
         self.credentials = credentials or HiveCredentials.from_settings()
@@ -103,25 +122,76 @@ class HiveClient:
             return self._api
 
         self.credentials.validate()
-        try:
-            from pyhiveapi import API, Auth  # type: ignore[import-untyped, unused-ignore]
-        except ImportError as exc:  # pragma: no cover - exercised only in missing envs
-            raise EnvironmentSyncError("pyhiveapi is not installed.") from exc
+        api_cls, auth_cls = self._import_pyhiveapi()
 
+        if self.credentials.tokenstore_b64:
+            try:
+                token = self._resume_id_token(auth_cls)
+            except HiveLoginError:
+                # Fall back to a full login only when password creds exist;
+                # otherwise surface the failure so the operator re-seeds the blob.
+                if not self.credentials.email or not self.credentials.password:
+                    raise
+            else:
+                self._api = api_cls(token=token)
+                return self._api
+
+        return self._full_login(auth_cls, api_cls)
+
+    def _resume_id_token(self, auth_cls: Any) -> str:
+        """Exchange the persisted refresh token for a fresh Cognito id token."""
+        blob = _decode_hive_token_blob(self.credentials.tokenstore_b64)
+        username = _to_str(blob.get("username"))
+        refresh_token = _to_str(blob.get("refresh_token"))
+        if not username or not refresh_token:
+            raise HiveLoginError("Hive token blob is missing username or refresh_token.")
         try:
-            auth = Auth(self.credentials.email, self.credentials.password)
+            # pyhiveapi's Auth.refresh_token() is broken (a stray trailing comma
+            # makes AuthParameters a tuple), so call Cognito directly. Auth.__init__
+            # builds the boto3 client and populates the private client id for us.
+            auth = auth_cls(username, "")
+            params: dict[str, str] = {"REFRESH_TOKEN": refresh_token}
+            device_key = getattr(auth, "device_key", None)
+            if device_key:
+                params["DEVICE_KEY"] = str(device_key)
+            result = auth.client.initiate_auth(
+                ClientId=_hive_client_id(auth),
+                AuthFlow="REFRESH_TOKEN_AUTH",
+                AuthParameters=params,
+            )
+        except HiveLoginError:
+            raise
+        except Exception as exc:
+            raise HiveLoginError("Hive token refresh failed; re-seed HIVE_TOKENSTORE_B64.") from exc
+        return _extract_hive_id_token(result)
+
+    def _full_login(self, auth_cls: Any, api_cls: Any) -> Any:
+        try:
+            auth = auth_cls(self.credentials.email, self.credentials.password)
             result = auth.login()
             if isinstance(result, dict) and result.get("ChallengeName") == "SMS_MFA":
                 raise HiveLoginError(
-                    "Hive login requires SMS MFA; this account must support headless re-login."
+                    "Hive login requires SMS MFA; seed HIVE_TOKENSTORE_B64 via a "
+                    "one-time SMS-2FA login instead of a headless password login."
                 )
             token = _extract_hive_id_token(result)
-            self._api = API(token=token)
+            self._api = api_cls(token=token)
             return self._api
         except HiveLoginError:
             raise
         except Exception as exc:
             raise HiveLoginError("Hive login failed; check configured credentials.") from exc
+
+    @staticmethod
+    def _import_pyhiveapi() -> tuple[Any, Any]:
+        try:
+            from pyhiveapi import (  # type: ignore[import-untyped, unused-ignore]
+                API,
+                Auth,
+            )
+        except ImportError as exc:  # pragma: no cover - exercised only in missing envs
+            raise EnvironmentSyncError("pyhiveapi is not installed.") from exc
+        return API, Auth
 
     def fetch_payloads(self) -> HivePayloads:
         api = self.login()
@@ -342,6 +412,24 @@ def _extract_hive_id_token(result: Any) -> str:
     if not token:
         raise HiveLoginError("Hive login did not return an id token.")
     return token
+
+
+def _decode_hive_token_blob(blob: str) -> JsonDict:
+    try:
+        decoded = base64.b64decode(blob, validate=True)
+        data = json.loads(decoded)
+    except (ValueError, TypeError) as exc:
+        raise HiveLoginError("Hive token blob is not valid base64 JSON.") from exc
+    if not isinstance(data, dict):
+        raise HiveLoginError("Hive token blob did not decode to an object.")
+    return data
+
+
+def _hive_client_id(auth: Any) -> str:
+    client_id = getattr(auth, "_HiveAuth__client_id", None)
+    if not client_id:
+        raise HiveLoginError("Hive Cognito client id is unavailable.")
+    return str(client_id)
 
 
 def _hive_products(payloads: HivePayloads) -> list[JsonDict]:
