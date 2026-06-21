@@ -321,7 +321,7 @@ class NudgeAlertService:
 
         sent = await send_notification(
             session=self.session,
-            player_id=profile.id,
+            user_id=profile.id,
             title=plan.title,
             body=plan.body,
             data=plan.data,

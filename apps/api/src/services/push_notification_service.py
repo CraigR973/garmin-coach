@@ -70,7 +70,7 @@ def _send_push_sync(subscription_data: dict[str, Any], payload: str) -> None:
 
 async def send_notification(
     session: AsyncSession,
-    player_id: UUID,
+    user_id: UUID,
     title: str,
     body: str,
     data: dict[str, Any] | None = None,
@@ -78,14 +78,14 @@ async def send_notification(
     timezone_name: str = "UTC",
     now_utc: datetime | None = None,
 ) -> int:
-    """Deliver a push notification to all active subscriptions for player_id.
+    """Deliver a push notification to all active subscriptions for user_id.
 
     Returns the count of successfully sent pushes. Skips delivery when
     preferences block it. Auto-disables subscriptions after _FAIL_THRESHOLD
     consecutive failures.
     """
     if not settings.vapid_private_key or not settings.vapid_public_key:
-        log.debug("VAPID keys not configured — skipping push", player_id=str(player_id))
+        log.debug("VAPID keys not configured — skipping push", user_id=str(user_id))
         return 0
 
     now = now_utc.replace(tzinfo=None) if now_utc is not None else _utc_now()
@@ -93,7 +93,7 @@ async def send_notification(
 
     # ── Check preferences ─────────────────────────────────────────────────────
     prefs_result = await session.execute(
-        select(NotificationPreferences).where(NotificationPreferences.player_id == player_id)
+        select(NotificationPreferences).where(NotificationPreferences.user_id == user_id)
     )
     prefs = prefs_result.scalar_one_or_none()
 
@@ -102,13 +102,13 @@ async def send_notification(
         suppressed = prefs.global_mute or _is_quiet(prefs, local_current)
 
     if suppressed:
-        log.debug("notification suppressed by preferences", player_id=str(player_id))
+        log.debug("notification suppressed by preferences", user_id=str(user_id))
         return 0
 
     # ── Fetch active subscriptions ────────────────────────────────────────────
     subs_result = await session.execute(
         select(PushSubscription).where(
-            PushSubscription.player_id == player_id,
+            PushSubscription.user_id == user_id,
             PushSubscription.is_active.is_(True),
         )
     )
@@ -137,7 +137,7 @@ async def send_notification(
         except WebPushException as exc:
             log.warning(
                 "push send failed",
-                player_id=str(player_id),
+                user_id=str(user_id),
                 subscription_id=str(sub.id),
                 error=str(exc),
             )

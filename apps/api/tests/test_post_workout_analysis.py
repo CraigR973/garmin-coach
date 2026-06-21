@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 
 from src.models.coaching import Activity, ActivityTimeSeries, Analysis
-from src.models.profile import PlayerRole, Profile
+from src.models.profile import Profile, UserRole
 from src.services.post_workout_analysis import (
     PROMPT_VERSION,
     ClaudeGenerationResult,
@@ -61,7 +61,7 @@ async def test_generate_and_store_post_workout_analysis_is_idempotent(
             id=user_id,
             display_name="Post Workout Test",
             pin_hash="x" * 60,
-            role=PlayerRole.admin,
+            role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
         )

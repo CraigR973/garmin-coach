@@ -6,14 +6,13 @@
 
 ## Now
 
-**Phase:** 2 planned — Phase 1 (all 10 batches) shipped to `main` and in daily
-use. The v2 batch plan (Batches 11–17) is now in `docs/phase-batches.md`, all
-rows `Planned`.
+**Phase:** 2 in progress — Batch 11 (Phase 1 debt clean-up) complete on
+`claude/batch-start-11-2l9lof`, pending PR merge to `main`.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
 - Backend: https://api-production-e2bc7.up.railway.app/api/v1/health → `{"status":"ok","sha":"8c47869..."}` (Batch 10 merge commit)
-- DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-005 applied
+- DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-005 applied; migration 006 ready on branch
 
 **Hosting identifiers (non-secret):**
 - GitHub repo: https://github.com/CraigR973/garmin-coach (private)
@@ -22,17 +21,19 @@ rows `Planned`.
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Phase 2 Batch 11 — Phase 1 debt clean-up (ForgotPin flow, dead
-`email.py`, WC2026 "player"→user rename with notification-column migration,
-`score-input.tsx` JSDoc + residual "predictions" offline-queue refs). Sequenced
-first so the player→user rename lands before Batch 12 onward expand the API
-surface. Then Batch 12 — the Zwift delivery rail — the foundational dependency
-for all substantive v2 coaching. Run `/batch-start` on Batch 11 to begin.
+**Next:** Merge Batch 11 PR to `main` (migration 006 renames `player_id`→`user_id`
+in `push_subscriptions`, `notification_preferences`, `refresh_tokens`; must apply
+against live DB after merge). Then Batch 12 — the Zwift delivery rail — the
+foundational dependency for all substantive v2 coaching. Run `/batch-start 12`.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
 - Node.js: use `~/.nvm/versions/node/v20.20.2/bin/node` + pnpm (system node v14).
-- `score-input.tsx`, `offlineQueue.ts`, `sw.ts` still have "predictions" refs — offline-queue infra, rename in Phase 2.
+- Migration 006 renames `player_id`→`user_id` in three `coach` schema tables; apply it against the live Supabase DB after merging Batch 11.
+- `TokenResponse.player` and `PlayerInfo` schema class names in `routers/auth.py` are intentionally kept unchanged — the frontend `AuthContext.tsx` reads `data.player.*` and changing the field names would break the auth flow.
+- `ActorType.player` and `ActionType.player_pin_reset` enum values in `models/notification.py` are intentionally unchanged — they are stored DB enum strings; renaming would require a DB enum migration + data migration.
+- DB Postgres enum type `player_role` (for the `role` column on `profiles`) is unchanged — only the Python class was renamed to `UserRole`. The `Enum(UserRole, name="player_role", create_type=False)` constructor keeps the DB type name.
+- Pre-existing mypy error: `pyhiveapi import-not-found` in `services/environment_sync.py:107` — not introduced by Batch 11; no `type: ignore` covers it because mypy doesn't infer `import-not-found` from a bare comment.
 - Railway service `api` is connected to GitHub `CraigR973/garmin-coach`, branch `main`. Push to `main` deploys production backend; `railway up --service api` is break-glass.
 - Vercel project `garmin-coach` is connected to GitHub `CraigR973/garmin-coach`, production branch `main`, Node `20.x`. Push to `main` deploys production frontend; PR/branch pushes create previews.
 - Production web API wiring is intentionally same-origin: `VITE_API_URL=""`, calls go to `/api/*`, and root `vercel.json` rewrites to Railway. Do not set it to the Railway URL unless deliberately switching to cross-origin.
@@ -64,6 +65,20 @@ for all substantive v2 coaching. Run `/batch-start` on Batch 11 to begin.
   failure.
 
 ## Log
+- **2026-06-21** — Phase 2 Batch 11 implementation complete on
+  `claude/batch-start-11-2l9lof`: (11.1) replaced broken ForgotPin email-form
+  with static "Contact Craig" card; (11.2) deleted dead `services/email.py` and
+  removed `resend_api_key`/`email_from` config fields + `.env.example` entries;
+  (11.3) renamed WC2026 "player" internals — `PlayerRole`→`UserRole`,
+  `get_current_player`→`get_current_user`, `CurrentPlayer`→`CurrentUser`,
+  `AdminPlayer`→`AdminUser` in auth; `player_id`→`user_id` columns in
+  `push_subscriptions`, `notification_preferences`, `refresh_tokens` via
+  Alembic migration `006`; `"Player not found"` HTTP detail strings updated;
+  fixed pre-existing `login_key` bug in `rate_limit.py` (was reading `email`
+  from request body; login uses `display_name`); (11.4) fixed `score-input.tsx`
+  JSDoc from "predictions/match-detail" to "score/check-in input". Backend: 96
+  tests passed, ruff clean, mypy 1 pre-existing error only. Frontend: vite build
+  + vitest 2/2 passed.
 - **2026-06-21** — Phase 2 planning session: decomposed the `ARCHITECTURE.md`
   §6 v2 roadmap (and Decisions #25–33) into Batches 11–17, appended as the
   `## v2 batch plan` section in `docs/phase-batches.md` (all rows `Planned`).

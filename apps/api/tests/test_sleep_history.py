@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 
 from src.models.coaching import DailyMetric, MetricBaseline, Sleep
-from src.models.profile import PlayerRole, Profile
+from src.models.profile import Profile, UserRole
 from src.services.sleep_history import (
     SPO2_HRV_RELIABLE_FROM,
     SleepHistoryImportService,
@@ -223,7 +223,7 @@ async def test_sleep_history_import_dry_run_and_rerun_are_idempotent(
         id=uuid.uuid4(),
         display_name="Mark",
         pin_hash="x" * 60,
-        role=PlayerRole.admin,
+        role=UserRole.admin,
         timezone="Europe/London",
         is_active=True,
     )

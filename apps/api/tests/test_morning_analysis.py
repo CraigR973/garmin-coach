@@ -20,7 +20,7 @@ from src.models.coaching import (
     TemperatureReading,
     WeatherDaily,
 )
-from src.models.profile import PlayerRole, Profile
+from src.models.profile import Profile, UserRole
 from src.services.morning_analysis import (
     PROMPT_VERSION,
     ClaudeGenerationResult,
@@ -70,7 +70,7 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
             id=user_id,
             display_name="Morning Analysis Test",
             pin_hash="x" * 60,
-            role=PlayerRole.admin,
+            role=UserRole.admin,
             timezone="Europe/London",
             latitude=55.6045,
             longitude=-4.5249,

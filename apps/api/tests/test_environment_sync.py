@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 
 from src.models.coaching import TemperatureReading, WeatherDaily
-from src.models.profile import PlayerRole, Profile
+from src.models.profile import Profile, UserRole
 from src.services.environment_sync import (
     EnvironmentSyncService,
     HiveClient,
@@ -147,7 +147,7 @@ async def test_environment_sync_upserts_without_duplicate_rows(
                 id=user_id,
                 display_name="Environment Sync Test",
                 pin_hash="x" * 60,
-                role=PlayerRole.admin,
+                role=UserRole.admin,
                 timezone="Europe/London",
                 hive_home_id="aa1fbb37-6b65-4622-b609-5d75534fafd3",
                 latitude=55.6045,

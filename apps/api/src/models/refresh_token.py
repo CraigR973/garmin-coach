@@ -11,7 +11,7 @@ from src.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 class RefreshToken(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "refresh_tokens"
 
-    player_id: Mapped[uuid.UUID] = mapped_column(
+    user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("profiles.id"), nullable=False
     )
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False)

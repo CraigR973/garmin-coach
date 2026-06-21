@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 
 from src.models.coaching import Activity, ActivityTimeSeries, DailyMetric, Sleep
-from src.models.profile import PlayerRole, Profile
+from src.models.profile import Profile, UserRole
 from src.services.garmin_sync import (
     GarminActivityPayloads,
     GarminConnectClient,
@@ -160,7 +160,7 @@ async def test_garmin_sync_upserts_without_duplicate_rows(db_conn: AsyncConnecti
                 id=user_id,
                 display_name="Garmin Sync Test",
                 pin_hash="x" * 60,
-                role=PlayerRole.admin,
+                role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,
             )

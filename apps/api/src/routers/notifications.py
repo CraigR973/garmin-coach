@@ -10,11 +10,11 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.auth import CurrentPlayer
+from src.auth import CurrentUser
 from src.config import settings
 from src.database import get_db
 from src.models.notification import NotificationPreferences, PushSubscription
-from src.rate_limit import limiter, per_player_key
+from src.rate_limit import limiter, per_user_key
 from src.services.push_notification_service import send_notification
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
@@ -49,7 +49,7 @@ class PreferencesPatch(BaseModel):
     quiet_hours_end: str | None = None
 
 
-# ── VAPID public key ──────────────────────────────────────────────────────────
+# ── VAPID public key ─────────────────────────────────────��────────────────────
 
 
 @router.get("/push/vapid-public-key")
@@ -69,15 +69,15 @@ async def get_vapid_public_key() -> dict[str, str]:
 @router.post("/push/subscribe", status_code=status.HTTP_201_CREATED)
 async def subscribe_push(
     body: SubscribeRequest,
-    player: CurrentPlayer,
+    user: CurrentUser,
     db: Db,
 ) -> dict[str, str]:
-    """Store a new push subscription for the authenticated player."""
+    """Store a new push subscription for the authenticated user."""
     subscription_data: dict[str, Any] = {"endpoint": body.endpoint, "keys": body.keys}
 
     result = await db.execute(
         select(PushSubscription).where(
-            PushSubscription.player_id == player.id,
+            PushSubscription.user_id == user.id,
             PushSubscription.subscription["endpoint"].astext == body.endpoint,
         )
     )
@@ -92,27 +92,27 @@ async def subscribe_push(
     else:
         db.add(
             PushSubscription(
-                player_id=player.id,
+                user_id=user.id,
                 subscription=subscription_data,
                 device_hint=body.device_hint,
             )
         )
 
     await db.commit()
-    log.info("push subscription stored", player_id=str(player.id))
+    log.info("push subscription stored", user_id=str(user.id))
     return {"status": "subscribed"}
 
 
 @router.delete("/push/unsubscribe", status_code=status.HTTP_200_OK)
 async def unsubscribe_push(
     body: UnsubscribeRequest,
-    player: CurrentPlayer,
+    user: CurrentUser,
     db: Db,
 ) -> dict[str, str]:
     """Deactivate a push subscription by endpoint."""
     result = await db.execute(
         select(PushSubscription).where(
-            PushSubscription.player_id == player.id,
+            PushSubscription.user_id == user.id,
             PushSubscription.subscription["endpoint"].astext == body.endpoint,
         )
     )
@@ -127,12 +127,12 @@ async def unsubscribe_push(
 
 
 @router.post("/push/test", status_code=status.HTTP_200_OK)
-@limiter.limit("5/hour", key_func=per_player_key)
-async def test_push(request: Request, player: CurrentPlayer, db: Db) -> dict[str, Any]:
-    """Send a test push notification to the authenticated player."""
+@limiter.limit("5/hour", key_func=per_user_key)
+async def test_push(request: Request, user: CurrentUser, db: Db) -> dict[str, Any]:
+    """Send a test push notification to the authenticated user."""
     sent = await send_notification(
         session=db,
-        player_id=player.id,
+        user_id=user.id,
         title="Garmin Coach — test",
         body="Push notifications are working!",
         data={"url": "/"},
@@ -156,15 +156,15 @@ def _time_str(dt_field: object) -> str | None:
 
 
 @router.get("/notifications/preferences", response_model=PreferencesOut)
-async def get_preferences(player: CurrentPlayer, db: Db) -> PreferencesOut:
-    """Return the player's notification preferences (creates defaults on first access)."""
+async def get_preferences(user: CurrentUser, db: Db) -> PreferencesOut:
+    """Return the user's notification preferences (creates defaults on first access)."""
     result = await db.execute(
-        select(NotificationPreferences).where(NotificationPreferences.player_id == player.id)
+        select(NotificationPreferences).where(NotificationPreferences.user_id == user.id)
     )
     prefs = result.scalar_one_or_none()
 
     if prefs is None:
-        prefs = NotificationPreferences(player_id=player.id)
+        prefs = NotificationPreferences(user_id=user.id)
         db.add(prefs)
         await db.commit()
         await db.refresh(prefs)
@@ -179,18 +179,18 @@ async def get_preferences(player: CurrentPlayer, db: Db) -> PreferencesOut:
 @router.patch("/notifications/preferences", response_model=PreferencesOut)
 async def patch_preferences(
     body: PreferencesPatch,
-    player: CurrentPlayer,
+    user: CurrentUser,
     db: Db,
 ) -> PreferencesOut:
-    """Partially update the player's notification preferences."""
+    """Partially update the user's notification preferences."""
     from datetime import datetime as _dt
 
     result = await db.execute(
-        select(NotificationPreferences).where(NotificationPreferences.player_id == player.id)
+        select(NotificationPreferences).where(NotificationPreferences.user_id == user.id)
     )
     prefs = result.scalar_one_or_none()
     if prefs is None:
-        prefs = NotificationPreferences(player_id=player.id)
+        prefs = NotificationPreferences(user_id=user.id)
         db.add(prefs)
 
     if body.global_mute is not None:

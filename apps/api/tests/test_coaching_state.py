@@ -9,11 +9,11 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker
 
-from src.auth import get_current_player
+from src.auth import get_current_user
 from src.database import get_db
 from src.main import app
 from src.models.coaching import KnowledgeBase, PlannedWorkout
-from src.models.profile import PlayerRole, Profile
+from src.models.profile import Profile, UserRole
 
 
 def _db_override(session_factory: async_sessionmaker[AsyncSession]):
@@ -32,18 +32,18 @@ async def test_get_coaching_state_seeds_defaults_and_returns_envelope(
     user_id = uuid.uuid4()
 
     async with session_factory() as session:
-        player = Profile(
+        user = Profile(
             id=user_id,
             display_name="Coach State Test",
             pin_hash="x" * 60,
-            role=PlayerRole.admin,
+            role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
         )
-        session.add(player)
+        session.add(user)
         await session.commit()
 
-    app.dependency_overrides[get_current_player] = lambda: player
+    app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_db] = _db_override(session_factory)
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -75,18 +75,18 @@ async def test_update_knowledge_base_section_creates_new_active_version(
     user_id = uuid.uuid4()
 
     async with session_factory() as session:
-        player = Profile(
+        user = Profile(
             id=user_id,
             display_name="KB Update Test",
             pin_hash="x" * 60,
-            role=PlayerRole.admin,
+            role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
         )
-        session.add(player)
+        session.add(user)
         await session.commit()
 
-    app.dependency_overrides[get_current_player] = lambda: player
+    app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_db] = _db_override(session_factory)
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -139,18 +139,18 @@ async def test_override_planned_workout_preserves_prior_versions(
     user_id = uuid.uuid4()
 
     async with session_factory() as session:
-        player = Profile(
+        user = Profile(
             id=user_id,
             display_name="Workout Override Test",
             pin_hash="x" * 60,
-            role=PlayerRole.admin,
+            role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
         )
-        session.add(player)
+        session.add(user)
         await session.commit()
 
-    app.dependency_overrides[get_current_player] = lambda: player
+    app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_db] = _db_override(session_factory)
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

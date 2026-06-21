@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import hash_pin
 from src.database import AsyncSessionLocal
-from src.models.profile import PlayerRole, Profile
+from src.models.profile import Profile, UserRole
 
 MARK_DISPLAY_NAME = "Mark"
 MARK_TIMEZONE = "Europe/London"
@@ -32,7 +32,7 @@ def build_mark_profile(pin: str) -> Profile:
     return Profile(
         display_name=MARK_DISPLAY_NAME,
         pin_hash=hash_pin(pin),
-        role=PlayerRole.admin,
+        role=UserRole.admin,
         timezone=MARK_TIMEZONE,
         garmin_user_profile_pk=MARK_GARMIN_USER_PROFILE_PK,
         hive_home_id=MARK_HIVE_HOME_ID,
@@ -58,7 +58,7 @@ async def seed_mark_profile(db: AsyncSession, pin: str) -> Profile:
         db.add(profile)
     else:
         profile.pin_hash = hash_pin(pin)
-        profile.role = PlayerRole.admin
+        profile.role = UserRole.admin
         profile.timezone = MARK_TIMEZONE
         profile.garmin_user_profile_pk = MARK_GARMIN_USER_PROFILE_PK
         profile.hive_home_id = MARK_HIVE_HOME_ID

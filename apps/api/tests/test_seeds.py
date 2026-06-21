@@ -1,7 +1,7 @@
 import pytest
 
 from src.auth import verify_pin
-from src.models.profile import PlayerRole
+from src.models.profile import UserRole
 from src.seeds import (
     KILMARNOCK_LATITUDE,
     KILMARNOCK_LONGITUDE,
@@ -19,7 +19,7 @@ def test_build_mark_profile_hashes_pin_and_sets_admin_metadata() -> None:
     assert profile.display_name == MARK_DISPLAY_NAME
     assert profile.pin_hash != "2468"
     assert verify_pin("2468", profile.pin_hash)
-    assert profile.role == PlayerRole.admin
+    assert profile.role == UserRole.admin
     assert profile.timezone == MARK_TIMEZONE
     assert profile.garmin_user_profile_pk == MARK_GARMIN_USER_PROFILE_PK
     assert profile.hive_home_id == MARK_HIVE_HOME_ID

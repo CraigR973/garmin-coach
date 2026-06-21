@@ -8,7 +8,7 @@ export interface ScoreInputProps {
   onChange: (next: string) => void;
   disabled?: boolean;
   'aria-label': string;
-  /** Visual variant — `default` = stacked chevrons (predictions/match-detail). */
+  /** Visual variant — `default` = stacked chevrons (score/check-in input). */
   variant?: 'default';
 }
 
