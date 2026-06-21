@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -10,9 +11,21 @@ from src.models.notification import ActionType, ActorType, AuditLog
 from src.scheduler import (
     _retry_async,
     _retry_sync,
+    _sync_garmin_daily,
     create_scheduler,
+    run_morning_weather_sync,
     run_scheduled_backup,
 )
+
+
+def _profile(timezone: str = "Europe/London") -> MagicMock:
+    profile = MagicMock()
+    profile.id = uuid.uuid4()
+    profile.timezone = timezone
+    profile.latitude = None
+    profile.longitude = None
+    return profile
+
 
 # ---------------------------------------------------------------------------
 # run_scheduled_backup
@@ -92,6 +105,31 @@ async def test_retry_sync_retries_transient_failure() -> None:
 
 
 @pytest.mark.asyncio
+async def test_retry_sync_uses_exponential_backoff() -> None:
+    """A transient 429 is survived and the sleep delay grows by the backoff factor."""
+    calls = 0
+
+    def operation() -> str:
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            raise RuntimeError("429 Too Many Requests")
+        return "ok"
+
+    sleeps: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    with patch("src.scheduler.asyncio.sleep", new=fake_sleep):
+        result = await _retry_sync(operation, attempts=3, delay_sec=1.0, backoff=2.0)
+
+    assert result == "ok"
+    assert calls == 3
+    assert sleeps == [1.0, 2.0]
+
+
+@pytest.mark.asyncio
 async def test_retry_async_retries_transient_failure() -> None:
     calls = 0
 
@@ -160,6 +198,123 @@ def test_create_scheduler_registers_environment_jobs() -> None:
     finally:
         if scheduler.running:
             scheduler.shutdown(wait=False)
+
+
+# ---------------------------------------------------------------------------
+# _sync_garmin_daily (Batch 18)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_sync_garmin_daily_syncs_metrics_and_sleep() -> None:
+    """Each active profile's daily metrics + sleep are synced and counted."""
+    session = AsyncMock()
+    profiles = [_profile(), _profile()]
+
+    client = MagicMock()
+    client.fetch_daily_payloads = MagicMock(return_value="payloads")
+
+    sync_service = MagicMock()
+    sync_service.sync_daily = AsyncMock(
+        return_value=MagicMock(daily_metrics_synced=1, sleep_synced=1)
+    )
+
+    with patch("src.scheduler.GarminSyncService", return_value=sync_service):
+        daily, sleep = await _sync_garmin_daily(session, profiles, client=client)
+
+    assert (daily, sleep) == (2, 2)
+    assert client.fetch_daily_payloads.call_count == 2
+    assert sync_service.sync_daily.await_count == 2
+    # commit is the caller's responsibility — the helper only syncs with commit=False
+    for call in sync_service.sync_daily.await_args_list:
+        assert call.kwargs["commit"] is False
+
+
+@pytest.mark.asyncio
+async def test_sync_garmin_daily_isolates_profile_failure() -> None:
+    """One profile's Garmin failure is logged and skipped; others still sync."""
+    session = AsyncMock()
+    good, bad = _profile(), _profile()
+
+    client = MagicMock()
+    client.fetch_daily_payloads = MagicMock(return_value="payloads")
+
+    sync_service = MagicMock()
+
+    async def sync_daily(user_id: uuid.UUID, *_a: object, **_k: object) -> MagicMock:
+        if user_id == bad.id:
+            raise RuntimeError("Garmin 429")
+        return MagicMock(daily_metrics_synced=1, sleep_synced=1)
+
+    sync_service.sync_daily = AsyncMock(side_effect=sync_daily)
+
+    with patch("src.scheduler.GarminSyncService", return_value=sync_service):
+        daily, sleep = await _sync_garmin_daily(session, [bad, good], client=client)
+
+    # The failing profile contributes nothing; the healthy one still syncs.
+    assert (daily, sleep) == (1, 1)
+    assert sync_service.sync_daily.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_sync_garmin_daily_no_profiles_skips_client() -> None:
+    """With no active profiles the helper short-circuits without building a client."""
+    session = AsyncMock()
+    with patch("src.scheduler.GarminConnectClient") as client_cls:
+        result = await _sync_garmin_daily(session, [])
+    assert result == (0, 0)
+    client_cls.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_morning_weather_sync_runs_daily_sync_before_analysis() -> None:
+    """The morning job syncs Garmin daily data before generating the verdict."""
+    profile = _profile()
+    calls: list[str] = []
+
+    session = AsyncMock()
+    session.commit = AsyncMock(side_effect=lambda: calls.append("commit"))
+
+    scalars = MagicMock()
+    scalars.scalars.return_value.all.return_value = [profile]
+    session.execute = AsyncMock(return_value=scalars)
+
+    class _Ctx:
+        async def __aenter__(self) -> AsyncMock:
+            return session
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+    weather_service = MagicMock()
+    weather_service.sync_weather_daily = AsyncMock(return_value=MagicMock(weather_days_synced=1))
+    meteo_client = MagicMock()
+    meteo_client.fetch_daily_payload = AsyncMock(return_value="weather")
+
+    async def fake_daily_sync(_session: object, _profiles: object, **_k: object) -> tuple[int, int]:
+        calls.append("garmin_daily")
+        return (1, 1)
+
+    analysis_service = MagicMock()
+
+    async def generate(_profile: object, _date: object) -> MagicMock:
+        calls.append("analysis")
+        return MagicMock(generated=True)
+
+    analysis_service.generate_and_store = AsyncMock(side_effect=generate)
+
+    with (
+        patch("src.scheduler.AsyncSessionLocal", return_value=_Ctx()),
+        patch("src.scheduler.OpenMeteoClient", return_value=meteo_client),
+        patch("src.scheduler.EnvironmentSyncService", return_value=weather_service),
+        patch("src.scheduler._sync_garmin_daily", side_effect=fake_daily_sync),
+        patch("src.scheduler.MorningAnalysisService", return_value=analysis_service),
+    ):
+        await run_morning_weather_sync()
+
+    assert "garmin_daily" in calls
+    assert "analysis" in calls
+    assert calls.index("garmin_daily") < calls.index("analysis")
 
 
 # ---------------------------------------------------------------------------

@@ -3,7 +3,8 @@
 Current jobs:
   - daily_backup: runs at 03:00 UTC
   - hive_temperature_poll: polls Hive indoor temperature every 15 minutes
-  - morning_weather_sync: pulls Kilmarnock weather at 06:30 Europe/London
+  - morning_weather_sync: at 06:30 Europe/London, syncs Kilmarnock weather, then
+    today's Garmin daily metrics + sleep, then triggers the morning analysis
   - garmin_activity_poll: polls Garmin hourly for new rides and triggers analysis
   - evening_sleep_nudge: sends the 20:00 sleep-protocol push
   - evening_monitoring_alerts: checks thermal and source freshness before bed
@@ -34,7 +35,11 @@ from src.services.environment_sync import (
     OpenMeteoClient,
     WeatherRequest,
 )
-from src.services.garmin_sync import GarminConnectClient, GarminSyncService
+from src.services.garmin_sync import (
+    GarminConnectClient,
+    GarminDailyPayloads,
+    GarminSyncService,
+)
 from src.services.morning_analysis import MorningAnalysisService
 from src.services.nudge_alerts import NudgeAlertService
 from src.services.post_workout_analysis import PostWorkoutAnalysisService
@@ -141,8 +146,57 @@ async def run_evening_monitoring_alerts() -> None:
         log.exception("evening monitoring alerts failed")
 
 
+async def _sync_garmin_daily(
+    session: AsyncSession,
+    profiles: list[Profile],
+    *,
+    client: GarminConnectClient | None = None,
+) -> tuple[int, int]:
+    """Sync today's Garmin daily metrics + sleep for each profile (429-safe).
+
+    Returns ``(daily_metrics_synced, sleep_synced)``. The fetch is wrapped in an
+    exponential-backoff retry so a transient Garmin 429 is survived, and each
+    profile's sync is isolated: one profile's Garmin failure is logged and
+    skipped so it cannot block the others or the downstream morning analysis.
+    The caller commits.
+    """
+    if not profiles:
+        return (0, 0)
+
+    client = client or GarminConnectClient()
+    sync_service = GarminSyncService(session)
+    daily_synced = 0
+    sleep_synced = 0
+    for profile in profiles:
+        subject_date = _profile_today(profile)
+        try:
+            payloads: GarminDailyPayloads = await _retry_sync(
+                lambda: client.fetch_daily_payloads(subject_date),
+                backoff=2.0,
+            )
+            result = await sync_service.sync_daily(
+                profile.id,
+                subject_date,
+                payloads,
+                commit=False,
+            )
+            daily_synced += result.daily_metrics_synced
+            sleep_synced += result.sleep_synced
+        except Exception:
+            log.exception(
+                "garmin daily sync failed",
+                profile_id=str(profile.id),
+                subject_date=subject_date.isoformat(),
+            )
+    return (daily_synced, sleep_synced)
+
+
 async def run_morning_weather_sync() -> None:
-    """Sync Open-Meteo daily weather, then trigger the morning analysis engine."""
+    """Sync weather + today's Garmin daily metrics/sleep, then run morning analysis.
+
+    The Garmin daily sync runs *before* the analysis loop so the morning verdict
+    reads today's real readiness + sleep instead of empty inputs (Batch 18).
+    """
     try:
         async with AsyncSessionLocal() as session:
             profiles = (
@@ -178,6 +232,9 @@ async def run_morning_weather_sync() -> None:
                 synced += result.weather_days_synced
             await session.commit()
 
+            daily_metrics_synced, sleep_synced = await _sync_garmin_daily(session, list(profiles))
+            await session.commit()
+
             analysis_service = MorningAnalysisService(session)
             for profile in profiles:
                 subject_date = _profile_today(profile)
@@ -200,6 +257,8 @@ async def run_morning_weather_sync() -> None:
             "morning weather sync complete",
             profiles=len(profiles),
             days=synced,
+            daily_metrics=daily_metrics_synced,
+            sleep=sleep_synced,
             analyses_generated=analyses_generated,
             analyses_existing=analyses_existing,
         )
@@ -305,14 +364,22 @@ async def _retry_sync[T](
     *,
     attempts: int = 3,
     delay_sec: float = 1.0,
+    backoff: float = 1.0,
 ) -> T:
+    """Retry a sync operation, sleeping ``delay_sec`` (× ``backoff`` each retry).
+
+    ``backoff > 1.0`` gives exponential backoff, which keeps the Garmin daily
+    sync 429-safe without hammering the API on the rate-limit window.
+    """
+    delay = delay_sec
     for attempt in range(attempts):
         try:
             return operation()
         except Exception:
             if attempt == attempts - 1:
                 raise
-            await asyncio.sleep(delay_sec)
+            await asyncio.sleep(delay)
+            delay *= backoff
     raise RuntimeError("retry loop exited unexpectedly")
 
 
