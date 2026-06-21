@@ -85,3 +85,44 @@ def test_parse_daily_loop_ignores_meta() -> None:
     }
     data = _smoke.parse_daily_loop_response(body)
     assert "meta" not in data
+
+
+def test_parse_daily_loop_gate_failures_passes_with_live_data() -> None:
+    failures = _smoke.parse_daily_loop_gate_failures(
+        {
+            "dailyMetrics": {"readinessScore": 75},
+            "sleep": {"score": 71},
+            "morningAnalysis": {"verdict": "Green"},
+            "thermalState": {
+                "latestTemperatureC": 18.5,
+                "overnightLowC": 12.4,
+                "overnightWindMaxMph": 8.1,
+            },
+        }
+    )
+
+    assert failures == []
+
+
+def test_parse_daily_loop_gate_failures_reports_empty_production_loop() -> None:
+    failures = _smoke.parse_daily_loop_gate_failures(
+        {
+            "dailyMetrics": None,
+            "sleep": None,
+            "morningAnalysis": None,
+            "thermalState": {
+                "latestTemperatureC": None,
+                "overnightLowC": None,
+                "overnightWindMaxMph": None,
+            },
+        }
+    )
+
+    assert failures == [
+        "dailyMetrics missing",
+        "sleep missing",
+        "morningAnalysis missing",
+        "Hive latestTemperatureC missing",
+        "weather overnightLowC missing",
+        "weather overnightWindMaxMph missing",
+    ]

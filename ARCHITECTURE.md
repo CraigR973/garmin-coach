@@ -36,6 +36,13 @@ Spikes live in `~/garmin-spike/` (outside this repo). Raw sample JSON in `~/garm
 
 Push direction only — *not* a data source (ingestion stays direct-from-Garmin). The app emits a structured workout → POST to his **intervals.icu** calendar (free API; athlete `i618709`) → intervals.icu's approved Zwift Training-Connections integration delivers it into Zwift's Custom Workouts automatically. **Power + timing proven exact** end-to-end. intervals.icu is a **delivery rail, NOT the system-of-record** (our DB owns the plan). Deterministic **`.ZWO` export** is the no-dependency fallback. Any write to his trainer is **propose → approve → push**, never silent. Cadence nuance: Zwift overrides cadence on repeated-interval blocks with defaults (100/90) — emit cadence-critical reps as individual steps (confirm on PC). Spike: `~/garmin-spike/intervals_spike.py`.
 
+Batch 12 stores delivery state separately from the plan in
+`workout_delivery_proposals`: each proposal snapshots the `planned_workouts`
+version, generated structured-workout IR, intervals.icu calendar payload, `.ZWO`
+XML, approval state, and pushed event id. intervals.icu credentials live only in
+environment variables (`INTERVALS_API_KEY`, `INTERVALS_ATHLETE_ID`) and the app
+never ingests activity data from intervals.icu.
+
 ## 3. Knowledge Base (the persistent context — replaces his handover docs)
 
 Editable structured state fed into every analysis. Source: his handover doc (see
@@ -72,6 +79,8 @@ Validated 19 Jun with a real sample → his verdict "fantastic." Demonstrated 5 
 - `manual_entries` (BP, subjective, RPE, feel, supplements, food, plus
   adherence captured against the planned-workout version that was actually done)
 - `planned_workouts` (structured intervals; **versioned** — VO2 sessions get revised mid-block) · `plan_blocks` (13-wk 2121: 2 build/1 recovery/wk12 taper/wk13 consolidation)
+- `workout_delivery_proposals` (approval-gated Zwift delivery snapshots:
+  structured IR, intervals.icu payload, deterministic `.ZWO`, status/event id)
 - `analyses` (stored Claude outputs) · `experiments` (tracked hypotheses) · `knowledge_base`
 
 Seed `sleep`/`daily_metrics` with his **84-night backfill** (`12 Weeks Sleep Data` xlsx, 24 Mar–15 Jun; trust all cols except Duration).

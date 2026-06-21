@@ -25,6 +25,7 @@ def test_v1_domain_tables_are_registered() -> None:
         "analyses",
         "experiments",
         "knowledge_base",
+        "workout_delivery_proposals",
     }
 
     assert expected.issubset(Base.metadata.tables.keys())

@@ -13,6 +13,7 @@ from src.models.coaching import (
     Sleep,
     TemperatureReading,
     WeatherDaily,
+    WorkoutDeliveryProposal,
 )
 from src.models.notification import (
     ActionType,
@@ -48,4 +49,5 @@ __all__ = [
     "Sleep",
     "TemperatureReading",
     "WeatherDaily",
+    "WorkoutDeliveryProposal",
 ]

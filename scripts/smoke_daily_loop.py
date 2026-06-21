@@ -21,9 +21,16 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any
 
-API_URL = os.environ.get("API_URL", "https://api-production-e2bc7.up.railway.app").rstrip("/")
+API_URL = os.environ.get(
+    "API_URL", "https://api-production-e2bc7.up.railway.app"
+).rstrip("/")
 SMOKE_DISPLAY_NAME = os.environ.get("SMOKE_DISPLAY_NAME", "")
 SMOKE_PIN = os.environ.get("SMOKE_PIN", "")
+SMOKE_STRICT_DAILY_LOOP = os.environ.get("SMOKE_STRICT_DAILY_LOOP", "").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 
 @dataclass
@@ -76,14 +83,30 @@ def parse_health_response(body: dict[str, Any]) -> bool:
 
 
 def parse_login_response(body: dict[str, Any]) -> str:
-    return (
-        body.get("data", {}).get("access_token", "")
-        or body.get("access_token", "")
-    )
+    return body.get("data", {}).get("access_token", "") or body.get("access_token", "")
 
 
 def parse_daily_loop_response(body: dict[str, Any]) -> dict[str, Any]:
     return body.get("data", {})
+
+
+def parse_daily_loop_gate_failures(data: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    if not data.get("dailyMetrics"):
+        failures.append("dailyMetrics missing")
+    if not data.get("sleep"):
+        failures.append("sleep missing")
+    if not data.get("morningAnalysis"):
+        failures.append("morningAnalysis missing")
+
+    thermal = data.get("thermalState") or {}
+    if thermal.get("latestTemperatureC") is None:
+        failures.append("Hive latestTemperatureC missing")
+    if thermal.get("overnightLowC") is None:
+        failures.append("weather overnightLowC missing")
+    if thermal.get("overnightWindMaxMph") is None:
+        failures.append("weather overnightWindMaxMph missing")
+    return failures
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +137,7 @@ def check_login(api_url: str, display_name: str, pin: str) -> tuple[CheckResult,
     return CheckResult("login", True, f"display_name={display_name!r}"), token
 
 
-def check_daily_loop(api_url: str, token: str) -> CheckResult:
+def check_daily_loop(api_url: str, token: str, *, strict: bool = False) -> CheckResult:
     status, body = _get(
         f"{api_url}/api/v1/daily-loop",
         headers={"Authorization": f"Bearer {token}"},
@@ -125,9 +148,15 @@ def check_daily_loop(api_url: str, token: str) -> CheckResult:
     subject_date = data.get("subjectDate")
     if not subject_date:
         return CheckResult("daily_loop", False, "no subjectDate in response")
+    if strict:
+        gate_failures = parse_daily_loop_gate_failures(data)
+        if gate_failures:
+            return CheckResult("daily_loop", False, "; ".join(gate_failures))
     morning = data.get("morningAnalysis")
     verdict_val = morning.get("verdict", "none") if morning else "pending"
-    return CheckResult("daily_loop", True, f"subjectDate={subject_date} verdict={verdict_val}")
+    return CheckResult(
+        "daily_loop", True, f"subjectDate={subject_date} verdict={verdict_val}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -156,11 +185,15 @@ def main() -> int:
         _print(login_result)
 
         if token:
-            loop_result = check_daily_loop(API_URL, token)
+            loop_result = check_daily_loop(
+                API_URL, token, strict=SMOKE_STRICT_DAILY_LOOP
+            )
             results.append(loop_result)
             _print(loop_result)
     else:
-        print("[smoke] SMOKE_DISPLAY_NAME/SMOKE_PIN not set — skipping authenticated checks")
+        print(
+            "[smoke] SMOKE_DISPLAY_NAME/SMOKE_PIN not set — skipping authenticated checks"
+        )
 
     passed = sum(1 for r in results if r.passed)
     total = len(results)

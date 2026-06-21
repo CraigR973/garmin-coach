@@ -6,14 +6,15 @@
 
 ## Now
 
-**Phase:** 2 in progress — Batch 11 (Phase 1 debt clean-up) shipped to `main`
-(PR #5, merge commit `652723b`). Migration 006 runs on next Railway deploy startup
-and renames `player_id`→`user_id` in three tables.
+**Phase:** 2 in progress — Batch 12 (Zwift delivery rail) started on branch
+`feat/batch-12-zwift-delivery-rail`. The backend delivery rail is implemented
+locally with migration `007`, but Batch 12 is **not ready for closeout** until
+the production daily-loop gate is fixed and strict smoke passes.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
-- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (SHA should show `652723b` after Railway deploys)
-- DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-006 applied after Railway startup
+- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (currently reports SHA `ee54fd5`)
+- DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-006 applied; migration 007 is pending on the Batch 12 branch
 
 **Hosting identifiers (non-secret):**
 - GitHub repo: https://github.com/CraigR973/garmin-coach (private)
@@ -22,9 +23,12 @@ and renames `player_id`→`user_id` in three tables.
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Next:** Batch 12 — start with the production daily-loop gate from the
-2026-06-21 smoke check, then continue into the Zwift delivery rail. Run
-`/batch-start 12`.
+**Next:** Fix the two remaining production daily-loop blockers before Batch 12
+review/`/closeout`: seed a reusable Garmin garth token cache or persistent
+Railway tokenstore so daily metrics/sleep can sync without MFA, and add
+Anthropic API credits (or swap to a funded key). Then rerun the strict smoke:
+`API_URL=https://api-production-e2bc7.up.railway.app SMOKE_DISPLAY_NAME=Mark SMOKE_PIN=<real-pin> SMOKE_STRICT_DAILY_LOOP=1 python3 scripts/smoke_daily_loop.py`.
+Only after that passes should Batch 12 be pushed/reviewed for `/closeout`.
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -43,11 +47,19 @@ and renames `player_id`→`user_id` in three tables.
   `MARK_PIN=1234 PYTHONPATH=/Users/craigrobinson/garmin-coach/apps/api /Users/craigrobinson/garmin-coach/apps/api/.venv/bin/python -m src.seeds`
   after migration `003` is applied; replace `1234` with the real PIN and never commit it.
 - 2026-06-21 production smoke found API/auth/daily-loop live for Mark, but the
-  real daily data loop was empty. Before substantive Batch 12 work, verify
-  Railway has `ENVIRONMENT=production`, `GARMIN_EMAIL`, `GARMIN_PASSWORD`,
-  `GARMIN_TOKENSTORE`, `HIVE_EMAIL`, `HIVE_PASSWORD`, and `ANTHROPIC_API_KEY`;
-  then confirm today's daily-loop payload has non-null Garmin metrics/sleep,
-  `morningAnalysis`, Hive thermal values, and weather.
+  real daily data loop was empty. Railway production now has the expected
+  Garmin, Hive, Anthropic, Supabase service, and intervals vars plus
+  `ENVIRONMENT=production`; the remaining blockers are Garmin token/MFA and
+  Anthropic API credits. Confirm today's daily-loop payload has non-null Garmin
+  metrics/sleep, `morningAnalysis`, Hive thermal values, and weather before
+  Batch 12 review.
+- Batch 12 adds `INTERVALS_API_KEY`, `INTERVALS_ATHLETE_ID` (default `i618709`),
+  and `INTERVALS_BASE_URL` for the output-only intervals.icu rail. Missing
+  `INTERVALS_API_KEY` makes push return 503; proposal and `.ZWO` export still work.
+- Railway CLI auth is valid again as of 2026-06-21. Non-secret production vars
+  set with `--skip-deploys`: `GARMIN_TOKENSTORE=/app/.garminconnect`,
+  `INTERVALS_ATHLETE_ID=i618709`, and
+  `INTERVALS_BASE_URL=https://intervals.icu/api/v1`.
 - Garmin sync uses `GARMIN_EMAIL` / `GARMIN_PASSWORD` from the environment plus
   `GARMIN_TOKENSTORE` for garth's persisted token cache; the app does not store
   Garmin secrets in Postgres.
@@ -70,6 +82,39 @@ and renames `player_id`→`user_id` in three tables.
   failure.
 
 ## Log
+- **2026-06-21** — Rechecked Batch 12 production gate after the Railway secrets
+  were added. Masked env audit shows `ENVIRONMENT=production` plus Garmin, Hive,
+  Anthropic, Supabase service, and intervals vars present; API health reports
+  SHA `ee54fd5`. Hive/weather one-off run completed (`profiles=1`,
+  `readings=1`, `days=9`), but morning analysis failed because Anthropic
+  returned HTTP 400 `credit balance is too low`, and Garmin daily sync is still
+  blocked by an empty `/app/.garminconnect` tokenstore: fresh login hit Garmin
+  429/MFA in the non-interactive run and no reusable local garth token cache was
+  found under the expected home/spike paths. DB snapshot for Mark still shows no
+  2026-06-21 daily metrics, sleep, or morning analysis, so the strict
+  daily-loop gate is not passed yet.
+- **2026-06-21** — Railway CLI re-auth completed via browserless device code.
+  Set safe non-secret production defaults with `--skip-deploys`:
+  `GARMIN_TOKENSTORE=/app/.garminconnect`, `INTERVALS_ATHLETE_ID=i618709`, and
+  `INTERVALS_BASE_URL=https://intervals.icu/api/v1`. Masked production env audit
+  now shows these remaining missing values: `ENVIRONMENT`, `GARMIN_EMAIL`,
+  `GARMIN_PASSWORD`, `HIVE_EMAIL`, `HIVE_PASSWORD`, `ANTHROPIC_API_KEY`,
+  `SUPABASE_SERVICE_KEY`, and `INTERVALS_API_KEY`. Do not set
+  `ENVIRONMENT=production` until `SUPABASE_SERVICE_KEY` is present because the
+  production settings validator will reject startup without it.
+- **2026-06-21** — Batch 12 started on
+  `feat/batch-12-zwift-delivery-rail`: added migration `007` and
+  `workout_delivery_proposals` to snapshot planned workout version, structured
+  IR, intervals.icu payload, deterministic `.ZWO`, approval state, and pushed
+  event id; added `/api/v1/workout-delivery` propose/list/approve/push/ZWO
+  endpoints; added output-only intervals.icu client config; converted bike
+  `planned_workouts` into flat cadence-safe delivery steps; added strict
+  daily-loop smoke checks and runbook/env docs. Local verification: backend
+  pytest `102 passed, 11 skipped`; ruff check clean; mypy clean; Alembic head is
+  `007` when run with UTF-8 locale. Production gate is still blocked: Railway CLI
+  token refresh failed with `invalid_grant`, and the masked variable audit before
+  token failure showed missing `ENVIRONMENT`, Garmin, Hive, Anthropic, intervals,
+  and Supabase service vars.
 - **2026-06-21** — Baked the production daily-loop smoke findings into Phase 2
   planning. The live Railway API served SHA `72a84b4`, Mark could log in after
   direct seed, and `/api/v1/daily-loop` returned `subjectDate=2026-06-21`, but
