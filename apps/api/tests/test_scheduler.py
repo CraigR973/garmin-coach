@@ -13,6 +13,7 @@ from src.scheduler import (
     _retry_sync,
     _sync_garmin_daily,
     create_scheduler,
+    run_hive_temperature_poll,
     run_morning_weather_sync,
     run_scheduled_backup,
 )
@@ -80,6 +81,47 @@ async def test_run_scheduled_backup_success_does_not_raise() -> None:
     ):
         await run_scheduled_backup()
     # No exception raised = pass
+
+
+@pytest.mark.asyncio
+async def test_run_hive_temperature_poll_passes_poll_time_to_sync() -> None:
+    session = AsyncMock()
+
+    class _ExecuteResult:
+        def scalars(self) -> _ExecuteResult:
+            return self
+
+        def all(self) -> list[MagicMock]:
+            return [_profile()]
+
+    session.execute = AsyncMock(return_value=_ExecuteResult())
+    session.commit = AsyncMock()
+
+    class _Ctx:
+        async def __aenter__(self) -> AsyncMock:
+            return session
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+    hive_client = MagicMock()
+    hive_client.fetch_payloads.return_value = MagicMock()
+    sync_service = AsyncMock()
+    sync_service.sync_hive_temperatures = AsyncMock(
+        return_value=MagicMock(temperature_readings_synced=1)
+    )
+
+    with (
+        patch("src.scheduler.AsyncSessionLocal", return_value=_Ctx()),
+        patch("src.scheduler.HiveClient", return_value=hive_client),
+        patch("src.scheduler.EnvironmentSyncService", return_value=sync_service),
+    ):
+        await run_hive_temperature_poll()
+
+    sync_service.sync_hive_temperatures.assert_awaited_once()
+    kwargs = sync_service.sync_hive_temperatures.await_args.kwargs
+    assert kwargs["commit"] is False
+    assert kwargs["captured_at_utc"] is not None
 
 
 # ---------------------------------------------------------------------------

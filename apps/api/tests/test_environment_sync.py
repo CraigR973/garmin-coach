@@ -85,6 +85,15 @@ def test_parse_hive_temperature_fields_from_real_spike_fixtures() -> None:
     assert row["raw_payload"]["device"]["type"] == "boilermodule"
 
 
+def test_parse_hive_temperature_fields_prefers_poll_time_when_last_seen_is_stale() -> None:
+    poll_started_utc = datetime(2026, 6, 21, 20, 5)
+
+    rows = parse_hive_temperature_fields(hive_payloads(), captured_at_utc=poll_started_utc)
+
+    assert len(rows) == 1
+    assert rows[0]["captured_at_utc"] == poll_started_utc
+
+
 def test_hive_login_error_does_not_expose_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     class BrokenAuth:
         def __init__(self, email: str, password: str) -> None:

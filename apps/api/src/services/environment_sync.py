@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
 from src.models.coaching import TemperatureReading, WeatherDaily
+from src.services.environment_freshness import HIVE_FRESHNESS_LIMIT
 
 JsonDict = dict[str, Any]
 JsonList = list[Any]
@@ -340,7 +341,11 @@ def parse_hive_temperature_fields(
             or _to_str(product.get("deviceId"))
         )
         device = devices_by_id.get(device_id or "")
-        captured_at = _parse_epoch_ms(product.get("lastSeen")) or fallback_time
+        captured_at = _hive_captured_at(
+            product.get("lastSeen"),
+            fallback_time=fallback_time,
+            prefer_fallback_when_stale=captured_at_utc is not None,
+        )
         rows.append(
             {
                 "source": "hive",
@@ -356,6 +361,20 @@ def parse_hive_temperature_fields(
             }
         )
     return rows
+
+
+def _hive_captured_at(
+    last_seen: Any,
+    *,
+    fallback_time: datetime,
+    prefer_fallback_when_stale: bool,
+) -> datetime:
+    parsed = _parse_epoch_ms(last_seen)
+    if parsed is None:
+        return fallback_time
+    if prefer_fallback_when_stale and fallback_time - parsed > HIVE_FRESHNESS_LIMIT:
+        return fallback_time
+    return parsed
 
 
 def parse_open_meteo_daily_fields(

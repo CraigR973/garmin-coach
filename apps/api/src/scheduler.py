@@ -93,9 +93,15 @@ async def run_hive_temperature_poll() -> None:
             client = HiveClient()
             payloads = await _retry_sync(client.fetch_payloads)
             service = EnvironmentSyncService(session)
+            poll_started_utc = datetime.now(UTC).replace(tzinfo=None)
             synced = 0
             for profile in profiles:
-                result = await service.sync_hive_temperatures(profile.id, payloads, commit=False)
+                result = await service.sync_hive_temperatures(
+                    profile.id,
+                    payloads,
+                    captured_at_utc=poll_started_utc,
+                    commit=False,
+                )
                 synced += result.temperature_readings_synced
             await session.commit()
         log.info("hive temperature poll complete", profiles=len(profiles), readings=synced)
