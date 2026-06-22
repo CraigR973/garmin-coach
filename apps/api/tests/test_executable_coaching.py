@@ -13,11 +13,14 @@ from src.models.coaching import Analysis, PlannedWorkout, WorkoutDeliveryProposa
 from src.models.profile import Profile, UserRole
 from src.services.executable_coaching import (
     AUDIT_TYPE_PROPOSED,
+    AUDIT_TYPE_PUSH_BLOCKED,
     AUDIT_TYPE_PUSHED,
     HIT_FLOOR_PCT,
     RECOVERY_CAP_PCT,
     ExecutableCoachingService,
     adjust_ir_for_verdict,
+    blocks_red_vo2,
+    ir_has_vo2,
 )
 from src.services.workout_delivery import IntervalsCreateResult, build_structured_workout_ir
 
@@ -367,3 +370,167 @@ async def test_auto_push_due_pushes_only_approved_within_window(
         again = await service.auto_push_due(user, now_utc=now, lead_days=2)
         assert again == []
         assert len(fake.payloads) == 1
+
+
+# ---------------------------------------------------------------------------
+# Red-never-VO2 at the delivery gate (P1-2 fix)
+# ---------------------------------------------------------------------------
+
+
+def _morning_analysis(user_id: uuid.UUID, subject_date: date, verdict: str) -> Analysis:
+    return Analysis(
+        user_id=user_id,
+        analysis_type="morning",
+        subject_date=subject_date,
+        generated_at_utc=datetime(2026, 6, 23, 6, 30),
+        prompt_version="morning-analysis-test",
+        verdict=verdict,
+        context_packet={"verdict": {"status": verdict}},
+        output_markdown=f"{verdict} verdict",
+        raw_response={},
+    )
+
+
+def test_blocks_red_vo2_predicate() -> None:
+    """The safety gate is a pure predicate — testable without a database."""
+    vo2 = build_structured_workout_ir(_planned_workout(VO2_STRUCTURED), ftp_watts=280)
+    recovery = adjust_ir_for_verdict(vo2, "Red")  # capped at RECOVERY_CAP_PCT, no VO2
+
+    assert ir_has_vo2(vo2) is True
+    assert ir_has_vo2(recovery) is False
+    assert ir_has_vo2(None) is False
+    assert ir_has_vo2({"steps": "not-a-list"}) is False
+
+    # The gate fires only on Red + VO2.
+    assert blocks_red_vo2("Red", vo2) is True
+    assert blocks_red_vo2("red", vo2) is True  # verdict is normalised
+    assert blocks_red_vo2("Red", recovery) is False  # an easy spin is fine on Red
+    assert blocks_red_vo2("Amber", vo2) is False  # Amber is handled by regeneration
+    assert blocks_red_vo2("Green", vo2) is False
+    assert blocks_red_vo2(None, vo2) is False
+
+
+@pytest.mark.asyncio
+async def test_auto_push_blocks_approved_vo2_on_red_day(db_conn: AsyncConnection) -> None:
+    """A VO2 proposal approved ahead of time must not auto-push on a Red morning."""
+    user_id = uuid.uuid4()
+    subject = date(2026, 6, 24)
+    await _seed_profile(db_conn, user_id)
+    vo2_ir = build_structured_workout_ir(_planned_workout(VO2_STRUCTURED), ftp_watts=280)
+    proposal = WorkoutDeliveryProposal(
+        id=uuid.uuid4(),
+        user_id=user_id,
+        planned_workout_id=None,
+        planned_workout_version=1,
+        workout_date=subject,
+        provider="intervals_icu",
+        status="approved",
+        proposed_at_utc=datetime(2026, 6, 23, 9, 0),
+        approved_at_utc=datetime(2026, 6, 23, 9, 0),
+        structured_workout_ir=vo2_ir,
+        intervals_payload={"category": "WORKOUT", "name": "VO2"},
+        zwo_xml="<workout_file/>",
+    )
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(proposal)
+        session.add(_morning_analysis(user_id, subject, "Red"))
+        await session.commit()
+
+    now = datetime(2026, 6, 23, 9, 0, tzinfo=UTC)  # subject (24th) within today+2
+    fake = _FakeIntervalsClient()
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session, intervals_client=fake)
+
+        pushed = await service.auto_push_due(user, now_utc=now, lead_days=2)
+
+        assert pushed == []  # the VO2 was blocked, not delivered
+        assert fake.payloads == []  # nothing reached intervals.icu
+
+        refreshed = await session.get(WorkoutDeliveryProposal, proposal.id)
+        assert refreshed is not None
+        assert refreshed.status == "approved"  # stays approved, never pushed
+        assert refreshed.pushed_at_utc is None
+
+        blocks = (
+            (
+                await session.execute(
+                    select(Analysis).where(Analysis.analysis_type == AUDIT_TYPE_PUSH_BLOCKED)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(blocks) == 1
+        assert blocks[0].verdict == "Red"
+        assert blocks[0].context_packet["tag"] == f"push-blocked:{proposal.id}"
+
+        # Idempotent: a second sweep blocks again but writes no duplicate audit.
+        again = await service.auto_push_due(user, now_utc=now, lead_days=2)
+        assert again == []
+        blocks_after = (
+            (
+                await session.execute(
+                    select(Analysis).where(Analysis.analysis_type == AUDIT_TYPE_PUSH_BLOCKED)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(blocks_after) == 1
+
+
+@pytest.mark.asyncio
+async def test_regenerate_for_verdict_creates_red_substitution(db_conn: AsyncConnection) -> None:
+    """A Red verdict regenerates an easy recovery substitution (not just Amber)."""
+    user_id = uuid.uuid4()
+    workout_id = uuid.uuid4()
+    subject = date(2026, 6, 23)
+    await _seed_profile(db_conn, user_id)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            PlannedWorkout(
+                id=workout_id,
+                user_id=user_id,
+                workout_date=subject,
+                version=1,
+                title="VO2 Max 30/30",
+                workout_type="bike_vo2",
+                status="planned",
+                is_active=True,
+                planned_duration_min=60,
+                intensity_target="105-110% FTP",
+                structured_workout=VO2_STRUCTURED,
+                source="test",
+            )
+        )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session)
+
+        created = await service.regenerate_for_verdict(
+            user, subject, analysis=_morning_analysis(user_id, subject, "Red")
+        )
+
+        assert len(created) == 1
+        proposal = created[0]
+        assert proposal.status == "proposed"  # never auto-approved
+        assert proposal.structured_workout_ir["origin"] == "red_substitution"
+        assert _max_power(proposal.structured_workout_ir) <= RECOVERY_CAP_PCT
+
+        audits = (
+            (
+                await session.execute(
+                    select(Analysis).where(Analysis.analysis_type == AUDIT_TYPE_PROPOSED)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(audits) == 1
+        assert audits[0].context_packet["tag"] == f"red-regen:{workout_id}:v1"
+        assert audits[0].verdict == "Red"
