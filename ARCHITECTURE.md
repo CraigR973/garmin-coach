@@ -64,6 +64,19 @@ scheduler. The VO2 progression (incl. Rønnestad 30/15 from ~Wk7, ERG off) is a
 shared `services/vo2_progression.py` toolkit used by both the plan seed and the
 restructurer. No new migration.
 
+Batch 16 generates whole future blocks (`services/block_generator.py`): a
+deterministic generator emits a structured 13-week 2121 block (2 build / 1
+recovery ×3, wk12 taper, wk13 consolidation) from profile/FTP, reusing the shared
+block templates + the Batch 14 VO2 toolkit so generated VO2 days carry the 30/15
+progression. The draft is a **refine-then-lock** workflow (Decision #16): it lives
+as JSONB in `knowledge_base` at `section='generated_block'`, each generate/refine/
+lock versions the row, and only `lock` writes the owned plan — versioning
+`plan_blocks` + active `planned_workouts` so the block feeds the daily loop and
+delivers via the Zwift rail under the existing approve → push gate. Human-driven
+via `GET/POST /api/v1/block-generator/*` with a `/builder` PWA page; `generate`
+refuses to clobber an unlocked draft so refinements are never silently lost
+(DECISIONS #69). No new migration.
+
 ## 3. Knowledge Base (the persistent context — replaces his handover docs)
 
 Editable structured state fed into every analysis. Source: his handover doc (see
@@ -141,3 +154,4 @@ added to it, and the v1 domain tables live beside it. Data-shape evidence is in
 - [x] **Phase 2 Batch 18** — production daily-loop data sync shipped (06:30 job now syncs Garmin daily metrics/sleep before morning analysis; Hive uses refresh-token auth and honest freshness gating; strict production smoke green on commit `707850d`)
 - [x] **Phase 2 Batch 14** — dynamic weekly restructuring shipped: deterministic permutation engine keeps VO2 and Sweet-Spot off the same/adjacent days and defers hard sessions on a fatigue signal (readiness/HRV/verdict-trend); restructures version `planned_workouts`, audit in `analyses` (`weekly_restructure`), and reach Zwift only on approval via `GET/POST /api/v1/restructure/*` (human-triggered, not a scheduler job); VO2 progression incl. Rønnestad 30/15 centralized in `services/vo2_progression.py` (DECISIONS #63-65). No new migration
 - [x] **Phase 2 Batch 15** — holiday pause/resume shipped: holidays treated as recovery-week equivalents; in-window workouts versioned as `status='skipped'`, `source='holiday_pause'`; on return, 2121 block continuation: Build1→Build2 (week S+1), Build2→repeat Build1 (week S-1); windows stored as JSONB in `knowledge_base` at `section='holiday_windows'`; frontend Holiday tab + `HolidayPage.tsx` with pause/resume UI (DECISIONS #66-68). No new migration
+- [ ] **Phase 2 Batch 16** — app-generated 13-week blocks (ready for closeout): deterministic generator (`services/block_generator.py`) emits a structured 13-week 2121 block from profile/FTP, reusing the shared block templates + Batch 14 VO2 toolkit (generated VO2 days carry 30/15); refine-then-lock workflow stored as JSONB in `knowledge_base` at `section='generated_block'` (versioned per generate/refine/lock); `lock` versions `plan_blocks` + active `planned_workouts` so the block feeds the daily loop and the Zwift rail on approval; `GET/POST /api/v1/block-generator/*` + `/builder` PWA tab (DECISIONS #69). No new migration

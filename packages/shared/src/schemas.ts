@@ -480,3 +480,72 @@ export const resumeEnvelopeSchema = z.object({
   meta: apiMetaSchema,
   errors: z.array(apiErrorSchema),
 });
+
+// --- Batch 16: app-generated 13-week blocks -------------------------------
+
+export const generatedBlockWorkoutSchema = z.object({
+  dayOffset: z.number().int(),
+  workoutDate: isoDateSchema,
+  title: z.string().min(1),
+  workoutType: z.string().min(1),
+  plannedDurationMin: z.number().int().nullable().optional(),
+  intensityTarget: z.string().nullable().optional(),
+  structuredWorkout: jsonObjectSchema.default({}),
+});
+
+export const generatedBlockWeekSchema = z.object({
+  weekNumber: z.number().int().positive(),
+  blockType: z.string().min(1),
+  label: z.string().min(1),
+  focus: z.string().optional(),
+  startDate: isoDateSchema,
+  endDate: isoDateSchema,
+  workouts: z.array(generatedBlockWorkoutSchema),
+});
+
+export const generatedBlockDraftSchema = z.object({
+  status: z.enum(['draft', 'locked']),
+  framework: z.string().min(1),
+  startDate: isoDateSchema,
+  endDate: isoDateSchema,
+  ftpWatts: z.number().int().positive(),
+  athleteName: z.string().min(1),
+  generatedAtUtc: z.string().min(1),
+  lockedAtUtc: z.string().nullable(),
+  weeks: z.array(generatedBlockWeekSchema),
+});
+
+export const blockGeneratorEnvelopeSchema = z.object({
+  data: z.object({
+    draft: generatedBlockDraftSchema.nullable(),
+    canGenerate: z.boolean(),
+  }),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
+
+export const generateBlockInputSchema = z.object({
+  startDate: isoDateSchema.nullable().optional(),
+  ftpWatts: z.number().int().positive().nullable().optional(),
+});
+
+export const refineBlockInputSchema = z.object({
+  weekNumber: z.number().int().positive(),
+  dayOffset: z.number().int().nonnegative(),
+  title: z.string().min(1).nullable().optional(),
+  workoutType: z.string().min(1).nullable().optional(),
+  plannedDurationMin: z.number().int().positive().nullable().optional(),
+  intensityTarget: z.string().nullable().optional(),
+  structuredWorkout: jsonObjectSchema.nullable().optional(),
+});
+
+export const blockLockEnvelopeSchema = z.object({
+  data: z.object({
+    blocksCreated: z.number().int(),
+    workoutsWritten: z.number().int(),
+    startDate: isoDateSchema,
+    endDate: isoDateSchema,
+  }),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});

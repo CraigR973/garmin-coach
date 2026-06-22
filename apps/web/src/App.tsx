@@ -31,6 +31,9 @@ const WeekAheadPage = lazy(() =>
 const HolidayPage = lazy(() =>
   import('./pages/HolidayPage').then((m) => ({ default: m.HolidayPage })),
 );
+const BlockGeneratorPage = lazy(() =>
+  import('./pages/BlockGeneratorPage').then((m) => ({ default: m.BlockGeneratorPage })),
+);
 const OfflinePage = lazy(() =>
   import('./pages/OfflinePage').then((m) => ({ default: m.OfflinePage })),
 );
@@ -87,6 +90,7 @@ export function App() {
                       <Route path="/" element={<DashboardPage />} />
                       <Route path="/delivery" element={<WeekAheadPage />} />
                       <Route path="/holiday" element={<HolidayPage />} />
+                      <Route path="/builder" element={<BlockGeneratorPage />} />
                       <Route path="/coach-state" element={<CoachStatePage />} />
                       <Route path="/settings" element={<SettingsPage />} />
                       <Route path="/offline" element={<OfflinePage />} />
