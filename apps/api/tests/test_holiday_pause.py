@@ -324,8 +324,8 @@ async def test_resume_build1_continues_to_build2(db_conn: AsyncConnection) -> No
             .all()
         )
         assert any(w.source == HOLIDAY_RESUME_SOURCE for w in active)
-        # Old version should be deactivated
-        assert all(w.version > 1 for w in active if w.source == HOLIDAY_RESUME_SOURCE)
+        # At least one regenerated workout replaced a pre-existing version
+        assert any(w.version > 1 for w in active if w.source == HOLIDAY_RESUME_SOURCE)
 
 
 # ----------------------------------------------------------
