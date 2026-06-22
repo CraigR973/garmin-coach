@@ -6,9 +6,10 @@
 
 ## Now
 
-**Phase:** 2 in progress — Batch 16 (app-generated 13-week blocks) **implementation
-ready** on `claude/batch-start-16-ig4vqh`, awaiting `/closeout 16`. Batch 15
-(holiday pause/resume) shipped (`8ee1ed4` merged to `main` 2026-06-22).
+**Phase:** 2 in progress — Batch 16 (app-generated 13-week blocks) **shipped**
+(`70ca906` merged to `main` 2026-06-22). **Next batch: Batch 17** (monitoring +
+insight — FTP-drift detection, early-warning drift alerts, driver/correlation
+analysis, experiment tracker).
 
 Batch 16 generates whole future 13-week 2121 blocks with a refine-then-lock flow:
 - `services/block_generator.py` — deterministic `generate_block_plan` (pure) maps the
@@ -31,8 +32,8 @@ Batch 16 generates whole future 13-week 2121 blocks with a refine-then-lock flow
 **Verified:** backend pytest **180 passed** (16 new, run against a real local Postgres so
 the DB-backed versioning/lock/delivery tests actually run), ruff check + format clean, mypy
 clean (47 files); shared typecheck + 7 tests green; web lint 0 errors (pre-existing
-fast-refresh warnings only), 12 tests passed (5 new), vite build succeeds. Not yet
-committed/merged; awaiting `/closeout 16`.
+fast-refresh warnings only), 12 tests passed (5 new), vite build succeeds. CI run #104
+green on branch HEAD (`5e8e764`); merged to `main` (`70ca906`) and deployed.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -120,6 +121,15 @@ committed/merged; awaiting `/closeout 16`.
   rows (`subject_date=week_start`).
 
 ## Log
+- **2026-06-22** — Closed out Batch 16. Opened + merged PR #12 to `main` (merge commit
+  `70ca906`); CI run #104 green on branch HEAD (`5e8e764`). Railway + Vercel auto-deployed
+  `70ca906`: `/api/v1/health` returns the merge SHA, the Vercel same-origin
+  `/api/v1/health` rewrite returns the same SHA, the web URL is `HTTP 200`, and the
+  non-mutating Batch 16 smoke passed — `GET /api/v1/block-generator` is live, 401s
+  unauthenticated, and the deployed OpenAPI exposes all five `/api/v1/block-generator{,
+  /generate,/refine,/lock,/discard}` routes. Struck the Batch 16 row `Shipped`, ticked
+  `ARCHITECTURE.md` §7, recorded DECISIONS #69-70 on batch-start. Next unshipped batch:
+  Batch 17 (monitoring + insight).
 - **2026-06-22** — Batch 16 (app-generated 13-week blocks) implementation ready on
   `claude/batch-start-16-ig4vqh`. Added `services/block_generator.py` (deterministic
   `generate_block_plan` reusing the shared 2121 block templates + Batch 14 VO2 toolkit;
