@@ -21,8 +21,10 @@ from src.routers import (
     block_generator,
     coaching_state,
     daily_loop,
+    experiments,
     health,
     holiday,
+    insights,
     me,
     notifications,
     restructure,
@@ -103,3 +105,5 @@ app.include_router(workout_delivery.router)
 app.include_router(restructure.router)
 app.include_router(holiday.router)
 app.include_router(block_generator.router)
+app.include_router(insights.router)
+app.include_router(experiments.router)
