@@ -2,14 +2,16 @@
 
 Batch 13 turns the daily verdict into an *acted-on* workout (Decision #30):
 
-  * On an **Amber** morning verdict, ``regenerate_for_verdict`` rebuilds today's
-    bike workout as an adjusted structured-workout proposal (cut duration
-    20-30%, drop a zone, remove HIT) and stores it through the Batch 12 rail.
+  * On an **Amber or Red** morning verdict, ``regenerate_for_verdict`` rebuilds
+    today's bike workout — Amber as an adjusted proposal (cut duration 20-30%,
+    drop a zone, remove HIT), Red as an easy recovery substitution — and stores
+    it through the Batch 12 rail.
   * ``adjust_ir_for_verdict`` is a deterministic transform on the normalized
     ``%FTP`` IR, so the verdict framework — and the hard guarantee that **Red
     never emits VO2** — is testable rule code, not an LLM call.
   * ``auto_push_due`` delivers already-**approved** proposals a couple of days
-    ahead (Decision #31); it never pushes anything unapproved (Decision #29).
+    ahead (Decision #31); it never pushes anything unapproved (Decision #29),
+    and never pushes a VO2 session on a Red day (Red-never-VO2 at the gate).
   * Every proposal and push is written to the ``analyses`` audit log (Batch 9
     pattern) so each delivery has inspectable evidence.
 """
@@ -21,12 +23,14 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import structlog
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import Analysis, PlannedWorkout, WorkoutDeliveryProposal
 from src.models.profile import Profile
+from src.services.daily_loop import ANALYSIS_TYPE_MORNING
 from src.services.workout_delivery import (
     STATUS_APPROVED,
     IntervalsEventClient,
@@ -37,6 +41,7 @@ from src.services.workout_delivery import (
 PROMPT_VERSION = "executable-coaching:v1"
 AUDIT_TYPE_PROPOSED = "workout_proposed"
 AUDIT_TYPE_PUSHED = "workout_pushed"
+AUDIT_TYPE_PUSH_BLOCKED = "workout_push_blocked"
 DEFAULT_LEAD_DAYS = 2
 
 # Verdict-driven adjustment knobs (percentage points of FTP unless noted).
@@ -47,6 +52,8 @@ HIT_FLOOR_PCT = 106  # VO2/anaerobic work begins around 106% FTP
 AMBER_POWER_CAP_PCT = 98  # Amber removes HIT: cap at threshold
 RECOVERY_CAP_PCT = 60  # Red easy-spin ceiling — guarantees no VO2
 MIN_POWER_PCT = 45
+
+log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 
 def _utcnow() -> datetime:
@@ -72,6 +79,26 @@ def _normalize_verdict(value: str | None) -> str | None:
 
 def _step_power(step: dict[str, Any]) -> int:
     return max(int(step.get("powerStartPct", 0)), int(step.get("powerEndPct", 0)))
+
+
+def ir_has_vo2(ir: dict[str, Any] | None) -> bool:
+    """True when any step in a structured-workout IR reaches VO2/anaerobic
+    intensity (>= ``HIT_FLOOR_PCT`` of FTP)."""
+    steps = ir.get("steps") if isinstance(ir, dict) else None
+    if not isinstance(steps, list):
+        return False
+    return any(isinstance(step, dict) and _step_power(step) >= HIT_FLOOR_PCT for step in steps)
+
+
+def blocks_red_vo2(verdict: str | None, ir: dict[str, Any] | None) -> bool:
+    """The Red-never-VO2 *delivery* guarantee, as a pure predicate.
+
+    A proposal carrying VO2 intensity must never be pushed on a day whose morning
+    verdict is Red. Returns True when the push should be blocked. Keeping this a
+    pure function (verdict + IR in, bool out) makes the safety property unit-
+    testable without a database, matching the Batch 13 design (Decision #61).
+    """
+    return _normalize_verdict(verdict) == "Red" and ir_has_vo2(ir)
 
 
 def _clamp_power(value: int, cap: int) -> int:
@@ -184,20 +211,23 @@ class ExecutableCoachingService:
         analysis: Analysis,
         commit: bool = True,
     ) -> list[WorkoutDeliveryProposal]:
-        """Propose an adjusted workout when the morning verdict is Amber.
+        """Propose an adjusted workout when the morning verdict is Amber or Red.
 
-        Idempotent: a second run for the same planned workout (id + version) is a
-        no-op because the audit row guards against a duplicate proposal. Only
-        Amber triggers regeneration; the Red-never-VO2 rule lives in the
-        transform and is exercised directly by tests.
+        Idempotent per planned workout (id + version) and per verdict — a second
+        run is a no-op because the audit row guards against a duplicate proposal.
+        Amber regenerates an adjusted session; Red substitutes an easy recovery
+        spin (the ``red_substitution`` transform). Both are only *proposed* — never
+        auto-approved — so a human still approves before anything is pushed, and
+        the Red-never-VO2 guarantee is additionally enforced at the push gate
+        (``auto_push_due``).
         """
         verdict = self._verdict_status(analysis)
-        if verdict != "Amber":
+        if verdict not in {"Amber", "Red"}:
             return []
 
         created: list[WorkoutDeliveryProposal] = []
         for workout in await self._deliverable_bike_workouts(player.id, subject_date):
-            tag = _regen_tag(workout)
+            tag = _regen_tag(workout, verdict)
             if await self._already_recorded(player.id, AUDIT_TYPE_PROPOSED, tag, subject_date):
                 continue
             try:
@@ -216,7 +246,7 @@ class ExecutableCoachingService:
                 tag=tag,
                 subject_date=subject_date,
                 verdict=verdict,
-                summary=f"Amber regeneration proposed for {workout.title}.",
+                summary=f"{verdict} regeneration proposed for {workout.title}.",
             )
             created.append(proposal)
 
@@ -237,10 +267,25 @@ class ExecutableCoachingService:
         Honours propose → approve → push (Decision #29): only proposals a human
         already approved are eligible. Each push is isolated so one delivery
         failure (e.g. a missing intervals.icu key → 503) cannot block the rest.
+
+        Safety gate (Decision #61): a proposal carrying VO2 intensity is never
+        pushed on a day whose morning verdict is Red — even if it was approved
+        earlier — so the Red-never-VO2 guarantee holds at the delivery boundary,
+        not only inside the regeneration transform. A blocked push is audited.
         """
         window_end = _local_today(player.timezone, now_utc) + timedelta(days=max(0, lead_days))
         pushed: list[WorkoutDeliveryProposal] = []
         for proposal in await self._approved_unpushed(player.id, window_end):
+            verdict = await self._morning_verdict_for(player.id, proposal.workout_date)
+            if blocks_red_vo2(verdict, proposal.structured_workout_ir):
+                await self._record_block_if_new(player, proposal)
+                log.info(
+                    "auto-push blocked by red verdict",
+                    profile_id=str(player.id),
+                    proposal_id=str(proposal.id),
+                    workout_date=proposal.workout_date.isoformat(),
+                )
+                continue
             try:
                 result = await self.rail.push(player=player, proposal_id=proposal.id)
             except HTTPException:
@@ -390,13 +435,53 @@ class ExecutableCoachingService:
             for row in rows
         )
 
+    async def _morning_verdict_for(self, user_id: uuid.UUID, subject_date: date) -> str | None:
+        """The latest stored morning verdict for a date, normalised (or None)."""
+        analysis = await self.session.scalar(
+            select(Analysis)
+            .where(
+                Analysis.user_id == user_id,
+                Analysis.analysis_type == ANALYSIS_TYPE_MORNING,
+                Analysis.subject_date == subject_date,
+            )
+            .order_by(Analysis.generated_at_utc.desc(), Analysis.created_at.desc())
+            .limit(1)
+        )
+        return _normalize_verdict(analysis.verdict) if analysis else None
 
-def _regen_tag(workout: PlannedWorkout) -> str:
-    return f"amber-regen:{workout.id}:v{workout.version}"
+    async def _record_block_if_new(
+        self, player: Profile, proposal: WorkoutDeliveryProposal
+    ) -> None:
+        """Audit a blocked push once per proposal (idempotent across the day's sweeps)."""
+        tag = _block_tag(proposal)
+        if await self._already_recorded(
+            player.id, AUDIT_TYPE_PUSH_BLOCKED, tag, proposal.workout_date
+        ):
+            return
+        self._record_delivery_audit(
+            player,
+            proposal,
+            analysis_type=AUDIT_TYPE_PUSH_BLOCKED,
+            tag=tag,
+            subject_date=proposal.workout_date,
+            verdict="Red",
+            summary=(
+                f"Auto-push blocked: Red verdict on {proposal.workout_date.isoformat()} "
+                "— VO2 session not delivered."
+            ),
+        )
+
+
+def _regen_tag(workout: PlannedWorkout, verdict: str) -> str:
+    return f"{verdict.lower()}-regen:{workout.id}:v{workout.version}"
 
 
 def _push_tag(proposal: WorkoutDeliveryProposal) -> str:
     return f"auto-push:{proposal.id}"
+
+
+def _block_tag(proposal: WorkoutDeliveryProposal) -> str:
+    return f"push-blocked:{proposal.id}"
 
 
 def _proposal_verdict(proposal: WorkoutDeliveryProposal) -> str | None:
