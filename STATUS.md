@@ -6,20 +6,33 @@
 
 ## Now
 
-**Phase:** 2 in progress — Batch 15 (holiday pause/resume) **shipped** (`8ee1ed4`
-merged to `main` 2026-06-22). **Next batch: Batch 16** (app-generated 13-week blocks).
+**Phase:** 2 in progress — Batch 16 (app-generated 13-week blocks) **implementation
+ready** on `claude/batch-start-16-ig4vqh`, awaiting `/closeout 16`. Batch 15
+(holiday pause/resume) shipped (`8ee1ed4` merged to `main` 2026-06-22).
 
-Batch 15 treats a holiday window as a recovery-week equivalent:
-- `services/holiday_pause.py` — `HolidayPauseService` with `pause` (versions workouts
-  as `status='skipped'`, `source='holiday_pause'`) and `resume` (applies 2121 block
-  continuation: Build1→Build2 at week S+1, Build2→repeat Build1 at S-1) plus pure
-  helpers `is_build1`, `continuation_label`, `continuation_week_number`;
-- windows stored as JSONB in `knowledge_base` at `section='holiday_windows'` — **no
-  migration** (DECISIONS #66-68);
-- `routers/holiday.py` — `GET/POST /api/v1/holiday{/pause,/resume}`;
-- `packages/shared/src/schemas.ts` — 5 new Zod schemas for holiday envelopes;
-- `apps/web/src/pages/HolidayPage.tsx` — pause/resume UI with date picker + history;
-- `apps/web/src/components/TabBar.tsx` / `App.tsx` — Holiday tab + route added.
+Batch 16 generates whole future 13-week 2121 blocks with a refine-then-lock flow:
+- `services/block_generator.py` — deterministic `generate_block_plan` (pure) maps the
+  fixed 2121 `BLOCK_SEQUENCE` over dates from a start date + FTP, reusing
+  `coaching_state._block_templates` + the Batch 14 `vo2_progression` toolkit (generated
+  VO2 days carry 30/30 early, Rønnestad 30/15 from ~Wk7); `BlockGeneratorService` with
+  `generate`/`refine`/`lock`/`discard` + pure helpers `block_label`, `next_cycle_start`;
+- draft stored as JSONB in `knowledge_base` at `section='generated_block'`, versioned per
+  generate/refine/lock — **no migration** (DECISIONS #69-70); `generate` 409s on an
+  existing unlocked draft so refinements are never clobbered;
+- `lock` versions one `plan_block` per week + active `planned_workouts`
+  (`source='block_generator_lock'`), so locked blocks feed the daily loop and the Zwift
+  rail under the existing approve→push gate (16.4) — verified deliverable via
+  `build_structured_workout_ir` in tests;
+- `routers/block_generator.py` — `GET/POST /api/v1/block-generator{/generate,/refine,/lock,/discard}`;
+- `packages/shared/src/schemas.ts` — generated-block draft + envelope + input Zod schemas;
+- `apps/web/src/pages/BlockGeneratorPage.tsx` — generate form, per-day refine editor, lock/discard;
+- `apps/web/src/components/TabBar.tsx` / `App.tsx` — Builder tab + `/builder` route.
+
+**Verified:** backend pytest **180 passed** (16 new, run against a real local Postgres so
+the DB-backed versioning/lock/delivery tests actually run), ruff check + format clean, mypy
+clean (47 files); shared typecheck + 7 tests green; web lint 0 errors (pre-existing
+fast-refresh warnings only), 12 tests passed (5 new), vite build succeeds. Not yet
+committed/merged; awaiting `/closeout 16`.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -107,6 +120,20 @@ Batch 15 treats a holiday window as a recovery-week equivalent:
   rows (`subject_date=week_start`).
 
 ## Log
+- **2026-06-22** — Batch 16 (app-generated 13-week blocks) implementation ready on
+  `claude/batch-start-16-ig4vqh`. Added `services/block_generator.py` (deterministic
+  `generate_block_plan` reusing the shared 2121 block templates + Batch 14 VO2 toolkit;
+  `BlockGeneratorService` generate/refine/lock/discard; refine-then-lock draft as JSONB
+  in `knowledge_base` `section='generated_block'`, versioned; `generate` 409s on an
+  unlocked draft; `lock` versions `plan_blocks` + active `planned_workouts` so locked
+  blocks feed the daily loop + Zwift rail on approval), `routers/block_generator.py`
+  (`GET/POST /api/v1/block-generator/*`), shared Zod schemas, `BlockGeneratorPage.tsx`
+  + Builder tab/route. Chose a deterministic generator over an LLM call (DECISIONS #69)
+  so the 2121 shape + 30/15 progression + refine/lock versioning are testable invariants
+  that hold without `ANTHROPIC_API_KEY`; no migration (DECISIONS #70). Verified backend
+  pytest 180 passed (16 new, real local Postgres), ruff + format + mypy clean; shared
+  typecheck + tests green; web lint 0 errors, 12 tests (5 new), vite build succeeds.
+  Awaiting `/closeout 16`.
 - **2026-06-22** — Closed out Batch 15. PR #11 opened + merged to `main` (merge
   commit `8ee1ed4`); CI run #100 green on branch HEAD (`5b442a1`); CI run #102
   green on `main`. Railway health verified at SHA `8ee1ed4`. Smoke: `GET

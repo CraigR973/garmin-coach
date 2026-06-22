@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import {
   CalendarCheck,
   ClipboardList,
+  Hammer,
   Home,
   Settings as SettingsIcon,
   Umbrella,
@@ -20,6 +21,7 @@ interface TabDef {
 const TABS: ReadonlyArray<TabDef> = [
   { to: '/', label: 'Home', Icon: Home },
   { to: '/delivery', label: 'Plan', Icon: CalendarCheck },
+  { to: '/builder', label: 'Builder', Icon: Hammer },
   { to: '/holiday', label: 'Holiday', Icon: Umbrella },
   { to: '/coach-state', label: 'Coach', Icon: ClipboardList },
   { to: '/settings', label: 'Settings', Icon: SettingsIcon },

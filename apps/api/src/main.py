@@ -18,6 +18,7 @@ from src.middleware import CorrelationIdMiddleware, SecurityHeadersMiddleware
 from src.rate_limit import limiter
 from src.routers import (
     auth,
+    block_generator,
     coaching_state,
     daily_loop,
     health,
@@ -101,3 +102,4 @@ app.include_router(daily_loop.router)
 app.include_router(workout_delivery.router)
 app.include_router(restructure.router)
 app.include_router(holiday.router)
+app.include_router(block_generator.router)

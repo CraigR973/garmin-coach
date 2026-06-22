@@ -6,6 +6,9 @@ import {
   analysisSchema,
   dailyMetricSchema,
   experimentSchema,
+  generatedBlockDraftSchema,
+  generatedBlockWeekSchema,
+  generatedBlockWorkoutSchema,
   knowledgeBaseSchema,
   manualEntrySchema,
   planBlockSchema,
@@ -31,3 +34,6 @@ export type PlannedWorkout = z.infer<typeof plannedWorkoutSchema>;
 export type Analysis = z.infer<typeof analysisSchema>;
 export type Experiment = z.infer<typeof experimentSchema>;
 export type KnowledgeBase = z.infer<typeof knowledgeBaseSchema>;
+export type GeneratedBlockWorkout = z.infer<typeof generatedBlockWorkoutSchema>;
+export type GeneratedBlockWeek = z.infer<typeof generatedBlockWeekSchema>;
+export type GeneratedBlockDraft = z.infer<typeof generatedBlockDraftSchema>;
