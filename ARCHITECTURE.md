@@ -77,6 +77,21 @@ via `GET/POST /api/v1/block-generator/*` with a `/builder` PWA page; `generate`
 refuses to clobber an unlocked draft so refinements are never silently lost
 (DECISIONS #69). No new migration.
 
+Batch 17 turns the accumulated history into proactive insight
+(`services/insights.py` + `services/experiment_tracker.py`), all deterministic
+(no LLM) and migration-free. **FTP-drift detection** reads the trend in ride
+efficiency (watts-per-heartbeat) and flags rising/falling/stable with the
+evidence window surfaced; **early-warning alerts** measure the HRV/sleep/readiness
+slope and fire when ≥2 trends degrade *before* a Red (a Red already present is
+`already_red`, not early); **driver/correlation analysis** ranks the strongest
+Pearson movers of sleep/recovery over the 84-night+ history. These are surfaced
+read-only via `GET /api/v1/insights/{ftp-drift,early-warning,drivers}` and audited
+to `analyses` only for actual findings via `POST /api/v1/insights/run`. The
+**experiment tracker** manages Mark's standing hypotheses (collagen, recovery-week
+disruption, 04:00 waking) in the existing `experiments` table with a validated
+`active`⇄`paused`→`concluded` lifecycle and an `analyses` audit trail, via
+`GET/POST /api/v1/experiments/*` (DECISIONS #71-72).
+
 ## 3. Knowledge Base (the persistent context — replaces his handover docs)
 
 Editable structured state fed into every analysis. Source: his handover doc (see
@@ -155,3 +170,4 @@ added to it, and the v1 domain tables live beside it. Data-shape evidence is in
 - [x] **Phase 2 Batch 14** — dynamic weekly restructuring shipped: deterministic permutation engine keeps VO2 and Sweet-Spot off the same/adjacent days and defers hard sessions on a fatigue signal (readiness/HRV/verdict-trend); restructures version `planned_workouts`, audit in `analyses` (`weekly_restructure`), and reach Zwift only on approval via `GET/POST /api/v1/restructure/*` (human-triggered, not a scheduler job); VO2 progression incl. Rønnestad 30/15 centralized in `services/vo2_progression.py` (DECISIONS #63-65). No new migration
 - [x] **Phase 2 Batch 15** — holiday pause/resume shipped: holidays treated as recovery-week equivalents; in-window workouts versioned as `status='skipped'`, `source='holiday_pause'`; on return, 2121 block continuation: Build1→Build2 (week S+1), Build2→repeat Build1 (week S-1); windows stored as JSONB in `knowledge_base` at `section='holiday_windows'`; frontend Holiday tab + `HolidayPage.tsx` with pause/resume UI (DECISIONS #66-68). No new migration
 - [x] **Phase 2 Batch 16** — app-generated 13-week blocks shipped: deterministic generator (`services/block_generator.py`) emits a structured 13-week 2121 block from profile/FTP, reusing the shared block templates + Batch 14 VO2 toolkit (generated VO2 days carry 30/15); refine-then-lock workflow stored as JSONB in `knowledge_base` at `section='generated_block'` (versioned per generate/refine/lock); `lock` versions `plan_blocks` + active `planned_workouts` so the block feeds the daily loop and the Zwift rail on approval; `GET/POST /api/v1/block-generator/*` + `/builder` PWA tab (DECISIONS #69). No new migration
+- [x] **Phase 2 Batch 17** — monitoring + insight shipped: deterministic FTP-drift detection (ride efficiency trend + evidence window), early-warning drift alerts (HRV/sleep/readiness slope, fires on ≥2 degrading trends before a Red), and driver/correlation analysis (Pearson movers of sleep/recovery over 84-night+ history) in `services/insights.py`, surfaced read-only via `GET /api/v1/insights/*` and audited to `analyses` on `POST /api/v1/insights/run`; experiment tracker (`services/experiment_tracker.py`) manages the standing hypotheses (collagen, recovery-week disruption, 04:00 waking) in the existing `experiments` table with a validated lifecycle + `analyses` audit, via `GET/POST /api/v1/experiments/*` (DECISIONS #71-72). No new migration

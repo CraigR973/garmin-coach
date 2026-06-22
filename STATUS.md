@@ -6,34 +6,38 @@
 
 ## Now
 
-**Phase:** 2 in progress — Batch 16 (app-generated 13-week blocks) **shipped**
-(`70ca906` merged to `main` 2026-06-22). **Next batch: Batch 17** (monitoring +
-insight — FTP-drift detection, early-warning drift alerts, driver/correlation
-analysis, experiment tracker).
+**Phase:** 2 in progress — Batch 17 (monitoring + insight) **implementation ready**
+on `claude/batch-start-17-d661xy`, awaiting `/closeout 17`. Batch 16 (app-generated
+13-week blocks) is shipped (`70ca906` merged to `main` 2026-06-22).
 
-Batch 16 generates whole future 13-week 2121 blocks with a refine-then-lock flow:
-- `services/block_generator.py` — deterministic `generate_block_plan` (pure) maps the
-  fixed 2121 `BLOCK_SEQUENCE` over dates from a start date + FTP, reusing
-  `coaching_state._block_templates` + the Batch 14 `vo2_progression` toolkit (generated
-  VO2 days carry 30/30 early, Rønnestad 30/15 from ~Wk7); `BlockGeneratorService` with
-  `generate`/`refine`/`lock`/`discard` + pure helpers `block_label`, `next_cycle_start`;
-- draft stored as JSONB in `knowledge_base` at `section='generated_block'`, versioned per
-  generate/refine/lock — **no migration** (DECISIONS #69-70); `generate` 409s on an
-  existing unlocked draft so refinements are never clobbered;
-- `lock` versions one `plan_block` per week + active `planned_workouts`
-  (`source='block_generator_lock'`), so locked blocks feed the daily loop and the Zwift
-  rail under the existing approve→push gate (16.4) — verified deliverable via
-  `build_structured_workout_ir` in tests;
-- `routers/block_generator.py` — `GET/POST /api/v1/block-generator{/generate,/refine,/lock,/discard}`;
-- `packages/shared/src/schemas.ts` — generated-block draft + envelope + input Zod schemas;
-- `apps/web/src/pages/BlockGeneratorPage.tsx` — generate form, per-day refine editor, lock/discard;
-- `apps/web/src/components/TabBar.tsx` / `App.tsx` — Builder tab + `/builder` route.
+Batch 17 turns the accumulated history into proactive, **deterministic** insight
+(no LLM, no migration — `experiments`/`analyses` already exist):
+- `services/insights.py` — three pure functions + a thin DB `InsightsService`:
+  - **17.1** `detect_ftp_drift` — rising/falling/stable from the ride-efficiency
+    (watts-per-heartbeat) trend, splitting the window into baseline vs recent halves;
+    surfaces the evidence window (first/last ride dates + sample count) and a suggested FTP;
+  - **17.2** `detect_early_warning` — least-squares slope of HRV/sleep/readiness; fires on
+    ≥2 degrading trends **only when no Red is yet present** (a Red in-window → `already_red`,
+    not early); single degrading trend → `watch`;
+  - **17.3** `compute_drivers` — Pearson ranking of the strongest movers of sleep_score /
+    recovery_hrv over the 84-night+ history, skipping <8-sample or zero-variance drivers;
+  - `run()` records an `analyses` audit row (`ftp_drift` / `early_warning` /
+    `driver_correlation`) only for actual findings, idempotent per `subject_date`;
+- `services/experiment_tracker.py` — **17.4** `ExperimentTrackerService` over the existing
+  `experiments` table: lazily seeds the 3 standing hypotheses (collagen, recovery-week
+  disruption, 04:00 waking, keyed by `slug`), validated `active`⇄`paused`→`concluded`
+  lifecycle (`can_transition`; conclude needs an outcome; concluded is terminal),
+  observations append to `observations_json`, every change audited in `analyses`
+  (`experiment_update`);
+- `routers/insights.py` — `GET /api/v1/insights/{ftp-drift,early-warning,drivers}` (read-only)
+  + `POST /api/v1/insights/run`;
+- `routers/experiments.py` — `GET/POST /api/v1/experiments`, `/{id}/status`, `/{id}/observations`;
+- both routers registered in `main.py`. **Backend-only** by acceptance design — no frontend/shared
+  changes this batch.
 
-**Verified:** backend pytest **180 passed** (16 new, run against a real local Postgres so
-the DB-backed versioning/lock/delivery tests actually run), ruff check + format clean, mypy
-clean (47 files); shared typecheck + 7 tests green; web lint 0 errors (pre-existing
-fast-refresh warnings only), 12 tests passed (5 new), vite build succeeds. CI run #104
-green on branch HEAD (`5e8e764`); merged to `main` (`70ca906`) and deployed.
+**Verified:** backend pytest **206 passed** (26 new, run against a real local Postgres so the
+DB-backed service tests actually run), ruff check + format clean, mypy clean (51 files). Not yet
+committed/merged; awaiting `/closeout 17`.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -119,8 +123,31 @@ green on branch HEAD (`5e8e764`); merged to `main` (`70ca906`) and deployed.
   `services/vo2_progression.py` — edit protocols/`RONNESTAD_FROM_WEEK` there, not
   inline in `coaching_state`. `analyses` now also stores `weekly_restructure` audit
   rows (`subject_date=week_start`).
+- Batch 17 adds monitoring + insight. `analyses` now also stores
+  `ftp_drift` / `early_warning` / `driver_correlation` audit rows (written only by
+  `POST /api/v1/insights/run`, idempotent per `subject_date` — GET previews never write)
+  and `experiment_update` rows. The insight engines are **deterministic and
+  human/API-triggered, not a scheduler job** — there is no automatic insight cron by design
+  (DECISIONS #71). FTP drift needs ≥4 rides with both power and HR in the window; driver
+  correlations need ≥8 paired nights. Experiments lazy-seed the 3 standing hypotheses on the
+  first `GET /api/v1/experiments`; a concluded experiment is terminal (no further status
+  change or observations).
 
 ## Log
+- **2026-06-22** — Batch 17 (monitoring + insight) implementation ready on
+  `claude/batch-start-17-d661xy`. Added `services/insights.py` (deterministic
+  `detect_ftp_drift` from ride-efficiency trend with evidence window; `detect_early_warning`
+  from HRV/sleep/readiness slope, fires on ≥2 degrading trends before a Red, `already_red`
+  when a Red is present; `compute_drivers` Pearson ranking of sleep/recovery movers over
+  history; `InsightsService.run` records `analyses` audit rows for findings only, idempotent
+  per date), `services/experiment_tracker.py` (lazy-seeded 3 standing hypotheses in the
+  existing `experiments` table, validated `active`⇄`paused`→`concluded` lifecycle, `analyses`
+  audit), `routers/insights.py` (`GET /api/v1/insights/*` read-only + `POST /run`),
+  `routers/experiments.py` (`GET/POST /api/v1/experiments/*`), both wired in `main.py`. Chose
+  deterministic pure-function engines + no migration + human/API-triggered (not a scheduler
+  cron) — consistent with Batches 13/14/16 and Decision #64 (DECISIONS #71-72). Backend-only
+  per the batch's acceptance criteria. Verified backend pytest **206 passed** (26 new, real
+  local Postgres), ruff check + format clean, mypy clean (51 files). Awaiting `/closeout 17`.
 - **2026-06-22** — Closed out Batch 16. Opened + merged PR #12 to `main` (merge commit
   `70ca906`); CI run #104 green on branch HEAD (`5e8e764`). Railway + Vercel auto-deployed
   `70ca906`: `/api/v1/health` returns the merge SHA, the Vercel same-origin
