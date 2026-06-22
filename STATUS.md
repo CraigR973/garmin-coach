@@ -144,6 +144,14 @@ DB-backed service tests actually run), ruff check + format clean, mypy clean (51
   change or observations).
 
 ## Log
+- **2026-06-22** — Post-v2 review + first fix. Ran a full code/security/functional
+  review (`docs/reviews/v1-v2-review.md`): static checks + read-only prod smoke green;
+  surfaced one moderate dep CVE (`react-router`) and a cluster of auth findings. Fixed
+  the one substantive safety gap — **P1-2 Red-never-VO2 at the delivery gate** (PR #14,
+  CI green; Decision #75). Agreed to simplify auth to **passwordless device tokens**
+  (Decision #73–74; plan in `docs/reviews/auth-simplification-plan.md`), deferring
+  Cloudflare Access. Open quick wins: rotate the prod PIN off `1234`, bump
+  `react-router-dom`, add dependency/secret scanning to CI.
 - **2026-06-22** — Verified the intervals.icu delivery rail against the **live** API
   (post-Batch-17 follow-up, not a batch). Found `INTERVALS_API_KEY` was already set in
   Railway (service `api`, production) with the matching key, alongside
