@@ -1,6 +1,7 @@
 const KEYS = {
   access: 'coach_access',
   refresh: 'coach_refresh',
+  device: 'coach_device_token',
   player: 'coach_player',
 } as const;
 
@@ -12,8 +13,16 @@ export interface StoredPlayer {
 }
 
 export function storeTokens(access: string, refresh: string, player: StoredPlayer): void {
+  localStorage.removeItem(KEYS.device);
   localStorage.setItem(KEYS.access, access);
   localStorage.setItem(KEYS.refresh, refresh);
+  localStorage.setItem(KEYS.player, JSON.stringify(player));
+}
+
+export function storeDeviceToken(token: string, player: StoredPlayer): void {
+  localStorage.removeItem(KEYS.access);
+  localStorage.removeItem(KEYS.refresh);
+  localStorage.setItem(KEYS.device, token);
   localStorage.setItem(KEYS.player, JSON.stringify(player));
 }
 
@@ -23,6 +32,14 @@ export function getAccessToken(): string | null {
 
 export function getRefreshToken(): string | null {
   return localStorage.getItem(KEYS.refresh);
+}
+
+export function getDeviceToken(): string | null {
+  return localStorage.getItem(KEYS.device);
+}
+
+export function getAuthToken(): string | null {
+  return getDeviceToken() ?? getAccessToken();
 }
 
 export function getStoredPlayer(): StoredPlayer | null {
@@ -62,7 +79,7 @@ export function jwtPayload(token: string): Record<string, unknown> | null {
 /** Returns true if the access token is expired or within 60 s of expiry. */
 export function isAccessTokenExpiringSoon(): boolean {
   const token = getAccessToken();
-  if (!token) return true;
+  if (!token) return false;
   const payload = jwtPayload(token);
   if (!payload || typeof payload.exp !== 'number') return true;
   return payload.exp - Date.now() / 1000 < 60;
@@ -71,7 +88,7 @@ export function isAccessTokenExpiringSoon(): boolean {
 /** Returns true only when the access token has actually passed its expiry. */
 export function isAccessTokenExpired(): boolean {
   const token = getAccessToken();
-  if (!token) return true;
+  if (!token) return false;
   const payload = jwtPayload(token);
   if (!payload || typeof payload.exp !== 'number') return true;
   return payload.exp < Date.now() / 1000;

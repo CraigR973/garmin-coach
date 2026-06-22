@@ -11,6 +11,7 @@ import { UpdateBanner } from './components/UpdateBanner';
 import { InstallPromptController } from './components/InstallPromptController';
 import { NotificationsPromptController } from './components/NotificationsPromptController';
 import { Skeleton } from './components/ui/skeleton';
+import { ActivatePage } from './pages/ActivatePage';
 import { LoginPage } from './pages/LoginPage';
 
 // Layout pulls framer-motion + OfflineBanner — lazy-load to keep login chunk lean.
@@ -80,6 +81,7 @@ export function App() {
               <Suspense fallback={<RouteFallback />}>
                 <Routes>
                   {/* Public routes */}
+                  <Route path="/activate" element={<ActivatePage />} />
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/forgot-pin" element={<ForgotPinPage />} />
                   <Route path="/pin/reset/:token" element={<PinResetPage />} />

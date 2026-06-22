@@ -6,40 +6,32 @@
 
 ## Now
 
-**Phase:** 2 — Batch 17 (monitoring + insight) **shipped** (`88cdcd1` merged to `main`
-2026-06-22). **All v2 batches (11–18) are now shipped** — Phase 2 is complete; next is the
-Phase 3 long-game roadmap (`ARCHITECTURE.md` §6 v3: strength watching-brief, hypothesis
-tracking, weekly/monthly deep reviews, year-on-year/seasonal, auto-generated handover export),
-not yet decomposed into batches.
+**Phase:** Post-v2 auth simplification — **Phase 1 additive device-token flow implemented locally**
+on top of shipped `main`; Phase 2/3 cutover + deletion are still pending per
+`docs/reviews/auth-simplification-plan.md`.
 
-Batch 17 turns the accumulated history into proactive, **deterministic** insight
-(no LLM, no migration — `experiments`/`analyses` already exist):
-- `services/insights.py` — three pure functions + a thin DB `InsightsService`:
-  - **17.1** `detect_ftp_drift` — rising/falling/stable from the ride-efficiency
-    (watts-per-heartbeat) trend, splitting the window into baseline vs recent halves;
-    surfaces the evidence window (first/last ride dates + sample count) and a suggested FTP;
-  - **17.2** `detect_early_warning` — least-squares slope of HRV/sleep/readiness; fires on
-    ≥2 degrading trends **only when no Red is yet present** (a Red in-window → `already_red`,
-    not early); single degrading trend → `watch`;
-  - **17.3** `compute_drivers` — Pearson ranking of the strongest movers of sleep_score /
-    recovery_hrv over the 84-night+ history, skipping <8-sample or zero-variance drivers;
-  - `run()` records an `analyses` audit row (`ftp_drift` / `early_warning` /
-    `driver_correlation`) only for actual findings, idempotent per `subject_date`;
-- `services/experiment_tracker.py` — **17.4** `ExperimentTrackerService` over the existing
-  `experiments` table: lazily seeds the 3 standing hypotheses (collagen, recovery-week
-  disruption, 04:00 waking, keyed by `slug`), validated `active`⇄`paused`→`concluded`
-  lifecycle (`can_transition`; conclude needs an outcome; concluded is terminal),
-  observations append to `observations_json`, every change audited in `analyses`
-  (`experiment_update`);
-- `routers/insights.py` — `GET /api/v1/insights/{ftp-drift,early-warning,drivers}` (read-only)
-  + `POST /api/v1/insights/run`;
-- `routers/experiments.py` — `GET/POST /api/v1/experiments`, `/{id}/status`, `/{id}/observations`;
-- both routers registered in `main.py`. **Backend-only** by acceptance design — no frontend/shared
-  changes this batch.
+This session carries Decision #73/#74 through the first reversible step without deleting the
+PIN/JWT path:
+- backend dual-path auth now accepts either the existing JWT access token **or** a hashed opaque
+  device token via `get_current_user`, so protected routes work app-wide for both modes;
+- `refresh_tokens` grows additive `purpose` + `used_at` support plus migration `008`, allowing
+  three token kinds: `refresh`, `device`, `activation`;
+- `POST /api/v1/auth/activate` exchanges a single-use activation code for a long-lived device
+  token, and new admin CLI `python -m src.activate --profile <name>` mints the
+  `.../activate#code=...` link from `frontend_origin`;
+- web Phase 1 is wired: `/activate` page consumes the hash code, stores a device token alongside
+  the cached profile, and the client token layer now supports either refreshable JWT sessions or
+  long-lived device tokens without breaking the old login flow.
 
-**Verified:** backend pytest **206 passed** (26 new, run against a real local Postgres so the
-DB-backed service tests actually run), ruff check + format clean, mypy clean (51 files). CI run
-#109 green on the PR HEAD (`c027e1f`); merged to `main` (`88cdcd1`) and deployed.
+**Verified:** backend `pytest apps/api/tests/test_auth.py` **19 passed**; backend `ruff check`
+clean; backend `mypy src` clean (52 files); web `pnpm build` passes with the new `/activate`
+route; web `pnpm lint` has **warnings only** (existing `react-refresh/only-export-components`
+warnings in UI/context files, no errors).
+
+**Next step:** run a real phone activation smoke with `python -m src.activate --profile Mark`,
+open the link once on-device, confirm `/api/v1/me/profile` and the dashboard load under the new
+device token, then decide whether to start Phase 2 (frontend cutover / hide PIN login) or leave
+the additive fallback in place for a few days.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -144,6 +136,16 @@ DB-backed service tests actually run), ruff check + format clean, mypy clean (51
   change or observations).
 
 ## Log
+- **2026-06-22** — Auth simplification Phase 1 implementation ready locally (additive, reversible).
+  Finished the interrupted device-token work from the v1/v2 review plan: `auth.py`
+  `get_current_user` now accepts JWT **or** opaque device tokens; `refresh_tokens` gained additive
+  `purpose` / `used_at` support plus migration `008`; `POST /api/v1/auth/activate` now exchanges
+  a single-use activation code for a long-lived device token; added admin CLI
+  `python -m src.activate --profile <name>` to mint `.../activate#code=...` links; wired the web
+  `/activate` page plus dual-mode token storage so device-token auth works without removing PIN
+  login yet. Verified backend auth tests (**19 passed**), backend ruff, backend mypy, and web
+  build; web lint showed warnings only (no errors). Next: real phone activation smoke, then decide
+  on Phase 2 cutover timing.
 - **2026-06-22** — Post-v2 review + first fix. Ran a full code/security/functional
   review (`docs/reviews/v1-v2-review.md`): static checks + read-only prod smoke green;
   surfaced one moderate dep CVE (`react-router`) and a cluster of auth findings. Fixed

@@ -1,6 +1,7 @@
 import {
   clearTokens,
-  getAccessToken,
+  getAuthToken,
+  getDeviceToken,
   getRefreshToken,
   isAccessTokenExpiringSoon,
   storeTokens,
@@ -36,6 +37,7 @@ async function silentRefresh(): Promise<void> {
 }
 
 async function ensureFreshToken(): Promise<void> {
+  if (getDeviceToken()) return;
   if (!isAccessTokenExpiringSoon()) return;
   if (!refreshPromise) {
     refreshPromise = silentRefresh().finally(() => {
@@ -51,7 +53,7 @@ export async function apiFetch<T>(
 ): Promise<T> {
   await ensureFreshToken();
 
-  const accessToken = getAccessToken();
+  const accessToken = getAuthToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
@@ -60,11 +62,17 @@ export async function apiFetch<T>(
 
   const resp = await fetch(`${BASE}${path}`, { ...options, headers });
 
-  if (resp.status === 401) {
+  if (resp.status === 401 && getDeviceToken()) {
+    await clearTokens();
+    window.location.href = '/login';
+    throw new Error('Session expired');
+  }
+
+  if (resp.status === 401 && !getDeviceToken()) {
     // Access token was rejected — attempt one refresh then retry
     try {
       await silentRefresh();
-      const retryToken = getAccessToken();
+      const retryToken = getAuthToken();
       if (retryToken) headers['Authorization'] = `Bearer ${retryToken}`;
       const retry = await fetch(`${BASE}${path}`, { ...options, headers });
       if (!retry.ok) throw new Error(`${retry.status}`);

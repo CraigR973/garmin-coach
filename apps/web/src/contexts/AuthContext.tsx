@@ -4,9 +4,11 @@ import {
   clearApiCaches,
   clearTokens,
   getAccessToken,
+  getDeviceToken,
   getRefreshToken,
   getStoredPlayer,
   isAccessTokenExpired,
+  storeDeviceToken,
   storeTokens,
   type StoredPlayer,
 } from '../lib/tokens';
@@ -26,6 +28,7 @@ interface AuthState {
 
 interface AuthContextValue extends AuthState {
   login: (displayName: string, pin: string) => Promise<void>;
+  activateDevice: (code: string) => Promise<void>;
   logout: () => Promise<void>;
   updatePlayer: (patch: Partial<StoredPlayer>) => void;
   unlockStoredSession: (pin: string) => Promise<void>;
@@ -48,7 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const initialPlayer = getStoredPlayer();
   const initialRequiresUnlock =
-    !!initialPlayer && !!getRefreshToken() && isAccessTokenExpired();
+    !!initialPlayer && !!getRefreshToken() && !getDeviceToken() && isAccessTokenExpired();
   const [lockedPlayer, setLockedPlayer] = useState<StoredPlayer | null>(
     initialRequiresUnlock ? initialPlayer : null,
   );
@@ -87,6 +90,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [queryClient],
   );
 
+  const activateDevice = useCallback(
+    async (code: string) => {
+      setState((s) => ({ ...s, isLoading: true }));
+      try {
+        const resp = await fetch(`${BASE}/api/v1/auth/activate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code }),
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error((err as { detail?: string }).detail ?? 'Activation failed');
+        }
+        const data = await resp.json();
+        const player = playerFromApiResponse(data);
+        await clearApiCaches();
+        queryClient.clear();
+        storeDeviceToken(data.device_token, player);
+        setLockedPlayer(null);
+        setState({
+          player,
+          isLoading: false,
+          sessionUnlockRequired: false,
+          sessionUnlockError: null,
+        });
+      } catch (err) {
+        setState((s) => ({ ...s, isLoading: false }));
+        throw err;
+      }
+    },
+    [queryClient],
+  );
+
   const logout = useCallback(async () => {
     const refreshToken = getRefreshToken();
     if (refreshToken) {
@@ -108,7 +144,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const updated = { ...s.player, ...patch };
       const access = getAccessToken();
       const refresh = getRefreshToken();
-      if (access && refresh) storeTokens(access, refresh, updated);
+      const deviceToken = getDeviceToken();
+      if (deviceToken) storeDeviceToken(deviceToken, updated);
+      else if (access && refresh) storeTokens(access, refresh, updated);
       return { ...s, player: updated };
     });
   }, []);
@@ -149,7 +187,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ ...state, login, logout, updatePlayer, unlockStoredSession }}
+      value={{ ...state, login, activateDevice, logout, updatePlayer, unlockStoredSession }}
     >
       {children}
     </AuthContext.Provider>
