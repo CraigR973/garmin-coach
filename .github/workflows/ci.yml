@@ -142,3 +142,26 @@ jobs:
         working-directory: apps/web
         env:
           VITE_API_URL: https://placeholder.railway.app
+
+  security-audit:
+    name: Security audit (deps)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Web: audit production dependencies. Fails on moderate+ advisories —
+      # this is the gate that would have caught the react-router-dom open
+      # redirect (GHSA-2j2x-hqr9-3h42, P2-2).
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm audit --prod --audit-level=moderate
+      # API: audit the runtime requirements against the OSV database.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pip-audit
+      - run: pip-audit -r requirements.txt
+        working-directory: apps/api
