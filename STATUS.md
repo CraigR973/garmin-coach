@@ -55,8 +55,16 @@ DB-backed service tests actually run), ruff check + format clean, mypy clean (51
 
 **Post-closeout follow-ups (not blocking Batch 16):**
 1. Rotate Mark's production PIN away from the temporary smoke value (`1234`).
-2. Set `INTERVALS_API_KEY` in Railway so `auto_push_due` can actually deliver (without
-   it, push returns 503 and proposals stay approved).
+2. ~~Set `INTERVALS_API_KEY` in Railway so `auto_push_due` can actually deliver.~~
+   **Done (2026-06-22):** `INTERVALS_API_KEY` is set in Railway (service `api`,
+   production) alongside `INTERVALS_ATHLETE_ID=i618709` / `INTERVALS_BASE_URL`; the
+   active deploy (`12e1ab82`, 2026-06-22 13:09) carries it. The delivery rail was
+   smoke-verified against the **live** intervals.icu API: a throwaway script drove
+   the real `build_structured_workout_ir → build_intervals_payload →
+   IntervalsIcuClient.create_workout_event` path, intervals.icu created event
+   `117784365`, and the script deleted it again (HTTP 200) — so the key, auth, and
+   payload shape all work. Not yet exercised: a real production `auto_push_due`
+   delivery (would write a real event to Mark's calendar).
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -136,6 +144,17 @@ DB-backed service tests actually run), ruff check + format clean, mypy clean (51
   change or observations).
 
 ## Log
+- **2026-06-22** — Verified the intervals.icu delivery rail against the **live** API
+  (post-Batch-17 follow-up, not a batch). Found `INTERVALS_API_KEY` was already set in
+  Railway (service `api`, production) with the matching key, alongside
+  `INTERVALS_ATHLETE_ID=i618709` / `INTERVALS_BASE_URL`; the active deploy (`12e1ab82`,
+  13:09) carries it, so the prior "set the key" follow-up was stale. A throwaway local
+  smoke drove the real production code path (`build_structured_workout_ir →
+  build_intervals_payload → IntervalsIcuClient.create_workout_event`): intervals.icu
+  created event `117784365`, then the script deleted it (HTTP 200). So key, auth, and
+  payload shape all work and production `auto_push_due` can deliver. Not yet exercised: a
+  real prod `auto_push_due` run (would write a live event to Mark's calendar). Updated the
+  follow-up note above; no code change.
 - **2026-06-22** — Closed out Batch 17. Opened + merged PR #13 to `main` (merge commit
   `88cdcd1`); CI run #109 green on the PR HEAD (`c027e1f`, all 5 jobs: ruff, mypy, alembic
   up/down, pytest, web build). Railway + Vercel auto-deployed `88cdcd1`: `/api/v1/health`
