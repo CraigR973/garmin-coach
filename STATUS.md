@@ -6,43 +6,24 @@
 
 ## Now
 
-**Phase:** 2 in progress — Batch 15 (holiday pause/resume) **implementation ready on
-`claude/batch-start-15-l8yuvm`**. Not yet merged to `main`.
+**Phase:** 2 in progress — Batch 15 (holiday pause/resume) **shipped** (`8ee1ed4`
+merged to `main` 2026-06-22). **Next batch: Batch 16** (app-generated 13-week blocks).
 
 Batch 15 treats a holiday window as a recovery-week equivalent:
-- new `services/holiday_pause.py` — `HolidayPauseService` with `pause` (versions
-  workouts as `status='skipped'`, `source='holiday_pause'`) and `resume` (applies
-  2121 block continuation: Build1→Build2 at week S+1, Build2→repeat Build1 at S-1)
-  plus pure helpers `is_build1`, `continuation_label`, `continuation_week_number`;
-- holiday windows stored as JSONB in `knowledge_base` at `section='holiday_windows'` —
-  **no migration** (DECISIONS #66-68);
-- `routers/holiday.py` — `GET/POST /api/v1/holiday` (list), `/pause`, `/resume`;
+- `services/holiday_pause.py` — `HolidayPauseService` with `pause` (versions workouts
+  as `status='skipped'`, `source='holiday_pause'`) and `resume` (applies 2121 block
+  continuation: Build1→Build2 at week S+1, Build2→repeat Build1 at S-1) plus pure
+  helpers `is_build1`, `continuation_label`, `continuation_week_number`;
+- windows stored as JSONB in `knowledge_base` at `section='holiday_windows'` — **no
+  migration** (DECISIONS #66-68);
+- `routers/holiday.py` — `GET/POST /api/v1/holiday{/pause,/resume}`;
 - `packages/shared/src/schemas.ts` — 5 new Zod schemas for holiday envelopes;
 - `apps/web/src/pages/HolidayPage.tsx` — pause/resume UI with date picker + history;
-- `apps/web/src/pages/HolidayPage.test.tsx` — 4 vitest tests;
 - `apps/web/src/components/TabBar.tsx` / `App.tsx` — Holiday tab + route added.
-
-Verified locally: backend `7 passed, 7 skipped` (DB tests skip without DATABASE_URL),
-`ruff check` + `ruff format --check` clean, `mypy` clean on all new files. Frontend:
-`7 passed` (4 new HolidayPage tests), `eslint` 0 errors (5 pre-existing warnings),
-`vite build` succeeds.
-
-**Next:** `/closeout 15` — open PR, merge to `main`, verify CI + Railway + Vercel,
-update `docs/phase-batches.md` to strike Batch 15. Then Batch 16 (app-generated
-13-week blocks). Operational follow-ups (not blocking): rotate Mark's production
-PIN off the temporary smoke value (`1234`); set `INTERVALS_API_KEY` in Railway so
-`auto_push_due` can actually deliver — without it, push returns 503.
-
-Batch 18 (production daily-loop data sync) is **shipped** on `main` at `707850d`
-(strict smoke green: `health`/`login`/`daily_loop`, `verdict=Red`). Batch 12
-(Zwift delivery rail) is **shipped (rail-only)** (merge `67f9ad4`): the delivery
-rail (intervals.icu push + `.ZWO` fallback, propose→approve→push, migration
-`007`), the Garmin `GARMIN_TOKENSTORE_B64` token-blob auth path, and the Anthropic
-fail-closed validator.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
-- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (serves `main`; latest verified deploy `efc2d7a` = Batch 14 closeout merge)
+- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (serves `main`; latest verified deploy `8ee1ed4` = Batch 15 closeout merge)
 - DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-007 applied (007 = workout_delivery_proposals, deployed with Batch 12)
 
 **Hosting identifiers (non-secret):**
@@ -52,10 +33,10 @@ fail-closed validator.
 - Vercel project: `garmin-coach` (`garmin-coach-one.vercel.app`)
 - DB connection: Supabase session-mode pooler `aws-1-eu-north-1.pooler.supabase.com:5432`
 
-**Post-closeout follow-ups (not blocking Batch 13):**
+**Post-closeout follow-ups (not blocking Batch 16):**
 1. Rotate Mark's production PIN away from the temporary smoke value (`1234`).
-2. After Batch 13 ships, set `INTERVALS_API_KEY` in Railway so `auto_push_due`
-   can actually deliver (without it, push returns 503 and proposals stay approved).
+2. Set `INTERVALS_API_KEY` in Railway so `auto_push_due` can actually deliver (without
+   it, push returns 503 and proposals stay approved).
 
 ## Gotchas
 - Python is **3.12** (`~/.local/bin/python3.12`); api venv at `apps/api/.venv`.
@@ -126,6 +107,12 @@ fail-closed validator.
   rows (`subject_date=week_start`).
 
 ## Log
+- **2026-06-22** — Closed out Batch 15. PR #11 opened + merged to `main` (merge
+  commit `8ee1ed4`); CI run #100 green on branch HEAD (`5b442a1`); CI run #102
+  green on `main`. Railway health verified at SHA `8ee1ed4`. Smoke: `GET
+  /api/v1/holiday` returns 401 unauthenticated (live and auth-gated). Struck Batch
+  15 row Shipped, ticked `ARCHITECTURE.md` §7, DECISIONS #66-68 already recorded on
+  batch-start. Next unshipped batch: Batch 16 (app-generated 13-week blocks).
 - **2026-06-21** — Batch 15 (holiday pause/resume) implementation ready on
   `claude/batch-start-15-l8yuvm`. Built `services/holiday_pause.py` (pure helpers +
   `HolidayPauseService.pause`/`resume` — holiday = recovery-week equivalent, 2121
