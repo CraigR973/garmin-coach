@@ -6,6 +6,7 @@ import {
   ClipboardList,
   Home,
   Settings as SettingsIcon,
+  Umbrella,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -19,6 +20,7 @@ interface TabDef {
 const TABS: ReadonlyArray<TabDef> = [
   { to: '/', label: 'Home', Icon: Home },
   { to: '/delivery', label: 'Plan', Icon: CalendarCheck },
+  { to: '/holiday', label: 'Holiday', Icon: Umbrella },
   { to: '/coach-state', label: 'Coach', Icon: ClipboardList },
   { to: '/settings', label: 'Settings', Icon: SettingsIcon },
 ];
