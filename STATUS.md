@@ -6,9 +6,11 @@
 
 ## Now
 
-**Phase:** 2 in progress — Batch 17 (monitoring + insight) **implementation ready**
-on `claude/batch-start-17-d661xy`, awaiting `/closeout 17`. Batch 16 (app-generated
-13-week blocks) is shipped (`70ca906` merged to `main` 2026-06-22).
+**Phase:** 2 — Batch 17 (monitoring + insight) **shipped** (`88cdcd1` merged to `main`
+2026-06-22). **All v2 batches (11–18) are now shipped** — Phase 2 is complete; next is the
+Phase 3 long-game roadmap (`ARCHITECTURE.md` §6 v3: strength watching-brief, hypothesis
+tracking, weekly/monthly deep reviews, year-on-year/seasonal, auto-generated handover export),
+not yet decomposed into batches.
 
 Batch 17 turns the accumulated history into proactive, **deterministic** insight
 (no LLM, no migration — `experiments`/`analyses` already exist):
@@ -36,12 +38,12 @@ Batch 17 turns the accumulated history into proactive, **deterministic** insight
   changes this batch.
 
 **Verified:** backend pytest **206 passed** (26 new, run against a real local Postgres so the
-DB-backed service tests actually run), ruff check + format clean, mypy clean (51 files). Not yet
-committed/merged; awaiting `/closeout 17`.
+DB-backed service tests actually run), ruff check + format clean, mypy clean (51 files). CI run
+#109 green on the PR HEAD (`c027e1f`); merged to `main` (`88cdcd1`) and deployed.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
-- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (serves `main`; latest verified deploy `8ee1ed4` = Batch 15 closeout merge)
+- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (serves `main`; latest verified deploy `88cdcd1` = Batch 17 closeout merge)
 - DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-007 applied (007 = workout_delivery_proposals, deployed with Batch 12)
 
 **Hosting identifiers (non-secret):**
@@ -134,6 +136,16 @@ committed/merged; awaiting `/closeout 17`.
   change or observations).
 
 ## Log
+- **2026-06-22** — Closed out Batch 17. Opened + merged PR #13 to `main` (merge commit
+  `88cdcd1`); CI run #109 green on the PR HEAD (`c027e1f`, all 5 jobs: ruff, mypy, alembic
+  up/down, pytest, web build). Railway + Vercel auto-deployed `88cdcd1`: `/api/v1/health`
+  returns the merge SHA, the Vercel same-origin `/api/v1/health` rewrite returns the same SHA,
+  the web URL is `HTTP 200`, and the non-mutating Batch 17 smoke passed — all seven
+  `/api/v1/insights/*` + `/api/v1/experiments/*` routes are live, 401 unauthenticated, and
+  exposed in the deployed OpenAPI. Struck the Batch 17 row `Shipped`, ticked `ARCHITECTURE.md`
+  §7, DECISIONS #71-72 already recorded on batch-start. **All v2 batches (11–18) are now
+  shipped — Phase 2 is complete;** next is the Phase 3 long-game roadmap (not yet decomposed
+  into batches).
 - **2026-06-22** — Batch 17 (monitoring + insight) implementation ready on
   `claude/batch-start-17-d661xy`. Added `services/insights.py` (deterministic
   `detect_ftp_drift` from ride-efficiency trend with evidence window; `detect_early_warning`
