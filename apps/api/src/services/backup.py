@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 import structlog
 
@@ -21,8 +23,26 @@ class BackupInfo:
 
 
 def _pg_dsn(database_url: str) -> str:
-    """Convert SQLAlchemy asyncpg URL to a standard postgresql:// DSN."""
-    return re.sub(r"^postgresql\+asyncpg://", "postgresql://", database_url)
+    """SQLAlchemy asyncpg URL -> libpq postgresql:// DSN, with the password removed.
+
+    The password is supplied out-of-band via PGPASSWORD (see ``_pg_password``) so
+    it never appears in the pg_dump argv, which is visible to ``ps``. (P3-6.)
+    """
+    url = re.sub(r"^postgresql\+asyncpg://", "postgresql://", database_url)
+    parts = urlsplit(url)
+    if parts.password is None:
+        return url
+    host = parts.hostname or ""
+    if parts.port:
+        host = f"{host}:{parts.port}"
+    netloc = f"{parts.username}@{host}" if parts.username else host
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+
+
+def _pg_password(database_url: str) -> str | None:
+    """Extract the URL-decoded password from a SQLAlchemy/libpq URL, if present."""
+    password = urlsplit(database_url).password
+    return unquote(password) if password else None
 
 
 def _safe_filename(filename: str) -> bool:
@@ -38,6 +58,11 @@ async def create_backup(backup_dir: str, database_url: str) -> BackupInfo:
     filename = f"coach_{now.strftime('%Y%m%d_%H%M%S')}.sql"
     filepath = path / filename
 
+    env = os.environ.copy()
+    password = _pg_password(database_url)
+    if password is not None:
+        env["PGPASSWORD"] = password
+
     proc = await asyncio.create_subprocess_exec(
         "pg_dump",
         "--no-password",
@@ -45,6 +70,7 @@ async def create_backup(backup_dir: str, database_url: str) -> BackupInfo:
         "--file",
         str(filepath),
         _pg_dsn(database_url),
+        env=env,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )

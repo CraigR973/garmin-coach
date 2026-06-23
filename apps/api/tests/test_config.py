@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.config import Environment, Settings
+from src.config import Environment, Settings, docs_urls
 
 
 def _build_settings(**overrides: object) -> Settings:
@@ -40,3 +40,38 @@ def test_production_rejects_missing_anthropic_api_key() -> None:
 def test_development_allows_missing_anthropic_api_key() -> None:
     settings = _build_settings(environment=Environment.development, anthropic_api_key="")
     assert settings.anthropic_api_key == ""
+
+
+def test_production_rejects_short_jwt_secret() -> None:
+    with pytest.raises(ValueError, match="jwt_access_secret must be at least"):
+        _build_settings(jwt_access_secret="short")
+
+
+def test_production_rejects_identical_jwt_secrets() -> None:
+    with pytest.raises(ValueError, match="must be different"):
+        _build_settings(jwt_access_secret="x" * 40, jwt_refresh_secret="x" * 40)
+
+
+def test_development_allows_weak_jwt_secrets() -> None:
+    # The validator is fully skipped in development, so a short/identical pair is fine.
+    settings = _build_settings(
+        environment=Environment.development,
+        jwt_access_secret="dev",
+        jwt_refresh_secret="dev",
+    )
+    assert settings.jwt_access_secret == "dev"
+
+
+def test_docs_urls_disabled_in_production() -> None:
+    assert docs_urls(Environment.production) == {
+        "docs_url": None,
+        "redoc_url": None,
+        "openapi_url": None,
+    }
+
+
+def test_docs_urls_enabled_outside_production() -> None:
+    urls = docs_urls(Environment.development)
+    assert urls["docs_url"] == "/api/docs"
+    assert urls["redoc_url"] == "/api/redoc"
+    assert urls["openapi_url"] == "/api/openapi.json"

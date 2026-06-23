@@ -12,7 +12,7 @@ from sentry_sdk.types import Event, Hint
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from src.config import Environment, settings
+from src.config import Environment, docs_urls, settings
 from src.logging_config import configure_logging
 from src.middleware import CorrelationIdMiddleware, SecurityHeadersMiddleware
 from src.rate_limit import limiter
@@ -73,13 +73,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             log.info("scheduler stopped")
 
 
+# Docs/OpenAPI are disabled in production (private app — don't expose the schema
+# anonymously); kept in dev/staging. (Review finding P3-7.)
+_docs = docs_urls(settings.environment)
 app = FastAPI(
     title="Garmin Coach API",
     version="0.1.0",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json",
     lifespan=lifespan,
+    docs_url=_docs["docs_url"],
+    redoc_url=_docs["redoc_url"],
+    openapi_url=_docs["openapi_url"],
 )
 
 app.state.limiter = limiter
