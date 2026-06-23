@@ -6,44 +6,42 @@
 
 ## Now
 
-**Phase:** 2 — Batch 17 (monitoring + insight) **shipped** (`88cdcd1` merged to `main`
-2026-06-22). **All v2 batches (11–18) are now shipped** — Phase 2 is complete; next is the
-Phase 3 long-game roadmap (`ARCHITECTURE.md` §6 v3: strength watching-brief, hypothesis
-tracking, weekly/monthly deep reviews, year-on-year/seasonal, auto-generated handover export),
-not yet decomposed into batches.
+**Phase:** Post-v2 auth simplification — **Phase 1 additive device-token flow is now live**
+via break-glass Railway/Vercel production deploys; Phase 2/3 cutover + deletion are still pending
+per `docs/reviews/auth-simplification-plan.md`.
 
-Batch 17 turns the accumulated history into proactive, **deterministic** insight
-(no LLM, no migration — `experiments`/`analyses` already exist):
-- `services/insights.py` — three pure functions + a thin DB `InsightsService`:
-  - **17.1** `detect_ftp_drift` — rising/falling/stable from the ride-efficiency
-    (watts-per-heartbeat) trend, splitting the window into baseline vs recent halves;
-    surfaces the evidence window (first/last ride dates + sample count) and a suggested FTP;
-  - **17.2** `detect_early_warning` — least-squares slope of HRV/sleep/readiness; fires on
-    ≥2 degrading trends **only when no Red is yet present** (a Red in-window → `already_red`,
-    not early); single degrading trend → `watch`;
-  - **17.3** `compute_drivers` — Pearson ranking of the strongest movers of sleep_score /
-    recovery_hrv over the 84-night+ history, skipping <8-sample or zero-variance drivers;
-  - `run()` records an `analyses` audit row (`ftp_drift` / `early_warning` /
-    `driver_correlation`) only for actual findings, idempotent per `subject_date`;
-- `services/experiment_tracker.py` — **17.4** `ExperimentTrackerService` over the existing
-  `experiments` table: lazily seeds the 3 standing hypotheses (collagen, recovery-week
-  disruption, 04:00 waking, keyed by `slug`), validated `active`⇄`paused`→`concluded`
-  lifecycle (`can_transition`; conclude needs an outcome; concluded is terminal),
-  observations append to `observations_json`, every change audited in `analyses`
-  (`experiment_update`);
-- `routers/insights.py` — `GET /api/v1/insights/{ftp-drift,early-warning,drivers}` (read-only)
-  + `POST /api/v1/insights/run`;
-- `routers/experiments.py` — `GET/POST /api/v1/experiments`, `/{id}/status`, `/{id}/observations`;
-- both routers registered in `main.py`. **Backend-only** by acceptance design — no frontend/shared
-  changes this batch.
+This session carries Decision #73/#74 through the first reversible step without deleting the
+PIN/JWT path:
+- backend dual-path auth now accepts either the existing JWT access token **or** a hashed opaque
+  device token via `get_current_user`, so protected routes work app-wide for both modes;
+- `refresh_tokens` grows additive `purpose` + `used_at` support plus migration `008`, allowing
+  three token kinds: `refresh`, `device`, `activation`;
+- `POST /api/v1/auth/activate` exchanges a single-use activation code for a long-lived device
+  token, and new admin CLI `python -m src.activate --profile <name>` mints the
+  `.../activate#code=...` link from `frontend_origin`;
+- web Phase 1 is wired: `/activate` consumes the hash code, exchanges it through the shared auth
+  context, stores a device token alongside the cached profile, and the client token layer now
+  supports either refreshable JWT sessions or long-lived device tokens without breaking the old
+  login flow;
+- the live activation debugging pass fixed three production-only web issues: the app must treat an
+  unset `VITE_API_URL` as **same-origin** in production (not `localhost`), `/activate` must call
+  `AuthContext.activateDevice()` instead of writing local storage behind React's back, and the bad
+  production guard that crashed on missing `VITE_API_URL` was removed.
 
-**Verified:** backend pytest **206 passed** (26 new, run against a real local Postgres so the
-DB-backed service tests actually run), ruff check + format clean, mypy clean (51 files). CI run
-#109 green on the PR HEAD (`c027e1f`); merged to `main` (`88cdcd1`) and deployed.
+**Verified:** backend `pytest apps/api/tests/test_auth.py` **19 passed**; backend `ruff check`
+clean; backend `mypy src` clean (52 files); web `pnpm build` passes; web `pnpm lint` has
+**warnings only** (existing `react-refresh/only-export-components` warnings in UI/context files,
+no errors). Production `/api/v1/auth/activate` is live on Railway, Vercel production now serves
+the fixed `/activate` route, and a fresh one-time Mark activation link was minted after the fix.
+
+**Next step:** finish the real phone activation smoke with the latest one-time Mark link, confirm
+the dashboard loads under the new device token on reopen, then decide whether to start Phase 2
+(frontend cutover / hide PIN login) or leave the additive fallback in place for a few days.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
-- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (serves `main`; latest verified deploy `88cdcd1` = Batch 17 closeout merge)
+- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (currently a break-glass
+  Railway upload, so `/health` reports `sha="unknown"` rather than a Git-backed commit SHA)
 - DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-007 applied (007 = workout_delivery_proposals, deployed with Batch 12)
 
 **Hosting identifiers (non-secret):**
@@ -144,6 +142,29 @@ DB-backed service tests actually run), ruff check + format clean, mypy clean (51
   change or observations).
 
 ## Log
+- **2026-06-23** — Live activation route debugging + production fix-up. Break-glass deployed the
+  backend to Railway and the web app to Vercel production so Phase 1 auth could be exercised
+  end-to-end. Found and fixed three production-only web bugs while reproducing `/activate` in a
+  headless browser: (1) the frontend crashed on load if `VITE_API_URL` was unset in production;
+  (2) after removing that guard, production still fell back to `http://localhost:8000` instead of
+  same-origin, so CSP blocked `/api/v1/auth/activate`; (3) after fixing the API base, `/activate`
+  wrote the device token directly to local storage and then navigated before `AuthContext` knew the
+  user was signed in, bouncing the route back to `/login`. Fixed by treating unset
+  `VITE_API_URL` as same-origin in production and routing activation through
+  `AuthContext.activateDevice()`. Verified the repaired production flow in headless Chromium, then
+  minted a fresh one-time Mark link from inside the live Railway container. Current follow-up is
+  the real phone smoke. Note: because the backend is on a break-glass Railway upload rather than a
+  Git-backed deploy, `/api/v1/health` now reports `sha=\"unknown\"`.
+- **2026-06-22** — Auth simplification Phase 1 implementation ready locally (additive, reversible).
+  Finished the interrupted device-token work from the v1/v2 review plan: `auth.py`
+  `get_current_user` now accepts JWT **or** opaque device tokens; `refresh_tokens` gained additive
+  `purpose` / `used_at` support plus migration `008`; `POST /api/v1/auth/activate` now exchanges
+  a single-use activation code for a long-lived device token; added admin CLI
+  `python -m src.activate --profile <name>` to mint `.../activate#code=...` links; wired the web
+  `/activate` page plus dual-mode token storage so device-token auth works without removing PIN
+  login yet. Verified backend auth tests (**19 passed**), backend ruff, backend mypy, and web
+  build; web lint showed warnings only (no errors). Next: real phone activation smoke, then decide
+  on Phase 2 cutover timing.
 - **2026-06-22** — Post-v2 review + first fix. Ran a full code/security/functional
   review (`docs/reviews/v1-v2-review.md`): static checks + read-only prod smoke green;
   surfaced one moderate dep CVE (`react-router`) and a cluster of auth findings. Fixed

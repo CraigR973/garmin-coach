@@ -1,17 +1,15 @@
 import {
   clearTokens,
-  getAccessToken,
+  getAuthToken,
+  getDeviceToken,
   getRefreshToken,
   isAccessTokenExpiringSoon,
   storeTokens,
   getStoredPlayer,
 } from './tokens';
 
-if (import.meta.env.PROD && import.meta.env.VITE_API_URL === undefined) {
-  throw new Error('VITE_API_URL is required in production builds');
-}
-// Empty string = same-origin (requests go through Vercel proxy rewrite).
-const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+// Empty/unset in production = same-origin (requests go through Vercel proxy rewrite).
+const BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? '' : 'http://localhost:8000');
 
 let refreshPromise: Promise<void> | null = null;
 
@@ -36,6 +34,7 @@ async function silentRefresh(): Promise<void> {
 }
 
 async function ensureFreshToken(): Promise<void> {
+  if (getDeviceToken()) return;
   if (!isAccessTokenExpiringSoon()) return;
   if (!refreshPromise) {
     refreshPromise = silentRefresh().finally(() => {
@@ -51,7 +50,7 @@ export async function apiFetch<T>(
 ): Promise<T> {
   await ensureFreshToken();
 
-  const accessToken = getAccessToken();
+  const accessToken = getAuthToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
@@ -60,11 +59,17 @@ export async function apiFetch<T>(
 
   const resp = await fetch(`${BASE}${path}`, { ...options, headers });
 
-  if (resp.status === 401) {
+  if (resp.status === 401 && getDeviceToken()) {
+    await clearTokens();
+    window.location.href = '/login';
+    throw new Error('Session expired');
+  }
+
+  if (resp.status === 401 && !getDeviceToken()) {
     // Access token was rejected — attempt one refresh then retry
     try {
       await silentRefresh();
-      const retryToken = getAccessToken();
+      const retryToken = getAuthToken();
       if (retryToken) headers['Authorization'] = `Bearer ${retryToken}`;
       const retry = await fetch(`${BASE}${path}`, { ...options, headers });
       if (!retry.ok) throw new Error(`${retry.status}`);

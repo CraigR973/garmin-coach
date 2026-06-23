@@ -1,6 +1,6 @@
 # Auth simplification — passwordless device tokens (Option B)
 
-**Status:** Agreed, not yet started · **Decision:** `DECISIONS.md` #73–74 · **Origin:** `docs/reviews/v1-v2-review.md` (P1-1, P1-3, P2-1, P3-1/2/3)
+**Status:** Phase 1 implemented locally (activation CLI/API + dual-path auth + `/activate` page), not yet phone-smoke-verified or cut over · **Decision:** `DECISIONS.md` #73–74 · **Origin:** `docs/reviews/v1-v2-review.md` (P1-1, P1-3, P2-1, P3-1/2/3)
 **Date:** 2026-06-22
 
 > Replaces the inherited **display-name + 4-digit-PIN + JWT** login with a

@@ -13,6 +13,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import (
+    DEVICE_TOKEN_TTL,
     REFRESH_TTL,
     CurrentUser,
     create_access_token,
@@ -20,6 +21,7 @@ from src.auth import (
     create_refresh_token,
     decode_pin_reset_token,
     decode_refresh_token,
+    generate_opaque_token,
     hash_pin,
     hash_token,
     verify_pin,
@@ -94,6 +96,15 @@ class PinResetConfirm(BaseModel):
 _PIN_RESET_GENERIC = {
     "message": "If that display name is registered, an admin will be notified to reset your PIN."
 }
+
+
+class ActivateRequest(BaseModel):
+    code: str = Field(min_length=10, max_length=128)
+
+
+class ActivateResponse(BaseModel):
+    device_token: str
+    player: PlayerInfo
 
 
 # ---------------------------------------------------------------------------
@@ -243,6 +254,85 @@ async def logout(
             log.info("logout — token revoked", jti=str(jti))
     except Exception:
         pass
+
+
+# ---------------------------------------------------------------------------
+# Endpoints — passwordless device activation
+# ---------------------------------------------------------------------------
+
+
+@router.post("/activate", response_model=ActivateResponse)
+@limiter.limit("10/hour")
+async def activate(
+    request: Request,
+    body: ActivateRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ActivateResponse:
+    """Exchange a single-use activation code for a long-lived device token.
+
+    Codes are provisioned out-of-band by ``python -m src.activate`` (admin-only).
+    The code is consumed (``used_at`` set) on first success, so a link works
+    exactly once; the returned device token is the bearer credential the device
+    keeps and is revocable by deleting its ``refresh_tokens`` row.
+    """
+    code_record = (
+        await db.execute(
+            select(RefreshToken).where(
+                RefreshToken.token_hash == hash_token(body.code),
+                RefreshToken.purpose == "activation",
+                RefreshToken.used_at.is_(None),
+                RefreshToken.revoked_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if code_record is None or code_record.expires_at < _now():
+        log.info("activation failed — invalid or expired code")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired activation code",
+        )
+
+    user = (
+        await db.execute(
+            select(Profile).where(
+                Profile.id == code_record.user_id,
+                Profile.deleted_at.is_(None),
+                Profile.is_active.is_(True),
+            )
+        )
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired activation code",
+        )
+
+    # Consume the code and mint the device token in one transaction.
+    code_record.used_at = _now()
+    raw_token = generate_opaque_token()
+    device_hint = request.headers.get("User-Agent", "")[:100]
+    db.add(
+        RefreshToken(
+            id=uuid.uuid4(),
+            user_id=user.id,
+            token_hash=hash_token(raw_token),
+            purpose="device",
+            device_hint=device_hint,
+            expires_at=_now() + DEVICE_TOKEN_TTL,
+        )
+    )
+    await db.commit()
+
+    log.info("device activated", user_id=str(user.id))
+    return ActivateResponse(
+        device_token=raw_token,
+        player=PlayerInfo(
+            id=str(user.id),
+            display_name=user.display_name,
+            role=user.role.value,
+            timezone=user.timezone,
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

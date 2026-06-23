@@ -1,4 +1,4 @@
-"""Tests for auth endpoints: login, refresh, logout, and FastAPI dependencies."""
+"""Tests for auth endpoints, activation, and FastAPI auth dependencies."""
 
 import uuid
 from collections.abc import AsyncGenerator
@@ -60,6 +60,18 @@ def _make_refresh_record(user_id: uuid.UUID, refresh_jwt: str) -> MagicMock:
     r.device_hint = "TestAgent"
     r.expires_at = _now() + timedelta(days=30)
     r.revoked_at = None
+    return r
+
+
+def _make_activation_record(user_id: uuid.UUID, code: str, *, expired: bool = False) -> MagicMock:
+    r = MagicMock(spec=RefreshToken)
+    r.id = uuid.uuid4()
+    r.user_id = user_id
+    r.token_hash = hash_token(code)
+    r.purpose = "activation"
+    r.used_at = None
+    r.revoked_at = None
+    r.expires_at = _now() - timedelta(minutes=1) if expired else _now() + timedelta(minutes=30)
     return r
 
 
@@ -285,6 +297,62 @@ async def test_logout_bad_token_still_204(client: AsyncClient) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Activate endpoint
+# ---------------------------------------------------------------------------
+
+
+async def test_activate_success_mints_device_token(client: AsyncClient) -> None:
+    user = _make_user(role=UserRole.admin)
+    code = "activate-me-once"
+    code_record = _make_activation_record(user.id, code)
+    mock_db = _stub_db([_scalar(code_record), _scalar(user)])
+
+    async with _override_db(mock_db):
+        resp = await client.post(
+            "/api/v1/auth/activate",
+            json={"code": code},
+            headers={"User-Agent": "TestAgent/1.0"},
+        )
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["player"]["display_name"] == "Test User"
+    assert isinstance(data["device_token"], str)
+    assert data["device_token"]
+    assert code_record.used_at is not None
+
+    added = mock_db.add.call_args[0][0]
+    assert isinstance(added, RefreshToken)
+    assert added.user_id == user.id
+    assert added.purpose == "device"
+    assert added.device_hint == "TestAgent/1.0"
+    assert added.token_hash == hash_token(data["device_token"])
+
+
+async def test_activate_rejects_expired_code(client: AsyncClient) -> None:
+    user = _make_user()
+    code = "expired-code"
+    code_record = _make_activation_record(user.id, code, expired=True)
+    mock_db = _stub_db([_scalar(code_record)])
+
+    async with _override_db(mock_db):
+        resp = await client.post("/api/v1/auth/activate", json={"code": code})
+
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "Invalid or expired activation code"
+
+
+async def test_activate_rejects_unknown_code(client: AsyncClient) -> None:
+    mock_db = _stub_db([_scalar(None)])
+
+    async with _override_db(mock_db):
+        resp = await client.post("/api/v1/auth/activate", json={"code": "unknown-code"})
+
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "Invalid or expired activation code"
+
+
+# ---------------------------------------------------------------------------
 # Auth dependency — require_admin
 # ---------------------------------------------------------------------------
 
@@ -304,3 +372,41 @@ async def test_require_admin_passes_admin_role() -> None:
     user = _make_user(role=UserRole.admin)
     result = await require_admin(user)
     assert result is user
+
+
+async def test_me_profile_accepts_device_token(client: AsyncClient) -> None:
+    user = _make_user(role=UserRole.admin)
+    mock_db = _stub_db([_scalar(user)])
+
+    async with _override_db(mock_db):
+        resp = await client.get(
+            "/api/v1/me/profile",
+            headers={"Authorization": "Bearer raw-device-token"},
+        )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["display_name"] == "Test User"
+
+
+async def test_me_profile_rejects_expired_jwt_without_device_fallback(client: AsyncClient) -> None:
+    user = _make_user(role=UserRole.admin)
+    expired_jwt = pyjwt.encode(
+        {
+            "sub": str(user.id),
+            "role": user.role.value,
+            "exp": _now() - timedelta(minutes=1),
+            "iat": _now() - timedelta(hours=1),
+        },
+        settings.jwt_access_secret,
+        algorithm="HS256",
+    )
+    mock_db = _stub_db([])
+
+    async with _override_db(mock_db):
+        resp = await client.get(
+            "/api/v1/me/profile",
+            headers={"Authorization": f"Bearer {expired_jwt}"},
+        )
+
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "Token expired"
