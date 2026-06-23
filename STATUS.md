@@ -6,14 +6,36 @@
 
 ## Now
 
-**Phase:** v3 — **Batch 19 shipped** (PR #21, merge `3737338`, 2026-06-23). All v2 batches + auth
-remediation are live. Next batch: **Batch 20** (weekly & monthly deep reviews — 🔴 High tier, first
-v3 batch that reintroduces the Claude narrative boundary). Start with `/batch-start 20`.
+**Phase:** v3 — **Batch 20 implementation ready** on `claude/batch-start-config-wdq8ms` (awaiting
+`/closeout 20`). Batch 19 is shipped + live (PR #21, merge `3737338`). All v2 batches + auth
+remediation are live. After closeout, next unshipped batch is **Batch 21** (year-on-year & seasonal
+trends — 🔴 High, degrades gracefully until ~Mar 2027).
+
+**Batch 20 ready (weekly & monthly deep reviews — 🔴 High, DECISIONS #81):**
+- `services/reviews.py`: deterministic `compute_review_rollup` (pure, DB-free) over sleep / recovery /
+  load+adherence / verdicts / thermal; `ReviewService` reuses Batch 19 strength brief + Batch 17
+  insights; thin Anthropic boundary (#47, fakeable) stores narrative in `analyses` as
+  `weekly_review` / `monthly_review`. Calendar-aligned windows (ISO week / calendar month) →
+  idempotent per period. No migration, no new cron, human/API-triggered (#71).
+- `routers/reviews.py`: `GET /api/v1/reviews/{period}` (preview, never writes) + `POST
+  /api/v1/reviews/{period}/run` (generate+store), `{period}` ∈ {weekly, monthly}, 404 otherwise.
+  Registered in `main.py`.
+- Frontend: `ReviewsPage.tsx` + `/reviews` route + TabBar "Reviews" tab; `reviewEnvelopeSchema` in
+  `@coach/shared`. POST `/run` updates the cache directly (no refetch race).
+- Tests: 14 backend (`test_reviews.py` — pure window/rollup/trend + DB-backed preview-never-writes,
+  run stores weekly, idempotency, monthly variant) all green against a **real local Postgres**; 2 web
+  vitest (`ReviewsPage.test.tsx`). Backend 256 passed, ruff + mypy clean; shared typecheck + 7 tests;
+  web lint 0 errors, 16 tests, vite build OK.
 
 **Batch 19 shipped + live:**
 - `GET /api/v1/strength-brief` live, 401 unauthenticated (auth-gated — correct)
 - `strengthBrief` field now present in `GET /api/v1/daily-loop` response
 - Advisory-only: no verdict/recovery fields, no migration, no LLM, no new cron
+
+**Local dev env note (this session):** fresh container had no `apps/api/.venv` — recreated it
+(`python3.12 -m venv` + `pip install -r requirements*.txt`). DB-backed tests ran against a local
+Postgres 16 cluster (`pg_ctlcluster 16 main start`; role/db `coach`/`garmin_coach_test`, schema
+`coach`, `alembic upgrade head` → 008). None of this is committed; it's container-local scaffolding.
 
 **Auth simplification context:** Phases 1 and 2 are live; Phase 3 (destructive PIN/JWT cleanup)
 still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
@@ -128,6 +150,20 @@ all `Planned`. Batch 20 is the next unshipped batch.
   change or observations).
 
 ## Log
+- **2026-06-23** — Batch 20 (weekly & monthly deep reviews) implementation ready on
+  `claude/batch-start-config-wdq8ms`. Added `services/reviews.py` (pure `compute_review_rollup`
+  aggregating a period's sleep/recovery/load+adherence/verdicts/thermal into reproducible
+  averages/counts/by-type/first-vs-second-half trends; `ReviewService` reuses Batch 19
+  `StrengthBriefService` + Batch 17 `InsightsService`; thin Anthropic Messages boundary reused from
+  Batch 6 `#47`, fakeable, stores narrative + prompt/model metadata in `analyses` as
+  `weekly_review` / `monthly_review`), `routers/reviews.py` (`GET /api/v1/reviews/{period}` preview =
+  never writes; `POST /…/run` generate+store; calendar-aligned windows → idempotent per period; #71),
+  registered in `main.py`. Frontend: `ReviewsPage.tsx` + `/reviews` route + TabBar tab,
+  `reviewEnvelopeSchema` in `@coach/shared`. Recorded DECISIONS #81. Deterministic rollup + narrative
+  boundary, no migration, no new cron. Verified backend pytest **256 passed** (14 new, run against a
+  real local Postgres so the DB-backed preview/run/idempotency tests actually execute), ruff + mypy
+  clean; shared typecheck + 7 tests; web lint 0 errors, 16 vitest, vite build OK. Awaiting
+  `/closeout 20`.
 - **2026-06-23** — Closeout: merged Batch 19 (PR #21, merge `3737338`) — strength watching-brief
   engine live. CI run #135 green on branch HEAD (`b998c43`); Railway auto-deployed to `3737338` within
   minutes; production smoke passed: `/api/v1/health` returns the merge SHA, web `/` 200,
