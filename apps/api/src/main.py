@@ -22,6 +22,7 @@ from src.routers import (
     coaching_state,
     daily_loop,
     experiments,
+    handover,
     health,
     holiday,
     insights,
@@ -116,3 +117,4 @@ app.include_router(experiments.router)
 app.include_router(strength_brief.router)
 app.include_router(reviews.router)
 app.include_router(trends.router)
+app.include_router(handover.router)

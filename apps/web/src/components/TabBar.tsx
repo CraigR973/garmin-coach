@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import {
   CalendarCheck,
   ClipboardList,
+  FileDown,
   FileText,
   FlaskConical,
   Hammer,
@@ -28,6 +29,7 @@ const TABS: ReadonlyArray<TabDef> = [
   { to: '/reviews', label: 'Reviews', Icon: FileText },
   { to: '/trends', label: 'Trends', Icon: TrendingUp },
   { to: '/experiments', label: 'Tests', Icon: FlaskConical },
+  { to: '/handover', label: 'Handover', Icon: FileDown },
   { to: '/holiday', label: 'Holiday', Icon: Umbrella },
   { to: '/coach-state', label: 'Coach', Icon: ClipboardList },
   { to: '/settings', label: 'Settings', Icon: SettingsIcon },

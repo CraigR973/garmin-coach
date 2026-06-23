@@ -768,3 +768,25 @@ export const experimentEvaluationEnvelopeSchema = z.object({
   meta: apiMetaSchema,
   errors: z.array(apiErrorSchema),
 });
+
+// --- Auto-generated handover-doc export (Batch 23) ---
+
+export const storedHandoverSchema = z.object({
+  generatedAtUtc: z.string().min(1),
+  modelName: z.string().nullable(),
+  promptVersion: z.string(),
+  markdown: z.string(),
+});
+
+export const handoverEnvelopeSchema = z.object({
+  data: z.object({
+    subjectDate: isoDateSchema,
+    // The assembled retained-state packet is deliberately freeform — it composes
+    // KB, plan, baselines, reviews, trends, experiments and the strength brief.
+    packet: jsonObjectSchema.default({}),
+    markdown: z.string(),
+    export: storedHandoverSchema.nullable(),
+  }),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});

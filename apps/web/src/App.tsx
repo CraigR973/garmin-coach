@@ -44,6 +44,9 @@ const TrendsPage = lazy(() =>
 const ExperimentsPage = lazy(() =>
   import('./pages/ExperimentsPage').then((m) => ({ default: m.ExperimentsPage })),
 );
+const HandoverPage = lazy(() =>
+  import('./pages/HandoverPage').then((m) => ({ default: m.HandoverPage })),
+);
 const OfflinePage = lazy(() =>
   import('./pages/OfflinePage').then((m) => ({ default: m.OfflinePage })),
 );
@@ -105,6 +108,7 @@ export function App() {
                       <Route path="/reviews" element={<ReviewsPage />} />
                       <Route path="/trends" element={<TrendsPage />} />
                       <Route path="/experiments" element={<ExperimentsPage />} />
+                      <Route path="/handover" element={<HandoverPage />} />
                       <Route path="/coach-state" element={<CoachStatePage />} />
                       <Route path="/settings" element={<SettingsPage />} />
                       <Route path="/offline" element={<OfflinePage />} />
