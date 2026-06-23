@@ -1,32 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Brand } from '@/components/Brand';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { storeDeviceToken, type StoredPlayer } from '@/lib/tokens';
 import { brand } from '@/theme/tokens';
-
-if (import.meta.env.PROD && import.meta.env.VITE_API_URL === undefined) {
-  throw new Error('VITE_API_URL is required in production builds');
-}
-
-const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
 type ActivateState = 'activating' | 'error';
 
-function playerFromApiResponse(data: {
-  player: { id: string; display_name: string; role: string; timezone: string };
-}): StoredPlayer {
-  return {
-    id: data.player.id,
-    displayName: data.player.display_name,
-    role: data.player.role as 'player' | 'admin',
-    timezone: data.player.timezone,
-  };
-}
-
 export function ActivatePage() {
   const navigate = useNavigate();
+  const { activateDevice } = useAuth();
   const [state, setState] = useState<ActivateState>('activating');
   const [error, setError] = useState('');
 
@@ -43,23 +27,8 @@ export function ActivatePage() {
       }
 
       try {
-        const resp = await fetch(`${BASE}/api/v1/auth/activate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code }),
-        });
-        if (!resp.ok) {
-          const body = await resp.json().catch(() => ({}));
-          throw new Error(
-            (body as { detail?: string }).detail ?? 'Activation failed. Ask Craig for a new link.',
-          );
-        }
-
-        const data = await resp.json();
+        await activateDevice(code);
         if (cancelled) return;
-
-        const player = playerFromApiResponse(data);
-        storeDeviceToken(data.device_token, player);
         window.history.replaceState(null, '', '/activate');
         navigate('/', { replace: true });
       } catch (err) {
@@ -76,7 +45,7 @@ export function ActivatePage() {
     return () => {
       cancelled = true;
     };
-  }, [navigate]);
+  }, [activateDevice, navigate]);
 
   return (
     <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-4 pt-safe pb-safe">

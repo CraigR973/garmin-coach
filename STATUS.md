@@ -6,9 +6,9 @@
 
 ## Now
 
-**Phase:** Post-v2 auth simplification — **Phase 1 additive device-token flow implemented locally**
-on top of shipped `main`; Phase 2/3 cutover + deletion are still pending per
-`docs/reviews/auth-simplification-plan.md`.
+**Phase:** Post-v2 auth simplification — **Phase 1 additive device-token flow is now live**
+via break-glass Railway/Vercel production deploys; Phase 2/3 cutover + deletion are still pending
+per `docs/reviews/auth-simplification-plan.md`.
 
 This session carries Decision #73/#74 through the first reversible step without deleting the
 PIN/JWT path:
@@ -19,23 +19,29 @@ PIN/JWT path:
 - `POST /api/v1/auth/activate` exchanges a single-use activation code for a long-lived device
   token, and new admin CLI `python -m src.activate --profile <name>` mints the
   `.../activate#code=...` link from `frontend_origin`;
-- web Phase 1 is wired: `/activate` page consumes the hash code, stores a device token alongside
-  the cached profile, and the client token layer now supports either refreshable JWT sessions or
-  long-lived device tokens without breaking the old login flow.
+- web Phase 1 is wired: `/activate` consumes the hash code, exchanges it through the shared auth
+  context, stores a device token alongside the cached profile, and the client token layer now
+  supports either refreshable JWT sessions or long-lived device tokens without breaking the old
+  login flow;
+- the live activation debugging pass fixed three production-only web issues: the app must treat an
+  unset `VITE_API_URL` as **same-origin** in production (not `localhost`), `/activate` must call
+  `AuthContext.activateDevice()` instead of writing local storage behind React's back, and the bad
+  production guard that crashed on missing `VITE_API_URL` was removed.
 
 **Verified:** backend `pytest apps/api/tests/test_auth.py` **19 passed**; backend `ruff check`
-clean; backend `mypy src` clean (52 files); web `pnpm build` passes with the new `/activate`
-route; web `pnpm lint` has **warnings only** (existing `react-refresh/only-export-components`
-warnings in UI/context files, no errors).
+clean; backend `mypy src` clean (52 files); web `pnpm build` passes; web `pnpm lint` has
+**warnings only** (existing `react-refresh/only-export-components` warnings in UI/context files,
+no errors). Production `/api/v1/auth/activate` is live on Railway, Vercel production now serves
+the fixed `/activate` route, and a fresh one-time Mark activation link was minted after the fix.
 
-**Next step:** run a real phone activation smoke with `python -m src.activate --profile Mark`,
-open the link once on-device, confirm `/api/v1/me/profile` and the dashboard load under the new
-device token, then decide whether to start Phase 2 (frontend cutover / hide PIN login) or leave
-the additive fallback in place for a few days.
+**Next step:** finish the real phone activation smoke with the latest one-time Mark link, confirm
+the dashboard loads under the new device token on reopen, then decide whether to start Phase 2
+(frontend cutover / hide PIN login) or leave the additive fallback in place for a few days.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
-- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (serves `main`; latest verified deploy `88cdcd1` = Batch 17 closeout merge)
+- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (currently a break-glass
+  Railway upload, so `/health` reports `sha="unknown"` rather than a Git-backed commit SHA)
 - DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-007 applied (007 = workout_delivery_proposals, deployed with Batch 12)
 
 **Hosting identifiers (non-secret):**
@@ -136,6 +142,19 @@ the additive fallback in place for a few days.
   change or observations).
 
 ## Log
+- **2026-06-23** — Live activation route debugging + production fix-up. Break-glass deployed the
+  backend to Railway and the web app to Vercel production so Phase 1 auth could be exercised
+  end-to-end. Found and fixed three production-only web bugs while reproducing `/activate` in a
+  headless browser: (1) the frontend crashed on load if `VITE_API_URL` was unset in production;
+  (2) after removing that guard, production still fell back to `http://localhost:8000` instead of
+  same-origin, so CSP blocked `/api/v1/auth/activate`; (3) after fixing the API base, `/activate`
+  wrote the device token directly to local storage and then navigated before `AuthContext` knew the
+  user was signed in, bouncing the route back to `/login`. Fixed by treating unset
+  `VITE_API_URL` as same-origin in production and routing activation through
+  `AuthContext.activateDevice()`. Verified the repaired production flow in headless Chromium, then
+  minted a fresh one-time Mark link from inside the live Railway container. Current follow-up is
+  the real phone smoke. Note: because the backend is on a break-glass Railway upload rather than a
+  Git-backed deploy, `/api/v1/health` now reports `sha=\"unknown\"`.
 - **2026-06-22** — Auth simplification Phase 1 implementation ready locally (additive, reversible).
   Finished the interrupted device-token work from the v1/v2 review plan: `auth.py`
   `get_current_user` now accepts JWT **or** opaque device tokens; `refresh_tokens` gained additive

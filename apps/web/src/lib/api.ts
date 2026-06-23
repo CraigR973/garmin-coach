@@ -8,11 +8,8 @@ import {
   getStoredPlayer,
 } from './tokens';
 
-if (import.meta.env.PROD && import.meta.env.VITE_API_URL === undefined) {
-  throw new Error('VITE_API_URL is required in production builds');
-}
-// Empty string = same-origin (requests go through Vercel proxy rewrite).
-const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+// Empty/unset in production = same-origin (requests go through Vercel proxy rewrite).
+const BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? '' : 'http://localhost:8000');
 
 let refreshPromise: Promise<void> | null = null;
 
