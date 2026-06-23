@@ -6,13 +6,36 @@
 
 ## Now
 
-**Phase:** v3 — **Batch 22 merged to `main` + live** (PR #25, squash merge `86205e5`, 2026-06-23) —
-hypothesis evaluation. CI green across all 6 jobs on the PR; **production verified**: `/api/v1/health`
-reports `sha=86205e5`, web `/` → 200, and the new `GET /api/v1/experiments`, `GET …/{id}/evaluate`,
-`POST …/{id}/evaluate/run` routes are live and 401 unauthenticated (auth-gated, non-mutating). Batch 21
-merged (PR #24, `1c8ad85`); Batch 20 merged (PR #23, `e1cd2cc`); Batch 19 shipped + live (PR #21). All v2
-batches + auth remediation are live. **The only remaining v3 batch is Batch 23** (auto-generated
-handover-doc export — the #13 capstone): `/batch-start 23`.
+**Phase:** v3 — **Batch 23 (auto-generated handover-doc export — the #13 capstone) implementation ready on
+`claude/batch-start-23-1u534n`, awaiting `/closeout 23`.** This is the **final v3 batch**: with it shipped,
+the whole v1→v3 roadmap is complete. Batch 22 merged + live (PR #25, `86205e5`); Batch 21 merged (PR #24,
+`1c8ad85`); Batch 20 merged (PR #23, `e1cd2cc`); Batch 19 shipped + live (PR #21). All v2 batches + auth
+remediation are live.
+
+**Batch 23 shipped (auto-generated handover-doc export — 🔴 High, DECISIONS #84):**
+- `services/handover.py`: deterministic `build_handover_packet` (pure, DB-free) composes the full retained
+  state — KB (only the six known sections `profile`/`data_quality_rules`/`age_adjustment`/`sleep_protocol`/
+  `training_plan`/`active_hypotheses`, in hand-doc order), current plan/block + upcoming active workouts,
+  `metric_baselines`, the most recent weekly + monthly reviews (Batch 20), the seasonal year-on-year
+  comparison (Batch 21, reused via `TrendsService`), experiments + their latest deterministic evaluation
+  (Batch 22, reused via `ExperimentEvaluationService`), and the strength brief (Batch 19) — with the
+  data-quality rules echoed under `dataQualityGuardrails`. `render_handover_markdown` (pure, no model)
+  renders the portable markdown handover doc so the **export always works and faithfully reflects current
+  state** (the #13 round-trip), surfacing L/R balance only as a rule. `HandoverService.run` polishes the doc
+  through the **Batch 20 Anthropic boundary** (handover-specific system prompt), stored in `analyses` as
+  `handover_export`, idempotent per day, fakeable without `ANTHROPIC_API_KEY`.
+- `routers/handover.py`: `GET /api/v1/handover` previews packet + deterministic markdown + latest narrative
+  and **never writes** (experiments listed with `seed=False` so a GET can't lazy-seed); `POST …/run`
+  generates + records; `GET …/export` downloads the deterministic markdown as a `text/markdown` attachment.
+  No migration, no new cron.
+- Frontend: new `HandoverPage.tsx` + `/handover` route + TabBar "Handover" tab; `handoverEnvelopeSchema` in
+  `@coach/shared`. Deterministic export preview, "Download .md" (client-side Blob, no extra round-trip), and
+  "Generate narrative" wired to `/run`.
+- Tests: 9 backend (`test_handover.py`) — pure packet composition + the faithful markdown render + the
+  empty-state + L/R-balance-only-as-rule guards + DB-backed preview-never-writes / run-stores /
+  idempotent-per-day — all green against a **real local Postgres**; 1 web vitest. Backend **296 passed**,
+  ruff + mypy clean (61 files); shared typecheck + 7 tests; web lint 0 errors, 20 vitest (1 new), vite build
+  (incl. `tsc`) OK.
 
 **Batch 22 shipped (hypothesis evaluation — extends the Batch 17 tracker #72, DECISIONS #83):**
 - `services/experiment_evaluation.py`: deterministic, advisory engine reusing the Batch 17 insights math
@@ -202,6 +225,21 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-23** — Batch 23 (auto-generated handover-doc export — the #13 capstone) implementation ready on
+  `claude/batch-start-23-1u534n`. Added `services/handover.py` (deterministic `build_handover_packet`
+  composing KB + plan/block + baselines + recent reviews + seasonal YoY + experiments-with-evaluations +
+  strength brief into one inspectable packet, reusing every prior batch's service rather than recomputing;
+  `render_handover_markdown` renders the portable markdown doc deterministically — no model — so the export
+  always works and faithfully reflects retained state, the #13 round-trip; `HandoverService.run` polishes it
+  through the Batch 20 Anthropic boundary with a handover-specific system prompt, stored in `analyses` as
+  `handover_export`, idempotent per day), `routers/handover.py` (`GET /api/v1/handover` preview never writes
+  — experiments listed `seed=False`; `POST …/run` generate+store; `GET …/export` downloads the deterministic
+  markdown attachment), registered in `main.py`. Frontend: `HandoverPage.tsx` + `/handover` route + TabBar
+  "Handover" tab, `handoverEnvelopeSchema` in `@coach/shared`, client-side `.md` download from the returned
+  markdown. Recorded DECISIONS #84. No LLM dependency for the export floor, no migration, no new cron.
+  Verified backend pytest **296 passed** (9 new, run against a real local Postgres so the DB-backed
+  preview/run/idempotency tests actually execute), ruff + mypy clean (61 files); shared typecheck + 7 tests;
+  web lint 0 errors, 20 vitest (1 new), vite build (incl. `tsc`) OK. Awaiting `/closeout 23`.
 - **2026-06-23** — Closeout: merged Batch 22 (PR #25, squash merge `86205e5`) — hypothesis evaluation. CI
   green across all 6 jobs on the PR (ruff, mypy, pytest, alembic, security-audit, web build) plus Vercel
   preview. **Production verified directly** (egress reached the hosts this session): `/api/v1/health` →
