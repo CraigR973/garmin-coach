@@ -28,6 +28,7 @@ from src.routers import (
     me,
     notifications,
     restructure,
+    strength_brief,
     workout_delivery,
 )
 from src.scheduler import create_scheduler
@@ -110,3 +111,4 @@ app.include_router(holiday.router)
 app.include_router(block_generator.router)
 app.include_router(insights.router)
 app.include_router(experiments.router)
+app.include_router(strength_brief.router)

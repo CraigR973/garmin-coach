@@ -13,6 +13,7 @@ from src.database import get_db
 from src.models.coaching import Analysis, DailyMetric, ManualEntry, PlannedWorkout, Sleep
 from src.services.daily_loop import DailyLoopService
 from src.services.environment_freshness import is_hive_temperature_fresh
+from src.services.strength_brief import StrengthBriefResult
 
 router = APIRouter(prefix="/api/v1/daily-loop", tags=["daily-loop"])
 
@@ -190,6 +191,31 @@ class DataQualityWarningOut(BaseModel):
     detail: str | None = None
 
 
+class WindowStatsOut(BaseModel):
+    sessionCount: int
+    totalDurationMin: int
+    totalLoadProxy: float
+    sessionsPerWeek: float
+
+
+class StrengthSessionOut(BaseModel):
+    activityId: str
+    activityName: str
+    activityType: str
+    sessionDate: str
+    durationMin: int | None
+    trainingLoad: float | None
+
+
+class StrengthBriefOut(BaseModel):
+    asOfDate: str
+    window4w: WindowStatsOut
+    window12w: WindowStatsOut
+    recentSessions: list[StrengthSessionOut]
+    trend: str
+    trendReason: str
+
+
 class DailyLoopData(BaseModel):
     subjectDate: str
     timezone: str
@@ -201,6 +227,7 @@ class DailyLoopData(BaseModel):
     plannedWorkouts: list[PlannedWorkoutOut]
     thermalState: ThermalStateOut
     dataQualityWarnings: list[DataQualityWarningOut]
+    strengthBrief: StrengthBriefOut
 
 
 class DailyLoopEnvelope(BaseModel):
@@ -379,6 +406,37 @@ def _serialize_planned_workout(
     )
 
 
+def _serialize_strength_brief(result: StrengthBriefResult) -> StrengthBriefOut:
+    return StrengthBriefOut(
+        asOfDate=result.as_of_date.isoformat(),
+        window4w=WindowStatsOut(
+            sessionCount=result.window_4w.session_count,
+            totalDurationMin=result.window_4w.total_duration_min,
+            totalLoadProxy=result.window_4w.total_load_proxy,
+            sessionsPerWeek=result.window_4w.sessions_per_week,
+        ),
+        window12w=WindowStatsOut(
+            sessionCount=result.window_12w.session_count,
+            totalDurationMin=result.window_12w.total_duration_min,
+            totalLoadProxy=result.window_12w.total_load_proxy,
+            sessionsPerWeek=result.window_12w.sessions_per_week,
+        ),
+        recentSessions=[
+            StrengthSessionOut(
+                activityId=str(s.activity_id),
+                activityName=s.activity_name,
+                activityType=s.activity_type,
+                sessionDate=s.session_date.isoformat(),
+                durationMin=s.duration_min,
+                trainingLoad=s.training_load,
+            )
+            for s in result.recent_sessions
+        ],
+        trend=result.trend,
+        trendReason=result.trend_reason,
+    )
+
+
 def _envelope(player: CurrentUser, snapshot: Any) -> DailyLoopEnvelope:
     morning_analysis = _serialize_analysis(snapshot.morning_analysis)
     fresh_temperature = (
@@ -438,6 +496,7 @@ def _envelope(player: CurrentUser, snapshot: Any) -> DailyLoopEnvelope:
                 )
                 for warning in snapshot.data_quality_warnings
             ],
+            strengthBrief=_serialize_strength_brief(snapshot.strength_brief),
         ),
         meta=ApiMeta(generatedAtUtc=_generated_at()),
         errors=[],
