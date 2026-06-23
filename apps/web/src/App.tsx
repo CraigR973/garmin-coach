@@ -41,6 +41,9 @@ const ReviewsPage = lazy(() =>
 const TrendsPage = lazy(() =>
   import('./pages/TrendsPage').then((m) => ({ default: m.TrendsPage })),
 );
+const ExperimentsPage = lazy(() =>
+  import('./pages/ExperimentsPage').then((m) => ({ default: m.ExperimentsPage })),
+);
 const OfflinePage = lazy(() =>
   import('./pages/OfflinePage').then((m) => ({ default: m.OfflinePage })),
 );
@@ -101,6 +104,7 @@ export function App() {
                       <Route path="/builder" element={<BlockGeneratorPage />} />
                       <Route path="/reviews" element={<ReviewsPage />} />
                       <Route path="/trends" element={<TrendsPage />} />
+                      <Route path="/experiments" element={<ExperimentsPage />} />
                       <Route path="/coach-state" element={<CoachStatePage />} />
                       <Route path="/settings" element={<SettingsPage />} />
                       <Route path="/offline" element={<OfflinePage />} />
