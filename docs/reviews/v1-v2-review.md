@@ -20,6 +20,13 @@ Actions taken since this review was written:
 - **P2-1 (web CSP/headers) — now load-bearing** for the auth plan; it lands in that plan's Phase 3.
 - **Still-open quick wins:** rotate the production PIN off `1234` (interim), bump `react-router-dom` (P2-2), add dependency/secret scanning to CI (P2-3).
 
+## Update — 2026-06-23 (closeout — supersedes the items above)
+
+- **P2-1 / P2-2 / P2-3 — SHIPPED** ([PR #16](https://github.com/CraigR973/garmin-coach/pull/16); Decision #76): `vercel.json` CSP/security-headers (verified live on the prod origin), `react-router-dom` 6.30.4, and a `security-audit` CI gate (`pnpm audit --prod` + `pip-audit`). P2-1 landed early — not in Phase 3 as line 20 anticipated.
+- **P3-5 / P3-6 / P3-7 — SHIPPED** ([PR #17](https://github.com/CraigR973/garmin-coach/pull/17); Decision #78): stricter prod secrets validator (≥32 + distinct), DB backup via `PGPASSWORD`, and prod API docs disabled (verified: `/api/docs` → 404 in prod).
+- **Auth Phase 1 — SHIPPED** ([PR #18](https://github.com/CraigR973/garmin-coach/pull/18); Decision #77): additive device-token activation alongside PIN. This is the path that **closes** P1-1, P1-3, P3-1/2/3 once Phases 2-3 remove the PIN/JWT/lockout machinery — until then those remain open and the PIN is still `1234`.
+- **Still open:** P1-3 (PIN `1234`, live until Phase 3); P1-1, P3-1, P3-2, P3-3 (close with Phase 2-3); P3-4 (scheduler isolation) and P3-9 (hygiene) — optional. P3-8 accepted, no action.
+
 ---
 
 ## Executive summary

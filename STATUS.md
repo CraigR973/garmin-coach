@@ -6,43 +6,37 @@
 
 ## Now
 
-**Phase:** Post-v2 auth simplification — **Phase 1 additive device-token flow is now live**
-via break-glass Railway/Vercel production deploys; Phase 2/3 cutover + deletion are still pending
-per `docs/reviews/auth-simplification-plan.md`.
+**Phase:** Post-v2 review remediation — **complete except the deferred auth Phases 2-3.** `main` is
+at `764adb1`; the auth Phase 1 work and the P3 hardening are both merged and Git-backed (the earlier
+break-glass deploys are superseded), and production is verified.
 
-This session carries Decision #73/#74 through the first reversible step without deleting the
-PIN/JWT path:
-- backend dual-path auth now accepts either the existing JWT access token **or** a hashed opaque
-  device token via `get_current_user`, so protected routes work app-wide for both modes;
-- `refresh_tokens` grows additive `purpose` + `used_at` support plus migration `008`, allowing
-  three token kinds: `refresh`, `device`, `activation`;
-- `POST /api/v1/auth/activate` exchanges a single-use activation code for a long-lived device
-  token, and new admin CLI `python -m src.activate --profile <name>` mints the
-  `.../activate#code=...` link from `frontend_origin`;
-- web Phase 1 is wired: `/activate` consumes the hash code, exchanges it through the shared auth
-  context, stores a device token alongside the cached profile, and the client token layer now
-  supports either refreshable JWT sessions or long-lived device tokens without breaking the old
-  login flow;
-- the live activation debugging pass fixed three production-only web issues: the app must treat an
-  unset `VITE_API_URL` as **same-origin** in production (not `localhost`), `/activate` must call
-  `AuthContext.activateDevice()` instead of writing local storage behind React's back, and the bad
-  production guard that crashed on missing `VITE_API_URL` was removed.
+Shipped + live since the v1+v2 review (`docs/reviews/v1-v2-review.md`):
+- **Auth Phase 1** (PR #18; Decisions #73-74/#77) — additive passwordless device-token activation
+  alongside PIN login: migration `008` (`purpose`/`used_at` on `refresh_tokens`), dual-path
+  `get_current_user` (accepts a JWT **or** a hashed device token), `POST /api/v1/auth/activate`, the
+  `python -m src.activate --profile <name>` CLI, and the `/activate` PWA route. Nothing removed — PIN
+  login still works as the fallback.
+- **P3 hardening** (PR #17; Decision #78) — prod API docs disabled (`/api/docs|redoc|openapi.json`
+  → 404 in production), the prod secrets validator now also requires JWT secrets ≥32 chars + distinct,
+  and DB backups pass the password via `PGPASSWORD` instead of the `pg_dump` DSN argv.
+- Earlier review fixes: Red-never-VO2 delivery gate (PR #14, #75); web CSP/headers + `react-router`
+  bump + CI dep-audit (PR #16, #76).
 
-**Verified:** backend `pytest apps/api/tests/test_auth.py` **19 passed**; backend `ruff check`
-clean; backend `mypy src` clean (52 files); web `pnpm build` passes; web `pnpm lint` has
-**warnings only** (existing `react-refresh/only-export-components` warnings in UI/context files,
-no errors). Production `/api/v1/auth/activate` is live on Railway, Vercel production now serves
-the fixed `/activate` route, and a fresh one-time Mark activation link was minted after the fix.
+**Verified (prod, 2026-06-23):** `/api/v1/health` 200 with a real SHA `764adb1…` (Git-backed deploy
+restored — no more `sha="unknown"`); `/api/docs` + `/redoc` + `/openapi.json` all 404; web `/` 200;
+`/api/v1/daily-loop` 401 unauthenticated (auth gate intact). Backend pytest 167 passed / 51 skipped,
+ruff + mypy clean; CI green on both PRs incl. the dependency-audit gate.
 
-**Next step:** finish the real phone activation smoke with the latest one-time Mark link, confirm
-the dashboard loads under the new device token on reopen, then decide whether to start Phase 2
-(frontend cutover / hide PIN login) or leave the additive fallback in place for a few days.
+**Next step:** decide whether to start **auth Phase 2** (flip the PWA default to device-token auth and
+hide the PIN form; PIN endpoints stay as a fallback) per `docs/reviews/auth-simplification-plan.md`.
+Phase 3 (delete PIN/JWT/lockout, drop the dead columns) is the destructive step that closes review
+findings P1-1/P1-3/P3-1/2/3 — and removes the still-`1234` PIN. Optional leftover hardening: P3-4
+(scheduler per-profile isolation), P3-9 (vestigial `SiteRole` enum, test warnings).
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
-- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (currently a break-glass
-  Railway upload, so `/health` reports `sha="unknown"` rather than a Git-backed commit SHA)
-- DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-007 applied (007 = workout_delivery_proposals, deployed with Batch 12)
+- Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (Vercel/Railway auto-deploy from GitHub `main`; Git-backed again — `/health` reports the live commit SHA. `railway up --service api` is break-glass)
+- DB: Supabase project `pzqmswvozjnkxbqqowuj` (eu-north-1), `coach` schema, migrations 001-008 applied (008 = device-token `purpose`/`used_at`, deployed with auth Phase 1)
 
 **Hosting identifiers (non-secret):**
 - GitHub repo: https://github.com/CraigR973/garmin-coach (private)
@@ -142,6 +136,17 @@ the dashboard loads under the new device token on reopen, then decide whether to
   change or observations).
 
 ## Log
+- **2026-06-23** — Closeout: merged the auth Phase 1 work and the P3 hardening to `main`
+  (now Git-backed, superseding the break-glass deploys). PR #18 (auth Phase 1 — device-token
+  activation alongside PIN; migration 008; Decisions #73-74/#77) and PR #17 (P3-5/6/7 — secret
+  validator ≥32+distinct, backup `PGPASSWORD`, prod API docs disabled; Decision #78) both CI-green;
+  squash-merged to `main` (`4f646cb`, then `764adb1`). Verified prod secrets are 64-char + distinct
+  before merging #17 (P3-5 gates startup). Production verified on `764adb1`: `/api/v1/health` 200 with
+  a real SHA (no more `sha="unknown"`), `/api/docs|redoc|openapi.json` all 404, web `/` 200,
+  `/api/v1/daily-loop` 401. Backed up the previously local-only auth branch to origin in the process.
+  The v1+v2 review is now closed except the deferred auth Phases 2-3 (which close P1-1/P1-3/P3-1/2/3)
+  and optional P3-4/P3-9. Updated `docs/reviews/v1-v2-review.md`, `ARCHITECTURE.md` §1/§7, `DECISIONS.md`
+  #77-78.
 - **2026-06-23** — Live activation route debugging + production fix-up. Break-glass deployed the
   backend to Railway and the web app to Vercel production so Phase 1 auth could be exercised
   end-to-end. Found and fixed three production-only web bugs while reproducing `/activate` in a
