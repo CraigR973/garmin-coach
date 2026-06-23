@@ -1,6 +1,6 @@
 # Auth simplification — passwordless device tokens (Option B)
 
-**Status:** Phase 1 implemented locally (activation CLI/API + dual-path auth + `/activate` page), not yet phone-smoke-verified or cut over · **Decision:** `DECISIONS.md` #73–74 · **Origin:** `docs/reviews/v1-v2-review.md` (P1-1, P1-3, P2-1, P3-1/2/3)
+**Status:** Phases 1-2 shipped and live in production (PR #18, #19 — DECISIONS #77/#79); device tokens are now the default sign-in, PIN demoted to a fallback toggle. Phase 3 (destructive) is the only step left, to land after a soak. · **Decision:** `DECISIONS.md` #73–74 · **Origin:** `docs/reviews/v1-v2-review.md` (P1-1, P1-3, P2-1, P3-1/2/3)
 **Date:** 2026-06-22
 
 > Replaces the inherited **display-name + 4-digit-PIN + JWT** login with a
@@ -47,7 +47,7 @@ Thereafter:  open PWA ──► every /api call carries the token ──► API 
 
 ## Phased plan (each phase ships independently; nothing deleted until Phase 3)
 
-### Phase 1 — Add the device-token path alongside PIN (additive, fully reversible)
+### Phase 1 — Add the device-token path alongside PIN (additive, fully reversible) — ✅ DONE (PR #18)
 - **CLI:** `python -m src.activate --profile <name>` → mints a single-use code,
   prints the `…/activate#code=…` link. Bootstraps your own device too (no
   chicken-and-egg). Activation codes can live in the existing token table with a
@@ -63,7 +63,7 @@ Thereafter:  open PWA ──► every /api call carries the token ──► API 
 - **Acceptance:** activate your own phone via a link; PIN login still works; existing
   tests stay green. **Reversible:** nothing removed.
 
-### Phase 2 — Cut the frontend over, hide the login form
+### Phase 2 — Cut the frontend over, hide the login form — ✅ DONE (PR #19)
 - **Frontend:** `contexts/AuthContext.tsx` — on load, if a device token exists →
   `GET /api/v1/me` for identity; else show an "ask Craig for a link" screen instead
   of the PIN form. Drop the silent-refresh / refresh-on-401 logic in `lib/api.ts`

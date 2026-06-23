@@ -6,32 +6,32 @@
 
 ## Now
 
-**Phase:** Post-v2 review remediation — **complete except the deferred auth Phases 2-3.** `main` is
-at `764adb1`; the auth Phase 1 work and the P3 hardening are both merged and Git-backed (the earlier
-break-glass deploys are superseded), and production is verified.
+**Phase:** Auth simplification — **Phases 1 and 2 are complete and live in production**; the
+destructive Phase 3 is the only step left. `main` is at `0187e6a`. The full v1+v2 review is closed
+bar the items Phase 3 finishes.
 
-Shipped + live since the v1+v2 review (`docs/reviews/v1-v2-review.md`):
-- **Auth Phase 1** (PR #18; Decisions #73-74/#77) — additive passwordless device-token activation
-  alongside PIN login: migration `008` (`purpose`/`used_at` on `refresh_tokens`), dual-path
-  `get_current_user` (accepts a JWT **or** a hashed device token), `POST /api/v1/auth/activate`, the
-  `python -m src.activate --profile <name>` CLI, and the `/activate` PWA route. Nothing removed — PIN
-  login still works as the fallback.
-- **P3 hardening** (PR #17; Decision #78) — prod API docs disabled (`/api/docs|redoc|openapi.json`
-  → 404 in production), the prod secrets validator now also requires JWT secrets ≥32 chars + distinct,
-  and DB backups pass the password via `PGPASSWORD` instead of the `pg_dump` DSN argv.
-- Earlier review fixes: Red-never-VO2 delivery gate (PR #14, #75); web CSP/headers + `react-router`
-  bump + CI dep-audit (PR #16, #76).
+Shipped + live:
+- **Auth Phase 2** (PR #19; Decision #79) — the PWA leads with device-token activation: `/login`
+  shows an "Invite only — ask Craig for a link" screen and the PIN form is demoted behind a "Use a
+  PIN instead" fallback toggle. Frontend-only; PIN login + endpoints still work (reversible).
+- **Auth Phase 1** (PR #18; Decisions #73-74/#77) — additive passwordless device-token activation:
+  migration `008`, dual-path `get_current_user` (JWT **or** device token), `POST /api/v1/auth/activate`,
+  the `python -m src.activate --profile <name>` CLI, and the `/activate` PWA route.
+- **P3 hardening** (PR #17; Decision #78) — prod API docs disabled, JWT secrets validated (≥32 +
+  distinct), DB backup via `PGPASSWORD`. Earlier: Red-never-VO2 gate (PR #14, #75); web CSP/headers
+  + `react-router` bump + CI dep-audit (PR #16, #76).
 
-**Verified (prod, 2026-06-23):** `/api/v1/health` 200 with a real SHA `764adb1…` (Git-backed deploy
-restored — no more `sha="unknown"`); `/api/docs` + `/redoc` + `/openapi.json` all 404; web `/` 200;
-`/api/v1/daily-loop` 401 unauthenticated (auth gate intact). Backend pytest 167 passed / 51 skipped,
-ruff + mypy clean; CI green on both PRs incl. the dependency-audit gate.
+**Verified (prod, 2026-06-23):** Phase 2 invite copy confirmed live in the deployed Vercel bundle;
+web `/` + `/login` 200; `/api/docs` 404 (P3-7); `/api/v1/daily-loop` 401 (auth gate intact). CI green
+on every PR; full web vitest 14 passed; backend pytest 167 / 51 skipped, ruff + mypy clean. (`/health`
+reports `149efaa` — Phase 2 was frontend-only, so the backend is byte-identical.)
 
-**Next step:** decide whether to start **auth Phase 2** (flip the PWA default to device-token auth and
-hide the PIN form; PIN endpoints stay as a fallback) per `docs/reviews/auth-simplification-plan.md`.
-Phase 3 (delete PIN/JWT/lockout, drop the dead columns) is the destructive step that closes review
-findings P1-1/P1-3/P3-1/2/3 — and removes the still-`1234` PIN. Optional leftover hardening: P3-4
-(scheduler per-profile isolation), P3-9 (vestigial `SiteRole` enum, test warnings).
+**Next step:** **Phase 3** — the destructive cleanup (`docs/reviews/auth-simplification-plan.md`):
+delete the PIN/JWT/lockout code + reset/change-pin endpoints, the bcrypt + HS256 helpers, and the
+`api.ts` refresh logic; drop the dead `pin_hash`/`failed_login_count`/`locked_until` columns and the
+`jwt_access_secret`/`jwt_refresh_secret` settings. Closes review P1-1/P1-3/P3-1/2/3 and retires the
+`1234` PIN. Best after Phase 2 soaks a few days + a confirmed device-token session on Mark's phone.
+Optional leftover hardening: P3-4 (scheduler isolation), P3-9 (hygiene).
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -136,6 +136,13 @@ findings P1-1/P1-3/P3-1/2/3 — and removes the still-`1234` PIN. Optional lefto
   change or observations).
 
 ## Log
+- **2026-06-23** — Closeout: merged auth Phase 2 (PR #19, `0187e6a`) — the PWA cutover to
+  device-token-first login, with the PIN form demoted behind a "Use a PIN instead" fallback toggle.
+  Frontend-only (`LoginPage`); CI green; full web vitest 14 passed (2 new LoginPage tests). Verified
+  live by confirming the new invite copy in the prod Vercel bundle (`/assets/index-AGSoHWQE.js`),
+  `/login` 200, no console errors. Auth Phases 1+2 now complete and live; only the destructive Phase 3
+  remains (closes P1-1/P1-3/P3-1/2/3, retires the `1234` PIN). Updated `STATUS.md`, `ARCHITECTURE.md`
+  §1/§7, `DECISIONS.md` #79, and ticked Phases 1-2 in `auth-simplification-plan.md`.
 - **2026-06-23** — Closeout: merged the auth Phase 1 work and the P3 hardening to `main`
   (now Git-backed, superseding the break-glass deploys). PR #18 (auth Phase 1 — device-token
   activation alongside PIN; migration 008; Decisions #73-74/#77) and PR #17 (P3-5/6/7 — secret
