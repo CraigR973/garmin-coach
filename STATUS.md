@@ -6,12 +6,20 @@
 
 ## Now
 
-**Phase:** v3 — **Batch 20 implementation ready** on `claude/batch-start-config-wdq8ms` (awaiting
-`/closeout 20`). Batch 19 is shipped + live (PR #21, merge `3737338`). All v2 batches + auth
-remediation are live. After closeout, next unshipped batch is **Batch 21** (year-on-year & seasonal
-trends — 🔴 High, degrades gracefully until ~Mar 2027).
+**Phase:** v3 — **Batch 20 merged to `main`** (PR #23, merge `e1cd2cc`, 2026-06-23). Batch 19 shipped +
+live (PR #21). All v2 batches + auth remediation are live. Next unshipped batch is **Batch 21**
+(year-on-year & seasonal trends — 🔴 High, degrades gracefully until ~Mar 2027): `/batch-start 21`.
 
-**Batch 20 ready (weekly & monthly deep reviews — 🔴 High, DECISIONS #81):**
+> **Production smoke NOT yet run for Batch 20.** This closeout session's egress policy blocks
+> `*.railway.app` / `*.vercel.app` (proxy 403 on CONNECT), so the live `/api/v1/health` SHA check,
+> web `/` 200, and `GET /api/v1/reviews/weekly` 401 check could not be performed from here. The merge
+> is on `main` and Railway/Vercel auto-deploy from `main` as for every prior batch; CI was green on the
+> PR. **To confirm live (30s):** `curl -fsS https://api-production-e2bc7.up.railway.app/api/v1/health`
+> should report `sha=e1cd2cc…`; `curl -fsS -o /dev/null -w '%{http_code}' https://garmin-coach-one.vercel.app/`
+> → 200; `curl -sS -o /dev/null -w '%{http_code}' https://api-production-e2bc7.up.railway.app/api/v1/reviews/weekly`
+> → 401 (live + auth-gated).
+
+**Batch 20 shipped (weekly & monthly deep reviews — 🔴 High, DECISIONS #81):**
 - `services/reviews.py`: deterministic `compute_review_rollup` (pure, DB-free) over sleep / recovery /
   load+adherence / verdicts / thermal; `ReviewService` reuses Batch 19 strength brief + Batch 17
   insights; thin Anthropic boundary (#47, fakeable) stores narrative in `analyses` as
@@ -19,13 +27,11 @@ trends — 🔴 High, degrades gracefully until ~Mar 2027).
   idempotent per period. No migration, no new cron, human/API-triggered (#71).
 - `routers/reviews.py`: `GET /api/v1/reviews/{period}` (preview, never writes) + `POST
   /api/v1/reviews/{period}/run` (generate+store), `{period}` ∈ {weekly, monthly}, 404 otherwise.
-  Registered in `main.py`.
 - Frontend: `ReviewsPage.tsx` + `/reviews` route + TabBar "Reviews" tab; `reviewEnvelopeSchema` in
-  `@coach/shared`. POST `/run` updates the cache directly (no refetch race).
-- Tests: 14 backend (`test_reviews.py` — pure window/rollup/trend + DB-backed preview-never-writes,
-  run stores weekly, idempotency, monthly variant) all green against a **real local Postgres**; 2 web
-  vitest (`ReviewsPage.test.tsx`). Backend 256 passed, ruff + mypy clean; shared typecheck + 7 tests;
-  web lint 0 errors, 16 tests, vite build OK.
+  `@coach/shared`.
+- Tests: 14 backend (`test_reviews.py`) all green against a **real local Postgres**; 2 web vitest.
+  Backend 256 passed, ruff + mypy clean; shared typecheck + 7 tests; web lint 0 errors, 16 tests,
+  vite build OK. CI on PR #23 green across all 7 jobs.
 
 **Batch 19 shipped + live:**
 - `GET /api/v1/strength-brief` live, 401 unauthenticated (auth-gated — correct)
@@ -44,8 +50,8 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
 `/api/v1/strength-brief` 401 (live and auth-gated). CI run #135 green on PR HEAD; 187 passed /
 55 skipped; ruff + mypy clean.
 
-**v3 batch plan:** Batches 19–23 in `docs/phase-batches.md`. Batch 19 `Shipped`; Batches 20–23
-all `Planned`. Batch 20 is the next unshipped batch.
+**v3 batch plan:** Batches 19–23 in `docs/phase-batches.md`. Batches 19–20 `Shipped`; Batches 21–23
+`Planned`. Batch 21 is the next unshipped batch.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -150,6 +156,14 @@ all `Planned`. Batch 20 is the next unshipped batch.
   change or observations).
 
 ## Log
+- **2026-06-23** — Closeout: merged Batch 20 (PR #23, squash merge `e1cd2cc`) — weekly & monthly deep
+  reviews. CI green across all 7 jobs on the PR (ruff, mypy, pytest, alembic, security-audit, web
+  build, Vercel preview). Struck the Batch 20 row `Shipped`, ticked `ARCHITECTURE.md` §7, DECISIONS
+  #81 already recorded on batch-start. **Production smoke could not be run from this session** — its
+  egress policy blocks `*.railway.app` / `*.vercel.app` (proxy 403 on CONNECT), so the live
+  `/api/v1/health` SHA, web `/` 200, and `GET /api/v1/reviews/weekly` 401 checks are pending a manual
+  30s confirm (commands in the "Now" block). The merge is on `main` and auto-deploys via Railway +
+  Vercel exactly as every prior batch. Next unshipped batch: Batch 21 (year-on-year & seasonal trends).
 - **2026-06-23** — Batch 20 (weekly & monthly deep reviews) implementation ready on
   `claude/batch-start-config-wdq8ms`. Added `services/reviews.py` (pure `compute_review_rollup`
   aggregating a period's sleep/recovery/load+adherence/verdicts/thermal into reproducible
