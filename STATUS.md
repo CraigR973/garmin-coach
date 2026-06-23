@@ -6,11 +6,17 @@
 
 ## Now
 
-**Phase:** v3 — **Batch 23 (auto-generated handover-doc export — the #13 capstone) implementation ready on
-`claude/batch-start-23-1u534n`, awaiting `/closeout 23`.** This is the **final v3 batch**: with it shipped,
-the whole v1→v3 roadmap is complete. Batch 22 merged + live (PR #25, `86205e5`); Batch 21 merged (PR #24,
-`1c8ad85`); Batch 20 merged (PR #23, `e1cd2cc`); Batch 19 shipped + live (PR #21). All v2 batches + auth
-remediation are live.
+**Phase:** v3 — **Batch 23 merged to `main` (PR #26, squash merge `ddc739f`, 2026-06-23)** —
+auto-generated handover-doc export, the #13 capstone. CI green across all 6 jobs on the PR (ruff, mypy,
+pytest, alembic, security-audit, web build) plus Vercel preview. **This was the final v3 batch — the whole
+v1→v3 roadmap is now complete; every batch in `docs/phase-batches.md` is `Shipped`.** Batch 22 merged + live
+(PR #25, `86205e5`); Batch 21 (PR #24, `1c8ad85`); Batch 20 (PR #23, `e1cd2cc`); Batch 19 (PR #21). All v2
+batches + auth remediation are live. **Production smoke** for Batch 23 to be confirmed via the live-confirm
+commands in the next paragraph; re-run manually if this session's egress blocks `*.railway.app`/`*.vercel.app`.
+
+**Verify (prod, Batch 23):** `/api/v1/health` SHA should be `ddc739f…`; web `/` → 200;
+`GET /api/v1/handover` and `GET /api/v1/handover/export` → 401 unauthenticated (auth-gated, non-mutating),
+and they appear in the deployed OpenAPI (dev/staging only — prod docs are disabled by design).
 
 **Batch 23 shipped (auto-generated handover-doc export — 🔴 High, DECISIONS #84):**
 - `services/handover.py`: deterministic `build_handover_packet` (pure, DB-free) composes the full retained
@@ -225,6 +231,15 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-23** — Closeout: merged Batch 23 (PR #26, squash merge `ddc739f`) — auto-generated handover-doc
+  export, the #13 capstone. CI green across all 6 jobs on the PR (ruff, mypy, pytest, alembic,
+  security-audit, web build) plus Vercel preview. Struck the Batch 23 row `Shipped`, ticked `ARCHITECTURE.md`
+  §7, DECISIONS #84 already recorded on batch-start. The merge is on `main` and auto-deploys via Railway +
+  Vercel exactly as every prior batch. **This was the final v3 batch — the v1→v3 roadmap is now complete;**
+  every row in `docs/phase-batches.md` is `Shipped`. **Production smoke** to be confirmed via the live-confirm
+  commands in the "Now" block (`/api/v1/health` SHA `ddc739f…`; web `/` 200; `GET /api/v1/handover` 401
+  auth-gated) — run manually if this session's egress blocks `*.railway.app`/`*.vercel.app`. No further
+  unshipped batches.
 - **2026-06-23** — Batch 23 (auto-generated handover-doc export — the #13 capstone) implementation ready on
   `claude/batch-start-23-1u534n`. Added `services/handover.py` (deterministic `build_handover_packet`
   composing KB + plan/block + baselines + recent reviews + seasonal YoY + experiments-with-evaluations +
