@@ -8,6 +8,7 @@ import {
   Hammer,
   Home,
   Settings as SettingsIcon,
+  TrendingUp,
   Umbrella,
   type LucideIcon,
 } from 'lucide-react';
@@ -24,6 +25,7 @@ const TABS: ReadonlyArray<TabDef> = [
   { to: '/delivery', label: 'Plan', Icon: CalendarCheck },
   { to: '/builder', label: 'Builder', Icon: Hammer },
   { to: '/reviews', label: 'Reviews', Icon: FileText },
+  { to: '/trends', label: 'Trends', Icon: TrendingUp },
   { to: '/holiday', label: 'Holiday', Icon: Umbrella },
   { to: '/coach-state', label: 'Coach', Icon: ClipboardList },
   { to: '/settings', label: 'Settings', Icon: SettingsIcon },

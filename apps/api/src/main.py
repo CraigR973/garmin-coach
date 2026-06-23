@@ -30,6 +30,7 @@ from src.routers import (
     restructure,
     reviews,
     strength_brief,
+    trends,
     workout_delivery,
 )
 from src.scheduler import create_scheduler
@@ -114,3 +115,4 @@ app.include_router(insights.router)
 app.include_router(experiments.router)
 app.include_router(strength_brief.router)
 app.include_router(reviews.router)
+app.include_router(trends.router)

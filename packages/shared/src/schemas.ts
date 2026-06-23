@@ -627,3 +627,87 @@ export const reviewEnvelopeSchema = z.object({
   meta: apiMetaSchema,
   errors: z.array(apiErrorSchema),
 });
+
+// --- Year-on-year & seasonal trends (Batch 21) ---
+
+export const trendBucketSchema = z.enum(['month', 'season']);
+
+export const trendMetricSummarySchema = z.object({
+  metricKey: z.string(),
+  label: z.string(),
+  sampleCount: z.number().int(),
+  excludedCount: z.number().int(),
+  mean: z.number().nullable(),
+  median: z.number().nullable(),
+  min: z.number().nullable(),
+  max: z.number().nullable(),
+});
+
+export const trendWindowSchema = z.object({
+  bucket: trendBucketSchema,
+  key: z.string(),
+  label: z.string(),
+  start: isoDateSchema,
+  end: isoDateSchema,
+  sampleDays: z.number().int(),
+  metrics: z.array(trendMetricSummarySchema),
+});
+
+export const trendsSeasonalEnvelopeSchema = z.object({
+  data: z.object({
+    bucket: trendBucketSchema,
+    windows: z.array(trendWindowSchema),
+  }),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
+
+export const yearOnYearMetricSchema = z.object({
+  metricKey: z.string(),
+  label: z.string(),
+  currentMean: z.number().nullable(),
+  priorMean: z.number().nullable(),
+  delta: z.number().nullable(),
+  pctChange: z.number().nullable(),
+  currentSampleCount: z.number().int(),
+  priorSampleCount: z.number().int(),
+  status: z.string(),
+});
+
+export const yearOnYearSchema = z.object({
+  bucket: trendBucketSchema,
+  status: z.string(),
+  currentKey: z.string().nullable(),
+  priorKey: z.string().nullable(),
+  currentLabel: z.string().nullable(),
+  priorLabel: z.string().nullable(),
+  metrics: z.array(yearOnYearMetricSchema),
+  reasons: z.array(z.string()),
+});
+
+export const trendsYearOnYearEnvelopeSchema = z.object({
+  data: yearOnYearSchema,
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
+
+export const storedTrendNarrativeSchema = z.object({
+  generatedAtUtc: z.string().min(1),
+  modelName: z.string().nullable(),
+  promptVersion: z.string(),
+  markdown: z.string(),
+});
+
+export const trendsNarrativeEnvelopeSchema = z.object({
+  data: z.object({
+    bucket: trendBucketSchema,
+    targetKey: z.string(),
+    subjectDate: isoDateSchema,
+    yearOnYear: yearOnYearSchema,
+    recentWindows: z.array(trendWindowSchema),
+    status: z.string(),
+    narrative: storedTrendNarrativeSchema.nullable(),
+  }),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});

@@ -415,10 +415,13 @@ class AnthropicReviewClient:
         api_key: str | None = None,
         model_name: str | None = None,
         max_tokens: int | None = None,
+        system_prompt: str | None = None,
     ) -> None:
         self.api_key = api_key if api_key is not None else settings.anthropic_api_key
         self.model_name = model_name or settings.anthropic_model
         self.max_tokens = max_tokens or settings.anthropic_max_tokens
+        # Batches 21/23 reuse this boundary with their own system prompt.
+        self.system_prompt = system_prompt or SYSTEM_PROMPT
 
     async def generate(
         self,
@@ -432,7 +435,7 @@ class AnthropicReviewClient:
         payload: dict[str, Any] = {
             "model": self.model_name,
             "max_tokens": self.max_tokens,
-            "system": SYSTEM_PROMPT,
+            "system": self.system_prompt,
             "messages": [{"role": "user", "content": user_prompt}],
         }
         headers = {
