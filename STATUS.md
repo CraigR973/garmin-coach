@@ -6,10 +6,34 @@
 
 ## Now
 
-**Phase:** v3 — **Batch 21 merged to `main`** (PR #24, squash merge `1c8ad85`, 2026-06-23) — year-on-year
-& seasonal trends. CI green across all 6 jobs on the PR. Batch 20 merged (PR #23, `e1cd2cc`); Batch 19
-shipped + live (PR #21). All v2 batches + auth remediation are live. Next unshipped batch is **Batch 22**
-(hypothesis evaluation — 🔴 High, extends the Batch 17 experiment tracker): `/batch-start 22`.
+**Phase:** v3 — **Batch 22 (hypothesis evaluation — 🔴 High, DECISIONS #83) implementation ready on
+`claude/batch-start-22-e66o78`, awaiting `/closeout 22`.** Batch 21 merged to `main` (PR #24, squash
+merge `1c8ad85`); Batch 20 merged (PR #23, `e1cd2cc`); Batch 19 shipped + live (PR #21). All v2 batches +
+auth remediation are live. After Batch 22 the only remaining v3 batch is **Batch 23** (auto-generated
+handover-doc export — the #13 capstone).
+
+**Batch 22 ready (hypothesis evaluation — extends the Batch 17 tracker #72, DECISIONS #83):**
+- `services/experiment_evaluation.py`: deterministic, advisory engine reusing the Batch 17 insights math
+  (`_slope`/`pearson`/`compute_drivers`). Dispatches on the experiment `slug` to three pure DB-free
+  evaluators — **gate** (collagen: consecutive age-adjusted-74+ night streak → gate met = `supported`),
+  **correlation** (early_waking_0400: Pearson-rank overnight low °C / sleep-stress vs an `awake_sleep_sec`
+  disruption proxy → strong = `supported`, none = `refuted`; alcohol/late-snack flagged as unmeasured),
+  **group_compare** (recovery_week_disruption: recovery- vs build-week mean age-adjusted sleep from
+  `plan_blocks.block_type` → recovery worse = `supported`). Each skips below its #71 sample gate (5 / 8 / 4
+  per group). **Recommendation only — the engine and `/evaluate` never write status;** concluding stays the
+  human-gated terminal `POST /…/status` action (#72). User experiments fall back to correlation when they
+  declare `candidateDrivers`, else `no_evaluator`.
+- `routers/experiments.py`: `GET /api/v1/experiments/{id}/evaluate` previews (never writes);
+  `POST /api/v1/experiments/{id}/evaluate/run` records an `experiment_evaluation` audit row in `analyses`,
+  idempotent per (experiment, subject date). `canConclude` is surfaced so the PWA only offers conclude when
+  legal. No migration, no new cron.
+- Frontend: new `ExperimentsPage.tsx` + `/experiments` route + TabBar "Tests" tab; `experimentListEnvelope`
+  / `experimentEvaluationEnvelope` schemas in `@coach/shared`. Each card evaluates the evidence and offers
+  "Conclude as <recommendation>" wired to the existing conclude path.
+- Tests: 17 backend (`test_experiment_evaluation.py`) — pure recommendation mapping + sample gates, the
+  never-auto-conclude guard, idempotent audit — all green against a **real local Postgres**; 1 web vitest.
+  Backend **287 passed**, ruff + mypy clean (59 files); shared 7 tests; web lint 0 errors, 19 vitest, vite
+  build (incl. `tsc`) OK.
 
 > **Production smoke for Batch 21 — see the live-confirm commands below.** If this session's egress
 > policy blocks `*.railway.app` / `*.vercel.app` (proxy 403 on CONNECT, as in the Batch 20 closeout),
@@ -179,6 +203,20 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-23** — Batch 22 (hypothesis evaluation) implementation ready on `claude/batch-start-22-e66o78`.
+  Added `services/experiment_evaluation.py` (deterministic, advisory evaluator reusing the Batch 17
+  `_slope`/`pearson`/`compute_drivers` math; dispatches on experiment `slug` to gate/correlation/group_compare
+  evaluators that each surface their evidence window + reasons and skip below #71 sample gates; maps to a
+  `supported`/`refuted`/`inconclusive` recommendation that **never** changes status — concluding stays the
+  human-gated terminal `POST /…/status` action #72), wired `GET /api/v1/experiments/{id}/evaluate` (preview,
+  never writes) + `POST /…/evaluate/run` (records an `experiment_evaluation` audit row in `analyses`,
+  idempotent per experiment+subject-date keyed on `context_packet.experimentId`). Frontend: new
+  `ExperimentsPage.tsx` + `/experiments` route + TabBar "Tests" tab, two new `@coach/shared` schemas; each
+  card evaluates and offers "Conclude as <recommendation>" through the existing conclude path. Recorded
+  DECISIONS #83. No LLM, no migration, no new cron. Verified backend pytest **287 passed** (17 new, run
+  against a real local Postgres so the DB-backed evaluate/run/idempotency/never-auto-conclude tests actually
+  execute), ruff + mypy clean (59 files); shared typecheck + 7 tests; web lint 0 errors, 19 vitest (1 new),
+  vite build (incl. `tsc`) OK. Awaiting `/closeout 22`.
 - **2026-06-23** — Closeout: merged Batch 21 (PR #24, squash merge `1c8ad85`) — year-on-year & seasonal
   trends. CI green across all 6 jobs on the PR (ruff, mypy, pytest, alembic, security-audit, web build)
   plus Vercel preview. Struck the Batch 21 row `Shipped`, ticked `ARCHITECTURE.md` §7, DECISIONS #82

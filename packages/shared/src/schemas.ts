@@ -711,3 +711,60 @@ export const trendsNarrativeEnvelopeSchema = z.object({
   meta: apiMetaSchema,
   errors: z.array(apiErrorSchema),
 });
+
+// --- Hypothesis evaluation (Batch 22) ---
+
+export const experimentStatusSchema = z.enum(['active', 'paused', 'concluded']);
+
+export const experimentOutSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  hypothesis: z.string(),
+  status: experimentStatusSchema,
+  startDate: isoDateSchema.nullable(),
+  endDate: isoDateSchema.nullable(),
+  successCriteria: jsonObjectSchema.default({}),
+  observations: jsonObjectSchema.default({}),
+});
+
+export const experimentListEnvelopeSchema = z.object({
+  data: z.array(experimentOutSchema),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
+
+export const experimentEnvelopeSchema = z.object({
+  data: experimentOutSchema,
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
+
+export const evaluationRecommendationSchema = z.enum(['supported', 'refuted', 'inconclusive']);
+
+export const storedEvaluationSchema = z.object({
+  generatedAtUtc: z.string().min(1),
+  subjectDate: isoDateSchema,
+  recommendation: evaluationRecommendationSchema.nullable(),
+  markdown: z.string(),
+});
+
+export const experimentEvaluationEnvelopeSchema = z.object({
+  data: z.object({
+    experimentId: z.string().uuid(),
+    title: z.string(),
+    status: experimentStatusSchema,
+    slug: z.string().nullable(),
+    kind: z.string(),
+    evaluationStatus: z.string(),
+    recommendation: evaluationRecommendationSchema.nullable(),
+    sampleCount: z.number().int(),
+    windowStart: isoDateSchema.nullable(),
+    windowEnd: isoDateSchema.nullable(),
+    evidence: jsonObjectSchema.default({}),
+    reasons: z.array(z.string()),
+    canConclude: z.boolean(),
+    stored: storedEvaluationSchema.nullable(),
+  }),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
