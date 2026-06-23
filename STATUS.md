@@ -6,18 +6,32 @@
 
 ## Now
 
-**Phase:** v3 — **Batch 20 merged to `main`** (PR #23, merge `e1cd2cc`, 2026-06-23). Batch 19 shipped +
-live (PR #21). All v2 batches + auth remediation are live. Next unshipped batch is **Batch 21**
-(year-on-year & seasonal trends — 🔴 High, degrades gracefully until ~Mar 2027): `/batch-start 21`.
+**Phase:** v3 — **Batch 21 implementation ready** on `claude/batch-start-21-dw9s27` (year-on-year &
+seasonal trends — 🔴 High, DECISIONS #82). Awaiting `/closeout 21`. Batch 20 merged to `main` (PR #23,
+merge `e1cd2cc`); Batch 19 shipped + live (PR #21). All v2 batches + auth remediation are live.
+Next unshipped after 21 is **Batch 22** (hypothesis evaluation).
 
-> **Production smoke NOT yet run for Batch 20.** This closeout session's egress policy blocks
-> `*.railway.app` / `*.vercel.app` (proxy 403 on CONNECT), so the live `/api/v1/health` SHA check,
-> web `/` 200, and `GET /api/v1/reviews/weekly` 401 check could not be performed from here. The merge
-> is on `main` and Railway/Vercel auto-deploy from `main` as for every prior batch; CI was green on the
-> PR. **To confirm live (30s):** `curl -fsS https://api-production-e2bc7.up.railway.app/api/v1/health`
-> should report `sha=e1cd2cc…`; `curl -fsS -o /dev/null -w '%{http_code}' https://garmin-coach-one.vercel.app/`
-> → 200; `curl -sS -o /dev/null -w '%{http_code}' https://api-production-e2bc7.up.railway.app/api/v1/reviews/weekly`
-> → 401 (live + auth-gated).
+**Batch 21 ready (year-on-year & seasonal trends — 🔴 High, DECISIONS #82):**
+- `services/trends.py`: pure `compute_trend_windows` buckets daily history into comparable **month**
+  (`2026-07`) / **season** (`2026-summer`, meteorological; Dec → next year's winter) windows with
+  per-metric count/mean/median/min/max over 9 metrics (sleep score/duration, HRV, readiness, RHR,
+  VO2 max, SpO2, indoor peak, outdoor overnight low). **SpO2/HRV reliability cutoff (#45)** applied in
+  the aggregation — pre-2026-06-11 rows dropped from those 2 gated metrics only and surfaced as
+  `excludedCount` (#44 provenance). `compute_year_on_year` does same-period-vs-prior-year deltas,
+  needing ≥5 samples on *both* sides else `insufficient_history` (expected until ~Mar 2027).
+  `TrendsService` thin DB wrapper. Optional narrative reuses the **Batch 20 Anthropic boundary**
+  (`AnthropicReviewClient` gained a backward-compatible `system_prompt` override) → stored in
+  `analyses` as `seasonal_trend`, idempotent per window (per-bucket `prompt_version` disambiguates
+  month vs season at a shared start date). Insufficient history → reported deterministically, model
+  never called. No migration, no new cron, human/API-triggered (#71).
+- `routers/trends.py`: `GET /api/v1/trends/seasonal`, `/year-on-year`, `/narrative` (all preview,
+  never write) + `POST /api/v1/trends/narrative/run` (generate+store). `bucket` ∈ {month, season},
+  400 otherwise.
+- Frontend: `TrendsPage.tsx` + `/trends` route + TabBar "Trends" tab; `trendsSeasonalEnvelopeSchema`
+  / `trendsYearOnYearEnvelopeSchema` / `trendsNarrativeEnvelopeSchema` in `@coach/shared`.
+- Tests: 14 backend (`test_trends.py`) all green against a **real local Postgres**; 2 web vitest.
+  Backend **270 passed**, ruff + mypy clean (58 files); shared typecheck + 7 tests; web lint 0 errors,
+  18 tests, vite build OK. Not yet committed/merged at time of writing — push pending.
 
 **Batch 20 shipped (weekly & monthly deep reviews — 🔴 High, DECISIONS #81):**
 - `services/reviews.py`: deterministic `compute_review_rollup` (pure, DB-free) over sleep / recovery /
@@ -50,8 +64,8 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
 `/api/v1/strength-brief` 401 (live and auth-gated). CI run #135 green on PR HEAD; 187 passed /
 55 skipped; ruff + mypy clean.
 
-**v3 batch plan:** Batches 19–23 in `docs/phase-batches.md`. Batches 19–20 `Shipped`; Batches 21–23
-`Planned`. Batch 21 is the next unshipped batch.
+**v3 batch plan:** Batches 19–23 in `docs/phase-batches.md`. Batches 19–20 `Shipped`; Batch 21
+implemented (awaiting closeout); Batches 22–23 `Planned`.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -156,6 +170,22 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-23** — Batch 21 (year-on-year & seasonal trends) implementation ready on
+  `claude/batch-start-21-dw9s27`. Added `services/trends.py` (pure `compute_trend_windows` bucketing
+  daily history into month/season windows with reproducible per-metric count/mean/median/min/max over
+  9 metrics, honouring the SpO2/HRV reliability cutoff #45 *in the aggregation* with an explicit
+  `excludedCount` per #44; `compute_year_on_year` same-period-vs-prior-year deltas requiring ≥5
+  samples both sides else graceful `insufficient_history`; `TrendsService` thin DB wrapper; optional
+  narrative reuses the Batch 20 Anthropic boundary via a new backward-compatible `system_prompt`
+  override, stored in `analyses` as `seasonal_trend`, idempotent per window, insufficient-history
+  reported deterministically without calling the model), `routers/trends.py`
+  (`GET /api/v1/trends/seasonal|year-on-year|narrative` previews never write; `POST
+  /narrative/run` generate+store), registered in `main.py`. Frontend: `TrendsPage.tsx` + `/trends`
+  route + TabBar "Trends" tab, three trend schemas in `@coach/shared`. Recorded DECISIONS #82.
+  Deterministic windowing + narrative boundary, no migration, no new cron. Verified backend pytest
+  **270 passed** (14 new, run against a real local Postgres so the DB-backed preview/run/idempotency
+  tests actually execute), ruff + mypy clean (58 files); shared typecheck + 7 tests; web lint 0
+  errors, 18 vitest (2 new), vite build OK. Awaiting `/closeout 21`.
 - **2026-06-23** — Closeout: merged Batch 20 (PR #23, squash merge `e1cd2cc`) — weekly & monthly deep
   reviews. CI green across all 7 jobs on the PR (ruff, mypy, pytest, alembic, security-audit, web
   build, Vercel preview). Struck the Batch 20 row `Shipped`, ticked `ARCHITECTURE.md` §7, DECISIONS
