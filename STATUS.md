@@ -6,13 +6,15 @@
 
 ## Now
 
-**Phase:** v3 — **Batch 22 (hypothesis evaluation — 🔴 High, DECISIONS #83) implementation ready on
-`claude/batch-start-22-e66o78`, awaiting `/closeout 22`.** Batch 21 merged to `main` (PR #24, squash
-merge `1c8ad85`); Batch 20 merged (PR #23, `e1cd2cc`); Batch 19 shipped + live (PR #21). All v2 batches +
-auth remediation are live. After Batch 22 the only remaining v3 batch is **Batch 23** (auto-generated
-handover-doc export — the #13 capstone).
+**Phase:** v3 — **Batch 22 merged to `main` + live** (PR #25, squash merge `86205e5`, 2026-06-23) —
+hypothesis evaluation. CI green across all 6 jobs on the PR; **production verified**: `/api/v1/health`
+reports `sha=86205e5`, web `/` → 200, and the new `GET /api/v1/experiments`, `GET …/{id}/evaluate`,
+`POST …/{id}/evaluate/run` routes are live and 401 unauthenticated (auth-gated, non-mutating). Batch 21
+merged (PR #24, `1c8ad85`); Batch 20 merged (PR #23, `e1cd2cc`); Batch 19 shipped + live (PR #21). All v2
+batches + auth remediation are live. **The only remaining v3 batch is Batch 23** (auto-generated
+handover-doc export — the #13 capstone): `/batch-start 23`.
 
-**Batch 22 ready (hypothesis evaluation — extends the Batch 17 tracker #72, DECISIONS #83):**
+**Batch 22 shipped (hypothesis evaluation — extends the Batch 17 tracker #72, DECISIONS #83):**
 - `services/experiment_evaluation.py`: deterministic, advisory engine reusing the Batch 17 insights math
   (`_slope`/`pearson`/`compute_drivers`). Dispatches on the experiment `slug` to three pure DB-free
   evaluators — **gate** (collagen: consecutive age-adjusted-74+ night streak → gate met = `supported`),
@@ -35,14 +37,11 @@ handover-doc export — the #13 capstone).
   Backend **287 passed**, ruff + mypy clean (59 files); shared 7 tests; web lint 0 errors, 19 vitest, vite
   build (incl. `tsc`) OK.
 
-> **Production smoke for Batch 21 — see the live-confirm commands below.** If this session's egress
-> policy blocks `*.railway.app` / `*.vercel.app` (proxy 403 on CONNECT, as in the Batch 20 closeout),
-> the live checks must be run manually. The merge is on `main` and Railway/Vercel auto-deploy from
-> `main` as for every prior batch. **To confirm live (30s):**
-> `curl -fsS https://api-production-e2bc7.up.railway.app/api/v1/health` should report `sha=1c8ad85…`;
-> `curl -fsS -o /dev/null -w '%{http_code}' https://garmin-coach-one.vercel.app/` → 200;
-> `curl -sS -o /dev/null -w '%{http_code}' "https://api-production-e2bc7.up.railway.app/api/v1/trends/year-on-year?bucket=month"`
-> → 401 (live + auth-gated).
+> **Batches 21 + 22 are confirmed live.** This session's egress reached `*.railway.app` / `*.vercel.app`
+> (no proxy 403), so the Batch 22 closeout verified production directly: `/api/v1/health` → `sha=86205e5`,
+> web `/` → 200, the experiments + evaluate routes 401 auth-gated. Since Batch 22 sits on top of Batch 21
+> on `main`, the Batch 21 deploy is implicitly confirmed too. If a future session's egress *does* block
+> those hosts (as in the Batch 20 closeout), re-run the live checks manually.
 
 **Batch 21 shipped (year-on-year & seasonal trends — 🔴 High, DECISIONS #82):**
 - `services/trends.py`: pure `compute_trend_windows` buckets daily history into comparable **month**
@@ -203,6 +202,13 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-23** — Closeout: merged Batch 22 (PR #25, squash merge `86205e5`) — hypothesis evaluation. CI
+  green across all 6 jobs on the PR (ruff, mypy, pytest, alembic, security-audit, web build) plus Vercel
+  preview. **Production verified directly** (egress reached the hosts this session): `/api/v1/health` →
+  `sha=86205e5`, web `/` → 200, and `GET /api/v1/experiments`, `GET …/{id}/evaluate`,
+  `POST …/{id}/evaluate/run` all live + 401 unauthenticated (auth-gated, non-mutating). Struck the Batch 22
+  row `Shipped`, ticked `ARCHITECTURE.md` §7, DECISIONS #83 already recorded on batch-start. Next unshipped
+  batch: **Batch 23** (auto-generated handover-doc export — the #13 capstone, lands last).
 - **2026-06-23** — Batch 22 (hypothesis evaluation) implementation ready on `claude/batch-start-22-e66o78`.
   Added `services/experiment_evaluation.py` (deterministic, advisory evaluator reusing the Batch 17
   `_slope`/`pearson`/`compute_drivers` math; dispatches on experiment `slug` to gate/correlation/group_compare
