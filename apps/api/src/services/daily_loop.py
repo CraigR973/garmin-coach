@@ -21,6 +21,7 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile
+from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
 
 ANALYSIS_TYPE_MORNING = "morning"
 ANALYSIS_TYPE_POST_WORKOUT = "post_workout"
@@ -51,6 +52,7 @@ class DailyLoopSnapshot:
     latest_temperature: TemperatureReading | None
     weather: WeatherDaily | None
     data_quality_warnings: list[dict[str, str]]
+    strength_brief: StrengthBriefResult
 
 
 class DailyLoopService:
@@ -75,6 +77,7 @@ class DailyLoopService:
         latest_temperature = await self._latest_temperature(player.id)
         weather = await self._weather(player.id, target_date)
         warnings = await self._data_quality_warnings(player.id, target_date, planned_workouts)
+        strength_brief = await StrengthBriefService(self.session).brief(player, as_of=target_date)
 
         return DailyLoopSnapshot(
             subject_date=target_date,
@@ -88,6 +91,7 @@ class DailyLoopService:
             latest_temperature=latest_temperature,
             weather=weather,
             data_quality_warnings=warnings,
+            strength_brief=strength_brief,
         )
 
     async def upsert_manual_entry(

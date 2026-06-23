@@ -6,38 +6,31 @@
 
 ## Now
 
-**Phase:** Auth simplification — **Phases 1 and 2 are complete and live in production**; the
-destructive Phase 3 is the only step left. `main` is at `0187e6a`. The full v1+v2 review is closed
-bar the items Phase 3 finishes.
+**Phase:** v3 Batch 19 (strength watching-brief) implementation complete on branch
+`claude/batch-start-19-mtq4cs`; awaiting `/closeout 19`. `main` is at `0187e6a`.
 
-Shipped + live:
-- **Auth Phase 2** (PR #19; Decision #79) — the PWA leads with device-token activation: `/login`
-  shows an "Invite only — ask Craig for a link" screen and the PIN form is demoted behind a "Use a
-  PIN instead" fallback toggle. Frontend-only; PIN login + endpoints still work (reversible).
-- **Auth Phase 1** (PR #18; Decisions #73-74/#77) — additive passwordless device-token activation:
-  migration `008`, dual-path `get_current_user` (JWT **or** device token), `POST /api/v1/auth/activate`,
-  the `python -m src.activate --profile <name>` CLI, and the `/activate` PWA route.
-- **P3 hardening** (PR #17; Decision #78) — prod API docs disabled, JWT secrets validated (≥32 +
-  distinct), DB backup via `PGPASSWORD`. Earlier: Red-never-VO2 gate (PR #14, #75); web CSP/headers
-  + `react-router` bump + CI dep-audit (PR #16, #76).
+**Batch 19 — done, not yet merged:**
+- `apps/api/src/services/strength_brief.py` — pure-function engine: `is_strength_activity`,
+  `compute_strength_rollup`, `StrengthBriefService.brief` (read-only, advisory-only, no migration)
+- `apps/api/src/routers/strength_brief.py` — `GET /api/v1/strength-brief` with `{data, meta, errors}`
+  envelope; `as_of` query param for backtesting
+- `apps/api/src/services/daily_loop.py` — `StrengthBriefResult` added to `DailyLoopSnapshot`
+- `apps/api/src/routers/daily_loop.py` — `strengthBrief: StrengthBriefOut` added to `DailyLoopData`
+- `apps/api/src/main.py` — `strength_brief` router registered
+- `apps/api/tests/test_strength_brief.py` — 19 tests: 15 pure-function (no DB), 4 DB-backed;
+  19.1 classification, 19.2 rollup engine, 19.3 DB service, 19.4 recovery-isolation invariant
 
-**Verified (prod, 2026-06-23):** Phase 2 invite copy confirmed live in the deployed Vercel bundle;
-web `/` + `/login` 200; `/api/docs` 404 (P3-7); `/api/v1/daily-loop` 401 (auth gate intact). CI green
-on every PR; full web vitest 14 passed; backend pytest 167 / 51 skipped, ruff + mypy clean. (`/health`
-reports `149efaa` — Phase 2 was frontend-only, so the backend is byte-identical.)
+**Verified (2026-06-23):** backend pytest **187 passed, 55 skipped** (DB tests skip without
+DATABASE_URL); ruff check clean; ruff format clean; mypy clean (4 new/modified files).
 
-**Next step:** **Phase 3** — the destructive cleanup (`docs/reviews/auth-simplification-plan.md`):
-delete the PIN/JWT/lockout code + reset/change-pin endpoints, the bcrypt + HS256 helpers, and the
-`api.ts` refresh logic; drop the dead `pin_hash`/`failed_login_count`/`locked_until` columns and the
-`jwt_access_secret`/`jwt_refresh_secret` settings. Closes review P1-1/P1-3/P3-1/2/3 and retires the
-`1234` PIN. Best after Phase 2 soaks a few days + a confirmed device-token session on Mark's phone.
-Optional leftover hardening: P3-4 (scheduler isolation), P3-9 (hygiene).
+**Next step:** `/closeout 19` — opens + merges the PR to `main`.
 
-**v3 ("the long game") is decomposed and ready to pick up** once Auth Phase 3 closes —
-Batches 19–23 in `docs/phase-batches.md` (`## v3 batch plan`), all `Planned`: 19 strength
-watching-brief, 20 weekly & monthly deep reviews, 21 year-on-year & seasonal, 22 hypothesis
-evaluation, 23 auto-generated handover-doc export. Start with `/batch-start 19` (decisions
-from #80).
+Auth simplification context: **Phases 1 and 2 are live**; Phase 3 (destructive cleanup) is
+pending. See the auth plan at `docs/reviews/auth-simplification-plan.md`.
+
+**v3 batch plan:** Batches 19–23 in `docs/phase-batches.md`. 19 is in-progress (this branch);
+20 weekly & monthly deep reviews, 21 year-on-year & seasonal, 22 hypothesis evaluation,
+23 auto-generated handover-doc export — all `Planned`.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -142,6 +135,20 @@ from #80).
   change or observations).
 
 ## Log
+- **2026-06-23** — Batch 19 (strength watching-brief) implementation ready on
+  `claude/batch-start-19-mtq4cs`. Added `services/strength_brief.py` (pure-function
+  `is_strength_activity` delegates to `exclude_from_recovery` from Batch 8, no new
+  classification logic; `compute_strength_rollup` computes 4w/12w `WindowStats` — session
+  count, duration, load proxy, sessions/week — and derives trend from first/second-half
+  rates of the 4w window; `StrengthBriefService.brief` is a thin read-only DB wrapper,
+  never writes), `routers/strength_brief.py` (`GET /api/v1/strength-brief`, `as_of` param,
+  `{data, meta, errors}` envelope), wired `StrengthBriefResult` into `DailyLoopSnapshot` and
+  `strengthBrief` into `DailyLoopData`, registered the router in `main.py`. 19 tests:
+  15 pure-function (classification, rollup engine, recovery-isolation invariant via
+  `__dataclass_fields__` check + flag-mutation guard), 4 DB-backed (empty history, counts only
+  excluded activities, ignores >12w window, cycling flag untouched). Deterministic, no LLM,
+  no migration, no new cron (DECISIONS #80). Backend: 187 passed / 55 skipped, ruff clean,
+  mypy clean. Awaiting `/closeout 19`.
 - **2026-06-23** — v3 planning session: decomposed the `ARCHITECTURE.md` §6 v3 "long
   game" roadmap into Batches 19–23, appended as the `## v3 batch plan` section in
   `docs/phase-batches.md` (all rows `Planned`). One batch per roadmap bullet: 19 strength
