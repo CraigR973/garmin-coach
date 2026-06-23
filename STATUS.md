@@ -6,31 +6,24 @@
 
 ## Now
 
-**Phase:** v3 Batch 19 (strength watching-brief) implementation complete on branch
-`claude/batch-start-19-mtq4cs`; awaiting `/closeout 19`. `main` is at `0187e6a`.
+**Phase:** v3 — **Batch 19 shipped** (PR #21, merge `3737338`, 2026-06-23). All v2 batches + auth
+remediation are live. Next batch: **Batch 20** (weekly & monthly deep reviews — 🔴 High tier, first
+v3 batch that reintroduces the Claude narrative boundary). Start with `/batch-start 20`.
 
-**Batch 19 — done, not yet merged:**
-- `apps/api/src/services/strength_brief.py` — pure-function engine: `is_strength_activity`,
-  `compute_strength_rollup`, `StrengthBriefService.brief` (read-only, advisory-only, no migration)
-- `apps/api/src/routers/strength_brief.py` — `GET /api/v1/strength-brief` with `{data, meta, errors}`
-  envelope; `as_of` query param for backtesting
-- `apps/api/src/services/daily_loop.py` — `StrengthBriefResult` added to `DailyLoopSnapshot`
-- `apps/api/src/routers/daily_loop.py` — `strengthBrief: StrengthBriefOut` added to `DailyLoopData`
-- `apps/api/src/main.py` — `strength_brief` router registered
-- `apps/api/tests/test_strength_brief.py` — 19 tests: 15 pure-function (no DB), 4 DB-backed;
-  19.1 classification, 19.2 rollup engine, 19.3 DB service, 19.4 recovery-isolation invariant
+**Batch 19 shipped + live:**
+- `GET /api/v1/strength-brief` live, 401 unauthenticated (auth-gated — correct)
+- `strengthBrief` field now present in `GET /api/v1/daily-loop` response
+- Advisory-only: no verdict/recovery fields, no migration, no LLM, no new cron
 
-**Verified (2026-06-23):** backend pytest **187 passed, 55 skipped** (DB tests skip without
-DATABASE_URL); ruff check clean; ruff format clean; mypy clean (4 new/modified files).
+**Auth simplification context:** Phases 1 and 2 are live; Phase 3 (destructive PIN/JWT cleanup)
+still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
 
-**Next step:** `/closeout 19` — opens + merges the PR to `main`.
+**Verified (prod, 2026-06-23):** `/api/v1/health` returns `sha=3737338`; web `/` 200;
+`/api/v1/strength-brief` 401 (live and auth-gated). CI run #135 green on PR HEAD; 187 passed /
+55 skipped; ruff + mypy clean.
 
-Auth simplification context: **Phases 1 and 2 are live**; Phase 3 (destructive cleanup) is
-pending. See the auth plan at `docs/reviews/auth-simplification-plan.md`.
-
-**v3 batch plan:** Batches 19–23 in `docs/phase-batches.md`. 19 is in-progress (this branch);
-20 weekly & monthly deep reviews, 21 year-on-year & seasonal, 22 hypothesis evaluation,
-23 auto-generated handover-doc export — all `Planned`.
+**v3 batch plan:** Batches 19–23 in `docs/phase-batches.md`. Batch 19 `Shipped`; Batches 20–23
+all `Planned`. Batch 20 is the next unshipped batch.
 
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
@@ -135,6 +128,12 @@ pending. See the auth plan at `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-23** — Closeout: merged Batch 19 (PR #21, merge `3737338`) — strength watching-brief
+  engine live. CI run #135 green on branch HEAD (`b998c43`); Railway auto-deployed to `3737338` within
+  minutes; production smoke passed: `/api/v1/health` returns the merge SHA, web `/` 200,
+  `/api/v1/strength-brief` 401 (live and auth-gated). Struck the Batch 19 row `Shipped`, ticked
+  `ARCHITECTURE.md` §7, DECISIONS #80 already recorded on batch-start. Next unshipped batch:
+  Batch 20 (weekly & monthly deep reviews — 🔴 High tier, reintroduces Claude narrative boundary).
 - **2026-06-23** — Batch 19 (strength watching-brief) implementation ready on
   `claude/batch-start-19-mtq4cs`. Added `services/strength_brief.py` (pure-function
   `is_strength_activity` delegates to `exclude_from_recovery` from Batch 8, no new
