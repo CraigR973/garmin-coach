@@ -4,6 +4,7 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _PLACEHOLDER_SECRETS = {"change-me-access", "change-me-refresh"}
+_MIN_SECRET_LEN = 32
 
 
 class Environment(StrEnum):
@@ -75,6 +76,12 @@ class Settings(BaseSettings):
             errors.append("jwt_access_secret is a placeholder value")
         if self.jwt_refresh_secret in _PLACEHOLDER_SECRETS:
             errors.append("jwt_refresh_secret is a placeholder value")
+        if len(self.jwt_access_secret) < _MIN_SECRET_LEN:
+            errors.append(f"jwt_access_secret must be at least {_MIN_SECRET_LEN} characters")
+        if len(self.jwt_refresh_secret) < _MIN_SECRET_LEN:
+            errors.append(f"jwt_refresh_secret must be at least {_MIN_SECRET_LEN} characters")
+        if self.jwt_access_secret == self.jwt_refresh_secret:
+            errors.append("jwt_access_secret and jwt_refresh_secret must be different")
         if not self.vapid_private_key:
             errors.append("vapid_private_key is empty")
         if not self.supabase_service_key:
@@ -91,3 +98,19 @@ class Settings(BaseSettings):
 
 
 settings = Settings()  # type: ignore[call-arg]  # env vars supply required fields at runtime
+
+
+def docs_urls(environment: Environment) -> dict[str, str | None]:
+    """OpenAPI/Swagger/ReDoc URLs for the app — disabled (None) in production.
+
+    A private, invite-only app shouldn't expose its full API schema to anonymous
+    callers, so the three doc routes are turned off in production; dev/staging
+    keep them for convenience. (Review finding P3-7.)
+    """
+    if environment == Environment.production:
+        return {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    return {
+        "docs_url": "/api/docs",
+        "redoc_url": "/api/redoc",
+        "openapi_url": "/api/openapi.json",
+    }
