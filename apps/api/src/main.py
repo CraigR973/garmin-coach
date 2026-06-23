@@ -28,6 +28,7 @@ from src.routers import (
     me,
     notifications,
     restructure,
+    reviews,
     strength_brief,
     workout_delivery,
 )
@@ -112,3 +113,4 @@ app.include_router(block_generator.router)
 app.include_router(insights.router)
 app.include_router(experiments.router)
 app.include_router(strength_brief.router)
+app.include_router(reviews.router)

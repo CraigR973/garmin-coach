@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import {
   CalendarCheck,
   ClipboardList,
+  FileText,
   Hammer,
   Home,
   Settings as SettingsIcon,
@@ -22,6 +23,7 @@ const TABS: ReadonlyArray<TabDef> = [
   { to: '/', label: 'Home', Icon: Home },
   { to: '/delivery', label: 'Plan', Icon: CalendarCheck },
   { to: '/builder', label: 'Builder', Icon: Hammer },
+  { to: '/reviews', label: 'Reviews', Icon: FileText },
   { to: '/holiday', label: 'Holiday', Icon: Umbrella },
   { to: '/coach-state', label: 'Coach', Icon: ClipboardList },
   { to: '/settings', label: 'Settings', Icon: SettingsIcon },

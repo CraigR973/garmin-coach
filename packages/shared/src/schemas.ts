@@ -549,3 +549,81 @@ export const blockLockEnvelopeSchema = z.object({
   meta: apiMetaSchema,
   errors: z.array(apiErrorSchema),
 });
+
+// --- Weekly & monthly deep reviews (Batch 20) ---
+
+export const reviewPeriodSchema = z.enum(['weekly', 'monthly']);
+
+export const reviewRollupSchema = z.object({
+  sleep: z.object({
+    nights: z.number().int(),
+    avgScore: z.number().nullable(),
+    avgAgeAdjustedScore: z.number().nullable(),
+    avgDurationMin: z.number().nullable(),
+    avgDeepMin: z.number().nullable(),
+    avgRemMin: z.number().nullable(),
+    trend: z.string(),
+  }),
+  recovery: z.object({
+    days: z.number().int(),
+    avgHrvMs: z.number().nullable(),
+    avgReadiness: z.number().nullable(),
+    avgRestingHrBpm: z.number().nullable(),
+    avgBodyBatteryCharged: z.number().nullable(),
+    trend: z.string(),
+  }),
+  trainingLoad: z.object({
+    activityCount: z.number().int(),
+    totalLoad: z.number(),
+    totalDurationMin: z.number().int(),
+    byType: z.record(z.number()),
+  }),
+  adherence: z.object({
+    plannedCount: z.number().int(),
+    capturedCount: z.number().int(),
+    statusCounts: z.record(z.number()),
+  }),
+  verdicts: z.object({
+    green: z.number().int(),
+    amber: z.number().int(),
+    red: z.number().int(),
+    total: z.number().int(),
+  }),
+  thermal: z.object({
+    nights: z.number().int(),
+    avgIndoorPeakC: z.number().nullable(),
+    avgOvernightLowC: z.number().nullable(),
+    disruptionNights: z.number().int(),
+  }),
+});
+
+export const storedReviewSchema = z.object({
+  generatedAtUtc: z.string().min(1),
+  modelName: z.string().nullable(),
+  promptVersion: z.string(),
+  markdown: z.string(),
+});
+
+export const reviewEnvelopeSchema = z.object({
+  data: z.object({
+    period: reviewPeriodSchema,
+    periodStart: isoDateSchema,
+    periodEnd: isoDateSchema,
+    dayCount: z.number().int(),
+    rollup: reviewRollupSchema,
+    strength: z.object({
+      trend: z.string(),
+      sessions4w: z.number().int(),
+      sessionsPerWeek4w: z.number(),
+      sessions12w: z.number().int(),
+    }),
+    insights: z.object({
+      ftpDriftStatus: z.string(),
+      earlyWarningStatus: z.string(),
+      earlyWarningFired: z.boolean(),
+    }),
+    review: storedReviewSchema.nullable(),
+  }),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
