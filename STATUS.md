@@ -33,6 +33,12 @@ delete the PIN/JWT/lockout code + reset/change-pin endpoints, the bcrypt + HS256
 `1234` PIN. Best after Phase 2 soaks a few days + a confirmed device-token session on Mark's phone.
 Optional leftover hardening: P3-4 (scheduler isolation), P3-9 (hygiene).
 
+**v3 ("the long game") is decomposed and ready to pick up** once Auth Phase 3 closes —
+Batches 19–23 in `docs/phase-batches.md` (`## v3 batch plan`), all `Planned`: 19 strength
+watching-brief, 20 weekly & monthly deep reviews, 21 year-on-year & seasonal, 22 hypothesis
+evaluation, 23 auto-generated handover-doc export. Start with `/batch-start 19` (decisions
+from #80).
+
 **Live endpoints:**
 - Frontend: https://garmin-coach-one.vercel.app (Vercel, auto-deploy from GitHub `main`; `~/.local/bin/vercel --prod` is break-glass)
 - Backend: https://api-production-e2bc7.up.railway.app/api/v1/health (Vercel/Railway auto-deploy from GitHub `main`; Git-backed again — `/health` reports the live commit SHA. `railway up --service api` is break-glass)
@@ -136,6 +142,18 @@ Optional leftover hardening: P3-4 (scheduler isolation), P3-9 (hygiene).
   change or observations).
 
 ## Log
+- **2026-06-23** — v3 planning session: decomposed the `ARCHITECTURE.md` §6 v3 "long
+  game" roadmap into Batches 19–23, appended as the `## v3 batch plan` section in
+  `docs/phase-batches.md` (all rows `Planned`). One batch per roadmap bullet: 19 strength
+  watching-brief (🟢, deterministic, preserves the #49 recovery-isolation invariant), 20
+  weekly & monthly deep reviews (🔴, reintroduces the #47 Claude narrative boundary), 21
+  year-on-year & seasonal (🔴, degrades gracefully until ~Mar 2027), 22 hypothesis
+  evaluation (🔴, extends the Batch 17 tracker #72 — recommends a conclusion, never
+  auto-concludes), 23 auto-generated handover-doc export (🔴, the #13 capstone, lands last).
+  Cross-cutting: narrative outputs reuse the thin Anthropic boundary while rollups stay
+  deterministic; human/API-triggered, not new crons (#64/#71); migration-free, outputs in
+  `analyses` + `knowledge_base`. Decision numbers assigned at `/batch-start` (next free #80).
+  Docs-only; no code touched.
 - **2026-06-23** — Closeout: merged auth Phase 2 (PR #19, `0187e6a`) — the PWA cutover to
   device-token-first login, with the PIN form demoted behind a "Use a PIN instead" fallback toggle.
   Frontend-only (`LoginPage`); CI green; full web vitest 14 passed (2 new LoginPage tests). Verified
