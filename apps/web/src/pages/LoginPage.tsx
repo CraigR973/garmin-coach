@@ -13,6 +13,10 @@ export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
 
+  // Default to the invite screen — device-token activation is the primary path.
+  // The PIN form is kept as a reversible fallback behind a toggle (auth Phase 2;
+  // the PIN path is removed entirely in Phase 3).
+  const [showPin, setShowPin] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
@@ -41,51 +45,81 @@ export function LoginPage() {
           <p className="mt-1 font-sans text-sm italic text-text-secondary">{brand.taglineSub}</p>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-center text-text-primary">Sign in</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-1">
-                <Label htmlFor="display-name">Name</Label>
-                <Input
-                  id="display-name"
-                  type="text"
-                  autoComplete="username"
-                  required
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Your name"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label>PIN</Label>
-                <PinInput value={pin} onChange={setPin} maxLength={4} />
-              </div>
-
-              {error && (
-                <p role="alert" className="text-xs text-error font-sans">
-                  {error}
-                </p>
-              )}
-
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Signing in…' : 'Sign in'}
-              </Button>
-
+        {!showPin ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-center text-text-primary">Invite only</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="font-sans text-sm text-text-secondary text-center">
+                To use Garmin Coach on this device, ask Craig for an activation link and open it
+                here. The link signs you in once — there's no password to remember.
+              </p>
               <div className="text-center">
-                <Link
-                  to="/forgot-pin"
-                  className="text-xs font-sans text-text-muted hover:text-text-primary transition-colors"
+                <button
+                  type="button"
+                  onClick={() => setShowPin(true)}
+                  className="text-xs font-sans text-text-muted hover:text-text-primary transition-colors underline-offset-2 hover:underline"
                 >
-                  Forgot PIN?
-                </Link>
+                  Use a PIN instead
+                </button>
               </div>
-            </form>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-center text-text-primary">Sign in with PIN</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-1">
+                  <Label htmlFor="display-name">Name</Label>
+                  <Input
+                    id="display-name"
+                    type="text"
+                    autoComplete="username"
+                    required
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="Your name"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label>PIN</Label>
+                  <PinInput value={pin} onChange={setPin} maxLength={4} />
+                </div>
+
+                {error && (
+                  <p role="alert" className="text-xs text-error font-sans">
+                    {error}
+                  </p>
+                )}
+
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading ? 'Signing in…' : 'Sign in'}
+                </Button>
+
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setShowPin(false)}
+                    className="text-xs font-sans text-text-muted hover:text-text-primary transition-colors"
+                  >
+                    ← Back
+                  </button>
+                  <Link
+                    to="/forgot-pin"
+                    className="text-xs font-sans text-text-muted hover:text-text-primary transition-colors"
+                  >
+                    Forgot PIN?
+                  </Link>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
