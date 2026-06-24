@@ -27,6 +27,19 @@ full coverage across several restarts. Garmin egress + the prod `GARMIN_TOKENSTO
 never applied to prod), so this is the first real history load. Hive indoor-temp history is un-backfillable
 (no historical API) and intentionally absent.
 
+**In flight / planned next:**
+1. **PR #28 — scheduler reliability** (fixes the stalled Hive live feed). The in-process APScheduler
+   doesn't fire reliably because the web container isn't continuously up; only ~2 manual
+   `temperature_readings` ever landed. Band-aid seeds the Hive poll with an early `next_run_time`, and a
+   new `apps/api/src/run_scheduled.py` lets an external scheduler run any job. **Needs:** merge + a Railway
+   decision — disable "App Sleeping" (keep always-on) and/or wire Railway Cron per
+   `docs/runbooks/scheduled-jobs-cron.md` (DECISIONS #86). Wall-clock jobs (06:30 etc.) are DST-sensitive —
+   keep them on always-on APScheduler or accept ±1h under UTC cron.
+2. **Wake-triggered morning verdict** (designed, not built). Fire the morning run when Mark actually *wakes*
+   (Garmin `sleepEnd`, with a stability guard for wake-then-back-to-sleep + a 09:00 backstop) instead of a
+   rigid 06:30, so the verdict uses finalized overnight data. Full spec in
+   `docs/designs/wake-triggered-morning.md`; **depends on #1** (scheduling model settled).
+
 ---
 
 **Roadmap completion record (v3):** **Batch 23 merged to `main` (PR #26, squash merge `ddc739f`, 2026-06-23)** —
