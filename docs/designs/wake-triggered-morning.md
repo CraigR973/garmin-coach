@@ -22,6 +22,24 @@ whatever time he surfaces.
   watch has even synced the night.
 - Personalised to his real schedule (early riser one day, lie-in the next).
 
+## Calibration — Mark's actual wake distribution (363 backfilled nights, 2026-06-24)
+
+Measured from the backfilled `sleep.sleep_end_utc` → Europe/London local:
+
+| metric | value |
+|---|---|
+| median wake | **08:22** (mean 08:16) |
+| range | 03:45 – 09:24 |
+| p10 / p25 / p75 / p90 | 07:38 / 08:01 / 08:38 / 08:50 |
+| wakes after 06:30 | **358/363 = 98.6%** |
+| wakes after 08:00 | 273/363 = 75% |
+
+**Implication:** the legacy fixed 06:30 cron fires ~2 h *before* Mark wakes on
+98.6% of mornings — while he is still asleep and readiness/sleep are not
+finalized — so for him a fixed morning time is essentially never right. This makes
+the wake trigger **near-essential, not optional**, and it calibrates the window
+and backstop below to *him* rather than generic defaults.
+
 ## Signal
 
 Garmin's sleep record carries `sleepEndTimestampGMT` — already parsed as
@@ -58,7 +76,7 @@ window (~04:30–10:00 local). One cheap Garmin call per poll. Per poll:
 4. Else persist the current `sleepEnd` as "last seen" for the next poll's
    comparison, and wait.
 
-**Backstop:** if not run by a fallback time (default **09:00 local**), run
+**Backstop:** if not run by a fallback time (default **~09:30 local**), run
 `run_morning_weather_sync` anyway on whatever data exists, so a verdict is
 **always** produced (watch not worn / never synced).
 
@@ -89,16 +107,19 @@ current `sleepEnd` to persist. Unit-test matrix:
 
 - **If container always-on:** replace the 06:30 `morning_weather_sync` cron with
   an in-process interval `wake_check` job (every 15 min, gated to the window) + a
-  09:00 backstop cron. In-process APScheduler handles DST correctly.
+  ~09:30 backstop cron. In-process APScheduler handles DST correctly.
 - **If external cron (PR #28):** add `wake-check` to `run_scheduled.JOBS`; a
   Railway Cron runs `python -m src.run_scheduled wake-check` every 15 min in the
-  window; the job itself enforces the 09:00 backstop by comparing London-local
+  window; the job itself enforces the ~09:30 backstop by comparing London-local
   time. The DST caveat in the runbook applies to the window/backstop bounds.
 
 ## Open decisions (settle when implementing)
 
-1. **Backstop time** — default 09:00 Europe/London. Confirm.
-2. **Window + cadence** — ~04:30–10:00, every 15 min. Confirm.
+1. **Backstop time** — **~09:30 Europe/London** (data-backed: p90 wake 08:50,
+   latest 09:24, so firing at 09:00 would sometimes precede his wake; 09:30 clears
+   p90 with margin).
+2. **Window + cadence** — **~03:30–10:00**, every 15 min (data-backed: earliest
+   wake 03:45, median 08:22 — start before the earliest riser, end past the latest).
 3. **Stability threshold** — `settle_min` ~20–30 min (≈2 polls); **duration
    floor** ~180 min (tune to Mark's real nights so naps never trigger).
 4. **Revision handling** — if `sleepEnd` moves materially *after* we've fired
