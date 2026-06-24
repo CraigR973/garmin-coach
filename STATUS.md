@@ -15,9 +15,11 @@ plus **673 activity summaries** straight into prod Supabase. That lit up the v3 
 real data (verified directly against prod): `trends/seasonal?bucket=season` → **5 season windows**;
 `trends/year-on-year` → a real **June-2026-vs-June-2025** comparison (sleep +8.3%, duration −10.7%,
 readiness −13.9%) instead of `insufficient_history`, with HRV/SpO2 correctly suppressed before the #45
-reliability cutoff (DECISIONS #85). **Latest work (2026-06-24): wake-triggered morning verdict built**
-(branch `feat/wake-triggered-morning`, PR pending) — see below. **Next step:** open + merge that PR (don't
-auto-merge); the operate/soak + auth Phase 3 path below is otherwise unchanged.
+reliability cutoff (DECISIONS #85). **Latest work (2026-06-24): wake-triggered morning verdict SHIPPED**
+(PR #30, squash merge `f605b26`, CI green) — the 06:30 morning cron is replaced by Garmin-`sleepEnd` wake
+detection; see below. **Next step:** prod-verify after the Railway/Vercel auto-deploy settles (a `wake_check`
+audit row should appear in prod `analyses`, verdict landing post-wake not 06:30); operate/soak + auth Phase 3
+path below otherwise unchanged.
 
 **Gotchas (backfill):** summaries-only (`--no-activity-details`) — per-second time-series for the ~673
 historical activities was deliberately skipped (volume + 429 cost); re-run without the flag for a date
@@ -29,20 +31,22 @@ never applied to prod), so this is the first real history load. Hive indoor-temp
 (no historical API) and intentionally absent.
 
 **In flight / planned next:**
-1. **Wake-triggered morning verdict — BUILT, PR pending** (branch `feat/wake-triggered-morning`). Fires the
-   morning run when Mark actually *wakes* (Garmin `sleepEnd`, back-to-sleep stability guard + 09:30 backstop)
-   instead of the rigid 06:30 cron, so the verdict reads finalized overnight metrics. New pure core
+1. **Wake-triggered morning verdict — SHIPPED** (PR #30, squash merge `f605b26`, CI green across all 6 jobs).
+   Fires the morning run when Mark actually *wakes* (Garmin `sleepEnd`, back-to-sleep stability guard + 09:30
+   backstop) instead of the rigid 06:30 cron, so the verdict reads finalized overnight metrics. Pure core
    `apps/api/src/services/wake_detection.py::is_morning_ready` + `scheduler.run_wake_check()`; the 06:30
    `morning_weather_sync` cron is replaced by a `wake_check` 15-min interval job + a `morning_backstop` 09:30
    cron, `wake-check` added to `run_scheduled.JOBS`. `run_morning_weather_sync` reused **unchanged** (only the
-   trigger moved). State is migration-free in `analyses` (`wake_check`). Backend **262 passed / 76 DB-skipped**,
-   ruff + mypy clean. DECISIONS #87, design doc marked Implemented. **Next:** open the PR, let CI run the
-   DB-backed tests, merge (don't auto-merge). **Gotcha:** the 3 new DB-backed `run_wake_check` tests skip
-   locally (no `DATABASE_URL`) and only execute in CI — they exercise the persist→compare→fire roundtrip,
-   the 09:30 backstop, and the short-circuit against a real `analyses` row.
-2. **Prod verification after merge** (manual, ~5 min): confirm a `wake_check` audit row appears in prod
-   `analyses` the next morning and the verdict lands post-wake rather than at 06:30. Resolved upstream:
-   **PR #28 (scheduler reliability) is merged and App Sleeping is OFF** (container always-on, in-process
+   trigger moved). State is migration-free in `analyses` (`wake_check`). Backend **262 passed / 76 DB-skipped**
+   locally; CI ran the 3 DB-backed `run_wake_check` tests green (persist→compare→fire roundtrip, 09:30 backstop,
+   short-circuit against a real `analyses` row). DECISIONS #87, design doc marked Implemented. **Remaining:**
+   prod-verify after auto-deploy (below). **Calibration** (window 03:30–10:00, backstop 09:30, settle 20 min,
+   nap floor 180 min) lives in `wake_detection.py` — retune there if Mark's schedule shifts.
+2. **Prod verification (only remaining step)** — after the Railway auto-deploy of `f605b26` settles, confirm a
+   `wake_check` audit row appears in prod `analyses` and tomorrow's verdict lands post-wake rather than at 06:30.
+   The change is non-mutating + idempotent, so nothing to roll back if you prefer to just watch it over a
+   morning or two. Precondition is met: **PR #28 (scheduler reliability) is merged and App Sleeping is OFF**
+   (container always-on, in-process
    APScheduler fires reliably + handles BST/GMT), which is the precondition this batch depended on (#86).
 
 ---
