@@ -11,8 +11,13 @@ auto-generated handover-doc export, the #13 capstone. CI green across all 6 jobs
 pytest, alembic, security-audit, web build) plus Vercel preview. **This was the final v3 batch — the whole
 v1→v3 roadmap is now complete; every batch in `docs/phase-batches.md` is `Shipped`.** Batch 22 merged + live
 (PR #25, `86205e5`); Batch 21 (PR #24, `1c8ad85`); Batch 20 (PR #23, `e1cd2cc`); Batch 19 (PR #21). All v2
-batches + auth remediation are live. **Production smoke** for Batch 23 to be confirmed via the live-confirm
-commands in the next paragraph; re-run manually if this session's egress blocks `*.railway.app`/`*.vercel.app`.
+batches + auth remediation are live. **Production smoke confirmed (2026-06-23, review session):** prod serves
+the latest SHA (`e94ad7c`), web `/` → 200, and every V3 endpoint is live + 401 auth-gated — `handover`,
+`handover/export`, `strength-brief`, `reviews/{weekly,monthly}`, `trends/{seasonal,year-on-year,narrative}`,
+`experiments`. Full local suite also re-run green (see Log). **Authenticated prod E2E confirmed
+(2026-06-23):** minted a one-time device token (revoked after) and hit every V3 GET endpoint — all 200 with
+real data; graceful-degradation paths (`insufficient_history`, sample gates) fire correctly and the handover
+export renders a real 3.2 KB doc. Only a browser UI click-through remains optional (local stack blocked — see Log).
 
 **Verify (prod, Batch 23):** `/api/v1/health` SHA should be `ddc739f…`; web `/` → 200;
 `GET /api/v1/handover` and `GET /api/v1/handover/export` → 401 unauthenticated (auth-gated, non-mutating),
@@ -231,6 +236,24 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-23** — V3 review + verification session (no code changed). Pulled `main` (local was 13 commits
+  behind origin — V3 had been built in other sessions and merged via PRs #21–#26). Independently re-ran the
+  full suite green: backend pytest **226 passed / 70 DB-skipped** (= 296; DB tests skip with no local
+  Postgres, CI runs them green), ruff + ruff-format + mypy clean (61 files); web **20 vitest** + lint (0
+  errors) + build OK; shared typecheck + 7 tests. Code-reviewed the V3 invariants: strength brief reads only
+  `exclude_from_recovery=True` activities and never touches the verdict (#49/#80); experiment `/evaluate` is
+  recommendation-only, conclude stays human-gated (#72); handover GET uses `seed=False` (no lazy-seed);
+  exports/previews are deterministic + fakeable without `ANTHROPIC_API_KEY`; trends/eval degrade on thin
+  history (gates 5/8/4, YoY ~Mar 2027). **Production smoke confirmed** (prod on `e94ad7c`, web 200, all V3
+  endpoints 401 auth-gated). Removed a stale Phase-0a git worktree (`agent-a6ce35123fdd45e57` on `fc923e2`).
+  **Authenticated prod E2E (done):** local full stack was blocked (no local Postgres; `brew install
+  postgresql@16` fails on outdated Command Line Tools; Docker unavailable), so ran the prod API path instead —
+  minted a one-time device token for Mark via `railway run … python -m src.activate` (revoked by token-hash
+  afterward; verified 401), then GET-checked every V3 endpoint authenticated: `strength-brief` (trend + 2
+  sessions), `reviews/{weekly,monthly}`, `trends/{seasonal,year-on-year,narrative}`, `handover` (+ `/export`
+  3.2 KB markdown), `experiments` (3 seeded), `experiments/{id}/evaluate` — all HTTP 200, `errors=[]`, with
+  graceful `insufficient_history`/sample-gate behaviour on real (thin) data. Avoided the cost-incurring
+  `/run` paths. A browser UI click-through is the only thing still not exercised (optional).
 - **2026-06-23** — Closeout: merged Batch 23 (PR #26, squash merge `ddc739f`) — auto-generated handover-doc
   export, the #13 capstone. CI green across all 6 jobs on the PR (ruff, mypy, pytest, alembic,
   security-audit, web build) plus Vercel preview. Struck the Batch 23 row `Shipped`, ticked `ARCHITECTURE.md`
