@@ -476,6 +476,12 @@ def create_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
         coalesce=True,
         max_instances=1,
+        # Seed an early first run so a freshly (re)started container polls Hive
+        # within ~2 min instead of waiting a full 15-minute interval. The web
+        # container is not guaranteed to stay up long enough to reach the first
+        # *unseeded* interval fire, which is why the live feed stalled (only
+        # manual readings). See docs/runbooks/scheduled-jobs-cron.md.
+        next_run_time=datetime.now(UTC) + timedelta(minutes=2),
     )
     scheduler.add_job(
         run_morning_weather_sync,
