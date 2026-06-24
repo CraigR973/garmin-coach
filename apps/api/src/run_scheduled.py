@@ -15,7 +15,8 @@ Usage:
 
 Jobs:
     hive-poll       poll Hive indoor temperature
-    morning-sync    weather + Garmin daily sync + morning analysis
+    wake-check      poll Garmin sleep; fire the morning verdict once wake is stable
+    morning-sync    weather + Garmin daily sync + morning analysis (wake backstop)
     activity-poll   poll Garmin for new activities + post-workout analysis
     autopush        push approved workout proposals due soon
     evening-nudge   send the evening sleep-protocol nudge
@@ -36,11 +37,13 @@ from src.scheduler import (
     run_hive_temperature_poll,
     run_morning_weather_sync,
     run_scheduled_backup,
+    run_wake_check,
     run_workout_autopush,
 )
 
 JOBS: dict[str, Callable[[], Awaitable[None]]] = {
     "hive-poll": run_hive_temperature_poll,
+    "wake-check": run_wake_check,
     "morning-sync": run_morning_weather_sync,
     "activity-poll": run_garmin_activity_poll,
     "autopush": run_workout_autopush,

@@ -13,6 +13,7 @@ from src import run_scheduled
 def test_jobs_cover_expected_names() -> None:
     assert set(run_scheduled.JOBS) == {
         "hive-poll",
+        "wake-check",
         "morning-sync",
         "activity-poll",
         "autopush",
@@ -26,6 +27,7 @@ def test_jobs_map_to_the_same_scheduler_coroutines() -> None:
     from src import scheduler
 
     assert run_scheduled.JOBS["hive-poll"] is scheduler.run_hive_temperature_poll
+    assert run_scheduled.JOBS["wake-check"] is scheduler.run_wake_check
     assert run_scheduled.JOBS["morning-sync"] is scheduler.run_morning_weather_sync
     assert run_scheduled.JOBS["activity-poll"] is scheduler.run_garmin_activity_poll
     assert run_scheduled.JOBS["backup"] is scheduler.run_scheduled_backup

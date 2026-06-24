@@ -15,8 +15,9 @@ plus **673 activity summaries** straight into prod Supabase. That lit up the v3 
 real data (verified directly against prod): `trends/seasonal?bucket=season` → **5 season windows**;
 `trends/year-on-year` → a real **June-2026-vs-June-2025** comparison (sleep +8.3%, duration −10.7%,
 readiness −13.9%) instead of `insufficient_history`, with HRV/SpO2 correctly suppressed before the #45
-reliability cutoff (DECISIONS #85). **Next step:** merge PR #27; the operate/soak + auth Phase 3 path
-below is otherwise unchanged.
+reliability cutoff (DECISIONS #85). **Latest work (2026-06-24): wake-triggered morning verdict built**
+(branch `feat/wake-triggered-morning`, PR pending) — see below. **Next step:** open + merge that PR (don't
+auto-merge); the operate/soak + auth Phase 3 path below is otherwise unchanged.
 
 **Gotchas (backfill):** summaries-only (`--no-activity-details`) — per-second time-series for the ~673
 historical activities was deliberately skipped (volume + 429 cost); re-run without the flag for a date
@@ -28,17 +29,21 @@ never applied to prod), so this is the first real history load. Hive indoor-temp
 (no historical API) and intentionally absent.
 
 **In flight / planned next:**
-1. **PR #28 — scheduler reliability** (fixes the stalled Hive live feed). The in-process APScheduler
-   doesn't fire reliably because the web container isn't continuously up; only ~2 manual
-   `temperature_readings` ever landed. Band-aid seeds the Hive poll with an early `next_run_time`, and a
-   new `apps/api/src/run_scheduled.py` lets an external scheduler run any job. **Needs:** merge + a Railway
-   decision — disable "App Sleeping" (keep always-on) and/or wire Railway Cron per
-   `docs/runbooks/scheduled-jobs-cron.md` (DECISIONS #86). Wall-clock jobs (06:30 etc.) are DST-sensitive —
-   keep them on always-on APScheduler or accept ±1h under UTC cron.
-2. **Wake-triggered morning verdict** (designed, not built). Fire the morning run when Mark actually *wakes*
-   (Garmin `sleepEnd`, with a stability guard for wake-then-back-to-sleep + a 09:00 backstop) instead of a
-   rigid 06:30, so the verdict uses finalized overnight data. Full spec in
-   `docs/designs/wake-triggered-morning.md`; **depends on #1** (scheduling model settled).
+1. **Wake-triggered morning verdict — BUILT, PR pending** (branch `feat/wake-triggered-morning`). Fires the
+   morning run when Mark actually *wakes* (Garmin `sleepEnd`, back-to-sleep stability guard + 09:30 backstop)
+   instead of the rigid 06:30 cron, so the verdict reads finalized overnight metrics. New pure core
+   `apps/api/src/services/wake_detection.py::is_morning_ready` + `scheduler.run_wake_check()`; the 06:30
+   `morning_weather_sync` cron is replaced by a `wake_check` 15-min interval job + a `morning_backstop` 09:30
+   cron, `wake-check` added to `run_scheduled.JOBS`. `run_morning_weather_sync` reused **unchanged** (only the
+   trigger moved). State is migration-free in `analyses` (`wake_check`). Backend **262 passed / 76 DB-skipped**,
+   ruff + mypy clean. DECISIONS #87, design doc marked Implemented. **Next:** open the PR, let CI run the
+   DB-backed tests, merge (don't auto-merge). **Gotcha:** the 3 new DB-backed `run_wake_check` tests skip
+   locally (no `DATABASE_URL`) and only execute in CI — they exercise the persist→compare→fire roundtrip,
+   the 09:30 backstop, and the short-circuit against a real `analyses` row.
+2. **Prod verification after merge** (manual, ~5 min): confirm a `wake_check` audit row appears in prod
+   `analyses` the next morning and the verdict lands post-wake rather than at 06:30. Resolved upstream:
+   **PR #28 (scheduler reliability) is merged and App Sleeping is OFF** (container always-on, in-process
+   APScheduler fires reliably + handles BST/GMT), which is the precondition this batch depended on (#86).
 
 ---
 
@@ -272,6 +277,27 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-24** — **Wake-triggered morning verdict (built, branch `feat/wake-triggered-morning`, PR pending).**
+  Replaced the fixed 06:30 morning cron with a wake-detection trigger so the verdict reads Mark's finalized
+  overnight metrics whatever time he surfaces (his median wake is 08:22 / 98.6% after 06:30, so 06:30 was
+  almost always ~2 h too early). Added a pure decision core `services/wake_detection.py::is_morning_ready`
+  (fire/wait/nap_ignored + the sleepEnd to persist) implementing the back-to-sleep **stability guard** —
+  fire only once today's Garmin `sleepEnd` matches the previous poll's value, sits ≥20 min in the past, and
+  clears a 180-min duration floor (excludes naps); a later `sleepEnd` ⇒ keep waiting. `scheduler.run_wake_check()`
+  drives it per active profile within a 03:30–10:00 Europe/London window: short-circuits when today's morning
+  analysis already exists (cheap `analyses` read, no Garmin call), else a **light sleep-only** poll (new
+  `GarminConnectClient.fetch_sleep` = one `get_sleep_data`, not the ~10-call `fetch_daily_payloads`), persists
+  the last-seen `sleepEnd` as a migration-free `wake_check` audit row, and runs the **unchanged**
+  `run_morning_weather_sync` once ready. Backstop is belt-and-suspenders: a dedicated `morning_backstop` 09:30
+  cron **and** `is_morning_ready`'s `now ≥ backstop` branch both guarantee a verdict. Wiring: replaced the
+  06:30 cron in `create_scheduler()` with the `wake_check` 15-min interval (seeded +3 min) + `morning_backstop`
+  cron; added `wake-check` to `run_scheduled.JOBS`. Tests: 18 pure matrix + 6 mock-orchestration (run locally)
+  + 3 DB-backed (persist→compare→fire, backstop, short-circuit — CI-only, skip without `DATABASE_URL`); updated
+  the existing `create_scheduler`/lifespan/`run_scheduled` job-set assertions. **Backend 262 passed / 76
+  DB-skipped, ruff + mypy(src) clean.** Precondition met upstream: PR #28 merged + App Sleeping off (always-on
+  container, in-process APScheduler reliable + DST-correct) — DECISIONS #86. Recorded DECISIONS #87; ticked
+  `ARCHITECTURE.md` §2/§4; marked `docs/designs/wake-triggered-morning.md` Implemented. Next: open PR, CI runs
+  the DB tests, merge (no auto-merge).
 - **2026-06-24** — **Historical Garmin backfill → a full year of real data in prod.** Built a resumable
   admin CLI (`apps/api/src/garmin_history_backfill.py`, PR #27) that walks a date range reusing the
   idempotent `GarminSyncService` (per-day commit, `--skip-existing`, exponential backoff, `--throttle`,
