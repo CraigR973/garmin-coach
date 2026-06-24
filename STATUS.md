@@ -6,7 +6,30 @@
 
 ## Now
 
-**Phase:** v3 — **Batch 23 merged to `main` (PR #26, squash merge `ddc739f`, 2026-06-23)** —
+**Phase:** **v1→v3 roadmap complete** (every batch in `docs/phase-batches.md` is `Shipped`) → now in
+post-roadmap operate/soak mode. **Done 2026-06-24: a full year of Garmin history backfilled into prod.**
+A new resumable admin CLI — `apps/api/src/garmin_history_backfill.py` (PR #27, CI green) — walked
+2025-06-24 → 2026-06-24 reusing the idempotent `GarminSyncService` and loaded a **gapless 366/366 days**
+of daily metrics + sleep (non-null readiness 366, HRV 363, RHR 366, VO2max 179 sparse; 363 scored nights)
+plus **673 activity summaries** straight into prod Supabase. That lit up the v3 long-horizon engines on
+real data (verified directly against prod): `trends/seasonal?bucket=season` → **5 season windows**;
+`trends/year-on-year` → a real **June-2026-vs-June-2025** comparison (sleep +8.3%, duration −10.7%,
+readiness −13.9%) instead of `insufficient_history`, with HRV/SpO2 correctly suppressed before the #45
+reliability cutoff (DECISIONS #85). **Next step:** merge PR #27; the operate/soak + auth Phase 3 path
+below is otherwise unchanged.
+
+**Gotchas (backfill):** summaries-only (`--no-activity-details`) — per-second time-series for the ~673
+historical activities was deliberately skipped (volume + 429 cost); re-run without the flag for a date
+window if deep per-ride analysis is ever needed. The CLI is resumable (per-day commit + skip-existing),
+which proved essential: agent-sandbox background jobs get reaped at turn boundaries, yet the run reached
+full coverage across several restarts. Garmin egress + the prod `GARMIN_TOKENSTORE_B64` work via
+`railway run` from the dev box. Prod had ~no prior history before this (the 84-night xlsx backfill was
+never applied to prod), so this is the first real history load. Hive indoor-temp history is un-backfillable
+(no historical API) and intentionally absent.
+
+---
+
+**Roadmap completion record (v3):** **Batch 23 merged to `main` (PR #26, squash merge `ddc739f`, 2026-06-23)** —
 auto-generated handover-doc export, the #13 capstone. CI green across all 6 jobs on the PR (ruff, mypy,
 pytest, alembic, security-audit, web build) plus Vercel preview. **This was the final v3 batch — the whole
 v1→v3 roadmap is now complete; every batch in `docs/phase-batches.md` is `Shipped`.** Batch 22 merged + live
@@ -236,6 +259,19 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-24** — **Historical Garmin backfill → a full year of real data in prod.** Built a resumable
+  admin CLI (`apps/api/src/garmin_history_backfill.py`, PR #27) that walks a date range reusing the
+  idempotent `GarminSyncService` (per-day commit, `--skip-existing`, exponential backoff, `--throttle`,
+  `--dry-run`, `--no-activity-details`); 7 pure + 3 DB-backed tests, ruff/mypy clean, PR CI green.
+  Probed Garmin first (read-only, `~/garmin-spike/history_probe.py`) → confirmed a full year exists back
+  to 2025-06-24 incl. real historical readiness; dry-ran 7 days through the prod path; then backfilled
+  2025-06-24 → 2026-06-24 into prod Supabase: **366/366 days** daily metrics + sleep (readiness 366,
+  HRV 363, RHR 366, VO2max 179 sparse; 363 scored nights) + **673 activity summaries**. Survived repeated
+  background-job reaping via resumability. Verified the v3 engines against prod: `trends/seasonal` =
+  **5 season windows**; `trends/year-on-year` computes **June-2026 vs June-2025** (sleep +8.3%, dur −10.7%,
+  readiness −13.9%); HRV/SpO2 suppressed pre-#45 cutoff as designed. Found prod had ~no prior history (the
+  84-night xlsx backfill was never applied to prod) — first real history load. DECISIONS #85. Next: merge
+  PR #27. Throwaway probe/count/verify scripts live in `~/garmin-spike/` + `/tmp` (not in repo).
 - **2026-06-23** — V3 review + verification session (no code changed). Pulled `main` (local was 13 commits
   behind origin — V3 had been built in other sessions and merged via PRs #21–#26). Independently re-ran the
   full suite green: backend pytest **226 passed / 70 DB-skipped** (= 296; DB tests skip with no local
