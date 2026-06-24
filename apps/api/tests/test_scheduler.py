@@ -240,6 +240,11 @@ def test_create_scheduler_registers_environment_jobs() -> None:
         assert weather_job.max_instances == 1
         assert garmin_job.coalesce is True
         assert garmin_job.max_instances == 1
+        # Both interval jobs are seeded to fire shortly after startup so a
+        # short-lived / restarted container still polls (the unseeded 15-min
+        # Hive interval was why the live feed stalled).
+        assert hive_job.next_run_time is not None
+        assert garmin_job.next_run_time is not None
         assert autopush_job.coalesce is True
         assert autopush_job.max_instances == 1
         assert nudge_job.coalesce is True
