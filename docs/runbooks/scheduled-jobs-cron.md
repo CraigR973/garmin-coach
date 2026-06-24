@@ -10,9 +10,14 @@ idle-cycled often enough that a plain interval rarely reaches its first fire,
 and wall-clock jobs (06:30 morning sync, evening nudges) only fire if the
 container happens to be awake at that minute.
 
-Diagnosis (2026-06-24): the poll code, token, profile, and Hive API are all
-healthy — a manual `run_hive_temperature_poll` writes a reading immediately —
-so the gap is purely that the in-process scheduler isn't running continuously.
+Diagnosis (2026-06-24): **two compounding causes.** (1) `pyhiveapi` was missing
+from `apps/api/requirements.txt`, so the Hive poll raised `ModuleNotFoundError`
+in the **prod container** — every `railway run` test passed only because it uses
+the *local* venv, which had the package installed ad-hoc (fixed:
+`pyhiveapi>=0.5.16` added to `requirements.txt`). (2) The web container wasn't
+running continuously (Railway App Sleeping), so the in-process scheduler rarely
+fired the 15-minute interval at all. **Both** had to be fixed: install the
+dependency **and** keep the container always-on (or move to external cron).
 
 ## Two-part fix
 
