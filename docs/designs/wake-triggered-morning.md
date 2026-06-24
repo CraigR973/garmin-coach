@@ -1,10 +1,21 @@
 # Design: wake-triggered morning verdict
 
-**Status:** Proposed — planning artifact, **not yet implemented** (2026-06-24).
-**Depends on:** PR #28 (scheduler reliability + `apps/api/src/run_scheduled.py`);
-a settled prod scheduling model (always-on container **or** Railway Cron — see
-`docs/runbooks/scheduled-jobs-cron.md`, DECISIONS #86).
+**Status:** **Implemented** (2026-06-24, DECISIONS #87). The scheduling model is
+settled: App Sleeping is off (container always-on), so wake detection runs
+in-process via APScheduler (which handles BST/GMT) and `run_scheduled wake-check`
+is the external-cron fallback. Built as `apps/api/src/services/wake_detection.py`
+(pure `is_morning_ready`) + `scheduler.run_wake_check()`; the 06:30 cron is
+replaced by a `wake_check` interval job + a `morning_backstop` 09:30 cron.
+**Depended on:** PR #28 (scheduler reliability + `apps/api/src/run_scheduled.py`),
+DECISIONS #86.
 **Related:** `ARCHITECTURE.md` §4 (morning analysis), §2 (sync jobs).
+
+> **As-built note (settling the "Open decisions" below):** backstop **09:30**;
+> window **03:30–10:00**, **15-min** cadence; `settle_min` **20**, duration floor
+> **180 min**; revision handling = **lock** (reuses morning idempotency — once
+> today's verdict exists the poll short-circuits, so a later `sleepEnd` does not
+> regenerate); state home = **`analyses`** (`wake_check`); scheduling = **in-process
+> always-on** with `run_scheduled wake-check` as the resilient fallback.
 
 ## Goal
 

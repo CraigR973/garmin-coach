@@ -181,6 +181,16 @@ class GarminConnectClient:
             stats=client.get_stats(target),
         )
 
+    def fetch_sleep(self, calendar_date: date) -> Any:
+        """Fetch only today's sleep record — one Garmin call.
+
+        The wake-check poll runs every ~15 min, so it must stay cheap: this is
+        the single ``get_sleep_data`` call out of the ~10 in
+        :meth:`fetch_daily_payloads`. Parse the result with ``parse_sleep_fields``.
+        """
+        client = self.login()
+        return client.get_sleep_data(calendar_date.isoformat())
+
     def fetch_activity_payloads(
         self,
         start_date: date,

@@ -30,7 +30,7 @@ living, editable state** so he never writes one again.
 
 Spikes live in `~/garmin-spike/` (outside this repo). Raw sample JSON in `~/garmin-spike/out/` (Garmin) and `out_hive/` (Hive) — **canonical reference for real field shapes**.
 
-**Sync jobs (APScheduler):** Hive temp poll every ~15 min; morning Garmin+weather sync ~06:30 local → triggers morning analysis; hourly activity poll → on new ride triggers post-workout analysis. NB Training Readiness is time-of-day live → morning analysis must read in the morning. `recoveryTime` is in MINUTES.
+**Sync jobs (APScheduler):** Hive temp poll every ~15 min; **wake-triggered morning run** — a `wake_check` poll every ~15 min within Mark's morning window (03:30–10:00 Europe/London) does a light sleep-only Garmin poll and fires the (unchanged) Garmin+weather sync + morning analysis once his Garmin `sleepEnd` is *stable* (back-to-sleep guard), with a 09:30 backstop so a verdict always lands (DECISIONS #87; replaces the old fixed 06:30 cron); hourly activity poll → on new ride triggers post-workout analysis. NB Training Readiness is time-of-day live → morning analysis must read **after he wakes** (the whole point of the wake trigger). `recoveryTime` is in MINUTES.
 
 ### Workout delivery — OUTPUT (validated 19 Jun 26)
 
@@ -108,7 +108,7 @@ memory `reference_garmin_app_handover`). Includes:
 
 Assembles a context packet (KB + DB data + rolling trend + plan) and calls Claude.
 
-- **Morning:** sleep analysis (age-adjusted) · physical-metrics read · **Metrics-vs-Baselines table** (baselines computed from his 84-night history) · thermal/environment review vs his targets · **Green/Amber/Red workout verdict** for today's full plan (cycling + strength).
+- **Morning:** sleep analysis (age-adjusted) · physical-metrics read · **Metrics-vs-Baselines table** (baselines computed from his 84-night history) · thermal/environment review vs his targets · **Green/Amber/Red workout verdict** for today's full plan (cycling + strength). **Fired on wake, not a clock** — detected from his Garmin `sleepEnd` (stability-guarded, 09:30 backstop) so it reads his finalized overnight metrics whatever time he surfaces (DECISIONS #87; design in `docs/designs/wake-triggered-morning.md`).
   - **Verdict framework:** GREEN = HRV balanced+stable, sleep ≥70 (age-adj ≥74), subjective ≥5. AMBER = HRV low/mild-unbalanced, sleep 60–69 → cut duration 20–30%, drop a zone, no HIT. RED = HRV unbalanced+declining, sleep <60 → sub/rest; **never VO2 on Red**. Reconcile a "Low" Garmin readiness as load-driven when recovery signals are good.
 - **Post-workout:** performance (power/HR/zones/cadence/PC/stamina/TE) · workout rating · guided recovery protocol (specific, timed) · impact on tomorrow.
 - **Output rules:** bold each bullet headline; sleep summary line; ignore the phase-frequency system (he wants DAILY always); specific recovery suggestions.

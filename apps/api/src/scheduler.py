@@ -3,18 +3,26 @@
 Current jobs:
   - daily_backup: runs at 03:00 UTC
   - hive_temperature_poll: polls Hive indoor temperature every 15 minutes
-  - morning_weather_sync: at 06:30 Europe/London, syncs Kilmarnock weather, then
-    today's Garmin daily metrics + sleep, triggers the morning analysis, then
-    regenerates an adjusted workout proposal on an Amber verdict (Batch 13)
+  - wake_check: every ~15 min within Mark's morning window, does a light
+    sleep-only Garmin poll and fires run_morning_weather_sync once his wake is
+    stable (back-to-sleep guard) — replaces the old fixed 06:30 cron so the
+    verdict reads finalized overnight metrics whatever time he surfaces
+  - morning_backstop: at 09:30 Europe/London, runs run_morning_weather_sync
+    regardless, so a verdict is always produced even if wake was never detected
   - garmin_activity_poll: polls Garmin hourly for new rides and triggers analysis
   - workout_autopush: pushes approved workout proposals due a couple of days ahead
   - evening_sleep_nudge: sends the 20:00 sleep-protocol push
   - evening_monitoring_alerts: checks thermal and source freshness before bed
+
+run_morning_weather_sync itself is unchanged — only its trigger moved from a fixed
+06:30 cron to wake-detection (+ the 09:30 backstop). See
+docs/designs/wake-triggered-morning.md and DECISIONS #87.
 """
 
 from __future__ import annotations
 
 import asyncio
+import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -23,11 +31,12 @@ import structlog
 from apscheduler.schedulers.asyncio import (  # type: ignore[import-untyped,unused-ignore]
     AsyncIOScheduler,
 )
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
 from src.database import AsyncSessionLocal
+from src.models.coaching import Analysis
 from src.models.notification import ActionType, ActorType, AuditLog
 from src.models.profile import Profile
 from src.services.backup import create_backup
@@ -42,10 +51,23 @@ from src.services.garmin_sync import (
     GarminConnectClient,
     GarminDailyPayloads,
     GarminSyncService,
+    parse_sleep_fields,
 )
 from src.services.morning_analysis import MorningAnalysisService
 from src.services.nudge_alerts import NudgeAlertService
 from src.services.post_workout_analysis import PostWorkoutAnalysisService
+from src.services.wake_detection import (
+    BACKSTOP,
+    DURATION_FLOOR_MIN,
+    SETTLE_MIN,
+    WAKE_CHECK_ANALYSIS_TYPE,
+    WAKE_CHECK_PROMPT_VERSION,
+    WINDOW_END,
+    WINDOW_START,
+    SleepReading,
+    WakeDecision,
+    is_morning_ready,
+)
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -292,6 +314,89 @@ async def run_morning_weather_sync() -> None:
         log.exception("morning weather sync failed")
 
 
+async def run_wake_check() -> None:
+    """Poll Garmin sleep and fire the morning verdict once Mark has actually woken.
+
+    Replaces the fixed 06:30 cron. Per active profile, within the morning window
+    (Europe/London local), it: (1) short-circuits if today's morning analysis
+    already exists; (2) does a light sleep-only Garmin poll; (3) applies the
+    back-to-sleep stability guard against the previously persisted ``sleepEnd``
+    (services/wake_detection.is_morning_ready); (4) persists the current
+    ``sleepEnd`` as a ``wake_check`` audit row for the next poll's comparison. If
+    any profile is ready (stable wake, or the ~09:30 backstop) it runs the
+    unchanged run_morning_weather_sync once — which is idempotent per profile, so
+    re-firing on later polls is harmless.
+    """
+    try:
+        any_ready = False
+        async with AsyncSessionLocal() as session:
+            profiles = await _active_profiles(session)
+            if not profiles:
+                log.info("wake check skipped", reason="no_active_profiles")
+                return
+
+            morning = MorningAnalysisService(session)
+            client: GarminConnectClient | None = None
+            fired = 0
+            waiting = 0
+            napped = 0
+            for profile in profiles:
+                now_local = _profile_now(profile)
+                # Cheap window gate first — no Garmin call outside the window.
+                if not (WINDOW_START <= now_local.time() <= WINDOW_END):
+                    continue
+                today = now_local.date()
+                # Short-circuit once today's morning verdict exists (cheap DB read,
+                # no Garmin call) — this stops polling for the rest of the day.
+                if await morning.latest_analysis(profile.id, today) is not None:
+                    continue
+                if client is None:
+                    client = GarminConnectClient()
+                bound_client = client
+                try:
+                    sleep_payload = await _retry_sync(
+                        lambda: bound_client.fetch_sleep(today),
+                        backoff=2.0,
+                    )
+                except Exception:
+                    log.exception("wake check sleep fetch failed", profile_id=str(profile.id))
+                    continue
+
+                sleep = SleepReading.from_sleep_fields(parse_sleep_fields(sleep_payload))
+                prev_sleep_end = await _last_seen_sleep_end(session, profile.id, today)
+                decision = is_morning_ready(
+                    today=today,
+                    sleep=sleep,
+                    prev_sleep_end=prev_sleep_end,
+                    now=now_local,
+                    backstop=BACKSTOP,
+                    duration_floor_min=DURATION_FLOOR_MIN,
+                    settle_min=SETTLE_MIN,
+                )
+                await _record_wake_check(session, profile.id, today, decision)
+                if decision.action == "fire":
+                    fired += 1
+                    any_ready = True
+                elif decision.action == "nap_ignored":
+                    napped += 1
+                else:
+                    waiting += 1
+            await session.commit()
+        log.info(
+            "wake check complete",
+            profiles=len(profiles),
+            fired=fired,
+            waiting=waiting,
+            napped=napped,
+        )
+        # Run the actual sync + verdict once, on its own session, after the
+        # last-seen state is committed. Idempotent per profile.
+        if any_ready:
+            await run_morning_weather_sync()
+    except Exception:
+        log.exception("wake check failed")
+
+
 async def run_garmin_activity_poll() -> None:
     """Poll Garmin for recent activities, then trigger post-workout ride analysis."""
     try:
@@ -408,12 +513,100 @@ async def _active_profiles(session: AsyncSession) -> list[Profile]:
     )
 
 
-def _profile_today(profile: Profile) -> date:
+def _profile_zone(profile: Profile) -> ZoneInfo:
     try:
-        timezone = ZoneInfo(profile.timezone)
+        return ZoneInfo(profile.timezone)
     except ZoneInfoNotFoundError:
-        timezone = ZoneInfo("UTC")
-    return datetime.now(timezone).date()
+        return ZoneInfo("UTC")
+
+
+def _profile_now(profile: Profile) -> datetime:
+    """Timezone-aware 'now' in the profile's local zone (the wake-check clock)."""
+    return datetime.now(_profile_zone(profile))
+
+
+def _profile_today(profile: Profile) -> date:
+    return _profile_now(profile).date()
+
+
+async def _last_seen_sleep_end(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    subject_date: date,
+) -> datetime | None:
+    """The ``sleepEnd`` persisted by the most recent wake_check poll for today."""
+    row = await session.scalar(
+        select(Analysis)
+        .where(
+            Analysis.user_id == user_id,
+            Analysis.analysis_type == WAKE_CHECK_ANALYSIS_TYPE,
+            Analysis.subject_date == subject_date,
+        )
+        .order_by(desc(Analysis.generated_at_utc), desc(Analysis.created_at))
+        .limit(1)
+    )
+    if row is None:
+        return None
+    raw = row.context_packet.get("sleepEndUtc")
+    if not isinstance(raw, str):
+        return None
+    try:
+        return datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
+async def _record_wake_check(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    subject_date: date,
+    decision: WakeDecision,
+) -> None:
+    """Upsert the single wake_check audit row per (user, day) — migration-free state.
+
+    Stores the sleepEnd to compare on the next poll and the decision for audit.
+    One row per day (updated in place) rather than ~26 inserts.
+    """
+    now_utc = datetime.now(UTC).replace(tzinfo=None)
+    sleep_end = decision.sleep_end_to_persist
+    context = {
+        "subjectDate": subject_date.isoformat(),
+        "action": decision.action,
+        "reason": decision.reason,
+        "sleepEndUtc": sleep_end.isoformat() if sleep_end is not None else None,
+        "checkedAtUtc": now_utc.isoformat(),
+    }
+    existing = await session.scalar(
+        select(Analysis)
+        .where(
+            Analysis.user_id == user_id,
+            Analysis.analysis_type == WAKE_CHECK_ANALYSIS_TYPE,
+            Analysis.subject_date == subject_date,
+        )
+        .order_by(desc(Analysis.generated_at_utc), desc(Analysis.created_at))
+        .limit(1)
+    )
+    if existing is not None:
+        existing.generated_at_utc = now_utc
+        existing.verdict = decision.action
+        existing.context_packet = context
+        existing.output_markdown = decision.reason
+        return
+    session.add(
+        Analysis(
+            user_id=user_id,
+            activity_id=None,
+            analysis_type=WAKE_CHECK_ANALYSIS_TYPE,
+            subject_date=subject_date,
+            generated_at_utc=now_utc,
+            prompt_version=WAKE_CHECK_PROMPT_VERSION,
+            model_name=None,
+            verdict=decision.action,
+            context_packet=context,
+            output_markdown=decision.reason,
+            raw_response={},
+        )
+    )
 
 
 async def _retry_sync[T](
@@ -484,12 +677,29 @@ def create_scheduler() -> AsyncIOScheduler:
         next_run_time=datetime.now(UTC) + timedelta(minutes=2),
     )
     scheduler.add_job(
+        run_wake_check,
+        trigger="interval",
+        minutes=15,
+        id="wake_check",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        # Seed an early first run so a freshly (re)started container starts
+        # polling for Mark's wake within ~3 min instead of up to a full interval
+        # (mirrors the Hive/activity polls; see docs/runbooks/scheduled-jobs-cron.md).
+        next_run_time=datetime.now(UTC) + timedelta(minutes=3),
+    )
+    scheduler.add_job(
+        # Belt-and-suspenders backstop: even if wake was never detected (watch not
+        # worn / container down through the window), guarantee a verdict by 09:30.
+        # run_morning_weather_sync is idempotent per profile, so this no-ops if the
+        # wake trigger already fired. In-process APScheduler handles BST/GMT.
         run_morning_weather_sync,
         trigger="cron",
-        hour=6,
+        hour=9,
         minute=30,
         timezone=settings.weather_timezone,
-        id="morning_weather_sync",
+        id="morning_backstop",
         replace_existing=True,
         coalesce=True,
         max_instances=1,
