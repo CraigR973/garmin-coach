@@ -190,7 +190,7 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload["data"]["subjectDate"] == "2026-06-20"
-    assert payload["data"]["morningAnalysis"]["verdict"] == "Green"
+    assert payload["data"]["morningAnalysis"]["verdict"] == "green"
     assert payload["data"]["dailyMetrics"]["readinessScore"] == 71
     assert payload["data"]["sleep"]["ageAdjustedScore"] == 74
     assert payload["data"]["postWorkoutAnalyses"][0]["activityName"] == "Tempo ride"

@@ -259,6 +259,12 @@ def _serialize_manual_entry(entry: ManualEntry | None) -> ManualEntryOut | None:
     )
 
 
+def _normalize_api_verdict(verdict: str | None) -> str | None:
+    if not verdict:
+        return None
+    return verdict.strip().lower()
+
+
 def _serialize_analysis(analysis: Analysis | None) -> AnalysisOut | None:
     if analysis is None:
         return None
@@ -276,7 +282,7 @@ def _serialize_analysis(analysis: Analysis | None) -> AnalysisOut | None:
     return AnalysisOut(
         id=str(analysis.id),
         generatedAtUtc=_dt(analysis.generated_at_utc) or "",
-        verdict=analysis.verdict,
+        verdict=_normalize_api_verdict(analysis.verdict),
         promptVersion=analysis.prompt_version,
         modelName=analysis.model_name,
         outputMarkdown=analysis.output_markdown,
