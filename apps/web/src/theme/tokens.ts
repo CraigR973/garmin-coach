@@ -1,18 +1,18 @@
 /**
- * Single source of truth for visual design tokens — Garmin Coach identity.
+ * Single source of truth for visual design tokens — CheckMark identity.
  * CSS variables in `index.css` mirror these values, Tailwind utilities
  * resolve to `var(--*)` references, and JS consumers (sonner toasts,
  * framer-motion variants, inline gradients) import these constants directly.
  */
 
 export const colors = {
-  // Surface tiers (cool graphite, slightly warmer than pure navy)
-  bg: '#0B0E13',
-  surface: '#131720',
-  surfaceElevated: '#1B2030',
-  surfaceOverlay: '#242938',
-  border: '#2A3142',
-  borderStrong: '#3A4258',
+  // Surface tiers (deep teal-graphite — harmonizes with the CheckMark icon tile)
+  bg: '#0A1112',
+  surface: '#111E1F',
+  surfaceElevated: '#192A2B',
+  surfaceOverlay: '#213436',
+  border: '#253A3C',
+  borderStrong: '#345355',
 
   // Text
   textPrimary: '#F0F4FF',
@@ -49,7 +49,7 @@ export const colors = {
 export const gradients = {
   steele: 'linear-gradient(180deg, #E8EBF0 0%, #B0B8C4 60%, #7A828F 100%)',
   steeleHorizontal: 'linear-gradient(90deg, #E8EBF0 0%, #B0B8C4 100%)',
-  surface: 'linear-gradient(180deg, #131720 0%, #0B0E13 100%)',
+  surface: 'linear-gradient(180deg, #111E1F 0%, #0A1112 100%)',
 } as const;
 
 export const radius = {
@@ -102,10 +102,10 @@ export const z = {
 } as const;
 
 export const brand = {
-  full: 'Garmin Coach',
-  short: 'Coach',
-  wordmarkTop: 'Garmin',
-  wordmarkBottom: 'Coach',
+  full: 'CheckMark',
+  short: 'CheckMark',
+  wordmarkTop: 'Check',
+  wordmarkBottom: 'Mark',
   tagline: 'Your daily coaching brief.',
   taglineSub: 'Powered by your Garmin data.',
 } as const;

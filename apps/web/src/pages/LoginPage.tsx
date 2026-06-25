@@ -52,7 +52,7 @@ export function LoginPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="font-sans text-sm text-text-secondary text-center">
-                To use Garmin Coach on this device, ask Craig for an activation link and open it
+                To use CheckMark on this device, ask Craig for an activation link and open it
                 here. The link signs you in once — there's no password to remember.
               </p>
               <div className="text-center">

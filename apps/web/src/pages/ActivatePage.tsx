@@ -65,7 +65,7 @@ export function ActivatePage() {
           <CardContent className="space-y-4 text-center">
             {state === 'activating' ? (
               <p className="text-sm font-sans text-text-secondary">
-                Setting this phone up for Garmin Coach. This should only take a moment.
+                Setting this phone up for CheckMark. This should only take a moment.
               </p>
             ) : (
               <>
