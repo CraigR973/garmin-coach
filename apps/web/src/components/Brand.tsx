@@ -10,7 +10,7 @@ interface BrandProps {
 }
 
 /**
- * "Garmin Coach" wordmark.
+ * "CheckMark" wordmark.
  *
  * variants:
  *   splash  - vertical two-line wordmark (login / onboarding)
@@ -60,7 +60,7 @@ export function Brand({
       aria-hidden={decorative ? true : undefined}
       aria-label={decorative ? undefined : label}
     >
-      <p className="font-mono font-semibold uppercase tracking-[0.18em] text-3xl sm:text-4xl leading-none text-wordmark">
+      <p className="font-mono font-semibold uppercase tracking-[0.18em] text-3xl sm:text-4xl leading-none text-text-primary">
         {brand.wordmarkTop}
       </p>
       <p className="font-mono font-semibold uppercase tracking-[0.18em] text-3xl sm:text-4xl leading-none text-primary">

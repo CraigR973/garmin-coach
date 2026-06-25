@@ -29,7 +29,7 @@ export function BrowserOnboarding() {
         <div className="rounded-xl border border-border bg-surface px-5 py-5 space-y-3">
           <p className="text-base font-sans font-semibold text-text-primary">About</p>
           <p className="text-sm font-sans text-text-secondary leading-relaxed">
-            Garmin Coach is your private AI fitness and sleep coach. It pulls data from your
+            CheckMark is your private AI fitness and sleep coach. It pulls data from your
             Garmin watch and delivers a daily morning brief with training guidance tailored to you.
           </p>
         </div>

@@ -73,12 +73,12 @@
   :root,
   html.dark {
     /* Surface tiers */
-    --bg: #0B0E13;
-    --surface: #131720;
-    --surface-elevated: #1B2030;
-    --surface-overlay: #242938;
-    --border: #2A3142;
-    --border-strong: #3A4258;
+    --bg: #0A1112;
+    --surface: #111E1F;
+    --surface-elevated: #192A2B;
+    --surface-overlay: #213436;
+    --border: #253A3C;
+    --border-strong: #345355;
 
     /* Text */
     --text-primary: #F0F4FF;
@@ -106,11 +106,11 @@
     --steele-gradient: linear-gradient(180deg, #E8EBF0 0%, #B0B8C4 60%, #7A828F 100%);
     --steele-gradient-h: linear-gradient(90deg, #E8EBF0 0%, #B0B8C4 100%);
 
-    /* Wordmark — premium brass gold gradient applied to the
-       "THE STEELE / SPREADSHEET SYSTEM" mark. Separate from Steele so
-       Avatar tints + other Steele uses stay metallic-silver. */
-    --wordmark-gradient: linear-gradient(180deg, #F0DDA6 0%, #D4A24A 55%, #A77C2A 100%);
-    --wordmark-gradient-h: linear-gradient(90deg, #F0DDA6 0%, #D4A24A 50%, #A77C2A 100%);
+    /* Wordmark — CheckMark teal→green gradient on the "Check" mark, echoing
+       the icon's teal→green tile. Separate from Steele so Avatar tints + other
+       Steele uses stay metallic-silver. */
+    --wordmark-gradient: linear-gradient(180deg, #5FE0C8 0%, #34C79E 55%, #15B07E 100%);
+    --wordmark-gradient-h: linear-gradient(90deg, #5FE0C8 0%, #2FC79C 50%, #15B07E 100%);
 
     /* Semantic */
     --success: #10B981;
@@ -172,9 +172,9 @@
     --steele-gradient: linear-gradient(180deg, #374151 0%, #6B7280 60%, #9CA3AF 100%);
     --steele-gradient-h: linear-gradient(90deg, #374151 0%, #6B7280 100%);
 
-    /* Wordmark — deeper brass for AA contrast on white. */
-    --wordmark-gradient: linear-gradient(180deg, #D9A968 0%, #A77C2A 55%, #6E4F18 100%);
-    --wordmark-gradient-h: linear-gradient(90deg, #D9A968 0%, #A77C2A 50%, #6E4F18 100%);
+    /* Wordmark — deep teal→green for AA contrast on white. */
+    --wordmark-gradient: linear-gradient(180deg, #0FA98C 0%, #0E9A6A 55%, #0C8A4E 100%);
+    --wordmark-gradient-h: linear-gradient(90deg, #0FA98C 0%, #0E9A6A 50%, #0C8A4E 100%);
 
     /* Semantic */
     --success: #059669;

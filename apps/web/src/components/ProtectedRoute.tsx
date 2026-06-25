@@ -45,7 +45,7 @@ function PinUnlockGate() {
     <div className="min-h-screen bg-bg flex items-center justify-center p-4 pt-safe pb-safe">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-center text-text-primary">Unlock Garmin Coach</CardTitle>
+          <CardTitle className="text-center text-text-primary">Unlock CheckMark</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-text-secondary font-sans text-center">
