@@ -22,6 +22,20 @@ registered `run_wake_check`, and it fired live + idle-correct out of window. **O
 behavioural one tomorrow morning (post-wake fire + a `wake_check` row in prod `analyses`); operate/soak + auth
 Phase 3 path below otherwise unchanged.
 
+**Also done 2026-06-24: `metric_baselines` computed + persisted for Mark from DB history (DECISIONS #88).** The
+#85 year backfill loaded 366 nights but left `metric_baselines` empty, so the morning "Metrics vs Baselines"
+read was silently falling back to the static KB profile bands. New `apps/api/src/metric_baselines_backfill.py`
+CLI + pure `services/metric_baselines.py` derive the stats from stored `daily_metrics`+`sleep` (reusing the
+xlsx importer's now source-parametrized `compute_metric_baselines` core; `source=db_history`; #45 SpO2/HRV
+cutoff honoured) instead of the never-applied xlsx. **Ran against prod** (default trailing 84-night window
+2026-04-02 → 2026-06-24): **7 baselines written** and `_metrics_vs_baselines` verified to return 7 populated
+rows (was 0) — SpO2 n=11/excl=69, HRV n=14/excl=70 with `reliability_start_date=2026-06-11`; the other 5
+metrics full-window (sleep_score median 74, RHR median 44). **No deploy needed** for prod to benefit (the
+morning read path was already live); the code only needs to land on `main` so re-runs are reproducible. Local:
+ruff + mypy(src, 66 files) clean, pure tests pass; the 5 DB-backed tests run in CI (no local Postgres).
+**Code is on the working tree, not yet committed/PR'd** — re-run `python -m src.metric_baselines_backfill` via
+`railway run` periodically as more reliable HRV/SpO2 nights accumulate past the cutoff.
+
 **Gotchas (backfill):** summaries-only (`--no-activity-details`) — per-second time-series for the ~673
 historical activities was deliberately skipped (volume + 429 cost); re-run without the flag for a date
 window if deep per-ride analysis is ever needed. The CLI is resumable (per-day commit + skip-existing),
@@ -288,6 +302,24 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-24** — **`metric_baselines` seeded for Mark from DB history (built, working tree, not yet committed).**
+  The #85 year backfill left `metric_baselines` empty, so the morning "Metrics vs Baselines" read (ARCHITECTURE
+  §4) was falling back to static KB profile bands. Rather than belatedly run the never-applied 84-night xlsx,
+  derived the baselines from the real DB history: extracted the xlsx importer's per-metric stats into a pure,
+  source-parametrized core `services/sleep_history.py::compute_metric_baselines(samples, *, source)` (xlsx
+  `build_metric_baselines` now a thin wrapper → identical output, existing tests unchanged); added
+  `services/metric_baselines.py::MetricBaselineBackfillService.rebuild` (reads `sleep`+`daily_metrics`, joins per
+  day with the *exact* column mapping of `morning_analysis._metrics_vs_baselines` so baseline ⟷ current are
+  apples-to-apples, configurable trailing window, idempotent upsert, dry-run, `source=db_history`) + CLI
+  `src/metric_baselines_backfill.py`. #45 SpO2/HRV cutoff honoured by reusing the existing reliability specs.
+  Tests: 5 pure + 5 DB-backed in `tests/test_metric_baselines.py` (create+cutoff, idempotent, dry-run, window,
+  xlsx-source coexistence) plus the morning-fallback invariant (empty → KB-band fallback; populated → surfaced).
+  **Verified against prod via `railway run`:** dry-run then write → 7 baselines under `db_history` (84-night
+  window 2026-04-02 → 2026-06-24); a read-only check confirmed `_metrics_vs_baselines` now returns 7 populated
+  rows (was 0) with the #45 cutoff applied (SpO2 n=11/excl=69, HRV n=14/excl=70, reliFrom=2026-06-11). Local
+  ruff + mypy(src) clean; pure tests pass (DB tests skip — no local Postgres, run in CI). Recorded DECISIONS #88,
+  ticked ARCHITECTURE §5. **No prod deploy required** (morning read path already live). Next: commit on a branch
+  + PR if wanted.
 - **2026-06-24** — **Wake-triggered morning verdict (built, branch `feat/wake-triggered-morning`, PR pending).**
   Replaced the fixed 06:30 morning cron with a wake-detection trigger so the verdict reads Mark's finalized
   overnight metrics whatever time he surfaces (his median wake is 08:22 / 98.6% after 06:30, so 06:30 was

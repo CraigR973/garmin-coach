@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
@@ -77,33 +78,39 @@ class SleepHistoryRow:
 class BaselineMetricSpec:
     metric_key: str
     metric_label: str
-    row_attr: str
     reliability_start_date: date | None = None
 
 
 BASELINE_SPECS: tuple[BaselineMetricSpec, ...] = (
-    BaselineMetricSpec("sleep_score", "Sleep score", "score"),
-    BaselineMetricSpec(
-        "age_adjusted_sleep_score",
-        "Age-adjusted sleep score",
-        "age_adjusted_score",
-    ),
-    BaselineMetricSpec("resting_heart_rate_bpm", "Resting heart rate", "resting_heart_rate_bpm"),
-    BaselineMetricSpec("body_battery_charge", "Body Battery charge", "body_battery_charge"),
+    BaselineMetricSpec("sleep_score", "Sleep score"),
+    BaselineMetricSpec("age_adjusted_sleep_score", "Age-adjusted sleep score"),
+    BaselineMetricSpec("resting_heart_rate_bpm", "Resting heart rate"),
+    BaselineMetricSpec("body_battery_charge", "Body Battery charge"),
     BaselineMetricSpec(
         "average_spo2_pct",
         "Average Pulse Ox",
-        "average_spo2_pct",
         reliability_start_date=SPO2_HRV_RELIABLE_FROM,
     ),
-    BaselineMetricSpec("average_respiration", "Average respiration", "average_respiration"),
+    BaselineMetricSpec("average_respiration", "Average respiration"),
     BaselineMetricSpec(
         "hrv_7_day_avg_ms",
         "7-day average HRV",
-        "hrv_7_day_avg_ms",
         reliability_start_date=SPO2_HRV_RELIABLE_FROM,
     ),
 )
+
+
+@dataclass(frozen=True)
+class BaselineSample:
+    """One calendar day's metric values keyed by baseline ``metric_key``.
+
+    The shared currency between the xlsx importer and the DB-history backfill
+    (``services/metric_baselines.py``) so both feed the *same*
+    :func:`compute_metric_baselines` core.
+    """
+
+    calendar_date: date
+    values: Mapping[str, float | int | None]
 
 
 @dataclass(frozen=True)
@@ -143,30 +150,45 @@ def parse_sleep_history_workbook(
     return rows, skipped
 
 
-def build_metric_baselines(rows: list[SleepHistoryRow]) -> list[dict[str, Any]]:
-    if not rows:
+def compute_metric_baselines(
+    samples: Sequence[BaselineSample],
+    *,
+    source: str,
+    specs: Sequence[BaselineMetricSpec] = BASELINE_SPECS,
+) -> list[dict[str, Any]]:
+    """Summarise per-day samples into persisted ``metric_baselines`` field dicts.
+
+    Pure + source-agnostic: both the 84-night xlsx importer and the DB-history
+    backfill feed :class:`BaselineSample`s through this one core so the stats —
+    and the #45 SpO2/HRV reliability cutoff (rows before
+    ``spec.reliability_start_date`` are dropped from that metric and surfaced as
+    ``excluded_sample_count``) — are computed identically. ``source`` is stamped
+    onto each row so provenance stays honest and the
+    ``(user_id, metric_key, source)`` unique key never collides across origins.
+    """
+    if not samples:
         return []
 
-    window_start = min(row.calendar_date for row in rows)
-    window_end = max(row.calendar_date for row in rows)
+    window_start = min(sample.calendar_date for sample in samples)
+    window_end = max(sample.calendar_date for sample in samples)
     baselines: list[dict[str, Any]] = []
 
-    for spec in BASELINE_SPECS:
+    for spec in specs:
         values = [
             float(value)
-            for row in rows
-            if (value := getattr(row, spec.row_attr)) is not None
+            for sample in samples
+            if (value := sample.values.get(spec.metric_key)) is not None
             and (
                 spec.reliability_start_date is None
-                or row.calendar_date >= spec.reliability_start_date
+                or sample.calendar_date >= spec.reliability_start_date
             )
         ]
         excluded_count = sum(
             1
-            for row in rows
-            if getattr(row, spec.row_attr) is not None
+            for sample in samples
+            if sample.values.get(spec.metric_key) is not None
             and spec.reliability_start_date is not None
-            and row.calendar_date < spec.reliability_start_date
+            and sample.calendar_date < spec.reliability_start_date
         )
         if not values:
             continue
@@ -177,7 +199,7 @@ def build_metric_baselines(rows: list[SleepHistoryRow]) -> list[dict[str, Any]]:
             {
                 "metric_key": spec.metric_key,
                 "metric_label": spec.metric_label,
-                "source": SLEEP_HISTORY_SOURCE,
+                "source": source,
                 "window_start_date": window_start,
                 "window_end_date": window_end,
                 "reliability_start_date": spec.reliability_start_date,
@@ -193,7 +215,7 @@ def build_metric_baselines(rows: list[SleepHistoryRow]) -> list[dict[str, Any]]:
                 "raw_payload": {
                     "metricKey": spec.metric_key,
                     "metricLabel": spec.metric_label,
-                    "source": SLEEP_HISTORY_SOURCE,
+                    "source": source,
                     "windowStartDate": window_start.isoformat(),
                     "windowEndDate": window_end.isoformat(),
                     "reliabilityStartDate": (
@@ -209,6 +231,28 @@ def build_metric_baselines(rows: list[SleepHistoryRow]) -> list[dict[str, Any]]:
         )
 
     return baselines
+
+
+def _sleep_history_sample(row: SleepHistoryRow) -> BaselineSample:
+    return BaselineSample(
+        calendar_date=row.calendar_date,
+        values={
+            "sleep_score": row.score,
+            "age_adjusted_sleep_score": row.age_adjusted_score,
+            "resting_heart_rate_bpm": row.resting_heart_rate_bpm,
+            "body_battery_charge": row.body_battery_charge,
+            "average_spo2_pct": row.average_spo2_pct,
+            "average_respiration": row.average_respiration,
+            "hrv_7_day_avg_ms": row.hrv_7_day_avg_ms,
+        },
+    )
+
+
+def build_metric_baselines(rows: list[SleepHistoryRow]) -> list[dict[str, Any]]:
+    return compute_metric_baselines(
+        [_sleep_history_sample(row) for row in rows],
+        source=SLEEP_HISTORY_SOURCE,
+    )
 
 
 class SleepHistoryImportService:
