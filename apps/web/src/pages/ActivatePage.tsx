@@ -8,6 +8,8 @@ import { brand } from '@/theme/tokens';
 
 type ActivateState = 'activating' | 'error';
 
+const PENDING_ACTIVATION_CODE = 'coach_pending_activation_code';
+
 export function ActivatePage() {
   const navigate = useNavigate();
   const { activateDevice } = useAuth();
@@ -18,21 +20,36 @@ export function ActivatePage() {
     let cancelled = false;
 
     async function activate() {
-      const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-      const code = params.get('code');
+      const readCodeFromUrl = () => {
+        let params = new URLSearchParams(window.location.search.replace(/^\?/, ''));
+        if (!params.get('code')) {
+          params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+        }
+        return params.get('code');
+      };
+
+      const urlCode = readCodeFromUrl();
+      const storedCode = window.localStorage.getItem(PENDING_ACTIVATION_CODE);
+      const code = urlCode || storedCode;
+
       if (!code) {
-        setState('error');
-        setError('This activation link is missing its code. Ask Craig for a new link.');
+        navigate('/', { replace: true });
         return;
+      }
+
+      if (urlCode && urlCode !== storedCode) {
+        window.localStorage.setItem(PENDING_ACTIVATION_CODE, urlCode);
       }
 
       try {
         await activateDevice(code);
         if (cancelled) return;
+        window.localStorage.removeItem(PENDING_ACTIVATION_CODE);
         window.history.replaceState(null, '', '/activate');
         navigate('/', { replace: true });
       } catch (err) {
         if (cancelled) return;
+        window.localStorage.removeItem(PENDING_ACTIVATION_CODE);
         setState('error');
         setError(
           err instanceof Error ? err.message : 'Activation failed. Ask Craig for a new link.',

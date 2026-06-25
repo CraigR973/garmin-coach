@@ -20,7 +20,9 @@ def _now() -> datetime:
 
 
 def _activation_url(code: str) -> str:
-    return f"{settings.frontend_origin.rstrip('/')}/activate#code={quote(code, safe='')}"
+    # Use a query parameter for activation so install flows preserve the code
+    # more reliably than a fragment-only URL.
+    return f"{settings.frontend_origin.rstrip('/')}/activate?code={quote(code, safe='')}"
 
 
 async def mint_activation_link(profile_name: str) -> str:
