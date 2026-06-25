@@ -111,7 +111,10 @@ function titleCase(value: string | null | undefined): string {
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return 'Not synced';
-  return new Date(value).toLocaleString();
+  const d = new Date(value);
+  // Hive occasionally returns a far-future timestamp — treat as sync error
+  if (d.getTime() > Date.now() + 24 * 60 * 60 * 1000) return 'Sync error';
+  return d.toLocaleString();
 }
 
 function formatMinutes(seconds: number | null | undefined): string {
@@ -320,7 +323,8 @@ export function DashboardPage() {
               </>
             ) : (
               <p className="text-sm text-text-secondary">
-                The 06:30 sync has not generated a stored verdict for this date yet.
+                No verdict for this date yet — it&rsquo;s generated automatically each morning once your
+                overnight Garmin metrics finish syncing after you wake.
               </p>
             )}
           </CardContent>
@@ -371,7 +375,7 @@ export function DashboardPage() {
                 </span>
               </div>
               <div className="flex items-center justify-between rounded-xl border border-border px-3 py-3">
-                <span>Target</span>
+                <span>Thermostat set</span>
                 <span className="font-semibold">
                   {thermal.targetTemperatureC !== null && thermal.targetTemperatureC !== undefined
                     ? `${thermal.targetTemperatureC.toFixed(1)}°C`
