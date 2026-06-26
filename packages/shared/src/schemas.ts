@@ -330,6 +330,20 @@ export const dailyLoopWarningSchema = z.object({
   detail: z.string().nullable().optional(),
 });
 
+export const metricBaselineRowSchema = z.object({
+  metricKey: z.string().min(1),
+  label: z.string().min(1),
+  currentValue: z.number().nullable().optional(),
+  baselineMedian: z.number().nullable().optional(),
+  baselineMean: z.number().nullable().optional(),
+  deltaVsBaseline: z.number().nullable().optional(),
+  lowerQuartile: z.number().nullable().optional(),
+  upperQuartile: z.number().nullable().optional(),
+  sampleCount: z.number().int().optional(),
+  excludedSampleCount: z.number().int().optional(),
+  reliabilityStartDate: z.string().nullable().optional(),
+});
+
 export const dailyLoopAnalysisSchema = z.object({
   id: z.string().uuid(),
   generatedAtUtc: isoDateTimeSchema,
@@ -341,6 +355,7 @@ export const dailyLoopAnalysisSchema = z.object({
   reasons: z.array(z.string()).default([]),
   readinessInterpretation: z.string().nullable().optional(),
   thermalReview: jsonObjectSchema.default({}),
+  metricsVsBaselines: z.array(metricBaselineRowSchema).default([]),
 });
 
 export const dailyLoopPostWorkoutAnalysisSchema = z.object({
