@@ -184,7 +184,7 @@ function ChangePinSection() {
         <button
           type="submit"
           disabled={!canSubmit}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-primary text-primary-fg text-sm font-sans font-medium disabled:opacity-50 press-down"
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-primary text-on-primary text-sm font-sans font-medium disabled:opacity-50 press-down"
         >
           <KeyRound className="h-4 w-4" aria-hidden />
           {mutation.isPending ? 'Changing…' : 'Change PIN'}

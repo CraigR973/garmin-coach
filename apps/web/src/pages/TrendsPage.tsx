@@ -1,8 +1,20 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { trendsNarrativeEnvelopeSchema } from '@coach/shared';
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { CalendarRange, Sparkles, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
+import { colors } from '@/theme/tokens';
+import { Markdown } from '@/components/Markdown';
 import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,9 +34,7 @@ async function fetchTrends(bucket: TrendBucket) {
 }
 
 async function runTrends(bucket: TrendBucket) {
-  const response = await apiFetch<unknown>(`${BASE}/narrative/run?bucket=${bucket}`, {
-    method: 'POST',
-  });
+  const response = await apiFetch<unknown>(`${BASE}/narrative/run?bucket=${bucket}`, { method: 'POST' });
   return trendsNarrativeEnvelopeSchema.parse(response);
 }
 
@@ -38,11 +48,19 @@ function pct(value: number | null): string {
   return `${sign}${(value * 100).toFixed(1)}%`;
 }
 
+// Sleep and readiness rising is good; resting HR is shown separately.
+const HIGHER_IS_BETTER = new Set(['sleep_score', 'readiness_score', 'hrv_last_night_ms', 'vo2_max']);
+
 function deltaVariant(metric: YoYMetric): 'success' | 'error' | 'muted' {
   if (metric.status !== 'ok' || metric.delta === null) return 'muted';
-  if (metric.delta > 0) return 'success';
-  if (metric.delta < 0) return 'error';
+  const better = HIGHER_IS_BETTER.has(metric.metricKey);
+  if (metric.delta > 0) return better ? 'success' : 'error';
+  if (metric.delta < 0) return better ? 'error' : 'success';
   return 'muted';
+}
+
+function metricMean(window: TrendWindow, metricKey: string): number | null {
+  return window.metrics.find((m) => m.metricKey === metricKey)?.mean ?? null;
 }
 
 export function TrendsPage() {
@@ -55,22 +73,21 @@ export function TrendsPage() {
     onSuccess: (envelope) => {
       queryClient.setQueryData(['trends', bucket], envelope);
       if (envelope.errors.length > 0) {
-        toast.error(envelope.errors[0]?.detail ?? 'Failed to generate the summary');
+        toast.error(envelope.errors[0]?.detail ?? 'Could not write the summary');
       } else if (envelope.data.status === 'insufficient_history') {
         toast.message('Not enough history yet for a year-on-year summary.');
       } else {
-        toast.success('Trend summary generated');
+        toast.success('Summary written');
       }
     },
-    onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Failed to generate the summary'),
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not write the summary'),
   });
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Trends" eyebrow="Year-on-year & seasonal" />
+    <div className="space-y-5">
+      <PageHeader title="Trends" />
 
-      <div className="flex gap-2" role="tablist" aria-label="Trend bucket">
+      <div className="flex gap-2" role="tablist" aria-label="Group by">
         {(['month', 'season'] as const).map((b) => (
           <Button
             key={b}
@@ -80,7 +97,7 @@ export function TrendsPage() {
             variant={bucket === b ? 'default' : 'outline'}
             onClick={() => setBucket(b)}
           >
-            {b === 'month' ? 'Monthly' : 'Seasonal'}
+            {b === 'month' ? 'By month' : 'By season'}
           </Button>
         ))}
       </div>
@@ -88,24 +105,20 @@ export function TrendsPage() {
       {query.isLoading ? (
         <Card>
           <CardHeader>
-            <CardTitle>Loading {bucket} trends…</CardTitle>
+            <CardTitle>Loading your trends…</CardTitle>
           </CardHeader>
         </Card>
       ) : query.isError || !query.data ? (
         <Card>
           <CardHeader>
-            <CardTitle>Trends unavailable</CardTitle>
+            <CardTitle>Trends couldn&apos;t load</CardTitle>
             <CardDescription>
-              {query.error instanceof Error ? query.error.message : 'The trends could not load.'}
+              {query.error instanceof Error ? query.error.message : 'Please try again in a moment.'}
             </CardDescription>
           </CardHeader>
         </Card>
       ) : (
-        <TrendsBody
-          data={query.data.data}
-          generating={runMutation.isPending}
-          onGenerate={() => runMutation.mutate()}
-        />
+        <TrendsBody data={query.data.data} generating={runMutation.isPending} onGenerate={() => runMutation.mutate()} />
       )}
     </div>
   );
@@ -123,51 +136,78 @@ function TrendsBody({
   const { yearOnYear, recentWindows, narrative } = data;
   const insufficient = yearOnYear.status !== 'ok';
 
+  // Oldest → newest so the line reads left-to-right (sort by window start).
+  const chartData = [...recentWindows]
+    .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0))
+    .map((w) => ({
+      label: w.label,
+      Sleep: metricMean(w, 'sleep_score'),
+      Readiness: metricMean(w, 'readiness_score'),
+    }));
+
   return (
     <div className="space-y-4">
-      <Card className="bg-surface-elevated/60">
+      {/* Trend chart */}
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-primary" aria-hidden />
-            {yearOnYear.currentLabel ?? data.targetKey} vs {yearOnYear.priorLabel ?? 'last year'}
+            Sleep &amp; readiness over time
           </CardTitle>
-          <CardDescription>
-            Same-period comparison against the prior year. All windows are computed deterministically
-            and degrade gracefully until a full year of history exists.
-          </CardDescription>
+          <CardDescription>Your averages for each {data.bucket === 'season' ? 'season' : 'month'}.</CardDescription>
         </CardHeader>
+        <CardContent>
+          {chartData.length >= 2 ? (
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart data={chartData} margin={{ top: 8, right: 12, bottom: 0, left: -12 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                <XAxis dataKey="label" tick={{ fill: colors.textMuted, fontSize: 11 }} stroke={colors.border} />
+                <YAxis tick={{ fill: colors.textMuted, fontSize: 11 }} stroke={colors.border} width={36} />
+                <Tooltip
+                  contentStyle={{
+                    background: 'var(--surface-elevated)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 12,
+                    color: 'var(--text-primary)',
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Line type="monotone" dataKey="Sleep" stroke={colors.primary} strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                <Line type="monotone" dataKey="Readiness" stroke={colors.accent} strokeWidth={2} dot={{ r: 3 }} connectNulls />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="text-sm text-text-muted">Not enough history yet to draw a trend.</p>
+          )}
+        </CardContent>
       </Card>
 
-      {insufficient ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <CalendarRange className="h-4 w-4 text-text-muted" aria-hidden />
-              Insufficient history
-            </CardTitle>
-            <CardDescription>
-              {yearOnYear.reasons[0] ??
-                'A full prior-year window is needed before year-on-year deltas appear.'}
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Year-on-year deltas</CardTitle>
-          </CardHeader>
-          <CardContent>
+      {/* This year vs last year */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            {yearOnYear.currentLabel ?? data.targetKey} vs {yearOnYear.priorLabel ?? 'last year'}
+          </CardTitle>
+          <CardDescription>How this period compares with the same time last year.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {insufficient ? (
+            <div className="flex items-start gap-2 text-sm text-text-secondary">
+              <CalendarRange className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" aria-hidden />
+              <span>
+                {yearOnYear.reasons[0] ??
+                  "Not enough history yet — a full year is needed before last-year comparisons appear."}
+              </span>
+            </div>
+          ) : (
             <ul className="space-y-2">
               {yearOnYear.metrics
                 .filter((m) => m.status === 'ok')
                 .map((m) => (
-                  <li
-                    key={m.metricKey}
-                    className="flex items-center justify-between gap-3 text-sm"
-                  >
+                  <li key={m.metricKey} className="flex items-center justify-between gap-3 text-sm">
                     <span className="text-text-primary">{m.label}</span>
                     <span className="flex items-center gap-2">
-                      <span className="text-text-muted">
+                      <span className="text-text-muted tabular-nums">
                         {fmt(m.priorMean)} → {fmt(m.currentMean)}
                       </span>
                       <Badge variant={deltaVariant(m)}>
@@ -178,77 +218,65 @@ function TrendsBody({
                   </li>
                 ))}
             </ul>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </CardContent>
+      </Card>
 
+      {/* Exact figures per window */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Recent windows</CardTitle>
-          <CardDescription>Mean sleep score, readiness and resting HR per window.</CardDescription>
+          <CardTitle className="text-base">Recent {data.bucket === 'season' ? 'seasons' : 'months'}</CardTitle>
         </CardHeader>
         <CardContent>
           {recentWindows.length === 0 ? (
-            <p className="text-sm text-text-muted">No windows with data yet.</p>
+            <p className="text-sm text-text-muted">No data yet.</p>
           ) : (
             <ul className="space-y-2">
               {recentWindows.map((w) => (
-                <WindowRow key={w.key} window={w} />
+                <li key={w.key} className="flex items-center justify-between gap-3 text-sm">
+                  <span className="flex items-center gap-2">
+                    <span className="font-medium text-text-primary">{w.label}</span>
+                    <span className="text-xs text-text-muted">{w.sampleDays}d</span>
+                  </span>
+                  <span className="text-text-muted tabular-nums">
+                    Sleep {fmt(metricMean(w, 'sleep_score'))} · Readiness {fmt(metricMean(w, 'readiness_score'))} · RHR{' '}
+                    {fmt(metricMean(w, 'resting_hr_bpm'))}
+                  </span>
+                </li>
               ))}
             </ul>
           )}
         </CardContent>
       </Card>
 
+      {/* Written summary */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" aria-hidden />
-            Narrative summary
+            Written summary
           </CardTitle>
           <CardDescription>
             {narrative
-              ? `Generated ${new Date(narrative.generatedAtUtc).toLocaleString()}${
-                  narrative.modelName ? ` · ${narrative.modelName}` : ''
-                }`
+              ? `Written ${new Date(narrative.generatedAtUtc).toLocaleString()}`
               : insufficient
-                ? 'A narrative is generated once a year-on-year comparison is possible.'
-                : 'No narrative has been generated for this period yet.'}
+                ? 'A written summary appears once last-year comparisons are possible.'
+                : 'No summary written for this period yet.'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {narrative ? (
-            <div className="rounded-xl border border-border bg-bg px-4 py-3 text-sm leading-6 text-text-primary whitespace-pre-wrap">
-              {narrative.markdown}
+            <div className="rounded-xl border border-border bg-bg px-4 py-3">
+              <Markdown>{narrative.markdown}</Markdown>
             </div>
           ) : null}
           <div className="flex justify-end">
             <Button type="button" onClick={onGenerate} disabled={generating || insufficient}>
-              {narrative ? 'Regenerate' : 'Generate summary'}
+              {narrative ? 'Rewrite' : 'Write summary'}
             </Button>
           </div>
         </CardContent>
       </Card>
     </div>
-  );
-}
-
-function metricMean(window: TrendWindow, metricKey: string): number | null {
-  return window.metrics.find((m) => m.metricKey === metricKey)?.mean ?? null;
-}
-
-function WindowRow({ window }: { window: TrendWindow }) {
-  return (
-    <li className="flex items-center justify-between gap-3 text-sm">
-      <span className="flex items-center gap-2">
-        <span className="font-medium text-text-primary">{window.label}</span>
-        <span className="text-xs text-text-muted">{window.sampleDays}d</span>
-      </span>
-      <span className="text-text-muted">
-        Sleep {fmt(metricMean(window, 'sleep_score'))} · Readiness{' '}
-        {fmt(metricMean(window, 'readiness_score'))} · RHR{' '}
-        {fmt(metricMean(window, 'resting_hr_bpm'))}
-      </span>
-    </li>
   );
 }

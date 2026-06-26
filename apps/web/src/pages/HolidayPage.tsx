@@ -73,7 +73,7 @@ export function HolidayPage() {
   if (query.isLoading) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Holiday" eyebrow="Plan pause / resume" />
+        <PageHeader title="Holiday" />
         <Card>
           <CardHeader>
             <CardTitle>Loading holiday status…</CardTitle>
@@ -86,7 +86,7 @@ export function HolidayPage() {
   if (query.isError || !query.data) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Holiday" eyebrow="Plan pause / resume" />
+        <PageHeader title="Holiday" />
         <Card>
           <CardHeader>
             <CardTitle>Holiday status unavailable</CardTitle>
@@ -105,19 +105,18 @@ export function HolidayPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Holiday" eyebrow="Plan pause / resume" />
+      <PageHeader title="Holiday" />
 
       {/* Info card */}
       <Card className="bg-surface-elevated/60">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <CalendarOff className="h-4 w-4 text-primary" aria-hidden />
-            Holiday = recovery week
+            Going on holiday?
           </CardTitle>
           <CardDescription>
-            Pausing the plan marks your planned workouts as holiday rest. On return the coach
-            continues from the right place: Build1 before holiday → resumes at Build2; Build2 before
-            holiday → repeats Build1.
+            Set your dates and the coach pauses your training — your sessions become rest days. When
+            you&apos;re back, it picks your plan up in the right place automatically.
           </CardDescription>
         </CardHeader>
       </Card>

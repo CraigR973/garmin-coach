@@ -20,6 +20,9 @@ const Layout = lazy(() => import('./components/Layout').then((m) => ({ default: 
 const DashboardPage = lazy(() =>
   import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })),
 );
+const CheckInPage = lazy(() =>
+  import('./pages/CheckInPage').then((m) => ({ default: m.CheckInPage })),
+);
 const SettingsPage = lazy(() =>
   import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 );
@@ -102,6 +105,7 @@ export function App() {
                   <Route element={<ProtectedRoute />}>
                     <Route element={<Layout />}>
                       <Route path="/" element={<DashboardPage />} />
+                      <Route path="/check-in" element={<CheckInPage />} />
                       <Route path="/delivery" element={<WeekAheadPage />} />
                       <Route path="/holiday" element={<HolidayPage />} />
                       <Route path="/builder" element={<BlockGeneratorPage />} />
