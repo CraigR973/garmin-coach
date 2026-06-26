@@ -6,6 +6,23 @@
 
 ## Now
 
+**Latest (2026-06-26): world-class UI/UX redesign SHIPPED** (PR #35, squash merge `dea04da`, CI green all
+jobs; prod verified — `/api/v1/health` sha=`dea04da`, web `/` 200, `/api/v1/daily-loop` 401). A full
+screen-by-screen redesign of the PWA so it looks professional, is simple for Mark, and visibly serves his
+original requirements (`~/Downloads/Dad Fitness/` — see memory `reference_dad_requirements_docs`).
+Headlines: a real markdown renderer (`components/Markdown.tsx`, react-markdown+remark-gfm) so the AI
+verdict's **bold headlines** + tables render (was a raw `whitespace-pre-wrap` dump showing literal
+`**asterisks**`); the **Metrics-vs-Baselines table** Mark asked for, surfaced from the already-computed
+`analysis.context_packet["metricsVsBaselines"]` (additive — `routers/daily_loop.py` serializer + shared
+`dailyLoopAnalysisSchema`, **no migration**) and rendered with ✔/⚠ status; bottom nav cut **10→4 tabs**
+(Home/Plan/Trends/More, admin tools tucked in a More sheet) + the broken desktop nav fixed; Home rebuilt
+read-first with the check-in form split into a focused `/check-in` page; Plan shows the whole week incl.
+strength (today lit by verdict); Trends got real **recharts** charts; every screen de-jargoned. New web
+primitives: `components/{Markdown,MetricsBaselineTable,VerdictHero,MoreMenu}.tsx`, `lib/{copy,navConfig}.ts`,
+`pages/CheckInPage.tsx`. DECISIONS #90. **Gotchas:** recharts ignores CSS `var()` in SVG stroke *attributes* —
+chart strokes pass hex from `theme/tokens`; the Plan weekly view is Mark's fixed structure as a frontend
+const, NOT a new endpoint (`list_week_ahead` is bike-only by Decision #31). No backend coaching-logic change.
+
 **Phase:** **v1→v3 roadmap complete** (every batch in `docs/phase-batches.md` is `Shipped`) → now in
 post-roadmap operate/soak mode. **Done 2026-06-24: a full year of Garmin history backfilled into prod.**
 A new resumable admin CLI — `apps/api/src/garmin_history_backfill.py` (PR #27, CI green) — walked
@@ -302,6 +319,22 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-26** — **World-class UI/UX redesign SHIPPED (PR #35, squash merge `dea04da`, CI green, prod verified).**
+  Acted as a UI/UX designer reviewing the finished app against Mark's *original* requirement docs
+  (`~/Downloads/Dad Fitness/`: App Optimisations = his feature wishlist, the Handover Document = profile/
+  protocol/framework, the AI Daily Check-in = desired output format — now captured in memory
+  `reference_dad_requirements_docs`). The diagnosis: strong design-token/craft layer, but the app read as a
+  developer dashboard — AI output dumped as raw markdown (his "bold each headline" ask showed literal `**`),
+  the Metrics-vs-Baselines table he wanted was computed then hidden, a 10-tab mobile bar (3-tab desktop with
+  7 unreachable routes), and a 774-line kitchen-sink Home. Full redesign in 7 phases: (1) `Markdown.tsx`
+  renderer + surface `metricsVsBaselines` (additive `daily_loop.py`/shared schema, no migration) +
+  `MetricsBaselineTable`/`VerdictHero` primitives; (2) nav → Home/Plan/Trends/More (`navConfig.ts`,
+  `MoreMenu.tsx`, TabBar/TopBar); (3) Home rebuilt read-first + check-in split to `CheckInPage.tsx`;
+  (4) Plan = whole week incl. strength, de-jargoned Zwift; (5) Trends recharts charts + Reviews polish;
+  (6) admin screens consistency/de-jargon; (7) live headless verification (mock-data middleware, prod-free —
+  Home/baselines/Plan/Trends screenshotted; fixed table mobile-clip + invisible chart lines). **Verified:** web
+  typecheck+lint(0 err)+28 vitest(6 new)+build; shared 7; backend ruff+mypy; CI all green on the PR;
+  prod `/api/v1/health` sha=`dea04da`, web 200, daily-loop 401. DECISIONS #90.
 - **2026-06-24** — **`metric_baselines` seeded for Mark from DB history (built, working tree, not yet committed).**
   The #85 year backfill left `metric_baselines` empty, so the morning "Metrics vs Baselines" read (ARCHITECTURE
   §4) was falling back to static KB profile bands. Rather than belatedly run the never-applied 84-night xlsx,
