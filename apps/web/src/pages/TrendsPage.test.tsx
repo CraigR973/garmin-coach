@@ -107,10 +107,10 @@ describe('TrendsPage', () => {
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByText('Year-on-year deltas')).toBeTruthy();
-    expect(screen.getByText(/No narrative has been generated/)).toBeTruthy();
+    expect(await screen.findByText('July 2026 vs July 2025')).toBeTruthy();
+    expect(screen.getByText(/No summary written/)).toBeTruthy();
 
-    await user.click(screen.getByRole('button', { name: 'Generate summary' }));
+    await user.click(screen.getByRole('button', { name: 'Write summary' }));
 
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith(
@@ -140,10 +140,7 @@ describe('TrendsPage', () => {
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByText('Insufficient history')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Generate summary' })).toHaveProperty(
-      'disabled',
-      true,
-    );
+    expect(await screen.findByText(/No prior-year window/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Write summary' })).toHaveProperty('disabled', true);
   });
 });

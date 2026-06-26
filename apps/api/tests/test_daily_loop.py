@@ -145,6 +145,19 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
                     "environment": {
                         "thermalReview": {"summary": "Indoor temperature stayed in range."}
                     },
+                    "metricsVsBaselines": [
+                        {
+                            "metricKey": "hrv_7_day_avg_ms",
+                            "label": "HRV (7-day)",
+                            "currentValue": 51,
+                            "baselineMedian": 49,
+                            "lowerQuartile": 43,
+                            "upperQuartile": 57,
+                            "sampleCount": 14,
+                            "excludedSampleCount": 70,
+                            "reliabilityStartDate": "2026-06-11",
+                        }
+                    ],
                 },
                 raw_response={},
             )
@@ -191,6 +204,10 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
     payload = response.json()
     assert payload["data"]["subjectDate"] == "2026-06-20"
     assert payload["data"]["morningAnalysis"]["verdict"] == "green"
+    baselines = payload["data"]["morningAnalysis"]["metricsVsBaselines"]
+    assert baselines[0]["metricKey"] == "hrv_7_day_avg_ms"
+    assert baselines[0]["currentValue"] == 51
+    assert baselines[0]["lowerQuartile"] == 43
     assert payload["data"]["dailyMetrics"]["readinessScore"] == 71
     assert payload["data"]["sleep"]["ageAdjustedScore"] == 74
     assert payload["data"]["postWorkoutAnalyses"][0]["activityName"] == "Tempo ride"

@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { handoverEnvelopeSchema } from '@coach/shared';
 import { Download, FileText, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import { Markdown } from '@/components/Markdown';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -60,7 +62,7 @@ export function HandoverPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Handover" eyebrow="Auto-generated briefing" />
+      <PageHeader title="Handover" />
 
       {query.isLoading ? (
         <Card>
@@ -100,6 +102,7 @@ function HandoverBody({
   onGenerate: () => void;
 }) {
   const { markdown, export: stored } = data;
+  const [showRaw, setShowRaw] = useState(false);
 
   return (
     <div className="space-y-4">
@@ -107,22 +110,21 @@ function HandoverBody({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileText className="h-4 w-4 text-primary" aria-hidden />
-            Portable handover document
+            Full briefing for a new AI chat
           </CardTitle>
           <CardDescription>
-            Assembled from your living state — knowledge base, plan, baselines, reviews, trends,
-            experiments and the strength brief. The markdown below is built deterministically and
-            always reflects current state; the narrative is generated on demand.
+            Everything your coach knows about you — profile, plan, baselines, reviews and what you&apos;re
+            testing — in one document. Always up to date, ready to paste into a new AI chat.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap justify-end gap-2">
           <Button type="button" variant="outline" onClick={() => downloadMarkdown(data)}>
             <Download className="mr-2 h-4 w-4" aria-hidden />
-            Download .md
+            Download
           </Button>
           <Button type="button" onClick={onGenerate} disabled={generating}>
             <Sparkles className="mr-2 h-4 w-4" aria-hidden />
-            {stored ? 'Regenerate narrative' : 'Generate narrative'}
+            {stored ? 'Rewrite summary' : 'Write summary'}
           </Button>
         </CardContent>
       </Card>
@@ -132,16 +134,13 @@ function HandoverBody({
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-primary" aria-hidden />
-              Narrative handover
+              Written summary
             </CardTitle>
-            <CardDescription>
-              Generated {new Date(stored.generatedAtUtc).toLocaleString()}
-              {stored.modelName ? ` · ${stored.modelName}` : ''}
-            </CardDescription>
+            <CardDescription>Written {new Date(stored.generatedAtUtc).toLocaleString()}</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="rounded-xl border border-border bg-bg px-4 py-3 text-sm leading-6 text-text-primary whitespace-pre-wrap">
-              {stored.markdown}
+            <div className="rounded-xl border border-border bg-bg px-4 py-3">
+              <Markdown>{stored.markdown}</Markdown>
             </div>
           </CardContent>
         </Card>
@@ -149,18 +148,27 @@ function HandoverBody({
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-4 w-4 text-primary" aria-hidden />
-            Deterministic export preview
-          </CardTitle>
-          <CardDescription>
-            Built without the model — this is exactly what “Download .md” saves.
-          </CardDescription>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-primary" aria-hidden />
+              The document
+            </CardTitle>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setShowRaw((v) => !v)}>
+              {showRaw ? 'Show formatted' : 'View raw text'}
+            </Button>
+          </div>
+          <CardDescription>Exactly what “Download” saves.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="max-h-[480px] overflow-auto rounded-xl border border-border bg-bg px-4 py-3 text-xs leading-5 text-text-primary whitespace-pre-wrap font-mono">
-            {markdown}
-          </div>
+          {showRaw ? (
+            <div className="max-h-[480px] overflow-auto rounded-xl border border-border bg-bg px-4 py-3 font-mono text-xs leading-5 text-text-primary whitespace-pre-wrap">
+              {markdown}
+            </div>
+          ) : (
+            <div className="max-h-[480px] overflow-auto rounded-xl border border-border bg-bg px-4 py-3">
+              <Markdown>{markdown}</Markdown>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

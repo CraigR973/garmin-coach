@@ -1,6 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { DashboardPage } from './DashboardPage';
@@ -44,6 +43,19 @@ const snapshot = {
       reasons: ['Sleep and HRV are in range.'],
       readinessInterpretation: 'load_driven',
       thermalReview: {},
+      metricsVsBaselines: [
+        {
+          metricKey: 'hrv_7_day_avg_ms',
+          label: 'HRV (7-day)',
+          currentValue: 50,
+          baselineMedian: 49,
+          lowerQuartile: 43,
+          upperQuartile: 57,
+          sampleCount: 14,
+          excludedSampleCount: 70,
+          reliabilityStartDate: '2026-06-11',
+        },
+      ],
     },
     dailyMetrics: {
       id: '33333333-3333-4333-8333-333333333333',
@@ -157,11 +169,8 @@ const snapshot = {
 };
 
 describe('DashboardPage', () => {
-  it('renders the daily loop and saves the manual check-in', async () => {
-    apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
-      if (options?.method === 'PUT') {
-        return Promise.resolve(snapshot);
-      }
+  it('renders a read-first daily brief with verdict, sleep, baselines and training', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
       if (path === '/api/v1/daily-loop') {
         return Promise.resolve(snapshot);
       }
@@ -169,7 +178,6 @@ describe('DashboardPage', () => {
     });
 
     const queryClient = new QueryClient();
-    const user = userEvent.setup();
 
     render(
       <QueryClientProvider client={queryClient}>
@@ -179,19 +187,17 @@ describe('DashboardPage', () => {
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByText('Morning verdict')).toBeTruthy();
+    // Verdict hero + training badge (green → "Good to go")
+    expect((await screen.findAllByText('Good to go')).length).toBeGreaterThan(0);
+    // Metrics-vs-baselines table Mark asked for
+    expect(screen.getByText('Metrics vs your baselines')).toBeTruthy();
+    expect(screen.getByText('HRV (7-day)')).toBeTruthy();
+    // Today's training shows the planned session
     expect(screen.getAllByText('Tempo ride').length).toBeGreaterThan(0);
-    expect(screen.getByText('Post-workout analysis')).toBeTruthy();
+    // Post-workout read renders the markdown content
     expect(screen.getByText(/refuel within 20 minutes/)).toBeTruthy();
-
-    await user.type(screen.getByLabelText('BP systolic'), '108');
-    await user.click(screen.getByRole('button', { name: 'Save check-in' }));
-
-    await waitFor(() => {
-      expect(apiFetchMock).toHaveBeenCalledWith(
-        '/api/v1/daily-loop/2026-06-20/manual-entry',
-        expect.objectContaining({ method: 'PUT' }),
-      );
-    });
+    // Check-in moved to its own page behind a CTA
+    const checkIn = screen.getByRole('link', { name: /check in/i });
+    expect(checkIn.getAttribute('href')).toBe('/check-in');
   });
 });

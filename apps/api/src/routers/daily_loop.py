@@ -86,6 +86,7 @@ class AnalysisOut(BaseModel):
     reasons: list[str]
     readinessInterpretation: str | None
     thermalReview: dict[str, Any]
+    metricsVsBaselines: list[dict[str, Any]]
 
 
 class PostWorkoutAnalysisOut(BaseModel):
@@ -279,6 +280,11 @@ def _serialize_analysis(analysis: Analysis | None) -> AnalysisOut | None:
         else {}
     )
     thermal_review = environment.get("thermalReview", {}) if isinstance(environment, dict) else {}
+    metrics_vs_baselines = (
+        analysis.context_packet.get("metricsVsBaselines", [])
+        if isinstance(analysis.context_packet, dict)
+        else []
+    )
     return AnalysisOut(
         id=str(analysis.id),
         generatedAtUtc=_dt(analysis.generated_at_utc) or "",
@@ -292,6 +298,7 @@ def _serialize_analysis(analysis: Analysis | None) -> AnalysisOut | None:
         if isinstance(verdict, dict)
         else None,
         thermalReview=thermal_review if isinstance(thermal_review, dict) else {},
+        metricsVsBaselines=metrics_vs_baselines if isinstance(metrics_vs_baselines, list) else [],
     )
 
 

@@ -79,14 +79,34 @@ const weekAhead = {
   errors: [],
 };
 
+const dailyLoop = {
+  data: {
+    subjectDate: '2026-06-23',
+    timezone: 'Europe/London',
+    morningAnalysis: null,
+    dailyMetrics: null,
+    sleep: null,
+    manualEntry: null,
+    postWorkoutAnalyses: [],
+    plannedWorkouts: [],
+    thermalState: { thermalReview: {} },
+    dataQualityWarnings: [],
+  },
+  meta: { generatedAtUtc: '2026-06-23T06:40:00Z' },
+  errors: [],
+};
+
 describe('WeekAheadPage', () => {
-  it('renders the week ahead and approves a proposed workout', async () => {
+  it('renders the week, the Zwift rides, and approves a prepared workout', async () => {
     apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
       if (options?.method === 'POST') {
         return Promise.resolve(weekAhead);
       }
       if (path === '/api/v1/workout-delivery/week-ahead') {
         return Promise.resolve(weekAhead);
+      }
+      if (path === '/api/v1/daily-loop') {
+        return Promise.resolve(dailyLoop);
       }
       return Promise.reject(new Error(`Unexpected request: ${path}`));
     });
@@ -103,12 +123,14 @@ describe('WeekAheadPage', () => {
     );
 
     expect(await screen.findByText('VO2 Max 30/30')).toBeTruthy();
-    // The Amber-adjusted proposal is flagged and its adjustment summarised.
-    expect(screen.getByText('Amber-adjusted')).toBeTruthy();
+    // The eased-for-recovery proposal is flagged and its adjustment summarised in plain words.
+    expect(screen.getByText('Eased for recovery')).toBeTruthy();
     expect(screen.getByText(/HIT removed/)).toBeTruthy();
-    // The un-proposed bike workout offers a Propose action.
+    // The un-prepared bike workout offers a plain-English prepare action.
     expect(screen.getByText('Sweet Spot Builder')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Propose' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Prepare for Zwift' })).toBeTruthy();
+    // Mark's fixed weekly shape is shown, strength included.
+    expect(screen.getByText('Dumbbells 20 min')).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: 'Approve' }));
 

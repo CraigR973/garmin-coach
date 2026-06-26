@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { reviewEnvelopeSchema } from '@coach/shared';
 import { Activity, BedDouble, Dumbbell, FileText, HeartPulse, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import { Markdown } from '@/components/Markdown';
 import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,21 @@ function trendVariant(trend: string): 'success' | 'warning' | 'error' | 'muted' 
   if (trend === 'decreasing') return 'error';
   if (trend === 'insufficient_data') return 'muted';
   return 'warning';
+}
+
+function trendLabel(trend: string): string {
+  switch (trend) {
+    case 'increasing':
+      return 'Improving';
+    case 'decreasing':
+      return 'Slipping';
+    case 'stable':
+      return 'Steady';
+    case 'insufficient_data':
+      return 'Not enough data';
+    default:
+      return trend.replace(/_/g, ' ');
+  }
 }
 
 function fmt(value: number | null, suffix = ''): string {
@@ -63,7 +79,7 @@ export function ReviewsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Deep reviews" eyebrow="Weekly & monthly" />
+      <PageHeader title="Reviews" />
 
       <div className="flex gap-2" role="tablist" aria-label="Review period">
         {(['weekly', 'monthly'] as const).map((p) => (
@@ -126,8 +142,7 @@ function ReviewBody({
             {data.period === 'weekly' ? 'This week' : 'This month'}
           </CardTitle>
           <CardDescription>
-            {formatDate(data.periodStart)} – {formatDate(data.periodEnd)} · {data.dayCount} days. The
-            rollup is computed deterministically; the narrative is generated on demand.
+            {formatDate(data.periodStart)} – {formatDate(data.periodEnd)} · {data.dayCount} days at a glance.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -175,7 +190,7 @@ function ReviewBody({
           rows={[
             ['Sessions (4w)', String(strength.sessions4w)],
             ['Per week (4w)', String(strength.sessionsPerWeek4w)],
-            ['FTP drift', insights.ftpDriftStatus],
+            ['Fitness trend', insights.ftpDriftStatus],
             ['Early warning', insights.earlyWarningStatus],
           ]}
         />
@@ -185,7 +200,7 @@ function ReviewBody({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" aria-hidden />
-            Narrative review
+            Written review
           </CardTitle>
           <CardDescription>
             {review
@@ -197,8 +212,8 @@ function ReviewBody({
         </CardHeader>
         <CardContent className="space-y-4">
           {review ? (
-            <div className="rounded-xl border border-border bg-bg px-4 py-3 text-sm leading-6 text-text-primary whitespace-pre-wrap">
-              {review.markdown}
+            <div className="rounded-xl border border-border bg-bg px-4 py-3">
+              <Markdown>{review.markdown}</Markdown>
             </div>
           ) : null}
           <div className="flex justify-end">
@@ -231,7 +246,7 @@ function SummaryCard({
             {icon}
             {title}
           </span>
-          {trend ? <Badge variant={trendVariant(trend)}>{trend.replace('_', ' ')}</Badge> : null}
+          {trend ? <Badge variant={trendVariant(trend)}>{trendLabel(trend)}</Badge> : null}
         </CardTitle>
       </CardHeader>
       <CardContent>

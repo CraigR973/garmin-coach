@@ -57,7 +57,7 @@ export function ExperimentsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Experiments" eyebrow="Hypothesis evaluation" />
+      <PageHeader title="What we're testing" />
 
       {query.isLoading ? (
         <Card>

@@ -58,12 +58,12 @@ describe('HandoverPage', () => {
       </QueryClientProvider>,
     );
 
-    // The deterministic markdown export is shown first, with no narrative yet.
-    expect(await screen.findByText(/Deterministic export preview/)).toBeTruthy();
+    // The briefing is shown first, with no written summary yet.
+    expect(await screen.findByText('Full briefing for a new AI chat')).toBeTruthy();
     expect(screen.getByText(/Athlete profile/)).toBeTruthy();
-    expect(screen.queryByText(/Narrative handover/)).toBeNull();
+    expect(screen.queryByText('Written summary')).toBeNull();
 
-    await user.click(screen.getByRole('button', { name: /Generate narrative/ }));
+    await user.click(screen.getByRole('button', { name: /Write summary/ }));
 
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith(

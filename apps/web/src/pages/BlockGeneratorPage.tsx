@@ -124,7 +124,7 @@ export function BlockGeneratorPage() {
   if (query.isLoading) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Block builder" eyebrow="Generate 13-week plan" />
+        <PageHeader title="Plan builder" />
         <Card>
           <CardHeader>
             <CardTitle>Loading…</CardTitle>
@@ -137,7 +137,7 @@ export function BlockGeneratorPage() {
   if (query.isError || !query.data) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Block builder" eyebrow="Generate 13-week plan" />
+        <PageHeader title="Plan builder" />
         <Card>
           <CardHeader>
             <CardTitle>Block builder unavailable</CardTitle>
@@ -155,7 +155,7 @@ export function BlockGeneratorPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Block builder" eyebrow="Generate 13-week plan" />
+      <PageHeader title="Plan builder" />
 
       <Card className="bg-surface-elevated/60">
         <CardHeader>
@@ -165,7 +165,7 @@ export function BlockGeneratorPage() {
           </CardTitle>
           <CardDescription>
             The coach generates a 13-week 2121 block (2 build / 1 recovery, taper, consolidation).
-            Refine any day, then lock it — locked workouts feed your daily loop and deliver to Zwift
+            Refine any day, then lock it — locked workouts feed your daily plan and deliver to Zwift
             on approval.
           </CardDescription>
         </CardHeader>

@@ -186,7 +186,7 @@ export function CoachStatePage() {
   if (player?.role !== 'admin') {
     return (
       <div className="space-y-6 max-w-4xl">
-        <PageHeader title="Coach State" />
+        <PageHeader title="Coach state" />
         <Card>
           <CardHeader>
             <CardTitle>Admin access required</CardTitle>
@@ -202,7 +202,7 @@ export function CoachStatePage() {
   if (query.isLoading) {
     return (
       <div className="space-y-6 max-w-6xl">
-        <PageHeader title="Coach State" />
+        <PageHeader title="Coach state" />
         <Card>
           <CardHeader>
             <CardTitle>Loading coaching state…</CardTitle>
@@ -215,7 +215,7 @@ export function CoachStatePage() {
   if (query.isError || !query.data) {
     return (
       <div className="space-y-6 max-w-6xl">
-        <PageHeader title="Coach State" />
+        <PageHeader title="Coach state" />
         <Card>
           <CardHeader>
             <CardTitle>Coach state unavailable</CardTitle>
@@ -231,8 +231,8 @@ export function CoachStatePage() {
   return (
     <div className="space-y-6 max-w-6xl">
       <PageHeader
-        title="Coach State"
-        eyebrow="Editable retained context for the morning and post-workout engine"
+        title="Coach state"
+        eyebrow="The saved context your coach remembers"
         wrapTitle
       />
 

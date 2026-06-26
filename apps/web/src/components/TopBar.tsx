@@ -1,22 +1,26 @@
+import { Fragment } from 'react';
 import { NavLink, Link } from 'react-router-dom';
-import { ClipboardList, Moon, Sun, Settings, LogOut } from 'lucide-react';
+import { ChevronDown, Moon, Sun, Settings, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Brand } from '@/components/Brand';
+import { PRIMARY_TABS, MORE_GROUPS } from '@/lib/navConfig';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 
-const DESKTOP_NAV = [
-  { to: '/', label: 'Home', exact: true },
-  { to: '/coach-state', label: 'Coach', exact: false },
-  { to: '/settings', label: 'Settings', exact: false },
-];
+const navLinkClass = (isActive: boolean) =>
+  cn(
+    'px-3 py-1.5 rounded-sm text-sm font-medium font-sans tracking-tight transition-colors press-down',
+    'focus-visible:outline-none focus-visible:shadow-glow',
+    isActive ? 'bg-primary/15 text-primary' : 'text-text-secondary hover:text-text-primary hover:bg-surface-elevated',
+  );
 
 export function TopBar() {
   const { player, logout } = useAuth();
@@ -33,11 +37,7 @@ export function TopBar() {
       aria-label={resolved === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
       className="tap-target inline-flex items-center justify-center rounded-md text-text-secondary hover:text-text-primary press-down focus-visible:outline-none focus-visible:shadow-glow"
     >
-      {resolved === 'dark' ? (
-        <Sun className="h-4 w-4" aria-hidden />
-      ) : (
-        <Moon className="h-4 w-4" aria-hidden />
-      )}
+      {resolved === 'dark' ? <Sun className="h-4 w-4" aria-hidden /> : <Moon className="h-4 w-4" aria-hidden />}
     </button>
   );
 
@@ -49,13 +49,7 @@ export function TopBar() {
       >
         <span className="text-sm text-text-secondary font-sans">{player.displayName}</span>
       </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-        <DropdownMenuItem asChild>
-          <Link to="/coach-state">
-            <ClipboardList className="h-4 w-4" aria-hidden />
-            Coach State
-          </Link>
-        </DropdownMenuItem>
+      <DropdownMenuContent align="end">
         <DropdownMenuItem asChild>
           <Link to="/settings">
             <Settings className="h-4 w-4" aria-hidden />
@@ -99,24 +93,40 @@ export function TopBar() {
         </NavLink>
 
         <nav aria-label="Main navigation" className="hidden md:flex items-center gap-1 flex-1">
-          {DESKTOP_NAV.map(({ to, label, exact }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={exact}
-              className={({ isActive }) =>
-                cn(
-                  'px-3 py-1.5 rounded-sm text-sm font-medium font-sans tracking-tight transition-colors press-down',
-                  'focus-visible:outline-none focus-visible:shadow-glow',
-                  isActive
-                    ? 'bg-primary/15 text-primary'
-                    : 'text-text-secondary hover:text-text-primary hover:bg-surface-elevated',
-                )
-              }
-            >
+          {PRIMARY_TABS.map(({ to, label }) => (
+            <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => navLinkClass(isActive)}>
               {label}
             </NavLink>
           ))}
+
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className={cn(
+                'inline-flex items-center gap-1 px-3 py-1.5 rounded-sm text-sm font-medium font-sans tracking-tight',
+                'text-text-secondary hover:text-text-primary hover:bg-surface-elevated transition-colors press-down',
+                'focus-visible:outline-none focus-visible:shadow-glow',
+              )}
+            >
+              More
+              <ChevronDown className="h-4 w-4" aria-hidden />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {MORE_GROUPS.map((group, index) => (
+                <Fragment key={group.heading}>
+                  {index > 0 && <DropdownMenuSeparator />}
+                  <DropdownMenuLabel>{group.heading}</DropdownMenuLabel>
+                  {group.items.map(({ to, label, Icon }) => (
+                    <DropdownMenuItem key={to} asChild>
+                      <Link to={to}>
+                        <Icon className="h-4 w-4" aria-hidden />
+                        {label}
+                      </Link>
+                    </DropdownMenuItem>
+                  ))}
+                </Fragment>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </nav>
 
         <div className="hidden md:flex items-center gap-3">
