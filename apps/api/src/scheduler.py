@@ -10,7 +10,7 @@ Current jobs:
   - morning_backstop: at 09:30 Europe/London, runs run_morning_weather_sync
     regardless, so a verdict is always produced even if wake was never detected
   - garmin_activity_poll: polls Garmin hourly for new rides and triggers analysis
-  - workout_autopush: pushes approved workout proposals due a couple of days ahead
+  - workout_autopush: pushes approved workout proposals due today
   - evening_sleep_nudge: sends the 20:00 sleep-protocol push
   - evening_monitoring_alerts: checks thermal and source freshness before bed
 
@@ -468,7 +468,7 @@ async def run_garmin_activity_poll() -> None:
 
 
 async def run_workout_autopush() -> None:
-    """Push approved-but-unpushed workout proposals due a couple of days ahead.
+    """Push approved-but-unpushed workout proposals due today.
 
     Only proposals the user already approved are eligible (Decision #29), so this
     delivers the week-ahead automatically (Decision #31) without ever pushing

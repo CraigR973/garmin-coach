@@ -6,6 +6,7 @@ import uuid
 from datetime import UTC, date, datetime
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
@@ -19,10 +20,15 @@ from src.services.executable_coaching import (
     RECOVERY_CAP_PCT,
     ExecutableCoachingService,
     adjust_ir_for_verdict,
+    apply_manual_override_to_ir,
     blocks_red_vo2,
     ir_has_vo2,
 )
-from src.services.workout_delivery import IntervalsCreateResult, build_structured_workout_ir
+from src.services.workout_delivery import (
+    IntervalsCreateResult,
+    WorkoutDeliveryService,
+    build_structured_workout_ir,
+)
 
 VO2_STRUCTURED = {
     "format": "bike",
@@ -139,6 +145,25 @@ def test_green_is_passthrough() -> None:
     assert adjusted["totalDurationSec"] == base["totalDurationSec"]
     assert adjusted["origin"] == "as_planned"
     assert adjusted["adjustment"]["changed"] is False
+
+
+def test_manual_override_scales_duration_and_intensity() -> None:
+    base = adjust_ir_for_verdict(
+        build_structured_workout_ir(_planned_workout(SWEET_SPOT_STRUCTURED), ftp_watts=280),
+        "Amber",
+    )
+
+    adjusted = apply_manual_override_to_ir(base, duration_scale_pct=80, intensity_scale_pct=90)
+
+    assert adjusted["origin"] == "manual_override"
+    assert adjusted["name"].startswith("Manual override: ")
+    assert adjusted["totalDurationSec"] == round(base["totalDurationSec"] * 0.8)
+    assert _max_power(adjusted) < _max_power(base)
+    assert adjusted["adjustment"]["manualOverride"] == {
+        "durationScalePct": 80,
+        "intensityScalePct": 90,
+        "basisTotalDurationSec": base["totalDurationSec"],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -479,6 +504,168 @@ async def test_auto_push_blocks_approved_vo2_on_red_day(db_conn: AsyncConnection
             .all()
         )
         assert len(blocks_after) == 1
+
+
+@pytest.mark.asyncio
+async def test_send_today_approves_pushes_and_audits_today_workout(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    workout_id = uuid.uuid4()
+    subject = date(2026, 6, 23)
+    await _seed_profile(db_conn, user_id)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            PlannedWorkout(
+                id=workout_id,
+                user_id=user_id,
+                workout_date=subject,
+                version=1,
+                title="VO2 Max 30/30",
+                workout_type="bike_vo2",
+                status="planned",
+                is_active=True,
+                planned_duration_min=60,
+                intensity_target="105-110% FTP",
+                structured_workout=VO2_STRUCTURED,
+                source="test",
+            )
+        )
+        session.add(_morning_analysis(user_id, subject, "Amber"))
+        await session.commit()
+
+    fake = _FakeIntervalsClient()
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session, intervals_client=fake)
+
+        pushed = await service.send_today(
+            user,
+            planned_workout_id=workout_id,
+            now_utc=datetime(2026, 6, 23, 8, 0, tzinfo=UTC),
+        )
+
+        assert pushed.status == "pushed"
+        assert pushed.intervals_event_id == "evt_123"
+        assert pushed.structured_workout_ir["origin"] == "amber_regeneration"
+        assert len(fake.payloads) == 1
+
+        audits = (await session.execute(select(Analysis))).scalars().all()
+        audit_types = [audit.analysis_type for audit in audits]
+        assert AUDIT_TYPE_PROPOSED in audit_types
+        assert AUDIT_TYPE_PUSHED in audit_types
+        push_audit = next(audit for audit in audits if audit.analysis_type == AUDIT_TYPE_PUSHED)
+        assert push_audit.context_packet["tag"] == f"same-day-push:{pushed.id}"
+
+
+@pytest.mark.asyncio
+async def test_send_today_manual_override_pushes_the_override_ir(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    workout_id = uuid.uuid4()
+    subject = date(2026, 6, 23)
+    await _seed_profile(db_conn, user_id)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            PlannedWorkout(
+                id=workout_id,
+                user_id=user_id,
+                workout_date=subject,
+                version=1,
+                title="Sweet Spot Builder",
+                workout_type="bike_sweet_spot",
+                status="planned",
+                is_active=True,
+                planned_duration_min=75,
+                intensity_target="88-94% FTP",
+                structured_workout=SWEET_SPOT_STRUCTURED,
+                source="test",
+            )
+        )
+        session.add(_morning_analysis(user_id, subject, "Green"))
+        await session.commit()
+
+    fake = _FakeIntervalsClient()
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session, intervals_client=fake)
+
+        pushed = await service.send_today(
+            user,
+            planned_workout_id=workout_id,
+            duration_scale_pct=80,
+            intensity_scale_pct=90,
+            now_utc=datetime(2026, 6, 23, 8, 0, tzinfo=UTC),
+        )
+
+        assert pushed.status == "pushed"
+        assert pushed.structured_workout_ir["origin"] == "manual_override"
+        assert (
+            pushed.structured_workout_ir["adjustment"]["manualOverride"]["durationScalePct"] == 80
+        )
+        assert fake.payloads == [pushed.intervals_payload]
+        assert "Manual override" in pushed.intervals_payload["name"]
+
+
+@pytest.mark.asyncio
+async def test_send_today_preserves_red_never_vo2_gate(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    workout_id = uuid.uuid4()
+    subject = date(2026, 6, 23)
+    await _seed_profile(db_conn, user_id)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        session.add(
+            PlannedWorkout(
+                id=workout_id,
+                user_id=user_id,
+                workout_date=subject,
+                version=1,
+                title="VO2 Max 30/30",
+                workout_type="bike_vo2",
+                status="planned",
+                is_active=True,
+                planned_duration_min=60,
+                intensity_target="105-110% FTP",
+                structured_workout=VO2_STRUCTURED,
+                source="test",
+            )
+        )
+        session.add(_morning_analysis(user_id, subject, "Red"))
+        await session.commit()
+        await WorkoutDeliveryService(session).propose(player=user, planned_workout_id=workout_id)
+
+    fake = _FakeIntervalsClient()
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session, intervals_client=fake)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await service.send_today(
+                user,
+                planned_workout_id=workout_id,
+                now_utc=datetime(2026, 6, 23, 8, 0, tzinfo=UTC),
+            )
+
+        assert "Red verdict blocks VO2" in str(exc_info.value)
+        assert fake.payloads == []
+        blocks = (
+            (
+                await session.execute(
+                    select(Analysis).where(Analysis.analysis_type == AUDIT_TYPE_PUSH_BLOCKED)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(blocks) == 1
 
 
 @pytest.mark.asyncio

@@ -7,12 +7,13 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import CurrentUser
 from src.database import get_db
 from src.models.coaching import WorkoutDeliveryProposal
+from src.services.executable_coaching import ExecutableCoachingService
 from src.services.workout_delivery import WeekAheadEntry, WorkoutDeliveryService
 
 router = APIRouter(prefix="/api/v1/workout-delivery", tags=["workout-delivery"])
@@ -72,6 +73,11 @@ class WorkoutDeliveryEnvelope(BaseModel):
     data: WorkoutDeliveryData
     meta: ApiMeta
     errors: list[ApiError]
+
+
+class SameDayDeliveryBody(BaseModel):
+    durationScalePct: int | None = Field(default=None, ge=50, le=125)
+    intensityScalePct: int | None = Field(default=None, ge=50, le=120)
 
 
 class WeekAheadWorkoutOut(BaseModel):
@@ -190,6 +196,26 @@ async def propose_workout_delivery(
 ) -> WorkoutDeliveryEnvelope:
     service = WorkoutDeliveryService(db)
     proposal = await service.propose(player=player, planned_workout_id=planned_workout_id)
+    return _envelope([proposal])
+
+
+@router.post(
+    "/planned-workouts/{planned_workout_id}/send-today",
+    response_model=WorkoutDeliveryEnvelope,
+)
+async def send_workout_delivery_today(
+    planned_workout_id: uuid.UUID,
+    body: SameDayDeliveryBody,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> WorkoutDeliveryEnvelope:
+    service = ExecutableCoachingService(db)
+    proposal = await service.send_today(
+        player,
+        planned_workout_id=planned_workout_id,
+        duration_scale_pct=body.durationScalePct,
+        intensity_scale_pct=body.intensityScalePct,
+    )
     return _envelope([proposal])
 
 

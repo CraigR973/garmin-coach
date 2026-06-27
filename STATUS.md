@@ -6,33 +6,44 @@
 
 ## Now
 
-**Latest (2026-06-27): Batch 24 shipped to production** (PR #37, squash merge `fa8a036`, CI green, prod verified).
-Home no longer tries to show every read at once; it now derives a single daily phase from the existing
-`/api/v1/daily-loop` payload and renders the calm next step for Mark:
+**Latest (2026-06-27): Batch 25 implementation started on `feat/batch-25-same-day-delivery`.**
+Same-day delivery is now wired in code but **not closed out**. The new path is:
+Home workout card → `POST /api/v1/workout-delivery/planned-workouts/{id}/send-today` → build from the
+verdict-adjusted IR → optional manual duration/intensity override → approve → push to intervals.icu now.
 
-- **Pre-ride:** verdict hero, compact sleep snapshot, today’s bike card, and one-tap links to the full
-  morning brief + baselines.
-- **Post-ride:** ride analysis, tomorrow cue, tonight sleep-prep cue, and bedroom summary.
-- **Strength/rest day:** explicit “nothing to ride today” state, with non-bike work still listed separately.
+Backend changes:
+- `services/executable_coaching.py` adds `send_today` and `apply_manual_override_to_ir`.
+- Same-day sends audit `workout_proposed` / `workout_pushed`; Red-never-VO2 is re-checked before any
+  intervals.icu call.
+- `DEFAULT_LEAD_DAYS` is now `0`, so the background auto-push is a same-day catch-up for already-approved
+  proposals due today, not a two-day-ahead staging mechanism.
 
-The dense reads moved off Home into lightweight detail routes — `/brief`, `/baselines`, and `/bedroom` —
-and the page now shares a small frontend-only data layer:
-`hooks/{useDailyLoop,useDailyPhase}.ts` plus `lib/dailyFlow.ts`. No backend code, API shape, migration,
-`DECISIONS.md`, or `ARCHITECTURE.md` changes were needed.
+Frontend changes:
+- The Batch 24 Home bike card now has **Send to Zwift** and **Override** actions.
+- Override exposes duration and intensity percentage dials; non-bike/rest days keep the existing
+  “nothing to send to Zwift today” state.
 
-**Verification:** GitHub CI for PR #37 passed all required checks (ruff, mypy, pytest, alembic, dependency audit,
-web build) and Vercel preview deployed. Production verification passed on the live stack:
-Railway `/api/v1/health` → `{"status":"ok","sha":"fa8a036..."}`; Vercel production alias
-`https://garmin-coach-one.vercel.app` serves the CheckMark shell with the new build assets;
-same-origin `GET /api/v1/daily-loop` returns **401** unauthenticated as expected for the auth-gated app.
-The branch preview alias is Vercel SSO-protected, which is expected for this private project.
+Durable docs updated: `DECISIONS.md` #91 supersedes #31 for the delivery trigger, and `ARCHITECTURE.md`
+now describes same-day approval/override. **25.0 caveat:** this session did not perform a fresh manual
+Zwift same-day latency check. Prior spikes proved intervals.icu API creation + manual Zwift visibility,
+but a same-day timing observation is still needed before `/closeout` should claim latency verified.
 
-**Next step:** **Batch 25 — Same-day delivery + manual override.** Start with the 25.0 intervals.icu→Zwift
-same-day latency spike and record the trigger-path decision before changing the delivery rail.
+**Verification:** API suite passed with the API test config:
+`pytest /Users/craigrobinson/garmin-coach/apps/api/tests` → 273 passed / 85 skipped.
+`ruff check apps/api` and `mypy apps/api/src` clean. Web verification passed:
+`pnpm --dir apps/web test` → 36 passed; `pnpm --dir apps/web build` OK; `pnpm --dir apps/web lint`
+OK with the existing fast-refresh warnings only. Shared package tests passed: 7 passed. Browser smoke on
+`http://127.0.0.1:5174/` with a local mock API confirmed the Home bike card renders **Send to Zwift** +
+**Override**, the override panel accepts duration/intensity dials, mocked send completes, success toast appears,
+and console errors are empty.
 
-**Gotchas:** phase selection is intentionally data-led, not clock-led — today’s `postWorkoutAnalyses` wins
-for post-ride, and “rest day” means “no bike workout scheduled”, even if strength work still exists. Home no
-longer renders the full morning markdown or metrics table inline; those reads live on the new detail routes.
+**Next step:** either perform the same-day intervals.icu→Zwift observation or keep the latency caveat explicit
+for review; then push/open review and wait for explicit `/closeout 25` before promotion.
+
+**Gotchas:** phase selection remains data-led, not clock-led — today’s `postWorkoutAnalyses` wins
+for post-ride, and “rest day” means “no bike workout scheduled”, even if strength work still exists. The
+new same-day endpoint is intentionally today-only by the user’s timezone and will reject future workouts
+from Home.
 
 ---
 
@@ -240,7 +251,7 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
 - Batch 13 adds executable coaching. `analyses` now also stores delivery audit
   rows with `analysis_type` `workout_proposed` / `workout_pushed`. The new
   `workout_autopush` scheduler job (07/13/19 `Europe/London`) only pushes
-  **already-approved** proposals within `today+2`; with `INTERVALS_API_KEY` unset
+  **already-approved** proposals due today; with `INTERVALS_API_KEY` unset
   the push returns 503 and proposals correctly stay `approved` (un-delivered) —
   Amber regeneration and approval still work without the key because they never
   call intervals.icu. Adjusted proposals are ordinary `workout_delivery_proposals`
@@ -266,6 +277,18 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-27** — Started **Batch 25 — Same-day delivery + manual override** on
+  `feat/batch-25-same-day-delivery`. Added the same-day Home delivery endpoint
+  (`POST /api/v1/workout-delivery/planned-workouts/{id}/send-today`) and UI controls:
+  **Send to Zwift** plus manual duration/intensity override dials. The endpoint reuses
+  the existing delivery proposal table and intervals.icu rail, builds from the stored
+  verdict-adjusted IR, audits proposal + push rows, and re-checks Red-never-VO2 before
+  calling intervals.icu. Superseded the old two-day-ahead default by setting
+  `DEFAULT_LEAD_DAYS=0`; updated `DECISIONS.md` #91 and `ARCHITECTURE.md`. Focused
+  verification passed: API suite 273 passed / 85 skipped; ruff + mypy clean; web vitest
+  36 passed; web build OK; web lint 0 errors / 5 existing warnings; shared tests 7 passed;
+  browser smoke with local mock API confirmed the new Home send/override flow. Fresh same-day
+  Zwift latency observation is still outstanding before closeout.
 - **2026-06-27** — **Closed out Batch 24 — Time-aware home** (PR #37, squash merge `fa8a036`, prod verified).
   Shipped the phase-driven Home to production: pre-ride (sleep snapshot + ride card), post-ride (ride analysis
   + tomorrow + tonight + bedroom), and explicit strength/rest-day “nothing to ride today” handling, all derived

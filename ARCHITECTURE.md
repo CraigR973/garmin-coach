@@ -47,10 +47,14 @@ Batch 13 makes the rail *executable* (`services/executable_coaching.py`): on an
 Amber morning verdict the 06:30 job regenerates today's bike workout into an
 adjusted proposal (deterministic IR transform — cut duration 20-30%, drop a
 zone, remove HIT; Red can never emit VO2), the human approves it on the
-`/delivery` week-ahead PWA page, and a `workout_autopush` job pushes approved
-proposals a couple of days ahead. Proposal/push provenance lives in the IR
-snapshot and every step is audited in `analyses` (`workout_proposed` /
-`workout_pushed`), so no schema change was needed.
+`/delivery` week-ahead PWA page, and Batch 25 adds the same-day Home action:
+accept the verdict-adjusted session or apply manual duration/intensity dials,
+then approve and push today's workout immediately via the same intervals.icu
+rail. The `workout_autopush` job is now a same-day safety net for approved
+proposals due today, not a couple-days-ahead staging mechanism (DECISIONS #91).
+Proposal/push provenance lives in the IR snapshot and every step is audited in
+`analyses` (`workout_proposed` / `workout_pushed`), so no schema change was
+needed.
 
 Batch 14 makes the *week* adaptive (`services/weekly_restructure.py`): a
 deterministic permutation engine reorders the week's bike sessions so VO2 and
@@ -165,7 +169,7 @@ added to it, and the v1 domain tables live beside it. Data-shape evidence is in
 - [x] **Phase 1 Batch 10** — v1 hardening + release polish shipped
 - [x] **Phase 2 Batch 11** — Phase 1 debt clean-up shipped (player→user rename, migration 006, dead email service, ForgotPin, score-input JSDoc)
 - [x] **Phase 2 Batch 12** — Zwift delivery rail shipped (intervals.icu push + `.ZWO` fallback, propose→approve→push, migration 007; Garmin `GARMIN_TOKENSTORE_B64` auth + Anthropic fail-closed validator). Production daily-loop *data* gate (non-null daily metrics/sleep/morning analysis) deferred to Batch 18 — prod has no Garmin daily-metrics/sleep sync yet (DECISIONS #57)
-- [x] **Phase 2 Batch 13** — executable coaching (closed loop): an Amber morning verdict deterministically regenerates today's bike workout (75% duration, drop a zone, no HIT — `adjust_ir_for_verdict`) into an approval-gated proposal; Red can never emit VO2; approved proposals auto-push a couple of days ahead (`workout_autopush` job); the week-ahead + propose→approve→push surface is the `/delivery` PWA page; every proposal/push is audited in `analyses` (DECISIONS #61-62). No new migration
+- [x] **Phase 2 Batch 13** — executable coaching (closed loop): an Amber morning verdict deterministically regenerates today's bike workout (75% duration, drop a zone, no HIT — `adjust_ir_for_verdict`) into an approval-gated proposal; Red can never emit VO2; approved proposals now push same-day (Batch 25 supersedes the original couple-days-ahead default); the week-ahead + propose→approve→push surface is the `/delivery` PWA page, with Home adding same-day approve/override/send; every proposal/push is audited in `analyses` (DECISIONS #61-62/#91). No new migration
 - [x] **Phase 2 Batch 18** — production daily-loop data sync shipped (06:30 job now syncs Garmin daily metrics/sleep before morning analysis; Hive uses refresh-token auth and honest freshness gating; strict production smoke green on commit `707850d`)
 - [x] **Phase 2 Batch 14** — dynamic weekly restructuring shipped: deterministic permutation engine keeps VO2 and Sweet-Spot off the same/adjacent days and defers hard sessions on a fatigue signal (readiness/HRV/verdict-trend); restructures version `planned_workouts`, audit in `analyses` (`weekly_restructure`), and reach Zwift only on approval via `GET/POST /api/v1/restructure/*` (human-triggered, not a scheduler job); VO2 progression incl. Rønnestad 30/15 centralized in `services/vo2_progression.py` (DECISIONS #63-65). No new migration
 - [x] **Phase 2 Batch 15** — holiday pause/resume shipped: holidays treated as recovery-week equivalents; in-window workouts versioned as `status='skipped'`, `source='holiday_pause'`; on return, 2121 block continuation: Build1→Build2 (week S+1), Build2→repeat Build1 (week S-1); windows stored as JSONB in `knowledge_base` at `section='holiday_windows'`; frontend Holiday tab + `HolidayPage.tsx` with pause/resume UI (DECISIONS #66-68). No new migration

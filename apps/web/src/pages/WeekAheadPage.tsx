@@ -128,7 +128,7 @@ export function WeekAheadPage() {
     mutationFn: (proposalId: string) => apiFetch(`${BASE}/proposals/${proposalId}/approve`, { method: 'POST' }),
     onSuccess: async () => {
       await invalidate();
-      toast.success('Approved — it sends to Zwift a couple of days ahead');
+      toast.success('Approved — Home sends today’s ride when you are ready');
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not approve'),
   });
@@ -316,7 +316,7 @@ export function WeekAheadPage() {
 
                   {proposal?.status === 'approved' ? (
                     <p className="text-right text-xs text-text-muted">
-                      Sends to Zwift automatically when it&apos;s a couple of days away.
+                      Approved. Use Home to send today&apos;s ride when you are ready.
                     </p>
                   ) : null}
                 </CardContent>
