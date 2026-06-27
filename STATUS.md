@@ -6,39 +6,36 @@
 
 ## Now
 
-**Latest (2026-06-27): Batch 25 implementation started on `feat/batch-25-same-day-delivery`.**
-Same-day delivery is now wired in code but **not closed out**. The new path is:
+**Latest (2026-06-27): Batch 25 closed out and shipped to production.**
+PR #38 was squash-merged to `main` at `aaab0a0` and production verified. The new same-day delivery path is:
 Home workout card → `POST /api/v1/workout-delivery/planned-workouts/{id}/send-today` → build from the
 verdict-adjusted IR → optional manual duration/intensity override → approve → push to intervals.icu now.
 
-Backend changes:
+What shipped:
 - `services/executable_coaching.py` adds `send_today` and `apply_manual_override_to_ir`.
 - Same-day sends audit `workout_proposed` / `workout_pushed`; Red-never-VO2 is re-checked before any
   intervals.icu call.
 - `DEFAULT_LEAD_DAYS` is now `0`, so the background auto-push is a same-day catch-up for already-approved
   proposals due today, not a two-day-ahead staging mechanism.
+- The Batch 24 Home bike card now has **Send to Zwift** and **Override** actions, including duration and
+  intensity percentage dials. Non-bike/rest days keep the existing "nothing to send to Zwift today" state.
+- `DECISIONS.md` #91 supersedes #31 for the delivery trigger, and `ARCHITECTURE.md` describes the shipped
+  same-day approval/override rail. No migration.
 
-Frontend changes:
-- The Batch 24 Home bike card now has **Send to Zwift** and **Override** actions.
-- Override exposes duration and intensity percentage dials; non-bike/rest days keep the existing
-  “nothing to send to Zwift today” state.
+**Verification:** PR #38 checks were green twice (push + PR): ruff, mypy, pytest, alembic migration check,
+security audit, web build/lint/typecheck, Vercel preview. Local verification before merge: API suite
+273 passed / 85 skipped; ruff + mypy clean; web vitest 36 passed; web build OK; web lint OK with existing
+fast-refresh warnings only; shared tests 7 passed; browser smoke with local mock API confirmed the Home
+send/override flow and no console errors. Production after merge: API health served
+`sha=aaab0a0506b77796fe548ed66e40f4828187d256`; web `/` returned 200; same-origin and direct API
+`send-today` unauthenticated POSTs returned 401, proving the new route is deployed and auth-gated without
+mutating data.
 
-Durable docs updated: `DECISIONS.md` #91 supersedes #31 for the delivery trigger, and `ARCHITECTURE.md`
-now describes same-day approval/override. **25.0 caveat:** this session did not perform a fresh manual
-Zwift same-day latency check. Prior spikes proved intervals.icu API creation + manual Zwift visibility,
-but a same-day timing observation is still needed before `/closeout` should claim latency verified.
+**25.0 caveat:** this session did not perform a fresh manual Zwift same-day latency check. Prior spikes proved
+intervals.icu API creation + manual Zwift visibility, and the shipped rail creates the same intervals.icu event,
+but the real same-day Zwift appearance timing should still be observed during the first live use.
 
-**Verification:** API suite passed with the API test config:
-`pytest /Users/craigrobinson/garmin-coach/apps/api/tests` → 273 passed / 85 skipped.
-`ruff check apps/api` and `mypy apps/api/src` clean. Web verification passed:
-`pnpm --dir apps/web test` → 36 passed; `pnpm --dir apps/web build` OK; `pnpm --dir apps/web lint`
-OK with the existing fast-refresh warnings only. Shared package tests passed: 7 passed. Browser smoke on
-`http://127.0.0.1:5174/` with a local mock API confirmed the Home bike card renders **Send to Zwift** +
-**Override**, the override panel accepts duration/intensity dials, mocked send completes, success toast appears,
-and console errors are empty.
-
-**Next step:** either perform the same-day intervals.icu→Zwift observation or keep the latency caveat explicit
-for review; then push/open review and wait for explicit `/closeout 25` before promotion.
+**Next step:** Batch 26 — post-ride check-in into the analysis.
 
 **Gotchas:** phase selection remains data-led, not clock-led — today’s `postWorkoutAnalyses` wins
 for post-ride, and “rest day” means “no bike workout scheduled”, even if strength work still exists. The
@@ -277,6 +274,13 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-27** — **Closed out Batch 25 — Same-day delivery + manual override** (PR #38, squash merge
+  `aaab0a0`, prod verified). Shipped Home **Send to Zwift** + **Override** controls and the authenticated
+  `send-today` endpoint, with same-day approve→push, manual override IR, Red-never-VO2 gate, audit rows,
+  and `DEFAULT_LEAD_DAYS=0` same-day catch-up behavior. PR checks were green twice; production health
+  reported `sha=aaab0a0506b77796fe548ed66e40f4828187d256`; web `/` returned 200; same-origin and direct API
+  `send-today` unauthenticated POSTs returned 401. Same-day Zwift appearance timing remains an explicit
+  first-live-use observation item, documented in #91 and the Now block.
 - **2026-06-27** — Started **Batch 25 — Same-day delivery + manual override** on
   `feat/batch-25-same-day-delivery`. Added the same-day Home delivery endpoint
   (`POST /api/v1/workout-delivery/planned-workouts/{id}/send-today`) and UI controls:

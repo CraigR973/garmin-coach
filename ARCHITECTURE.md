@@ -47,7 +47,7 @@ Batch 13 makes the rail *executable* (`services/executable_coaching.py`): on an
 Amber morning verdict the 06:30 job regenerates today's bike workout into an
 adjusted proposal (deterministic IR transform — cut duration 20-30%, drop a
 zone, remove HIT; Red can never emit VO2), the human approves it on the
-`/delivery` week-ahead PWA page, and Batch 25 adds the same-day Home action:
+`/delivery` week-ahead PWA page, and shipped Batch 25 (PR #38) adds the same-day Home action:
 accept the verdict-adjusted session or apply manual duration/intensity dials,
 then approve and push today's workout immediately via the same intervals.icu
 rail. The `workout_autopush` job is now a same-day safety net for approved
