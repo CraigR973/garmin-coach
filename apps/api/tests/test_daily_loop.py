@@ -426,7 +426,9 @@ async def test_post_ride_checkin_upsert_persists_against_activity(
             output_markdown="**Recovery protocol:** refuel.",
             raw_response={},
         )
-        session.add_all([player, activity, analysis])
+        session.add(player)
+        await session.flush()
+        session.add_all([activity, analysis])
         await session.commit()
 
     app.dependency_overrides[get_current_user] = lambda: player

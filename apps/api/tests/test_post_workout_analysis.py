@@ -184,7 +184,9 @@ async def test_post_ride_checkin_is_folded_into_next_post_workout_analysis(
             avg_power_watts=205,
             raw_summary={},
         )
-        session.add_all([player, activity])
+        session.add(player)
+        await session.flush()
+        session.add(activity)
         await session.flush()
 
         service = PostWorkoutAnalysisService(session)
