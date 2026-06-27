@@ -15,7 +15,12 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
-from src.garmin_history_backfill import daily_dates, month_chunks, run_backfill
+from src.garmin_history_backfill import (
+    daily_dates,
+    month_chunks,
+    parse_detail_types,
+    run_backfill,
+)
 from src.models.coaching import DailyMetric, Sleep
 from src.models.profile import Profile, UserRole
 from src.services.garmin_sync import GarminActivityPayloads, GarminDailyPayloads
@@ -66,6 +71,20 @@ def test_month_chunks_reversed_is_empty() -> None:
     assert month_chunks(date(2025, 8, 1), date(2025, 6, 1)) == []
 
 
+def test_parse_detail_types_csv() -> None:
+    assert parse_detail_types("indoor_cycling, road_biking ,walking") == {
+        "indoor_cycling",
+        "road_biking",
+        "walking",
+    }
+
+
+def test_parse_detail_types_none_or_empty_means_all() -> None:
+    assert parse_detail_types(None) is None
+    assert parse_detail_types("") is None
+    assert parse_detail_types("  ,  ") is None
+
+
 # ---------------------------------------------------------------------------
 # Fake Garmin client + seeding
 # ---------------------------------------------------------------------------
@@ -78,6 +97,7 @@ class FakeGarminClient:
         self.fail_on = set(fail_on or ())
         self.daily_calls: list[date] = []
         self.activity_calls: list[tuple[date, date, bool]] = []
+        self.detail_types_seen: list[set[str] | None] = []
 
     def fetch_daily_payloads(
         self, calendar_date: date, lookback_days: int = 7
@@ -106,9 +126,15 @@ class FakeGarminClient:
         )
 
     def fetch_activity_payloads(
-        self, start_date: date, end_date: date, *, include_details: bool = True
+        self,
+        start_date: date,
+        end_date: date,
+        *,
+        include_details: bool = True,
+        detail_types: set[str] | None = None,
     ) -> GarminActivityPayloads:
         self.activity_calls.append((start_date, end_date, include_details))
+        self.detail_types_seen.append(detail_types)
         return GarminActivityPayloads(summaries=[], details_by_activity_id={})
 
 
@@ -190,6 +216,30 @@ async def test_run_backfill_writes_rows_then_resumes(db_conn: AsyncConnection) -
     assert summary2.days_synced == 0
     assert client2.daily_calls == []  # skipped before any fetch
     assert await _count(db_conn, DailyMetric, user_id) == 3  # no duplicates
+
+
+@pytest.mark.asyncio
+async def test_run_backfill_threads_detail_types_to_client(db_conn: AsyncConnection) -> None:
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    client = FakeGarminClient()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        profile = await session.get(Profile, user_id)
+        assert profile is not None
+        await run_backfill(
+            session,
+            profile,
+            client=client,
+            start=date(2025, 6, 24),
+            end=date(2025, 6, 25),
+            throttle=0.0,
+            detail_types={"indoor_cycling", "walking"},
+            log_fn=lambda _m: None,
+        )
+
+    # One calendar-month chunk → one activity fetch, scoped to the given types.
+    assert client.detail_types_seen == [{"indoor_cycling", "walking"}]
 
 
 @pytest.mark.asyncio

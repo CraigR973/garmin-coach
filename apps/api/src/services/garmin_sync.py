@@ -197,7 +197,16 @@ class GarminConnectClient:
         end_date: date,
         *,
         include_details: bool = True,
+        detail_types: set[str] | None = None,
     ) -> GarminActivityPayloads:
+        """Fetch activity summaries, optionally with per-second details.
+
+        ``detail_types`` (a set of ``activityType.typeKey`` values) scopes which
+        activities get a (one-per-activity) ``get_activity_details`` call: when
+        given, details are fetched only for matching types, skipping the call
+        entirely for the rest. ``None`` (default) fetches details for all types.
+        Summaries are always returned for every type regardless.
+        """
         client = self.login()
         summaries = client.get_activities_by_date(start_date.isoformat(), end_date.isoformat())
         if not isinstance(summaries, list):
@@ -208,6 +217,10 @@ class GarminConnectClient:
                 activity_id = _to_int(summary.get("activityId"))
                 if activity_id is None:
                     continue
+                if detail_types is not None:
+                    type_key = _to_str(_as_dict(summary.get("activityType")).get("typeKey"))
+                    if type_key not in detail_types:
+                        continue
                 details = client.get_activity_details(activity_id, maxchart=2000, maxpoly=4000)
                 if isinstance(details, dict):
                     details_by_activity_id[activity_id] = details

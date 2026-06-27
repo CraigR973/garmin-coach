@@ -173,6 +173,70 @@ def test_garmin_login_uses_token_blob_without_credentials(
     assert calls == ["x" * 600]
 
 
+class _StubGarmin:
+    """Underlying garminconnect stub recording which activities got a detail call."""
+
+    def __init__(self, summaries: list[dict[str, object]]) -> None:
+        self._summaries = summaries
+        self.detail_calls: list[int] = []
+
+    def get_activities_by_date(self, _start: str, _end: str) -> list[dict[str, object]]:
+        return self._summaries
+
+    def get_activity_details(self, activity_id: int, **_kw: object) -> dict[str, object]:
+        self.detail_calls.append(activity_id)
+        return {"activityId": activity_id}
+
+
+def _client_with_stub(stub: _StubGarmin) -> GarminConnectClient:
+    client = GarminConnectClient(
+        GarminCredentials(
+            email="", password="", tokenstore=Path("/tmp/x"), tokenstore_b64="x" * 600
+        )
+    )
+    client._client = stub  # bypass login()
+    return client
+
+
+_MIXED_SUMMARIES = [
+    {"activityId": 1, "activityType": {"typeKey": "indoor_cycling"}},
+    {"activityId": 2, "activityType": {"typeKey": "walking"}},
+    {"activityId": 3, "activityType": {"typeKey": "breathwork"}},
+    {"activityId": 4, "activityType": {"typeKey": "strength_training"}},
+]
+
+
+def test_fetch_activity_payloads_filters_details_by_type() -> None:
+    stub = _StubGarmin(_MIXED_SUMMARIES)
+    payloads = _client_with_stub(stub).fetch_activity_payloads(
+        date(2025, 6, 1), date(2025, 6, 30), detail_types={"indoor_cycling", "walking"}
+    )
+
+    # All summaries are kept; only matching types incur a get_activity_details call.
+    assert [s["activityId"] for s in payloads.summaries] == [1, 2, 3, 4]
+    assert sorted(stub.detail_calls) == [1, 2]
+    assert set(payloads.details_by_activity_id) == {1, 2}
+
+
+def test_fetch_activity_payloads_default_fetches_all_details() -> None:
+    stub = _StubGarmin(_MIXED_SUMMARIES)
+    payloads = _client_with_stub(stub).fetch_activity_payloads(date(2025, 6, 1), date(2025, 6, 30))
+
+    assert sorted(stub.detail_calls) == [1, 2, 3, 4]  # detail_types=None => all types
+    assert set(payloads.details_by_activity_id) == {1, 2, 3, 4}
+
+
+def test_fetch_activity_payloads_skips_all_details_when_excluded() -> None:
+    stub = _StubGarmin(_MIXED_SUMMARIES)
+    payloads = _client_with_stub(stub).fetch_activity_payloads(
+        date(2025, 6, 1), date(2025, 6, 30), include_details=False, detail_types={"indoor_cycling"}
+    )
+
+    assert stub.detail_calls == []  # include_details=False short-circuits the filter
+    assert payloads.details_by_activity_id == {}
+    assert len(payloads.summaries) == 4  # summaries still returned
+
+
 @pytest.mark.asyncio
 async def test_garmin_sync_upserts_without_duplicate_rows(db_conn: AsyncConnection) -> None:
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)

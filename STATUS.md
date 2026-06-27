@@ -6,6 +6,19 @@
 
 ## Now
 
+**Latest (2026-06-27): Garmin history backfill detail scoping merged to `main`.** The resumable
+`apps/api/src/garmin_history_backfill.py` admin CLI now accepts `--detail-types` so we can still
+backfill **activity summaries for every type** while restricting the costly per-activity
+`get_activity_details` calls (and resulting time-series rows) to a chosen subset such as
+`indoor_cycling,road_biking,walking`. The filter is threaded cleanly through
+`GarminConnectClient.fetch_activity_payloads(detail_types=...)`; `None` still means "fetch details
+for all types", `--no-activity-details` still fully short-circuits detail fetches, and empty CSV
+input is normalized back to "all types" rather than "nothing". Tests added for the parser,
+backfill runner plumbing, and activity-type filtering in the Garmin client (**focused backend run:
+17 passed, 5 skipped**). This is a follow-up optimization on DECISIONS #85's year-history
+backfill: future re-runs can keep summary coverage broad while avoiding unnecessary detail volume
+and 429 risk on non-bike activity types.
+
 **Latest (2026-06-26): world-class UI/UX redesign SHIPPED** (PR #35, squash merge `dea04da`, CI green all
 jobs; prod verified — `/api/v1/health` sha=`dea04da`, web `/` 200, `/api/v1/daily-loop` 401). A full
 screen-by-screen redesign of the PWA so it looks professional, is simple for Mark, and visibly serves his
@@ -48,10 +61,10 @@ cutoff honoured) instead of the never-applied xlsx. **Ran against prod** (defaul
 2026-04-02 → 2026-06-24): **7 baselines written** and `_metrics_vs_baselines` verified to return 7 populated
 rows (was 0) — SpO2 n=11/excl=69, HRV n=14/excl=70 with `reliability_start_date=2026-06-11`; the other 5
 metrics full-window (sleep_score median 74, RHR median 44). **No deploy needed** for prod to benefit (the
-morning read path was already live); the code only needs to land on `main` so re-runs are reproducible. Local:
-ruff + mypy(src, 66 files) clean, pure tests pass; the 5 DB-backed tests run in CI (no local Postgres).
-**Code is on the working tree, not yet committed/PR'd** — re-run `python -m src.metric_baselines_backfill` via
-`railway run` periodically as more reliable HRV/SpO2 nights accumulate past the cutoff.
+morning read path was already live); the implementation is now on `main` (PR #33) so re-runs are reproducible.
+Local verification on the original batch was ruff + mypy(src, 66 files) clean, pure tests pass; the 5 DB-backed
+tests run in CI (no local Postgres). Re-run `python -m src.metric_baselines_backfill` via `railway run`
+periodically as more reliable HRV/SpO2 nights accumulate past the cutoff.
 
 **Gotchas (backfill):** summaries-only (`--no-activity-details`) — per-second time-series for the ~673
 historical activities was deliberately skipped (volume + 429 cost); re-run without the flag for a date
@@ -319,6 +332,15 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-27** — Merged the Garmin history backfill follow-up to `main`. Added
+  `--detail-types` to `apps/api/src/garmin_history_backfill.py` so historical runs can still
+  write activity summaries for every type while scoping the expensive per-second detail fetches
+  to chosen `activityType.typeKey` values only; threaded the filter through
+  `GarminConnectClient.fetch_activity_payloads`, preserving the old defaults (`None` = all
+  details, `--no-activity-details` = none). Added focused tests for CSV parsing, runner plumbing,
+  and Garmin-client filtering. Verified with
+  `PYTHONPATH=apps/api apps/api/.venv/bin/python -m pytest apps/api/tests/test_garmin_sync.py apps/api/tests/test_garmin_history_backfill.py`
+  → **17 passed, 5 skipped**.
 - **2026-06-26** — **World-class UI/UX redesign SHIPPED (PR #35, squash merge `dea04da`, CI green, prod verified).**
   Acted as a UI/UX designer reviewing the finished app against Mark's *original* requirement docs
   (`~/Downloads/Dad Fitness/`: App Optimisations = his feature wishlist, the Handover Document = profile/

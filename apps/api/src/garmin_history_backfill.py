@@ -78,6 +78,18 @@ class BackfillSummary:
         return "\n".join(lines)
 
 
+def parse_detail_types(raw: str | None) -> set[str] | None:
+    """Parse a ``--detail-types`` CSV into a set, or ``None`` for all types.
+
+    An empty/whitespace-only value is treated as ``None`` (all types) rather than
+    an empty set (which would fetch details for nothing).
+    """
+    if not raw:
+        return None
+    types = {token.strip() for token in raw.split(",") if token.strip()}
+    return types or None
+
+
 def daily_dates(start: date, end: date) -> list[date]:
     """Inclusive list of dates from ``start`` to ``end``."""
     if end < start:
@@ -141,6 +153,7 @@ async def run_backfill(
     throttle: float = 0.0,
     activities: bool = True,
     activity_details: bool = True,
+    detail_types: set[str] | None = None,
     log_fn: Callable[[str], None] = print,
 ) -> BackfillSummary:
     """Backfill daily metrics/sleep (per day) and activities (per month chunk)."""
@@ -195,6 +208,7 @@ async def run_backfill(
                         chunk_start,
                         chunk_end,
                         include_details=activity_details and not dry_run,
+                        detail_types=detail_types,
                     )
                 )
                 count = len(payloads.summaries)
@@ -257,6 +271,16 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Backfill activity summaries only, not per-second time-series",
     )
+    parser.add_argument(
+        "--detail-types",
+        default=None,
+        help=(
+            "Comma-separated activityType keys to fetch per-second details for, e.g. "
+            "'indoor_cycling,road_biking,cycling,walking'. Default: all types. Summaries are "
+            "always backfilled for every type; this only scopes which get the costly "
+            "get_activity_details call (and the resulting time-series rows)."
+        ),
+    )
     return parser
 
 
@@ -266,6 +290,8 @@ async def _main() -> None:
     end = date.fromisoformat(args.end) if args.end else date.today()
     if end < start:
         raise SystemExit(f"--end {end} is before --start {start}")
+
+    detail_types = parse_detail_types(args.detail_types)
 
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -278,9 +304,11 @@ async def _main() -> None:
         if profile is None:
             raise SystemExit(f"Profile {args.display_name!r} not found")
 
+        scope = "all types" if detail_types is None else ", ".join(sorted(detail_types))
         print(
             f"{'DRY RUN: ' if args.dry_run else ''}backfilling Garmin history for "
             f"{args.display_name!r}: {start.isoformat()} → {end.isoformat()}\n"
+            f"activity details: {'off' if not args.activity_details else scope}\n"
         )
         summary = await run_backfill(
             session,
@@ -293,6 +321,7 @@ async def _main() -> None:
             throttle=args.throttle,
             activities=args.activities,
             activity_details=args.activity_details,
+            detail_types=detail_types,
         )
 
     print("\n" + summary.render())
