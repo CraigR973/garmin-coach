@@ -6,7 +6,7 @@
 
 ## Now
 
-**Latest (2026-06-27): Batch 24 implemented on `feat/batch-24-time-aware-home` and ready for review.**
+**Latest (2026-06-27): Batch 24 shipped to production** (PR #37, squash merge `fa8a036`, CI green, prod verified).
 Home no longer tries to show every read at once; it now derives a single daily phase from the existing
 `/api/v1/daily-loop` payload and renders the calm next step for Mark:
 
@@ -20,12 +20,15 @@ and the page now shares a small frontend-only data layer:
 `hooks/{useDailyLoop,useDailyPhase}.ts` plus `lib/dailyFlow.ts`. No backend code, API shape, migration,
 `DECISIONS.md`, or `ARCHITECTURE.md` changes were needed.
 
-**Verification:** `pnpm --dir apps/web test` → **34 passed**; `pnpm --dir apps/web build` OK; `pnpm --dir apps/web lint`
-still shows the same pre-existing 5 `react-refresh/only-export-components` warnings in shared UI/context files,
-with no new lint errors.
+**Verification:** GitHub CI for PR #37 passed all required checks (ruff, mypy, pytest, alembic, dependency audit,
+web build) and Vercel preview deployed. Production verification passed on the live stack:
+Railway `/api/v1/health` → `{"status":"ok","sha":"fa8a036..."}`; Vercel production alias
+`https://garmin-coach-one.vercel.app` serves the CheckMark shell with the new build assets;
+same-origin `GET /api/v1/daily-loop` returns **401** unauthenticated as expected for the auth-gated app.
+The branch preview alias is Vercel SSO-protected, which is expected for this private project.
 
-**Next step:** review/push this branch, then `/closeout 24` if approved. The next planned implementation batch
-remains **Batch 25 — Same-day delivery + manual override**.
+**Next step:** **Batch 25 — Same-day delivery + manual override.** Start with the 25.0 intervals.icu→Zwift
+same-day latency spike and record the trigger-path decision before changing the delivery rail.
 
 **Gotchas:** phase selection is intentionally data-led, not clock-led — today’s `postWorkoutAnalyses` wins
 for post-ride, and “rest day” means “no bike workout scheduled”, even if strength work still exists. Home no
@@ -263,6 +266,15 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-27** — **Closed out Batch 24 — Time-aware home** (PR #37, squash merge `fa8a036`, prod verified).
+  Shipped the phase-driven Home to production: pre-ride (sleep snapshot + ride card), post-ride (ride analysis
+  + tomorrow + tonight + bedroom), and explicit strength/rest-day “nothing to ride today” handling, all derived
+  from the existing `/api/v1/daily-loop` payload. Moved the dense reads onto detail routes
+  `/brief`, `/baselines`, and `/bedroom`; added shared frontend helpers
+  `apps/web/src/hooks/{useDailyLoop,useDailyPhase}.ts` and `apps/web/src/lib/dailyFlow.ts`;
+  rewrote the dashboard/detail-page frontend coverage. CI green on PR #37; production verified with
+  Railway `/api/v1/health` sha=`fa8a036…`, Vercel production `https://garmin-coach-one.vercel.app` serving
+  the CheckMark shell, and unauthenticated `GET /api/v1/daily-loop` returning 401 as expected.
 - **2026-06-27** — Built **Batch 24 — Time-aware home (daily-flow rebuild)** on
   `feat/batch-24-time-aware-home`. Replaced the kitchen-sink dashboard with a phase-driven Home based on the
   existing daily-loop payload: pre-ride (sleep snapshot + ride card), post-ride (ride analysis + tomorrow +
