@@ -6,99 +6,30 @@
 
 ## Now
 
-**Latest (2026-06-27): Garmin history backfill detail scoping merged to `main`.** The resumable
-`apps/api/src/garmin_history_backfill.py` admin CLI now accepts `--detail-types` so we can still
-backfill **activity summaries for every type** while restricting the costly per-activity
-`get_activity_details` calls (and resulting time-series rows) to a chosen subset such as
-`indoor_cycling,road_biking,walking`. The filter is threaded cleanly through
-`GarminConnectClient.fetch_activity_payloads(detail_types=...)`; `None` still means "fetch details
-for all types", `--no-activity-details` still fully short-circuits detail fetches, and empty CSV
-input is normalized back to "all types" rather than "nothing". Tests added for the parser,
-backfill runner plumbing, and activity-type filtering in the Garmin client (**focused backend run:
-17 passed, 5 skipped**). This is a follow-up optimization on DECISIONS #85's year-history
-backfill: future re-runs can keep summary coverage broad while avoiding unnecessary detail volume
-and 429 risk on non-bike activity types.
+**Latest (2026-06-27): Batch 24 implemented on `feat/batch-24-time-aware-home` and ready for review.**
+Home no longer tries to show every read at once; it now derives a single daily phase from the existing
+`/api/v1/daily-loop` payload and renders the calm next step for Mark:
 
-**Latest (2026-06-26): world-class UI/UX redesign SHIPPED** (PR #35, squash merge `dea04da`, CI green all
-jobs; prod verified — `/api/v1/health` sha=`dea04da`, web `/` 200, `/api/v1/daily-loop` 401). A full
-screen-by-screen redesign of the PWA so it looks professional, is simple for Mark, and visibly serves his
-original requirements (`~/Downloads/Dad Fitness/` — see memory `reference_dad_requirements_docs`).
-Headlines: a real markdown renderer (`components/Markdown.tsx`, react-markdown+remark-gfm) so the AI
-verdict's **bold headlines** + tables render (was a raw `whitespace-pre-wrap` dump showing literal
-`**asterisks**`); the **Metrics-vs-Baselines table** Mark asked for, surfaced from the already-computed
-`analysis.context_packet["metricsVsBaselines"]` (additive — `routers/daily_loop.py` serializer + shared
-`dailyLoopAnalysisSchema`, **no migration**) and rendered with ✔/⚠ status; bottom nav cut **10→4 tabs**
-(Home/Plan/Trends/More, admin tools tucked in a More sheet) + the broken desktop nav fixed; Home rebuilt
-read-first with the check-in form split into a focused `/check-in` page; Plan shows the whole week incl.
-strength (today lit by verdict); Trends got real **recharts** charts; every screen de-jargoned. New web
-primitives: `components/{Markdown,MetricsBaselineTable,VerdictHero,MoreMenu}.tsx`, `lib/{copy,navConfig}.ts`,
-`pages/CheckInPage.tsx`. DECISIONS #90. **Gotchas:** recharts ignores CSS `var()` in SVG stroke *attributes* —
-chart strokes pass hex from `theme/tokens`; the Plan weekly view is Mark's fixed structure as a frontend
-const, NOT a new endpoint (`list_week_ahead` is bike-only by Decision #31). No backend coaching-logic change.
+- **Pre-ride:** verdict hero, compact sleep snapshot, today’s bike card, and one-tap links to the full
+  morning brief + baselines.
+- **Post-ride:** ride analysis, tomorrow cue, tonight sleep-prep cue, and bedroom summary.
+- **Strength/rest day:** explicit “nothing to ride today” state, with non-bike work still listed separately.
 
-**Phase:** **v1→v3 roadmap complete** (every batch in `docs/phase-batches.md` is `Shipped`) → now in
-post-roadmap operate/soak mode. **Done 2026-06-24: a full year of Garmin history backfilled into prod.**
-A new resumable admin CLI — `apps/api/src/garmin_history_backfill.py` (PR #27, CI green) — walked
-2025-06-24 → 2026-06-24 reusing the idempotent `GarminSyncService` and loaded a **gapless 366/366 days**
-of daily metrics + sleep (non-null readiness 366, HRV 363, RHR 366, VO2max 179 sparse; 363 scored nights)
-plus **673 activity summaries** straight into prod Supabase. That lit up the v3 long-horizon engines on
-real data (verified directly against prod): `trends/seasonal?bucket=season` → **5 season windows**;
-`trends/year-on-year` → a real **June-2026-vs-June-2025** comparison (sleep +8.3%, duration −10.7%,
-readiness −13.9%) instead of `insufficient_history`, with HRV/SpO2 correctly suppressed before the #45
-reliability cutoff (DECISIONS #85). **Latest work (2026-06-24): wake-triggered morning verdict SHIPPED**
-(PR #30, squash merge `f605b26`, CI green) — the 06:30 morning cron is replaced by Garmin-`sleepEnd` wake
-detection; see below. **Prod deploy confirmed (2026-06-24 17:46 UTC):** container on `c7838b1`, scheduler
-registered `run_wake_check`, and it fired live + idle-correct out of window. **Only remaining check** is the
-behavioural one tomorrow morning (post-wake fire + a `wake_check` row in prod `analyses`); operate/soak + auth
-Phase 3 path below otherwise unchanged.
+The dense reads moved off Home into lightweight detail routes — `/brief`, `/baselines`, and `/bedroom` —
+and the page now shares a small frontend-only data layer:
+`hooks/{useDailyLoop,useDailyPhase}.ts` plus `lib/dailyFlow.ts`. No backend code, API shape, migration,
+`DECISIONS.md`, or `ARCHITECTURE.md` changes were needed.
 
-**Also done 2026-06-24: `metric_baselines` computed + persisted for Mark from DB history (DECISIONS #88).** The
-#85 year backfill loaded 366 nights but left `metric_baselines` empty, so the morning "Metrics vs Baselines"
-read was silently falling back to the static KB profile bands. New `apps/api/src/metric_baselines_backfill.py`
-CLI + pure `services/metric_baselines.py` derive the stats from stored `daily_metrics`+`sleep` (reusing the
-xlsx importer's now source-parametrized `compute_metric_baselines` core; `source=db_history`; #45 SpO2/HRV
-cutoff honoured) instead of the never-applied xlsx. **Ran against prod** (default trailing 84-night window
-2026-04-02 → 2026-06-24): **7 baselines written** and `_metrics_vs_baselines` verified to return 7 populated
-rows (was 0) — SpO2 n=11/excl=69, HRV n=14/excl=70 with `reliability_start_date=2026-06-11`; the other 5
-metrics full-window (sleep_score median 74, RHR median 44). **No deploy needed** for prod to benefit (the
-morning read path was already live); the implementation is now on `main` (PR #33) so re-runs are reproducible.
-Local verification on the original batch was ruff + mypy(src, 66 files) clean, pure tests pass; the 5 DB-backed
-tests run in CI (no local Postgres). Re-run `python -m src.metric_baselines_backfill` via `railway run`
-periodically as more reliable HRV/SpO2 nights accumulate past the cutoff.
+**Verification:** `pnpm --dir apps/web test` → **34 passed**; `pnpm --dir apps/web build` OK; `pnpm --dir apps/web lint`
+still shows the same pre-existing 5 `react-refresh/only-export-components` warnings in shared UI/context files,
+with no new lint errors.
 
-**Gotchas (backfill):** summaries-only (`--no-activity-details`) — per-second time-series for the ~673
-historical activities was deliberately skipped (volume + 429 cost); re-run without the flag for a date
-window if deep per-ride analysis is ever needed. The CLI is resumable (per-day commit + skip-existing),
-which proved essential: agent-sandbox background jobs get reaped at turn boundaries, yet the run reached
-full coverage across several restarts. Garmin egress + the prod `GARMIN_TOKENSTORE_B64` work via
-`railway run` from the dev box. Prod had ~no prior history before this (the 84-night xlsx backfill was
-never applied to prod), so this is the first real history load. Hive indoor-temp history is un-backfillable
-(no historical API) and intentionally absent.
+**Next step:** review/push this branch, then `/closeout 24` if approved. The next planned implementation batch
+remains **Batch 25 — Same-day delivery + manual override**.
 
-**In flight / planned next:**
-1. **Wake-triggered morning verdict — SHIPPED** (PR #30, squash merge `f605b26`, CI green across all 6 jobs).
-   Fires the morning run when Mark actually *wakes* (Garmin `sleepEnd`, back-to-sleep stability guard + 09:30
-   backstop) instead of the rigid 06:30 cron, so the verdict reads finalized overnight metrics. Pure core
-   `apps/api/src/services/wake_detection.py::is_morning_ready` + `scheduler.run_wake_check()`; the 06:30
-   `morning_weather_sync` cron is replaced by a `wake_check` 15-min interval job + a `morning_backstop` 09:30
-   cron, `wake-check` added to `run_scheduled.JOBS`. `run_morning_weather_sync` reused **unchanged** (only the
-   trigger moved). State is migration-free in `analyses` (`wake_check`). Backend **262 passed / 76 DB-skipped**
-   locally; CI ran the 3 DB-backed `run_wake_check` tests green (persist→compare→fire roundtrip, 09:30 backstop,
-   short-circuit against a real `analyses` row). DECISIONS #87, design doc marked Implemented. **Prod deploy
-   confirmed** (below). **Calibration** (window 03:30–10:00, backstop 09:30, settle 20 min, nap floor 180 min)
-   lives in `wake_detection.py` — retune there if Mark's schedule shifts.
-2. **Prod verification — deploy confirmed, behavioural check pending one morning.** Verified from Railway logs
-   (2026-06-24 17:46 UTC): container restarted 17:43:39 on the new code, scheduler logged
-   `Added job "run_wake_check"` + `Scheduler started`, and the job **fired live at 17:46:39** (= startup +3 min
-   seed, then 15-min interval, next 18:01:39) → `profiles=1 fired=0 waiting=0 napped=0 "wake check complete"`,
-   executed successfully. That `fired=0` is *correct*: 18:46 BST is outside the 03:30–10:00 window so the
-   per-profile gate skips — no Garmin call, no error. The old standalone 06:30 cron is gone;
-   `run_morning_weather_sync` now appears only as the 09:30 backstop. **Still to observe** (needs tomorrow's
-   03:30–10:00 BST window, where no morning analysis exists yet and a finalised `sleepEnd` is present): a
-   `fired=1` log + a `wake_check` audit row in prod `analyses` carrying the persisted `sleepEnd`, with the
-   verdict landing post-wake not 06:30. Non-mutating + idempotent, so nothing to roll back — just watch it over
-   a morning or two. Precondition met: **PR #28 merged + App Sleeping OFF** (always-on container, in-process
-   APScheduler reliable + DST-correct) — #86.
+**Gotchas:** phase selection is intentionally data-led, not clock-led — today’s `postWorkoutAnalyses` wins
+for post-ride, and “rest day” means “no bike workout scheduled”, even if strength work still exists. Home no
+longer renders the full morning markdown or metrics table inline; those reads live on the new detail routes.
 
 ---
 
@@ -332,6 +263,17 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-27** — Built **Batch 24 — Time-aware home (daily-flow rebuild)** on
+  `feat/batch-24-time-aware-home`. Replaced the kitchen-sink dashboard with a phase-driven Home based on the
+  existing daily-loop payload: pre-ride (sleep snapshot + ride card), post-ride (ride analysis + tomorrow +
+  tonight + bedroom), and strength/rest-day (“nothing to ride today”, with non-bike work still shown). Added
+  shared frontend-only helpers `apps/web/src/hooks/{useDailyLoop,useDailyPhase}.ts` and
+  `apps/web/src/lib/dailyFlow.ts`; moved dense reads onto detail routes
+  `pages/{MorningBriefPage,BaselinesPage,BedroomPage}.tsx` wired at `/brief`, `/baselines`, and `/bedroom`;
+  rewrote `DashboardPage.test.tsx` for pre-ride/post-ride/rest-day/offline coverage and added
+  `DailyDetailPages.test.tsx`. Verified with `pnpm --dir apps/web test` → **34 passed** and
+  `pnpm --dir apps/web build` OK; lint still reports the same 5 pre-existing `react-refresh/only-export-components`
+  warnings in shared UI/context files and no new errors.
 - **2026-06-27** — Merged the Garmin history backfill follow-up to `main`. Added
   `--detail-types` to `apps/api/src/garmin_history_backfill.py` so historical runs can still
   write activity summaries for every type while scoping the expensive per-second detail fetches

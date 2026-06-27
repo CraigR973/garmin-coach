@@ -2,9 +2,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
+import type { DailyLoopEnvelope } from '@/hooks/useDailyLoop';
 import { DashboardPage } from './DashboardPage';
 
 const apiFetchMock = vi.fn();
+let onlineStatus = true;
 
 vi.mock('@/lib/api', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
@@ -28,7 +30,11 @@ vi.mock('@/contexts/AuthContext', () => ({
   }),
 }));
 
-const snapshot = {
+vi.mock('@/hooks/useOnlineStatus', () => ({
+  useOnlineStatus: () => onlineStatus,
+}));
+
+const baseSnapshot: DailyLoopEnvelope = {
   data: {
     subjectDate: '2026-06-20',
     timezone: 'Europe/London',
@@ -110,21 +116,7 @@ const snapshot = {
       rawPayload: {},
     },
     manualEntry: null,
-    postWorkoutAnalyses: [
-      {
-        id: '66666666-6666-4666-8666-666666666666',
-        activityId: '77777777-7777-4777-8777-777777777777',
-        activityName: 'Tempo ride',
-        activityType: 'indoor_cycling',
-        generatedAtUtc: '2026-06-20T12:20:00Z',
-        promptVersion: 'post-workout-v1',
-        modelName: 'claude-sonnet-4-6',
-        outputMarkdown: '**Recovery protocol:** refuel within 20 minutes.\n\n**Tomorrow impact:** easy endurance.',
-        recoveryDecision: { excluded: false, status: 'ready_for_review' },
-        timeSeriesSummary: { power: { avg: 220 } },
-        tomorrowImpact: null,
-      },
-    ],
+    postWorkoutAnalyses: [],
     plannedWorkouts: [
       {
         id: '55555555-5555-4555-8555-555555555555',
@@ -152,15 +144,7 @@ const snapshot = {
       overnightWindGustMph: 18,
       thermalReview: {},
     },
-    dataQualityWarnings: [
-      {
-        id: 'no_lr_balance',
-        summary: 'Ignore left/right power balance.',
-        reason: 'Single-sided meter doubles one leg.',
-        status: 'info',
-        detail: null,
-      },
-    ],
+    dataQualityWarnings: [],
   },
   meta: {
     generatedAtUtc: '2026-06-20T06:40:00Z',
@@ -168,36 +152,107 @@ const snapshot = {
   errors: [],
 };
 
+function buildSnapshot(mutator?: (snapshot: DailyLoopEnvelope) => void) {
+  const snapshot = JSON.parse(JSON.stringify(baseSnapshot)) as DailyLoopEnvelope;
+  mutator?.(snapshot);
+  return snapshot;
+}
+
+function renderPage(snapshot = baseSnapshot) {
+  apiFetchMock.mockImplementation((path: string) => {
+    if (path === '/api/v1/daily-loop') {
+      return Promise.resolve(snapshot);
+    }
+    return Promise.reject(new Error(`Unexpected request: ${path}`));
+  });
+
+  const queryClient = new QueryClient();
+
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <DashboardPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
 describe('DashboardPage', () => {
-  it('renders a read-first daily brief with verdict, sleep, baselines and training', async () => {
-    apiFetchMock.mockImplementation((path: string) => {
-      if (path === '/api/v1/daily-loop') {
-        return Promise.resolve(snapshot);
-      }
-      return Promise.reject(new Error(`Unexpected request: ${path}`));
-    });
+  it('renders the pre-ride flow with sleep snapshot, ride card, and detail links', async () => {
+    onlineStatus = true;
+    renderPage();
 
-    const queryClient = new QueryClient();
+    expect((await screen.findAllByText('Good to go')).length).toBeGreaterThan(0);
+    expect(screen.getByText("Today's ride")).toBeTruthy();
+    expect(screen.getByText('Tempo ride')).toBeTruthy();
+    expect(screen.getByRole('link', { name: /full morning brief/i }).getAttribute('href')).toBe('/brief');
+    expect(screen.getByRole('link', { name: /baselines/i }).getAttribute('href')).toBe('/baselines');
+    expect(screen.queryByText('After your ride')).toBeNull();
+  });
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
-          <DashboardPage />
-        </MemoryRouter>
-      </QueryClientProvider>,
+  it('renders the post-ride flow when a ride analysis exists for today', async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.postWorkoutAnalyses = [
+          {
+            id: '66666666-6666-4666-8666-666666666666',
+            activityId: '77777777-7777-4777-8777-777777777777',
+            activityName: 'Tempo ride',
+            activityType: 'indoor_cycling',
+            generatedAtUtc: '2026-06-20T12:20:00Z',
+            promptVersion: 'post-workout-v1',
+            modelName: 'claude-sonnet-4-6',
+            outputMarkdown: '**Recovery protocol:** refuel within 20 minutes.',
+            recoveryDecision: { excluded: false, status: 'ready_for_review' },
+            timeSeriesSummary: { power: { avg: 220 } },
+            tomorrowImpact: 'Easy endurance tomorrow.',
+          },
+        ];
+      }),
     );
 
-    // Verdict hero + training badge (green → "Good to go")
-    expect((await screen.findAllByText('Good to go')).length).toBeGreaterThan(0);
-    // Metrics-vs-baselines table Mark asked for
-    expect(screen.getByText('Metrics vs your baselines')).toBeTruthy();
-    expect(screen.getByText('HRV (7-day)')).toBeTruthy();
-    // Today's training shows the planned session
-    expect(screen.getAllByText('Tempo ride').length).toBeGreaterThan(0);
-    // Post-workout read renders the markdown content
-    expect(screen.getByText(/refuel within 20 minutes/)).toBeTruthy();
-    // Check-in moved to its own page behind a CTA
-    const checkIn = screen.getByRole('link', { name: /check in/i });
-    expect(checkIn.getAttribute('href')).toBe('/check-in');
+    expect(await screen.findByText('After your ride')).toBeTruthy();
+    expect(screen.getByText('Tomorrow')).toBeTruthy();
+    expect(screen.getByText('Tonight')).toBeTruthy();
+    expect(screen.getByText('Bedroom')).toBeTruthy();
+    expect(screen.queryByText("Today's ride")).toBeNull();
+  });
+
+  it('renders a clean rest-day state when no bike ride is planned', async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.plannedWorkouts = [
+          {
+            id: '88888888-8888-4888-8888-888888888888',
+            userId: '11111111-1111-4111-8111-111111111111',
+            planBlockId: null,
+            workoutDate: '2026-06-20',
+            version: 1,
+            title: 'Strength routine',
+            workoutType: 'strength',
+            status: 'planned',
+            isActive: true,
+            plannedDurationMin: 30,
+            intensityTarget: null,
+            structuredWorkout: {},
+            source: 'seed',
+            adherence: null,
+          },
+        ];
+      }),
+    );
+
+    expect(await screen.findByText('Nothing to ride today')).toBeTruthy();
+    expect(screen.getByText('Strength routine')).toBeTruthy();
+    expect(screen.queryByText('After your ride')).toBeNull();
+  });
+
+  it('shows the offline banner while keeping the saved phase visible', async () => {
+    onlineStatus = false;
+    renderPage();
+
+    expect((await screen.findByRole('status')).textContent ?? '').toMatch(/showing your last saved brief/i);
+    expect(screen.getByText("Today's ride")).toBeTruthy();
+    onlineStatus = true;
   });
 });

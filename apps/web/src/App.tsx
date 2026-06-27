@@ -23,6 +23,15 @@ const DashboardPage = lazy(() =>
 const CheckInPage = lazy(() =>
   import('./pages/CheckInPage').then((m) => ({ default: m.CheckInPage })),
 );
+const MorningBriefPage = lazy(() =>
+  import('./pages/MorningBriefPage').then((m) => ({ default: m.MorningBriefPage })),
+);
+const BaselinesPage = lazy(() =>
+  import('./pages/BaselinesPage').then((m) => ({ default: m.BaselinesPage })),
+);
+const BedroomPage = lazy(() =>
+  import('./pages/BedroomPage').then((m) => ({ default: m.BedroomPage })),
+);
 const SettingsPage = lazy(() =>
   import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 );
@@ -106,6 +115,9 @@ export function App() {
                     <Route element={<Layout />}>
                       <Route path="/" element={<DashboardPage />} />
                       <Route path="/check-in" element={<CheckInPage />} />
+                      <Route path="/brief" element={<MorningBriefPage />} />
+                      <Route path="/baselines" element={<BaselinesPage />} />
+                      <Route path="/bedroom" element={<BedroomPage />} />
                       <Route path="/delivery" element={<WeekAheadPage />} />
                       <Route path="/holiday" element={<HolidayPage />} />
                       <Route path="/builder" element={<BlockGeneratorPage />} />
