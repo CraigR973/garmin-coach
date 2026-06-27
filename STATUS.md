@@ -6,9 +6,10 @@
 
 ## Now
 
-**Latest (2026-06-27): Batch 26 implementation ready on `feat/batch-26-post-ride-check-in`.**
+**Latest (2026-06-28): Batch 26 closed out on `main` (`b6c92b9`).**
 The post-ride card now captures RPE / legs / feel / niggles against the actual Garmin activity and returns the
-saved row in the daily-loop payload as `postWorkoutAnalyses[*].postRideCheckIn`.
+saved row in the daily-loop payload as `postWorkoutAnalyses[*].postRideCheckIn`; production is serving the
+merged Batch 26 SHA through both Railway and the Vercel same-origin API rewrite.
 
 What changed:
 - Migration `009` adds nullable `manual_entries.activity_id` plus an index/FK to `activities`; no new table.
@@ -20,19 +21,18 @@ What changed:
   check-in still folds into the verdict while a later post-ride entry cannot back-feed that morning signal.
 - Home's post-ride card shows the check-in form and saved values beside the coach read.
 
-**Verification:** full API pytest passed **274 passed / 87 skipped** (local DB-backed split); focused new tests
-covered model shape, post-ride API persistence, stale-analysis regeneration, and recovery isolation. `ruff check`
-passed; `mypy apps/api/src` passed. Web vitest passed **37 tests**, web build passed, web lint passed with the
-existing 5 fast-refresh warnings only, shared tests passed **7**, shared typecheck passed, and `git diff --check`
-passed. Local Alembic upgrade could not be run because Postgres was not listening on `localhost:5432`; CI's
-`migration-check` job remains the migration execution gate.
+**Verification:** branch CI passed (`28304468403`) and `main` CI passed (`28304972699`) across ruff, mypy,
+pytest, Alembic upgrade/downgrade, security audit, and web lint/typecheck/build. Production smoke verified
+`/api/v1/health` at `sha=b6c92b95d663804a2754477d928489fce64b3e72` through Railway and Vercel, web `/`
+returned 200, and the new post-ride check-in route returned 401 unauthenticated through both hosts (route live,
+non-mutating smoke).
 
-**Next step:** Review and run `/closeout 26` when ready.
+**Next step:** Start Batch 27 when ready (`/batch-start 27`): Bedroom fan control (Dreo 508S).
 
 **Gotchas:** the saved subjective check-in is visible immediately, but the Claude markdown reflects it on the
 next post-workout analysis generation; the service deliberately marks stale analyses pending so the next run
 does not ignore the new input. Batch 25's same-day Zwift appearance timing observation remains a separate
-first-live-use note from DECISIONS #91.
+first-live-use note from DECISIONS #91. Batch 27 should begin with the throwaway Dreo spike before repo code.
 
 ---
 
@@ -266,6 +266,10 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-28** — Closed out **Batch 26 — Post-ride check-in into the analysis**. Fast-forwarded `main` to
+  `b6c92b9`, watched main CI green (`28304972699`), verified Railway + Vercel same-origin health at the Batch
+  26 SHA, confirmed web `/` 200, and smoked the new post-ride check-in route unauthenticated through both hosts
+  (401, no write). Marked Batch 26 shipped in `docs/phase-batches.md`; Batch 27 is now the next planned batch.
 - **2026-06-27** — Built **Batch 26 — Post-ride check-in into the analysis** on
   `feat/batch-26-post-ride-check-in`. Added migration `009` for nullable
   `manual_entries.activity_id`, the authenticated post-ride check-in endpoint, daily-loop serialization as
