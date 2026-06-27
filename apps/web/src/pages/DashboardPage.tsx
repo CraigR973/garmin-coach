@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   Activity,
@@ -8,13 +9,18 @@ import {
   ClipboardCheck,
   Dumbbell,
   MoonStar,
+  Send,
+  SlidersHorizontal,
   Thermometer,
   Wind,
   type LucideIcon,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Markdown } from '@/components/Markdown';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -23,6 +29,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { isBikeWorkout, useDailyPhase } from '@/hooks/useDailyPhase';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { apiFetch } from '@/lib/api';
 import { formatDateTime, friendlyDate, hm, remContext } from '@/lib/dailyFlow';
 import { greetingForNow, verdictLabel } from '@/lib/copy';
 
@@ -47,11 +54,35 @@ function prettyType(type: string): string {
 
 export function DashboardPage() {
   const { player } = useAuth();
+  const queryClient = useQueryClient();
   const isOnline = useOnlineStatus();
   const query = useDailyLoop();
   const greeting = `${greetingForNow()}${player ? `, ${player.displayName}` : ''}`;
   const data = query.data?.data;
   const phase = useDailyPhase(data);
+  const sameDayMutation = useMutation({
+    mutationFn: ({
+      workoutId,
+      durationScalePct,
+      intensityScalePct,
+    }: {
+      workoutId: string;
+      durationScalePct?: number;
+      intensityScalePct?: number;
+    }) =>
+      apiFetch(`/api/v1/workout-delivery/planned-workouts/${workoutId}/send-today`, {
+        method: 'POST',
+        body: JSON.stringify({ durationScalePct, intensityScalePct }),
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['daily-loop'] }),
+        queryClient.invalidateQueries({ queryKey: ['week-ahead'] }),
+      ]);
+      toast.success('Sent to Zwift');
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not send to Zwift'),
+  });
 
   if (query.isLoading) {
     return (
@@ -127,6 +158,9 @@ export function DashboardPage() {
             verdict={analysis?.verdict}
             workouts={bikeWorkouts}
             adjustments={analysis?.planAdjustments ?? []}
+            onSend={(payload) => sameDayMutation.mutate(payload)}
+            sendingWorkoutId={sameDayMutation.variables?.workoutId ?? null}
+            isSending={sameDayMutation.isPending}
             emptyTitle="Nothing to ride today"
             emptyCopy={
               strengthWorkouts.length > 0
@@ -179,6 +213,9 @@ export function DashboardPage() {
             verdict={analysis?.verdict}
             workouts={bikeWorkouts}
             adjustments={analysis?.planAdjustments ?? []}
+            onSend={(payload) => sameDayMutation.mutate(payload)}
+            sendingWorkoutId={sameDayMutation.variables?.workoutId ?? null}
+            isSending={sameDayMutation.isPending}
             emptyTitle="Nothing to ride today"
             emptyCopy="No bike session is scheduled today."
           />
@@ -280,6 +317,9 @@ function WorkoutCard({
   verdict,
   workouts,
   adjustments,
+  onSend,
+  sendingWorkoutId,
+  isSending,
   emptyTitle,
   emptyCopy,
 }: {
@@ -295,6 +335,13 @@ function WorkoutCard({
     adherence?: { adherenceStatus?: string | null } | null;
   }>;
   adjustments: string[];
+  onSend: (payload: {
+    workoutId: string;
+    durationScalePct?: number;
+    intensityScalePct?: number;
+  }) => void;
+  sendingWorkoutId: string | null;
+  isSending: boolean;
   emptyTitle: string;
   emptyCopy: string;
 }) {
@@ -314,22 +361,29 @@ function WorkoutCard({
             return (
               <div
                 key={workout.id}
-                className="flex items-center gap-3 rounded-xl border border-border bg-bg px-3 py-3"
+                className="rounded-xl border border-border bg-bg px-3 py-3"
               >
-                <Icon className="h-5 w-5 shrink-0 text-primary" aria-hidden />
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-text-primary">{workout.title}</p>
-                  <p className="text-sm text-text-secondary">
-                    {prettyType(workout.workoutType)}
-                    {workout.plannedDurationMin ? ` · ${workout.plannedDurationMin} min` : ''}
-                    {workout.intensityTarget ? ` · ${workout.intensityTarget}` : ''}
-                  </p>
+                <div className="flex items-center gap-3">
+                  <Icon className="h-5 w-5 shrink-0 text-primary" aria-hidden />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-text-primary">{workout.title}</p>
+                    <p className="text-sm text-text-secondary">
+                      {prettyType(workout.workoutType)}
+                      {workout.plannedDurationMin ? ` · ${workout.plannedDurationMin} min` : ''}
+                      {workout.intensityTarget ? ` · ${workout.intensityTarget}` : ''}
+                    </p>
+                  </div>
+                  {workout.adherence?.adherenceStatus ? (
+                    <Badge variant="muted" className="shrink-0 capitalize">
+                      {workout.adherence.adherenceStatus}
+                    </Badge>
+                  ) : null}
                 </div>
-                {workout.adherence?.adherenceStatus ? (
-                  <Badge variant="muted" className="shrink-0 capitalize">
-                    {workout.adherence.adherenceStatus}
-                  </Badge>
-                ) : null}
+                <WorkoutDeliveryActions
+                  workoutId={workout.id}
+                  onSend={onSend}
+                  isSending={isSending && sendingWorkoutId === workout.id}
+                />
               </div>
             );
           })
@@ -352,6 +406,86 @@ function WorkoutCard({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function WorkoutDeliveryActions({
+  workoutId,
+  onSend,
+  isSending,
+}: {
+  workoutId: string;
+  onSend: (payload: {
+    workoutId: string;
+    durationScalePct?: number;
+    intensityScalePct?: number;
+  }) => void;
+  isSending: boolean;
+}) {
+  const [showOverride, setShowOverride] = useState(false);
+  const [durationScalePct, setDurationScalePct] = useState('100');
+  const [intensityScalePct, setIntensityScalePct] = useState('100');
+
+  function sendOverride() {
+    onSend({
+      workoutId,
+      durationScalePct: Number(durationScalePct),
+      intensityScalePct: Number(intensityScalePct),
+    });
+  }
+
+  return (
+    <div className="mt-3 space-y-3">
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" onClick={() => onSend({ workoutId })} disabled={isSending}>
+          <Send className="h-4 w-4" aria-hidden />
+          {isSending ? 'Sending...' : 'Send to Zwift'}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => setShowOverride((value) => !value)}
+          aria-expanded={showOverride}
+        >
+          <SlidersHorizontal className="h-4 w-4" aria-hidden />
+          Override
+        </Button>
+      </div>
+      {showOverride ? (
+        <div className="grid gap-3 rounded-lg border border-border bg-surface-elevated/60 px-3 py-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+          <div className="space-y-1.5">
+            <Label htmlFor={`duration-${workoutId}`}>Duration</Label>
+            <Input
+              id={`duration-${workoutId}`}
+              type="number"
+              min={50}
+              max={125}
+              step={5}
+              value={durationScalePct}
+              onChange={(event) => setDurationScalePct(event.target.value)}
+              aria-label="Duration percentage"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`intensity-${workoutId}`}>Intensity</Label>
+            <Input
+              id={`intensity-${workoutId}`}
+              type="number"
+              min={50}
+              max={120}
+              step={5}
+              value={intensityScalePct}
+              onChange={(event) => setIntensityScalePct(event.target.value)}
+              aria-label="Intensity percentage"
+            />
+          </div>
+          <Button type="button" size="sm" onClick={sendOverride} disabled={isSending}>
+            {isSending ? 'Sending...' : 'Send override'}
+          </Button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

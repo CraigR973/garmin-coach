@@ -9,8 +9,9 @@ Batch 13 turns the daily verdict into an *acted-on* workout (Decision #30):
   * ``adjust_ir_for_verdict`` is a deterministic transform on the normalized
     ``%FTP`` IR, so the verdict framework — and the hard guarantee that **Red
     never emits VO2** — is testable rule code, not an LLM call.
-  * ``auto_push_due`` delivers already-**approved** proposals a couple of days
-    ahead (Decision #31); it never pushes anything unapproved (Decision #29),
+  * ``auto_push_due`` delivers already-**approved** proposals due today; Batch 25
+    supersedes the old couple-days-ahead lead window from Decision #31. It never
+    pushes anything unapproved (Decision #29),
     and never pushes a VO2 session on a Red day (Red-never-VO2 at the gate).
   * Every proposal and push is written to the ``analyses`` audit log (Batch 9
     pattern) so each delivery has inspectable evidence.
@@ -33,16 +34,21 @@ from src.models.profile import Profile
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
 from src.services.workout_delivery import (
     STATUS_APPROVED,
+    STATUS_FAILED,
+    STATUS_PROPOSED,
+    STATUS_PUSHED,
     IntervalsEventClient,
     WorkoutDeliveryService,
+    build_intervals_payload,
     build_structured_workout_ir,
+    build_zwo_xml,
 )
 
 PROMPT_VERSION = "executable-coaching:v1"
 AUDIT_TYPE_PROPOSED = "workout_proposed"
 AUDIT_TYPE_PUSHED = "workout_pushed"
 AUDIT_TYPE_PUSH_BLOCKED = "workout_push_blocked"
-DEFAULT_LEAD_DAYS = 2
+DEFAULT_LEAD_DAYS = 0
 
 # Verdict-driven adjustment knobs (percentage points of FTP unless noted).
 AMBER_DURATION_SCALE = 0.75  # 25% cut keeps inside the 20-30% Amber band
@@ -52,6 +58,7 @@ HIT_FLOOR_PCT = 106  # VO2/anaerobic work begins around 106% FTP
 AMBER_POWER_CAP_PCT = 98  # Amber removes HIT: cap at threshold
 RECOVERY_CAP_PCT = 60  # Red easy-spin ceiling — guarantees no VO2
 MIN_POWER_PCT = 45
+MAX_MANUAL_POWER_PCT = 150
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -193,6 +200,51 @@ def adjust_ir_for_verdict(base_ir: dict[str, Any], verdict: str | None) -> dict[
     return adjusted
 
 
+def apply_manual_override_to_ir(
+    base_ir: dict[str, Any],
+    *,
+    duration_scale_pct: int | None = None,
+    intensity_scale_pct: int | None = None,
+) -> dict[str, Any]:
+    """Return a copy of ``base_ir`` with Mark's manual duration/intensity dial applied."""
+    if duration_scale_pct is None and intensity_scale_pct is None:
+        return dict(base_ir)
+
+    duration_scale = (duration_scale_pct or 100) / 100
+    intensity_scale = (intensity_scale_pct or 100) / 100
+    raw_steps = base_ir.get("steps")
+    steps = [s for s in raw_steps if isinstance(s, dict)] if isinstance(raw_steps, list) else []
+    adjusted_steps: list[dict[str, Any]] = []
+    for step in steps:
+        next_step = dict(step)
+        next_step["durationSec"] = max(1, round(int(step.get("durationSec", 0)) * duration_scale))
+        for key in ("powerStartPct", "powerEndPct"):
+            next_step[key] = max(
+                MIN_POWER_PCT,
+                min(MAX_MANUAL_POWER_PCT, round(int(step.get(key, 0)) * intensity_scale)),
+            )
+        next_step["kind"] = (
+            "ramp" if next_step["powerStartPct"] != next_step["powerEndPct"] else "steady"
+        )
+        adjusted_steps.append(next_step)
+
+    adjusted = dict(base_ir)
+    adjusted["steps"] = adjusted_steps
+    adjusted["totalDurationSec"] = sum(int(step["durationSec"]) for step in adjusted_steps)
+    adjusted["name"] = f"Manual override: {base_ir.get('name', 'Workout')}"
+    raw_adjustment = base_ir.get("adjustment")
+    adjustment = dict(raw_adjustment) if isinstance(raw_adjustment, dict) else {}
+    adjustment["manualOverride"] = {
+        "durationScalePct": duration_scale_pct or 100,
+        "intensityScalePct": intensity_scale_pct or 100,
+        "basisTotalDurationSec": base_ir.get("totalDurationSec"),
+    }
+    adjustment["changed"] = True
+    adjusted["adjustment"] = adjustment
+    adjusted["origin"] = "manual_override"
+    return adjusted
+
+
 class ExecutableCoachingService:
     def __init__(
         self,
@@ -309,6 +361,109 @@ class ExecutableCoachingService:
             await self.session.commit()
         return pushed
 
+    async def send_today(
+        self,
+        player: Profile,
+        *,
+        planned_workout_id: uuid.UUID,
+        duration_scale_pct: int | None = None,
+        intensity_scale_pct: int | None = None,
+        now_utc: datetime | None = None,
+    ) -> WorkoutDeliveryProposal:
+        """Approve and immediately push today's bike workout.
+
+        This is the Batch 25 same-day path. It keeps the existing proposal model
+        and approval gate, but collapses approve -> push into one explicit user
+        action from Home. Manual overrides create a fresh proposal so the exact IR
+        sent to intervals.icu remains inspectable.
+        """
+        workout = await self.rail._planned_workout(player.id, planned_workout_id)
+        today = _local_today(player.timezone, now_utc)
+        if workout.workout_date != today:
+            raise HTTPException(
+                status_code=409,
+                detail="Only today's workout can be sent same-day from Home",
+            )
+
+        override_requested = duration_scale_pct is not None or intensity_scale_pct is not None
+        proposal = await self._latest_proposal_for_workout(player.id, planned_workout_id)
+        if proposal and proposal.status == STATUS_PUSHED and not override_requested:
+            return proposal
+        if proposal and proposal.status == STATUS_PUSHED and override_requested:
+            raise HTTPException(
+                status_code=409,
+                detail="This workout has already been sent to Zwift",
+            )
+
+        verdict = await self._morning_verdict_for(player.id, workout.workout_date)
+        if override_requested or proposal is None:
+            ftp_watts = await self.rail._ftp_watts(player.id)
+            base_ir = build_structured_workout_ir(workout, ftp_watts=ftp_watts)
+            ir = adjust_ir_for_verdict(base_ir, verdict)
+            if override_requested:
+                ir = apply_manual_override_to_ir(
+                    ir,
+                    duration_scale_pct=duration_scale_pct,
+                    intensity_scale_pct=intensity_scale_pct,
+                )
+            proposal = await self.rail.propose_from_ir(
+                player=player, workout=workout, ir=ir, commit=False
+            )
+            self._record_delivery_audit(
+                player,
+                proposal,
+                analysis_type=AUDIT_TYPE_PROPOSED,
+                tag=_same_day_propose_tag(proposal, override=override_requested),
+                subject_date=workout.workout_date,
+                verdict=verdict,
+                summary=(
+                    "Manual override prepared for same-day Zwift delivery."
+                    if override_requested
+                    else "Workout prepared for same-day Zwift delivery."
+                ),
+            )
+
+        if override_requested:
+            proposal.intervals_payload = build_intervals_payload(proposal.structured_workout_ir)
+            proposal.zwo_xml = build_zwo_xml(proposal.structured_workout_ir)
+
+        if proposal.status == STATUS_PROPOSED:
+            proposal.status = STATUS_APPROVED
+            proposal.approved_at_utc = _utcnow()
+            proposal.approved_by_profile_id = player.id
+            proposal.last_error = None
+            await self.session.flush()
+        elif proposal.status not in {STATUS_APPROVED, STATUS_FAILED}:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Proposal cannot be sent from status {proposal.status}",
+            )
+
+        if blocks_red_vo2(verdict, proposal.structured_workout_ir):
+            await self._record_block_if_new(player, proposal)
+            await self.session.commit()
+            raise HTTPException(
+                status_code=409,
+                detail="Red verdict blocks VO2 delivery to Zwift",
+            )
+
+        await self.session.commit()
+        pushed = await self.rail.push(player=player, proposal_id=proposal.id)
+        tag = _same_day_push_tag(pushed)
+        if not await self._already_recorded(player.id, AUDIT_TYPE_PUSHED, tag, pushed.workout_date):
+            self._record_delivery_audit(
+                player,
+                pushed,
+                analysis_type=AUDIT_TYPE_PUSHED,
+                tag=tag,
+                subject_date=pushed.workout_date,
+                verdict=verdict or _proposal_verdict(pushed),
+                summary=f"Same-day approved workout pushed for {pushed.workout_date.isoformat()}.",
+            )
+            await self.session.commit()
+            await self.session.refresh(pushed)
+        return pushed
+
     def _record_delivery_audit(
         self,
         player: Profile,
@@ -410,6 +565,19 @@ class ExecutableCoachingService:
         )
         return list(rows)
 
+    async def _latest_proposal_for_workout(
+        self, user_id: uuid.UUID, planned_workout_id: uuid.UUID
+    ) -> WorkoutDeliveryProposal | None:
+        return await self.session.scalar(
+            select(WorkoutDeliveryProposal)
+            .where(
+                WorkoutDeliveryProposal.user_id == user_id,
+                WorkoutDeliveryProposal.planned_workout_id == planned_workout_id,
+            )
+            .order_by(WorkoutDeliveryProposal.created_at.desc())
+            .limit(1)
+        )
+
     async def _already_recorded(
         self,
         user_id: uuid.UUID,
@@ -478,6 +646,15 @@ def _regen_tag(workout: PlannedWorkout, verdict: str) -> str:
 
 def _push_tag(proposal: WorkoutDeliveryProposal) -> str:
     return f"auto-push:{proposal.id}"
+
+
+def _same_day_propose_tag(proposal: WorkoutDeliveryProposal, *, override: bool) -> str:
+    prefix = "same-day-override" if override else "same-day-propose"
+    return f"{prefix}:{proposal.id}"
+
+
+def _same_day_push_tag(proposal: WorkoutDeliveryProposal) -> str:
+    return f"same-day-push:{proposal.id}"
 
 
 def _block_tag(proposal: WorkoutDeliveryProposal) -> str:

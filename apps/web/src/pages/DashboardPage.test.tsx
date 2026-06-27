@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type { DailyLoopEnvelope } from '@/hooks/useDailyLoop';
@@ -163,6 +164,9 @@ function renderPage(snapshot = baseSnapshot) {
     if (path === '/api/v1/daily-loop') {
       return Promise.resolve(snapshot);
     }
+    if (path.includes('/api/v1/workout-delivery/planned-workouts/')) {
+      return Promise.resolve({ data: { proposals: [] }, meta: { generatedAtUtc: '2026-06-20T06:45:00Z' }, errors: [] });
+    }
     return Promise.reject(new Error(`Unexpected request: ${path}`));
   });
 
@@ -188,6 +192,42 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('link', { name: /full morning brief/i }).getAttribute('href')).toBe('/brief');
     expect(screen.getByRole('link', { name: /baselines/i }).getAttribute('href')).toBe('/baselines');
     expect(screen.queryByText('After your ride')).toBeNull();
+  });
+
+  it('sends today’s ride to Zwift from Home', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: /send to zwift/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/workout-delivery/planned-workouts/55555555-5555-4555-8555-555555555555/send-today',
+        expect.objectContaining({ method: 'POST', body: '{}' }),
+      );
+    });
+  });
+
+  it('sends a manual override with duration and intensity dials', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: /override/i }));
+    await user.clear(screen.getByLabelText('Duration percentage'));
+    await user.type(screen.getByLabelText('Duration percentage'), '80');
+    await user.clear(screen.getByLabelText('Intensity percentage'));
+    await user.type(screen.getByLabelText('Intensity percentage'), '90');
+    await user.click(screen.getByRole('button', { name: /send override/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/workout-delivery/planned-workouts/55555555-5555-4555-8555-555555555555/send-today',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ durationScalePct: 80, intensityScalePct: 90 }),
+        }),
+      );
+    });
   });
 
   it('renders the post-ride flow when a ride analysis exists for today', async () => {
