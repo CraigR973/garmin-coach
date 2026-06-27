@@ -258,6 +258,7 @@ class ManualEntry(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
         Index("ix_manual_entries_user_entry_at", "user_id", "entry_at_utc"),
         Index("ix_manual_entries_user_date", "user_id", "entry_date"),
         Index("ix_manual_entries_planned_workout", "planned_workout_id"),
+        Index("ix_manual_entries_activity", "activity_id"),
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -265,6 +266,9 @@ class ManualEntry(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     )
     planned_workout_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("planned_workouts.id", ondelete="SET NULL"), nullable=True
+    )
+    activity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("activities.id", ondelete="SET NULL"), nullable=True
     )
     planned_workout_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     entry_date: Mapped[date] = mapped_column(Date, nullable=False)

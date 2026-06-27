@@ -15,6 +15,7 @@ import {
   Wind,
   type LucideIcon,
 } from 'lucide-react';
+import { postRideCheckInInputSchema } from '@coach/shared';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -32,6 +33,9 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { apiFetch } from '@/lib/api';
 import { formatDateTime, friendlyDate, hm, remContext } from '@/lib/dailyFlow';
 import { greetingForNow, verdictLabel } from '@/lib/copy';
+
+const textareaClassName =
+  'min-h-[88px] w-full rounded-md border border-border bg-bg px-3 py-3 text-sm text-text-primary shadow-sm focus-visible:outline-none focus-visible:shadow-glow';
 
 function verdictBadgeVariant(verdict: string | null | undefined): 'success' | 'warning' | 'error' | 'muted' {
   if (verdict === 'green') return 'success';
@@ -82,6 +86,38 @@ export function DashboardPage() {
       toast.success('Sent to Zwift');
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not send to Zwift'),
+  });
+  const postRideCheckInMutation = useMutation({
+    mutationFn: ({
+      activityId,
+      subjectiveScore,
+      rpe,
+      feel,
+      notes,
+    }: {
+      activityId: string;
+      subjectiveScore: number | null;
+      rpe: number | null;
+      feel: string | null;
+      notes: string | null;
+    }) => {
+      if (!data) throw new Error('Daily loop not loaded');
+      const payload = postRideCheckInInputSchema.parse({
+        subjectiveScore,
+        rpe,
+        feel,
+        notes,
+      });
+      return apiFetch(`/api/v1/daily-loop/${data.subjectDate}/activities/${activityId}/post-ride-check-in`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['daily-loop'] });
+      toast.success('Ride check-in saved');
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not save ride check-in'),
   });
 
   if (query.isLoading) {
@@ -181,7 +217,12 @@ export function DashboardPage() {
 
       {phase === 'post_ride' && (
         <>
-          <PostRideCard items={postWorkouts} />
+          <PostRideCard
+            items={postWorkouts}
+            onSaveCheckIn={(payload) => postRideCheckInMutation.mutate(payload)}
+            savingActivityId={postRideCheckInMutation.variables?.activityId ?? null}
+            isSaving={postRideCheckInMutation.isPending}
+          />
 
           <TomorrowCard
             tomorrowImpact={postWorkouts[0]?.tomorrowImpact}
@@ -532,15 +573,69 @@ function WorkoutListCard({
 
 function PostRideCard({
   items,
+  onSaveCheckIn,
+  savingActivityId,
+  isSaving,
 }: {
   items: Array<{
     id: string;
+    activityId?: string | null;
     activityName?: string | null;
     generatedAtUtc: string;
     outputMarkdown: string;
     recoveryDecision?: { excluded?: boolean } | null;
+    postRideCheckIn?: {
+      subjectiveScore?: number | null;
+      rpe?: number | null;
+      feel?: string | null;
+      notes?: string | null;
+    } | null;
   }>;
+  onSaveCheckIn: (payload: {
+    activityId: string;
+    subjectiveScore: number | null;
+    rpe: number | null;
+    feel: string | null;
+    notes: string | null;
+  }) => void;
+  savingActivityId: string | null;
+  isSaving: boolean;
 }) {
+  const [drafts, setDrafts] = useState<
+    Record<string, { subjectiveScore: string; rpe: string; feel: string; notes: string }>
+  >({});
+
+  function formFor(item: {
+    activityId?: string | null;
+    postRideCheckIn?: {
+      subjectiveScore?: number | null;
+      rpe?: number | null;
+      feel?: string | null;
+      notes?: string | null;
+    } | null;
+  }) {
+    const key = item.activityId ?? '';
+    if (drafts[key]) return drafts[key];
+    return {
+      subjectiveScore:
+        item.postRideCheckIn?.subjectiveScore != null ? String(item.postRideCheckIn.subjectiveScore) : '',
+      rpe: item.postRideCheckIn?.rpe != null ? String(item.postRideCheckIn.rpe) : '',
+      feel: item.postRideCheckIn?.feel ?? '',
+      notes: item.postRideCheckIn?.notes ?? '',
+    };
+  }
+
+  function patchDraft(
+    activityId: string,
+    patch: Partial<{ subjectiveScore: string; rpe: string; feel: string; notes: string }>,
+    item: { postRideCheckIn?: { subjectiveScore?: number | null; rpe?: number | null; feel?: string | null; notes?: string | null } | null },
+  ) {
+    setDrafts((current) => ({
+      ...current,
+      [activityId]: { ...formFor({ activityId, postRideCheckIn: item.postRideCheckIn }), ...patch },
+    }));
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -552,7 +647,7 @@ function PostRideCard({
       </CardHeader>
       <CardContent className="space-y-4">
         {items.map((item) => (
-          <div key={item.id} className="rounded-2xl border border-border bg-bg px-4 py-4">
+          <div key={item.id} className="space-y-4 rounded-2xl border border-border bg-bg px-4 py-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="font-semibold text-text-primary">{item.activityName ?? 'Your ride'}</p>
@@ -560,13 +655,99 @@ function PostRideCard({
               </div>
               {item.recoveryDecision?.excluded ? <Badge variant="warning">Not counted for recovery</Badge> : null}
             </div>
-            <div className="mt-3">
+            {item.activityId ? (
+              <PostRideCheckInForm
+                activityId={item.activityId}
+                value={formFor(item)}
+                logged={Boolean(item.postRideCheckIn)}
+                onChange={(patch) => patchDraft(item.activityId!, patch, item)}
+                onSave={(value) =>
+                  onSaveCheckIn({
+                    activityId: item.activityId!,
+                    subjectiveScore: value.subjectiveScore ? Number(value.subjectiveScore) : null,
+                    rpe: value.rpe ? Number(value.rpe) : null,
+                    feel: value.feel || null,
+                    notes: value.notes || null,
+                  })
+                }
+                isSaving={isSaving && savingActivityId === item.activityId}
+              />
+            ) : null}
+            <div>
               <Markdown>{item.outputMarkdown}</Markdown>
             </div>
           </div>
         ))}
       </CardContent>
     </Card>
+  );
+}
+
+function PostRideCheckInForm({
+  activityId,
+  value,
+  logged,
+  onChange,
+  onSave,
+  isSaving,
+}: {
+  activityId: string;
+  value: { subjectiveScore: string; rpe: string; feel: string; notes: string };
+  logged: boolean;
+  onChange: (patch: Partial<{ subjectiveScore: string; rpe: string; feel: string; notes: string }>) => void;
+  onSave: (value: { subjectiveScore: string; rpe: string; feel: string; notes: string }) => void;
+  isSaving: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-surface-elevated/60 px-3 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-medium text-text-primary">How did it feel?</p>
+        {logged ? <Badge variant="muted">Logged</Badge> : null}
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor={`post-ride-rpe-${activityId}`}>RPE</Label>
+          <Input
+            id={`post-ride-rpe-${activityId}`}
+            inputMode="decimal"
+            value={value.rpe}
+            onChange={(event) => onChange({ rpe: event.target.value })}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor={`post-ride-legs-${activityId}`}>Legs</Label>
+          <Input
+            id={`post-ride-legs-${activityId}`}
+            inputMode="numeric"
+            placeholder="1-10"
+            value={value.subjectiveScore}
+            onChange={(event) => onChange({ subjectiveScore: event.target.value })}
+          />
+        </div>
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label htmlFor={`post-ride-feel-${activityId}`}>Feel</Label>
+          <Input
+            id={`post-ride-feel-${activityId}`}
+            value={value.feel}
+            onChange={(event) => onChange({ feel: event.target.value })}
+          />
+        </div>
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label htmlFor={`post-ride-notes-${activityId}`}>Niggles or notes</Label>
+          <textarea
+            id={`post-ride-notes-${activityId}`}
+            className={textareaClassName}
+            value={value.notes}
+            onChange={(event) => onChange({ notes: event.target.value })}
+          />
+        </div>
+      </div>
+      <div className="mt-3 flex justify-end">
+        <Button type="button" variant="outline" onClick={() => onSave(value)} disabled={isSaving}>
+          {isSaving ? 'Saving...' : 'Save ride check-in'}
+        </Button>
+      </div>
+    </div>
   );
 }
 

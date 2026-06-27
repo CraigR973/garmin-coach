@@ -3,6 +3,7 @@ from src.models.coaching import (
     Activity,
     ActivityTimeSeries,
     DailyMetric,
+    ManualEntry,
     MetricBaseline,
     Sleep,
     WeatherDaily,
@@ -98,3 +99,9 @@ def test_metric_baseline_columns_cover_reliable_window_stats() -> None:
     assert "excluded_sample_count" in columns
     assert "lower_quartile_value" in columns
     assert "upper_quartile_value" in columns
+
+
+def test_manual_entry_can_link_post_ride_checkin_to_activity() -> None:
+    columns = ManualEntry.__table__.columns.keys()
+
+    assert "activity_id" in columns

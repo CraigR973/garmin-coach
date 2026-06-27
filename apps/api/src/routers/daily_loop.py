@@ -56,10 +56,18 @@ class AdherenceBody(BaseModel):
     actualWorkoutJson: dict[str, Any] = Field(default_factory=dict)
 
 
+class PostRideCheckInBody(BaseModel):
+    subjectiveScore: int | None = None
+    rpe: float | None = None
+    feel: str | None = None
+    notes: str | None = None
+
+
 class ManualEntryOut(BaseModel):
     id: str
     userId: str
     plannedWorkoutId: str | None
+    activityId: str | None
     plannedWorkoutVersion: int | None
     entryDate: str
     entryAtUtc: str
@@ -101,6 +109,7 @@ class PostWorkoutAnalysisOut(BaseModel):
     recoveryDecision: dict[str, Any]
     timeSeriesSummary: dict[str, Any]
     tomorrowImpact: str | None
+    postRideCheckIn: ManualEntryOut | None = None
 
 
 class DailyMetricOut(BaseModel):
@@ -244,6 +253,7 @@ def _serialize_manual_entry(entry: ManualEntry | None) -> ManualEntryOut | None:
         id=str(entry.id),
         userId=str(entry.user_id),
         plannedWorkoutId=str(entry.planned_workout_id) if entry.planned_workout_id else None,
+        activityId=str(entry.activity_id) if entry.activity_id else None,
         plannedWorkoutVersion=entry.planned_workout_version,
         entryDate=entry.entry_date.isoformat(),
         entryAtUtc=_dt(entry.entry_at_utc) or "",
@@ -302,7 +312,10 @@ def _serialize_analysis(analysis: Analysis | None) -> AnalysisOut | None:
     )
 
 
-def _serialize_post_workout_analysis(analysis: Analysis) -> PostWorkoutAnalysisOut:
+def _serialize_post_workout_analysis(
+    analysis: Analysis,
+    post_ride_checkin: ManualEntry | None,
+) -> PostWorkoutAnalysisOut:
     packet = analysis.context_packet if isinstance(analysis.context_packet, dict) else {}
     activity = packet.get("activity", {}) if isinstance(packet.get("activity", {}), dict) else {}
     recovery_decision = (
@@ -332,6 +345,7 @@ def _serialize_post_workout_analysis(analysis: Analysis) -> PostWorkoutAnalysisO
         recoveryDecision=recovery_decision,
         timeSeriesSummary=time_series_summary,
         tomorrowImpact=tomorrow_impact if isinstance(tomorrow_impact, str) else None,
+        postRideCheckIn=_serialize_manual_entry(post_ride_checkin),
     )
 
 
@@ -476,7 +490,12 @@ def _envelope(player: CurrentUser, snapshot: Any) -> DailyLoopEnvelope:
             sleep=_serialize_sleep(snapshot.sleep),
             manualEntry=_serialize_manual_entry(snapshot.manual_entry),
             postWorkoutAnalyses=[
-                _serialize_post_workout_analysis(analysis)
+                _serialize_post_workout_analysis(
+                    analysis,
+                    snapshot.post_ride_checkins.get(analysis.activity_id)
+                    if analysis.activity_id
+                    else None,
+                )
                 for analysis in snapshot.post_workout_analyses
             ],
             plannedWorkouts=planned_workouts,
@@ -572,6 +591,31 @@ async def upsert_workout_adherence(
         feel=body.feel,
         notes=body.notes,
         actual_workout_json=body.actualWorkoutJson,
+    )
+    snapshot = await service.get_snapshot(player, subject_date=subject_date)
+    return _envelope(player, snapshot)
+
+
+@router.put(
+    "/{subject_date}/activities/{activity_id}/post-ride-check-in",
+    response_model=DailyLoopEnvelope,
+)
+async def upsert_post_ride_checkin(
+    subject_date: date,
+    activity_id: uuid.UUID,
+    body: PostRideCheckInBody,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> DailyLoopEnvelope:
+    service = DailyLoopService(db)
+    await service.upsert_post_ride_checkin(
+        player,
+        subject_date=subject_date,
+        activity_id=activity_id,
+        subjective_score=body.subjectiveScore,
+        rpe=body.rpe,
+        feel=body.feel,
+        notes=body.notes,
     )
     snapshot = await service.get_snapshot(player, subject_date=subject_date)
     return _envelope(player, snapshot)

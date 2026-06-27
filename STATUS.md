@@ -6,41 +6,33 @@
 
 ## Now
 
-**Latest (2026-06-27): Batch 25 closed out and shipped to production.**
-PR #38 was squash-merged to `main` at `aaab0a0` and production verified. The new same-day delivery path is:
-Home workout card → `POST /api/v1/workout-delivery/planned-workouts/{id}/send-today` → build from the
-verdict-adjusted IR → optional manual duration/intensity override → approve → push to intervals.icu now.
+**Latest (2026-06-27): Batch 26 implementation ready on `feat/batch-26-post-ride-check-in`.**
+The post-ride card now captures RPE / legs / feel / niggles against the actual Garmin activity and returns the
+saved row in the daily-loop payload as `postWorkoutAnalyses[*].postRideCheckIn`.
 
-What shipped:
-- `services/executable_coaching.py` adds `send_today` and `apply_manual_override_to_ir`.
-- Same-day sends audit `workout_proposed` / `workout_pushed`; Red-never-VO2 is re-checked before any
-  intervals.icu call.
-- `DEFAULT_LEAD_DAYS` is now `0`, so the background auto-push is a same-day catch-up for already-approved
-  proposals due today, not a two-day-ahead staging mechanism.
-- The Batch 24 Home bike card now has **Send to Zwift** and **Override** actions, including duration and
-  intensity percentage dials. Non-bike/rest days keep the existing "nothing to send to Zwift today" state.
-- `DECISIONS.md` #91 supersedes #31 for the delivery trigger, and `ARCHITECTURE.md` describes the shipped
-  same-day approval/override rail. No migration.
+What changed:
+- Migration `009` adds nullable `manual_entries.activity_id` plus an index/FK to `activities`; no new table.
+- `PUT /api/v1/daily-loop/{subject_date}/activities/{activity_id}/post-ride-check-in` persists the after-ride
+  check-in after validating the activity belongs to Mark and that local subject date.
+- `PostWorkoutAnalysisService` includes `postRideCheckIn` in the context packet and treats a ride as pending
+  again when a newer activity-linked check-in is not covered by the latest stored analysis.
+- Morning verdict reads now exclude planned-workout and activity-linked manual entries, so the true morning
+  check-in still folds into the verdict while a later post-ride entry cannot back-feed that morning signal.
+- Home's post-ride card shows the check-in form and saved values beside the coach read.
 
-**Verification:** PR #38 checks were green twice (push + PR): ruff, mypy, pytest, alembic migration check,
-security audit, web build/lint/typecheck, Vercel preview. Local verification before merge: API suite
-273 passed / 85 skipped; ruff + mypy clean; web vitest 36 passed; web build OK; web lint OK with existing
-fast-refresh warnings only; shared tests 7 passed; browser smoke with local mock API confirmed the Home
-send/override flow and no console errors. Production after merge: API health served
-`sha=aaab0a0506b77796fe548ed66e40f4828187d256`; web `/` returned 200; same-origin and direct API
-`send-today` unauthenticated POSTs returned 401, proving the new route is deployed and auth-gated without
-mutating data.
+**Verification:** full API pytest passed **274 passed / 87 skipped** (local DB-backed split); focused new tests
+covered model shape, post-ride API persistence, stale-analysis regeneration, and recovery isolation. `ruff check`
+passed; `mypy apps/api/src` passed. Web vitest passed **37 tests**, web build passed, web lint passed with the
+existing 5 fast-refresh warnings only, shared tests passed **7**, shared typecheck passed, and `git diff --check`
+passed. Local Alembic upgrade could not be run because Postgres was not listening on `localhost:5432`; CI's
+`migration-check` job remains the migration execution gate.
 
-**25.0 caveat:** this session did not perform a fresh manual Zwift same-day latency check. Prior spikes proved
-intervals.icu API creation + manual Zwift visibility, and the shipped rail creates the same intervals.icu event,
-but the real same-day Zwift appearance timing should still be observed during the first live use.
+**Next step:** Review and run `/closeout 26` when ready.
 
-**Next step:** Batch 26 — post-ride check-in into the analysis.
-
-**Gotchas:** phase selection remains data-led, not clock-led — today’s `postWorkoutAnalyses` wins
-for post-ride, and “rest day” means “no bike workout scheduled”, even if strength work still exists. The
-new same-day endpoint is intentionally today-only by the user’s timezone and will reject future workouts
-from Home.
+**Gotchas:** the saved subjective check-in is visible immediately, but the Claude markdown reflects it on the
+next post-workout analysis generation; the service deliberately marks stale analyses pending so the next run
+does not ignore the new input. Batch 25's same-day Zwift appearance timing observation remains a separate
+first-live-use note from DECISIONS #91.
 
 ---
 
@@ -274,6 +266,18 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-27** — Built **Batch 26 — Post-ride check-in into the analysis** on
+  `feat/batch-26-post-ride-check-in`. Added migration `009` for nullable
+  `manual_entries.activity_id`, the authenticated post-ride check-in endpoint, daily-loop serialization as
+  `postWorkoutAnalyses[*].postRideCheckIn`, and Home post-ride card capture for RPE / legs / feel / niggles.
+  `PostWorkoutAnalysisService` now includes the check-in in the analysis packet and marks an existing analysis
+  stale when it predates the latest activity-linked check-in; morning analysis filters to date-level manual
+  entries only so later ride feedback cannot back-feed the morning verdict. Recorded DECISIONS #92 and updated
+  `ARCHITECTURE.md` / `docs/phase-batches.md`. Verification: API pytest **274 passed / 87 skipped**; focused
+  new coverage for persistence + stale-analysis regeneration; ruff + mypy clean; web vitest **37 passed**;
+  web build OK; web lint 0 errors / 5 existing warnings; shared tests **7 passed** + typecheck OK. Local
+  Alembic upgrade was attempted but Postgres was unreachable on `localhost:5432`, so migration execution is
+  left to CI's `migration-check`.
 - **2026-06-27** — **Closed out Batch 25 — Same-day delivery + manual override** (PR #38, squash merge
   `aaab0a0`, prod verified). Shipped Home **Send to Zwift** + **Override** controls and the authenticated
   `send-today` endpoint, with same-day approve→push, manual override IR, Red-never-VO2 gate, audit rows,

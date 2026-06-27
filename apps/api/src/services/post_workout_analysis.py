@@ -20,6 +20,7 @@ from src.models.coaching import (
     ActivityTimeSeries,
     Analysis,
     KnowledgeBase,
+    ManualEntry,
     PlannedWorkout,
 )
 from src.models.profile import Profile
@@ -33,7 +34,8 @@ ANTHROPIC_VERSION = "2023-06-01"
 SYSTEM_PROMPT = """You are Garmin Coach, a private endurance post-workout analyst.
 Use only the supplied context packet. Follow every data-quality guardrail.
 Return concise markdown with a workout rating, performance read, specific timed
-recovery protocol, and tomorrow impact. Include power, HR, zones, cadence,
+recovery protocol, and tomorrow impact. Incorporate any post-ride check-in
+(RPE, feel, legs, niggles) when present. Include power, HR, zones, cadence,
 Performance Condition, Stamina, and Training Effect when present. Never mention
 left/right power balance. Do not use wrist-HR strength sessions for recovery
 decisions."""
@@ -159,7 +161,9 @@ class PostWorkoutAnalysisService:
         for activity in rows:
             if not _is_ride(activity):
                 continue
-            if await self.latest_analysis_for_activity(activity.id) is None:
+            latest = await self.latest_analysis_for_activity(activity.id)
+            checkin = await self._post_ride_checkin(activity.user_id, activity.id)
+            if latest is None or not _analysis_covers_post_ride_checkin(latest, checkin):
                 pending.append(activity)
         return pending
 
@@ -197,6 +201,7 @@ class PostWorkoutAnalysisService:
         knowledge_base = {row.section: row.content for row in kb_rows}
         planned_workouts = await self._planned_workouts(player.id, subject_date)
         morning_analysis = await self._latest_morning_analysis(player.id, subject_date)
+        post_ride_checkin = await self._post_ride_checkin(player.id, activity.id)
         timeseries = await self._timeseries(activity.id)
         ftp_watts = _ftp_watts(knowledge_base)
         time_series_summary = _time_series_summary(timeseries, ftp_watts)
@@ -223,12 +228,14 @@ class PostWorkoutAnalysisService:
             "timeSeriesSummary": time_series_summary,
             "plannedWorkouts": [_planned_workout_packet(workout) for workout in planned_workouts],
             "morningVerdict": _morning_analysis_packet(morning_analysis),
+            "postRideCheckIn": _manual_entry_packet(post_ride_checkin),
             "recoveryDecision": recovery_decision,
             "prompt": {
                 "version": PROMPT_VERSION,
                 "system": SYSTEM_PROMPT,
                 "outputRules": [
                     "include_workout_rating",
+                    "incorporate_post_ride_check_in_when_present",
                     "include_power_hr_zones_cadence_performance_condition_stamina_training_effect",
                     "include_specific_timed_recovery_protocol",
                     "include_tomorrow_impact",
@@ -249,7 +256,8 @@ class PostWorkoutAnalysisService:
     ) -> PostWorkoutAnalysisResult:
         if not force:
             existing = await self.latest_analysis_for_activity(activity.id)
-            if existing is not None:
+            checkin = await self._post_ride_checkin(player.id, activity.id)
+            if existing is not None and _analysis_covers_post_ride_checkin(existing, checkin):
                 return PostWorkoutAnalysisResult(analysis=existing, generated=False)
 
         context_packet = await self.assemble_context_packet(player, activity)
@@ -347,6 +355,24 @@ class PostWorkoutAnalysisService:
                     Analysis.subject_date == subject_date,
                 )
                 .order_by(desc(Analysis.generated_at_utc), desc(Analysis.created_at))
+                .limit(1)
+            ),
+        )
+
+    async def _post_ride_checkin(
+        self,
+        user_id: uuid.UUID,
+        activity_id: uuid.UUID,
+    ) -> ManualEntry | None:
+        return cast(
+            ManualEntry | None,
+            await self.session.scalar(
+                select(ManualEntry)
+                .where(
+                    ManualEntry.user_id == user_id,
+                    ManualEntry.activity_id == activity_id,
+                )
+                .order_by(desc(ManualEntry.entry_at_utc), desc(ManualEntry.created_at))
                 .limit(1)
             ),
         )
@@ -563,6 +589,34 @@ def _morning_analysis_packet(row: Analysis | None) -> dict[str, Any] | None:
             verdict.get("readinessInterpretation") if isinstance(verdict, dict) else None
         ),
     }
+
+
+def _manual_entry_packet(row: ManualEntry | None) -> dict[str, Any] | None:
+    if row is None:
+        return None
+    return {
+        "id": str(row.id),
+        "entryDate": row.entry_date.isoformat(),
+        "entryAtUtc": _dt(row.entry_at_utc),
+        "activityId": str(row.activity_id) if row.activity_id else None,
+        "subjectiveScore": row.subjective_score,
+        "rpe": row.rpe,
+        "feel": row.feel,
+        "notes": row.notes,
+    }
+
+
+def _analysis_covers_post_ride_checkin(
+    analysis: Analysis,
+    checkin: ManualEntry | None,
+) -> bool:
+    packet = analysis.context_packet if isinstance(analysis.context_packet, dict) else {}
+    packet_checkin = packet.get("postRideCheckIn")
+    if checkin is None:
+        return packet_checkin is None
+    if not isinstance(packet_checkin, dict):
+        return False
+    return packet_checkin.get("entryAtUtc") == _dt(checkin.entry_at_utc)
 
 
 def _recovery_decision_packet(activity: Activity) -> dict[str, Any]:

@@ -114,7 +114,9 @@ Assembles a context packet (KB + DB data + rolling trend + plan) and calls Claud
 
 - **Morning:** sleep analysis (age-adjusted) · physical-metrics read · **Metrics-vs-Baselines table** (baselines computed from his 84-night history) · thermal/environment review vs his targets · **Green/Amber/Red workout verdict** for today's full plan (cycling + strength). **Fired on wake, not a clock** — detected from his Garmin `sleepEnd` (stability-guarded, 09:30 backstop) so it reads his finalized overnight metrics whatever time he surfaces (DECISIONS #87; design in `docs/designs/wake-triggered-morning.md`).
   - **Verdict framework:** GREEN = HRV balanced+stable, sleep ≥70 (age-adj ≥74), subjective ≥5. AMBER = HRV low/mild-unbalanced, sleep 60–69 → cut duration 20–30%, drop a zone, no HIT. RED = HRV unbalanced+declining, sleep <60 → sub/rest; **never VO2 on Red**. Reconcile a "Low" Garmin readiness as load-driven when recovery signals are good.
-- **Post-workout:** performance (power/HR/zones/cadence/PC/stamina/TE) · workout rating · guided recovery protocol (specific, timed) · impact on tomorrow.
+- **Post-workout:** performance (power/HR/zones/cadence/PC/stamina/TE) · Mark's post-ride check-in
+  (RPE / legs / feel / niggles, when present) · workout rating · guided recovery protocol (specific,
+  timed) · impact on tomorrow.
 - **Output rules:** bold each bullet headline; sleep summary line; ignore the phase-frequency system (he wants DAILY always); specific recovery suggestions.
 
 Validated 19 Jun with a real sample → his verdict "fantastic." Demonstrated 5 wins over his Copilot flow: age-adjustment, plan-awareness, no wrong-screenshot errors, causal thermal insight, trend memory.
@@ -130,7 +132,8 @@ Validated 19 Jun with a real sample → his verdict "fantastic." Demonstrated 5 
 - `temperature_readings` (Hive poll) · `weather_daily` (daily high/low,
   overnight low/wind, precipitation, sunrise/sunset)
 - `manual_entries` (BP, subjective, RPE, feel, supplements, food, plus
-  adherence captured against the planned-workout version that was actually done)
+  adherence captured against the planned-workout version that was actually done; Batch 26 also links
+  post-ride subjective check-ins to `activities.id` via nullable `activity_id`)
 - `planned_workouts` (structured intervals; **versioned** — VO2 sessions get revised mid-block) · `plan_blocks` (13-wk 2121: 2 build/1 recovery/wk12 taper/wk13 consolidation)
 - `workout_delivery_proposals` (approval-gated Zwift delivery snapshots:
   structured IR, intervals.icu payload, deterministic `.ZWO`, status/event id)

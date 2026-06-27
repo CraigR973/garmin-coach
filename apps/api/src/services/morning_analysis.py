@@ -305,6 +305,8 @@ class MorningAnalysisService:
                     .where(
                         ManualEntry.user_id == user_id,
                         ManualEntry.entry_date == subject_date,
+                        ManualEntry.planned_workout_id.is_(None),
+                        ManualEntry.activity_id.is_(None),
                     )
                     .order_by(desc(ManualEntry.entry_at_utc))
                 )

@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 
-from src.models.coaching import Activity, ActivityTimeSeries, Analysis
+from src.models.coaching import Activity, ActivityTimeSeries, Analysis, ManualEntry
 from src.models.profile import Profile, UserRole
 from src.services.post_workout_analysis import (
     PROMPT_VERSION,
@@ -140,6 +140,7 @@ async def test_generate_and_store_post_workout_analysis_is_idempotent(
         assert packet["timeSeriesSummary"]["performanceCondition"]["end"] == -1
         assert packet["timeSeriesSummary"]["stamina"]["availableEnd"] == 82
         assert packet["timeSeriesSummary"]["powerZones"]
+        assert packet["postRideCheckIn"] is None
         assert packet["recoveryDecision"]["excluded"] is False
         assert "leftRightBalance" not in json.dumps(packet)
 
@@ -155,6 +156,72 @@ async def test_generate_and_store_post_workout_analysis_is_idempotent(
         assert second.analysis.id == result.analysis.id
         assert fake_client.calls == 1
         assert await service.pending_ride_activities(user_id, since=datetime(2026, 1, 1)) == []
+
+
+@pytest.mark.asyncio
+async def test_post_ride_checkin_is_folded_into_next_post_workout_analysis(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Post Ride Checkin",
+            pin_hash="x" * 60,
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        activity = Activity(
+            user_id=user_id,
+            garmin_activity_id=987654,
+            activity_name="Lunch ride",
+            activity_type="indoor_cycling",
+            start_utc=datetime(2026, 6, 20, 12, 0),
+            duration_sec=2700,
+            avg_power_watts=205,
+            raw_summary={},
+        )
+        session.add_all([player, activity])
+        await session.flush()
+
+        service = PostWorkoutAnalysisService(session)
+        fake_client = FakePostWorkoutClient()
+        first = await service.generate_and_store(player, activity, client=fake_client)
+
+        assert first.generated is True
+        assert first.analysis.context_packet["postRideCheckIn"] is None
+        assert fake_client.calls == 1
+
+        session.add(
+            ManualEntry(
+                user_id=user_id,
+                activity_id=activity.id,
+                entry_date=datetime(2026, 6, 20).date(),
+                entry_at_utc=datetime(2026, 6, 20, 13, 5),
+                subjective_score=6,
+                rpe=7.5,
+                feel="legs loaded but no niggles",
+                notes="Left calf tight at the end.",
+            )
+        )
+        await session.commit()
+
+        pending = await service.pending_ride_activities(user_id, since=datetime(2026, 6, 20))
+        assert [item.id for item in pending] == [activity.id]
+
+        second = await service.generate_and_store(player, activity, client=fake_client)
+
+        assert second.generated is True
+        assert second.analysis.id != first.analysis.id
+        assert fake_client.calls == 2
+        checkin = second.analysis.context_packet["postRideCheckIn"]
+        assert checkin["rpe"] == 7.5
+        assert checkin["subjectiveScore"] == 6
+        assert "calf" in checkin["notes"]
+        assert await service.pending_ride_activities(user_id, since=datetime(2026, 6, 20)) == []
 
 
 def test_strength_session_is_excluded_from_recovery_decisions() -> None:

@@ -39,6 +39,14 @@ def _local_today(timezone_name: str) -> date:
     return datetime.now(timezone).date()
 
 
+def _activity_local_date(activity: Activity, timezone_name: str) -> date:
+    try:
+        timezone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        timezone = ZoneInfo("UTC")
+    return activity.start_utc.replace(tzinfo=UTC).astimezone(timezone).date()
+
+
 @dataclass
 class DailyLoopSnapshot:
     subject_date: date
@@ -47,6 +55,7 @@ class DailyLoopSnapshot:
     sleep: Sleep | None
     manual_entry: ManualEntry | None
     post_workout_analyses: list[Analysis]
+    post_ride_checkins: dict[uuid.UUID, ManualEntry]
     planned_workouts: list[PlannedWorkout]
     adherence_entries: dict[uuid.UUID, ManualEntry]
     latest_temperature: TemperatureReading | None
@@ -72,6 +81,7 @@ class DailyLoopService:
         sleep = await self._sleep(player.id, target_date)
         manual_entry = await self._manual_entry(player.id, target_date)
         post_workout_analyses = await self._post_workout_analyses(player.id, target_date)
+        post_ride_checkins = await self._post_ride_checkins(player.id, target_date)
         planned_workouts = await self._planned_workouts(player.id, target_date)
         adherence_entries = await self._adherence_entries(player.id, target_date)
         latest_temperature = await self._latest_temperature(player.id)
@@ -86,6 +96,7 @@ class DailyLoopService:
             sleep=sleep,
             manual_entry=manual_entry,
             post_workout_analyses=post_workout_analyses,
+            post_ride_checkins=post_ride_checkins,
             planned_workouts=planned_workouts,
             adherence_entries=adherence_entries,
             latest_temperature=latest_temperature,
@@ -125,6 +136,43 @@ class DailyLoopService:
         entry.feel = feel
         entry.supplements_json = supplements_json
         entry.food_json = food_json
+        entry.notes = notes
+        await self.session.commit()
+        await self.session.refresh(entry)
+        return entry
+
+    async def upsert_post_ride_checkin(
+        self,
+        player: Profile,
+        *,
+        subject_date: date,
+        activity_id: uuid.UUID,
+        subjective_score: int | None,
+        rpe: float | None,
+        feel: str | None,
+        notes: str | None,
+    ) -> ManualEntry:
+        activity = await self._activity(player.id, activity_id, subject_date, player.timezone)
+        if activity is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Activity not found for this date",
+            )
+
+        entry = await self._post_ride_checkin(player.id, subject_date, activity_id)
+        if entry is None:
+            entry = ManualEntry(
+                user_id=player.id,
+                activity_id=activity_id,
+                entry_date=subject_date,
+                entry_at_utc=_utcnow(),
+            )
+            self.session.add(entry)
+
+        entry.entry_at_utc = _utcnow()
+        entry.subjective_score = subjective_score
+        entry.rpe = rpe
+        entry.feel = feel
         entry.notes = notes
         await self.session.commit()
         await self.session.refresh(entry)
@@ -250,6 +298,7 @@ class DailyLoopService:
                         ManualEntry.user_id == user_id,
                         ManualEntry.entry_date == subject_date,
                         ManualEntry.planned_workout_id.is_(None),
+                        ManualEntry.activity_id.is_(None),
                     )
                     .order_by(ManualEntry.entry_at_utc.desc())
                     .limit(1)
@@ -312,6 +361,7 @@ class DailyLoopService:
                         ManualEntry.user_id == user_id,
                         ManualEntry.entry_date == subject_date,
                         ManualEntry.planned_workout_id.is_not(None),
+                        ManualEntry.activity_id.is_(None),
                     )
                     .order_by(ManualEntry.entry_at_utc.desc())
                 )
@@ -341,6 +391,7 @@ class DailyLoopService:
                         ManualEntry.user_id == user_id,
                         ManualEntry.entry_date == subject_date,
                         ManualEntry.planned_workout_id == planned_workout_id,
+                        ManualEntry.activity_id.is_(None),
                     )
                     .order_by(ManualEntry.entry_at_utc.desc())
                     .limit(1)
@@ -349,6 +400,82 @@ class DailyLoopService:
             .scalars()
             .first()
         )
+
+    async def _post_ride_checkins(
+        self,
+        user_id: uuid.UUID,
+        subject_date: date,
+    ) -> dict[uuid.UUID, ManualEntry]:
+        entries = (
+            (
+                await self.session.execute(
+                    select(ManualEntry)
+                    .where(
+                        ManualEntry.user_id == user_id,
+                        ManualEntry.entry_date == subject_date,
+                        ManualEntry.activity_id.is_not(None),
+                    )
+                    .order_by(ManualEntry.entry_at_utc.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        latest_by_activity: dict[uuid.UUID, ManualEntry] = {}
+        for entry in entries:
+            if entry.activity_id is None or entry.activity_id in latest_by_activity:
+                continue
+            latest_by_activity[entry.activity_id] = entry
+        return latest_by_activity
+
+    async def _post_ride_checkin(
+        self,
+        user_id: uuid.UUID,
+        subject_date: date,
+        activity_id: uuid.UUID,
+    ) -> ManualEntry | None:
+        return (
+            (
+                await self.session.execute(
+                    select(ManualEntry)
+                    .where(
+                        ManualEntry.user_id == user_id,
+                        ManualEntry.entry_date == subject_date,
+                        ManualEntry.activity_id == activity_id,
+                    )
+                    .order_by(ManualEntry.entry_at_utc.desc())
+                    .limit(1)
+                )
+            )
+            .scalars()
+            .first()
+        )
+
+    async def _activity(
+        self,
+        user_id: uuid.UUID,
+        activity_id: uuid.UUID,
+        subject_date: date,
+        timezone_name: str,
+    ) -> Activity | None:
+        activity = (
+            (
+                await self.session.execute(
+                    select(Activity).where(
+                        Activity.id == activity_id,
+                        Activity.user_id == user_id,
+                    )
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if activity is None:
+            return None
+        if _activity_local_date(activity, timezone_name) != subject_date:
+            return None
+        return activity
 
     async def _latest_temperature(self, user_id: uuid.UUID) -> TemperatureReading | None:
         return (

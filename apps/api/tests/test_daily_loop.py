@@ -377,3 +377,93 @@ async def test_manual_entry_and_adherence_upserts_persist(db_conn: AsyncConnecti
     assert adherence_entry.planned_workout_version == 3
     assert adherence_entry.adherence_status == "modified"
     assert adherence_entry.actual_workout_json["completedDurationMin"] == 42
+
+
+@pytest.mark.asyncio
+async def test_post_ride_checkin_upsert_persists_against_activity(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    activity_id = uuid.uuid4()
+    subject_date = date(2026, 6, 20)
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Post Ride Mutation",
+            pin_hash="x" * 60,
+            role=UserRole.player,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        activity = Activity(
+            id=activity_id,
+            user_id=user_id,
+            garmin_activity_id=4444,
+            activity_name="Tempo ride",
+            activity_type="indoor_cycling",
+            start_utc=datetime(2026, 6, 20, 11, 30),
+            duration_sec=3600,
+            raw_summary={},
+        )
+        analysis = Analysis(
+            user_id=user_id,
+            activity_id=activity_id,
+            analysis_type="post_workout",
+            subject_date=subject_date,
+            generated_at_utc=datetime(2026, 6, 20, 12, 45),
+            prompt_version="post-workout-test",
+            model_name="claude-test",
+            context_packet={
+                "activity": {
+                    "activityName": "Tempo ride",
+                    "activityType": "indoor_cycling",
+                },
+                "recoveryDecision": {"status": "ready_for_review"},
+                "timeSeriesSummary": {},
+            },
+            output_markdown="**Recovery protocol:** refuel.",
+            raw_response={},
+        )
+        session.add_all([player, activity, analysis])
+        await session.commit()
+
+    app.dependency_overrides[get_current_user] = lambda: player
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.put(
+                (
+                    f"/api/v1/daily-loop/{subject_date.isoformat()}"
+                    f"/activities/{activity_id}/post-ride-check-in"
+                ),
+                json={
+                    "subjectiveScore": 6,
+                    "rpe": 8,
+                    "feel": "hard but fair",
+                    "notes": "Left calf tight.",
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    checkin = payload["data"]["postWorkoutAnalyses"][0]["postRideCheckIn"]
+    assert checkin["activityId"] == str(activity_id)
+    assert checkin["subjectiveScore"] == 6
+    assert checkin["rpe"] == 8
+    assert checkin["feel"] == "hard but fair"
+
+    async with session_factory() as session:
+        entry = await session.scalar(
+            select(ManualEntry).where(
+                ManualEntry.user_id == user_id,
+                ManualEntry.activity_id == activity_id,
+            )
+        )
+
+    assert entry is not None
+    assert entry.planned_workout_id is None
+    assert entry.notes == "Left calf tight."

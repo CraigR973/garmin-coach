@@ -159,6 +159,7 @@ export const manualEntrySchema = z.object({
   id: z.string().uuid(),
   userId: z.string().uuid(),
   plannedWorkoutId: z.string().uuid().nullable().optional(),
+  activityId: z.string().uuid().nullable().optional(),
   plannedWorkoutVersion: z.number().int().nullable().optional(),
   entryDate: isoDateSchema,
   entryAtUtc: isoDateTimeSchema,
@@ -193,6 +194,13 @@ export const plannedWorkoutAdherenceInputSchema = z.object({
   feel: z.string().max(80).nullable().optional(),
   notes: z.string().nullable().optional(),
   actualWorkoutJson: jsonObjectSchema.default({}),
+});
+
+export const postRideCheckInInputSchema = z.object({
+  subjectiveScore: z.number().int().min(1).max(10).nullable().optional(),
+  rpe: z.number().min(0).max(10).nullable().optional(),
+  feel: z.string().max(80).nullable().optional(),
+  notes: z.string().nullable().optional(),
 });
 
 export const planBlockSchema = z.object({
@@ -370,6 +378,7 @@ export const dailyLoopPostWorkoutAnalysisSchema = z.object({
   recoveryDecision: jsonObjectSchema.default({}),
   timeSeriesSummary: jsonObjectSchema.default({}),
   tomorrowImpact: z.string().nullable().optional(),
+  postRideCheckIn: manualEntrySchema.nullable().optional(),
 });
 
 export const dailyLoopPlannedWorkoutSchema = plannedWorkoutSchema.extend({

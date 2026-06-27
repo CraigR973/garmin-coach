@@ -167,6 +167,9 @@ function renderPage(snapshot = baseSnapshot) {
     if (path.includes('/api/v1/workout-delivery/planned-workouts/')) {
       return Promise.resolve({ data: { proposals: [] }, meta: { generatedAtUtc: '2026-06-20T06:45:00Z' }, errors: [] });
     }
+    if (path.includes('/post-ride-check-in')) {
+      return Promise.resolve(snapshot);
+    }
     return Promise.reject(new Error(`Unexpected request: ${path}`));
   });
 
@@ -246,6 +249,7 @@ describe('DashboardPage', () => {
             recoveryDecision: { excluded: false, status: 'ready_for_review' },
             timeSeriesSummary: { power: { avg: 220 } },
             tomorrowImpact: 'Easy endurance tomorrow.',
+            postRideCheckIn: null,
           },
         ];
       }),
@@ -256,6 +260,52 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Tonight')).toBeTruthy();
     expect(screen.getByText('Bedroom')).toBeTruthy();
     expect(screen.queryByText("Today's ride")).toBeNull();
+  });
+
+  it('saves the post-ride check-in from the ride card', async () => {
+    const user = userEvent.setup();
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.postWorkoutAnalyses = [
+          {
+            id: '66666666-6666-4666-8666-666666666666',
+            activityId: '77777777-7777-4777-8777-777777777777',
+            activityName: 'Tempo ride',
+            activityType: 'indoor_cycling',
+            generatedAtUtc: '2026-06-20T12:20:00Z',
+            promptVersion: 'post-workout-v1',
+            modelName: 'claude-sonnet-4-6',
+            outputMarkdown: '**Recovery protocol:** refuel within 20 minutes.',
+            recoveryDecision: { excluded: false, status: 'ready_for_review' },
+            timeSeriesSummary: { power: { avg: 220 } },
+            tomorrowImpact: 'Easy endurance tomorrow.',
+            postRideCheckIn: null,
+          },
+        ];
+      }),
+    );
+
+    await screen.findByText('How did it feel?');
+    await user.type(screen.getByLabelText('RPE'), '8');
+    await user.type(screen.getByLabelText('Legs'), '6');
+    await user.type(screen.getByLabelText('Feel'), 'hard but fair');
+    await user.type(screen.getByLabelText('Niggles or notes'), 'Left calf tight.');
+    await user.click(screen.getByRole('button', { name: /save ride check-in/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/daily-loop/2026-06-20/activities/77777777-7777-4777-8777-777777777777/post-ride-check-in',
+        expect.objectContaining({
+          method: 'PUT',
+          body: JSON.stringify({
+            subjectiveScore: 6,
+            rpe: 8,
+            feel: 'hard but fair',
+            notes: 'Left calf tight.',
+          }),
+        }),
+      );
+    });
   });
 
   it('renders a clean rest-day state when no bike ride is planned', async () => {
