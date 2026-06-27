@@ -568,7 +568,7 @@ class ExecutableCoachingService:
     async def _latest_proposal_for_workout(
         self, user_id: uuid.UUID, planned_workout_id: uuid.UUID
     ) -> WorkoutDeliveryProposal | None:
-        return await self.session.scalar(
+        proposal: WorkoutDeliveryProposal | None = await self.session.scalar(
             select(WorkoutDeliveryProposal)
             .where(
                 WorkoutDeliveryProposal.user_id == user_id,
@@ -577,6 +577,7 @@ class ExecutableCoachingService:
             .order_by(WorkoutDeliveryProposal.created_at.desc())
             .limit(1)
         )
+        return proposal
 
     async def _already_recorded(
         self,
