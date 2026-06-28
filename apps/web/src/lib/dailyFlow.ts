@@ -28,3 +28,25 @@ export function remContext(remSeconds: number | null | undefined): string | null
   if (mins > 90) return 'above your 65–90 min range';
   return 'in your 65–90 min range';
 }
+
+export interface FanState {
+  autoEnabled: boolean;
+  mode: string;
+  isOn: boolean | null;
+  speed: number | null;
+  respondingToC: number | null;
+}
+
+/** A plain-language one-liner for the bedroom-fan autopilot's current intent. */
+export function fanStatusText(fan: FanState): string {
+  if (!fan.autoEnabled) return 'Manual control';
+  if (fan.mode === 'idle') return 'Auto · standing by until tonight';
+  if (fan.mode === 'winddown') return 'Auto · winding down for the morning';
+  if (fan.isOn === null) return 'Auto · waiting for a room temperature';
+  const temp = fan.respondingToC != null ? fan.respondingToC.toFixed(1) : null;
+  if (fan.isOn) {
+    const speed = fan.speed != null ? ` at speed ${fan.speed}` : '';
+    return `Auto · on${speed}${temp ? `, responding to ${temp}°C` : ''}`;
+  }
+  return `Auto · off, room is cool enough${temp ? ` (${temp}°C)` : ''}`;
+}

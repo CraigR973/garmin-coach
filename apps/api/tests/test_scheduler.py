@@ -236,6 +236,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
             "workout_autopush",
             "evening_sleep_nudge",
             "evening_monitoring_alerts",
+            "fan_control",
         }
 
         hive_job = scheduler.get_job("hive_temperature_poll")

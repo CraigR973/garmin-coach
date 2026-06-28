@@ -25,7 +25,10 @@ const snapshot = {
     manualEntry: null,
     postWorkoutAnalyses: [],
     plannedWorkouts: [],
-    thermalState: { thermalReview: {} },
+    thermalState: {
+      thermalReview: {},
+      fan: { autoEnabled: true, mode: 'idle', isOn: false, speed: null, respondingToC: null },
+    },
     dataQualityWarnings: [],
   },
   meta: { generatedAtUtc: '2026-06-20T06:40:00Z' },

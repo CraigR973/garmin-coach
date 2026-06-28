@@ -37,6 +37,15 @@ class Settings(BaseSettings):
     # Seed this base64 {username, refresh_token} blob once via a SMS-2FA login
     # (scripts/bootstrap_hive_tokenstore.py) so the poller can resume unattended.
     hive_tokenstore_b64: str = ""
+    # Dreo bedroom-fan cloud control (Batch 27, DECISIONS #95). login() returns an
+    # access token that can be cached as DREO_TOKEN="token:REGION" to skip the
+    # password login; password stays the fallback. Region auto-detects from the
+    # auth response (DREO_REGION optional); DREO_DEVICE_SN pins the target fan.
+    dreo_username: str = ""
+    dreo_password: str = ""
+    dreo_token: str = ""
+    dreo_region: str = ""
+    dreo_device_sn: str = ""
     weather_latitude: float = 55.6045
     weather_longitude: float = -4.5249
     weather_timezone: str = "Europe/London"
