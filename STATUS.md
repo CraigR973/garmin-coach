@@ -27,12 +27,19 @@ pytest, Alembic upgrade/downgrade, security audit, and web lint/typecheck/build.
 returned 200, and the new post-ride check-in route returned 401 unauthenticated through both hosts (route live,
 non-mutating smoke).
 
-**Next step:** Start Batch 27 when ready (`/batch-start 27`): Bedroom fan control (Dreo 508S).
+**Also 2026-06-28 (operational, not a batch): detailed per-ride/walk time-series backfilled to prod + storage bounded (DECISIONS #93).** Loaded the per-second `activity_timeseries` (power/HR/cadence/PC/stamina) the #85 year-backfill had skipped, scoped to **cycling + walking** via a new committed `--detail-types` filter on `garmin_history_backfill.py` (run via `railway run`, 2025-06-24 → 2026-06-27, all months, no 429s): **203 rides + 387 walks** now have per-second data. The load overshot the Supabase **free-tier 500 MB cap** (→625 MB, disk full, `VACUUM FULL` blocked), so the redundant `raw_metrics` JSONB (a copy of the typed channels; nothing reads it) was emptied for indoor_cycling+walking via `UPDATE`+**dump→`TRUNCATE`→reload** (508,293 rows, zero loss) → **DB now 248 MB, under cap**. Outdoor rides keep `raw_metrics` (GPS/elevation). **Live-sync fix pending merge:** `STRIP_RAW_METRICS_TYPES` in `GarminSyncService.sync_activities` drops `raw_metrics` on write for those types so the table stays bounded — on branch `fix/timeseries-raw-metrics-bloat`, **needs PR→`main` to deploy** (Railway).
+
+**Next step:** Start Batch 27 when ready (`/batch-start 27`): Bedroom fan control (Dreo 508S). Also pending: merge the `raw_metrics` live-sync fix (branch `fix/timeseries-raw-metrics-bloat`, DECISIONS #93) so new rides/walks don't re-bloat the DB.
 
 **Gotchas:** the saved subjective check-in is visible immediately, but the Claude markdown reflects it on the
 next post-workout analysis generation; the service deliberately marks stale analyses pending so the next run
 does not ignore the new input. Batch 25's same-day Zwift appearance timing observation remains a separate
 first-live-use note from DECISIONS #91. Batch 27 should begin with the throwaway Dreo spike before repo code.
+**Free-tier storage gotcha (DECISIONS #93):** the Supabase DB is on the **free 500 MB cap, shared with the movie
+app** (#34). Per-second `activity_timeseries` is now the dominant table — only **cycling + walking** carry details
+and `raw_metrics` is stripped for indoor_cycling/walking. Before any large data load, size-project per-type from a
+real sample first; and note that once the **physical disk fills, `VACUUM FULL` can't run** (no room for its copy) —
+the escape is dump→`TRUNCATE`→reload. DB headroom after this work: ~248/500 MB.
 
 ---
 
@@ -266,6 +273,21 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-28** — **Detailed per-ride/walk time-series backfill (operational, not a batch; DECISIONS #93).**
+  Loaded the per-second `activity_timeseries` the #85 year-backfill deliberately skipped, scoped to **cycling +
+  walking** via a now-committed `--detail-types` filter on `garmin_history_backfill.py`
+  (`fetch_activity_payloads` skips `get_activity_details` for non-listed types; summaries still load for all).
+  Chose cycling+walking over all-types because of the Supabase **free-tier 500 MB cap** (shared with the movie
+  app). Ran via `railway run` 2025-06-24→2026-06-27, 13/13 month-chunks, no 429s → **203 rides + 387 walks**
+  with per-second power/HR/cadence/PC/stamina (verified; outdoor GPS intact). **Cap incident + recovery:** the
+  re-sync pulled in ~260 summaries the original run had missed + higher-than-estimated sample density → DB hit
+  ~625 MB and the **physical disk filled** (so `VACUUM FULL` couldn't run). Fixed by emptying the redundant
+  `raw_metrics` JSONB (nothing reads it; typed columns hold every analysed channel) for indoor_cycling+walking
+  via `UPDATE`+**dump→`TRUNCATE`→reload** (508,293 rows round-tripped, **zero loss**) → **DB 248 MB, under cap,
+  writes confirmed working**. Outdoor rides keep `raw_metrics` for GPS/elevation. **Durable fix (this commit):**
+  `STRIP_RAW_METRICS_TYPES` in `GarminSyncService.sync_activities` drops `raw_metrics` on write for those types
+  so the table stays bounded; +1 DB-backed test. Backend **274 passed / 88 skipped**, ruff+format+mypy clean.
+  On branch `fix/timeseries-raw-metrics-bloat` — **needs PR→`main`** for the live-sync strip to deploy (Railway).
 - **2026-06-28** — Closed out **Batch 26 — Post-ride check-in into the analysis**. Fast-forwarded `main` to
   `b6c92b9`, watched main CI green (`28304972699`), verified Railway + Vercel same-origin health at the Batch
   26 SHA, confirmed web `/` 200, and smoked the new post-ride check-in route unauthenticated through both hosts

@@ -296,3 +296,65 @@ async def test_garmin_sync_upserts_without_duplicate_rows(db_conn: AsyncConnecti
     assert len(sleeps) == 1
     assert len(activities) == 1
     assert len(samples) == 2
+
+
+@pytest.mark.asyncio
+async def test_sync_activities_strips_raw_metrics_for_high_volume_types(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    details = {
+        "metricDescriptors": [
+            {"key": "directPower", "metricsIndex": 0},
+            {"key": "directHeartRate", "metricsIndex": 1},
+        ],
+        "activityDetailMetrics": [{"metrics": [200.0, 150.0]}, {"metrics": [205.0, 151.0]}],
+    }
+    payloads = GarminActivityPayloads(
+        summaries=[
+            {"activityId": 111, "activityType": {"typeKey": "indoor_cycling"}},
+            {"activityId": 222, "activityType": {"typeKey": "road_biking"}},
+        ],
+        details_by_activity_id={111: details, 222: details},
+    )
+
+    async with session_factory() as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Strip Test",
+                pin_hash="x" * 60,
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+        await GarminSyncService(session).sync_activities(user_id, payloads, commit=False)
+
+        by_type: dict[str, list[ActivityTimeSeries]] = {}
+        for act in (
+            (await session.execute(select(Activity).where(Activity.user_id == user_id)))
+            .scalars()
+            .all()
+        ):
+            ts = (
+                (
+                    await session.execute(
+                        select(ActivityTimeSeries).where(ActivityTimeSeries.activity_id == act.id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            by_type[act.activity_type] = ts
+
+    # indoor_cycling: typed channels kept, redundant raw_metrics dropped on write
+    assert by_type["indoor_cycling"]
+    assert all(r.raw_metrics == {} for r in by_type["indoor_cycling"])
+    assert all(r.power_watts is not None for r in by_type["indoor_cycling"])
+    # road_biking (outdoor): raw_metrics preserved so GPS/elevation survive
+    assert by_type["road_biking"]
+    assert all(r.raw_metrics != {} for r in by_type["road_biking"])
+    assert by_type["road_biking"][0].raw_metrics["directPower"] == 200.0

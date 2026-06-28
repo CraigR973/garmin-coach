@@ -20,6 +20,13 @@ from src.models.coaching import Activity, ActivityTimeSeries, DailyMetric, Sleep
 JsonDict = dict[str, Any]
 JsonList = list[Any]
 
+# Per-second time-series duplicates the typed channels in a ``raw_metrics`` JSON
+# blob. Nothing reads that blob, and for high-volume indoor rides + walks it
+# dominates storage, so we drop it on write for those types to keep the
+# (free-tier) DB bounded; outdoor rides keep it so their GPS/elevation survive.
+# Mirrors the 2026-06-28 historical cleanup (DECISIONS #93).
+STRIP_RAW_METRICS_TYPES = frozenset({"indoor_cycling", "walking"})
+
 
 class GarminSyncError(RuntimeError):
     """Base error for Garmin sync failures."""
@@ -315,7 +322,10 @@ class GarminSyncService:
                     delete(ActivityTimeSeries).where(ActivityTimeSeries.activity_id == activity.id)
                 )
                 rows = parse_activity_timeseries_fields(details)
+                strip_raw = activity_fields.get("activity_type") in STRIP_RAW_METRICS_TYPES
                 for row in rows:
+                    if strip_raw:
+                        row["raw_metrics"] = {}
                     self.session.add(ActivityTimeSeries(activity_id=activity.id, **row))
                 sample_count += len(rows)
 
