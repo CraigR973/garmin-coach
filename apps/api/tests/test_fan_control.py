@@ -9,7 +9,12 @@ network, a real fan, or a database.
 
 from __future__ import annotations
 
+import uuid
+from collections.abc import Iterator
+from contextlib import ExitStack, contextmanager
 from datetime import UTC, datetime, time, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -19,6 +24,7 @@ from src.services.fan_control import (
     MAX_SPEED,
     FanState,
     decide_fan_action,
+    describe_fan_intent,
     loop_phase,
 )
 
@@ -273,3 +279,110 @@ def test_fan_control_configured_reflects_credentials(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(scheduler.settings, "dreo_username", "mark@example.com")
     monkeypatch.setattr(scheduler.settings, "dreo_password", "pw")
     assert scheduler._fan_control_configured() is True
+
+
+# -- describe_fan_intent: read-only UI intent (pure) -----------------------
+
+
+def test_intent_manual_when_auto_disabled() -> None:
+    intent = describe_fan_intent(time(23, 0), 22.0, auto_enabled=False)
+    assert intent.auto_enabled is False
+    assert intent.mode == "manual"
+    # In manual mode the loop owns nothing, so on/off + speed are unknown.
+    assert intent.is_on is None
+    assert intent.speed is None
+    assert intent.responding_to_c == 22.0
+
+
+def test_intent_idle_during_the_day() -> None:
+    intent = describe_fan_intent(time(12, 0), 24.0, auto_enabled=True)
+    assert intent.mode == "idle"
+    assert intent.is_on is False
+    assert intent.speed is None
+
+
+def test_intent_control_on_picks_ladder_speed() -> None:
+    intent = describe_fan_intent(time(23, 0), 20.0, auto_enabled=True)
+    assert intent.mode == "control"
+    assert intent.is_on is True
+    assert intent.speed == 5
+    assert intent.responding_to_c == 20.0
+
+
+def test_intent_control_off_below_threshold() -> None:
+    intent = describe_fan_intent(time(23, 0), 18.0, auto_enabled=True)
+    assert intent.mode == "control"
+    assert intent.is_on is False
+    assert intent.speed is None
+
+
+def test_intent_unknown_without_fresh_temperature() -> None:
+    intent = describe_fan_intent(time(23, 0), None, auto_enabled=True)
+    assert intent.mode == "control"
+    assert intent.is_on is None
+    assert intent.responding_to_c is None
+
+
+def test_intent_winddown_is_off() -> None:
+    intent = describe_fan_intent(time(8, 45), 22.0, auto_enabled=True)
+    assert intent.mode == "winddown"
+    assert intent.is_on is False
+
+
+# -- run_fan_control: orchestration gate (mocked, no DB / cloud) ------------
+
+_LONDON = ZoneInfo("Europe/London")
+
+
+def _fan_profile(*, auto_enabled: bool) -> MagicMock:
+    profile = MagicMock()
+    profile.id = uuid.uuid4()
+    profile.timezone = "Europe/London"
+    profile.fan_auto_enabled = auto_enabled
+    return profile
+
+
+def _london(hour: int, minute: int = 0) -> datetime:
+    return datetime(2026, 6, 24, hour, minute, tzinfo=_LONDON)
+
+
+@contextmanager
+def _fan_patches(
+    *, profile: MagicMock, now: datetime, temperature_c: float | None = 20.0
+) -> Iterator[AsyncMock]:
+    """Isolate run_fan_control from the DB and cloud; yield the _apply spy."""
+    session = AsyncMock()
+
+    class _Ctx:
+        async def __aenter__(self) -> AsyncMock:
+            return session
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+    apply_mock = AsyncMock()
+    with ExitStack() as stack:
+        enter = stack.enter_context
+        enter(patch("src.scheduler._fan_control_configured", return_value=True))
+        enter(patch("src.scheduler.AsyncSessionLocal", return_value=_Ctx()))
+        enter(patch("src.scheduler._active_profiles", AsyncMock(return_value=[profile])))
+        enter(patch("src.scheduler._profile_now", lambda _profile: now))
+        enter(patch("src.scheduler._latest_temperature", AsyncMock(return_value=MagicMock())))
+        enter(patch("src.scheduler._fresh_temperature_c", MagicMock(return_value=temperature_c)))
+        enter(patch("src.scheduler._apply_fan_control", apply_mock))
+        yield apply_mock
+
+
+async def test_run_fan_control_skips_when_auto_disabled() -> None:
+    profile = _fan_profile(auto_enabled=False)
+    with _fan_patches(profile=profile, now=_london(23, 0)) as apply_mock:
+        await scheduler.run_fan_control()
+    apply_mock.assert_not_awaited()
+
+
+async def test_run_fan_control_applies_when_auto_enabled() -> None:
+    profile = _fan_profile(auto_enabled=True)
+    with _fan_patches(profile=profile, now=_london(23, 0), temperature_c=20.0) as apply_mock:
+        await scheduler.run_fan_control()
+    apply_mock.assert_awaited_once()
+    assert apply_mock.await_args.args == ("control", 20.0)

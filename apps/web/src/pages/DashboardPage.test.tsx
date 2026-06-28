@@ -144,6 +144,7 @@ const baseSnapshot: DailyLoopEnvelope = {
       overnightWindMaxMph: 12,
       overnightWindGustMph: 18,
       thermalReview: {},
+      fan: { autoEnabled: true, mode: 'control', isOn: true, speed: 5, respondingToC: 20.1 },
     },
     dataQualityWarnings: [],
   },
@@ -259,6 +260,8 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Tomorrow')).toBeTruthy();
     expect(screen.getByText('Tonight')).toBeTruthy();
     expect(screen.getByText('Bedroom')).toBeTruthy();
+    expect(screen.getByText('Bedroom fan')).toBeTruthy();
+    expect(screen.getByText('Auto · on at speed 5, responding to 20.1°C')).toBeTruthy();
     expect(screen.queryByText("Today's ride")).toBeNull();
   });
 

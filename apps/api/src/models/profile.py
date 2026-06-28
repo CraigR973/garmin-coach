@@ -32,6 +32,9 @@ class Profile(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     timezone: Mapped[str] = mapped_column(String(100), nullable=False, server_default="UTC")
     garmin_user_profile_pk: Mapped[int | None] = mapped_column(Integer, nullable=True)
     hive_home_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Bedroom-fan overnight autopilot master switch (Batch 27.3). When false the
+    # control loop no-ops and the fan is driven manually. See DECISIONS #96.
+    fan_auto_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")

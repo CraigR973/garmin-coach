@@ -720,6 +720,9 @@ async def run_fan_control() -> None:
                 log.info("fan control skipped", reason="no_active_profiles")
                 return
             profile = profiles[0]
+            if not profile.fan_auto_enabled:
+                log.info("fan control skipped", reason="auto_disabled")
+                return
             now_local = _profile_now(profile)
             phase = loop_phase(now_local.time())
             if phase == "idle":

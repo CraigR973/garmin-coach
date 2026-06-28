@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -13,6 +14,7 @@ from src.database import get_db
 from src.models.coaching import Analysis, DailyMetric, ManualEntry, PlannedWorkout, Sleep
 from src.services.daily_loop import DailyLoopService
 from src.services.environment_freshness import is_hive_temperature_fresh
+from src.services.fan_control import describe_fan_intent
 from src.services.strength_brief import StrengthBriefResult
 
 router = APIRouter(prefix="/api/v1/daily-loop", tags=["daily-loop"])
@@ -26,6 +28,14 @@ def _dt(value: datetime | None) -> str | None:
     if value is None:
         return None
     return value.replace(tzinfo=UTC).isoformat().replace("+00:00", "Z")
+
+
+def _local_time(timezone_name: str) -> time:
+    try:
+        zone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        zone = ZoneInfo("UTC")
+    return datetime.now(zone).time()
 
 
 class ApiError(BaseModel):
@@ -183,6 +193,14 @@ class PlannedWorkoutOut(BaseModel):
     adherence: ManualEntryOut | None = None
 
 
+class FanStateOut(BaseModel):
+    autoEnabled: bool
+    mode: str
+    isOn: bool | None
+    speed: int | None
+    respondingToC: float | None
+
+
 class ThermalStateOut(BaseModel):
     latestTemperatureC: float | None
     targetTemperatureC: float | None
@@ -191,6 +209,7 @@ class ThermalStateOut(BaseModel):
     overnightWindMaxMph: float | None
     overnightWindGustMph: float | None
     thermalReview: dict[str, Any]
+    fan: FanStateOut
 
 
 class DataQualityWarningOut(BaseModel):
@@ -481,6 +500,12 @@ def _envelope(player: CurrentUser, snapshot: Any) -> DailyLoopEnvelope:
         for workout in snapshot.planned_workouts
     ]
     thermal_review = morning_analysis.thermalReview if morning_analysis is not None else {}
+    fresh_temperature_c = (
+        round(float(fresh_temperature.temperature_c), 1) if fresh_temperature else None
+    )
+    fan_intent = describe_fan_intent(
+        _local_time(player.timezone), fresh_temperature_c, auto_enabled=player.fan_auto_enabled
+    )
     return DailyLoopEnvelope(
         data=DailyLoopData(
             subjectDate=snapshot.subject_date.isoformat(),
@@ -517,6 +542,13 @@ def _envelope(player: CurrentUser, snapshot: Any) -> DailyLoopEnvelope:
                     snapshot.weather.overnight_wind_gust_mph if snapshot.weather else None
                 ),
                 thermalReview=thermal_review,
+                fan=FanStateOut(
+                    autoEnabled=fan_intent.auto_enabled,
+                    mode=fan_intent.mode,
+                    isOn=fan_intent.is_on,
+                    speed=fan_intent.speed,
+                    respondingToC=fan_intent.responding_to_c,
+                ),
             ),
             dataQualityWarnings=[
                 DataQualityWarningOut(

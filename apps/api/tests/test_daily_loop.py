@@ -282,6 +282,45 @@ async def test_get_daily_loop_hides_stale_hive_temperature(db_conn: AsyncConnect
 
 
 @pytest.mark.asyncio
+async def test_get_daily_loop_surfaces_fan_intent(db_conn: AsyncConnection) -> None:
+    """The fan autopilot's intent rides on thermalState.fan. With auto off the
+    manual intent is reported deterministically (no wall-clock-dependent phase)."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 6, 21)
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Daily Loop Fan",
+            pin_hash="x" * 60,
+            role=UserRole.player,
+            timezone="Europe/London",
+            is_active=True,
+            fan_auto_enabled=False,
+        )
+        session.add(player)
+        await session.commit()
+
+    app.dependency_overrides[get_current_user] = lambda: player
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get(
+                f"/api/v1/daily-loop?subject_date={subject_date.isoformat()}"
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    fan = response.json()["data"]["thermalState"]["fan"]
+    assert fan["autoEnabled"] is False
+    assert fan["mode"] == "manual"
+    assert fan["isOn"] is None
+    assert fan["speed"] is None
+
+
+@pytest.mark.asyncio
 async def test_manual_entry_and_adherence_upserts_persist(db_conn: AsyncConnection) -> None:
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     user_id = uuid.uuid4()

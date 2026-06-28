@@ -82,6 +82,19 @@ class FanDecision:
     reason: str
 
 
+@dataclass(frozen=True)
+class FanIntent:
+    """The autopilot's current intent, for read-only display in the UI."""
+
+    auto_enabled: bool
+    # "manual" (auto off) | "control" | "winddown" | "idle" (overnight phases).
+    mode: str
+    # The intended on/off; ``None`` means unknown — manual mode, or no fresh temp.
+    is_on: bool | None
+    speed: int | None
+    responding_to_c: float | None
+
+
 def loop_phase(
     now: time,
     *,
@@ -115,9 +128,7 @@ def decide_fan_action(
     Idempotent: returns ``action="hold"`` when the fan already matches the target.
     """
     if phase == "idle":
-        return FanDecision(
-            "idle", fan_state.is_on, fan_state.fan_speed, "outside overnight window"
-        )
+        return FanDecision("idle", fan_state.is_on, fan_state.fan_speed, "outside overnight window")
 
     if phase == "winddown":
         return _reconcile(
@@ -152,6 +163,27 @@ def decide_fan_action(
         target_speed=target_speed,
         reason=f"{temperature_c:.1f}C -> speed {target_speed}",
     )
+
+
+def describe_fan_intent(now: time, temperature_c: float | None, *, auto_enabled: bool) -> FanIntent:
+    """The autopilot's current intent for display — pure, no I/O, no hysteresis.
+
+    Reuses :func:`loop_phase` + :func:`decide_fan_action` against a fresh (off)
+    baseline so the card shows whether the loop wants the fan on right now and at
+    what speed, without reading the device. ``is_on`` is ``None`` when the answer
+    is unknown — manual mode (auto off) or no fresh indoor temperature.
+    """
+    if not auto_enabled:
+        return FanIntent(False, "manual", None, None, temperature_c)
+    phase = loop_phase(now)
+    if phase == "idle":
+        return FanIntent(True, "idle", False, None, temperature_c)
+    if temperature_c is None:
+        return FanIntent(True, phase, None, None, None)
+    decision = decide_fan_action(
+        phase=phase, temperature_c=temperature_c, fan_state=FanState(is_on=False)
+    )
+    return FanIntent(True, phase, decision.target_on, decision.target_speed, temperature_c)
 
 
 def _reconcile(

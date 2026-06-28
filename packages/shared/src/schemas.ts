@@ -385,6 +385,16 @@ export const dailyLoopPlannedWorkoutSchema = plannedWorkoutSchema.extend({
   adherence: manualEntrySchema.nullable().optional(),
 });
 
+export const dailyLoopFanSchema = z.object({
+  autoEnabled: z.boolean(),
+  // 'manual' (auto off) | 'control' | 'winddown' | 'idle' (overnight phases).
+  mode: z.string().min(1),
+  // The autopilot's intended on/off; null when unknown (manual, or no fresh temp).
+  isOn: z.boolean().nullable(),
+  speed: z.number().int().nullable(),
+  respondingToC: z.number().nullable(),
+});
+
 export const dailyLoopThermalStateSchema = z.object({
   latestTemperatureC: z.number().nullable().optional(),
   targetTemperatureC: z.number().nullable().optional(),
@@ -393,6 +403,26 @@ export const dailyLoopThermalStateSchema = z.object({
   overnightWindMaxMph: z.number().nullable().optional(),
   overnightWindGustMph: z.number().nullable().optional(),
   thermalReview: jsonObjectSchema.default({}),
+  fan: dailyLoopFanSchema,
+});
+
+export const fanAutoInputSchema = z.object({
+  enabled: z.boolean(),
+});
+
+export const fanCommandInputSchema = z.object({
+  power: z.boolean().nullable().optional(),
+  speed: z.number().int().min(1).max(9).nullable().optional(),
+});
+
+export const fanEnvelopeSchema = z.object({
+  data: z.object({
+    autoEnabled: z.boolean(),
+    isOn: z.boolean().nullable().optional(),
+    speed: z.number().int().nullable().optional(),
+  }),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
 });
 
 export const dailyLoopSchema = z.object({

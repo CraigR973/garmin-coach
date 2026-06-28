@@ -6,9 +6,11 @@
 
 ## Now
 
-**Latest (2026-06-28): Batch 27.1 + 27.2 built in the working tree (uncommitted), verified green.**
-The Dreo client wrapper (27.1) and the overnight airflow control loop (27.2) are implemented and tested — ruff +
-strict mypy clean, full backend suite **330 passed / 88 skipped**. Nothing committed yet (on `feat/batch-27-bedroom-fan`).
+**Latest (2026-06-28): Batch 27.3 built in the working tree (uncommitted), verified green; 27.1 + 27.2 are committed.**
+27.1 (`ff3ab18`) + 27.2 (`e7e61e9`) are committed on `feat/batch-27-bedroom-fan`. **27.3** is implemented + tested but
+**not yet committed**: ruff + strict mypy clean, full backend suite **338 passed / 93 skipped** (the 5 new DB-backed
+fan/daily-loop tests skip locally with no Postgres — they run in CI), shared green (typecheck + 7 tests), web green
+(**41 vitest**, lint 0 errors / 5 pre-existing warnings, build incl. tsc). DECISIONS #97.
 - **27.0 spike** (done, DECISIONS #95): proved direct-cloud control via `pydreo_community` against Mark's real fan; the
   device is a **`DR-HPF008S` "Air Circulator" (`speed_range=(1,9)`), not the 508S the plan named**, confirmed as the
   bedroom fan. Key rule: **mode-before-speed** (set `preset_mode='normal'` before `fan_speed`).
@@ -18,6 +20,13 @@ strict mypy clean, full backend suite **330 passed / 88 skipped**. Nothing commi
   `fan-control` `run_scheduled` entry, DECISIONS #96): maps live indoor temp → bounded fan target against the Batch 9
   thresholds (on 19.5 / off 19.0 hysteresis; speed ladder 19.5→3 / 20→5 / 21→7, capped 7), overnight 21:30–08:30 with a
   08:30–09:00 wind-down off, idle (no cloud) by day; idempotent; degrades gracefully (no creds / unreachable / stale temp).
+- **27.3** (DECISIONS #97): master switch `Profile.fan_auto_enabled` (migration `010`, default true) gates
+  `run_fan_control` (early-return when off, before any cloud call). `routers/fan.py` — `PUT /api/v1/fan/auto`
+  (preference) + `POST /api/v1/fan/command` (`{power?, speed?}`, drives the Dreo cloud; takes manual control =
+  auto-off **only on success**, so a 502 leaves the autopilot intact; 400 if neither given). Read path: a pure
+  `describe_fan_intent` surfaces the loop's *computed* intent on `thermalState.fan` (`{autoEnabled, mode, isOn, speed,
+  respondingToC}`) — no cloud read per `GET /daily-loop`. Frontend: `/bedroom` fan card (Auto toggle + manual
+  Off/Low/Med/High = 3/5/7) and an evening-Home fan status line (`fanStatusText`).
 Batch 26 remains closed out on `main` (`b6c92b9`); prod serves that SHA through Railway + the Vercel same-origin API rewrite.
 
 What changed:
@@ -38,12 +47,14 @@ non-mutating smoke).
 
 **Also 2026-06-28 (operational, not a batch): detailed per-ride/walk time-series backfilled to prod + storage bounded (DECISIONS #93).** Loaded the per-second `activity_timeseries` (power/HR/cadence/PC/stamina) the #85 year-backfill had skipped, scoped to **cycling + walking** via a new committed `--detail-types` filter on `garmin_history_backfill.py` (run via `railway run`, 2025-06-24 → 2026-06-27, all months, no 429s): **203 rides + 387 walks** now have per-second data. The load overshot the Supabase **free-tier 500 MB cap** (→625 MB, disk full, `VACUUM FULL` blocked), so the redundant `raw_metrics` JSONB (a copy of the typed channels; nothing reads it) was emptied for indoor_cycling+walking via `UPDATE`+**dump→`TRUNCATE`→reload** (508,293 rows, zero loss) → **DB now 248 MB, under cap**. Outdoor rides keep `raw_metrics` (GPS/elevation). **Live-sync fix merged + deployed:** `STRIP_RAW_METRICS_TYPES` in `GarminSyncService.sync_activities` drops `raw_metrics` on write for those types so the table stays bounded — merged via PR #39 (squash `bf6d743`, all CI green) and **live in prod** (Railway `/api/v1/health` sha=`bf6d743`), so new rides/walks no longer re-bloat the DB.
 
-**Next step:** **27.3 — evening "Bedroom — Auto" Home surface**: show the fan state + the temperature it is responding
-to in the Batch 24 evening/post-ride Home state, plus a **manual override** and preferences. Design forks to settle
-first: how to expose fan state to the UI without a live cloud connect per request (persist the loop's last decision vs.
-on-demand read); whether the override needs a migration; and that the override must gate `run_fan_control` (today the
-loop fully owns the fan overnight and the wind-down unconditionally turns it off). Then **27.4** tests + closeout.
-Also pending: **commit 27.1 + 27.2** (uncommitted), and a live token-resume confirmation (DECISIONS #95).
+**Next step:** **commit 27.3** (working tree, verified green) — then **`/phase-closeout 27`** (the 27.4 tests already
+ship with 27.3, so closeout is the remaining step): merge `feat/batch-27-bedroom-fan` to `main`, watch CI run the
+DB-backed fan/daily-loop tests + Alembic `010` up/down, and prod-smoke the two new fan routes (401 unauthenticated,
+non-mutating). **Before any closeout the app must set `DREO_USERNAME`/`DREO_PASSWORD` (or `DREO_TOKEN`) in Railway** or
+`run_fan_control` + `POST /command` no-op/502 (the loop degrades gracefully, but the fan won't actually move). Still
+pending from 27.0/27.1: a live token-resume confirmation (DECISIONS #95) and a physical end-to-end of `POST /command`
+against the real fan — **not** to be driven from a dev preview (previews proxy `/api/*` to prod, so it would move
+Mark's real fan and flip his autopilot).
 
 **Gotchas:** the saved subjective check-in is visible immediately, but the Claude markdown reflects it on the
 next post-workout analysis generation; the service deliberately marks stale analyses pending so the next run
@@ -288,6 +299,21 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-28** — **Batch 27.3 built (uncommitted): manual override + preferences + evening "Bedroom — Auto" surface
+  (DECISIONS #97).** Master switch `Profile.fan_auto_enabled` (migration `010`, default true) gates `run_fan_control`
+  (early-return when off, before any cloud call). New `routers/fan.py`: `PUT /api/v1/fan/auto` (preference) +
+  `POST /api/v1/fan/command` (`{power?, speed?}`; drives the Dreo cloud off-thread, takes manual control = auto-off
+  **only on success** so a 502 leaves the autopilot intact; 400 if neither given) — registered in `main.py`. Read path:
+  a pure `describe_fan_intent(now, temp, *, auto_enabled)` (reusing `loop_phase`+`decide_fan_action`) surfaces the
+  loop's *computed intent* on the existing daily-loop payload as `thermalState.fan` `{autoEnabled, mode, isOn, speed,
+  respondingToC}`, so `GET /daily-loop` stays a pure DB read (no per-request cloud connect). Shared:
+  `dailyLoopThermalStateSchema.fan` + fan input/envelope schemas. Frontend: `BedroomPage` fan card (Auto `Toggle` +
+  manual `Off/Low/Med/High` = speeds 3/5/7) and an evening-Home `BedroomSummaryCard` status line via a new
+  `fanStatusText` helper. Also improved the command ordering (drive-then-disable) over the initial draft so a transient
+  cloud failure can't silently strand the autopilot. Tests: +8 pure (`describe_fan_intent`, `run_fan_control` auto-off
+  gate) + 5 DB-backed (router ×4, daily-loop fan intent — skip locally, run in CI). Verified: ruff + strict mypy clean,
+  backend **338 passed / 93 skipped**; shared typecheck + 7 tests; web **41 vitest**, lint 0 errors, build incl. tsc.
+  No live preview run (previews proxy to prod → would move Mark's real fan). Awaiting commit + `/phase-closeout 27`.
 - **2026-06-28** — **Batch 27.1 + 27.2 built (uncommitted): Dreo client wrapper + overnight airflow loop.**
   27.1 `services/dreo_fan.py` (`DreoFanClient`, mirrors `HiveClient`: env creds + cached-token-with-password-fallback,
   secret-safe; on/off + preset + speed + oscillate + state-read; the #95 mode-before-speed rule baked into `set_speed`).

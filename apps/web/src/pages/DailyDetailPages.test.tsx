@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DailyLoopEnvelope } from '@/hooks/useDailyLoop';
 import { BaselinesPage } from './BaselinesPage';
 import { BedroomPage } from './BedroomPage';
@@ -12,6 +13,10 @@ const apiFetchMock = vi.fn();
 
 vi.mock('@/lib/api', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
+}));
+
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
 }));
 
 const snapshot: DailyLoopEnvelope = {
@@ -56,6 +61,7 @@ const snapshot: DailyLoopEnvelope = {
       overnightWindMaxMph: 12,
       overnightWindGustMph: 18,
       thermalReview: {},
+      fan: { autoEnabled: true, mode: 'control', isOn: true, speed: 5, respondingToC: 20.1 },
     },
     dataQualityWarnings: [],
   },
@@ -76,6 +82,10 @@ function renderWithQuery(ui: ReactNode) {
   );
 }
 
+beforeEach(() => {
+  apiFetchMock.mockClear();
+});
+
 describe('daily detail pages', () => {
   it('renders the full morning brief page', async () => {
     renderWithQuery(<MorningBriefPage />);
@@ -94,5 +104,55 @@ describe('daily detail pages', () => {
     expect(await screen.findByText('Bedroom climate')).toBeTruthy();
     expect(screen.getByText('17.4°C')).toBeTruthy();
     expect(screen.getByText('12 mph')).toBeTruthy();
+  });
+});
+
+describe('bedroom fan controls', () => {
+  it('shows the autopilot status and a switch reflecting the current setting', async () => {
+    renderWithQuery(<BedroomPage />);
+    expect(await screen.findByText('Bedroom fan')).toBeTruthy();
+    expect(screen.getByText('Auto · on at speed 5, responding to 20.1°C')).toBeTruthy();
+    expect(screen.getByRole('switch', { name: /overnight fan autopilot/i }).getAttribute('aria-checked')).toBe(
+      'true',
+    );
+  });
+
+  it('turns the overnight autopilot off', async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<BedroomPage />);
+    await user.click(await screen.findByRole('switch', { name: /overnight fan autopilot/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/fan/auto',
+        expect.objectContaining({ method: 'PUT', body: JSON.stringify({ enabled: false }) }),
+      );
+    });
+  });
+
+  it('drives the fan with a manual speed preset', async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<BedroomPage />);
+    await user.click(await screen.findByRole('button', { name: 'Low' }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/fan/command',
+        expect.objectContaining({ method: 'POST', body: JSON.stringify({ power: true, speed: 3 }) }),
+      );
+    });
+  });
+
+  it('turns the fan off with the manual control', async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<BedroomPage />);
+    await user.click(await screen.findByRole('button', { name: 'Turn off' }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/fan/command',
+        expect.objectContaining({ method: 'POST', body: JSON.stringify({ power: false }) }),
+      );
+    });
   });
 });

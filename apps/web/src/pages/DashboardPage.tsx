@@ -8,6 +8,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   Dumbbell,
+  Fan,
   MoonStar,
   Send,
   SlidersHorizontal,
@@ -31,7 +32,7 @@ import { isBikeWorkout, useDailyPhase } from '@/hooks/useDailyPhase';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { apiFetch } from '@/lib/api';
-import { formatDateTime, friendlyDate, hm, remContext } from '@/lib/dailyFlow';
+import { fanStatusText, formatDateTime, friendlyDate, hm, remContext, type FanState } from '@/lib/dailyFlow';
 import { greetingForNow, verdictLabel } from '@/lib/copy';
 
 const textareaClassName =
@@ -792,6 +793,7 @@ function BedroomSummaryCard({
     targetTemperatureC?: number | null;
     overnightLowC?: number | null;
     overnightWindMaxMph?: number | null;
+    fan: FanState;
   };
 }) {
   return (
@@ -823,10 +825,17 @@ function BedroomSummaryCard({
             icon={<Wind className="h-3.5 w-3.5 text-text-muted" aria-hidden />}
           />
         </div>
+        <div className="flex items-start gap-2 rounded-xl border border-border px-3 py-3 text-sm">
+          <Fan className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
+          <div className="min-w-0">
+            <p className="font-medium text-text-primary">Bedroom fan</p>
+            <p className="text-text-secondary">{fanStatusText(thermal.fan)}</p>
+          </div>
+        </div>
         <DetailLinkCard
           to="/bedroom"
           title="Bedroom & weather detail"
-          description="Open the full room and overnight weather read."
+          description="Open the full room and overnight weather read, and control the fan."
         />
       </CardContent>
     </Card>
