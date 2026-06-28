@@ -156,9 +156,7 @@ def test_build_manager_passes_token_and_uppercases_region(
 
     monkeypatch.setitem(sys.modules, "pydreo", types.SimpleNamespace(PyDreo=CapturePyDreo))
 
-    client = DreoFanClient(
-        DreoCredentials(username="u", password="p", token="abc:EU", region="eu")
-    )
+    client = DreoFanClient(DreoCredentials(username="u", password="p", token="abc:EU", region="eu"))
     client._build_manager(use_token=True)
     assert captured == {"username": "u", "password": "p", "token": "abc:EU", "region": "EU"}
 
@@ -245,9 +243,7 @@ def test_stale_token_falls_back_to_password_login(
 
 def test_stale_token_without_password_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     stale = FakeManager(devices=[FakeDevice()], ready=False)
-    client = DreoFanClient(
-        DreoCredentials(token="stale:EU"), transport_ready_timeout_s=0.02
-    )
+    client = DreoFanClient(DreoCredentials(token="stale:EU"), transport_ready_timeout_s=0.02)
     monkeypatch.setattr(client, "_build_manager", lambda *, use_token: stale)
     with pytest.raises(DreoConnectionError):
         client.connect()

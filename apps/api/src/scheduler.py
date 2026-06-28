@@ -676,9 +676,7 @@ def _fan_control_configured() -> bool:
         return False
 
 
-def _fresh_temperature_c(
-    reading: TemperatureReading | None, now_local: datetime
-) -> float | None:
+def _fresh_temperature_c(reading: TemperatureReading | None, now_local: datetime) -> float | None:
     """The latest indoor temperature in C if it is fresh (<=45 min old), else None."""
     if reading is None:
         return None
@@ -745,9 +743,7 @@ async def _apply_fan_control(phase: Phase, temperature_c: float | None) -> None:
     try:
         state = await asyncio.to_thread(client.read_state)
         current = FanState(is_on=bool(state.is_on), fan_speed=state.fan_speed)
-        decision = decide_fan_action(
-            phase=phase, temperature_c=temperature_c, fan_state=current
-        )
+        decision = decide_fan_action(phase=phase, temperature_c=temperature_c, fan_state=current)
         if decision.action == "apply":
             await _execute_fan_decision(client, current, decision)
         log.info(
