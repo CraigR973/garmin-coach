@@ -40,7 +40,11 @@ Return concise markdown with a sleep summary line, a metrics-vs-baselines read,
 a thermal/environment review, and a Green/Amber/Red workout verdict for today.
 Bold each bullet headline. Never mention left/right power balance. Never keep
 VO2 work on a Red verdict. When Garmin readiness is Low, call it load-driven only
-if the packet explicitly says recovery signals justify that interpretation."""
+if the packet explicitly says recovery signals justify that interpretation.
+Use acuteChronicLoadRatio (acute:chronic training load; ~0.8-1.3 is balanced,
+>1.5 flags a fast ramp / higher strain), chronicTrainingLoad, trainingLoadBalance,
+and intensityMinutes to inform the load read and verdict rationale alongside the
+recovery signals; treat them as supporting context, not overrides of the verdict."""
 
 
 class MorningAnalysisError(RuntimeError):
@@ -431,10 +435,69 @@ def _data_quality_guardrails(knowledge_base: Mapping[str, Any]) -> list[dict[str
     return [rule for rule in rules if isinstance(rule, dict)]
 
 
+def _as_mapping(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _first_mapping(value: Any) -> dict[str, Any]:
+    """First dict value in a device-keyed map (e.g. latestTrainingStatusData)."""
+    if isinstance(value, dict):
+        for item in value.values():
+            if isinstance(item, dict):
+                return item
+    return {}
+
+
+def _coerce_int(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _training_and_activity_fields(raw_payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Surface load + daily-activity context already captured in ``raw_payload``.
+
+    The daily sync stores the full Garmin ``training_status`` and ``stats``
+    responses but only promotes a few fields to columns. This reads the rest
+    (chronic load + acute:chronic ratio, training-load balance, steps, intensity
+    minutes) so the morning packet/prompt can use them. Read-only — no new Garmin
+    call, no migration; every field degrades to ``None`` when absent.
+    """
+    ts = _as_mapping(raw_payload.get("training_status"))
+    status_node = _first_mapping(
+        _as_mapping(ts.get("mostRecentTrainingStatus")).get("latestTrainingStatusData")
+    )
+    acute_dto = _as_mapping(status_node.get("acuteTrainingLoadDTO"))
+    acute = _coerce_int(acute_dto.get("dailyTrainingLoadAcute"))
+    chronic = _coerce_int(acute_dto.get("dailyTrainingLoadChronic"))
+    balance_node = _first_mapping(
+        _as_mapping(ts.get("mostRecentTrainingLoadBalance")).get("metricsTrainingLoadBalanceDTOMap")
+    )
+    balance_phrase = balance_node.get("trainingBalanceFeedbackPhrase")
+
+    stats = _as_mapping(raw_payload.get("stats"))
+    moderate = _coerce_int(stats.get("moderateIntensityMinutes"))
+    vigorous = _coerce_int(stats.get("vigorousIntensityMinutes"))
+    intensity_minutes = (
+        (moderate or 0) + (vigorous or 0) if moderate is not None or vigorous is not None else None
+    )
+
+    return {
+        "chronicTrainingLoad": chronic,
+        "acuteChronicLoadRatio": round(acute / chronic, 2) if acute and chronic else None,
+        "trainingLoadBalance": balance_phrase if isinstance(balance_phrase, str) else None,
+        "steps": _coerce_int(stats.get("totalSteps")),
+        "intensityMinutes": intensity_minutes,
+    }
+
+
 def _daily_metric_packet(row: DailyMetric | None) -> dict[str, Any] | None:
     if row is None:
         return None
-    return {
+    packet = {
         "calendarDate": row.calendar_date.isoformat(),
         "recordedAtUtc": _dt(row.recorded_at_utc),
         "readinessScore": row.readiness_score,
@@ -456,6 +519,8 @@ def _daily_metric_packet(row: DailyMetric | None) -> dict[str, Any] | None:
         "weightKg": row.weight_kg,
         "vo2max": row.vo2max,
     }
+    packet.update(_training_and_activity_fields(row.raw_payload or {}))
+    return packet
 
 
 def _sleep_packet(row: Sleep | None, age_adjusted_sleep_score: int | None) -> dict[str, Any] | None:

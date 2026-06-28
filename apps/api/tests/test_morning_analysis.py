@@ -25,7 +25,9 @@ from src.services.morning_analysis import (
     PROMPT_VERSION,
     ClaudeGenerationResult,
     MorningAnalysisService,
+    _daily_metric_packet,
     _morning_verdict,
+    _training_and_activity_fields,
 )
 
 
@@ -268,3 +270,84 @@ def test_low_readiness_is_not_load_driven_without_recovery_evidence() -> None:
 
     assert verdict["status"] == "Amber"
     assert verdict["readinessInterpretation"] is None
+
+
+_RAW_PAYLOAD_WITH_LOAD = {
+    "training_status": {
+        "mostRecentTrainingStatus": {
+            "latestTrainingStatusData": {
+                "3508557070": {
+                    "trainingStatus": 7,
+                    "acuteTrainingLoadDTO": {
+                        "dailyTrainingLoadAcute": 1074,
+                        "dailyTrainingLoadChronic": 710,
+                    },
+                }
+            }
+        },
+        "mostRecentTrainingLoadBalance": {
+            "metricsTrainingLoadBalanceDTOMap": {
+                "3508557070": {"trainingBalanceFeedbackPhrase": "BALANCED"}
+            }
+        },
+    },
+    "stats": {
+        "totalSteps": 8423,
+        "moderateIntensityMinutes": 30,
+        "vigorousIntensityMinutes": 45,
+    },
+}
+
+
+def test_training_and_activity_fields_surfaces_already_captured_payload() -> None:
+    fields = _training_and_activity_fields(_RAW_PAYLOAD_WITH_LOAD)
+
+    assert fields["chronicTrainingLoad"] == 710
+    assert fields["acuteChronicLoadRatio"] == 1.51  # 1074 / 710
+    assert fields["trainingLoadBalance"] == "BALANCED"
+    assert fields["steps"] == 8423
+    assert fields["intensityMinutes"] == 75  # 30 moderate + 45 vigorous
+
+
+def test_training_and_activity_fields_degrades_to_none_when_absent() -> None:
+    fields = _training_and_activity_fields({})
+
+    assert fields == {
+        "chronicTrainingLoad": None,
+        "acuteChronicLoadRatio": None,
+        "trainingLoadBalance": None,
+        "steps": None,
+        "intensityMinutes": None,
+    }
+
+
+def test_daily_metric_packet_includes_load_context() -> None:
+    row = DailyMetric(
+        user_id=uuid.uuid4(),
+        calendar_date=date(2026, 6, 18),
+        readiness_score=71,
+        acute_load=1074,
+        raw_payload=_RAW_PAYLOAD_WITH_LOAD,
+    )
+
+    packet = _daily_metric_packet(row)
+
+    assert packet is not None
+    # existing fields still present
+    assert packet["readinessScore"] == 71
+    assert packet["acuteLoad"] == 1074
+    # new surfaced fields
+    assert packet["acuteChronicLoadRatio"] == 1.51
+    assert packet["intensityMinutes"] == 75
+    assert packet["trainingLoadBalance"] == "BALANCED"
+
+
+def test_daily_metric_packet_safe_without_raw_payload() -> None:
+    # A transient row before flush has raw_payload=None; must not raise.
+    row = DailyMetric(user_id=uuid.uuid4(), calendar_date=date(2026, 6, 18))
+
+    packet = _daily_metric_packet(row)
+
+    assert packet is not None
+    assert packet["acuteChronicLoadRatio"] is None
+    assert packet["intensityMinutes"] is None
