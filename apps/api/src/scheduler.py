@@ -13,6 +13,8 @@ Current jobs:
   - workout_autopush: pushes approved workout proposals due today
   - evening_sleep_nudge: sends the 20:00 sleep-protocol push
   - evening_monitoring_alerts: checks thermal and source freshness before bed
+  - fan_control: every ~15 min within the overnight window, reconciles the Dreo
+    bedroom fan to the live indoor temperature (Batch 27.2)
 
 run_morning_weather_sync itself is unchanged — only its trigger moved from a fixed
 06:30 cron to wake-detection (+ the 09:30 backstop). See
@@ -36,10 +38,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
 from src.database import AsyncSessionLocal
-from src.models.coaching import Analysis
+from src.models.coaching import Analysis, TemperatureReading
 from src.models.notification import ActionType, ActorType, AuditLog
 from src.models.profile import Profile
 from src.services.backup import create_backup
+from src.services.dreo_fan import (
+    DreoCredentials,
+    DreoCredentialsError,
+    DreoFanClient,
+    DreoFanError,
+)
+from src.services.environment_freshness import is_hive_temperature_fresh
 from src.services.environment_sync import (
     EnvironmentSyncService,
     HiveClient,
@@ -47,6 +56,13 @@ from src.services.environment_sync import (
     WeatherRequest,
 )
 from src.services.executable_coaching import ExecutableCoachingService
+from src.services.fan_control import (
+    FanDecision,
+    FanState,
+    Phase,
+    decide_fan_action,
+    loop_phase,
+)
 from src.services.garmin_sync import (
     GarminConnectClient,
     GarminDailyPayloads,
@@ -649,6 +665,115 @@ async def _retry_async[T](
     raise RuntimeError("retry loop exited unexpectedly")
 
 
+# -- Bedroom fan control (Batch 27.2) ----------------------------------------
+
+
+def _fan_control_configured() -> bool:
+    try:
+        DreoCredentials.from_settings().validate()
+        return True
+    except DreoCredentialsError:
+        return False
+
+
+def _fresh_temperature_c(
+    reading: TemperatureReading | None, now_local: datetime
+) -> float | None:
+    """The latest indoor temperature in C if it is fresh (<=45 min old), else None."""
+    if reading is None:
+        return None
+    if not is_hive_temperature_fresh(reading.captured_at_utc, now_utc=now_local.astimezone(UTC)):
+        return None
+    return round(float(reading.temperature_c), 1)
+
+
+async def _latest_temperature(
+    session: AsyncSession, user_id: uuid.UUID
+) -> TemperatureReading | None:
+    result = await session.execute(
+        select(TemperatureReading)
+        .where(TemperatureReading.user_id == user_id)
+        .order_by(desc(TemperatureReading.captured_at_utc))
+        .limit(1)
+    )
+    return result.scalars().first()
+
+
+async def run_fan_control() -> None:
+    """Overnight airflow autopilot: reconcile the Dreo fan to the live bedroom temp.
+
+    Within the overnight window (``services/fan_control.loop_phase``) it maps the
+    freshest Hive indoor temperature onto a bounded fan target — off, or on at a
+    ladder speed — using the Batch 9 sleep-disruption thresholds, and applies only
+    the difference from the fan's current state, so the loop is idempotent. A short
+    wind-down after the window guarantees the fan is off by morning. It degrades
+    gracefully (logs, never raises) when no fan is configured or the cloud is
+    unreachable. Single fan / single bedroom (Mark) — see DECISIONS #96.
+    """
+    try:
+        if not _fan_control_configured():
+            log.info("fan control skipped", reason="no_dreo_credentials")
+            return
+        async with AsyncSessionLocal() as session:
+            profiles = await _active_profiles(session)
+            if not profiles:
+                log.info("fan control skipped", reason="no_active_profiles")
+                return
+            profile = profiles[0]
+            now_local = _profile_now(profile)
+            phase = loop_phase(now_local.time())
+            if phase == "idle":
+                return
+            reading = await _latest_temperature(session, profile.id)
+            temperature_c = _fresh_temperature_c(reading, now_local)
+        # Cloud I/O happens outside the DB session.
+        await _apply_fan_control(phase, temperature_c)
+    except Exception:
+        log.exception("fan control failed")
+
+
+async def _apply_fan_control(phase: Phase, temperature_c: float | None) -> None:
+    client = DreoFanClient()
+    try:
+        await asyncio.to_thread(client.connect)
+    except DreoFanError as exc:
+        log.warning("fan control unreachable", phase=phase, error=str(exc))
+        return
+    try:
+        state = await asyncio.to_thread(client.read_state)
+        current = FanState(is_on=bool(state.is_on), fan_speed=state.fan_speed)
+        decision = decide_fan_action(
+            phase=phase, temperature_c=temperature_c, fan_state=current
+        )
+        if decision.action == "apply":
+            await _execute_fan_decision(client, current, decision)
+        log.info(
+            "fan control",
+            phase=phase,
+            temperature_c=temperature_c,
+            action=decision.action,
+            target_on=decision.target_on,
+            target_speed=decision.target_speed,
+            reason=decision.reason,
+        )
+    except DreoFanError as exc:
+        log.warning("fan control command failed", phase=phase, error=str(exc))
+    finally:
+        await asyncio.to_thread(client.close)
+
+
+async def _execute_fan_decision(
+    client: DreoFanClient, current: FanState, decision: FanDecision
+) -> None:
+    if not decision.target_on:
+        await asyncio.to_thread(client.power, False)
+        return
+    if not current.is_on:
+        await asyncio.to_thread(client.power, True)
+    if decision.target_speed is not None and current.fan_speed != decision.target_speed:
+        await asyncio.to_thread(client.set_speed, decision.target_speed)
+
+
 def create_scheduler() -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone="UTC")
     scheduler.add_job(
@@ -746,5 +871,18 @@ def create_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
         coalesce=True,
         max_instances=1,
+    )
+    scheduler.add_job(
+        run_fan_control,
+        trigger="interval",
+        minutes=15,
+        id="fan_control",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        # Seed an early first run so a freshly (re)started container reconciles the
+        # fan within ~4 min instead of waiting a full interval (mirrors the other
+        # interval jobs). A cheap no-op outside the overnight window.
+        next_run_time=datetime.now(UTC) + timedelta(minutes=4),
     )
     return scheduler

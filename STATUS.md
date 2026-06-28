@@ -6,10 +6,19 @@
 
 ## Now
 
-**Latest (2026-06-28): Batch 26 closed out on `main` (`b6c92b9`).**
-The post-ride card now captures RPE / legs / feel / niggles against the actual Garmin activity and returns the
-saved row in the daily-loop payload as `postWorkoutAnalyses[*].postRideCheckIn`; production is serving the
-merged Batch 26 SHA through both Railway and the Vercel same-origin API rewrite.
+**Latest (2026-06-28): Batch 27.1 + 27.2 built in the working tree (uncommitted), verified green.**
+The Dreo client wrapper (27.1) and the overnight airflow control loop (27.2) are implemented and tested — ruff +
+strict mypy clean, full backend suite **330 passed / 88 skipped**. Nothing committed yet (on `feat/batch-27-bedroom-fan`).
+- **27.0 spike** (done, DECISIONS #95): proved direct-cloud control via `pydreo_community` against Mark's real fan; the
+  device is a **`DR-HPF008S` "Air Circulator" (`speed_range=(1,9)`), not the 508S the plan named**, confirmed as the
+  bedroom fan. Key rule: **mode-before-speed** (set `preset_mode='normal'` before `fan_speed`).
+- **27.1** `services/dreo_fan.py`: `DreoFanClient` mirroring the `HiveClient` boundary — env creds + cached-token path
+  with password fallback, secret-safe, never frontend-exposed; on/off + preset + speed + oscillate + state-read.
+- **27.2** `services/fan_control.py` (pure decision core) + `scheduler.run_fan_control` (15-min interval job + a
+  `fan-control` `run_scheduled` entry, DECISIONS #96): maps live indoor temp → bounded fan target against the Batch 9
+  thresholds (on 19.5 / off 19.0 hysteresis; speed ladder 19.5→3 / 20→5 / 21→7, capped 7), overnight 21:30–08:30 with a
+  08:30–09:00 wind-down off, idle (no cloud) by day; idempotent; degrades gracefully (no creds / unreachable / stale temp).
+Batch 26 remains closed out on `main` (`b6c92b9`); prod serves that SHA through Railway + the Vercel same-origin API rewrite.
 
 What changed:
 - Migration `009` adds nullable `manual_entries.activity_id` plus an index/FK to `activities`; no new table.
@@ -29,12 +38,18 @@ non-mutating smoke).
 
 **Also 2026-06-28 (operational, not a batch): detailed per-ride/walk time-series backfilled to prod + storage bounded (DECISIONS #93).** Loaded the per-second `activity_timeseries` (power/HR/cadence/PC/stamina) the #85 year-backfill had skipped, scoped to **cycling + walking** via a new committed `--detail-types` filter on `garmin_history_backfill.py` (run via `railway run`, 2025-06-24 → 2026-06-27, all months, no 429s): **203 rides + 387 walks** now have per-second data. The load overshot the Supabase **free-tier 500 MB cap** (→625 MB, disk full, `VACUUM FULL` blocked), so the redundant `raw_metrics` JSONB (a copy of the typed channels; nothing reads it) was emptied for indoor_cycling+walking via `UPDATE`+**dump→`TRUNCATE`→reload** (508,293 rows, zero loss) → **DB now 248 MB, under cap**. Outdoor rides keep `raw_metrics` (GPS/elevation). **Live-sync fix merged + deployed:** `STRIP_RAW_METRICS_TYPES` in `GarminSyncService.sync_activities` drops `raw_metrics` on write for those types so the table stays bounded — merged via PR #39 (squash `bf6d743`, all CI green) and **live in prod** (Railway `/api/v1/health` sha=`bf6d743`), so new rides/walks no longer re-bloat the DB.
 
-**Next step:** Start Batch 27 when ready (`/batch-start 27`): Bedroom fan control (Dreo 508S).
+**Next step:** **27.3 — evening "Bedroom — Auto" Home surface**: show the fan state + the temperature it is responding
+to in the Batch 24 evening/post-ride Home state, plus a **manual override** and preferences. Design forks to settle
+first: how to expose fan state to the UI without a live cloud connect per request (persist the loop's last decision vs.
+on-demand read); whether the override needs a migration; and that the override must gate `run_fan_control` (today the
+loop fully owns the fan overnight and the wind-down unconditionally turns it off). Then **27.4** tests + closeout.
+Also pending: **commit 27.1 + 27.2** (uncommitted), and a live token-resume confirmation (DECISIONS #95).
 
 **Gotchas:** the saved subjective check-in is visible immediately, but the Claude markdown reflects it on the
 next post-workout analysis generation; the service deliberately marks stale analyses pending so the next run
 does not ignore the new input. Batch 25's same-day Zwift appearance timing observation remains a separate
-first-live-use note from DECISIONS #91. Batch 27 should begin with the throwaway Dreo spike before repo code.
+first-live-use note from DECISIONS #91. Batch 27's throwaway Dreo spike (27.0) is complete — see DECISIONS #95 for the proven direct-cloud path, the
+mode-before-speed rule, and the token-resume + temperature-sensor follow-ups.
 **Free-tier storage gotcha (DECISIONS #93):** the Supabase DB is on the **free 500 MB cap, shared with the movie
 app** (#34). Per-second `activity_timeseries` is now the dominant table — only **cycling + walking** carry details
 and `raw_metrics` is stripped for indoor_cycling/walking. Before any large data load, size-project per-type from a
@@ -273,6 +288,22 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-28** — **Batch 27.1 + 27.2 built (uncommitted): Dreo client wrapper + overnight airflow loop.**
+  27.1 `services/dreo_fan.py` (`DreoFanClient`, mirrors `HiveClient`: env creds + cached-token-with-password-fallback,
+  secret-safe; on/off + preset + speed + oscillate + state-read; the #95 mode-before-speed rule baked into `set_speed`).
+  27.2 `services/fan_control.py` pure decision core (`loop_phase` + `decide_fan_action`: Batch 9 thresholds, hysteresis,
+  bounded speed ladder, idempotent) + `scheduler.run_fan_control` integrator (15-min interval, `fan-control` cron entry),
+  overnight-only with a morning wind-down off, graceful degradation. `pydreo-community` added to `requirements.txt`.
+  52 new tests (18 client + 34 loop); ruff + strict mypy + full suite green (330 passed). DECISIONS #96. Uncommitted.
+- **2026-06-28** — **Batch 27.0 — throwaway Dreo fan spike: direct-cloud control proven (DECISIONS #95).**
+  Drove Mark's real bedroom fan end-to-end via `pydreo_community` (no HA fallback): login → discover →
+  `start_transport()` → power / preset-mode / speed / oscillate / state-read, all physically confirmed. **Device is a
+  `DR-HPF008S` "Air Circulator" (`speed_range=(1,9)`), not the 508S the plan named** — Mark confirmed it is the bedroom
+  fan. Two spike-script bugs found + fixed (outside the repo): the missing `start_transport()` (control commands
+  hard-fail until the WebSocket is open) and the **mode-before-speed** rule (set `preset_mode='normal'` before
+  `fan_speed`, or the windlevel is ignored under a preset). Region auto-detects to EU. Open: token-resume not yet
+  tested (password fallback needed); the fan reports a `temperature` attr (~°F) as a possible bonus indoor-temp source.
+  Next: **27.1** — `DreoClient` wrapper mirroring `HiveClient`, plus `pydreo_community` in `requirements.txt`.
 - **2026-06-28** — **Surfaced already-captured Garmin load/activity context into the morning packet (DECISIONS
   #94).** Audit (validated samples in `~/garmin-spike/out/`) confirmed the high-value signals are *already*
   fetched daily and stored in `daily_metrics.raw_payload` — just not promoted. `_training_and_activity_fields`

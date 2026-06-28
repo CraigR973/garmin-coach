@@ -33,6 +33,7 @@ from collections.abc import Awaitable, Callable
 from src.scheduler import (
     run_evening_monitoring_alerts,
     run_evening_sleep_nudge,
+    run_fan_control,
     run_garmin_activity_poll,
     run_hive_temperature_poll,
     run_morning_weather_sync,
@@ -49,6 +50,7 @@ JOBS: dict[str, Callable[[], Awaitable[None]]] = {
     "autopush": run_workout_autopush,
     "evening-nudge": run_evening_sleep_nudge,
     "evening-alerts": run_evening_monitoring_alerts,
+    "fan-control": run_fan_control,
     "backup": run_scheduled_backup,
 }
 

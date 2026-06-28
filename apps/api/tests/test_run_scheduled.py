@@ -19,6 +19,7 @@ def test_jobs_cover_expected_names() -> None:
         "autopush",
         "evening-nudge",
         "evening-alerts",
+        "fan-control",
         "backup",
     }
 
