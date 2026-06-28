@@ -40,13 +40,14 @@ crosses the thresholds.
 **Also 2026-06-28 (operational, not a batch): detailed per-ride/walk time-series backfilled to prod + storage bounded (DECISIONS #93).** Loaded the per-second `activity_timeseries` (power/HR/cadence/PC/stamina) the #85 year-backfill had skipped, scoped to **cycling + walking** via a new committed `--detail-types` filter on `garmin_history_backfill.py` (run via `railway run`, 2025-06-24 → 2026-06-27, all months, no 429s): **203 rides + 387 walks** now have per-second data. The load overshot the Supabase **free-tier 500 MB cap** (→625 MB, disk full, `VACUUM FULL` blocked), so the redundant `raw_metrics` JSONB (a copy of the typed channels; nothing reads it) was emptied for indoor_cycling+walking via `UPDATE`+**dump→`TRUNCATE`→reload** (508,293 rows, zero loss) → **DB now 248 MB, under cap**. Outdoor rides keep `raw_metrics` (GPS/elevation). **Live-sync fix merged + deployed:** `STRIP_RAW_METRICS_TYPES` in `GarminSyncService.sync_activities` drops `raw_metrics` on write for those types so the table stays bounded — merged via PR #39 (squash `bf6d743`, all CI green) and **live in prod** (Railway `/api/v1/health` sha=`bf6d743`), so new rides/walks no longer re-bloat the DB.
 
 **Next step:** Batch 27 is shipped + live; the roadmap (`docs/phase-batches.md`) has no remaining planned batch.
-Two **first-live-use confirmations** are still open (creds are now set, so both are doable): (1) watch the first overnight
-run actually drive the fan — confirm via Railway logs that `run_fan_control` reconciles the Dreo to the live temp
-(`fired`, `action=apply/hold`) and that the 08:30–09:00 wind-down leaves it off; (2) a one-off authenticated
-`POST /api/v1/fan/command` end-to-end against the real fan (Mark's bedroom — pick a sensible time), which also exercises
-the password→token path and lets you decide whether to cache a `DREO_TOKEN` (token-resume is still the unproven path,
-DECISIONS #95). Neither is a code change. If Mark wants the fan to stay off overnight, the `/bedroom` Auto toggle now
-turns the autopilot off.
+**Physical end-to-end CONFIRMED (2026-06-28):** an authenticated `POST /api/v1/fan/command` against prod drove Mark's
+real fan on (speed 3 → `isOn:true`) then off (`isOn:false`), `PUT /fan/auto` re-armed the autopilot, and the one-off
+device token was revoked (now 401) — so the full auth → router → `DreoFanClient` → Dreo cloud → fan path and the prod
+**password login work** (final state: fan off, autopilot armed). One first-live-use item remains: (1) watch the first
+overnight run actually drive the fan — confirm via Railway logs that `run_fan_control` reconciles the Dreo to the live
+temp (`fired`, `action=apply/hold`) and that the 08:30–09:00 wind-down leaves it off. Optional: cache a `DREO_TOKEN` to
+prove token-resume (still the unproven auth path, DECISIONS #95). If Mark wants the fan off overnight, the `/bedroom`
+Auto toggle turns the autopilot off.
 
 **Gotchas:** the saved subjective check-in is visible immediately, but the Claude markdown reflects it on the
 next post-workout analysis generation; the service deliberately marks stale analyses pending so the next run
@@ -291,6 +292,14 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-28** — **Physical end-to-end of the fan confirmed in prod** (post-closeout). Minted a one-off device
+  token for Mark (`railway run python -m src.activate --profile Mark` → `POST /auth/activate`), then drove the real
+  fan via authenticated `POST /api/v1/fan/command`: on at speed 3 (`200 {isOn:true,speed:3}`, 4.8s — real Dreo cloud
+  connect), off (`200 {isOn:false}`), re-armed the autopilot with `PUT /api/v1/fan/auto {enabled:true}`, then revoked
+  the token (verified 401) and shredded the temp creds. Proves the whole auth → router → `DreoFanClient` → Dreo cloud
+  → fan path and the prod **password login** (token-resume #95 still optional). Final prod state: fan off, autopilot
+  armed (will run itself tonight 21:30–08:30). Only remaining first-live-use item: watch the first overnight loop run
+  in Railway logs.
 - **2026-06-28** — **Closed out Batch 27 — bedroom fan control (Dreo air-circulator)** (PR #41, squash `9f09e52`).
   Pushed `feat/batch-27-bedroom-fan` (all 3 fan commits + a `style:` ruff-format fixup — CI's `ruff format --check .`
   caught two cosmetic line-collapses in `scheduler.py` + `test_dreo_fan.py` from the never-pushed 27.1/27.2 commits),
