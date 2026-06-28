@@ -47,6 +47,7 @@ const snapshot: DailyLoopEnvelope = {
           reliabilityStartDate: '2026-06-11',
         },
       ],
+      ageComparison: { rows: [] },
     },
     dailyMetrics: null,
     sleep: null,

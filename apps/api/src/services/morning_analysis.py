@@ -27,6 +27,7 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile
+from src.services.age_norms import build_age_comparison
 from src.services.coaching_state import CoachingStateService
 
 PROMPT_VERSION = "morning-analysis-v1-2026-06-20"
@@ -164,6 +165,7 @@ class MorningAnalysisService:
             baselines,
             age_adjusted_sleep_score,
         )
+        age_comparison = _age_comparison(daily_metric, sleep, knowledge_base)
         thermal_review = _thermal_review(temperature_rows, weather, knowledge_base)
         verdict = _morning_verdict(
             daily_metric=daily_metric,
@@ -190,6 +192,7 @@ class MorningAnalysisService:
             "manualEntries": [_manual_entry_packet(entry) for entry in manual_entries],
             "plannedWorkouts": [_planned_workout_packet(workout) for workout in planned_workouts],
             "metricsVsBaselines": metrics_table,
+            "ageComparison": age_comparison,
             "environment": {
                 "thermalReview": thermal_review,
                 "weather": _weather_packet(weather),
@@ -664,6 +667,51 @@ def _metrics_vs_baselines(
             }
         )
     return rows
+
+
+def _extract_fitness_age(raw_payload: Mapping[str, Any] | None) -> int | None:
+    """Garmin's VO2max-derived fitness age, read from the stored daily payload.
+
+    Lives in ``daily_metrics.raw_payload['max_metrics_vo2'][0].generic.fitnessAge``
+    (the same payload ``garmin_sync`` already persists for VO2max), so no extra
+    column or sync is needed. Defensive against missing/odd shapes.
+    """
+    if not isinstance(raw_payload, Mapping):
+        return None
+    payload = raw_payload.get("max_metrics_vo2")
+    item = payload[0] if isinstance(payload, list) and payload else payload
+    generic = _as_mapping(_as_mapping(item).get("generic"))
+    value = generic.get("fitnessAge")
+    return int(value) if isinstance(value, int | float) else None
+
+
+def _age_comparison(
+    daily_metric: DailyMetric | None,
+    sleep: Sleep | None,
+    knowledge_base: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build the "vs the average for your age" packet (services/age_norms.py)."""
+    profile = knowledge_base.get("profile", {})
+    profile = profile if isinstance(profile, Mapping) else {}
+    age = profile.get("age")
+    sex = profile.get("sex")
+
+    resting_hr = _first_not_none(
+        daily_metric.resting_heart_rate_bpm if daily_metric else None,
+        sleep.resting_heart_rate_bpm if sleep else None,
+    )
+    hrv = _first_not_none(
+        daily_metric.hrv_weekly_avg_ms if daily_metric else None,
+        daily_metric.hrv_last_night_avg_ms if daily_metric else None,
+    )
+    return build_age_comparison(
+        age=int(age) if isinstance(age, int | float) else None,
+        sex=sex if isinstance(sex, str) else None,
+        vo2max=daily_metric.vo2max if daily_metric else None,
+        resting_heart_rate_bpm=resting_hr,
+        hrv_overnight_ms=hrv,
+        fitness_age=_extract_fitness_age(daily_metric.raw_payload if daily_metric else None),
+    ).to_dict()
 
 
 def _thermal_review(

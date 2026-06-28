@@ -6,7 +6,30 @@
 
 ## Now
 
-**Latest (2026-06-28): Batch 27 — bedroom fan control — SHIPPED (PR #41, squash `9f09e52`), prod-verified.**
+**Latest (2026-06-28): "Compared to the average for your age" home surface — BUILT on branch `feat/age-comparison`, NOT yet merged. DECISIONS #98.**
+Mark asked to see both "vs my own normal" (the existing #44/#45 baselines read) **and** "how do I compare to the average for my age" — this
+adds the age axis to the Home screen. Two sources, separated: **(a) Garmin fitness age** (the headline) is pulled from the already-synced
+`daily_metrics.raw_payload['max_metrics_vo2'][0].generic.fitnessAge` via `_extract_fitness_age` — **no column, no migration, no extra Garmin
+call**; **(b) population norms** for VO₂max / resting HR / overnight HRV are encoded as static sex×decade reference tables in the new pure
+`services/age_norms.py` (privacy-safe; coarse ~50th-pct guides, sourced in-file). `build_age_comparison(...)` classifies each metric
+**direction-aware** into `good`/`neutral`/`warn` + a descriptor (a resting HR *below* average reads green — lower is better). Architecture mirrors
+`metricsVsBaselines` exactly: computed once in `assemble_context_packet` → stored on `analysis.context_packet['ageComparison']` → re-served by
+`daily_loop._serialize_analysis` (GET stays a pure DB read) → rendered by the new `AgeComparisonCard` (fitness-age headline + tone-tinted metric
+tiles, reusing the `MetricsBaselineTable` tone/icon vocabulary) on the **pre-ride + rest-day** Home phases. Framed honestly as "a rough guide, not
+medical advice" (the "average 57-year-old" is a deliberately blunt bar). `sex: male` added to the seeded KB profile (code defaults male when absent).
+- **Files:** `services/age_norms.py` (+ `test_age_norms.py`, 9 tests); `services/morning_analysis.py` (extractor + `_age_comparison` + packet
+  field); `services/coaching_state.py` (profile `sex`); `routers/daily_loop.py` (`AnalysisOut.ageComparison` + serialize); `packages/shared`
+  (`ageComparison{Row}Schema` on `dailyLoopAnalysisSchema`); `components/AgeComparisonCard.tsx` (+ test, 4); `pages/DashboardPage.tsx` (wired both
+  phases) + the two analysis-mock fixtures updated.
+- **Checks (local):** ruff + strict mypy green; backend **347 passed / 93 skipped**; web build (tsc+vite) green, **18 affected vitest** green.
+- **Next step:** review the branch, then run **`/phase-closeout`** (commit → CI → merge → deploy) — close-out is explicit, not auto. Optionally
+  pair this with the still-unbuilt **red/green "vs your own baseline" sleep-tile tinting** on Home (proposed earlier same session, not yet started).
+- **Gotcha (snapshot, same as `metricsVsBaselines`):** `ageComparison` only appears on analyses generated *after* this deploys — today's
+  already-generated analysis serves an empty block and the card shows its "shows up once … synced" fallback until the next morning generation.
+
+---
+
+**Prior prod state (2026-06-28): Batch 27 — bedroom fan control — SHIPPED (PR #41, squash `9f09e52`), prod-verified.**
 The whole batch (27.0 spike → 27.1 Dreo client → 27.2 overnight loop → 27.3 manual override + evening Home surface) is
 merged to `main` and live. CI was green across ruff, mypy, pytest (incl. the DB-backed fan/daily-loop tests + Alembic
 `010` up/down that skip locally), security audit, and web lint/typecheck/build. DECISIONS #95-97.
@@ -292,6 +315,11 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-28** — **Built the "compared to the average for your age" Home surface** on branch `feat/age-comparison`
+  (DECISIONS #98), not yet merged. Garmin fitness age (derived from the already-synced VO₂max payload — no migration) as
+  the headline + VO₂max/RHR/HRV vs static sex×age-band population norms (`services/age_norms.py`), threaded through the
+  morning context packet → daily-loop → new `AgeComparisonCard` on the pre-ride/rest-day Home, direction-aware tone
+  (low RHR = green). ruff+mypy green, backend 347 passed, web build + 18 vitest green. Awaiting `/phase-closeout`.
 - **2026-06-28** — **Physical end-to-end of the fan confirmed in prod** (post-closeout). Minted a one-off device
   token for Mark (`railway run python -m src.activate --profile Mark` → `POST /auth/activate`), then drove the real
   fan via authenticated `POST /api/v1/fan/command`: on at speed 3 (`200 {isOn:true,speed:3}`, 4.8s — real Dreo cloud

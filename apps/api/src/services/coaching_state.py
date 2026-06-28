@@ -26,6 +26,7 @@ def _profile_content() -> dict[str, Any]:
     return {
         "athleteName": "Mark",
         "age": 57,
+        "sex": "male",
         "ftpWatts": 280,
         "vo2max": 54,
         "hrvBandMs": {"low": 43, "high": 57},

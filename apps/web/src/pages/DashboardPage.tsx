@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { postRideCheckInInputSchema } from '@coach/shared';
 import { toast } from 'sonner';
+import { AgeComparisonCard, type AgeComparison } from '@/components/AgeComparisonCard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -149,6 +150,7 @@ export function DashboardPage() {
 
   const daily = data!;
   const analysis = daily.morningAnalysis;
+  const ageComparison = (analysis?.ageComparison ?? null) as AgeComparison | null;
   const sleep = daily.sleep;
   const thermal = daily.thermalState;
   const postWorkouts = daily.postWorkoutAnalyses ?? [];
@@ -188,6 +190,8 @@ export function DashboardPage() {
             morningBriefLink="/brief"
             baselinesLink="/baselines"
           />
+
+          {ageComparison && <AgeComparisonCard comparison={ageComparison} />}
 
           <WorkoutCard
             title="Today&apos;s ride"
@@ -248,6 +252,8 @@ export function DashboardPage() {
             morningBriefLink="/brief"
             baselinesLink="/baselines"
           />
+
+          {ageComparison && <AgeComparisonCard comparison={ageComparison} />}
 
           <WorkoutCard
             title="Today"
