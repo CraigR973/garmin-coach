@@ -273,6 +273,16 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-28** — **Surfaced already-captured Garmin load/activity context into the morning packet (DECISIONS
+  #94).** Audit (validated samples in `~/garmin-spike/out/`) confirmed the high-value signals are *already*
+  fetched daily and stored in `daily_metrics.raw_payload` — just not promoted. `_training_and_activity_fields`
+  now reads **chronic training load → ACWR (acute:chronic)**, **training-load balance**, **steps**, and
+  **intensity minutes** from `raw_payload` into `_daily_metric_packet`, and `SYSTEM_PROMPT` tells Claude to use
+  them as supporting context. **Additive read — no Garmin fetch, no migration, no storage**; the deterministic
+  Green/Amber/Red verdict is unchanged (it never read the packet dict). Concluded **no new Garmin retrieval is
+  warranted** (all-day HR/SpO2 = intraday volume trap; `user_summary` dupes `stats`; `body_composition` empty for
+  Mark; activity zones/laps derivable from #93's per-second data). +4 pure tests; backend **278 passed / 88
+  skipped**, ruff+format+mypy clean. Branch `feat/surface-garmin-load-context` → PR.
 - **2026-06-28** — **Detailed per-ride/walk time-series backfill (operational, not a batch; DECISIONS #93).**
   Loaded the per-second `activity_timeseries` the #85 year-backfill deliberately skipped, scoped to **cycling +
   walking** via a now-committed `--detail-types` filter on `garmin_history_backfill.py`
