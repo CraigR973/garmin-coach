@@ -6,11 +6,10 @@
 
 ## Now
 
-**Latest (2026-06-28): Batch 27.3 built in the working tree (uncommitted), verified green; 27.1 + 27.2 are committed.**
-27.1 (`ff3ab18`) + 27.2 (`e7e61e9`) are committed on `feat/batch-27-bedroom-fan`. **27.3** is implemented + tested but
-**not yet committed**: ruff + strict mypy clean, full backend suite **338 passed / 93 skipped** (the 5 new DB-backed
-fan/daily-loop tests skip locally with no Postgres — they run in CI), shared green (typecheck + 7 tests), web green
-(**41 vitest**, lint 0 errors / 5 pre-existing warnings, build incl. tsc). DECISIONS #97.
+**Latest (2026-06-28): Batch 27 — bedroom fan control — SHIPPED (PR #41, squash `9f09e52`), prod-verified.**
+The whole batch (27.0 spike → 27.1 Dreo client → 27.2 overnight loop → 27.3 manual override + evening Home surface) is
+merged to `main` and live. CI was green across ruff, mypy, pytest (incl. the DB-backed fan/daily-loop tests + Alembic
+`010` up/down that skip locally), security audit, and web lint/typecheck/build. DECISIONS #95-97.
 - **27.0 spike** (done, DECISIONS #95): proved direct-cloud control via `pydreo_community` against Mark's real fan; the
   device is a **`DR-HPF008S` "Air Circulator" (`speed_range=(1,9)`), not the 508S the plan named**, confirmed as the
   bedroom fan. Key rule: **mode-before-speed** (set `preset_mode='normal'` before `fan_speed`).
@@ -27,34 +26,27 @@ fan/daily-loop tests skip locally with no Postgres — they run in CI), shared g
   `describe_fan_intent` surfaces the loop's *computed* intent on `thermalState.fan` (`{autoEnabled, mode, isOn, speed,
   respondingToC}`) — no cloud read per `GET /daily-loop`. Frontend: `/bedroom` fan card (Auto toggle + manual
   Off/Low/Med/High = 3/5/7) and an evening-Home fan status line (`fanStatusText`).
-Batch 26 remains closed out on `main` (`b6c92b9`); prod serves that SHA through Railway + the Vercel same-origin API rewrite.
+Batch 26 (post-ride check-in) stays closed out beneath this on `main`; prod now serves the **Batch 27 SHA `9f09e52`**
+through Railway + the Vercel same-origin API rewrite.
 
-What changed:
-- Migration `009` adds nullable `manual_entries.activity_id` plus an index/FK to `activities`; no new table.
-- `PUT /api/v1/daily-loop/{subject_date}/activities/{activity_id}/post-ride-check-in` persists the after-ride
-  check-in after validating the activity belongs to Mark and that local subject date.
-- `PostWorkoutAnalysisService` includes `postRideCheckIn` in the context packet and treats a ride as pending
-  again when a newer activity-linked check-in is not covered by the latest stored analysis.
-- Morning verdict reads now exclude planned-workout and activity-linked manual entries, so the true morning
-  check-in still folds into the verdict while a later post-ride entry cannot back-feed that morning signal.
-- Home's post-ride card shows the check-in form and saved values beside the coach read.
-
-**Verification:** branch CI passed (`28304468403`) and `main` CI passed (`28304972699`) across ruff, mypy,
-pytest, Alembic upgrade/downgrade, security audit, and web lint/typecheck/build. Production smoke verified
-`/api/v1/health` at `sha=b6c92b95d663804a2754477d928489fce64b3e72` through Railway and Vercel, web `/`
-returned 200, and the new post-ride check-in route returned 401 unauthenticated through both hosts (route live,
-non-mutating smoke).
+**Prod verification (Batch 27, 2026-06-28):** Railway `/api/v1/health` → `{"status":"ok","sha":"9f09e52…"}`, so
+migration `010` applied (the container only passes its healthcheck after `alembic upgrade head` runs at startup);
+web `/` → 200; the new `PUT /api/v1/fan/auto` and `POST /api/v1/fan/command` both return **401 unauthenticated** —
+direct on Railway *and* through the Vercel same-origin rewrite — so the routes are live + auth-gated and the smoke
+never drove the fan (non-mutating). `DREO_USERNAME`/`DREO_PASSWORD` are now set in Railway, so the overnight loop can
+actuate and `fan_auto_enabled` defaults true (armed) — the fan will run itself tonight within 21:30–08:30 as the room
+crosses the thresholds.
 
 **Also 2026-06-28 (operational, not a batch): detailed per-ride/walk time-series backfilled to prod + storage bounded (DECISIONS #93).** Loaded the per-second `activity_timeseries` (power/HR/cadence/PC/stamina) the #85 year-backfill had skipped, scoped to **cycling + walking** via a new committed `--detail-types` filter on `garmin_history_backfill.py` (run via `railway run`, 2025-06-24 → 2026-06-27, all months, no 429s): **203 rides + 387 walks** now have per-second data. The load overshot the Supabase **free-tier 500 MB cap** (→625 MB, disk full, `VACUUM FULL` blocked), so the redundant `raw_metrics` JSONB (a copy of the typed channels; nothing reads it) was emptied for indoor_cycling+walking via `UPDATE`+**dump→`TRUNCATE`→reload** (508,293 rows, zero loss) → **DB now 248 MB, under cap**. Outdoor rides keep `raw_metrics` (GPS/elevation). **Live-sync fix merged + deployed:** `STRIP_RAW_METRICS_TYPES` in `GarminSyncService.sync_activities` drops `raw_metrics` on write for those types so the table stays bounded — merged via PR #39 (squash `bf6d743`, all CI green) and **live in prod** (Railway `/api/v1/health` sha=`bf6d743`), so new rides/walks no longer re-bloat the DB.
 
-**Next step:** **commit 27.3** (working tree, verified green) — then **`/phase-closeout 27`** (the 27.4 tests already
-ship with 27.3, so closeout is the remaining step): merge `feat/batch-27-bedroom-fan` to `main`, watch CI run the
-DB-backed fan/daily-loop tests + Alembic `010` up/down, and prod-smoke the two new fan routes (401 unauthenticated,
-non-mutating). **Before any closeout the app must set `DREO_USERNAME`/`DREO_PASSWORD` (or `DREO_TOKEN`) in Railway** or
-`run_fan_control` + `POST /command` no-op/502 (the loop degrades gracefully, but the fan won't actually move). Still
-pending from 27.0/27.1: a live token-resume confirmation (DECISIONS #95) and a physical end-to-end of `POST /command`
-against the real fan — **not** to be driven from a dev preview (previews proxy `/api/*` to prod, so it would move
-Mark's real fan and flip his autopilot).
+**Next step:** Batch 27 is shipped + live; the roadmap (`docs/phase-batches.md`) has no remaining planned batch.
+Two **first-live-use confirmations** are still open (creds are now set, so both are doable): (1) watch the first overnight
+run actually drive the fan — confirm via Railway logs that `run_fan_control` reconciles the Dreo to the live temp
+(`fired`, `action=apply/hold`) and that the 08:30–09:00 wind-down leaves it off; (2) a one-off authenticated
+`POST /api/v1/fan/command` end-to-end against the real fan (Mark's bedroom — pick a sensible time), which also exercises
+the password→token path and lets you decide whether to cache a `DREO_TOKEN` (token-resume is still the unproven path,
+DECISIONS #95). Neither is a code change. If Mark wants the fan to stay off overnight, the `/bedroom` Auto toggle now
+turns the autopilot off.
 
 **Gotchas:** the saved subjective check-in is visible immediately, but the Claude markdown reflects it on the
 next post-workout analysis generation; the service deliberately marks stale analyses pending so the next run
@@ -299,6 +291,17 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-28** — **Closed out Batch 27 — bedroom fan control (Dreo air-circulator)** (PR #41, squash `9f09e52`).
+  Pushed `feat/batch-27-bedroom-fan` (all 3 fan commits + a `style:` ruff-format fixup — CI's `ruff format --check .`
+  caught two cosmetic line-collapses in `scheduler.py` + `test_dreo_fan.py` from the never-pushed 27.1/27.2 commits),
+  watched CI go green across ruff, mypy, **pytest incl. the DB-backed fan/daily-loop tests**, Alembic `010` up/down,
+  security audit, and web build, then squash-merged to `main`. Railway + Vercel auto-deployed; **prod verified**:
+  `/api/v1/health` → `sha=9f09e52` (migration `010` applied — healthcheck passes only after `alembic upgrade head`),
+  web `/` → 200, and `PUT /api/v1/fan/auto` + `POST /api/v1/fan/command` → **401** unauthenticated (direct + via the
+  Vercel rewrite, non-mutating — fan untouched). Did **not** drive the fan from the preview (proxies to prod). Ticked
+  `ARCHITECTURE.md` (§2 sync jobs + §7 checklist) and struck the Batch 27 row `Shipped` in `docs/phase-batches.md`.
+  Open first-live-use items: confirm the first overnight loop run from Railway logs, and a one-off authenticated
+  `POST /command` against the real fan (also tests token-resume #95). `DREO_USERNAME`/`DREO_PASSWORD` now set in Railway.
 - **2026-06-28** — **Batch 27.3 built (uncommitted): manual override + preferences + evening "Bedroom — Auto" surface
   (DECISIONS #97).** Master switch `Profile.fan_auto_enabled` (migration `010`, default true) gates `run_fan_control`
   (early-return when off, before any cloud call). New `routers/fan.py`: `PUT /api/v1/fan/auto` (preference) +
