@@ -216,9 +216,9 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('link', { name: /full morning brief/i }).getAttribute('href')).toBe('/brief');
     expect(screen.getByRole('link', { name: /baselines/i }).getAttribute('href')).toBe('/baselines');
     expect(screen.queryByText('After your ride')).toBeNull();
-    // Age comparison surfaces fitness age + the population read.
-    expect(screen.getByText('How you compare for your age')).toBeTruthy();
-    expect(screen.getByText(/9 years younger than your actual age/i)).toBeTruthy();
+    // The comparison table now lives inside the "Last night's sleep" card.
+    expect(screen.getByText("Last night's sleep")).toBeTruthy();
+    expect(screen.getByText('23 above')).toBeTruthy(); // VO₂max vs age-group average, age-only row
   });
 
   it('sends today’s ride to Zwift from Home', async () => {

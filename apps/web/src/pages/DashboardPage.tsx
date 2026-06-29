@@ -18,7 +18,8 @@ import {
 } from 'lucide-react';
 import { postRideCheckInInputSchema } from '@coach/shared';
 import { toast } from 'sonner';
-import { AgeComparisonCard, type AgeComparison } from '@/components/AgeComparisonCard';
+import { MetricComparisonTable, type AgeComparison } from '@/components/MetricComparisonTable';
+import { type MetricBaselineRow } from '@/components/MetricsBaselineTable';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -151,6 +152,7 @@ export function DashboardPage() {
   const daily = data!;
   const analysis = daily.morningAnalysis;
   const ageComparison = (analysis?.ageComparison ?? null) as AgeComparison | null;
+  const metricsVsBaselines = (analysis?.metricsVsBaselines ?? []) as MetricBaselineRow[];
   const sleep = daily.sleep;
   const thermal = daily.thermalState;
   const postWorkouts = daily.postWorkoutAnalyses ?? [];
@@ -186,12 +188,11 @@ export function DashboardPage() {
 
           <SleepSnapshotCard
             sleep={sleep}
-            analysisGeneratedAtUtc={analysis?.generatedAtUtc}
+            metricsVsBaselines={metricsVsBaselines}
+            ageComparison={ageComparison}
             morningBriefLink="/brief"
             baselinesLink="/baselines"
           />
-
-          {ageComparison && <AgeComparisonCard comparison={ageComparison} />}
 
           <WorkoutCard
             title="Today&apos;s ride"
@@ -248,12 +249,11 @@ export function DashboardPage() {
         <>
           <SleepSnapshotCard
             sleep={sleep}
-            analysisGeneratedAtUtc={analysis?.generatedAtUtc}
+            metricsVsBaselines={metricsVsBaselines}
+            ageComparison={ageComparison}
             morningBriefLink="/brief"
             baselinesLink="/baselines"
           />
-
-          {ageComparison && <AgeComparisonCard comparison={ageComparison} />}
 
           <WorkoutCard
             title="Today"
@@ -285,7 +285,8 @@ export function DashboardPage() {
 
 function SleepSnapshotCard({
   sleep,
-  analysisGeneratedAtUtc,
+  metricsVsBaselines,
+  ageComparison,
   morningBriefLink,
   baselinesLink,
 }: {
@@ -293,13 +294,9 @@ function SleepSnapshotCard({
     qualifier?: string | null;
     durationSec?: number | null;
     remSleepSec?: number | null;
-    ageAdjustedScore?: number | null;
-    score?: number | null;
-    deepSleepSec?: number | null;
-    averageSpo2Pct?: number | null;
-    restingHeartRateBpm?: number | null;
   } | null;
-  analysisGeneratedAtUtc?: string | null;
+  metricsVsBaselines: MetricBaselineRow[];
+  ageComparison: AgeComparison | null;
   morningBriefLink: string;
   baselinesLink: string;
 }) {
@@ -320,41 +317,21 @@ function SleepSnapshotCard({
           <CardDescription>No sleep data has synced for last night yet.</CardDescription>
         )}
       </CardHeader>
-      {sleep ? (
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-            <Stat
-              label="Score"
-              value={sleep.ageAdjustedScore ?? sleep.score ?? '—'}
-              hint={sleep.ageAdjustedScore ? 'age-adjusted' : undefined}
-            />
-            <Stat label="REM" value={hm(sleep.remSleepSec)} />
-            <Stat label="Deep" value={hm(sleep.deepSleepSec)} />
-            <Stat
-              label="SpO2"
-              value={
-                sleep.averageSpo2Pct !== null && sleep.averageSpo2Pct !== undefined
-                  ? `${sleep.averageSpo2Pct.toFixed(0)}%`
-                  : '—'
-              }
-            />
-            <Stat label="Resting HR" value={sleep.restingHeartRateBpm ?? '—'} />
-            <Stat label="Coach read" value={analysisGeneratedAtUtc ? formatDateTime(analysisGeneratedAtUtc) : 'Pending'} />
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <DetailLinkCard
-              to={morningBriefLink}
-              title="Full morning brief"
-              description="Open the complete coach read and verdict notes."
-            />
-            <DetailLinkCard
-              to={baselinesLink}
-              title="Baselines"
-              description="See the full metrics-vs-baselines table."
-            />
-          </div>
-        </CardContent>
-      ) : null}
+      <CardContent className="space-y-4">
+        <MetricComparisonTable rows={metricsVsBaselines} ageComparison={ageComparison} />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <DetailLinkCard
+            to={morningBriefLink}
+            title="Full morning brief"
+            description="Open the complete coach read and verdict notes."
+          />
+          <DetailLinkCard
+            to={baselinesLink}
+            title="Baselines"
+            description="See the full metrics-vs-baselines table."
+          />
+        </div>
+      </CardContent>
     </Card>
   );
 }
