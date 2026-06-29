@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import CurrentUser
 from src.database import get_db
-from src.models.coaching import WorkoutDeliveryProposal
+from src.models.coaching import PlannedWorkout, WorkoutDeliveryProposal
 from src.services.executable_coaching import ExecutableCoachingService
 from src.services.workout_delivery import WeekAheadEntry, WorkoutDeliveryService
 
@@ -80,6 +80,30 @@ class SameDayDeliveryBody(BaseModel):
     intensityScalePct: int | None = Field(default=None, ge=50, le=120)
 
 
+class SwapDayBody(BaseModel):
+    targetDate: date
+
+
+class PlannedWorkoutActionOut(BaseModel):
+    id: str
+    workoutDate: str
+    version: int
+    title: str
+    workoutType: str
+    status: str
+    isActive: bool
+
+
+class PlannedWorkoutActionData(BaseModel):
+    workout: PlannedWorkoutActionOut
+
+
+class PlannedWorkoutActionEnvelope(BaseModel):
+    data: PlannedWorkoutActionData
+    meta: ApiMeta
+    errors: list[ApiError]
+
+
 class WeekAheadWorkoutOut(BaseModel):
     plannedWorkoutId: str
     workoutDate: str
@@ -133,6 +157,24 @@ def _serialize(proposal: WorkoutDeliveryProposal) -> WorkoutDeliveryProposalOut:
 def _envelope(proposals: list[WorkoutDeliveryProposal]) -> WorkoutDeliveryEnvelope:
     return WorkoutDeliveryEnvelope(
         data=WorkoutDeliveryData(proposals=[_serialize(proposal) for proposal in proposals]),
+        meta=ApiMeta(generatedAtUtc=_generated_at()),
+        errors=[],
+    )
+
+
+def _planned_envelope(workout: PlannedWorkout) -> PlannedWorkoutActionEnvelope:
+    return PlannedWorkoutActionEnvelope(
+        data=PlannedWorkoutActionData(
+            workout=PlannedWorkoutActionOut(
+                id=str(workout.id),
+                workoutDate=workout.workout_date.isoformat(),
+                version=workout.version,
+                title=workout.title,
+                workoutType=workout.workout_type,
+                status=workout.status,
+                isActive=workout.is_active,
+            )
+        ),
         meta=ApiMeta(generatedAtUtc=_generated_at()),
         errors=[],
     )
@@ -217,6 +259,79 @@ async def send_workout_delivery_today(
         intensity_scale_pct=body.intensityScalePct,
     )
     return _envelope([proposal])
+
+
+@router.post(
+    "/planned-workouts/{planned_workout_id}/edit",
+    response_model=WorkoutDeliveryEnvelope,
+)
+async def edit_today_workout(
+    planned_workout_id: uuid.UUID,
+    body: SameDayDeliveryBody,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> WorkoutDeliveryEnvelope:
+    """Today card — Manual Edit: re-sync the live Zwift event with a scaled IR."""
+    service = ExecutableCoachingService(db)
+    proposal = await service.edit_today(
+        player,
+        planned_workout_id=planned_workout_id,
+        duration_scale_pct=body.durationScalePct,
+        intensity_scale_pct=body.intensityScalePct,
+    )
+    return _envelope([proposal])
+
+
+@router.post(
+    "/planned-workouts/{planned_workout_id}/approve-adjustment",
+    response_model=WorkoutDeliveryEnvelope,
+)
+async def approve_today_adjustment(
+    planned_workout_id: uuid.UUID,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> WorkoutDeliveryEnvelope:
+    """Today card — Approve & upload: replace the live event with the coach-adjusted
+    IR. Red-never-VO2 still gates this at the delivery boundary."""
+    service = ExecutableCoachingService(db)
+    proposal = await service.approve_adjustment(player, planned_workout_id=planned_workout_id)
+    return _envelope([proposal])
+
+
+@router.post(
+    "/planned-workouts/{planned_workout_id}/skip",
+    response_model=PlannedWorkoutActionEnvelope,
+)
+async def skip_today_workout(
+    planned_workout_id: uuid.UUID,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> PlannedWorkoutActionEnvelope:
+    """Today card — Skip: a ``planned → skipped`` transition plus a Zwift delete."""
+    service = ExecutableCoachingService(db)
+    workout = await service.skip_workout(player, planned_workout_id=planned_workout_id)
+    return _planned_envelope(workout)
+
+
+@router.post(
+    "/planned-workouts/{planned_workout_id}/swap",
+    response_model=PlannedWorkoutActionEnvelope,
+)
+async def swap_today_workout_day(
+    planned_workout_id: uuid.UUID,
+    body: SwapDayBody,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> PlannedWorkoutActionEnvelope:
+    """Today card — Swap day: unified move-or-swap to ``targetDate`` with the
+    affected Zwift events moved in place."""
+    service = ExecutableCoachingService(db)
+    workout = await service.swap_day(
+        player,
+        planned_workout_id=planned_workout_id,
+        target_date=body.targetDate,
+    )
+    return _planned_envelope(workout)
 
 
 @router.post("/proposals/{proposal_id}/approve", response_model=WorkoutDeliveryEnvelope)

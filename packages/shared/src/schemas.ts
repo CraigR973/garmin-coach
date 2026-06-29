@@ -330,6 +330,17 @@ export const plannedWorkoutOverrideInputSchema = z.object({
   source: z.string().min(1).nullable().optional(),
 });
 
+// Today-card actions (Batch 29). Edit reuses the same duration/intensity dials as
+// the same-day override; Swap day takes the target calendar date.
+export const todayCardEditInputSchema = z.object({
+  durationScalePct: z.number().int().min(50).max(125).nullable().optional(),
+  intensityScalePct: z.number().int().min(50).max(120).nullable().optional(),
+});
+
+export const todayCardSwapInputSchema = z.object({
+  targetDate: isoDateSchema,
+});
+
 export const dailyLoopWarningSchema = z.object({
   id: z.string().min(1),
   summary: z.string().min(1),
@@ -403,8 +414,19 @@ export const dailyLoopPostWorkoutAnalysisSchema = z.object({
   postRideCheckIn: manualEntrySchema.nullable().optional(),
 });
 
+export const dailyLoopDeliverySchema = z.object({
+  // The live Zwift event for the slot (push-on-plan-set delivers the baseline).
+  liveStatus: z.string().nullable(),
+  liveOrigin: z.string().nullable(),
+  intervalsEventId: z.string().nullable(),
+  // True when an un-acted coach adjustment is waiting → the card's "changes" state.
+  changed: z.boolean(),
+  adjustment: jsonObjectSchema.nullable(),
+});
+
 export const dailyLoopPlannedWorkoutSchema = plannedWorkoutSchema.extend({
   adherence: manualEntrySchema.nullable().optional(),
+  delivery: dailyLoopDeliverySchema.nullable().optional(),
 });
 
 export const dailyLoopFanSchema = z.object({

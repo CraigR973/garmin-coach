@@ -3,17 +3,20 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   Activity,
+  ArrowLeftRight,
   BedDouble,
   Bike,
+  Check,
   ChevronRight,
   ClipboardCheck,
   Dumbbell,
   Fan,
   MoonStar,
-  Send,
-  SlidersHorizontal,
+  Pencil,
   Thermometer,
+  Trash2,
   Wind,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 import { postRideCheckInInputSchema } from '@coach/shared';
@@ -31,10 +34,18 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { VerdictHero } from '@/components/VerdictHero';
 import { useAuth } from '@/contexts/AuthContext';
 import { isBikeWorkout, useDailyPhase } from '@/hooks/useDailyPhase';
-import { useDailyLoop } from '@/hooks/useDailyLoop';
+import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { apiFetch } from '@/lib/api';
-import { fanStatusText, formatDateTime, friendlyDate, hm, remContext, type FanState } from '@/lib/dailyFlow';
+import {
+  fanStatusText,
+  formatDateTime,
+  friendlyDate,
+  hm,
+  nextDays,
+  remContext,
+  type FanState,
+} from '@/lib/dailyFlow';
 import { greetingForNow, verdictLabel } from '@/lib/copy';
 
 const textareaClassName =
@@ -67,7 +78,13 @@ export function DashboardPage() {
   const greeting = `${greetingForNow()}${player ? `, ${player.displayName}` : ''}`;
   const data = query.data?.data;
   const phase = useDailyPhase(data);
-  const sameDayMutation = useMutation({
+  const invalidateLoop = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['daily-loop'] }),
+      queryClient.invalidateQueries({ queryKey: ['week-ahead'] }),
+    ]);
+  };
+  const editMutation = useMutation({
     mutationFn: ({
       workoutId,
       durationScalePct,
@@ -77,18 +94,51 @@ export function DashboardPage() {
       durationScalePct?: number;
       intensityScalePct?: number;
     }) =>
-      apiFetch(`/api/v1/workout-delivery/planned-workouts/${workoutId}/send-today`, {
+      apiFetch(`/api/v1/workout-delivery/planned-workouts/${workoutId}/edit`, {
         method: 'POST',
         body: JSON.stringify({ durationScalePct, intensityScalePct }),
       }),
     onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['daily-loop'] }),
-        queryClient.invalidateQueries({ queryKey: ['week-ahead'] }),
-      ]);
-      toast.success('Sent to Zwift');
+      await invalidateLoop();
+      toast.success('Updated and synced to Zwift');
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not send to Zwift'),
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Could not update the session'),
+  });
+  const approveMutation = useMutation({
+    mutationFn: ({ workoutId }: { workoutId: string }) =>
+      apiFetch(`/api/v1/workout-delivery/planned-workouts/${workoutId}/approve-adjustment`, {
+        method: 'POST',
+      }),
+    onSuccess: async () => {
+      await invalidateLoop();
+      toast.success("Coach's adjustment uploaded to Zwift");
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Could not approve the adjustment'),
+  });
+  const skipMutation = useMutation({
+    mutationFn: ({ workoutId }: { workoutId: string }) =>
+      apiFetch(`/api/v1/workout-delivery/planned-workouts/${workoutId}/skip`, { method: 'POST' }),
+    onSuccess: async () => {
+      await invalidateLoop();
+      toast.success('Session skipped');
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Could not skip the session'),
+  });
+  const swapMutation = useMutation({
+    mutationFn: ({ workoutId, targetDate }: { workoutId: string; targetDate: string }) =>
+      apiFetch(`/api/v1/workout-delivery/planned-workouts/${workoutId}/swap`, {
+        method: 'POST',
+        body: JSON.stringify({ targetDate }),
+      }),
+    onSuccess: async () => {
+      await invalidateLoop();
+      toast.success('Day swapped');
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Could not swap the day'),
   });
   const postRideCheckInMutation = useMutation({
     mutationFn: ({
@@ -157,8 +207,26 @@ export function DashboardPage() {
   const thermal = daily.thermalState;
   const postWorkouts = daily.postWorkoutAnalyses ?? [];
   const todaysWorkouts = daily.plannedWorkouts;
-  const bikeWorkouts = todaysWorkouts.filter((workout) => isBikeWorkout(workout.workoutType));
-  const strengthWorkouts = todaysWorkouts.filter((workout) => !isBikeWorkout(workout.workoutType));
+  // The Today card leads with one session (the bike one if there is one); the rest
+  // are listed read-only beneath it.
+  const primaryWorkout =
+    todaysWorkouts.find((workout) => isBikeWorkout(workout.workoutType)) ??
+    todaysWorkouts[0] ??
+    null;
+  const otherWorkouts = todaysWorkouts.filter((workout) => workout.id !== primaryWorkout?.id);
+  const actionsBusy =
+    editMutation.isPending ||
+    approveMutation.isPending ||
+    skipMutation.isPending ||
+    swapMutation.isPending;
+  const todayActions = {
+    busy: actionsBusy,
+    onEdit: (payload: { workoutId: string; durationScalePct?: number; intensityScalePct?: number }) =>
+      editMutation.mutate(payload),
+    onApprove: (payload: { workoutId: string }) => approveMutation.mutate(payload),
+    onSkip: (payload: { workoutId: string }) => skipMutation.mutate(payload),
+    onSwap: (payload: { workoutId: string; targetDate: string }) => swapMutation.mutate(payload),
+  };
 
   return (
     <div className="space-y-5">
@@ -194,28 +262,19 @@ export function DashboardPage() {
             baselinesLink="/baselines"
           />
 
-          <WorkoutCard
-            title="Today&apos;s ride"
-            description="The one thing to focus on now."
+          <TodayCard
+            workout={primaryWorkout}
             verdict={analysis?.verdict}
-            workouts={bikeWorkouts}
-            adjustments={analysis?.planAdjustments ?? []}
-            onSend={(payload) => sameDayMutation.mutate(payload)}
-            sendingWorkoutId={sameDayMutation.variables?.workoutId ?? null}
-            isSending={sameDayMutation.isPending}
-            emptyTitle="Nothing to ride today"
-            emptyCopy={
-              strengthWorkouts.length > 0
-                ? 'Today is a strength or non-bike day, so there is nothing to send to Zwift.'
-                : 'Today is a rest day.'
-            }
+            planAdjustments={analysis?.planAdjustments ?? []}
+            subjectDate={daily.subjectDate}
+            {...todayActions}
           />
 
-          {strengthWorkouts.length > 0 && (
+          {otherWorkouts.length > 0 && (
             <WorkoutListCard
               title="Also on today"
-              description="The non-bike work still on your slate."
-              workouts={strengthWorkouts}
+              description="The rest of your slate."
+              workouts={otherWorkouts}
             />
           )}
         </>
@@ -255,26 +314,13 @@ export function DashboardPage() {
             baselinesLink="/baselines"
           />
 
-          <WorkoutCard
-            title="Today"
-            description="A calm read of the day ahead."
+          <TodayCard
+            workout={primaryWorkout}
             verdict={analysis?.verdict}
-            workouts={bikeWorkouts}
-            adjustments={analysis?.planAdjustments ?? []}
-            onSend={(payload) => sameDayMutation.mutate(payload)}
-            sendingWorkoutId={sameDayMutation.variables?.workoutId ?? null}
-            isSending={sameDayMutation.isPending}
-            emptyTitle="Nothing to ride today"
-            emptyCopy="No bike session is scheduled today."
+            planAdjustments={analysis?.planAdjustments ?? []}
+            subjectDate={daily.subjectDate}
+            {...todayActions}
           />
-
-          {strengthWorkouts.length > 0 && (
-            <WorkoutListCard
-              title="Also on today"
-              description="The non-bike work still on your slate."
-              workouts={strengthWorkouts}
-            />
-          )}
 
           <BedroomSummaryCard thermal={thermal} />
         </>
@@ -336,181 +382,266 @@ function SleepSnapshotCard({
   );
 }
 
-function WorkoutCard({
-  title,
-  description,
+type TodayWorkout = DailyLoopData['plannedWorkouts'][number];
+
+function TodayCard({
+  workout,
   verdict,
-  workouts,
-  adjustments,
-  onSend,
-  sendingWorkoutId,
-  isSending,
-  emptyTitle,
-  emptyCopy,
+  planAdjustments = [],
+  subjectDate,
+  busy,
+  onEdit,
+  onApprove,
+  onSkip,
+  onSwap,
 }: {
-  title: string;
-  description: string;
-  verdict: string | null | undefined;
-  workouts: Array<{
-    id: string;
-    title: string;
-    workoutType: string;
-    plannedDurationMin?: number | null;
-    intensityTarget?: string | null;
-    adherence?: { adherenceStatus?: string | null } | null;
-  }>;
-  adjustments: string[];
-  onSend: (payload: {
+  workout: TodayWorkout | null;
+  verdict?: string | null;
+  planAdjustments?: string[];
+  subjectDate: string;
+  busy: boolean;
+  onEdit: (payload: {
     workoutId: string;
     durationScalePct?: number;
     intensityScalePct?: number;
   }) => void;
-  sendingWorkoutId: string | null;
-  isSending: boolean;
-  emptyTitle: string;
-  emptyCopy: string;
+  onApprove: (payload: { workoutId: string }) => void;
+  onSkip: (payload: { workoutId: string }) => void;
+  onSwap: (payload: { workoutId: string; targetDate: string }) => void;
 }) {
+  const [panel, setPanel] = useState<'none' | 'edit' | 'swap' | 'skip'>('none');
+  const [ignored, setIgnored] = useState(false);
+  const [durationScalePct, setDurationScalePct] = useState('100');
+  const [intensityScalePct, setIntensityScalePct] = useState('100');
+
+  if (!workout) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Today</CardTitle>
+          <CardDescription>A calm read of the day ahead.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-xl border border-dashed border-border px-4 py-4">
+            <p className="font-medium text-text-primary">Nothing planned today</p>
+            <p className="mt-1 text-sm text-text-secondary">
+              No session is scheduled — enjoy the rest day.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const Icon = workoutIcon(workout.workoutType);
+  const isBike = isBikeWorkout(workout.workoutType);
+  const delivery = workout.delivery ?? null;
+  const inZwift = Boolean(delivery?.intervalsEventId);
+  // The two-state split: a coach adjustment is waiting (bike only), unless Mark
+  // has dismissed it for this view (Ignore is a pure front-end dismiss — #99).
+  const hasPendingChange = Boolean(delivery?.changed) && isBike && !ignored;
+  const togglePanel = (next: 'edit' | 'swap' | 'skip') =>
+    setPanel((current) => (current === next ? 'none' : next));
+
+  let statusLine: string;
+  if (!isBike) {
+    statusLine = 'Non-bike session — nothing to upload to Zwift.';
+  } else if (hasPendingChange) {
+    statusLine = 'The coach adjusted today’s session off your sleep and recovery.';
+  } else if (inZwift) {
+    statusLine = 'Already in Zwift, ready to ride.';
+  } else {
+    statusLine = 'Not yet in Zwift.';
+  }
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2">
-          <span>{title}</span>
+          <span>Today&apos;s session</span>
           <Badge variant={verdictBadgeVariant(verdict)}>{verdictLabel(verdict)}</Badge>
         </CardTitle>
-        <CardDescription>{description}</CardDescription>
+        <CardDescription>The one thing to focus on now.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {workouts.length > 0 ? (
-          workouts.map((workout) => {
-            const Icon = workoutIcon(workout.workoutType);
-            return (
-              <div
-                key={workout.id}
-                className="rounded-xl border border-border bg-bg px-3 py-3"
-              >
-                <div className="flex items-center gap-3">
-                  <Icon className="h-5 w-5 shrink-0 text-primary" aria-hidden />
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-text-primary">{workout.title}</p>
-                    <p className="text-sm text-text-secondary">
-                      {prettyType(workout.workoutType)}
-                      {workout.plannedDurationMin ? ` · ${workout.plannedDurationMin} min` : ''}
-                      {workout.intensityTarget ? ` · ${workout.intensityTarget}` : ''}
-                    </p>
-                  </div>
-                  {workout.adherence?.adherenceStatus ? (
-                    <Badge variant="muted" className="shrink-0 capitalize">
-                      {workout.adherence.adherenceStatus}
-                    </Badge>
-                  ) : null}
-                </div>
-                <WorkoutDeliveryActions
-                  workoutId={workout.id}
-                  onSend={onSend}
-                  isSending={isSending && sendingWorkoutId === workout.id}
-                />
-              </div>
-            );
-          })
-        ) : (
-          <div className="rounded-xl border border-dashed border-border px-4 py-4">
-            <p className="font-medium text-text-primary">{emptyTitle}</p>
-            <p className="mt-1 text-sm text-text-secondary">{emptyCopy}</p>
+        <div className="rounded-xl border border-border bg-bg px-3 py-3">
+          <div className="flex items-center gap-3">
+            <Icon className="h-5 w-5 shrink-0 text-primary" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-text-primary">{workout.title}</p>
+              <p className="text-sm text-text-secondary">
+                {prettyType(workout.workoutType)}
+                {workout.plannedDurationMin ? ` · ${workout.plannedDurationMin} min` : ''}
+                {workout.intensityTarget ? ` · ${workout.intensityTarget}` : ''}
+              </p>
+            </div>
+            {workout.adherence?.adherenceStatus ? (
+              <Badge variant="muted" className="shrink-0 capitalize">
+                {workout.adherence.adherenceStatus}
+              </Badge>
+            ) : null}
           </div>
-        )}
+          <p className="mt-2 text-xs text-text-secondary">{statusLine}</p>
+        </div>
 
-        {adjustments.length > 0 && (
+        {hasPendingChange && planAdjustments.length > 0 && (
           <div className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-3 text-sm">
-            <p className="mb-1 font-medium text-warning">Today&apos;s adjustments</p>
+            <p className="mb-1 font-medium text-warning">Coach&apos;s suggested change</p>
             <ul className="ml-4 list-disc space-y-1 text-text-primary marker:text-warning">
-              {adjustments.map((item) => (
+              {planAdjustments.map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>
           </div>
         )}
-      </CardContent>
-    </Card>
-  );
-}
 
-function WorkoutDeliveryActions({
-  workoutId,
-  onSend,
-  isSending,
-}: {
-  workoutId: string;
-  onSend: (payload: {
-    workoutId: string;
-    durationScalePct?: number;
-    intensityScalePct?: number;
-  }) => void;
-  isSending: boolean;
-}) {
-  const [showOverride, setShowOverride] = useState(false);
-  const [durationScalePct, setDurationScalePct] = useState('100');
-  const [intensityScalePct, setIntensityScalePct] = useState('100');
-
-  function sendOverride() {
-    onSend({
-      workoutId,
-      durationScalePct: Number(durationScalePct),
-      intensityScalePct: Number(intensityScalePct),
-    });
-  }
-
-  return (
-    <div className="mt-3 space-y-3">
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" size="sm" onClick={() => onSend({ workoutId })} disabled={isSending}>
-          <Send className="h-4 w-4" aria-hidden />
-          {isSending ? 'Sending...' : 'Send to Zwift'}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => setShowOverride((value) => !value)}
-          aria-expanded={showOverride}
-        >
-          <SlidersHorizontal className="h-4 w-4" aria-hidden />
-          Override
-        </Button>
-      </div>
-      {showOverride ? (
-        <div className="grid gap-3 rounded-lg border border-border bg-surface-elevated/60 px-3 py-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-          <div className="space-y-1.5">
-            <Label htmlFor={`duration-${workoutId}`}>Duration</Label>
-            <Input
-              id={`duration-${workoutId}`}
-              type="number"
-              min={50}
-              max={125}
-              step={5}
-              value={durationScalePct}
-              onChange={(event) => setDurationScalePct(event.target.value)}
-              aria-label="Duration percentage"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor={`intensity-${workoutId}`}>Intensity</Label>
-            <Input
-              id={`intensity-${workoutId}`}
-              type="number"
-              min={50}
-              max={120}
-              step={5}
-              value={intensityScalePct}
-              onChange={(event) => setIntensityScalePct(event.target.value)}
-              aria-label="Intensity percentage"
-            />
-          </div>
-          <Button type="button" size="sm" onClick={sendOverride} disabled={isSending}>
-            {isSending ? 'Sending...' : 'Send override'}
+        <div className="flex flex-wrap gap-2">
+          {hasPendingChange && (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => onApprove({ workoutId: workout.id })}
+                disabled={busy}
+              >
+                <Check className="h-4 w-4" aria-hidden />
+                Approve &amp; upload
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setIgnored(true)}
+                disabled={busy}
+              >
+                <X className="h-4 w-4" aria-hidden />
+                Ignore
+              </Button>
+            </>
+          )}
+          {isBike && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => togglePanel('edit')}
+              aria-expanded={panel === 'edit'}
+            >
+              <Pencil className="h-4 w-4" aria-hidden />
+              {hasPendingChange ? 'Manual edit' : 'Edit'}
+            </Button>
+          )}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => togglePanel('swap')}
+            aria-expanded={panel === 'swap'}
+          >
+            <ArrowLeftRight className="h-4 w-4" aria-hidden />
+            Swap day
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => togglePanel('skip')}
+            aria-expanded={panel === 'skip'}
+          >
+            <Trash2 className="h-4 w-4" aria-hidden />
+            Skip
           </Button>
         </div>
-      ) : null}
-    </div>
+
+        {panel === 'edit' && (
+          <div className="grid gap-3 rounded-lg border border-border bg-surface-elevated/60 px-3 py-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+            <div className="space-y-1.5">
+              <Label htmlFor={`duration-${workout.id}`}>Duration %</Label>
+              <Input
+                id={`duration-${workout.id}`}
+                type="number"
+                min={50}
+                max={125}
+                step={5}
+                value={durationScalePct}
+                onChange={(event) => setDurationScalePct(event.target.value)}
+                aria-label="Duration percentage"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={`intensity-${workout.id}`}>Intensity %</Label>
+              <Input
+                id={`intensity-${workout.id}`}
+                type="number"
+                min={50}
+                max={120}
+                step={5}
+                value={intensityScalePct}
+                onChange={(event) => setIntensityScalePct(event.target.value)}
+                aria-label="Intensity percentage"
+              />
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              disabled={busy}
+              onClick={() =>
+                onEdit({
+                  workoutId: workout.id,
+                  durationScalePct: Number(durationScalePct),
+                  intensityScalePct: Number(intensityScalePct),
+                })
+              }
+            >
+              {busy ? 'Saving…' : 'Apply & sync'}
+            </Button>
+          </div>
+        )}
+
+        {panel === 'swap' && (
+          <div className="rounded-lg border border-border bg-surface-elevated/60 px-3 py-3">
+            <p className="mb-2 text-sm text-text-secondary">Move this session to:</p>
+            <div className="flex flex-wrap gap-2">
+              {nextDays(subjectDate, 7).map((day) => (
+                <Button
+                  key={day.iso}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => onSwap({ workoutId: workout.id, targetDate: day.iso })}
+                >
+                  {day.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {panel === 'skip' && (
+          <div className="rounded-lg border border-error/30 bg-error/10 px-3 py-3">
+            <p className="text-sm text-text-primary">
+              Skip this session?{' '}
+              {isBike && inZwift ? 'It will be removed from Zwift.' : 'It will be marked as skipped.'}
+            </p>
+            <div className="mt-2 flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                disabled={busy}
+                onClick={() => onSkip({ workoutId: workout.id })}
+              >
+                {busy ? 'Skipping…' : 'Confirm skip'}
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setPanel('none')}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

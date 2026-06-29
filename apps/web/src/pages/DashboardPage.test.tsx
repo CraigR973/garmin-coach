@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
@@ -181,6 +181,7 @@ function buildSnapshot(mutator?: (snapshot: DailyLoopEnvelope) => void) {
 }
 
 function renderPage(snapshot = baseSnapshot) {
+  apiFetchMock.mockClear(); // isolate each test's call history (negative assertions)
   apiFetchMock.mockImplementation((path: string) => {
     if (path === '/api/v1/daily-loop') {
       return Promise.resolve(snapshot);
@@ -205,14 +206,21 @@ function renderPage(snapshot = baseSnapshot) {
   );
 }
 
+const WORKOUT_ID = '55555555-5555-4555-8555-555555555555';
+
 describe('DashboardPage', () => {
-  it('renders the pre-ride flow with sleep snapshot, ride card, and detail links', async () => {
+  it('renders the pre-ride flow with sleep snapshot, today card, and detail links', async () => {
     onlineStatus = true;
     renderPage();
 
     expect((await screen.findAllByText('Good to go')).length).toBeGreaterThan(0);
-    expect(screen.getByText("Today's ride")).toBeTruthy();
+    expect(screen.getByText("Today's session")).toBeTruthy();
     expect(screen.getByText('Tempo ride')).toBeTruthy();
+    // No coach change → the no-changes state: Edit / Swap / Skip, no Approve.
+    expect(screen.getByRole('button', { name: /^edit$/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /swap day/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /skip/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /approve & upload/i })).toBeNull();
     expect(screen.getByRole('link', { name: /full morning brief/i }).getAttribute('href')).toBe('/brief');
     expect(screen.getByRole('link', { name: /baselines/i }).getAttribute('href')).toBe('/baselines');
     expect(screen.queryByText('After your ride')).toBeNull();
@@ -221,40 +229,143 @@ describe('DashboardPage', () => {
     expect(screen.getByText('23 above')).toBeTruthy(); // VO₂max vs age-group average, age-only row
   });
 
-  it('sends today’s ride to Zwift from Home', async () => {
+  it('edits today’s session with the duration and intensity dials', async () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(await screen.findByRole('button', { name: /send to zwift/i }));
-
-    await waitFor(() => {
-      expect(apiFetchMock).toHaveBeenCalledWith(
-        '/api/v1/workout-delivery/planned-workouts/55555555-5555-4555-8555-555555555555/send-today',
-        expect.objectContaining({ method: 'POST', body: '{}' }),
-      );
-    });
-  });
-
-  it('sends a manual override with duration and intensity dials', async () => {
-    const user = userEvent.setup();
-    renderPage();
-
-    await user.click(await screen.findByRole('button', { name: /override/i }));
+    await user.click(await screen.findByRole('button', { name: /^edit$/i }));
     await user.clear(screen.getByLabelText('Duration percentage'));
     await user.type(screen.getByLabelText('Duration percentage'), '80');
     await user.clear(screen.getByLabelText('Intensity percentage'));
     await user.type(screen.getByLabelText('Intensity percentage'), '90');
-    await user.click(screen.getByRole('button', { name: /send override/i }));
+    await user.click(screen.getByRole('button', { name: /apply & sync/i }));
 
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith(
-        '/api/v1/workout-delivery/planned-workouts/55555555-5555-4555-8555-555555555555/send-today',
+        `/api/v1/workout-delivery/planned-workouts/${WORKOUT_ID}/edit`,
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({ durationScalePct: 80, intensityScalePct: 90 }),
         }),
       );
     });
+  });
+
+  it('skips today’s session after confirming', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: /^skip$/i }));
+    await user.click(await screen.findByRole('button', { name: /confirm skip/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        `/api/v1/workout-delivery/planned-workouts/${WORKOUT_ID}/skip`,
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+  });
+
+  it('swaps the session to another day', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: /swap day/i }));
+    const hint = await screen.findByText('Move this session to:');
+    const dayButtons = within(hint.parentElement as HTMLElement).getAllByRole('button');
+    await user.click(dayButtons[0]); // first option = the day after subjectDate (2026-06-21)
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        `/api/v1/workout-delivery/planned-workouts/${WORKOUT_ID}/swap`,
+        expect.objectContaining({ method: 'POST', body: JSON.stringify({ targetDate: '2026-06-21' }) }),
+      );
+    });
+  });
+
+  it('shows the coach-changed state and approves the adjustment', async () => {
+    const user = userEvent.setup();
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.morningAnalysis!.verdict = 'amber';
+        snapshot.data.morningAnalysis!.planAdjustments = ['Cut it to 75% and drop the VO2 set.'];
+        snapshot.data.plannedWorkouts[0].delivery = {
+          liveStatus: 'pushed',
+          liveOrigin: 'as_planned',
+          intervalsEventId: 'evt_1',
+          changed: true,
+          adjustment: { verdict: 'Amber', changed: true },
+        };
+      }),
+    );
+
+    expect(await screen.findByText('Cut it to 75% and drop the VO2 set.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /manual edit/i })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /approve & upload/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        `/api/v1/workout-delivery/planned-workouts/${WORKOUT_ID}/approve-adjustment`,
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+  });
+
+  it('dismisses the coach suggestion with Ignore (no backend call)', async () => {
+    const user = userEvent.setup();
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.plannedWorkouts[0].delivery = {
+          liveStatus: 'pushed',
+          liveOrigin: 'as_planned',
+          intervalsEventId: 'evt_1',
+          changed: true,
+          adjustment: { verdict: 'Amber', changed: true },
+        };
+      }),
+    );
+
+    await user.click(await screen.findByRole('button', { name: /ignore/i }));
+
+    // Falls back to the no-changes state; Ignore never hits the backend.
+    expect(screen.queryByRole('button', { name: /approve & upload/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /^edit$/i })).toBeTruthy();
+    expect(apiFetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining('/approve-adjustment'),
+      expect.anything(),
+    );
+  });
+
+  it('leads with a non-bike session and offers no Zwift upload', async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.plannedWorkouts = [
+          {
+            id: '88888888-8888-4888-8888-888888888888',
+            userId: '11111111-1111-4111-8111-111111111111',
+            planBlockId: null,
+            workoutDate: '2026-06-20',
+            version: 1,
+            title: 'Strength routine',
+            workoutType: 'strength',
+            status: 'planned',
+            isActive: true,
+            plannedDurationMin: 30,
+            intensityTarget: null,
+            structuredWorkout: {},
+            source: 'seed',
+            adherence: null,
+          },
+        ];
+      }),
+    );
+
+    expect(await screen.findByText('Strength routine')).toBeTruthy();
+    expect(screen.getByText('Non-bike session — nothing to upload to Zwift.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /swap day/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^skip$/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^edit$/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /approve & upload/i })).toBeNull();
   });
 
   it('renders the post-ride flow when a ride analysis exists for today', async () => {
@@ -285,7 +396,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Bedroom')).toBeTruthy();
     expect(screen.getByText('Bedroom fan')).toBeTruthy();
     expect(screen.getByText('Auto · on at speed 5, responding to 20.1°C')).toBeTruthy();
-    expect(screen.queryByText("Today's ride")).toBeNull();
+    expect(screen.queryByText("Today's session")).toBeNull();
   });
 
   it('saves the post-ride check-in from the ride card', async () => {
@@ -334,32 +445,14 @@ describe('DashboardPage', () => {
     });
   });
 
-  it('renders a clean rest-day state when no bike ride is planned', async () => {
+  it('renders a clean rest-day state when nothing is planned', async () => {
     renderPage(
       buildSnapshot((snapshot) => {
-        snapshot.data.plannedWorkouts = [
-          {
-            id: '88888888-8888-4888-8888-888888888888',
-            userId: '11111111-1111-4111-8111-111111111111',
-            planBlockId: null,
-            workoutDate: '2026-06-20',
-            version: 1,
-            title: 'Strength routine',
-            workoutType: 'strength',
-            status: 'planned',
-            isActive: true,
-            plannedDurationMin: 30,
-            intensityTarget: null,
-            structuredWorkout: {},
-            source: 'seed',
-            adherence: null,
-          },
-        ];
+        snapshot.data.plannedWorkouts = [];
       }),
     );
 
-    expect(await screen.findByText('Nothing to ride today')).toBeTruthy();
-    expect(screen.getByText('Strength routine')).toBeTruthy();
+    expect(await screen.findByText('Nothing planned today')).toBeTruthy();
     expect(screen.queryByText('After your ride')).toBeNull();
   });
 
@@ -368,7 +461,7 @@ describe('DashboardPage', () => {
     renderPage();
 
     expect((await screen.findByRole('status')).textContent ?? '').toMatch(/showing your last saved brief/i);
-    expect(screen.getByText("Today's ride")).toBeTruthy();
+    expect(screen.getByText("Today's session")).toBeTruthy();
     onlineStatus = true;
   });
 });

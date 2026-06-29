@@ -19,9 +19,11 @@ from src.models.coaching import (
     Sleep,
     TemperatureReading,
     WeatherDaily,
+    WorkoutDeliveryProposal,
 )
 from src.models.profile import Profile
 from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
+from src.services.workout_delivery import STATUS_PROPOSED, STATUS_PUSHED
 
 ANALYSIS_TYPE_MORNING = "morning"
 ANALYSIS_TYPE_POST_WORKOUT = "post_workout"
@@ -48,6 +50,23 @@ def _activity_local_date(activity: Activity, timezone_name: str) -> date:
 
 
 @dataclass
+class DeliveryState:
+    """The Zwift-delivery state of a planned workout, for the Today card (Batch 29).
+
+    ``changed`` is the two-state split: True when an un-acted coach adjustment is
+    waiting (Approve & upload), False when the live session is the as-planned one
+    (Edit / Swap / Skip). The live-event fields describe what currently sits on
+    Zwift for the slot (push-on-plan-set means the baseline is already there).
+    """
+
+    live_status: str | None
+    live_origin: str | None
+    intervals_event_id: str | None
+    changed: bool
+    adjustment: dict[str, object] | None
+
+
+@dataclass
 class DailyLoopSnapshot:
     subject_date: date
     morning_analysis: Analysis | None
@@ -58,6 +77,7 @@ class DailyLoopSnapshot:
     post_ride_checkins: dict[uuid.UUID, ManualEntry]
     planned_workouts: list[PlannedWorkout]
     adherence_entries: dict[uuid.UUID, ManualEntry]
+    deliveries: dict[uuid.UUID, DeliveryState]
     latest_temperature: TemperatureReading | None
     weather: WeatherDaily | None
     data_quality_warnings: list[dict[str, str]]
@@ -84,6 +104,7 @@ class DailyLoopService:
         post_ride_checkins = await self._post_ride_checkins(player.id, target_date)
         planned_workouts = await self._planned_workouts(player.id, target_date)
         adherence_entries = await self._adherence_entries(player.id, target_date)
+        deliveries = await self._deliveries(player.id, planned_workouts)
         latest_temperature = await self._latest_temperature(player.id)
         weather = await self._weather(player.id, target_date)
         warnings = await self._data_quality_warnings(player.id, target_date, planned_workouts)
@@ -99,6 +120,7 @@ class DailyLoopService:
             post_ride_checkins=post_ride_checkins,
             planned_workouts=planned_workouts,
             adherence_entries=adherence_entries,
+            deliveries=deliveries,
             latest_temperature=latest_temperature,
             weather=weather,
             data_quality_warnings=warnings,
@@ -326,6 +348,76 @@ class DailyLoopService:
             .scalars()
             .all()
         )
+
+    async def _deliveries(
+        self, user_id: uuid.UUID, planned_workouts: list[PlannedWorkout]
+    ) -> dict[uuid.UUID, DeliveryState]:
+        """The Zwift-delivery state per planned workout, for the Today card.
+
+        ``live`` is resolved by *date* (the event sitting on the slot, robust to a
+        restructure re-versioning the row); ``pending`` is the latest un-acted
+        coach adjustment, which flips the card into its Approve & upload state.
+        """
+        states: dict[uuid.UUID, DeliveryState] = {}
+        for workout in planned_workouts:
+            live: WorkoutDeliveryProposal | None = await self.session.scalar(
+                select(WorkoutDeliveryProposal)
+                .where(
+                    WorkoutDeliveryProposal.user_id == user_id,
+                    WorkoutDeliveryProposal.workout_date == workout.workout_date,
+                    WorkoutDeliveryProposal.status == STATUS_PUSHED,
+                    WorkoutDeliveryProposal.intervals_event_id.is_not(None),
+                )
+                .order_by(WorkoutDeliveryProposal.created_at.desc())
+                .limit(1)
+            )
+            pending = await self._pending_adjustment(user_id, workout.id)
+            live_ir = (
+                live.structured_workout_ir
+                if live is not None and isinstance(live.structured_workout_ir, dict)
+                else {}
+            )
+            pending_adjustment = None
+            if pending is not None and isinstance(pending.structured_workout_ir, dict):
+                raw = pending.structured_workout_ir.get("adjustment")
+                pending_adjustment = raw if isinstance(raw, dict) else None
+            states[workout.id] = DeliveryState(
+                live_status=live.status if live is not None else None,
+                live_origin=live_ir.get("origin") if live is not None else None,
+                intervals_event_id=live.intervals_event_id if live is not None else None,
+                changed=pending is not None,
+                adjustment=pending_adjustment,
+            )
+        return states
+
+    async def _pending_adjustment(
+        self, user_id: uuid.UUID, planned_workout_id: uuid.UUID
+    ) -> WorkoutDeliveryProposal | None:
+        proposals = (
+            (
+                await self.session.execute(
+                    select(WorkoutDeliveryProposal)
+                    .where(
+                        WorkoutDeliveryProposal.user_id == user_id,
+                        WorkoutDeliveryProposal.planned_workout_id == planned_workout_id,
+                        WorkoutDeliveryProposal.status == STATUS_PROPOSED,
+                    )
+                    .order_by(WorkoutDeliveryProposal.created_at.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for proposal in proposals:
+            ir = (
+                proposal.structured_workout_ir
+                if isinstance(proposal.structured_workout_ir, dict)
+                else {}
+            )
+            adjustment = ir.get("adjustment")
+            if isinstance(adjustment, dict) and adjustment.get("changed"):
+                return proposal
+        return None
 
     async def _planned_workout(
         self,

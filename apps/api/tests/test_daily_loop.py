@@ -24,6 +24,40 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile, UserRole
+from src.services.executable_coaching import ExecutableCoachingService
+from src.services.workout_delivery import IntervalsCreateResult
+
+_BIKE_STRUCTURED = {
+    "format": "bike",
+    "steps": [
+        {"label": "Warm-up", "minutes": 15, "target": "easy spin"},
+        {
+            "label": "Main set",
+            "repeats": 3,
+            "pattern": "5x 30s on / 30s off",
+            "target": "105-110% FTP 95rpm",
+        },
+        {"label": "Cool-down", "minutes": 10, "target": "easy spin"},
+    ],
+}
+
+
+class _FakeIntervals:
+    """Minimal intervals.icu stand-in for exercising the delivery rail in tests."""
+
+    def __init__(self) -> None:
+        self._counter = 0
+
+    async def create_workout_event(self, payload: dict) -> IntervalsCreateResult:
+        self._counter += 1
+        event_id = f"evt_{self._counter}"
+        return IntervalsCreateResult(event_id=event_id, raw_response={"id": event_id})
+
+    async def update_workout_event(self, event_id: str, payload: dict) -> IntervalsCreateResult:
+        return IntervalsCreateResult(event_id=event_id, raw_response={"id": event_id})
+
+    async def delete_workout_event(self, event_id: str) -> None:
+        return None
 
 
 def _db_override(session_factory: async_sessionmaker[AsyncSession]):
@@ -508,3 +542,83 @@ async def test_post_ride_checkin_upsert_persists_against_activity(
     assert entry is not None
     assert entry.planned_workout_id is None
     assert entry.notes == "Left calf tight."
+
+
+@pytest.mark.asyncio
+async def test_get_daily_loop_exposes_delivery_state(db_conn: AsyncConnection) -> None:
+    """The Today card reads each planned workout's delivery state (Batch 29.4):
+    the live push-on-plan-set event plus the un-acted coach adjustment that flips
+    the card into its Approve & upload state."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 6, 24)
+    workout_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Delivery State Test",
+            pin_hash="x" * 60,
+            role=UserRole.player,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        session.add(
+            PlannedWorkout(
+                id=workout_id,
+                user_id=user_id,
+                workout_date=subject_date,
+                version=1,
+                title="VO2 Max 30/30",
+                workout_type="bike_vo2",
+                status="planned",
+                is_active=True,
+                planned_duration_min=60,
+                intensity_target="105-110% FTP",
+                structured_workout=_BIKE_STRUCTURED,
+                source="test",
+            )
+        )
+        await session.commit()
+
+    # Push-on-plan-set delivers the baseline; the morning then produces an Amber
+    # adjustment (proposed, not yet approved) — exactly the coach-changed state.
+    async with session_factory() as session:
+        player = await session.get(Profile, user_id)
+        assert player is not None
+        service = ExecutableCoachingService(session, intervals_client=_FakeIntervals())
+        await service.reconcile_deliveries(player, start_date=subject_date, end_date=subject_date)
+        amber = Analysis(
+            user_id=user_id,
+            analysis_type="morning",
+            subject_date=subject_date,
+            generated_at_utc=datetime(2026, 6, 24, 6, 30),
+            prompt_version="morning-v1",
+            verdict="Amber",
+            context_packet={"verdict": {"status": "Amber"}},
+            output_markdown="Amber",
+            raw_response={},
+        )
+        await service.regenerate_for_verdict(player, subject_date, analysis=amber)
+
+    app.dependency_overrides[get_current_user] = lambda: player
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get(
+                f"/api/v1/daily-loop?subject_date={subject_date.isoformat()}"
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    delivery = response.json()["data"]["plannedWorkouts"][0]["delivery"]
+    assert delivery is not None
+    # The as-planned baseline is already live on Zwift (delivered without approval).
+    assert delivery["liveStatus"] == "pushed"
+    assert delivery["liveOrigin"] == "as_planned"
+    assert delivery["intervalsEventId"] == "evt_1"
+    # A coach adjustment is waiting → the card shows Approve & upload.
+    assert delivery["changed"] is True
+    assert delivery["adjustment"]["verdict"] == "Amber"

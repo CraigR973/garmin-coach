@@ -6,13 +6,13 @@
 
 ## Now
 
-**Latest (2026-06-29): Batch 28 — age-comparison axis + merged last-night table — SHIPPED (PR #42, squash `0738c2a`), prod-verified.**
-Shows Mark how last night sits against both his own normal and the typical person his age — one glanceable table, no new Garmin call, no migration.
-`services/age_norms.py` encodes static sex×decade population norms for VO₂max / RHR / overnight HRV (privacy-safe). `build_age_comparison` classifies each metric direction-aware (a RHR below average reads green). Garmin fitness age is computed server-side but no longer surfaced as a banner — the merged-table design made a standalone headline redundant.
-`MetricComparisonTable` (4-col: Metric / Last night / vs your normal / vs your age) is embedded in the 'Last night's sleep' card; the REM/Deep/SpO₂ stat grid is dropped; the duration·quality headline + /brief + /baselines links are kept. `AgeComparisonCard` deleted. Frontend-only after the backend additions; `/baselines` detail route keeps `MetricsBaselineTable`.
-- **Prod verification (2026-06-29):** Railway `/api/v1/health` → `{"status":"ok","sha":"0738c2a…"}`, web `/` → 200, `/api/v1/daily-loop` → 401 (auth-gated, non-mutating). CI all green across ruff, mypy, pytest, alembic, security-audit, web build.
-- **Gotcha (snapshot, same as `metricsVsBaselines`):** `ageComparison` only appears on analyses generated *after* this deploys — today's already-generated analysis serves empty blocks and the table shows its "fills in as more nights sync" fallback until the next morning generation.
-- **Next step:** **Batch 29 — Today-card actions + push-on-plan-set delivery** is specced but **not started** (designed 2026-06-29 with Craig): see `docs/designs/today-card-actions.md`, DECISIONS #99, and the row in `docs/phase-batches.md`. Kick it off with `/batch-start`. It supersedes #91/#31 (delivery moves to push-when-plan-is-set; mornings become review-only). Optional smaller follow-up still open: red/green "vs your own normal" sleep-tile tinting.
+**Latest (2026-06-29): Batch 29 — Today-card actions + push-on-plan-set delivery — IMPLEMENTED on `feat/batch-29-today-card-actions`, not closeout-shipped.**
+The branch now has the full Batch 29 implementation:
+- **29.1/29.2 already committed:** push-on-plan-set delivery for block generation/restructure plus intervals.icu create/update/delete primitives (`create_event`, `replace_event`, `move_event`, `delete_event`) using true update-in-place for replace/move and honest failure handling (#97).
+- **29.3/29.4 now implemented:** `/api/v1/daily-loop` exposes per-workout delivery state (`changed`, live event id/status/origin, pending adjustment), and the Home Today card is the single action surface. No-changes state shows Edit / Swap day / Skip; coach-changed state adds Approve & upload / Ignore / Manual edit; non-bike sessions lead the card with no Zwift upload; rest day only means no planned workout.
+- **Action routes:** `POST /api/v1/workout-delivery/planned-workouts/{id}/edit`, `/approve-adjustment`, `/swap`, `/skip`. Edit/Approve replace the live Zwift event; Swap is unified move-or-swap; Skip is mark-only local status after Zwift delete; Ignore is client-only dismiss.
+- **Verification (2026-06-29, local):** backend ruff clean; backend mypy clean with API config; backend pytest `347 passed, 113 skipped` (existing notification async-mock warnings); shared typecheck + 7 tests; web build; web lint 0 errors / 5 pre-existing fast-refresh warnings; web tests `51 passed`.
+- **Next step:** review this branch, then run `/phase-closeout 29` only when ready to merge/deploy/document as shipped. Do not treat this as prod-verified yet.
 
 ---
 
@@ -302,6 +302,14 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-29** — Continued **Batch 29 — Today-card actions + push-on-plan-set delivery** on
+  `feat/batch-29-today-card-actions` after 29.1/29.2 were already committed. Completed the Today-card action layer:
+  daily-loop delivery state, API action routes for Edit / Approve adjustment / Swap / Skip, universal Home card
+  across bike and non-bike days, client-only Ignore, and dashboard/shared schema tests. Updated the handoff docs to
+  mark the batch implemented on branch but **not closeout-shipped**. Verification: backend ruff clean; backend mypy
+  clean with API config; full backend pytest `347 passed, 113 skipped` (existing notification async-mock warnings);
+  shared typecheck + 7 tests; web lint 0 errors / 5 pre-existing fast-refresh warnings; web tests `51 passed`; web
+  build (`tsc && vite build`) green.
 - **2026-06-29** — **Closed out Batch 28 — age-comparison axis + merged last-night table (PR #42, squash `0738c2a`).** Pushed `feat/age-comparison` (initial backend batch commit + table-consolidation refactor + ruff format fix), watched CI go green across all 6 jobs (ruff, mypy, pytest, alembic, security-audit, web build), squash-merged to `main`. Railway + Vercel auto-deployed; **prod verified**: `/api/v1/health` → `sha=0738c2a`, web `/` → 200, `/api/v1/daily-loop` → 401 (auth-gated, non-mutating). Ticked `ARCHITECTURE.md` §7 and struck the Batch 28 row `Shipped` in `docs/phase-batches.md`. DECISIONS #98.
 - **2026-06-28** — **Merged the age-comparison and own-baseline reads into one Home table** (DECISIONS #98 refinement,
   on `feat/age-comparison`). New bare `MetricComparisonTable` (4-col Metric / Last night / vs your normal / vs your age —
