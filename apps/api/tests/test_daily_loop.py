@@ -564,6 +564,7 @@ async def test_get_daily_loop_exposes_delivery_state(db_conn: AsyncConnection) -
             is_active=True,
         )
         session.add(player)
+        await session.flush()
         session.add(
             PlannedWorkout(
                 id=workout_id,
