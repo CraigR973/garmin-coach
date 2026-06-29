@@ -12,7 +12,7 @@ Shows Mark how last night sits against both his own normal and the typical perso
 `MetricComparisonTable` (4-col: Metric / Last night / vs your normal / vs your age) is embedded in the 'Last night's sleep' card; the REM/Deep/SpO₂ stat grid is dropped; the duration·quality headline + /brief + /baselines links are kept. `AgeComparisonCard` deleted. Frontend-only after the backend additions; `/baselines` detail route keeps `MetricsBaselineTable`.
 - **Prod verification (2026-06-29):** Railway `/api/v1/health` → `{"status":"ok","sha":"0738c2a…"}`, web `/` → 200, `/api/v1/daily-loop` → 401 (auth-gated, non-mutating). CI all green across ruff, mypy, pytest, alembic, security-audit, web build.
 - **Gotcha (snapshot, same as `metricsVsBaselines`):** `ageComparison` only appears on analyses generated *after* this deploys — today's already-generated analysis serves empty blocks and the table shows its "fills in as more nights sync" fallback until the next morning generation.
-- **Next step:** no remaining planned batch. Optional follow-up: red/green "vs your own normal" sleep-tile tinting (smaller, since the merged table already shows the per-metric comparison).
+- **Next step:** **Batch 29 — Today-card actions + push-on-plan-set delivery** is specced but **not started** (designed 2026-06-29 with Craig): see `docs/designs/today-card-actions.md`, DECISIONS #99, and the row in `docs/phase-batches.md`. Kick it off with `/batch-start`. It supersedes #91/#31 (delivery moves to push-when-plan-is-set; mornings become review-only). Optional smaller follow-up still open: red/green "vs your own normal" sleep-tile tinting.
 
 ---
 
