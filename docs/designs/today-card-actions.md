@@ -1,8 +1,8 @@
 # Design: Today-card actions + push-on-plan-set delivery (Batch 29)
 
-**Status:** Implemented on branch `feat/batch-29-today-card-actions`
-(2026-06-29), not closeout-shipped. Every open fork below was **settled** in
-the 2026-06-29 design session with Craig. Builds on Batch 24 (time-aware Home),
+**Status:** Shipped in PR #44 (squash `8b5a71e`, 2026-06-29). Every open fork
+below was **settled** in the 2026-06-29 design session with Craig. Builds on
+Batch 24 (time-aware Home),
 Batch 25 (same-day delivery + manual override, `services/executable_coaching.py`),
 and the Batch 12 intervals.icu delivery rail.
 **Related:** `DECISIONS.md` #29/#30 (propose→approve→push; verdict-adjusted IR),

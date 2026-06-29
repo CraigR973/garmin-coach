@@ -34,7 +34,7 @@ Spikes live in `~/garmin-spike/` (outside this repo). Raw sample JSON in `~/garm
 
 ### Workout delivery — OUTPUT (validated 19 Jun 26)
 
-Push direction only — *not* a data source (ingestion stays direct-from-Garmin). The app emits a structured workout → POST to his **intervals.icu** calendar (free API; athlete `i618709`) → intervals.icu's approved Zwift Training-Connections integration delivers it into Zwift's Custom Workouts automatically. **Power + timing proven exact** end-to-end. intervals.icu is a **delivery rail, NOT the system-of-record** (our DB owns the plan). Deterministic **`.ZWO` export** is the no-dependency fallback. Any write to his trainer is **propose → approve → push**, never silent. Cadence nuance: Zwift overrides cadence on repeated-interval blocks with defaults (100/90) — emit cadence-critical reps as individual steps (confirm on PC). Spike: `~/garmin-spike/intervals_spike.py`.
+Push direction only — *not* a data source (ingestion stays direct-from-Garmin). The app emits a structured workout → POST to his **intervals.icu** calendar (free API; athlete `i618709`) → intervals.icu's approved Zwift Training-Connections integration delivers it into Zwift's Custom Workouts automatically. **Power + timing proven exact** end-to-end. intervals.icu is a **delivery rail, NOT the system-of-record** (our DB owns the plan). Deterministic **`.ZWO` export** is the no-dependency fallback. Since Batch 29, the as-planned baseline is pushed when the plan is set; human approval gates only the morning sleep/recovery adjustment. Cadence nuance: Zwift overrides cadence on repeated-interval blocks with defaults (100/90) — emit cadence-critical reps as individual steps (confirm on PC). Spike: `~/garmin-spike/intervals_spike.py`.
 
 Batch 12 stores delivery state separately from the plan in
 `workout_delivery_proposals`: each proposal snapshots the `planned_workouts`
@@ -44,17 +44,19 @@ environment variables (`INTERVALS_API_KEY`, `INTERVALS_ATHLETE_ID`) and the app
 never ingests activity data from intervals.icu.
 
 Batch 13 makes the rail *executable* (`services/executable_coaching.py`): on an
-Amber morning verdict the 06:30 job regenerates today's bike workout into an
-adjusted proposal (deterministic IR transform — cut duration 20-30%, drop a
-zone, remove HIT; Red can never emit VO2), the human approves it on the
-`/delivery` week-ahead PWA page, and shipped Batch 25 (PR #38) adds the same-day Home action:
-accept the verdict-adjusted session or apply manual duration/intensity dials,
-then approve and push today's workout immediately via the same intervals.icu
-rail. The `workout_autopush` job is now a same-day safety net for approved
-proposals due today, not a couple-days-ahead staging mechanism (DECISIONS #91).
-Proposal/push provenance lives in the IR snapshot and every step is audited in
-`analyses` (`workout_proposed` / `workout_pushed`), so no schema change was
-needed.
+Amber morning verdict the job regenerates today's bike workout into an adjusted
+proposal (deterministic IR transform — cut duration 20-30%, drop a zone, remove
+HIT; Red can never emit VO2), with proposal/push provenance in the IR snapshot
+and `analyses` audit rows (`workout_proposed` / `workout_pushed`).
+
+Batch 29 (PR #44, DECISIONS #99) changes the delivery timing: block generation
+and weekly restructure now reconcile the as-planned baseline to Zwift when the
+plan is set, without per-workout approval. Mornings are review-only unless the
+coach changed the workout from sleep/recovery; the Home Today card then lets Mark
+Approve & upload the adjusted IR, Ignore it, Manual edit, Swap day, or Skip.
+The delivery rail gained idempotent `replace_event`, `move_event`, and
+`delete_event` operations keyed to the planned workout/version, with cloud-first
+failure handling so local state does not claim a Zwift mutation that failed.
 
 Batch 14 makes the *week* adaptive (`services/weekly_restructure.py`): a
 deterministic permutation engine reorders the week's bike sessions so VO2 and
@@ -62,9 +64,9 @@ Sweet-Spot are never on the same/adjacent days (hard rule), and, when a recovery
 signal (readiness / HRV / morning-verdict trend) shows fatigue, defers hard
 sessions later in the week. Applying a restructure versions the changed
 `planned_workouts` days, audits it in `analyses` (`weekly_restructure`), and
-proposes the changed bike workouts through the same rail — reaching Zwift only on
-approval. It is human-triggered via `GET/POST /api/v1/restructure/*`, not the
-scheduler. The VO2 progression (incl. Rønnestad 30/15 from ~Wk7, ERG off) is a
+reconciles changed bike workouts through the Batch 29 push-on-plan-set rail. It
+is human-triggered via `GET/POST /api/v1/restructure/*`, not the scheduler. The
+VO2 progression (incl. Rønnestad 30/15 from ~Wk7, ERG off) is a
 shared `services/vo2_progression.py` toolkit used by both the plan seed and the
 restructurer. No new migration.
 
@@ -76,9 +78,9 @@ progression. The draft is a **refine-then-lock** workflow (Decision #16): it liv
 as JSONB in `knowledge_base` at `section='generated_block'`, each generate/refine/
 lock versions the row, and only `lock` writes the owned plan — versioning
 `plan_blocks` + active `planned_workouts` so the block feeds the daily loop and
-delivers via the Zwift rail under the existing approve → push gate. Human-driven
-via `GET/POST /api/v1/block-generator/*` with a `/builder` PWA page; `generate`
-refuses to clobber an unlocked draft so refinements are never silently lost
+delivers the as-planned baseline through the Batch 29 push-on-plan-set rail.
+Human-driven via `GET/POST /api/v1/block-generator/*` with a `/builder` PWA page;
+`generate` refuses to clobber an unlocked draft so refinements are never silently lost
 (DECISIONS #69). No new migration.
 
 Batch 17 turns the accumulated history into proactive insight

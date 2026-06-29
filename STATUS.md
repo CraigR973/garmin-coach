@@ -6,13 +6,14 @@
 
 ## Now
 
-**Latest (2026-06-29): Batch 29 — Today-card actions + push-on-plan-set delivery — IMPLEMENTED on `feat/batch-29-today-card-actions`, not closeout-shipped.**
-The branch now has the full Batch 29 implementation:
-- **29.1/29.2 already committed:** push-on-plan-set delivery for block generation/restructure plus intervals.icu create/update/delete primitives (`create_event`, `replace_event`, `move_event`, `delete_event`) using true update-in-place for replace/move and honest failure handling (#97).
-- **29.3/29.4 now implemented:** `/api/v1/daily-loop` exposes per-workout delivery state (`changed`, live event id/status/origin, pending adjustment), and the Home Today card is the single action surface. No-changes state shows Edit / Swap day / Skip; coach-changed state adds Approve & upload / Ignore / Manual edit; non-bike sessions lead the card with no Zwift upload; rest day only means no planned workout.
-- **Action routes:** `POST /api/v1/workout-delivery/planned-workouts/{id}/edit`, `/approve-adjustment`, `/swap`, `/skip`. Edit/Approve replace the live Zwift event; Swap is unified move-or-swap; Skip is mark-only local status after Zwift delete; Ignore is client-only dismiss.
-- **Verification (2026-06-29, local):** backend ruff clean; backend mypy clean with API config; backend pytest `347 passed, 113 skipped` (existing notification async-mock warnings); shared typecheck + 7 tests; web build; web lint 0 errors / 5 pre-existing fast-refresh warnings; web tests `51 passed`.
-- **Next step:** review this branch, then run `/phase-closeout 29` only when ready to merge/deploy/document as shipped. Do not treat this as prod-verified yet.
+**Latest (2026-06-29): Batch 29 — Today-card actions + push-on-plan-set delivery — SHIPPED (PR #44, squash `8b5a71e`), prod-verified.**
+The Home Today card is now the one action surface for Mark's day, and delivery has moved to push-on-plan-set:
+- **Delivery timing:** block generation and weekly restructure deliver the as-planned baseline to Zwift when the plan is set, without per-workout approval (DECISIONS #99). Morning approval now gates only a sleep/recovery adjustment.
+- **Rail operations:** intervals.icu delivery supports create, replace, move, and delete (`create_event`, `replace_event`, `move_event`, `delete_event`) using true update-in-place for replace/move and honest failure handling (#97).
+- **Today card:** `/api/v1/daily-loop` exposes per-workout delivery state (`changed`, live event id/status/origin, pending adjustment). No-changes state shows Edit / Swap day / Skip; coach-changed state adds Approve & upload / Ignore / Manual edit; non-bike sessions lead the card with no Zwift upload; rest day only means no planned workout.
+- **Action routes:** `POST /api/v1/workout-delivery/planned-workouts/{id}/edit`, `/approve-adjustment`, `/swap`, `/skip`. Edit/Approve replace the live event; Swap is unified move-or-swap; Skip is mark-only local status after Zwift delete; Ignore is client-only dismiss.
+- **Verification (2026-06-29):** PR #44 and `main` CI green across ruff, mypy, pytest, Alembic migration check, security audit, and web build. Production on implementation SHA `8b5a71e`: Railway `/api/v1/health` and Vercel same-origin `/api/v1/health` both returned `sha=8b5a71e…`, web `/` returned 200, and the new action routes returned 401 unauthenticated (non-mutating auth-gated smoke; direct Railway + Vercel rewrite).
+- **Next step:** no planned next batch is currently queued. Optional open follow-ups remain: observe a real Zwift replace/move propagation on first live use, and the smaller red/green "vs your own normal" sleep-tile tinting polish.
 
 ---
 
@@ -302,6 +303,14 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-29** — **Closed out Batch 29 — Today-card actions + push-on-plan-set delivery (PR #44, squash `8b5a71e`).**
+  Pushed `feat/batch-29-today-card-actions`, opened PR #44, fixed the CI-only FK-ordering failure in the new
+  daily-loop delivery-state test (`await session.flush()` after `Profile`), watched PR checks go green, then
+  squash-merged to `main`. `main` CI run `28397005091` passed ruff, mypy, pytest, Alembic migration check,
+  security audit, and web build. Production verified on implementation SHA `8b5a71e`: Railway `/api/v1/health`
+  and Vercel same-origin `/api/v1/health` both returned that SHA; web `/` returned 200; new action routes
+  `/edit`, `/approve-adjustment`, `/swap`, and `/skip` returned unauthenticated 401 without mutating data.
+  Updated `ARCHITECTURE.md` §2/§7 and struck the Batch 29 row `Shipped` in `docs/phase-batches.md`.
 - **2026-06-29** — Continued **Batch 29 — Today-card actions + push-on-plan-set delivery** on
   `feat/batch-29-today-card-actions` after 29.1/29.2 were already committed. Completed the Today-card action layer:
   daily-loop delivery state, API action routes for Edit / Approve adjustment / Swap / Skip, universal Home card
