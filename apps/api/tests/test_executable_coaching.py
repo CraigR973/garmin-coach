@@ -13,9 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 from src.models.coaching import Analysis, PlannedWorkout, WorkoutDeliveryProposal
 from src.models.profile import Profile, UserRole
 from src.services.executable_coaching import (
+    AUDIT_TYPE_DELIVERED,
     AUDIT_TYPE_PROPOSED,
     AUDIT_TYPE_PUSH_BLOCKED,
     AUDIT_TYPE_PUSHED,
+    AUDIT_TYPE_REPLACED,
     HIT_FLOOR_PCT,
     RECOVERY_CAP_PCT,
     ExecutableCoachingService,
@@ -172,12 +174,27 @@ def test_manual_override_scales_duration_and_intensity() -> None:
 
 
 class _FakeIntervalsClient:
-    def __init__(self) -> None:
+    def __init__(self, *, fail_create: bool = False) -> None:
         self.payloads: list[dict] = []
+        self.updates: list[tuple[str, dict]] = []
+        self.deletes: list[str] = []
+        self.fail_create = fail_create
+        self._counter = 122  # so the first created event id is the legacy "evt_123"
 
     async def create_workout_event(self, payload: dict) -> IntervalsCreateResult:
+        if self.fail_create:
+            raise HTTPException(status_code=503, detail="intervals.icu API key is not configured")
         self.payloads.append(payload)
-        return IntervalsCreateResult(event_id="evt_123", raw_response={"id": "evt_123"})
+        self._counter += 1
+        event_id = f"evt_{self._counter}"
+        return IntervalsCreateResult(event_id=event_id, raw_response={"id": event_id})
+
+    async def update_workout_event(self, event_id: str, payload: dict) -> IntervalsCreateResult:
+        self.updates.append((event_id, payload))
+        return IntervalsCreateResult(event_id=event_id, raw_response={"id": event_id})
+
+    async def delete_workout_event(self, event_id: str) -> None:
+        self.deletes.append(event_id)
 
 
 def _amber_analysis(user_id: uuid.UUID, subject_date: date) -> Analysis:
@@ -721,3 +738,193 @@ async def test_regenerate_for_verdict_creates_red_substitution(db_conn: AsyncCon
         assert len(audits) == 1
         assert audits[0].context_packet["tag"] == f"red-regen:{workout_id}:v1"
         assert audits[0].verdict == "Red"
+
+
+# ---------------------------------------------------------------------------
+# Batch 29 — push-on-plan-set reconciliation
+# ---------------------------------------------------------------------------
+
+
+async def _seed_bike(
+    db_conn: AsyncConnection,
+    user_id: uuid.UUID,
+    workout_id: uuid.UUID,
+    *,
+    workout_date: date,
+    version: int = 1,
+) -> None:
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        if await session.get(Profile, user_id) is None:
+            session.add(
+                Profile(
+                    id=user_id,
+                    display_name=f"Reconcile {user_id.hex[:6]}",
+                    pin_hash="x" * 60,
+                    role=UserRole.admin,
+                    timezone="Europe/London",
+                    is_active=True,
+                )
+            )
+            await session.flush()
+        session.add(
+            PlannedWorkout(
+                id=workout_id,
+                user_id=user_id,
+                workout_date=workout_date,
+                version=version,
+                title="VO2 Max 30/30",
+                workout_type="bike_vo2",
+                status="planned",
+                is_active=True,
+                planned_duration_min=60,
+                intensity_target="105-110% FTP",
+                structured_workout=VO2_STRUCTURED,
+                source="test",
+            )
+        )
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_reconcile_delivers_baseline_without_approval_and_is_idempotent(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id, workout_id = uuid.uuid4(), uuid.uuid4()
+    await _seed_bike(db_conn, user_id, workout_id, workout_date=date(2026, 7, 1))
+    fake = _FakeIntervalsClient()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session, intervals_client=fake)
+
+        delivered = await service.reconcile_deliveries(
+            user, start_date=date(2026, 7, 1), end_date=date(2026, 7, 1)
+        )
+
+        assert len(delivered) == 1
+        proposal = delivered[0]
+        # Baseline reaches Zwift without any approval step (Decision #99 reversal).
+        assert proposal.status == "pushed"
+        assert proposal.approved_at_utc is None
+        assert proposal.intervals_event_id == "evt_123"
+        assert len(fake.payloads) == 1
+
+        audits = (
+            (
+                await session.execute(
+                    select(Analysis).where(Analysis.analysis_type == AUDIT_TYPE_DELIVERED)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(audits) == 1
+
+        # Re-running the pass is a no-op: same version already on Zwift.
+        again = await service.reconcile_deliveries(
+            user, start_date=date(2026, 7, 1), end_date=date(2026, 7, 1)
+        )
+        assert again == []
+        assert len(fake.payloads) == 1  # no duplicate create
+        assert fake.updates == []
+
+
+@pytest.mark.asyncio
+async def test_reconcile_replaces_event_when_slot_is_reversioned(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id, v1_id = uuid.uuid4(), uuid.uuid4()
+    await _seed_bike(db_conn, user_id, v1_id, workout_date=date(2026, 7, 2), version=1)
+    fake = _FakeIntervalsClient()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session, intervals_client=fake)
+
+        # Deliver the v1 baseline.
+        await service.reconcile_deliveries(
+            user, start_date=date(2026, 7, 2), end_date=date(2026, 7, 2)
+        )
+        event_id = (await service.rail.latest_delivered_for_date(user_id, date(2026, 7, 2)))
+        assert event_id is not None
+        live_event_id = event_id.intervals_event_id
+
+        # A restructure-style re-version: deactivate v1, add an active v2 same date.
+        v1 = await session.get(PlannedWorkout, v1_id)
+        assert v1 is not None
+        v1.is_active = False
+        session.add(
+            PlannedWorkout(
+                id=uuid.uuid4(),
+                user_id=user_id,
+                workout_date=date(2026, 7, 2),
+                version=2,
+                title="Sweet Spot Builder",
+                workout_type="bike_sweet_spot",
+                status="planned",
+                is_active=True,
+                planned_duration_min=75,
+                intensity_target="88-94% FTP",
+                structured_workout=SWEET_SPOT_STRUCTURED,
+                source="weekly_restructure",
+            )
+        )
+        await session.commit()
+
+        delivered = await service.reconcile_deliveries(
+            user, start_date=date(2026, 7, 2), end_date=date(2026, 7, 2)
+        )
+
+        assert len(delivered) == 1
+        # Updated in place — same event id, no second create.
+        assert [eid for eid, _ in fake.updates] == [live_event_id]
+        assert len(fake.payloads) == 1
+        assert delivered[0].planned_workout_version == 2
+        replaced_audits = (
+            (
+                await session.execute(
+                    select(Analysis).where(Analysis.analysis_type == AUDIT_TYPE_REPLACED)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(replaced_audits) == 1
+
+
+@pytest.mark.asyncio
+async def test_reconcile_isolates_a_delivery_failure(db_conn: AsyncConnection) -> None:
+    user_id, workout_id = uuid.uuid4(), uuid.uuid4()
+    await _seed_bike(db_conn, user_id, workout_id, workout_date=date(2026, 7, 3))
+    fake = _FakeIntervalsClient(fail_create=True)
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session, intervals_client=fake)
+
+        # A cloud failure must not raise out of the pass (block lock must survive).
+        delivered = await service.reconcile_deliveries(
+            user, start_date=date(2026, 7, 3), end_date=date(2026, 7, 3)
+        )
+        assert delivered == []
+
+    # The failure is honestly recorded (Decision #97): a failed proposal, no event.
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        rows = (
+            (
+                await session.execute(
+                    select(WorkoutDeliveryProposal).where(
+                        WorkoutDeliveryProposal.user_id == user_id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 1
+        assert rows[0].status == "failed"
+        assert rows[0].intervals_event_id is None
+        assert rows[0].last_error is not None

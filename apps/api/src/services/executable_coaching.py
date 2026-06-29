@@ -48,6 +48,12 @@ PROMPT_VERSION = "executable-coaching:v1"
 AUDIT_TYPE_PROPOSED = "workout_proposed"
 AUDIT_TYPE_PUSHED = "workout_pushed"
 AUDIT_TYPE_PUSH_BLOCKED = "workout_push_blocked"
+# Batch 29 push-on-plan-set + Today-card action audit types (analyses rows).
+AUDIT_TYPE_DELIVERED = "workout_delivered"
+AUDIT_TYPE_REPLACED = "workout_replaced"
+AUDIT_TYPE_MOVED = "workout_moved"
+AUDIT_TYPE_SKIPPED = "workout_skipped"
+WORKOUT_STATUS_SKIPPED = "skipped"
 DEFAULT_LEAD_DAYS = 0
 
 # Verdict-driven adjustment knobs (percentage points of FTP unless noted).
@@ -464,6 +470,115 @@ class ExecutableCoachingService:
             await self.session.refresh(pushed)
         return pushed
 
+    async def reconcile_deliveries(
+        self,
+        player: Profile,
+        *,
+        start_date: date,
+        end_date: date,
+    ) -> list[WorkoutDeliveryProposal]:
+        """Push-on-plan-set: ensure every active bike workout in the window has a
+        live Zwift event matching its current content (Decision #99).
+
+        The as-planned baseline is delivered **without a per-workout approval** — a
+        deliberate reversal of #29/#30 for the baseline; approval now gates only
+        the morning adjustment (the Today card's Approve & upload). Each workout is
+        reconciled in isolation so one delivery failure (e.g. a missing
+        intervals.icu key → 503) never blocks the rest, and the pass is idempotent:
+        a slot already carrying its current version is a no-op.
+        """
+        delivered: list[WorkoutDeliveryProposal] = []
+        for workout in await self._active_bike_workouts_in_range(player.id, start_date, end_date):
+            try:
+                result = await self._deliver_one(player, workout)
+            except HTTPException:
+                continue  # isolated; the proposal carries last_error (#97 honesty)
+            if result is not None:
+                delivered.append(result)
+        return delivered
+
+    async def _deliver_one(
+        self, player: Profile, workout: PlannedWorkout
+    ) -> WorkoutDeliveryProposal | None:
+        try:
+            ftp_watts = await self.rail._ftp_watts(player.id)
+            base_ir = build_structured_workout_ir(workout, ftp_watts=ftp_watts)
+        except HTTPException:
+            return None  # malformed/non-deliverable — skip safely
+        base_ir["origin"] = "as_planned"
+        base_ir["adjustment"] = {"verdict": None, "changed": False}
+
+        live = await self.rail.latest_delivered_for_date(player.id, workout.workout_date)
+        if (
+            live is not None
+            and live.planned_workout_id == workout.id
+            and live.planned_workout_version == workout.version
+        ):
+            return None  # this exact version is already on Zwift — idempotent
+
+        if live is not None:
+            # A restructure re-versioned the slot — re-sync the existing event in
+            # place so Zwift never carries a stale or duplicate session.
+            live.planned_workout_id = workout.id
+            live.planned_workout_version = workout.version
+            delivered = await self.rail.replace_event(proposal=live, ir=base_ir, commit=False)
+            audit_type = AUDIT_TYPE_REPLACED
+            summary = (
+                f"Re-synced Zwift event for {workout.title} ({workout.workout_date.isoformat()})."
+            )
+        else:
+            proposal = await self.rail.propose_from_ir(
+                player=player, workout=workout, ir=base_ir, commit=False
+            )
+            delivered = await self.rail.create_event(proposal=proposal, ir=base_ir, commit=False)
+            audit_type = AUDIT_TYPE_DELIVERED
+            summary = f"Delivered {workout.title} to Zwift for {workout.workout_date.isoformat()}."
+
+        tag = _delivery_action_tag(delivered, audit_type)
+        if not await self._already_recorded(player.id, audit_type, tag, workout.workout_date):
+            self._record_delivery_audit(
+                player,
+                delivered,
+                analysis_type=audit_type,
+                tag=tag,
+                subject_date=workout.workout_date,
+                verdict=None,
+                summary=summary,
+            )
+        await self.session.commit()
+        await self.session.refresh(delivered)
+        return delivered
+
+    async def _active_bike_workouts_in_range(
+        self, user_id: uuid.UUID, start_date: date, end_date: date
+    ) -> list[PlannedWorkout]:
+        workouts = (
+            (
+                await self.session.execute(
+                    select(PlannedWorkout)
+                    .where(
+                        PlannedWorkout.user_id == user_id,
+                        PlannedWorkout.is_active.is_(True),
+                        PlannedWorkout.status != WORKOUT_STATUS_SKIPPED,
+                        PlannedWorkout.workout_date >= start_date,
+                        PlannedWorkout.workout_date <= end_date,
+                    )
+                    .order_by(
+                        PlannedWorkout.workout_date.asc(),
+                        PlannedWorkout.version.desc(),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return [
+            workout
+            for workout in workouts
+            if isinstance(workout.structured_workout, dict)
+            and workout.structured_workout.get("format") == "bike"
+        ]
+
     def _record_delivery_audit(
         self,
         player: Profile,
@@ -639,6 +754,12 @@ class ExecutableCoachingService:
                 "— VO2 session not delivered."
             ),
         )
+
+
+def _delivery_action_tag(proposal: WorkoutDeliveryProposal, action: str) -> str:
+    """Idempotency tag for a push-on-plan-set delivery/action, keyed to the
+    planned workout id + version so each version is delivered (or mutated) once."""
+    return f"{action}:{proposal.planned_workout_id}:v{proposal.planned_workout_version}"
 
 
 def _regen_tag(workout: PlannedWorkout, verdict: str) -> str:
