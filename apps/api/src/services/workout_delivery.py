@@ -22,6 +22,7 @@ STATUS_PROPOSED = "proposed"
 STATUS_APPROVED = "approved"
 STATUS_PUSHED = "pushed"
 STATUS_FAILED = "failed"
+STATUS_DELETED = "deleted"
 
 
 def _utcnow() -> datetime:
@@ -42,6 +43,10 @@ class WeekAheadEntry:
 
 class IntervalsEventClient(Protocol):
     async def create_workout_event(self, payload: dict[str, Any]) -> IntervalsCreateResult: ...
+    async def update_workout_event(
+        self, event_id: str, payload: dict[str, Any]
+    ) -> IntervalsCreateResult: ...
+    async def delete_workout_event(self, event_id: str) -> None: ...
 
 
 class IntervalsIcuClient:
@@ -58,7 +63,7 @@ class IntervalsIcuClient:
             "/"
         )
 
-    async def create_workout_event(self, payload: dict[str, Any]) -> IntervalsCreateResult:
+    def _auth(self) -> tuple[str, str]:
         if not self.api_key:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -69,20 +74,60 @@ class IntervalsIcuClient:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="intervals.icu athlete id is not configured",
             )
+        return ("API_KEY", self.api_key)
 
+    def _events_url(self, event_id: str | None = None) -> str:
+        base = f"{self.base_url}/athlete/{self.athlete_id}/events"
+        return f"{base}/{event_id}" if event_id else base
+
+    async def create_workout_event(self, payload: dict[str, Any]) -> IntervalsCreateResult:
+        auth = self._auth()
         async with httpx.AsyncClient(timeout=20) as client:
-            response = await client.post(
-                f"{self.base_url}/athlete/{self.athlete_id}/events",
-                auth=("API_KEY", self.api_key),
-                json=payload,
-            )
+            response = await client.post(self._events_url(), auth=auth, json=payload)
         if response.status_code not in (200, 201):
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"intervals.icu event create failed with HTTP {response.status_code}",
             )
-        body = response.json()
-        event_id = str(body.get("id") or "")
+        return self._result(response.json())
+
+    async def update_workout_event(
+        self, event_id: str, payload: dict[str, Any]
+    ) -> IntervalsCreateResult:
+        """Update an existing calendar event in place (replace/move).
+
+        Batch 29 re-syncs an already-delivered workout — a manual edit, an
+        approved sleep adjustment, or a day swap — by PUTting the new payload to
+        ``/events/{event_id}`` rather than creating a duplicate, so the live Zwift
+        event keeps its identity (Decision #99, true update-in-place mechanism).
+        """
+        auth = self._auth()
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.put(self._events_url(event_id), auth=auth, json=payload)
+        if response.status_code not in (200, 201):
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"intervals.icu event update failed with HTTP {response.status_code}",
+            )
+        return self._result(response.json(), fallback_event_id=event_id)
+
+    async def delete_workout_event(self, event_id: str) -> None:
+        """Delete a calendar event (Skip). A 404 is treated as already-gone so the
+        delete is idempotent across retries."""
+        auth = self._auth()
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.delete(self._events_url(event_id), auth=auth)
+        if response.status_code not in (200, 204, 404):
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"intervals.icu event delete failed with HTTP {response.status_code}",
+            )
+
+    @staticmethod
+    def _result(
+        body: dict[str, Any], *, fallback_event_id: str | None = None
+    ) -> IntervalsCreateResult:
+        event_id = str(body.get("id") or fallback_event_id or "")
         if not event_id:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
@@ -366,6 +411,155 @@ class WorkoutDeliveryService:
         proposal.last_error = None
         await self.session.commit()
         await self.session.refresh(proposal)
+        return proposal
+
+    async def latest_delivered_for_date(
+        self, user_id: uuid.UUID, workout_date: date
+    ) -> WorkoutDeliveryProposal | None:
+        """The live Zwift event for a calendar slot: the most recent proposal on
+        ``workout_date`` that was pushed and still carries an intervals event id.
+
+        Resolving by *date* (not planned-workout id) keeps re-syncs robust when a
+        restructure re-versions the slot into a fresh ``planned_workouts`` row —
+        the event already sitting on that day is the one to replace or move.
+        """
+        proposal: WorkoutDeliveryProposal | None = await self.session.scalar(
+            select(WorkoutDeliveryProposal)
+            .where(
+                WorkoutDeliveryProposal.user_id == user_id,
+                WorkoutDeliveryProposal.workout_date == workout_date,
+                WorkoutDeliveryProposal.status == STATUS_PUSHED,
+                WorkoutDeliveryProposal.intervals_event_id.is_not(None),
+            )
+            .order_by(WorkoutDeliveryProposal.created_at.desc())
+            .limit(1)
+        )
+        return proposal
+
+    async def create_event(
+        self,
+        *,
+        proposal: WorkoutDeliveryProposal,
+        ir: dict[str, Any],
+        commit: bool = True,
+    ) -> WorkoutDeliveryProposal:
+        """Create a brand-new Zwift event for a proposal from ``ir``.
+
+        Backs push-on-plan-set (the as-planned baseline, delivered without a
+        per-workout approval — Decision #99) and the replace/move fallback when a
+        slot has no live event yet. On a cloud failure the proposal is marked
+        ``failed`` with the error and re-raised; it is never recorded as delivered.
+        """
+        payload = build_intervals_payload(ir)
+        try:
+            result = await self.intervals_client.create_workout_event(payload)
+        except HTTPException as exc:
+            proposal.status = STATUS_FAILED
+            proposal.last_error = str(exc.detail)
+            await self.session.commit()
+            raise
+        return await self._persist_event(proposal, ir, payload, result.event_id, commit=commit)
+
+    async def replace_event(
+        self,
+        *,
+        proposal: WorkoutDeliveryProposal,
+        ir: dict[str, Any],
+        commit: bool = True,
+    ) -> WorkoutDeliveryProposal:
+        """Re-sync a delivered workout's content in place (Edit / Approve-adjusted).
+
+        The intervals.icu event is updated first; only once the cloud write
+        succeeds is the new IR persisted, so a failed re-sync leaves local state
+        honest (Decision #97) — the proposal keeps its previously-delivered IR plus
+        a ``last_error`` note rather than claiming a change that never landed.
+        """
+        if not proposal.intervals_event_id:
+            return await self.create_event(proposal=proposal, ir=ir, commit=commit)
+        payload = build_intervals_payload(ir)
+        try:
+            result = await self.intervals_client.update_workout_event(
+                proposal.intervals_event_id, payload
+            )
+        except HTTPException as exc:
+            proposal.last_error = str(exc.detail)
+            await self.session.commit()
+            raise
+        return await self._persist_event(proposal, ir, payload, result.event_id, commit=commit)
+
+    async def move_event(
+        self,
+        *,
+        proposal: WorkoutDeliveryProposal,
+        new_date: date,
+        commit: bool = True,
+    ) -> WorkoutDeliveryProposal:
+        """Move a delivered event to ``new_date`` (Swap day) by updating
+        ``start_date_local`` in place. Honest on failure (Decision #97): the local
+        ``workout_date`` only changes once the cloud move succeeds."""
+        ir = dict(proposal.structured_workout_ir or {})
+        ir["workoutDate"] = new_date.isoformat()
+        if not proposal.intervals_event_id:
+            proposal.workout_date = new_date
+            return await self.create_event(proposal=proposal, ir=ir, commit=commit)
+        payload = build_intervals_payload(ir)
+        try:
+            result = await self.intervals_client.update_workout_event(
+                proposal.intervals_event_id, payload
+            )
+        except HTTPException as exc:
+            proposal.last_error = str(exc.detail)
+            await self.session.commit()
+            raise
+        proposal.workout_date = new_date
+        return await self._persist_event(proposal, ir, payload, result.event_id, commit=commit)
+
+    async def delete_event(
+        self,
+        *,
+        proposal: WorkoutDeliveryProposal,
+        commit: bool = True,
+    ) -> WorkoutDeliveryProposal:
+        """Delete a delivered event (Skip). Idempotent — a missing event is
+        treated as already-gone by the client. Honest on failure (Decision #97):
+        the proposal is only marked deleted once the cloud delete succeeds."""
+        if proposal.intervals_event_id:
+            try:
+                await self.intervals_client.delete_workout_event(proposal.intervals_event_id)
+            except HTTPException as exc:
+                proposal.last_error = str(exc.detail)
+                await self.session.commit()
+                raise
+        proposal.status = STATUS_DELETED
+        proposal.last_error = None
+        if commit:
+            await self.session.commit()
+            await self.session.refresh(proposal)
+        else:
+            await self.session.flush()
+        return proposal
+
+    async def _persist_event(
+        self,
+        proposal: WorkoutDeliveryProposal,
+        ir: dict[str, Any],
+        payload: dict[str, Any],
+        event_id: str,
+        *,
+        commit: bool,
+    ) -> WorkoutDeliveryProposal:
+        proposal.structured_workout_ir = ir
+        proposal.intervals_payload = payload
+        proposal.zwo_xml = build_zwo_xml(ir)
+        proposal.intervals_event_id = event_id
+        proposal.status = STATUS_PUSHED
+        proposal.pushed_at_utc = _utcnow()
+        proposal.last_error = None
+        if commit:
+            await self.session.commit()
+            await self.session.refresh(proposal)
+        else:
+            await self.session.flush()
         return proposal
 
     async def _planned_workout(

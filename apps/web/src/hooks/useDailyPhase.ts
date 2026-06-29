@@ -16,8 +16,9 @@ export function useDailyPhase(data: DailyLoopData | undefined): DailyPhase {
     return 'post_ride';
   }
 
-  const hasBikeWorkout = data.plannedWorkouts.some((workout) => isBikeWorkoutType(workout.workoutType));
-  if (!hasBikeWorkout) {
+  // Any planned workout — bike or not — leads the Today card (Batch 29). A
+  // rest day is only when nothing at all is on the slate.
+  if (data.plannedWorkouts.length === 0) {
     return 'rest_day';
   }
 

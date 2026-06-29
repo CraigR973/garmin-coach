@@ -46,6 +46,7 @@ from src.services.coaching_state import (
     _current_cycle_start,
 )
 from src.services.holiday_pause import is_build1
+from src.services.workout_delivery import IntervalsEventClient
 
 GENERATED_BLOCK_SECTION = "generated_block"
 BLOCK_LOCK_SOURCE = "block_generator_lock"
@@ -149,8 +150,14 @@ class LockResult:
 
 
 class BlockGeneratorService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        intervals_client: IntervalsEventClient | None = None,
+    ) -> None:
         self.session = session
+        self.intervals_client = intervals_client
 
     # ------------------------------------------------------------------
     # Read helpers
@@ -383,6 +390,18 @@ class BlockGeneratorService:
         content["lockedAtUtc"] = _utcnow().isoformat()
         await self._save_draft(user, content, existing)
         await self.session.commit()
+
+        # Push-on-plan-set (Decision #99): the locked block's bike sessions are
+        # delivered to Zwift now, days ahead, with no per-workout approval — so by
+        # the morning each session is already on the calendar and the morning is
+        # review-only. Delivery is isolated/idempotent and degrades gracefully when
+        # intervals.icu is unconfigured, so locking the plan never fails on it.
+        from src.services.executable_coaching import ExecutableCoachingService
+
+        delivery = ExecutableCoachingService(self.session, intervals_client=self.intervals_client)
+        await delivery.reconcile_deliveries(
+            user, start_date=result.start_date, end_date=result.end_date
+        )
         return result
 
     async def _write_plan(self, user_id: uuid.UUID, content: dict[str, Any]) -> LockResult:

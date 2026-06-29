@@ -14,6 +14,27 @@ export function friendlyDate(iso: string): string {
   });
 }
 
+/** The next `n` calendar days after `fromIso`, as timezone-safe ISO dates with a
+ *  short human label (e.g. "Wed 1 Jul") — used by the Today card's Swap picker. */
+export function nextDays(fromIso: string, n: number): Array<{ iso: string; label: string }> {
+  const base = new Date(`${fromIso}T00:00:00`);
+  const out: Array<{ iso: string; label: string }> = [];
+  for (let i = 1; i <= n; i += 1) {
+    const d = new Date(base);
+    d.setDate(base.getDate() + i);
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+      d.getDate(),
+    ).padStart(2, '0')}`;
+    const label = d.toLocaleDateString(undefined, {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    });
+    out.push({ iso, label });
+  }
+  return out;
+}
+
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return 'Not synced';
   const d = new Date(value);

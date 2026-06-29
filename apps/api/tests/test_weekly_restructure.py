@@ -152,10 +152,22 @@ def test_early_build_week_keeps_30_30() -> None:
 class _FakeIntervalsClient:
     def __init__(self) -> None:
         self.payloads: list[dict] = []
+        self.updates: list[tuple[str, dict]] = []
+        self.deletes: list[str] = []
+        self._counter = 0
 
     async def create_workout_event(self, payload: dict) -> IntervalsCreateResult:
         self.payloads.append(payload)
-        return IntervalsCreateResult(event_id="evt_1", raw_response={"id": "evt_1"})
+        self._counter += 1
+        event_id = f"evt_{self._counter}"
+        return IntervalsCreateResult(event_id=event_id, raw_response={"id": event_id})
+
+    async def update_workout_event(self, event_id: str, payload: dict) -> IntervalsCreateResult:
+        self.updates.append((event_id, payload))
+        return IntervalsCreateResult(event_id=event_id, raw_response={"id": event_id})
+
+    async def delete_workout_event(self, event_id: str) -> None:
+        self.deletes.append(event_id)
 
 
 async def _seed_profile(db_conn: AsyncConnection, user_id: uuid.UUID) -> None:
@@ -275,7 +287,7 @@ async def test_assess_recovery_signal_fresh_when_no_data(db_conn: AsyncConnectio
 
 
 @pytest.mark.asyncio
-async def test_apply_versions_changed_days_and_proposes_delivery(
+async def test_apply_versions_changed_days_and_delivers_on_plan_set(
     db_conn: AsyncConnection,
 ) -> None:
     user_id = uuid.uuid4()
@@ -297,10 +309,12 @@ async def test_apply_versions_changed_days_and_proposes_delivery(
 
         assert result.plan.changed
         assert result.plan.conflicts_after == []
-        # Changed dates got a new active version; proposals are gated (not pushed).
+        # Changed dates got a new active version and were delivered to Zwift on
+        # plan-set (Decision #99 — push-on-plan-set, no per-workout approval).
         assert result.versioned_workouts
-        assert all(p.status == "proposed" for p in result.proposals)
-        assert fake.payloads == []  # nothing reaches Zwift without approval
+        assert result.proposals  # the rescheduled sessions were delivered
+        assert all(p.status == "pushed" for p in result.proposals)
+        assert fake.payloads  # reached Zwift without an approval step
 
         # VO2 stays on Tuesday; Sweet-Spot was pushed away to ≥2 days from it.
         active = (

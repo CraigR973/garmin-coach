@@ -18,7 +18,13 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
-from src.models.coaching import KnowledgeBase, PlanBlock, PlannedWorkout
+from src.models.coaching import (
+    Analysis,
+    KnowledgeBase,
+    PlanBlock,
+    PlannedWorkout,
+    WorkoutDeliveryProposal,
+)
 from src.models.profile import Profile, UserRole
 from src.services.block_generator import (
     BLOCK_LOCK_SOURCE,
@@ -32,7 +38,7 @@ from src.services.vo2_progression import (
     VO2_PROTOCOL_30_30,
     VO2_PROTOCOL_RONNESTAD_30_15,
 )
-from src.services.workout_delivery import build_structured_workout_ir
+from src.services.workout_delivery import IntervalsCreateResult, build_structured_workout_ir
 
 START = date(2026, 8, 3)  # a Monday
 
@@ -502,3 +508,69 @@ async def test_discard_locked_block_conflicts(db_conn: AsyncConnection) -> None:
         with pytest.raises(HTTPException) as exc_info:
             await BlockGeneratorService(session).discard(user)
         assert exc_info.value.status_code == 409
+
+
+class _FakeIntervalsClient:
+    def __init__(self) -> None:
+        self.payloads: list[dict] = []
+        self._counter = 0
+
+    async def create_workout_event(self, payload: dict) -> IntervalsCreateResult:
+        self.payloads.append(payload)
+        self._counter += 1
+        event_id = f"evt_{self._counter}"
+        return IntervalsCreateResult(event_id=event_id, raw_response={"id": event_id})
+
+    async def update_workout_event(self, event_id: str, payload: dict) -> IntervalsCreateResult:
+        return IntervalsCreateResult(event_id=event_id, raw_response={"id": event_id})
+
+    async def delete_workout_event(self, event_id: str) -> None:
+        return None
+
+
+@pytest.mark.asyncio
+async def test_lock_delivers_block_to_zwift_on_plan_set(db_conn: AsyncConnection) -> None:
+    """Push-on-plan-set (Decision #99): locking a block delivers its bike sessions
+    to Zwift immediately, without any per-workout approval."""
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    fake = _FakeIntervalsClient()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        await BlockGeneratorService(session).generate(user, start_date=START)
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        await BlockGeneratorService(session, intervals_client=fake).lock(user)
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        proposals = (
+            (
+                await session.execute(
+                    select(WorkoutDeliveryProposal).where(
+                        WorkoutDeliveryProposal.user_id == user_id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        # Every delivered proposal reached "pushed" with no approval step.
+        assert proposals
+        assert all(p.status == "pushed" for p in proposals)
+        assert all(p.approved_at_utc is None for p in proposals)
+        assert len(fake.payloads) == len(proposals)
+
+        delivered_audits = (
+            (
+                await session.execute(
+                    select(Analysis).where(Analysis.analysis_type == "workout_delivered")
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(delivered_audits) == len(proposals)

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth import CurrentUser
 from src.database import get_db
 from src.models.coaching import Analysis, DailyMetric, ManualEntry, PlannedWorkout, Sleep
-from src.services.daily_loop import DailyLoopService
+from src.services.daily_loop import DailyLoopService, DeliveryState
 from src.services.environment_freshness import is_hive_temperature_fresh
 from src.services.fan_control import describe_fan_intent
 from src.services.strength_brief import StrengthBriefResult
@@ -177,6 +177,14 @@ class SleepOut(BaseModel):
     rawPayload: dict[str, Any]
 
 
+class DeliveryStateOut(BaseModel):
+    liveStatus: str | None
+    liveOrigin: str | None
+    intervalsEventId: str | None
+    changed: bool
+    adjustment: dict[str, Any] | None
+
+
 class PlannedWorkoutOut(BaseModel):
     id: str
     userId: str
@@ -192,6 +200,7 @@ class PlannedWorkoutOut(BaseModel):
     structuredWorkout: dict[str, Any]
     source: str | None
     adherence: ManualEntryOut | None = None
+    delivery: DeliveryStateOut | None = None
 
 
 class FanStateOut(BaseModel):
@@ -437,9 +446,22 @@ def _serialize_sleep(sleep: Sleep | None) -> SleepOut | None:
     )
 
 
+def _serialize_delivery(state: DeliveryState | None) -> DeliveryStateOut | None:
+    if state is None:
+        return None
+    return DeliveryStateOut(
+        liveStatus=state.live_status,
+        liveOrigin=state.live_origin,
+        intervalsEventId=state.intervals_event_id,
+        changed=state.changed,
+        adjustment=state.adjustment,
+    )
+
+
 def _serialize_planned_workout(
     workout: PlannedWorkout,
     adherence: ManualEntry | None,
+    delivery: DeliveryState | None = None,
 ) -> PlannedWorkoutOut:
     return PlannedWorkoutOut(
         id=str(workout.id),
@@ -456,6 +478,7 @@ def _serialize_planned_workout(
         structuredWorkout=workout.structured_workout,
         source=workout.source,
         adherence=_serialize_manual_entry(adherence),
+        delivery=_serialize_delivery(delivery),
     )
 
 
@@ -503,6 +526,7 @@ def _envelope(player: CurrentUser, snapshot: Any) -> DailyLoopEnvelope:
         _serialize_planned_workout(
             workout,
             snapshot.adherence_entries.get(workout.id),
+            snapshot.deliveries.get(workout.id),
         )
         for workout in snapshot.planned_workouts
     ]

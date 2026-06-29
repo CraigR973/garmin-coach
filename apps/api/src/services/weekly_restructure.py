@@ -43,7 +43,6 @@ from src.services.vo2_progression import build_vo2_structured_workout, select_vo
 from src.services.workout_delivery import (
     IntervalsEventClient,
     WorkoutDeliveryService,
-    build_structured_workout_ir,
 )
 
 PROMPT_VERSION = "weekly-restructure:v1"
@@ -471,31 +470,27 @@ class WeeklyRestructureService:
 
         self._record_restructure_audit(player, plan, signal)
 
-        proposals: list[Any] = []
-        if propose_delivery:
-            for workout in versioned:
-                structured = workout.structured_workout or {}
-                if structured.get("format") != "bike":
-                    continue
-                ftp_watts = await self.rail._ftp_watts(player.id)
-                ir = build_structured_workout_ir(workout, ftp_watts=ftp_watts)
-                ir["origin"] = RESTRUCTURE_SOURCE
-                ir["adjustment"] = {
-                    "verdict": None,
-                    "changed": True,
-                    "restructure": True,
-                    "fatigued": signal.fatigued,
-                }
-                proposals.append(
-                    await self.rail.propose_from_ir(
-                        player=player, workout=workout, ir=ir, commit=False
-                    )
-                )
-
         if commit:
             await self.session.commit()
             for workout in versioned:
                 await self.session.refresh(workout)
+
+        proposals: list[Any] = []
+        if propose_delivery and plan.changes:
+            # Push-on-plan-set (Decision #99): a restructure re-syncs the affected
+            # Zwift events *in place* rather than queuing approval-gated proposals,
+            # so the rescheduled week is already on the calendar. Each changed slot
+            # is reconciled idempotently and in isolation.
+            from src.services.executable_coaching import ExecutableCoachingService
+
+            delivery = ExecutableCoachingService(
+                self.session, intervals_client=self.rail.intervals_client
+            )
+            changed_dates = [change.workout_date for change in plan.changes]
+            proposals = await delivery.reconcile_deliveries(
+                player, start_date=min(changed_dates), end_date=max(changed_dates)
+            )
+
         return RestructureApplyResult(
             plan=plan, signal=signal, versioned_workouts=versioned, proposals=proposals
         )
