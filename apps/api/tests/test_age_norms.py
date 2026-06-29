@@ -82,15 +82,26 @@ def test_about_average_is_neutral() -> None:
 
 
 def test_age_band_selection_tracks_decade() -> None:
-    assert build_age_comparison(
-        age=62, sex="male", vo2max=27.0, resting_heart_rate_bpm=None,
-        hrv_overnight_ms=None, fitness_age=None,
-    ).age_band == "60–69"
+    assert (
+        build_age_comparison(
+            age=62,
+            sex="male",
+            vo2max=27.0,
+            resting_heart_rate_bpm=None,
+            hrv_overnight_ms=None,
+            fitness_age=None,
+        ).age_band
+        == "60–69"
+    )
     # 62yo at the 60–69 average VO2max (27) is about average, not below.
     row = _rows_by_key(
         build_age_comparison(
-            age=62, sex="male", vo2max=27.0, resting_heart_rate_bpm=None,
-            hrv_overnight_ms=None, fitness_age=None,
+            age=62,
+            sex="male",
+            vo2max=27.0,
+            resting_heart_rate_bpm=None,
+            hrv_overnight_ms=None,
+            fitness_age=None,
         )
     )["vo2max"]
     assert row.tone == "neutral"  # type: ignore[attr-defined]
@@ -127,12 +138,20 @@ def test_missing_individual_metrics_drop_their_rows() -> None:
 
 def test_unknown_sex_defaults_to_male() -> None:
     male = build_age_comparison(
-        age=57, sex="male", vo2max=40.0, resting_heart_rate_bpm=None,
-        hrv_overnight_ms=None, fitness_age=None,
+        age=57,
+        sex="male",
+        vo2max=40.0,
+        resting_heart_rate_bpm=None,
+        hrv_overnight_ms=None,
+        fitness_age=None,
     )
     unknown = build_age_comparison(
-        age=57, sex=None, vo2max=40.0, resting_heart_rate_bpm=None,
-        hrv_overnight_ms=None, fitness_age=None,
+        age=57,
+        sex=None,
+        vo2max=40.0,
+        resting_heart_rate_bpm=None,
+        hrv_overnight_ms=None,
+        fitness_age=None,
     )
     assert (
         _rows_by_key(unknown)["vo2max"].age_average  # type: ignore[attr-defined]
@@ -155,14 +174,25 @@ def test_older_fitness_age_reads_as_warning() -> None:
 
 def test_to_dict_shape_is_camel_cased_for_the_api() -> None:
     payload = build_age_comparison(
-        age=57, sex="male", vo2max=54.0, resting_heart_rate_bpm=45,
-        hrv_overnight_ms=50, fitness_age=48,
+        age=57,
+        sex="male",
+        vo2max=54.0,
+        resting_heart_rate_bpm=45,
+        hrv_overnight_ms=50,
+        fitness_age=48,
     ).to_dict()
     assert payload["ageBand"] == "50–59"
     assert payload["fitnessAge"] == 48
     assert payload["fitnessAgeDelta"] == 9
     first = payload["rows"][0]
     assert set(first) == {
-        "metricKey", "label", "value", "unit",
-        "ageAverage", "ageBand", "betterDirection", "tone", "descriptor",
+        "metricKey",
+        "label",
+        "value",
+        "unit",
+        "ageAverage",
+        "ageBand",
+        "betterDirection",
+        "tone",
+        "descriptor",
     }
