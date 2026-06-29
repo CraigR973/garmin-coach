@@ -63,6 +63,26 @@ const baseSnapshot: DailyLoopEnvelope = {
           reliabilityStartDate: '2026-06-11',
         },
       ],
+      ageComparison: {
+        age: 57,
+        ageBand: '50–59',
+        fitnessAge: 48,
+        fitnessAgeDelta: 9,
+        fitnessAgeTone: 'good',
+        rows: [
+          {
+            metricKey: 'vo2max',
+            label: 'VO₂max',
+            value: 54,
+            unit: '',
+            ageAverage: 31,
+            ageBand: '50–59',
+            betterDirection: 'higher',
+            tone: 'good',
+            descriptor: 'Much better than average',
+          },
+        ],
+      },
     },
     dailyMetrics: {
       id: '33333333-3333-4333-8333-333333333333',
@@ -196,6 +216,9 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('link', { name: /full morning brief/i }).getAttribute('href')).toBe('/brief');
     expect(screen.getByRole('link', { name: /baselines/i }).getAttribute('href')).toBe('/baselines');
     expect(screen.queryByText('After your ride')).toBeNull();
+    // The comparison table now lives inside the "Last night's sleep" card.
+    expect(screen.getByText("Last night's sleep")).toBeTruthy();
+    expect(screen.getByText('23 above')).toBeTruthy(); // VO₂max vs age-group average, age-only row
   });
 
   it('sends today’s ride to Zwift from Home', async () => {

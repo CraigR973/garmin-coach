@@ -352,6 +352,27 @@ export const metricBaselineRowSchema = z.object({
   reliabilityStartDate: z.string().nullable().optional(),
 });
 
+export const ageComparisonRowSchema = z.object({
+  metricKey: z.string().min(1),
+  label: z.string().min(1),
+  value: z.number(),
+  unit: z.string().default(''),
+  ageAverage: z.number(),
+  ageBand: z.string().min(1),
+  betterDirection: z.enum(['higher', 'lower']),
+  tone: z.enum(['good', 'warn', 'neutral']),
+  descriptor: z.string().min(1),
+});
+
+export const ageComparisonSchema = z.object({
+  age: z.number().int().nullable().optional(),
+  ageBand: z.string().nullable().optional(),
+  fitnessAge: z.number().int().nullable().optional(),
+  fitnessAgeDelta: z.number().int().nullable().optional(),
+  fitnessAgeTone: z.enum(['good', 'warn', 'neutral']).nullable().optional(),
+  rows: z.array(ageComparisonRowSchema).default([]),
+});
+
 export const dailyLoopAnalysisSchema = z.object({
   id: z.string().uuid(),
   generatedAtUtc: isoDateTimeSchema,
@@ -364,6 +385,7 @@ export const dailyLoopAnalysisSchema = z.object({
   readinessInterpretation: z.string().nullable().optional(),
   thermalReview: jsonObjectSchema.default({}),
   metricsVsBaselines: z.array(metricBaselineRowSchema).default([]),
+  ageComparison: ageComparisonSchema.default({ rows: [] }),
 });
 
 export const dailyLoopPostWorkoutAnalysisSchema = z.object({
