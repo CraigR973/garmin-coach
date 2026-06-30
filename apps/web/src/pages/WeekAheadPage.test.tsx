@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
@@ -18,60 +18,60 @@ vi.mock('sonner', () => ({
   },
 }));
 
-const weekAhead = {
+const schedule = {
   data: {
     startDate: '2026-06-23',
     days: 7,
-    workouts: [
+    schedule: [
       {
-        plannedWorkoutId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-        workoutDate: '2026-06-23',
-        version: 2,
-        title: 'VO2 Max 30/30',
-        workoutType: 'bike_vo2',
-        status: 'planned',
-        plannedDurationMin: 60,
-        intensityTarget: '105-110% FTP',
-        deliverable: true,
-        proposal: {
-          id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-          userId: '11111111-1111-4111-8111-111111111111',
-          plannedWorkoutId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-          plannedWorkoutVersion: 2,
-          workoutDate: '2026-06-23',
-          provider: 'intervals_icu',
-          status: 'proposed',
-          proposedAtUtc: '2026-06-23T06:31:00Z',
-          approvedAtUtc: null,
-          approvedByProfileId: null,
-          pushedAtUtc: null,
-          intervalsEventId: null,
-          structuredWorkoutIr: {
-            origin: 'amber_regeneration',
-            adjustment: {
-              changed: true,
-              verdict: 'Amber',
-              durationScalePct: 75,
-              zoneDropPct: 13,
-              removedHit: true,
-            },
+        date: '2026-06-23',
+        dayState: { categories: ['cycle', 'flexibility'], label: 'Cycle + Flexibility', isRest: false },
+        workouts: [
+          {
+            id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            workoutDate: '2026-06-23',
+            version: 2,
+            title: 'VO2 Max 30/30',
+            workoutType: 'bike_vo2',
+            status: 'planned',
+            plannedDurationMin: 60,
+            intensityTarget: '105-110% FTP',
+            source: 'test',
           },
-          intervalsPayload: {},
-          zwoXml: '<workout_file/>',
-          lastError: null,
-        },
+          {
+            id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+            workoutDate: '2026-06-23',
+            version: 3,
+            title: 'Flexibility',
+            workoutType: 'mobility',
+            status: 'planned',
+            plannedDurationMin: 16,
+            intensityTarget: 'easy',
+            source: 'test',
+          },
+        ],
       },
       {
-        plannedWorkoutId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-        workoutDate: '2026-06-25',
-        version: 1,
-        title: 'Sweet Spot Builder',
-        workoutType: 'bike_sweet_spot',
-        status: 'planned',
-        plannedDurationMin: 75,
-        intensityTarget: '88-94% FTP',
-        deliverable: true,
-        proposal: null,
+        date: '2026-06-24',
+        dayState: { categories: ['rest'], label: 'Rest', isRest: true },
+        workouts: [],
+      },
+      {
+        date: '2026-06-25',
+        dayState: { categories: ['cycle'], label: 'Cycle', isRest: false },
+        workouts: [
+          {
+            id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+            workoutDate: '2026-06-25',
+            version: 1,
+            title: 'Sweet Spot Builder',
+            workoutType: 'bike_sweet_spot',
+            status: 'planned',
+            plannedDurationMin: 75,
+            intensityTarget: '88-94% FTP',
+            source: 'test',
+          },
+        ],
       },
     ],
   },
@@ -79,37 +79,14 @@ const weekAhead = {
   errors: [],
 };
 
-const dailyLoop = {
-  data: {
-    subjectDate: '2026-06-23',
-    timezone: 'Europe/London',
-    morningAnalysis: null,
-    dailyMetrics: null,
-    sleep: null,
-    manualEntry: null,
-    postWorkoutAnalyses: [],
-    plannedWorkouts: [],
-    thermalState: {
-      thermalReview: {},
-      fan: { autoEnabled: true, mode: 'idle', isOn: false, speed: null, respondingToC: null },
-    },
-    dataQualityWarnings: [],
-  },
-  meta: { generatedAtUtc: '2026-06-23T06:40:00Z' },
-  errors: [],
-};
-
 describe('WeekAheadPage', () => {
-  it('renders the week, the Zwift rides, and approves a prepared workout', async () => {
+  it('renders live schedule days and supports add, move, and rest-day swap-in', async () => {
     apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
       if (options?.method === 'POST') {
-        return Promise.resolve(weekAhead);
+        return Promise.resolve(schedule);
       }
-      if (path === '/api/v1/workout-delivery/week-ahead') {
-        return Promise.resolve(weekAhead);
-      }
-      if (path === '/api/v1/daily-loop') {
-        return Promise.resolve(dailyLoop);
+      if (path === '/api/v1/plan-actions/schedule') {
+        return Promise.resolve(schedule);
       }
       return Promise.reject(new Error(`Unexpected request: ${path}`));
     });
@@ -126,21 +103,37 @@ describe('WeekAheadPage', () => {
     );
 
     expect(await screen.findByText('VO2 Max 30/30')).toBeTruthy();
-    // The eased-for-recovery proposal is flagged and its adjustment summarised in plain words.
-    expect(screen.getByText('Eased for recovery')).toBeTruthy();
-    expect(screen.getByText(/HIT removed/)).toBeTruthy();
-    // The un-prepared bike workout offers a plain-English prepare action.
+    expect(screen.getByText('Cycle + Flexibility')).toBeTruthy();
+    expect(screen.getByText('Rest day')).toBeTruthy();
     expect(screen.getByText('Sweet Spot Builder')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Prepare for Zwift' })).toBeTruthy();
-    // Mark's fixed weekly shape is shown, strength included.
-    expect(screen.getByText('Dumbbells 20 min')).toBeTruthy();
 
-    await user.click(screen.getByRole('button', { name: 'Approve' }));
+    const firstDay = screen.getByText('VO2 Max 30/30').closest('.rounded-xl') as HTMLElement;
+    await user.click(within(firstDay).getAllByRole('button', { name: /move/i })[0]);
 
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith(
-        '/api/v1/workout-delivery/proposals/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/approve',
+        '/api/v1/workout-delivery/planned-workouts/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/swap',
         expect.objectContaining({ method: 'POST' }),
+      );
+    });
+
+    await user.click(screen.getAllByRole('button', { name: /^cycle$/i })[0]);
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/plan-actions/days/2026-06-23/workouts',
+        expect.objectContaining({ method: 'POST', body: JSON.stringify({ category: 'cycle' }) }),
+      );
+    });
+
+    const swapPanel = screen.getByText('Swap a workout into this rest day').parentElement as HTMLElement;
+    await user.click(within(swapPanel).getByRole('button', { name: /VO2 Max 30\/30/i }));
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/plan-actions/days/2026-06-24/swap-in',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ plannedWorkoutId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }),
+        }),
       );
     });
   });

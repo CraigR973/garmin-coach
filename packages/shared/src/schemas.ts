@@ -341,6 +341,55 @@ export const todayCardSwapInputSchema = z.object({
   targetDate: isoDateSchema,
 });
 
+export const dayCategorySchema = z.enum(['cycle', 'weights', 'flexibility', 'rest']);
+
+export const planActionWorkoutSchema = z.object({
+  id: z.string().uuid(),
+  workoutDate: isoDateSchema,
+  version: z.number().int(),
+  title: z.string().min(1),
+  workoutType: z.string().min(1),
+  status: z.string().min(1),
+  plannedDurationMin: z.number().int().nullable().optional(),
+  intensityTarget: z.string().nullable().optional(),
+  source: z.string().nullable().optional(),
+});
+
+export const planDayStateSchema = z.object({
+  categories: z.array(dayCategorySchema),
+  label: z.string().min(1),
+  isRest: z.boolean(),
+});
+
+export const planScheduleDaySchema = z.object({
+  date: isoDateSchema,
+  dayState: planDayStateSchema,
+  workouts: z.array(planActionWorkoutSchema),
+});
+
+export const planScheduleEnvelopeSchema = z.object({
+  data: z.object({
+    startDate: isoDateSchema,
+    days: z.number().int(),
+    schedule: z.array(planScheduleDaySchema),
+  }),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
+
+export const planAddWorkoutInputSchema = z.object({
+  category: z.enum(['cycle', 'weights', 'flexibility']),
+});
+
+export const planSwapIntoDateInputSchema = z.object({
+  plannedWorkoutId: z.string().uuid(),
+});
+
+export const planRecordActualInputSchema = z.object({
+  label: z.string().min(1).max(120),
+  notes: z.string().nullable().optional(),
+});
+
 export const dailyLoopWarningSchema = z.object({
   id: z.string().min(1),
   summary: z.string().min(1),

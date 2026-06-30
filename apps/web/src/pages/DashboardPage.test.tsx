@@ -189,6 +189,9 @@ function renderPage(snapshot = baseSnapshot) {
     if (path.includes('/api/v1/workout-delivery/planned-workouts/')) {
       return Promise.resolve({ data: { proposals: [] }, meta: { generatedAtUtc: '2026-06-20T06:45:00Z' }, errors: [] });
     }
+    if (path.includes('/api/v1/plan-actions/')) {
+      return Promise.resolve({ data: {}, meta: { generatedAtUtc: '2026-06-20T06:45:00Z' }, errors: [] });
+    }
     if (path.includes('/post-ride-check-in')) {
       return Promise.resolve(snapshot);
     }
@@ -219,7 +222,7 @@ describe('DashboardPage', () => {
     // No coach change → the no-changes state: Edit / Swap / Skip, no Approve.
     expect(screen.getByRole('button', { name: /^edit$/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /swap day/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /skip/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^skip$/i })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /approve & upload/i })).toBeNull();
     expect(screen.getByRole('link', { name: /full morning brief/i }).getAttribute('href')).toBe('/brief');
     expect(screen.getByRole('link', { name: /baselines/i }).getAttribute('href')).toBe('/baselines');
@@ -452,7 +455,7 @@ describe('DashboardPage', () => {
       }),
     );
 
-    expect(await screen.findByText('Nothing planned today')).toBeTruthy();
+    expect(await screen.findByText('Rest day')).toBeTruthy();
     expect(screen.queryByText('After your ride')).toBeNull();
   });
 

@@ -29,6 +29,7 @@ from src.routers import (
     insights,
     me,
     notifications,
+    plan_actions,
     restructure,
     reviews,
     strength_brief,
@@ -111,6 +112,7 @@ app.include_router(coaching_state.router)
 app.include_router(daily_loop.router)
 app.include_router(fan.router)
 app.include_router(workout_delivery.router)
+app.include_router(plan_actions.router)
 app.include_router(restructure.router)
 app.include_router(holiday.router)
 app.include_router(block_generator.router)

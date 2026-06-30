@@ -1,73 +1,19 @@
+import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { dailyLoopEnvelopeSchema, weekAheadEnvelopeSchema } from '@coach/shared';
-import { Activity, Bike, CheckCircle2, Dumbbell, Moon, Send, Sparkles, ThumbsUp } from 'lucide-react';
+import { planScheduleEnvelopeSchema } from '@coach/shared';
+import { Bike, CalendarDays, Dumbbell, Moon, Plus, Trash2, Wind } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { verdictLabel } from '@/lib/copy';
 import { apiFetch } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { categoryForWorkoutType, type DayCategory } from '@/lib/workoutCategories';
 
-type WeekAheadEnvelope = typeof weekAheadEnvelopeSchema._type;
-type WeekAheadWorkout = WeekAheadEnvelope['data']['workouts'][number];
-type WorkoutProposal = NonNullable<WeekAheadWorkout['proposal']>;
-
-const BASE = '/api/v1/workout-delivery';
-
-// Mark's fixed weekly structure (handover §4). The exact VO₂ / Sweet-Spot
-// sessions progress through the 13-week block, but the day pattern doesn't
-// change — so this is a stable, at-a-glance reference for his week.
-interface ShapeDay {
-  dow: number; // JS getDay(): 0 = Sunday
-  name: string;
-  cycling: string;
-  rest?: boolean;
-  extras: string[];
-}
-
-const WEEKLY_SHAPE: ShapeDay[] = [
-  { dow: 1, name: 'Monday', cycling: 'Rest day', rest: true, extras: ['Dumbbells 20 min', 'Flexibility 16 min'] },
-  { dow: 2, name: 'Tuesday', cycling: 'VO₂ max', extras: ['Flexibility 16 min'] },
-  { dow: 3, name: 'Wednesday', cycling: 'Endurance · Z2 60 min', extras: ['Flexibility 16 min'] },
-  { dow: 4, name: 'Thursday', cycling: 'Sweet spot', extras: ['Flexibility 16 min'] },
-  { dow: 5, name: 'Friday', cycling: 'Rest day', rest: true, extras: ['Flexibility 16 min'] },
-  { dow: 6, name: 'Saturday', cycling: 'Z2 + sprints', extras: ['Bodyweight 15 min', 'Flexibility 16 min'] },
-  { dow: 0, name: 'Sunday', cycling: 'Long Z2 · 90–125 min', extras: ['Flexibility 16 min'] },
-];
-
-function verdictBadgeVariant(verdict: string | null | undefined): 'success' | 'warning' | 'error' | 'muted' {
-  if (verdict === 'green') return 'success';
-  if (verdict === 'amber') return 'warning';
-  if (verdict === 'red') return 'error';
-  return 'muted';
-}
-
-// Plain-English delivery status — no "proposed/IR/push" jargon.
-function statusLabel(proposal: WorkoutProposal | null): string {
-  if (!proposal) return 'Not set up';
-  switch (proposal.status) {
-    case 'pushed':
-      return 'Sent to Zwift';
-    case 'approved':
-      return 'Approved';
-    case 'failed':
-      return 'Send failed';
-    case 'proposed':
-      return 'Ready to review';
-    default:
-      return proposal.status;
-  }
-}
-
-function statusVariant(status: string | undefined): 'success' | 'warning' | 'error' | 'accent' | 'muted' {
-  if (status === 'pushed') return 'success';
-  if (status === 'approved') return 'warning';
-  if (status === 'failed') return 'error';
-  if (status === 'proposed') return 'accent';
-  return 'muted';
-}
+type PlanScheduleEnvelope = typeof planScheduleEnvelopeSchema._type;
+type PlanDay = PlanScheduleEnvelope['data']['schedule'][number];
+type PlanWorkout = PlanDay['workouts'][number];
 
 function formatDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, {
@@ -77,254 +23,280 @@ function formatDate(value: string): string {
   });
 }
 
-function irOrigin(ir: Record<string, unknown> | undefined): string | null {
-  return ir && typeof ir.origin === 'string' ? ir.origin : null;
+function iconFor(workoutType: string) {
+  const category = categoryForWorkoutType(workoutType);
+  if (category === 'cycle') return Bike;
+  if (category === 'weights') return Dumbbell;
+  return Wind;
 }
 
-function adjustmentSummary(ir: Record<string, unknown> | undefined): string | null {
-  const adjustment = ir?.adjustment;
-  if (!adjustment || typeof adjustment !== 'object') return null;
-  const a = adjustment as Record<string, unknown>;
-  if (a.changed !== true) return null;
-  const parts: string[] = [];
-  if (typeof a.durationScalePct === 'number') parts.push(`${a.durationScalePct}% of the duration`);
-  if (typeof a.zoneDropPct === 'number' && a.zoneDropPct > 0) parts.push('down a zone');
-  if (a.removedHit === true) parts.push('HIT removed');
-  return parts.length ? parts.join(' · ') : null;
+function prettyType(type: string): string {
+  const cleaned = type.replace(/[_-]+/g, ' ').trim();
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 
-async function fetchWeekAhead() {
-  const response = await apiFetch<unknown>(`${BASE}/week-ahead`);
-  return weekAheadEnvelopeSchema.parse(response);
-}
-
-async function fetchDailyLoop() {
-  const response = await apiFetch<unknown>('/api/v1/daily-loop');
-  return dailyLoopEnvelopeSchema.parse(response);
+async function fetchSchedule() {
+  const response = await apiFetch<unknown>('/api/v1/plan-actions/schedule');
+  return planScheduleEnvelopeSchema.parse(response);
 }
 
 export function WeekAheadPage() {
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: ['week-ahead'], queryFn: fetchWeekAhead });
-  // Reuse the cached daily-loop to light up today's row with its verdict.
-  const todayQuery = useQuery({ queryKey: ['daily-loop'], queryFn: fetchDailyLoop, retry: false });
+  const query = useQuery({ queryKey: ['plan-schedule'], queryFn: fetchSchedule });
+  const todayIso = new Date().toISOString().slice(0, 10);
 
-  const todayDow = new Date().getDay();
-  const todayVerdict = todayQuery.data?.data.morningAnalysis?.verdict ?? null;
+  const invalidate = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['plan-schedule'] }),
+      queryClient.invalidateQueries({ queryKey: ['daily-loop'] }),
+      queryClient.invalidateQueries({ queryKey: ['week-ahead'] }),
+    ]);
+  };
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['week-ahead'] });
-
-  const proposeMutation = useMutation({
-    mutationFn: (plannedWorkoutId: string) =>
-      apiFetch(`${BASE}/planned-workouts/${plannedWorkoutId}/proposals`, { method: 'POST' }),
+  const addMutation = useMutation({
+    mutationFn: ({ date, category }: { date: string; category: Exclude<DayCategory, 'rest'> }) =>
+      apiFetch(`/api/v1/plan-actions/days/${date}/workouts`, {
+        method: 'POST',
+        body: JSON.stringify({ category }),
+      }),
     onSuccess: async () => {
       await invalidate();
-      toast.success('Ready — approve it to send to Zwift');
+      toast.success('Workout added');
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not prepare it'),
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not add workout'),
   });
 
-  const approveMutation = useMutation({
-    mutationFn: (proposalId: string) => apiFetch(`${BASE}/proposals/${proposalId}/approve`, { method: 'POST' }),
+  const moveMutation = useMutation({
+    mutationFn: ({ workoutId, targetDate }: { workoutId: string; targetDate: string }) =>
+      apiFetch(`/api/v1/workout-delivery/planned-workouts/${workoutId}/swap`, {
+        method: 'POST',
+        body: JSON.stringify({ targetDate }),
+      }),
     onSuccess: async () => {
       await invalidate();
-      toast.success('Approved — Home sends today’s ride when you are ready');
+      toast.success('Schedule updated');
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not approve'),
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not move workout'),
   });
 
-  const pushMutation = useMutation({
-    mutationFn: (proposalId: string) => apiFetch(`${BASE}/proposals/${proposalId}/push`, { method: 'POST' }),
+  const swapIntoMutation = useMutation({
+    mutationFn: ({ workoutId, targetDate }: { workoutId: string; targetDate: string }) =>
+      apiFetch(`/api/v1/plan-actions/days/${targetDate}/swap-in`, {
+        method: 'POST',
+        body: JSON.stringify({ plannedWorkoutId: workoutId }),
+      }),
     onSuccess: async () => {
       await invalidate();
-      toast.success('Sent to Zwift');
+      toast.success('Workout moved into the day');
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not send'),
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not move workout'),
   });
+
+  const skipDayMutation = useMutation({
+    mutationFn: (date: string) => apiFetch(`/api/v1/plan-actions/days/${date}/skip`, { method: 'POST' }),
+    onSuccess: async () => {
+      await invalidate();
+      toast.success('Day skipped');
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not skip day'),
+  });
+
+  const allWorkouts = useMemo(
+    () => query.data?.data.schedule.flatMap((day) => day.workouts.map((workout) => ({ ...workout, day: day.date }))) ?? [],
+    [query.data],
+  );
+  const busy = addMutation.isPending || moveMutation.isPending || swapIntoMutation.isPending || skipDayMutation.isPending;
 
   return (
     <div className="space-y-5">
       <PageHeader title="Plan" />
 
-      {/* Your week at a glance */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Your training week</CardTitle>
-          <CardDescription>Your fixed weekly shape. The hard sessions progress through the block.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {WEEKLY_SHAPE.map((day) => {
-            const isToday = day.dow === todayDow;
-            return (
-              <div
-                key={day.dow}
-                className={cn(
-                  'flex items-start gap-3 rounded-xl border px-3 py-3',
-                  isToday ? 'border-primary/50 bg-primary/5' : 'border-border bg-bg',
-                )}
-              >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-elevated">
-                  {day.rest ? (
-                    <Moon className="h-4 w-4 text-text-muted" aria-hidden />
-                  ) : (
-                    <Bike className="h-4 w-4 text-primary" aria-hidden />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium text-text-primary">{day.name}</span>
-                    {isToday && <Badge variant="default">Today</Badge>}
-                    {isToday && todayVerdict && (
-                      <Badge variant={verdictBadgeVariant(todayVerdict)}>{verdictLabel(todayVerdict)}</Badge>
-                    )}
-                  </div>
-                  <p className={cn('text-sm', day.rest ? 'text-text-muted' : 'text-text-secondary')}>{day.cycling}</p>
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {day.extras.map((extra) => (
-                      <span
-                        key={extra}
-                        className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-text-secondary"
-                      >
-                        {/dumbbell|bodyweight/i.test(extra) ? (
-                          <Dumbbell className="h-3 w-3" aria-hidden />
-                        ) : (
-                          <Activity className="h-3 w-3" aria-hidden />
-                        )}
-                        {extra}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+      <Card className="bg-surface-elevated/60">
+        <CardContent className="pt-6">
+          <p className="text-sm text-text-secondary">
+            This is the live week. Move one workout, swap a rest day with a planned session, add light work, or skip a day.
+          </p>
         </CardContent>
       </Card>
-
-      {/* Send to Zwift */}
-      <div>
-        <PageHeader title="Send to Zwift" className="mb-3" />
-        <Card className="bg-surface-elevated/60">
-          <CardContent className="pt-6">
-            <p className="text-sm text-text-secondary">
-              Your bike sessions can go straight to Zwift. On an easier day the coach trims the
-              workout for you — nothing is sent until you approve it.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
 
       {query.isLoading ? (
         <Card>
           <CardHeader>
-            <CardTitle>Loading your rides…</CardTitle>
+            <CardTitle>Loading your week…</CardTitle>
           </CardHeader>
         </Card>
       ) : query.isError || !query.data ? (
         <Card>
           <CardHeader>
-            <CardTitle>Rides couldn&apos;t load</CardTitle>
+            <CardTitle>Plan couldn&apos;t load</CardTitle>
             <CardDescription>
               {query.error instanceof Error ? query.error.message : 'Please try again in a moment.'}
             </CardDescription>
           </CardHeader>
         </Card>
-      ) : query.data.data.workouts.length === 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>No bike rides this week</CardTitle>
-            <CardDescription>There are no cycling sessions to send to Zwift right now.</CardDescription>
-          </CardHeader>
-        </Card>
       ) : (
-        <div className="space-y-4">
-          {query.data.data.workouts.map((workout) => {
-            const proposal = workout.proposal;
-            const ir = proposal?.structuredWorkoutIr as Record<string, unknown> | undefined;
-            const origin = irOrigin(ir);
-            const adjusted = origin === 'amber_regeneration' || origin === 'red_substitution';
-            const summary = adjustmentSummary(ir);
-            const proposeBusy = proposeMutation.isPending && proposeMutation.variables === workout.plannedWorkoutId;
-            const approveBusy = approveMutation.isPending && approveMutation.variables === proposal?.id;
-            const pushBusy = pushMutation.isPending && pushMutation.variables === proposal?.id;
-
-            return (
-              <Card key={workout.plannedWorkoutId}>
-                <CardContent className="space-y-4 pt-6">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-text-primary">{workout.title}</p>
-                      <p className="text-sm text-text-secondary">
-                        {formatDate(workout.workoutDate)}
-                        {workout.plannedDurationMin ? ` · ${workout.plannedDurationMin} min` : ''}
-                        {workout.intensityTarget ? ` · ${workout.intensityTarget}` : ''}
-                      </p>
-                    </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <Badge variant={statusVariant(proposal?.status)}>{statusLabel(proposal ?? null)}</Badge>
-                      {adjusted ? (
-                        <Badge variant="warning" className="gap-1">
-                          <Sparkles className="h-3 w-3" aria-hidden />
-                          {origin === 'red_substitution' ? 'Recovery swap' : 'Eased for recovery'}
-                        </Badge>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  {summary ? (
-                    <p className="rounded-lg border border-border bg-bg px-3 py-2 text-xs text-text-secondary">
-                      Trimmed to {summary}.
-                    </p>
-                  ) : null}
-
-                  {proposal?.status === 'failed' && proposal.lastError ? (
-                    <p className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-xs text-error">
-                      {proposal.lastError}
-                    </p>
-                  ) : null}
-
-                  {proposal?.status === 'pushed' ? (
-                    <p className="flex items-center gap-2 text-sm text-success">
-                      <CheckCircle2 className="h-4 w-4" aria-hidden />
-                      Sent to Zwift
-                    </p>
-                  ) : (
-                    <div className="flex flex-wrap justify-end gap-2">
-                      {!proposal ? (
-                        <Button
-                          type="button"
-                          onClick={() => proposeMutation.mutate(workout.plannedWorkoutId)}
-                          disabled={proposeBusy}
-                        >
-                          Prepare for Zwift
-                        </Button>
-                      ) : null}
-                      {proposal?.status === 'proposed' ? (
-                        <Button type="button" onClick={() => approveMutation.mutate(proposal.id)} disabled={approveBusy}>
-                          <ThumbsUp className="mr-2 h-4 w-4" aria-hidden />
-                          Approve
-                        </Button>
-                      ) : null}
-                      {proposal && (proposal.status === 'approved' || proposal.status === 'failed') ? (
-                        <Button type="button" onClick={() => pushMutation.mutate(proposal.id)} disabled={pushBusy}>
-                          <Send className="mr-2 h-4 w-4" aria-hidden />
-                          {proposal.status === 'failed' ? 'Try again' : 'Send now'}
-                        </Button>
-                      ) : null}
-                    </div>
-                  )}
-
-                  {proposal?.status === 'approved' ? (
-                    <p className="text-right text-xs text-text-muted">
-                      Approved. Use Home to send today&apos;s ride when you are ready.
-                    </p>
-                  ) : null}
-                </CardContent>
-              </Card>
-            );
-          })}
+        <div className="space-y-3">
+          {query.data.data.schedule.map((day) => (
+            <ScheduleDayCard
+              key={day.date}
+              day={day}
+              isToday={day.date === todayIso}
+              allWorkouts={allWorkouts.filter((workout) => workout.day !== day.date)}
+              busy={busy}
+              onAdd={(category) => addMutation.mutate({ date: day.date, category })}
+              onMove={(workoutId, targetDate) => moveMutation.mutate({ workoutId, targetDate })}
+              onSwapIn={(workoutId) => swapIntoMutation.mutate({ workoutId, targetDate: day.date })}
+              onSkipDay={() => skipDayMutation.mutate(day.date)}
+            />
+          ))}
         </div>
       )}
     </div>
   );
+}
+
+function ScheduleDayCard({
+  day,
+  isToday,
+  allWorkouts,
+  busy,
+  onAdd,
+  onMove,
+  onSwapIn,
+  onSkipDay,
+}: {
+  day: PlanDay;
+  isToday: boolean;
+  allWorkouts: Array<PlanWorkout & { day: string }>;
+  busy: boolean;
+  onAdd: (category: Exclude<DayCategory, 'rest'>) => void;
+  onMove: (workoutId: string, targetDate: string) => void;
+  onSwapIn: (workoutId: string) => void;
+  onSkipDay: () => void;
+}) {
+  return (
+    <Card className={cn(isToday && 'border-primary/50')}>
+      <CardHeader>
+        <CardTitle className="flex flex-wrap items-center gap-2">
+          <CalendarDays className="h-4 w-4 text-primary" aria-hidden />
+          {formatDate(day.date)}
+          {isToday && <Badge variant="default">Today</Badge>}
+          <Badge variant={day.dayState.isRest ? 'muted' : 'accent'}>{day.dayState.label}</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {day.workouts.length === 0 ? (
+          <div className="flex items-center gap-3 rounded-xl border border-dashed border-border px-3 py-3 text-sm text-text-secondary">
+            <Moon className="h-4 w-4" aria-hidden />
+            Rest day
+          </div>
+        ) : (
+          day.workouts.map((workout) => (
+            <WorkoutRow
+              key={workout.id}
+              workout={workout}
+              daysToMove={nextScheduleDates(day.date)}
+              busy={busy}
+              onMove={onMove}
+            />
+          ))
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onAdd('cycle')}>
+            <Plus className="h-4 w-4" aria-hidden />
+            Cycle
+          </Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onAdd('weights')}>
+            <Plus className="h-4 w-4" aria-hidden />
+            Weights
+          </Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onAdd('flexibility')}>
+            <Plus className="h-4 w-4" aria-hidden />
+            Flexibility
+          </Button>
+          {day.workouts.length > 0 && (
+            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onSkipDay}>
+              <Trash2 className="h-4 w-4" aria-hidden />
+              Skip day
+            </Button>
+          )}
+        </div>
+
+        {day.dayState.isRest && allWorkouts.length > 0 && (
+          <div className="rounded-lg border border-border bg-surface-elevated/60 px-3 py-3">
+            <p className="mb-2 text-sm font-medium text-text-primary">Swap a workout into this rest day</p>
+            <div className="flex flex-wrap gap-2">
+              {allWorkouts.slice(0, 6).map((workout) => (
+                <Button
+                  key={workout.id}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => onSwapIn(workout.id)}
+                >
+                  {formatDate(workout.day)} · {workout.title}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function WorkoutRow({
+  workout,
+  daysToMove,
+  busy,
+  onMove,
+}: {
+  workout: PlanWorkout;
+  daysToMove: string[];
+  busy: boolean;
+  onMove: (workoutId: string, targetDate: string) => void;
+}) {
+  const Icon = iconFor(workout.workoutType);
+  return (
+    <div className="rounded-xl border border-border bg-bg px-3 py-3">
+      <div className="flex items-start gap-3">
+        <Icon className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden />
+        <div className="min-w-0 flex-1">
+          <p className="font-medium text-text-primary">{workout.title}</p>
+          <p className="text-sm text-text-secondary">
+            {prettyType(workout.workoutType)}
+            {workout.plannedDurationMin ? ` · ${workout.plannedDurationMin} min` : ''}
+            {workout.intensityTarget ? ` · ${workout.intensityTarget}` : ''}
+          </p>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {daysToMove.map((targetDate) => (
+          <Button
+            key={targetDate}
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => onMove(workout.id, targetDate)}
+          >
+            Move {formatDate(targetDate)}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function nextScheduleDates(currentDate: string): string[] {
+  const base = new Date(`${currentDate}T00:00:00`);
+  const days: string[] = [];
+  for (let offset = 1; offset <= 3; offset += 1) {
+    const next = new Date(base);
+    next.setDate(base.getDate() + offset);
+    days.push(next.toISOString().slice(0, 10));
+  }
+  return days;
 }

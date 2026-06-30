@@ -6,6 +6,7 @@ import {
   ArrowLeftRight,
   BedDouble,
   Bike,
+  CalendarDays,
   Check,
   ChevronRight,
   ClipboardCheck,
@@ -13,6 +14,7 @@ import {
   Fan,
   MoonStar,
   Pencil,
+  Plus,
   Thermometer,
   Trash2,
   Wind,
@@ -47,6 +49,7 @@ import {
   type FanState,
 } from '@/lib/dailyFlow';
 import { greetingForNow, verdictLabel } from '@/lib/copy';
+import { dayStateForWorkouts, type DayCategory } from '@/lib/workoutCategories';
 
 const textareaClassName =
   'min-h-[88px] w-full rounded-md border border-border bg-bg px-3 py-3 text-sm text-text-primary shadow-sm focus-visible:outline-none focus-visible:shadow-glow';
@@ -140,6 +143,42 @@ export function DashboardPage() {
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : 'Could not swap the day'),
   });
+  const addWorkoutMutation = useMutation({
+    mutationFn: ({ date, category }: { date: string; category: Exclude<DayCategory, 'rest'> }) =>
+      apiFetch(`/api/v1/plan-actions/days/${date}/workouts`, {
+        method: 'POST',
+        body: JSON.stringify({ category }),
+      }),
+    onSuccess: async () => {
+      await invalidateLoop();
+      toast.success('Workout added');
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Could not add the workout'),
+  });
+  const skipDayMutation = useMutation({
+    mutationFn: ({ date }: { date: string }) =>
+      apiFetch(`/api/v1/plan-actions/days/${date}/skip`, { method: 'POST' }),
+    onSuccess: async () => {
+      await invalidateLoop();
+      toast.success('Day skipped');
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Could not skip the day'),
+  });
+  const actualMutation = useMutation({
+    mutationFn: ({ date, label, notes }: { date: string; label: string; notes: string | null }) =>
+      apiFetch(`/api/v1/plan-actions/days/${date}/actual`, {
+        method: 'POST',
+        body: JSON.stringify({ label, notes }),
+      }),
+    onSuccess: async () => {
+      await invalidateLoop();
+      toast.success('Logged what happened');
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Could not save that note'),
+  });
   const postRideCheckInMutation = useMutation({
     mutationFn: ({
       activityId,
@@ -207,18 +246,15 @@ export function DashboardPage() {
   const thermal = daily.thermalState;
   const postWorkouts = daily.postWorkoutAnalyses ?? [];
   const todaysWorkouts = daily.plannedWorkouts;
-  // The Today card leads with one session (the bike one if there is one); the rest
-  // are listed read-only beneath it.
-  const primaryWorkout =
-    todaysWorkouts.find((workout) => isBikeWorkout(workout.workoutType)) ??
-    todaysWorkouts[0] ??
-    null;
-  const otherWorkouts = todaysWorkouts.filter((workout) => workout.id !== primaryWorkout?.id);
+  const dayState = dayStateForWorkouts(todaysWorkouts);
   const actionsBusy =
     editMutation.isPending ||
     approveMutation.isPending ||
     skipMutation.isPending ||
-    swapMutation.isPending;
+    swapMutation.isPending ||
+    addWorkoutMutation.isPending ||
+    skipDayMutation.isPending ||
+    actualMutation.isPending;
   const todayActions = {
     busy: actionsBusy,
     onEdit: (payload: { workoutId: string; durationScalePct?: number; intensityScalePct?: number }) =>
@@ -226,6 +262,14 @@ export function DashboardPage() {
     onApprove: (payload: { workoutId: string }) => approveMutation.mutate(payload),
     onSkip: (payload: { workoutId: string }) => skipMutation.mutate(payload),
     onSwap: (payload: { workoutId: string; targetDate: string }) => swapMutation.mutate(payload),
+  };
+  const dayActions = {
+    busy: actionsBusy,
+    onAddWorkout: (category: Exclude<DayCategory, 'rest'>) =>
+      addWorkoutMutation.mutate({ date: daily.subjectDate, category }),
+    onSkipDay: () => skipDayMutation.mutate({ date: daily.subjectDate }),
+    onRecordActual: (payload: { label: string; notes: string | null }) =>
+      actualMutation.mutate({ date: daily.subjectDate, ...payload }),
   };
 
   return (
@@ -262,21 +306,15 @@ export function DashboardPage() {
             baselinesLink="/baselines"
           />
 
-          <TodayCard
-            workout={primaryWorkout}
+          <DayPlanCard
+            dayState={dayState}
+            workouts={todaysWorkouts}
             verdict={analysis?.verdict}
             planAdjustments={analysis?.planAdjustments ?? []}
             subjectDate={daily.subjectDate}
-            {...todayActions}
+            workoutActions={todayActions}
+            dayActions={dayActions}
           />
-
-          {otherWorkouts.length > 0 && (
-            <WorkoutListCard
-              title="Also on today"
-              description="The rest of your slate."
-              workouts={otherWorkouts}
-            />
-          )}
         </>
       )}
 
@@ -314,12 +352,14 @@ export function DashboardPage() {
             baselinesLink="/baselines"
           />
 
-          <TodayCard
-            workout={primaryWorkout}
+          <DayPlanCard
+            dayState={dayState}
+            workouts={todaysWorkouts}
             verdict={analysis?.verdict}
             planAdjustments={analysis?.planAdjustments ?? []}
             subjectDate={daily.subjectDate}
-            {...todayActions}
+            workoutActions={todayActions}
+            dayActions={dayActions}
           />
 
           <BedroomSummaryCard thermal={thermal} />
@@ -384,6 +424,171 @@ function SleepSnapshotCard({
 
 type TodayWorkout = DailyLoopData['plannedWorkouts'][number];
 
+type TodayWorkoutActions = {
+  busy: boolean;
+  onEdit: (payload: {
+    workoutId: string;
+    durationScalePct?: number;
+    intensityScalePct?: number;
+  }) => void;
+  onApprove: (payload: { workoutId: string }) => void;
+  onSkip: (payload: { workoutId: string }) => void;
+  onSwap: (payload: { workoutId: string; targetDate: string }) => void;
+};
+
+function DayPlanCard({
+  dayState,
+  workouts,
+  verdict,
+  planAdjustments,
+  subjectDate,
+  workoutActions,
+  dayActions,
+}: {
+  dayState: { label: string; isRest: boolean };
+  workouts: TodayWorkout[];
+  verdict?: string | null;
+  planAdjustments: string[];
+  subjectDate: string;
+  workoutActions: TodayWorkoutActions;
+  dayActions: {
+    busy: boolean;
+    onAddWorkout: (category: Exclude<DayCategory, 'rest'>) => void;
+    onSkipDay: () => void;
+    onRecordActual: (payload: { label: string; notes: string | null }) => void;
+  };
+}) {
+  const hasWorkouts = workouts.length > 0;
+  return (
+    <div className="space-y-3">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between gap-2">
+            <span>{dayState.label} day</span>
+            <Badge variant={verdictBadgeVariant(verdict)}>{verdictLabel(verdict)}</Badge>
+          </CardTitle>
+          <CardDescription>
+            {hasWorkouts ? 'Each session can be changed on its own.' : 'No session is scheduled.'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <AddWorkoutButtons busy={dayActions.busy} onAddWorkout={dayActions.onAddWorkout} />
+          <div className="flex flex-wrap gap-2">
+            <Button asChild type="button" size="sm" variant="outline">
+              <Link to="/delivery">
+                <CalendarDays className="h-4 w-4" aria-hidden />
+                View week
+              </Link>
+            </Button>
+            {hasWorkouts && (
+              <Button type="button" size="sm" variant="outline" onClick={dayActions.onSkipDay} disabled={dayActions.busy}>
+                <Trash2 className="h-4 w-4" aria-hidden />
+                Skip whole day
+              </Button>
+            )}
+          </div>
+          {!hasWorkouts && (
+            <p className="rounded-xl border border-dashed border-border px-4 py-4 text-sm text-text-secondary">
+              Rest is the plan today. Add something light, swap a workout in from the week, or just record what happened.
+            </p>
+          )}
+          <ActualWorkoutForm busy={dayActions.busy} onSubmit={dayActions.onRecordActual} />
+        </CardContent>
+      </Card>
+
+      {workouts.map((workout) => (
+        <TodayCard
+          key={workout.id}
+          workout={workout}
+          verdict={verdict}
+          planAdjustments={planAdjustments}
+          subjectDate={subjectDate}
+          {...workoutActions}
+        />
+      ))}
+    </div>
+  );
+}
+
+function AddWorkoutButtons({
+  busy,
+  onAddWorkout,
+}: {
+  busy: boolean;
+  onAddWorkout: (category: Exclude<DayCategory, 'rest'>) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onAddWorkout('cycle')}>
+        <Plus className="h-4 w-4" aria-hidden />
+        Cycle
+      </Button>
+      <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onAddWorkout('weights')}>
+        <Plus className="h-4 w-4" aria-hidden />
+        Weights
+      </Button>
+      <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onAddWorkout('flexibility')}>
+        <Plus className="h-4 w-4" aria-hidden />
+        Flexibility
+      </Button>
+    </div>
+  );
+}
+
+function ActualWorkoutForm({
+  busy,
+  onSubmit,
+}: {
+  busy: boolean;
+  onSubmit: (payload: { label: string; notes: string | null }) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [label, setLabel] = useState('');
+  const [notes, setNotes] = useState('');
+  if (!open) {
+    return (
+      <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(true)}>
+        I did something else
+      </Button>
+    );
+  }
+  return (
+    <div className="space-y-3 rounded-lg border border-border bg-surface-elevated/60 px-3 py-3">
+      <div className="space-y-1.5">
+        <Label htmlFor="actual-label">What happened?</Label>
+        <Input
+          id="actual-label"
+          value={label}
+          onChange={(event) => setLabel(event.target.value)}
+          placeholder="Walked instead"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="actual-notes">Notes</Label>
+        <textarea
+          id="actual-notes"
+          className={textareaClassName}
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+        />
+      </div>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          size="sm"
+          disabled={busy || !label.trim()}
+          onClick={() => onSubmit({ label: label.trim(), notes: notes.trim() || null })}
+        >
+          Save
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function TodayCard({
   workout,
   verdict,
@@ -399,16 +604,7 @@ function TodayCard({
   verdict?: string | null;
   planAdjustments?: string[];
   subjectDate: string;
-  busy: boolean;
-  onEdit: (payload: {
-    workoutId: string;
-    durationScalePct?: number;
-    intensityScalePct?: number;
-  }) => void;
-  onApprove: (payload: { workoutId: string }) => void;
-  onSkip: (payload: { workoutId: string }) => void;
-  onSwap: (payload: { workoutId: string; targetDate: string }) => void;
-}) {
+} & TodayWorkoutActions) {
   const [panel, setPanel] = useState<'none' | 'edit' | 'swap' | 'skip'>('none');
   const [ignored, setIgnored] = useState(false);
   const [durationScalePct, setDurationScalePct] = useState('100');
@@ -640,47 +836,6 @@ function TodayCard({
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function WorkoutListCard({
-  title,
-  description,
-  workouts,
-}: {
-  title: string;
-  description: string;
-  workouts: Array<{
-    id: string;
-    title: string;
-    workoutType: string;
-    plannedDurationMin?: number | null;
-  }>;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {workouts.map((workout) => {
-          const Icon = workoutIcon(workout.workoutType);
-          return (
-            <div key={workout.id} className="flex items-center gap-3 rounded-xl border border-border bg-bg px-3 py-3">
-              <Icon className="h-5 w-5 shrink-0 text-primary" aria-hidden />
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-text-primary">{workout.title}</p>
-                <p className="text-sm text-text-secondary">
-                  {prettyType(workout.workoutType)}
-                  {workout.plannedDurationMin ? ` · ${workout.plannedDurationMin} min` : ''}
-                </p>
-              </div>
-            </div>
-          );
-        })}
       </CardContent>
     </Card>
   );

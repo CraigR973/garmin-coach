@@ -6,18 +6,30 @@
 
 ## Now
 
-**Latest (2026-06-29): Batch 29 — Today-card actions + push-on-plan-set delivery — SHIPPED (PR #44, squash `8b5a71e`), prod-verified.**
+**Latest (2026-06-30): Batch 30 — Home day controls + rearrangeable week plan — IMPLEMENTATION READY on `feat/batch-30-home-day-controls`, not shipped.**
+This branch turns the Batch 29 Today-card action surface into a practical day-control model and replaces the old Plan/Week-ahead read with the real mutable schedule:
+- **Day model:** rest is still "no active workout", while cycle, weights, flexibility, and mixed days are derived from the active `planned_workouts` list. `mobility` maps to flexibility, and mixed days remain supported even though the live inspected plan had one workout per workout day.
+- **Plan-action API:** new `/api/v1/plan-actions/schedule` groups the active plan into day cards including rest days; `POST /days/{date}/workouts`, `/swap-in`, `/skip`, and `/actual` add a workout, move an existing workout into a day, skip the whole day, or record "I did something else".
+- **Home:** today's section now renders every same-day workout as an actionable Today card, with day-level Add Cycle / Weights / Flexibility, Skip whole day, and "I did something else" controls. Non-bike additions are local plan rows; added bike workouts reconcile through the Batch 29 delivery rail.
+- **Plan page:** `/delivery` now shows the live grouped schedule, rest-day swap-in targets, per-day add/skip actions, and per-workout move controls instead of a hard-coded weekly shape.
+- **Mixed-day delivery safety:** delivery and daily-loop lookups now prefer `planned_workout_id` before falling back to date-only rows, and reslotting no longer deactivates every workout already on the target date.
+- **Verification (2026-06-30, branch):** backend full suite `348 passed, 118 skipped`; ruff clean; mypy clean; shared tests `7 passed`; targeted web tests `12 passed`; web lint 0 errors with existing Fast Refresh warnings; web build clean; full web vitest passed with `--testTimeout=10000` after the default 5s timeout was too tight under local whole-suite load.
+- **Next step:** review the branch, then run the explicit closeout command when ready. Do not mark this shipped until the closeout merge, CI, production smoke, and docs-on-`main` ceremony are complete.
+
+---
+
+**Prior prod state (2026-06-29): Batch 29 — Today-card actions + push-on-plan-set delivery — SHIPPED (PR #44, squash `8b5a71e`), prod-verified.**
 The Home Today card is now the one action surface for Mark's day, and delivery has moved to push-on-plan-set:
 - **Delivery timing:** block generation and weekly restructure deliver the as-planned baseline to Zwift when the plan is set, without per-workout approval (DECISIONS #99). Morning approval now gates only a sleep/recovery adjustment.
 - **Rail operations:** intervals.icu delivery supports create, replace, move, and delete (`create_event`, `replace_event`, `move_event`, `delete_event`) using true update-in-place for replace/move and honest failure handling (#97).
 - **Today card:** `/api/v1/daily-loop` exposes per-workout delivery state (`changed`, live event id/status/origin, pending adjustment). No-changes state shows Edit / Swap day / Skip; coach-changed state adds Approve & upload / Ignore / Manual edit; non-bike sessions lead the card with no Zwift upload; rest day only means no planned workout.
 - **Action routes:** `POST /api/v1/workout-delivery/planned-workouts/{id}/edit`, `/approve-adjustment`, `/swap`, `/skip`. Edit/Approve replace the live event; Swap is unified move-or-swap; Skip is mark-only local status after Zwift delete; Ignore is client-only dismiss.
 - **Verification (2026-06-29):** PR #44 and `main` CI green across ruff, mypy, pytest, Alembic migration check, security audit, and web build. Production on implementation SHA `8b5a71e`: Railway `/api/v1/health` and Vercel same-origin `/api/v1/health` both returned `sha=8b5a71e…`, web `/` returned 200, and the new action routes returned 401 unauthenticated (non-mutating auth-gated smoke; direct Railway + Vercel rewrite).
-- **Next step:** no planned next batch is currently queued. Optional open follow-ups remain: observe a real Zwift replace/move propagation on first live use, and the smaller red/green "vs your own normal" sleep-tile tinting polish.
+- **Next step:** optional open follow-ups remain: observe a real Zwift replace/move propagation on first live use, and the smaller red/green "vs your own normal" sleep-tile tinting polish.
 
 ---
 
-**Prior prod state (2026-06-28): Batch 27 — bedroom fan control — SHIPPED (PR #41, squash `9f09e52`), prod-verified.**
+**Earlier prod state (2026-06-28): Batch 27 — bedroom fan control — SHIPPED (PR #41, squash `9f09e52`), prod-verified.**
 The whole batch (27.0 spike → 27.1 Dreo client → 27.2 overnight loop → 27.3 manual override + evening Home surface) is
 merged to `main` and live. CI was green across ruff, mypy, pytest (incl. the DB-backed fan/daily-loop tests + Alembic
 `010` up/down that skip locally), security audit, and web lint/typecheck/build. DECISIONS #95-97.
@@ -303,6 +315,15 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-30** — Implemented **Batch 30 — Home day controls + rearrangeable week plan** on
+  `feat/batch-30-home-day-controls` (not closeout-shipped). Added a plan-action API for grouped schedule reads,
+  add-workout, rest-day swap-in, whole-day skip, and "did something else" actuals; taught Home to classify
+  cycle/weights/flexibility/rest/mixed days and render every same-day workout as an actionable Today card; replaced
+  the Plan page's hard-coded week with the live mutable schedule; and tightened delivery lookup/reslotting so
+  mixed days prefer `planned_workout_id` and preserve secondary same-day workouts. Verification: backend full suite
+  `348 passed, 118 skipped`; ruff clean; mypy clean; shared tests `7 passed`; targeted web tests `12 passed`; web
+  lint 0 errors with existing Fast Refresh warnings; web build clean; full web vitest passed with
+  `--testTimeout=10000` after the default 5s timeout was too tight under local whole-suite load.
 - **2026-06-29** — **Closed out Batch 29 — Today-card actions + push-on-plan-set delivery (PR #44, squash `8b5a71e`).**
   Pushed `feat/batch-29-today-card-actions`, opened PR #44, fixed the CI-only FK-ordering failure in the new
   daily-loop delivery-state test (`await session.flush()` after `Profile`), watched PR checks go green, then
