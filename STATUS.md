@@ -6,15 +6,15 @@
 
 ## Now
 
-**Latest (2026-06-30): Batch 30 — Home day controls + rearrangeable week plan — IMPLEMENTATION READY on `feat/batch-30-home-day-controls`, not shipped.**
-This branch turns the Batch 29 Today-card action surface into a practical day-control model and replaces the old Plan/Week-ahead read with the real mutable schedule:
+**Latest (2026-06-30): Batch 30 — Home day controls + rearrangeable week plan — SHIPPED (PR #45, squash `263460f`), prod-verified.**
+The Batch 29 Today-card action surface now has practical day controls, and Plan/Week-ahead is backed by the real mutable schedule:
 - **Day model:** rest is still "no active workout", while cycle, weights, flexibility, and mixed days are derived from the active `planned_workouts` list. `mobility` maps to flexibility, and mixed days remain supported even though the live inspected plan had one workout per workout day.
 - **Plan-action API:** new `/api/v1/plan-actions/schedule` groups the active plan into day cards including rest days; `POST /days/{date}/workouts`, `/swap-in`, `/skip`, and `/actual` add a workout, move an existing workout into a day, skip the whole day, or record "I did something else".
 - **Home:** today's section now renders every same-day workout as an actionable Today card, with day-level Add Cycle / Weights / Flexibility, Skip whole day, and "I did something else" controls. Non-bike additions are local plan rows; added bike workouts reconcile through the Batch 29 delivery rail.
 - **Plan page:** `/delivery` now shows the live grouped schedule, rest-day swap-in targets, per-day add/skip actions, and per-workout move controls instead of a hard-coded weekly shape.
 - **Mixed-day delivery safety:** delivery and daily-loop lookups now prefer `planned_workout_id` before falling back to date-only rows, and reslotting no longer deactivates every workout already on the target date.
-- **Verification (2026-06-30, branch):** backend full suite `348 passed, 118 skipped`; ruff clean; mypy clean; shared tests `7 passed`; targeted web tests `12 passed`; web lint 0 errors with existing Fast Refresh warnings; web build clean; full web vitest passed with `--testTimeout=10000` after the default 5s timeout was too tight under local whole-suite load.
-- **Next step:** review the branch, then run the explicit closeout command when ready. Do not mark this shipped until the closeout merge, CI, production smoke, and docs-on-`main` ceremony are complete.
+- **Verification (2026-06-30):** PR #45 checks green across ruff, mypy, pytest, Alembic migration check, security audit, web build, and Vercel preview after a formatting-only follow-up commit (`02ccaf4`). Production on implementation SHA `263460f`: Railway `/api/v1/health` and Vercel same-origin `/api/v1/health` both returned `sha=263460f…`, web `/` returned 200, and the new `GET /api/v1/plan-actions/schedule` route returned 401 unauthenticated direct and through the Vercel rewrite (non-mutating auth-gated smoke); a direct unauthenticated `POST /plan-actions/days/{date}/workouts` also returned 401 before body parsing.
+- **Next step:** no planned next batch is currently queued. Optional open follow-ups remain: observe a real Zwift replace/move propagation on first live use, and the smaller red/green "vs your own normal" sleep-tile tinting polish.
 
 ---
 
@@ -315,6 +315,14 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-30** — **Closed out Batch 30 — Home day controls + rearrangeable week plan (PR #45, squash `263460f`).**
+  Opened PR #45 from `feat/batch-30-home-day-controls`, fixed the CI-only `ruff format --check` failure with
+  formatting commit `02ccaf4`, watched PR checks go green across ruff, mypy, pytest, Alembic migration check,
+  security audit, web build, and Vercel preview, then squash-merged to `main`. Production verified on implementation
+  SHA `263460f`: Railway `/api/v1/health` and Vercel same-origin `/api/v1/health` both returned that SHA; web `/`
+  returned 200; `GET /api/v1/plan-actions/schedule` returned unauthenticated 401 direct and via the Vercel rewrite;
+  direct unauthenticated `POST /api/v1/plan-actions/days/2026-06-30/workouts` also returned 401 without mutating data.
+  Updated `ARCHITECTURE.md` §2/§7 and struck the Batch 30 row `Shipped` in `docs/phase-batches.md`.
 - **2026-06-30** — Implemented **Batch 30 — Home day controls + rearrangeable week plan** on
   `feat/batch-30-home-day-controls` (not closeout-shipped). Added a plan-action API for grouped schedule reads,
   add-workout, rest-day swap-in, whole-day skip, and "did something else" actuals; taught Home to classify

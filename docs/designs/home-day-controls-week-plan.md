@@ -1,6 +1,6 @@
 # Batch 30 — Home day controls + rearrangeable week plan
 
-Status: implementation ready on `feat/batch-30-home-day-controls` (2026-06-30), not shipped until closeout.
+Status: shipped in PR #45 (`263460f`) on 2026-06-30.
 
 ## Goal
 
