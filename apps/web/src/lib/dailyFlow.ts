@@ -58,6 +58,24 @@ export interface FanState {
   respondingToC: number | null;
 }
 
+export interface OvernightGlanceSummary {
+  minTempC: number | null;
+  maxTempC: number | null;
+  fanRanMinutes: number;
+  peakSpeed: number | null;
+}
+
+/** The one-line last-night glance for the Home bedroom card (Batch 31).
+ *  Returns null when there's no room data to summarise yet. */
+export function overnightGlanceText(summary: OvernightGlanceSummary | null | undefined): string | null {
+  if (!summary || summary.minTempC == null || summary.maxTempC == null) return null;
+  const range = `${Math.round(summary.minTempC)}→${Math.round(summary.maxTempC)} °C`;
+  if (summary.fanRanMinutes <= 0) return `Last night: ${range}, fan didn't run`;
+  const hours = (summary.fanRanMinutes / 60).toFixed(1);
+  const peak = summary.peakSpeed != null ? ` (peak speed ${summary.peakSpeed})` : '';
+  return `Last night: ${range}, fan ran ${hours} h${peak}`;
+}
+
 /** A plain-language one-liner for the bedroom-fan autopilot's current intent. */
 export function fanStatusText(fan: FanState): string {
   if (!fan.autoEnabled) return 'Manual control';

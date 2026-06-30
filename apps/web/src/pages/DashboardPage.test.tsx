@@ -180,11 +180,31 @@ function buildSnapshot(mutator?: (snapshot: DailyLoopEnvelope) => void) {
   return snapshot;
 }
 
+const overnightSnapshot = {
+  data: {
+    night: '2026-06-19',
+    timezone: 'Europe/London',
+    windowStartUtc: '2026-06-19T20:30:00Z',
+    windowEndUtc: '2026-06-20T08:00:00Z',
+    thresholds: { onC: 19.5, criticalC: 20.0 },
+    temperature: [{ t: '2026-06-19T22:00:00Z', c: 20.4 }],
+    fan: [],
+    sleep: null,
+    summary: { minTempC: 19, maxTempC: 21, fanRanMinutes: 210, peakSpeed: 5 },
+    nights: ['2026-06-19'],
+  },
+  meta: { generatedAtUtc: '2026-06-20T08:05:00Z' },
+  errors: [],
+};
+
 function renderPage(snapshot = baseSnapshot) {
   apiFetchMock.mockClear(); // isolate each test's call history (negative assertions)
   apiFetchMock.mockImplementation((path: string) => {
     if (path === '/api/v1/daily-loop') {
       return Promise.resolve(snapshot);
+    }
+    if (path.startsWith('/api/v1/bedroom/overnight')) {
+      return Promise.resolve(overnightSnapshot);
     }
     if (path.includes('/api/v1/workout-delivery/planned-workouts/')) {
       return Promise.resolve({ data: { proposals: [] }, meta: { generatedAtUtc: '2026-06-20T06:45:00Z' }, errors: [] });
@@ -198,7 +218,7 @@ function renderPage(snapshot = baseSnapshot) {
     return Promise.reject(new Error(`Unexpected request: ${path}`));
   });
 
-  const queryClient = new QueryClient();
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
   render(
     <QueryClientProvider client={queryClient}>
@@ -399,6 +419,8 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Bedroom')).toBeTruthy();
     expect(screen.getByText('Bedroom fan')).toBeTruthy();
     expect(screen.getByText('Auto · on at speed 5, responding to 20.1°C')).toBeTruthy();
+    // Batch 31: the one-line overnight glance, linking through to /bedroom.
+    expect(await screen.findByText('Last night: 19→21 °C, fan ran 3.5 h (peak speed 5)')).toBeTruthy();
     expect(screen.queryByText("Today's session")).toBeNull();
   });
 

@@ -6,7 +6,18 @@
 
 ## Now
 
-**Latest (2026-06-30): Batch 30 — Home day controls + rearrangeable week plan — SHIPPED (PR #45, squash `263460f`), prod-verified.**
+**Latest (2026-06-30): Batch 31 — Overnight temperature × fan × sleep chart — IMPLEMENTED on branch `feat/batch-31-overnight-bedroom-chart`, NOT closeout-shipped.** (DECISIONS #101; spec `docs/designs/bedroom-overnight-chart.md`.)
+Makes the Batch 27 fan autopilot legible without touching its decision logic — it only adds a write + a read:
+- **31.0 de-risk (settled):** the per-interval hypnogram is in `sleep.raw_payload['sleepLevels']` (`{startGMT,endGMT,activityLevel}` 0=deep/1=light/2=rem/3=awake; survives the sync) → rendered as a faint band. Hive poll (+2 min) and `run_fan_control` (+4 min) fire at different 15-min offsets → nearest-time join, not exact-timestamp.
+- **31.1 persist:** new `fan_state_readings` table (migration `011`, mirrors `temperature_readings`). `_apply_fan_control` now **returns** a `FanControlResult`; `run_fan_control` reorders the pure `loop_phase` check before the `fan_auto_enabled` gate and writes one idempotent tick per within-window fire — incl. `auto_off`/`no_data`/`unreachable`/`winddown` so gaps are explained, `idle` writes nothing. Timestamp floored to `INTERVAL_MIN` + `ON CONFLICT DO NOTHING` = coalesce-safe. Fan decision/thresholds/degradation unchanged; failure `reason` is a fixed secret-safe string.
+- **31.2 read:** new `routers/bedroom.py` `GET /api/v1/bedroom/overnight` — pure DB read, night-windows `[21:30→09:00]` local (reuses `fan_control` constants), joins temp + fan + the night's sleep (`night+1`), defaults to last completed night, `nights[]` pager. Pure logic in `services/bedroom_overnight.py`. Kept off `/api/v1/daily-loop`. Shared `bedroomOvernightEnvelopeSchema`.
+- **31.3/31.4 frontend:** recharts dual-axis `BedroomOvernightChart` (temp line + fan-speed step, 19.5/20.0 °C `ReferenceLine`s, hypnogram/sleep `ReferenceArea`s, muted spans, night pager, empty state) below the `/bedroom` fan card; one-line Home glance on evening/post-ride (`overnightGlanceText`) linking through.
+- **Verification (local):** backend ruff + `ruff format --check` + mypy(75 files) clean, full suite **362 passed / 129 skipped** (the 11 new DB-backed tests run in CI — no local Postgres/Docker on this Mac), Alembic single head `011`; web build + lint (0 err) + **63 vitest**; shared typecheck + 7 tests. CI runs the DB-backed tests + Alembic `011` up/down.
+- **Next step:** open PR, watch CI (esp. the DB-backed `run_fan_control` ticks + endpoint join + `011` up/down), then `/phase-closeout 31`. **Post-deploy first-live-use items:** (1) the `fan_state_readings` series starts empty at the `011` deploy — early nights show temp+sleep with an empty fan track (expected; the empty state says so); (2) confirm the chart renders correctly against real prod data (couldn't preview pre-deploy — the table isn't in prod and the dev preview proxies `/api` to prod; verified instead via build + vitest mount tests).
+
+---
+
+**Prior prod state (2026-06-30): Batch 30 — Home day controls + rearrangeable week plan — SHIPPED (PR #45, squash `263460f`), prod-verified.**
 The Batch 29 Today-card action surface now has practical day controls, and Plan/Week-ahead is backed by the real mutable schedule:
 - **Day model:** rest is still "no active workout", while cycle, weights, flexibility, and mixed days are derived from the active `planned_workouts` list. `mobility` maps to flexibility, and mixed days remain supported even though the live inspected plan had one workout per workout day.
 - **Plan-action API:** new `/api/v1/plan-actions/schedule` groups the active plan into day cards including rest days; `POST /days/{date}/workouts`, `/swap-in`, `/skip`, and `/actual` add a workout, move an existing workout into a day, skip the whole day, or record "I did something else".
@@ -315,6 +326,18 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-06-30** — Implemented **Batch 31 — Overnight temperature × fan × sleep chart** on
+  `feat/batch-31-overnight-bedroom-chart` (not closeout-shipped). 31.0 de-risk confirmed the hypnogram lives in
+  `sleep.raw_payload['sleepLevels']` and that temp/fan fire at different 15-min offsets (→ nearest-time join). Added
+  `fan_state_readings` (migration `011`) + a scheduler refactor where `_apply_fan_control` returns a `FanControlResult`
+  and `run_fan_control` writes one idempotent (floored-timestamp + `ON CONFLICT DO NOTHING`) tick per within-window fire
+  across all branches with the fan decision logic untouched; a pure `services/bedroom_overnight.py` + new
+  `routers/bedroom.py` `GET /api/v1/bedroom/overnight` (temp×fan×sleep join, default last completed night, pager, kept
+  off daily-loop); shared `bedroomOvernightEnvelopeSchema`; a recharts dual-axis `BedroomOvernightChart` + night pager +
+  empty state on `/bedroom`, and a one-line Home glance. DECISIONS #101; ARCHITECTURE §5 data-model updated. Verification:
+  backend ruff + `ruff format --check` + mypy(75) clean, full suite `362 passed, 129 skipped` (11 new DB-backed tests run
+  in CI — no local Postgres/Docker), Alembic single head `011`; web build + lint (0 err) + `63 vitest`; shared 7. Live
+  chart preview deferred to post-deploy (the new table isn't in prod and the dev preview proxies `/api` to prod).
 - **2026-06-30** — **Closed out Batch 30 — Home day controls + rearrangeable week plan (PR #45, squash `263460f`).**
   Opened PR #45 from `feat/batch-30-home-day-controls`, fixed the CI-only `ruff format --check` failure with
   formatting commit `02ccaf4`, watched PR checks go green across ruff, mypy, pytest, Alembic migration check,

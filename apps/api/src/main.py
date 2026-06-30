@@ -18,6 +18,7 @@ from src.middleware import CorrelationIdMiddleware, SecurityHeadersMiddleware
 from src.rate_limit import limiter
 from src.routers import (
     auth,
+    bedroom,
     block_generator,
     coaching_state,
     daily_loop,
@@ -111,6 +112,7 @@ app.include_router(notifications.router)
 app.include_router(coaching_state.router)
 app.include_router(daily_loop.router)
 app.include_router(fan.router)
+app.include_router(bedroom.router)
 app.include_router(workout_delivery.router)
 app.include_router(plan_actions.router)
 app.include_router(restructure.router)
