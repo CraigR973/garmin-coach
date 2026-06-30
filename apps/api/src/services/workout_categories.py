@@ -59,4 +59,3 @@ def day_state_for_workout_types(workout_types: list[str]) -> DayState:
 
 def is_bike_workout_type(workout_type: str | None) -> bool:
     return category_for_workout_type(workout_type) == DAY_CATEGORY_CYCLE
-

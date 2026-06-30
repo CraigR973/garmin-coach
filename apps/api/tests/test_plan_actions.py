@@ -180,23 +180,25 @@ async def test_rest_day_swap_in_moves_existing_workout(db_conn: AsyncConnection)
         await session.commit()
         service = PlanActionService(session, intervals_client=fake)
         await service.executable.reconcile_deliveries(user, start_date=monday, end_date=monday)
-        await service.add_workout(
-            user, workout_date=wednesday, category="flexibility"
-        )
+        await service.add_workout(user, workout_date=wednesday, category="flexibility")
 
         moved = await service.swap_workout_into_date(
             user, planned_workout_id=workout_id, target_date=wednesday
         )
 
         monday_active = (
-            await session.execute(
-                select(PlannedWorkout).where(
-                    PlannedWorkout.user_id == user_id,
-                    PlannedWorkout.workout_date == monday,
-                    PlannedWorkout.is_active.is_(True),
+            (
+                await session.execute(
+                    select(PlannedWorkout).where(
+                        PlannedWorkout.user_id == user_id,
+                        PlannedWorkout.workout_date == monday,
+                        PlannedWorkout.is_active.is_(True),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
     assert moved.workout_date == wednesday
     assert monday_active[0].workout_type == "mobility"

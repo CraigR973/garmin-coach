@@ -243,4 +243,3 @@ async def record_actual(
         meta=ApiMeta(generatedAtUtc=_generated_at()),
         errors=[],
     )
-
