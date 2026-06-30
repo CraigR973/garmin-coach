@@ -436,6 +436,29 @@ class WorkoutDeliveryService:
         )
         return proposal
 
+    async def latest_delivered_for_workout(
+        self, user_id: uuid.UUID, planned_workout_id: uuid.UUID
+    ) -> WorkoutDeliveryProposal | None:
+        """The live Zwift event for a specific planned workout.
+
+        Batch 30 allows mixed days and append-to-occupied-day actions, so a date
+        can legitimately carry more than one workout. Prefer the workout id for
+        action routes; date lookup remains as the compatibility fallback for
+        older delivery rows that were keyed to the slot before mixed days.
+        """
+        proposal: WorkoutDeliveryProposal | None = await self.session.scalar(
+            select(WorkoutDeliveryProposal)
+            .where(
+                WorkoutDeliveryProposal.user_id == user_id,
+                WorkoutDeliveryProposal.planned_workout_id == planned_workout_id,
+                WorkoutDeliveryProposal.status == STATUS_PUSHED,
+                WorkoutDeliveryProposal.intervals_event_id.is_not(None),
+            )
+            .order_by(WorkoutDeliveryProposal.created_at.desc())
+            .limit(1)
+        )
+        return proposal
+
     async def create_event(
         self,
         *,

@@ -26,7 +26,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 from fastapi import HTTPException
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import Analysis, PlannedWorkout, WorkoutDeliveryProposal
@@ -508,7 +508,9 @@ class ExecutableCoachingService:
         base_ir["origin"] = "as_planned"
         base_ir["adjustment"] = {"verdict": None, "changed": False}
 
-        live = await self.rail.latest_delivered_for_date(player.id, workout.workout_date)
+        live = await self.rail.latest_delivered_for_workout(player.id, workout.id)
+        if live is None:
+            live = await self.rail.latest_delivered_for_date(player.id, workout.workout_date)
         if (
             live is not None
             and live.planned_workout_id == workout.id
@@ -677,7 +679,9 @@ class ExecutableCoachingService:
         status only flips once the Zwift delete succeeds.
         """
         workout = await self.rail._planned_workout(player.id, planned_workout_id)
-        live = await self.rail.latest_delivered_for_date(player.id, workout.workout_date)
+        live = await self.rail.latest_delivered_for_workout(player.id, workout.id)
+        if live is None:
+            live = await self.rail.latest_delivered_for_date(player.id, workout.workout_date)
         event_id = live.intervals_event_id if live is not None else None
         if live is not None:
             await self.rail.delete_event(proposal=live, commit=False)
@@ -715,8 +719,16 @@ class ExecutableCoachingService:
             raise HTTPException(status_code=400, detail="Pick a different day to swap to")
 
         target_workout = await self._active_workout_on(player.id, target_date)
-        source_live = await self.rail.latest_delivered_for_date(player.id, source_date)
-        target_live = await self.rail.latest_delivered_for_date(player.id, target_date)
+        source_live = await self.rail.latest_delivered_for_workout(player.id, workout.id)
+        if source_live is None:
+            source_live = await self.rail.latest_delivered_for_date(player.id, source_date)
+        target_live = (
+            await self.rail.latest_delivered_for_workout(player.id, target_workout.id)
+            if target_workout is not None
+            else None
+        )
+        if target_workout is not None and target_live is None:
+            target_live = await self.rail.latest_delivered_for_date(player.id, target_date)
 
         # Move the Zwift events first so a failed cloud move aborts before any local
         # re-slot (#97 honesty): the plan never diverges from the calendar silently.
@@ -770,7 +782,9 @@ class ExecutableCoachingService:
     ) -> WorkoutDeliveryProposal:
         """Replace this date's live Zwift event with ``ir`` (or create one if the
         slot has none yet), re-pointing the carrying proposal at ``workout``."""
-        live = await self.rail.latest_delivered_for_date(player.id, workout.workout_date)
+        live = await self.rail.latest_delivered_for_workout(player.id, workout.id)
+        if live is None:
+            live = await self.rail.latest_delivered_for_date(player.id, workout.workout_date)
         if live is None:
             proposal = await self.rail.propose_from_ir(
                 player=player, workout=workout, ir=ir, commit=False
@@ -848,15 +862,6 @@ class ExecutableCoachingService:
             )
         )
         next_version = (current_version or 0) + 1
-        await self.session.execute(
-            update(PlannedWorkout)
-            .where(
-                PlannedWorkout.user_id == player.id,
-                PlannedWorkout.workout_date == target_date,
-                PlannedWorkout.is_active.is_(True),
-            )
-            .values(is_active=False)
-        )
         workout = PlannedWorkout(
             user_id=player.id,
             plan_block_id=content["plan_block_id"],

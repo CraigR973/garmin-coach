@@ -364,13 +364,25 @@ class DailyLoopService:
                 select(WorkoutDeliveryProposal)
                 .where(
                     WorkoutDeliveryProposal.user_id == user_id,
-                    WorkoutDeliveryProposal.workout_date == workout.workout_date,
+                    WorkoutDeliveryProposal.planned_workout_id == workout.id,
                     WorkoutDeliveryProposal.status == STATUS_PUSHED,
                     WorkoutDeliveryProposal.intervals_event_id.is_not(None),
                 )
                 .order_by(WorkoutDeliveryProposal.created_at.desc())
                 .limit(1)
             )
+            if live is None:
+                live = await self.session.scalar(
+                    select(WorkoutDeliveryProposal)
+                    .where(
+                        WorkoutDeliveryProposal.user_id == user_id,
+                        WorkoutDeliveryProposal.workout_date == workout.workout_date,
+                        WorkoutDeliveryProposal.status == STATUS_PUSHED,
+                        WorkoutDeliveryProposal.intervals_event_id.is_not(None),
+                    )
+                    .order_by(WorkoutDeliveryProposal.created_at.desc())
+                    .limit(1)
+                )
             pending = await self._pending_adjustment(user_id, workout.id)
             live_ir = (
                 live.structured_workout_ir

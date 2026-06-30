@@ -1,11 +1,7 @@
 import type { DailyLoopData } from '@/hooks/useDailyLoop';
+import { isBikeWorkoutType } from '@/lib/workoutCategories';
 
 export type DailyPhase = 'pre_ride' | 'post_ride' | 'rest_day';
-
-function isBikeWorkoutType(workoutType: string | null | undefined): boolean {
-  const value = (workoutType ?? '').toLowerCase();
-  return /bike|cycl|ride|vo2|z2|sweet|endurance|tempo|threshold/.test(value);
-}
 
 export function useDailyPhase(data: DailyLoopData | undefined): DailyPhase {
   if (!data) {
