@@ -16,7 +16,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from src.services.fan_control import INTERVAL_MIN, WINDDOWN_END, WINDOW_START
@@ -26,9 +26,11 @@ from src.services.fan_control import INTERVAL_MIN, WINDDOWN_END, WINDOW_START
 # the critical line (``nudge_alerts.evaluate_thermal_alert``).
 THRESHOLD_ON_C = 19.5
 THRESHOLD_CRITICAL_C = 20.0
+RED_CRITICAL_MINUTES = 60
 
 # Garmin sleep-levels (hypnogram) ``activityLevel`` → stage label.
 SLEEP_STAGE_BY_LEVEL: dict[int, str] = {0: "deep", 1: "light", 2: "rem", 3: "awake"}
+RoomVerdict = Literal["green", "amber", "red"]
 
 
 @dataclass(frozen=True)
@@ -39,6 +41,9 @@ class OvernightSummary:
     max_temp_c: float | None
     fan_ran_minutes: int
     peak_speed: int | None
+    warning_minutes: int
+    critical_minutes: int
+    room_verdict: RoomVerdict
 
 
 def night_window(night: date, tz: ZoneInfo) -> tuple[datetime, datetime]:
@@ -121,17 +126,32 @@ def summarize_overnight(
     """Roll the night's series up for the one-line Home glance.
 
     ``fan_ran_minutes`` counts the on-ticks × the loop interval; ``peak_speed`` is
-    the highest speed while running. Temperature range is over the room curve.
+    the highest speed while running. Temperature range is over the room curve, and
+    the verdict reuses the existing warning/critical chart thresholds.
     """
     temps = [t for t in temperatures_c if t is not None]
     on_ticks = [(on, speed) for on, speed in fan_states if on]
     speeds = [speed for _on, speed in on_ticks if speed is not None]
+    warning_minutes = sum(1 for t in temps if t >= THRESHOLD_ON_C) * interval_min
+    critical_minutes = sum(1 for t in temps if t >= THRESHOLD_CRITICAL_C) * interval_min
     return OvernightSummary(
         min_temp_c=round(min(temps), 1) if temps else None,
         max_temp_c=round(max(temps), 1) if temps else None,
         fan_ran_minutes=len(on_ticks) * interval_min,
         peak_speed=max(speeds) if speeds else None,
+        warning_minutes=warning_minutes,
+        critical_minutes=critical_minutes,
+        room_verdict=room_verdict(warning_minutes, critical_minutes),
     )
+
+
+def room_verdict(warning_minutes: int, critical_minutes: int) -> RoomVerdict:
+    """Classify the night's room impact from threshold minutes."""
+    if warning_minutes <= 0:
+        return "green"
+    if critical_minutes >= RED_CRITICAL_MINUTES:
+        return "red"
+    return "amber"
 
 
 def iso_z(naive_utc: datetime) -> str:

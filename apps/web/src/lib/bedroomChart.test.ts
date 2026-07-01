@@ -58,20 +58,44 @@ describe('mutedSpans', () => {
 describe('overnightGlanceText', () => {
   it('summarises room range and fan runtime', () => {
     expect(
-      overnightGlanceText({ minTempC: 19.2, maxTempC: 21.4, fanRanMinutes: 210, peakSpeed: 5 }),
+      overnightGlanceText({
+        minTempC: 19.2,
+        maxTempC: 21.4,
+        fanRanMinutes: 210,
+        peakSpeed: 5,
+        warningMinutes: 210,
+        criticalMinutes: 60,
+        roomVerdict: 'red',
+      }),
     ).toBe('Last night: 19→21 °C, fan ran 3.5 h (peak speed 5)');
   });
 
   it('says when the fan did not run', () => {
     expect(
-      overnightGlanceText({ minTempC: 16, maxTempC: 18, fanRanMinutes: 0, peakSpeed: null }),
+      overnightGlanceText({
+        minTempC: 16,
+        maxTempC: 18,
+        fanRanMinutes: 0,
+        peakSpeed: null,
+        warningMinutes: 0,
+        criticalMinutes: 0,
+        roomVerdict: 'green',
+      }),
     ).toBe('Last night: 16→18 °C, fan didn\'t run');
   });
 
   it('is silent when there is no room data', () => {
     expect(overnightGlanceText(null)).toBeNull();
     expect(
-      overnightGlanceText({ minTempC: null, maxTempC: null, fanRanMinutes: 0, peakSpeed: null }),
+      overnightGlanceText({
+        minTempC: null,
+        maxTempC: null,
+        fanRanMinutes: 0,
+        peakSpeed: null,
+        warningMinutes: 0,
+        criticalMinutes: 0,
+        roomVerdict: 'green',
+      }),
     ).toBeNull();
   });
 });

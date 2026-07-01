@@ -51,18 +51,11 @@ import {
   remContext,
   type FanState,
 } from '@/lib/dailyFlow';
-import { greetingForNow, verdictLabel } from '@/lib/copy';
+import { greetingForNow, verdictBadgeVariant, verdictLabel, verdictToneLabel } from '@/lib/copy';
 import { dayStateForWorkouts, type DayCategory } from '@/lib/workoutCategories';
 
 const textareaClassName =
   'min-h-[88px] w-full rounded-md border border-border bg-bg px-3 py-3 text-sm text-text-primary shadow-sm focus-visible:outline-none focus-visible:shadow-glow';
-
-function verdictBadgeVariant(verdict: string | null | undefined): 'success' | 'warning' | 'error' | 'muted' {
-  if (verdict === 'green') return 'success';
-  if (verdict === 'amber') return 'warning';
-  if (verdict === 'red') return 'error';
-  return 'muted';
-}
 
 function workoutIcon(type: string): LucideIcon {
   const t = type.toLowerCase();
@@ -1125,7 +1118,8 @@ function BedroomSummaryCard({
  *  until there's something to say, so Home never shows a spinner for it. */
 function OvernightGlance() {
   const query = useBedroomOvernight();
-  const glance = overnightGlanceText(query.data?.data.summary);
+  const summary = query.data?.data.summary;
+  const glance = overnightGlanceText(summary);
   if (!glance) return null;
   return (
     <Link
@@ -1134,6 +1128,15 @@ function OvernightGlance() {
     >
       <span className="flex items-center gap-2 text-text-secondary">
         <LineChart className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+        {summary ? (
+          <Badge
+            variant={verdictBadgeVariant(summary.roomVerdict)}
+            className="shrink-0"
+            data-testid="overnight-room-verdict-badge"
+          >
+            {verdictToneLabel(summary.roomVerdict)}
+          </Badge>
+        ) : null}
         {glance}
       </span>
       <ChevronRight className="h-4 w-4 shrink-0 text-text-muted" aria-hidden />

@@ -83,6 +83,9 @@ class OvernightSummaryOut(BaseModel):
     maxTempC: float | None = None
     fanRanMinutes: int
     peakSpeed: int | None = None
+    warningMinutes: int
+    criticalMinutes: int
+    roomVerdict: str
 
 
 class OvernightData(BaseModel):
@@ -194,6 +197,9 @@ async def get_overnight(
             maxTempC=summary_core.max_temp_c,
             fanRanMinutes=summary_core.fan_ran_minutes,
             peakSpeed=summary_core.peak_speed,
+            warningMinutes=summary_core.warning_minutes,
+            criticalMinutes=summary_core.critical_minutes,
+            roomVerdict=summary_core.room_verdict,
         )
         if temperature or fan
         else None

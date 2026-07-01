@@ -21,6 +21,22 @@ export function verdictLabel(verdict: string | null | undefined): string {
   return 'Not ready yet';
 }
 
+export function verdictBadgeVariant(
+  verdict: string | null | undefined,
+): 'success' | 'warning' | 'error' | 'muted' {
+  if (verdict === 'green') return 'success';
+  if (verdict === 'amber') return 'warning';
+  if (verdict === 'red') return 'error';
+  return 'muted';
+}
+
+export function verdictToneLabel(verdict: string | null | undefined): string {
+  if (verdict === 'green' || verdict === 'amber' || verdict === 'red') {
+    return verdict.charAt(0).toUpperCase() + verdict.slice(1);
+  }
+  return 'Unknown';
+}
+
 /** Time-of-day greeting (the app is morning-centric, but Mark may open it any time). */
 export function greetingForNow(date = new Date()): string {
   const h = date.getHours();

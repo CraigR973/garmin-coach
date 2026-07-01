@@ -63,6 +63,9 @@ export interface OvernightGlanceSummary {
   maxTempC: number | null;
   fanRanMinutes: number;
   peakSpeed: number | null;
+  warningMinutes: number;
+  criticalMinutes: number;
+  roomVerdict: 'green' | 'amber' | 'red';
 }
 
 /** The one-line last-night glance for the Home bedroom card (Batch 31).

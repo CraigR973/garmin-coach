@@ -104,7 +104,15 @@ const overnightSnapshot = {
       restlessMoments: 12,
       stages: [{ start: '2026-06-19T22:30:00Z', end: '2026-06-19T23:30:00Z', stage: 'light' }],
     },
-    summary: { minTempC: 19.2, maxTempC: 20.4, fanRanMinutes: 15, peakSpeed: 5 },
+    summary: {
+      minTempC: 19.2,
+      maxTempC: 20.4,
+      fanRanMinutes: 15,
+      peakSpeed: 5,
+      warningMinutes: 15,
+      criticalMinutes: 15,
+      roomVerdict: 'amber',
+    },
     nights: ['2026-06-19', '2026-06-18'],
   },
   meta: { generatedAtUtc: '2026-06-20T08:05:00Z' },
@@ -151,6 +159,7 @@ describe('daily detail pages', () => {
   it('renders the overnight chart card with a night pager', async () => {
     renderWithQuery(<BedroomPage />);
     expect(await screen.findByText('Overnight room & fan')).toBeTruthy();
+    expect((await screen.findByTestId('overnight-room-verdict-badge')).textContent).toBe('Amber');
     expect(await screen.findByTestId('overnight-chart')).toBeTruthy();
     // Pager: at the newest night, "Next night" is disabled; "Previous night" is live.
     expect(screen.getByRole('button', { name: 'Next night' })).toHaveProperty('disabled', true);

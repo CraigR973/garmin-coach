@@ -11,7 +11,9 @@ import { Toggle } from '@/components/ui/toggle';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
 import { useBedroomOvernight } from '@/hooks/useBedroomOvernight';
 import { apiFetch } from '@/lib/api';
+import { verdictBadgeVariant, verdictToneLabel } from '@/lib/copy';
 import { fanStatusText, formatDateTime, friendlyDate } from '@/lib/dailyFlow';
+import { Badge } from '@/components/ui/badge';
 
 // Manual presets mirror the overnight speed ladder (services/fan_control.SPEED_LADDER).
 const MANUAL_SPEEDS: Array<{ label: string; speed: number }> = [
@@ -196,6 +198,15 @@ function OvernightSection() {
             <CardTitle className="flex items-center gap-2">
               <LineChart className="h-4 w-4 text-primary" aria-hidden />
               Overnight room &amp; fan
+              {data?.summary ? (
+                <Badge
+                  variant={verdictBadgeVariant(data.summary.roomVerdict)}
+                  className="shrink-0"
+                  data-testid="overnight-room-verdict-badge"
+                >
+                  {verdictToneLabel(data.summary.roomVerdict)}
+                </Badge>
+              ) : null}
             </CardTitle>
             <CardDescription>
               {data ? friendlyDate(data.night) : 'Room temperature, what the fan did, and your sleep.'}
