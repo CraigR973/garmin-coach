@@ -2,10 +2,22 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WeekAheadPage } from './WeekAheadPage';
 
 const apiFetchMock = vi.fn();
+const RealDate = Date;
+const mockedNow = new RealDate('2026-06-23T08:00:00Z');
+
+class MockDate extends RealDate {
+  constructor(value?: string | number | Date) {
+    super(value ?? mockedNow);
+  }
+
+  static now() {
+    return mockedNow.valueOf();
+  }
+}
 
 vi.mock('@/lib/api', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
@@ -21,7 +33,7 @@ vi.mock('sonner', () => ({
 const schedule = {
   data: {
     startDate: '2026-06-23',
-    days: 7,
+    days: 14,
     schedule: [
       {
         date: '2026-06-23',
@@ -73,6 +85,11 @@ const schedule = {
           },
         ],
       },
+      {
+        date: '2026-06-26',
+        dayState: { categories: ['rest'], label: 'Rest', isRest: true },
+        workouts: [],
+      },
     ],
   },
   meta: { generatedAtUtc: '2026-06-23T06:40:00Z' },
@@ -80,12 +97,21 @@ const schedule = {
 };
 
 describe('WeekAheadPage', () => {
-  it('renders live schedule days and supports add, move, and rest-day swap-in', async () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    vi.stubGlobal('Date', MockDate as typeof Date);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('renders a move picker with visible days and moves a workout through the swap route', async () => {
     apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
       if (options?.method === 'POST') {
         return Promise.resolve(schedule);
       }
-      if (path === '/api/v1/plan-actions/schedule') {
+      if (path === '/api/v1/plan-actions/schedule?days=14') {
         return Promise.resolve(schedule);
       }
       return Promise.reject(new Error(`Unexpected request: ${path}`));
@@ -104,16 +130,28 @@ describe('WeekAheadPage', () => {
 
     expect(await screen.findByText('VO2 Max 30/30')).toBeTruthy();
     expect(screen.getByText('Cycle + Flexibility')).toBeTruthy();
-    expect(screen.getByText('Rest day')).toBeTruthy();
+    expect(screen.getAllByText('Rest day').length).toBeGreaterThan(0);
     expect(screen.getByText('Sweet Spot Builder')).toBeTruthy();
 
     const firstDay = screen.getByText('VO2 Max 30/30').closest('.rounded-xl') as HTMLElement;
-    await user.click(within(firstDay).getAllByRole('button', { name: /move/i })[0]);
+    await user.click(within(firstDay).getByRole('button', { name: /^move$/i }));
+
+    expect(screen.getByText('Choose a day in the current plan window.')).toBeTruthy();
+    expect(screen.getAllByText('Today').length).toBeGreaterThan(0);
+    expect(screen.getByText('Current day')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Tue, Jun 23/i }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText('VO2 Max 30/30 · Flexibility')).toBeTruthy();
+    expect(screen.getAllByText('Rest').length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole('button', { name: /Thu, Jun 25/i }));
 
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith(
         '/api/v1/workout-delivery/planned-workouts/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/swap',
-        expect.objectContaining({ method: 'POST' }),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ targetDate: '2026-06-25' }),
+        }),
       );
     });
 
@@ -124,17 +162,6 @@ describe('WeekAheadPage', () => {
         expect.objectContaining({ method: 'POST', body: JSON.stringify({ category: 'cycle' }) }),
       );
     });
-
-    const swapPanel = screen.getByText('Swap a workout into this rest day').parentElement as HTMLElement;
-    await user.click(within(swapPanel).getByRole('button', { name: /VO2 Max 30\/30/i }));
-    await waitFor(() => {
-      expect(apiFetchMock).toHaveBeenCalledWith(
-        '/api/v1/plan-actions/days/2026-06-24/swap-in',
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify({ plannedWorkoutId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }),
-        }),
-      );
-    });
+    expect(screen.queryByText('Swap a workout into this rest day')).toBeNull();
   });
 });
