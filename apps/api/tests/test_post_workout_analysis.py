@@ -16,8 +16,29 @@ from src.services.post_workout_analysis import (
     PROMPT_VERSION,
     ClaudeGenerationResult,
     PostWorkoutAnalysisService,
+    _is_ride,
     _recovery_decision_packet,
 )
+
+
+@pytest.mark.parametrize(
+    ("activity_type", "expected"),
+    [
+        ("cycling", True),
+        ("indoor_cycling", True),
+        ("virtual_ride", True),
+        ("road_biking", True),  # regression: outdoor rides were silently skipped
+        ("mountain_biking", True),
+        ("gravel_cycling", True),
+        ("walking", False),
+        ("breathwork", False),
+        ("strength_training", False),
+        ("yoga", False),
+    ],
+)
+def test_is_ride_recognizes_garmin_cycling_typekeys(activity_type: str, expected: bool) -> None:
+    activity = Activity(activity_type=activity_type, activity_name="Morning session")
+    assert _is_ride(activity) is expected
 
 
 @dataclass

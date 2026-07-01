@@ -404,10 +404,19 @@ def _utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
+# Garmin logs cycling under several typeKeys — cycling, indoor_cycling,
+# road_biking, mountain_biking, gravel_cycling, virtual_ride. "bike" alone misses
+# "road_biking" (it contains "biking"), and virtual rides carry neither token, so
+# outdoor and virtual rides were silently skipped for post-workout analysis.
+_RIDE_TYPE_TOKENS = ("cycling", "bike", "biking")
+
+
 def _is_ride(activity: Activity) -> bool:
     activity_type = activity.activity_type.lower()
     activity_name = activity.activity_name.lower()
-    return any(token in activity_type or token in activity_name for token in ("cycling", "bike"))
+    if activity_type == "virtual_ride" or activity_type.endswith("_ride"):
+        return True
+    return any(token in activity_type or token in activity_name for token in _RIDE_TYPE_TOKENS)
 
 
 def _activity_local_date(activity: Activity, timezone_name: str) -> date:
