@@ -1,13 +1,16 @@
 # Design: Bedroom overnight temperature verdict (Batch 33)
 
-**Status:** Planned. Designed with Craig on 2026-07-01, following up directly on
-Batch 31 (`docs/designs/bedroom-overnight-chart.md`). Decision number assigned at
-`/batch-start` (next free **#103**). Builds on Batch 31's `fan_state_readings`
-(migration `011`) and `services/bedroom_overnight.py`'s `summarize_overnight` +
-threshold constants (`THRESHOLD_ON_C=19.5`, `THRESHOLD_CRITICAL_C=20.0`), and
-reuses the app's existing Green/Amber/Red vocabulary (`verdictBadgeVariant` /
-`verdictLabel` in `DashboardPage.tsx`/`lib/copy.ts`) rather than inventing a new
-one.
+**Status:** Shipped in PR #49 (squash `8389985`), prod-verified on 2026-07-01.
+Designed with Craig on 2026-07-01, following up directly on Batch 31
+(`docs/designs/bedroom-overnight-chart.md`). Decision #104. Builds on Batch 31's
+`fan_state_readings` (migration `011`) and `services/bedroom_overnight.py`'s
+`summarize_overnight` + threshold constants (`THRESHOLD_ON_C=19.5`,
+`THRESHOLD_CRITICAL_C=20.0`), and reuses the app's existing Green/Amber/Red
+vocabulary (`verdictBadgeVariant` / `verdictLabel` in
+`DashboardPage.tsx`/`lib/copy.ts`) rather than inventing a new one. Production
+smoke on the merge SHA verified Railway `/api/v1/health`, Vercel same-origin
+`/api/v1/health`, web `/`, and unauthenticated `GET /api/v1/bedroom/overnight`
+returning `401` both direct and through the Vercel rewrite.
 
 ## Goal
 
