@@ -56,6 +56,7 @@ async def _seed_night(session_factory: async_sessionmaker[AsyncSession]) -> uuid
                 is_active=True,
             )
         )
+        await session.flush()
         # Temperature: two readings inside the window, one daytime outside it.
         session.add_all(
             [
