@@ -1,13 +1,15 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Fan, Thermometer, Wind } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Fan, LineChart, Thermometer, Wind } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { BedroomOvernightChart } from '@/components/BedroomOvernightChart';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Toggle } from '@/components/ui/toggle';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
+import { useBedroomOvernight } from '@/hooks/useBedroomOvernight';
 import { apiFetch } from '@/lib/api';
 import { fanStatusText, formatDateTime, friendlyDate } from '@/lib/dailyFlow';
 
@@ -170,7 +172,71 @@ export function BedroomPage() {
           </div>
         </CardContent>
       </Card>
+
+      <OvernightSection />
     </div>
+  );
+}
+
+function OvernightSection() {
+  const [night, setNight] = useState<string | null>(null);
+  const query = useBedroomOvernight(night);
+  const data = query.data?.data;
+
+  const nights = data?.nights ?? [];
+  const index = data ? nights.indexOf(data.night) : -1;
+  const olderNight = index >= 0 && index < nights.length - 1 ? nights[index + 1] : null;
+  const newerNight = index > 0 ? nights[index - 1] : null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <CardTitle className="flex items-center gap-2">
+              <LineChart className="h-4 w-4 text-primary" aria-hidden />
+              Overnight room &amp; fan
+            </CardTitle>
+            <CardDescription>
+              {data ? friendlyDate(data.night) : 'Room temperature, what the fan did, and your sleep.'}
+            </CardDescription>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              aria-label="Previous night"
+              disabled={!olderNight}
+              onClick={() => olderNight && setNight(olderNight)}
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden />
+            </Button>
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              aria-label="Next night"
+              disabled={!newerNight}
+              onClick={() => newerNight && setNight(newerNight)}
+            >
+              <ChevronRight className="h-4 w-4" aria-hidden />
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {query.isLoading ? (
+          <Skeleton className="h-72 w-full rounded-xl" />
+        ) : query.isError || !data ? (
+          <p className="py-8 text-center text-sm text-text-muted">
+            {query.error instanceof Error ? query.error.message : 'Overnight data could not load.'}
+          </p>
+        ) : (
+          <BedroomOvernightChart data={data} />
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

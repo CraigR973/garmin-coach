@@ -188,6 +188,47 @@ class TemperatureReading(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     raw_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
 
 
+class FanStateReading(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """One tick of the overnight fan-control loop (Batch 31).
+
+    A genuine 15-min time series mirroring :class:`TemperatureReading`: every
+    within-window ``scheduler.run_fan_control`` fire records what the autopilot
+    did, so the bedroom chart can show the fan's actual on/off/speed history
+    against the room temperature and explain gaps (autopilot off vs cloud
+    unreachable vs off-because-cold) rather than going blank. The fan **decision**
+    logic is untouched — this only persists the outcome.
+    """
+
+    __tablename__ = "fan_state_readings"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "captured_at_utc",
+            name="uq_fan_state_reading_user_time",
+        ),
+        Index("ix_fan_state_readings_user_time", "user_id", "captured_at_utc"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    captured_at_utc: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False)
+    # Overnight loop phase that fired: "control" or "winddown" (never "idle").
+    phase: Mapped[str] = mapped_column(String(20), nullable=False)
+    # The autopilot master switch at fire time (Profile.fan_auto_enabled).
+    auto_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    # The indoor temperature the decision used; null when no fresh reading.
+    observed_temp_c: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Effective fan state after this tick; null when the fan was not read
+    # (autopilot off, or the cloud was unreachable).
+    fan_on: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    fan_speed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # "apply" / "hold" / "no_data" / "auto_off" / "unreachable" / "winddown".
+    action: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Short, secret-safe explanation (decision reason or branch reason).
+    reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+
 class WeatherDaily(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     __tablename__ = "weather_daily"
     __table_args__ = (

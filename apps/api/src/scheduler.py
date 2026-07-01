@@ -34,11 +34,12 @@ from apscheduler.schedulers.asyncio import (  # type: ignore[import-untyped,unus
     AsyncIOScheduler,
 )
 from sqlalchemy import desc, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
 from src.database import AsyncSessionLocal
-from src.models.coaching import Analysis, TemperatureReading
+from src.models.coaching import Analysis, FanStateReading, TemperatureReading
 from src.models.notification import ActionType, ActorType, AuditLog
 from src.models.profile import Profile
 from src.services.backup import create_backup
@@ -57,6 +58,8 @@ from src.services.environment_sync import (
 )
 from src.services.executable_coaching import ExecutableCoachingService
 from src.services.fan_control import (
+    INTERVAL_MIN,
+    FanControlResult,
     FanDecision,
     FanState,
     Phase,
@@ -707,6 +710,12 @@ async def run_fan_control() -> None:
     wind-down after the window guarantees the fan is off by morning. It degrades
     gracefully (logs, never raises) when no fan is configured or the cloud is
     unreachable. Single fan / single bedroom (Mark) — see DECISIONS #96.
+
+    Batch 31: every *within-window* fire also persists one ``fan_state_readings``
+    tick — including the early-return branches (``auto_off`` when the autopilot is
+    off, ``no_data`` / ``unreachable`` when there is no temp / the cloud is down) —
+    so the bedroom chart can explain gaps rather than going blank. The fan
+    **decision** logic and thresholds are unchanged; this only adds a write.
     """
     try:
         if not _fan_control_configured():
@@ -718,28 +727,65 @@ async def run_fan_control() -> None:
                 log.info("fan control skipped", reason="no_active_profiles")
                 return
             profile = profiles[0]
-            if not profile.fan_auto_enabled:
-                log.info("fan control skipped", reason="auto_disabled")
-                return
             now_local = _profile_now(profile)
             phase = loop_phase(now_local.time())
             if phase == "idle":
+                # Daytime: a true no-op — no cloud call, and not charted.
                 return
-            reading = await _latest_temperature(session, profile.id)
+            captured_at = _floor_to_interval(datetime.now(UTC).replace(tzinfo=None))
+            profile_id = profile.id
+            if not profile.fan_auto_enabled:
+                # Within the window but manual control: never touch the cloud, but
+                # record the tick so the chart shows "autopilot off", not a gap.
+                log.info("fan control skipped", reason="auto_disabled")
+                await _record_fan_state(
+                    session,
+                    profile_id,
+                    captured_at,
+                    phase,
+                    auto_enabled=False,
+                    result=FanControlResult(
+                        action="auto_off",
+                        observed_temp_c=None,
+                        fan_on=None,
+                        fan_speed=None,
+                        reason="autopilot off",
+                    ),
+                )
+                await session.commit()
+                return
+            reading = await _latest_temperature(session, profile_id)
             temperature_c = _fresh_temperature_c(reading, now_local)
         # Cloud I/O happens outside the DB session.
-        await _apply_fan_control(phase, temperature_c)
+        result = await _apply_fan_control(phase, temperature_c)
+        # Persist one tick in a fresh session (best-effort: a write failure is
+        # caught below and never reaches the fan, which has already acted).
+        async with AsyncSessionLocal() as session:
+            await _record_fan_state(
+                session, profile_id, captured_at, phase, auto_enabled=True, result=result
+            )
+            await session.commit()
     except Exception:
         log.exception("fan control failed")
 
 
-async def _apply_fan_control(phase: Phase, temperature_c: float | None) -> None:
+async def _apply_fan_control(phase: Phase, temperature_c: float | None) -> FanControlResult:
+    """Reconcile the fan and return the outcome for persistence (Batch 31).
+
+    The decision logic is unchanged from Batch 27 — only the return value is new.
+    """
     client = DreoFanClient()
     try:
         await asyncio.to_thread(client.connect)
     except DreoFanError as exc:
         log.warning("fan control unreachable", phase=phase, error=str(exc))
-        return
+        return FanControlResult(
+            action="unreachable",
+            observed_temp_c=temperature_c,
+            fan_on=None,
+            fan_speed=None,
+            reason="cloud unreachable",
+        )
     try:
         state = await asyncio.to_thread(client.read_state)
         current = FanState(is_on=bool(state.is_on), fan_speed=state.fan_speed)
@@ -755,10 +801,65 @@ async def _apply_fan_control(phase: Phase, temperature_c: float | None) -> None:
             target_speed=decision.target_speed,
             reason=decision.reason,
         )
+        # Persisted action labels the morning shut-off "winddown" as its own chart
+        # state; the effective fan state after the tick is the reconciled target.
+        action = "winddown" if phase == "winddown" else decision.action
+        return FanControlResult(
+            action=action,
+            observed_temp_c=temperature_c,
+            fan_on=decision.target_on,
+            fan_speed=decision.target_speed,
+            reason=decision.reason,
+        )
     except DreoFanError as exc:
         log.warning("fan control command failed", phase=phase, error=str(exc))
+        return FanControlResult(
+            action="unreachable",
+            observed_temp_c=temperature_c,
+            fan_on=None,
+            fan_speed=None,
+            reason="command failed",
+        )
     finally:
         await asyncio.to_thread(client.close)
+
+
+def _floor_to_interval(moment: datetime, *, minutes: int = INTERVAL_MIN) -> datetime:
+    """Floor a UTC-naive timestamp to the loop interval, dropping sub-second parts.
+
+    Quantising the tick timestamp to the 15-min slot makes the unique
+    ``(user_id, captured_at_utc)`` key stable, so a coalesced double-fire upserts
+    to one row instead of two.
+    """
+    discard = (moment.minute % minutes) * 60 + moment.second
+    return (moment - timedelta(seconds=discard)).replace(microsecond=0)
+
+
+async def _record_fan_state(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    captured_at: datetime,
+    phase: Phase,
+    *,
+    auto_enabled: bool,
+    result: FanControlResult,
+) -> None:
+    """Upsert one fan-control tick, idempotent on ``(user_id, captured_at_utc)``."""
+    await session.execute(
+        pg_insert(FanStateReading)
+        .values(
+            user_id=user_id,
+            captured_at_utc=captured_at,
+            phase=phase,
+            auto_enabled=auto_enabled,
+            observed_temp_c=result.observed_temp_c,
+            fan_on=result.fan_on,
+            fan_speed=result.fan_speed,
+            action=result.action,
+            reason=result.reason,
+        )
+        .on_conflict_do_nothing(index_elements=["user_id", "captured_at_utc"])
+    )
 
 
 async def _execute_fan_decision(
@@ -874,7 +975,7 @@ def create_scheduler() -> AsyncIOScheduler:
     scheduler.add_job(
         run_fan_control,
         trigger="interval",
-        minutes=15,
+        minutes=INTERVAL_MIN,
         id="fan_control",
         replace_existing=True,
         coalesce=True,

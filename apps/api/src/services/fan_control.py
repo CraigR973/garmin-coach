@@ -37,6 +37,11 @@ from typing import Literal
 Phase = Literal["control", "winddown", "idle"]
 Action = Literal["apply", "hold", "no_data", "idle"]
 
+# How often the overnight loop fires (minutes). The scheduler interval and the
+# fan-state tick's timestamp quantisation share this single source of truth so a
+# coalesced double-fire maps to one idempotent tick per slot (Batch 31).
+INTERVAL_MIN = 15
+
 # Overnight control window (profile-local time); wraps midnight.
 WINDOW_START = time(21, 30)
 WINDOW_END = time(8, 30)
@@ -79,6 +84,25 @@ class FanDecision:
     action: Action
     target_on: bool
     target_speed: int | None
+    reason: str
+
+
+@dataclass(frozen=True)
+class FanControlResult:
+    """The outcome of one overnight fan-control fire, for persistence (Batch 31).
+
+    ``action`` is a superset of :class:`FanDecision`'s action: it also carries the
+    branch outcomes the scheduler resolves — ``auto_off`` (autopilot disabled),
+    ``unreachable`` (cloud connect/command failed), and ``winddown`` (the morning
+    shut-off) — so the chart can *explain* gaps rather than going blank.
+    ``fan_on`` / ``fan_speed`` are the **effective** fan state after the tick, and
+    are ``None`` when the fan was not read (auto off, or unreachable).
+    """
+
+    action: str
+    observed_temp_c: float | None
+    fan_on: bool | None
+    fan_speed: int | None
     reason: str
 
 

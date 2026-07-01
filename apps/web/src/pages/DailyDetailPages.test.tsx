@@ -72,9 +72,50 @@ const snapshot: DailyLoopEnvelope = {
   errors: [],
 };
 
+const overnightSnapshot = {
+  data: {
+    night: '2026-06-19',
+    timezone: 'Europe/London',
+    windowStartUtc: '2026-06-19T20:30:00Z',
+    windowEndUtc: '2026-06-20T08:00:00Z',
+    thresholds: { onC: 19.5, criticalC: 20.0 },
+    temperature: [
+      { t: '2026-06-19T22:00:00Z', c: 20.4 },
+      { t: '2026-06-20T02:00:00Z', c: 19.2 },
+    ],
+    fan: [
+      {
+        t: '2026-06-19T22:05:00Z',
+        on: true,
+        speed: 5,
+        action: 'apply',
+        reason: '20.4C -> speed 5',
+        observedTempC: 20.4,
+        autoEnabled: true,
+      },
+    ],
+    sleep: {
+      start: '2026-06-19T22:30:00Z',
+      end: '2026-06-20T06:30:00Z',
+      score: 78,
+      ageAdjustedScore: 82,
+      durationSec: 28800,
+      awakeSec: 900,
+      restlessMoments: 12,
+      stages: [{ start: '2026-06-19T22:30:00Z', end: '2026-06-19T23:30:00Z', stage: 'light' }],
+    },
+    summary: { minTempC: 19.2, maxTempC: 20.4, fanRanMinutes: 15, peakSpeed: 5 },
+    nights: ['2026-06-19', '2026-06-18'],
+  },
+  meta: { generatedAtUtc: '2026-06-20T08:05:00Z' },
+  errors: [],
+};
+
 function renderWithQuery(ui: ReactNode) {
-  apiFetchMock.mockResolvedValue(snapshot);
-  const queryClient = new QueryClient();
+  apiFetchMock.mockImplementation((path: string) =>
+    Promise.resolve(path.startsWith('/api/v1/bedroom/overnight') ? overnightSnapshot : snapshot),
+  );
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
   render(
     <QueryClientProvider client={queryClient}>
@@ -105,6 +146,15 @@ describe('daily detail pages', () => {
     expect(await screen.findByText('Bedroom climate')).toBeTruthy();
     expect(screen.getByText('17.4°C')).toBeTruthy();
     expect(screen.getByText('12 mph')).toBeTruthy();
+  });
+
+  it('renders the overnight chart card with a night pager', async () => {
+    renderWithQuery(<BedroomPage />);
+    expect(await screen.findByText('Overnight room & fan')).toBeTruthy();
+    expect(await screen.findByTestId('overnight-chart')).toBeTruthy();
+    // Pager: at the newest night, "Next night" is disabled; "Previous night" is live.
+    expect(screen.getByRole('button', { name: 'Next night' })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: 'Previous night' })).toHaveProperty('disabled', false);
   });
 });
 

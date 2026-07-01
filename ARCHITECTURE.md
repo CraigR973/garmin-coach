@@ -142,6 +142,11 @@ Validated 19 Jun with a real sample → his verdict "fantastic." Demonstrated 5 
 - `activities` (+ `activity_timeseries`: power/hr/cadence/resp/performance_condition/stamina)
 - `temperature_readings` (Hive poll) · `weather_daily` (daily high/low,
   overnight low/wind, precipitation, sunrise/sunset)
+- `fan_state_readings` (overnight fan-control time series, migration `011`, Batch 31): one
+  idempotent tick per within-window `run_fan_control` fire — `phase`/`auto_enabled`/`observed_temp_c`/
+  `fan_on`/`fan_speed`/`action` (`apply`/`hold`/`no_data`/`auto_off`/`unreachable`/`winddown`) — so the
+  `/bedroom` chart (`GET /api/v1/bedroom/overnight`, a pure temp×fan×sleep join) shows what the fan did
+  and *explains* gaps. The fan decision logic is unchanged; this only adds a write + a read (DECISIONS #101)
 - `manual_entries` (BP, subjective, RPE, feel, supplements, food, plus
   adherence captured against the planned-workout version that was actually done; Batch 26 also links
   post-ride subjective check-ins to `activities.id` via nullable `activity_id`)

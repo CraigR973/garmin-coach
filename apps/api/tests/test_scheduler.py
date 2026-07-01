@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
-from src.models.coaching import Analysis
+from src.models.coaching import Analysis, FanStateReading
 from src.models.notification import ActionType, ActorType, AuditLog
 from src.models.profile import Profile, UserRole
 from src.scheduler import (
@@ -23,12 +23,14 @@ from src.scheduler import (
     _retry_sync,
     _sync_garmin_daily,
     create_scheduler,
+    run_fan_control,
     run_hive_temperature_poll,
     run_morning_weather_sync,
     run_scheduled_backup,
     run_wake_check,
     run_workout_autopush,
 )
+from src.services.dreo_fan import DreoFanError, DreoFanState
 from src.services.wake_detection import (
     BACKSTOP,
     WAKE_CHECK_ANALYSIS_TYPE,
@@ -851,3 +853,220 @@ async def test_scheduler_lifespan_disabled_skips_start(monkeypatch: pytest.Monke
 
     async with lifespan(app):
         assert app.state.scheduler.running is False
+
+
+# ---------------------------------------------------------------------------
+# run_fan_control persistence (Batch 31) — one tick per within-window fire
+# ---------------------------------------------------------------------------
+
+
+class _FakeFanClient:
+    """Stand-in for DreoFanClient; records commands and can fail on connect."""
+
+    def __init__(
+        self,
+        *,
+        is_on: bool = False,
+        fan_speed: int | None = None,
+        connect_error: Exception | None = None,
+    ) -> None:
+        self._state = DreoFanState(is_on=is_on, fan_speed=fan_speed)
+        self._connect_error = connect_error
+        self.connected = False
+        self.commands: list[tuple] = []
+
+    def connect(self) -> None:
+        self.connected = True
+        if self._connect_error is not None:
+            raise self._connect_error
+
+    def read_state(self) -> DreoFanState:
+        return self._state
+
+    def power(self, on: bool) -> None:
+        self.commands.append(("power", on))
+
+    def set_speed(self, speed: int) -> None:
+        self.commands.append(("set_speed", speed))
+
+    def close(self) -> None:
+        pass
+
+
+async def _seed_fan_profile(
+    db_conn: AsyncConnection, user_id: uuid.UUID, *, auto_enabled: bool = True
+) -> None:
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Fan Loop Test",
+                pin_hash="x" * 60,
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+                fan_auto_enabled=auto_enabled,
+            )
+        )
+        await session.commit()
+
+
+async def _fan_rows(db_conn: AsyncConnection, user_id: uuid.UUID) -> list[FanStateReading]:
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        return list(
+            (
+                await session.execute(
+                    select(FanStateReading)
+                    .where(FanStateReading.user_id == user_id)
+                    .order_by(FanStateReading.captured_at_utc)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+
+@contextmanager
+def _fan_patches(
+    db_conn: AsyncConnection,
+    *,
+    now_local: datetime,
+    temperature_c: float | None,
+    fan: _FakeFanClient,
+):
+    with ExitStack() as stack:
+        stack.enter_context(patch("src.scheduler._fan_control_configured", lambda: True))
+        stack.enter_context(patch("src.scheduler.AsyncSessionLocal", new=_bind(db_conn)))
+        stack.enter_context(patch("src.scheduler._profile_now", lambda profile: now_local))
+        stack.enter_context(
+            patch("src.scheduler._fresh_temperature_c", lambda reading, now: temperature_c)
+        )
+        stack.enter_context(patch("src.scheduler.DreoFanClient", lambda: fan))
+        yield
+
+
+@pytest.mark.asyncio
+async def test_fan_control_records_apply_tick(db_conn: AsyncConnection) -> None:
+    user_id = uuid.uuid4()
+    await _seed_fan_profile(db_conn, user_id)
+    fan = _FakeFanClient(is_on=False)
+    with _fan_patches(db_conn, now_local=_local(23, 0), temperature_c=20.0, fan=fan):
+        await run_fan_control()
+
+    rows = await _fan_rows(db_conn, user_id)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.action == "apply"
+    assert row.phase == "control"
+    assert row.auto_enabled is True
+    assert row.observed_temp_c == 20.0
+    assert row.fan_on is True
+    assert row.fan_speed == 5  # 20.0 °C → ladder speed 5
+    assert ("power", True) in fan.commands
+    assert ("set_speed", 5) in fan.commands
+
+
+@pytest.mark.asyncio
+async def test_fan_control_records_hold_tick(db_conn: AsyncConnection) -> None:
+    user_id = uuid.uuid4()
+    await _seed_fan_profile(db_conn, user_id)
+    fan = _FakeFanClient(is_on=True, fan_speed=3)  # already at the 19.6 °C target
+    with _fan_patches(db_conn, now_local=_local(23, 0), temperature_c=19.6, fan=fan):
+        await run_fan_control()
+
+    rows = await _fan_rows(db_conn, user_id)
+    assert len(rows) == 1
+    assert rows[0].action == "hold"
+    assert rows[0].fan_on is True
+    assert rows[0].fan_speed == 3
+    assert fan.commands == []  # nothing issued when already at target
+
+
+@pytest.mark.asyncio
+async def test_fan_control_records_no_data_tick(db_conn: AsyncConnection) -> None:
+    user_id = uuid.uuid4()
+    await _seed_fan_profile(db_conn, user_id)
+    fan = _FakeFanClient(is_on=False)
+    with _fan_patches(db_conn, now_local=_local(23, 0), temperature_c=None, fan=fan):
+        await run_fan_control()
+
+    rows = await _fan_rows(db_conn, user_id)
+    assert len(rows) == 1
+    assert rows[0].action == "no_data"
+    assert rows[0].observed_temp_c is None
+    assert fan.commands == []  # never actuate blind
+
+
+@pytest.mark.asyncio
+async def test_fan_control_records_auto_off_tick_without_cloud(db_conn: AsyncConnection) -> None:
+    user_id = uuid.uuid4()
+    await _seed_fan_profile(db_conn, user_id, auto_enabled=False)
+    fan = _FakeFanClient(is_on=True, fan_speed=5)
+    with _fan_patches(db_conn, now_local=_local(23, 0), temperature_c=21.0, fan=fan):
+        await run_fan_control()
+
+    rows = await _fan_rows(db_conn, user_id)
+    assert len(rows) == 1
+    assert rows[0].action == "auto_off"
+    assert rows[0].auto_enabled is False
+    assert rows[0].fan_on is None
+    assert fan.connected is False  # manual control never touches the cloud
+
+
+@pytest.mark.asyncio
+async def test_fan_control_records_unreachable_tick(db_conn: AsyncConnection) -> None:
+    user_id = uuid.uuid4()
+    await _seed_fan_profile(db_conn, user_id)
+    fan = _FakeFanClient(connect_error=DreoFanError("transport not ready"))
+    with _fan_patches(db_conn, now_local=_local(23, 0), temperature_c=20.0, fan=fan):
+        await run_fan_control()
+
+    rows = await _fan_rows(db_conn, user_id)
+    assert len(rows) == 1
+    assert rows[0].action == "unreachable"
+    assert rows[0].fan_on is None
+    assert rows[0].observed_temp_c == 20.0
+    assert rows[0].reason == "cloud unreachable"  # secret-safe, no exception text
+
+
+@pytest.mark.asyncio
+async def test_fan_control_records_winddown_tick(db_conn: AsyncConnection) -> None:
+    user_id = uuid.uuid4()
+    await _seed_fan_profile(db_conn, user_id)
+    fan = _FakeFanClient(is_on=True, fan_speed=5)
+    with _fan_patches(db_conn, now_local=_local(8, 45), temperature_c=None, fan=fan):
+        await run_fan_control()
+
+    rows = await _fan_rows(db_conn, user_id)
+    assert len(rows) == 1
+    assert rows[0].action == "winddown"
+    assert rows[0].phase == "winddown"
+    assert rows[0].fan_on is False  # reconciled off for the morning
+    assert ("power", False) in fan.commands
+
+
+@pytest.mark.asyncio
+async def test_fan_control_idle_writes_no_tick(db_conn: AsyncConnection) -> None:
+    user_id = uuid.uuid4()
+    await _seed_fan_profile(db_conn, user_id)
+    fan = _FakeFanClient(is_on=False)
+    with _fan_patches(db_conn, now_local=_local(14, 0), temperature_c=20.0, fan=fan):
+        await run_fan_control()
+
+    assert await _fan_rows(db_conn, user_id) == []
+    assert fan.connected is False  # daytime is a true no-op
+
+
+@pytest.mark.asyncio
+async def test_fan_control_is_idempotent_on_coalesced_double_fire(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    await _seed_fan_profile(db_conn, user_id)
+    fan = _FakeFanClient(is_on=False)
+    with _fan_patches(db_conn, now_local=_local(23, 0), temperature_c=20.0, fan=fan):
+        await run_fan_control()
+        await run_fan_control()
+
+    # Both fires land in the same 15-min slot → one upserted row, not two.
+    assert len(await _fan_rows(db_conn, user_id)) == 1

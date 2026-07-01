@@ -518,6 +518,72 @@ export const fanEnvelopeSchema = z.object({
   errors: z.array(apiErrorSchema),
 });
 
+// Overnight bedroom chart (Batch 31) — GET /api/v1/bedroom/overnight.
+export const bedroomTemperaturePointSchema = z.object({
+  t: isoDateTimeSchema,
+  c: z.number(),
+});
+
+export const bedroomFanPointSchema = z.object({
+  t: isoDateTimeSchema,
+  on: z.boolean().nullable(),
+  speed: z.number().int().nullable(),
+  // apply | hold | no_data | auto_off | unreachable | winddown
+  action: z.string().min(1),
+  reason: z.string().nullable(),
+  observedTempC: z.number().nullable(),
+  autoEnabled: z.boolean(),
+});
+
+export const bedroomSleepStageSpanSchema = z.object({
+  start: isoDateTimeSchema,
+  end: isoDateTimeSchema,
+  // deep | light | rem | awake | unknown
+  stage: z.string().min(1),
+});
+
+export const bedroomOvernightSleepSchema = z.object({
+  start: isoDateTimeSchema.nullable(),
+  end: isoDateTimeSchema.nullable(),
+  score: z.number().int().nullable(),
+  ageAdjustedScore: z.number().int().nullable(),
+  durationSec: z.number().int().nullable(),
+  awakeSec: z.number().int().nullable(),
+  restlessMoments: z.number().int().nullable(),
+  stages: z.array(bedroomSleepStageSpanSchema).default([]),
+});
+
+export const bedroomOvernightThresholdsSchema = z.object({
+  onC: z.number(),
+  criticalC: z.number(),
+});
+
+export const bedroomOvernightSummarySchema = z.object({
+  minTempC: z.number().nullable(),
+  maxTempC: z.number().nullable(),
+  fanRanMinutes: z.number().int(),
+  peakSpeed: z.number().int().nullable(),
+});
+
+export const bedroomOvernightSchema = z.object({
+  night: isoDateSchema,
+  timezone: z.string().min(1),
+  windowStartUtc: isoDateTimeSchema,
+  windowEndUtc: isoDateTimeSchema,
+  thresholds: bedroomOvernightThresholdsSchema,
+  temperature: z.array(bedroomTemperaturePointSchema),
+  fan: z.array(bedroomFanPointSchema),
+  sleep: bedroomOvernightSleepSchema.nullable(),
+  summary: bedroomOvernightSummarySchema.nullable(),
+  nights: z.array(isoDateSchema),
+});
+
+export const bedroomOvernightEnvelopeSchema = z.object({
+  data: bedroomOvernightSchema,
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
+
 export const dailyLoopSchema = z.object({
   subjectDate: isoDateSchema,
   timezone: z.string().min(1),

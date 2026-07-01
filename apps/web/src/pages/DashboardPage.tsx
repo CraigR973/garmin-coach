@@ -12,6 +12,7 @@ import {
   ClipboardCheck,
   Dumbbell,
   Fan,
+  LineChart,
   MoonStar,
   Pencil,
   Plus,
@@ -38,6 +39,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { isBikeWorkout, useDailyPhase } from '@/hooks/useDailyPhase';
 import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useBedroomOvernight } from '@/hooks/useBedroomOvernight';
 import { apiFetch } from '@/lib/api';
 import {
   fanStatusText,
@@ -45,6 +47,7 @@ import {
   friendlyDate,
   hm,
   nextDays,
+  overnightGlanceText,
   remContext,
   type FanState,
 } from '@/lib/dailyFlow';
@@ -1101,6 +1104,7 @@ function BedroomSummaryCard({
             <p className="text-text-secondary">{fanStatusText(thermal.fan)}</p>
           </div>
         </div>
+        <OvernightGlance />
         <DetailLinkCard
           to="/bedroom"
           title="Bedroom & weather detail"
@@ -1108,6 +1112,27 @@ function BedroomSummaryCard({
         />
       </CardContent>
     </Card>
+  );
+}
+
+/** One-line last-night room/fan glance for the Home bedroom card (Batch 31).
+ *  Fetches the last completed night (shared cache with /bedroom) and stays silent
+ *  until there's something to say, so Home never shows a spinner for it. */
+function OvernightGlance() {
+  const query = useBedroomOvernight();
+  const glance = overnightGlanceText(query.data?.data.summary);
+  if (!glance) return null;
+  return (
+    <Link
+      to="/bedroom"
+      className="flex items-center justify-between gap-2 rounded-xl border border-border bg-bg px-3 py-2.5 text-sm transition hover:border-accent/40"
+    >
+      <span className="flex items-center gap-2 text-text-secondary">
+        <LineChart className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+        {glance}
+      </span>
+      <ChevronRight className="h-4 w-4 shrink-0 text-text-muted" aria-hidden />
+    </Link>
   );
 }
 
