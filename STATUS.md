@@ -6,7 +6,7 @@
 
 ## Now
 
-**Batch 32 (2026-07-01): Plan page tap-to-move day picker implemented on `feat/batch-32-plan-day-picker` (not closeout-shipped).** `/delivery` is now a single mobile-first move flow instead of two fragmented relocation controls: each workout has one **Move** button, which opens a reusable `MoveWorkoutSheet` bottom sheet listing the already-fetched plan window widened from **7 → 14 days** with weekday/date, current contents, a Today marker, and the current day disabled. Selecting a day calls the existing workout-delivery `swap` route, so move-vs-swap still resolves server-side with **no backend change and no migration**; the page-local `swapIntoMutation` and rest-day swap-in panel are gone. **Checks green:** targeted `WeekAheadPage` vitest, web lint, and web build (`tsc` + Vite). **Durable docs updated:** DECISIONS #103 records the mobile-first picker choice, and `docs/phase-batches.md` now shifts the later planned decision numbers to avoid colliding with the operational plan-import decision #102. **Next step:** review the branch, then run `/closeout 32` when ready to promote it.
+**Batch 32 (2026-07-01): Plan page tap-to-move day picker — SHIPPED (PR #48, squash `5d7804f`), prod-verified.** `/delivery` is now a single mobile-first move flow instead of two fragmented relocation controls: each workout has one **Move** button, which opens a reusable `MoveWorkoutSheet` bottom sheet listing the fetched plan window widened from **7 → 14 days** with weekday/date, current contents, a Today marker, and the current day disabled. Selecting a day calls the existing workout-delivery `swap` route, so move-vs-swap still resolves server-side with **no backend change and no migration**; the page-local `swapIntoMutation` and rest-day swap-in panel are gone. **Verification:** branch CI green across ruff, mypy, pytest, Alembic migration check, security audit, web build, and Vercel preview; production on merge SHA `5d7804f` verified via Railway `/api/v1/health`, Vercel same-origin `/api/v1/health`, web `/` `200`, and unauthenticated `POST /api/v1/workout-delivery/planned-workouts/{id}/swap` returning `401` both direct and through the Vercel rewrite (non-mutating auth-gated smoke). **Durable docs updated:** DECISIONS #103 records the mobile-first picker choice, `ARCHITECTURE.md` now captures the shipped Plan-page move UX, and `docs/phase-batches.md` strikes Batch 32 `Shipped`. **Next step:** Batch 33 — bedroom overnight temperature verdict — is now the next unshipped batch.
 
 **Prior (2026-07-01): Operational — Mark's out-of-sync training plan fixed + a real-plan importer added (DECISIONS #102).** The app had been showing the Batch 5 *generic* 2121 seed anchored to the setup week (Week 01 = Mon 15 Jun), so it sat **~10 weeks behind** Mark's real progression — it called today (Wed 1 Jul) Week 3 Recovery while he's finishing **Week 13 Consolidation** — with the wrong weekly shape (seed rides Tue/Thu/Sat, no Wed; Mark rides Tue/Wed/Thu/Sat/Sun) and placeholder content. His real plan was never imported. **Fixed in prod data** (each dry-run-previewed then applied; snapshot backup taken first): today (1 Jul) deduped to his real Week-13 Wed **"Outdoor Zone 2"**; the rest of this week set to his Plan No. 1 Week-13 sessions (Fri rest); and his **"Plan No. 2" (Scheduled Start 06.07.26)** loaded as the owned plan (**13 blocks + 78 workouts, 6 Jul → 4 Oct**), replacing the forward seed and keeping 1–5 Jul intact. The three leftover seed blocks (15 Jun–5 Jul) were **relabelled to his real weeks 11 Build / 12 Taper / 13 Consolidation**, so the current week reads "Week 13 Consolidation". **New capability SHIPPED (PR #47, squash `59655db`), prod-verified** (`/api/v1/health` sha=`59655db`, web `/` 200, plan read-back intact): `services/plan_import.py` (pure `build_plan_rows` + idempotent `import_plan`) + `src/plan_import.py` runner + reviewed `apps/api/data/plans/plan_no2.json`; 6 pure tests, ruff/mypy clean, CI green; no migration, no cron. **Follow-up:** the Batch 5 auto-seed still fires for a stateless user and anchors a fictional plan to the setup week — replace it with a real "no plan yet" empty state / onboarding import so this can't recur.
 
@@ -332,16 +332,14 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
-- **2026-07-01** — Implemented **Batch 32 — Plan page tap-to-move day picker** on `feat/batch-32-plan-day-picker`
-  (not closeout-shipped). Replaced the old `/delivery` move UI — three forward-only `Move <date>` buttons per
-  workout plus a separate rest-day swap-in panel — with a single mobile-first `MoveWorkoutSheet` bottom sheet and
-  widened the fetched plan window from 7 to 14 days. The sheet lists the visible days with weekday/date, current
-  contents, a Today marker, and the current day disabled, then calls the existing workout-delivery `swap` route so
-  move-vs-swap still resolves on the backend with no API change or migration. Removed the page-local
-  `swapIntoMutation` and the rest-day swap-in block. Added DECISIONS #103 for the "no drag-and-drop; one reusable
-  tap-to-move picker" choice and corrected the planned decision-number references in `docs/phase-batches.md` after
-  operational decision #102 was consumed by the plan-import fix. Verification: targeted `WeekAheadPage` vitest, web
-  lint, and web build (`tsc` + Vite) green.
+- **2026-07-01** — **Closed out Batch 32 — Plan page tap-to-move day picker (PR #48, squash `5d7804f`).**
+  Opened PR #48 from `feat/batch-32-plan-day-picker`; branch CI went green across ruff, mypy, pytest, Alembic
+  migration check, security audit, web build, and the Vercel preview; then squash-merged to `main` as `5d7804f`.
+  Production verified on that merge SHA: Railway `/api/v1/health` and Vercel same-origin `/api/v1/health` both
+  returned `sha=5d7804f…`; web `/` returned `200`; unauthenticated `POST
+  /api/v1/workout-delivery/planned-workouts/{id}/swap` returned `401` both direct and via the Vercel rewrite
+  (non-mutating auth-gated smoke). Ticked `ARCHITECTURE.md` for the shipped mobile-first Plan move UX, struck the
+  Batch 32 row `Shipped` in `docs/phase-batches.md`, and updated the top-level `Now` block to shipped state.
 - **2026-07-01** — **Fixed Mark's out-of-sync training plan + added a training-plan importer (DECISIONS #102).**
   Read-only prod probe found the active plan was the `batch_5_seed` generic 2121 anchored to Week 01 = Mon 15 Jun
   (the app's `next_cycle_start(date.today())` at first-run), so today (Wed 1 Jul) resolved to Week 3 Recovery vs
