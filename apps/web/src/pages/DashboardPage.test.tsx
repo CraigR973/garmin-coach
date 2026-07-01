@@ -190,7 +190,15 @@ const overnightSnapshot = {
     temperature: [{ t: '2026-06-19T22:00:00Z', c: 20.4 }],
     fan: [],
     sleep: null,
-    summary: { minTempC: 19, maxTempC: 21, fanRanMinutes: 210, peakSpeed: 5 },
+    summary: {
+      minTempC: 19,
+      maxTempC: 21,
+      fanRanMinutes: 210,
+      peakSpeed: 5,
+      warningMinutes: 210,
+      criticalMinutes: 60,
+      roomVerdict: 'red',
+    },
     nights: ['2026-06-19'],
   },
   meta: { generatedAtUtc: '2026-06-20T08:05:00Z' },
@@ -253,6 +261,7 @@ describe('DashboardPage', () => {
     // Batch 31 (redesign): the overnight glance explains *last* night, so it sits
     // in the morning brief next to the sleep snapshot, not the evening bedroom card.
     expect(await screen.findByText('Last night: 19→21 °C, fan ran 3.5 h (peak speed 5)')).toBeTruthy();
+    expect((await screen.findByTestId('overnight-room-verdict-badge')).textContent).toBe('Red');
   });
 
   it('edits today’s session with the duration and intensity dials', async () => {

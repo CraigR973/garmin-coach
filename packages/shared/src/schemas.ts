@@ -563,6 +563,9 @@ export const bedroomOvernightSummarySchema = z.object({
   maxTempC: z.number().nullable(),
   fanRanMinutes: z.number().int(),
   peakSpeed: z.number().int().nullable(),
+  warningMinutes: z.number().int(),
+  criticalMinutes: z.number().int(),
+  roomVerdict: z.enum(['green', 'amber', 'red']),
 });
 
 export const bedroomOvernightSchema = z.object({

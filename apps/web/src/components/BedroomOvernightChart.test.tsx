@@ -26,7 +26,15 @@ function baseData(overrides: Partial<BedroomOvernightData> = {}): BedroomOvernig
       },
     ],
     sleep: null,
-    summary: { minTempC: 19.2, maxTempC: 20.4, fanRanMinutes: 15, peakSpeed: 5 },
+    summary: {
+      minTempC: 19.2,
+      maxTempC: 20.4,
+      fanRanMinutes: 15,
+      peakSpeed: 5,
+      warningMinutes: 15,
+      criticalMinutes: 15,
+      roomVerdict: 'amber',
+    },
     nights: ['2026-06-19'],
     ...overrides,
   };

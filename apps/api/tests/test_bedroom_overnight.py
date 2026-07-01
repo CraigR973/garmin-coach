@@ -6,6 +6,7 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from src.services.bedroom_overnight import (
+    RED_CRITICAL_MINUTES,
     OvernightSummary,
     default_night,
     extract_hypnogram,
@@ -13,6 +14,7 @@ from src.services.bedroom_overnight import (
     night_for_local,
     night_window,
     recent_nights,
+    room_verdict,
     sleep_calendar_date,
     summarize_overnight,
 )
@@ -139,14 +141,39 @@ def test_summarize_overnight_rolls_up_range_runtime_and_peak() -> None:
         [(True, 3), (True, 5), (False, None), (None, None)],
     )
     assert summary == OvernightSummary(
-        min_temp_c=19.0, max_temp_c=21.5, fan_ran_minutes=30, peak_speed=5
+        min_temp_c=19.0,
+        max_temp_c=21.5,
+        fan_ran_minutes=30,
+        peak_speed=5,
+        warning_minutes=30,
+        critical_minutes=30,
+        room_verdict="amber",
     )
 
 
 def test_summarize_overnight_empty_is_zeroed() -> None:
     assert summarize_overnight([], []) == OvernightSummary(
-        min_temp_c=None, max_temp_c=None, fan_ran_minutes=0, peak_speed=None
+        min_temp_c=None,
+        max_temp_c=None,
+        fan_ran_minutes=0,
+        peak_speed=None,
+        warning_minutes=0,
+        critical_minutes=0,
+        room_verdict="green",
     )
+
+
+def test_room_verdict_is_green_when_warning_minutes_are_zero() -> None:
+    assert room_verdict(0, 0) == "green"
+
+
+def test_room_verdict_is_amber_when_warning_minutes_exist_below_red_threshold() -> None:
+    assert room_verdict(15, RED_CRITICAL_MINUTES - 15) == "amber"
+
+
+def test_room_verdict_turns_red_at_and_above_threshold() -> None:
+    assert room_verdict(RED_CRITICAL_MINUTES, RED_CRITICAL_MINUTES) == "red"
+    assert room_verdict(RED_CRITICAL_MINUTES + 15, RED_CRITICAL_MINUTES + 15) == "red"
 
 
 def test_iso_z_appends_zulu_and_drops_microseconds() -> None:

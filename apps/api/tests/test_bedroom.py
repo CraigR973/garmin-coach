@@ -167,11 +167,14 @@ async def test_overnight_joins_temp_fan_and_sleep(db_conn: AsyncConnection) -> N
     assert data["sleep"]["score"] == 78
     assert [s["stage"] for s in data["sleep"]["stages"]] == ["light", "deep"]
 
-    # Summary roll-up: one on-tick × 15 min, peak speed 5, range over the curve.
+    # Summary roll-up: one on-tick × 15 min, peak speed 5, plus warning/critical verdict fields.
     assert data["summary"]["fanRanMinutes"] == 15
     assert data["summary"]["peakSpeed"] == 5
     assert data["summary"]["minTempC"] == 19.2
     assert data["summary"]["maxTempC"] == 20.4
+    assert data["summary"]["warningMinutes"] == 15
+    assert data["summary"]["criticalMinutes"] == 15
+    assert data["summary"]["roomVerdict"] == "amber"
 
     assert "2026-06-29" in data["nights"]
 
