@@ -6,7 +6,9 @@
 
 ## Now
 
-**Latest (2026-07-01): Batch 31 — Overnight temperature × fan × sleep chart — SHIPPED (PR #46, squash `d13d05c`), prod-verified.** (DECISIONS #101; spec `docs/designs/bedroom-overnight-chart.md`.)
+**Operational (2026-07-01): Mark's out-of-sync training plan fixed + a real-plan importer added (DECISIONS #102).** The app had been showing the Batch 5 *generic* 2121 seed anchored to the setup week (Week 01 = Mon 15 Jun), so it sat **~10 weeks behind** Mark's real progression — it called today (Wed 1 Jul) Week 3 Recovery while he's finishing **Week 13 Consolidation** — with the wrong weekly shape (seed rides Tue/Thu/Sat, no Wed; Mark rides Tue/Wed/Thu/Sat/Sun) and placeholder content. His real plan was never imported. **Fixed in prod data** (each dry-run-previewed then applied; snapshot backup taken first): today (1 Jul) deduped to his real Week-13 Wed **"Outdoor Zone 2"**; the rest of this week set to his Plan No. 1 Week-13 sessions (Fri rest); and his **"Plan No. 2" (Scheduled Start 06.07.26)** loaded as the owned plan (**13 blocks + 78 workouts, 6 Jul → 4 Oct**), replacing the forward seed and keeping 1–5 Jul intact. The three leftover seed blocks (15 Jun–5 Jul) were **relabelled to his real weeks 11 Build / 12 Taper / 13 Consolidation**, so the current week reads "Week 13 Consolidation". **New committed capability** on branch `feat/plan-importer` (not yet merged): `services/plan_import.py` (pure `build_plan_rows` + idempotent `import_plan`) + `src/plan_import.py` runner + reviewed `apps/api/data/plans/plan_no2.json`; 6 pure tests, ruff/mypy clean; no migration, no cron. **Follow-up:** the Batch 5 auto-seed still fires for a stateless user and anchors a fictional plan to the setup week — replace it with a real "no plan yet" empty state / onboarding import so this can't recur.
+
+**Prior (2026-07-01): Batch 31 — Overnight temperature × fan × sleep chart — SHIPPED (PR #46, squash `d13d05c`), prod-verified.** (DECISIONS #101; spec `docs/designs/bedroom-overnight-chart.md`.)
 Makes the Batch 27 fan autopilot legible without touching its decision logic — it only adds a write + a read:
 - **31.0 de-risk (settled):** the per-interval hypnogram is in `sleep.raw_payload['sleepLevels']` (`{startGMT,endGMT,activityLevel}` 0=deep/1=light/2=rem/3=awake; survives the sync) → rendered as a faint band. Hive poll (+2 min) and `run_fan_control` (+4 min) fire at different 15-min offsets → nearest-time join, not exact-timestamp.
 - **31.1 persist:** new `fan_state_readings` table (migration `011`, mirrors `temperature_readings`). `_apply_fan_control` now **returns** a `FanControlResult`; `run_fan_control` reorders the pure `loop_phase` check before the `fan_auto_enabled` gate and writes one idempotent tick per within-window fire — incl. `auto_off`/`no_data`/`unreachable`/`winddown` so gaps are explained, `idle` writes nothing. Timestamp floored to `INTERVAL_MIN` + `ON CONFLICT DO NOTHING` = coalesce-safe. Fan decision/thresholds/degradation unchanged; failure `reason` is a fixed secret-safe string.
@@ -328,6 +330,18 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-07-01** — **Fixed Mark's out-of-sync training plan + added a training-plan importer (DECISIONS #102).**
+  Read-only prod probe found the active plan was the `batch_5_seed` generic 2121 anchored to Week 01 = Mon 15 Jun
+  (the app's `next_cycle_start(date.today())` at first-run), so today (Wed 1 Jul) resolved to Week 3 Recovery vs
+  Mark's real **Week 13 Consolidation** — a 70-day/10-week drift, plus the wrong weekly shape and placeholder
+  content (his real plan was never imported). Corrected prod data (dry-run → apply, snapshot taken first):
+  today → single **"Outdoor Zone 2"** (deduped 3 `plan_action_add` rows); this week's tail (2–5 Jul) → Plan No. 1
+  Week-13 sessions with Fri rest; loaded **"Plan No. 2 (start 06.07.26)"** as the owned plan (13 blocks + 78
+  workouts, 6 Jul → 4 Oct) replacing the forward seed, 1–5 Jul kept; relabelled the 3 leftover seed blocks
+  to his real weeks 11/12/13 so the current week reads Week 13 Consolidation. Added `services/plan_import.py` (pure
+  `build_plan_rows` + idempotent `import_plan`), the `src/plan_import.py` runner, and reviewed
+  `apps/api/data/plans/plan_no2.json`; 6 pure tests + ruff/format/mypy clean. On branch `feat/plan-importer`
+  (not yet merged). Follow-up: replace the stateless auto-seed with a real empty state / onboarding import.
 - **2026-07-01** — **Closed out Batch 31 — Overnight temperature × fan × sleep chart (PR #46, squash `d13d05c`).**
   Opened PR #46 from `feat/batch-31-overnight-bedroom-chart`; the first CI run hit a genuine (CI-only) bug —
   `test_bedroom.py`'s `_seed_night` inserted the `Profile` and its FK-dependent `fan_state_readings`/

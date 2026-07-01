@@ -150,7 +150,7 @@ Validated 19 Jun with a real sample → his verdict "fantastic." Demonstrated 5 
 - `manual_entries` (BP, subjective, RPE, feel, supplements, food, plus
   adherence captured against the planned-workout version that was actually done; Batch 26 also links
   post-ride subjective check-ins to `activities.id` via nullable `activity_id`)
-- `planned_workouts` (structured intervals; **versioned** — VO2 sessions get revised mid-block) · `plan_blocks` (13-wk 2121: 2 build/1 recovery/wk12 taper/wk13 consolidation)
+- `planned_workouts` (structured intervals; **versioned** — VO2 sessions get revised mid-block) · `plan_blocks` (13-wk 2121: 2 build/1 recovery/wk12 taper/wk13 consolidation). A real hand-authored plan is **ingested from his docs** via `src.plan_import` (pure `build_plan_rows` + idempotent `import_plan`, tagged by `source`, e.g. `plan_no2_import`) reading a reviewed JSON in `apps/api/data/plans/`; it replaces the forward schedule from the plan's Monday start and leaves earlier weeks intact (DECISIONS #102). The Batch 5 auto-seed remains a placeholder for a stateless user.
 - `workout_delivery_proposals` (approval-gated Zwift delivery snapshots:
   structured IR, intervals.icu payload, deterministic `.ZWO`, status/event id)
 - `analyses` (stored Claude outputs) · `experiments` (tracked hypotheses) · `knowledge_base`

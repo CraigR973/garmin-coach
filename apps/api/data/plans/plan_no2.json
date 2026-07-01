@@ -1,0 +1,1646 @@
+{
+  "name": "13 Wk 2121 Plan No. 2",
+  "source": "plan_no2_import",
+  "start_date": "2026-07-06",
+  "ftp_watts": 280,
+  "weeks": [
+    {
+      "week": 1,
+      "label": "BUILD",
+      "block_type": "build",
+      "days": [
+        {
+          "dow": 0,
+          "rest": false,
+          "title": "15 min Bodyweight (Rest day)",
+          "workout_type": "strength_recovery",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight / mobility",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "15 min Bodyweight (Rest day)",
+            "steps": [
+              {
+                "label": "15 min Bodyweight (Rest day)",
+                "target": "Bodyweight / mobility",
+                "minutes": 15
+              }
+            ]
+          }
+        },
+        {
+          "dow": 1,
+          "rest": false,
+          "title": "VO₂ (5 × 2 min @ 120%)",
+          "workout_type": "bike_vo2",
+          "duration_min": 60,
+          "intensity_target": "VO₂ (see prescription)",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "60 min WarmUp: 10 min ramp 55–80%, 2×30s @100%, 3 min @72%, 2 min @55% Main: 5 × 2 min @120% (2 min @60% recover) CoolDown: 10 min ramp 70–45%",
+            "steps": [
+              {
+                "label": "VO₂ (5 × 2 min @ 120%)",
+                "target": "VO₂ (see prescription)",
+                "minutes": 60
+              }
+            ]
+          }
+        },
+        {
+          "dow": 2,
+          "rest": false,
+          "title": "Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 75,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "75 min 10 min ramp → 55 min @67% → 10 min cooldown",
+            "steps": [
+              {
+                "label": "Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 75
+              }
+            ]
+          }
+        },
+        {
+          "dow": 3,
+          "rest": false,
+          "title": "Sweet Spot (2 × 25 min @ 89%)",
+          "workout_type": "bike_sweet_spot",
+          "duration_min": 88,
+          "intensity_target": "Sweet Spot ~89% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "88 min WarmUp: 8 min ramp, 2×30s @100%, 3 min @72%, 2 min @55% Main: 2 × 25 min @89% (3 min @60% recover) CoolDown: 10 min ramp",
+            "steps": [
+              {
+                "label": "Sweet Spot (2 × 25 min @ 89%)",
+                "target": "Sweet Spot ~89% FTP",
+                "minutes": 88
+              }
+            ]
+          }
+        },
+        {
+          "dow": 4,
+          "rest": true,
+          "title": "Rest"
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Z2 + Neuromuscular + Dumbbells",
+          "workout_type": "bike_endurance",
+          "duration_min": 58,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "58 min 5 min ramp → 30 min @65% with cadence work → 6 × (12 sec @185% + 2:48 @55%) → 5 min cooldown Then: 20min dumbbells",
+            "steps": [
+              {
+                "label": "Z2 + Neuromuscular + Dumbbells",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 58
+              }
+            ]
+          }
+        },
+        {
+          "dow": 6,
+          "rest": false,
+          "title": "Long Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 120,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "2 hours 10 min ramp → 100 min @65–72% → 10 min cooldown",
+            "steps": [
+              {
+                "label": "Long Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 120
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "week": 2,
+      "label": "BUILD",
+      "block_type": "build",
+      "days": [
+        {
+          "dow": 0,
+          "rest": false,
+          "title": "15 min Bodyweight (Rest day)",
+          "workout_type": "strength_recovery",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight / mobility",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "15 min Bodyweight (Rest day)",
+            "steps": [
+              {
+                "label": "15 min Bodyweight (Rest day)",
+                "target": "Bodyweight / mobility",
+                "minutes": 15
+              }
+            ]
+          }
+        },
+        {
+          "dow": 1,
+          "rest": false,
+          "title": "VO₂ (5 × 3 min @ 119%)",
+          "workout_type": "bike_vo2",
+          "duration_min": 63,
+          "intensity_target": "VO₂ (see prescription)",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "63 min WarmUp as Week 1 Main: 5 × 3 min @119% (3 min @60% recover) CoolDown: 10 min ramp",
+            "steps": [
+              {
+                "label": "VO₂ (5 × 3 min @ 119%)",
+                "target": "VO₂ (see prescription)",
+                "minutes": 63
+              }
+            ]
+          }
+        },
+        {
+          "dow": 2,
+          "rest": false,
+          "title": "Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 75,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "75 min",
+            "steps": [
+              {
+                "label": "Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 75
+              }
+            ]
+          }
+        },
+        {
+          "dow": 3,
+          "rest": false,
+          "title": "Sweet Spot (2 × 25 min @ 89%)",
+          "workout_type": "bike_sweet_spot",
+          "duration_min": 88,
+          "intensity_target": "Sweet Spot ~89% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "88 min",
+            "steps": [
+              {
+                "label": "Sweet Spot (2 × 25 min @ 89%)",
+                "target": "Sweet Spot ~89% FTP",
+                "minutes": 88
+              }
+            ]
+          }
+        },
+        {
+          "dow": 4,
+          "rest": true,
+          "title": "Rest"
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Z2 + Neuromuscular + Dumbbells",
+          "workout_type": "bike_endurance",
+          "duration_min": 58,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "58 min",
+            "steps": [
+              {
+                "label": "Z2 + Neuromuscular + Dumbbells",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 58
+              }
+            ]
+          }
+        },
+        {
+          "dow": 6,
+          "rest": false,
+          "title": "Long Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 120,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "2 hours",
+            "steps": [
+              {
+                "label": "Long Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 120
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "week": 3,
+      "label": "RECOVERY",
+      "block_type": "recovery",
+      "days": [
+        {
+          "dow": 0,
+          "rest": false,
+          "title": "15 min Bodyweight (Rest day)",
+          "workout_type": "strength_recovery",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight / mobility",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "15 min Bodyweight (Rest day)",
+            "steps": [
+              {
+                "label": "15 min Bodyweight (Rest day)",
+                "target": "Bodyweight / mobility",
+                "minutes": 15
+              }
+            ]
+          }
+        },
+        {
+          "dow": 1,
+          "rest": false,
+          "title": "VO₂ Light (3 × 2 min @ 115%)",
+          "workout_type": "bike_vo2",
+          "duration_min": 50,
+          "intensity_target": "VO₂ (see prescription)",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "50 min",
+            "steps": [
+              {
+                "label": "VO₂ Light (3 × 2 min @ 115%)",
+                "target": "VO₂ (see prescription)",
+                "minutes": 50
+              }
+            ]
+          }
+        },
+        {
+          "dow": 2,
+          "rest": false,
+          "title": "Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 60,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "60 min",
+            "steps": [
+              {
+                "label": "Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 60
+              }
+            ]
+          }
+        },
+        {
+          "dow": 3,
+          "rest": false,
+          "title": "Sweet Spot Light (1 × 20 min @ 89%)",
+          "workout_type": "bike_sweet_spot",
+          "duration_min": 60,
+          "intensity_target": "Sweet Spot ~89% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "60 min",
+            "steps": [
+              {
+                "label": "Sweet Spot Light (1 × 20 min @ 89%)",
+                "target": "Sweet Spot ~89% FTP",
+                "minutes": 60
+              }
+            ]
+          }
+        },
+        {
+          "dow": 4,
+          "rest": true,
+          "title": "Rest"
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Easy Z2 (No Sprints)",
+          "workout_type": "bike_endurance",
+          "duration_min": 45,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "45 min Dumbbells optional",
+            "steps": [
+              {
+                "label": "Easy Z2 (No Sprints)",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 45
+              }
+            ]
+          }
+        },
+        {
+          "dow": 6,
+          "rest": false,
+          "title": "Easy Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 90,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "90 min",
+            "steps": [
+              {
+                "label": "Easy Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 90
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "week": 4,
+      "label": "BUILD",
+      "block_type": "build",
+      "days": [
+        {
+          "dow": 0,
+          "rest": false,
+          "title": "15 min Bodyweight (Rest day)",
+          "workout_type": "strength_recovery",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight / mobility",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "15 min Bodyweight (Rest day)",
+            "steps": [
+              {
+                "label": "15 min Bodyweight (Rest day)",
+                "target": "Bodyweight / mobility",
+                "minutes": 15
+              }
+            ]
+          }
+        },
+        {
+          "dow": 1,
+          "rest": false,
+          "title": "VO₂ (6 × 2 min @ 120%)",
+          "workout_type": "bike_vo2",
+          "duration_min": 63,
+          "intensity_target": "VO₂ (see prescription)",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "63 min",
+            "steps": [
+              {
+                "label": "VO₂ (6 × 2 min @ 120%)",
+                "target": "VO₂ (see prescription)",
+                "minutes": 63
+              }
+            ]
+          }
+        },
+        {
+          "dow": 2,
+          "rest": false,
+          "title": "Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 75,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "75 min",
+            "steps": [
+              {
+                "label": "Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 75
+              }
+            ]
+          }
+        },
+        {
+          "dow": 3,
+          "rest": false,
+          "title": "Sweet Spot (2 × 30 min @ 89%)",
+          "workout_type": "bike_sweet_spot",
+          "duration_min": 92,
+          "intensity_target": "Sweet Spot ~89% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "92 min",
+            "steps": [
+              {
+                "label": "Sweet Spot (2 × 30 min @ 89%)",
+                "target": "Sweet Spot ~89% FTP",
+                "minutes": 92
+              }
+            ]
+          }
+        },
+        {
+          "dow": 4,
+          "rest": true,
+          "title": "Rest"
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Z2 + Neuromuscular + Dumbbells",
+          "workout_type": "bike_endurance",
+          "duration_min": 58,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "58 min",
+            "steps": [
+              {
+                "label": "Z2 + Neuromuscular + Dumbbells",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 58
+              }
+            ]
+          }
+        },
+        {
+          "dow": 6,
+          "rest": false,
+          "title": "Long Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 120,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "2 hours",
+            "steps": [
+              {
+                "label": "Long Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 120
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "week": 5,
+      "label": "BUILD",
+      "block_type": "build",
+      "days": [
+        {
+          "dow": 0,
+          "rest": false,
+          "title": "15 min Bodyweight (Rest day)",
+          "workout_type": "strength_recovery",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight / mobility",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "15 min Bodyweight (Rest day)",
+            "steps": [
+              {
+                "label": "15 min Bodyweight (Rest day)",
+                "target": "Bodyweight / mobility",
+                "minutes": 15
+              }
+            ]
+          }
+        },
+        {
+          "dow": 1,
+          "rest": false,
+          "title": "VO₂ (6 × 3 min @ 119%)",
+          "workout_type": "bike_vo2",
+          "duration_min": 66,
+          "intensity_target": "VO₂ (see prescription)",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "66 min",
+            "steps": [
+              {
+                "label": "VO₂ (6 × 3 min @ 119%)",
+                "target": "VO₂ (see prescription)",
+                "minutes": 66
+              }
+            ]
+          }
+        },
+        {
+          "dow": 2,
+          "rest": false,
+          "title": "Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 75,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "75 min",
+            "steps": [
+              {
+                "label": "Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 75
+              }
+            ]
+          }
+        },
+        {
+          "dow": 3,
+          "rest": false,
+          "title": "Sweet Spot (3 × 22 min @ 89%)",
+          "workout_type": "bike_sweet_spot",
+          "duration_min": 98,
+          "intensity_target": "Sweet Spot ~89% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "98 min",
+            "steps": [
+              {
+                "label": "Sweet Spot (3 × 22 min @ 89%)",
+                "target": "Sweet Spot ~89% FTP",
+                "minutes": 98
+              }
+            ]
+          }
+        },
+        {
+          "dow": 4,
+          "rest": true,
+          "title": "Rest"
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Z2 + Neuromuscular + Dumbbells",
+          "workout_type": "bike_endurance",
+          "duration_min": 58,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "58 min",
+            "steps": [
+              {
+                "label": "Z2 + Neuromuscular + Dumbbells",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 58
+              }
+            ]
+          }
+        },
+        {
+          "dow": 6,
+          "rest": false,
+          "title": "Long Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 120,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "2 hours",
+            "steps": [
+              {
+                "label": "Long Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 120
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "week": 6,
+      "label": "BUILD",
+      "block_type": "build",
+      "days": [
+        {
+          "dow": 0,
+          "rest": false,
+          "title": "15 min Bodyweight (Rest day)",
+          "workout_type": "strength_recovery",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight / mobility",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "15 min Bodyweight (Rest day)",
+            "steps": [
+              {
+                "label": "15 min Bodyweight (Rest day)",
+                "target": "Bodyweight / mobility",
+                "minutes": 15
+              }
+            ]
+          }
+        },
+        {
+          "dow": 1,
+          "rest": false,
+          "title": "VO₂ (6 × 3 min @ 119%)",
+          "workout_type": "bike_vo2",
+          "duration_min": 66,
+          "intensity_target": "VO₂ (see prescription)",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "66 min",
+            "steps": [
+              {
+                "label": "VO₂ (6 × 3 min @ 119%)",
+                "target": "VO₂ (see prescription)",
+                "minutes": 66
+              }
+            ]
+          }
+        },
+        {
+          "dow": 2,
+          "rest": false,
+          "title": "Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 75,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "75 min",
+            "steps": [
+              {
+                "label": "Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 75
+              }
+            ]
+          }
+        },
+        {
+          "dow": 3,
+          "rest": false,
+          "title": "Sweet Spot (3 × 22 min @ 89%)",
+          "workout_type": "bike_sweet_spot",
+          "duration_min": 98,
+          "intensity_target": "Sweet Spot ~89% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "98 min",
+            "steps": [
+              {
+                "label": "Sweet Spot (3 × 22 min @ 89%)",
+                "target": "Sweet Spot ~89% FTP",
+                "minutes": 98
+              }
+            ]
+          }
+        },
+        {
+          "dow": 4,
+          "rest": true,
+          "title": "Rest"
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Z2 + Neuromuscular + Dumbbells",
+          "workout_type": "bike_endurance",
+          "duration_min": 58,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "58 min",
+            "steps": [
+              {
+                "label": "Z2 + Neuromuscular + Dumbbells",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 58
+              }
+            ]
+          }
+        },
+        {
+          "dow": 6,
+          "rest": false,
+          "title": "Long Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 120,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "2 hours",
+            "steps": [
+              {
+                "label": "Long Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 120
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "week": 7,
+      "label": "BUILD (30/30s)",
+      "block_type": "build",
+      "days": [
+        {
+          "dow": 0,
+          "rest": false,
+          "title": "15 min Bodyweight (Rest day)",
+          "workout_type": "strength_recovery",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight / mobility",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "15 min Bodyweight (Rest day)",
+            "steps": [
+              {
+                "label": "15 min Bodyweight (Rest day)",
+                "target": "Bodyweight / mobility",
+                "minutes": 15
+              }
+            ]
+          }
+        },
+        {
+          "dow": 1,
+          "rest": false,
+          "title": "VO₂ (30/30s @ 130%)",
+          "workout_type": "bike_vo2",
+          "duration_min": 60,
+          "intensity_target": "VO₂ (see prescription)",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "60 min 2 × 10min blocks of: 30 sec @130% / 30 sec @55% 4 min @60% between blocks",
+            "steps": [
+              {
+                "label": "VO₂ (30/30s @ 130%)",
+                "target": "VO₂ (see prescription)",
+                "minutes": 60
+              }
+            ]
+          }
+        },
+        {
+          "dow": 2,
+          "rest": false,
+          "title": "Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 75,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "75 min",
+            "steps": [
+              {
+                "label": "Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 75
+              }
+            ]
+          }
+        },
+        {
+          "dow": 3,
+          "rest": false,
+          "title": "Sweet Spot (3 × 20 min @ 89%)",
+          "workout_type": "bike_sweet_spot",
+          "duration_min": 94,
+          "intensity_target": "Sweet Spot ~89% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "94 min",
+            "steps": [
+              {
+                "label": "Sweet Spot (3 × 20 min @ 89%)",
+                "target": "Sweet Spot ~89% FTP",
+                "minutes": 94
+              }
+            ]
+          }
+        },
+        {
+          "dow": 4,
+          "rest": true,
+          "title": "Rest"
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Z2 + Neuromuscular + Dumbbells",
+          "workout_type": "bike_endurance",
+          "duration_min": 58,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "58 min",
+            "steps": [
+              {
+                "label": "Z2 + Neuromuscular + Dumbbells",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 58
+              }
+            ]
+          }
+        },
+        {
+          "dow": 6,
+          "rest": false,
+          "title": "Long Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 120,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "2 hours",
+            "steps": [
+              {
+                "label": "Long Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 120
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "week": 8,
+      "label": "BUILD (40/20s)",
+      "block_type": "build",
+      "days": [
+        {
+          "dow": 0,
+          "rest": false,
+          "title": "15 min Bodyweight (Rest day)",
+          "workout_type": "strength_recovery",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight / mobility",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "15 min Bodyweight (Rest day)",
+            "steps": [
+              {
+                "label": "15 min Bodyweight (Rest day)",
+                "target": "Bodyweight / mobility",
+                "minutes": 15
+              }
+            ]
+          }
+        },
+        {
+          "dow": 1,
+          "rest": false,
+          "title": "VO₂ (40/20s @ 125%)",
+          "workout_type": "bike_vo2",
+          "duration_min": 60,
+          "intensity_target": "VO₂ (see prescription)",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "60 min 2 × 10min blocks of: 40 sec @125% / 20 sec @55% 4 min @60% between blocks",
+            "steps": [
+              {
+                "label": "VO₂ (40/20s @ 125%)",
+                "target": "VO₂ (see prescription)",
+                "minutes": 60
+              }
+            ]
+          }
+        },
+        {
+          "dow": 2,
+          "rest": false,
+          "title": "Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 75,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "75 min",
+            "steps": [
+              {
+                "label": "Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 75
+              }
+            ]
+          }
+        },
+        {
+          "dow": 3,
+          "rest": false,
+          "title": "Sweet Spot (3 × 18 min @ 89%)",
+          "workout_type": "bike_sweet_spot",
+          "duration_min": 90,
+          "intensity_target": "Sweet Spot ~89% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "90 min",
+            "steps": [
+              {
+                "label": "Sweet Spot (3 × 18 min @ 89%)",
+                "target": "Sweet Spot ~89% FTP",
+                "minutes": 90
+              }
+            ]
+          }
+        },
+        {
+          "dow": 4,
+          "rest": true,
+          "title": "Rest"
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Z2 + Neuromuscular + Dumbbells",
+          "workout_type": "bike_endurance",
+          "duration_min": 58,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "58 min",
+            "steps": [
+              {
+                "label": "Z2 + Neuromuscular + Dumbbells",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 58
+              }
+            ]
+          }
+        },
+        {
+          "dow": 6,
+          "rest": false,
+          "title": "Long Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 120,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "2 hours",
+            "steps": [
+              {
+                "label": "Long Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 120
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "week": 9,
+      "label": "RECOVERY",
+      "block_type": "recovery",
+      "days": [
+        {
+          "dow": 0,
+          "rest": false,
+          "title": "15 min Bodyweight (Rest day)",
+          "workout_type": "strength_recovery",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight / mobility",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "15 min Bodyweight (Rest day)",
+            "steps": [
+              {
+                "label": "15 min Bodyweight (Rest day)",
+                "target": "Bodyweight / mobility",
+                "minutes": 15
+              }
+            ]
+          }
+        },
+        {
+          "dow": 1,
+          "rest": false,
+          "title": "VO₂ Light (3 × 2 min @ 115%)",
+          "workout_type": "bike_vo2",
+          "duration_min": 50,
+          "intensity_target": "VO₂ (see prescription)",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "50 min",
+            "steps": [
+              {
+                "label": "VO₂ Light (3 × 2 min @ 115%)",
+                "target": "VO₂ (see prescription)",
+                "minutes": 50
+              }
+            ]
+          }
+        },
+        {
+          "dow": 2,
+          "rest": false,
+          "title": "Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 60,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "60 min",
+            "steps": [
+              {
+                "label": "Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 60
+              }
+            ]
+          }
+        },
+        {
+          "dow": 3,
+          "rest": false,
+          "title": "Sweet Spot Light (1 × 20 min @ 89%)",
+          "workout_type": "bike_sweet_spot",
+          "duration_min": 60,
+          "intensity_target": "Sweet Spot ~89% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "60 min",
+            "steps": [
+              {
+                "label": "Sweet Spot Light (1 × 20 min @ 89%)",
+                "target": "Sweet Spot ~89% FTP",
+                "minutes": 60
+              }
+            ]
+          }
+        },
+        {
+          "dow": 4,
+          "rest": true,
+          "title": "Rest"
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Easy Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 45,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "45 min Dumbbells optional",
+            "steps": [
+              {
+                "label": "Easy Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 45
+              }
+            ]
+          }
+        },
+        {
+          "dow": 6,
+          "rest": false,
+          "title": "Easy Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 90,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "90 min",
+            "steps": [
+              {
+                "label": "Easy Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 90
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "week": 10,
+      "label": "PEAK VO₂ (7 × 3 min)",
+      "block_type": "build",
+      "days": [
+        {
+          "dow": 0,
+          "rest": false,
+          "title": "15 min Bodyweight (Rest day)",
+          "workout_type": "strength_recovery",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight / mobility",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "15 min Bodyweight (Rest day)",
+            "steps": [
+              {
+                "label": "15 min Bodyweight (Rest day)",
+                "target": "Bodyweight / mobility",
+                "minutes": 15
+              }
+            ]
+          }
+        },
+        {
+          "dow": 1,
+          "rest": false,
+          "title": "VO₂ (7 × 3 min @ 119%)",
+          "workout_type": "bike_vo2",
+          "duration_min": 69,
+          "intensity_target": "VO₂ (see prescription)",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "69 min",
+            "steps": [
+              {
+                "label": "VO₂ (7 × 3 min @ 119%)",
+                "target": "VO₂ (see prescription)",
+                "minutes": 69
+              }
+            ]
+          }
+        },
+        {
+          "dow": 2,
+          "rest": false,
+          "title": "Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 75,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "75 min",
+            "steps": [
+              {
+                "label": "Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 75
+              }
+            ]
+          }
+        },
+        {
+          "dow": 3,
+          "rest": false,
+          "title": "Sweet Spot (3 × 20 min @ 89%)",
+          "workout_type": "bike_sweet_spot",
+          "duration_min": 94,
+          "intensity_target": "Sweet Spot ~89% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "94 min",
+            "steps": [
+              {
+                "label": "Sweet Spot (3 × 20 min @ 89%)",
+                "target": "Sweet Spot ~89% FTP",
+                "minutes": 94
+              }
+            ]
+          }
+        },
+        {
+          "dow": 4,
+          "rest": true,
+          "title": "Rest"
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Z2 + Neuromuscular + Dumbbells",
+          "workout_type": "bike_endurance",
+          "duration_min": 58,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "58 min",
+            "steps": [
+              {
+                "label": "Z2 + Neuromuscular + Dumbbells",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 58
+              }
+            ]
+          }
+        },
+        {
+          "dow": 6,
+          "rest": false,
+          "title": "Long Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 120,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "2 hours",
+            "steps": [
+              {
+                "label": "Long Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 120
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "week": 11,
+      "label": "PEAK VO₂ (40/20s Extended)",
+      "block_type": "build",
+      "days": [
+        {
+          "dow": 0,
+          "rest": false,
+          "title": "15 min Bodyweight (Rest day)",
+          "workout_type": "strength_recovery",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight / mobility",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "15 min Bodyweight (Rest day)",
+            "steps": [
+              {
+                "label": "15 min Bodyweight (Rest day)",
+                "target": "Bodyweight / mobility",
+                "minutes": 15
+              }
+            ]
+          }
+        },
+        {
+          "dow": 1,
+          "rest": false,
+          "title": "VO₂ (2 × 12min 40/20s @ 125%)",
+          "workout_type": "bike_vo2",
+          "duration_min": 60,
+          "intensity_target": "VO₂ (see prescription)",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "60 min",
+            "steps": [
+              {
+                "label": "VO₂ (2 × 12min 40/20s @ 125%)",
+                "target": "VO₂ (see prescription)",
+                "minutes": 60
+              }
+            ]
+          }
+        },
+        {
+          "dow": 2,
+          "rest": false,
+          "title": "Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 75,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "75 min",
+            "steps": [
+              {
+                "label": "Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 75
+              }
+            ]
+          }
+        },
+        {
+          "dow": 3,
+          "rest": false,
+          "title": "Sweet Spot (3 × 18 min @ 89%)",
+          "workout_type": "bike_sweet_spot",
+          "duration_min": 90,
+          "intensity_target": "Sweet Spot ~89% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "90 min",
+            "steps": [
+              {
+                "label": "Sweet Spot (3 × 18 min @ 89%)",
+                "target": "Sweet Spot ~89% FTP",
+                "minutes": 90
+              }
+            ]
+          }
+        },
+        {
+          "dow": 4,
+          "rest": true,
+          "title": "Rest"
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Z2 + Neuromuscular + Dumbbells",
+          "workout_type": "bike_endurance",
+          "duration_min": 58,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "58 min",
+            "steps": [
+              {
+                "label": "Z2 + Neuromuscular + Dumbbells",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 58
+              }
+            ]
+          }
+        },
+        {
+          "dow": 6,
+          "rest": false,
+          "title": "Long Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 120,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "2 hours",
+            "steps": [
+              {
+                "label": "Long Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 120
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "week": 12,
+      "label": "CONSOLIDATION",
+      "block_type": "consolidation",
+      "days": [
+        {
+          "dow": 0,
+          "rest": false,
+          "title": "15 min Bodyweight (Rest day)",
+          "workout_type": "strength_recovery",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight / mobility",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "15 min Bodyweight (Rest day)",
+            "steps": [
+              {
+                "label": "15 min Bodyweight (Rest day)",
+                "target": "Bodyweight / mobility",
+                "minutes": 15
+              }
+            ]
+          }
+        },
+        {
+          "dow": 1,
+          "rest": false,
+          "title": "VO₂ Light (4 × 2 min @ 115%)",
+          "workout_type": "bike_vo2",
+          "duration_min": 53,
+          "intensity_target": "VO₂ (see prescription)",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "53 min",
+            "steps": [
+              {
+                "label": "VO₂ Light (4 × 2 min @ 115%)",
+                "target": "VO₂ (see prescription)",
+                "minutes": 53
+              }
+            ]
+          }
+        },
+        {
+          "dow": 2,
+          "rest": false,
+          "title": "Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 60,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "60 min",
+            "steps": [
+              {
+                "label": "Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 60
+              }
+            ]
+          }
+        },
+        {
+          "dow": 3,
+          "rest": false,
+          "title": "Sweet Spot (1 × 30 min @ 89%)",
+          "workout_type": "bike_sweet_spot",
+          "duration_min": 70,
+          "intensity_target": "Sweet Spot ~89% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "70 min",
+            "steps": [
+              {
+                "label": "Sweet Spot (1 × 30 min @ 89%)",
+                "target": "Sweet Spot ~89% FTP",
+                "minutes": 70
+              }
+            ]
+          }
+        },
+        {
+          "dow": 4,
+          "rest": true,
+          "title": "Rest"
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Easy Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 45,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "45 min Dumbbells optional",
+            "steps": [
+              {
+                "label": "Easy Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 45
+              }
+            ]
+          }
+        },
+        {
+          "dow": 6,
+          "rest": false,
+          "title": "Easy Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 90,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "90 min",
+            "steps": [
+              {
+                "label": "Easy Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 90
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "week": 13,
+      "label": "TAPER",
+      "block_type": "taper",
+      "days": [
+        {
+          "dow": 0,
+          "rest": false,
+          "title": "15 min Bodyweight (Rest day)",
+          "workout_type": "strength_recovery",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight / mobility",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "15 min Bodyweight (Rest day)",
+            "steps": [
+              {
+                "label": "15 min Bodyweight (Rest day)",
+                "target": "Bodyweight / mobility",
+                "minutes": 15
+              }
+            ]
+          }
+        },
+        {
+          "dow": 1,
+          "rest": false,
+          "title": "VO₂ Primer (3 × 1 min @ 120%)",
+          "workout_type": "bike_vo2",
+          "duration_min": 40,
+          "intensity_target": "VO₂ (see prescription)",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "40 min",
+            "steps": [
+              {
+                "label": "VO₂ Primer (3 × 1 min @ 120%)",
+                "target": "VO₂ (see prescription)",
+                "minutes": 40
+              }
+            ]
+          }
+        },
+        {
+          "dow": 2,
+          "rest": false,
+          "title": "Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 45,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "45 min",
+            "steps": [
+              {
+                "label": "Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 45
+              }
+            ]
+          }
+        },
+        {
+          "dow": 3,
+          "rest": false,
+          "title": "Sweet Spot Primer (1 × 12 min @ 89%)",
+          "workout_type": "bike_sweet_spot",
+          "duration_min": 45,
+          "intensity_target": "Sweet Spot ~89% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "45 min",
+            "steps": [
+              {
+                "label": "Sweet Spot Primer (1 × 12 min @ 89%)",
+                "target": "Sweet Spot ~89% FTP",
+                "minutes": 45
+              }
+            ]
+          }
+        },
+        {
+          "dow": 4,
+          "rest": true,
+          "title": "Rest"
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Easy Z2",
+          "workout_type": "bike_endurance",
+          "duration_min": 40,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "40 min",
+            "steps": [
+              {
+                "label": "Easy Z2",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 40
+              }
+            ]
+          }
+        },
+        {
+          "dow": 6,
+          "rest": false,
+          "title": "Optional Ride (45 min @ 60–65%) OR Rest",
+          "workout_type": "bike_endurance",
+          "duration_min": 45,
+          "intensity_target": "Zone 2 ~65–72% FTP",
+          "structured_workout": {
+            "format": "bike",
+            "summary": "Optional Ride (45 min @ 60–65%) OR Rest",
+            "steps": [
+              {
+                "label": "Optional Ride (45 min @ 60–65%) OR Rest",
+                "target": "Zone 2 ~65–72% FTP",
+                "minutes": 45
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
