@@ -52,7 +52,13 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile
-from src.services.insights import _mean, _slope, compute_drivers
+from src.services.insights import (
+    BEDROOM_DRIVER_KEYS,
+    _mean,
+    _slope,
+    bedroom_driver_values_by_date,
+    compute_drivers,
+)
 
 PROMPT_VERSION = "experiment-eval:v1"
 AUDIT_TYPE_EVALUATION = "experiment_evaluation"
@@ -92,7 +98,7 @@ CORRELATION_MODERATE_R = 0.3
 EARLY_WAKING_OUTCOME = "overnight_awake_min"
 # Candidate drivers we can actually measure from synced data. The hypothesis also
 # names alcohol / late-snack triggers, which are not captured — surfaced as a gap.
-EARLY_WAKING_DRIVERS = ("overnight_low_c", "sleep_stress_avg")
+EARLY_WAKING_DRIVERS = ("overnight_low_c", "sleep_stress_avg", *BEDROOM_DRIVER_KEYS)
 EARLY_WAKING_UNMEASURED = ("alcohol", "late_snack")
 
 # --- group compare (recovery-week disruption) ---------------------------------
@@ -299,6 +305,8 @@ def evaluate_correlation(
             f"No measured candidate correlates with overnight disruption "
             f"(strongest r={top.coefficient}) — no identifiable trigger among them.",
         )
+    if top.summary:
+        reasons.append(top.summary)
 
     return EvaluationResult(
         slug=slug,
@@ -317,6 +325,7 @@ def evaluate_correlation(
                     "coefficient": c.coefficient,
                     "direction": c.direction,
                     "sampleCount": c.sample_count,
+                    "summary": c.summary,
                 }
                 for c in correlations
             ],
@@ -514,9 +523,13 @@ class ExperimentEvaluationService:
             .all()
         )
         weather_by_date = {w.calendar_date: w for w in weather}
+        bedroom_by_date = await bedroom_driver_values_by_date(
+            self.session, player, start=start, end=end
+        )
         records: list[dict[str, float | None]] = []
         for sleep in sleeps:
             weather_row = weather_by_date.get(sleep.calendar_date)
+            bedroom = bedroom_by_date.get(sleep.calendar_date)
             records.append(
                 {
                     EARLY_WAKING_OUTCOME: (
@@ -528,6 +541,10 @@ class ExperimentEvaluationService:
                     "sleep_stress_avg": float(sleep.avg_sleep_stress)
                     if sleep.avg_sleep_stress is not None
                     else None,
+                    "bedroom_warning_minutes": bedroom.warning_minutes if bedroom else None,
+                    "bedroom_critical_minutes": bedroom.critical_minutes if bedroom else None,
+                    "bedroom_fan_ran_minutes": bedroom.fan_ran_minutes if bedroom else None,
+                    "bedroom_peak_fan_speed": bedroom.peak_fan_speed if bedroom else None,
                 }
             )
         return evaluate_correlation(

@@ -28,6 +28,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,11 +37,21 @@ from src.models.coaching import (
     Activity,
     Analysis,
     DailyMetric,
+    FanStateReading,
     KnowledgeBase,
     Sleep,
+    TemperatureReading,
     WeatherDaily,
 )
 from src.models.profile import Profile
+from src.services.bedroom_overnight import (
+    THRESHOLD_CRITICAL_C,
+    THRESHOLD_ON_C,
+    night_for_local,
+    night_window,
+    sleep_calendar_date,
+    summarize_overnight,
+)
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
 
 PROMPT_VERSION = "insights:v1"
@@ -74,11 +85,42 @@ OUTCOME_RECOVERY_HRV = "recovery_hrv_ms"
 DRIVER_KEYS = (
     "overnight_low_c",
     "overnight_wind_max_mph",
+    "bedroom_warning_minutes",
+    "bedroom_critical_minutes",
+    "bedroom_fan_ran_minutes",
+    "bedroom_peak_fan_speed",
     "prev_day_training_load",
     "daytime_stress_avg",
     "resting_heart_rate_bpm",
     "sleep_stress_avg",
 )
+
+BEDROOM_DRIVER_KEYS = (
+    "bedroom_warning_minutes",
+    "bedroom_critical_minutes",
+    "bedroom_fan_ran_minutes",
+    "bedroom_peak_fan_speed",
+)
+
+_BEDROOM_DRIVER_LABELS = {
+    "bedroom_warning_minutes": f"60+ min above {THRESHOLD_ON_C:g}C",
+    "bedroom_critical_minutes": f"60+ min above {THRESHOLD_CRITICAL_C:g}C",
+    "bedroom_fan_ran_minutes": "the fan ran",
+    "bedroom_peak_fan_speed": "fan peaked at speed 5+",
+}
+
+_BEDROOM_DRIVER_THRESHOLDS = {
+    "bedroom_warning_minutes": 60.0,
+    "bedroom_critical_minutes": 60.0,
+    "bedroom_fan_ran_minutes": 1.0,
+    "bedroom_peak_fan_speed": 5.0,
+}
+
+_OUTCOME_SENTENCE_LABELS = {
+    OUTCOME_SLEEP_SCORE: ("sleep score", "points", True),
+    OUTCOME_RECOVERY_HRV: ("recovery HRV", "ms", True),
+    "overnight_awake_min": ("overnight awake time", "min", False),
+}
 
 
 def _utcnow() -> datetime:
@@ -352,10 +394,20 @@ class DriverCorrelation:
     outcome: str
     coefficient: float
     sample_count: int
+    summary: str | None = None
 
     @property
     def direction(self) -> str:
         return "positive" if self.coefficient >= 0 else "negative"
+
+
+@dataclass(frozen=True)
+class BedroomDriverValues:
+    wake_date: date
+    warning_minutes: float | None
+    critical_minutes: float | None
+    fan_ran_minutes: float | None
+    peak_fan_speed: float | None
 
 
 def compute_drivers(
@@ -387,16 +439,147 @@ def compute_drivers(
         coeff = pearson(xs, ys)
         if coeff is None:
             continue
+        result = DriverCorrelation(driver, outcome_key, round(coeff, 4), len(xs))
         results.append(
             DriverCorrelation(
-                driver=driver,
-                outcome=outcome_key,
-                coefficient=round(coeff, 4),
-                sample_count=len(xs),
+                driver=result.driver,
+                outcome=result.outcome,
+                coefficient=result.coefficient,
+                sample_count=result.sample_count,
+                summary=driver_sentence(records, result),
             )
         )
     results.sort(key=lambda r: abs(r.coefficient), reverse=True)
     return results
+
+
+async def bedroom_driver_values_by_date(
+    session: AsyncSession, player: Profile, *, start: date, end: date
+) -> dict[date, BedroomDriverValues]:
+    """Bedroom warning/fan rollups keyed by Garmin's wake-morning sleep date."""
+    tz = ZoneInfo(player.timezone or "UTC")
+    first_start, _ = night_window(start - timedelta(days=1), tz)
+    _, last_end = night_window(end - timedelta(days=1), tz)
+
+    temperatures = (
+        (
+            await session.execute(
+                select(TemperatureReading).where(
+                    TemperatureReading.user_id == player.id,
+                    TemperatureReading.captured_at_utc >= first_start,
+                    TemperatureReading.captured_at_utc < last_end,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    fan_states = (
+        (
+            await session.execute(
+                select(FanStateReading).where(
+                    FanStateReading.user_id == player.id,
+                    FanStateReading.captured_at_utc >= first_start,
+                    FanStateReading.captured_at_utc < last_end,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    temps_by_wake_date: dict[date, list[float | None]] = {}
+    fan_by_wake_date: dict[date, list[tuple[bool | None, int | None]]] = {}
+
+    for temp_row in temperatures:
+        wake_date = _wake_date_for_utc(temp_row.captured_at_utc, tz)
+        if wake_date is None or wake_date < start or wake_date > end:
+            continue
+        temps_by_wake_date.setdefault(wake_date, []).append(temp_row.temperature_c)
+
+    for fan_row in fan_states:
+        wake_date = _wake_date_for_utc(fan_row.captured_at_utc, tz)
+        if wake_date is None or wake_date < start or wake_date > end:
+            continue
+        fan_by_wake_date.setdefault(wake_date, []).append((fan_row.fan_on, fan_row.fan_speed))
+
+    values: dict[date, BedroomDriverValues] = {}
+    for wake_date in sorted(set(temps_by_wake_date) | set(fan_by_wake_date)):
+        temp_values = temps_by_wake_date.get(wake_date, [])
+        fan_values = fan_by_wake_date.get(wake_date, [])
+        temp_summary = summarize_overnight(temp_values, []) if temp_values else None
+        fan_summary = summarize_overnight([], fan_values) if fan_values else None
+        values[wake_date] = BedroomDriverValues(
+            wake_date=wake_date,
+            warning_minutes=float(temp_summary.warning_minutes) if temp_summary else None,
+            critical_minutes=float(temp_summary.critical_minutes) if temp_summary else None,
+            fan_ran_minutes=float(fan_summary.fan_ran_minutes) if fan_summary else None,
+            peak_fan_speed=float(fan_summary.peak_speed)
+            if fan_summary and fan_summary.peak_speed is not None
+            else None,
+        )
+    return values
+
+
+def _wake_date_for_utc(captured_at_utc: datetime, tz: ZoneInfo) -> date | None:
+    local = captured_at_utc.replace(tzinfo=UTC).astimezone(tz)
+    night = night_for_local(local)
+    if night is None:
+        return None
+    return sleep_calendar_date(night)
+
+
+def driver_sentence(
+    records: Sequence[dict[str, float | None]], correlation: DriverCorrelation
+) -> str | None:
+    """Plain-language grouped-mean read for bedroom drivers.
+
+    The correlation remains the ranking statistic. This sentence adds a
+    human-readable split for the bedroom-derived candidates only, so the API can
+    say what the measured nights averaged without introducing a new model.
+    """
+    threshold = _BEDROOM_DRIVER_THRESHOLDS.get(correlation.driver)
+    label = _BEDROOM_DRIVER_LABELS.get(correlation.driver)
+    outcome_meta = _OUTCOME_SENTENCE_LABELS.get(correlation.outcome)
+    if threshold is None or label is None or outcome_meta is None:
+        return None
+
+    exposed: list[float] = []
+    baseline: list[float] = []
+    for record in records:
+        driver_value = record.get(correlation.driver)
+        outcome_value = record.get(correlation.outcome)
+        if driver_value is None or outcome_value is None:
+            continue
+        if float(driver_value) >= threshold:
+            exposed.append(float(outcome_value))
+        else:
+            baseline.append(float(outcome_value))
+
+    if not exposed or not baseline:
+        return None
+
+    outcome_label, unit, higher_is_better = outcome_meta
+    exposed_mean = _mean(exposed)
+    baseline_mean = _mean(baseline)
+    delta = exposed_mean - baseline_mean
+    if abs(delta) < 0.05:
+        comparison = f"about the same {outcome_label}"
+    else:
+        direction = "higher" if delta > 0 else "lower"
+        magnitude = _format_delta(abs(delta))
+        comparison = f"{magnitude} {unit} {direction} {outcome_label}"
+        if not higher_is_better:
+            comparison = f"{magnitude} {unit} {'more' if delta > 0 else 'less'} {outcome_label}"
+
+    return f"Nights with {label} average {comparison} ({correlation.sample_count} nights measured)."
+
+
+def _format_delta(value: float) -> str:
+    rounded = round(value, 1)
+    if rounded.is_integer():
+        return str(int(rounded))
+    return f"{rounded:g}"
 
 
 @dataclass
@@ -602,6 +785,9 @@ class InsightsService:
         metric_by_date = {m.calendar_date: m for m in metrics}
         sleep_by_date = {s.calendar_date: s for s in sleeps}
         weather_by_date = {w.calendar_date: w for w in weather}
+        bedroom_by_date = await bedroom_driver_values_by_date(
+            self.session, player, start=start, end=end
+        )
         load_by_date: dict[date, float] = {}
         for activity in activities:
             day = activity.start_utc.date()
@@ -612,6 +798,7 @@ class InsightsService:
             metric = metric_by_date.get(day)
             sleep = sleep_by_date.get(day)
             weather_row = weather_by_date.get(day)
+            bedroom = bedroom_by_date.get(day)
             prev_load = load_by_date.get(day - timedelta(days=1))
             records.append(
                 {
@@ -627,6 +814,10 @@ class InsightsService:
                     "overnight_wind_max_mph": float(weather_row.overnight_wind_max_mph)
                     if weather_row and weather_row.overnight_wind_max_mph is not None
                     else None,
+                    "bedroom_warning_minutes": bedroom.warning_minutes if bedroom else None,
+                    "bedroom_critical_minutes": bedroom.critical_minutes if bedroom else None,
+                    "bedroom_fan_ran_minutes": bedroom.fan_ran_minutes if bedroom else None,
+                    "bedroom_peak_fan_speed": bedroom.peak_fan_speed if bedroom else None,
                     "prev_day_training_load": prev_load,
                     "daytime_stress_avg": float(metric.stress_avg)
                     if metric and metric.stress_avg is not None
@@ -813,6 +1004,7 @@ def _drivers_packet(report: DriversReport) -> dict[str, Any]:
                     "coefficient": c.coefficient,
                     "direction": c.direction,
                     "sampleCount": c.sample_count,
+                    "summary": c.summary,
                 }
                 for c in correlations
             ]
