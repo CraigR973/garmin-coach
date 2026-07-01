@@ -6,14 +6,16 @@
 
 ## Now
 
-**Latest (2026-06-30): Batch 31 — Overnight temperature × fan × sleep chart — IMPLEMENTED on branch `feat/batch-31-overnight-bedroom-chart`, NOT closeout-shipped.** (DECISIONS #101; spec `docs/designs/bedroom-overnight-chart.md`.)
+**Latest (2026-07-01): Batch 31 — Overnight temperature × fan × sleep chart — SHIPPED (PR #46, squash `d13d05c`), prod-verified.** (DECISIONS #101; spec `docs/designs/bedroom-overnight-chart.md`.)
 Makes the Batch 27 fan autopilot legible without touching its decision logic — it only adds a write + a read:
 - **31.0 de-risk (settled):** the per-interval hypnogram is in `sleep.raw_payload['sleepLevels']` (`{startGMT,endGMT,activityLevel}` 0=deep/1=light/2=rem/3=awake; survives the sync) → rendered as a faint band. Hive poll (+2 min) and `run_fan_control` (+4 min) fire at different 15-min offsets → nearest-time join, not exact-timestamp.
 - **31.1 persist:** new `fan_state_readings` table (migration `011`, mirrors `temperature_readings`). `_apply_fan_control` now **returns** a `FanControlResult`; `run_fan_control` reorders the pure `loop_phase` check before the `fan_auto_enabled` gate and writes one idempotent tick per within-window fire — incl. `auto_off`/`no_data`/`unreachable`/`winddown` so gaps are explained, `idle` writes nothing. Timestamp floored to `INTERVAL_MIN` + `ON CONFLICT DO NOTHING` = coalesce-safe. Fan decision/thresholds/degradation unchanged; failure `reason` is a fixed secret-safe string.
 - **31.2 read:** new `routers/bedroom.py` `GET /api/v1/bedroom/overnight` — pure DB read, night-windows `[21:30→09:00]` local (reuses `fan_control` constants), joins temp + fan + the night's sleep (`night+1`), defaults to last completed night, `nights[]` pager. Pure logic in `services/bedroom_overnight.py`. Kept off `/api/v1/daily-loop`. Shared `bedroomOvernightEnvelopeSchema`.
 - **31.3/31.4 frontend:** recharts dual-axis `BedroomOvernightChart` (temp line + fan-speed step, 19.5/20.0 °C `ReferenceLine`s, hypnogram/sleep `ReferenceArea`s, muted spans, night pager, empty state) below the `/bedroom` fan card; one-line Home glance on evening/post-ride (`overnightGlanceText`) linking through.
-- **Verification (local):** backend ruff + `ruff format --check` + mypy(75 files) clean, full suite **362 passed / 129 skipped** (the 11 new DB-backed tests run in CI — no local Postgres/Docker on this Mac), Alembic single head `011`; web build + lint (0 err) + **63 vitest**; shared typecheck + 7 tests. CI runs the DB-backed tests + Alembic `011` up/down.
-- **Next step:** open PR, watch CI (esp. the DB-backed `run_fan_control` ticks + endpoint join + `011` up/down), then `/phase-closeout 31`. **Post-deploy first-live-use items:** (1) the `fan_state_readings` series starts empty at the `011` deploy — early nights show temp+sleep with an empty fan track (expected; the empty state says so); (2) confirm the chart renders correctly against real prod data (couldn't preview pre-deploy — the table isn't in prod and the dev preview proxies `/api` to prod; verified instead via build + vitest mount tests).
+- **Verification (local):** backend ruff + `ruff format --check` + mypy(75 files) clean, full suite **362 passed / 129 skipped** (the 11 new DB-backed tests run in CI — no local Postgres/Docker on this Mac), Alembic single head `011`; web build + lint (0 err) + **63 vitest**; shared typecheck + 7 tests.
+- **CI fix (PR #46):** the first CI run hit a **real** (non-local) failure — `test_bedroom.py`'s `_seed_night` added the `Profile` and its FK-dependent `fan_state_readings`/`temperature_readings`/`sleep` rows to the same session without an intermediate flush, so real Postgres enforced the FK before the profile insert landed (`ForeignKeyViolationError`); this only surfaces against a real DB, so it passed locally (skipped, no Postgres) and failed in CI. Fixed with `await session.flush()` after the `Profile` add (the same pattern as the Batch 29 closeout fix) — pushed as a follow-up commit, CI went green.
+- **Closeout (2026-07-01):** opened PR #46, fixed the CI-only FK-ordering test bug above, watched all 6 checks + the Vercel preview go green, squash-merged to `main` (`d13d05c`). Production verified: Railway `/api/v1/health` and Vercel same-origin `/api/v1/health` both returned `sha=d13d05c…`; web `/` returned 200; `GET /api/v1/bedroom/overnight` returned unauthenticated 401 both direct and via the Vercel rewrite (non-mutating auth-gated smoke).
+- **Next step:** no planned next batch is currently queued. **First-live-use items:** (1) the `fan_state_readings` series starts empty at the `011` deploy — early nights show temp+sleep with an empty fan track (expected; the empty state says so, will fill in as the overnight loop runs); (2) confirm the chart renders correctly against real prod data on first use (couldn't preview pre-deploy — the table wasn't in prod and the dev preview proxies `/api` to prod; verified instead via build + vitest mount tests pre-merge).
 
 ---
 
@@ -326,6 +328,17 @@ still pending after soak. See `docs/reviews/auth-simplification-plan.md`.
   change or observations).
 
 ## Log
+- **2026-07-01** — **Closed out Batch 31 — Overnight temperature × fan × sleep chart (PR #46, squash `d13d05c`).**
+  Opened PR #46 from `feat/batch-31-overnight-bedroom-chart`; the first CI run hit a genuine (CI-only) bug —
+  `test_bedroom.py`'s `_seed_night` inserted the `Profile` and its FK-dependent `fan_state_readings`/
+  `temperature_readings`/`sleep` rows in the same session without flushing the profile first, so real Postgres
+  raised `ForeignKeyViolationError` (the tests are skipped locally with no Postgres, so this only ever surfaces in
+  CI). Fixed with `await session.flush()` after the `Profile` add — the same pattern as the Batch 29 closeout fix —
+  pushed as a follow-up commit, watched all 6 checks + the Vercel preview go green, then squash-merged to `main`.
+  Production verified on implementation SHA `d13d05c`: Railway `/api/v1/health` and Vercel same-origin
+  `/api/v1/health` both returned that SHA; web `/` returned 200; `GET /api/v1/bedroom/overnight` returned
+  unauthenticated 401 direct and via the Vercel rewrite (non-mutating auth-gated smoke). Ticked `ARCHITECTURE.md`
+  §7 and struck the Batch 31 row `Shipped` in `docs/phase-batches.md`.
 - **2026-06-30** — Implemented **Batch 31 — Overnight temperature × fan × sleep chart** on
   `feat/batch-31-overnight-bedroom-chart` (not closeout-shipped). 31.0 de-risk confirmed the hypnogram lives in
   `sleep.raw_payload['sleepLevels']` and that temp/fan fire at different 15-min offsets (→ nearest-time join). Added
