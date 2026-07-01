@@ -309,6 +309,8 @@ export function DashboardPage() {
             baselinesLink="/baselines"
           />
 
+          <OvernightGlance />
+
           <DayPlanCard
             dayState={dayState}
             workouts={todaysWorkouts}
@@ -354,6 +356,8 @@ export function DashboardPage() {
             morningBriefLink="/brief"
             baselinesLink="/baselines"
           />
+
+          <OvernightGlance />
 
           <DayPlanCard
             dayState={dayState}
@@ -1104,7 +1108,6 @@ function BedroomSummaryCard({
             <p className="text-text-secondary">{fanStatusText(thermal.fan)}</p>
           </div>
         </div>
-        <OvernightGlance />
         <DetailLinkCard
           to="/bedroom"
           title="Bedroom & weather detail"
@@ -1115,7 +1118,9 @@ function BedroomSummaryCard({
   );
 }
 
-/** One-line last-night room/fan glance for the Home bedroom card (Batch 31).
+/** One-line last-night room/fan glance, shown in the morning brief alongside last
+ *  night's sleep (Batch 31) — it explains *last* night, not tonight's live fan state,
+ *  so it belongs with the morning read rather than the evening bedroom card.
  *  Fetches the last completed night (shared cache with /bedroom) and stays silent
  *  until there's something to say, so Home never shows a spinner for it. */
 function OvernightGlance() {

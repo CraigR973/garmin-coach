@@ -250,6 +250,9 @@ describe('DashboardPage', () => {
     // The comparison table now lives inside the "Last night's sleep" card.
     expect(screen.getByText("Last night's sleep")).toBeTruthy();
     expect(screen.getByText('23 above')).toBeTruthy(); // VO₂max vs age-group average, age-only row
+    // Batch 31 (redesign): the overnight glance explains *last* night, so it sits
+    // in the morning brief next to the sleep snapshot, not the evening bedroom card.
+    expect(await screen.findByText('Last night: 19→21 °C, fan ran 3.5 h (peak speed 5)')).toBeTruthy();
   });
 
   it('edits today’s session with the duration and intensity dials', async () => {
@@ -419,8 +422,8 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Bedroom')).toBeTruthy();
     expect(screen.getByText('Bedroom fan')).toBeTruthy();
     expect(screen.getByText('Auto · on at speed 5, responding to 20.1°C')).toBeTruthy();
-    // Batch 31: the one-line overnight glance, linking through to /bedroom.
-    expect(await screen.findByText('Last night: 19→21 °C, fan ran 3.5 h (peak speed 5)')).toBeTruthy();
+    // Batch 31 (redesign): the overnight glance now lives in the morning brief, not here.
+    expect(screen.queryByText('Last night: 19→21 °C, fan ran 3.5 h (peak speed 5)')).toBeNull();
     expect(screen.queryByText("Today's session")).toBeNull();
   });
 
