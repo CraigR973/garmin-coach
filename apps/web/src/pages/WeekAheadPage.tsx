@@ -1,8 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { planScheduleEnvelopeSchema } from '@coach/shared';
 import { Bike, CalendarDays, Dumbbell, Moon, Plus, Trash2, Wind } from 'lucide-react';
 import { toast } from 'sonner';
+import { MoveWorkoutSheet } from '@/components/MoveWorkoutSheet';
 import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -36,14 +37,19 @@ function prettyType(type: string): string {
 }
 
 async function fetchSchedule() {
-  const response = await apiFetch<unknown>('/api/v1/plan-actions/schedule');
+  const response = await apiFetch<unknown>('/api/v1/plan-actions/schedule?days=14');
   return planScheduleEnvelopeSchema.parse(response);
+}
+
+interface MoveableWorkout extends PlanWorkout {
+  day: string;
 }
 
 export function WeekAheadPage() {
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ['plan-schedule'], queryFn: fetchSchedule });
   const todayIso = new Date().toISOString().slice(0, 10);
+  const [pickerWorkout, setPickerWorkout] = useState<MoveableWorkout | null>(null);
 
   const invalidate = async () => {
     await Promise.all([
@@ -72,23 +78,6 @@ export function WeekAheadPage() {
         method: 'POST',
         body: JSON.stringify({ targetDate }),
       }),
-    onSuccess: async () => {
-      await invalidate();
-      toast.success('Schedule updated');
-    },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not move workout'),
-  });
-
-  const swapIntoMutation = useMutation({
-    mutationFn: ({ workoutId, targetDate }: { workoutId: string; targetDate: string }) =>
-      apiFetch(`/api/v1/plan-actions/days/${targetDate}/swap-in`, {
-        method: 'POST',
-        body: JSON.stringify({ plannedWorkoutId: workoutId }),
-      }),
-    onSuccess: async () => {
-      await invalidate();
-      toast.success('Workout moved into the day');
-    },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not move workout'),
   });
 
@@ -101,11 +90,37 @@ export function WeekAheadPage() {
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not skip day'),
   });
 
-  const allWorkouts = useMemo(
-    () => query.data?.data.schedule.flatMap((day) => day.workouts.map((workout) => ({ ...workout, day: day.date }))) ?? [],
-    [query.data],
+  const busy = addMutation.isPending || moveMutation.isPending || skipDayMutation.isPending;
+  const moveOptions = useMemo(
+    () =>
+      pickerWorkout && query.data
+        ? query.data.data.schedule.map((day) => ({
+            date: day.date,
+            label: formatDate(day.date),
+            detail:
+              day.workouts.length > 0 ? day.workouts.map((workout) => workout.title).join(' · ') : 'Rest',
+            isToday: day.date === todayIso,
+            isCurrent: day.date === pickerWorkout.day,
+          }))
+        : [],
+    [pickerWorkout, query.data, todayIso],
   );
-  const busy = addMutation.isPending || moveMutation.isPending || swapIntoMutation.isPending || skipDayMutation.isPending;
+
+  const closePicker = () => setPickerWorkout(null);
+
+  const handleMove = (targetDate: string) => {
+    if (!pickerWorkout) return;
+    moveMutation.mutate(
+      { workoutId: pickerWorkout.id, targetDate },
+      {
+        onSuccess: async () => {
+          closePicker();
+          await invalidate();
+          toast.success('Schedule updated');
+        },
+      },
+    );
+  };
 
   return (
     <div className="space-y-5">
@@ -114,7 +129,7 @@ export function WeekAheadPage() {
       <Card className="bg-surface-elevated/60">
         <CardContent className="pt-6">
           <p className="text-sm text-text-secondary">
-            This is the live week. Move one workout, swap a rest day with a planned session, add light work, or skip a day.
+            This is the live plan window. Move a workout onto any visible day, add light work, or skip a day.
           </p>
         </CardContent>
       </Card>
@@ -141,16 +156,23 @@ export function WeekAheadPage() {
               key={day.date}
               day={day}
               isToday={day.date === todayIso}
-              allWorkouts={allWorkouts.filter((workout) => workout.day !== day.date)}
               busy={busy}
               onAdd={(category) => addMutation.mutate({ date: day.date, category })}
-              onMove={(workoutId, targetDate) => moveMutation.mutate({ workoutId, targetDate })}
-              onSwapIn={(workoutId) => swapIntoMutation.mutate({ workoutId, targetDate: day.date })}
+              onMove={(workout) => setPickerWorkout(workout)}
               onSkipDay={() => skipDayMutation.mutate(day.date)}
             />
           ))}
         </div>
       )}
+
+      <MoveWorkoutSheet
+        open={pickerWorkout !== null}
+        workoutTitle={pickerWorkout?.title ?? 'workout'}
+        busy={moveMutation.isPending}
+        days={moveOptions}
+        onClose={closePicker}
+        onSelect={handleMove}
+      />
     </div>
   );
 }
@@ -158,20 +180,16 @@ export function WeekAheadPage() {
 function ScheduleDayCard({
   day,
   isToday,
-  allWorkouts,
   busy,
   onAdd,
   onMove,
-  onSwapIn,
   onSkipDay,
 }: {
   day: PlanDay;
   isToday: boolean;
-  allWorkouts: Array<PlanWorkout & { day: string }>;
   busy: boolean;
   onAdd: (category: Exclude<DayCategory, 'rest'>) => void;
-  onMove: (workoutId: string, targetDate: string) => void;
-  onSwapIn: (workoutId: string) => void;
+  onMove: (workout: MoveableWorkout) => void;
   onSkipDay: () => void;
 }) {
   return (
@@ -195,9 +213,8 @@ function ScheduleDayCard({
             <WorkoutRow
               key={workout.id}
               workout={workout}
-              daysToMove={nextScheduleDates(day.date)}
               busy={busy}
-              onMove={onMove}
+              onMove={() => onMove({ ...workout, day: day.date })}
             />
           ))
         )}
@@ -222,26 +239,6 @@ function ScheduleDayCard({
             </Button>
           )}
         </div>
-
-        {day.dayState.isRest && allWorkouts.length > 0 && (
-          <div className="rounded-lg border border-border bg-surface-elevated/60 px-3 py-3">
-            <p className="mb-2 text-sm font-medium text-text-primary">Swap a workout into this rest day</p>
-            <div className="flex flex-wrap gap-2">
-              {allWorkouts.slice(0, 6).map((workout) => (
-                <Button
-                  key={workout.id}
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => onSwapIn(workout.id)}
-                >
-                  {formatDate(workout.day)} · {workout.title}
-                </Button>
-              ))}
-            </div>
-          </div>
-        )}
       </CardContent>
     </Card>
   );
@@ -249,14 +246,12 @@ function ScheduleDayCard({
 
 function WorkoutRow({
   workout,
-  daysToMove,
   busy,
   onMove,
 }: {
   workout: PlanWorkout;
-  daysToMove: string[];
   busy: boolean;
-  onMove: (workoutId: string, targetDate: string) => void;
+  onMove: () => void;
 }) {
   const Icon = iconFor(workout.workoutType);
   return (
@@ -273,30 +268,10 @@ function WorkoutRow({
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
-        {daysToMove.map((targetDate) => (
-          <Button
-            key={targetDate}
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={busy}
-            onClick={() => onMove(workout.id, targetDate)}
-          >
-            Move {formatDate(targetDate)}
-          </Button>
-        ))}
+        <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onMove}>
+          Move
+        </Button>
       </div>
     </div>
   );
-}
-
-function nextScheduleDates(currentDate: string): string[] {
-  const base = new Date(`${currentDate}T00:00:00`);
-  const days: string[] = [];
-  for (let offset = 1; offset <= 3; offset += 1) {
-    const next = new Date(base);
-    next.setDate(base.getDate() + offset);
-    days.push(next.toISOString().slice(0, 10));
-  }
-  return days;
 }
