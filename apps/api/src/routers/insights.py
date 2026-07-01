@@ -84,6 +84,7 @@ class DriverOut(BaseModel):
     coefficient: float
     direction: str
     sampleCount: int
+    summary: str | None = None
 
 
 class DriversData(BaseModel):
@@ -153,6 +154,7 @@ def _drivers_data(report: DriversReport) -> DriversData:
                     coefficient=c.coefficient,
                     direction=c.direction,
                     sampleCount=c.sample_count,
+                    summary=c.summary,
                 )
                 for c in correlations
             ]

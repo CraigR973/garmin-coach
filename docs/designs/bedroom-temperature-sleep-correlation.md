@@ -1,9 +1,10 @@
 # Design: Bedroom temperature × sleep correlation (Batch 34)
 
-**Status:** Planned, longer-term — not started. Designed with Craig on
+**Status:** Implemented on `feat/batch-34-bedroom-sleep-correlation`; awaiting
+review/closeout. Designed with Craig on
 2026-07-01, discussing whether Batch 31/33's bedroom data could inform the fan's
 own thresholds over time. Decision number assigned at `/batch-start` (next free
-**#104**, after Batch 33's #103). Builds on Batch 31 (`fan_state_readings`,
+**#105**, after Batch 33's #104). Builds on Batch 31 (`fan_state_readings`,
 `services/bedroom_overnight.py`), optionally Batch 33's warning/critical-minute
 classification, and — most directly — the **existing** Batch 17 driver-correlation
 engine (`services/insights.py`: `compute_drivers`, `DRIVER_KEYS`) and the Batch 22

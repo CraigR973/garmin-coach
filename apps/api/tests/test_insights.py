@@ -15,7 +15,15 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
-from src.models.coaching import Activity, Analysis, DailyMetric, Sleep, WeatherDaily
+from src.models.coaching import (
+    Activity,
+    Analysis,
+    DailyMetric,
+    FanStateReading,
+    Sleep,
+    TemperatureReading,
+    WeatherDaily,
+)
 from src.models.profile import Profile, UserRole
 from src.services.insights import (
     AUDIT_TYPE_DRIVERS,
@@ -223,6 +231,28 @@ def test_compute_drivers_skips_below_min_samples() -> None:
     assert drivers == []
 
 
+def test_compute_drivers_adds_plain_language_bedroom_summary() -> None:
+    records: list[dict[str, float | None]] = []
+    for i in range(10):
+        hot_night = i >= 5
+        records.append(
+            {
+                OUTCOME_SLEEP_SCORE: 74.0 if hot_night else 80.0,
+                "bedroom_critical_minutes": 60.0 if hot_night else 0.0,
+            }
+        )
+
+    drivers = compute_drivers(
+        records,
+        outcome_key=OUTCOME_SLEEP_SCORE,
+        driver_keys=("bedroom_critical_minutes",),
+    )
+
+    assert drivers[0].summary == (
+        "Nights with 60+ min above 20C average 6 points lower sleep score (10 nights measured)."
+    )
+
+
 # ---------------------------------------------------------------------------
 # DB-backed service tests
 # ---------------------------------------------------------------------------
@@ -353,6 +383,91 @@ async def test_service_drivers_builds_records_and_correlates(
         assert top.driver == "overnight_low_c"
         assert top.direction == "negative"
         assert set(DRIVER_KEYS)  # sanity: keys exist
+
+
+@pytest.mark.asyncio
+async def test_service_driver_records_include_bedroom_rollups(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    wake_date = date(2026, 7, 2)
+    night_start_utc = datetime(2026, 7, 1, 21, 0)  # 22:00 Europe/London.
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(Sleep(user_id=user_id, calendar_date=wake_date, score=70))
+        session.add(
+            TemperatureReading(
+                user_id=user_id,
+                captured_at_utc=night_start_utc,
+                temperature_c=20.2,
+            )
+        )
+        session.add(
+            TemperatureReading(
+                user_id=user_id,
+                captured_at_utc=night_start_utc + timedelta(minutes=15),
+                temperature_c=19.7,
+            )
+        )
+        session.add(
+            FanStateReading(
+                user_id=user_id,
+                captured_at_utc=night_start_utc + timedelta(minutes=30),
+                phase="control",
+                auto_enabled=True,
+                observed_temp_c=20.2,
+                fan_on=True,
+                fan_speed=5,
+                action="apply",
+            )
+        )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = InsightsService(session)
+        records = await service._driver_records(user, start=wake_date, end=wake_date)
+
+    assert records == [
+        {
+            OUTCOME_SLEEP_SCORE: 70.0,
+            "recovery_hrv_ms": None,
+            "overnight_low_c": None,
+            "overnight_wind_max_mph": None,
+            "bedroom_warning_minutes": 30.0,
+            "bedroom_critical_minutes": 15.0,
+            "bedroom_fan_ran_minutes": 15.0,
+            "bedroom_peak_fan_speed": 5.0,
+            "prev_day_training_load": None,
+            "daytime_stress_avg": None,
+            "resting_heart_rate_bpm": None,
+            "sleep_stress_avg": None,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_service_driver_records_keep_missing_bedroom_data_none(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    wake_date = date(2026, 7, 2)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(Sleep(user_id=user_id, calendar_date=wake_date, score=70))
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = InsightsService(session)
+        records = await service._driver_records(user, start=wake_date, end=wake_date)
+
+    assert records[0]["bedroom_warning_minutes"] is None
+    assert records[0]["bedroom_critical_minutes"] is None
+    assert records[0]["bedroom_fan_ran_minutes"] is None
+    assert records[0]["bedroom_peak_fan_speed"] is None
 
 
 @pytest.mark.asyncio

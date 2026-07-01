@@ -8,13 +8,13 @@ guard, and the idempotent audit in ``analyses``.
 from __future__ import annotations
 
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
-from src.models.coaching import Analysis, PlanBlock, Sleep
+from src.models.coaching import Analysis, PlanBlock, Sleep, TemperatureReading
 from src.models.profile import Profile, UserRole
 from src.services.experiment_evaluation import (
     AUDIT_TYPE_EVALUATION,
@@ -23,6 +23,7 @@ from src.services.experiment_evaluation import (
     RECOMMEND_REFUTED,
     RECOMMEND_SUPPORTED,
     SLUG_COLLAGEN,
+    SLUG_EARLY_WAKING,
     STATUS_INSUFFICIENT,
     STATUS_NO_EVALUATOR,
     STATUS_OK,
@@ -383,6 +384,56 @@ async def test_evaluation_never_changes_status(db_conn: AsyncConnection) -> None
         await service.run(user, collagen.id, as_of=as_of)
         await session.refresh(collagen)
         assert collagen.status == before  # still active, not concluded
+
+
+@pytest.mark.asyncio
+async def test_early_waking_evaluator_uses_bedroom_temperature_candidates(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    as_of = date(2026, 7, 10)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        for i in range(10):
+            wake_date = as_of - timedelta(days=9 - i)
+            session.add(
+                Sleep(
+                    user_id=user_id,
+                    calendar_date=wake_date,
+                    awake_sleep_sec=(i + 1) * 60,
+                    avg_sleep_stress=30.0,
+                )
+            )
+            night_start_utc = datetime(wake_date.year, wake_date.month, wake_date.day) - timedelta(
+                hours=3
+            )
+            for j in range(i + 1):
+                session.add(
+                    TemperatureReading(
+                        user_id=user_id,
+                        captured_at_utc=night_start_utc + timedelta(minutes=15 * j),
+                        temperature_c=20.2,
+                    )
+                )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        tracker = ExperimentTrackerService(session)
+        await tracker.seed_defaults(user)
+        experiments = await tracker.list_experiments(user, seed=False)
+        early_waking = next(
+            e for e in experiments if e.success_criteria_json.get("slug") == SLUG_EARLY_WAKING
+        )
+        service = ExperimentEvaluationService(session)
+        result = await service.evaluate(user, early_waking, as_of=as_of)
+
+    assert result.status == STATUS_OK
+    assert result.recommendation == RECOMMEND_SUPPORTED
+    assert result.evidence["strongestDriver"] == "bedroom_warning_minutes"
+    assert result.evidence["correlations"][0]["summary"] is not None
+    assert any("Nights with 60+ min above 19.5C" in reason for reason in result.reasons)
 
 
 @pytest.mark.asyncio
