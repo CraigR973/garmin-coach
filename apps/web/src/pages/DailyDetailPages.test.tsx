@@ -53,6 +53,7 @@ const snapshot: DailyLoopEnvelope = {
     manualEntry: null,
     postWorkoutAnalyses: [],
     postFlexibilityAnalyses: [],
+    postStrengthAnalyses: [],
     postWalkAnalyses: [],
     plannedWorkouts: [],
     thermalState: {

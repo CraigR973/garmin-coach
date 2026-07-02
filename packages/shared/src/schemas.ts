@@ -484,6 +484,20 @@ export const dailyLoopPostFlexibilityAnalysisSchema = z.object({
   activityCheckIn: manualEntrySchema.nullable().optional(),
 });
 
+export const dailyLoopPostStrengthAnalysisSchema = z.object({
+  id: z.string().uuid(),
+  activityId: z.string().uuid().nullable().optional(),
+  activityName: z.string().nullable().optional(),
+  activityType: z.string().nullable().optional(),
+  generatedAtUtc: isoDateTimeSchema,
+  promptVersion: z.string().min(1),
+  modelName: z.string().nullable().optional(),
+  outputMarkdown: z.string(),
+  heartRateReview: jsonObjectSchema.default({}),
+  consistency: jsonObjectSchema.default({}),
+  activityCheckIn: manualEntrySchema.nullable().optional(),
+});
+
 export const dailyLoopPostWalkAnalysisSchema = z.object({
   id: z.string().uuid(),
   activityId: z.string().uuid().nullable().optional(),
@@ -632,6 +646,7 @@ export const dailyLoopSchema = z.object({
   manualEntry: manualEntrySchema.nullable(),
   postWorkoutAnalyses: z.array(dailyLoopPostWorkoutAnalysisSchema).default([]),
   postFlexibilityAnalyses: z.array(dailyLoopPostFlexibilityAnalysisSchema).default([]),
+  postStrengthAnalyses: z.array(dailyLoopPostStrengthAnalysisSchema).default([]),
   postWalkAnalyses: z.array(dailyLoopPostWalkAnalysisSchema).default([]),
   plannedWorkouts: z.array(dailyLoopPlannedWorkoutSchema),
   thermalState: dailyLoopThermalStateSchema,
