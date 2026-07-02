@@ -23,11 +23,13 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile
 from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
+from src.services.walking_brief import WalkingBriefResult, WalkingBriefService
 from src.services.workout_delivery import STATUS_PROPOSED, STATUS_PUSHED
 
 ANALYSIS_TYPE_MORNING = "morning"
 ANALYSIS_TYPE_POST_WORKOUT = "post_workout"
 ANALYSIS_TYPE_POST_FLEXIBILITY = "post_flexibility"
+ANALYSIS_TYPE_POST_WALK = "post_walk"
 
 
 def _utcnow() -> datetime:
@@ -76,6 +78,7 @@ class DailyLoopSnapshot:
     manual_entry: ManualEntry | None
     post_workout_analyses: list[Analysis]
     post_flexibility_analyses: list[Analysis]
+    post_walk_analyses: list[Analysis]
     post_ride_checkins: dict[uuid.UUID, ManualEntry]
     planned_workouts: list[PlannedWorkout]
     adherence_entries: dict[uuid.UUID, ManualEntry]
@@ -84,6 +87,7 @@ class DailyLoopSnapshot:
     weather: WeatherDaily | None
     data_quality_warnings: list[dict[str, str]]
     strength_brief: StrengthBriefResult
+    walking_brief: WalkingBriefResult
 
 
 class DailyLoopService:
@@ -104,6 +108,7 @@ class DailyLoopService:
         manual_entry = await self._manual_entry(player.id, target_date)
         post_workout_analyses = await self._post_workout_analyses(player.id, target_date)
         post_flexibility_analyses = await self._post_flexibility_analyses(player.id, target_date)
+        post_walk_analyses = await self._post_walk_analyses(player.id, target_date)
         post_ride_checkins = await self._post_ride_checkins(player.id, target_date)
         planned_workouts = await self._planned_workouts(player.id, target_date)
         adherence_entries = await self._adherence_entries(player.id, target_date)
@@ -112,6 +117,7 @@ class DailyLoopService:
         weather = await self._weather(player.id, target_date)
         warnings = await self._data_quality_warnings(player.id, target_date, planned_workouts)
         strength_brief = await StrengthBriefService(self.session).brief(player, as_of=target_date)
+        walking_brief = await WalkingBriefService(self.session).brief(player, as_of=target_date)
 
         return DailyLoopSnapshot(
             subject_date=target_date,
@@ -121,6 +127,7 @@ class DailyLoopService:
             manual_entry=manual_entry,
             post_workout_analyses=post_workout_analyses,
             post_flexibility_analyses=post_flexibility_analyses,
+            post_walk_analyses=post_walk_analyses,
             post_ride_checkins=post_ride_checkins,
             planned_workouts=planned_workouts,
             adherence_entries=adherence_entries,
@@ -129,6 +136,7 @@ class DailyLoopService:
             weather=weather,
             data_quality_warnings=warnings,
             strength_brief=strength_brief,
+            walking_brief=walking_brief,
         )
 
     async def upsert_manual_entry(
@@ -314,6 +322,29 @@ class DailyLoopService:
                     .where(
                         Analysis.user_id == user_id,
                         Analysis.analysis_type == ANALYSIS_TYPE_POST_FLEXIBILITY,
+                        Analysis.subject_date == subject_date,
+                    )
+                    .order_by(Activity.start_utc.desc(), Analysis.generated_at_utc.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows)
+
+    async def _post_walk_analyses(
+        self,
+        user_id: uuid.UUID,
+        subject_date: date,
+    ) -> list[Analysis]:
+        rows = (
+            (
+                await self.session.execute(
+                    select(Analysis)
+                    .join(Activity, Analysis.activity_id == Activity.id)
+                    .where(
+                        Analysis.user_id == user_id,
+                        Analysis.analysis_type == ANALYSIS_TYPE_POST_WALK,
                         Analysis.subject_date == subject_date,
                     )
                     .order_by(Activity.start_utc.desc(), Analysis.generated_at_utc.desc())

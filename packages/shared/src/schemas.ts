@@ -241,7 +241,14 @@ export const plannedWorkoutSchema = z.object({
   source: z.string().nullable().optional(),
 });
 
-export const analysisTypeSchema = z.enum(['morning', 'post_workout', 'weekly', 'manual']);
+export const analysisTypeSchema = z.enum([
+  'morning',
+  'post_workout',
+  'post_flexibility',
+  'post_walk',
+  'weekly',
+  'manual',
+]);
 export const verdictSchema = z.enum(['green', 'amber', 'red']).nullable();
 
 export const analysisSchema = z.object({
@@ -477,6 +484,21 @@ export const dailyLoopPostFlexibilityAnalysisSchema = z.object({
   activityCheckIn: manualEntrySchema.nullable().optional(),
 });
 
+export const dailyLoopPostWalkAnalysisSchema = z.object({
+  id: z.string().uuid(),
+  activityId: z.string().uuid().nullable().optional(),
+  activityName: z.string().nullable().optional(),
+  activityType: z.string().nullable().optional(),
+  generatedAtUtc: isoDateTimeSchema,
+  promptVersion: z.string().min(1),
+  modelName: z.string().nullable().optional(),
+  outputMarkdown: z.string(),
+  heartRateReview: jsonObjectSchema.default({}),
+  paceReview: jsonObjectSchema.default({}),
+  activeRecoveryContext: jsonObjectSchema.default({}),
+  activityCheckIn: manualEntrySchema.nullable().optional(),
+});
+
 export const dailyLoopDeliverySchema = z.object({
   // The live Zwift event for the slot (push-on-plan-set delivers the baseline).
   liveStatus: z.string().nullable(),
@@ -610,9 +632,41 @@ export const dailyLoopSchema = z.object({
   manualEntry: manualEntrySchema.nullable(),
   postWorkoutAnalyses: z.array(dailyLoopPostWorkoutAnalysisSchema).default([]),
   postFlexibilityAnalyses: z.array(dailyLoopPostFlexibilityAnalysisSchema).default([]),
+  postWalkAnalyses: z.array(dailyLoopPostWalkAnalysisSchema).default([]),
   plannedWorkouts: z.array(dailyLoopPlannedWorkoutSchema),
   thermalState: dailyLoopThermalStateSchema,
   dataQualityWarnings: z.array(dailyLoopWarningSchema),
+  walkingBrief: z
+    .object({
+      asOfDate: isoDateSchema,
+      window4w: z.object({
+        sessionCount: z.number().int(),
+        totalDistanceM: z.number(),
+        totalDurationMin: z.number().int(),
+        sessionsPerWeek: z.number(),
+      }),
+      window12w: z.object({
+        sessionCount: z.number().int(),
+        totalDistanceM: z.number(),
+        totalDurationMin: z.number().int(),
+        sessionsPerWeek: z.number(),
+      }),
+      recentSessions: z
+        .array(
+          z.object({
+            activityId: z.string().uuid(),
+            activityName: z.string(),
+            activityType: z.string(),
+            sessionDate: isoDateSchema,
+            durationMin: z.number().int().nullable().optional(),
+            distanceM: z.number().nullable().optional(),
+          }),
+        )
+        .default([]),
+      trend: z.string(),
+      trendReason: z.string(),
+    })
+    .optional(),
 });
 
 export const dailyLoopEnvelopeSchema = z.object({

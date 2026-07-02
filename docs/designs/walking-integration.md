@@ -1,8 +1,8 @@
 # Design: Walking integration (Batch 41)
 
-**Status:** Specced, not started. Designed with Craig on 2026-07-02 from the same
+**Status:** Implemented on `feat/batch-41-walking-integration`, not shipped. Designed with Craig on 2026-07-02 from the same
 full-history census that surfaced the mobility habit (Batch 40). Decision number
-assigned at `/batch-start` (next free **#112**, after Batch 40's #111). Second of
+assigned at `/batch-start` (**#111**, after Batch 40's #110). Second of
 the 40–42 non-cycling trio. Craig's decision (2026-07-02): **per-session analysis
 too** — a walking brief *and* an analysis for deliberate walks, not just a rollup.
 
@@ -122,15 +122,19 @@ walks.
   (#93); this reads what exists.
 - **No mobility / breathwork** — Batches 40 / 42.
 
-## Open decisions to settle at `/batch-start`
+## Decisions settled at `/batch-start`
 
-1. **Threshold values** — the 30-min / 3-km bars (and whether it's OR vs AND).
-2. **Active-recovery labelling** — may walk volume *relabel* a rest day as "active
-   recovery" on Home, or stay purely informational in the packet?
-3. **Shared engine vs. parallel** — reuse a generalised post-session engine (with
-   Batch 40) or a parallel `post_walk` path.
-4. **HR zones source** — the KB profile HR bands vs. a max-HR % model.
-5. **Backfill window** — all qualifying historical walks vs. a recent window.
+1. **Threshold values** — 30 min OR 3 km, using the named constants in
+   `services/post_walk_analysis.py`.
+2. **Active-recovery labelling** — informational only: Home says "Walking base";
+   the morning packet carries `classificationImpact="none"` and rest days are not
+   relabelled.
+3. **Shared engine vs. parallel** — keep a sibling `PostWalkAnalysisService` for
+   now, matching Batch 40's explicit service boundary.
+4. **HR zones source** — use profile KB heart-rate zones when present, with a
+   max-HR percentage fallback only for packet assembly.
+5. **Backfill window** — provide a dry-run/commit runner for all qualifying
+   historical deliberate walks via `python -m src.walk_analysis_backfill`.
 
 ## Dependency & sequencing
 

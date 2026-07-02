@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
 from src.models.coaching import (
+    Activity,
     Analysis,
     DailyMetric,
     KnowledgeBase,
@@ -29,6 +30,7 @@ from src.models.coaching import (
 from src.models.profile import Profile
 from src.services.age_norms import build_age_comparison
 from src.services.coaching_state import CoachingStateService
+from src.services.post_walk_analysis import active_recovery_walk_context
 
 PROMPT_VERSION = "morning-analysis-v1-2026-06-20"
 ANALYSIS_TYPE = "morning"
@@ -150,6 +152,7 @@ class MorningAnalysisService:
         sleep = await self._sleep(player.id, subject_date)
         manual_entries = await self._manual_entries(player.id, subject_date)
         planned_workouts = await self._planned_workouts(player.id, subject_date)
+        recent_walks = await self._recent_walks(player.id, subject_date)
         baselines = await self._metric_baselines(player.id)
         weather = await self._weather(player.id, subject_date)
         temperature_rows = await self._overnight_temperature_rows(
@@ -191,6 +194,13 @@ class MorningAnalysisService:
             "sleep": _sleep_packet(sleep, age_adjusted_sleep_score),
             "manualEntries": [_manual_entry_packet(entry) for entry in manual_entries],
             "plannedWorkouts": [_planned_workout_packet(workout) for workout in planned_workouts],
+            "activeRecovery": {
+                "deliberateWalkVolume": active_recovery_walk_context(
+                    recent_walks,
+                    as_of_date=subject_date,
+                ),
+                "classificationImpact": "none",
+            },
             "metricsVsBaselines": metrics_table,
             "ageComparison": age_comparison,
             "environment": {
@@ -344,6 +354,26 @@ class MorningAnalysisService:
             .all()
         )
         return list(rows)
+
+    async def _recent_walks(self, user_id: uuid.UUID, subject_date: date) -> list[Activity]:
+        start_date = subject_date - timedelta(days=7)
+        lower_bound = datetime(start_date.year, start_date.month, start_date.day)
+        rows = (
+            (
+                await self.session.execute(
+                    select(Activity)
+                    .where(
+                        Activity.user_id == user_id,
+                        Activity.activity_type == "walking",
+                        Activity.start_utc >= lower_bound,
+                    )
+                    .order_by(Activity.start_utc.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return [row for row in rows if row.start_utc.date() <= subject_date]
 
     async def _metric_baselines(self, user_id: uuid.UUID) -> list[MetricBaseline]:
         rows = (

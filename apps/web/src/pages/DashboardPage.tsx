@@ -291,6 +291,7 @@ export function DashboardPage() {
   const thermal = daily.thermalState;
   const postWorkouts = daily.postWorkoutAnalyses ?? [];
   const postFlexibilityAnalyses = daily.postFlexibilityAnalyses ?? [];
+  const postWalkAnalyses = daily.postWalkAnalyses ?? [];
   const hasRide = postWorkouts.length > 0;
   const todaysWorkouts = daily.plannedWorkouts;
   const dayState = dayStateForWorkouts(todaysWorkouts);
@@ -360,6 +361,8 @@ export function DashboardPage() {
           workouts={todaysWorkouts}
           planAdjustments={analysis?.planAdjustments ?? []}
           flexibilityAnalyses={postFlexibilityAnalyses}
+          walkAnalyses={postWalkAnalyses}
+          walkingBrief={daily.walkingBrief ?? null}
           subjectDate={daily.subjectDate}
           workoutActions={todayActions}
           dayActions={dayActions}
@@ -490,6 +493,8 @@ function DayPlanBody({
   workouts,
   planAdjustments,
   flexibilityAnalyses,
+  walkAnalyses,
+  walkingBrief,
   subjectDate,
   workoutActions,
   dayActions,
@@ -497,6 +502,8 @@ function DayPlanBody({
   workouts: TodayWorkout[];
   planAdjustments: string[];
   flexibilityAnalyses: DailyLoopData['postFlexibilityAnalyses'];
+  walkAnalyses: DailyLoopData['postWalkAnalyses'];
+  walkingBrief: DailyLoopData['walkingBrief'] | null;
   subjectDate: string;
   workoutActions: TodayWorkoutActions;
   dayActions: {
@@ -532,6 +539,8 @@ function DayPlanBody({
       )}
 
       {flexibilityAnalyses.length > 0 ? <FlexibilityReadList items={flexibilityAnalyses} /> : null}
+      {walkAnalyses.length > 0 ? <WalkReadList items={walkAnalyses} /> : null}
+      {walkingBrief ? <WalkingBriefPanel brief={walkingBrief} /> : null}
 
       <div className={`space-y-3${hasWorkouts ? ' border-t border-border pt-4' : ''}`}>
         <AddWorkoutButtons busy={dayActions.busy} onAddWorkout={dayActions.onAddWorkout} />
@@ -555,6 +564,28 @@ function DayPlanBody({
   );
 }
 
+function WalkingBriefPanel({
+  brief,
+}: {
+  brief: NonNullable<DailyLoopData['walkingBrief']>;
+}) {
+  const distanceKm = brief.window4w.totalDistanceM / 1000;
+  return (
+    <div className="rounded-xl border border-border bg-bg px-3 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold text-text-primary">Walking base</p>
+          <p className="text-sm text-text-secondary">
+            {brief.window4w.sessionCount} walks · {distanceKm.toFixed(1)} km · {brief.window4w.totalDurationMin} min in 4 weeks
+          </p>
+        </div>
+        <Badge variant="muted">{brief.trend.replace(/_/g, ' ')}</Badge>
+      </div>
+      <p className="mt-2 text-sm text-text-secondary">{brief.trendReason}</p>
+    </div>
+  );
+}
+
 function FlexibilityReadList({
   items,
 }: {
@@ -567,6 +598,34 @@ function FlexibilityReadList({
           <p className="font-semibold text-text-primary">Flexibility read</p>
           <p className="text-sm text-text-secondary">
             {items.length === 1 ? items[0].activityName ?? 'Mobility session' : `${items.length} mobility sessions`}
+          </p>
+        </div>
+        <Badge variant="muted">Advisory</Badge>
+      </div>
+      <div className="space-y-4">
+        {items.map((item) => (
+          <div key={item.id} className="space-y-2 border-t border-border pt-3 first:border-t-0 first:pt-0">
+            <p className="text-xs text-text-secondary">Generated {formatDateTime(item.generatedAtUtc)}</p>
+            <Markdown>{item.outputMarkdown}</Markdown>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WalkReadList({
+  items,
+}: {
+  items: DailyLoopData['postWalkAnalyses'];
+}) {
+  return (
+    <div className="space-y-3 rounded-xl border border-border bg-bg px-3 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold text-text-primary">Walk read</p>
+          <p className="text-sm text-text-secondary">
+            {items.length === 1 ? items[0].activityName ?? 'Deliberate walk' : `${items.length} deliberate walks`}
           </p>
         </div>
         <Badge variant="muted">Advisory</Badge>

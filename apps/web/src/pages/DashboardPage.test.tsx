@@ -139,6 +139,7 @@ const baseSnapshot: DailyLoopEnvelope = {
     manualEntry: null,
     postWorkoutAnalyses: [],
     postFlexibilityAnalyses: [],
+    postWalkAnalyses: [],
     plannedWorkouts: [
       {
         id: '55555555-5555-4555-8555-555555555555',
@@ -168,6 +169,14 @@ const baseSnapshot: DailyLoopEnvelope = {
       fan: { autoEnabled: true, mode: 'control', isOn: true, speed: 5, respondingToC: 20.1 },
     },
     dataQualityWarnings: [],
+    walkingBrief: {
+      asOfDate: '2026-06-20',
+      window4w: { sessionCount: 6, totalDistanceM: 18500, totalDurationMin: 250, sessionsPerWeek: 1.5 },
+      window12w: { sessionCount: 18, totalDistanceM: 52000, totalDurationMin: 720, sessionsPerWeek: 1.5 },
+      recentSessions: [],
+      trend: 'stable',
+      trendReason: 'Frequency holding at ~1.5/wk over 28 days.',
+    },
   },
   meta: {
     generatedAtUtc: '2026-06-20T06:40:00Z',
@@ -352,6 +361,35 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Mobility read:')).toBeTruthy();
     expect(screen.getByText(/relaxed and consistent/i)).toBeTruthy();
     expect(screen.getByText('Advisory')).toBeTruthy();
+  });
+
+  it('renders walking brief and deliberate-walk read on the Today section', async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.postWalkAnalyses = [
+          {
+            id: 'aaaaaaaa-9999-4999-8999-999999999999',
+            activityId: 'aaaaaaaa-1111-4111-8111-999999999999',
+            activityName: 'Morning Walk',
+            activityType: 'walking',
+            generatedAtUtc: '2026-06-20T08:40:00Z',
+            promptVersion: 'post-walk-v1',
+            modelName: 'claude-sonnet-4-6',
+            outputMarkdown: '**Walk read:** easy aerobic work.',
+            heartRateReview: { avgHeartRateBpm: 104 },
+            paceReview: { avgPaceMinPerKm: 10.2 },
+            activeRecoveryContext: { deliberateWalkCount: 1 },
+            activityCheckIn: null,
+          },
+        ];
+      }),
+    );
+
+    expect(await screen.findByText('Walking base')).toBeTruthy();
+    expect(screen.getByText(/6 walks · 18.5 km · 250 min/i)).toBeTruthy();
+    expect(screen.getByText('Walk read')).toBeTruthy();
+    expect(screen.getByText('Morning Walk')).toBeTruthy();
+    expect(screen.getByText('Walk read:')).toBeTruthy();
   });
 
   it('edits today’s session with the duration and intensity dials', async () => {
