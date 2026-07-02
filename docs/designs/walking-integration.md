@@ -1,6 +1,6 @@
 # Design: Walking integration (Batch 41)
 
-**Status:** Implemented on `feat/batch-41-walking-integration`, not shipped. Designed with Craig on 2026-07-02 from the same
+**Status:** Shipped in PR #59 (`d9b5a69`) and production-verified on 2026-07-02. Designed with Craig on 2026-07-02 from the same
 full-history census that surfaced the mobility habit (Batch 40). Decision number
 assigned at `/batch-start` (**#111**, after Batch 40's #110). Second of
 the 40–42 non-cycling trio. Craig's decision (2026-07-02): **per-session analysis
