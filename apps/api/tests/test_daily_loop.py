@@ -76,6 +76,7 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
     workout_id = uuid.uuid4()
     activity_id = uuid.uuid4()
     flexibility_activity_id = uuid.uuid4()
+    strength_activity_id = uuid.uuid4()
 
     async with session_factory() as session:
         player = Profile(
@@ -176,6 +177,20 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
         )
         session.add(
             Activity(
+                id=strength_activity_id,
+                user_id=user_id,
+                garmin_activity_id=998880,
+                activity_name="Strength maintenance",
+                activity_type="strength_training",
+                start_utc=datetime(2026, 6, 20, 7, 0),
+                duration_sec=1800,
+                avg_heart_rate_bpm=96,
+                exclude_from_recovery=True,
+                raw_summary={},
+            )
+        )
+        session.add(
+            Activity(
                 user_id=user_id,
                 garmin_activity_id=998879,
                 activity_name="Breathwork",
@@ -269,6 +284,28 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
                 raw_response={},
             )
         )
+        session.add(
+            Analysis(
+                user_id=user_id,
+                activity_id=strength_activity_id,
+                analysis_type="post_strength",
+                subject_date=subject_date,
+                generated_at_utc=datetime(2026, 6, 20, 8, 25),
+                prompt_version="post-strength-v1",
+                model_name="claude-sonnet-4-6",
+                verdict="advisory",
+                output_markdown="**Strength read:** steady maintenance session.",
+                context_packet={
+                    "activity": {
+                        "activityName": "Strength maintenance",
+                        "activityType": "strength_training",
+                    },
+                    "heartRateReview": {"avgAboveRestingBpm": 51},
+                    "consistency": {"sessions4w": 6, "trend": "stable"},
+                },
+                raw_response={},
+            )
+        )
         await session.commit()
 
     app.dependency_overrides[get_current_user] = lambda: player
@@ -298,6 +335,9 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
     )
     assert payload["data"]["postFlexibilityAnalyses"][0]["consistency"]["currentStreak"] == 3
     assert "Mobility read" in payload["data"]["postFlexibilityAnalyses"][0]["outputMarkdown"]
+    assert payload["data"]["postStrengthAnalyses"][0]["activityName"] == "Strength maintenance"
+    assert payload["data"]["postStrengthAnalyses"][0]["consistency"]["sessions4w"] == 6
+    assert "Strength read" in payload["data"]["postStrengthAnalyses"][0]["outputMarkdown"]
     assert payload["data"]["breathworkBrief"]["window4w"]["sessionCount"] == 1
     assert payload["data"]["breathworkBrief"]["window4w"]["totalDurationMin"] == 3
     assert payload["data"]["plannedWorkouts"][0]["title"] == "Strength maintenance"

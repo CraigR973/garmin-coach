@@ -291,6 +291,7 @@ export function DashboardPage() {
   const thermal = daily.thermalState;
   const postWorkouts = daily.postWorkoutAnalyses ?? [];
   const postFlexibilityAnalyses = daily.postFlexibilityAnalyses ?? [];
+  const postStrengthAnalyses = daily.postStrengthAnalyses ?? [];
   const postWalkAnalyses = daily.postWalkAnalyses ?? [];
   const hasRide = postWorkouts.length > 0;
   const todaysWorkouts = daily.plannedWorkouts;
@@ -361,6 +362,7 @@ export function DashboardPage() {
           workouts={todaysWorkouts}
           planAdjustments={analysis?.planAdjustments ?? []}
           flexibilityAnalyses={postFlexibilityAnalyses}
+          strengthAnalyses={postStrengthAnalyses}
           walkAnalyses={postWalkAnalyses}
           walkingBrief={daily.walkingBrief ?? null}
           breathworkBrief={daily.breathworkBrief ?? null}
@@ -494,6 +496,7 @@ function DayPlanBody({
   workouts,
   planAdjustments,
   flexibilityAnalyses,
+  strengthAnalyses,
   walkAnalyses,
   walkingBrief,
   breathworkBrief,
@@ -504,6 +507,7 @@ function DayPlanBody({
   workouts: TodayWorkout[];
   planAdjustments: string[];
   flexibilityAnalyses: DailyLoopData['postFlexibilityAnalyses'];
+  strengthAnalyses: DailyLoopData['postStrengthAnalyses'];
   walkAnalyses: DailyLoopData['postWalkAnalyses'];
   walkingBrief: DailyLoopData['walkingBrief'] | null;
   breathworkBrief: DailyLoopData['breathworkBrief'] | null;
@@ -542,6 +546,7 @@ function DayPlanBody({
       )}
 
       {flexibilityAnalyses.length > 0 ? <FlexibilityReadList items={flexibilityAnalyses} /> : null}
+      {strengthAnalyses.length > 0 ? <StrengthReadList items={strengthAnalyses} /> : null}
       {walkAnalyses.length > 0 ? <WalkReadList items={walkAnalyses} /> : null}
       {walkingBrief ? <WalkingBriefPanel brief={walkingBrief} /> : null}
       {breathworkBrief ? <BreathworkBriefPanel brief={breathworkBrief} /> : null}
@@ -623,6 +628,34 @@ function FlexibilityReadList({
           <p className="font-semibold text-text-primary">Flexibility read</p>
           <p className="text-sm text-text-secondary">
             {items.length === 1 ? items[0].activityName ?? 'Mobility session' : `${items.length} mobility sessions`}
+          </p>
+        </div>
+        <Badge variant="muted">Advisory</Badge>
+      </div>
+      <div className="space-y-4">
+        {items.map((item) => (
+          <div key={item.id} className="space-y-2 border-t border-border pt-3 first:border-t-0 first:pt-0">
+            <p className="text-xs text-text-secondary">Generated {formatDateTime(item.generatedAtUtc)}</p>
+            <Markdown>{item.outputMarkdown}</Markdown>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StrengthReadList({
+  items,
+}: {
+  items: DailyLoopData['postStrengthAnalyses'];
+}) {
+  return (
+    <div className="space-y-3 rounded-xl border border-border bg-bg px-3 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold text-text-primary">Strength read</p>
+          <p className="text-sm text-text-secondary">
+            {items.length === 1 ? items[0].activityName ?? 'Strength session' : `${items.length} strength sessions`}
           </p>
         </div>
         <Badge variant="muted">Advisory</Badge>

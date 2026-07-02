@@ -139,6 +139,20 @@ class PostFlexibilityAnalysisOut(BaseModel):
     activityCheckIn: ManualEntryOut | None = None
 
 
+class PostStrengthAnalysisOut(BaseModel):
+    id: str
+    activityId: str | None
+    activityName: str | None
+    activityType: str | None
+    generatedAtUtc: str
+    promptVersion: str
+    modelName: str | None
+    outputMarkdown: str
+    heartRateReview: dict[str, Any]
+    consistency: dict[str, Any]
+    activityCheckIn: ManualEntryOut | None = None
+
+
 class PostWalkAnalysisOut(BaseModel):
     id: str
     activityId: str | None
@@ -343,6 +357,7 @@ class DailyLoopData(BaseModel):
     manualEntry: ManualEntryOut | None
     postWorkoutAnalyses: list[PostWorkoutAnalysisOut]
     postFlexibilityAnalyses: list[PostFlexibilityAnalysisOut]
+    postStrengthAnalyses: list[PostStrengthAnalysisOut]
     postWalkAnalyses: list[PostWalkAnalysisOut]
     plannedWorkouts: list[PlannedWorkoutOut]
     thermalState: ThermalStateOut
@@ -482,6 +497,39 @@ def _serialize_post_flexibility_analysis(
         packet.get("consistency", {}) if isinstance(packet.get("consistency", {}), dict) else {}
     )
     return PostFlexibilityAnalysisOut(
+        id=str(analysis.id),
+        activityId=str(analysis.activity_id) if analysis.activity_id else None,
+        activityName=(
+            activity.get("activityName") if isinstance(activity.get("activityName"), str) else None
+        ),
+        activityType=(
+            activity.get("activityType") if isinstance(activity.get("activityType"), str) else None
+        ),
+        generatedAtUtc=_dt(analysis.generated_at_utc) or "",
+        promptVersion=analysis.prompt_version,
+        modelName=analysis.model_name,
+        outputMarkdown=analysis.output_markdown,
+        heartRateReview=heart_rate_review,
+        consistency=consistency,
+        activityCheckIn=_serialize_manual_entry(activity_checkin),
+    )
+
+
+def _serialize_post_strength_analysis(
+    analysis: Analysis,
+    activity_checkin: ManualEntry | None,
+) -> PostStrengthAnalysisOut:
+    packet = analysis.context_packet if isinstance(analysis.context_packet, dict) else {}
+    activity = packet.get("activity", {}) if isinstance(packet.get("activity", {}), dict) else {}
+    heart_rate_review = (
+        packet.get("heartRateReview", {})
+        if isinstance(packet.get("heartRateReview", {}), dict)
+        else {}
+    )
+    consistency = (
+        packet.get("consistency", {}) if isinstance(packet.get("consistency", {}), dict) else {}
+    )
+    return PostStrengthAnalysisOut(
         id=str(analysis.id),
         activityId=str(analysis.activity_id) if analysis.activity_id else None,
         activityName=(
@@ -776,6 +824,15 @@ def _envelope(player: CurrentUser, snapshot: Any) -> DailyLoopEnvelope:
                     else None,
                 )
                 for analysis in snapshot.post_flexibility_analyses
+            ],
+            postStrengthAnalyses=[
+                _serialize_post_strength_analysis(
+                    analysis,
+                    snapshot.post_ride_checkins.get(analysis.activity_id)
+                    if analysis.activity_id
+                    else None,
+                )
+                for analysis in snapshot.post_strength_analyses
             ],
             postWalkAnalyses=[
                 _serialize_post_walk_analysis(

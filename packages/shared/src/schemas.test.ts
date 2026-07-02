@@ -112,6 +112,52 @@ describe('v1 shared schemas', () => {
     expect(parsed.data.breathworkBrief?.window4w.sessionCount).toBe(18);
   });
 
+  it('accepts the daily-loop post-strength analysis shape', () => {
+    const parsed = dailyLoopEnvelopeSchema.parse({
+      data: {
+        subjectDate: '2026-07-02',
+        timezone: 'Europe/London',
+        morningAnalysis: null,
+        dailyMetrics: null,
+        sleep: null,
+        manualEntry: null,
+        postWorkoutAnalyses: [],
+        postFlexibilityAnalyses: [],
+        postStrengthAnalyses: [
+          {
+            id: '55555555-5555-4555-8555-555555555555',
+            activityId: '66666666-6666-4666-8666-666666666666',
+            activityName: 'Strength maintenance',
+            activityType: 'strength_training',
+            generatedAtUtc: '2026-07-02T08:15:00.000Z',
+            promptVersion: 'post-strength-analysis-v1-2026-07-02',
+            modelName: 'claude-test',
+            outputMarkdown: '**Strength read:** solid session.',
+            heartRateReview: { avgHeartRateBpm: 96, avgAboveRestingBpm: 51 },
+            consistency: { sessions4w: 6, trend: 'stable' },
+            activityCheckIn: null,
+          },
+        ],
+        postWalkAnalyses: [],
+        plannedWorkouts: [],
+        thermalState: {
+          fan: {
+            autoEnabled: true,
+            mode: 'idle',
+            isOn: null,
+            speed: null,
+            respondingToC: null,
+          },
+        },
+        dataQualityWarnings: [],
+      },
+      meta: { generatedAtUtc: '2026-07-02T08:15:00Z' },
+      errors: [],
+    });
+
+    expect(parsed.data.postStrengthAnalyses[0]?.consistency.sessions4w).toBe(6);
+  });
+
   it('stores age-adjusted sleep separately from Garmin score', () => {
     const parsed = sleepSchema.parse({
       id: rowId,

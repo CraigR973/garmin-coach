@@ -139,6 +139,7 @@ const baseSnapshot: DailyLoopEnvelope = {
     manualEntry: null,
     postWorkoutAnalyses: [],
     postFlexibilityAnalyses: [],
+    postStrengthAnalyses: [],
     postWalkAnalyses: [],
     plannedWorkouts: [
       {
@@ -369,6 +370,42 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Mobility read:')).toBeTruthy();
     expect(screen.getByText(/relaxed and consistent/i)).toBeTruthy();
     expect(screen.getByText('Advisory')).toBeTruthy();
+  });
+
+  it('renders a strength analysis on the Today section', async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.plannedWorkouts = [
+          {
+            ...snapshot.data.plannedWorkouts[0],
+            title: 'Strength maintenance',
+            workoutType: 'strength',
+            plannedDurationMin: 30,
+            intensityTarget: 'Maintenance',
+          },
+        ];
+        snapshot.data.postStrengthAnalyses = [
+          {
+            id: '88888888-8888-4888-8888-888888888888',
+            activityId: '88888888-1111-4111-8111-888888888888',
+            activityName: 'Upper Body Strength',
+            activityType: 'strength_training',
+            generatedAtUtc: '2026-06-20T08:20:00Z',
+            promptVersion: 'post-strength-v1',
+            modelName: 'claude-sonnet-4-6',
+            outputMarkdown: '**Strength read:** steady work, HR sat low.',
+            heartRateReview: { avgAboveRestingBpm: 40 },
+            consistency: { sessions4w: 6, trend: 'stable' },
+            activityCheckIn: null,
+          },
+        ];
+      }),
+    );
+
+    expect(await screen.findByText('Strength read')).toBeTruthy();
+    expect(screen.getByText('Upper Body Strength')).toBeTruthy();
+    expect(screen.getByText('Strength read:')).toBeTruthy();
+    expect(screen.getByText(/steady work/i)).toBeTruthy();
   });
 
   it('renders walking, breathwork, and deliberate-walk reads on the Today section', async () => {
