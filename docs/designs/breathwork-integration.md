@@ -1,7 +1,7 @@
 # Design: Breathwork integration (Batch 42)
 
-**Status:** Implemented on branch `feat/batch-42-breathwork-integration`;
-closeout pending. Designed with Craig on 2026-07-02 from the
+**Status:** Shipped in PR #60 (`743770f`) and production-verified on 2026-07-02.
+Designed with Craig on 2026-07-02 from the
 full-history census (Batch 40). Decision number assigned at `/batch-start` (next
 free **#112**, after Batch 41's #111). Third of the 40–42 non-cycling trio.
 Craig's decision (2026-07-02): a **consistency brief + a verdict lever** — track
