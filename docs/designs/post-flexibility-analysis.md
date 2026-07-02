@@ -1,6 +1,8 @@
 # Design: Post-flexibility (mobility) analysis (Batch 40)
 
-**Status:** Implemented on `feat/batch-40-post-flexibility-analysis` (not shipped).
+**Status:** Shipped in PR #58 (`9a05176`) on 2026-07-02; production verified on
+Railway + Vercel same-origin health, web `/`, and auth-gated
+`GET /api/v1/daily-loop`.
 Designed with Craig on 2026-07-02 after a live
 census of Mark's full Garmin history surfaced a near-daily mobility habit the app
 is currently blind to. Decision **#110**. First of the
@@ -111,8 +113,8 @@ mobility session, and give a light encouragement/next-step — never power/zone 
   no migration (`analysis_type` is already `String(50)`; this mirrors the
   `weekly_review`/`seasonal_trend`/etc. additive-type pattern).
 - **Surfacing:** add `postFlexibilityAnalyses` to the `/api/v1/daily-loop`
-  serializer (or a generalised post-session list — settle at `/batch-start`) and
-  a flexibility read on Home's flexibility day, beside the ride card.
+  serializer and a flexibility read on Home's flexibility day, beside the ride
+  card.
 - **Backfill:** the ~47 mobility sessions already in prod predate the selector, so
   a one-off backfill generates their analyses (exactly as the #51 fix backfilled
   the 19 historical outdoor rides).
