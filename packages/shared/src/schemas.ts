@@ -463,6 +463,20 @@ export const dailyLoopPostWorkoutAnalysisSchema = z.object({
   postRideCheckIn: manualEntrySchema.nullable().optional(),
 });
 
+export const dailyLoopPostFlexibilityAnalysisSchema = z.object({
+  id: z.string().uuid(),
+  activityId: z.string().uuid().nullable().optional(),
+  activityName: z.string().nullable().optional(),
+  activityType: z.string().nullable().optional(),
+  generatedAtUtc: isoDateTimeSchema,
+  promptVersion: z.string().min(1),
+  modelName: z.string().nullable().optional(),
+  outputMarkdown: z.string(),
+  heartRateReview: jsonObjectSchema.default({}),
+  consistency: jsonObjectSchema.default({}),
+  activityCheckIn: manualEntrySchema.nullable().optional(),
+});
+
 export const dailyLoopDeliverySchema = z.object({
   // The live Zwift event for the slot (push-on-plan-set delivers the baseline).
   liveStatus: z.string().nullable(),
@@ -595,6 +609,7 @@ export const dailyLoopSchema = z.object({
   sleep: sleepSchema.nullable(),
   manualEntry: manualEntrySchema.nullable(),
   postWorkoutAnalyses: z.array(dailyLoopPostWorkoutAnalysisSchema).default([]),
+  postFlexibilityAnalyses: z.array(dailyLoopPostFlexibilityAnalysisSchema).default([]),
   plannedWorkouts: z.array(dailyLoopPlannedWorkoutSchema),
   thermalState: dailyLoopThermalStateSchema,
   dataQualityWarnings: z.array(dailyLoopWarningSchema),

@@ -27,6 +27,7 @@ from src.services.workout_delivery import STATUS_PROPOSED, STATUS_PUSHED
 
 ANALYSIS_TYPE_MORNING = "morning"
 ANALYSIS_TYPE_POST_WORKOUT = "post_workout"
+ANALYSIS_TYPE_POST_FLEXIBILITY = "post_flexibility"
 
 
 def _utcnow() -> datetime:
@@ -74,6 +75,7 @@ class DailyLoopSnapshot:
     sleep: Sleep | None
     manual_entry: ManualEntry | None
     post_workout_analyses: list[Analysis]
+    post_flexibility_analyses: list[Analysis]
     post_ride_checkins: dict[uuid.UUID, ManualEntry]
     planned_workouts: list[PlannedWorkout]
     adherence_entries: dict[uuid.UUID, ManualEntry]
@@ -101,6 +103,7 @@ class DailyLoopService:
         sleep = await self._sleep(player.id, target_date)
         manual_entry = await self._manual_entry(player.id, target_date)
         post_workout_analyses = await self._post_workout_analyses(player.id, target_date)
+        post_flexibility_analyses = await self._post_flexibility_analyses(player.id, target_date)
         post_ride_checkins = await self._post_ride_checkins(player.id, target_date)
         planned_workouts = await self._planned_workouts(player.id, target_date)
         adherence_entries = await self._adherence_entries(player.id, target_date)
@@ -117,6 +120,7 @@ class DailyLoopService:
             sleep=sleep,
             manual_entry=manual_entry,
             post_workout_analyses=post_workout_analyses,
+            post_flexibility_analyses=post_flexibility_analyses,
             post_ride_checkins=post_ride_checkins,
             planned_workouts=planned_workouts,
             adherence_entries=adherence_entries,
@@ -287,6 +291,29 @@ class DailyLoopService:
                     .where(
                         Analysis.user_id == user_id,
                         Analysis.analysis_type == ANALYSIS_TYPE_POST_WORKOUT,
+                        Analysis.subject_date == subject_date,
+                    )
+                    .order_by(Activity.start_utc.desc(), Analysis.generated_at_utc.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows)
+
+    async def _post_flexibility_analyses(
+        self,
+        user_id: uuid.UUID,
+        subject_date: date,
+    ) -> list[Analysis]:
+        rows = (
+            (
+                await self.session.execute(
+                    select(Analysis)
+                    .join(Activity, Analysis.activity_id == Activity.id)
+                    .where(
+                        Analysis.user_id == user_id,
+                        Analysis.analysis_type == ANALYSIS_TYPE_POST_FLEXIBILITY,
                         Analysis.subject_date == subject_date,
                     )
                     .order_by(Activity.start_utc.desc(), Analysis.generated_at_utc.desc())

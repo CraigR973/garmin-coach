@@ -52,6 +52,7 @@ const snapshot: DailyLoopEnvelope = {
     sleep: null,
     manualEntry: null,
     postWorkoutAnalyses: [],
+    postFlexibilityAnalyses: [],
     plannedWorkouts: [],
     thermalState: {
       latestTemperatureC: 17.4,

@@ -24,6 +24,7 @@ const snapshot = {
     sleep: null,
     manualEntry: null,
     postWorkoutAnalyses: [],
+    postFlexibilityAnalyses: [],
     plannedWorkouts: [],
     thermalState: {
       thermalReview: {},
