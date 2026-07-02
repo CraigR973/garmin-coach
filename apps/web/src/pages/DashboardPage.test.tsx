@@ -245,8 +245,11 @@ describe('DashboardPage', () => {
     renderPage();
 
     expect((await screen.findAllByText('Good to go')).length).toBeGreaterThan(0);
-    expect(screen.getByText("Today's session")).toBeTruthy();
+    expect(screen.getByText('Cycle day')).toBeTruthy();
     expect(screen.getByText('Tempo ride')).toBeTruthy();
+    // Batch 36: the verdict badge is shown once on the day header, not duplicated
+    // per session — so only the VerdictHero and the Today card header show it.
+    expect(screen.getAllByText('Good to go').length).toBe(2);
     // No coach change → the no-changes state: Edit / Swap / Skip, no Approve.
     expect(screen.getByRole('button', { name: /^edit$/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /swap day/i })).toBeTruthy();
@@ -373,6 +376,61 @@ describe('DashboardPage', () => {
     );
   });
 
+  it('renders one Today card for a mixed day with each session scoped independently', async () => {
+    const user = userEvent.setup();
+    const secondWorkoutId = '99999999-9999-4999-9999-999999999999';
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.plannedWorkouts = [
+          snapshot.data.plannedWorkouts[0],
+          {
+            id: secondWorkoutId,
+            userId: '11111111-1111-4111-8111-111111111111',
+            planBlockId: null,
+            workoutDate: '2026-06-20',
+            version: 1,
+            title: 'Core strength',
+            workoutType: 'strength',
+            status: 'planned',
+            isActive: true,
+            plannedDurationMin: 30,
+            intensityTarget: null,
+            structuredWorkout: {},
+            source: 'seed',
+            adherence: null,
+          },
+        ];
+      }),
+    );
+
+    expect(await screen.findByText('Cycle + Weights day')).toBeTruthy();
+    expect(screen.getByText('Tempo ride')).toBeTruthy();
+    expect(screen.getByText('Core strength')).toBeTruthy();
+    // Verdict badge shown once for the day (plus once in the VerdictHero) — not per session.
+    expect(screen.getAllByText('Good to go').length).toBe(2);
+    // Only the bike session gets an Edit control; the strength row has none.
+    expect(screen.getAllByRole('button', { name: /^edit$/i }).length).toBe(1);
+
+    const swapButtons = screen.getAllByRole('button', { name: /swap day/i });
+    expect(swapButtons.length).toBe(2);
+    await user.click(swapButtons[1]); // the second (strength) session's own panel
+    const hint = await screen.findByText('Move this session to:');
+    const dayButtons = within(hint.parentElement as HTMLElement).getAllByRole('button');
+    await user.click(dayButtons[0]);
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        `/api/v1/workout-delivery/planned-workouts/${secondWorkoutId}/swap`,
+        expect.objectContaining({ method: 'POST', body: JSON.stringify({ targetDate: '2026-06-21' }) }),
+      );
+    });
+    // The first (bike) session's swap panel never opened.
+    expect(apiFetchMock).not.toHaveBeenCalledWith(
+      `/api/v1/workout-delivery/planned-workouts/${WORKOUT_ID}/swap`,
+      expect.anything(),
+    );
+  });
+
   it('leads with a non-bike session and offers no Zwift upload', async () => {
     renderPage(
       buildSnapshot((snapshot) => {
@@ -435,7 +493,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Auto · on at speed 5, responding to 20.1°C')).toBeTruthy();
     // Batch 31 (redesign): the overnight glance now lives in the morning brief, not here.
     expect(screen.queryByText('Last night: 19→21 °C, fan ran 3.5 h (peak speed 5)')).toBeNull();
-    expect(screen.queryByText("Today's session")).toBeNull();
+    expect(screen.queryByText('Cycle day')).toBeNull();
   });
 
   it('saves the post-ride check-in from the ride card', async () => {
@@ -492,6 +550,12 @@ describe('DashboardPage', () => {
     );
 
     expect(await screen.findByText('Rest day')).toBeTruthy();
+    // Batch 36: the rest-day empty state renders inside the same single card —
+    // no separate orphan "Today's session" card.
+    expect(
+      screen.getByText('Rest is the plan today. Add something light, swap a workout in from the week, or just record what happened.'),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: /i did something else/i })).toBeTruthy();
     expect(screen.queryByText('After your ride')).toBeNull();
   });
 
@@ -500,7 +564,7 @@ describe('DashboardPage', () => {
     renderPage();
 
     expect((await screen.findByRole('status')).textContent ?? '').toMatch(/showing your last saved brief/i);
-    expect(screen.getByText("Today's session")).toBeTruthy();
+    expect(screen.getByText('Cycle day')).toBeTruthy();
     onlineStatus = true;
   });
 });
