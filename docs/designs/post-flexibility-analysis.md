@@ -3,9 +3,10 @@
 **Status:** Specced, not started. Designed with Craig on 2026-07-02 after a live
 census of Mark's full Garmin history surfaced a near-daily mobility habit the app
 is currently blind to. Decision number assigned at `/batch-start` (next free
-**#111**, after the #106–#110 reserved for specced Batches 35–39). First of three
-sibling batches (40 mobility, **41 walking**, **42 breathwork**) that give the
-non-cycling activity types a coaching read.
+**#110**, after #108 the 38/39-withdrawal replan and Batch 37's #109). First of the
+non-cycling analysis batches (40 mobility, **41 walking**, **42 breathwork**, plus
+**43 strength** added in the same replan) that give the non-cycling activity types a
+coaching read.
 
 Builds on / reuses:
 - **Batch 8 post-workout analysis** as the exact template — `services/post_workout_analysis.py`:
@@ -20,9 +21,10 @@ Builds on / reuses:
   routes `mobility` to a flexibility day; the analysis attaches there.
 - **The recovery-isolation invariant (#49/#80)** — like strength, a mobility
   session must never feed the Green/Amber/Red verdict or ride-recovery decisions.
-- **Batch 39's `guided_sessions` (`format:"flexibility"`)** *if shipped* — an
-  optional enrichment (the in-app completion log), never a hard dependency: this
-  batch keys on the **Garmin activity** exactly as Batch 8 does.
+
+  *(An earlier draft noted an optional enrichment from Batch 39's `guided_sessions`
+  in-app completion log; Batch 39 was withdrawn on 2026-07-02 (DECISIONS #108), so
+  this batch keys on the **Garmin activity** alone, exactly as Batch 8 does.)*
 
 ## The grounding evidence (2026-07-02 live census)
 
@@ -156,7 +158,7 @@ mobility session, and give a light encouragement/next-step — never power/zone 
 - **No verdict/recovery impact** — flexibility stays advisory (#49/#80).
 - **No standalone flexibility *brief*** — the consistency read lives *inside* the
   per-session packet (cycling has no separate brief either); a standalone brief
-  analogous to Batch 19 remains a possible later idea, and Batch 39 anticipated it.
+  analogous to Batch 19 remains a possible later idea.
 - **No walking / breathwork** — Batches 41 / 42.
 
 ## Open decisions to settle at `/batch-start`
@@ -170,16 +172,16 @@ mobility session, and give a light encouragement/next-step — never power/zone 
    if 41 confirms the shape.)
 3. **Daily-loop shape** — a dedicated `postFlexibilityAnalyses` list vs. one
    unified post-session list.
-4. **Guided-session enrichment** — if Batch 39 has shipped, also read the matched
-   `guided_sessions(format="flexibility")` completion into the packet, or ignore it.
-5. **Backfill window** — all ~47, or only sessions from the routine's start.
+4. **Backfill window** — all ~47, or only sessions from the routine's start.
 
 ## Dependency & sequencing
 
-- **Independent of Batches 35–39** (a backend analysis surface, not a Home
-  refinement); keys on the Garmin mobility activity alone.
-- Flagship of the 40–42 trio; natural to build first. Composes with Batch 39 (the
-  in-app flexibility video) if that ships, but requires neither 38 nor 39.
+- **Independent of the Home-refinement batches 35–37** (a backend analysis surface,
+  not a Home refinement); keys on the Garmin mobility activity alone.
+- Flagship of the 40–43 non-cycling analysis set; natural to build first, paired with
+  its strength sibling Batch 43. It never depended on the withdrawn in-app players
+  (Batches 38/39) — those are gone (DECISIONS #108) and this batch keys on the Garmin
+  mobility activity regardless.
 
 ## Safety / invariants preserved
 

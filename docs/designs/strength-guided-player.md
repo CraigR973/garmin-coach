@@ -1,6 +1,15 @@
 # Design: In-app guided strength player (Batch 38)
 
-**Status:** Specced, not started. Designed with Craig on 2026-07-01 from the idea
+**Status:** ⛔ **WITHDRAWN 2026-07-02 (DECISIONS #108).** Mark tracks his strength
+sessions on his watch and wants only the *post-workout analysis* in the app — not an
+in-app player to run the session. So this whole batch (the interval player, the
+`guided_sessions` table + migration, and the count-once reconciliation) is dropped.
+Strength's post-workout-analysis need is met instead by **Batch 43 — Post-strength
+analysis** (`docs/designs/post-strength-analysis.md`), which reads the Garmin
+strength activity. This spec is retained for history/rationale only — **do not build
+it.** Original status below.
+
+**Status (original):** Specced, not started. Designed with Craig on 2026-07-01 from the idea
 that strength sessions should be *coached through in the app*, exactly the way a
 cycling workout is coached through in **Zwift** after the app delivers it — rather
 than just shown on Home. Decision number assigned at `/batch-start` (next free

@@ -2,8 +2,8 @@
 
 **Status:** Specced, not started. Designed with Craig on 2026-07-02 from the same
 full-history census that surfaced the mobility habit (Batch 40). Decision number
-assigned at `/batch-start` (next free **#112**, after Batch 40's #111). Second of
-the 40–42 non-cycling trio. Craig's decision (2026-07-02): **per-session analysis
+assigned at `/batch-start` (next free **#111**, after Batch 40's #110). Second of
+the 40–43 non-cycling analysis set. Craig's decision (2026-07-02): **per-session analysis
 too** — a walking brief *and* an analysis for deliberate walks, not just a rollup.
 
 Builds on / reuses:

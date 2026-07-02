@@ -2,7 +2,7 @@
 
 **Status:** Specced, not started. Designed with Craig on 2026-07-02 from the
 full-history census (Batch 40). Decision number assigned at `/batch-start` (next
-free **#113**, after Batch 41's #112). Third of the 40–42 non-cycling trio.
+free **#112**, after Batch 41's #111). Third of the 40–43 non-cycling analysis set.
 Craig's decision (2026-07-02): a **consistency brief + a verdict lever** — track
 the habit *and* let the morning verdict recommend a breathwork session — **not** a
 per-session analysis.

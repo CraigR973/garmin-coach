@@ -1,6 +1,14 @@
 # Design: In-app flexibility video player (Batch 39)
 
-**Status:** Specced, not started. Designed with Craig on 2026-07-01 as the sibling
+**Status:** ⛔ **WITHDRAWN 2026-07-02 (DECISIONS #108).** Mark tracks his flexibility
+sessions on his watch and wants only the *post-workout analysis* in the app — not an
+in-app follow-along video to run the session. So this batch is dropped along with its
+sibling Batch 38. The flexibility/mobility post-workout analysis is delivered instead
+by **Batch 40 — Post-flexibility (mobility) analysis**
+(`docs/designs/post-flexibility-analysis.md`), keyed on the Garmin activity. This
+spec is retained for history/rationale only — **do not build it.** Original status below.
+
+**Status (original):** Specced, not started. Designed with Craig on 2026-07-01 as the sibling
 of **Batch 38 (in-app guided strength player)**: the same "coach him through it in
 the app" idea, but flexibility's equivalent of the guiding Zwift/interval runner is
 a **follow-along video** he plays in-app. Decision number assigned at `/batch-start`
