@@ -1,5 +1,4 @@
 import { Check, Minus, TriangleAlert } from 'lucide-react';
-import { type MetricBaselineRow } from '@/components/MetricsBaselineTable';
 import { cn } from '@/lib/utils';
 
 /**
@@ -22,6 +21,27 @@ import { cn } from '@/lib/utils';
 
 type Tone = 'good' | 'warn' | 'neutral';
 
+/**
+ * One metric's "vs your own normal" frame (`_metrics_vs_baselines` on the
+ * daily-loop morning analysis). This type used to be exported from
+ * `MetricsBaselineTable`; that table and the standalone `/baselines` page were
+ * retired in Batch 35 once the range folded into this table, so the type now
+ * lives here — its sole remaining consumer.
+ */
+export interface MetricBaselineRow {
+  metricKey: string;
+  label: string;
+  currentValue?: number | null;
+  baselineMedian?: number | null;
+  baselineMean?: number | null;
+  deltaVsBaseline?: number | null;
+  lowerQuartile?: number | null;
+  upperQuartile?: number | null;
+  sampleCount?: number;
+  excludedSampleCount?: number;
+  reliabilityStartDate?: string | null;
+}
+
 export interface AgeComparisonRow {
   metricKey: string;
   label: string;
@@ -43,7 +63,7 @@ export interface AgeComparison {
   rows: AgeComparisonRow[];
 }
 
-// Metrics where a higher value is the better outcome (mirrors MetricsBaselineTable).
+// Metrics where a higher value is the better outcome.
 const HIGHER_IS_BETTER = new Set([
   'sleep_score',
   'age_adjusted_sleep_score',
@@ -79,6 +99,18 @@ function ToneIcon({ tone, className }: { tone: Tone; className?: string }) {
 function fmt(value: number | null | undefined): string {
   if (value === null || value === undefined) return '—';
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+// The baseline range as a compact "lower–upper" string (e.g. "46–52"), or a
+// "~center" fallback when quartiles are missing. Folded in under last night's
+// value now that the standalone baselines table is retired (Batch 35).
+function formatBaseline(row: MetricBaselineRow): string {
+  const unit = BASELINE_UNIT[row.metricKey] ?? '';
+  if (row.lowerQuartile != null && row.upperQuartile != null) {
+    return `${fmt(row.lowerQuartile)}–${fmt(row.upperQuartile)}${unit}`;
+  }
+  const center = row.baselineMedian ?? row.baselineMean;
+  return center == null ? '—' : `~${fmt(center)}${unit}`;
 }
 
 interface Diff {
@@ -222,24 +254,38 @@ export function MetricComparisonTable({
                 Last night
               </th>
               <th className="px-1.5 py-2 text-right font-semibold text-text-secondary sm:px-3">
-                vs your normal
-              </th>
-              <th className="px-1.5 py-2 text-right font-semibold text-text-secondary sm:px-3">
                 vs your age
               </th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr key={row.key} className="border-t border-border">
-                <td className="px-2 py-2 text-text-primary sm:px-3">{row.label}</td>
-                <td className="whitespace-nowrap px-1.5 py-2 text-right font-semibold text-text-primary tabular-nums sm:px-3">
-                  {row.current == null ? '—' : `${fmt(row.current)}${row.currentUnit}`}
-                </td>
-                <DiffCell diff={row.baseline ? baselineDiff(row.baseline) : null} />
-                <DiffCell diff={row.age ? ageDiff(row.age) : null} />
-              </tr>
-            ))}
+            {rows.map((row) => {
+              // Last night's number is tinted by whether it sat in the baseline
+              // band (direction-aware, so an out-of-band value in the *good*
+              // direction stays green), with the range shown as a muted sub-line.
+              // This replaces the separate "vs your normal" column (Batch 35).
+              const diff = row.baseline ? baselineDiff(row.baseline) : null;
+              const range = row.baseline ? formatBaseline(row.baseline) : null;
+              return (
+                <tr key={row.key} className="border-t border-border">
+                  <td className="px-2 py-2 text-text-primary sm:px-3">{row.label}</td>
+                  <td className="whitespace-nowrap px-1.5 py-2 text-right sm:px-3">
+                    <div
+                      className={cn(
+                        'font-semibold tabular-nums',
+                        diff ? toneText[diff.tone] : 'text-text-primary',
+                      )}
+                    >
+                      {row.current == null ? '—' : `${fmt(row.current)}${row.currentUnit}`}
+                    </div>
+                    {range && range !== '—' && (
+                      <div className="text-[11px] font-normal text-text-muted">normal {range}</div>
+                    )}
+                  </td>
+                  <DiffCell diff={row.age ? ageDiff(row.age) : null} />
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

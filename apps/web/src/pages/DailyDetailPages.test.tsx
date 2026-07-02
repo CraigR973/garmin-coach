@@ -5,7 +5,6 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DailyLoopEnvelope } from '@/hooks/useDailyLoop';
-import { BaselinesPage } from './BaselinesPage';
 import { BedroomPage } from './BedroomPage';
 import { MorningBriefPage } from './MorningBriefPage';
 
@@ -141,12 +140,6 @@ describe('daily detail pages', () => {
     renderWithQuery(<MorningBriefPage />);
     expect(await screen.findByText('Coach read')).toBeTruthy();
     expect(screen.getByText('Green light')).toBeTruthy();
-  });
-
-  it('renders the baselines detail page', async () => {
-    renderWithQuery(<BaselinesPage />);
-    expect(await screen.findByText('Metrics vs your baselines')).toBeTruthy();
-    expect(screen.getByText('HRV (7-day)')).toBeTruthy();
   });
 
   it('renders the bedroom detail page', async () => {

@@ -1,6 +1,6 @@
 # Batch 35 — "Last night" as the single morning hub
 
-Status: Specced (not started). Decision #106 (assigned at `/batch-start`).
+Status: Implemented on `feat/batch-35-last-night-hub`; awaiting review/closeout. Decision #106.
 Tier: 🟢 Mid (frontend-only component work over data already on the payload).
 
 ## Goal
