@@ -451,18 +451,40 @@ function DayPlanCard({
 }) {
   const hasWorkouts = workouts.length > 0;
   return (
-    <div className="space-y-3">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between gap-2">
-            <span>{dayState.label} day</span>
-            <Badge variant={verdictBadgeVariant(verdict)}>{verdictLabel(verdict)}</Badge>
-          </CardTitle>
-          <CardDescription>
-            {hasWorkouts ? 'Each session can be changed on its own.' : 'No session is scheduled.'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between gap-2">
+          <span>{dayState.label} day</span>
+          <Badge variant={verdictBadgeVariant(verdict)}>{verdictLabel(verdict)}</Badge>
+        </CardTitle>
+        <CardDescription>
+          {hasWorkouts ? 'Each session can be changed on its own.' : 'No session is scheduled.'}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {hasWorkouts ? (
+          <div className="space-y-4">
+            {workouts.map((workout, index) => (
+              <div
+                key={workout.id}
+                className={index > 0 ? 'space-y-3 border-t border-border pt-4' : 'space-y-3'}
+              >
+                <WorkoutRow
+                  workout={workout}
+                  planAdjustments={planAdjustments}
+                  subjectDate={subjectDate}
+                  {...workoutActions}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-xl border border-dashed border-border px-4 py-4 text-sm text-text-secondary">
+            Rest is the plan today. Add something light, swap a workout in from the week, or just record what happened.
+          </p>
+        )}
+
+        <div className={`space-y-3${hasWorkouts ? ' border-t border-border pt-4' : ''}`}>
           <AddWorkoutButtons busy={dayActions.busy} onAddWorkout={dayActions.onAddWorkout} />
           <div className="flex flex-wrap gap-2">
             <Button asChild type="button" size="sm" variant="outline">
@@ -478,26 +500,10 @@ function DayPlanCard({
               </Button>
             )}
           </div>
-          {!hasWorkouts && (
-            <p className="rounded-xl border border-dashed border-border px-4 py-4 text-sm text-text-secondary">
-              Rest is the plan today. Add something light, swap a workout in from the week, or just record what happened.
-            </p>
-          )}
           <ActualWorkoutForm busy={dayActions.busy} onSubmit={dayActions.onRecordActual} />
-        </CardContent>
-      </Card>
-
-      {workouts.map((workout) => (
-        <TodayCard
-          key={workout.id}
-          workout={workout}
-          verdict={verdict}
-          planAdjustments={planAdjustments}
-          subjectDate={subjectDate}
-          {...workoutActions}
-        />
-      ))}
-    </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -580,9 +586,11 @@ function ActualWorkoutForm({
   );
 }
 
-function TodayCard({
+/** A single planned session inside the day's Today card. Each row keeps its
+ *  own local panel/ignored/dial state so multiple sessions on a mixed day
+ *  expand independently and their controls never cross-wire (Batch 36). */
+function WorkoutRow({
   workout,
-  verdict,
   planAdjustments = [],
   subjectDate,
   busy,
@@ -591,8 +599,7 @@ function TodayCard({
   onSkip,
   onSwap,
 }: {
-  workout: TodayWorkout | null;
-  verdict?: string | null;
+  workout: TodayWorkout;
   planAdjustments?: string[];
   subjectDate: string;
 } & TodayWorkoutActions) {
@@ -600,25 +607,6 @@ function TodayCard({
   const [ignored, setIgnored] = useState(false);
   const [durationScalePct, setDurationScalePct] = useState('100');
   const [intensityScalePct, setIntensityScalePct] = useState('100');
-
-  if (!workout) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Today</CardTitle>
-          <CardDescription>A calm read of the day ahead.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-xl border border-dashed border-border px-4 py-4">
-            <p className="font-medium text-text-primary">Nothing planned today</p>
-            <p className="mt-1 text-sm text-text-secondary">
-              No session is scheduled — enjoy the rest day.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
 
   const Icon = workoutIcon(workout.workoutType);
   const isBike = isBikeWorkout(workout.workoutType);
@@ -642,16 +630,8 @@ function TodayCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between gap-2">
-          <span>Today&apos;s session</span>
-          <Badge variant={verdictBadgeVariant(verdict)}>{verdictLabel(verdict)}</Badge>
-        </CardTitle>
-        <CardDescription>The one thing to focus on now.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="rounded-xl border border-border bg-bg px-3 py-3">
+    <>
+      <div className="rounded-xl border border-border bg-bg px-3 py-3">
           <div className="flex items-center gap-3">
             <Icon className="h-5 w-5 shrink-0 text-primary" aria-hidden />
             <div className="min-w-0 flex-1">
@@ -827,8 +807,7 @@ function TodayCard({
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+    </>
   );
 }
 
