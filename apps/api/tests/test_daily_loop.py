@@ -175,6 +175,17 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
             )
         )
         session.add(
+            Activity(
+                user_id=user_id,
+                garmin_activity_id=998879,
+                activity_name="Breathwork",
+                activity_type="breathwork",
+                start_utc=datetime(2026, 6, 19, 20, 0),
+                duration_sec=180,
+                raw_summary={},
+            )
+        )
+        session.add(
             Analysis(
                 user_id=user_id,
                 analysis_type="morning",
@@ -287,6 +298,8 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
     )
     assert payload["data"]["postFlexibilityAnalyses"][0]["consistency"]["currentStreak"] == 3
     assert "Mobility read" in payload["data"]["postFlexibilityAnalyses"][0]["outputMarkdown"]
+    assert payload["data"]["breathworkBrief"]["window4w"]["sessionCount"] == 1
+    assert payload["data"]["breathworkBrief"]["window4w"]["totalDurationMin"] == 3
     assert payload["data"]["plannedWorkouts"][0]["title"] == "Strength maintenance"
     assert payload["data"]["dataQualityWarnings"][0]["status"] == "active"
 

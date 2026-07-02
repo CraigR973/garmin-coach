@@ -22,6 +22,7 @@ from src.models.coaching import (
     WorkoutDeliveryProposal,
 )
 from src.models.profile import Profile
+from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
 from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
 from src.services.walking_brief import WalkingBriefResult, WalkingBriefService
 from src.services.workout_delivery import STATUS_PROPOSED, STATUS_PUSHED
@@ -88,6 +89,7 @@ class DailyLoopSnapshot:
     data_quality_warnings: list[dict[str, str]]
     strength_brief: StrengthBriefResult
     walking_brief: WalkingBriefResult
+    breathwork_brief: BreathworkBriefResult
 
 
 class DailyLoopService:
@@ -118,6 +120,10 @@ class DailyLoopService:
         warnings = await self._data_quality_warnings(player.id, target_date, planned_workouts)
         strength_brief = await StrengthBriefService(self.session).brief(player, as_of=target_date)
         walking_brief = await WalkingBriefService(self.session).brief(player, as_of=target_date)
+        breathwork_brief = await BreathworkBriefService(self.session).brief(
+            player,
+            as_of=target_date,
+        )
 
         return DailyLoopSnapshot(
             subject_date=target_date,
@@ -137,6 +143,7 @@ class DailyLoopService:
             data_quality_warnings=warnings,
             strength_brief=strength_brief,
             walking_brief=walking_brief,
+            breathwork_brief=breathwork_brief,
         )
 
     async def upsert_manual_entry(

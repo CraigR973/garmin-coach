@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth import CurrentUser
 from src.database import get_db
 from src.models.coaching import Analysis, DailyMetric, ManualEntry, PlannedWorkout, Sleep
+from src.services.breathwork_brief import BreathworkBriefResult
 from src.services.daily_loop import DailyLoopService, DeliveryState
 from src.services.environment_freshness import is_hive_temperature_fresh
 from src.services.fan_control import describe_fan_intent
@@ -274,6 +275,12 @@ class WalkingWindowStatsOut(BaseModel):
     sessionsPerWeek: float
 
 
+class BreathworkWindowStatsOut(BaseModel):
+    sessionCount: int
+    totalDurationMin: int
+    sessionsPerWeek: float
+
+
 class StrengthSessionOut(BaseModel):
     activityId: str
     activityName: str
@@ -310,6 +317,23 @@ class WalkingBriefOut(BaseModel):
     trendReason: str
 
 
+class BreathworkSessionOut(BaseModel):
+    activityId: str
+    activityName: str
+    activityType: str
+    sessionDate: str
+    durationMin: int | None
+
+
+class BreathworkBriefOut(BaseModel):
+    asOfDate: str
+    window4w: BreathworkWindowStatsOut
+    window12w: BreathworkWindowStatsOut
+    recentSessions: list[BreathworkSessionOut]
+    trend: str
+    trendReason: str
+
+
 class DailyLoopData(BaseModel):
     subjectDate: str
     timezone: str
@@ -325,6 +349,7 @@ class DailyLoopData(BaseModel):
     dataQualityWarnings: list[DataQualityWarningOut]
     strengthBrief: StrengthBriefOut
     walkingBrief: WalkingBriefOut
+    breathworkBrief: BreathworkBriefOut
 
 
 class DailyLoopEnvelope(BaseModel):
@@ -674,6 +699,34 @@ def _serialize_walking_brief(result: WalkingBriefResult) -> WalkingBriefOut:
     )
 
 
+def _serialize_breathwork_brief(result: BreathworkBriefResult) -> BreathworkBriefOut:
+    return BreathworkBriefOut(
+        asOfDate=result.as_of_date.isoformat(),
+        window4w=BreathworkWindowStatsOut(
+            sessionCount=result.window_4w.session_count,
+            totalDurationMin=result.window_4w.total_duration_min,
+            sessionsPerWeek=result.window_4w.sessions_per_week,
+        ),
+        window12w=BreathworkWindowStatsOut(
+            sessionCount=result.window_12w.session_count,
+            totalDurationMin=result.window_12w.total_duration_min,
+            sessionsPerWeek=result.window_12w.sessions_per_week,
+        ),
+        recentSessions=[
+            BreathworkSessionOut(
+                activityId=str(s.activity_id),
+                activityName=s.activity_name,
+                activityType=s.activity_type,
+                sessionDate=s.session_date.isoformat(),
+                durationMin=s.duration_min,
+            )
+            for s in result.recent_sessions
+        ],
+        trend=result.trend,
+        trendReason=result.trend_reason,
+    )
+
+
 def _envelope(player: CurrentUser, snapshot: Any) -> DailyLoopEnvelope:
     morning_analysis = _serialize_analysis(snapshot.morning_analysis)
     fresh_temperature = (
@@ -772,6 +825,7 @@ def _envelope(player: CurrentUser, snapshot: Any) -> DailyLoopEnvelope:
             ],
             strengthBrief=_serialize_strength_brief(snapshot.strength_brief),
             walkingBrief=_serialize_walking_brief(snapshot.walking_brief),
+            breathworkBrief=_serialize_breathwork_brief(snapshot.breathwork_brief),
         ),
         meta=ApiMeta(generatedAtUtc=_generated_at()),
         errors=[],
