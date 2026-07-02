@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DailyLoopEnvelope } from '@/hooks/useDailyLoop';
 import { DashboardPage } from './DashboardPage';
 
@@ -205,6 +205,26 @@ const overnightSnapshot = {
   errors: [],
 };
 
+const postRideSnapshot = () =>
+  buildSnapshot((snapshot) => {
+    snapshot.data.postWorkoutAnalyses = [
+      {
+        id: '66666666-6666-4666-8666-666666666666',
+        activityId: '77777777-7777-4777-8777-777777777777',
+        activityName: 'Tempo ride',
+        activityType: 'indoor_cycling',
+        generatedAtUtc: '2026-06-20T12:20:00Z',
+        promptVersion: 'post-workout-v1',
+        modelName: 'claude-sonnet-4-6',
+        outputMarkdown: '**Recovery protocol:** refuel within 20 minutes.',
+        recoveryDecision: { excluded: false, status: 'ready_for_review' },
+        timeSeriesSummary: { power: { avg: 220 } },
+        tomorrowImpact: 'Easy endurance tomorrow.',
+        postRideCheckIn: null,
+      },
+    ];
+  });
+
 function renderPage(snapshot = baseSnapshot) {
   apiFetchMock.mockClear(); // isolate each test's call history (negative assertions)
   apiFetchMock.mockImplementation((path: string) => {
@@ -239,32 +259,58 @@ function renderPage(snapshot = baseSnapshot) {
 
 const WORKOUT_ID = '55555555-5555-4555-8555-555555555555';
 
+afterEach(() => {
+  vi.useRealTimers();
+  onlineStatus = true;
+});
+
 describe('DashboardPage', () => {
-  it('renders the pre-ride flow with sleep snapshot, today card, and detail links', async () => {
-    onlineStatus = true;
+  it('pre-ride expands Today and keeps every other section collapsed-but-present', async () => {
     renderPage();
 
-    expect((await screen.findAllByText('Good to go')).length).toBeGreaterThan(0);
-    expect(screen.getByText('Cycle day')).toBeTruthy();
+    // Today is the primary → expanded: its body controls are live.
+    expect(await screen.findByText('Cycle day')).toBeTruthy();
     expect(screen.getByText('Tempo ride')).toBeTruthy();
-    // Batch 36: the verdict badge is shown once on the day header, not duplicated
-    // per session — so only the VerdictHero and the Today card header show it.
-    expect(screen.getAllByText('Good to go').length).toBe(2);
-    // No coach change → the no-changes state: Edit / Swap / Skip, no Approve.
     expect(screen.getByRole('button', { name: /^edit$/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /swap day/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /^skip$/i })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /approve & upload/i })).toBeNull();
-    expect(screen.getByRole('link', { name: /full morning brief/i }).getAttribute('href')).toBe('/brief');
-    // Batch 35: the standalone baselines page is retired; the range now folds
-    // into the sleep table, so there is no baselines link.
-    expect(screen.queryByRole('link', { name: /baselines/i })).toBeNull();
-    expect(screen.queryByText('After your ride')).toBeNull();
-    // The comparison table now lives inside the "Last night's sleep" card.
+    // Batch 36/37: verdict badge appears once on the Today header + once in the hero.
+    expect(screen.getAllByText('Good to go').length).toBe(2);
+
+    // Object permanence: the other sections are present but collapsed — their
+    // summaries are in the DOM, their (lazy) bodies are not.
     expect(screen.getByText("Last night's sleep")).toBeTruthy();
-    expect(screen.getByText('23 above')).toBeTruthy(); // VO₂max vs age-group average, age-only row
-    // Batch 31 (redesign): the overnight glance explains *last* night, so it sits
-    // in the morning brief next to the sleep snapshot, not the evening bedroom card.
+    expect(screen.getByText(/8h 0m asleep/)).toBeTruthy();
+    expect(screen.getByText('Tonight')).toBeTruthy();
+    expect(screen.getByText('Bedroom')).toBeTruthy();
+    expect(screen.getByText(/Indoor 17\.4°C/)).toBeTruthy();
+    // Collapsed → the Last night body (comparison table, /brief link, overnight
+    // glance) has not mounted yet, so the bedroom-overnight query stays lazy.
+    expect(screen.queryByText('23 above')).toBeNull();
+    expect(screen.queryByRole('link', { name: /full morning brief/i })).toBeNull();
+    expect(screen.queryByTestId('overnight-room-verdict-badge')).toBeNull();
+    // No ride analysed today → the ride-only sections aren't in the list at all.
+    expect(screen.queryByText('After your ride')).toBeNull();
+    expect(screen.queryByText('Tomorrow')).toBeNull();
+  });
+
+  it('reveals a collapsed section body only when it is expanded (lazy)', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Cycle day');
+    expect(screen.queryByText('23 above')).toBeNull();
+    expect(screen.queryByTestId('overnight-room-verdict-badge')).toBeNull();
+
+    // Tap the collapsed Last-night header → its body mounts.
+    await user.click(screen.getByRole('button', { name: /last night's sleep/i }));
+
+    expect(await screen.findByText('23 above')).toBeTruthy(); // VO₂max vs age, age-only row
+    expect(screen.getByRole('link', { name: /full morning brief/i }).getAttribute('href')).toBe('/brief');
+    // Batch 35: the standalone baselines page is retired — no baselines link.
+    expect(screen.queryByRole('link', { name: /baselines/i })).toBeNull();
+    // The overnight glance (a separate query) only fires now that the body is open.
     expect(await screen.findByText('Last night: 19→21 °C, fan ran 3.5 h (peak speed 5)')).toBeTruthy();
     expect((await screen.findByTestId('overnight-room-verdict-badge')).textContent).toBe('Red');
   });
@@ -463,61 +509,30 @@ describe('DashboardPage', () => {
     expect(screen.queryByRole('button', { name: /approve & upload/i })).toBeNull();
   });
 
-  it('renders the post-ride flow when a ride analysis exists for today', async () => {
-    renderPage(
-      buildSnapshot((snapshot) => {
-        snapshot.data.postWorkoutAnalyses = [
-          {
-            id: '66666666-6666-4666-8666-666666666666',
-            activityId: '77777777-7777-4777-8777-777777777777',
-            activityName: 'Tempo ride',
-            activityType: 'indoor_cycling',
-            generatedAtUtc: '2026-06-20T12:20:00Z',
-            promptVersion: 'post-workout-v1',
-            modelName: 'claude-sonnet-4-6',
-            outputMarkdown: '**Recovery protocol:** refuel within 20 minutes.',
-            recoveryDecision: { excluded: false, status: 'ready_for_review' },
-            timeSeriesSummary: { power: { avg: 220 } },
-            tomorrowImpact: 'Easy endurance tomorrow.',
-            postRideCheckIn: null,
-          },
-        ];
-      }),
-    );
+  it('post-ride expands After your ride but keeps Today and Last night present', async () => {
+    renderPage(postRideSnapshot());
 
+    // After your ride is primary → expanded: its body + check-in form show.
     expect(await screen.findByText('After your ride')).toBeTruthy();
+    expect(screen.getByText('How did it feel?')).toBeTruthy();
+    // The ride-only sections exist now.
     expect(screen.getByText('Tomorrow')).toBeTruthy();
     expect(screen.getByText('Tonight')).toBeTruthy();
     expect(screen.getByText('Bedroom')).toBeTruthy();
-    expect(screen.getByText('Bedroom fan')).toBeTruthy();
-    expect(screen.getByText('Auto · on at speed 5, responding to 20.1°C')).toBeTruthy();
-    // Batch 31 (redesign): the overnight glance now lives in the morning brief, not here.
+
+    // Object permanence: Today + Last night are still on Home (collapsed), not gone.
+    expect(screen.getByText('Cycle day')).toBeTruthy();
+    expect(screen.getByText("Last night's sleep")).toBeTruthy();
+    expect(screen.getByText(/8h 0m asleep/)).toBeTruthy(); // collapsed sleep summary
+    // Bedroom is collapsed → its fan body has not mounted; the overnight glance
+    // (in the collapsed Last-night body) hasn't mounted either.
+    expect(screen.queryByText('Bedroom fan')).toBeNull();
     expect(screen.queryByText('Last night: 19→21 °C, fan ran 3.5 h (peak speed 5)')).toBeNull();
-    expect(screen.queryByText('Cycle day')).toBeNull();
   });
 
   it('saves the post-ride check-in from the ride card', async () => {
     const user = userEvent.setup();
-    renderPage(
-      buildSnapshot((snapshot) => {
-        snapshot.data.postWorkoutAnalyses = [
-          {
-            id: '66666666-6666-4666-8666-666666666666',
-            activityId: '77777777-7777-4777-8777-777777777777',
-            activityName: 'Tempo ride',
-            activityType: 'indoor_cycling',
-            generatedAtUtc: '2026-06-20T12:20:00Z',
-            promptVersion: 'post-workout-v1',
-            modelName: 'claude-sonnet-4-6',
-            outputMarkdown: '**Recovery protocol:** refuel within 20 minutes.',
-            recoveryDecision: { excluded: false, status: 'ready_for_review' },
-            timeSeriesSummary: { power: { avg: 220 } },
-            tomorrowImpact: 'Easy endurance tomorrow.',
-            postRideCheckIn: null,
-          },
-        ];
-      }),
-    );
+    renderPage(postRideSnapshot());
 
     await screen.findByText('How did it feel?');
     await user.type(screen.getByLabelText('RPE'), '8');
@@ -542,29 +557,53 @@ describe('DashboardPage', () => {
     });
   });
 
-  it('renders a clean rest-day state when nothing is planned', async () => {
+  it('rest day expands Last night and keeps the day plan collapsed-but-present', async () => {
+    const user = userEvent.setup();
     renderPage(
       buildSnapshot((snapshot) => {
         snapshot.data.plannedWorkouts = [];
       }),
     );
 
-    expect(await screen.findByText('Rest day')).toBeTruthy();
-    // Batch 36: the rest-day empty state renders inside the same single card —
-    // no separate orphan "Today's session" card.
-    expect(
-      screen.getByText('Rest is the plan today. Add something light, swap a workout in from the week, or just record what happened.'),
-    ).toBeTruthy();
+    // Last night is primary → expanded (comparison table visible in the body).
+    expect(await screen.findByText("Last night's sleep")).toBeTruthy();
+    expect(screen.getByText('23 above')).toBeTruthy();
+    // The day plan is present but collapsed: 'Rest day' title + short summary.
+    expect(screen.getByText('Rest day')).toBeTruthy();
+    expect(screen.getByText('Rest is the plan today.')).toBeTruthy();
+    // Its body (empty-state + "I did something else") is hidden until expanded.
+    expect(screen.queryByRole('button', { name: /i did something else/i })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /rest day/i }));
+    expect(await screen.findByText(/Rest is the plan today\. Add something light/)).toBeTruthy();
     expect(screen.getByRole('button', { name: /i did something else/i })).toBeTruthy();
     expect(screen.queryByText('After your ride')).toBeNull();
   });
 
-  it('shows the offline banner while keeping the saved phase visible', async () => {
+  it('after 20:00 floats the bedroom-prep sections above Last night (order only)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-06-20T21:30:00'));
+    renderPage(); // pre-ride default
+
+    await screen.findByText('Cycle day');
+    const tonight = screen.getByText('Tonight');
+    const bedroom = screen.getByText('Bedroom');
+    const lastNight = screen.getByText("Last night's sleep");
+    // Evening: Tonight + Bedroom now sit ahead of Last night in the DOM…
+    expect(tonight.compareDocumentPosition(lastNight) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(bedroom.compareDocumentPosition(lastNight) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // …but nothing is added or removed by the clock — every section still exists.
+    expect(screen.getByText('Cycle day')).toBeTruthy();
+    expect(tonight).toBeTruthy();
+    expect(bedroom).toBeTruthy();
+    expect(lastNight).toBeTruthy();
+  });
+
+  it('shows the offline banner while keeping Home visible', async () => {
     onlineStatus = false;
     renderPage();
 
     expect((await screen.findByRole('status')).textContent ?? '').toMatch(/showing your last saved brief/i);
-    expect(screen.getByText('Cycle day')).toBeTruthy();
-    onlineStatus = true;
+    expect(screen.getByText('Cycle day')).toBeTruthy(); // the Today section still renders
   });
 });

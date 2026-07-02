@@ -1,6 +1,8 @@
 # Batch 37 — Collapse-not-remove Home sections
 
-Status: Specced (not started). Decision #108 (assigned at `/batch-start`).
+Status: Implemented on `feat/batch-37-collapse-home-sections` (not yet shipped).
+Decision #109 (renumbered from the pre-written #108, which the 2026-07-02 Batch
+38/39 replan took — DECISIONS #108).
 Tier: 🔴 High (revises a shipped Home model — the Batch 24 phase-swap — and needs
 judgment on what stays expanded per state, collapse persistence, and whether time
 nudges ordering).
