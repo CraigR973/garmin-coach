@@ -29,6 +29,7 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile
 from src.services.age_norms import build_age_comparison
+from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
 from src.services.coaching_state import CoachingStateService
 from src.services.post_walk_analysis import active_recovery_walk_context
 
@@ -153,6 +154,10 @@ class MorningAnalysisService:
         manual_entries = await self._manual_entries(player.id, subject_date)
         planned_workouts = await self._planned_workouts(player.id, subject_date)
         recent_walks = await self._recent_walks(player.id, subject_date)
+        breathwork_brief = await BreathworkBriefService(self.session).brief(
+            player,
+            as_of=subject_date,
+        )
         baselines = await self._metric_baselines(player.id)
         weather = await self._weather(player.id, subject_date)
         temperature_rows = await self._overnight_temperature_rows(
@@ -176,6 +181,7 @@ class MorningAnalysisService:
             age_adjusted_sleep_score=age_adjusted_sleep_score,
             manual_entries=manual_entries,
             planned_workouts=planned_workouts,
+            breathwork_brief=breathwork_brief,
         )
 
         return {
@@ -201,6 +207,7 @@ class MorningAnalysisService:
                 ),
                 "classificationImpact": "none",
             },
+            "breathworkBrief": _breathwork_brief_packet(breathwork_brief, subject_date),
             "metricsVsBaselines": metrics_table,
             "ageComparison": age_comparison,
             "environment": {
@@ -633,6 +640,27 @@ def _weather_packet(row: WeatherDaily | None) -> dict[str, Any] | None:
     }
 
 
+def _breathwork_brief_packet(
+    result: BreathworkBriefResult,
+    subject_date: date,
+) -> dict[str, Any]:
+    week_start = subject_date - timedelta(days=6)
+    sessions_this_week = sum(
+        1 for session in result.recent_sessions if session.session_date >= week_start
+    )
+    return {
+        "asOfDate": result.as_of_date.isoformat(),
+        "sessions7d": sessions_this_week,
+        "sessions4w": result.window_4w.session_count,
+        "sessionsPerWeek4w": result.window_4w.sessions_per_week,
+        "sessions12w": result.window_12w.session_count,
+        "trend": result.trend,
+        "trendReason": result.trend_reason,
+        "advisoryOnly": True,
+        "classificationInput": False,
+    }
+
+
 def _age_adjusted_sleep_score(
     sleep: Sleep | None,
     knowledge_base: Mapping[str, Any],
@@ -801,6 +829,7 @@ def _morning_verdict(
     age_adjusted_sleep_score: int | None,
     manual_entries: Sequence[ManualEntry],
     planned_workouts: Sequence[PlannedWorkout],
+    breathwork_brief: BreathworkBriefResult | None = None,
 ) -> dict[str, Any]:
     subjective_score = _latest_subjective_score(manual_entries)
     hrv_status = _lower(daily_metric.hrv_status if daily_metric else None) or _lower(
@@ -853,6 +882,17 @@ def _morning_verdict(
     plan_adjustments = _plan_adjustments(status, planned_workouts)
     if status == "Red" and has_vo2:
         plan_adjustments.append("Replace VO2 with rest, mobility, or a very easy spin.")
+    breathwork_signal = {
+        "status": status,
+        "readinessLevel": readiness_level,
+        "readinessInterpretation": readiness_interpretation,
+        "hrvStatus": hrv_status,
+        "hrvBelowBaseline": hrv_low,
+    }
+    if should_recommend_breathwork(breathwork_signal):
+        plan_adjustments.append(
+            _breathwork_recommendation(breathwork_brief, age_adjusted_sleep_score)
+        )
 
     return {
         "status": status,
@@ -867,6 +907,45 @@ def _morning_verdict(
         "planAdjustments": plan_adjustments,
         "safetyRulesApplied": ["red_never_vo2"] if status == "Red" else [],
     }
+
+
+def should_recommend_breathwork(signal: Mapping[str, Any]) -> bool:
+    status = str(signal.get("status") or "").lower()
+    readiness_level = str(signal.get("readinessLevel") or "").lower()
+    readiness_interpretation = signal.get("readinessInterpretation")
+    hrv_status = str(signal.get("hrvStatus") or "").lower()
+    hrv_below_baseline = bool(signal.get("hrvBelowBaseline"))
+    readiness_is_recovery_low = (
+        readiness_level == "low" and readiness_interpretation != "load_driven"
+    )
+    return (
+        status == "red"
+        or readiness_is_recovery_low
+        or hrv_status in {"unbalanced", "low", "poor"}
+        or hrv_below_baseline
+    )
+
+
+def _breathwork_recommendation(
+    breathwork_brief: BreathworkBriefResult | None,
+    age_adjusted_sleep_score: int | None,
+) -> str:
+    context = ""
+    if breathwork_brief is not None:
+        week_start = breathwork_brief.as_of_date - timedelta(days=6)
+        sessions_this_week = sum(
+            1 for session in breathwork_brief.recent_sessions if session.session_date >= week_start
+        )
+        context = f" You've logged {sessions_this_week} breathwork session(s) in the last 7 days."
+    sleep_context = (
+        f" Age-adjusted sleep is {age_adjusted_sleep_score}."
+        if age_adjusted_sleep_score is not None
+        else ""
+    )
+    return (
+        "Add a short breathwork session today to help down-regulate the recovery signal."
+        f"{context}{sleep_context}"
+    )
 
 
 def _plan_adjustments(status: str, planned_workouts: Sequence[PlannedWorkout]) -> list[str]:

@@ -667,6 +667,34 @@ export const dailyLoopSchema = z.object({
       trendReason: z.string(),
     })
     .optional(),
+  breathworkBrief: z
+    .object({
+      asOfDate: isoDateSchema,
+      window4w: z.object({
+        sessionCount: z.number().int(),
+        totalDurationMin: z.number().int(),
+        sessionsPerWeek: z.number(),
+      }),
+      window12w: z.object({
+        sessionCount: z.number().int(),
+        totalDurationMin: z.number().int(),
+        sessionsPerWeek: z.number(),
+      }),
+      recentSessions: z
+        .array(
+          z.object({
+            activityId: z.string().uuid(),
+            activityName: z.string(),
+            activityType: z.string(),
+            sessionDate: isoDateSchema,
+            durationMin: z.number().int().nullable().optional(),
+          }),
+        )
+        .default([]),
+      trend: z.string(),
+      trendReason: z.string(),
+    })
+    .optional(),
 });
 
 export const dailyLoopEnvelopeSchema = z.object({

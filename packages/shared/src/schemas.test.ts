@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   activityTimeSeriesSchema,
   coachingStateEnvelopeSchema,
+  dailyLoopEnvelopeSchema,
   dailyMetricSchema,
   knowledgeBaseUpdateInputSchema,
   plannedWorkoutOverrideInputSchema,
@@ -44,6 +45,71 @@ describe('v1 shared schemas', () => {
     });
 
     expect(parsed.recoveryTimeMin).toBe(540);
+  });
+
+  it('accepts the daily-loop breathwork brief shape', () => {
+    const parsed = dailyLoopEnvelopeSchema.parse({
+      data: {
+        subjectDate: '2026-07-02',
+        timezone: 'Europe/London',
+        morningAnalysis: null,
+        dailyMetrics: null,
+        sleep: null,
+        manualEntry: null,
+        postWorkoutAnalyses: [],
+        postFlexibilityAnalyses: [],
+        postWalkAnalyses: [],
+        plannedWorkouts: [],
+        thermalState: {
+          fan: {
+            autoEnabled: true,
+            mode: 'idle',
+            isOn: null,
+            speed: null,
+            respondingToC: null,
+          },
+        },
+        dataQualityWarnings: [],
+        walkingBrief: {
+          asOfDate: '2026-07-02',
+          window4w: {
+            sessionCount: 0,
+            totalDistanceM: 0,
+            totalDurationMin: 0,
+            sessionsPerWeek: 0,
+          },
+          window12w: {
+            sessionCount: 0,
+            totalDistanceM: 0,
+            totalDurationMin: 0,
+            sessionsPerWeek: 0,
+          },
+          recentSessions: [],
+          trend: 'insufficient_data',
+          trendReason: 'Only 0 walks.',
+        },
+        breathworkBrief: {
+          asOfDate: '2026-07-02',
+          window4w: {
+            sessionCount: 18,
+            totalDurationMin: 54,
+            sessionsPerWeek: 4.5,
+          },
+          window12w: {
+            sessionCount: 54,
+            totalDurationMin: 162,
+            sessionsPerWeek: 4.5,
+          },
+          recentSessions: [],
+          trend: 'stable',
+          trendReason: 'Frequency holding at ~4.5/wk over 28 days.',
+        },
+      },
+      meta: { generatedAtUtc: '2026-07-02T06:30:00Z' },
+      errors: [],
+    });
+
+    expect(parsed.data.breathworkBrief?.window4w.sessionCount).toBe(18);
   });
 
   it('stores age-adjusted sleep separately from Garmin score', () => {

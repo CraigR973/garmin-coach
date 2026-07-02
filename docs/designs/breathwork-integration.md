@@ -1,8 +1,9 @@
 # Design: Breathwork integration (Batch 42)
 
-**Status:** Specced, not started. Designed with Craig on 2026-07-02 from the
+**Status:** Implemented on branch `feat/batch-42-breathwork-integration`;
+closeout pending. Designed with Craig on 2026-07-02 from the
 full-history census (Batch 40). Decision number assigned at `/batch-start` (next
-free **#113**, after Batch 41's #112). Third of the 40–42 non-cycling trio.
+free **#112**, after Batch 41's #111). Third of the 40–42 non-cycling trio.
 Craig's decision (2026-07-02): a **consistency brief + a verdict lever** — track
 the habit *and* let the morning verdict recommend a breathwork session — **not** a
 per-session analysis.
@@ -98,15 +99,15 @@ a signal that's already there.
   explicitly deferred so this batch stays small.
 - **No mobility / walking** — Batches 40 / 41.
 
-## Open decisions to settle at `/batch-start`
+## Decisions settled at `/batch-start`
 
-1. **Lever trigger** — Red only, or Amber + low readiness, or any unbalanced-HRV
-   morning? (Proposed: reuse the existing recovery-signal predicate.)
-2. **Copy & placement** — exact recommendation wording and whether it sits with the
-   plan-adjustments or as its own recovery-tip line.
-3. **Ship shape** — brief + lever together (recommended), or brief first then lever.
-4. **Count context** — include "N sessions this week" from the brief in the
-   recommendation, or keep the lever independent of the rollup.
+1. **Lever trigger** — reuse the existing low-recovery signal family: Red verdict,
+   recovery-low Garmin readiness (excluding the existing `load_driven` interpretation),
+   or unbalanced/low/poor/below-baseline HRV.
+2. **Copy & placement** — append one recommendation string to the existing
+   `planAdjustments` array; do not add a new UI lane.
+3. **Ship shape** — ship the deterministic brief and the verdict lever together.
+4. **Count context** — include last-7-day session count from the brief when available.
 
 ## Dependency & sequencing
 

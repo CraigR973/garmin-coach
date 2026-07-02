@@ -177,6 +177,14 @@ const baseSnapshot: DailyLoopEnvelope = {
       trend: 'stable',
       trendReason: 'Frequency holding at ~1.5/wk over 28 days.',
     },
+    breathworkBrief: {
+      asOfDate: '2026-06-20',
+      window4w: { sessionCount: 18, totalDurationMin: 54, sessionsPerWeek: 4.5 },
+      window12w: { sessionCount: 54, totalDurationMin: 162, sessionsPerWeek: 4.5 },
+      recentSessions: [],
+      trend: 'stable',
+      trendReason: 'Frequency holding at ~4.5/wk over 28 days.',
+    },
   },
   meta: {
     generatedAtUtc: '2026-06-20T06:40:00Z',
@@ -363,7 +371,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Advisory')).toBeTruthy();
   });
 
-  it('renders walking brief and deliberate-walk read on the Today section', async () => {
+  it('renders walking, breathwork, and deliberate-walk reads on the Today section', async () => {
     renderPage(
       buildSnapshot((snapshot) => {
         snapshot.data.postWalkAnalyses = [
@@ -387,6 +395,8 @@ describe('DashboardPage', () => {
 
     expect(await screen.findByText('Walking base')).toBeTruthy();
     expect(screen.getByText(/6 walks · 18.5 km · 250 min/i)).toBeTruthy();
+    expect(screen.getByText('Breathwork rhythm')).toBeTruthy();
+    expect(screen.getByText(/18 sessions · 54 min in 4 weeks/i)).toBeTruthy();
     expect(screen.getByText('Walk read')).toBeTruthy();
     expect(screen.getByText('Morning Walk')).toBeTruthy();
     expect(screen.getByText('Walk read:')).toBeTruthy();
