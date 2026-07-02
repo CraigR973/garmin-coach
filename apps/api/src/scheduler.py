@@ -75,6 +75,7 @@ from src.services.garmin_sync import (
 from src.services.morning_analysis import MorningAnalysisService
 from src.services.nudge_alerts import NudgeAlertService
 from src.services.post_flexibility_analysis import PostFlexibilityAnalysisService
+from src.services.post_walk_analysis import PostWalkAnalysisService
 from src.services.post_workout_analysis import PostWorkoutAnalysisService
 from src.services.wake_detection import (
     BACKSTOP,
@@ -441,12 +442,15 @@ async def run_garmin_activity_poll() -> None:
             sync_service = GarminSyncService(session)
             analysis_service = PostWorkoutAnalysisService(session)
             flexibility_service = PostFlexibilityAnalysisService(session)
+            walk_service = PostWalkAnalysisService(session)
             activities_synced = 0
             timeseries_synced = 0
             analyses_generated = 0
             analyses_existing = 0
             flexibility_analyses_generated = 0
             flexibility_analyses_existing = 0
+            walk_analyses_generated = 0
+            walk_analyses_existing = 0
 
             for profile in profiles:
                 today = _profile_today(profile)
@@ -495,6 +499,19 @@ async def run_garmin_activity_poll() -> None:
                         "post-flexibility analysis failed",
                         profile_id=str(profile.id),
                     )
+                try:
+                    walk_results = await walk_service.generate_for_pending_walks(
+                        profile,
+                        since=since,
+                        commit=False,
+                    )
+                    walk_analyses_generated += sum(1 for item in walk_results if item.generated)
+                    walk_analyses_existing += sum(1 for item in walk_results if not item.generated)
+                except Exception:
+                    log.exception(
+                        "post-walk analysis failed",
+                        profile_id=str(profile.id),
+                    )
 
             await session.commit()
         log.info(
@@ -506,6 +523,8 @@ async def run_garmin_activity_poll() -> None:
             analyses_existing=analyses_existing,
             flexibility_analyses_generated=flexibility_analyses_generated,
             flexibility_analyses_existing=flexibility_analyses_existing,
+            walk_analyses_generated=walk_analyses_generated,
+            walk_analyses_existing=walk_analyses_existing,
         )
     except Exception:
         log.exception("garmin activity poll failed")

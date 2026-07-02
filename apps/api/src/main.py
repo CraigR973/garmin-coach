@@ -35,6 +35,7 @@ from src.routers import (
     reviews,
     strength_brief,
     trends,
+    walking_brief,
     workout_delivery,
 )
 from src.scheduler import create_scheduler
@@ -121,6 +122,7 @@ app.include_router(block_generator.router)
 app.include_router(insights.router)
 app.include_router(experiments.router)
 app.include_router(strength_brief.router)
+app.include_router(walking_brief.router)
 app.include_router(reviews.router)
 app.include_router(trends.router)
 app.include_router(handover.router)

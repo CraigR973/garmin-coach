@@ -16,6 +16,7 @@ from src.services.daily_loop import DailyLoopService, DeliveryState
 from src.services.environment_freshness import is_hive_temperature_fresh
 from src.services.fan_control import describe_fan_intent
 from src.services.strength_brief import StrengthBriefResult
+from src.services.walking_brief import WalkingBriefResult
 
 router = APIRouter(prefix="/api/v1/daily-loop", tags=["daily-loop"])
 
@@ -137,6 +138,21 @@ class PostFlexibilityAnalysisOut(BaseModel):
     activityCheckIn: ManualEntryOut | None = None
 
 
+class PostWalkAnalysisOut(BaseModel):
+    id: str
+    activityId: str | None
+    activityName: str | None
+    activityType: str | None
+    generatedAtUtc: str
+    promptVersion: str
+    modelName: str | None
+    outputMarkdown: str
+    heartRateReview: dict[str, Any]
+    paceReview: dict[str, Any]
+    activeRecoveryContext: dict[str, Any]
+    activityCheckIn: ManualEntryOut | None = None
+
+
 class DailyMetricOut(BaseModel):
     id: str
     userId: str
@@ -251,6 +267,13 @@ class WindowStatsOut(BaseModel):
     sessionsPerWeek: float
 
 
+class WalkingWindowStatsOut(BaseModel):
+    sessionCount: int
+    totalDistanceM: float
+    totalDurationMin: int
+    sessionsPerWeek: float
+
+
 class StrengthSessionOut(BaseModel):
     activityId: str
     activityName: str
@@ -269,6 +292,24 @@ class StrengthBriefOut(BaseModel):
     trendReason: str
 
 
+class WalkingSessionOut(BaseModel):
+    activityId: str
+    activityName: str
+    activityType: str
+    sessionDate: str
+    durationMin: int | None
+    distanceM: float | None
+
+
+class WalkingBriefOut(BaseModel):
+    asOfDate: str
+    window4w: WalkingWindowStatsOut
+    window12w: WalkingWindowStatsOut
+    recentSessions: list[WalkingSessionOut]
+    trend: str
+    trendReason: str
+
+
 class DailyLoopData(BaseModel):
     subjectDate: str
     timezone: str
@@ -278,10 +319,12 @@ class DailyLoopData(BaseModel):
     manualEntry: ManualEntryOut | None
     postWorkoutAnalyses: list[PostWorkoutAnalysisOut]
     postFlexibilityAnalyses: list[PostFlexibilityAnalysisOut]
+    postWalkAnalyses: list[PostWalkAnalysisOut]
     plannedWorkouts: list[PlannedWorkoutOut]
     thermalState: ThermalStateOut
     dataQualityWarnings: list[DataQualityWarningOut]
     strengthBrief: StrengthBriefOut
+    walkingBrief: WalkingBriefOut
 
 
 class DailyLoopEnvelope(BaseModel):
@@ -432,6 +475,45 @@ def _serialize_post_flexibility_analysis(
     )
 
 
+def _serialize_post_walk_analysis(
+    analysis: Analysis,
+    activity_checkin: ManualEntry | None,
+) -> PostWalkAnalysisOut:
+    packet = analysis.context_packet if isinstance(analysis.context_packet, dict) else {}
+    activity = packet.get("activity", {}) if isinstance(packet.get("activity", {}), dict) else {}
+    heart_rate_review = (
+        packet.get("heartRateReview", {})
+        if isinstance(packet.get("heartRateReview", {}), dict)
+        else {}
+    )
+    pace_review = (
+        packet.get("paceReview", {}) if isinstance(packet.get("paceReview", {}), dict) else {}
+    )
+    active_recovery = (
+        packet.get("activeRecoveryContext", {})
+        if isinstance(packet.get("activeRecoveryContext", {}), dict)
+        else {}
+    )
+    return PostWalkAnalysisOut(
+        id=str(analysis.id),
+        activityId=str(analysis.activity_id) if analysis.activity_id else None,
+        activityName=(
+            activity.get("activityName") if isinstance(activity.get("activityName"), str) else None
+        ),
+        activityType=(
+            activity.get("activityType") if isinstance(activity.get("activityType"), str) else None
+        ),
+        generatedAtUtc=_dt(analysis.generated_at_utc) or "",
+        promptVersion=analysis.prompt_version,
+        modelName=analysis.model_name,
+        outputMarkdown=analysis.output_markdown,
+        heartRateReview=heart_rate_review,
+        paceReview=pace_review,
+        activeRecoveryContext=active_recovery,
+        activityCheckIn=_serialize_manual_entry(activity_checkin),
+    )
+
+
 def _serialize_daily_metric(metric: DailyMetric | None) -> DailyMetricOut | None:
     if metric is None:
         return None
@@ -561,6 +643,37 @@ def _serialize_strength_brief(result: StrengthBriefResult) -> StrengthBriefOut:
     )
 
 
+def _serialize_walking_brief(result: WalkingBriefResult) -> WalkingBriefOut:
+    return WalkingBriefOut(
+        asOfDate=result.as_of_date.isoformat(),
+        window4w=WalkingWindowStatsOut(
+            sessionCount=result.window_4w.session_count,
+            totalDistanceM=result.window_4w.total_distance_m,
+            totalDurationMin=result.window_4w.total_duration_min,
+            sessionsPerWeek=result.window_4w.sessions_per_week,
+        ),
+        window12w=WalkingWindowStatsOut(
+            sessionCount=result.window_12w.session_count,
+            totalDistanceM=result.window_12w.total_distance_m,
+            totalDurationMin=result.window_12w.total_duration_min,
+            sessionsPerWeek=result.window_12w.sessions_per_week,
+        ),
+        recentSessions=[
+            WalkingSessionOut(
+                activityId=str(s.activity_id),
+                activityName=s.activity_name,
+                activityType=s.activity_type,
+                sessionDate=s.session_date.isoformat(),
+                durationMin=s.duration_min,
+                distanceM=s.distance_m,
+            )
+            for s in result.recent_sessions
+        ],
+        trend=result.trend,
+        trendReason=result.trend_reason,
+    )
+
+
 def _envelope(player: CurrentUser, snapshot: Any) -> DailyLoopEnvelope:
     morning_analysis = _serialize_analysis(snapshot.morning_analysis)
     fresh_temperature = (
@@ -611,6 +724,15 @@ def _envelope(player: CurrentUser, snapshot: Any) -> DailyLoopEnvelope:
                 )
                 for analysis in snapshot.post_flexibility_analyses
             ],
+            postWalkAnalyses=[
+                _serialize_post_walk_analysis(
+                    analysis,
+                    snapshot.post_ride_checkins.get(analysis.activity_id)
+                    if analysis.activity_id
+                    else None,
+                )
+                for analysis in snapshot.post_walk_analyses
+            ],
             plannedWorkouts=planned_workouts,
             thermalState=ThermalStateOut(
                 latestTemperatureC=(fresh_temperature.temperature_c if fresh_temperature else None),
@@ -649,6 +771,7 @@ def _envelope(player: CurrentUser, snapshot: Any) -> DailyLoopEnvelope:
                 for warning in snapshot.data_quality_warnings
             ],
             strengthBrief=_serialize_strength_brief(snapshot.strength_brief),
+            walkingBrief=_serialize_walking_brief(snapshot.walking_brief),
         ),
         meta=ApiMeta(generatedAtUtc=_generated_at()),
         errors=[],

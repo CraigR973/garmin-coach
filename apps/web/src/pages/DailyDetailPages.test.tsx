@@ -53,6 +53,7 @@ const snapshot: DailyLoopEnvelope = {
     manualEntry: null,
     postWorkoutAnalyses: [],
     postFlexibilityAnalyses: [],
+    postWalkAnalyses: [],
     plannedWorkouts: [],
     thermalState: {
       latestTemperatureC: 17.4,
@@ -65,6 +66,14 @@ const snapshot: DailyLoopEnvelope = {
       fan: { autoEnabled: true, mode: 'control', isOn: true, speed: 5, respondingToC: 20.1 },
     },
     dataQualityWarnings: [],
+    walkingBrief: {
+      asOfDate: '2026-06-20',
+      window4w: { sessionCount: 0, totalDistanceM: 0, totalDurationMin: 0, sessionsPerWeek: 0 },
+      window12w: { sessionCount: 0, totalDistanceM: 0, totalDurationMin: 0, sessionsPerWeek: 0 },
+      recentSessions: [],
+      trend: 'insufficient_data',
+      trendReason: 'Only 0 walk(s) in the last 28 days.',
+    },
   },
   meta: {
     generatedAtUtc: '2026-06-20T06:40:00Z',
