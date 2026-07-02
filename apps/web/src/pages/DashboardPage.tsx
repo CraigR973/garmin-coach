@@ -31,7 +31,8 @@ import {
 } from '@/components/MetricComparisonTable';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { CollapsibleSection } from '@/components/CollapsibleSection';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Markdown } from '@/components/Markdown';
@@ -56,9 +57,17 @@ import {
 } from '@/lib/dailyFlow';
 import { greetingForNow, verdictBadgeVariant, verdictLabel, verdictToneLabel } from '@/lib/copy';
 import { dayStateForWorkouts, type DayCategory } from '@/lib/workoutCategories';
+import {
+  isEveningNow,
+  orderedSections,
+  PRIMARY_BY_PHASE,
+  type HomeSectionKey,
+} from '@/lib/homeSections';
 
 const textareaClassName =
   'min-h-[88px] w-full rounded-md border border-border bg-bg px-3 py-3 text-sm text-text-primary shadow-sm focus-visible:outline-none focus-visible:shadow-glow';
+
+const SLEEP_PREP_SUMMARY = 'Keep the bedroom and bedtime routine working for you.';
 
 function workoutIcon(type: string): LucideIcon {
   const t = type.toLowerCase();
@@ -70,6 +79,43 @@ function workoutIcon(type: string): LucideIcon {
 function prettyType(type: string): string {
   const cleaned = type.replace(/[_-]+/g, ' ').trim();
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+type TodaySleep = {
+  qualifier?: string | null;
+  durationSec?: number | null;
+  remSleepSec?: number | null;
+} | null;
+
+/** Collapsed one-liner for the "Last night's sleep" section (from the daily-loop
+ *  payload — no bedroom-overnight query, so a collapsed sleep card stays lazy). */
+function sleepSummary(sleep: TodaySleep): string {
+  if (!sleep) return 'No sleep data has synced for last night yet.';
+  const parts = [`${hm(sleep.durationSec)} asleep`];
+  if (sleep.qualifier) parts.push(sleep.qualifier);
+  const rem = remContext(sleep.remSleepSec);
+  if (rem) parts.push(`REM ${rem}`);
+  return parts.join(' · ');
+}
+
+/** Collapsed one-liner for the Today section — the day's session titles. */
+function todaySummary(workouts: TodayWorkout[]): string {
+  if (workouts.length === 0) return 'Rest is the plan today.';
+  return workouts.map((workout) => workout.title).join(' · ');
+}
+
+/** Collapsed one-liner for the After-your-ride section. */
+function afterRideSummary(items: Array<{ activityName?: string | null }>): string {
+  if (items.length === 0) return '';
+  return items.map((item) => item.activityName ?? 'Your ride').join(' · ');
+}
+
+/** Collapsed one-liner for the Bedroom section — live indoor read + fan mode. */
+function bedroomSummary(thermal: { latestTemperatureC?: number | null; fan: FanState }): string {
+  const temp =
+    thermal.latestTemperatureC != null ? `${thermal.latestTemperatureC.toFixed(1)}°C` : 'not synced';
+  const fan = thermal.fan.autoEnabled ? 'fan on auto' : 'fan on manual';
+  return `Indoor ${temp} · ${fan}`;
 }
 
 export function DashboardPage() {
@@ -244,6 +290,7 @@ export function DashboardPage() {
   const sleep = daily.sleep;
   const thermal = daily.thermalState;
   const postWorkouts = daily.postWorkoutAnalyses ?? [];
+  const hasRide = postWorkouts.length > 0;
   const todaysWorkouts = daily.plannedWorkouts;
   const dayState = dayStateForWorkouts(todaysWorkouts);
   const actionsBusy =
@@ -271,6 +318,85 @@ export function DashboardPage() {
       actualMutation.mutate({ date: daily.subjectDate, ...payload }),
   };
 
+  // Tomorrow's cue: the ride's forward look when we have one, else a verdict-shaped
+  // fallback. Shared by the section summary and body so they never disagree.
+  const tomorrowText =
+    postWorkouts[0]?.tomorrowImpact ??
+    (analysis?.verdict
+      ? `${verdictLabel(analysis.verdict)} tomorrow starts from today's recovery picture.`
+      : "Tomorrow's cue will show up here after the coach read.");
+
+  // Batch 37: render the full section set every load; data state picks the one
+  // expanded section, the clock only nudges ordering. Nothing is removed by phase.
+  const primary = PRIMARY_BY_PHASE[phase];
+  const order = orderedSections(phase, { hasRide, isEvening: isEveningNow() });
+
+  const sections: Record<
+    HomeSectionKey,
+    { title: string; icon: ReactNode; summary: ReactNode; headerAccessory?: ReactNode; body: ReactNode }
+  > = {
+    lastNight: {
+      title: "Last night's sleep",
+      icon: <BedDouble className="h-4 w-4 text-primary" aria-hidden />,
+      summary: sleepSummary(sleep),
+      body: (
+        <SleepSnapshotBody
+          metricsVsBaselines={metricsVsBaselines}
+          ageComparison={ageComparison}
+          morningBriefLink="/brief"
+        />
+      ),
+    },
+    today: {
+      title: `${dayState.label} day`,
+      icon: <CalendarDays className="h-4 w-4 text-primary" aria-hidden />,
+      summary: todaySummary(todaysWorkouts),
+      headerAccessory: (
+        <Badge variant={verdictBadgeVariant(analysis?.verdict)}>{verdictLabel(analysis?.verdict)}</Badge>
+      ),
+      body: (
+        <DayPlanBody
+          workouts={todaysWorkouts}
+          planAdjustments={analysis?.planAdjustments ?? []}
+          subjectDate={daily.subjectDate}
+          workoutActions={todayActions}
+          dayActions={dayActions}
+        />
+      ),
+    },
+    afterRide: {
+      title: 'After your ride',
+      icon: <Bike className="h-4 w-4 text-primary" aria-hidden />,
+      summary: afterRideSummary(postWorkouts),
+      body: (
+        <PostRideBody
+          items={postWorkouts}
+          onSaveCheckIn={(payload) => postRideCheckInMutation.mutate(payload)}
+          savingActivityId={postRideCheckInMutation.variables?.activityId ?? null}
+          isSaving={postRideCheckInMutation.isPending}
+        />
+      ),
+    },
+    tomorrow: {
+      title: 'Tomorrow',
+      icon: <CalendarDays className="h-4 w-4 text-primary" aria-hidden />,
+      summary: tomorrowText,
+      body: <TomorrowBody text={tomorrowText} />,
+    },
+    tonight: {
+      title: 'Tonight',
+      icon: <MoonStar className="h-4 w-4 text-primary" aria-hidden />,
+      summary: SLEEP_PREP_SUMMARY,
+      body: <SleepPrepBody />,
+    },
+    bedroom: {
+      title: 'Bedroom',
+      icon: <Thermometer className="h-4 w-4 text-primary" aria-hidden />,
+      summary: bedroomSummary(thermal),
+      body: <BedroomBody thermal={thermal} />,
+    },
+  };
+
   return (
     <div className="space-y-5">
       {!isOnline && (
@@ -286,130 +412,58 @@ export function DashboardPage() {
 
       <VerdictHero verdict={analysis?.verdict} dateLabel={friendlyDate(daily.subjectDate)} />
 
-      {phase === 'pre_ride' && (
-        <>
-          <div className="flex flex-wrap gap-2">
-            <Button asChild>
-              <Link to="/check-in">
-                <ClipboardCheck className="mr-2 h-4 w-4" aria-hidden />
-                {daily.manualEntry ? 'Update check-in' : 'Check in'}
-              </Link>
-            </Button>
-          </div>
+      <div className="flex flex-wrap gap-2">
+        <Button asChild>
+          <Link to="/check-in">
+            <ClipboardCheck className="mr-2 h-4 w-4" aria-hidden />
+            {daily.manualEntry ? 'Update check-in' : 'Check in'}
+          </Link>
+        </Button>
+      </div>
 
-          <SleepSnapshotCard
-            sleep={sleep}
-            metricsVsBaselines={metricsVsBaselines}
-            ageComparison={ageComparison}
-            morningBriefLink="/brief"
-          />
-
-          <DayPlanCard
-            dayState={dayState}
-            workouts={todaysWorkouts}
-            verdict={analysis?.verdict}
-            planAdjustments={analysis?.planAdjustments ?? []}
-            subjectDate={daily.subjectDate}
-            workoutActions={todayActions}
-            dayActions={dayActions}
-          />
-        </>
-      )}
-
-      {phase === 'post_ride' && (
-        <>
-          <PostRideCard
-            items={postWorkouts}
-            onSaveCheckIn={(payload) => postRideCheckInMutation.mutate(payload)}
-            savingActivityId={postRideCheckInMutation.variables?.activityId ?? null}
-            isSaving={postRideCheckInMutation.isPending}
-          />
-
-          <TomorrowCard
-            tomorrowImpact={postWorkouts[0]?.tomorrowImpact}
-            fallback={
-              analysis?.verdict
-                ? `${verdictLabel(analysis.verdict)} tomorrow starts from today&apos;s recovery picture.`
-                : 'Tomorrow&apos;s cue will show up here after the coach read.'
-            }
-          />
-
-          <SleepPrepCard />
-
-          <BedroomSummaryCard thermal={thermal} />
-        </>
-      )}
-
-      {phase === 'rest_day' && (
-        <>
-          <SleepSnapshotCard
-            sleep={sleep}
-            metricsVsBaselines={metricsVsBaselines}
-            ageComparison={ageComparison}
-            morningBriefLink="/brief"
-          />
-
-          <DayPlanCard
-            dayState={dayState}
-            workouts={todaysWorkouts}
-            verdict={analysis?.verdict}
-            planAdjustments={analysis?.planAdjustments ?? []}
-            subjectDate={daily.subjectDate}
-            workoutActions={todayActions}
-            dayActions={dayActions}
-          />
-
-          <BedroomSummaryCard thermal={thermal} />
-        </>
-      )}
+      {order.map((key) => {
+        const section = sections[key];
+        return (
+          <CollapsibleSection
+            key={key}
+            title={section.title}
+            icon={section.icon}
+            summary={section.summary}
+            headerAccessory={section.headerAccessory}
+            defaultOpen={key === primary}
+          >
+            {section.body}
+          </CollapsibleSection>
+        );
+      })}
     </div>
   );
 }
 
-function SleepSnapshotCard({
-  sleep,
+/** The expanded body of the "Last night's sleep" section. The overnight glance
+ *  fires the bedroom-overnight query, so this only mounts when the section is
+ *  open (Batch 37 lazy body) — the collapsed header shows a payload-only glance. */
+function SleepSnapshotBody({
   metricsVsBaselines,
   ageComparison,
   morningBriefLink,
 }: {
-  sleep: {
-    qualifier?: string | null;
-    durationSec?: number | null;
-    remSleepSec?: number | null;
-  } | null;
   metricsVsBaselines: MetricBaselineRow[];
   ageComparison: AgeComparison | null;
   morningBriefLink: string;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <BedDouble className="h-4 w-4 text-primary" aria-hidden />
-          Last night&apos;s sleep
-        </CardTitle>
-        {sleep ? (
-          <CardDescription>
-            {hm(sleep.durationSec)} asleep
-            {sleep.qualifier ? ` · ${sleep.qualifier}` : ''}
-            {remContext(sleep.remSleepSec) ? ` · REM ${remContext(sleep.remSleepSec)}` : ''}
-          </CardDescription>
-        ) : (
-          <CardDescription>No sleep data has synced for last night yet.</CardDescription>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <MetricComparisonTable rows={metricsVsBaselines} ageComparison={ageComparison} />
-        {/* Last night's room read (retrospective) lives with last night's sleep;
-            tonight's live fan/bedroom controls stay in the evening card (Batch 35). */}
-        <OvernightGlance />
-        <DetailLinkCard
-          to={morningBriefLink}
-          title="Full morning brief"
-          description="Open the complete coach read and verdict notes."
-        />
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      <MetricComparisonTable rows={metricsVsBaselines} ageComparison={ageComparison} />
+      {/* Last night's room read (retrospective) lives with last night's sleep;
+          tonight's live fan/bedroom controls stay in the evening card (Batch 35). */}
+      <OvernightGlance />
+      <DetailLinkCard
+        to={morningBriefLink}
+        title="Full morning brief"
+        description="Open the complete coach read and verdict notes."
+      />
+    </div>
   );
 }
 
@@ -427,18 +481,17 @@ type TodayWorkoutActions = {
   onSwap: (payload: { workoutId: string; targetDate: string }) => void;
 };
 
-function DayPlanCard({
-  dayState,
+/** The expanded body of the Today section: the day's session rows plus the
+ *  day-level footer. The day label + verdict badge live in the section header
+ *  (Batch 36 unified card, Batch 37 collapse). */
+function DayPlanBody({
   workouts,
-  verdict,
   planAdjustments,
   subjectDate,
   workoutActions,
   dayActions,
 }: {
-  dayState: { label: string; isRest: boolean };
   workouts: TodayWorkout[];
-  verdict?: string | null;
   planAdjustments: string[];
   subjectDate: string;
   workoutActions: TodayWorkoutActions;
@@ -451,59 +504,48 @@ function DayPlanCard({
 }) {
   const hasWorkouts = workouts.length > 0;
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between gap-2">
-          <span>{dayState.label} day</span>
-          <Badge variant={verdictBadgeVariant(verdict)}>{verdictLabel(verdict)}</Badge>
-        </CardTitle>
-        <CardDescription>
-          {hasWorkouts ? 'Each session can be changed on its own.' : 'No session is scheduled.'}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {hasWorkouts ? (
-          <div className="space-y-4">
-            {workouts.map((workout, index) => (
-              <div
-                key={workout.id}
-                className={index > 0 ? 'space-y-3 border-t border-border pt-4' : 'space-y-3'}
-              >
-                <WorkoutRow
-                  workout={workout}
-                  planAdjustments={planAdjustments}
-                  subjectDate={subjectDate}
-                  {...workoutActions}
-                />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="rounded-xl border border-dashed border-border px-4 py-4 text-sm text-text-secondary">
-            Rest is the plan today. Add something light, swap a workout in from the week, or just record what happened.
-          </p>
-        )}
-
-        <div className={`space-y-3${hasWorkouts ? ' border-t border-border pt-4' : ''}`}>
-          <AddWorkoutButtons busy={dayActions.busy} onAddWorkout={dayActions.onAddWorkout} />
-          <div className="flex flex-wrap gap-2">
-            <Button asChild type="button" size="sm" variant="outline">
-              <Link to="/delivery">
-                <CalendarDays className="h-4 w-4" aria-hidden />
-                View week
-              </Link>
-            </Button>
-            {hasWorkouts && (
-              <Button type="button" size="sm" variant="outline" onClick={dayActions.onSkipDay} disabled={dayActions.busy}>
-                <Trash2 className="h-4 w-4" aria-hidden />
-                Skip whole day
-              </Button>
-            )}
-          </div>
-          <ActualWorkoutForm busy={dayActions.busy} onSubmit={dayActions.onRecordActual} />
+    <div className="space-y-4">
+      {hasWorkouts ? (
+        <div className="space-y-4">
+          {workouts.map((workout, index) => (
+            <div
+              key={workout.id}
+              className={index > 0 ? 'space-y-3 border-t border-border pt-4' : 'space-y-3'}
+            >
+              <WorkoutRow
+                workout={workout}
+                planAdjustments={planAdjustments}
+                subjectDate={subjectDate}
+                {...workoutActions}
+              />
+            </div>
+          ))}
         </div>
-      </CardContent>
-    </Card>
+      ) : (
+        <p className="rounded-xl border border-dashed border-border px-4 py-4 text-sm text-text-secondary">
+          Rest is the plan today. Add something light, swap a workout in from the week, or just record what happened.
+        </p>
+      )}
+
+      <div className={`space-y-3${hasWorkouts ? ' border-t border-border pt-4' : ''}`}>
+        <AddWorkoutButtons busy={dayActions.busy} onAddWorkout={dayActions.onAddWorkout} />
+        <div className="flex flex-wrap gap-2">
+          <Button asChild type="button" size="sm" variant="outline">
+            <Link to="/delivery">
+              <CalendarDays className="h-4 w-4" aria-hidden />
+              View week
+            </Link>
+          </Button>
+          {hasWorkouts && (
+            <Button type="button" size="sm" variant="outline" onClick={dayActions.onSkipDay} disabled={dayActions.busy}>
+              <Trash2 className="h-4 w-4" aria-hidden />
+              Skip whole day
+            </Button>
+          )}
+        </div>
+        <ActualWorkoutForm busy={dayActions.busy} onSubmit={dayActions.onRecordActual} />
+      </div>
+    </div>
   );
 }
 
@@ -811,7 +853,9 @@ function WorkoutRow({
   );
 }
 
-function PostRideCard({
+/** The expanded body of the After-your-ride section: each ride's check-in +
+ *  analysis. */
+function PostRideBody({
   items,
   onSaveCheckIn,
   savingActivityId,
@@ -877,49 +921,40 @@ function PostRideCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Bike className="h-4 w-4 text-primary" aria-hidden />
-          After your ride
-        </CardTitle>
-        <CardDescription>Your latest ride, recovery, and what it means for tomorrow.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {items.map((item) => (
-          <div key={item.id} className="space-y-4 rounded-2xl border border-border bg-bg px-4 py-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="font-semibold text-text-primary">{item.activityName ?? 'Your ride'}</p>
-                <p className="text-sm text-text-secondary">Generated {formatDateTime(item.generatedAtUtc)}</p>
-              </div>
-              {item.recoveryDecision?.excluded ? <Badge variant="warning">Not counted for recovery</Badge> : null}
-            </div>
-            {item.activityId ? (
-              <PostRideCheckInForm
-                activityId={item.activityId}
-                value={formFor(item)}
-                logged={Boolean(item.postRideCheckIn)}
-                onChange={(patch) => patchDraft(item.activityId!, patch, item)}
-                onSave={(value) =>
-                  onSaveCheckIn({
-                    activityId: item.activityId!,
-                    subjectiveScore: value.subjectiveScore ? Number(value.subjectiveScore) : null,
-                    rpe: value.rpe ? Number(value.rpe) : null,
-                    feel: value.feel || null,
-                    notes: value.notes || null,
-                  })
-                }
-                isSaving={isSaving && savingActivityId === item.activityId}
-              />
-            ) : null}
+    <div className="space-y-4">
+      {items.map((item) => (
+        <div key={item.id} className="space-y-4 rounded-2xl border border-border bg-bg px-4 py-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <Markdown>{item.outputMarkdown}</Markdown>
+              <p className="font-semibold text-text-primary">{item.activityName ?? 'Your ride'}</p>
+              <p className="text-sm text-text-secondary">Generated {formatDateTime(item.generatedAtUtc)}</p>
             </div>
+            {item.recoveryDecision?.excluded ? <Badge variant="warning">Not counted for recovery</Badge> : null}
           </div>
-        ))}
-      </CardContent>
-    </Card>
+          {item.activityId ? (
+            <PostRideCheckInForm
+              activityId={item.activityId}
+              value={formFor(item)}
+              logged={Boolean(item.postRideCheckIn)}
+              onChange={(patch) => patchDraft(item.activityId!, patch, item)}
+              onSave={(value) =>
+                onSaveCheckIn({
+                  activityId: item.activityId!,
+                  subjectiveScore: value.subjectiveScore ? Number(value.subjectiveScore) : null,
+                  rpe: value.rpe ? Number(value.rpe) : null,
+                  feel: value.feel || null,
+                  notes: value.notes || null,
+                })
+              }
+              isSaving={isSaving && savingActivityId === item.activityId}
+            />
+          ) : null}
+          <div>
+            <Markdown>{item.outputMarkdown}</Markdown>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -991,40 +1026,21 @@ function PostRideCheckInForm({
   );
 }
 
-function TomorrowCard({ tomorrowImpact, fallback }: { tomorrowImpact: string | null | undefined; fallback: string }) {
+function TomorrowBody({ text }: { text: string }) {
+  return <p className="text-sm leading-6 text-text-primary">{text}</p>;
+}
+
+function SleepPrepBody() {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Tomorrow</CardTitle>
-        <CardDescription>The next cue to keep in mind.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p className="text-sm leading-6 text-text-primary">{tomorrowImpact ?? fallback}</p>
-      </CardContent>
-    </Card>
+    <p className="text-sm leading-6 text-text-primary">
+      Aim for the usual sleep setup: pre-cool the room, keep the evening calm, and stay on the bedtime routine.
+    </p>
   );
 }
 
-function SleepPrepCard() {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <MoonStar className="h-4 w-4 text-primary" aria-hidden />
-          Tonight
-        </CardTitle>
-        <CardDescription>Keep the bedroom and bedtime routine working for you.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p className="text-sm leading-6 text-text-primary">
-          Aim for the usual sleep setup: pre-cool the room, keep the evening calm, and stay on the bedtime routine.
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function BedroomSummaryCard({
+/** The expanded body of the Bedroom section: tonight's live indoor/thermostat/
+ *  fan read + the detail link. */
+function BedroomBody({
   thermal,
 }: {
   thermal: {
@@ -1036,48 +1052,39 @@ function BedroomSummaryCard({
   };
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Thermometer className="h-4 w-4 text-primary" aria-hidden />
-          Bedroom
-        </CardTitle>
-        <CardDescription>One tap away from the full climate detail.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-          <Stat
-            label="Indoor now"
-            value={thermal.latestTemperatureC != null ? `${thermal.latestTemperatureC.toFixed(1)}°C` : 'Not synced'}
-          />
-          <Stat
-            label="Thermostat"
-            value={thermal.targetTemperatureC != null ? `${thermal.targetTemperatureC.toFixed(1)}°C` : '—'}
-          />
-          <Stat
-            label="Overnight low"
-            value={thermal.overnightLowC != null ? `${thermal.overnightLowC.toFixed(1)}°C` : '—'}
-          />
-          <Stat
-            label="Wind"
-            value={thermal.overnightWindMaxMph != null ? `${thermal.overnightWindMaxMph.toFixed(0)} mph` : '—'}
-            icon={<Wind className="h-3.5 w-3.5 text-text-muted" aria-hidden />}
-          />
-        </div>
-        <div className="flex items-start gap-2 rounded-xl border border-border px-3 py-3 text-sm">
-          <Fan className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
-          <div className="min-w-0">
-            <p className="font-medium text-text-primary">Bedroom fan</p>
-            <p className="text-text-secondary">{fanStatusText(thermal.fan)}</p>
-          </div>
-        </div>
-        <DetailLinkCard
-          to="/bedroom"
-          title="Bedroom & weather detail"
-          description="Open the full room and overnight weather read, and control the fan."
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+        <Stat
+          label="Indoor now"
+          value={thermal.latestTemperatureC != null ? `${thermal.latestTemperatureC.toFixed(1)}°C` : 'Not synced'}
         />
-      </CardContent>
-    </Card>
+        <Stat
+          label="Thermostat"
+          value={thermal.targetTemperatureC != null ? `${thermal.targetTemperatureC.toFixed(1)}°C` : '—'}
+        />
+        <Stat
+          label="Overnight low"
+          value={thermal.overnightLowC != null ? `${thermal.overnightLowC.toFixed(1)}°C` : '—'}
+        />
+        <Stat
+          label="Wind"
+          value={thermal.overnightWindMaxMph != null ? `${thermal.overnightWindMaxMph.toFixed(0)} mph` : '—'}
+          icon={<Wind className="h-3.5 w-3.5 text-text-muted" aria-hidden />}
+        />
+      </div>
+      <div className="flex items-start gap-2 rounded-xl border border-border px-3 py-3 text-sm">
+        <Fan className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
+        <div className="min-w-0">
+          <p className="font-medium text-text-primary">Bedroom fan</p>
+          <p className="text-text-secondary">{fanStatusText(thermal.fan)}</p>
+        </div>
+      </div>
+      <DetailLinkCard
+        to="/bedroom"
+        title="Bedroom & weather detail"
+        description="Open the full room and overnight weather read, and control the fan."
+      />
+    </div>
   );
 }
 
