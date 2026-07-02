@@ -253,7 +253,9 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('button', { name: /^skip$/i })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /approve & upload/i })).toBeNull();
     expect(screen.getByRole('link', { name: /full morning brief/i }).getAttribute('href')).toBe('/brief');
-    expect(screen.getByRole('link', { name: /baselines/i }).getAttribute('href')).toBe('/baselines');
+    // Batch 35: the standalone baselines page is retired; the range now folds
+    // into the sleep table, so there is no baselines link.
+    expect(screen.queryByRole('link', { name: /baselines/i })).toBeNull();
     expect(screen.queryByText('After your ride')).toBeNull();
     // The comparison table now lives inside the "Last night's sleep" card.
     expect(screen.getByText("Last night's sleep")).toBeTruthy();

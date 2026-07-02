@@ -24,8 +24,11 @@ import {
 } from 'lucide-react';
 import { postRideCheckInInputSchema } from '@coach/shared';
 import { toast } from 'sonner';
-import { MetricComparisonTable, type AgeComparison } from '@/components/MetricComparisonTable';
-import { type MetricBaselineRow } from '@/components/MetricsBaselineTable';
+import {
+  MetricComparisonTable,
+  type AgeComparison,
+  type MetricBaselineRow,
+} from '@/components/MetricComparisonTable';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -299,10 +302,7 @@ export function DashboardPage() {
             metricsVsBaselines={metricsVsBaselines}
             ageComparison={ageComparison}
             morningBriefLink="/brief"
-            baselinesLink="/baselines"
           />
-
-          <OvernightGlance />
 
           <DayPlanCard
             dayState={dayState}
@@ -347,10 +347,7 @@ export function DashboardPage() {
             metricsVsBaselines={metricsVsBaselines}
             ageComparison={ageComparison}
             morningBriefLink="/brief"
-            baselinesLink="/baselines"
           />
-
-          <OvernightGlance />
 
           <DayPlanCard
             dayState={dayState}
@@ -374,7 +371,6 @@ function SleepSnapshotCard({
   metricsVsBaselines,
   ageComparison,
   morningBriefLink,
-  baselinesLink,
 }: {
   sleep: {
     qualifier?: string | null;
@@ -384,7 +380,6 @@ function SleepSnapshotCard({
   metricsVsBaselines: MetricBaselineRow[];
   ageComparison: AgeComparison | null;
   morningBriefLink: string;
-  baselinesLink: string;
 }) {
   return (
     <Card>
@@ -405,18 +400,14 @@ function SleepSnapshotCard({
       </CardHeader>
       <CardContent className="space-y-4">
         <MetricComparisonTable rows={metricsVsBaselines} ageComparison={ageComparison} />
-        <div className="grid gap-3 sm:grid-cols-2">
-          <DetailLinkCard
-            to={morningBriefLink}
-            title="Full morning brief"
-            description="Open the complete coach read and verdict notes."
-          />
-          <DetailLinkCard
-            to={baselinesLink}
-            title="Baselines"
-            description="See the full metrics-vs-baselines table."
-          />
-        </div>
+        {/* Last night's room read (retrospective) lives with last night's sleep;
+            tonight's live fan/bedroom controls stay in the evening card (Batch 35). */}
+        <OvernightGlance />
+        <DetailLinkCard
+          to={morningBriefLink}
+          title="Full morning brief"
+          description="Open the complete coach read and verdict notes."
+        />
       </CardContent>
     </Card>
   );

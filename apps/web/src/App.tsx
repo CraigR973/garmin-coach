@@ -26,9 +26,6 @@ const CheckInPage = lazy(() =>
 const MorningBriefPage = lazy(() =>
   import('./pages/MorningBriefPage').then((m) => ({ default: m.MorningBriefPage })),
 );
-const BaselinesPage = lazy(() =>
-  import('./pages/BaselinesPage').then((m) => ({ default: m.BaselinesPage })),
-);
 const BedroomPage = lazy(() =>
   import('./pages/BedroomPage').then((m) => ({ default: m.BedroomPage })),
 );
@@ -116,7 +113,6 @@ export function App() {
                       <Route path="/" element={<DashboardPage />} />
                       <Route path="/check-in" element={<CheckInPage />} />
                       <Route path="/brief" element={<MorningBriefPage />} />
-                      <Route path="/baselines" element={<BaselinesPage />} />
                       <Route path="/bedroom" element={<BedroomPage />} />
                       <Route path="/delivery" element={<WeekAheadPage />} />
                       <Route path="/holiday" element={<HolidayPage />} />

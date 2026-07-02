@@ -1,7 +1,10 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { MetricComparisonTable, type AgeComparison } from './MetricComparisonTable';
-import { type MetricBaselineRow } from './MetricsBaselineTable';
+import {
+  MetricComparisonTable,
+  type AgeComparison,
+  type MetricBaselineRow,
+} from './MetricComparisonTable';
 
 const baselineRows: MetricBaselineRow[] = [
   {
@@ -80,41 +83,44 @@ function rowFor(label: string): HTMLElement {
 }
 
 describe('MetricComparisonTable', () => {
-  it('renders the three comparison columns and the age disclaimer', () => {
+  it('renders the metric, last-night, and age columns — the separate normal column is gone', () => {
     render(<MetricComparisonTable rows={baselineRows} ageComparison={ageComparison} />);
 
     expect(screen.getByText('Last night')).toBeTruthy();
-    expect(screen.getByText('vs your normal')).toBeTruthy();
     expect(screen.getByText('vs your age')).toBeTruthy();
+    expect(screen.queryByText('vs your normal')).toBeNull(); // dropped in Batch 35
     expect(screen.getByText(/typical 50–59 year-old/i)).toBeTruthy();
   });
 
-  it('states both differences on the resting HR row', () => {
+  it('folds the baseline range under last night’s value and tints an in-band number green', () => {
     render(<MetricComparisonTable rows={baselineRows} ageComparison={ageComparison} />);
 
     const row = rowFor('Resting HR');
-    expect(within(row).getByText('48')).toBeTruthy(); // last night anchor value
-    expect(within(row).getByText('in range')).toBeTruthy(); // vs your normal
+    const value = within(row).getByText('48'); // last night anchor value
+    expect(value.className).toContain('text-success'); // 48 sits inside the 46–53 band
+    expect(within(row).getByText(/normal\s*46.53/)).toBeTruthy(); // range folded in as a sub-line
     expect(within(row).getByText('23 below')).toBeTruthy(); // vs the age-group average
-    expect(within(row).queryByText('—')).toBeNull(); // both frames present
+    expect(within(row).queryByText('in range')).toBeNull(); // the old normal column is gone
   });
 
-  it('shows the out-of-band difference and — where a frame is missing', () => {
+  it('tints an out-of-band number amber and shows — for a missing age frame', () => {
     render(<MetricComparisonTable rows={baselineRows} ageComparison={ageComparison} />);
 
     const row = rowFor('Sleep score');
-    expect(within(row).getByText('60')).toBeTruthy();
-    expect(within(row).getByText('10 below')).toBeTruthy(); // 10 under the 70–82 band
+    const value = within(row).getByText('60');
+    expect(value.className).toContain('text-warning'); // 60 sits below the 70–82 band
+    expect(within(row).getByText(/normal\s*70.82/)).toBeTruthy();
     expect(within(row).getByText('—')).toBeTruthy(); // no age norm for sleep score
   });
 
-  it('appends VO₂max as an age-only row with no personal baseline', () => {
+  it('appends VO₂max as an age-only row with no baseline range and a neutral tint', () => {
     render(<MetricComparisonTable rows={baselineRows} ageComparison={ageComparison} />);
 
     const row = rowFor('VO₂max');
-    expect(within(row).getByText('54')).toBeTruthy(); // current fitness
+    const value = within(row).getByText('54'); // current fitness
+    expect(value.className).toContain('text-text-primary'); // no band → neutral, not tinted
+    expect(within(row).queryByText(/^normal/)).toBeNull(); // no range sub-line without a baseline
     expect(within(row).getByText('23 above')).toBeTruthy(); // vs the age-group average
-    expect(within(row).getByText('—')).toBeTruthy(); // no "vs your normal" for VO₂max
     // The bridged age label is folded into the baseline row, not shown twice.
     expect(screen.queryByText('HRV (overnight)')).toBeNull();
   });
