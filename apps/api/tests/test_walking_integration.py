@@ -171,10 +171,11 @@ async def test_generate_and_store_post_walk_analysis_is_hr_pace_based_and_idempo
                 raw_payload={},
             )
         )
+        walk_date = date(2026, 7, 3)
         session.add(
             PlannedWorkout(
                 user_id=user_id,
-                workout_date=TODAY,
+                workout_date=walk_date,
                 title="Rest",
                 workout_type="rest",
                 version=1,
@@ -187,7 +188,7 @@ async def test_generate_and_store_post_walk_analysis_is_hr_pace_based_and_idempo
             garmin_activity_id=456,
             activity_name="Morning Walk",
             activity_type="walking",
-            start_utc=datetime(2026, 7, 2, 8, 0),
+            start_utc=datetime(2026, 7, 3, 8, 0),
             duration_sec=40 * 60,
             moving_duration_sec=38 * 60,
             distance_m=3800,
@@ -201,7 +202,7 @@ async def test_generate_and_store_post_walk_analysis_is_hr_pace_based_and_idempo
             garmin_activity_id=457,
             activity_name="Short Walk",
             activity_type="walking",
-            start_utc=datetime(2026, 7, 2, 12, 0),
+            start_utc=datetime(2026, 7, 3, 12, 0),
             duration_sec=8 * 60,
             distance_m=600,
             raw_summary={},
@@ -225,7 +226,9 @@ async def test_generate_and_store_post_walk_analysis_is_hr_pace_based_and_idempo
         await session.commit()
 
         service = PostWalkAnalysisService(session)
-        pending = await service.pending_walk_activities(user_id, since=datetime(2026, 7, 2))
+        pending = await service.pending_walk_activities(
+            user_id, since=datetime.combine(walk_date, datetime.min.time())
+        )
         assert [item.id for item in pending] == [activity.id]
 
         fake_client = FakeWalkClient()
