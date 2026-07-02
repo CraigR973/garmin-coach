@@ -138,6 +138,7 @@ const baseSnapshot: DailyLoopEnvelope = {
     },
     manualEntry: null,
     postWorkoutAnalyses: [],
+    postFlexibilityAnalyses: [],
     plannedWorkouts: [
       {
         id: '55555555-5555-4555-8555-555555555555',
@@ -313,6 +314,44 @@ describe('DashboardPage', () => {
     // The overnight glance (a separate query) only fires now that the body is open.
     expect(await screen.findByText('Last night: 19→21 °C, fan ran 3.5 h (peak speed 5)')).toBeTruthy();
     expect((await screen.findByTestId('overnight-room-verdict-badge')).textContent).toBe('Red');
+  });
+
+  it('renders a flexibility analysis on the Today section', async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.plannedWorkouts = [
+          {
+            ...snapshot.data.plannedWorkouts[0],
+            title: 'Mobility',
+            workoutType: 'mobility',
+            plannedDurationMin: 16,
+            intensityTarget: 'Easy mobility',
+          },
+        ];
+        snapshot.data.postFlexibilityAnalyses = [
+          {
+            id: '99999999-9999-4999-8999-999999999999',
+            activityId: '99999999-1111-4111-8111-999999999999',
+            activityName: '16 Min Mobility Workout',
+            activityType: 'other',
+            generatedAtUtc: '2026-06-20T08:20:00Z',
+            promptVersion: 'post-flexibility-v1',
+            modelName: 'claude-sonnet-4-6',
+            outputMarkdown: '**Mobility read:** relaxed and consistent.',
+            heartRateReview: { avgAboveRestingBpm: 24 },
+            consistency: { currentStreak: 3, sessions4w: 18 },
+            activityCheckIn: null,
+          },
+        ];
+      }),
+    );
+
+    expect(await screen.findByText('Flexibility day')).toBeTruthy();
+    expect(screen.getByText('Flexibility read')).toBeTruthy();
+    expect(screen.getByText('16 Min Mobility Workout')).toBeTruthy();
+    expect(screen.getByText('Mobility read:')).toBeTruthy();
+    expect(screen.getByText(/relaxed and consistent/i)).toBeTruthy();
+    expect(screen.getByText('Advisory')).toBeTruthy();
   });
 
   it('edits today’s session with the duration and intensity dials', async () => {

@@ -290,6 +290,7 @@ export function DashboardPage() {
   const sleep = daily.sleep;
   const thermal = daily.thermalState;
   const postWorkouts = daily.postWorkoutAnalyses ?? [];
+  const postFlexibilityAnalyses = daily.postFlexibilityAnalyses ?? [];
   const hasRide = postWorkouts.length > 0;
   const todaysWorkouts = daily.plannedWorkouts;
   const dayState = dayStateForWorkouts(todaysWorkouts);
@@ -358,6 +359,7 @@ export function DashboardPage() {
         <DayPlanBody
           workouts={todaysWorkouts}
           planAdjustments={analysis?.planAdjustments ?? []}
+          flexibilityAnalyses={postFlexibilityAnalyses}
           subjectDate={daily.subjectDate}
           workoutActions={todayActions}
           dayActions={dayActions}
@@ -487,12 +489,14 @@ type TodayWorkoutActions = {
 function DayPlanBody({
   workouts,
   planAdjustments,
+  flexibilityAnalyses,
   subjectDate,
   workoutActions,
   dayActions,
 }: {
   workouts: TodayWorkout[];
   planAdjustments: string[];
+  flexibilityAnalyses: DailyLoopData['postFlexibilityAnalyses'];
   subjectDate: string;
   workoutActions: TodayWorkoutActions;
   dayActions: {
@@ -527,6 +531,8 @@ function DayPlanBody({
         </p>
       )}
 
+      {flexibilityAnalyses.length > 0 ? <FlexibilityReadList items={flexibilityAnalyses} /> : null}
+
       <div className={`space-y-3${hasWorkouts ? ' border-t border-border pt-4' : ''}`}>
         <AddWorkoutButtons busy={dayActions.busy} onAddWorkout={dayActions.onAddWorkout} />
         <div className="flex flex-wrap gap-2">
@@ -544,6 +550,34 @@ function DayPlanBody({
           )}
         </div>
         <ActualWorkoutForm busy={dayActions.busy} onSubmit={dayActions.onRecordActual} />
+      </div>
+    </div>
+  );
+}
+
+function FlexibilityReadList({
+  items,
+}: {
+  items: DailyLoopData['postFlexibilityAnalyses'];
+}) {
+  return (
+    <div className="space-y-3 rounded-xl border border-border bg-bg px-3 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold text-text-primary">Flexibility read</p>
+          <p className="text-sm text-text-secondary">
+            {items.length === 1 ? items[0].activityName ?? 'Mobility session' : `${items.length} mobility sessions`}
+          </p>
+        </div>
+        <Badge variant="muted">Advisory</Badge>
+      </div>
+      <div className="space-y-4">
+        {items.map((item) => (
+          <div key={item.id} className="space-y-2 border-t border-border pt-3 first:border-t-0 first:pt-0">
+            <p className="text-xs text-text-secondary">Generated {formatDateTime(item.generatedAtUtc)}</p>
+            <Markdown>{item.outputMarkdown}</Markdown>
+          </div>
+        ))}
       </div>
     </div>
   );
