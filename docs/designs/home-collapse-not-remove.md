@@ -1,6 +1,6 @@
 # Batch 37 — Collapse-not-remove Home sections
 
-Status: Implemented on `feat/batch-37-collapse-home-sections` (not yet shipped).
+Status: Shipped in PR #57 (squash `f9da1ba`).
 Decision #109 (renumbered from the pre-written #108, which the 2026-07-02 Batch
 38/39 replan took — DECISIONS #108).
 Tier: 🔴 High (revises a shipped Home model — the Batch 24 phase-swap — and needs
