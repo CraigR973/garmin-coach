@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 
-from src.models.coaching import Analysis, FanStateReading, TemperatureReading
+from src.models.coaching import Activity, Analysis, FanStateReading, TemperatureReading
 from src.models.profile import Profile, UserRole
 from src.services.nudge_alerts import (
     ANALYSIS_TYPE_ANALYSIS_PUSH,
@@ -373,7 +373,19 @@ async def test_workout_analysis_pushes_once_per_activity(db_conn: AsyncConnectio
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     async with session_factory() as session:
         profile = await _seed_profile(session)
-        activity_id = uuid.uuid4()
+        activity = Activity(
+            user_id=profile.id,
+            garmin_activity_id=987654,
+            activity_name="East Ayrshire ride",
+            activity_type="road_biking",
+            start_utc=datetime(2026, 7, 3, 7, 30),
+            duration_sec=3600,
+            exclude_from_recovery=False,
+            raw_summary={"activityType": {"typeKey": "road_biking"}},
+        )
+        session.add(activity)
+        await session.flush()
+        activity_id = activity.id
         analysis = Analysis(
             user_id=profile.id,
             activity_id=activity_id,
