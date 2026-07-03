@@ -388,18 +388,87 @@ async def test_morning_weather_sync_runs_daily_sync_before_analysis() -> None:
 
     analysis_service.generate_and_store = AsyncMock(side_effect=generate)
 
+    coaching_service = MagicMock()
+    coaching_service.regenerate_for_verdict = AsyncMock(return_value=[])
+    nudge_service = MagicMock()
+    nudge_service.push_morning_verdict = AsyncMock(return_value=True)
+
     with (
         patch("src.scheduler.AsyncSessionLocal", return_value=_Ctx()),
         patch("src.scheduler.OpenMeteoClient", return_value=meteo_client),
         patch("src.scheduler.EnvironmentSyncService", return_value=weather_service),
         patch("src.scheduler._sync_garmin_daily", side_effect=fake_daily_sync),
         patch("src.scheduler.MorningAnalysisService", return_value=analysis_service),
+        patch("src.scheduler.ExecutableCoachingService", return_value=coaching_service),
+        patch("src.scheduler.NudgeAlertService", return_value=nudge_service),
     ):
         await run_morning_weather_sync()
 
     assert "garmin_daily" in calls
     assert "analysis" in calls
     assert calls.index("garmin_daily") < calls.index("analysis")
+    # Batch 45: the freshly generated verdict is pushed exactly once.
+    assert nudge_service.push_morning_verdict.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_activity_poll_pushes_each_new_analysis() -> None:
+    """Each newly generated post-workout analysis triggers one push, per kind."""
+    profile = _profile()
+
+    session = AsyncMock()
+    scalars = MagicMock()
+    scalars.scalars.return_value.all.return_value = [profile]
+    session.execute = AsyncMock(return_value=scalars)
+
+    class _Ctx:
+        async def __aenter__(self) -> AsyncMock:
+            return session
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+    client = MagicMock()
+    client.fetch_activity_payloads = MagicMock(return_value=[])
+    sync_service = MagicMock()
+    sync_service.sync_activities = AsyncMock(
+        return_value=MagicMock(activities_synced=0, timeseries_samples_synced=0)
+    )
+
+    def _result() -> MagicMock:
+        return MagicMock(generated=True, analysis=MagicMock(activity_id=uuid.uuid4()))
+
+    def _service(method: str) -> MagicMock:
+        svc = MagicMock()
+        setattr(svc, method, AsyncMock(return_value=[_result()]))
+        return svc
+
+    ride = _service("generate_for_pending_rides")
+    flex = _service("generate_for_pending_flexibility")
+    strength = _service("generate_for_pending_strength")
+    walk = _service("generate_for_pending_walks")
+
+    nudge_service = MagicMock()
+    nudge_service.push_workout_analysis = AsyncMock(return_value=True)
+
+    from src.scheduler import run_garmin_activity_poll
+
+    with (
+        patch("src.scheduler.AsyncSessionLocal", return_value=_Ctx()),
+        patch("src.scheduler.GarminConnectClient", return_value=client),
+        patch("src.scheduler.GarminSyncService", return_value=sync_service),
+        patch("src.scheduler.PostWorkoutAnalysisService", return_value=ride),
+        patch("src.scheduler.PostFlexibilityAnalysisService", return_value=flex),
+        patch("src.scheduler.PostStrengthAnalysisService", return_value=strength),
+        patch("src.scheduler.PostWalkAnalysisService", return_value=walk),
+        patch("src.scheduler.NudgeAlertService", return_value=nudge_service),
+    ):
+        await run_garmin_activity_poll()
+
+    # One push per pass (ride / flexibility / strength / walk).
+    assert nudge_service.push_workout_analysis.await_count == 4
+    kinds = {call.kwargs["kind"] for call in nudge_service.push_workout_analysis.await_args_list}
+    assert kinds == {"ride", "flexibility", "strength", "walk"}
 
 
 @pytest.mark.asyncio

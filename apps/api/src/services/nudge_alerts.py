@@ -10,19 +10,50 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.coaching import Analysis, DailyMetric, TemperatureReading, WeatherDaily
+from src.models.coaching import (
+    Analysis,
+    DailyMetric,
+    FanStateReading,
+    TemperatureReading,
+    WeatherDaily,
+)
 from src.models.profile import Profile
 from src.services.environment_freshness import HIVE_FRESHNESS_LIMIT, is_hive_temperature_fresh
+from src.services.fan_control import MAX_SPEED, ON_THRESHOLD_C
 from src.services.push_notification_service import send_notification
 
 ANALYSIS_TYPE_EVENING_NUDGE = "evening_nudge"
 ANALYSIS_TYPE_THERMAL_ALERT = "thermal_alert"
 ANALYSIS_TYPE_STALE_SOURCE_ALERT = "stale_source_alert"
+ANALYSIS_TYPE_VERDICT_PUSH = "verdict_push"
+ANALYSIS_TYPE_ANALYSIS_PUSH = "analysis_push"
 PROMPT_VERSION = "notification-rules:v1"
 
 EVENING_NUDGE_TIME = time(20, 0)
 EVENING_NUDGE_WINDOW_MIN = 20
 GARMIN_FRESHNESS_HOUR = 8
+
+# Bedroom disruption ceiling (Batch 9 / Batch 27; matches the fan speed ladder's
+# 20.0 C step). Above this the fan runs at max, so "still warm here" is the signal
+# that airflow alone cannot cope.
+THERMAL_CRITICAL_C = 20.0
+
+# Batch 45 — reconcile the evening thermal nudges with the Batch 27 fan autopilot.
+# When the loop's latest tick is one of these, the fan is managing the room, so the
+# manual "you pre-cool / seal it" nudges are suppressed.
+FAN_HANDLING_ACTIONS = frozenset({"apply", "hold", "winddown"})
+# When the latest tick is one of these, the autopilot could not act (cloud down /
+# no fresh temperature), so a manual "check the fan" ask is warranted.
+FAN_CANT_COPE_ACTIONS = frozenset({"unreachable", "no_data"})
+
+# Post-workout push titles by activity kind (breathwork has no per-session
+# analysis — DECISIONS #112 — so it is deliberately absent).
+ANALYSIS_PUSH_TITLES: dict[str, str] = {
+    "ride": "Ride analysis ready",
+    "strength": "Strength read ready",
+    "flexibility": "Mobility read ready",
+    "walk": "Walk read ready",
+}
 
 
 @dataclass(frozen=True)
@@ -44,6 +75,22 @@ class FreshnessSnapshot:
     last_garmin_recorded_at_utc: datetime | None
     last_hive_captured_at_utc: datetime | None
     latest_weather_date: date | None
+
+
+@dataclass(frozen=True)
+class FanReconcileState:
+    """The Batch 27 fan autopilot's state, as seen by the evening thermal nudge.
+
+    ``auto_enabled`` is ``Profile.fan_auto_enabled``; ``latest_action`` is the most
+    recent ``fan_state_readings.action`` (``None`` when the loop has not written a
+    tick yet); ``fan_at_max`` is ``True`` only when that tick has the fan on at
+    :data:`~src.services.fan_control.MAX_SPEED`. The default is "autopilot off",
+    which preserves the pre-Batch-45 manual-nudge behaviour.
+    """
+
+    auto_enabled: bool = False
+    latest_action: str | None = None
+    fan_at_max: bool = False
 
 
 def local_now(timezone_name: str, now_utc: datetime | None = None) -> datetime:
@@ -84,11 +131,69 @@ def build_evening_nudge_plan(subject_date: date) -> NotificationPlan:
     )
 
 
+def _verdict_headline(analysis: Analysis) -> str | None:
+    """The verdict's first reason, used as the push's one-line headline."""
+    packet = analysis.context_packet
+    verdict = packet.get("verdict") if isinstance(packet, dict) else None
+    if not isinstance(verdict, dict):
+        return None
+    reasons = verdict.get("reasons")
+    if isinstance(reasons, list) and reasons and isinstance(reasons[0], str):
+        return reasons[0]
+    return None
+
+
+def build_verdict_push_plan(analysis: Analysis, subject_date: date) -> NotificationPlan:
+    """A one-per-day push announcing today's morning verdict (Batch 45)."""
+    status = (analysis.verdict or "").strip()
+    title = f"Today: {status}" if status else "Your morning verdict is ready"
+    body = _verdict_headline(analysis) or "Open the app for today's read."
+    return NotificationPlan(
+        analysis_type=ANALYSIS_TYPE_VERDICT_PUSH,
+        tag=f"verdict-{subject_date.isoformat()}",
+        title=title,
+        body=body,
+        severity=status.lower() if status else "info",
+        data={"url": "/", "kind": "verdict_push", "status": status},
+        context={
+            "subjectDate": subject_date.isoformat(),
+            "status": status,
+            "rule": "verdict_push",
+        },
+    )
+
+
+def build_analysis_push_plan(analysis: Analysis, *, kind: str) -> NotificationPlan | None:
+    """A one-per-activity push announcing a fresh post-workout read (Batch 45).
+
+    Returns ``None`` for an unknown kind or an analysis with no ``activity_id`` (so
+    breathwork, which has no per-session analysis, can never produce one).
+    """
+    title = ANALYSIS_PUSH_TITLES.get(kind)
+    if title is None or analysis.activity_id is None:
+        return None
+    return NotificationPlan(
+        analysis_type=ANALYSIS_TYPE_ANALYSIS_PUSH,
+        tag=f"analysis-{analysis.activity_id}",
+        title=title,
+        body="Your post-workout analysis is ready — tap to read it.",
+        severity="info",
+        data={"url": "/", "kind": "analysis_push", "activityKind": kind},
+        context={
+            "subjectDate": analysis.subject_date.isoformat(),
+            "activityId": str(analysis.activity_id),
+            "activityKind": kind,
+            "rule": "analysis_push",
+        },
+    )
+
+
 def evaluate_thermal_alert(
     reading: TemperatureReading | None,
     *,
     timezone_name: str,
     now_utc: datetime | None = None,
+    fan: FanReconcileState | None = None,
 ) -> NotificationPlan | None:
     if reading is None:
         return None
@@ -109,6 +214,12 @@ def evaluate_thermal_alert(
         "temperatureC": temp_c,
         "capturedAtUtc": captured_aware.replace(tzinfo=None).isoformat(),
     }
+
+    # Batch 45: when the fan autopilot is armed it manages the room overnight, so
+    # the manual pre-cool/seal nudges below are redundant — defer to the fan and
+    # only escalate a "check the fan" ask when it demonstrably cannot cope.
+    if fan is not None and fan.auto_enabled:
+        return _fan_reconciled_thermal_alert(temp_c, subject_date, context, fan)
 
     if temp_c >= 20.0:
         return NotificationPlan(
@@ -164,6 +275,46 @@ def evaluate_thermal_alert(
         )
 
     return None
+
+
+def _fan_reconciled_thermal_alert(
+    temp_c: float,
+    subject_date: date,
+    context: dict[str, object],
+    fan: FanReconcileState,
+) -> NotificationPlan | None:
+    """Thermal alert when the fan autopilot is armed (Batch 45).
+
+    The Batch 27 loop drives airflow overnight, so the manual pre-cool/seal nudges
+    are suppressed. A single "check the fan" push is escalated only while the room
+    is warm enough to matter *and* the fan cannot cope — the cloud is down, it has
+    no fresh reading, or it is already at max and the room is still critical.
+    """
+    if temp_c < ON_THRESHOLD_C:
+        # Comfortable room — nothing for Mark to act on, fan or not.
+        return None
+
+    if fan.latest_action in FAN_CANT_COPE_ACTIONS:
+        reason = (
+            "the fan is not responding"
+            if fan.latest_action == "unreachable"
+            else "the fan has no room reading"
+        )
+    elif temp_c >= THERMAL_CRITICAL_C and fan.fan_at_max:
+        reason = "the fan is at full speed but the room is still warm"
+    else:
+        # The fan is handling the warm room — stay quiet.
+        return None
+
+    return NotificationPlan(
+        analysis_type=ANALYSIS_TYPE_THERMAL_ALERT,
+        tag=f"thermal-fan-check-{subject_date.isoformat()}",
+        title="Check the bedroom fan",
+        body=f"Bedroom is {temp_c:.1f}C and {reason}. Go check the bedroom fan.",
+        severity="critical",
+        data={"url": "/bedroom", "kind": "thermal", "severity": "critical"},
+        context={**context, "rule": "fan_cant_cope", "fanAction": fan.latest_action},
+    )
 
 
 def evaluate_stale_sources(snapshot: FreshnessSnapshot) -> list[NotificationPlan]:
@@ -269,6 +420,55 @@ class NudgeAlertService:
             now_utc=now,
         )
 
+    async def push_morning_verdict(
+        self,
+        profile: Profile,
+        analysis: Analysis,
+        *,
+        subject_date: date,
+        now_utc: datetime | None = None,
+        commit: bool = True,
+    ) -> bool:
+        """Push today's morning verdict once (Batch 45).
+
+        Idempotent per (profile, subject_date) via the ``verdict-{date}`` tag, so
+        the 09:30 backstop and any regeneration never double-push.
+        """
+        plan = build_verdict_push_plan(analysis, subject_date)
+        return await self._send_once(
+            profile,
+            plan,
+            subject_date=subject_date,
+            commit=commit,
+            now_utc=now_utc or datetime.now(UTC),
+        )
+
+    async def push_workout_analysis(
+        self,
+        profile: Profile,
+        analysis: Analysis,
+        *,
+        kind: str,
+        now_utc: datetime | None = None,
+        commit: bool = True,
+    ) -> bool:
+        """Push a fresh post-workout read once per activity (Batch 45).
+
+        Idempotent per ``activity_id`` via the ``analysis-{id}`` tag, so a
+        regeneration on a newer check-in or a ``PROMPT_VERSION`` bump does not
+        re-push. Returns ``False`` for a kind with no push (e.g. breathwork).
+        """
+        plan = build_analysis_push_plan(analysis, kind=kind)
+        if plan is None:
+            return False
+        return await self._send_once(
+            profile,
+            plan,
+            subject_date=analysis.subject_date,
+            commit=commit,
+            now_utc=now_utc or datetime.now(UTC),
+        )
+
     async def run_monitoring_alerts(
         self,
         profile: Profile,
@@ -279,12 +479,14 @@ class NudgeAlertService:
         now = now_utc or datetime.now(UTC)
         subject_date = local_now(profile.timezone, now).date()
         latest_temperature = await self._latest_temperature(profile.id)
+        fan = await self._fan_reconcile_state(profile)
         plans: list[NotificationPlan] = []
 
         thermal_plan = evaluate_thermal_alert(
             latest_temperature,
             timezone_name=profile.timezone,
             now_utc=now,
+            fan=fan,
         )
         if thermal_plan is not None:
             plans.append(thermal_plan)
@@ -379,6 +581,36 @@ class NudgeAlertService:
                     select(TemperatureReading)
                     .where(TemperatureReading.user_id == user_id)
                     .order_by(TemperatureReading.captured_at_utc.desc())
+                    .limit(1)
+                )
+            )
+            .scalars()
+            .first()
+        )
+
+    async def _fan_reconcile_state(self, profile: Profile) -> FanReconcileState:
+        """Read the Batch 27 autopilot's state for the thermal-nudge reconciliation."""
+        if not getattr(profile, "fan_auto_enabled", False):
+            return FanReconcileState(auto_enabled=False)
+        latest = await self._latest_fan_state(profile.id)
+        if latest is None:
+            return FanReconcileState(auto_enabled=True)
+        fan_at_max = (
+            bool(latest.fan_on) and latest.fan_speed is not None and latest.fan_speed >= MAX_SPEED
+        )
+        return FanReconcileState(
+            auto_enabled=True,
+            latest_action=latest.action,
+            fan_at_max=fan_at_max,
+        )
+
+    async def _latest_fan_state(self, user_id: uuid.UUID) -> FanStateReading | None:
+        return (
+            (
+                await self.session.execute(
+                    select(FanStateReading)
+                    .where(FanStateReading.user_id == user_id)
+                    .order_by(FanStateReading.captured_at_utc.desc())
                     .limit(1)
                 )
             )
