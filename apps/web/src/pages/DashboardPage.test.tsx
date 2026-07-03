@@ -371,6 +371,28 @@ describe('DashboardPage', () => {
     expect(screen.queryByText('Tomorrow')).toBeNull();
   });
 
+  it('places sections in the Batch 51 act/context desktop columns without changing the mobile stack', async () => {
+    renderPage();
+    await screen.findByText('Cycle day');
+
+    // Act lane: today's plan card gets column 1 on md+…
+    const todayCard = screen.getByRole('button', { name: /cycle day/i }).closest('#home-section-today');
+    expect(todayCard?.className).toContain('md:col-start-1');
+    // …context lane: the sleep/bedroom cards get column 2…
+    const lastNightCard = screen
+      .getByRole('button', { name: /last night's sleep/i })
+      .closest('#home-section-lastNight');
+    expect(lastNightCard?.className).toContain('md:col-start-2');
+    const tonightCard = screen.getByText('Tonight').closest('#home-section-tonight');
+    expect(tonightCard?.className).toContain('md:col-start-2');
+    const bedroomCard = screen.getByText('Bedroom').closest('#home-section-bedroom');
+    expect(bedroomCard?.className).toContain('md:col-start-2');
+    // …and every card still shares one `grid-cols-1` container, so mobile
+    // renders the exact same single stacked column as before this batch.
+    expect(todayCard?.parentElement).toBe(lastNightCard?.parentElement);
+    expect(todayCard?.parentElement?.className).toContain('grid-cols-1');
+  });
+
   it('reveals a collapsed section body only when it is expanded (lazy)', async () => {
     const user = userEvent.setup();
     renderPage();
