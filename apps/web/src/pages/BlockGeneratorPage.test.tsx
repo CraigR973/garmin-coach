@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BlockGeneratorPage } from './BlockGeneratorPage';
 
 const apiFetchMock = vi.fn();
@@ -74,8 +74,35 @@ const lockResponse = {
   errors: [],
 };
 
+const draftWithProposal = {
+  ...draft,
+  data: {
+    ...draft.data,
+    draft: {
+      ...draft.data.draft,
+      ftpWatts: 292,
+      progressionProposal: {
+        status: 'ready',
+        source: 'last_completed_block',
+        currentFtpWatts: 280,
+        recommendedFtpWatts: 292,
+        ftpChangeWatts: 12,
+        focus: 'Carry the build forward with a slightly higher FTP seed.',
+        structuralNudge: null,
+        summary: 'Last block looks ready for a measured FTP bump.',
+        evidence: ['Work intervals: 5 on / 6 over / 1 under (92% hit-or-over).'],
+        outcome: { weekCount: 13 },
+      },
+    },
+  },
+};
+
 function renderPage(queryClient?: QueryClient) {
-  const qc = queryClient ?? new QueryClient();
+  const qc =
+    queryClient ??
+    new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
@@ -86,6 +113,10 @@ function renderPage(queryClient?: QueryClient) {
 }
 
 describe('BlockGeneratorPage', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+  });
+
   it('shows the generate form when no draft exists', async () => {
     apiFetchMock.mockResolvedValue(noDraft);
     renderPage();
@@ -123,6 +154,14 @@ describe('BlockGeneratorPage', () => {
     expect(await screen.findByText('Week 1 · Build1')).toBeTruthy();
     expect(screen.getByText('VO2 Max 30/30')).toBeTruthy();
     expect(screen.getByRole('button', { name: /Lock block/ })).toBeTruthy();
+  });
+
+  it('renders the last-block proposal on the draft', async () => {
+    apiFetchMock.mockResolvedValue(draftWithProposal);
+    renderPage();
+    expect(await screen.findByText('Last-block proposal')).toBeTruthy();
+    expect(screen.getByText('280w → 292w')).toBeTruthy();
+    expect(screen.getByText(/measured FTP bump/)).toBeTruthy();
   });
 
   it('locks the block and reports the workout count', async () => {

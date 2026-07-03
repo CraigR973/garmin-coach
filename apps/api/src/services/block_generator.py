@@ -39,6 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import KnowledgeBase, PlanBlock, PlannedWorkout
 from src.models.profile import Profile
+from src.services.block_progression import BlockProgressionService, NextBlockProposal
 from src.services.coaching_state import (
     BLOCK_SEQUENCE,
     _block_name,
@@ -97,6 +98,7 @@ def generate_block_plan(
     ftp_watts: int,
     athlete_name: str,
     generated_at_utc: datetime,
+    progression_proposal: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the draft content for a 13-week 2121 block (pure, deterministic)."""
     weeks: list[dict[str, Any]] = []
@@ -137,6 +139,7 @@ def generate_block_plan(
         "athleteName": athlete_name,
         "generatedAtUtc": generated_at_utc.isoformat(),
         "lockedAtUtc": None,
+        "progressionProposal": progression_proposal,
         "weeks": weeks,
     }
 
@@ -271,8 +274,15 @@ class BlockGeneratorService:
 
         if start_date is None:
             start_date = next_cycle_start(date.today())
+        proposal: NextBlockProposal | None = None
         if ftp_watts is None:
-            ftp_watts = await self._ftp_watts(user.id)
+            current_ftp = await self._ftp_watts(user.id)
+            proposal = await BlockProgressionService(self.session).proposal_for_next_block(
+                user,
+                start_date=start_date,
+                current_ftp_watts=current_ftp,
+            )
+            ftp_watts = proposal.recommended_ftp_watts
         athlete_name = await self._athlete_name(user)
 
         plan = generate_block_plan(
@@ -280,6 +290,7 @@ class BlockGeneratorService:
             ftp_watts=ftp_watts,
             athlete_name=athlete_name,
             generated_at_utc=_utcnow(),
+            progression_proposal=proposal.to_dict() if proposal is not None else None,
         )
         await self._save_draft(user, plan, existing)
         await self.session.commit()

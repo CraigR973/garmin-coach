@@ -19,8 +19,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from src.models.coaching import (
+    Activity,
     Analysis,
     KnowledgeBase,
+    ManualEntry,
     PlanBlock,
     PlannedWorkout,
     WorkoutDeliveryProposal,
@@ -33,6 +35,12 @@ from src.services.block_generator import (
     block_label,
     generate_block_plan,
     next_cycle_start,
+)
+from src.services.block_progression import (
+    BlockOutcome,
+    ExecutionGradeSummary,
+    execution_summary_from_packets,
+    propose_next_block,
 )
 from src.services.vo2_progression import (
     VO2_PROTOCOL_30_30,
@@ -148,6 +156,111 @@ def test_generated_vo2_days_use_progression() -> None:
     assert _vo2_protocol_for_week(plan, 7) == VO2_PROTOCOL_RONNESTAD_30_15
     assert _vo2_protocol_for_week(plan, 8) == VO2_PROTOCOL_RONNESTAD_30_15
     assert _vo2_protocol_for_week(plan, 10) == VO2_PROTOCOL_RONNESTAD_30_15
+
+
+def test_block_progression_proposes_ftp_bump_from_over_target_rising_block() -> None:
+    outcome = BlockOutcome(
+        block_start=date(2026, 4, 27),
+        block_end=date(2026, 7, 26),
+        week_count=13,
+        planned_workouts=36,
+        planned_duration_min=2400,
+        achieved_sessions=34,
+        achieved_duration_min=2450,
+        achieved_load=1800.0,
+        adherence_captured=32,
+        adherence_done=30,
+        adherence_missed=2,
+        execution=ExecutionGradeSummary(work_intervals=12, on=5, over=6, under=1),
+        ftp_drift_status="rising",
+        current_ftp_watts=280,
+        suggested_ftp_watts=292,
+        verdict_trend="stable",
+        verdict_counts={"green": 8, "amber": 3, "red": 0},
+    )
+
+    proposal = propose_next_block(outcome)
+
+    assert proposal.status == "ready"
+    assert proposal.recommended_ftp_watts == 292
+    assert proposal.ftp_change_watts == 12
+    assert "bump" in proposal.summary
+
+
+def test_block_progression_holds_or_cuts_after_under_target_falling_block() -> None:
+    outcome = BlockOutcome(
+        block_start=date(2026, 4, 27),
+        block_end=date(2026, 7, 26),
+        week_count=13,
+        planned_workouts=36,
+        planned_duration_min=2400,
+        achieved_sessions=25,
+        achieved_duration_min=1700,
+        achieved_load=1200.0,
+        adherence_captured=28,
+        adherence_done=18,
+        adherence_missed=8,
+        execution=ExecutionGradeSummary(work_intervals=12, on=3, over=0, under=9),
+        ftp_drift_status="falling",
+        current_ftp_watts=280,
+        suggested_ftp_watts=270,
+        verdict_trend="degraded",
+        verdict_counts={"green": 3, "amber": 6, "red": 2},
+    )
+
+    proposal = propose_next_block(outcome)
+
+    assert proposal.recommended_ftp_watts == 270
+    assert proposal.structural_nudge is not None
+    assert "Repeat" in proposal.focus
+
+
+def test_block_progression_falls_back_with_insufficient_history() -> None:
+    outcome = BlockOutcome(
+        block_start=None,
+        block_end=None,
+        week_count=4,
+        planned_workouts=0,
+        planned_duration_min=0,
+        achieved_sessions=0,
+        achieved_duration_min=0,
+        achieved_load=0.0,
+        adherence_captured=0,
+        adherence_done=0,
+        adherence_missed=0,
+        execution=ExecutionGradeSummary(),
+        ftp_drift_status="insufficient_data",
+        current_ftp_watts=280,
+        suggested_ftp_watts=None,
+        verdict_trend="insufficient_data",
+        insufficient_reason="Only 4 completed plan weeks found.",
+    )
+
+    proposal = propose_next_block(outcome)
+
+    assert proposal.status == "fallback"
+    assert proposal.recommended_ftp_watts == 280
+    assert proposal.source == "static_default"
+
+
+def test_execution_summary_counts_only_work_interval_grades() -> None:
+    summary = execution_summary_from_packets(
+        [
+            {
+                "intervals": [
+                    {"role": "warmup", "adherence": None},
+                    {"role": "work", "adherence": "on"},
+                    {"role": "work", "adherence": "over"},
+                    {"role": "recovery", "adherence": None},
+                    {"role": "work", "adherence": "under"},
+                ]
+            }
+        ]
+    )
+
+    assert summary.work_intervals == 3
+    assert summary.hit_rate == pytest.approx(2 / 3, abs=0.001)
+    assert summary.under == 1
 
 
 # ---------------------------------------------------------------------------
@@ -458,6 +571,157 @@ async def test_generate_allowed_after_lock(db_conn: AsyncConnection) -> None:
             user, start_date=START + timedelta(days=13 * 7)
         )
         assert draft["status"] == "draft"
+
+
+@pytest.mark.asyncio
+async def test_generate_seeds_from_completed_block_progression(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    block_start = date(2026, 4, 27)
+    next_start = block_start + timedelta(days=13 * 7)
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            KnowledgeBase(
+                user_id=user_id,
+                section="profile",
+                version=1,
+                is_active=True,
+                source="test",
+                content={"athleteName": "Mark", "ftpWatts": 280},
+                updated_by_profile_id=user_id,
+            )
+        )
+        for week in range(13):
+            week_start = block_start + timedelta(days=week * 7)
+            plan_block = PlanBlock(
+                user_id=user_id,
+                name=f"Completed Week {week + 1}",
+                version=1,
+                sequence_index=week + 1,
+                block_type="build" if week % 3 != 2 else "recovery",
+                start_date=week_start,
+                end_date=week_start + timedelta(days=6),
+                goals_json={"focus": "test"},
+                raw_plan={"source": "test"},
+            )
+            session.add(plan_block)
+            await session.flush()
+            workout = PlannedWorkout(
+                user_id=user_id,
+                plan_block_id=plan_block.id,
+                workout_date=week_start + timedelta(days=1),
+                version=1,
+                title=f"Block ride {week + 1}",
+                workout_type="bike_vo2",
+                status="planned",
+                is_active=True,
+                planned_duration_min=60,
+                intensity_target="VO2",
+                structured_workout={"format": "bike", "steps": []},
+                source="test",
+            )
+            session.add(workout)
+            await session.flush()
+            session.add(
+                ManualEntry(
+                    user_id=user_id,
+                    planned_workout_id=workout.id,
+                    planned_workout_version=1,
+                    entry_date=workout.workout_date,
+                    entry_at_utc=datetime(
+                        workout.workout_date.year,
+                        workout.workout_date.month,
+                        workout.workout_date.day,
+                        12,
+                    ),
+                    adherence_status="completed",
+                    actual_workout_json={},
+                    supplements_json={},
+                    food_json={},
+                )
+            )
+            verdict = "Green" if week < 10 else "Amber"
+            session.add(
+                Analysis(
+                    user_id=user_id,
+                    analysis_type="morning",
+                    subject_date=workout.workout_date,
+                    generated_at_utc=datetime(
+                        workout.workout_date.year,
+                        workout.workout_date.month,
+                        workout.workout_date.day,
+                        7,
+                    ),
+                    prompt_version="test",
+                    verdict=verdict,
+                    context_packet={},
+                    output_markdown="ok",
+                    raw_response={},
+                )
+            )
+            session.add(
+                Analysis(
+                    user_id=user_id,
+                    analysis_type="post_workout",
+                    subject_date=workout.workout_date,
+                    generated_at_utc=datetime(
+                        workout.workout_date.year,
+                        workout.workout_date.month,
+                        workout.workout_date.day,
+                        18,
+                    ),
+                    prompt_version="test",
+                    verdict="advisory",
+                    context_packet={
+                        "intervals": [
+                            {"role": "work", "adherence": "over"},
+                            {"role": "work", "adherence": "on"},
+                        ]
+                    },
+                    output_markdown="ok",
+                    raw_response={},
+                )
+            )
+
+        ride_days = [
+            next_start - timedelta(days=35),
+            next_start - timedelta(days=28),
+            next_start - timedelta(days=14),
+            next_start - timedelta(days=7),
+        ]
+        for index, ride_day in enumerate(ride_days):
+            power = 200 if index < 2 else 220
+            session.add(
+                Activity(
+                    user_id=user_id,
+                    garmin_activity_id=1000 + index,
+                    activity_name=f"FTP drift ride {index}",
+                    activity_type="indoor_cycling",
+                    start_utc=datetime(ride_day.year, ride_day.month, ride_day.day, 9),
+                    duration_sec=3600,
+                    avg_power_watts=power,
+                    avg_heart_rate_bpm=150,
+                    normalized_power_watts=power,
+                    training_load=80.0,
+                    raw_summary={},
+                )
+            )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        draft = await BlockGeneratorService(session).generate(user, start_date=next_start)
+
+    assert draft["ftpWatts"] > 280
+    proposal = draft["progressionProposal"]
+    assert proposal["status"] == "ready"
+    assert proposal["source"] == "last_completed_block"
+    assert proposal["recommendedFtpWatts"] == draft["ftpWatts"]
+    assert proposal["outcome"]["weekCount"] == 13
 
 
 @pytest.mark.asyncio
