@@ -60,7 +60,7 @@ import { dayStateForWorkouts, type DayCategory } from '@/lib/workoutCategories';
 import {
   isEveningNow,
   orderedSections,
-  PRIMARY_BY_PHASE,
+  primarySection,
   type HomeSectionKey,
 } from '@/lib/homeSections';
 
@@ -125,7 +125,10 @@ export function DashboardPage() {
   const query = useDailyLoop();
   const greeting = `${greetingForNow()}${player ? `, ${player.displayName}` : ''}`;
   const data = query.data?.data;
-  const phase = useDailyPhase(data);
+  // One clock read threaded through both the phase and the section ordering, so
+  // they never disagree on whether it's evening (Batch 48 wind_down phase).
+  const isEvening = isEveningNow();
+  const phase = useDailyPhase(data, isEvening);
   const invalidateLoop = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['daily-loop'] }),
@@ -329,10 +332,11 @@ export function DashboardPage() {
       ? `${verdictLabel(analysis.verdict)} tomorrow starts from today's recovery picture.`
       : "Tomorrow's cue will show up here after the coach read.");
 
-  // Batch 37: render the full section set every load; data state picks the one
-  // expanded section, the clock only nudges ordering. Nothing is removed by phase.
-  const primary = PRIMARY_BY_PHASE[phase];
-  const order = orderedSections(phase, { hasRide, isEvening: isEveningNow() });
+  // Batch 37: render the full section set every load; the loop phase (Batch 48)
+  // picks the one expanded section. Presence is only ever gated by hasRide,
+  // never by phase.
+  const primary = primarySection(phase, { hasRide });
+  const order = orderedSections(phase, { hasRide, isEvening });
 
   const sections: Record<
     HomeSectionKey,

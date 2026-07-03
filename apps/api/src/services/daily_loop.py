@@ -16,6 +16,7 @@ from src.models.coaching import (
     DailyMetric,
     KnowledgeBase,
     ManualEntry,
+    PlanBlock,
     PlannedWorkout,
     Sleep,
     TemperatureReading,
@@ -24,6 +25,7 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile
 from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
+from src.services.daily_loop_state import LoopState, describe_loop_state, is_evening
 from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
 from src.services.walking_brief import WalkingBriefResult, WalkingBriefService
 from src.services.workout_delivery import STATUS_PROPOSED, STATUS_PUSHED
@@ -45,6 +47,14 @@ def _local_today(timezone_name: str) -> date:
     except ZoneInfoNotFoundError:
         timezone = ZoneInfo("UTC")
     return datetime.now(timezone).date()
+
+
+def _local_now(timezone_name: str) -> datetime:
+    try:
+        timezone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        timezone = ZoneInfo("UTC")
+    return datetime.now(timezone)
 
 
 def _activity_local_date(activity: Activity, timezone_name: str) -> date:
@@ -95,6 +105,7 @@ class DailyLoopSnapshot:
     strength_brief: StrengthBriefResult
     walking_brief: WalkingBriefResult
     breathwork_brief: BreathworkBriefResult
+    loop_state: LoopState
 
 
 class DailyLoopService:
@@ -132,6 +143,19 @@ class DailyLoopService:
             player,
             as_of=target_date,
         )
+        active_block = await self._active_block(player.id, target_date)
+        loop_state = describe_loop_state(
+            has_post_analysis=bool(
+                post_workout_analyses
+                or post_flexibility_analyses
+                or post_strength_analyses
+                or post_walk_analyses
+            ),
+            has_planned_workout=bool(planned_workouts),
+            is_evening=is_evening(_local_now(player.timezone)),
+            block_type=active_block.block_type if active_block else None,
+            block_name=active_block.name if active_block else None,
+        )
 
         return DailyLoopSnapshot(
             subject_date=target_date,
@@ -155,6 +179,7 @@ class DailyLoopService:
             strength_brief=strength_brief,
             walking_brief=walking_brief,
             breathwork_brief=breathwork_brief,
+            loop_state=loop_state,
         )
 
     async def upsert_manual_entry(
@@ -446,6 +471,27 @@ class DailyLoopService:
             )
             .scalars()
             .all()
+        )
+
+    async def _active_block(self, user_id: uuid.UUID, on_date: date) -> PlanBlock | None:
+        """The plan block whose window covers ``on_date`` — the block Mark is in
+        right now (highest version wins). Feeds the loop-state block phase."""
+
+        return (
+            (
+                await self.session.execute(
+                    select(PlanBlock)
+                    .where(
+                        PlanBlock.user_id == user_id,
+                        PlanBlock.start_date <= on_date,
+                        PlanBlock.end_date >= on_date,
+                    )
+                    .order_by(PlanBlock.version.desc(), PlanBlock.start_date.desc())
+                    .limit(1)
+                )
+            )
+            .scalars()
+            .first()
         )
 
     async def _deliveries(

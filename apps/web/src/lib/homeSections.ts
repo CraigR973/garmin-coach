@@ -18,16 +18,30 @@ export type HomeSectionKey =
   | 'bedroom';
 
 /**
- * Which single section is primary (expanded) for each data state. Exactly one
- * section is expanded per load; every other section renders collapsed-but-
- * present. This keeps Batch 24's single-primary focus while paying back its
- * object-permanence cost.
+ * Which single section is primary (expanded) for the current loop phase
+ * (Batch 48 generalised model). Exactly one section is expanded per load;
+ * every other section renders collapsed-but-present.
+ *
+ * `post_training` depends on whether the completed read was a *ride*: a ride's
+ * read lives in its own `afterRide` section, whereas a strength/flexibility/walk
+ * read renders inside the Today card — so a non-ride day leads with `today`.
+ * The evening `wind_down` leads with `tonight` (sleep prep — Batch 46).
  */
-export const PRIMARY_BY_PHASE: Record<DailyPhase, HomeSectionKey> = {
-  pre_ride: 'today',
-  post_ride: 'afterRide',
-  rest_day: 'lastNight',
-};
+export function primarySection(
+  phase: DailyPhase,
+  { hasRide }: { hasRide: boolean },
+): HomeSectionKey {
+  switch (phase) {
+    case 'wind_down':
+      return 'tonight';
+    case 'post_training':
+      return hasRide ? 'afterRide' : 'today';
+    case 'rest_day':
+      return 'lastNight';
+    case 'pre_training':
+      return 'today';
+  }
+}
 
 /** Base chronological order of the full section set. */
 const BASE_ORDER: HomeSectionKey[] = [
@@ -39,20 +53,20 @@ const BASE_ORDER: HomeSectionKey[] = [
   'bedroom',
 ];
 
-/** Sections the evening clock nudge floats up ("bedroom-prep — what's next"). */
+/** Sections the evening `wind_down` floats up ("bedroom-prep — what's next"). */
 const EVENING_FLOAT: HomeSectionKey[] = ['tonight', 'bedroom'];
 
-/** Local hour at/after which the evening ordering nudge applies. */
+/** Local hour at/after which the day tips into its wind-down phase. */
 export const EVENING_HOUR = 20;
 
 /**
  * Order the present sections for the current state.
  *
- * State (`phase`) is the only driver of *presence* and *which is primary*: the
- * primary section leads, the rest keep base order. The clock only *nudges
- * ordering* — after ~20:00 it floats the bedroom-prep sections up to just
- * behind the primary — and never adds, removes, or re-picks a section. So Home
- * is correct whether Mark rides at 06:00 or 18:00.
+ * The phase drives *which section is primary*; the primary leads and the rest
+ * keep base order. In the evening `wind_down` phase the bedroom-prep sections
+ * (`tonight` + `bedroom`) float up right behind the primary. Presence is only
+ * ever gated by `hasRide` (the ride-only sections), never by phase — so Home is
+ * correct whether Mark trains at 06:00 or 18:00.
  */
 export function orderedSections(
   phase: DailyPhase,
@@ -61,7 +75,7 @@ export function orderedSections(
   const present = BASE_ORDER.filter((key) =>
     key === 'afterRide' || key === 'tomorrow' ? hasRide : true,
   );
-  const primary = PRIMARY_BY_PHASE[phase];
+  const primary = primarySection(phase, { hasRide });
   const lead = present.includes(primary) ? [primary] : [];
   const floated = isEvening
     ? present.filter((key) => EVENING_FLOAT.includes(key) && !lead.includes(key))
@@ -70,7 +84,7 @@ export function orderedSections(
   return [...lead, ...floated, ...remaining];
 }
 
-/** True at/after the evening hour in local time — the ordering-nudge trigger. */
+/** True at/after the evening hour in local time — the wind-down trigger. */
 export function isEveningNow(date = new Date()): boolean {
   return date.getHours() >= EVENING_HOUR;
 }
