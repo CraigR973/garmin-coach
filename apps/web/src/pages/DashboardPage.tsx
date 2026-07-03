@@ -8,27 +8,19 @@ import {
   Bike,
   CalendarDays,
   Check,
-  ChevronRight,
   ClipboardCheck,
   Dumbbell,
-  Fan,
-  LineChart,
   MoonStar,
   Pencil,
   Plus,
   Thermometer,
   Trash2,
-  Wind,
   X,
   type LucideIcon,
 } from 'lucide-react';
 import { postRideCheckInInputSchema } from '@coach/shared';
 import { toast } from 'sonner';
-import {
-  MetricComparisonTable,
-  type AgeComparison,
-  type MetricBaselineRow,
-} from '@/components/MetricComparisonTable';
+import type { AgeComparison, MetricBaselineRow } from '@/components/MetricComparisonTable';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,23 +31,16 @@ import { Markdown } from '@/components/Markdown';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 import { VerdictHero } from '@/components/VerdictHero';
+import { SleepSnapshotBody } from '@/components/SleepSnapshotBody';
+import { SleepPrepBody } from '@/components/SleepPrepBody';
+import { BedroomBody } from '@/components/BedroomBody';
 import { useAuth } from '@/contexts/AuthContext';
 import { isBikeWorkout, useDailyPhase } from '@/hooks/useDailyPhase';
 import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
-import { useBedroomOvernight } from '@/hooks/useBedroomOvernight';
 import { apiFetch } from '@/lib/api';
-import {
-  fanStatusText,
-  formatDateTime,
-  friendlyDate,
-  hm,
-  nextDays,
-  overnightGlanceText,
-  remContext,
-  type FanState,
-} from '@/lib/dailyFlow';
-import { greetingForNow, verdictBadgeVariant, verdictLabel, verdictToneLabel } from '@/lib/copy';
+import { formatDateTime, friendlyDate, hm, nextDays, remContext, type FanState } from '@/lib/dailyFlow';
+import { greetingForNow, verdictBadgeVariant, verdictLabel } from '@/lib/copy';
 import { dayStateForWorkouts, type DayCategory } from '@/lib/workoutCategories';
 import {
   isEveningNow,
@@ -448,33 +433,6 @@ export function DashboardPage() {
           </CollapsibleSection>
         );
       })}
-    </div>
-  );
-}
-
-/** The expanded body of the "Last night's sleep" section. The overnight glance
- *  fires the bedroom-overnight query, so this only mounts when the section is
- *  open (Batch 37 lazy body) — the collapsed header shows a payload-only glance. */
-function SleepSnapshotBody({
-  metricsVsBaselines,
-  ageComparison,
-  morningBriefLink,
-}: {
-  metricsVsBaselines: MetricBaselineRow[];
-  ageComparison: AgeComparison | null;
-  morningBriefLink: string;
-}) {
-  return (
-    <div className="space-y-4">
-      <MetricComparisonTable rows={metricsVsBaselines} ageComparison={ageComparison} />
-      {/* Last night's room read (retrospective) lives with last night's sleep;
-          tonight's live fan/bedroom controls stay in the evening card (Batch 35). */}
-      <OvernightGlance />
-      <DetailLinkCard
-        to={morningBriefLink}
-        title="Full morning brief"
-        description="Open the complete coach read and verdict notes."
-      />
     </div>
   );
 }
@@ -1260,177 +1218,3 @@ function TomorrowBody({ text }: { text: string }) {
   return <p className="text-sm leading-6 text-text-primary">{text}</p>;
 }
 
-type SleepProjection = DailyLoopData['sleepProjection'];
-
-function SleepPrepBody({ projection }: { projection: SleepProjection | null }) {
-  if (!projection) {
-    return (
-      <p className="text-sm leading-6 text-text-primary">
-        Aim for the usual sleep setup: pre-cool the room, keep the evening calm, and stay on the bedtime routine.
-      </p>
-    );
-  }
-
-  return (
-    <div className="space-y-3 text-sm">
-      <div className="space-y-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={projection.tone === 'protect' ? 'warning' : projection.tone === 'watch' ? 'default' : 'muted'}>
-            {projection.tone === 'protect' ? 'Protect' : projection.tone === 'watch' ? 'Watch' : 'Routine'}
-          </Badge>
-          <p className="font-medium text-text-primary">{projection.headline}</p>
-        </div>
-        <p className="leading-6 text-text-secondary">{projection.summary}</p>
-      </div>
-      {projection.prepActions.length > 0 && (
-        <ul className="space-y-2">
-          {projection.prepActions.map((action) => (
-            <li key={action} className="flex gap-2 leading-6 text-text-primary">
-              <Check className="mt-1 h-4 w-4 shrink-0 text-success" aria-hidden />
-              <span>{action}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      {projection.evidence.length > 0 && (
-        <details className="rounded-lg border border-border bg-bg px-3 py-2">
-          <summary className="cursor-pointer text-sm font-medium text-text-primary">Evidence</summary>
-          <ul className="mt-2 space-y-1.5 text-text-secondary">
-            {projection.evidence.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-        </details>
-      )}
-    </div>
-  );
-}
-
-/** The expanded body of the Bedroom section: tonight's live indoor/thermostat/
- *  fan read + the detail link. */
-function BedroomBody({
-  thermal,
-}: {
-  thermal: {
-    latestTemperatureC?: number | null;
-    targetTemperatureC?: number | null;
-    overnightLowC?: number | null;
-    overnightWindMaxMph?: number | null;
-    fan: FanState;
-  };
-}) {
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-        <Stat
-          label="Indoor now"
-          value={thermal.latestTemperatureC != null ? `${thermal.latestTemperatureC.toFixed(1)}°C` : 'Not synced'}
-        />
-        <Stat
-          label="Thermostat"
-          value={thermal.targetTemperatureC != null ? `${thermal.targetTemperatureC.toFixed(1)}°C` : '—'}
-        />
-        <Stat
-          label="Overnight low"
-          value={thermal.overnightLowC != null ? `${thermal.overnightLowC.toFixed(1)}°C` : '—'}
-        />
-        <Stat
-          label="Wind"
-          value={thermal.overnightWindMaxMph != null ? `${thermal.overnightWindMaxMph.toFixed(0)} mph` : '—'}
-          icon={<Wind className="h-3.5 w-3.5 text-text-muted" aria-hidden />}
-        />
-      </div>
-      <div className="flex items-start gap-2 rounded-xl border border-border px-3 py-3 text-sm">
-        <Fan className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
-        <div className="min-w-0">
-          <p className="font-medium text-text-primary">Bedroom fan</p>
-          <p className="text-text-secondary">{fanStatusText(thermal.fan)}</p>
-        </div>
-      </div>
-      <DetailLinkCard
-        to="/bedroom"
-        title="Bedroom & weather detail"
-        description="Open the full room and overnight weather read, and control the fan."
-      />
-    </div>
-  );
-}
-
-/** One-line last-night room/fan glance, shown in the morning brief alongside last
- *  night's sleep (Batch 31) — it explains *last* night, not tonight's live fan state,
- *  so it belongs with the morning read rather than the evening bedroom card.
- *  Fetches the last completed night (shared cache with /bedroom) and stays silent
- *  until there's something to say, so Home never shows a spinner for it. */
-function OvernightGlance() {
-  const query = useBedroomOvernight();
-  const summary = query.data?.data.summary;
-  const glance = overnightGlanceText(summary);
-  if (!glance) return null;
-  return (
-    <Link
-      to="/bedroom"
-      className="flex items-center justify-between gap-2 rounded-xl border border-border bg-bg px-3 py-2.5 text-sm transition hover:border-accent/40"
-    >
-      <span className="flex items-center gap-2 text-text-secondary">
-        <LineChart className="h-4 w-4 shrink-0 text-primary" aria-hidden />
-        {summary ? (
-          <Badge
-            variant={verdictBadgeVariant(summary.roomVerdict)}
-            className="shrink-0"
-            data-testid="overnight-room-verdict-badge"
-          >
-            {verdictToneLabel(summary.roomVerdict)}
-          </Badge>
-        ) : null}
-        {glance}
-      </span>
-      <ChevronRight className="h-4 w-4 shrink-0 text-text-muted" aria-hidden />
-    </Link>
-  );
-}
-
-function DetailLinkCard({
-  to,
-  title,
-  description,
-}: {
-  to: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <Link
-      to={to}
-      className="flex items-center justify-between rounded-xl border border-border bg-bg px-4 py-4 transition hover:border-accent/40 hover:bg-panel"
-    >
-      <div>
-        <p className="font-medium text-text-primary">{title}</p>
-        <p className="mt-1 text-sm text-text-secondary">{description}</p>
-      </div>
-      <ChevronRight className="h-4 w-4 text-text-muted" aria-hidden />
-    </Link>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  hint,
-  icon,
-}: {
-  label: string;
-  value: string | number;
-  hint?: string;
-  icon?: ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border border-border px-3 py-3">
-      <p className="flex items-center gap-1.5 text-xs text-text-muted">
-        {icon}
-        {label}
-      </p>
-      <p className="text-lg font-semibold text-text-primary">{value}</p>
-      {hint && <p className="text-[11px] text-text-muted">{hint}</p>}
-    </div>
-  );
-}
