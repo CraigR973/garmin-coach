@@ -3,10 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   blockGeneratorEnvelopeSchema,
   blockLockEnvelopeSchema,
+  type BlockProgressionProposal,
   type GeneratedBlockDraft,
   type GeneratedBlockWorkout,
 } from '@coach/shared';
-import { Hammer, Lock, Pencil, Sparkles, Trash2 } from 'lucide-react';
+import { Hammer, Lock, Pencil, Sparkles, Trash2, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
@@ -176,7 +177,8 @@ export function BlockGeneratorPage() {
           <CardHeader>
             <CardTitle>Generate a new block</CardTitle>
             <CardDescription>
-              Defaults to next Monday and your profile FTP. Override if you want.
+              Defaults to next Monday and the last-block FTP proposal when enough history exists.
+              Override if you want.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -301,6 +303,10 @@ function DraftView({
         </CardContent>
       </Card>
 
+      {draft.progressionProposal && (
+        <ProgressionProposalPanel proposal={draft.progressionProposal} />
+      )}
+
       {draft.weeks.map((week) => (
         <Card key={week.weekNumber}>
           <CardHeader>
@@ -394,6 +400,55 @@ function DraftView({
         </Card>
       ))}
     </div>
+  );
+}
+
+function ProgressionProposalPanel({ proposal }: { proposal: BlockProgressionProposal }) {
+  const change = proposal.ftpChangeWatts;
+  const changeLabel = change > 0 ? `+${change}w` : `${change}w`;
+  return (
+    <Card className="border-primary/30 bg-primary/5">
+      <CardHeader>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <TrendingUp className="h-4 w-4 text-primary" aria-hidden />
+              Last-block proposal
+            </CardTitle>
+            <CardDescription className="mt-1">{proposal.summary}</CardDescription>
+          </div>
+          <Badge variant={proposal.status === 'ready' ? 'default' : 'muted'}>
+            {proposal.status === 'ready' ? changeLabel : 'Fallback'}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div>
+            <p className="text-xs uppercase text-text-muted">FTP seed</p>
+            <p className="font-medium text-text-primary">
+              {proposal.currentFtpWatts}w → {proposal.recommendedFtpWatts}w
+            </p>
+          </div>
+          <div className="sm:col-span-2">
+            <p className="text-xs uppercase text-text-muted">Focus</p>
+            <p className="font-medium text-text-primary">{proposal.focus}</p>
+          </div>
+        </div>
+        {proposal.structuralNudge && (
+          <p className="rounded-md border border-border bg-surface/80 px-3 py-2 text-text-secondary">
+            {proposal.structuralNudge}
+          </p>
+        )}
+        {proposal.evidence.length > 0 && (
+          <ul className="space-y-1 text-text-muted">
+            {proposal.evidence.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

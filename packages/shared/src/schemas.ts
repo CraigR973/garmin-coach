@@ -864,6 +864,19 @@ export const generatedBlockWeekSchema = z.object({
   workouts: z.array(generatedBlockWorkoutSchema),
 });
 
+export const blockProgressionProposalSchema = z.object({
+  status: z.string().min(1),
+  source: z.string().min(1),
+  currentFtpWatts: z.number().int().positive(),
+  recommendedFtpWatts: z.number().int().positive(),
+  ftpChangeWatts: z.number().int(),
+  focus: z.string().min(1),
+  structuralNudge: z.string().nullable().optional(),
+  summary: z.string().min(1),
+  evidence: z.array(z.string()).default([]),
+  outcome: jsonObjectSchema.default({}),
+});
+
 export const generatedBlockDraftSchema = z.object({
   status: z.enum(['draft', 'locked']),
   framework: z.string().min(1),
@@ -873,6 +886,7 @@ export const generatedBlockDraftSchema = z.object({
   athleteName: z.string().min(1),
   generatedAtUtc: z.string().min(1),
   lockedAtUtc: z.string().nullable(),
+  progressionProposal: blockProgressionProposalSchema.nullable().optional(),
   weeks: z.array(generatedBlockWeekSchema),
 });
 
