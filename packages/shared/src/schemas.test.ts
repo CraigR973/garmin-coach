@@ -94,6 +94,12 @@ describe('v1 shared schemas', () => {
       data: {
         subjectDate: '2026-07-02',
         timezone: 'Europe/London',
+        loopState: {
+          dayPhase: 'wind_down',
+          blockPhase: 'consolidation',
+          nextAction: 'wind_down',
+          atBlockBoundary: true,
+        },
         morningAnalysis: null,
         dailyMetrics: null,
         sleep: null,
@@ -162,6 +168,8 @@ describe('v1 shared schemas', () => {
 
     expect(parsed.data.breathworkBrief?.window4w.sessionCount).toBe(18);
     expect(parsed.data.sleepProjection?.tone).toBe('protect');
+    expect(parsed.data.loopState?.dayPhase).toBe('wind_down');
+    expect(parsed.data.loopState?.atBlockBoundary).toBe(true);
   });
 
   it('accepts the daily-loop post-strength analysis shape', () => {

@@ -368,9 +368,17 @@ class BreathworkBriefOut(BaseModel):
     trendReason: str
 
 
+class LoopStateOut(BaseModel):
+    dayPhase: str
+    blockPhase: str | None
+    nextAction: str
+    atBlockBoundary: bool
+
+
 class DailyLoopData(BaseModel):
     subjectDate: str
     timezone: str
+    loopState: LoopStateOut
     morningAnalysis: AnalysisOut | None
     dailyMetrics: DailyMetricOut | None
     sleep: SleepOut | None
@@ -920,6 +928,12 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
         data=DailyLoopData(
             subjectDate=snapshot.subject_date.isoformat(),
             timezone=player.timezone,
+            loopState=LoopStateOut(
+                dayPhase=snapshot.loop_state.day_phase,
+                blockPhase=snapshot.loop_state.block_phase,
+                nextAction=snapshot.loop_state.next_action,
+                atBlockBoundary=snapshot.loop_state.at_block_boundary,
+            ),
             morningAnalysis=morning_analysis,
             dailyMetrics=_serialize_daily_metric(snapshot.daily_metric),
             sleep=_serialize_sleep(snapshot.sleep),

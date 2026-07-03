@@ -18,6 +18,7 @@ from src.models.coaching import (
     DailyMetric,
     KnowledgeBase,
     ManualEntry,
+    PlanBlock,
     PlannedWorkout,
     Sleep,
     TemperatureReading,
@@ -344,6 +345,14 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
     assert payload["data"]["sleepProjection"]["headline"] == "Use the usual sleep protocol"
     assert payload["data"]["plannedWorkouts"][0]["title"] == "Strength maintenance"
     assert payload["data"]["dataQualityWarnings"][0]["status"] == "active"
+    # Batch 48 loop state is serialized on every payload. dayPhase is wall-clock
+    # dependent (evening → wind_down), so assert shape, not the exact stage; no
+    # plan block is seeded here, so the block signals are null/false.
+    loop_state = payload["data"]["loopState"]
+    assert loop_state["dayPhase"] in {"rest_day", "pre_training", "post_training", "wind_down"}
+    assert loop_state["nextAction"] in {"await_training", "review_session", "wind_down", "rest"}
+    assert loop_state["blockPhase"] is None
+    assert loop_state["atBlockBoundary"] is False
 
 
 @pytest.mark.asyncio
@@ -448,6 +457,53 @@ async def test_get_daily_loop_surfaces_fan_intent(db_conn: AsyncConnection) -> N
     assert fan["mode"] == "manual"
     assert fan["isOn"] is None
     assert fan["speed"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_daily_loop_reports_the_block_boundary(db_conn: AsyncConnection) -> None:
+    """The active plan block classifies the loop-state block phase; a
+    consolidation week (wk13) flags the end-of-block boundary (Batch 48)."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 6, 21)
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Daily Loop Block",
+            pin_hash="x" * 60,
+            role=UserRole.player,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+        session.add(
+            PlanBlock(
+                user_id=user_id,
+                name="Week 13 Consolidation",
+                version=1,
+                block_type=None,
+                start_date=date(2026, 6, 15),
+                end_date=date(2026, 6, 28),
+            )
+        )
+        await session.commit()
+
+    app.dependency_overrides[get_current_user] = lambda: player
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get(
+                f"/api/v1/daily-loop?subject_date={subject_date.isoformat()}"
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    loop_state = response.json()["data"]["loopState"]
+    assert loop_state["blockPhase"] == "consolidation"
+    assert loop_state["atBlockBoundary"] is True
 
 
 @pytest.mark.asyncio
