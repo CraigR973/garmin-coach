@@ -340,6 +340,8 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
     assert "Strength read" in payload["data"]["postStrengthAnalyses"][0]["outputMarkdown"]
     assert payload["data"]["breathworkBrief"]["window4w"]["sessionCount"] == 1
     assert payload["data"]["breathworkBrief"]["window4w"]["totalDurationMin"] == 3
+    assert payload["data"]["sleepProjection"]["status"] == "fallback"
+    assert payload["data"]["sleepProjection"]["headline"] == "Use the usual sleep protocol"
     assert payload["data"]["plannedWorkouts"][0]["title"] == "Strength maintenance"
     assert payload["data"]["dataQualityWarnings"][0]["status"] == "active"
 

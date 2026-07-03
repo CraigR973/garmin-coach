@@ -111,6 +111,15 @@ describe('v1 shared schemas', () => {
             respondingToC: null,
           },
         },
+        sleepProjection: {
+          status: 'personalized',
+          tone: 'protect',
+          headline: "Protect tonight's wind-down",
+          summary: 'Hard late session plus warm room may make sleep more fragile.',
+          evidence: ['Latest session started 18:05.'],
+          prepActions: ['Let Auto manage the pre-cool.'],
+          protocol: { bedtime: '23:15' },
+        },
         dataQualityWarnings: [],
         walkingBrief: {
           asOfDate: '2026-07-02',
@@ -152,6 +161,7 @@ describe('v1 shared schemas', () => {
     });
 
     expect(parsed.data.breathworkBrief?.window4w.sessionCount).toBe(18);
+    expect(parsed.data.sleepProjection?.tone).toBe('protect');
   });
 
   it('accepts the daily-loop post-strength analysis shape', () => {

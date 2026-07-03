@@ -1,7 +1,8 @@
 # Design: Evening sleep projection (Batch 46)
 
-**Status:** Specced, not started. Backend + frontend, no migration (optional
-`analyses` audit row). Decision assigned at `/batch-start`.
+**Status:** Implemented on `feat/batch-46-evening-sleep-projection`, not closed
+out. Backend + frontend, no migration; optional `analyses` audit row/push
+deferred. Decision #116.
 Closes the daily loop **back to sleep** — the stage Mark named: "seeing how that
 [workout] analysis will impact his sleep, and then prepare his bedroom for the
 night." Builds cleanly on Batch 45 for the evening push, but the read surface
