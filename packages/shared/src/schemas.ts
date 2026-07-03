@@ -455,6 +455,26 @@ export const dailyLoopAnalysisSchema = z.object({
   ageComparison: ageComparisonSchema.default({ rows: [] }),
 });
 
+export const rideIntervalSchema = z.object({
+  index: z.number(),
+  label: z.string(),
+  role: z.string(),
+  durationSec: z.number(),
+  avgPowerWatts: z.number().nullable().optional(),
+  normalizedPowerWatts: z.number().nullable().optional(),
+  pctFtp: z.number().nullable().optional(),
+  powerZone: z.string().nullable().optional(),
+  avgHeartRateBpm: z.number().nullable().optional(),
+  maxHeartRateBpm: z.number().nullable().optional(),
+  avgCadenceRpm: z.number().nullable().optional(),
+  targetPctFtpLow: z.number().nullable().optional(),
+  targetPctFtpHigh: z.number().nullable().optional(),
+  cadenceTargetRpm: z.number().nullable().optional(),
+  adherence: z.enum(['on', 'over', 'under']).nullable().optional(),
+  fade: z.boolean().nullable().optional(),
+  hrDriftPct: z.number().nullable().optional(),
+});
+
 export const dailyLoopPostWorkoutAnalysisSchema = z.object({
   id: z.string().uuid(),
   activityId: z.string().uuid().nullable().optional(),
@@ -466,6 +486,8 @@ export const dailyLoopPostWorkoutAnalysisSchema = z.object({
   outputMarkdown: z.string(),
   recoveryDecision: jsonObjectSchema.default({}),
   timeSeriesSummary: jsonObjectSchema.default({}),
+  intervals: z.array(rideIntervalSchema).default([]),
+  execution: jsonObjectSchema.default({}),
   tomorrowImpact: z.string().nullable().optional(),
   postRideCheckIn: manualEntrySchema.nullable().optional(),
 });

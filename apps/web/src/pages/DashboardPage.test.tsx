@@ -238,6 +238,44 @@ const postRideSnapshot = () =>
         outputMarkdown: '**Recovery protocol:** refuel within 20 minutes.',
         recoveryDecision: { excluded: false, status: 'ready_for_review' },
         timeSeriesSummary: { power: { avg: 220 } },
+        intervals: [],
+        execution: {},
+        tomorrowImpact: 'Easy endurance tomorrow.',
+        postRideCheckIn: null,
+      },
+    ];
+  });
+
+const postRideWithIntervalsSnapshot = () =>
+  buildSnapshot((snapshot) => {
+    snapshot.data.postWorkoutAnalyses = [
+      {
+        id: '66666666-6666-4666-8666-666666666666',
+        activityId: '77777777-7777-4777-8777-777777777777',
+        activityName: 'Sweet spot ride',
+        activityType: 'indoor_cycling',
+        generatedAtUtc: '2026-06-20T12:20:00Z',
+        promptVersion: 'post-workout-analysis-v2-2026-07-03',
+        modelName: 'claude',
+        outputMarkdown: '**Rating:** strong, held the work on target.',
+        recoveryDecision: { excluded: false, status: 'ready_for_review' },
+        timeSeriesSummary: { power: { avg: 210 } },
+        intervals: [
+          { index: 0, label: 'Warm-up', role: 'warmup', durationSec: 600, adherence: null, fade: null },
+          {
+            index: 1,
+            label: 'Sweet spot',
+            role: 'work',
+            durationSec: 1200,
+            pctFtp: 91,
+            normalizedPowerWatts: 255,
+            targetPctFtpLow: 91,
+            targetPctFtpHigh: 91,
+            adherence: 'on',
+            fade: false,
+          },
+        ],
+        execution: { hasPlan: true, workIntervalCount: 1 },
         tomorrowImpact: 'Easy endurance tomorrow.',
         postRideCheckIn: null,
       },
@@ -652,6 +690,23 @@ describe('DashboardPage', () => {
     // (in the collapsed Last-night body) hasn't mounted either.
     expect(screen.queryByText('Bedroom fan')).toBeNull();
     expect(screen.queryByText('Last night: 19→21 °C, fan ran 3.5 h (peak speed 5)')).toBeNull();
+  });
+
+  it('shows the interval execution table grading only the work intervals', async () => {
+    renderPage(postRideWithIntervalsSnapshot());
+
+    expect(await screen.findByText('Interval execution')).toBeTruthy();
+    // The work interval is listed and graded; warm-up is not in the table.
+    expect(screen.getByText('20 min Sweet spot')).toBeTruthy();
+    expect(screen.getByText('On target')).toBeTruthy();
+    expect(screen.queryByText('10 min Warm-up')).toBeNull();
+  });
+
+  it('renders no interval table for a ride without planned structure', async () => {
+    renderPage(postRideSnapshot());
+
+    await screen.findByText('After your ride');
+    expect(screen.queryByText('Interval execution')).toBeNull();
   });
 
   it('saves the post-ride check-in from the ride card', async () => {
