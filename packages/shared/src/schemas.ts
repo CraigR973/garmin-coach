@@ -571,6 +571,16 @@ export const dailyLoopThermalStateSchema = z.object({
   fan: dailyLoopFanSchema,
 });
 
+export const sleepProjectionSchema = z.object({
+  status: z.enum(['personalized', 'fallback']),
+  tone: z.enum(['routine', 'protect', 'watch']),
+  headline: z.string().min(1),
+  summary: z.string().min(1),
+  evidence: z.array(z.string()).default([]),
+  prepActions: z.array(z.string()).default([]),
+  protocol: jsonObjectSchema.default({}),
+});
+
 export const fanAutoInputSchema = z.object({
   enabled: z.boolean(),
 });
@@ -672,6 +682,7 @@ export const dailyLoopSchema = z.object({
   postWalkAnalyses: z.array(dailyLoopPostWalkAnalysisSchema).default([]),
   plannedWorkouts: z.array(dailyLoopPlannedWorkoutSchema),
   thermalState: dailyLoopThermalStateSchema,
+  sleepProjection: sleepProjectionSchema.optional(),
   dataQualityWarnings: z.array(dailyLoopWarningSchema),
   walkingBrief: z
     .object({

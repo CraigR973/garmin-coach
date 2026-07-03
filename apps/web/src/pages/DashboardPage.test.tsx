@@ -169,6 +169,24 @@ const baseSnapshot: DailyLoopEnvelope = {
       thermalReview: {},
       fan: { autoEnabled: true, mode: 'control', isOn: true, speed: 5, respondingToC: 20.1 },
     },
+    sleepProjection: {
+      status: 'fallback',
+      tone: 'routine',
+      headline: 'Use the usual sleep protocol',
+      summary: "There is not enough personal signal from today's training and Mark's measured sleep drivers to change the plan.",
+      evidence: [],
+      prepActions: [
+        'Pre-cool the bedroom toward 17C.',
+        'Breathing at 20:00, snack by 21:30, seal near 22:00, bed 23:15.',
+      ],
+      protocol: {
+        preCoolTemperatureC: 17,
+        coherenceBreathingTime: '20:00',
+        latestSnackTime: '21:30',
+        sealTargetTime: '22:00',
+        bedtime: '23:15',
+      },
+    },
     dataQualityWarnings: [],
     walkingBrief: {
       asOfDate: '2026-06-20',
@@ -370,6 +388,41 @@ describe('DashboardPage', () => {
     // The overnight glance (a separate query) only fires now that the body is open.
     expect(await screen.findByText('Last night: 19→21 °C, fan ran 3.5 h (peak speed 5)')).toBeTruthy();
     expect((await screen.findByTestId('overnight-room-verdict-badge')).textContent).toBe('Red');
+  });
+
+  it('renders the personalized sleep projection in Tonight', async () => {
+    const user = userEvent.setup();
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.sleepProjection = {
+          status: 'personalized',
+          tone: 'protect',
+          headline: "Protect tonight's wind-down",
+          summary: 'A late hard session plus a warm room may make sleep more fragile.',
+          evidence: ['Latest session started 18:05.', 'Bedroom is currently 20.1C.'],
+          prepActions: [
+            'Let Auto manage the pre-cool; check Bedroom if the room is still warm near 22:00.',
+            'Bring the wind-down forward: breathing at 20:00 and snack finished by 21:30.',
+          ],
+          protocol: {
+            preCoolTemperatureC: 17,
+            coherenceBreathingTime: '20:00',
+            latestSnackTime: '21:30',
+            sealTargetTime: '22:00',
+            bedtime: '23:15',
+          },
+        };
+      }),
+    );
+
+    await screen.findByText('Cycle day');
+    await user.click(screen.getByRole('button', { name: /tonight/i }));
+
+    expect(screen.getByText("Protect tonight's wind-down")).toBeTruthy();
+    expect(screen.getByText(/late hard session/)).toBeTruthy();
+    expect(screen.getByText(/Let Auto manage/)).toBeTruthy();
+    expect(screen.getByText('Evidence')).toBeTruthy();
+    expect(screen.getByText('Latest session started 18:05.')).toBeTruthy();
   });
 
   it('renders a flexibility analysis on the Today section', async () => {

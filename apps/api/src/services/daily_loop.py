@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import HTTPException, status
@@ -83,11 +84,13 @@ class DailyLoopSnapshot:
     post_strength_analyses: list[Analysis]
     post_walk_analyses: list[Analysis]
     post_ride_checkins: dict[uuid.UUID, ManualEntry]
+    activities: list[Activity]
     planned_workouts: list[PlannedWorkout]
     adherence_entries: dict[uuid.UUID, ManualEntry]
     deliveries: dict[uuid.UUID, DeliveryState]
     latest_temperature: TemperatureReading | None
     weather: WeatherDaily | None
+    sleep_protocol: dict[str, Any]
     data_quality_warnings: list[dict[str, str]]
     strength_brief: StrengthBriefResult
     walking_brief: WalkingBriefResult
@@ -115,11 +118,13 @@ class DailyLoopService:
         post_strength_analyses = await self._post_strength_analyses(player.id, target_date)
         post_walk_analyses = await self._post_walk_analyses(player.id, target_date)
         post_ride_checkins = await self._post_ride_checkins(player.id, target_date)
+        activities = await self._activities(player.id, target_date, player.timezone)
         planned_workouts = await self._planned_workouts(player.id, target_date)
         adherence_entries = await self._adherence_entries(player.id, target_date)
         deliveries = await self._deliveries(player.id, planned_workouts)
         latest_temperature = await self._latest_temperature(player.id)
         weather = await self._weather(player.id, target_date)
+        sleep_protocol = await self._knowledge_base_content(player.id, "sleep_protocol")
         warnings = await self._data_quality_warnings(player.id, target_date, planned_workouts)
         strength_brief = await StrengthBriefService(self.session).brief(player, as_of=target_date)
         walking_brief = await WalkingBriefService(self.session).brief(player, as_of=target_date)
@@ -139,11 +144,13 @@ class DailyLoopService:
             post_strength_analyses=post_strength_analyses,
             post_walk_analyses=post_walk_analyses,
             post_ride_checkins=post_ride_checkins,
+            activities=activities,
             planned_workouts=planned_workouts,
             adherence_entries=adherence_entries,
             deliveries=deliveries,
             latest_temperature=latest_temperature,
             weather=weather,
+            sleep_protocol=sleep_protocol,
             data_quality_warnings=warnings,
             strength_brief=strength_brief,
             walking_brief=walking_brief,
@@ -673,6 +680,32 @@ class DailyLoopService:
             return None
         return activity
 
+    async def _activities(
+        self,
+        user_id: uuid.UUID,
+        subject_date: date,
+        timezone_name: str,
+    ) -> list[Activity]:
+        day_start = datetime(subject_date.year, subject_date.month, subject_date.day)
+        lower = day_start - timedelta(days=1)
+        upper = day_start + timedelta(days=2)
+        rows = (
+            (
+                await self.session.execute(
+                    select(Activity)
+                    .where(
+                        Activity.user_id == user_id,
+                        Activity.start_utc >= lower,
+                        Activity.start_utc < upper,
+                    )
+                    .order_by(Activity.start_utc.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return [row for row in rows if _activity_local_date(row, timezone_name) == subject_date]
+
     async def _latest_temperature(self, user_id: uuid.UUID) -> TemperatureReading | None:
         return (
             (
@@ -686,6 +719,19 @@ class DailyLoopService:
             .scalars()
             .first()
         )
+
+    async def _knowledge_base_content(self, user_id: uuid.UUID, section: str) -> dict[str, Any]:
+        row = await self.session.scalar(
+            select(KnowledgeBase)
+            .where(
+                KnowledgeBase.user_id == user_id,
+                KnowledgeBase.section == section,
+                KnowledgeBase.is_active.is_(True),
+            )
+            .order_by(KnowledgeBase.version.desc())
+            .limit(1)
+        )
+        return row.content if row is not None and isinstance(row.content, dict) else {}
 
     async def _weather(self, user_id: uuid.UUID, subject_date: date) -> WeatherDaily | None:
         return (

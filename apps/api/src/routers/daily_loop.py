@@ -16,6 +16,14 @@ from src.services.breathwork_brief import BreathworkBriefResult
 from src.services.daily_loop import DailyLoopService, DeliveryState
 from src.services.environment_freshness import is_hive_temperature_fresh
 from src.services.fan_control import describe_fan_intent
+from src.services.insights import OUTCOME_SLEEP_SCORE, InsightsService
+from src.services.sleep_projection import (
+    SleepDriverEvidence,
+    SleepProjectionInputs,
+    SleepProjectionResult,
+    TrainingSignal,
+    project_sleep,
+)
 from src.services.strength_brief import StrengthBriefResult
 from src.services.walking_brief import WalkingBriefResult
 
@@ -269,6 +277,16 @@ class ThermalStateOut(BaseModel):
     fan: FanStateOut
 
 
+class SleepProjectionOut(BaseModel):
+    status: str
+    tone: str
+    headline: str
+    summary: str
+    evidence: list[str]
+    prepActions: list[str]
+    protocol: dict[str, Any]
+
+
 class DataQualityWarningOut(BaseModel):
     id: str
     summary: str
@@ -363,6 +381,7 @@ class DailyLoopData(BaseModel):
     postWalkAnalyses: list[PostWalkAnalysisOut]
     plannedWorkouts: list[PlannedWorkoutOut]
     thermalState: ThermalStateOut
+    sleepProjection: SleepProjectionOut
     dataQualityWarnings: list[DataQualityWarningOut]
     strengthBrief: StrengthBriefOut
     walkingBrief: WalkingBriefOut
@@ -787,7 +806,87 @@ def _serialize_breathwork_brief(result: BreathworkBriefResult) -> BreathworkBrie
     )
 
 
-def _envelope(player: CurrentUser, snapshot: Any) -> DailyLoopEnvelope:
+def _serialize_sleep_projection(result: SleepProjectionResult) -> SleepProjectionOut:
+    return SleepProjectionOut(
+        status=result.status,
+        tone=result.tone,
+        headline=result.headline,
+        summary=result.summary,
+        evidence=result.evidence,
+        prepActions=result.prep_actions,
+        protocol=result.protocol,
+    )
+
+
+def _activity_training_signals(snapshot: Any, timezone_name: str) -> list[TrainingSignal]:
+    try:
+        zone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        zone = ZoneInfo("UTC")
+    signals: list[TrainingSignal] = []
+    for activity in snapshot.activities:
+        local_start = activity.start_utc.replace(tzinfo=UTC).astimezone(zone).time()
+        signals.append(
+            TrainingSignal(
+                name=activity.activity_name,
+                activity_type=activity.activity_type,
+                local_start=local_start,
+                duration_min=(
+                    round(float(activity.duration_sec) / 60, 1)
+                    if activity.duration_sec is not None
+                    else None
+                ),
+                training_load=(
+                    float(activity.training_load) if activity.training_load is not None else None
+                ),
+                aerobic_training_effect=(
+                    float(activity.aerobic_training_effect)
+                    if activity.aerobic_training_effect is not None
+                    else None
+                ),
+                anaerobic_training_effect=(
+                    float(activity.anaerobic_training_effect)
+                    if activity.anaerobic_training_effect is not None
+                    else None
+                ),
+            )
+        )
+    return signals
+
+
+async def _sleep_projection(
+    player: CurrentUser,
+    snapshot: Any,
+    db: AsyncSession,
+    *,
+    latest_bedroom_temperature_c: float | None,
+) -> SleepProjectionResult:
+    drivers_report = await InsightsService(db).drivers(player, as_of=snapshot.subject_date)
+    sleep_drivers = [
+        SleepDriverEvidence(
+            driver=driver.driver,
+            coefficient=driver.coefficient,
+            sample_count=driver.sample_count,
+            summary=driver.summary,
+        )
+        for driver in drivers_report.outcomes.get(OUTCOME_SLEEP_SCORE, [])
+    ]
+    return project_sleep(
+        SleepProjectionInputs(
+            training=_activity_training_signals(snapshot, player.timezone),
+            sleep_drivers=sleep_drivers,
+            sleep_protocol=snapshot.sleep_protocol,
+            latest_bedroom_temperature_c=latest_bedroom_temperature_c,
+            overnight_low_c=snapshot.weather.overnight_low_c if snapshot.weather else None,
+            overnight_wind_max_mph=(
+                snapshot.weather.overnight_wind_max_mph if snapshot.weather else None
+            ),
+            fan_auto_enabled=player.fan_auto_enabled,
+        )
+    )
+
+
+async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> DailyLoopEnvelope:
     morning_analysis = _serialize_analysis(snapshot.morning_analysis)
     fresh_temperature = (
         snapshot.latest_temperature
@@ -810,6 +909,12 @@ def _envelope(player: CurrentUser, snapshot: Any) -> DailyLoopEnvelope:
     )
     fan_intent = describe_fan_intent(
         _local_time(player.timezone), fresh_temperature_c, auto_enabled=player.fan_auto_enabled
+    )
+    sleep_projection = await _sleep_projection(
+        player,
+        snapshot,
+        db,
+        latest_bedroom_temperature_c=fresh_temperature_c,
     )
     return DailyLoopEnvelope(
         data=DailyLoopData(
@@ -882,6 +987,7 @@ def _envelope(player: CurrentUser, snapshot: Any) -> DailyLoopEnvelope:
                     respondingToC=fan_intent.responding_to_c,
                 ),
             ),
+            sleepProjection=_serialize_sleep_projection(sleep_projection),
             dataQualityWarnings=[
                 DataQualityWarningOut(
                     id=warning["id"],
@@ -909,7 +1015,7 @@ async def get_daily_loop(
 ) -> DailyLoopEnvelope:
     service = DailyLoopService(db)
     snapshot = await service.get_snapshot(player, subject_date=subject_date)
-    return _envelope(player, snapshot)
+    return await _envelope(player, snapshot, db)
 
 
 @router.put("/{subject_date}/manual-entry", response_model=DailyLoopEnvelope)
@@ -933,7 +1039,7 @@ async def upsert_manual_entry(
         notes=body.notes,
     )
     snapshot = await service.get_snapshot(player, subject_date=subject_date)
-    return _envelope(player, snapshot)
+    return await _envelope(player, snapshot, db)
 
 
 @router.put(
@@ -959,7 +1065,7 @@ async def upsert_workout_adherence(
         actual_workout_json=body.actualWorkoutJson,
     )
     snapshot = await service.get_snapshot(player, subject_date=subject_date)
-    return _envelope(player, snapshot)
+    return await _envelope(player, snapshot, db)
 
 
 @router.put(
@@ -984,4 +1090,4 @@ async def upsert_post_ride_checkin(
         notes=body.notes,
     )
     snapshot = await service.get_snapshot(player, subject_date=subject_date)
-    return _envelope(player, snapshot)
+    return await _envelope(player, snapshot, db)
