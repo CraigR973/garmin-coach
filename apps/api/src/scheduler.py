@@ -25,8 +25,9 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from datetime import UTC, date, datetime, timedelta
+from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
@@ -290,7 +291,9 @@ async def run_morning_weather_sync() -> None:
 
             analysis_service = MorningAnalysisService(session)
             coaching_service = ExecutableCoachingService(session)
+            nudge_service = NudgeAlertService(session)
             proposals_regenerated = 0
+            verdict_pushes = 0
             for profile in profiles:
                 subject_date = _profile_today(profile)
                 try:
@@ -309,6 +312,22 @@ async def run_morning_weather_sync() -> None:
                         subject_date=subject_date.isoformat(),
                     )
                     continue
+                if analysis_result.generated:
+                    # Batch 45: push the verdict the moment it lands. Wrapped so a
+                    # push failure never blocks the Amber regeneration below.
+                    try:
+                        if await nudge_service.push_morning_verdict(
+                            profile,
+                            analysis_result.analysis,
+                            subject_date=subject_date,
+                        ):
+                            verdict_pushes += 1
+                    except Exception:
+                        log.exception(
+                            "morning verdict push failed",
+                            profile_id=str(profile.id),
+                            subject_date=subject_date.isoformat(),
+                        )
                 try:
                     proposals = await coaching_service.regenerate_for_verdict(
                         profile,
@@ -331,6 +350,7 @@ async def run_morning_weather_sync() -> None:
             analyses_generated=analyses_generated,
             analyses_existing=analyses_existing,
             proposals_regenerated=proposals_regenerated,
+            verdict_pushes=verdict_pushes,
         )
     except Exception:
         log.exception("morning weather sync failed")
@@ -445,6 +465,7 @@ async def run_garmin_activity_poll() -> None:
             flexibility_service = PostFlexibilityAnalysisService(session)
             strength_service = PostStrengthAnalysisService(session)
             walk_service = PostWalkAnalysisService(session)
+            nudge_service = NudgeAlertService(session)
             activities_synced = 0
             timeseries_synced = 0
             analyses_generated = 0
@@ -455,6 +476,7 @@ async def run_garmin_activity_poll() -> None:
             strength_analyses_existing = 0
             walk_analyses_generated = 0
             walk_analyses_existing = 0
+            analysis_pushes = 0
 
             for profile in profiles:
                 today = _profile_today(profile)
@@ -479,6 +501,9 @@ async def run_garmin_activity_poll() -> None:
                     )
                     analyses_generated += sum(1 for item in analysis_results if item.generated)
                     analyses_existing += sum(1 for item in analysis_results if not item.generated)
+                    analysis_pushes += await _push_new_analyses(
+                        nudge_service, profile, analysis_results, kind="ride"
+                    )
                 except Exception:
                     log.exception(
                         "post-workout analysis failed",
@@ -498,6 +523,9 @@ async def run_garmin_activity_poll() -> None:
                     flexibility_analyses_existing += sum(
                         1 for item in flexibility_results if not item.generated
                     )
+                    analysis_pushes += await _push_new_analyses(
+                        nudge_service, profile, flexibility_results, kind="flexibility"
+                    )
                 except Exception:
                     log.exception(
                         "post-flexibility analysis failed",
@@ -515,6 +543,9 @@ async def run_garmin_activity_poll() -> None:
                     strength_analyses_existing += sum(
                         1 for item in strength_results if not item.generated
                     )
+                    analysis_pushes += await _push_new_analyses(
+                        nudge_service, profile, strength_results, kind="strength"
+                    )
                 except Exception:
                     log.exception(
                         "post-strength analysis failed",
@@ -528,6 +559,9 @@ async def run_garmin_activity_poll() -> None:
                     )
                     walk_analyses_generated += sum(1 for item in walk_results if item.generated)
                     walk_analyses_existing += sum(1 for item in walk_results if not item.generated)
+                    analysis_pushes += await _push_new_analyses(
+                        nudge_service, profile, walk_results, kind="walk"
+                    )
                 except Exception:
                     log.exception(
                         "post-walk analysis failed",
@@ -548,9 +582,42 @@ async def run_garmin_activity_poll() -> None:
             strength_analyses_existing=strength_analyses_existing,
             walk_analyses_generated=walk_analyses_generated,
             walk_analyses_existing=walk_analyses_existing,
+            analysis_pushes=analysis_pushes,
         )
     except Exception:
         log.exception("garmin activity poll failed")
+
+
+async def _push_new_analyses(
+    nudge_service: NudgeAlertService,
+    profile: Profile,
+    results: Iterable[Any],
+    *,
+    kind: str,
+) -> int:
+    """Push one notification per newly generated post-workout analysis (Batch 45).
+
+    Each push is wrapped so a failure never blocks the activity poll; the
+    ``analysis-{activity_id}`` tag keeps it idempotent and the audit row lands in
+    the poll's trailing commit. An existing analysis (``generated`` is ``False``,
+    e.g. regenerated on a newer check-in / prompt bump) never re-pushes.
+    """
+    pushed = 0
+    for item in results:
+        if not item.generated:
+            continue
+        try:
+            if await nudge_service.push_workout_analysis(
+                profile, item.analysis, kind=kind, commit=False
+            ):
+                pushed += 1
+        except Exception:
+            log.exception(
+                "post-workout push failed",
+                profile_id=str(profile.id),
+                kind=kind,
+            )
+    return pushed
 
 
 async def run_workout_autopush() -> None:
