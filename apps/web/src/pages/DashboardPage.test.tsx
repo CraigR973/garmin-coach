@@ -350,8 +350,9 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('button', { name: /swap day/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /^skip$/i })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /approve & upload/i })).toBeNull();
-    // Batch 36/37: verdict badge appears once on the Today header + once in the hero.
-    expect(screen.getAllByText('Good to go').length).toBe(2);
+    // Batch 50: the verdict renders once (the VerdictHero) — the duplicated Today
+    // header badge was dropped.
+    expect(screen.getAllByText('Good to go').length).toBe(1);
 
     // Object permanence: the other sections are present but collapsed — their
     // summaries are in the DOM, their (lazy) bodies are not.
@@ -667,8 +668,9 @@ describe('DashboardPage', () => {
     expect(await screen.findByText('Cycle + Weights day')).toBeTruthy();
     expect(screen.getByText('Tempo ride')).toBeTruthy();
     expect(screen.getByText('Core strength')).toBeTruthy();
-    // Verdict badge shown once for the day (plus once in the VerdictHero) — not per session.
-    expect(screen.getAllByText('Good to go').length).toBe(2);
+    // Batch 50: the verdict renders once (the VerdictHero) — not per session, and
+    // no longer duplicated on the Today header.
+    expect(screen.getAllByText('Good to go').length).toBe(1);
     // Only the bike session gets an Edit control; the strength row has none.
     expect(screen.getAllByRole('button', { name: /^edit$/i }).length).toBe(1);
 
@@ -829,6 +831,81 @@ describe('DashboardPage', () => {
     expect(tonight).toBeTruthy();
     expect(bedroom).toBeTruthy();
     expect(lastNight).toBeTruthy();
+  });
+
+  it('renders the check-in action in the Next strip by default (Batch 50)', async () => {
+    renderPage(); // base: not checked in, nothing else pending → check-in rung
+    const strip = await screen.findByRole('region', { name: 'Next action' });
+    const cta = within(strip).getByRole('link', { name: /check in/i });
+    expect(cta.getAttribute('href')).toBe('/check-in');
+  });
+
+  it('overrides the phase primary to expand Today for a pending change and flags the collapsed ride card (Batch 50)', async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        // A ride was analysed today, its check-in still unlogged…
+        snapshot.data.postWorkoutAnalyses = [
+          {
+            id: '66666666-6666-4666-8666-666666666666',
+            activityId: '77777777-7777-4777-8777-777777777777',
+            activityName: 'Tempo ride',
+            activityType: 'indoor_cycling',
+            generatedAtUtc: '2026-06-20T12:20:00Z',
+            promptVersion: 'post-workout-v1',
+            modelName: 'claude-sonnet-4-6',
+            outputMarkdown: '**Recovery protocol:** refuel within 20 minutes.',
+            recoveryDecision: { excluded: false, status: 'ready_for_review' },
+            timeSeriesSummary: { power: { avg: 220 } },
+            intervals: [],
+            execution: {},
+            tomorrowImpact: 'Easy endurance tomorrow.',
+            postRideCheckIn: null,
+          },
+        ];
+        // …and the coach also eased today's bike session (the higher-priority action).
+        snapshot.data.plannedWorkouts[0].delivery = {
+          liveStatus: 'pushed',
+          liveOrigin: 'as_planned',
+          intervalsEventId: 'evt_1',
+          changed: true,
+          adjustment: { verdict: 'Amber', changed: true },
+        };
+      }),
+    );
+
+    // The Next strip surfaces the top action (the pending change), not the check-in.
+    const strip = await screen.findByRole('region', { name: 'Next action' });
+    expect(within(strip).getByText("Review today's eased ride")).toBeTruthy();
+
+    // The action override makes Today lead + expand regardless of phase/clock —
+    // even though a ride was analysed (which would otherwise lead After-your-ride).
+    expect(screen.getByRole('button', { name: /approve & upload/i })).toBeTruthy();
+
+    // After-your-ride is collapsed (its check-in form isn't mounted) but its
+    // header carries the "needs a tap" warning dot.
+    expect(screen.queryByText('How did it feel?')).toBeNull();
+    expect(screen.getByLabelText('Needs attention')).toBeTruthy();
+  });
+
+  it('shows an all-clear Next strip when nothing needs a decision (Batch 50)', async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.manualEntry = {
+          id: '12121212-1212-4121-8121-121212121212',
+          userId: '11111111-1111-4111-8111-111111111111',
+          entryDate: '2026-06-20',
+          entryAtUtc: '2026-06-20T07:00:00Z',
+          actualWorkoutJson: {},
+          supplementsJson: {},
+          foodJson: {},
+        };
+      }),
+    );
+
+    await screen.findByText('Cycle day');
+    expect(screen.getByText(/you're all set/i)).toBeTruthy();
+    // The all-clear state is a quiet status line, not a primary-action region.
+    expect(screen.queryByRole('region', { name: 'Next action' })).toBeNull();
   });
 
   it('shows the offline banner while keeping Home visible', async () => {

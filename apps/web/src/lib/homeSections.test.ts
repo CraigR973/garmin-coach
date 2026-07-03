@@ -71,6 +71,31 @@ describe('orderedSections', () => {
       'tomorrow',
     ]);
   });
+
+  it('leads with an explicit primary override instead of the phase primary (Batch 50)', () => {
+    // post_training + hasRide would phase-lead with After-your-ride, but an
+    // action override for `today` (a pending coach change) makes Today lead.
+    expect(
+      orderedSections('post_training', { hasRide: true, isEvening: false, primary: 'today' }),
+    ).toEqual(['today', 'lastNight', 'afterRide', 'tomorrow', 'tonight', 'bedroom']);
+  });
+
+  it('falls back to the phase primary when no override is passed', () => {
+    expect(orderedSections('post_training', { hasRide: true, isEvening: false })).toEqual([
+      'afterRide',
+      'lastNight',
+      'today',
+      'tomorrow',
+      'tonight',
+      'bedroom',
+    ]);
+  });
+
+  it('an override still respects the evening float (Tonight + Bedroom behind the lead)', () => {
+    expect(
+      orderedSections('wind_down', { hasRide: false, isEvening: true, primary: 'today' }),
+    ).toEqual(['today', 'tonight', 'bedroom', 'lastNight']);
+  });
 });
 
 describe('primarySection', () => {
