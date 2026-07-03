@@ -1,8 +1,8 @@
 # Design: Interval-resolved ride analysis — "analyse the workout as a set" (Batch 44)
 
-**Status:** Specced, not started. Designed with Craig on 2026-07-02 after Mark
-reviewed the app's post-ride analysis against the read Copilot gives him and named
-a real accuracy bug in plain English:
+**Status:** **SHIPPED** — Batch 44, PR #63, squash `432e6b4`, DECISIONS #114 (2026-07-03).
+Designed with Craig on 2026-07-02 after Mark reviewed the app's post-ride analysis
+against the read Copilot gives him and named a real accuracy bug in plain English:
 
 > *"we need to fix its analysis first — it's basing it on average power expecting
 > the power for the full workout to be in sweet spot range, which isn't right. Only
