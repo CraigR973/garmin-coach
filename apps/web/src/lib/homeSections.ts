@@ -94,3 +94,23 @@ export function orderedSections(
 export function isEveningNow(date = new Date()): boolean {
   return date.getHours() >= EVENING_HOUR;
 }
+
+/**
+ * Which desktop lane a section belongs to (Batch 51 — two-column dashboard,
+ * `md+` only; mobile stays the single stacked column driven by `orderedSections`
+ * alone). `act` = the do-something-now sections; `context` = the read-first
+ * sleep/environment sections. `tomorrow` rides with `act` since it's the direct
+ * forward continuation of a ride's `afterRide` read, not a standalone context card.
+ */
+export function sectionLane(key: HomeSectionKey): 'act' | 'context' {
+  switch (key) {
+    case 'today':
+    case 'afterRide':
+    case 'tomorrow':
+      return 'act';
+    case 'lastNight':
+    case 'tonight':
+    case 'bedroom':
+      return 'context';
+  }
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isEveningNow, orderedSections, primarySection } from './homeSections';
+import { isEveningNow, orderedSections, primarySection, sectionLane } from './homeSections';
 
 describe('orderedSections', () => {
   it('pre-training leads with Today, the rest collapsed in base order (no ride yet)', () => {
@@ -108,6 +108,20 @@ describe('primarySection', () => {
   it('post_training leads with After your ride only when a ride was analysed', () => {
     expect(primarySection('post_training', { hasRide: true })).toBe('afterRide');
     expect(primarySection('post_training', { hasRide: false })).toBe('today');
+  });
+});
+
+describe('sectionLane (Batch 51 — desktop two-column)', () => {
+  it('puts Today, After your ride, and Tomorrow in the act lane', () => {
+    expect(sectionLane('today')).toBe('act');
+    expect(sectionLane('afterRide')).toBe('act');
+    expect(sectionLane('tomorrow')).toBe('act');
+  });
+
+  it('puts Last night, Tonight, and Bedroom in the context lane', () => {
+    expect(sectionLane('lastNight')).toBe('context');
+    expect(sectionLane('tonight')).toBe('context');
+    expect(sectionLane('bedroom')).toBe('context');
   });
 });
 

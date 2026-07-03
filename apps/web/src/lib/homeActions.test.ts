@@ -4,7 +4,7 @@ import { actionSection, nextAction } from './homeActions';
 
 type DataOverrides = Partial<{
   plannedWorkouts: Array<{ workoutType: string; delivery?: { changed?: boolean } | null }>;
-  postWorkoutAnalyses: Array<{ postRideCheckIn?: unknown }>;
+  postWorkoutAnalyses: Array<{ postRideCheckIn?: unknown; activityName?: string | null }>;
   manualEntry: unknown;
   sleepProjection: { tone: string } | null;
 }>;
@@ -52,6 +52,22 @@ describe('nextAction priority ladder', () => {
     expect(action.tone).toBe('warning');
   });
 
+  it('names the specific ride in the log-ride label, not a generic "check in"', () => {
+    const action = nextAction(
+      makeData({ postWorkoutAnalyses: [{ postRideCheckIn: null, activityName: 'Tempo ride' }] }),
+      { isEvening: false },
+    );
+    expect(action.label).toBe('Log how Tempo ride felt');
+  });
+
+  it('falls back to "your ride" when the analysed activity has no name', () => {
+    const action = nextAction(
+      makeData({ postWorkoutAnalyses: [{ postRideCheckIn: null, activityName: null }] }),
+      { isEvening: false },
+    );
+    expect(action.label).toBe('Log how your ride felt');
+  });
+
   it('a ride whose check-in is already logged does not surface rung 2', () => {
     const action = nextAction(
       makeData({ postWorkoutAnalyses: [{ postRideCheckIn: { rpe: 8 } }] }),
@@ -61,9 +77,10 @@ describe('nextAction priority ladder', () => {
     expect(action.key).toBe('all-set');
   });
 
-  it('3. prompts the daily check-in when none is logged, linking to /check-in', () => {
+  it('3. prompts the morning check-in when none is logged, linking to /check-in', () => {
     const action = nextAction(makeData({ manualEntry: null }), { isEvening: false });
     expect(action.key).toBe('check-in');
+    expect(action.label).toBe('Morning check-in');
     expect(action.to).toBe('/check-in');
     expect(action.sectionKey).toBeUndefined();
   });

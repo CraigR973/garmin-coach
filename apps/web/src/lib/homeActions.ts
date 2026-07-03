@@ -41,34 +41,45 @@ function hasPendingCoachChange(data: DailyLoopData): boolean {
   );
 }
 
-/** True when a ride was analysed today but its "how did it feel" check-in is
- *  still empty. */
-function hasUnloggedRide(data: DailyLoopData): boolean {
-  return (data.postWorkoutAnalyses ?? []).some((analysis) => analysis.postRideCheckIn == null);
+/** The first ride analysed today whose "how did it feel" check-in is still
+ *  empty, or `null` if every analysed ride has been logged. */
+function firstUnloggedRide(data: DailyLoopData): DailyLoopData['postWorkoutAnalyses'][number] | null {
+  return (data.postWorkoutAnalyses ?? []).find((analysis) => analysis.postRideCheckIn == null) ?? null;
 }
 
 /**
  * Resolve the top action from the deterministic priority ladder:
  *
  * 1. a bike workout with a pending coach change → review it (expand `today`);
- * 2. a ride analysed today with no post-ride check-in → log it (expand `afterRide`);
- * 3. no morning check-in captured today → check in (`/check-in`);
+ * 2. a ride analysed today with no post-ride check-in → log it, named, (expand `afterRide`);
+ * 3. no morning check-in captured today → the post-sleep check-in (`/check-in`);
  * 4. evening & tonight's sleep needs protecting → protect it (`/sleep`);
  * 5. nothing pending → a quiet "you're all set".
  *
  * Need comes before time-of-day: rungs 1–3 fire regardless of the clock, so an
  * unactioned adjustment surfaces at 18:00 just as at 07:00. Only the
  * protect-sleep rung is evening-gated.
+ *
+ * Rungs 2 and 3 are both "check-ins" but ask about different things — the
+ * label names which one so Mark never confuses "how did the ride feel" with
+ * the post-sleep morning entry.
  */
 export function nextAction(data: DailyLoopData, { isEvening }: { isEvening: boolean }): NextAction {
   if (hasPendingCoachChange(data)) {
     return { key: 'review-ride', label: "Review today's eased ride", sectionKey: 'today', tone: 'warning' };
   }
-  if (hasUnloggedRide(data)) {
-    return { key: 'log-ride', label: 'Log how your ride felt', sectionKey: 'afterRide', tone: 'warning' };
+  const unloggedRide = firstUnloggedRide(data);
+  if (unloggedRide) {
+    const rideName = unloggedRide.activityName ?? 'your ride';
+    return {
+      key: 'log-ride',
+      label: `Log how ${rideName} felt`,
+      sectionKey: 'afterRide',
+      tone: 'warning',
+    };
   }
   if (!data.manualEntry) {
-    return { key: 'check-in', label: 'Check in', to: '/check-in', tone: 'default' };
+    return { key: 'check-in', label: 'Morning check-in', to: '/check-in', tone: 'default' };
   }
   if (isEvening && data.sleepProjection?.tone === 'protect') {
     return { key: 'protect-sleep', label: "Protect tonight's sleep", to: '/sleep', tone: 'warning' };

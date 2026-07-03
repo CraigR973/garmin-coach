@@ -50,6 +50,7 @@ import {
   isEveningNow,
   orderedSections,
   primarySection,
+  sectionLane,
   type HomeSectionKey,
 } from '@/lib/homeSections';
 
@@ -460,22 +461,30 @@ export function DashboardPage() {
 
       <NextActionStrip action={action} onGoToSection={scrollToSection} />
 
-      {order.map((key) => {
-        const section = sections[key];
-        return (
-          <CollapsibleSection
-            key={key}
-            id={sectionDomId(key)}
-            title={section.title}
-            icon={section.icon}
-            summary={section.summary}
-            tone={section.tone}
-            defaultOpen={key === primary}
-          >
-            {section.body}
-          </CollapsibleSection>
-        );
-      })}
+      {/* Batch 51: on md+ the sections split into an act lane (Today / After
+          your ride / Tomorrow) and a context lane (Last night / Tonight /
+          Bedroom), sharing one grid so mobile keeps its single stacked column
+          (grid-cols-1) without a second, duplicate render tree. */}
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 md:items-start">
+        {order.map((key) => {
+          const section = sections[key];
+          const lane = sectionLane(key);
+          return (
+            <CollapsibleSection
+              key={key}
+              id={sectionDomId(key)}
+              title={section.title}
+              icon={section.icon}
+              summary={section.summary}
+              tone={section.tone}
+              defaultOpen={key === primary}
+              className={lane === 'act' ? 'md:col-start-1' : 'md:col-start-2'}
+            >
+              {section.body}
+            </CollapsibleSection>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -616,11 +625,13 @@ function DayPlanBody({
             </Link>
           </Button>
           {/* Batch 50: the prominent Check-in button moved into the Next strip;
-              this is its always-available fallback. */}
+              this is its always-available fallback. Named "Morning check-in"
+              (not just "Check in") so it isn't confused with the per-ride
+              "How did it feel?" check-in on the After-your-ride card below. */}
           <Button asChild type="button" size="sm" variant="outline">
             <Link to="/check-in">
               <ClipboardCheck className="h-4 w-4" aria-hidden />
-              Check in
+              Morning check-in
             </Link>
           </Button>
           {hasWorkouts && (

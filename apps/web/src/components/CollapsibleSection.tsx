@@ -27,6 +27,7 @@ export function CollapsibleSection({
   tone = 'default',
   defaultOpen = false,
   id,
+  className,
   children,
 }: {
   title: ReactNode;
@@ -38,6 +39,9 @@ export function CollapsibleSection({
   defaultOpen?: boolean;
   /** DOM id on the section card, so the Next strip can scroll to it. */
   id?: string;
+  /** Extra classes on the outer Card — used by the Batch 51 desktop grid to
+   *  place a section in the act/context column without unmounting it. */
+  className?: string;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -45,7 +49,7 @@ export function CollapsibleSection({
   const showSummary = !open && summary != null && summary !== '';
   const showDot = !open && tone === 'warning';
   return (
-    <Card id={id}>
+    <Card id={id} className={className}>
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
