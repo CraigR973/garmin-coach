@@ -13,29 +13,39 @@ import { cn } from '@/lib/utils';
  * bedroom-overnight query inside the sleep card) costs nothing while collapsed.
  * `defaultOpen` is derived from the day's data state on each load — there is no
  * sticky manual collapse state in this batch (avoids a stale-open-panel feeling).
+ *
+ * A `tone` of `warning` marks a section that needs a tap (Batch 50 — action-first):
+ * while collapsed it shows a warning dot in the header so a closed section can
+ * signal it holds a pending action, even when a different section is the one
+ * expanded. When open, the section's own content carries the state, so the dot
+ * is suppressed.
  */
 export function CollapsibleSection({
   title,
   icon,
   summary,
-  headerAccessory,
+  tone = 'default',
   defaultOpen = false,
+  id,
   children,
 }: {
   title: ReactNode;
   icon?: ReactNode;
   /** One-line glance shown in the header while collapsed; hidden once open. */
   summary?: ReactNode;
-  /** Optional trailing element in the header (e.g. the verdict badge). */
-  headerAccessory?: ReactNode;
+  /** `warning` shows a "needs a tap" dot in the header while collapsed. */
+  tone?: 'default' | 'warning';
   defaultOpen?: boolean;
+  /** DOM id on the section card, so the Next strip can scroll to it. */
+  id?: string;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const bodyId = useId();
   const showSummary = !open && summary != null && summary !== '';
+  const showDot = !open && tone === 'warning';
   return (
-    <Card>
+    <Card id={id}>
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
@@ -47,12 +57,18 @@ export function CollapsibleSection({
           <span className="flex items-center gap-2 text-lg font-semibold leading-tight tracking-tight text-text-primary">
             {icon}
             {title}
+            {showDot ? (
+              <span
+                className="h-2 w-2 shrink-0 rounded-full bg-warning"
+                role="status"
+                aria-label="Needs attention"
+              />
+            ) : null}
           </span>
           {showSummary ? (
             <span className="mt-1.5 block truncate text-sm text-text-secondary">{summary}</span>
           ) : null}
         </span>
-        {headerAccessory}
         <ChevronDown
           className={cn(
             'h-5 w-5 shrink-0 text-text-muted transition-transform',

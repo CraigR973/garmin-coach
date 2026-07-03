@@ -62,21 +62,27 @@ export const EVENING_HOUR = 20;
 /**
  * Order the present sections for the current state.
  *
- * The phase drives *which section is primary*; the primary leads and the rest
- * keep base order. In the evening `wind_down` phase the bedroom-prep sections
- * (`tonight` + `bedroom`) float up right behind the primary. Presence is only
- * ever gated by `hasRide` (the ride-only sections), never by phase — so Home is
- * correct whether Mark trains at 06:00 or 18:00.
+ * The primary section leads and the rest keep base order. In the evening
+ * `wind_down` phase the bedroom-prep sections (`tonight` + `bedroom`) float up
+ * right behind the primary. Presence is only ever gated by `hasRide` (the
+ * ride-only sections), never by phase — so Home is correct whether Mark trains
+ * at 06:00 or 18:00.
+ *
+ * The primary defaults to the phase's `primarySection`, but the caller may pass
+ * an explicit `primary` to override it — the Batch 50 action-first rule, where
+ * the section holding the top pending action leads and expands regardless of
+ * phase (`actionSection(nextAction) ?? primarySection(phase)`). The ordering
+ * algorithm and evening-float are otherwise unchanged.
  */
 export function orderedSections(
   phase: DailyPhase,
-  { hasRide, isEvening }: { hasRide: boolean; isEvening: boolean },
+  { hasRide, isEvening, primary }: { hasRide: boolean; isEvening: boolean; primary?: HomeSectionKey },
 ): HomeSectionKey[] {
   const present = BASE_ORDER.filter((key) =>
     key === 'afterRide' || key === 'tomorrow' ? hasRide : true,
   );
-  const primary = primarySection(phase, { hasRide });
-  const lead = present.includes(primary) ? [primary] : [];
+  const lead0 = primary ?? primarySection(phase, { hasRide });
+  const lead = present.includes(lead0) ? [lead0] : [];
   const floated = isEvening
     ? present.filter((key) => EVENING_FLOAT.includes(key) && !lead.includes(key))
     : [];

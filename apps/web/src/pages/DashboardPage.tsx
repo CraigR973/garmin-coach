@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import {
   Activity,
   ArrowLeftRight,
+  ArrowRight,
   BedDouble,
   Bike,
   CalendarDays,
@@ -34,14 +35,17 @@ import { VerdictHero } from '@/components/VerdictHero';
 import { SleepSnapshotBody } from '@/components/SleepSnapshotBody';
 import { SleepPrepBody } from '@/components/SleepPrepBody';
 import { BedroomBody } from '@/components/BedroomBody';
+import { DetailLinkCard } from '@/components/DetailLinkCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { isBikeWorkout, useDailyPhase } from '@/hooks/useDailyPhase';
 import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { apiFetch } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import { formatDateTime, friendlyDate, hm, nextDays, remContext, type FanState } from '@/lib/dailyFlow';
-import { greetingForNow, verdictBadgeVariant, verdictLabel } from '@/lib/copy';
+import { greetingForNow, verdictLabel } from '@/lib/copy';
 import { dayStateForWorkouts, type DayCategory } from '@/lib/workoutCategories';
+import { actionSection, nextAction, type NextAction } from '@/lib/homeActions';
 import {
   isEveningNow,
   orderedSections,
@@ -83,16 +87,39 @@ function sleepSummary(sleep: TodaySleep): string {
   return parts.join(' · ');
 }
 
-/** Collapsed one-liner for the Today section — the day's session titles. */
-function todaySummary(workouts: TodayWorkout[]): string {
-  if (workouts.length === 0) return 'Rest is the plan today.';
-  return workouts.map((workout) => workout.title).join(' · ');
+type SummaryTone = 'default' | 'warning';
+type SectionSummary = { text: string; tone: SummaryTone };
+
+/** Collapsed one-liner + tone for the Today section — the day's session titles,
+ *  flagged `warning` when the coach has eased a bike session that still needs a
+ *  decision (Batch 50), so a collapsed Today signals it holds a pending action. */
+function todaySummary(workouts: TodayWorkout[]): SectionSummary {
+  if (workouts.length === 0) return { text: 'Rest is the plan today.', tone: 'default' };
+  const text = workouts.map((workout) => workout.title).join(' · ');
+  const tone: SummaryTone = workouts.some(
+    (workout) => Boolean(workout.delivery?.changed) && isBikeWorkout(workout.workoutType),
+  )
+    ? 'warning'
+    : 'default';
+  return { text, tone };
 }
 
-/** Collapsed one-liner for the After-your-ride section. */
-function afterRideSummary(items: Array<{ activityName?: string | null }>): string {
-  if (items.length === 0) return '';
-  return items.map((item) => item.activityName ?? 'Your ride').join(' · ');
+/** Collapsed one-liner + tone for the After-your-ride section — flagged
+ *  `warning` while a ride's "how did it feel" check-in is still unlogged. */
+function afterRideSummary(
+  items: Array<{ activityName?: string | null; postRideCheckIn?: unknown }>,
+): SectionSummary {
+  if (items.length === 0) return { text: '', tone: 'default' };
+  const text = items.map((item) => item.activityName ?? 'Your ride').join(' · ');
+  const tone: SummaryTone = items.some((item) => item.postRideCheckIn == null)
+    ? 'warning'
+    : 'default';
+  return { text, tone };
+}
+
+/** DOM id for a Home section card, so the Next strip can scroll to it. */
+function sectionDomId(key: HomeSectionKey): string {
+  return `home-section-${key}`;
 }
 
 /** Collapsed one-liner for the Bedroom section — live indoor read + fan mode. */
@@ -317,15 +344,27 @@ export function DashboardPage() {
       ? `${verdictLabel(analysis.verdict)} tomorrow starts from today's recovery picture.`
       : "Tomorrow's cue will show up here after the coach read.");
 
-  // Batch 37: render the full section set every load; the loop phase (Batch 48)
-  // picks the one expanded section. Presence is only ever gated by hasRide,
-  // never by phase.
-  const primary = primarySection(phase, { hasRide });
-  const order = orderedSections(phase, { hasRide, isEvening });
+  // Batch 50: the one context-aware action drives both the Next strip and — via
+  // its section override — which section is expanded, so a pending item is never
+  // stranded in a collapsed off-phase section. It falls back to the Batch 48
+  // phase primary when the action navigates away or everything is clear.
+  const action = nextAction(daily, { isEvening });
+  const primary = actionSection(action) ?? primarySection(phase, { hasRide });
+  // Batch 37: render the full section set every load; exactly one is expanded
+  // (the action/phase primary). Presence is only ever gated by hasRide.
+  const order = orderedSections(phase, { hasRide, isEvening, primary });
+  const scrollToSection = (key: HomeSectionKey) => {
+    document
+      .getElementById(sectionDomId(key))
+      ?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  };
+
+  const todaySummaryValue = todaySummary(todaysWorkouts);
+  const afterRideSummaryValue = afterRideSummary(postWorkouts);
 
   const sections: Record<
     HomeSectionKey,
-    { title: string; icon: ReactNode; summary: ReactNode; headerAccessory?: ReactNode; body: ReactNode }
+    { title: string; icon: ReactNode; summary: ReactNode; tone?: SummaryTone; body: ReactNode }
   > = {
     lastNight: {
       title: "Last night's sleep",
@@ -342,10 +381,8 @@ export function DashboardPage() {
     today: {
       title: `${dayState.label} day`,
       icon: <CalendarDays className="h-4 w-4 text-primary" aria-hidden />,
-      summary: todaySummary(todaysWorkouts),
-      headerAccessory: (
-        <Badge variant={verdictBadgeVariant(analysis?.verdict)}>{verdictLabel(analysis?.verdict)}</Badge>
-      ),
+      summary: todaySummaryValue.text,
+      tone: todaySummaryValue.tone,
       body: (
         <DayPlanBody
           workouts={todaysWorkouts}
@@ -364,7 +401,8 @@ export function DashboardPage() {
     afterRide: {
       title: 'After your ride',
       icon: <Bike className="h-4 w-4 text-primary" aria-hidden />,
-      summary: afterRideSummary(postWorkouts),
+      summary: afterRideSummaryValue.text,
+      tone: afterRideSummaryValue.tone,
       body: (
         <PostRideBody
           items={postWorkouts}
@@ -384,7 +422,18 @@ export function DashboardPage() {
       title: 'Tonight',
       icon: <MoonStar className="h-4 w-4 text-primary" aria-hidden />,
       summary: daily.sleepProjection?.headline ?? SLEEP_PREP_SUMMARY,
-      body: <SleepPrepBody projection={daily.sleepProjection ?? null} />,
+      // Batch 50: Home's evening cards stay compact and defer to the Sleep hub
+      // (Batch 49) rather than duplicating the full wind-down controls.
+      body: (
+        <div className="space-y-4">
+          <SleepPrepBody projection={daily.sleepProjection ?? null} />
+          <DetailLinkCard
+            to="/sleep"
+            title="Tonight's sleep & bedroom"
+            description="Open the full wind-down plan and fan controls."
+          />
+        </div>
+      ),
     },
     bedroom: {
       title: 'Bedroom',
@@ -409,24 +458,18 @@ export function DashboardPage() {
 
       <VerdictHero verdict={analysis?.verdict} dateLabel={friendlyDate(daily.subjectDate)} />
 
-      <div className="flex flex-wrap gap-2">
-        <Button asChild>
-          <Link to="/check-in">
-            <ClipboardCheck className="mr-2 h-4 w-4" aria-hidden />
-            {daily.manualEntry ? 'Update check-in' : 'Check in'}
-          </Link>
-        </Button>
-      </div>
+      <NextActionStrip action={action} onGoToSection={scrollToSection} />
 
       {order.map((key) => {
         const section = sections[key];
         return (
           <CollapsibleSection
             key={key}
+            id={sectionDomId(key)}
             title={section.title}
             icon={section.icon}
             summary={section.summary}
-            headerAccessory={section.headerAccessory}
+            tone={section.tone}
             defaultOpen={key === primary}
           >
             {section.body}
@@ -434,6 +477,56 @@ export function DashboardPage() {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * The "Next" strip under the verdict hero (Batch 50): the single context-aware
+ * primary action for right now. A `to` action navigates away (e.g. Check in);
+ * a `sectionKey` action scrolls to its Home section (already expanded by the
+ * action override); the all-clear state is a quiet, button-less line.
+ */
+function NextActionStrip({
+  action,
+  onGoToSection,
+}: {
+  action: NextAction;
+  onGoToSection: (key: HomeSectionKey) => void;
+}) {
+  if (action.key === 'all-set') {
+    return (
+      <div
+        role="status"
+        className="flex items-center gap-2 rounded-xl border border-border bg-surface-elevated/60 px-4 py-3 text-sm text-text-secondary"
+      >
+        <Check className="h-4 w-4 shrink-0 text-success" aria-hidden />
+        {action.label} — nothing needs a decision right now.
+      </div>
+    );
+  }
+  return (
+    <section
+      aria-label="Next action"
+      className={cn(
+        'flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3',
+        action.tone === 'warning' ? 'border-warning/40 bg-warning/10' : 'border-accent/40 bg-accent/10',
+      )}
+    >
+      <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-text-muted">Next</p>
+      {action.to ? (
+        <Button asChild size="sm">
+          <Link to={action.to}>
+            <ArrowRight className="mr-1.5 h-4 w-4" aria-hidden />
+            {action.label}
+          </Link>
+        </Button>
+      ) : (
+        <Button size="sm" onClick={() => action.sectionKey && onGoToSection(action.sectionKey)}>
+          <ArrowRight className="mr-1.5 h-4 w-4" aria-hidden />
+          {action.label}
+        </Button>
+      )}
+    </section>
   );
 }
 
@@ -520,6 +613,14 @@ function DayPlanBody({
             <Link to="/delivery">
               <CalendarDays className="h-4 w-4" aria-hidden />
               View week
+            </Link>
+          </Button>
+          {/* Batch 50: the prominent Check-in button moved into the Next strip;
+              this is its always-available fallback. */}
+          <Button asChild type="button" size="sm" variant="outline">
+            <Link to="/check-in">
+              <ClipboardCheck className="h-4 w-4" aria-hidden />
+              Check in
             </Link>
           </Button>
           {hasWorkouts && (
