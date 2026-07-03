@@ -11,6 +11,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any, Protocol, cast
 
 import httpx
+from fastapi import HTTPException
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,8 +26,17 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile
 from src.services.coaching_state import CoachingStateService
+from src.services.ride_intervals import (
+    power_zone,
+    segment_ride_intervals,
+    summarize_execution,
+)
+from src.services.workout_delivery import DEFAULT_FTP_WATTS, build_structured_workout_ir
 
-PROMPT_VERSION = "post-workout-analysis-v1-2026-06-20"
+# Bumped for Batch 44: the packet now carries interval-resolved execution and the
+# prompt grades work intervals against their own %FTP targets. The bump also marks
+# older post-workout analyses for regeneration via ``_analysis_is_current``.
+PROMPT_VERSION = "post-workout-analysis-v2-2026-07-03"
 ANALYSIS_TYPE = "post_workout"
 ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
@@ -36,9 +46,21 @@ Use only the supplied context packet. Follow every data-quality guardrail.
 Return concise markdown with a workout rating, performance read, specific timed
 recovery protocol, and tomorrow impact. Incorporate any post-ride check-in
 (RPE, feel, legs, niggles) when present. Include power, HR, zones, cadence,
-Performance Condition, Stamina, and Training Effect when present. Never mention
-left/right power balance. Do not use wrist-HR strength sessions for recovery
-decisions."""
+Performance Condition, Stamina, and Training Effect when present.
+
+Grade execution on the WORK intervals in `execution`/`intervals`, each against its
+own %FTP target — not on the whole-ride average. On a structured session the
+whole-ride average power sits BELOW the work target because the warm-up, recovery
+valleys, and cool-down pull it down, so treat `activity.avgPowerWatts` and
+`timeSeriesSummary.power` as context only and never as under-performance. Describe
+the warm-up, recovery, and cool-down efforts but do not grade their power against
+the work target. Ground any "held power / no fade / faded" claim in each work
+interval's `fade` and `hrDriftPct`, not on impression. When no planned intervals
+are supplied (a free or outdoor ride), read the whole-ride effort and power-zone
+distribution instead.
+
+Never mention left/right power balance. Do not use wrist-HR strength sessions for
+recovery decisions."""
 
 
 class PostWorkoutAnalysisError(RuntimeError):
@@ -163,7 +185,7 @@ class PostWorkoutAnalysisService:
                 continue
             latest = await self.latest_analysis_for_activity(activity.id)
             checkin = await self._post_ride_checkin(activity.user_id, activity.id)
-            if latest is None or not _analysis_covers_post_ride_checkin(latest, checkin):
+            if latest is None or not _analysis_is_current(latest, checkin):
                 pending.append(activity)
         return pending
 
@@ -206,6 +228,12 @@ class PostWorkoutAnalysisService:
         ftp_watts = _ftp_watts(knowledge_base)
         time_series_summary = _time_series_summary(timeseries, ftp_watts)
         recovery_decision = _recovery_decision_packet(activity)
+        planned_ir = _planned_ride_ir(planned_workouts, ftp_watts)
+        intervals = segment_ride_intervals(timeseries, planned_ir, ftp_watts)
+        execution = summarize_execution(
+            intervals,
+            whole_ride_avg_power_watts=activity.avg_power_watts,
+        )
 
         return {
             "packetType": "post_workout_analysis",
@@ -226,6 +254,9 @@ class PostWorkoutAnalysisService:
             },
             "activity": _activity_packet(activity),
             "timeSeriesSummary": time_series_summary,
+            "plannedWorkoutIr": planned_ir,
+            "intervals": intervals,
+            "execution": execution,
             "plannedWorkouts": [_planned_workout_packet(workout) for workout in planned_workouts],
             "morningVerdict": _morning_analysis_packet(morning_analysis),
             "postRideCheckIn": _manual_entry_packet(post_ride_checkin),
@@ -239,6 +270,11 @@ class PostWorkoutAnalysisService:
                     "include_power_hr_zones_cadence_performance_condition_stamina_training_effect",
                     "include_specific_timed_recovery_protocol",
                     "include_tomorrow_impact",
+                    "grade_execution_on_work_intervals_vs_ftp_targets",
+                    "whole_ride_average_power_is_context_not_under_performance",
+                    "describe_but_do_not_grade_warmup_recovery_cooldown",
+                    "ground_fade_claims_in_interval_fade_and_hr_drift",
+                    "fall_back_to_whole_ride_read_when_no_planned_intervals",
                     "never_reference_left_right_power_balance",
                     "exclude_wrist_hr_strength_from_recovery_decisions",
                 ],
@@ -257,7 +293,7 @@ class PostWorkoutAnalysisService:
         if not force:
             existing = await self.latest_analysis_for_activity(activity.id)
             checkin = await self._post_ride_checkin(player.id, activity.id)
-            if existing is not None and _analysis_covers_post_ride_checkin(existing, checkin):
+            if existing is not None and _analysis_is_current(existing, checkin):
                 return PostWorkoutAnalysisResult(analysis=existing, generated=False)
 
         context_packet = await self.assemble_context_packet(player, activity)
@@ -537,9 +573,10 @@ def _power_zone_distribution(
         return []
     counts: Counter[str] = Counter()
     for row in rows:
-        if row.power_watts is None:
+        zone = power_zone(row.power_watts, ftp_watts)
+        if zone is None:
             continue
-        counts[_power_zone(row.power_watts, ftp_watts)] += 1
+        counts[zone] += 1
     total = sum(counts.values())
     if total == 0:
         return []
@@ -554,19 +591,24 @@ def _power_zone_distribution(
     ]
 
 
-def _power_zone(power_watts: float, ftp_watts: int) -> str:
-    pct = power_watts / ftp_watts
-    if pct < 0.56:
-        return "Z1"
-    if pct < 0.76:
-        return "Z2"
-    if pct < 0.91:
-        return "Z3"
-    if pct < 1.06:
-        return "Z4"
-    if pct < 1.21:
-        return "Z5"
-    return "Z6"
+def _planned_ride_ir(
+    planned_workouts: Sequence[PlannedWorkout],
+    ftp_watts: int | None,
+) -> dict[str, Any] | None:
+    """Build the planned structured-workout IR (Batch 12.1) for the day's first
+    structured bike workout, or ``None`` for a free/outdoor ride with no plan — in
+    which case segmentation degrades to the whole-ride read (Batch 44.4)."""
+    for workout in planned_workouts:
+        structured = workout.structured_workout
+        if not isinstance(structured, dict) or structured.get("format") != "bike":
+            continue
+        if not structured.get("steps"):
+            continue
+        try:
+            return build_structured_workout_ir(workout, ftp_watts=ftp_watts or DEFAULT_FTP_WATTS)
+        except HTTPException:
+            continue
+    return None
 
 
 def _planned_workout_packet(row: PlannedWorkout) -> dict[str, Any]:
@@ -613,6 +655,16 @@ def _manual_entry_packet(row: ManualEntry | None) -> dict[str, Any] | None:
         "feel": row.feel,
         "notes": row.notes,
     }
+
+
+def _analysis_is_current(analysis: Analysis, checkin: ManualEntry | None) -> bool:
+    """An analysis is current only if it was generated by the live prompt version and
+    already reflects the latest post-ride check-in. Bumping ``PROMPT_VERSION`` (Batch
+    44) therefore marks older analyses as stale so the hourly poll and the backfill
+    regenerate them through the new interval-resolved packet."""
+    return analysis.prompt_version == PROMPT_VERSION and _analysis_covers_post_ride_checkin(
+        analysis, checkin
+    )
 
 
 def _analysis_covers_post_ride_checkin(

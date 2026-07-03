@@ -1006,6 +1006,79 @@ function WorkoutRow({
 
 /** The expanded body of the After-your-ride section: each ride's check-in +
  *  analysis. */
+type RideIntervalRow = DailyLoopData['postWorkoutAnalyses'][number]['intervals'][number];
+
+function intervalAdherenceBadge(adherence: RideIntervalRow['adherence']) {
+  if (adherence === 'on') return { variant: 'success' as const, label: 'On target' };
+  if (adherence === 'over') return { variant: 'warning' as const, label: 'Over' };
+  if (adherence === 'under') return { variant: 'warning' as const, label: 'Under' };
+  return null;
+}
+
+function intervalTarget(interval: RideIntervalRow): string {
+  const { targetPctFtpLow: low, targetPctFtpHigh: high } = interval;
+  if (low == null || high == null) return '—';
+  return low === high ? `${low}%` : `${low}–${high}%`;
+}
+
+// Batch 44: the graded work intervals, so the read is legible at a glance — warm-up,
+// recovery, and cool-down are not graded, so the table shows work intervals only and
+// renders nothing for a free/outdoor ride with no planned structure.
+function RideIntervalTable({ intervals }: { intervals: RideIntervalRow[] }) {
+  const work = intervals.filter((interval) => interval.role === 'work');
+  if (work.length === 0) return null;
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-semibold text-text-primary">Interval execution</p>
+      <p className="text-xs text-text-secondary">
+        Work intervals graded against their own %FTP targets. Warm-up, recovery, and cool-down are
+        not graded.
+      </p>
+      <div className="overflow-hidden rounded-lg border border-border">
+        <table className="w-full border-collapse text-left text-sm">
+          <thead>
+            <tr className="bg-surface-elevated text-xs text-text-muted">
+              <th className="px-3 py-2 font-medium">Interval</th>
+              <th className="px-3 py-2 font-medium">Target</th>
+              <th className="px-3 py-2 font-medium">Held</th>
+              <th className="px-3 py-2 font-medium">Read</th>
+            </tr>
+          </thead>
+          <tbody>
+            {work.map((interval) => {
+              const badge = intervalAdherenceBadge(interval.adherence);
+              return (
+                <tr key={interval.index} className="border-t border-border">
+                  <td className="px-3 py-2 text-text-primary">
+                    {Math.round(interval.durationSec / 60)} min {interval.label}
+                  </td>
+                  <td className="px-3 py-2 text-text-secondary">{intervalTarget(interval)}</td>
+                  <td className="px-3 py-2 text-text-secondary">
+                    {interval.pctFtp != null ? `${Math.round(interval.pctFtp)}%` : '—'}
+                    {interval.normalizedPowerWatts != null
+                      ? ` · ${Math.round(interval.normalizedPowerWatts)} W`
+                      : ''}
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      {badge ? <Badge variant={badge.variant}>{badge.label}</Badge> : null}
+                      {interval.fade ? (
+                        <span className="text-xs text-warning">fading</span>
+                      ) : (
+                        <span className="text-xs text-text-muted">steady</span>
+                      )}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function PostRideBody({
   items,
   onSaveCheckIn,
@@ -1018,6 +1091,7 @@ function PostRideBody({
     activityName?: string | null;
     generatedAtUtc: string;
     outputMarkdown: string;
+    intervals?: RideIntervalRow[];
     recoveryDecision?: { excluded?: boolean } | null;
     postRideCheckIn?: {
       subjectiveScore?: number | null;
@@ -1103,6 +1177,7 @@ function PostRideBody({
           <div>
             <Markdown>{item.outputMarkdown}</Markdown>
           </div>
+          <RideIntervalTable intervals={item.intervals ?? []} />
         </div>
       ))}
     </div>

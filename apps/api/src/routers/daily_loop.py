@@ -121,6 +121,8 @@ class PostWorkoutAnalysisOut(BaseModel):
     outputMarkdown: str
     recoveryDecision: dict[str, Any]
     timeSeriesSummary: dict[str, Any]
+    intervals: list[dict[str, Any]]
+    execution: dict[str, Any]
     tomorrowImpact: str | None
     postRideCheckIn: ManualEntryOut | None = None
 
@@ -461,6 +463,14 @@ def _serialize_post_workout_analysis(
         if isinstance(packet.get("timeSeriesSummary", {}), dict)
         else {}
     )
+    raw_intervals = packet.get("intervals")
+    intervals = (
+        [item for item in raw_intervals if isinstance(item, dict)]
+        if isinstance(raw_intervals, list)
+        else []
+    )
+    execution = packet.get("execution")
+    execution = execution if isinstance(execution, dict) else {}
     tomorrow_impact = packet.get("tomorrowImpact")
     return PostWorkoutAnalysisOut(
         id=str(analysis.id),
@@ -477,6 +487,8 @@ def _serialize_post_workout_analysis(
         outputMarkdown=analysis.output_markdown,
         recoveryDecision=recovery_decision,
         timeSeriesSummary=time_series_summary,
+        intervals=intervals,
+        execution=execution,
         tomorrowImpact=tomorrow_impact if isinstance(tomorrow_impact, str) else None,
         postRideCheckIn=_serialize_manual_entry(post_ride_checkin),
     )

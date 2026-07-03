@@ -4,10 +4,12 @@ import {
   activityTimeSeriesSchema,
   coachingStateEnvelopeSchema,
   dailyLoopEnvelopeSchema,
+  dailyLoopPostWorkoutAnalysisSchema,
   dailyMetricSchema,
   knowledgeBaseUpdateInputSchema,
   plannedWorkoutOverrideInputSchema,
   profileSchema,
+  rideIntervalSchema,
   sleepSchema,
   weatherDailySchema,
 } from './schemas';
@@ -16,6 +18,46 @@ const userId = '11111111-1111-4111-8111-111111111111';
 const rowId = '22222222-2222-4222-8222-222222222222';
 
 describe('v1 shared schemas', () => {
+  it('parses interval-resolved ride execution and defaults intervals/execution', () => {
+    const parsed = dailyLoopPostWorkoutAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-07-03T12:20:00Z',
+      promptVersion: 'post-workout-analysis-v2-2026-07-03',
+      outputMarkdown: '**Rating:** strong.',
+      intervals: [
+        {
+          index: 1,
+          label: 'Sweet spot',
+          role: 'work',
+          durationSec: 1200,
+          pctFtp: 91,
+          targetPctFtpLow: 91,
+          targetPctFtpHigh: 91,
+          adherence: 'on',
+          fade: false,
+        },
+      ],
+      execution: { hasPlan: true, workIntervalCount: 1 },
+    });
+    expect(parsed.intervals[0].adherence).toBe('on');
+    expect(parsed.execution.workIntervalCount).toBe(1);
+
+    // Both default when absent, so a free ride or a legacy payload still parses.
+    const bare = dailyLoopPostWorkoutAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-07-03T12:20:00Z',
+      promptVersion: 'post-workout-analysis-v2-2026-07-03',
+      outputMarkdown: '**Rating:** solid.',
+    });
+    expect(bare.intervals).toEqual([]);
+    expect(bare.execution).toEqual({});
+
+    expect(() => rideIntervalSchema.parse({ index: 0, label: 'x', role: 'work', durationSec: 10 })).not.toThrow();
+    expect(() =>
+      rideIntervalSchema.parse({ index: 0, label: 'x', role: 'work', durationSec: 10, adherence: 'bogus' }),
+    ).toThrow();
+  });
+
   it('accepts the seeded private profile shape', () => {
     const parsed = profileSchema.parse({
       id: userId,
