@@ -855,10 +855,12 @@ describe('DashboardPage', () => {
     expect(lastNight).toBeTruthy();
   });
 
-  it('renders the check-in action in the Next strip by default (Batch 50)', async () => {
+  it('renders the morning check-in action in the Next strip by default (Batch 50)', async () => {
     renderPage(); // base: not checked in, nothing else pending → check-in rung
     const strip = await screen.findByRole('region', { name: 'Next action' });
-    const cta = within(strip).getByRole('link', { name: /check in/i });
+    // Named "Morning check-in" (not just "Check in") so it reads distinctly
+    // from the per-ride "Log how {ride} felt" action.
+    const cta = within(strip).getByRole('link', { name: /morning check-in/i });
     expect(cta.getAttribute('href')).toBe('/check-in');
   });
 
