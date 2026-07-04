@@ -21,6 +21,8 @@ function renderLogin() {
 describe('LoginPage', () => {
   it('leads with the invite screen and hides the PIN form by default', () => {
     renderLogin();
+    expect(screen.getByTestId('logomark')).toBeTruthy();
+    expect(screen.getByLabelText('CheckMark')).toBeTruthy();
     expect(screen.getByText(/ask Craig for an activation link/i)).toBeTruthy();
     // The PIN fallback form is not rendered until requested.
     expect(screen.queryByLabelText('Name')).toBeNull();

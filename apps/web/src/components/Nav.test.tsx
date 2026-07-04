@@ -67,6 +67,7 @@ describe('primary navigation (Batch 49)', () => {
   it('TopBar desktop nav mirrors the primary tabs and "More" dropdown mirrors MoreMenu', async () => {
     const user = userEvent.setup();
     renderAt('/', <TopBar />);
+    expect(screen.getAllByTestId('logomark').length).toBeGreaterThanOrEqual(2);
     const nav = screen.getByRole('navigation', { name: 'Main navigation' });
     expect(within(nav).getByText('Home')).toBeTruthy();
     expect(within(nav).getByText('Week')).toBeTruthy();

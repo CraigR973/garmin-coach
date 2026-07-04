@@ -1,4 +1,5 @@
 import { CheckCircle2, AlertTriangle, OctagonAlert, Hourglass, type LucideIcon } from 'lucide-react';
+import { Logomark } from '@/components/Brand';
 import { verdictCopy, type Verdict } from '@/lib/copy';
 import { cn } from '@/lib/utils';
 
@@ -10,7 +11,10 @@ import { cn } from '@/lib/utils';
 interface VerdictStyle {
   Icon: LucideIcon;
   container: string;
-  iconColor: string;
+  ring: string;
+  glow: string;
+  tone: string;
+  eyebrow: string;
   label: string;
   line: string;
 }
@@ -18,22 +22,31 @@ interface VerdictStyle {
 const STYLES: Record<Verdict, VerdictStyle> = {
   green: {
     Icon: CheckCircle2,
-    container: 'border-success/30 bg-success/10',
-    iconColor: 'text-success',
+    container: 'border-success/35 bg-success/10 shadow-md',
+    ring: 'from-success via-steele-mid to-success',
+    glow: 'bg-success/20',
+    tone: 'text-success',
+    eyebrow: 'Green verdict',
     label: verdictCopy.green.label,
     line: verdictCopy.green.line,
   },
   amber: {
     Icon: AlertTriangle,
-    container: 'border-warning/30 bg-warning/10',
-    iconColor: 'text-warning',
+    container: 'border-warning/35 bg-warning/10 shadow-md',
+    ring: 'from-warning via-steele-mid to-success',
+    glow: 'bg-warning/20',
+    tone: 'text-warning',
+    eyebrow: 'Amber verdict',
     label: verdictCopy.amber.label,
     line: verdictCopy.amber.line,
   },
   red: {
     Icon: OctagonAlert,
-    container: 'border-error/30 bg-error/10',
-    iconColor: 'text-error',
+    container: 'border-error/35 bg-error/10 shadow-md',
+    ring: 'from-error via-warning to-steele-mid',
+    glow: 'bg-error/20',
+    tone: 'text-error',
+    eyebrow: 'Red verdict',
     label: verdictCopy.red.label,
     line: verdictCopy.red.line,
   },
@@ -41,8 +54,11 @@ const STYLES: Record<Verdict, VerdictStyle> = {
 
 const PENDING: VerdictStyle = {
   Icon: Hourglass,
-  container: 'border-border bg-surface-elevated/60',
-  iconColor: 'text-text-muted',
+  container: 'border-border-strong bg-surface-elevated shadow-md',
+  ring: 'from-border-strong via-steele-mid to-border-strong',
+  glow: 'bg-surface-overlay/70',
+  tone: 'text-text-secondary',
+  eyebrow: 'Verdict pending',
   label: 'Not ready yet',
   line: "Your verdict lands automatically once your overnight metrics finish syncing after you wake.",
 };
@@ -61,21 +77,41 @@ export function VerdictHero({ verdict, dateLabel, line }: VerdictHeroProps) {
 
   return (
     <section
-      className={cn('rounded-2xl border px-5 py-5 shadow-sm', style.container)}
+      className={cn(
+        'relative overflow-hidden rounded-2xl border px-5 py-5',
+        'bg-[radial-gradient(circle_at_20%_10%,rgba(255,255,255,0.08),transparent_34%)]',
+        style.container,
+      )}
       aria-label="Today's verdict"
     >
-      <div className="flex items-center gap-4">
-        <Icon className={cn('h-10 w-10 shrink-0', style.iconColor)} aria-hidden />
-        <div className="min-w-0">
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-steele-mid/40 to-transparent" />
+      <div className="relative flex items-center gap-4">
+        <div
+          data-testid="verdict-mark-ring"
+          className={cn(
+            'relative grid h-20 w-20 shrink-0 place-items-center rounded-full bg-gradient-to-br p-[3px]',
+            style.ring,
+          )}
+        >
+          <div className={cn('absolute inset-0 rounded-full blur-xl', style.glow)} />
+          <div className="relative grid h-full w-full place-items-center rounded-full border border-white/10 bg-bg/85 shadow-sm">
+            <Logomark size={48} decorative className="shadow-none" />
+          </div>
+        </div>
+        <div className="min-w-0 flex-1">
           {dateLabel && (
             <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-text-muted">
               {dateLabel}
             </p>
           )}
-          <p className={cn('text-2xl font-semibold tracking-tight', style.iconColor)}>
-            {style.label}
+          <p className={cn('mt-1 inline-flex items-center gap-2 text-2xl font-semibold tracking-tight', style.tone)}>
+            <Icon className="h-5 w-5 shrink-0" aria-hidden />
+            <span>{style.label}</span>
           </p>
           <p className="mt-0.5 text-sm text-text-secondary">{line ?? style.line}</p>
+          <p className="mt-3 inline-flex rounded-full border border-border bg-surface/60 px-2.5 py-1 text-[11px] font-medium text-text-secondary">
+            {style.eyebrow}
+          </p>
         </div>
       </div>
     </section>

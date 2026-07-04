@@ -1,7 +1,8 @@
 # Batch 53 — Branded verdict, hero & login
 
-Status: Specced, not started. Frontend-only, no migration.
-Decision assigned at `/batch-start` (next free **#123**).
+Status: Implemented on branch `feat/batch-53-branded-verdict`; not closed out.
+Frontend-only, no migration.
+Decision **#123** assigned at `/batch-start`.
 Tier: 🔴 High (brand-craft judgment — the verdict is the product's heartbeat and
 the login is the prime brand moment; needs taste to land "premium calm" without
 overdoing it, and to place the existing mark consistently).
@@ -82,12 +83,14 @@ After **Batch 52** (inherits the surface/elevation/type tokens). Independent of
 
 ## Decisions to record at `/batch-start`
 
-- **Mark placement** — where the logomark appears (login hero + top bar + verdict
-  cue) and at what sizes.
-- **How bold the verdict hero** — calm-premium restraint vs a louder statement
-  (keep it the most crafted object without becoming glossy).
-- **Gradient / accent scope** — where the checkmark gradient and the brass accent
-  are allowed, holding one-accent-per-view restraint.
+- **Mark placement** — settled in Decision #123: generated icon-primary SVG via
+  `Logomark`; 96 px in the splash, 30 px in the top bar, 48 px inside the 80 px
+  verdict ring.
+- **How bold the verdict hero** — settled in Decision #123: the most crafted Home
+  object, but restrained; no new verdict copy or behavior.
+- **Gradient / accent scope** — settled in Decision #123: wordmark gradient on the
+  brand lockup; brass reserved for the default Next action band/CTA, with warning
+  and all-clear states staying semantic.
 
 ## Verification (planned)
 

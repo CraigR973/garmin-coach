@@ -82,14 +82,14 @@ export function TopBar() {
             aria-label="Home"
             className="press-down absolute inset-y-0 left-1/2 -translate-x-1/2 flex items-center"
           >
-            <Brand variant="compact" size={46} />
+            <Brand variant="compact" size={30} />
           </NavLink>
           {userMenu}
         </div>
 
         {/* Desktop layout */}
         <NavLink to="/" aria-label="Home" className="press-down hidden md:block shrink-0">
-          <Brand variant="compact" size={46} />
+          <Brand variant="compact" size={30} />
         </NavLink>
 
         <nav aria-label="Main navigation" className="hidden md:flex items-center gap-1 flex-1">
