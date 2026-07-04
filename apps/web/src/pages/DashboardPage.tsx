@@ -25,8 +25,8 @@ import { toast } from 'sonner';
 import type { AgeComparison, MetricBaselineRow } from '@/components/MetricComparisonTable';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CollapsibleSection } from '@/components/CollapsibleSection';
+import { ErrorState, OfflineNotice } from '@/components/EmptyState';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -293,14 +293,11 @@ export function DashboardPage() {
     return (
       <div className="space-y-5">
         <PageHeader title={greeting} />
-        <Card>
-          <CardHeader>
-            <CardTitle>Today&apos;s brief couldn&apos;t load</CardTitle>
-            <CardDescription>
-              {query.error instanceof Error ? query.error.message : 'Please try again in a moment.'}
-            </CardDescription>
-          </CardHeader>
-        </Card>
+        <ErrorState
+          title="Today's brief couldn't load"
+          description={query.error instanceof Error ? query.error.message : "We couldn't reach the server just now."}
+          onRetry={() => query.refetch()}
+        />
       </div>
     );
   }
@@ -455,12 +452,9 @@ export function DashboardPage() {
   return (
     <div className="space-y-5">
       {!isOnline && (
-        <div
-          role="status"
-          className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning"
-        >
-          You&apos;re offline — showing your last saved brief for {friendlyDate(daily.subjectDate)}.
-        </div>
+        <OfflineNotice
+          description={`You're offline — showing your last saved brief for ${friendlyDate(daily.subjectDate)}.`}
+        />
       )}
 
       {/* Batch 54: a compact greeting lockup (was the full PageHeader h1) so the

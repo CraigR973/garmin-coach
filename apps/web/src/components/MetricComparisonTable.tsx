@@ -198,25 +198,6 @@ function buildRows(baseline: MetricBaselineRow[], ageRows: AgeComparisonRow[]): 
   return rows;
 }
 
-function DiffCell({ diff }: { diff: Diff | null }) {
-  if (!diff) {
-    return <td className="whitespace-nowrap px-1.5 py-2 text-right text-text-muted sm:px-3">—</td>;
-  }
-  return (
-    <td
-      className={cn(
-        'whitespace-nowrap px-1.5 py-2 text-right font-medium sm:px-3',
-        toneText[diff.tone],
-      )}
-    >
-      <span className="inline-flex items-center justify-end gap-1.5">
-        <ToneIcon tone={diff.tone} className="h-3.5 w-3.5" />
-        {diff.text}
-      </span>
-    </td>
-  );
-}
-
 export function MetricComparisonTable({
   rows: baselineRows,
   ageComparison,
@@ -250,11 +231,8 @@ export function MetricComparisonTable({
               <th className="px-2 py-2 text-left font-semibold text-text-secondary sm:px-3">
                 Metric
               </th>
-              <th className="px-1.5 py-2 text-right font-semibold text-text-secondary sm:px-3">
+              <th className="px-2 py-2 text-right font-semibold text-text-secondary sm:px-3">
                 Last night
-              </th>
-              <th className="px-1.5 py-2 text-right font-semibold text-text-secondary sm:px-3">
-                vs your age
               </th>
             </tr>
           </thead>
@@ -266,10 +244,14 @@ export function MetricComparisonTable({
               // This replaces the separate "vs your normal" column (Batch 35).
               const diff = row.baseline ? baselineDiff(row.baseline) : null;
               const range = row.baseline ? formatBaseline(row.baseline) : null;
+              // The "vs your age" column (Batch 55) is mostly empty dashes — most
+              // metrics have no age norm — so it folds into a per-row descriptor
+              // that only renders when this metric actually has one.
+              const age = row.age ? ageDiff(row.age) : null;
               return (
                 <tr key={row.key} className="border-t border-border">
                   <td className="px-2 py-2 text-text-primary sm:px-3">{row.label}</td>
-                  <td className="whitespace-nowrap px-1.5 py-2 text-right sm:px-3">
+                  <td className="px-2 py-2 text-right sm:px-3">
                     <div
                       className={cn(
                         'font-semibold tabular-nums',
@@ -281,8 +263,18 @@ export function MetricComparisonTable({
                     {range && range !== '—' && (
                       <div className="text-[11px] font-normal text-text-muted">normal {range}</div>
                     )}
+                    {age && (
+                      <div
+                        className={cn(
+                          'mt-0.5 inline-flex items-center justify-end gap-1 text-[11px] font-medium',
+                          toneText[age.tone],
+                        )}
+                      >
+                        <ToneIcon tone={age.tone} className="h-3 w-3" />
+                        {age.text} for your age
+                      </div>
+                    )}
                   </td>
-                  <DiffCell diff={row.age ? ageDiff(row.age) : null} />
                 </tr>
               );
             })}

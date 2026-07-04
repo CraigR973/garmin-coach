@@ -376,7 +376,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText(/Indoor 17\.4°C/)).toBeTruthy();
     // Collapsed → the Last night body (comparison table, /brief link, overnight
     // glance) has not mounted yet, so the bedroom-overnight query stays lazy.
-    expect(screen.queryByText('23 above')).toBeNull();
+    expect(screen.queryByText(/23 above/)).toBeNull();
     expect(screen.queryByRole('link', { name: /full morning brief/i })).toBeNull();
     expect(screen.queryByTestId('overnight-room-verdict-badge')).toBeNull();
     // No ride analysed today → the ride-only sections aren't in the list at all.
@@ -411,13 +411,13 @@ describe('DashboardPage', () => {
     renderPage();
 
     await screen.findByText('Cycle day');
-    expect(screen.queryByText('23 above')).toBeNull();
+    expect(screen.queryByText(/23 above/)).toBeNull();
     expect(screen.queryByTestId('overnight-room-verdict-badge')).toBeNull();
 
     // Tap the collapsed Last-night header → its body mounts.
     await user.click(screen.getByRole('button', { name: /last night's sleep/i }));
 
-    expect(await screen.findByText('23 above')).toBeTruthy(); // VO₂max vs age, age-only row
+    expect(await screen.findByText(/23 above/)).toBeTruthy(); // VO₂max vs age, age-only row
     expect(screen.getByRole('link', { name: /full morning brief/i }).getAttribute('href')).toBe('/brief');
     // Batch 35: the standalone baselines page is retired — no baselines link.
     expect(screen.queryByRole('link', { name: /baselines/i })).toBeNull();
@@ -842,7 +842,7 @@ describe('DashboardPage', () => {
 
     // Last night is primary → expanded (comparison table visible in the body).
     expect(await screen.findByText("Last night's sleep")).toBeTruthy();
-    expect(screen.getByText('23 above')).toBeTruthy();
+    expect(screen.getByText(/23 above/)).toBeTruthy();
     // The day plan is present but collapsed: 'Rest day' title + short summary.
     expect(screen.getByText('Rest day')).toBeTruthy();
     expect(screen.getByText('Rest is the plan today.')).toBeTruthy();
@@ -978,5 +978,26 @@ describe('DashboardPage', () => {
 
     expect((await screen.findByRole('status')).textContent ?? '').toMatch(/showing your last saved brief/i);
     expect(screen.getByText('Cycle day')).toBeTruthy(); // the Today section still renders
+  });
+
+  it('renders the shared error state when the daily loop fails to load', async () => {
+    apiFetchMock.mockClear();
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/api/v1/daily-loop'
+        ? Promise.reject(new Error('Network down'))
+        : Promise.reject(new Error(`Unexpected request: ${path}`)),
+    );
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <DashboardPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Today's brief couldn't load")).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 });

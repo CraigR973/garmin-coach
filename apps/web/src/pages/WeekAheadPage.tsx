@@ -7,7 +7,9 @@ import { MoveWorkoutSheet } from '@/components/MoveWorkoutSheet';
 import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState, ErrorState } from '@/components/EmptyState';
+import { Skeleton } from '@/components/ui/skeleton';
 import { apiFetch } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { categoryForWorkoutType, type DayCategory } from '@/lib/workoutCategories';
@@ -126,29 +128,23 @@ export function WeekAheadPage() {
     <div className="space-y-5">
       <PageHeader title="Plan" />
 
-      <Card className="bg-surface-elevated/60">
-        <CardContent className="pt-6">
-          <p className="text-sm text-text-secondary">
-            This is the live plan window. Move a workout onto any visible day, add light work, or skip a day.
-          </p>
-        </CardContent>
-      </Card>
+      <p className="text-sm text-text-secondary">
+        Move a workout onto any visible day, add light work, or skip a day.
+      </p>
 
       {query.isLoading ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Loading your week…</CardTitle>
-          </CardHeader>
-        </Card>
+        <div className="space-y-3">
+          <Skeleton className="h-32 w-full rounded-2xl" />
+          <Skeleton className="h-32 w-full rounded-2xl" />
+        </div>
       ) : query.isError || !query.data ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Plan couldn&apos;t load</CardTitle>
-            <CardDescription>
-              {query.error instanceof Error ? query.error.message : 'Please try again in a moment.'}
-            </CardDescription>
-          </CardHeader>
-        </Card>
+        <ErrorState
+          title="Plan couldn't load"
+          description={query.error instanceof Error ? query.error.message : "We couldn't reach the server just now."}
+          onRetry={() => query.refetch()}
+        />
+      ) : query.data.data.schedule.length === 0 ? (
+        <EmptyState title="No plan window yet" description="Your schedule will show up here once it's set." />
       ) : (
         <div className="space-y-3">
           {query.data.data.schedule.map((day) => (

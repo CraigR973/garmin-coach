@@ -3,6 +3,7 @@ import { BedDouble, Fan, MoonStar } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ErrorState } from '@/components/EmptyState';
 import { Tabs } from '@/components/ui/tabs';
 import { SleepSnapshotBody } from '@/components/SleepSnapshotBody';
 import { SleepPrepBody } from '@/components/SleepPrepBody';
@@ -45,14 +46,11 @@ export function SleepPage() {
     return (
       <div className="space-y-5">
         <PageHeader title="Sleep" />
-        <Card>
-          <CardHeader>
-            <CardTitle>Sleep data couldn&apos;t load</CardTitle>
-            <CardDescription>
-              {query.error instanceof Error ? query.error.message : 'Please try again in a moment.'}
-            </CardDescription>
-          </CardHeader>
-        </Card>
+        <ErrorState
+          title="Sleep data couldn't load"
+          description={query.error instanceof Error ? query.error.message : "We couldn't reach the server just now."}
+          onRetry={() => query.refetch()}
+        />
       </div>
     );
   }

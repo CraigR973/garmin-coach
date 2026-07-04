@@ -164,4 +164,24 @@ describe('WeekAheadPage', () => {
     });
     expect(screen.queryByText('Swap a workout into this rest day')).toBeNull();
   });
+
+  it('renders the shared error state when the schedule fails to load', async () => {
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/api/v1/plan-actions/schedule?days=14'
+        ? Promise.reject(new Error('Network down'))
+        : Promise.reject(new Error(`Unexpected request: ${path}`)),
+    );
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Plan couldn't load")).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+  });
 });

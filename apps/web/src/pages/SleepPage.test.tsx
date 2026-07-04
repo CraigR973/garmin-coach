@@ -186,4 +186,24 @@ describe('SleepPage', () => {
 
     expect(await screen.findByText("Last night's sleep")).toBeTruthy();
   });
+
+  it('renders the shared error state when the daily loop fails to load', async () => {
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/api/v1/daily-loop'
+        ? Promise.reject(new Error('Network down'))
+        : Promise.reject(new Error(`Unexpected request: ${path}`)),
+    );
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SleepPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Sleep data couldn't load")).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+  });
 });
