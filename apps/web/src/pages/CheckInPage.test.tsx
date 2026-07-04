@@ -47,7 +47,7 @@ const snapshot = {
 };
 
 describe('CheckInPage', () => {
-  it('saves the manual check-in', async () => {
+  it('saves the manual check-in via the single unified save action', async () => {
     apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
       if (options?.method === 'PUT') return Promise.resolve(snapshot);
       if (path === '/api/v1/daily-loop') return Promise.resolve(snapshot);
@@ -66,6 +66,9 @@ describe('CheckInPage', () => {
     );
 
     await user.type(await screen.findByLabelText('Systolic'), '108');
+    // Batch 55: one "Save check-in" button covers the whole page — no more
+    // separate per-card/per-workout save buttons.
+    expect(screen.queryByRole('button', { name: 'Save session' })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Save check-in' }));
 
     await waitFor(() => {
@@ -74,5 +77,79 @@ describe('CheckInPage', () => {
         expect.objectContaining({ method: 'PUT' }),
       );
     });
+  });
+
+  it('also saves each planned workout\'s adherence in the same unified save', async () => {
+    const withWorkout = {
+      ...snapshot,
+      data: {
+        ...snapshot.data,
+        plannedWorkouts: [
+          {
+            id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            userId: '11111111-1111-4111-8111-111111111111',
+            planBlockId: null,
+            workoutDate: '2026-06-20',
+            version: 1,
+            title: 'Sweet Spot Builder',
+            workoutType: 'bike_sweet_spot',
+            status: 'planned',
+            isActive: true,
+            plannedDurationMin: 60,
+            intensityTarget: '88-94% FTP',
+            structuredWorkout: {},
+            source: 'test',
+            adherence: null,
+          },
+        ],
+      },
+    };
+    apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
+      if (options?.method === 'PUT') return Promise.resolve(withWorkout);
+      if (path === '/api/v1/daily-loop') return Promise.resolve(withWorkout);
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    const queryClient = new QueryClient();
+    const user = userEvent.setup();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CheckInPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText('Sweet Spot Builder');
+    await user.click(screen.getByRole('button', { name: 'Save check-in' }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/daily-loop/2026-06-20/planned-workouts/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/adherence',
+        expect.objectContaining({ method: 'PUT' }),
+      );
+    });
+  });
+
+  it('shows the shared error state when the daily loop fails to load, without blocking manual entry', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/api/v1/daily-loop') return Promise.reject(new Error('Network down'));
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CheckInPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Couldn't load today's plan")).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByLabelText('Systolic')).toBeTruthy();
   });
 });

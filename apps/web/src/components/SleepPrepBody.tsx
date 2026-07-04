@@ -39,9 +39,11 @@ export function SleepPrepBody({ projection }: { projection: SleepProjection | nu
         </ul>
       )}
       {projection.evidence.length > 0 && (
-        <details className="rounded-lg border border-border bg-bg px-3 py-2">
-          <summary className="cursor-pointer text-sm font-medium text-text-primary">Evidence</summary>
-          <ul className="mt-2 space-y-1.5 text-text-secondary">
+        <details className="group">
+          <summary className="cursor-pointer text-xs font-medium text-text-muted transition hover:text-text-secondary">
+            Evidence
+          </summary>
+          <ul className="mt-2 space-y-1.5 border-l border-border pl-3 text-text-secondary">
             {projection.evidence.map((line) => (
               <li key={line}>{line}</li>
             ))}

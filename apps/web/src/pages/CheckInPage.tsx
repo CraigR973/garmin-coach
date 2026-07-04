@@ -10,9 +10,11 @@ import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ErrorState } from '@/components/EmptyState';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { apiFetch } from '@/lib/api';
 
@@ -115,9 +117,16 @@ export function CheckInPage() {
     setAdherenceForms(next);
   }, [query.data]);
 
-  const manualMutation = useMutation({
-    mutationFn: async (subjectDate: string) => {
-      const payload = manualEntryInputSchema.parse({
+  // Batch 55: one unified save covers the whole check-in — the manual entry
+  // (how you feel / BP / yesterday) plus every session's adherence in one pass
+  // — instead of a separate save button per card/workout. Same PUT endpoints,
+  // just orchestrated together so there is one clear "am I done" action.
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const data = query.data?.data;
+      if (!data) throw new Error('Not loaded');
+
+      const manualPayload = manualEntryInputSchema.parse({
         bpSystolic: manualForm.bpSystolic ? Number(manualForm.bpSystolic) : null,
         bpDiastolic: manualForm.bpDiastolic ? Number(manualForm.bpDiastolic) : null,
         subjectiveScore: manualForm.subjectiveScore ? Number(manualForm.subjectiveScore) : null,
@@ -126,45 +135,36 @@ export function CheckInPage() {
         foodJson: objectSummary(manualForm.food),
         notes: manualForm.notes || null,
       });
-      return apiFetch(`/api/v1/daily-loop/${subjectDate}/manual-entry`, {
+      await apiFetch(`/api/v1/daily-loop/${data.subjectDate}/manual-entry`, {
         method: 'PUT',
-        body: JSON.stringify(payload),
+        body: JSON.stringify(manualPayload),
       });
+
+      for (const workout of data.plannedWorkouts) {
+        const form = adherenceForms[workout.id];
+        if (!form) continue;
+        const payload = plannedWorkoutAdherenceInputSchema.parse({
+          status: form.status,
+          rpe: form.rpe ? Number(form.rpe) : null,
+          feel: form.feel || null,
+          notes: form.notes || null,
+          actualWorkoutJson: {
+            completedDurationMin: form.completedDurationMin ? Number(form.completedDurationMin) : null,
+            intensity: form.intensity || null,
+            changeSummary: form.changeSummary || null,
+          },
+        });
+        await apiFetch(`/api/v1/daily-loop/${data.subjectDate}/planned-workouts/${workout.id}/adherence`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        });
+      }
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['daily-loop'] });
       toast.success('Check-in saved');
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not save your check-in'),
-  });
-
-  const adherenceMutation = useMutation({
-    mutationFn: async (workoutId: string) => {
-      const data = query.data?.data;
-      if (!data) throw new Error('Not loaded');
-      const form = adherenceForms[workoutId];
-      if (!form) throw new Error('Missing form');
-      const payload = plannedWorkoutAdherenceInputSchema.parse({
-        status: form.status,
-        rpe: form.rpe ? Number(form.rpe) : null,
-        feel: form.feel || null,
-        notes: form.notes || null,
-        actualWorkoutJson: {
-          completedDurationMin: form.completedDurationMin ? Number(form.completedDurationMin) : null,
-          intensity: form.intensity || null,
-          changeSummary: form.changeSummary || null,
-        },
-      });
-      return apiFetch(`/api/v1/daily-loop/${data.subjectDate}/planned-workouts/${workoutId}/adherence`, {
-        method: 'PUT',
-        body: JSON.stringify(payload),
-      });
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['daily-loop'] });
-      toast.success('Saved');
-    },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not save'),
   });
 
   const data = query.data?.data;
@@ -183,6 +183,21 @@ export function CheckInPage() {
   return (
     <div className="space-y-5">
       <PageHeader title="Check in" back={{ to: '/', label: 'Home' }} />
+
+      {query.isError && (
+        <ErrorState
+          title="Couldn't load today's plan"
+          description="You can still log how you're feeling below — your sessions will appear once this loads."
+          onRetry={() => query.refetch()}
+        />
+      )}
+
+      {query.isLoading && (
+        <div className="space-y-5">
+          <Skeleton className="h-56 w-full rounded-2xl" />
+          <Skeleton className="h-40 w-full rounded-2xl" />
+        </div>
+      )}
 
       {/* How you feel */}
       <Card>
@@ -276,15 +291,6 @@ export function CheckInPage() {
               onChange={(e) => setManual('food', e.target.value)}
             />
           </div>
-          <div className="flex justify-end">
-            <Button
-              type="button"
-              onClick={() => data && manualMutation.mutate(data.subjectDate)}
-              disabled={!data || manualMutation.isPending}
-            >
-              Save check-in
-            </Button>
-          </div>
         </CardContent>
       </Card>
 
@@ -364,22 +370,20 @@ export function CheckInPage() {
                     </div>
                   )}
 
-                  <div className="mt-3 flex justify-end">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => adherenceMutation.mutate(workout.id)}
-                      disabled={adherenceMutation.isPending}
-                    >
-                      Save session
-                    </Button>
-                  </div>
                 </div>
               );
             })}
           </CardContent>
         </Card>
       )}
+
+      {/* Batch 55: one save covers the whole check-in — the per-card/per-workout
+          save buttons above are gone in favour of this single clear action. */}
+      <div className="flex justify-end">
+        <Button type="button" onClick={() => saveMutation.mutate()} disabled={!data || saveMutation.isPending}>
+          Save check-in
+        </Button>
+      </div>
     </div>
   );
 }
