@@ -868,6 +868,8 @@ describe('DashboardPage', () => {
   it('renders the morning check-in action in the Next strip by default (Batch 50)', async () => {
     renderPage(); // base: not checked in, nothing else pending → check-in rung
     const strip = await screen.findByRole('region', { name: 'Next action' });
+    expect(strip.className).toContain('rounded-2xl');
+    expect(strip.className).toContain('border-accent/45');
     // Named "Morning check-in" (not just "Check in") so it reads distinctly
     // from the per-ride "Log how {ride} felt" action.
     const cta = within(strip).getByRole('link', { name: /morning check-in/i });
@@ -909,7 +911,8 @@ describe('DashboardPage', () => {
 
     // The Next strip surfaces the top action (the pending change), not the check-in.
     const strip = await screen.findByRole('region', { name: 'Next action' });
-    expect(within(strip).getByText("Review today's eased ride")).toBeTruthy();
+    expect(strip.className).toContain('border-warning/45');
+    expect(within(strip).getAllByText("Review today's eased ride").length).toBeGreaterThanOrEqual(1);
 
     // The action override makes Today lead + expand regardless of phase/clock —
     // even though a ride was analysed (which would otherwise lead After-your-ride).

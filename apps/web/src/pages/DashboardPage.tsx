@@ -504,31 +504,46 @@ function NextActionStrip({
     return (
       <div
         role="status"
-        className="flex items-center gap-2 rounded-xl border border-border bg-surface-elevated/60 px-4 py-3 text-sm text-text-secondary"
+        className="flex items-center gap-3 rounded-2xl border border-success/30 bg-success/10 px-4 py-4 text-sm text-text-secondary shadow-sm"
       >
-        <Check className="h-4 w-4 shrink-0 text-success" aria-hidden />
-        {action.label} — nothing needs a decision right now.
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-success/15 text-success">
+          <Check className="h-4 w-4" aria-hidden />
+        </span>
+        <span>
+          <span className="font-medium text-text-primary">{action.label}</span> — nothing needs a decision right now.
+        </span>
       </div>
     );
   }
+  const isWarning = action.tone === 'warning';
   return (
     <section
       aria-label="Next action"
       className={cn(
-        'flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3',
-        action.tone === 'warning' ? 'border-warning/40 bg-warning/10' : 'border-accent/40 bg-accent/10',
+        'flex flex-col gap-3 rounded-2xl border px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between',
+        isWarning ? 'border-warning/45 bg-warning/10' : 'border-accent/45 bg-accent/10',
       )}
     >
-      <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-text-muted">Next</p>
+      <div className="min-w-0">
+        <p className={cn('font-mono text-[10px] uppercase tracking-[0.25em]', isWarning ? 'text-warning' : 'text-accent')}>
+          Next
+        </p>
+        <p className="mt-1 text-base font-semibold text-text-primary">{action.label}</p>
+      </div>
       {action.to ? (
-        <Button asChild size="sm">
+        <Button asChild size="sm" variant={isWarning ? 'default' : 'accent'} className="w-full sm:w-auto">
           <Link to={action.to}>
             <ArrowRight className="mr-1.5 h-4 w-4" aria-hidden />
             {action.label}
           </Link>
         </Button>
       ) : (
-        <Button size="sm" onClick={() => action.sectionKey && onGoToSection(action.sectionKey)}>
+        <Button
+          size="sm"
+          variant={isWarning ? 'default' : 'accent'}
+          className="w-full sm:w-auto"
+          onClick={() => action.sectionKey && onGoToSection(action.sectionKey)}
+        >
           <ArrowRight className="mr-1.5 h-4 w-4" aria-hidden />
           {action.label}
         </Button>
@@ -1325,4 +1340,3 @@ function PostRideCheckInForm({
 function TomorrowBody({ text }: { text: string }) {
   return <p className="text-sm leading-6 text-text-primary">{text}</p>;
 }
-

@@ -39,14 +39,14 @@ export function LoginPage() {
   return (
     <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-4 pt-safe pb-safe">
       <div className="w-full max-w-sm">
-        <div className="mb-8 flex flex-col items-center text-center">
-          <Brand variant="splash" />
-          <p className="mt-6 font-sans text-lg font-semibold text-text-primary">{brand.tagline}</p>
+        <div className="mb-6 flex flex-col items-center text-center">
+          <Brand variant="splash" size={96} />
+          <p className="mt-4 font-sans text-lg font-semibold text-text-primary">{brand.tagline}</p>
           <p className="mt-1 font-sans text-sm italic text-text-secondary">{brand.taglineSub}</p>
         </div>
 
         {!showPin ? (
-          <Card>
+          <Card className="border-border-strong bg-surface shadow-md">
             <CardHeader>
               <CardTitle className="text-center text-text-primary">Invite only</CardTitle>
             </CardHeader>
@@ -67,7 +67,7 @@ export function LoginPage() {
             </CardContent>
           </Card>
         ) : (
-          <Card>
+          <Card className="border-border-strong bg-surface shadow-md">
             <CardHeader>
               <CardTitle className="text-center text-text-primary">Sign in with PIN</CardTitle>
             </CardHeader>
