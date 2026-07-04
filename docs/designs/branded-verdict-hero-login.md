@@ -1,6 +1,6 @@
 # Batch 53 — Branded verdict, hero & login
 
-Status: Implemented on branch `feat/batch-53-branded-verdict`; not closed out.
+Status: Shipped (PR #74, squash `c84945e`); prod-verified.
 Frontend-only, no migration.
 Decision **#123** assigned at `/batch-start`.
 Tier: 🔴 High (brand-craft judgment — the verdict is the product's heartbeat and
