@@ -356,9 +356,12 @@ describe('DashboardPage', () => {
     // Today is the primary → expanded: its body controls are live.
     expect(await screen.findByText('Cycle day')).toBeTruthy();
     expect(screen.getByText('Tempo ride')).toBeTruthy();
+    // Batch 54: one primary (Edit) + one secondary (Swap day) visible directly;
+    // Skip is tucked into the "More options" overflow.
     expect(screen.getByRole('button', { name: /^edit$/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /swap day/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /^skip$/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /more options/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^skip$/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /approve & upload/i })).toBeNull();
     // Batch 50: the verdict renders once (the VerdictHero) — the duplicated Today
     // header badge was dropped.
@@ -589,7 +592,9 @@ describe('DashboardPage', () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(await screen.findByRole('button', { name: /^skip$/i }));
+    // Batch 54: Skip lives behind the "More options" overflow menu.
+    await user.click(await screen.findByRole('button', { name: /more options/i }));
+    await user.click(await screen.findByRole('menuitem', { name: /^skip$/i }));
     await user.click(await screen.findByRole('button', { name: /confirm skip/i }));
 
     await waitFor(() => {
@@ -634,7 +639,11 @@ describe('DashboardPage', () => {
     );
 
     expect(await screen.findByText('Cut it to 75% and drop the VO2 set.')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /manual edit/i })).toBeTruthy();
+    // Batch 54: Manual edit lives behind the "More options" overflow menu
+    // alongside Swap day/Skip — Approve is the primary, Ignore the secondary.
+    await user.click(screen.getByRole('button', { name: /more options/i }));
+    expect(screen.getByRole('menuitem', { name: /manual edit/i })).toBeTruthy();
+    await user.keyboard('{Escape}');
     await user.click(screen.getByRole('button', { name: /approve & upload/i }));
 
     await waitFor(() => {
@@ -943,6 +952,24 @@ describe('DashboardPage', () => {
     expect(screen.getByText(/you're all set/i)).toBeTruthy();
     // The all-clear state is a quiet status line, not a primary-action region.
     expect(screen.queryByRole('region', { name: 'Next action' })).toBeNull();
+  });
+
+  it('groups every non-lead section under a quiet "More detail" divider (Batch 54)', async () => {
+    renderPage();
+    await screen.findByText('Cycle day');
+
+    // The lead/primary section renders before the divider, uncollapsed-styling.
+    const divider = screen.getByText('More detail');
+    const leadCard = screen.getByRole('button', { name: /cycle day/i }).closest('#home-section-today');
+    const lastNightCard = screen
+      .getByRole('button', { name: /last night's sleep/i })
+      .closest('#home-section-lastNight');
+
+    expect(leadCard!.compareDocumentPosition(divider) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(divider.compareDocumentPosition(lastNightCard!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The receded section's card is visually quieter (no border/shadow).
+    expect(lastNightCard?.className).toContain('border-transparent');
+    expect(leadCard?.className).not.toContain('border-transparent');
   });
 
   it('shows the offline banner while keeping Home visible', async () => {
