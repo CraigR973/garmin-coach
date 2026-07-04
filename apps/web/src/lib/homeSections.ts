@@ -96,6 +96,23 @@ export function isEveningNow(date = new Date()): boolean {
 }
 
 /**
+ * Splits an already-ordered section list into the one lead (primary,
+ * expanded) section and the rest, which recede under the Batch 54 "More
+ * detail" grouping. Mirrors the same one-expanded rule `orderedSections` used
+ * to place `primary` first — if `primary` isn't present in `order` (it always
+ * is in practice), nothing is treated as lead, matching the pre-54 behaviour
+ * where no section would be `defaultOpen`.
+ */
+export function splitPrimaryDetail(
+  order: HomeSectionKey[],
+  primary: HomeSectionKey,
+): { lead: HomeSectionKey | null; detail: HomeSectionKey[] } {
+  const lead = order.includes(primary) ? primary : null;
+  const detail = order.filter((key) => key !== lead);
+  return { lead, detail };
+}
+
+/**
  * Which desktop lane a section belongs to (Batch 51 — two-column dashboard,
  * `md+` only; mobile stays the single stacked column driven by `orderedSections`
  * alone). `act` = the do-something-now sections; `context` = the read-first

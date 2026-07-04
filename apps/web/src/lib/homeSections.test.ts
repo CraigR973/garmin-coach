@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { isEveningNow, orderedSections, primarySection, sectionLane } from './homeSections';
+import {
+  isEveningNow,
+  orderedSections,
+  primarySection,
+  sectionLane,
+  splitPrimaryDetail,
+} from './homeSections';
 
 describe('orderedSections', () => {
   it('pre-training leads with Today, the rest collapsed in base order (no ride yet)', () => {
@@ -122,6 +128,37 @@ describe('sectionLane (Batch 51 — desktop two-column)', () => {
     expect(sectionLane('lastNight')).toBe('context');
     expect(sectionLane('tonight')).toBe('context');
     expect(sectionLane('bedroom')).toBe('context');
+  });
+});
+
+describe('splitPrimaryDetail (Batch 54 — "More detail" grouping)', () => {
+  it('splits the lead section from the receding rest, preserving order', () => {
+    const order = orderedSections('pre_training', { hasRide: false, isEvening: false });
+    expect(splitPrimaryDetail(order, 'today')).toEqual({
+      lead: 'today',
+      detail: ['lastNight', 'tonight', 'bedroom'],
+    });
+  });
+
+  it('keeps the evening float and Batch 51 lanes intact — detail is just "order minus lead"', () => {
+    const order = orderedSections('wind_down', { hasRide: true, isEvening: true });
+    expect(splitPrimaryDetail(order, 'tonight')).toEqual({
+      lead: 'tonight',
+      detail: ['bedroom', 'lastNight', 'today', 'afterRide', 'tomorrow'],
+    });
+  });
+
+  it('respects an action-override primary the same as the phase primary', () => {
+    const order = orderedSections('post_training', { hasRide: true, isEvening: false, primary: 'today' });
+    expect(splitPrimaryDetail(order, 'today')).toEqual({
+      lead: 'today',
+      detail: ['lastNight', 'afterRide', 'tomorrow', 'tonight', 'bedroom'],
+    });
+  });
+
+  it('treats every section as detail (no lead) if the given primary is absent from order', () => {
+    const order = orderedSections('pre_training', { hasRide: false, isEvening: false });
+    expect(splitPrimaryDetail(order, 'afterRide')).toEqual({ lead: null, detail: order });
   });
 });
 

@@ -12,6 +12,7 @@ import {
   ClipboardCheck,
   Dumbbell,
   MoonStar,
+  MoreHorizontal,
   Pencil,
   Plus,
   Thermometer,
@@ -26,6 +27,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CollapsibleSection } from '@/components/CollapsibleSection';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Markdown } from '@/components/Markdown';
@@ -52,6 +59,7 @@ import {
   orderedSections,
   primarySection,
   sectionLane,
+  splitPrimaryDetail,
   type HomeSectionKey,
 } from '@/lib/homeSections';
 
@@ -352,6 +360,8 @@ export function DashboardPage() {
   // Batch 37: render the full section set every load; exactly one is expanded
   // (the action/phase primary). Presence is only ever gated by hasRide.
   const order = orderedSections(phase, { hasRide, isEvening, primary });
+  // Batch 54: the lead section stays prominent; the rest recede under "More detail".
+  const { lead, detail } = splitPrimaryDetail(order, primary);
   const scrollToSection = (key: HomeSectionKey) => {
     document
       .getElementById(sectionDomId(key))
@@ -453,7 +463,14 @@ export function DashboardPage() {
         </div>
       )}
 
-      <PageHeader title={greeting} />
+      {/* Batch 54: a compact greeting lockup (was the full PageHeader h1) so the
+          verdict sits higher on cold load. */}
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-sm font-medium text-text-secondary">{greeting}</p>
+        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">
+          {friendlyDate(daily.subjectDate)}
+        </p>
+      </div>
 
       <VerdictHero verdict={analysis?.verdict} dateLabel={friendlyDate(daily.subjectDate)} />
 
@@ -462,9 +479,30 @@ export function DashboardPage() {
       {/* Batch 51: on md+ the sections split into an act lane (Today / After
           your ride / Tomorrow) and a context lane (Last night / Tonight /
           Bedroom), sharing one grid so mobile keeps its single stacked column
-          (grid-cols-1) without a second, duplicate render tree. */}
+          (grid-cols-1) without a second, duplicate render tree. Batch 54: the
+          one lead/primary section stays prominent; everything else recedes
+          under a quiet "More detail" grouping (still present — collapse-not-
+          remove kept), one variant lighter and defaulted closed. */}
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 md:items-start">
-        {order.map((key) => {
+        {lead ? (
+          <CollapsibleSection
+            id={sectionDomId(lead)}
+            title={sections[lead].title}
+            icon={sections[lead].icon}
+            summary={sections[lead].summary}
+            tone={sections[lead].tone}
+            defaultOpen
+            className={sectionLane(lead) === 'act' ? 'md:col-start-1' : 'md:col-start-2'}
+          >
+            {sections[lead].body}
+          </CollapsibleSection>
+        ) : null}
+        {detail.length > 0 ? (
+          <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-text-muted md:col-span-2">
+            More detail
+          </p>
+        ) : null}
+        {detail.map((key) => {
           const section = sections[key];
           const lane = sectionLane(key);
           return (
@@ -475,7 +513,8 @@ export function DashboardPage() {
               icon={section.icon}
               summary={section.summary}
               tone={section.tone}
-              defaultOpen={key === primary}
+              variant="secondary"
+              defaultOpen={false}
               className={lane === 'act' ? 'md:col-start-1' : 'md:col-start-2'}
             >
               {section.body}
@@ -865,6 +904,102 @@ function ActualWorkoutForm({
   );
 }
 
+type WorkoutRowButton = {
+  label: string;
+  icon: LucideIcon;
+  onClick: () => void;
+  ariaExpanded?: boolean;
+};
+
+/**
+ * The session card's action cluster (Batch 54): one primary + one secondary
+ * button, with anything else tucked into a "More options" overflow menu — was
+ * a flat five-button row (Approve, Ignore, Manual edit, Swap day, Skip).
+ */
+function WorkoutRowActions({
+  hasPendingChange,
+  isBike,
+  panel,
+  busy,
+  onApprove,
+  onIgnore,
+  onTogglePanel,
+}: {
+  hasPendingChange: boolean;
+  isBike: boolean;
+  panel: 'none' | 'edit' | 'swap' | 'skip';
+  busy: boolean;
+  onApprove: () => void;
+  onIgnore: () => void;
+  onTogglePanel: (next: 'edit' | 'swap' | 'skip') => void;
+}) {
+  const primaryAction: WorkoutRowButton = hasPendingChange
+    ? { label: 'Approve & upload', icon: Check, onClick: onApprove }
+    : isBike
+      ? { label: 'Edit', icon: Pencil, onClick: () => onTogglePanel('edit'), ariaExpanded: panel === 'edit' }
+      : { label: 'Swap day', icon: ArrowLeftRight, onClick: () => onTogglePanel('swap'), ariaExpanded: panel === 'swap' };
+
+  const secondaryAction: WorkoutRowButton = hasPendingChange
+    ? { label: 'Ignore', icon: X, onClick: onIgnore }
+    : isBike
+      ? { label: 'Swap day', icon: ArrowLeftRight, onClick: () => onTogglePanel('swap'), ariaExpanded: panel === 'swap' }
+      : { label: 'Skip', icon: Trash2, onClick: () => onTogglePanel('skip'), ariaExpanded: panel === 'skip' };
+
+  const overflowActions: WorkoutRowButton[] = hasPendingChange
+    ? [
+        { label: 'Manual edit', icon: Pencil, onClick: () => onTogglePanel('edit') },
+        { label: 'Swap day', icon: ArrowLeftRight, onClick: () => onTogglePanel('swap') },
+        { label: 'Skip', icon: Trash2, onClick: () => onTogglePanel('skip') },
+      ]
+    : isBike
+      ? [{ label: 'Skip', icon: Trash2, onClick: () => onTogglePanel('skip') }]
+      : [];
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        type="button"
+        size="sm"
+        onClick={primaryAction.onClick}
+        disabled={busy}
+        aria-expanded={primaryAction.ariaExpanded}
+      >
+        <primaryAction.icon className="h-4 w-4" aria-hidden />
+        {primaryAction.label}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        onClick={secondaryAction.onClick}
+        disabled={busy}
+        aria-expanded={secondaryAction.ariaExpanded}
+      >
+        <secondaryAction.icon className="h-4 w-4" aria-hidden />
+        {secondaryAction.label}
+      </Button>
+      {overflowActions.length > 0 ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" size="sm" variant="ghost" disabled={busy} aria-label="More options">
+              <MoreHorizontal className="h-4 w-4" aria-hidden />
+              More options
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {overflowActions.map((action) => (
+              <DropdownMenuItem key={action.label} disabled={busy} onSelect={action.onClick}>
+                <action.icon className="h-4 w-4" aria-hidden />
+                {action.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
+    </div>
+  );
+}
+
 /** A single planned session inside the day's Today card. Each row keeps its
  *  own local panel/ignored/dial state so multiple sessions on a mixed day
  *  expand independently and their controls never cross-wire (Batch 36). */
@@ -941,64 +1076,15 @@ function WorkoutRow({
           </div>
         )}
 
-        <div className="flex flex-wrap gap-2">
-          {hasPendingChange && (
-            <>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => onApprove({ workoutId: workout.id })}
-                disabled={busy}
-              >
-                <Check className="h-4 w-4" aria-hidden />
-                Approve &amp; upload
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setIgnored(true)}
-                disabled={busy}
-              >
-                <X className="h-4 w-4" aria-hidden />
-                Ignore
-              </Button>
-            </>
-          )}
-          {isBike && (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => togglePanel('edit')}
-              aria-expanded={panel === 'edit'}
-            >
-              <Pencil className="h-4 w-4" aria-hidden />
-              {hasPendingChange ? 'Manual edit' : 'Edit'}
-            </Button>
-          )}
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => togglePanel('swap')}
-            aria-expanded={panel === 'swap'}
-          >
-            <ArrowLeftRight className="h-4 w-4" aria-hidden />
-            Swap day
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => togglePanel('skip')}
-            aria-expanded={panel === 'skip'}
-          >
-            <Trash2 className="h-4 w-4" aria-hidden />
-            Skip
-          </Button>
-        </div>
-
+        <WorkoutRowActions
+          hasPendingChange={hasPendingChange}
+          isBike={isBike}
+          panel={panel}
+          busy={busy}
+          onApprove={() => onApprove({ workoutId: workout.id })}
+          onIgnore={() => setIgnored(true)}
+          onTogglePanel={togglePanel}
+        />
         {panel === 'edit' && (
           <div className="grid gap-3 rounded-lg border border-border bg-surface-elevated/60 px-3 py-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
             <div className="space-y-1.5">
