@@ -1,7 +1,7 @@
 # Batch 54 — Home hierarchy & calm density
 
-Status: Specced, not started. Frontend-only, no migration.
-Decision assigned at `/batch-start` (next free **#124**).
+Status: Shipped in PR #75 / squash `8fb90a2` (2026-07-04). Frontend-only, no migration.
+Decision recorded in **#124**.
 Tier: 🟢 Mid (a well-specified recomposition of the shipped Home render — reuses
 the Batch 37 collapse model, the Batch 50 action override, and the Batch 51
 two-lane desktop; the judgment is in how the secondary sections recede).
