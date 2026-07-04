@@ -143,6 +143,22 @@ jobs:
         env:
           VITE_API_URL: https://placeholder.railway.app
 
+  test-web:
+    name: Unit tests (web + shared)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+      - run: pnpm install
+      # Recursive vitest across the JS workspaces (apps/web + packages/shared).
+      # The `build-web` job only lints/typechecks/builds — without this, web unit
+      # test regressions could merge green (they are not run anywhere else in CI).
+      - run: pnpm -r test
+
   security-audit:
     name: Security audit (deps)
     runs-on: ubuntu-latest
