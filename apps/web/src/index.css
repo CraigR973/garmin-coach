@@ -72,18 +72,28 @@
 @layer base {
   :root,
   html.dark {
-    /* Surface tiers */
-    --bg: #0A1112;
-    --surface: #111E1F;
-    --surface-elevated: #192A2B;
-    --surface-overlay: #213436;
-    --border: #253A3C;
-    --border-strong: #345355;
+    /* Surface tiers — deep teal-graphite, re-spaced into a clear value ramp
+       (Batch 52): each step is a deliberate ~+8 CIELab L* jump so cards read as
+       layered paper, not outlines. Depth is carried by value first, shadow second. */
+    --bg: #0A1314;
+    --surface: #152628;
+    --surface-elevated: #1F383A;
+    --surface-overlay: #294648;
+    --border: #2E4C4E;
+    --border-strong: #3D5F61;
 
-    /* Text */
+    /* Control fill — inputs/selects/textareas get their own raised well above the
+       card surface (never the page bg), with a stronger idle border so forms are
+       legible on dark. Placeholder/label AA verified on this fill (Batch 52). */
+    --control: #223C3E;
+    --control-border: #436769;
+
+    /* Text — secondary/muted lifted to clear WCAG AA on the lighter surface ramp
+       above (muted ≥ 4.6:1 even on the control fill); ordering primary>secondary>muted
+       preserved. */
     --text-primary: #F0F4FF;
-    --text-secondary: #94A3B8;
-    --text-muted: #7B859B;
+    --text-secondary: #A6B4C4;
+    --text-muted: #98A2B4;
     --text-inverse: #0B0E13;
 
     /* On-brand text — locked dark in both modes so primary/accent
@@ -124,13 +134,16 @@
     --silver: #B8C0CC;
     --bronze: #C28B5C;
 
-    /* Elevation — heavy shadows on dark bg */
-    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
-    --shadow-md: 0 4px 16px -2px rgba(0, 0, 0, 0.5);
-    --shadow-lg: 0 12px 40px -8px rgba(0, 0, 0, 0.6);
-    --shadow-sheet: 0 -8px 32px -4px rgba(0, 0, 0, 0.6);
-    --shadow-glow: 0 0 0 3px rgba(16, 185, 129, 0.25);
-    --shadow-glow-accent: 0 0 0 3px rgba(200, 148, 60, 0.25);
+    /* Elevation — restrained, soft shadows on dark bg (Batch 52): the widened
+       surface value ramp now carries most of the depth, so shadows are a whisper
+       (softer spread, lower opacity) rather than heavy black drop-shadows. The
+       focus glow ring is strengthened for a clearer, more accessible focus cue. */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.30);
+    --shadow-md: 0 4px 16px -4px rgba(0, 0, 0, 0.44);
+    --shadow-lg: 0 16px 48px -12px rgba(0, 0, 0, 0.55);
+    --shadow-sheet: 0 -8px 32px -6px rgba(0, 0, 0, 0.55);
+    --shadow-glow: 0 0 0 3px rgba(16, 185, 129, 0.35);
+    --shadow-glow-accent: 0 0 0 3px rgba(200, 148, 60, 0.30);
 
     /* Shimmer keyframe colour tuned for dark bg */
     --shimmer-stripe: rgba(255, 255, 255, 0.04);
@@ -145,10 +158,16 @@
     --border: #E5E8EB;
     --border-strong: #D1D5DB;
 
-    /* Text */
+    /* Control fill — inputs stay white/near-white on light and separate via a
+       stronger idle border + focus ring (the light palette already reads well). */
+    --control: #FFFFFF;
+    --control-border: #CBD2D9;
+
+    /* Text — muted darkened from #8A93A1 (which failed AA at ~3:1 on white) to a
+       slate that clears WCAG AA on the light surfaces (Batch 52). */
     --text-primary: #14181F;
     --text-secondary: #4B5563;
-    --text-muted: #8A93A1;
+    --text-muted: #6B7280;
     --text-inverse: #FFFFFF;
 
     /* On-brand text — same dark value as dark mode; light primary/accent
@@ -193,8 +212,8 @@
     --shadow-md: 0 4px 16px -4px rgba(20, 24, 31, 0.10);
     --shadow-lg: 0 12px 40px -8px rgba(20, 24, 31, 0.16);
     --shadow-sheet: 0 -8px 32px -4px rgba(20, 24, 31, 0.16);
-    --shadow-glow: 0 0 0 3px rgba(5, 150, 105, 0.20);
-    --shadow-glow-accent: 0 0 0 3px rgba(167, 124, 42, 0.22);
+    --shadow-glow: 0 0 0 3px rgba(5, 150, 105, 0.28);
+    --shadow-glow-accent: 0 0 0 3px rgba(167, 124, 42, 0.28);
 
     /* Shimmer keyframe colour tuned for light bg */
     --shimmer-stripe: rgba(20, 24, 31, 0.05);
@@ -247,6 +266,22 @@
     color: var(--text-primary);
     letter-spacing: -0.01em;
   }
+
+  /*
+   * Type scale (Batch 52) — the documented tiers, all built from Tailwind
+   * utilities (no new classes). Match new UI to the nearest tier:
+   *
+   *   display  text-3xl/4xl  Outfit 600   greeting, verdict headline
+   *   title    text-lg/xl    Outfit 600   card titles (see CardTitle)
+   *   body     text-sm/base  Outfit 400   default prose + values
+   *   label    text-sm       Outfit 500   form labels — SENTENCE CASE (see Label)
+   *   caption  text-xs       Outfit 400   timestamps, muted sub-lines
+   *   eyebrow  text-xs       JetBrains Mono 600, uppercase, tracking-[0.2em]+
+   *
+   * Mono-uppercase (`font-mono uppercase tracking-*`) is RESERVED for eyebrows /
+   * kickers, numerics, and the wordmark. It must NOT be used for form-field
+   * labels — those are sentence-case for legibility (see components/ui/label.tsx).
+   */
 
   /* Native-app feel: disable user-select + long-press callout on chrome, allow on content */
   header, nav, button, [role='tab'], [role='button'] {

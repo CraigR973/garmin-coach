@@ -9,7 +9,9 @@ const Label = React.forwardRef<
   <LabelPrimitive.Root
     ref={ref}
     className={cn(
-      'text-xs font-medium text-text-secondary font-sans leading-none uppercase tracking-wider',
+      // Sentence-case, legible form label (Batch 52) — mono-uppercase is reserved
+      // for eyebrows/kickers/numerics/wordmark, not form fields.
+      'text-sm font-medium text-text-secondary font-sans leading-none',
       className,
     )}
     {...props}

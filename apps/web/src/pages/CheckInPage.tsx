@@ -13,10 +13,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { apiFetch } from '@/lib/api';
-
-const textareaClassName =
-  'min-h-[100px] w-full rounded-md border border-border bg-bg px-3 py-3 text-sm text-text-primary shadow-sm focus-visible:outline-none focus-visible:shadow-glow';
 
 type ManualFormState = {
   bpSystolic: string;
@@ -214,9 +212,9 @@ export function CheckInPage() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="notes">Anything worth noting</Label>
-            <textarea
+            <Textarea
               id="notes"
-              className={textareaClassName}
+              className="min-h-[100px]"
               placeholder="Late night, stress, alcohol, illness…"
               value={manualForm.notes}
               onChange={(e) => setManual('notes', e.target.value)}
@@ -262,18 +260,18 @@ export function CheckInPage() {
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="supplements">Supplements</Label>
-            <textarea
+            <Textarea
               id="supplements"
-              className={textareaClassName}
+              className="min-h-[100px]"
               value={manualForm.supplements}
               onChange={(e) => setManual('supplements', e.target.value)}
             />
           </div>
           <div className="space-y-2">
             <Label htmlFor="food">Food &amp; evening snack</Label>
-            <textarea
+            <Textarea
               id="food"
-              className={textareaClassName}
+              className="min-h-[100px]"
               value={manualForm.food}
               onChange={(e) => setManual('food', e.target.value)}
             />
@@ -357,9 +355,9 @@ export function CheckInPage() {
                   {form.status === 'modified' && (
                     <div className="mt-3 space-y-2">
                       <Label htmlFor={`changes-${workout.id}`}>What changed?</Label>
-                      <textarea
+                      <Textarea
                         id={`changes-${workout.id}`}
-                        className={textareaClassName}
+                        className="min-h-[100px]"
                         value={form.changeSummary}
                         onChange={(e) => setAdherence(workout.id, { changeSummary: e.target.value })}
                       />

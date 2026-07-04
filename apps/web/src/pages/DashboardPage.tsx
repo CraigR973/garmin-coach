@@ -31,6 +31,7 @@ import { Label } from '@/components/ui/label';
 import { Markdown } from '@/components/Markdown';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
 import { VerdictHero } from '@/components/VerdictHero';
 import { SleepSnapshotBody } from '@/components/SleepSnapshotBody';
 import { SleepPrepBody } from '@/components/SleepPrepBody';
@@ -53,9 +54,6 @@ import {
   sectionLane,
   type HomeSectionKey,
 } from '@/lib/homeSections';
-
-const textareaClassName =
-  'min-h-[88px] w-full rounded-md border border-border bg-bg px-3 py-3 text-sm text-text-primary shadow-sm focus-visible:outline-none focus-visible:shadow-glow';
 
 const SLEEP_PREP_SUMMARY = 'Keep the bedroom and bedtime routine working for you.';
 
@@ -829,9 +827,8 @@ function ActualWorkoutForm({
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="actual-notes">Notes</Label>
-        <textarea
+        <Textarea
           id="actual-notes"
-          className={textareaClassName}
           value={notes}
           onChange={(event) => setNotes(event.target.value)}
         />
@@ -1309,9 +1306,8 @@ function PostRideCheckInForm({
         </div>
         <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor={`post-ride-notes-${activityId}`}>Niggles or notes</Label>
-          <textarea
+          <Textarea
             id={`post-ride-notes-${activityId}`}
-            className={textareaClassName}
             value={value.notes}
             onChange={(event) => onChange({ notes: event.target.value })}
           />
