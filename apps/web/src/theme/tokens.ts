@@ -6,18 +6,24 @@
  */
 
 export const colors = {
-  // Surface tiers (deep teal-graphite — harmonizes with the CheckMark icon tile)
-  bg: '#0A1112',
-  surface: '#111E1F',
-  surfaceElevated: '#192A2B',
-  surfaceOverlay: '#213436',
-  border: '#253A3C',
-  borderStrong: '#345355',
+  // Surface tiers (deep teal-graphite — harmonizes with the CheckMark icon tile).
+  // Re-spaced in Batch 52 into a clear value ramp so cards separate; mirrors the
+  // dark palette in index.css (`:root, html.dark`).
+  bg: '#0A1314',
+  surface: '#152628',
+  surfaceElevated: '#1F383A',
+  surfaceOverlay: '#294648',
+  border: '#2E4C4E',
+  borderStrong: '#3D5F61',
 
-  // Text
+  // Control fill — raised well for inputs/selects/textareas (Batch 52).
+  control: '#223C3E',
+  controlBorder: '#436769',
+
+  // Text (secondary/muted lifted for WCAG AA on the re-spaced surfaces)
   textPrimary: '#F0F4FF',
-  textSecondary: '#94A3B8',
-  textMuted: '#7B859B',
+  textSecondary: '#A6B4C4',
+  textMuted: '#98A2B4',
   textInverse: '#0B0E13',
 
   // Brand — refined emerald "go", deeper brass accent, neutral silver Steele
@@ -49,7 +55,7 @@ export const colors = {
 export const gradients = {
   steele: 'linear-gradient(180deg, #E8EBF0 0%, #B0B8C4 60%, #7A828F 100%)',
   steeleHorizontal: 'linear-gradient(90deg, #E8EBF0 0%, #B0B8C4 100%)',
-  surface: 'linear-gradient(180deg, #111E1F 0%, #0A1112 100%)',
+  surface: 'linear-gradient(180deg, #152628 0%, #0A1314 100%)',
 } as const;
 
 export const radius = {
@@ -62,13 +68,16 @@ export const radius = {
   full: '9999px',
 } as const;
 
+// Mirrors the dark `--shadow-*` set in index.css (Batch 52: softer elevation,
+// stronger focus ring). `glow`/`glowAccent` now match the emerald/brass CSS vars
+// (they previously drifted to a stale teal/gold that no JS consumer wanted).
 export const shadow = {
-  sm: '0 1px 2px 0 rgba(0, 0, 0, 0.4)',
-  md: '0 4px 16px -2px rgba(0, 0, 0, 0.5)',
-  lg: '0 12px 40px -8px rgba(0, 0, 0, 0.6)',
-  sheet: '0 -8px 32px -4px rgba(0, 0, 0, 0.6)',
-  glow: '0 0 0 3px rgba(20, 184, 166, 0.25)',
-  glowAccent: '0 0 0 3px rgba(212, 162, 74, 0.25)',
+  sm: '0 1px 2px 0 rgba(0, 0, 0, 0.30)',
+  md: '0 4px 16px -4px rgba(0, 0, 0, 0.44)',
+  lg: '0 16px 48px -12px rgba(0, 0, 0, 0.55)',
+  sheet: '0 -8px 32px -6px rgba(0, 0, 0, 0.55)',
+  glow: '0 0 0 3px rgba(16, 185, 129, 0.35)',
+  glowAccent: '0 0 0 3px rgba(200, 148, 60, 0.30)',
 } as const;
 
 export const font = {

@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DailyLoopEnvelope } from '@/hooks/useDailyLoop';
 import { DashboardPage } from './DashboardPage';
 
@@ -333,6 +333,16 @@ function renderPage(snapshot = baseSnapshot) {
 }
 
 const WORKOUT_ID = '55555555-5555-4555-8555-555555555555';
+
+beforeEach(() => {
+  // Freeze the wall-clock to a deterministic *daytime* instant. Section ordering
+  // and which section is expanded depend on isEveningNow() (getHours() >= 20), so
+  // without this the daytime-layout tests below fail whenever the suite happens to
+  // run after 20:00 local. Only Date is faked, so userEvent's real setTimeout
+  // delays still work; the one evening test overrides this with its own 21:30.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-06-20T09:00:00'));
+});
 
 afterEach(() => {
   vi.useRealTimers();

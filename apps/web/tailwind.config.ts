@@ -14,6 +14,9 @@ export default {
         'surface-overlay': 'var(--surface-overlay)',
         border: 'var(--border)',
         'border-strong': 'var(--border-strong)',
+        // Control fill tier for form inputs (Batch 52)
+        control: 'var(--control)',
+        'control-border': 'var(--control-border)',
 
         // Text
         'text-primary': 'var(--text-primary)',
