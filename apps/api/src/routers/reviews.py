@@ -49,9 +49,12 @@ class ApiMeta(BaseModel):
 
 class StrengthSummary(BaseModel):
     trend: str
+    trendReason: str
     sessions4w: int
     sessionsPerWeek4w: float
     sessions12w: int
+    sourceState: str
+    zeroInterpretation: str | None
 
 
 class InsightSummary(BaseModel):
@@ -104,9 +107,20 @@ def _data(preview: ReviewPreview, review: Analysis | None) -> ReviewData:
         rollup=rollup_packet(preview.rollup),
         strength=StrengthSummary(
             trend=preview.strength_brief.trend,
+            trendReason=preview.strength_brief.trend_reason,
             sessions4w=preview.strength_brief.window_4w.session_count,
             sessionsPerWeek4w=preview.strength_brief.window_4w.sessions_per_week,
             sessions12w=preview.strength_brief.window_12w.session_count,
+            sourceState=(
+                "tracked_strength_activity_present"
+                if preview.strength_brief.window_12w.session_count > 0
+                else "no_tracked_strength_activity"
+            ),
+            zeroInterpretation=(
+                "No tracked strength activities were found in the 12-week lookback."
+                if preview.strength_brief.window_12w.session_count == 0
+                else None
+            ),
         ),
         insights=InsightSummary(
             ftpDriftStatus=preview.ftp_drift.status,

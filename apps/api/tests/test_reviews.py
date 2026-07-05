@@ -40,6 +40,7 @@ from src.services.reviews import (
     ReviewThermalNight,
     compute_review_rollup,
     resolve_period_window,
+    rollup_packet,
 )
 
 # A Wednesday, so the ISO week is Mon 2026-06-22 .. Sun 2026-06-28.
@@ -194,6 +195,28 @@ def test_readiness_trend_treats_four_point_move_as_stable_noise() -> None:
     assert _rollup(days).recovery.trend == "stable"
 
 
+def test_rollup_packet_carries_coverage_and_from_to_trend_evidence() -> None:
+    days = [
+        ReviewDay(day=WEEK_START + timedelta(days=i), sleep_score=score, readiness_score=ready)
+        for i, (score, ready) in enumerate(
+            [(70, 80), (71, 80), (72, 80), (78, 76), (79, 76), (80, 76)]
+        )
+    ]
+
+    packet = rollup_packet(_rollup(days, planned_count=0))
+
+    assert packet["coverage"]["expectedDays"] == 7
+    assert packet["coverage"]["sleepNights"] == 6
+    assert packet["coverage"]["coverageStatus"] == "good"
+    assert packet["sleep"]["trendEvidence"]["firstHalfMean"] == 71
+    assert packet["sleep"]["trendEvidence"]["secondHalfMean"] == 79
+    assert packet["recovery"]["trendEvidence"]["delta"] == -4
+    assert packet["adherence"]["sourceState"] == "no_active_plan_rows"
+    assert (
+        "do not describe this as zero planned training" in packet["adherence"]["zeroInterpretation"]
+    )
+
+
 # ---------------------------------------------------------------------------
 # Claude review boundary fake (no ANTHROPIC_API_KEY needed)
 # ---------------------------------------------------------------------------
@@ -343,6 +366,13 @@ async def test_preview_assembles_rollup_and_never_writes(db_conn: AsyncConnectio
         assert "ftpDrift" in preview.packet["insights"]
         assert preview.packet["personalBaselines"]["readiness_score"]["mean"] == 76
         assert preview.packet["trainingSchedule"]["restDays"] == ["Monday", "Friday"]
+        assert preview.packet["rollup"]["coverage"]["sleepNights"] == 7
+        assert preview.packet["rollup"]["adherence"]["sourceState"] == "planned_workouts_present"
+        assert preview.packet["strengthBrief"]["sourceState"] == "no_tracked_strength_activity"
+        assert (
+            "do not describe this as strength training stopped"
+            in preview.packet["strengthBrief"]["zeroInterpretation"]
+        )
 
         # GET preview must not write an analyses row (#71).
         after = await session.scalar(select(func.count()).select_from(Analysis))

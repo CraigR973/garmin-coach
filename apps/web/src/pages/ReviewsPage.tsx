@@ -51,6 +51,18 @@ function fmt(value: number | null, suffix = ''): string {
   return value === null ? '—' : `${value}${suffix}`;
 }
 
+function sourceLabel(value: string): string {
+  return value.replace(/_/g, ' ');
+}
+
+function trendEvidenceLabel(evidence: ReviewEnvelope['data']['rollup']['sleep']['trendEvidence']): string {
+  if (evidence.firstHalfMean === null || evidence.secondHalfMean === null) {
+    return `${evidence.firstHalfCount}+${evidence.secondHalfCount} samples`;
+  }
+  const delta = evidence.delta === null ? '' : ` (${evidence.delta > 0 ? '+' : ''}${evidence.delta})`;
+  return `${evidence.firstHalfMean} → ${evidence.secondHalfMean}${delta}`;
+}
+
 function formatDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, {
     day: 'numeric',
@@ -132,6 +144,8 @@ function ReviewBody({
   onGenerate: () => void;
 }) {
   const { rollup, strength, insights, review } = data;
+  const planSourceNote = rollup.adherence.zeroInterpretation;
+  const strengthSourceNote = strength.zeroInterpretation ?? strength.trendReason;
 
   return (
     <div className="space-y-4">
@@ -143,6 +157,9 @@ function ReviewBody({
           </CardTitle>
           <CardDescription>
             {formatDate(data.periodStart)} – {formatDate(data.periodEnd)} · {data.dayCount} days at a glance.
+            {' '}Coverage is {sourceLabel(rollup.coverage.coverageStatus)}: {rollup.coverage.sleepNights}/
+            {rollup.coverage.expectedDays} sleep nights and {rollup.coverage.recoveryDays}/
+            {rollup.coverage.expectedDays} recovery days.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -154,9 +171,9 @@ function ReviewBody({
           trend={rollup.sleep.trend}
           rows={[
             ['Nights', String(rollup.sleep.nights)],
+            ['Coverage', `${rollup.coverage.sleepNights}/${rollup.coverage.expectedDays}`],
             ['Avg score', fmt(rollup.sleep.avgScore)],
-            ['Avg age-adj.', fmt(rollup.sleep.avgAgeAdjustedScore)],
-            ['Avg duration', fmt(rollup.sleep.avgDurationMin, ' min')],
+            ['Trend basis', trendEvidenceLabel(rollup.sleep.trendEvidence)],
           ]}
         />
         <SummaryCard
@@ -165,9 +182,9 @@ function ReviewBody({
           trend={rollup.recovery.trend}
           rows={[
             ['Days', String(rollup.recovery.days)],
+            ['Coverage', `${rollup.coverage.recoveryDays}/${rollup.coverage.expectedDays}`],
             ['Avg HRV', fmt(rollup.recovery.avgHrvMs, ' ms')],
-            ['Avg readiness', fmt(rollup.recovery.avgReadiness)],
-            ['Avg resting HR', fmt(rollup.recovery.avgRestingHrBpm, ' bpm')],
+            ['Readiness trend', trendEvidenceLabel(rollup.recovery.trendEvidence)],
           ]}
         />
         <SummaryCard
@@ -177,11 +194,13 @@ function ReviewBody({
             ['Activities', String(rollup.trainingLoad.activityCount)],
             ['Total load', fmt(rollup.trainingLoad.totalLoad)],
             ['Total time', fmt(rollup.trainingLoad.totalDurationMin, ' min')],
+            ['Plan source', sourceLabel(rollup.adherence.sourceState)],
             [
               'Verdicts',
               `${rollup.verdicts.green}G · ${rollup.verdicts.amber}A · ${rollup.verdicts.red}R`,
             ],
           ]}
+          note={planSourceNote ?? undefined}
         />
         <SummaryCard
           icon={<Dumbbell className="h-4 w-4 text-primary" aria-hidden />}
@@ -190,9 +209,10 @@ function ReviewBody({
           rows={[
             ['Sessions (4w)', String(strength.sessions4w)],
             ['Per week (4w)', String(strength.sessionsPerWeek4w)],
+            ['Source', sourceLabel(strength.sourceState)],
             ['Fitness trend', insights.ftpDriftStatus],
-            ['Early warning', insights.earlyWarningStatus],
           ]}
+          note={strengthSourceNote}
         />
       </div>
 
@@ -232,11 +252,13 @@ function SummaryCard({
   title,
   trend,
   rows,
+  note,
 }: {
   icon: React.ReactNode;
   title: string;
   trend?: string;
   rows: ReadonlyArray<readonly [string, string]>;
+  note?: string;
 }) {
   return (
     <Card>
@@ -258,6 +280,7 @@ function SummaryCard({
             </div>
           ))}
         </dl>
+        {note ? <p className="mt-3 text-xs leading-relaxed text-text-muted">{note}</p> : null}
       </CardContent>
     </Card>
   );

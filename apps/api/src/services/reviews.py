@@ -60,8 +60,8 @@ from src.services.insights import EarlyWarningResult, FtpDriftResult, InsightsSe
 from src.services.personal_baselines import baseline_band_packet, serialize_training_schedule
 from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
 
-PROMPT_VERSION = "reviews-v2-2026-07-05"
-PACKET_VERSION = 1
+PROMPT_VERSION = "reviews-v3-2026-07-05"
+PACKET_VERSION = 2
 
 PERIOD_WEEKLY = "weekly"
 PERIOD_MONTHLY = "monthly"
@@ -88,12 +88,15 @@ guardrail in the packet. Write concise markdown with four bolded sections — \
 **Trends**, **Wins**, **Concerns**, and **Recommendations** — each a short bullet \
 list grounded in the packet's numbers. Never mention left/right power balance. \
 Treat wrist-HR strength sessions as excluded from recovery/verdict decisions. \
-Ignore the broken sleep Duration column. When sample counts are low, say so \
-rather than overstating a trend. Recommendations must be concrete and \
-actionable for the coming period. Interpret readiness, HRV, and resting HR \
-against personalBaselines before using alarming words such as eroding, and cite \
-the packet numbers behind every trend claim. Respect trainingSchedule rest days \
-before recommending an additional recovery day."""
+Ignore the broken sleep Duration column. When sample counts are low or coverage \
+is incomplete, say so rather than overstating a trend. Treat sourceState and \
+zeroInterpretation fields as binding: never say strength has stopped, planned \
+sessions were zero, or adherence was poor when the packet says the source was \
+absent or not tracked. Recommendations must be concrete and actionable for the \
+coming period. Interpret readiness, HRV, and resting HR against \
+personalBaselines before using alarming words such as eroding. Any trend claim \
+must cite the packet's from-to numbers and sample counts. Respect \
+trainingSchedule rest days before recommending an additional recovery day."""
 
 
 class ReviewError(RuntimeError):
@@ -176,6 +179,18 @@ class ReviewThermalNight:
 
 
 @dataclass(frozen=True)
+class TrendEvidence:
+    metric_key: str
+    first_half_mean: float | None
+    second_half_mean: float | None
+    delta: float | None
+    first_half_count: int
+    second_half_count: int
+    min_absolute_delta: float
+    trend: str
+
+
+@dataclass(frozen=True)
 class SleepRollup:
     nights: int
     avg_score: float | None
@@ -184,6 +199,7 @@ class SleepRollup:
     avg_deep_min: float | None
     avg_rem_min: float | None
     trend: str  # increasing | stable | decreasing | insufficient_data
+    trend_evidence: TrendEvidence
 
 
 @dataclass(frozen=True)
@@ -194,6 +210,7 @@ class RecoveryRollup:
     avg_resting_hr_bpm: float | None
     avg_body_battery_charged: float | None
     trend: str
+    trend_evidence: TrendEvidence
 
 
 @dataclass(frozen=True)
@@ -253,14 +270,14 @@ def _avg(values: Sequence[float | int | None], *, ndigits: int = 1) -> float | N
     return round(sum(present) / len(present), ndigits)
 
 
-def _half_trend(
+def _half_trend_evidence(
     days: Sequence[ReviewDay],
     key: str,
     *,
     higher_is_better: bool = True,
     min_each_half: int = 2,
     min_absolute_delta: float = 0.0,
-) -> str:
+) -> TrendEvidence:
     """Compare the first vs second half of the window for ``key``.
 
     Deterministic and DB-free. Needs at least ``min_each_half`` present values
@@ -273,20 +290,58 @@ def _half_trend(
     first_present = [float(v) for v in first if v is not None]
     second_present = [float(v) for v in second if v is not None]
     if len(first_present) < min_each_half or len(second_present) < min_each_half:
-        return "insufficient_data"
+        return TrendEvidence(
+            metric_key=key,
+            first_half_mean=None,
+            second_half_mean=None,
+            delta=None,
+            first_half_count=len(first_present),
+            second_half_count=len(second_present),
+            min_absolute_delta=min_absolute_delta,
+            trend="insufficient_data",
+        )
     first_mean = sum(first_present) / len(first_present)
     second_mean = sum(second_present) / len(second_present)
     absolute_delta = second_mean - first_mean
     if abs(absolute_delta) <= min_absolute_delta:
-        return "stable"
-    if first_mean == 0:
-        return "stable"
-    change = absolute_delta / abs(first_mean)
-    if abs(change) <= 0.05:
-        return "stable"
-    rising = change > 0
-    improving = rising if higher_is_better else not rising
-    return "increasing" if improving else "decreasing"
+        trend = "stable"
+    elif first_mean == 0:
+        trend = "stable"
+    else:
+        change = absolute_delta / abs(first_mean)
+        if abs(change) <= 0.05:
+            trend = "stable"
+        else:
+            rising = change > 0
+            improving = rising if higher_is_better else not rising
+            trend = "increasing" if improving else "decreasing"
+    return TrendEvidence(
+        metric_key=key,
+        first_half_mean=round(first_mean, 1),
+        second_half_mean=round(second_mean, 1),
+        delta=round(absolute_delta, 1),
+        first_half_count=len(first_present),
+        second_half_count=len(second_present),
+        min_absolute_delta=min_absolute_delta,
+        trend=trend,
+    )
+
+
+def _half_trend(
+    days: Sequence[ReviewDay],
+    key: str,
+    *,
+    higher_is_better: bool = True,
+    min_each_half: int = 2,
+    min_absolute_delta: float = 0.0,
+) -> str:
+    return _half_trend_evidence(
+        days,
+        key,
+        higher_is_better=higher_is_better,
+        min_each_half=min_each_half,
+        min_absolute_delta=min_absolute_delta,
+    ).trend
 
 
 def compute_review_rollup(
@@ -309,6 +364,7 @@ def compute_review_rollup(
     sleep_nights = [
         d for d in days if d.sleep_score is not None or d.sleep_duration_min is not None
     ]
+    sleep_trend = _half_trend_evidence(days, "sleep_score", higher_is_better=True)
     sleep = SleepRollup(
         nights=len(sleep_nights),
         avg_score=_avg([d.sleep_score for d in days]),
@@ -316,22 +372,25 @@ def compute_review_rollup(
         avg_duration_min=_avg([d.sleep_duration_min for d in days]),
         avg_deep_min=_avg([d.deep_sleep_min for d in days]),
         avg_rem_min=_avg([d.rem_sleep_min for d in days]),
-        trend=_half_trend(days, "sleep_score", higher_is_better=True),
+        trend=sleep_trend.trend,
+        trend_evidence=sleep_trend,
     )
 
     recovery_days = [d for d in days if d.hrv_ms is not None or d.readiness_score is not None]
+    recovery_trend = _half_trend_evidence(
+        days,
+        "readiness_score",
+        higher_is_better=True,
+        min_absolute_delta=4.0,
+    )
     recovery = RecoveryRollup(
         days=len(recovery_days),
         avg_hrv_ms=_avg([d.hrv_ms for d in days]),
         avg_readiness=_avg([d.readiness_score for d in days]),
         avg_resting_hr_bpm=_avg([d.resting_hr_bpm for d in days]),
         avg_body_battery_charged=_avg([d.body_battery_charged for d in days]),
-        trend=_half_trend(
-            days,
-            "readiness_score",
-            higher_is_better=True,
-            min_absolute_delta=4.0,
-        ),
+        trend=recovery_trend.trend,
+        trend_evidence=recovery_trend,
     )
 
     by_type: dict[str, float] = {}
@@ -1004,6 +1063,24 @@ def _build_packet(
 
 def rollup_packet(rollup: ReviewRollup) -> dict[str, Any]:
     return {
+        "coverage": {
+            "expectedDays": rollup.day_count,
+            "sleepNights": rollup.sleep.nights,
+            "sleepMissingDays": max(rollup.day_count - rollup.sleep.nights, 0),
+            "recoveryDays": rollup.recovery.days,
+            "recoveryMissingDays": max(rollup.day_count - rollup.recovery.days, 0),
+            "morningVerdictDays": rollup.verdicts.total,
+            "morningVerdictMissingDays": max(rollup.day_count - rollup.verdicts.total, 0),
+            "thermalNights": rollup.thermal.nights,
+            "thermalMissingDays": max(rollup.day_count - rollup.thermal.nights, 0),
+            "activityCount": rollup.training_load.activity_count,
+            "plannedCount": rollup.adherence.planned_count,
+            "adherenceCapturedCount": rollup.adherence.captured_count,
+            "coverageStatus": _coverage_status(
+                present=min(rollup.sleep.nights, rollup.recovery.days),
+                expected=rollup.day_count,
+            ),
+        },
         "sleep": {
             "nights": rollup.sleep.nights,
             "avgScore": rollup.sleep.avg_score,
@@ -1012,6 +1089,7 @@ def rollup_packet(rollup: ReviewRollup) -> dict[str, Any]:
             "avgDeepMin": rollup.sleep.avg_deep_min,
             "avgRemMin": rollup.sleep.avg_rem_min,
             "trend": rollup.sleep.trend,
+            "trendEvidence": _trend_evidence_packet(rollup.sleep.trend_evidence),
         },
         "recovery": {
             "days": rollup.recovery.days,
@@ -1020,6 +1098,7 @@ def rollup_packet(rollup: ReviewRollup) -> dict[str, Any]:
             "avgRestingHrBpm": rollup.recovery.avg_resting_hr_bpm,
             "avgBodyBatteryCharged": rollup.recovery.avg_body_battery_charged,
             "trend": rollup.recovery.trend,
+            "trendEvidence": _trend_evidence_packet(rollup.recovery.trend_evidence),
         },
         "trainingLoad": {
             "activityCount": rollup.training_load.activity_count,
@@ -1031,6 +1110,17 @@ def rollup_packet(rollup: ReviewRollup) -> dict[str, Any]:
             "plannedCount": rollup.adherence.planned_count,
             "capturedCount": rollup.adherence.captured_count,
             "statusCounts": rollup.adherence.status_counts,
+            "sourceState": (
+                "planned_workouts_present"
+                if rollup.adherence.planned_count > 0
+                else "no_active_plan_rows"
+            ),
+            "zeroInterpretation": (
+                "No active planned-workout rows were present in this period; do not "
+                "describe this as zero planned training."
+                if rollup.adherence.planned_count == 0
+                else None
+            ),
         },
         "verdicts": {
             "green": rollup.verdicts.green,
@@ -1048,13 +1138,49 @@ def rollup_packet(rollup: ReviewRollup) -> dict[str, Any]:
 
 
 def _strength_packet(strength: StrengthBriefResult) -> dict[str, Any]:
+    source_state = (
+        "tracked_strength_activity_present"
+        if strength.window_12w.session_count > 0
+        else "no_tracked_strength_activity"
+    )
     return {
         "trend": strength.trend,
         "trendReason": strength.trend_reason,
         "sessions4w": strength.window_4w.session_count,
         "sessionsPerWeek4w": strength.window_4w.sessions_per_week,
         "sessions12w": strength.window_12w.session_count,
+        "sourceState": source_state,
+        "zeroInterpretation": (
+            "No tracked strength activities were found in the 12-week lookback; do not "
+            "describe this as strength training stopped."
+            if source_state == "no_tracked_strength_activity"
+            else None
+        ),
     }
+
+
+def _trend_evidence_packet(evidence: TrendEvidence) -> dict[str, Any]:
+    return {
+        "metricKey": evidence.metric_key,
+        "firstHalfMean": evidence.first_half_mean,
+        "secondHalfMean": evidence.second_half_mean,
+        "delta": evidence.delta,
+        "firstHalfCount": evidence.first_half_count,
+        "secondHalfCount": evidence.second_half_count,
+        "minAbsoluteDelta": evidence.min_absolute_delta,
+        "trend": evidence.trend,
+    }
+
+
+def _coverage_status(*, present: int, expected: int) -> str:
+    if expected <= 0 or present <= 0:
+        return "no_data"
+    ratio = present / expected
+    if ratio >= 0.8:
+        return "good"
+    if ratio >= 0.5:
+        return "partial"
+    return "sparse"
 
 
 def _as_float(value: float | int | None) -> float | None:

@@ -941,7 +941,33 @@ export const blockLockEnvelopeSchema = z.object({
 
 export const reviewPeriodSchema = z.enum(['weekly', 'monthly']);
 
+export const reviewTrendEvidenceSchema = z.object({
+  metricKey: z.string(),
+  firstHalfMean: z.number().nullable(),
+  secondHalfMean: z.number().nullable(),
+  delta: z.number().nullable(),
+  firstHalfCount: z.number().int(),
+  secondHalfCount: z.number().int(),
+  minAbsoluteDelta: z.number(),
+  trend: z.string(),
+});
+
 export const reviewRollupSchema = z.object({
+  coverage: z.object({
+    expectedDays: z.number().int(),
+    sleepNights: z.number().int(),
+    sleepMissingDays: z.number().int(),
+    recoveryDays: z.number().int(),
+    recoveryMissingDays: z.number().int(),
+    morningVerdictDays: z.number().int(),
+    morningVerdictMissingDays: z.number().int(),
+    thermalNights: z.number().int(),
+    thermalMissingDays: z.number().int(),
+    activityCount: z.number().int(),
+    plannedCount: z.number().int(),
+    adherenceCapturedCount: z.number().int(),
+    coverageStatus: z.string(),
+  }),
   sleep: z.object({
     nights: z.number().int(),
     avgScore: z.number().nullable(),
@@ -950,6 +976,7 @@ export const reviewRollupSchema = z.object({
     avgDeepMin: z.number().nullable(),
     avgRemMin: z.number().nullable(),
     trend: z.string(),
+    trendEvidence: reviewTrendEvidenceSchema,
   }),
   recovery: z.object({
     days: z.number().int(),
@@ -958,6 +985,7 @@ export const reviewRollupSchema = z.object({
     avgRestingHrBpm: z.number().nullable(),
     avgBodyBatteryCharged: z.number().nullable(),
     trend: z.string(),
+    trendEvidence: reviewTrendEvidenceSchema,
   }),
   trainingLoad: z.object({
     activityCount: z.number().int(),
@@ -969,6 +997,8 @@ export const reviewRollupSchema = z.object({
     plannedCount: z.number().int(),
     capturedCount: z.number().int(),
     statusCounts: z.record(z.number()),
+    sourceState: z.string(),
+    zeroInterpretation: z.string().nullable(),
   }),
   verdicts: z.object({
     green: z.number().int(),
@@ -1000,9 +1030,12 @@ export const reviewEnvelopeSchema = z.object({
     rollup: reviewRollupSchema,
     strength: z.object({
       trend: z.string(),
+      trendReason: z.string(),
       sessions4w: z.number().int(),
       sessionsPerWeek4w: z.number(),
       sessions12w: z.number().int(),
+      sourceState: z.string(),
+      zeroInterpretation: z.string().nullable(),
     }),
     insights: z.object({
       ftpDriftStatus: z.string(),
