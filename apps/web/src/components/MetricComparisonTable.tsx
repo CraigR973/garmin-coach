@@ -61,6 +61,7 @@ export interface AgeComparison {
   fitnessAgeDelta?: number | null;
   fitnessAgeTone?: Tone | null;
   rows: AgeComparisonRow[];
+  sleepRows?: AgeComparisonRow[];
 }
 
 // Metrics where a higher value is the better outcome.

@@ -70,6 +70,7 @@ const baseSnapshot: DailyLoopEnvelope = {
         fitnessAge: 48,
         fitnessAgeDelta: 9,
         fitnessAgeTone: 'good',
+        sleepRows: [],
         rows: [
           {
             metricKey: 'vo2max',

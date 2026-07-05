@@ -438,6 +438,7 @@ export const ageComparisonSchema = z.object({
   fitnessAgeDelta: z.number().int().nullable().optional(),
   fitnessAgeTone: z.enum(['good', 'warn', 'neutral']).nullable().optional(),
   rows: z.array(ageComparisonRowSchema).default([]),
+  sleepRows: z.array(ageComparisonRowSchema).default([]),
 });
 
 export const dailyLoopAnalysisSchema = z.object({

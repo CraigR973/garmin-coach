@@ -102,6 +102,74 @@ _NORMS: dict[str, _Norm] = {
             "female": {"20–29": 55, "30–39": 45, "40–49": 36, "50–59": 28, "60–69": 24, "70+": 21},
         },
     ),
+    "sleep_duration_hours": _Norm(
+        label="Duration",
+        unit=" h",
+        better="higher",
+        averages={
+            "male": {
+                "20–29": 7.9,
+                "30–39": 7.7,
+                "40–49": 7.4,
+                "50–59": 7.1,
+                "60–69": 6.8,
+                "70+": 6.5,
+            },
+            "female": {
+                "20–29": 7.9,
+                "30–39": 7.7,
+                "40–49": 7.4,
+                "50–59": 7.1,
+                "60–69": 6.8,
+                "70+": 6.5,
+            },
+        },
+    ),
+    "deep_sleep_pct": _Norm(
+        label="Deep",
+        unit="%",
+        better="higher",
+        averages={
+            "male": {"20–29": 20, "30–39": 19, "40–49": 18, "50–59": 17, "60–69": 16, "70+": 15},
+            "female": {"20–29": 20, "30–39": 19, "40–49": 18, "50–59": 17, "60–69": 16, "70+": 15},
+        },
+    ),
+    "light_sleep_pct": _Norm(
+        label="Light",
+        unit="%",
+        better="lower",
+        averages={
+            "male": {"20–29": 50, "30–39": 51, "40–49": 52, "50–59": 53, "60–69": 54, "70+": 55},
+            "female": {"20–29": 50, "30–39": 51, "40–49": 52, "50–59": 53, "60–69": 54, "70+": 55},
+        },
+    ),
+    "rem_sleep_pct": _Norm(
+        label="REM",
+        unit="%",
+        better="higher",
+        averages={
+            "male": {"20–29": 24, "30–39": 23, "40–49": 22, "50–59": 21, "60–69": 20, "70+": 19},
+            "female": {"20–29": 24, "30–39": 23, "40–49": 22, "50–59": 21, "60–69": 20, "70+": 19},
+        },
+    ),
+    "awake_sleep_pct": _Norm(
+        label="Awake",
+        unit="%",
+        better="lower",
+        averages={
+            "male": {"20–29": 6, "30–39": 7, "40–49": 8, "50–59": 9, "60–69": 10, "70+": 11},
+            "female": {"20–29": 6, "30–39": 7, "40–49": 8, "50–59": 9, "60–69": 10, "70+": 11},
+        },
+    ),
+    "restless_moments_count": _Norm(
+        label="Restless",
+        unit="",
+        better="lower",
+        averages={
+            "male": {"20–29": 10, "30–39": 11, "40–49": 12, "50–59": 13, "60–69": 14, "70+": 15},
+            "female": {"20–29": 10, "30–39": 11, "40–49": 12, "50–59": 13, "60–69": 14, "70+": 15},
+        },
+    ),
 }
 
 
@@ -139,6 +207,7 @@ class AgeComparison:
     fitness_age_delta: int | None  # chronological - fitness_age; positive = "younger"
     fitness_age_tone: Tone | None
     rows: list[AgeComparisonRow] = field(default_factory=list)
+    sleep_rows: list[AgeComparisonRow] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -148,6 +217,7 @@ class AgeComparison:
             "fitnessAgeDelta": self.fitness_age_delta,
             "fitnessAgeTone": self.fitness_age_tone,
             "rows": [row.to_dict() for row in self.rows],
+            "sleepRows": [row.to_dict() for row in self.sleep_rows],
         }
 
 
@@ -178,6 +248,43 @@ def _round(value: float) -> float:
     return round(value, 1)
 
 
+def _sleep_stage_pct(stage_sec: int | None, total_sec: int | None) -> float | None:
+    if stage_sec is None or total_sec is None or total_sec <= 0:
+        return None
+    return (stage_sec / total_sec) * 100.0
+
+
+def _build_rows(
+    *,
+    candidates: dict[str, float | None],
+    band: str,
+    resolved_sex: Sex,
+) -> list[AgeComparisonRow]:
+    rows: list[AgeComparisonRow] = []
+    for metric_key, value in candidates.items():
+        if value is None:
+            continue
+        norm = _NORMS[metric_key]
+        average = norm.averages[resolved_sex].get(band)
+        if average is None:
+            continue
+        tone, descriptor = _classify(float(value), average, norm.better)
+        rows.append(
+            AgeComparisonRow(
+                metric_key=metric_key,
+                label=norm.label,
+                value=_round(float(value)),
+                unit=norm.unit,
+                age_average=_round(average),
+                age_band=band,
+                better_direction=norm.better,
+                tone=tone,
+                descriptor=descriptor,
+            )
+        )
+    return rows
+
+
 def build_age_comparison(
     *,
     age: int | None,
@@ -186,6 +293,12 @@ def build_age_comparison(
     resting_heart_rate_bpm: float | None,
     hrv_overnight_ms: float | None,
     fitness_age: int | None,
+    duration_sec: int | None = None,
+    deep_sleep_sec: int | None = None,
+    light_sleep_sec: int | None = None,
+    rem_sleep_sec: int | None = None,
+    awake_sleep_sec: int | None = None,
+    restless_moments_count: int | None = None,
 ) -> AgeComparison:
     """Compare the supplied metrics against population averages for ``age``.
 
@@ -214,37 +327,38 @@ def build_age_comparison(
             fitness_age_delta=fitness_age_delta,
             fitness_age_tone=fitness_age_tone,
             rows=[],
+            sleep_rows=[],
         )
 
     band = _band_label(age)
-    candidates: dict[str, float | None] = {
+    metric_rows = _build_rows(
+        band=band,
+        resolved_sex=resolved_sex,
+        candidates={
         "vo2max": vo2max,
         "resting_heart_rate_bpm": resting_heart_rate_bpm,
         "hrv_overnight_ms": hrv_overnight_ms,
-    }
-
-    rows: list[AgeComparisonRow] = []
-    for metric_key, value in candidates.items():
-        if value is None:
-            continue
-        norm = _NORMS[metric_key]
-        average = norm.averages[resolved_sex].get(band)
-        if average is None:
-            continue
-        tone, descriptor = _classify(float(value), average, norm.better)
-        rows.append(
-            AgeComparisonRow(
-                metric_key=metric_key,
-                label=norm.label,
-                value=_round(float(value)),
-                unit=norm.unit,
-                age_average=_round(average),
-                age_band=band,
-                better_direction=norm.better,
-                tone=tone,
-                descriptor=descriptor,
-            )
-        )
+        },
+    )
+    measured_sleep_sec = sum(
+        stage
+        for stage in (deep_sleep_sec, light_sleep_sec, rem_sleep_sec, awake_sleep_sec)
+        if stage is not None
+    )
+    sleep_rows = _build_rows(
+        band=band,
+        resolved_sex=resolved_sex,
+        candidates={
+            "sleep_duration_hours": (duration_sec / 3600.0) if duration_sec is not None else None,
+            "deep_sleep_pct": _sleep_stage_pct(deep_sleep_sec, measured_sleep_sec),
+            "light_sleep_pct": _sleep_stage_pct(light_sleep_sec, measured_sleep_sec),
+            "rem_sleep_pct": _sleep_stage_pct(rem_sleep_sec, measured_sleep_sec),
+            "awake_sleep_pct": _sleep_stage_pct(awake_sleep_sec, measured_sleep_sec),
+            "restless_moments_count": float(restless_moments_count)
+            if restless_moments_count is not None
+            else None,
+        },
+    )
 
     return AgeComparison(
         age=age,
@@ -252,5 +366,6 @@ def build_age_comparison(
         fitness_age=fitness_age,
         fitness_age_delta=fitness_age_delta,
         fitness_age_tone=fitness_age_tone,
-        rows=rows,
+        rows=metric_rows,
+        sleep_rows=sleep_rows,
     )

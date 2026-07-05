@@ -24,6 +24,12 @@ def test_mark_like_profile_is_much_better_than_average() -> None:
         resting_heart_rate_bpm=45,
         hrv_overnight_ms=50,
         fitness_age=48,
+        duration_sec=8 * 3600,
+        deep_sleep_sec=95 * 60,
+        light_sleep_sec=250 * 60,
+        rem_sleep_sec=80 * 60,
+        awake_sleep_sec=15 * 60,
+        restless_moments_count=8,
     )
 
     assert comparison.age_band == "50–59"
@@ -39,6 +45,18 @@ def test_mark_like_profile_is_much_better_than_average() -> None:
     # The average is carried for the UI, drawn from the 50–59 male band.
     assert rows["vo2max"].age_average == 31  # type: ignore[attr-defined]
     assert rows["resting_heart_rate_bpm"].age_average == 71  # type: ignore[attr-defined]
+
+    sleep_rows = _rows_by_key(type("SleepRows", (), {"rows": comparison.sleep_rows})())
+    assert set(sleep_rows) == {
+        "sleep_duration_hours",
+        "deep_sleep_pct",
+        "light_sleep_pct",
+        "rem_sleep_pct",
+        "awake_sleep_pct",
+        "restless_moments_count",
+    }
+    assert sleep_rows["sleep_duration_hours"].tone == "good"  # type: ignore[attr-defined]
+    assert sleep_rows["restless_moments_count"].tone == "good"  # type: ignore[attr-defined]
 
 
 def test_resting_hr_is_direction_aware_low_is_good() -> None:
@@ -117,6 +135,7 @@ def test_missing_age_yields_empty_rows_but_keeps_fitness_age() -> None:
         fitness_age=48,
     )
     assert comparison.rows == []
+    assert comparison.sleep_rows == []
     assert comparison.age_band is None
     # Fitness age is reported, but with no chronological age there is no delta.
     assert comparison.fitness_age == 48
@@ -180,10 +199,17 @@ def test_to_dict_shape_is_camel_cased_for_the_api() -> None:
         resting_heart_rate_bpm=45,
         hrv_overnight_ms=50,
         fitness_age=48,
+        duration_sec=7 * 3600,
+        deep_sleep_sec=90 * 60,
+        light_sleep_sec=240 * 60,
+        rem_sleep_sec=75 * 60,
+        awake_sleep_sec=15 * 60,
+        restless_moments_count=10,
     ).to_dict()
     assert payload["ageBand"] == "50–59"
     assert payload["fitnessAge"] == 48
     assert payload["fitnessAgeDelta"] == 9
+    assert len(payload["sleepRows"]) == 6
     first = payload["rows"][0]
     assert set(first) == {
         "metricKey",
