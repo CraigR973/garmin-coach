@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
@@ -43,6 +43,9 @@ from src.services.workout_delivery import (
     build_structured_workout_ir,
     build_zwo_xml,
 )
+
+if TYPE_CHECKING:
+    from src.services.morning_analysis import MorningAnalysisClient, MorningAnalysisService
 
 PROMPT_VERSION = "executable-coaching:v1"
 AUDIT_TYPE_PROPOSED = "workout_proposed"
@@ -311,6 +314,59 @@ class ExecutableCoachingService:
         if commit:
             await self.session.commit()
         return created
+
+    async def regenerate_after_morning_checkin(
+        self,
+        player: Profile,
+        subject_date: date,
+        *,
+        morning_service: MorningAnalysisService,
+        client: MorningAnalysisClient | None = None,
+        commit: bool = True,
+    ) -> Analysis | None:
+        """Re-run today's verdict + eased ride after a morning check-in lands.
+
+        The wake verdict is computed from sleep/recovery *before* Mark checks in,
+        so his subjective read never reached it. Subjective is a downgrade-only
+        signal (a low score blocks Green; a high one never upgrades), so this only
+        ever *eases* today's session, never hardens it. Guardrails (settled
+        2026-07-05):
+
+        * it runs only while the eased ride is still **pending** — an already
+          approved/pushed proposal is never silently changed (Decision #29);
+        * the model is re-run **only when the verdict actually worsens** to
+          Amber/Red, so an ordinary check-in stays fast and free (the status is
+          recomputed deterministically from the packet first, no LLM call).
+
+        Returns the regenerated analysis, or ``None`` when nothing changed.
+        """
+        bike_workouts = await self._deliverable_bike_workouts(player.id, subject_date)
+        if not bike_workouts:
+            return None
+        for workout in bike_workouts:
+            latest = await self._latest_proposal_for_workout(player.id, workout.id)
+            if latest is not None and latest.status != STATUS_PROPOSED:
+                # Approved / pushed / failed — never silently change a ride Mark acted on.
+                return None
+
+        stored = await morning_service.latest_analysis(player.id, subject_date)
+        stored_status = self._verdict_status(stored) if stored is not None else None
+        packet = await morning_service.assemble_context_packet(player, subject_date)
+        verdict = packet.get("verdict")
+        raw_status = verdict.get("status") if isinstance(verdict, dict) else None
+        new_status = _normalize_verdict(raw_status)
+        if new_status not in {"Amber", "Red"} or new_status == stored_status:
+            return None
+
+        result = await morning_service.generate_and_store(
+            player, subject_date, client=client, force=True, commit=False
+        )
+        await self.regenerate_for_verdict(
+            player, subject_date, analysis=result.analysis, commit=False
+        )
+        if commit:
+            await self.session.commit()
+        return result.analysis
 
     async def auto_push_due(
         self,

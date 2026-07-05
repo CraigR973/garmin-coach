@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime, time
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import structlog
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,8 +16,10 @@ from src.models.coaching import Analysis, DailyMetric, ManualEntry, PlannedWorko
 from src.services.breathwork_brief import BreathworkBriefResult
 from src.services.daily_loop import DailyLoopService, DeliveryState
 from src.services.environment_freshness import is_hive_temperature_fresh
+from src.services.executable_coaching import ExecutableCoachingService
 from src.services.fan_control import describe_fan_intent
 from src.services.insights import OUTCOME_SLEEP_SCORE, InsightsService
+from src.services.morning_analysis import MorningAnalysisService
 from src.services.sleep_projection import (
     SleepDriverEvidence,
     SleepProjectionInputs,
@@ -46,6 +49,17 @@ def _local_time(timezone_name: str) -> time:
     except ZoneInfoNotFoundError:
         zone = ZoneInfo("UTC")
     return datetime.now(zone).time()
+
+
+def _local_today(timezone_name: str) -> date:
+    try:
+        zone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        zone = ZoneInfo("UTC")
+    return datetime.now(zone).date()
+
+
+log = structlog.get_logger(__name__)
 
 
 class ApiError(BaseModel):
@@ -1052,6 +1066,20 @@ async def upsert_manual_entry(
         food_json=body.foodJson,
         notes=body.notes,
     )
+    # A morning check-in adds Mark's subjective read after the wake verdict was
+    # computed from sleep alone. If it worsens today's verdict while the eased ride
+    # is still pending, recompute the verdict + ride so his notes shape the session
+    # (never touches an approved/pushed ride). Best-effort — never blocks the save.
+    if subject_date == _local_today(player.timezone):
+        try:
+            await ExecutableCoachingService(db).regenerate_after_morning_checkin(
+                player, subject_date, morning_service=MorningAnalysisService(db)
+            )
+        except Exception:
+            log.exception(
+                "morning check-in verdict recompute failed",
+                subject_date=subject_date.isoformat(),
+            )
     snapshot = await service.get_snapshot(player, subject_date=subject_date)
     return await _envelope(player, snapshot, db)
 

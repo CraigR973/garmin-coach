@@ -54,6 +54,7 @@ import { formatDateTime, friendlyDate, hm, nextDays, remContext, type FanState }
 import { greetingForNow, verdictLabel } from '@/lib/copy';
 import { dayStateForWorkouts, type DayCategory } from '@/lib/workoutCategories';
 import { actionSection, nextAction, type NextAction } from '@/lib/homeActions';
+import { hasReviewedSleep } from '@/lib/sleepReview';
 import {
   isEveningNow,
   orderedSections,
@@ -352,7 +353,16 @@ export function DashboardPage() {
   // its section override — which section is expanded, so a pending item is never
   // stranded in a collapsed off-phase section. It falls back to the Batch 48
   // phase primary when the action navigates away or everything is clear.
-  const action = nextAction(daily, { isEvening });
+  //
+  // The morning (pre-training / rest-day, i.e. not yet trained and not evening)
+  // re-orders to sleep → check-in → eased ride (confirmed 2026-07-05); the sleep
+  // rung completes off a per-day client flag set when Mark opens `/sleep`.
+  const isMorning = phase === 'pre_training' || phase === 'rest_day';
+  const action = nextAction(daily, {
+    isEvening,
+    isMorning,
+    hasReviewedSleep: hasReviewedSleep(daily.subjectDate),
+  });
   const primary = actionSection(action) ?? primarySection(phase, { hasRide });
   // Batch 37: render the full section set every load; exactly one is expanded
   // (the action/phase primary). Presence is only ever gated by hasRide.

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BedDouble, Fan, MoonStar } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/PageHeader';
@@ -10,6 +10,7 @@ import { SleepPrepBody } from '@/components/SleepPrepBody';
 import { BedroomBody } from '@/components/BedroomBody';
 import { OvernightChartCard } from '@/components/OvernightChartCard';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
+import { markSleepReviewed } from '@/lib/sleepReview';
 import { friendlyDate } from '@/lib/dailyFlow';
 import type { AgeComparison, MetricBaselineRow } from '@/components/MetricComparisonTable';
 
@@ -31,6 +32,17 @@ const VIEW_ITEMS = [
 export function SleepPage() {
   const [view, setView] = useState<SleepView>('last-night');
   const query = useDailyLoop();
+
+  // Opening Sleep with synced overnight metrics completes Home's morning
+  // "Review last night's sleep" rung (per-day client flag) so it steps down to
+  // the check-in. Gated on a present morning read: opening pre-sync (nothing to
+  // review) must not pre-empt the prompt once metrics land the same day.
+  useEffect(() => {
+    const loaded = query.data?.data;
+    if (loaded?.morningAnalysis != null) {
+      markSleepReviewed(loaded.subjectDate);
+    }
+  }, [query.data]);
 
   if (query.isLoading) {
     return (

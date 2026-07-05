@@ -29,6 +29,7 @@ from src.services.executable_coaching import (
     blocks_red_vo2,
     ir_has_vo2,
 )
+from src.services.morning_analysis import MorningAnalysisResult
 from src.services.workout_delivery import (
     STATUS_DELETED,
     STATUS_PUSHED,
@@ -746,6 +747,186 @@ async def test_regenerate_for_verdict_creates_red_substitution(db_conn: AsyncCon
         assert len(audits) == 1
         assert audits[0].context_packet["tag"] == f"red-regen:{workout_id}:v1"
         assert audits[0].verdict == "Red"
+
+
+# ---------------------------------------------------------------------------
+# Morning check-in recompute (verdict + eased ride after a late subjective read)
+# ---------------------------------------------------------------------------
+
+
+class _StubMorningService:
+    """Controls the verdict seam so the check-in recompute can be tested apart
+    from the (separately covered) morning-analysis engine.
+
+    ``latest_analysis`` returns the verdict already stored at wake; the packet's
+    ``new_status`` is what the subjective read now produces; ``generate_and_store``
+    records how many times the model would have been re-run.
+    """
+
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        stored: Analysis | None,
+        new_status: str,
+    ) -> None:
+        self.session = session
+        self._stored = stored
+        self._new_status = new_status
+        self.generate_calls = 0
+
+    async def latest_analysis(self, user_id: uuid.UUID, subject_date: date) -> Analysis | None:
+        return self._stored
+
+    async def assemble_context_packet(
+        self, player: Profile, subject_date: date
+    ) -> dict[str, object]:
+        return {"verdict": {"status": self._new_status}}
+
+    async def generate_and_store(
+        self,
+        player: Profile,
+        subject_date: date,
+        *,
+        client: object | None = None,
+        force: bool = False,
+        commit: bool = True,
+    ) -> MorningAnalysisResult:
+        self.generate_calls += 1
+        analysis = _morning_analysis(player.id, subject_date, self._new_status)
+        self.session.add(analysis)
+        await self.session.flush()
+        return MorningAnalysisResult(analysis=analysis, generated=True)
+
+
+async def _seed_bike_day(
+    db_conn: AsyncConnection, user_id: uuid.UUID, workout_id: uuid.UUID, subject: date
+) -> None:
+    await _seed_profile(db_conn, user_id)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            PlannedWorkout(
+                id=workout_id,
+                user_id=user_id,
+                workout_date=subject,
+                version=1,
+                title="VO2 Max 30/30",
+                workout_type="bike_vo2",
+                status="planned",
+                is_active=True,
+                planned_duration_min=60,
+                intensity_target="105-110% FTP",
+                structured_workout=VO2_STRUCTURED,
+                source="test",
+            )
+        )
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_checkin_recompute_eases_ride_when_verdict_worsens(
+    db_conn: AsyncConnection,
+) -> None:
+    """A check-in that drags the verdict Green→Amber re-runs it and proposes an
+    eased ride — subjective is downgrade-only, so this only ever eases."""
+    user_id, workout_id = uuid.uuid4(), uuid.uuid4()
+    subject = date(2026, 6, 23)
+    await _seed_bike_day(db_conn, user_id, workout_id, subject)
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session)
+        morning = _StubMorningService(
+            session, stored=_morning_analysis(user_id, subject, "Green"), new_status="Amber"
+        )
+
+        result = await service.regenerate_after_morning_checkin(
+            user, subject, morning_service=morning
+        )
+
+        assert result is not None
+        assert result.verdict == "Amber"
+        assert morning.generate_calls == 1
+        proposals = (await session.execute(select(WorkoutDeliveryProposal))).scalars().all()
+        assert len(proposals) == 1
+        assert proposals[0].status == "proposed"  # eased, never auto-approved
+        assert proposals[0].structured_workout_ir["origin"] == "amber_regeneration"
+
+
+@pytest.mark.asyncio
+async def test_checkin_recompute_noops_when_verdict_holds(
+    db_conn: AsyncConnection,
+) -> None:
+    """An ordinary check-in that leaves the verdict unchanged never re-runs the
+    model (the deterministic packet status gates the LLM call)."""
+    user_id, workout_id = uuid.uuid4(), uuid.uuid4()
+    subject = date(2026, 6, 23)
+    await _seed_bike_day(db_conn, user_id, workout_id, subject)
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session)
+        morning = _StubMorningService(
+            session, stored=_morning_analysis(user_id, subject, "Green"), new_status="Green"
+        )
+
+        result = await service.regenerate_after_morning_checkin(
+            user, subject, morning_service=morning
+        )
+
+        assert result is None
+        assert morning.generate_calls == 0
+        proposals = (await session.execute(select(WorkoutDeliveryProposal))).scalars().all()
+        assert proposals == []
+
+
+@pytest.mark.asyncio
+async def test_checkin_recompute_leaves_an_approved_ride_untouched(
+    db_conn: AsyncConnection,
+) -> None:
+    """Once today's ride is approved (or pushed), a later check-in never silently
+    rewrites it — even if the verdict would now worsen (Decision #29)."""
+    user_id, workout_id = uuid.uuid4(), uuid.uuid4()
+    subject = date(2026, 6, 23)
+    await _seed_bike_day(db_conn, user_id, workout_id, subject)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            WorkoutDeliveryProposal(
+                id=uuid.uuid4(),
+                user_id=user_id,
+                planned_workout_id=workout_id,
+                planned_workout_version=1,
+                workout_date=subject,
+                provider="intervals_icu",
+                status="approved",
+                proposed_at_utc=datetime(2026, 6, 23, 6, 30),
+                approved_at_utc=datetime(2026, 6, 23, 6, 45),
+                structured_workout_ir={"origin": "baseline"},
+                intervals_payload={"category": "WORKOUT", "name": "Test"},
+                zwo_xml="<workout_file/>",
+            )
+        )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session)
+        morning = _StubMorningService(
+            session, stored=_morning_analysis(user_id, subject, "Green"), new_status="Red"
+        )
+
+        result = await service.regenerate_after_morning_checkin(
+            user, subject, morning_service=morning
+        )
+
+        assert result is None
+        assert morning.generate_calls == 0  # bailed before any regeneration
+        proposals = (await session.execute(select(WorkoutDeliveryProposal))).scalars().all()
+        assert len(proposals) == 1
+        assert proposals[0].status == "approved"  # left exactly as Mark approved it
 
 
 # ---------------------------------------------------------------------------
