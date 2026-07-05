@@ -3,7 +3,7 @@ import json
 import sys
 import types
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -12,12 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 
 from src.models.coaching import TemperatureReading, WeatherDaily
 from src.models.profile import Profile, UserRole
+from src.services.environment_freshness import is_hive_temperature_fresh
 from src.services.environment_sync import (
     EnvironmentSyncService,
     HiveClient,
     HiveCredentials,
     HiveLoginError,
     HivePayloads,
+    _hive_captured_at,
     parse_hive_temperature_fields,
     parse_open_meteo_daily_fields,
 )
@@ -92,6 +94,36 @@ def test_parse_hive_temperature_fields_prefers_poll_time_when_last_seen_is_stale
 
     assert len(rows) == 1
     assert rows[0]["captured_at_utc"] == poll_started_utc
+
+
+def test_hive_captured_at_clamps_a_future_device_clock() -> None:
+    # A boiler module once reported a lastSeen decades in the future, which was
+    # stored verbatim and then read as perpetually "fresh". A future device clock
+    # must clamp back to observation time — even when stale-preference is off.
+    poll = datetime(2026, 7, 5, 1, 0)
+    future_ms = int((poll + timedelta(days=1)).replace(tzinfo=UTC).timestamp() * 1000)
+
+    assert (
+        _hive_captured_at(future_ms, fallback_time=poll, prefer_fallback_when_stale=False) == poll
+    )
+    assert _hive_captured_at(future_ms, fallback_time=poll, prefer_fallback_when_stale=True) == poll
+
+    # A recent device clock is still trusted (within the freshness window).
+    recent = poll - timedelta(minutes=10)
+    recent_ms = int(recent.replace(tzinfo=UTC).timestamp() * 1000)
+    assert (
+        _hive_captured_at(recent_ms, fallback_time=poll, prefer_fallback_when_stale=True) == recent
+    )
+
+
+def test_is_hive_temperature_fresh_rejects_future_and_stale_readings() -> None:
+    now = datetime(2026, 7, 5, 1, 0)
+
+    assert is_hive_temperature_fresh(now - timedelta(minutes=10), now_utc=now) is True
+    # Stale past reading — outside the window.
+    assert is_hive_temperature_fresh(now - timedelta(minutes=90), now_utc=now) is False
+    # Garbage far-future reading — a negative delta must not read as fresh.
+    assert is_hive_temperature_fresh(datetime(2068, 2, 13, 19, 44), now_utc=now) is False
 
 
 def test_hive_login_error_does_not_expose_credentials(monkeypatch: pytest.MonkeyPatch) -> None:

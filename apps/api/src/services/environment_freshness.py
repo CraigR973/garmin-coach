@@ -19,4 +19,8 @@ def is_hive_temperature_fresh(
     now = now_utc or datetime.now(UTC)
     if now.tzinfo is None:
         now = now.replace(tzinfo=UTC)
-    return now - captured <= HIVE_FRESHNESS_LIMIT
+    # Fresh = within the window on *either* side. Using the absolute delta rejects
+    # a future-dated reading (garbage device clock): a negative delta would
+    # otherwise satisfy the upper bound and let a "2068" reading mask stale data.
+    delta = now - captured
+    return -HIVE_FRESHNESS_LIMIT <= delta <= HIVE_FRESHNESS_LIMIT

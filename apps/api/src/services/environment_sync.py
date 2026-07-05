@@ -372,6 +372,13 @@ def _hive_captured_at(
     parsed = _parse_epoch_ms(last_seen)
     if parsed is None:
         return fallback_time
+    # A device can report a garbage far-future timestamp (a Hive boiler module
+    # once reported a lastSeen decades ahead → a "2068" reading that then read as
+    # perpetually fresh and shadowed the real latest temperature). Never trust a
+    # future device clock: clamp anything meaningfully ahead of observation time
+    # back to the fallback, regardless of the stale-preference flag.
+    if parsed - fallback_time > HIVE_FRESHNESS_LIMIT:
+        return fallback_time
     if prefer_fallback_when_stale and fallback_time - parsed > HIVE_FRESHNESS_LIMIT:
         return fallback_time
     return parsed
