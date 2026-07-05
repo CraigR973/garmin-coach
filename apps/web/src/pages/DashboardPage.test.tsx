@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DailyLoopEnvelope } from '@/hooks/useDailyLoop';
+import { markSleepReviewed } from '@/lib/sleepReview';
 import { DashboardPage } from './DashboardPage';
 
 const apiFetchMock = vi.fn();
@@ -342,6 +343,9 @@ beforeEach(() => {
   // delays still work; the one evening test overrides this with its own 21:30.
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-06-20T09:00:00'));
+  // The morning "review last night's sleep" rung completes off a per-day
+  // localStorage flag — clear it so each test starts pre-review (the default).
+  localStorage.clear();
 });
 
 afterEach(() => {
@@ -874,13 +878,24 @@ describe('DashboardPage', () => {
     expect(lastNight).toBeTruthy();
   });
 
-  it('renders the morning check-in action in the Next strip by default (Batch 50)', async () => {
-    renderPage(); // base: not checked in, nothing else pending → check-in rung
+  it('leads the morning Next strip with reviewing last night once metrics have synced', async () => {
+    // Base is the pre-training phase at 09:00 with a synced morning read and no
+    // sleep-reviewed flag → the morning order (sleep → check-in → ride) leads
+    // with the sleep review, deep-linking to the Sleep hub.
+    renderPage();
     const strip = await screen.findByRole('region', { name: 'Next action' });
     expect(strip.className).toContain('rounded-2xl');
     expect(strip.className).toContain('border-accent/45');
-    // Named "Morning check-in" (not just "Check in") so it reads distinctly
-    // from the per-ride "Log how {ride} felt" action.
+    const cta = within(strip).getByRole('link', { name: /review last night's sleep/i });
+    expect(cta.getAttribute('href')).toBe('/sleep');
+  });
+
+  it('steps the morning Next strip down to the check-in once sleep has been opened', async () => {
+    // Opening the Sleep hub sets the per-day flag; the strip then advances to
+    // the optional morning check-in (named distinctly from "Log how {ride} felt").
+    markSleepReviewed('2026-06-20');
+    renderPage(); // base: not checked in, sleep reviewed → check-in rung
+    const strip = await screen.findByRole('region', { name: 'Next action' });
     const cta = within(strip).getByRole('link', { name: /morning check-in/i });
     expect(cta.getAttribute('href')).toBe('/check-in');
   });
@@ -934,6 +949,8 @@ describe('DashboardPage', () => {
   });
 
   it('shows an all-clear Next strip when nothing needs a decision (Batch 50)', async () => {
+    // Morning all-clear = sleep reviewed AND checked in, with nothing pending.
+    markSleepReviewed('2026-06-20');
     renderPage(
       buildSnapshot((snapshot) => {
         snapshot.data.manualEntry = {
