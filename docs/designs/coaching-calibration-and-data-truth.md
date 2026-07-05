@@ -257,3 +257,55 @@ diagnosis, not a shipping batch.
   (`apps/api/src/config.py:53`), now behind Opus 4.8 / Sonnet 5. Worth a separate
   decision on whether to lift the runtime model when we touch these prompts (the
   Anthropic-API cost revisit was already pencilled for ~Sept 2026).
+
+---
+
+## Validation against Mark's prod data (2026-07-05, via Supabase MCP)
+
+Batches 56–59 shipped as **decisions #129–#132** and are live at `78f676a`. A
+read-only diagnosis of prod (`coach` schema) validated each point:
+
+- **Data is healthy, not missing.** 377 *contiguous* days of
+  `daily_metrics`/`sleep`/`activities` (2025-06-24 → today), a live plan
+  (2026-06-15 → 10-04), strength classified, 7 baselines. So B1 ("last year
+  missing") was never a data gap — it was calc/narration, now fixed in code.
+- **Complaints confirmed verbatim.** The stored July `monthly_review`
+  (`reviews-v1`) says *"Recovery is drifting downward… avg readiness 76.0…
+  decreasing"* — Mark's exact "76 eroding". `planned_count:27` but
+  `captured_count:0` → "zero planned **captured**" is adherence logging (2
+  check-ins ever), not a missing plan. Recent mornings show Amber at sleep 72 /
+  HRV balanced / RHR 43 — the real over-caution.
+- **A3 correct in prod:** `training_schedule` KB section seeded
+  (`batch_56_seed`) with `restDays:[Monday,Friday]`, threaded into the review
+  packet.
+- **C1 is a visibility issue, not generation:** 50 `post_workout` + 7 flex + 3
+  strength analyses exist and are pushed.
+
+**The systemic catch — everything Mark sees is stale.** `softSleepRecoveryOverride`
+is null on all 142 analyses; verdicts still show `morning-analysis-v1`, the review
+is `reviews-v1`, trends are dated 06-01, and `metric_baselines` still lacks a
+`readiness_score` row. Nothing regenerates retroactively, so **three
+regenerations are required** to surface the fixes: (1) rebuild `metric_baselines`
+(adds the `readiness_score` band the code now computes); (2) regenerate the
+morning verdict (scheduler, or force today's); (3) re-run weekly/monthly review +
+trends (`…/run?force=true`).
+
+## Follow-up — Decision #133 (proposed): personal-readiness soft-sleep override
+
+**Problem found in validation.** `_soft_sleep_recovery_override` gates on a
+generic `readiness_score >= 70`. Mark's trailing-84-night readiness is **median
+54, q3 65** (mean 45; some junk `<10` values Garmin writes when readiness is
+unavailable). So his *normal-for-him* readiness (66 on 07-05, 59 on 06-27) is
+rejected by the 70 floor even with excellent RHR (43) and balanced HRV — leaving
+today Amber. Of his last 5 Ambers the shipped override flips only 06-29
+(readiness 72); 07-05 and 06-27 stay Amber on the generic gate.
+
+**Change.** Replace the hardcoded `readiness_score >= 70` in
+`_soft_sleep_recovery_override` with a **personal-baseline** check: readiness at
+or above Mark's own band (e.g. `>= lower_quartile`, or `>= median`) from the
+`readiness_score` `metric_baseline` (which #129 already computes but the prod
+table lacks until a rebuild). Keep the categorical guard (`readiness_level not in
+{low, poor}`) and the Red floor unchanged. Prerequisite: **clean the readiness
+history** (drop `<10` unavailable-day artifacts) before baselining so the band
+isn't skewed. Safety-adjacent (loosens the verdict) → needs Craig's sign-off;
+downgrade-only invariant and Red-never-VO2 stay intact.
