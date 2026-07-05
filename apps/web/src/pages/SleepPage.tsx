@@ -72,6 +72,7 @@ export function SleepPage() {
   const analysis = data.morningAnalysis;
   const metricsVsBaselines = (analysis?.metricsVsBaselines ?? []) as MetricBaselineRow[];
   const ageComparison = (analysis?.ageComparison ?? null) as AgeComparison | null;
+  const chronicSuggestions = data.chronicSuggestions ?? null;
   const thermal = data.thermalState;
 
   return (
@@ -94,6 +95,7 @@ export function SleepPage() {
               <SleepSnapshotBody
                 metricsVsBaselines={metricsVsBaselines}
                 ageComparison={ageComparison}
+                chronicSuggestions={chronicSuggestions}
                 morningBriefLink="/brief"
                 showOvernightGlance={false}
               />

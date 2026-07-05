@@ -441,6 +441,41 @@ export const ageComparisonSchema = z.object({
   sleepRows: z.array(ageComparisonRowSchema).default([]),
 });
 
+export const chronicSuggestionDriverSchema = z.object({
+  driver: z.string().min(1),
+  label: z.string().min(1),
+  coefficient: z.number(),
+  sampleCount: z.number().int(),
+  summary: z.string().nullable().optional(),
+});
+
+export const chronicSuggestionItemSchema = z.object({
+  id: z.string().min(1),
+  metricKey: z.string().min(1),
+  label: z.string().min(1),
+  title: z.string().min(1),
+  summary: z.string().min(1),
+  tone: z.enum(['watch', 'protect']),
+  priority: z.number().int(),
+  evidence: z.array(z.string()).default([]),
+  actions: z.array(z.string()).default([]),
+  driver: chronicSuggestionDriverSchema.nullable().optional(),
+});
+
+export const chronicSuggestionsSchema = z.object({
+  status: z.enum(['insufficient_history', 'clear', 'active']),
+  headline: z.string().min(1),
+  summary: z.string().min(1),
+  evidenceWindow: z.object({
+    startDate: isoDateSchema,
+    endDate: isoDateSchema,
+    weeks: z.number().int(),
+    nightsObserved: z.number().int(),
+    nightsRequired: z.number().int(),
+  }),
+  items: z.array(chronicSuggestionItemSchema).default([]),
+});
+
 export const dailyLoopAnalysisSchema = z.object({
   id: z.string().uuid(),
   generatedAtUtc: isoDateTimeSchema,
@@ -696,6 +731,7 @@ export const dailyLoopSchema = z.object({
   plannedWorkouts: z.array(dailyLoopPlannedWorkoutSchema),
   thermalState: dailyLoopThermalStateSchema,
   sleepProjection: sleepProjectionSchema.optional(),
+  chronicSuggestions: chronicSuggestionsSchema.optional(),
   dataQualityWarnings: z.array(dailyLoopWarningSchema),
   walkingBrief: z
     .object({

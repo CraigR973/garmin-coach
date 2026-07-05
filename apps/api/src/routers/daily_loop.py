@@ -14,11 +14,12 @@ from src.auth import CurrentUser
 from src.database import get_db
 from src.models.coaching import Analysis, DailyMetric, ManualEntry, PlannedWorkout, Sleep
 from src.services.breathwork_brief import BreathworkBriefResult
+from src.services.chronic_patterns import ChronicPatternSuggestionService
 from src.services.daily_loop import DailyLoopService, DeliveryState
 from src.services.environment_freshness import is_hive_temperature_fresh
 from src.services.executable_coaching import ExecutableCoachingService
 from src.services.fan_control import describe_fan_intent
-from src.services.insights import OUTCOME_SLEEP_SCORE, InsightsService
+from src.services.insights import OUTCOME_SLEEP_SCORE, DriversReport, InsightsService
 from src.services.morning_analysis import MorningAnalysisService
 from src.services.sleep_projection import (
     SleepDriverEvidence,
@@ -301,6 +302,43 @@ class SleepProjectionOut(BaseModel):
     protocol: dict[str, Any]
 
 
+class ChronicSuggestionDriverOut(BaseModel):
+    driver: str
+    label: str
+    coefficient: float
+    sampleCount: int
+    summary: str | None = None
+
+
+class ChronicSuggestionItemOut(BaseModel):
+    id: str
+    metricKey: str
+    label: str
+    title: str
+    summary: str
+    tone: str
+    priority: int
+    evidence: list[str]
+    actions: list[str]
+    driver: ChronicSuggestionDriverOut | None = None
+
+
+class ChronicSuggestionWindowOut(BaseModel):
+    startDate: str
+    endDate: str
+    weeks: int
+    nightsObserved: int
+    nightsRequired: int
+
+
+class ChronicSuggestionsOut(BaseModel):
+    status: str
+    headline: str
+    summary: str
+    evidenceWindow: ChronicSuggestionWindowOut
+    items: list[ChronicSuggestionItemOut]
+
+
 class DataQualityWarningOut(BaseModel):
     id: str
     summary: str
@@ -404,6 +442,7 @@ class DailyLoopData(BaseModel):
     plannedWorkouts: list[PlannedWorkoutOut]
     thermalState: ThermalStateOut
     sleepProjection: SleepProjectionOut
+    chronicSuggestions: ChronicSuggestionsOut
     dataQualityWarnings: list[DataQualityWarningOut]
     strengthBrief: StrengthBriefOut
     walkingBrief: WalkingBriefOut
@@ -879,11 +918,10 @@ def _activity_training_signals(snapshot: Any, timezone_name: str) -> list[Traini
 async def _sleep_projection(
     player: CurrentUser,
     snapshot: Any,
-    db: AsyncSession,
     *,
     latest_bedroom_temperature_c: float | None,
+    drivers_report: DriversReport,
 ) -> SleepProjectionResult:
-    drivers_report = await InsightsService(db).drivers(player, as_of=snapshot.subject_date)
     sleep_drivers = [
         SleepDriverEvidence(
             driver=driver.driver,
@@ -932,11 +970,18 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
     fan_intent = describe_fan_intent(
         _local_time(player.timezone), fresh_temperature_c, auto_enabled=player.fan_auto_enabled
     )
+    drivers_report = await InsightsService(db).drivers(player, as_of=snapshot.subject_date)
     sleep_projection = await _sleep_projection(
         player,
         snapshot,
-        db,
         latest_bedroom_temperature_c=fresh_temperature_c,
+        drivers_report=drivers_report,
+    )
+    chronic_suggestions = await ChronicPatternSuggestionService(db).suggestions(
+        player,
+        as_of=snapshot.subject_date,
+        sleep_drivers=drivers_report.outcomes.get(OUTCOME_SLEEP_SCORE, []),
+        sleep_protocol=snapshot.sleep_protocol,
     )
     return DailyLoopEnvelope(
         data=DailyLoopData(
@@ -1016,6 +1061,7 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
                 ),
             ),
             sleepProjection=_serialize_sleep_projection(sleep_projection),
+            chronicSuggestions=ChronicSuggestionsOut(**chronic_suggestions.to_dict()),
             dataQualityWarnings=[
                 DataQualityWarningOut(
                     id=warning["id"],

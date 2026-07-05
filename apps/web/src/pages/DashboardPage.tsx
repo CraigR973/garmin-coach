@@ -307,6 +307,7 @@ export function DashboardPage() {
   const analysis = daily.morningAnalysis;
   const ageComparison = (analysis?.ageComparison ?? null) as AgeComparison | null;
   const metricsVsBaselines = (analysis?.metricsVsBaselines ?? []) as MetricBaselineRow[];
+  const chronicSuggestions = daily.chronicSuggestions ?? null;
   const sleep = daily.sleep;
   const thermal = daily.thermalState;
   const postWorkouts = daily.postWorkoutAnalyses ?? [];
@@ -390,6 +391,7 @@ export function DashboardPage() {
         <SleepSnapshotBody
           metricsVsBaselines={metricsVsBaselines}
           ageComparison={ageComparison}
+          chronicSuggestions={chronicSuggestions}
           morningBriefLink="/brief"
         />
       ),
