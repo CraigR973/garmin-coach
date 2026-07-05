@@ -1,12 +1,13 @@
 # Design: Coaching calibration & data truth — Mark's feedback (2026-07-05)
 
 **Status:** Step 0 diagnosis run; Batch 56 shipped via PR #78 / squash
-`20437e8`. Overview + fix spec for the
+`20437e8`; Batch 57 shipped via PR #79 / squash `4e0497a`. Overview + fix spec for the
 nine points Mark raised on 2026-07-05. The diagnosis showed Garmin daily
 metrics/sleep/activities are loaded for 2025-06-24 → 2026-07-05, strength is
-classified, and the active plan exists; the first build should therefore focus
-on calibration/schedule truth, not a broad backfill. Safety decision:
-**DECISIONS #129**.
+classified, and the active plan exists; the first two shipped builds therefore
+focused on calibration/schedule truth and data-truth safeguards, not a broad
+backfill. Safety decisions:
+**DECISIONS #129** and **#130**.
 
 > Mark's framing: "No rush… probably better if we run through it together on
 > screen." This doc is the shared punch-list for that session, not a green-lit
@@ -224,7 +225,7 @@ diagnosis, not a shipping batch.
 |---|---|---|---|
 | **Step 0 — Diagnosis** (on-screen with Craig; check vs Mark) | No code. Run `scripts/diagnose_coaching_data.sql` against prod: history depth per source + per month, is a plan in `planned_workouts`?, activity-type mix (is strength classified?), rest-day day-of-week pattern, do personal baselines exist?, verdict distribution + the "Amber-on-sleep-despite-good-HRV" rows, and the analysis inventory. Capture Mark's real weekly schedule + confirm the wrong outputs against live data. | de-risks A3, B1, B2, C1 | 🔴 High · **Opus / GPT-5.5** — investigation/debugging, not a shipping batch |
 | **Batch 56 — Verdict calibration & personal baselines** | Recovery-override for soft-sleep Amber (A1); personal-baseline bands into the packet + tighter trend threshold (A2); yesterday's-load feed-forward (C1); respect fixed rest days (A3). | A1, A2, A3, C1 | 🔴 High · **Opus / GPT-5.5** — verdict logic + analysis-engine prompts; **safety-gated, decision #129** |
-| **Batch 57 — Data truth in reviews/trends** | Coverage/sample-count honesty + history backfill (B1); absent-vs-zero flag + prompt so "stopped/zero" isn't asserted from missing data (B2); from→to numbers in narrative (D3). | B1, B2, D3 | 🔴 High · **Opus / GPT-5.5** — analysis-engine prompts + data reasoning + ops (backfill) |
+| **Batch 57 — Data truth in reviews/trends** | Coverage/sample-count honesty + history backfill (B1); absent-vs-zero flag + prompt so "stopped/zero" isn't asserted from missing data (B2); from→to numbers in narrative (D3). | B1, B2, D3 | 🔴 High · **Opus / GPT-5.5** — shipped via PR #79 / squash `4e0497a`; no speculative prod backfill was needed |
 | **Batch 58 — Sleep-stage age-comparison table** | Add sleep-stage age norms to `age_norms.py`, extend `build_age_comparison`, thread through the sleep packet, render the table (Duration/Deep/Light/REM/Awake/restless). | D1 | 🟢 Mid · **Sonnet / GPT-5.4** — well-specified CRUD/component/tests, additive |
 | **Batch 59 — Chronic-pattern suggestions** | Deterministic pattern-detector (metric chronically below age-norm/baseline over N weeks) → grounded actions, prioritised by `insights.drivers`; surface on Sleep/Home. | D2 | 🔴 High · **Opus / GPT-5.5** — analysis-engine reasoning + surface |
 
