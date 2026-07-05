@@ -1,7 +1,7 @@
 # Design: Coaching calibration & data truth — Mark's feedback (2026-07-05)
 
-**Status:** Step 0 diagnosis run; Batch 56 implemented on
-`feat/batch-56-verdict-calibration`, not shipped. Overview + fix spec for the
+**Status:** Step 0 diagnosis run; Batch 56 shipped via PR #78 / squash
+`20437e8`. Overview + fix spec for the
 nine points Mark raised on 2026-07-05. The diagnosis showed Garmin daily
 metrics/sleep/activities are loaded for 2025-06-24 → 2026-07-05, strength is
 classified, and the active plan exists; the first build should therefore focus
