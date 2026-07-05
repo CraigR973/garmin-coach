@@ -126,6 +126,38 @@ describe('v1 shared schemas', () => {
           prepActions: ['Let Auto manage the pre-cool.'],
           protocol: { bedtime: '23:15' },
         },
+        chronicSuggestions: {
+          status: 'active',
+          headline: 'Chronic sleep patterns to work on',
+          summary: '1 repeated pattern stood out across 24 recent nights.',
+          evidenceWindow: {
+            startDate: '2026-06-05',
+            endDate: '2026-07-02',
+            weeks: 4,
+            nightsObserved: 24,
+            nightsRequired: 21,
+          },
+          items: [
+            {
+              id: 'chronic-rem_sleep_pct',
+              metricKey: 'rem_sleep_pct',
+              label: 'REM',
+              title: 'Protect REM consistency',
+              summary: 'REM has repeatedly missed its age norm.',
+              tone: 'watch',
+              priority: 1,
+              evidence: ['14 of 24 measured nights missed typical value.'],
+              actions: ['Make 23:15 the latest normal lights-out target.'],
+              driver: {
+                driver: 'prev_day_training_load',
+                label: 'training load',
+                coefficient: -0.61,
+                sampleCount: 18,
+                summary: 'Higher load nights averaged 5 points lower sleep score.',
+              },
+            },
+          ],
+        },
         dataQualityWarnings: [],
         walkingBrief: {
           asOfDate: '2026-07-02',
@@ -168,6 +200,7 @@ describe('v1 shared schemas', () => {
 
     expect(parsed.data.breathworkBrief?.window4w.sessionCount).toBe(18);
     expect(parsed.data.sleepProjection?.tone).toBe('protect');
+    expect(parsed.data.chronicSuggestions?.items[0]?.driver?.label).toBe('training load');
     expect(parsed.data.loopState?.dayPhase).toBe('wind_down');
     expect(parsed.data.loopState?.atBlockBoundary).toBe(true);
   });

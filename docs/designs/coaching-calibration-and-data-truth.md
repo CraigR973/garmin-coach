@@ -1,7 +1,10 @@
 # Design: Coaching calibration & data truth — Mark's feedback (2026-07-05)
 
 **Status:** Step 0 diagnosis run; Batch 56 shipped via PR #78 / squash
-`20437e8`; Batch 57 shipped via PR #79 / squash `4e0497a`. Overview + fix spec for the
+`20437e8`; Batch 57 shipped via PR #79 / squash `4e0497a`; Batch 58 shipped via
+PR #80 / squash `9c96bb6` plus formatting follow-up `080e763`; Batch 59
+implemented on `feat/batch-59-chronic-pattern-suggestions` and awaiting
+review/`/closeout 59`. Overview + fix spec for the
 nine points Mark raised on 2026-07-05. The diagnosis showed Garmin daily
 metrics/sleep/activities are loaded for 2025-06-24 → 2026-07-05, strength is
 classified, and the active plan exists; the first two shipped builds therefore
@@ -227,7 +230,7 @@ diagnosis, not a shipping batch.
 | **Batch 56 — Verdict calibration & personal baselines** | Recovery-override for soft-sleep Amber (A1); personal-baseline bands into the packet + tighter trend threshold (A2); yesterday's-load feed-forward (C1); respect fixed rest days (A3). | A1, A2, A3, C1 | 🔴 High · **Opus / GPT-5.5** — verdict logic + analysis-engine prompts; **safety-gated, decision #129** |
 | **Batch 57 — Data truth in reviews/trends** | Coverage/sample-count honesty + history backfill (B1); absent-vs-zero flag + prompt so "stopped/zero" isn't asserted from missing data (B2); from→to numbers in narrative (D3). | B1, B2, D3 | 🔴 High · **Opus / GPT-5.5** — shipped via PR #79 / squash `4e0497a`; no speculative prod backfill was needed |
 | **Batch 58 — Sleep-stage age-comparison table** | Add sleep-stage age norms to `age_norms.py`, extend `build_age_comparison`, thread through the sleep packet, render the table (Duration/Deep/Light/REM/Awake/restless). | D1 | 🟢 Mid · **Sonnet / GPT-5.4** — well-specified CRUD/component/tests, additive |
-| **Batch 59 — Chronic-pattern suggestions** | Deterministic pattern-detector (metric chronically below age-norm/baseline over N weeks) → grounded actions, prioritised by `insights.drivers`; surface on Sleep/Home. | D2 | 🔴 High · **Opus / GPT-5.5** — analysis-engine reasoning + surface |
+| **Batch 59 — Chronic-pattern suggestions** | Deterministic pattern-detector (metric chronically below age-norm/baseline over N weeks) → grounded actions, prioritised by `insights.drivers`; surface on Sleep/Home. Implemented on `feat/batch-59-chronic-pattern-suggestions`; awaiting review/`/closeout 59`. | D2 | 🔴 High · **Opus / GPT-5.5** — analysis-engine reasoning + surface |
 
 ## Decisions that need sign-off before build
 

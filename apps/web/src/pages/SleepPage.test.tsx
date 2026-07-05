@@ -107,6 +107,44 @@ const snapshot: DailyLoopEnvelope = {
         bedtime: '23:15',
       },
     },
+    chronicSuggestions: {
+      status: 'active',
+      headline: 'Chronic sleep patterns to work on',
+      summary: '1 repeated pattern stood out across 24 recent nights.',
+      evidenceWindow: {
+        startDate: '2026-06-05',
+        endDate: '2026-07-02',
+        weeks: 4,
+        nightsObserved: 24,
+        nightsRequired: 21,
+      },
+      items: [
+        {
+          id: 'chronic-rem_sleep_pct',
+          metricKey: 'rem_sleep_pct',
+          label: 'REM',
+          title: 'Protect REM consistency',
+          summary: 'REM has repeatedly missed its age norm; training load is the strongest measured lever to check first.',
+          tone: 'watch',
+          priority: 1,
+          evidence: [
+            '14 of 24 measured nights missed typical 50–59 value 21%.',
+            'Higher load nights averaged 5 points lower sleep score.',
+          ],
+          actions: [
+            'Treat high-load or late-training evenings as protect nights: shorten the admin tail and start wind-down earlier.',
+            'Make 23:15 the latest normal lights-out target for the next week.',
+          ],
+          driver: {
+            driver: 'prev_day_training_load',
+            label: 'training load',
+            coefficient: -0.61,
+            sampleCount: 18,
+            summary: 'Higher load nights averaged 5 points lower sleep score.',
+          },
+        },
+      ],
+    },
     dataQualityWarnings: [],
   },
   meta: {
@@ -163,6 +201,8 @@ describe('SleepPage', () => {
 
     expect(await screen.findByText("Last night's sleep")).toBeTruthy();
     expect(screen.getByText('Sleep stages vs your age')).toBeTruthy();
+    expect(screen.getByText('Chronic sleep patterns to work on')).toBeTruthy();
+    expect(screen.getByText('Protect REM consistency')).toBeTruthy();
     expect(screen.getByText('Duration')).toBeTruthy();
     expect(screen.getByText('REM')).toBeTruthy();
     expect(screen.getByText('Overnight room & fan')).toBeTruthy();

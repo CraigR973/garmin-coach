@@ -5,6 +5,8 @@ import {
 } from '@/components/MetricComparisonTable';
 import { OvernightGlance } from '@/components/OvernightGlance';
 import { DetailLinkCard } from '@/components/DetailLinkCard';
+import { ChronicSuggestionsCard } from '@/components/ChronicSuggestionsCard';
+import type { DailyLoopData } from '@/hooks/useDailyLoop';
 
 /**
  * Last night's sleep read: the metrics-vs-baselines table, the retrospective
@@ -19,17 +21,20 @@ import { DetailLinkCard } from '@/components/DetailLinkCard';
 export function SleepSnapshotBody({
   metricsVsBaselines,
   ageComparison,
+  chronicSuggestions,
   morningBriefLink,
   showOvernightGlance = true,
 }: {
   metricsVsBaselines: MetricBaselineRow[];
   ageComparison: AgeComparison | null;
+  chronicSuggestions?: DailyLoopData['chronicSuggestions'] | null;
   morningBriefLink: string;
   showOvernightGlance?: boolean;
 }) {
   return (
     <div className="space-y-4">
       <MetricComparisonTable rows={metricsVsBaselines} ageComparison={ageComparison} />
+      <ChronicSuggestionsCard suggestions={chronicSuggestions} />
       {/* Last night's room read (retrospective) lives with last night's sleep;
           tonight's live fan/bedroom controls stay in the evening card (Batch 35). */}
       {showOvernightGlance && <OvernightGlance />}
