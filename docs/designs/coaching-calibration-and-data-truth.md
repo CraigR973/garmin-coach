@@ -290,22 +290,28 @@ regenerations are required** to surface the fixes: (1) rebuild `metric_baselines
 morning verdict (scheduler, or force today's); (3) re-run weekly/monthly review +
 trends (`…/run?force=true`).
 
-## Follow-up — Decision #133 (proposed): personal-readiness soft-sleep override
+## Follow-up — Decision #133 (SHIPPED 2026-07-05): personal-readiness soft-sleep override
 
-**Problem found in validation.** `_soft_sleep_recovery_override` gates on a
+**Problem found in validation.** `_soft_sleep_recovery_override` gated on a
 generic `readiness_score >= 70`. Mark's trailing-84-night readiness is **median
-54, q3 65** (mean 45; some junk `<10` values Garmin writes when readiness is
-unavailable). So his *normal-for-him* readiness (66 on 07-05, 59 on 06-27) is
-rejected by the 70 floor even with excellent RHR (43) and balanced HRV — leaving
-today Amber. Of his last 5 Ambers the shipped override flips only 06-29
-(readiness 72); 07-05 and 06-27 stay Amber on the generic gate.
+53.5, q3 65** — he genuinely runs Moderate — so his *normal-for-him* readiness
+(66 on 07-05, 59 on 06-27) was rejected by the 70 floor even with excellent RHR
+(43) and balanced HRV, leaving those mornings Amber. Of his last 5 Ambers #129
+flipped only 06-29 (readiness 72); 07-05 and 06-27 stayed Amber on the generic
+gate.
 
-**Change.** Replace the hardcoded `readiness_score >= 70` in
-`_soft_sleep_recovery_override` with a **personal-baseline** check: readiness at
-or above Mark's own band (e.g. `>= lower_quartile`, or `>= median`) from the
-`readiness_score` `metric_baseline` (which #129 already computes but the prod
-table lacks until a rebuild). Keep the categorical guard (`readiness_level not in
-{low, poor}`) and the Red floor unchanged. Prerequisite: **clean the readiness
-history** (drop `<10` unavailable-day artifacts) before baselining so the band
-isn't skewed. Safety-adjacent (loosens the verdict) → needs Craig's sign-off;
-downgrade-only invariant and Red-never-VO2 stay intact.
+**"Clean the junk lows first" — disproven.** A per-metric check showed Garmin's
+`readiness_level` maps cleanly to score (POOR ≤16, LOW 25–48, MODERATE 50–72,
+HIGH 76–86). The low values are **genuine** Poor/Low days, not artifacts, so **no
+data cleaning is needed** — and the categorical `readiness_level not in
+{low, poor}` guard already excludes them, so the personal floor only ever admits
+Moderate/High readiness.
+
+**Shipped change (#133).** `_soft_sleep_recovery_override` now takes a
+`readiness_center` (his `readiness_score` baseline median via `baseline_center`)
+and requires `readiness_score >= readiness_center` instead of `>= 70`, keeping the
+categorical guard and the Red floor. Falls back to a mid-Moderate `60` when no
+personal readiness baseline exists. `PROMPT_VERSION` → `morning-analysis-v3`.
+Prod prerequisite done: the `metric_baselines` rebuild that created the
+`readiness_score` band (2026-07-05). Downgrade-only + Red-never-VO2 intact →
+can only ever *ease* a soft-sleep Amber to Green. See Decision #133.

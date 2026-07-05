@@ -33,13 +33,14 @@ from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBrief
 from src.services.coaching_state import CoachingStateService
 from src.services.personal_baselines import (
     baseline_band_packet,
+    baseline_center,
     baseline_lookup,
     metric_within_baseline_band,
     serialize_training_schedule,
 )
 from src.services.post_walk_analysis import active_recovery_walk_context
 
-PROMPT_VERSION = "morning-analysis-v2-2026-07-05"
+PROMPT_VERSION = "morning-analysis-v3-2026-07-05"
 ANALYSIS_TYPE = "morning"
 ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
@@ -1040,6 +1041,7 @@ def _morning_verdict(
         baselines.get("resting_heart_rate_bpm"),
         lower_is_better=True,
     )
+    readiness_center = baseline_center(baselines.get("readiness_score"))
     has_vo2 = any("vo2" in workout.workout_type.lower() for workout in planned_workouts)
     recovery_signals_good = (
         (age_adjusted_sleep_score is not None and age_adjusted_sleep_score >= 74)
@@ -1054,6 +1056,7 @@ def _morning_verdict(
         hrv_status=hrv_status,
         hrv_below_baseline=hrv_low,
         resting_hr_in_band=resting_hr_in_band,
+        readiness_center=readiness_center,
     )
     yesterday_hard = (yesterday_load or {}).get("status") == "hard"
 
@@ -1197,13 +1200,21 @@ def _soft_sleep_recovery_override(
     hrv_status: str | None,
     hrv_below_baseline: bool,
     resting_hr_in_band: bool,
+    readiness_center: float | None = None,
 ) -> bool:
     if age_adjusted_sleep_score is None or not 60 <= age_adjusted_sleep_score < 74:
         return False
     readiness_level = _lower(daily_metric.readiness_level if daily_metric else None)
     readiness_score = daily_metric.readiness_score if daily_metric else None
+    # Readiness floor is Mark's *own* typical (his baseline median), not a generic
+    # cut-off: for a man whose readiness normally runs Moderate, a flat >=70 gate
+    # rejected normal-for-him mornings even with clean HRV and resting HR (#133).
+    # The categorical guard below still blocks any Garmin Low/Poor day, so the
+    # personal floor only ever admits Moderate/High readiness. Falls back to a
+    # mid-Moderate 60 when no personal readiness baseline exists yet.
+    readiness_floor = readiness_center if readiness_center is not None else 60.0
     readiness_ok = readiness_level not in {"low", "poor"} and (
-        readiness_score is None or readiness_score >= 70
+        readiness_score is None or readiness_score >= readiness_floor
     )
     return (
         not hrv_below_baseline

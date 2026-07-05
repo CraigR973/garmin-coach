@@ -269,6 +269,24 @@ def _rhr_baseline(user_id: uuid.UUID) -> MetricBaseline:
     )
 
 
+def _readiness_baseline(user_id: uuid.UUID, *, median: float = 53.5) -> MetricBaseline:
+    return MetricBaseline(
+        user_id=user_id,
+        metric_key="readiness_score",
+        metric_label="Training readiness",
+        source="test",
+        window_start_date=date(2026, 4, 13),
+        window_end_date=date(2026, 7, 5),
+        sample_count=84,
+        excluded_sample_count=0,
+        mean_value=45,
+        median_value=median,
+        lower_quartile_value=26,
+        upper_quartile_value=65,
+        raw_payload={},
+    )
+
+
 def test_soft_sleep_can_stay_green_when_personal_recovery_signals_are_strong() -> None:
     user_id = uuid.uuid4()
     daily_metric = DailyMetric(
@@ -345,6 +363,71 @@ def test_soft_sleep_override_requires_resting_hr_inside_personal_band() -> None:
         manual_entries=[],
         planned_workouts=[],
         baselines={"resting_heart_rate_bpm": _rhr_baseline(user_id)},
+    )
+
+    assert verdict["status"] == "Amber"
+    assert verdict["softSleepRecoveryOverride"] is False
+
+
+def test_soft_sleep_override_uses_personal_readiness_floor_not_generic_70() -> None:
+    # Mark's real 2026-07-05: soft sleep (72) + Moderate readiness 66 (below the old
+    # generic >=70 gate) but above his personal readiness median (53.5), with clean
+    # HRV and resting HR in band -> stays Green under the #133 personal floor.
+    user_id = uuid.uuid4()
+    daily_metric = DailyMetric(
+        user_id=user_id,
+        calendar_date=date(2026, 7, 5),
+        readiness_score=66,
+        readiness_level="Moderate",
+        hrv_weekly_avg_ms=48,
+        hrv_baseline_low_ms=43,
+        hrv_status="Balanced",
+        resting_heart_rate_bpm=43,
+        raw_payload={},
+    )
+
+    verdict = _morning_verdict(
+        daily_metric=daily_metric,
+        sleep=None,
+        age_adjusted_sleep_score=72,
+        manual_entries=[],
+        planned_workouts=[],
+        baselines={
+            "resting_heart_rate_bpm": _rhr_baseline(user_id),
+            "readiness_score": _readiness_baseline(user_id),
+        },
+    )
+
+    assert verdict["status"] == "Green"
+    assert verdict["softSleepRecoveryOverride"] is True
+
+
+def test_soft_sleep_override_rejects_readiness_below_personal_median() -> None:
+    # Moderate readiness that is below Mark's own typical (median 60) -> no override,
+    # so the soft-sleep night stays Amber.
+    user_id = uuid.uuid4()
+    daily_metric = DailyMetric(
+        user_id=user_id,
+        calendar_date=date(2026, 7, 5),
+        readiness_score=52,
+        readiness_level="Moderate",
+        hrv_weekly_avg_ms=48,
+        hrv_baseline_low_ms=43,
+        hrv_status="Balanced",
+        resting_heart_rate_bpm=43,
+        raw_payload={},
+    )
+
+    verdict = _morning_verdict(
+        daily_metric=daily_metric,
+        sleep=None,
+        age_adjusted_sleep_score=72,
+        manual_entries=[],
+        planned_workouts=[],
+        baselines={
+            "resting_heart_rate_bpm": _rhr_baseline(user_id),
+            "readiness_score": _readiness_baseline(user_id, median=60),
+        },
     )
 
     assert verdict["status"] == "Amber"
