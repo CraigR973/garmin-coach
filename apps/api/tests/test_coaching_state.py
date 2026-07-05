@@ -61,6 +61,7 @@ async def test_get_coaching_state_seeds_defaults_and_returns_envelope(
         "age_adjustment",
         "sleep_protocol",
         "training_plan",
+        "training_schedule",
         "active_hypotheses",
     }
     assert len(payload["data"]["planBlocks"]) == 13

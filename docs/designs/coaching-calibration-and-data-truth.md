@@ -1,12 +1,12 @@
 # Design: Coaching calibration & data truth — Mark's feedback (2026-07-05)
 
-**Status:** Captured, not batched. Overview + fix spec for the nine points Mark
-raised on 2026-07-05. Several items need an **on-screen diagnosis pass first**
-(is his plan loaded? how deep is the Garmin history? are strength sessions
-classified?), because the wrong *outputs* may be truthful reports of wrong
-*inputs*. No decision numbers assigned yet — the calibration items change
-safety-relevant verdict behaviour and must be signed off with Craig (and checked
-against Mark) before build. Next free decision number: **#129**.
+**Status:** Step 0 diagnosis run; Batch 56 implemented on
+`feat/batch-56-verdict-calibration`, not shipped. Overview + fix spec for the
+nine points Mark raised on 2026-07-05. The diagnosis showed Garmin daily
+metrics/sleep/activities are loaded for 2025-06-24 → 2026-07-05, strength is
+classified, and the active plan exists; the first build should therefore focus
+on calibration/schedule truth, not a broad backfill. Safety decision:
+**DECISIONS #129**.
 
 > Mark's framing: "No rush… probably better if we run through it together on
 > screen." This doc is the shared punch-list for that session, not a green-lit

@@ -84,6 +84,7 @@ class BaselineMetricSpec:
 BASELINE_SPECS: tuple[BaselineMetricSpec, ...] = (
     BaselineMetricSpec("sleep_score", "Sleep score"),
     BaselineMetricSpec("age_adjusted_sleep_score", "Age-adjusted sleep score"),
+    BaselineMetricSpec("readiness_score", "Training readiness"),
     BaselineMetricSpec("resting_heart_rate_bpm", "Resting heart rate"),
     BaselineMetricSpec("body_battery_charge", "Body Battery charge"),
     BaselineMetricSpec(

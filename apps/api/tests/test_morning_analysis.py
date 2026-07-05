@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 
 from src.models.coaching import (
+    Activity,
     Analysis,
     DailyMetric,
     ManualEntry,
@@ -28,6 +29,7 @@ from src.services.morning_analysis import (
     _daily_metric_packet,
     _morning_verdict,
     _training_and_activity_fields,
+    _yesterday_load_packet,
 )
 
 
@@ -249,6 +251,106 @@ def test_red_verdict_never_keeps_vo2() -> None:
     assert any("Replace VO2" in item for item in verdict["planAdjustments"])
 
 
+def _rhr_baseline(user_id: uuid.UUID) -> MetricBaseline:
+    return MetricBaseline(
+        user_id=user_id,
+        metric_key="resting_heart_rate_bpm",
+        metric_label="Resting heart rate",
+        source="test",
+        window_start_date=date(2026, 4, 1),
+        window_end_date=date(2026, 6, 30),
+        sample_count=84,
+        excluded_sample_count=0,
+        mean_value=44,
+        median_value=44,
+        lower_quartile_value=43,
+        upper_quartile_value=45,
+        raw_payload={},
+    )
+
+
+def test_soft_sleep_can_stay_green_when_personal_recovery_signals_are_strong() -> None:
+    user_id = uuid.uuid4()
+    daily_metric = DailyMetric(
+        user_id=user_id,
+        calendar_date=date(2026, 7, 5),
+        readiness_score=76,
+        readiness_level="Moderate",
+        hrv_weekly_avg_ms=48,
+        hrv_baseline_low_ms=43,
+        hrv_status="Balanced",
+        resting_heart_rate_bpm=44,
+        raw_payload={},
+    )
+
+    verdict = _morning_verdict(
+        daily_metric=daily_metric,
+        sleep=None,
+        age_adjusted_sleep_score=72,
+        manual_entries=[],
+        planned_workouts=[],
+        baselines={"resting_heart_rate_bpm": _rhr_baseline(user_id)},
+    )
+
+    assert verdict["status"] == "Green"
+    assert verdict["softSleepRecoveryOverride"] is True
+    assert verdict["restingHeartRateWithinBaseline"] is True
+
+
+def test_soft_sleep_override_does_not_cross_red_floor() -> None:
+    user_id = uuid.uuid4()
+    daily_metric = DailyMetric(
+        user_id=user_id,
+        calendar_date=date(2026, 7, 5),
+        readiness_score=76,
+        readiness_level="Moderate",
+        hrv_weekly_avg_ms=48,
+        hrv_baseline_low_ms=43,
+        hrv_status="Balanced",
+        resting_heart_rate_bpm=44,
+        raw_payload={},
+    )
+
+    verdict = _morning_verdict(
+        daily_metric=daily_metric,
+        sleep=None,
+        age_adjusted_sleep_score=57,
+        manual_entries=[],
+        planned_workouts=[],
+        baselines={"resting_heart_rate_bpm": _rhr_baseline(user_id)},
+    )
+
+    assert verdict["status"] == "Red"
+    assert verdict["softSleepRecoveryOverride"] is False
+
+
+def test_soft_sleep_override_requires_resting_hr_inside_personal_band() -> None:
+    user_id = uuid.uuid4()
+    daily_metric = DailyMetric(
+        user_id=user_id,
+        calendar_date=date(2026, 7, 5),
+        readiness_score=76,
+        readiness_level="Moderate",
+        hrv_weekly_avg_ms=48,
+        hrv_baseline_low_ms=43,
+        hrv_status="Balanced",
+        resting_heart_rate_bpm=48,
+        raw_payload={},
+    )
+
+    verdict = _morning_verdict(
+        daily_metric=daily_metric,
+        sleep=None,
+        age_adjusted_sleep_score=72,
+        manual_entries=[],
+        planned_workouts=[],
+        baselines={"resting_heart_rate_bpm": _rhr_baseline(user_id)},
+    )
+
+    assert verdict["status"] == "Amber"
+    assert verdict["softSleepRecoveryOverride"] is False
+
+
 def test_low_readiness_is_not_load_driven_without_recovery_evidence() -> None:
     daily_metric = DailyMetric(
         user_id=uuid.uuid4(),
@@ -270,6 +372,43 @@ def test_low_readiness_is_not_load_driven_without_recovery_evidence() -> None:
 
     assert verdict["status"] == "Amber"
     assert verdict["readinessInterpretation"] is None
+
+
+def test_yesterday_load_packet_carries_hard_session_and_analysis_summary() -> None:
+    user_id = uuid.uuid4()
+    activity_id = uuid.uuid4()
+    activity = Activity(
+        id=activity_id,
+        user_id=user_id,
+        garmin_activity_id=123,
+        activity_name="VO2 Max 30/15",
+        activity_type="indoor_cycling",
+        start_utc=datetime(2026, 7, 4, 9, 0),
+        duration_sec=3600,
+        training_load=165,
+        aerobic_training_effect=3.7,
+        anaerobic_training_effect=2.2,
+        intensity_factor=0.9,
+        raw_summary={},
+    )
+    analysis = Analysis(
+        user_id=user_id,
+        activity_id=activity_id,
+        analysis_type="post_workout",
+        subject_date=date(2026, 7, 4),
+        generated_at_utc=datetime(2026, 7, 4, 12, 0),
+        prompt_version="test",
+        output_markdown="**Recovery:** This was a hard session and it left fatigue.",
+        raw_response={},
+    )
+
+    packet = _yesterday_load_packet([activity], [analysis])
+
+    assert packet["status"] == "hard"
+    assert packet["totalTrainingLoad"] == 165
+    assert packet["hardestActivity"]["name"] == "VO2 Max 30/15"
+    assert packet["postSessionAnalyses"][0]["analysisType"] == "post_workout"
+    assert "hard session" in packet["postSessionAnalyses"][0]["summary"]
 
 
 _RAW_PAYLOAD_WITH_LOAD = {
