@@ -48,6 +48,7 @@ from src.models.coaching import (
     DailyMetric,
     KnowledgeBase,
     ManualEntry,
+    MetricBaseline,
     PlannedWorkout,
     Sleep,
     TemperatureReading,
@@ -56,9 +57,10 @@ from src.models.coaching import (
 from src.models.profile import Profile
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
 from src.services.insights import EarlyWarningResult, FtpDriftResult, InsightsService
+from src.services.personal_baselines import baseline_band_packet, serialize_training_schedule
 from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
 
-PROMPT_VERSION = "reviews-v1-2026-06-23"
+PROMPT_VERSION = "reviews-v2-2026-07-05"
 PACKET_VERSION = 1
 
 PERIOD_WEEKLY = "weekly"
@@ -88,7 +90,10 @@ list grounded in the packet's numbers. Never mention left/right power balance. \
 Treat wrist-HR strength sessions as excluded from recovery/verdict decisions. \
 Ignore the broken sleep Duration column. When sample counts are low, say so \
 rather than overstating a trend. Recommendations must be concrete and \
-actionable for the coming period."""
+actionable for the coming period. Interpret readiness, HRV, and resting HR \
+against personalBaselines before using alarming words such as eroding, and cite \
+the packet numbers behind every trend claim. Respect trainingSchedule rest days \
+before recommending an additional recovery day."""
 
 
 class ReviewError(RuntimeError):
@@ -254,6 +259,7 @@ def _half_trend(
     *,
     higher_is_better: bool = True,
     min_each_half: int = 2,
+    min_absolute_delta: float = 0.0,
 ) -> str:
     """Compare the first vs second half of the window for ``key``.
 
@@ -270,9 +276,12 @@ def _half_trend(
         return "insufficient_data"
     first_mean = sum(first_present) / len(first_present)
     second_mean = sum(second_present) / len(second_present)
+    absolute_delta = second_mean - first_mean
+    if abs(absolute_delta) <= min_absolute_delta:
+        return "stable"
     if first_mean == 0:
         return "stable"
-    change = (second_mean - first_mean) / abs(first_mean)
+    change = absolute_delta / abs(first_mean)
     if abs(change) <= 0.05:
         return "stable"
     rising = change > 0
@@ -317,7 +326,12 @@ def compute_review_rollup(
         avg_readiness=_avg([d.readiness_score for d in days]),
         avg_resting_hr_bpm=_avg([d.resting_hr_bpm for d in days]),
         avg_body_battery_charged=_avg([d.body_battery_charged for d in days]),
-        trend=_half_trend(days, "readiness_score", higher_is_better=True),
+        trend=_half_trend(
+            days,
+            "readiness_score",
+            higher_is_better=True,
+            min_absolute_delta=4.0,
+        ),
     )
 
     by_type: dict[str, float] = {}
@@ -533,6 +547,8 @@ class ReviewService:
         ftp_drift = await insights.ftp_drift(player, as_of=period_end)
         early_warning = await insights.early_warning(player, as_of=period_end)
         guardrails = await self._data_quality_guardrails(player.id)
+        baselines = await self._metric_baselines(player.id)
+        training_schedule = await self._training_schedule(player.id)
 
         packet = _build_packet(
             player=player,
@@ -541,6 +557,8 @@ class ReviewService:
             ftp_drift=ftp_drift,
             early_warning=early_warning,
             guardrails=guardrails,
+            baselines=baselines,
+            training_schedule=training_schedule,
         )
         latest_review = await self.latest_review(player.id, period, period_start)
         return ReviewPreview(
@@ -863,6 +881,38 @@ class ReviewService:
                 peaks[wake_date] = row.temperature_c
         return peaks
 
+    async def _metric_baselines(self, user_id: uuid.UUID) -> list[MetricBaseline]:
+        rows = (
+            (
+                await self.session.execute(
+                    select(MetricBaseline)
+                    .where(MetricBaseline.user_id == user_id)
+                    .order_by(MetricBaseline.metric_key.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows)
+
+    async def _training_schedule(self, user_id: uuid.UUID) -> dict[str, Any]:
+        rows = (
+            (
+                await self.session.execute(
+                    select(KnowledgeBase)
+                    .where(
+                        KnowledgeBase.user_id == user_id,
+                        KnowledgeBase.section.in_(["training_schedule", "training_plan"]),
+                        KnowledgeBase.is_active.is_(True),
+                    )
+                    .order_by(KnowledgeBase.section.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return serialize_training_schedule({row.section: row.content for row in rows})
+
     async def _data_quality_guardrails(self, user_id: uuid.UUID) -> list[dict[str, Any]]:
         section = await self.session.scalar(
             select(KnowledgeBase).where(
@@ -891,6 +941,8 @@ def _build_packet(
     ftp_drift: FtpDriftResult,
     early_warning: EarlyWarningResult,
     guardrails: list[dict[str, Any]],
+    baselines: Sequence[MetricBaseline] = (),
+    training_schedule: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "packetType": "deep_review",
@@ -906,6 +958,17 @@ def _build_packet(
             "timezone": player.timezone,
         },
         "rollup": rollup_packet(rollup),
+        "personalBaselines": baseline_band_packet(
+            baselines,
+            keys={
+                "readiness_score",
+                "hrv_7_day_avg_ms",
+                "resting_heart_rate_bpm",
+                "age_adjusted_sleep_score",
+                "sleep_score",
+            },
+        ),
+        "trainingSchedule": dict(training_schedule or {}),
         "strengthBrief": _strength_packet(strength),
         "insights": {
             "ftpDrift": {
@@ -928,6 +991,8 @@ def _build_packet(
             "outputRules": [
                 "four_sections_trends_wins_concerns_recommendations",
                 "ground_every_claim_in_packet_numbers",
+                "interpret_recovery_against_personal_baselines",
+                "respect_training_schedule_rest_days",
                 "never_reference_left_right_power_balance",
                 "exclude_wrist_hr_strength_from_recovery",
                 "ignore_broken_sleep_duration_column",

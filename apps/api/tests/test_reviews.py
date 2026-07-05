@@ -21,6 +21,8 @@ from src.models.coaching import (
     Activity,
     Analysis,
     DailyMetric,
+    KnowledgeBase,
+    MetricBaseline,
     PlannedWorkout,
     Sleep,
 )
@@ -183,6 +185,15 @@ def test_rollup_trend_increasing_and_insufficient() -> None:
     assert _rollup(sparse).sleep.trend == "insufficient_data"
 
 
+def test_readiness_trend_treats_four_point_move_as_stable_noise() -> None:
+    days = [
+        ReviewDay(day=WEEK_START + timedelta(days=i), readiness_score=score)
+        for i, score in enumerate([80, 80, 80, 76, 76, 76])
+    ]
+
+    assert _rollup(days).recovery.trend == "stable"
+
+
 # ---------------------------------------------------------------------------
 # Claude review boundary fake (no ANTHROPIC_API_KEY needed)
 # ---------------------------------------------------------------------------
@@ -274,6 +285,33 @@ async def _seed_week(db_conn: AsyncConnection, user_id: uuid.UUID) -> None:
                 is_active=True,
             )
         )
+        session.add(
+            MetricBaseline(
+                user_id=user_id,
+                metric_key="readiness_score",
+                metric_label="Training readiness",
+                source="test",
+                window_start_date=date(2026, 4, 1),
+                window_end_date=date(2026, 6, 30),
+                sample_count=84,
+                excluded_sample_count=0,
+                mean_value=76,
+                median_value=76,
+                lower_quartile_value=72,
+                upper_quartile_value=82,
+                raw_payload={},
+            )
+        )
+        session.add(
+            KnowledgeBase(
+                user_id=user_id,
+                section="training_schedule",
+                version=1,
+                is_active=True,
+                source="test",
+                content={"restDays": ["Monday", "Friday"], "longRideDay": "Saturday"},
+            )
+        )
         await session.commit()
 
 
@@ -303,6 +341,8 @@ async def test_preview_assembles_rollup_and_never_writes(db_conn: AsyncConnectio
         # The packet carries the strength brief + insights for the narrative.
         assert "strengthBrief" in preview.packet
         assert "ftpDrift" in preview.packet["insights"]
+        assert preview.packet["personalBaselines"]["readiness_score"]["mean"] == 76
+        assert preview.packet["trainingSchedule"]["restDays"] == ["Monday", "Friday"]
 
         # GET preview must not write an analyses row (#71).
         after = await session.scalar(select(func.count()).select_from(Analysis))

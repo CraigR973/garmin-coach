@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Protocol, cast
@@ -31,9 +31,15 @@ from src.models.profile import Profile
 from src.services.age_norms import build_age_comparison
 from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
 from src.services.coaching_state import CoachingStateService
+from src.services.personal_baselines import (
+    baseline_band_packet,
+    baseline_lookup,
+    metric_within_baseline_band,
+    serialize_training_schedule,
+)
 from src.services.post_walk_analysis import active_recovery_walk_context
 
-PROMPT_VERSION = "morning-analysis-v1-2026-06-20"
+PROMPT_VERSION = "morning-analysis-v2-2026-07-05"
 ANALYSIS_TYPE = "morning"
 ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
@@ -48,7 +54,11 @@ if the packet explicitly says recovery signals justify that interpretation.
 Use acuteChronicLoadRatio (acute:chronic training load; ~0.8-1.3 is balanced,
 >1.5 flags a fast ramp / higher strain), chronicTrainingLoad, trainingLoadBalance,
 and intensityMinutes to inform the load read and verdict rationale alongside the
-recovery signals; treat them as supporting context, not overrides of the verdict."""
+recovery signals; treat them as supporting context, not overrides of the verdict.
+When the packet marks a soft-sleep recovery override, explain that HRV/RHR/readiness
+held a mediocre sleep night without pretending the sleep was good. Respect the
+trainingSchedule rest days before recommending extra recovery days. Use
+yesterdayLoad to explain any eased ride after a hard prior session."""
 
 
 class MorningAnalysisError(RuntimeError):
@@ -159,6 +169,8 @@ class MorningAnalysisService:
             as_of=subject_date,
         )
         baselines = await self._metric_baselines(player.id)
+        baseline_rows = baseline_lookup(baselines)
+        yesterday_load = await self._yesterday_load(player.id, subject_date, player.timezone)
         weather = await self._weather(player.id, subject_date)
         temperature_rows = await self._overnight_temperature_rows(
             player.id,
@@ -181,8 +193,11 @@ class MorningAnalysisService:
             age_adjusted_sleep_score=age_adjusted_sleep_score,
             manual_entries=manual_entries,
             planned_workouts=planned_workouts,
+            baselines=baseline_rows,
+            yesterday_load=yesterday_load,
             breathwork_brief=breathwork_brief,
         )
+        training_schedule = serialize_training_schedule(knowledge_base)
 
         return {
             "packetType": "morning_analysis",
@@ -194,6 +209,7 @@ class MorningAnalysisService:
                 "sections": [_knowledge_base_packet(row) for row in kb_rows],
                 "dataQualityGuardrails": _data_quality_guardrails(knowledge_base),
                 "sleepProtocol": knowledge_base.get("sleep_protocol", {}),
+                "trainingSchedule": training_schedule,
                 "activeHypotheses": knowledge_base.get("active_hypotheses", {}),
             },
             "dailyMetrics": _daily_metric_packet(daily_metric),
@@ -208,6 +224,16 @@ class MorningAnalysisService:
                 "classificationImpact": "none",
             },
             "breathworkBrief": _breathwork_brief_packet(breathwork_brief, subject_date),
+            "personalBaselines": baseline_band_packet(
+                baselines,
+                keys={
+                    "age_adjusted_sleep_score",
+                    "sleep_score",
+                    "hrv_7_day_avg_ms",
+                    "resting_heart_rate_bpm",
+                },
+            ),
+            "yesterdayLoad": yesterday_load,
             "metricsVsBaselines": metrics_table,
             "ageComparison": age_comparison,
             "environment": {
@@ -381,6 +407,62 @@ class MorningAnalysisService:
             .all()
         )
         return [row for row in rows if row.start_utc.date() <= subject_date]
+
+    async def _yesterday_load(
+        self,
+        user_id: uuid.UUID,
+        subject_date: date,
+        timezone_name: str,
+    ) -> dict[str, Any]:
+        yesterday = subject_date - timedelta(days=1)
+        try:
+            timezone = ZoneInfo(timezone_name)
+        except ZoneInfoNotFoundError:
+            timezone = ZoneInfo("UTC")
+        lower_bound = (
+            datetime.combine(yesterday, time.min, tzinfo=timezone)
+            .astimezone(UTC)
+            .replace(tzinfo=None)
+        )
+        upper_bound = (
+            datetime.combine(subject_date, time.min, tzinfo=timezone)
+            .astimezone(UTC)
+            .replace(tzinfo=None)
+        )
+        activities = list(
+            (
+                await self.session.execute(
+                    select(Activity)
+                    .where(
+                        Activity.user_id == user_id,
+                        Activity.start_utc >= lower_bound,
+                        Activity.start_utc < upper_bound,
+                    )
+                    .order_by(Activity.start_utc.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not activities:
+            return _yesterday_load_packet([], [])
+
+        activity_ids = [activity.id for activity in activities]
+        analyses = list(
+            (
+                await self.session.execute(
+                    select(Analysis)
+                    .where(
+                        Analysis.user_id == user_id,
+                        Analysis.activity_id.in_(activity_ids),
+                    )
+                    .order_by(desc(Analysis.generated_at_utc))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return _yesterday_load_packet(activities, analyses)
 
     async def _metric_baselines(self, user_id: uuid.UUID) -> list[MetricBaseline]:
         rows = (
@@ -689,6 +771,7 @@ def _metrics_vs_baselines(
     current_values = {
         "sleep_score": sleep.score if sleep else None,
         "age_adjusted_sleep_score": age_adjusted_sleep_score,
+        "readiness_score": daily_metric.readiness_score if daily_metric else None,
         "resting_heart_rate_bpm": _first_not_none(
             daily_metric.resting_heart_rate_bpm if daily_metric else None,
             sleep.resting_heart_rate_bpm if sleep else None,
@@ -822,6 +905,112 @@ def _thermal_review(
     }
 
 
+def _yesterday_load_packet(
+    activities: Sequence[Activity],
+    analyses: Sequence[Analysis],
+) -> dict[str, Any]:
+    if not activities:
+        return {
+            "activityCount": 0,
+            "status": "none",
+            "totalTrainingLoad": 0,
+            "totalDurationMin": 0,
+            "hardestActivity": None,
+            "postSessionAnalyses": [],
+        }
+
+    def load_score(activity: Activity) -> float:
+        return max(
+            float(activity.training_load or 0),
+            float(activity.aerobic_training_effect or 0) * 40,
+            float(activity.anaerobic_training_effect or 0) * 45,
+            float(activity.intensity_factor or 0) * 160,
+        )
+
+    total_load = round(sum(float(activity.training_load or 0) for activity in activities), 1)
+    total_duration_min = round(
+        sum(float(activity.duration_sec or 0) for activity in activities) / 60
+    )
+    max_aerobic_te = _max_optional(activity.aerobic_training_effect for activity in activities)
+    max_anaerobic_te = _max_optional(activity.anaerobic_training_effect for activity in activities)
+    max_intensity_factor = _max_optional(activity.intensity_factor for activity in activities)
+    hardest = max(activities, key=load_score)
+    status = _yesterday_load_status(
+        total_training_load=total_load,
+        max_aerobic_te=max_aerobic_te,
+        max_anaerobic_te=max_anaerobic_te,
+        max_intensity_factor=max_intensity_factor,
+        total_duration_min=total_duration_min,
+    )
+    analyses_by_activity: dict[uuid.UUID, Analysis] = {}
+    for analysis in analyses:
+        if analysis.activity_id is not None and analysis.activity_id not in analyses_by_activity:
+            analyses_by_activity[analysis.activity_id] = analysis
+
+    return {
+        "activityCount": len(activities),
+        "status": status,
+        "totalTrainingLoad": total_load,
+        "totalDurationMin": total_duration_min,
+        "maxAerobicTrainingEffect": max_aerobic_te,
+        "maxAnaerobicTrainingEffect": max_anaerobic_te,
+        "maxIntensityFactor": max_intensity_factor,
+        "hardestActivity": {
+            "activityId": str(hardest.id),
+            "name": hardest.activity_name,
+            "type": hardest.activity_type,
+            "durationMin": round(float(hardest.duration_sec or 0) / 60),
+            "trainingLoad": hardest.training_load,
+            "aerobicTrainingEffect": hardest.aerobic_training_effect,
+            "anaerobicTrainingEffect": hardest.anaerobic_training_effect,
+            "intensityFactor": hardest.intensity_factor,
+        },
+        "postSessionAnalyses": [
+            {
+                "activityId": str(activity.id),
+                "analysisType": analyses_by_activity[activity.id].analysis_type,
+                "summary": _analysis_summary(analyses_by_activity[activity.id]),
+            }
+            for activity in activities
+            if activity.id in analyses_by_activity
+        ],
+    }
+
+
+def _yesterday_load_status(
+    *,
+    total_training_load: float,
+    max_aerobic_te: float | None,
+    max_anaerobic_te: float | None,
+    max_intensity_factor: float | None,
+    total_duration_min: int,
+) -> str:
+    if (
+        total_training_load >= 150
+        or (max_aerobic_te is not None and max_aerobic_te >= 3.5)
+        or (max_anaerobic_te is not None and max_anaerobic_te >= 2.0)
+        or (
+            max_intensity_factor is not None
+            and max_intensity_factor >= 0.85
+            and total_duration_min >= 45
+        )
+    ):
+        return "hard"
+    if total_training_load >= 75 or total_duration_min >= 60:
+        return "moderate"
+    return "easy"
+
+
+def _max_optional(values: Iterable[float | int | None]) -> float | None:
+    present = [float(value) for value in values if value is not None]
+    return max(present) if present else None
+
+
+def _analysis_summary(analysis: Analysis) -> str:
+    text = " ".join(analysis.output_markdown.split())
+    return text[:500]
+
+
 def _morning_verdict(
     *,
     daily_metric: DailyMetric | None,
@@ -829,6 +1018,8 @@ def _morning_verdict(
     age_adjusted_sleep_score: int | None,
     manual_entries: Sequence[ManualEntry],
     planned_workouts: Sequence[PlannedWorkout],
+    baselines: Mapping[str, MetricBaseline] | None = None,
+    yesterday_load: Mapping[str, Any] | None = None,
     breathwork_brief: BreathworkBriefResult | None = None,
 ) -> dict[str, Any]:
     subjective_score = _latest_subjective_score(manual_entries)
@@ -837,6 +1028,12 @@ def _morning_verdict(
     )
     hrv_low = _hrv_below_baseline(daily_metric)
     readiness_level = _lower(daily_metric.readiness_level if daily_metric else None)
+    baselines = baselines or {}
+    resting_hr_in_band = metric_within_baseline_band(
+        daily_metric.resting_heart_rate_bpm if daily_metric else None,
+        baselines.get("resting_heart_rate_bpm"),
+        lower_is_better=True,
+    )
     has_vo2 = any("vo2" in workout.workout_type.lower() for workout in planned_workouts)
     recovery_signals_good = (
         (age_adjusted_sleep_score is not None and age_adjusted_sleep_score >= 74)
@@ -844,6 +1041,15 @@ def _morning_verdict(
         and (hrv_status in {None, "balanced", "stable", "optimal", "normal"})
         and (subjective_score is None or subjective_score >= 5)
     )
+    soft_sleep_override = _soft_sleep_recovery_override(
+        daily_metric=daily_metric,
+        age_adjusted_sleep_score=age_adjusted_sleep_score,
+        subjective_score=subjective_score,
+        hrv_status=hrv_status,
+        hrv_below_baseline=hrv_low,
+        resting_hr_in_band=resting_hr_in_band,
+    )
+    yesterday_hard = (yesterday_load or {}).get("status") == "hard"
 
     reasons: list[str] = []
     readiness_interpretation = None
@@ -866,6 +1072,11 @@ def _morning_verdict(
         reasons.append("HRV is below baseline and marked low/unbalanced.")
     elif readiness_level == "low" and readiness_interpretation != "load_driven":
         status = "Amber"
+    elif soft_sleep_override:
+        status = "Green"
+        reasons.append(
+            "Age-adjusted sleep is soft, but HRV, resting HR, and readiness hold the day Green."
+        )
     elif age_adjusted_sleep_score is not None and age_adjusted_sleep_score < 74:
         status = "Amber"
         reasons.append("Age-adjusted sleep is below the 74+ green target.")
@@ -880,6 +1091,10 @@ def _morning_verdict(
         reasons.append("Sleep, HRV, and subjective signals clear the green rule.")
 
     plan_adjustments = _plan_adjustments(status, planned_workouts)
+    if status != "Green" and yesterday_hard:
+        plan_adjustments.append(
+            "Treat yesterday's hard session as extra context for easing today's work."
+        )
     if status == "Red" and has_vo2:
         plan_adjustments.append("Replace VO2 with rest, mobility, or a very easy spin.")
     breathwork_signal = {
@@ -903,6 +1118,9 @@ def _morning_verdict(
         "subjectiveScore": subjective_score,
         "hrvStatus": hrv_status,
         "hrvBelowBaseline": hrv_low,
+        "restingHeartRateWithinBaseline": resting_hr_in_band,
+        "softSleepRecoveryOverride": soft_sleep_override,
+        "yesterdayLoadStatus": (yesterday_load or {}).get("status"),
         "hasVo2WorkoutToday": has_vo2,
         "planAdjustments": plan_adjustments,
         "safetyRulesApplied": ["red_never_vo2"] if status == "Red" else [],
@@ -963,6 +1181,31 @@ def _latest_subjective_score(manual_entries: Sequence[ManualEntry]) -> int | Non
         if entry.subjective_score is not None:
             return entry.subjective_score
     return None
+
+
+def _soft_sleep_recovery_override(
+    *,
+    daily_metric: DailyMetric | None,
+    age_adjusted_sleep_score: int | None,
+    subjective_score: int | None,
+    hrv_status: str | None,
+    hrv_below_baseline: bool,
+    resting_hr_in_band: bool,
+) -> bool:
+    if age_adjusted_sleep_score is None or not 60 <= age_adjusted_sleep_score < 74:
+        return False
+    readiness_level = _lower(daily_metric.readiness_level if daily_metric else None)
+    readiness_score = daily_metric.readiness_score if daily_metric else None
+    readiness_ok = readiness_level not in {"low", "poor"} and (
+        readiness_score is None or readiness_score >= 70
+    )
+    return (
+        not hrv_below_baseline
+        and hrv_status in {None, "balanced", "stable", "optimal", "normal"}
+        and resting_hr_in_band
+        and readiness_ok
+        and (subjective_score is None or subjective_score >= 5)
+    )
 
 
 def _hrv_below_baseline(daily_metric: DailyMetric | None) -> bool:

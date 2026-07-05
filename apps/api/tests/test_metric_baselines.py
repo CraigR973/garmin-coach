@@ -168,6 +168,7 @@ def _seed_day(session: object, user_id: uuid.UUID, day: date) -> None:
         DailyMetric(
             user_id=user_id,
             calendar_date=day,
+            readiness_score=70 + (day.day % 8),
             resting_heart_rate_bpm=44 + (day.day % 4),
             body_battery_charged=50 + (day.day % 5),
             hrv_weekly_avg_ms=42 + (day.day % 6),
@@ -178,6 +179,7 @@ def _seed_day(session: object, user_id: uuid.UUID, day: date) -> None:
 _ALL_METRIC_KEYS = {
     "sleep_score",
     "age_adjusted_sleep_score",
+    "readiness_score",
     "resting_heart_rate_bpm",
     "body_battery_charge",
     "average_spo2_pct",

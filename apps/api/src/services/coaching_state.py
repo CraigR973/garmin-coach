@@ -150,12 +150,37 @@ def _training_plan_content(cycle_start: date) -> dict[str, Any]:
     }
 
 
+def _training_schedule_content() -> dict[str, Any]:
+    return {
+        "restDays": ["Monday", "Friday"],
+        "regularTrainingDays": {
+            "Tuesday": "VO2 or higher-intensity bike focus",
+            "Wednesday": "Endurance or supporting bike session",
+            "Thursday": "Sweet spot, threshold, or supporting bike session",
+            "Saturday": "Long endurance ride",
+            "Sunday": "Light strength, mobility, or endurance support",
+        },
+        "longRideDay": "Saturday",
+        "notes": [
+            (
+                "Respect Monday and Friday as Mark's normal recovery/rest days "
+                "before suggesting an extra recovery day."
+            ),
+            (
+                "If the imported plan contains an exception, describe it as an "
+                "exception instead of rewriting the routine."
+            ),
+        ],
+    }
+
+
 KB_SECTION_BUILDERS: dict[str, Any] = {
     "profile": _profile_content,
     "data_quality_rules": _data_quality_rules_content,
     "age_adjustment": _age_adjustment_content,
     "sleep_protocol": _sleep_protocol_content,
     "training_plan": _training_plan_content,
+    "training_schedule": _training_schedule_content,
     "active_hypotheses": _active_hypotheses_content,
 }
 
@@ -477,7 +502,7 @@ class CoachingStateService:
         seeded = False
         cycle_start = _current_cycle_start(date.today())
 
-        existing_sections = (
+        existing_sections = set(
             (
                 await self.session.execute(
                     select(KnowledgeBase.section).where(KnowledgeBase.user_id == player.id)
@@ -486,20 +511,23 @@ class CoachingStateService:
             .scalars()
             .all()
         )
-        if not existing_sections:
-            for section, builder in KB_SECTION_BUILDERS.items():
-                content = builder(cycle_start) if section == "training_plan" else builder()
-                self.session.add(
-                    KnowledgeBase(
-                        user_id=player.id,
-                        section=section,
-                        version=1,
-                        is_active=True,
-                        source="batch_5_seed",
-                        content=content,
-                        updated_by_profile_id=player.id,
-                    )
+        missing_sections = [
+            section for section in KB_SECTION_BUILDERS if section not in existing_sections
+        ]
+        for section in missing_sections:
+            builder = KB_SECTION_BUILDERS[section]
+            content = builder(cycle_start) if section == "training_plan" else builder()
+            self.session.add(
+                KnowledgeBase(
+                    user_id=player.id,
+                    section=section,
+                    version=1,
+                    is_active=True,
+                    source="batch_5_seed" if not existing_sections else "batch_56_seed",
+                    content=content,
+                    updated_by_profile_id=player.id,
                 )
+            )
             seeded = True
 
         existing_blocks = (

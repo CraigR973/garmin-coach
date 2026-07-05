@@ -117,6 +117,10 @@ memory `reference_garmin_app_handover`). Includes:
 - **Age-adjustment:** sleep score +~4; age-appropriate REM 65–90 min (Garmin uses young-adult bar).
 - **Sleep protocol & thresholds:** pre-cool to 17°C, seal ~22:00, peak >19.5–20°C = thermal disruption; coherence breathing 20:00 (non-negotiable); bedtime 23:15; snack ≤21:30.
 - **Training plan** (structured, stored, versioned — see §5).
+- **Training schedule:** Mark's normal weekly rhythm/rest days as first-class
+  context (Mon/Fri rest days; Saturday long ride), so review/verdict narratives
+  do not suggest generic extra recovery days without checking his existing
+  routine.
 - **Active hypotheses:** collagen (don't reintroduce before 7 consecutive 74+ nights), recovery-week sleep disruption, 04:00 waking.
 
 ## 4. Analysis engine (the heart — Claude generates it)
@@ -124,7 +128,7 @@ memory `reference_garmin_app_handover`). Includes:
 Assembles a context packet (KB + DB data + rolling trend + plan) and calls Claude.
 
 - **Morning:** sleep analysis (age-adjusted) · physical-metrics read · **Metrics-vs-Baselines table** (baselines computed from his 84-night history) · thermal/environment review vs his targets · **Green/Amber/Red workout verdict** for today's full plan (cycling + strength). **Fired on wake, not a clock** — detected from his Garmin `sleepEnd` (stability-guarded, 09:30 backstop) so it reads his finalized overnight metrics whatever time he surfaces (DECISIONS #87; design in `docs/designs/wake-triggered-morning.md`).
-  - **Verdict framework:** GREEN = HRV balanced+stable, sleep ≥70 (age-adj ≥74), subjective ≥5. AMBER = HRV low/mild-unbalanced, sleep 60–69 → cut duration 20–30%, drop a zone, no HIT. RED = HRV unbalanced+declining, sleep <60 → sub/rest; **never VO2 on Red**. Reconcile a "Low" Garmin readiness as load-driven when recovery signals are good.
+  - **Verdict framework:** GREEN = HRV balanced+stable, sleep ≥70 (age-adj ≥74), subjective ≥5. AMBER = HRV low/mild-unbalanced, sleep 60–69 → cut duration 20–30%, drop a zone, no HIT. RED = HRV unbalanced+declining, sleep <60 → sub/rest; **never VO2 on Red**. Reconcile a "Low" Garmin readiness as load-driven when recovery signals are good. Since Batch 56 / DECISIONS #129, a soft sleep score (age-adjusted 60–73) may stay Green only when Mark-specific recovery evidence is strong: HRV clean, resting HR inside his personal baseline band, readiness not low/poor, and subjective absent or ≥5. The Red floor and Red-never-VO2 guarantee remain unchanged.
 - **Post-workout:** performance (power/HR/zones/cadence/PC/stamina/TE) · Mark's post-ride check-in
   (RPE / legs / feel / niggles, when present) · workout rating · guided recovery protocol (specific,
   timed) · impact on tomorrow. For a **structured** ride, execution is graded **per work interval**

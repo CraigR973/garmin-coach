@@ -49,11 +49,13 @@ from src.models.coaching import (
     Analysis,
     DailyMetric,
     KnowledgeBase,
+    MetricBaseline,
     Sleep,
     TemperatureReading,
     WeatherDaily,
 )
 from src.models.profile import Profile
+from src.services.personal_baselines import baseline_band_packet
 from src.services.reviews import (
     AnthropicReviewClient,
     ClaudeReviewResult,
@@ -81,8 +83,8 @@ DEFAULT_SEASON_WINDOWS = 8
 
 ANALYSIS_TYPE_SEASONAL = "seasonal_trend"
 PROMPT_VERSION_BY_BUCKET = {
-    BUCKET_MONTH: "trends-month-v1-2026-06-23",
-    BUCKET_SEASON: "trends-season-v1-2026-06-23",
+    BUCKET_MONTH: "trends-month-v2-2026-07-05",
+    BUCKET_SEASON: "trends-season-v2-2026-07-05",
 }
 
 # Indoor reading at/after this local hour belongs to the *next* morning's night.
@@ -96,7 +98,9 @@ bolded sections — **Year-on-year**, **Seasonal patterns**, and \
 **What to watch** — each a short bullet list grounded in the packet's numbers. \
 Never mention left/right power balance. Treat SpO2 and HRV before the reliability \
 cutoff as excluded. When sample counts are low or a prior-year window is missing, \
-say "insufficient history" plainly rather than inventing a trend."""
+say "insufficient history" plainly rather than inventing a trend. Interpret \
+readiness, HRV, and resting HR against personalBaselines before using alarming \
+language, and cite the packet numbers behind every trend claim."""
 
 # Metric registry: stable order + display labels for every tracked metric.
 METRICS: tuple[tuple[str, str], ...] = (
@@ -588,12 +592,14 @@ class TrendsService:
         comparison = compute_year_on_year(windows, bucket=bucket, target_key=target_key)
         subject_date = window_start_date(bucket, target_key)
         guardrails = await self._data_quality_guardrails(player.id)
+        baselines = await self._metric_baselines(player.id)
         packet = _build_packet(
             player=player,
             bucket=bucket,
             comparison=comparison,
             windows=windows,
             guardrails=guardrails,
+            baselines=baselines,
         )
         latest = await self.latest_narrative(player.id, bucket, subject_date)
         return NarrativePreview(
@@ -801,6 +807,20 @@ class TrendsService:
                 return [rule for rule in rules if isinstance(rule, dict)]
         return []
 
+    async def _metric_baselines(self, user_id: uuid.UUID) -> list[MetricBaseline]:
+        rows = (
+            (
+                await self.session.execute(
+                    select(MetricBaseline)
+                    .where(MetricBaseline.user_id == user_id)
+                    .order_by(MetricBaseline.metric_key.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows)
+
 
 # ---------------------------------------------------------------------------
 # Packet serialization (narrative input)
@@ -814,6 +834,7 @@ def _build_packet(
     comparison: YearOnYearComparison,
     windows: Sequence[TrendWindow],
     guardrails: list[dict[str, Any]],
+    baselines: Sequence[MetricBaseline] = (),
     recent_window_count: int = 6,
 ) -> dict[str, Any]:
     return {
@@ -828,6 +849,10 @@ def _build_packet(
         },
         "yearOnYear": year_on_year_json(comparison),
         "recentWindows": [window_json(w) for w in list(windows)[-recent_window_count:]],
+        "personalBaselines": baseline_band_packet(
+            baselines,
+            keys={"readiness_score", "hrv_7_day_avg_ms", "resting_heart_rate_bpm"},
+        ),
         "dataQualityGuardrails": guardrails,
         "prompt": {
             "version": PROMPT_VERSION_BY_BUCKET[bucket],
@@ -835,6 +860,7 @@ def _build_packet(
             "outputRules": [
                 "three_sections_year_on_year_seasonal_what_to_watch",
                 "ground_every_claim_in_packet_numbers",
+                "interpret_recovery_against_personal_baselines",
                 "never_reference_left_right_power_balance",
                 "exclude_pre_cutoff_spo2_and_hrv",
                 "say_insufficient_history_when_prior_year_missing",

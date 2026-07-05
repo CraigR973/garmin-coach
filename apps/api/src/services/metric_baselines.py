@@ -82,6 +82,7 @@ def sample_values(
     return {
         "sleep_score": sleep.score if sleep else None,
         "age_adjusted_sleep_score": sleep.age_adjusted_score if sleep else None,
+        "readiness_score": metric.readiness_score if metric else None,
         "resting_heart_rate_bpm": resting_heart_rate,
         "body_battery_charge": metric.body_battery_charged if metric else None,
         "average_spo2_pct": sleep.average_spo2_pct if sleep else None,
