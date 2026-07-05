@@ -335,9 +335,9 @@ def build_age_comparison(
         band=band,
         resolved_sex=resolved_sex,
         candidates={
-        "vo2max": vo2max,
-        "resting_heart_rate_bpm": resting_heart_rate_bpm,
-        "hrv_overnight_ms": hrv_overnight_ms,
+            "vo2max": vo2max,
+            "resting_heart_rate_bpm": resting_heart_rate_bpm,
+            "hrv_overnight_ms": hrv_overnight_ms,
         },
     )
     measured_sleep_sec = sum(
