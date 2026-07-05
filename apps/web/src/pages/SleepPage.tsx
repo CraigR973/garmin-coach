@@ -9,6 +9,7 @@ import { SleepSnapshotBody } from '@/components/SleepSnapshotBody';
 import { SleepPrepBody } from '@/components/SleepPrepBody';
 import { BedroomBody } from '@/components/BedroomBody';
 import { OvernightChartCard } from '@/components/OvernightChartCard';
+import { SleepStageAgeTable } from '@/components/SleepStageAgeTable';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
 import { markSleepReviewed } from '@/lib/sleepReview';
 import { friendlyDate } from '@/lib/dailyFlow';
@@ -96,6 +97,18 @@ export function SleepPage() {
                 morningBriefLink="/brief"
                 showOvernightGlance={false}
               />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Sleep stages vs your age</CardTitle>
+              <CardDescription>
+                Duration and stage balance compared with the typical overnight pattern for your age
+                group.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <SleepStageAgeTable rows={ageComparison?.sleepRows ?? []} ageBand={ageComparison?.ageBand} />
             </CardContent>
           </Card>
           <OvernightChartCard />

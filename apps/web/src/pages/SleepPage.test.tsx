@@ -45,7 +45,34 @@ const snapshot: DailyLoopEnvelope = {
           reliabilityStartDate: '2026-06-11',
         },
       ],
-      ageComparison: { rows: [] },
+      ageComparison: {
+        ageBand: '50–59',
+        rows: [],
+        sleepRows: [
+          {
+            metricKey: 'sleep_duration_hours',
+            label: 'Duration',
+            value: 7.2,
+            unit: ' h',
+            ageAverage: 7.1,
+            ageBand: '50–59',
+            betterDirection: 'higher',
+            tone: 'neutral',
+            descriptor: 'About average',
+          },
+          {
+            metricKey: 'rem_sleep_pct',
+            label: 'REM',
+            value: 18.2,
+            unit: '%',
+            ageAverage: 21,
+            ageBand: '50–59',
+            betterDirection: 'higher',
+            tone: 'warn',
+            descriptor: 'Below average',
+          },
+        ],
+      },
     },
     dailyMetrics: null,
     sleep: null,
@@ -135,6 +162,9 @@ describe('SleepPage', () => {
     renderWithQuery(<SleepPage />);
 
     expect(await screen.findByText("Last night's sleep")).toBeTruthy();
+    expect(screen.getByText('Sleep stages vs your age')).toBeTruthy();
+    expect(screen.getByText('Duration')).toBeTruthy();
+    expect(screen.getByText('REM')).toBeTruthy();
     expect(screen.getByText('Overnight room & fan')).toBeTruthy();
     expect((await screen.findByTestId('overnight-room-verdict-badge')).textContent).toBe('Red');
   });

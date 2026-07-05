@@ -852,6 +852,12 @@ def _age_comparison(
         resting_heart_rate_bpm=resting_hr,
         hrv_overnight_ms=hrv,
         fitness_age=_extract_fitness_age(daily_metric.raw_payload if daily_metric else None),
+        duration_sec=sleep.duration_sec if sleep else None,
+        deep_sleep_sec=sleep.deep_sleep_sec if sleep else None,
+        light_sleep_sec=sleep.light_sleep_sec if sleep else None,
+        rem_sleep_sec=sleep.rem_sleep_sec if sleep else None,
+        awake_sleep_sec=sleep.awake_sleep_sec if sleep else None,
+        restless_moments_count=sleep.restless_moments_count if sleep else None,
     ).to_dict()
 
 
