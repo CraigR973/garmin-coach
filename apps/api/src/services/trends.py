@@ -83,8 +83,8 @@ DEFAULT_SEASON_WINDOWS = 8
 
 ANALYSIS_TYPE_SEASONAL = "seasonal_trend"
 PROMPT_VERSION_BY_BUCKET = {
-    BUCKET_MONTH: "trends-month-v2-2026-07-05",
-    BUCKET_SEASON: "trends-season-v2-2026-07-05",
+    BUCKET_MONTH: "trends-month-v3-2026-07-05",
+    BUCKET_SEASON: "trends-season-v3-2026-07-05",
 }
 
 # Indoor reading at/after this local hour belongs to the *next* morning's night.
@@ -100,7 +100,10 @@ Never mention left/right power balance. Treat SpO2 and HRV before the reliabilit
 cutoff as excluded. When sample counts are low or a prior-year window is missing, \
 say "insufficient history" plainly rather than inventing a trend. Interpret \
 readiness, HRV, and resting HR against personalBaselines before using alarming \
-language, and cite the packet numbers behind every trend claim."""
+language. Every year-on-year claim must cite the currentMean -> priorMean or \
+priorMean -> currentMean numbers plus both sample counts; every seasonal claim \
+must cite the window labels and sampleDays or metric sampleCount. If a metric \
+has status insufficient_history, describe the data gap instead of a change."""
 
 # Metric registry: stable order + display labels for every tracked metric.
 METRICS: tuple[tuple[str, str], ...] = (
@@ -860,6 +863,7 @@ def _build_packet(
             "outputRules": [
                 "three_sections_year_on_year_seasonal_what_to_watch",
                 "ground_every_claim_in_packet_numbers",
+                "cite_from_to_numbers_and_sample_counts",
                 "interpret_recovery_against_personal_baselines",
                 "never_reference_left_right_power_balance",
                 "exclude_pre_cutoff_spo2_and_hrv",
