@@ -927,8 +927,8 @@ describe('DashboardPage', () => {
 
   it('leads the morning Next strip with reviewing last night once metrics have synced', async () => {
     // Base is the pre-training phase at 09:00 with a synced morning read and no
-    // sleep-reviewed flag → the morning order (sleep → check-in → ride) leads
-    // with the sleep review, deep-linking to the Sleep hub.
+    // sleep-reviewed flag → the morning order (sleep → ride; check-in optional)
+    // leads with the sleep review, deep-linking to the Sleep hub.
     renderPage();
     const strip = await screen.findByRole('region', { name: 'Next action' });
     expect(strip.className).toContain('rounded-2xl');
@@ -937,14 +937,16 @@ describe('DashboardPage', () => {
     expect(cta.getAttribute('href')).toBe('/sleep');
   });
 
-  it('steps the morning Next strip down to the check-in once sleep has been opened', async () => {
-    // Opening the Sleep hub sets the per-day flag; the strip then advances to
-    // the optional morning check-in (named distinctly from "Log how {ride} felt").
+  it('clears the morning Next strip once sleep has been opened — check-in is optional (Batch 60)', async () => {
+    // Opening the Sleep hub sets the per-day flag; with the check-in now optional
+    // (not a rung), the morning goes all-clear rather than nagging to check in.
     markSleepReviewed('2026-06-20');
-    renderPage(); // base: not checked in, sleep reviewed → check-in rung
-    const strip = await screen.findByRole('region', { name: 'Next action' });
-    const cta = within(strip).getByRole('link', { name: /morning check-in/i });
-    expect(cta.getAttribute('href')).toBe('/check-in');
+    renderPage(); // base: not checked in, sleep reviewed, nothing pending → all-clear
+    await screen.findByText('Cycle day');
+    expect(screen.getByText(/you're all set/i)).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Next action' })).toBeNull();
+    // The check-in is still offered — the Today card footer keeps its link.
+    expect(screen.getByRole('link', { name: /morning check-in/i }).getAttribute('href')).toBe('/check-in');
   });
 
   it('overrides the phase primary to expand Today for a pending change and flags the collapsed ride card (Batch 50)', async () => {

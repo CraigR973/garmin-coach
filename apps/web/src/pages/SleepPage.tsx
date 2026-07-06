@@ -148,14 +148,29 @@ export function SleepPage() {
         </div>
       )}
 
-      {/* Batch 60: a manual check-in from the Sleep page, so Mark can log the
-          morning check-in straight after reading last night without going Home. */}
-      <Button asChild variant="outline" className="w-full">
-        <Link to="/check-in">
-          <ClipboardCheck className="h-4 w-4" aria-hidden />
-          Morning check-in
-        </Link>
-      </Button>
+      {/* Batch 60: the morning check-in folds into the sleep review as one step
+          and is optional — offered here (and in the Today footer), never nagged.
+          Logging how he feels can still ease today's ride (DECISIONS #126). */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ClipboardCheck className="h-4 w-4 text-primary" aria-hidden />
+            Add today&apos;s check-in
+          </CardTitle>
+          <CardDescription>
+            Optional — logging how you feel, plus any BP or notes, sharpens the coach&apos;s read and can
+            ease today&apos;s ride.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button asChild variant="outline" className="w-full">
+            <Link to="/check-in">
+              <ClipboardCheck className="h-4 w-4" aria-hidden />
+              Morning check-in
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 }
