@@ -251,6 +251,47 @@ describe('v1 shared schemas', () => {
     expect(parsed.data.postStrengthAnalyses[0]?.consistency.sessions4w).toBe(6);
   });
 
+  it('carries the plannedWorkoutId link on a completed ride analysis (Batch 60)', () => {
+    const parsed = dailyLoopEnvelopeSchema.parse({
+      data: {
+        subjectDate: '2026-07-06',
+        timezone: 'Europe/London',
+        morningAnalysis: null,
+        dailyMetrics: null,
+        sleep: null,
+        manualEntry: null,
+        postWorkoutAnalyses: [
+          {
+            id: '11111111-1111-4111-8111-111111111111',
+            activityId: '22222222-2222-4222-8222-222222222222',
+            plannedWorkoutId: '33333333-3333-4333-8333-333333333333',
+            activityName: 'Tempo ride',
+            activityType: 'indoor_cycling',
+            generatedAtUtc: '2026-07-06T12:20:00.000Z',
+            promptVersion: 'post-workout-analysis-v2-2026-07-03',
+            modelName: 'claude-test',
+            outputMarkdown: '**Rating:** strong.',
+            tomorrowImpact: 'Easy endurance tomorrow.',
+          },
+        ],
+        postFlexibilityAnalyses: [],
+        postStrengthAnalyses: [],
+        postWalkAnalyses: [],
+        plannedWorkouts: [],
+        thermalState: {
+          fan: { autoEnabled: true, mode: 'idle', isOn: null, speed: null, respondingToC: null },
+        },
+        dataQualityWarnings: [],
+      },
+      meta: { generatedAtUtc: '2026-07-06T12:20:00Z' },
+      errors: [],
+    });
+
+    expect(parsed.data.postWorkoutAnalyses[0]?.plannedWorkoutId).toBe(
+      '33333333-3333-4333-8333-333333333333',
+    );
+  });
+
   it('stores age-adjusted sleep separately from Garmin score', () => {
     const parsed = sleepSchema.parse({
       id: rowId,

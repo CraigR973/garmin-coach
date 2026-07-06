@@ -112,7 +112,9 @@ export function nextAction(
       return {
         key: 'log-ride',
         label: `Log how ${rideName} felt`,
-        sectionKey: 'afterRide',
+        // Batch 60: a completed *planned* ride's check-in lives on its Today-card
+        // row; only an unplanned ride keeps the standalone After-your-ride section.
+        sectionKey: unloggedRide.plannedWorkoutId ? 'today' : 'afterRide',
         tone: 'warning',
       };
     }

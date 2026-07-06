@@ -514,6 +514,7 @@ export const rideIntervalSchema = z.object({
 export const dailyLoopPostWorkoutAnalysisSchema = z.object({
   id: z.string().uuid(),
   activityId: z.string().uuid().nullable().optional(),
+  plannedWorkoutId: z.string().uuid().nullable().optional(),
   activityName: z.string().nullable().optional(),
   activityType: z.string().nullable().optional(),
   generatedAtUtc: isoDateTimeSchema,

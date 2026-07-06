@@ -67,6 +67,17 @@ absence of active workouts, not a stored rest row. Mixed-day delivery state now
 prefers `planned_workout_id` before falling back to date-only legacy lookups, so
 multiple same-day workouts can each keep their own delivery/action state.
 
+Batch 60 (DECISIONS #134) closes the loop after a ride: when the post-workout read
+is generated it links the `analyses` row to the day's bike `planned_workouts` row
+(new `analyses.planned_workout_id`) and flips that workout to `status='completed'`
+(previously a dead enum value). Home then shows the read on the session's own
+Today-card row — a compact done state with the tomorrow-impact, the ride check-in,
+and the full read behind a disclosure — instead of the approve/upload controls or a
+separate "After your ride" section (which is kept only for *unplanned* rides), and
+`swap_day` refuses to re-slot a completed session in either direction (the Plan view
+hides its Move, the endpoint 409s). Ride-scoped for now; strength/flexibility
+completion can reuse the same `services/workout_completion.py` helper.
+
 Batch 14 makes the *week* adaptive (`services/weekly_restructure.py`): a
 deterministic permutation engine reorders the week's bike sessions so VO2 and
 Sweet-Spot are never on the same/adjacent days (hard rule), and, when a recovery

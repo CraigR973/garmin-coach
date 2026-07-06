@@ -9,6 +9,7 @@ import {
   Bike,
   CalendarDays,
   Check,
+  ChevronDown,
   ClipboardCheck,
   Dumbbell,
   MoonStar,
@@ -314,7 +315,16 @@ export function DashboardPage() {
   const postFlexibilityAnalyses = daily.postFlexibilityAnalyses ?? [];
   const postStrengthAnalyses = daily.postStrengthAnalyses ?? [];
   const postWalkAnalyses = daily.postWalkAnalyses ?? [];
-  const hasRide = postWorkouts.length > 0;
+  // Batch 60: a completed ride's read attaches to its Today-card session row
+  // (matched by plannedWorkoutId, set when the coach analysed the ride). Only
+  // *unplanned* rides — with no planned row to attach to — keep the standalone
+  // "After your ride" section, so a planned ride no longer shows in two places.
+  const rideByWorkoutId = new Map<string, RideAnalysis>();
+  for (const ride of postWorkouts) {
+    if (ride.plannedWorkoutId) rideByWorkoutId.set(ride.plannedWorkoutId, ride);
+  }
+  const unplannedRides = postWorkouts.filter((ride) => !ride.plannedWorkoutId);
+  const hasRide = unplannedRides.length > 0;
   const todaysWorkouts = daily.plannedWorkouts;
   const dayState = dayStateForWorkouts(todaysWorkouts);
   const actionsBusy =
@@ -340,6 +350,13 @@ export function DashboardPage() {
     onSkipDay: () => skipDayMutation.mutate({ date: daily.subjectDate }),
     onRecordActual: (payload: { label: string; notes: string | null }) =>
       actualMutation.mutate({ date: daily.subjectDate, ...payload }),
+  };
+  // Shared by the completed-ride rows in the Today card and the unplanned-ride
+  // "After your ride" section — one ride check-in mutation, one saving flag.
+  const rideCheckIn: RideCheckInHandlers = {
+    onSave: (payload) => postRideCheckInMutation.mutate(payload),
+    savingActivityId: postRideCheckInMutation.variables?.activityId ?? null,
+    isSaving: postRideCheckInMutation.isPending,
   };
 
   // Tomorrow's cue: the ride's forward look when we have one, else a verdict-shaped
@@ -377,7 +394,7 @@ export function DashboardPage() {
   };
 
   const todaySummaryValue = todaySummary(todaysWorkouts);
-  const afterRideSummaryValue = afterRideSummary(postWorkouts);
+  const afterRideSummaryValue = afterRideSummary(unplannedRides);
 
   const sections: Record<
     HomeSectionKey,
@@ -413,6 +430,8 @@ export function DashboardPage() {
           subjectDate={daily.subjectDate}
           workoutActions={todayActions}
           dayActions={dayActions}
+          completedRides={rideByWorkoutId}
+          rideCheckIn={rideCheckIn}
         />
       ),
     },
@@ -423,7 +442,7 @@ export function DashboardPage() {
       tone: afterRideSummaryValue.tone,
       body: (
         <PostRideBody
-          items={postWorkouts}
+          items={unplannedRides}
           onSaveCheckIn={(payload) => postRideCheckInMutation.mutate(payload)}
           savingActivityId={postRideCheckInMutation.variables?.activityId ?? null}
           isSaving={postRideCheckInMutation.isPending}
@@ -611,6 +630,22 @@ type TodayWorkoutActions = {
   onSwap: (payload: { workoutId: string; targetDate: string }) => void;
 };
 
+type RideAnalysis = DailyLoopData['postWorkoutAnalyses'][number];
+
+type RideCheckInPayload = {
+  activityId: string;
+  subjectiveScore: number | null;
+  rpe: number | null;
+  feel: string | null;
+  notes: string | null;
+};
+
+type RideCheckInHandlers = {
+  onSave: (payload: RideCheckInPayload) => void;
+  savingActivityId: string | null;
+  isSaving: boolean;
+};
+
 /** The expanded body of the Today section: the day's session rows plus the
  *  day-level footer. The day label + verdict badge live in the section header
  *  (Batch 36 unified card, Batch 37 collapse). */
@@ -625,6 +660,8 @@ function DayPlanBody({
   subjectDate,
   workoutActions,
   dayActions,
+  completedRides,
+  rideCheckIn,
 }: {
   workouts: TodayWorkout[];
   planAdjustments: string[];
@@ -641,6 +678,8 @@ function DayPlanBody({
     onSkipDay: () => void;
     onRecordActual: (payload: { label: string; notes: string | null }) => void;
   };
+  completedRides: Map<string, RideAnalysis>;
+  rideCheckIn: RideCheckInHandlers;
 }) {
   const hasWorkouts = workouts.length > 0;
   return (
@@ -656,6 +695,8 @@ function DayPlanBody({
                 workout={workout}
                 planAdjustments={planAdjustments}
                 subjectDate={subjectDate}
+                analysis={completedRides.get(workout.id)}
+                rideCheckIn={rideCheckIn}
                 {...workoutActions}
               />
             </div>
@@ -1013,6 +1054,8 @@ function WorkoutRow({
   workout,
   planAdjustments = [],
   subjectDate,
+  analysis,
+  rideCheckIn,
   busy,
   onEdit,
   onApprove,
@@ -1022,6 +1065,8 @@ function WorkoutRow({
   workout: TodayWorkout;
   planAdjustments?: string[];
   subjectDate: string;
+  analysis?: RideAnalysis;
+  rideCheckIn: RideCheckInHandlers;
 } & TodayWorkoutActions) {
   const [panel, setPanel] = useState<'none' | 'edit' | 'swap' | 'skip'>('none');
   const [ignored, setIgnored] = useState(false);
@@ -1037,6 +1082,34 @@ function WorkoutRow({
   const hasPendingChange = Boolean(delivery?.changed) && isBike && !ignored;
   const togglePanel = (next: 'edit' | 'swap' | 'skip') =>
     setPanel((current) => (current === next ? 'none' : next));
+
+  // Batch 60: once the session is done its row shows the read, not the
+  // approve/upload/edit/swap/skip controls — and it can no longer be moved. The
+  // ride's coach read + check-in attach here (matched by plannedWorkoutId).
+  if (workout.status === 'completed') {
+    return (
+      <>
+        <div className="rounded-xl border border-border bg-bg px-3 py-3">
+          <div className="flex items-center gap-3">
+            <Icon className="h-5 w-5 shrink-0 text-primary" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-text-primary">{workout.title}</p>
+              <p className="text-sm text-text-secondary">
+                {prettyType(workout.workoutType)}
+                {workout.plannedDurationMin ? ` · ${workout.plannedDurationMin} min` : ''}
+                {workout.intensityTarget ? ` · ${workout.intensityTarget}` : ''}
+              </p>
+            </div>
+            <Badge variant="success" className="shrink-0">
+              <Check className="mr-1 h-3.5 w-3.5" aria-hidden />
+              Completed
+            </Badge>
+          </div>
+        </div>
+        {analysis ? <CompletedRideRead analysis={analysis} rideCheckIn={rideCheckIn} /> : null}
+      </>
+    );
+  }
 
   let statusLine: string;
   if (!isBike) {
@@ -1257,6 +1330,98 @@ function RideIntervalTable({ intervals }: { intervals: RideIntervalRow[] }) {
   );
 }
 
+type RideCheckInValue = {
+  subjectiveScore?: number | null;
+  rpe?: number | null;
+  feel?: string | null;
+  notes?: string | null;
+} | null;
+
+/** One ride's "how did it feel" check-in, owning its own draft so it can drop
+ *  into both a completed Today-card row and the unplanned-ride section without a
+ *  shared drafts map. */
+function RideCheckIn({
+  activityId,
+  checkIn,
+  handlers,
+}: {
+  activityId: string;
+  checkIn: RideCheckInValue;
+  handlers: RideCheckInHandlers;
+}) {
+  const [value, setValue] = useState({
+    subjectiveScore: checkIn?.subjectiveScore != null ? String(checkIn.subjectiveScore) : '',
+    rpe: checkIn?.rpe != null ? String(checkIn.rpe) : '',
+    feel: checkIn?.feel ?? '',
+    notes: checkIn?.notes ?? '',
+  });
+  return (
+    <PostRideCheckInForm
+      activityId={activityId}
+      value={value}
+      logged={Boolean(checkIn)}
+      onChange={(patch) => setValue((current) => ({ ...current, ...patch }))}
+      onSave={(next) =>
+        handlers.onSave({
+          activityId,
+          subjectiveScore: next.subjectiveScore ? Number(next.subjectiveScore) : null,
+          rpe: next.rpe ? Number(next.rpe) : null,
+          feel: next.feel || null,
+          notes: next.notes || null,
+        })
+      }
+      isSaving={handlers.isSaving && handlers.savingActivityId === activityId}
+    />
+  );
+}
+
+/** The completed-ride read attached to its Today-card session row (Batch 60):
+ *  the one-line tomorrow-impact and the check-in stay compact; the full coach
+ *  read + interval table sit behind a "View analysis" disclosure. */
+function CompletedRideRead({
+  analysis,
+  rideCheckIn,
+}: {
+  analysis: RideAnalysis;
+  rideCheckIn: RideCheckInHandlers;
+}) {
+  const [showRead, setShowRead] = useState(false);
+  return (
+    <div className="space-y-3">
+      {analysis.tomorrowImpact ? (
+        <p className="text-sm text-text-secondary">
+          <span className="font-medium text-text-primary">Tomorrow:</span> {analysis.tomorrowImpact}
+        </p>
+      ) : null}
+      {analysis.activityId ? (
+        <RideCheckIn
+          activityId={analysis.activityId}
+          checkIn={analysis.postRideCheckIn ?? null}
+          handlers={rideCheckIn}
+        />
+      ) : null}
+      <div>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => setShowRead((current) => !current)}
+          aria-expanded={showRead}
+        >
+          <ChevronDown className={cn('h-4 w-4 transition-transform', showRead && 'rotate-180')} aria-hidden />
+          {showRead ? 'Hide analysis' : 'View analysis'}
+        </Button>
+        {showRead ? (
+          <div className="mt-3 space-y-4">
+            <Markdown>{analysis.outputMarkdown}</Markdown>
+            <RideIntervalTable intervals={analysis.intervals ?? []} />
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function PostRideBody({
   items,
   onSaveCheckIn,
@@ -1271,58 +1436,13 @@ function PostRideBody({
     outputMarkdown: string;
     intervals?: RideIntervalRow[];
     recoveryDecision?: { excluded?: boolean } | null;
-    postRideCheckIn?: {
-      subjectiveScore?: number | null;
-      rpe?: number | null;
-      feel?: string | null;
-      notes?: string | null;
-    } | null;
+    postRideCheckIn?: RideCheckInValue;
   }>;
-  onSaveCheckIn: (payload: {
-    activityId: string;
-    subjectiveScore: number | null;
-    rpe: number | null;
-    feel: string | null;
-    notes: string | null;
-  }) => void;
+  onSaveCheckIn: (payload: RideCheckInPayload) => void;
   savingActivityId: string | null;
   isSaving: boolean;
 }) {
-  const [drafts, setDrafts] = useState<
-    Record<string, { subjectiveScore: string; rpe: string; feel: string; notes: string }>
-  >({});
-
-  function formFor(item: {
-    activityId?: string | null;
-    postRideCheckIn?: {
-      subjectiveScore?: number | null;
-      rpe?: number | null;
-      feel?: string | null;
-      notes?: string | null;
-    } | null;
-  }) {
-    const key = item.activityId ?? '';
-    if (drafts[key]) return drafts[key];
-    return {
-      subjectiveScore:
-        item.postRideCheckIn?.subjectiveScore != null ? String(item.postRideCheckIn.subjectiveScore) : '',
-      rpe: item.postRideCheckIn?.rpe != null ? String(item.postRideCheckIn.rpe) : '',
-      feel: item.postRideCheckIn?.feel ?? '',
-      notes: item.postRideCheckIn?.notes ?? '',
-    };
-  }
-
-  function patchDraft(
-    activityId: string,
-    patch: Partial<{ subjectiveScore: string; rpe: string; feel: string; notes: string }>,
-    item: { postRideCheckIn?: { subjectiveScore?: number | null; rpe?: number | null; feel?: string | null; notes?: string | null } | null },
-  ) {
-    setDrafts((current) => ({
-      ...current,
-      [activityId]: { ...formFor({ activityId, postRideCheckIn: item.postRideCheckIn }), ...patch },
-    }));
-  }
-
+  const handlers: RideCheckInHandlers = { onSave: onSaveCheckIn, savingActivityId, isSaving };
   return (
     <div className="space-y-4">
       {items.map((item) => (
@@ -1335,22 +1455,7 @@ function PostRideBody({
             {item.recoveryDecision?.excluded ? <Badge variant="warning">Not counted for recovery</Badge> : null}
           </div>
           {item.activityId ? (
-            <PostRideCheckInForm
-              activityId={item.activityId}
-              value={formFor(item)}
-              logged={Boolean(item.postRideCheckIn)}
-              onChange={(patch) => patchDraft(item.activityId!, patch, item)}
-              onSave={(value) =>
-                onSaveCheckIn({
-                  activityId: item.activityId!,
-                  subjectiveScore: value.subjectiveScore ? Number(value.subjectiveScore) : null,
-                  rpe: value.rpe ? Number(value.rpe) : null,
-                  feel: value.feel || null,
-                  notes: value.notes || null,
-                })
-              }
-              isSaving={isSaving && savingActivityId === item.activityId}
-            />
+            <RideCheckIn activityId={item.activityId} checkIn={item.postRideCheckIn ?? null} handlers={handlers} />
           ) : null}
           <div>
             <Markdown>{item.outputMarkdown}</Markdown>

@@ -415,6 +415,7 @@ class Analysis(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __table_args__ = (
         Index("ix_analyses_user_subject", "user_id", "analysis_type", "subject_date"),
         Index("ix_analyses_activity", "activity_id"),
+        Index("ix_analyses_planned_workout", "planned_workout_id"),
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -422,6 +423,13 @@ class Analysis(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     activity_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("activities.id", ondelete="SET NULL"), nullable=True
+    )
+    # The planned workout this activity completed (Batch 60), set when the
+    # post-session read is generated. Drives the completed-workout state on Home
+    # (the read attaches to its session row) and the move-lock (a completed
+    # workout can't be re-slotted).
+    planned_workout_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("planned_workouts.id", ondelete="SET NULL"), nullable=True
     )
     analysis_type: Mapped[str] = mapped_column(String(50), nullable=False)
     subject_date: Mapped[date] = mapped_column(Date, nullable=False)

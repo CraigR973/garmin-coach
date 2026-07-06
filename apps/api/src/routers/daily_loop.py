@@ -136,6 +136,7 @@ class AnalysisOut(BaseModel):
 class PostWorkoutAnalysisOut(BaseModel):
     id: str
     activityId: str | None
+    plannedWorkoutId: str | None
     activityName: str | None
     activityType: str | None
     generatedAtUtc: str
@@ -555,6 +556,9 @@ def _serialize_post_workout_analysis(
     return PostWorkoutAnalysisOut(
         id=str(analysis.id),
         activityId=str(analysis.activity_id) if analysis.activity_id else None,
+        plannedWorkoutId=(
+            str(analysis.planned_workout_id) if analysis.planned_workout_id else None
+        ),
         activityName=(
             activity.get("activityName") if isinstance(activity.get("activityName"), str) else None
         ),

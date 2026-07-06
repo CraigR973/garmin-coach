@@ -257,6 +257,13 @@ describe('SleepPage', () => {
     expect(await screen.findByText("Last night's sleep")).toBeTruthy();
   });
 
+  it('offers a manual morning check-in link from the Sleep page (Batch 60)', async () => {
+    renderWithQuery(<SleepPage />);
+
+    const link = await screen.findByRole('link', { name: /morning check-in/i });
+    expect(link.getAttribute('href')).toBe('/check-in');
+  });
+
   it('renders the shared error state when the daily loop fails to load', async () => {
     apiFetchMock.mockImplementation((path: string) =>
       path === '/api/v1/daily-loop'

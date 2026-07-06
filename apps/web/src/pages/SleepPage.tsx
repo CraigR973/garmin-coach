@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { BedDouble, Fan, MoonStar } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { BedDouble, ClipboardCheck, Fan, MoonStar } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -145,6 +147,15 @@ export function SleepPage() {
           </Card>
         </div>
       )}
+
+      {/* Batch 60: a manual check-in from the Sleep page, so Mark can log the
+          morning check-in straight after reading last night without going Home. */}
+      <Button asChild variant="outline" className="w-full">
+        <Link to="/check-in">
+          <ClipboardCheck className="h-4 w-4" aria-hidden />
+          Morning check-in
+        </Link>
+      </Button>
     </div>
   );
 }

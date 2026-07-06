@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.coaching import Analysis, PlannedWorkout, WorkoutDeliveryProposal
 from src.models.profile import Profile
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
+from src.services.workout_completion import WORKOUT_STATUS_COMPLETED
 from src.services.workout_delivery import (
     STATUS_APPROVED,
     STATUS_FAILED,
@@ -775,6 +776,19 @@ class ExecutableCoachingService:
             raise HTTPException(status_code=400, detail="Pick a different day to swap to")
 
         target_workout = await self._active_workout_on(player.id, target_date)
+        # A completed session can't be re-slotted in either direction (Batch 60):
+        # it already happened, so moving the source — or swapping it onto a day
+        # that already holds a completed session — would rewrite history.
+        if workout.status == WORKOUT_STATUS_COMPLETED:
+            raise HTTPException(
+                status_code=409,
+                detail="This session is already done, so it can't be moved.",
+            )
+        if target_workout is not None and target_workout.status == WORKOUT_STATUS_COMPLETED:
+            raise HTTPException(
+                status_code=409,
+                detail="That day already has a completed session, so pick another day.",
+            )
         source_live = await self.rail.latest_delivered_for_workout(player.id, workout.id)
         if source_live is None:
             source_live = await self.rail.latest_delivered_for_date(player.id, source_date)

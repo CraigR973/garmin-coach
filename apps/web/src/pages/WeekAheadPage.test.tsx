@@ -165,6 +165,36 @@ describe('WeekAheadPage', () => {
     expect(screen.queryByText('Swap a workout into this rest day')).toBeNull();
   });
 
+  it('locks a completed workout from moving and marks it Done (Batch 60)', async () => {
+    const completedSchedule = JSON.parse(JSON.stringify(schedule));
+    // Sweet Spot Builder on 2026-06-25 is done.
+    completedSchedule.data.schedule[2].workouts[0].status = 'completed';
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/api/v1/plan-actions/schedule?days=14'
+        ? Promise.resolve(completedSchedule)
+        : Promise.reject(new Error(`Unexpected request: ${path}`)),
+    );
+
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const doneWorkout = (await screen.findByText('Sweet Spot Builder')).closest(
+      '.rounded-xl',
+    ) as HTMLElement;
+    expect(within(doneWorkout).getByText('Done')).toBeTruthy();
+    expect(within(doneWorkout).queryByRole('button', { name: /^move$/i })).toBeNull();
+
+    // A still-planned workout keeps its Move control.
+    const plannedWorkout = screen.getByText('VO2 Max 30/30').closest('.rounded-xl') as HTMLElement;
+    expect(within(plannedWorkout).getByRole('button', { name: /^move$/i })).toBeTruthy();
+  });
+
   it('renders the shared error state when the schedule fails to load', async () => {
     apiFetchMock.mockImplementation((path: string) =>
       path === '/api/v1/plan-actions/schedule?days=14'

@@ -4,7 +4,11 @@ import { actionSection, nextAction } from './homeActions';
 
 type DataOverrides = Partial<{
   plannedWorkouts: Array<{ workoutType: string; delivery?: { changed?: boolean } | null }>;
-  postWorkoutAnalyses: Array<{ postRideCheckIn?: unknown; activityName?: string | null }>;
+  postWorkoutAnalyses: Array<{
+    postRideCheckIn?: unknown;
+    activityName?: string | null;
+    plannedWorkoutId?: string | null;
+  }>;
   manualEntry: unknown;
   sleepProjection: { tone: string } | null;
   morningAnalysis: unknown;
@@ -52,6 +56,17 @@ describe('nextAction priority ladder', () => {
     expect(action.key).toBe('log-ride');
     expect(action.sectionKey).toBe('afterRide');
     expect(action.tone).toBe('warning');
+  });
+
+  it('2b. points a completed *planned* ride check-in at the Today card (Batch 60)', () => {
+    // A matched ride folds into its Today-card row, so its check-in lives there —
+    // not in the standalone After-your-ride section (kept for unplanned rides).
+    const action = nextAction(
+      makeData({ postWorkoutAnalyses: [{ postRideCheckIn: null, plannedWorkoutId: 'pw-1' }] }),
+      { isEvening: false },
+    );
+    expect(action.key).toBe('log-ride');
+    expect(action.sectionKey).toBe('today');
   });
 
   it('names the specific ride in the log-ride label, not a generic "check in"', () => {

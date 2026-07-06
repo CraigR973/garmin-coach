@@ -31,6 +31,8 @@ from src.services.ride_intervals import (
     segment_ride_intervals,
     summarize_execution,
 )
+from src.services.workout_categories import DAY_CATEGORY_CYCLE
+from src.services.workout_completion import complete_matched_planned_workout
 from src.services.workout_delivery import DEFAULT_FTP_WATTS, build_structured_workout_ir
 
 # Bumped for Batch 44: the packet now carries interval-resolved execution and the
@@ -290,10 +292,32 @@ class PostWorkoutAnalysisService:
         force: bool = False,
         commit: bool = True,
     ) -> PostWorkoutAnalysisResult:
+        subject_date = _activity_local_date(activity, player.timezone)
+        # Flip the planned bike session this ride completed to ``completed`` (Batch
+        # 60) — so its Today-card row shows the read instead of the approve/upload
+        # controls, and it can no longer be re-slotted. Runs before the current-
+        # analysis short-circuit so an already-analysed ride still gets linked.
+        matched_workout_id = await complete_matched_planned_workout(
+            self.session,
+            user_id=player.id,
+            subject_date=subject_date,
+            category=DAY_CATEGORY_CYCLE,
+            activity_id=activity.id,
+        )
         if not force:
             existing = await self.latest_analysis_for_activity(activity.id)
             checkin = await self._post_ride_checkin(player.id, activity.id)
             if existing is not None and _analysis_is_current(existing, checkin):
+                if (
+                    matched_workout_id is not None
+                    and existing.planned_workout_id != matched_workout_id
+                ):
+                    existing.planned_workout_id = matched_workout_id
+                if commit:
+                    await self.session.commit()
+                    await self.session.refresh(existing)
+                else:
+                    await self.session.flush()
                 return PostWorkoutAnalysisResult(analysis=existing, generated=False)
 
         context_packet = await self.assemble_context_packet(player, activity)
@@ -303,11 +327,11 @@ class PostWorkoutAnalysisService:
             context_packet=context_packet,
             user_prompt=user_prompt,
         )
-        subject_date = _activity_local_date(activity, player.timezone)
         verdict = context_packet.get("recoveryDecision", {}).get("status")
         analysis = Analysis(
             user_id=player.id,
             activity_id=activity.id,
+            planned_workout_id=matched_workout_id,
             analysis_type=ANALYSIS_TYPE,
             subject_date=subject_date,
             generated_at_utc=_utcnow(),
