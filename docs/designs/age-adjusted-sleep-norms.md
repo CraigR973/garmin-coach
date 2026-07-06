@@ -1,7 +1,8 @@
 # Design: Age-adjusted sleep norms & a real age-adjusted score (Batch 61)
 
-**Status:** Specced (this doc + ledger row), **not started**. Proposed
-**Decision #135** (assigned at `/batch-start`), which revisits **#14**
+**Status:** Shipped via PR #84 / squash `7936fcb`; production verified on
+Railway + Vercel at `7936fcbb0cb7e48e7ff03f6eeadd81f81c2e3523`. Decision
+**#135** revisits **#14**
 (the flat "sleep +4" age adjustment) and extends **#131** (Batch 58 sleep-stage
 age comparison). Origin: Mark's 2026-07-06 conversation with Craig about sleep
 scores + the Copilot "age-adjusted norms" table (screenshots in
@@ -169,9 +170,9 @@ but it must not green-light genuinely bad nights. Guardrails:
   POOR nights still gate** (the 17/85 ≤16-readiness nights flagged open in
   STATUS) — i.e. the recompute must not rescue a night that is bad on every
   signal, only one that is bad *only* on young-adult stage targets.
-- Bump `PROMPT_VERSION` and force-regenerate the current morning verdict +
-  baselines so the live surface reflects the new score (same closeout step #133
-  used).
+- Bump `PROMPT_VERSION`; historical score backfill / current-verdict
+  regeneration remains optional and was not run at closeout. Forward morning
+  analyses recompute and persist the new score when generated.
 
 ## Boundaries
 
