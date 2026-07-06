@@ -250,6 +250,10 @@ function WorkoutRow({
   onMove: () => void;
 }) {
   const Icon = iconFor(workout.workoutType);
+  // Batch 60: a completed session can't be re-slotted — the Move control drops
+  // out and a "Done" badge takes its place (the swap endpoint also 409s a
+  // completed source or target, so this is UI clarity over an enforced guard).
+  const isComplete = workout.status === 'completed';
   return (
     <div className="rounded-xl border border-border bg-bg px-3 py-3">
       <div className="flex items-start gap-3">
@@ -262,12 +266,19 @@ function WorkoutRow({
             {workout.intensityTarget ? ` · ${workout.intensityTarget}` : ''}
           </p>
         </div>
+        {isComplete ? (
+          <Badge variant="success" className="shrink-0">
+            Done
+          </Badge>
+        ) : null}
       </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onMove}>
-          Move
-        </Button>
-      </div>
+      {isComplete ? null : (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onMove}>
+            Move
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

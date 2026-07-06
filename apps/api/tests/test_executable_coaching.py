@@ -1494,3 +1494,35 @@ async def test_swap_is_honest_when_the_cloud_move_fails(db_conn: AsyncConnection
         source = await _active_on(session, user_id, mon)
         assert source is not None and source.id == workout_id
         assert await _active_on(session, user_id, wed) is None
+
+
+@pytest.mark.asyncio
+async def test_swap_day_refuses_a_completed_session(db_conn: AsyncConnection) -> None:
+    """Batch 60: a completed session can't be re-slotted — swap_day 409s before it
+    touches Zwift, so a finished ride stays put."""
+    user_id, workout_id = uuid.uuid4(), uuid.uuid4()
+    source_date, target_date = date(2026, 8, 3), date(2026, 8, 4)
+    await _seed_profile(db_conn, user_id)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            PlannedWorkout(
+                id=workout_id,
+                user_id=user_id,
+                workout_date=source_date,
+                version=1,
+                title="Tempo ride",
+                workout_type="bike_tempo",
+                status="completed",
+                is_active=True,
+                source="test",
+            )
+        )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session)
+        with pytest.raises(HTTPException) as exc:
+            await service.swap_day(user, planned_workout_id=workout_id, target_date=target_date)
+        assert exc.value.status_code == 409

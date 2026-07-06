@@ -226,6 +226,119 @@ async def test_generate_and_store_post_workout_analysis_is_idempotent(
 
 
 @pytest.mark.asyncio
+async def test_generate_and_store_marks_matched_planned_ride_completed(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 60: the ride's read links to the day's bike session and flips it to
+    ``completed`` so its Today-card row shows the read, not the ride controls."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Completion Test",
+                pin_hash="x" * 60,
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+
+        planned = PlannedWorkout(
+            user_id=user_id,
+            version=1,
+            workout_date=date(2026, 1, 1),
+            title="Tempo ride",
+            workout_type="bike_tempo",
+            status="planned",
+            is_active=True,
+        )
+        session.add(planned)
+        await session.flush()
+        planned_id = planned.id
+
+        activity = Activity(
+            user_id=user_id,
+            garmin_activity_id=222333,
+            activity_name="Indoor tempo ride",
+            activity_type="indoor_cycling",
+            start_utc=datetime(2026, 1, 1, 11, 0),
+            duration_sec=3600,
+            avg_power_watts=210,
+        )
+        session.add(activity)
+        await session.commit()
+
+        player = await session.get(Profile, user_id)
+        assert player is not None
+        service = PostWorkoutAnalysisService(session)
+        result = await service.generate_and_store(player, activity, client=FakePostWorkoutClient())
+
+        assert result.analysis.planned_workout_id == planned_id
+        refreshed = await session.scalar(
+            select(PlannedWorkout).where(PlannedWorkout.id == planned_id)
+        )
+        assert refreshed is not None
+        assert refreshed.status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_generate_and_store_leaves_unplanned_ride_unlinked(
+    db_conn: AsyncConnection,
+) -> None:
+    """An unplanned ride (no bike session that day) links to no workout and flips
+    nothing — it keeps the standalone After-your-ride section on Home."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Unplanned Ride Test",
+                pin_hash="x" * 60,
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+
+        # Only a strength session is planned that day — not a bike, so the ride
+        # matches nothing.
+        session.add(
+            PlannedWorkout(
+                user_id=user_id,
+                version=1,
+                workout_date=date(2026, 1, 1),
+                title="Strength",
+                workout_type="strength_maintenance",
+                status="planned",
+                is_active=True,
+            )
+        )
+        activity = Activity(
+            user_id=user_id,
+            garmin_activity_id=444555,
+            activity_name="Spontaneous ride",
+            activity_type="cycling",
+            start_utc=datetime(2026, 1, 1, 11, 0),
+            duration_sec=1800,
+        )
+        session.add(activity)
+        await session.commit()
+
+        player = await session.get(Profile, user_id)
+        assert player is not None
+        service = PostWorkoutAnalysisService(session)
+        result = await service.generate_and_store(player, activity, client=FakePostWorkoutClient())
+        assert result.analysis.planned_workout_id is None
+
+
+@pytest.mark.asyncio
 async def test_post_ride_checkin_is_folded_into_next_post_workout_analysis(
     db_conn: AsyncConnection,
 ) -> None:

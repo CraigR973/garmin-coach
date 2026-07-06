@@ -4,7 +4,11 @@ import { actionSection, nextAction } from './homeActions';
 
 type DataOverrides = Partial<{
   plannedWorkouts: Array<{ workoutType: string; delivery?: { changed?: boolean } | null }>;
-  postWorkoutAnalyses: Array<{ postRideCheckIn?: unknown; activityName?: string | null }>;
+  postWorkoutAnalyses: Array<{
+    postRideCheckIn?: unknown;
+    activityName?: string | null;
+    plannedWorkoutId?: string | null;
+  }>;
   manualEntry: unknown;
   sleepProjection: { tone: string } | null;
   morningAnalysis: unknown;
@@ -54,6 +58,17 @@ describe('nextAction priority ladder', () => {
     expect(action.tone).toBe('warning');
   });
 
+  it('2b. points a completed *planned* ride check-in at the Today card (Batch 60)', () => {
+    // A matched ride folds into its Today-card row, so its check-in lives there —
+    // not in the standalone After-your-ride section (kept for unplanned rides).
+    const action = nextAction(
+      makeData({ postWorkoutAnalyses: [{ postRideCheckIn: null, plannedWorkoutId: 'pw-1' }] }),
+      { isEvening: false },
+    );
+    expect(action.key).toBe('log-ride');
+    expect(action.sectionKey).toBe('today');
+  });
+
   it('names the specific ride in the log-ride label, not a generic "check in"', () => {
     const action = nextAction(
       makeData({ postWorkoutAnalyses: [{ postRideCheckIn: null, activityName: 'Tempo ride' }] }),
@@ -79,12 +94,11 @@ describe('nextAction priority ladder', () => {
     expect(action.key).toBe('all-set');
   });
 
-  it('3. prompts the morning check-in when none is logged, linking to /check-in', () => {
+  it('3. treats the morning check-in as optional — a missing one never surfaces (Batch 60)', () => {
+    // The check-in enriches the read but is offered on /sleep + the Today footer,
+    // never nagged, so an unlogged check-in with nothing else pending is all-clear.
     const action = nextAction(makeData({ manualEntry: null }), { isEvening: false });
-    expect(action.key).toBe('check-in');
-    expect(action.label).toBe('Morning check-in');
-    expect(action.to).toBe('/check-in');
-    expect(action.sectionKey).toBeUndefined();
+    expect(action.key).toBe('all-set');
   });
 
   it('4. protects tonight only in the evening when the projection says protect', () => {
@@ -134,16 +148,17 @@ describe('nextAction precedence (need before time-of-day)', () => {
     expect(action.key).toBe('log-ride');
   });
 
-  it('the daily check-in outranks protect-sleep', () => {
+  it('an optional-missing check-in yields to protect-sleep in the evening (Batch 60)', () => {
+    // With the check-in no longer a rung, protect-sleep is the evening concern.
     const action = nextAction(
       makeData({ manualEntry: null, sleepProjection: { tone: 'protect' } }),
       { isEvening: true },
     );
-    expect(action.key).toBe('check-in');
+    expect(action.key).toBe('protect-sleep');
   });
 });
 
-describe('nextAction morning order (sleep → check-in → eased ride)', () => {
+describe('nextAction morning order (sleep → eased ride; check-in optional)', () => {
   const morning = { isEvening: false, isMorning: true } as const;
   const synced = { morningAnalysis: { verdict: 'Green' } };
 
@@ -159,18 +174,19 @@ describe('nextAction morning order (sleep → check-in → eased ride)', () => {
     expect(action.sectionKey).toBeUndefined();
   });
 
-  it('does not prompt a sleep review before metrics sync (falls to the check-in)', () => {
-    // morningAnalysis null = "verdict pending" — nothing to review yet.
+  it('does not prompt a sleep review before metrics sync (nothing to review yet)', () => {
+    // morningAnalysis null = "verdict pending" — nothing to review, and the
+    // check-in is optional, so with nothing pending the morning is all-clear.
     const action = nextAction(makeData({ manualEntry: null }), { ...morning, hasReviewedSleep: false });
-    expect(action.key).toBe('check-in');
+    expect(action.key).toBe('all-set');
   });
 
-  it('steps down to the check-in once sleep has been opened today', () => {
+  it('clears the morning once sleep has been opened — the check-in is optional (Batch 60)', () => {
     const action = nextAction(makeData({ ...synced, manualEntry: null }), {
       ...morning,
       hasReviewedSleep: true,
     });
-    expect(action.key).toBe('check-in');
+    expect(action.key).toBe('all-set');
   });
 
   it('review-sleep outranks a pending eased ride in the morning', () => {
@@ -181,18 +197,10 @@ describe('nextAction morning order (sleep → check-in → eased ride)', () => {
     expect(action.key).toBe('review-sleep');
   });
 
-  it('the optional check-in still outranks the eased ride in the morning', () => {
-    // The Zwift-affecting ride approval is deliberately below the check-in in
-    // the morning (Craig's call) — recovery is read before the ride is set.
+  it('surfaces the eased ride right after sleep review — no check-in gate (Batch 60)', () => {
+    // With the check-in optional, a pending eased ride is the next action once
+    // last night has been read (it was gated behind the check-in — DECISIONS #127).
     const action = nextAction(makeData({ ...synced, plannedWorkouts: [bikeChanged], manualEntry: null }), {
-      ...morning,
-      hasReviewedSleep: true,
-    });
-    expect(action.key).toBe('check-in');
-  });
-
-  it('reviews the eased ride only after sleep and check-in are done', () => {
-    const action = nextAction(makeData({ ...synced, plannedWorkouts: [bikeChanged] }), {
       ...morning,
       hasReviewedSleep: true,
     });
