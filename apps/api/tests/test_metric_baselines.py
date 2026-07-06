@@ -22,6 +22,7 @@ from src.models.profile import Profile, UserRole
 from src.services.metric_baselines import (
     DB_HISTORY_SOURCE,
     MetricBaselineBackfillService,
+    sample_values,
 )
 from src.services.morning_analysis import _metrics_vs_baselines
 from src.services.sleep_history import (
@@ -97,6 +98,23 @@ def test_compute_metric_baselines_skips_all_none_metric() -> None:
     keys = {b["metric_key"] for b in compute_metric_baselines(samples, source=DB_HISTORY_SOURCE)}
     assert "sleep_score" in keys
     assert "body_battery_charge" not in keys
+
+
+def test_sample_values_recomputes_age_adjusted_sleep_when_profile_context_exists() -> None:
+    sleep = Sleep(
+        user_id=uuid.uuid4(),
+        calendar_date=date(2026, 6, 18),
+        score=79,
+        age_adjusted_score=99,  # stale stored value; profile context should recompute it.
+        factors_json={"remPercentage": {"qualifierKey": "FAIR"}},
+        rem_sleep_sec=19 * 60,
+        deep_sleep_sec=16 * 60,
+        light_sleep_sec=60 * 60,
+        awake_sleep_sec=5 * 60,
+    )
+
+    assert sample_values(sleep, None, age=57, sex="male")["age_adjusted_sleep_score"] == 83
+    assert sample_values(sleep, None)["age_adjusted_sleep_score"] == 99
 
 
 # --- morning surfacing invariant ------------------------------------------

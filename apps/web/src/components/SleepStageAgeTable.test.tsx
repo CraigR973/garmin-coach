@@ -9,21 +9,27 @@ const rows = [
     value: 7.2,
     unit: ' h',
     ageAverage: 7.1,
+    bandLow: 6.5,
+    bandHigh: 8,
     ageBand: '50–59',
     betterDirection: 'higher' as const,
-    tone: 'neutral' as const,
-    descriptor: 'About average',
+    tone: 'good' as const,
+    descriptor: 'Healthy for your age',
   },
   {
     metricKey: 'rem_sleep_pct',
     label: 'REM',
     value: 18.2,
     unit: '%',
-    ageAverage: 21,
+    ageAverage: 19,
+    bandLow: 15,
+    bandHigh: 23,
+    garminTargetLow: 21,
+    garminTargetHigh: 31,
     ageBand: '50–59',
     betterDirection: 'higher' as const,
-    tone: 'warn' as const,
-    descriptor: 'Below average',
+    tone: 'good' as const,
+    descriptor: 'Healthy for your age',
   },
 ];
 
@@ -32,22 +38,30 @@ function rowFor(label: string): HTMLElement {
 }
 
 describe('SleepStageAgeTable', () => {
-  it('renders the stage, last-night, and typical columns', () => {
+  it('renders the stage, last-night, and healthy-range columns', () => {
     render(<SleepStageAgeTable rows={rows} ageBand="50–59" />);
 
     expect(screen.getByText('Stage')).toBeTruthy();
     expect(screen.getByText('Last night')).toBeTruthy();
-    expect(screen.getByText('Typical')).toBeTruthy();
+    expect(screen.getByText('Healthy range (50–59)')).toBeTruthy();
+    expect(screen.queryByText('Typical')).toBeNull();
   });
 
-  it('shows last-night values alongside the age-band average and descriptor', () => {
+  it('shows last-night values alongside the age-band range and descriptor', () => {
     render(<SleepStageAgeTable rows={rows} ageBand="50–59" />);
 
     const rem = rowFor('REM');
     expect(within(rem).getByText('18.2%')).toBeTruthy();
-    expect(within(rem).getByText('21%')).toBeTruthy();
-    expect(within(rem).getByText('Below average')).toBeTruthy();
+    expect(within(rem).getByText('15–23%')).toBeTruthy();
+    expect(within(rem).getByText('Healthy for your age')).toBeTruthy();
     expect(screen.getByText(/50–59 age band/i)).toBeTruthy();
+  });
+
+  it('keeps Garmin young-adult targets as a quiet contrast below the table', () => {
+    render(<SleepStageAgeTable rows={rows} ageBand="50–59" />);
+
+    expect(screen.getByText('Garmin target contrast')).toBeTruthy();
+    expect(screen.getByText(/REM: healthy 50–59 15–23%; Garmin target 21–31%/)).toBeTruthy();
   });
 
   it('renders a fallback when sleep-stage rows are not available', () => {

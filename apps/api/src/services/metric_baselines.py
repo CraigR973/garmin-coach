@@ -27,9 +27,10 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.coaching import DailyMetric, MetricBaseline, Sleep
+from src.models.coaching import DailyMetric, KnowledgeBase, MetricBaseline, Sleep
 from src.models.profile import Profile
 from src.services.sleep_history import BaselineSample, compute_metric_baselines
+from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
 
 DB_HISTORY_SOURCE = "db_history"
 DEFAULT_WINDOW_DAYS = 84
@@ -66,7 +67,11 @@ class MetricBaselineBackfillResult:
 
 
 def sample_values(
-    sleep: Sleep | None, metric: DailyMetric | None
+    sleep: Sleep | None,
+    metric: DailyMetric | None,
+    *,
+    age: int | None = None,
+    sex: str | None = None,
 ) -> Mapping[str, float | int | None]:
     """One day's baseline inputs keyed by ``metric_key``.
 
@@ -79,9 +84,10 @@ def sample_values(
         resting_heart_rate = metric.resting_heart_rate_bpm
     elif sleep is not None:
         resting_heart_rate = sleep.resting_heart_rate_bpm
+    age_adjusted_score = age_adjusted_sleep_score_for_row(sleep, age=age, sex=sex)
     return {
         "sleep_score": sleep.score if sleep else None,
-        "age_adjusted_sleep_score": sleep.age_adjusted_score if sleep else None,
+        "age_adjusted_sleep_score": age_adjusted_score,
         "readiness_score": metric.readiness_score if metric else None,
         "resting_heart_rate_bpm": resting_heart_rate,
         "body_battery_charge": metric.body_battery_charged if metric else None,
@@ -174,6 +180,7 @@ class MetricBaselineBackfillService:
         all_dates = sorted(set(sleep_by_date) | set(metric_by_date))
         if not all_dates:
             return []
+        age, sex = await self._profile_age_sex(user_id)
 
         window_end = as_of or all_dates[-1]
         window_start: date | None = None
@@ -183,11 +190,31 @@ class MetricBaselineBackfillService:
         return [
             BaselineSample(
                 calendar_date=day,
-                values=sample_values(sleep_by_date.get(day), metric_by_date.get(day)),
+                values=sample_values(
+                    sleep_by_date.get(day),
+                    metric_by_date.get(day),
+                    age=age,
+                    sex=sex,
+                ),
             )
             for day in all_dates
             if day <= window_end and (window_start is None or day >= window_start)
         ]
+
+    async def _profile_age_sex(self, user_id: uuid.UUID) -> tuple[int | None, str | None]:
+        row = await self.session.scalar(
+            select(KnowledgeBase).where(
+                KnowledgeBase.user_id == user_id,
+                KnowledgeBase.section == "profile",
+                KnowledgeBase.is_active.is_(True),
+            )
+        )
+        content = row.content if row and isinstance(row.content, dict) else {}
+        raw_age = content.get("age")
+        raw_sex = content.get("sex")
+        age = int(raw_age) if isinstance(raw_age, int | float) else None
+        sex = raw_sex if isinstance(raw_sex, str) else None
+        return age, sex
 
     async def _load_existing(self, user_id: uuid.UUID) -> dict[str, MetricBaseline]:
         result = await self.session.execute(

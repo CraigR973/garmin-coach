@@ -425,7 +425,12 @@ def parse_sleep_fields(payload: Any) -> JsonDict:
         "sleep_start_utc": _parse_garmin_datetime(dto.get("sleepStartTimestampGMT")),
         "sleep_end_utc": _parse_garmin_datetime(dto.get("sleepEndTimestampGMT")),
         "score": score,
-        "age_adjusted_score": min(score + 4, 100) if score is not None else None,
+        # age_adjusted_score is no longer computed here (was a flat +4). It is a
+        # real age-band recompute (services/sleep_scoring, Batch 61 #135) that
+        # needs profile age/sex — which live in the coaching knowledge base, not
+        # the sync path — so the column is written by the morning analysis
+        # write-back instead. Left unset here (defaults NULL for a brand-new
+        # row; an existing row keeps its value until the next analysis runs).
         "qualifier": _to_str(overall.get("qualifierKey")),
         "duration_sec": duration,
         "deep_sleep_sec": deep,

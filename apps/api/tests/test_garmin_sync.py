@@ -77,7 +77,10 @@ def test_parse_sleep_fields_from_representative_garmin_fixture() -> None:
     assert fields["sleep_start_utc"] == datetime(2026, 6, 17, 23, 4, 24)
     assert fields["sleep_end_utc"] == datetime(2026, 6, 18, 5, 48, 24)
     assert fields["score"] == 79
-    assert fields["age_adjusted_score"] == 83
+    # age_adjusted_score is no longer baked at sync (was a flat +4). It is a real
+    # age-band recompute needing profile age/sex, done at analysis time and
+    # written back to the row there (Batch 61 #135), so sync omits it entirely.
+    assert "age_adjusted_score" not in fields
     assert fields["qualifier"] == "FAIR"
     assert fields["duration_sec"] == 24240
     assert fields["rem_sleep_sec"] == 3780

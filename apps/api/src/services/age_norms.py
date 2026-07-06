@@ -1,8 +1,8 @@
-"""Compare a user's metrics against general-population averages for their age.
+"""Compare a user's metrics against general-population references for their age.
 
 This is the deterministic core behind the home screen's "How you compare for
 your age" surface — Mark explicitly asked to see where he sits against the
-average for his age, on top of the "vs your own baseline" read
+norm for his age, on top of the "vs your own baseline" read
 (``services/metric_baselines.py``). It is intentionally a pure, side-effect-free
 module: static reference tables in, a structured comparison out, so it is cheap
 to unit-test and never touches the DB or any external service.
@@ -13,11 +13,20 @@ Two complementary signals are produced:
   synced inside ``daily_metrics.raw_payload``). This is the single most credible
   "vs your age" number because Garmin derives it against its own population
   model, so it is surfaced as the headline.
-* **Per-metric vs the age-band average** — VO2max, resting heart rate and
-  overnight HRV compared against published general-population averages for the
-  user's sex + decade age band. Each row is classified *direction-aware* (a low
-  resting HR is good; a high VO2max is good) into an outcome tier so the UI can
-  colour it without re-deriving the meaning.
+* **Per-metric vs the age reference** — VO2max, resting heart rate and overnight
+  HRV compared against published general-population *averages* for the user's
+  sex + decade age band; sleep-stage mix (REM/Deep/Light/Awake %, duration)
+  compared against a **healthy age band** (Batch 61) rather than a single point.
+
+Batch 61 replaces the single-average sleep comparison (which flagged anything
+below the midpoint as "below average", so genuinely-normal-for-57 sleep read as
+poor) with a ``(low, high)`` healthy band per sex × decade. A value anywhere
+inside the band is neutral/good; only a value meaningfully outside it (past a
+small tolerance) warns. Sleep-stage bands are anchored to Ohayon et al. 2004
+(*Sleep* 27(7):1255) — the canonical meta-analysis of sleep architecture across
+the lifespan — with REM% declining ~0.6%/decade and SWS (deep) declining most,
+light + awake rising. **Restless** is Garmin-proprietary with no defensible
+population band, so it is shown for context only and never classified.
 
 The reference numbers are deliberately coarse, population-level guides — not
 clinical values — and the UI frames them as such. Sources are cited per table.
@@ -52,18 +61,26 @@ def _band_label(age: int) -> str:
 
 @dataclass(frozen=True)
 class _Norm:
-    """One metric's population average, keyed later by sex + band label."""
+    """One metric's reference, keyed later by sex + band label.
+
+    Fitness metrics carry a single population ``averages`` point, classified
+    direction-aware. Sleep-stage metrics instead resolve a ``(low, high)``
+    healthy band from :data:`_SLEEP_BANDS` (Batch 61). ``descriptive_only``
+    metrics (Restless) are shown for context but never classified against an
+    age norm — they have no defensible population band.
+    """
 
     label: str
     unit: str
     better: Direction
-    # average value per band label, per sex.
-    averages: dict[Sex, dict[str, float]]
+    # Single population average per band label, per sex (fitness + descriptive).
+    averages: dict[Sex, dict[str, float]] | None = None
+    descriptive_only: bool = False
 
 
 # --- Reference tables -------------------------------------------------------
-# These are general-population *averages* (≈50th percentile), not targets or
-# clinical thresholds. They exist to answer "how do I compare to the average
+# Fitness metrics are general-population *averages* (≈50th percentile), not
+# targets or clinical thresholds. They answer "how do I compare to the average
 # person my age", which is a deliberately blunt bar.
 #
 # Resting HR: adult resting heart rate is roughly flat across adult age bands;
@@ -102,65 +119,14 @@ _NORMS: dict[str, _Norm] = {
             "female": {"20–29": 55, "30–39": 45, "40–49": 36, "50–59": 28, "60–69": 24, "70+": 21},
         },
     ),
-    "sleep_duration_hours": _Norm(
-        label="Duration",
-        unit=" h",
-        better="higher",
-        averages={
-            "male": {
-                "20–29": 7.9,
-                "30–39": 7.7,
-                "40–49": 7.4,
-                "50–59": 7.1,
-                "60–69": 6.8,
-                "70+": 6.5,
-            },
-            "female": {
-                "20–29": 7.9,
-                "30–39": 7.7,
-                "40–49": 7.4,
-                "50–59": 7.1,
-                "60–69": 6.8,
-                "70+": 6.5,
-            },
-        },
-    ),
-    "deep_sleep_pct": _Norm(
-        label="Deep",
-        unit="%",
-        better="higher",
-        averages={
-            "male": {"20–29": 20, "30–39": 19, "40–49": 18, "50–59": 17, "60–69": 16, "70+": 15},
-            "female": {"20–29": 20, "30–39": 19, "40–49": 18, "50–59": 17, "60–69": 16, "70+": 15},
-        },
-    ),
-    "light_sleep_pct": _Norm(
-        label="Light",
-        unit="%",
-        better="lower",
-        averages={
-            "male": {"20–29": 50, "30–39": 51, "40–49": 52, "50–59": 53, "60–69": 54, "70+": 55},
-            "female": {"20–29": 50, "30–39": 51, "40–49": 52, "50–59": 53, "60–69": 54, "70+": 55},
-        },
-    ),
-    "rem_sleep_pct": _Norm(
-        label="REM",
-        unit="%",
-        better="higher",
-        averages={
-            "male": {"20–29": 24, "30–39": 23, "40–49": 22, "50–59": 21, "60–69": 20, "70+": 19},
-            "female": {"20–29": 24, "30–39": 23, "40–49": 22, "50–59": 21, "60–69": 20, "70+": 19},
-        },
-    ),
-    "awake_sleep_pct": _Norm(
-        label="Awake",
-        unit="%",
-        better="lower",
-        averages={
-            "male": {"20–29": 6, "30–39": 7, "40–49": 8, "50–59": 9, "60–69": 10, "70+": 11},
-            "female": {"20–29": 6, "30–39": 7, "40–49": 8, "50–59": 9, "60–69": 10, "70+": 11},
-        },
-    ),
+    # Sleep-stage metrics: band-classified (see _SLEEP_BANDS), no single average.
+    "sleep_duration_hours": _Norm(label="Duration", unit=" h", better="higher"),
+    "deep_sleep_pct": _Norm(label="Deep", unit="%", better="higher"),
+    "light_sleep_pct": _Norm(label="Light", unit="%", better="lower"),
+    "rem_sleep_pct": _Norm(label="REM", unit="%", better="higher"),
+    "awake_sleep_pct": _Norm(label="Awake", unit="%", better="lower"),
+    # Restless: Garmin-proprietary count with no defensible population band —
+    # shown for context only (never warns). Kept for the personal-baseline read.
     "restless_moments_count": _Norm(
         label="Restless",
         unit="",
@@ -169,7 +135,94 @@ _NORMS: dict[str, _Norm] = {
             "male": {"20–29": 10, "30–39": 11, "40–49": 12, "50–59": 13, "60–69": 14, "70+": 15},
             "female": {"20–29": 10, "30–39": 11, "40–49": 12, "50–59": 13, "60–69": 14, "70+": 15},
         },
+        descriptive_only=True,
     ),
+}
+
+# --- Healthy sleep-stage bands (Batch 61) -----------------------------------
+# ``(low, high)`` healthy range per sex × decade, expressed as a percentage of
+# measured sleep (Deep/Light/REM/Awake) or hours (Duration). Male == female for
+# the stage-mix rows: sleep architecture percentages are broadly sex-similar and
+# the literature does not support a defensible sex split at this resolution, so
+# we do not invent one.
+#
+# Anchored to the male 50–59 row (locked at /batch-start): REM 15–23%, Deep
+# 12–20%, Light 48–62%, Awake ≤12%, Duration 6.5–8.0 h. Other decades step
+# directionally from Ohayon et al. 2004 (REM ~-0.6%/decade; deep/SWS the steepest
+# decline; light + awake rise with age; total sleep time shortens).
+_MALE_FEMALE = ("male", "female")
+
+
+def _both(bands: dict[str, tuple[float, float]]) -> dict[Sex, dict[str, tuple[float, float]]]:
+    return {sex: dict(bands) for sex in _MALE_FEMALE}  # type: ignore[misc]
+
+
+_SLEEP_BANDS: dict[str, dict[Sex, dict[str, tuple[float, float]]]] = {
+    "rem_sleep_pct": _both(
+        {
+            "20–29": (18, 26),
+            "30–39": (17, 25),
+            "40–49": (16, 24),
+            "50–59": (15, 23),
+            "60–69": (14, 22),
+            "70+": (13, 21),
+        }
+    ),
+    "deep_sleep_pct": _both(
+        {
+            "20–29": (15, 23),
+            "30–39": (14, 22),
+            "40–49": (13, 21),
+            "50–59": (12, 20),
+            "60–69": (11, 19),
+            "70+": (10, 18),
+        }
+    ),
+    "light_sleep_pct": _both(
+        {
+            "20–29": (45, 59),
+            "30–39": (46, 60),
+            "40–49": (47, 61),
+            "50–59": (48, 62),
+            "60–69": (49, 63),
+            "70+": (50, 64),
+        }
+    ),
+    "awake_sleep_pct": _both(
+        {
+            "20–29": (0, 9),
+            "30–39": (0, 10),
+            "40–49": (0, 11),
+            "50–59": (0, 12),
+            "60–69": (0, 13),
+            "70+": (0, 14),
+        }
+    ),
+    "sleep_duration_hours": _both(
+        {
+            "20–29": (7.0, 8.5),
+            "30–39": (6.9, 8.4),
+            "40–49": (6.7, 8.2),
+            "50–59": (6.5, 8.0),
+            "60–69": (6.3, 7.8),
+            "70+": (6.0, 7.5),
+        }
+    ),
+}
+
+# Fraction of a band's width tolerated just outside it before a value warns, so
+# an edge value is neutral rather than a fail.
+_BAND_TOLERANCE_FRACTION = 0.15
+
+# Garmin's own young-adult "optimal" stage-% ranges (from ``sleepScores`` —
+# remPercentage/deepPercentage/lightPercentage ``optimalStart``/``optimalEnd``).
+# These are the targets Garmin scores against regardless of age, so surfacing
+# them next to the age band makes the divergence explicit on the Sleep page
+# (Batch 61 opt-in contrast). Awake/duration have no clean young-adult % target.
+_GARMIN_YOUNG_TARGET: dict[str, tuple[float, float]] = {
+    "rem_sleep_pct": (21, 31),
+    "deep_sleep_pct": (16, 33),
+    "light_sleep_pct": (30, 64),
 }
 
 
@@ -184,6 +237,13 @@ class AgeComparisonRow:
     better_direction: Direction
     tone: Tone
     descriptor: str
+    # Healthy band (Batch 61) for sleep-stage rows; ``None`` for average rows.
+    band_low: float | None = None
+    band_high: float | None = None
+    # Garmin's young-adult target range, only for stage-% rows where Garmin
+    # exposes a defensible optimalStart/optimalEnd pair.
+    garmin_target_low: float | None = None
+    garmin_target_high: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -196,6 +256,10 @@ class AgeComparisonRow:
             "betterDirection": self.better_direction,
             "tone": self.tone,
             "descriptor": self.descriptor,
+            "bandLow": self.band_low,
+            "bandHigh": self.band_high,
+            "garminTargetLow": self.garmin_target_low,
+            "garminTargetHigh": self.garmin_target_high,
         }
 
 
@@ -222,7 +286,7 @@ class AgeComparison:
 
 
 def _classify(value: float, average: float, better: Direction) -> tuple[Tone, str]:
-    """Direction-aware outcome tier of ``value`` against the population average.
+    """Direction-aware outcome tier of ``value`` against a population average.
 
     ``gap`` is signed so positive always means "better than average" regardless
     of whether higher or lower is the desirable direction. Descriptors are
@@ -244,6 +308,32 @@ def _classify(value: float, average: float, better: Direction) -> tuple[Tone, st
     return "warn", "Well below average"
 
 
+def _classify_band(value: float, low: float, high: float, better: Direction) -> tuple[Tone, str]:
+    """Band-aware outcome tier of ``value`` against a healthy age range.
+
+    Anywhere inside the band is good ("healthy for your age"). Beyond the band
+    on the *desirable* side (more REM/deep/sleep, less light/awake) is still
+    good. Beyond it on the concerning side is neutral within a small tolerance,
+    and only warns past that tolerance — so an edge value never reads as a fail.
+    """
+    if low <= value <= high:
+        return "good", "Healthy for your age"
+    tolerance = _BAND_TOLERANCE_FRACTION * (high - low)
+    if better == "higher":
+        # Concern is being below the band; above it is genuinely good.
+        if value > high:
+            return "good", "Above the healthy range for your age"
+        if value >= low - tolerance:
+            return "neutral", "Just below the healthy range for your age"
+        return "warn", "Below the healthy range for your age"
+    # better == "lower": concern is being above the band; below it is fine.
+    if value < low:
+        return "good", "Below the typical range for your age"
+    if value <= high + tolerance:
+        return "neutral", "Just above the healthy range for your age"
+    return "warn", "Above the healthy range for your age"
+
+
 def _round(value: float) -> float:
     return round(value, 1)
 
@@ -252,6 +342,41 @@ def _sleep_stage_pct(stage_sec: int | None, total_sec: int | None) -> float | No
     if stage_sec is None or total_sec is None or total_sec <= 0:
         return None
     return (stage_sec / total_sec) * 100.0
+
+
+def _sleep_band(metric_key: str, band_label: str, resolved_sex: Sex) -> tuple[float, float] | None:
+    per_sex = _SLEEP_BANDS.get(metric_key)
+    if per_sex is None:
+        return None
+    return per_sex[resolved_sex].get(band_label)
+
+
+def sleep_stage_band(
+    metric_key: str, age: int | None, sex: Sex | str | None
+) -> tuple[float, float] | None:
+    """Public band lookup so the age-adjusted score (``services/sleep_scoring``)
+    re-qualifies a stage against the very same healthy range the UI shows.
+    """
+    if age is None:
+        return None
+    resolved_sex: Sex = "female" if str(sex).lower() == "female" else "male"
+    return _sleep_band(metric_key, _band_label(age), resolved_sex)
+
+
+def classify_sleep_stage(
+    metric_key: str, value: float, age: int | None, sex: Sex | str | None
+) -> Tone | None:
+    """Band tone for a sleep-stage ``value`` — the age-band judgement the
+    age-adjusted score credits against. ``None`` when no band applies (unknown
+    age or a non-banded metric). Shares :func:`_classify_band`'s tolerance so the
+    score and the UI never disagree about what is "healthy for your age".
+    """
+    band = sleep_stage_band(metric_key, age, sex)
+    norm = _NORMS.get(metric_key)
+    if band is None or norm is None:
+        return None
+    tone, _ = _classify_band(value, band[0], band[1], norm.better)
+    return tone
 
 
 def _build_rows(
@@ -265,15 +390,58 @@ def _build_rows(
         if value is None:
             continue
         norm = _NORMS[metric_key]
-        average = norm.averages[resolved_sex].get(band)
+        numeric = float(value)
+
+        stage_band = _sleep_band(metric_key, band, resolved_sex)
+        if stage_band is not None:
+            low, high = stage_band
+            tone, descriptor = _classify_band(numeric, low, high, norm.better)
+            garmin_target = _GARMIN_YOUNG_TARGET.get(metric_key)
+            rows.append(
+                AgeComparisonRow(
+                    metric_key=metric_key,
+                    label=norm.label,
+                    value=_round(numeric),
+                    unit=norm.unit,
+                    age_average=_round((low + high) / 2),
+                    age_band=band,
+                    better_direction=norm.better,
+                    tone=tone,
+                    descriptor=descriptor,
+                    band_low=_round(low),
+                    band_high=_round(high),
+                    garmin_target_low=_round(garmin_target[0]) if garmin_target else None,
+                    garmin_target_high=_round(garmin_target[1]) if garmin_target else None,
+                )
+            )
+            continue
+
+        average = norm.averages[resolved_sex].get(band) if norm.averages else None
+
+        if norm.descriptive_only:
+            rows.append(
+                AgeComparisonRow(
+                    metric_key=metric_key,
+                    label=norm.label,
+                    value=_round(numeric),
+                    unit=norm.unit,
+                    age_average=_round(average) if average is not None else _round(numeric),
+                    age_band=band,
+                    better_direction=norm.better,
+                    tone="neutral",
+                    descriptor="Shown for context — no age range",
+                )
+            )
+            continue
+
         if average is None:
             continue
-        tone, descriptor = _classify(float(value), average, norm.better)
+        tone, descriptor = _classify(numeric, average, norm.better)
         rows.append(
             AgeComparisonRow(
                 metric_key=metric_key,
                 label=norm.label,
-                value=_round(float(value)),
+                value=_round(numeric),
                 unit=norm.unit,
                 age_average=_round(average),
                 age_band=band,
@@ -300,7 +468,7 @@ def build_age_comparison(
     awake_sleep_sec: int | None = None,
     restless_moments_count: int | None = None,
 ) -> AgeComparison:
-    """Compare the supplied metrics against population averages for ``age``.
+    """Compare the supplied metrics against age references for ``age``.
 
     Everything is optional and degrades gracefully: a missing ``age`` yields an
     empty comparison; a missing metric simply drops that row; an unknown ``sex``

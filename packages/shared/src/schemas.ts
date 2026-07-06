@@ -429,6 +429,14 @@ export const ageComparisonRowSchema = z.object({
   betterDirection: z.enum(['higher', 'lower']),
   tone: z.enum(['good', 'warn', 'neutral']),
   descriptor: z.string().min(1),
+  // Healthy age band for sleep-stage rows (Batch 61); null for average rows.
+  // Defaulted so pre-Batch-61 cached payloads still parse.
+  bandLow: z.number().nullable().default(null),
+  bandHigh: z.number().nullable().default(null),
+  // Garmin young-adult target for stage-% rows, surfaced only as a Sleep-page
+  // contrast; null for rows where Garmin has no comparable target.
+  garminTargetLow: z.number().nullable().default(null),
+  garminTargetHigh: z.number().nullable().default(null),
 });
 
 export const ageComparisonSchema = z.object({

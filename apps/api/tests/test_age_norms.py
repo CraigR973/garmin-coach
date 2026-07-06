@@ -56,7 +56,18 @@ def test_mark_like_profile_is_much_better_than_average() -> None:
         "restless_moments_count",
     }
     assert sleep_rows["sleep_duration_hours"].tone == "good"  # type: ignore[attr-defined]
-    assert sleep_rows["restless_moments_count"].tone == "good"  # type: ignore[attr-defined]
+    # REM 18.2% sits inside the 50–59 healthy band (15–23%), so it reads good,
+    # carrying the band it was judged against — this is Mark's whole complaint.
+    rem = sleep_rows["rem_sleep_pct"]
+    assert rem.tone == "good"  # type: ignore[attr-defined]
+    assert (rem.band_low, rem.band_high) == (15, 23)  # type: ignore[attr-defined]
+    assert (rem.garmin_target_low, rem.garmin_target_high) == (21, 31)  # type: ignore[attr-defined]
+    assert rem.descriptor == "Healthy for your age"  # type: ignore[attr-defined]
+    # Restless has no defensible population band: shown for context, never warns.
+    restless = sleep_rows["restless_moments_count"]
+    assert restless.tone == "neutral"  # type: ignore[attr-defined]
+    assert (restless.band_low, restless.band_high) == (None, None)  # type: ignore[attr-defined]
+    assert (restless.garmin_target_low, restless.garmin_target_high) == (None, None)  # type: ignore[attr-defined]
 
 
 def test_resting_hr_is_direction_aware_low_is_good() -> None:
@@ -221,4 +232,75 @@ def test_to_dict_shape_is_camel_cased_for_the_api() -> None:
         "betterDirection",
         "tone",
         "descriptor",
+        "bandLow",
+        "bandHigh",
+        "garminTargetLow",
+        "garminTargetHigh",
     }
+    # A fitness (average) row carries null band edges; a sleep-stage row carries
+    # the healthy range it was classified against.
+    assert (first["bandLow"], first["bandHigh"]) == (None, None)
+    assert (first["garminTargetLow"], first["garminTargetHigh"]) == (None, None)
+    rem = next(r for r in payload["sleepRows"] if r["metricKey"] == "rem_sleep_pct")
+    assert (rem["bandLow"], rem["bandHigh"]) == (15, 23)
+    assert (rem["garminTargetLow"], rem["garminTargetHigh"]) == (21, 31)
+
+
+def test_sleep_stage_in_band_is_good_outside_warns_with_edge_tolerance() -> None:
+    # REM band for a 57yo male is 15–23%. Build nights that place REM at a
+    # given percentage of measured sleep by supplying only REM + a filler stage.
+    def rem_tone(rem_pct: float) -> str:
+        total_sec = 100 * 60
+        rem_sec = int(round(rem_pct / 100 * total_sec))
+        comparison = build_age_comparison(
+            age=57,
+            sex="male",
+            vo2max=None,
+            resting_heart_rate_bpm=None,
+            hrv_overnight_ms=None,
+            fitness_age=None,
+            rem_sleep_sec=rem_sec,
+            light_sleep_sec=total_sec - rem_sec,
+        )
+        return _rows_by_key(type("SleepRows", (), {"rows": comparison.sleep_rows})())[
+            "rem_sleep_pct"
+        ].tone  # type: ignore[attr-defined]
+
+    assert rem_tone(19) == "good"  # squarely inside 15–23
+    assert rem_tone(15) == "good"  # on the low edge, still healthy
+    assert rem_tone(28) == "good"  # more REM than the band is desirable, not a fail
+    # Just below the band (tolerance = 0.15 * 8 = 1.2) is neutral, not a warn.
+    assert rem_tone(14) == "neutral"
+    # Meaningfully below the band warns.
+    assert rem_tone(10) == "warn"
+
+
+def test_light_above_band_warns_even_when_garmin_would_flag_it() -> None:
+    # Too *much* light sleep for age is a genuine miss (Mark's is high even for
+    # his age) — the band still warns, so the age lens is not a rubber stamp.
+    total = 100 * 60
+    comparison = build_age_comparison(
+        age=57,
+        sex="male",
+        vo2max=None,
+        resting_heart_rate_bpm=None,
+        hrv_overnight_ms=None,
+        fitness_age=None,
+        light_sleep_sec=int(0.70 * total),
+        deep_sleep_sec=int(0.30 * total),
+    )
+    rows = _rows_by_key(type("SleepRows", (), {"rows": comparison.sleep_rows})())
+    assert rows["light_sleep_pct"].tone == "warn"  # type: ignore[attr-defined]
+
+
+def test_public_band_helpers_match_the_table() -> None:
+    from src.services.age_norms import classify_sleep_stage, sleep_stage_band
+
+    assert sleep_stage_band("rem_sleep_pct", 57, "male") == (15, 23)
+    assert sleep_stage_band("rem_sleep_pct", 62, "male") == (14, 22)
+    # No band for a fitness metric or an unknown age.
+    assert sleep_stage_band("vo2max", 57, "male") is None
+    assert sleep_stage_band("rem_sleep_pct", None, "male") is None
+    # classify mirrors the band tone used by the age-adjusted score.
+    assert classify_sleep_stage("rem_sleep_pct", 19, 57, "male") == "good"
+    assert classify_sleep_stage("rem_sleep_pct", 10, 57, "male") == "warn"

@@ -48,8 +48,8 @@ class FakeMorningClient:
         self.last_prompt = user_prompt
         return ClaudeGenerationResult(
             output_markdown=(
-                "**Sleep summary:** age-adjusted sleep clears the green line.\n\n"
-                "- **Verdict:** Green, with readiness treated as load-driven."
+                "**Sleep summary:** age-adjusted sleep stays in the cautious band.\n\n"
+                "- **Verdict:** Amber, with sleep still below the green line."
             ),
             raw_response={
                 "id": "msg_test",
@@ -184,16 +184,16 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
 
         packet = result.analysis.context_packet
         assert packet["prompt"]["version"] == PROMPT_VERSION
-        assert packet["sleep"]["ageAdjustedScore"] == 75
-        assert packet["verdict"]["status"] == "Green"
-        assert packet["verdict"]["readinessInterpretation"] == "load_driven"
+        assert packet["sleep"]["ageAdjustedScore"] == 71
+        assert packet["verdict"]["status"] == "Amber"
+        assert packet["verdict"]["readinessInterpretation"] is None
         assert packet["verdict"]["hasVo2WorkoutToday"] is True
         assert packet["environment"]["thermalReview"]["flags"] == [
             "thermal_disruption_likely",
             "precool_target_missed",
             "wind_disruption_watch",
         ]
-        assert packet["metricsVsBaselines"][0]["deltaVsBaseline"] == 1.0
+        assert packet["metricsVsBaselines"][0]["deltaVsBaseline"] == -3.0
         assert any(
             rule["id"] == "no_lr_balance"
             for rule in packet["knowledgeBase"]["dataQualityGuardrails"]
@@ -204,7 +204,7 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
         assert stored is not None
         assert stored.prompt_version == PROMPT_VERSION
         assert stored.model_name == "claude-test"
-        assert stored.verdict == "Green"
+        assert stored.verdict == "Amber"
         assert stored.output_markdown.startswith("**Sleep summary:**")
 
         second = await service.generate_and_store(player, subject_date, client=fake_client)
@@ -449,6 +449,30 @@ def test_low_readiness_is_not_load_driven_without_recovery_evidence() -> None:
         daily_metric=daily_metric,
         sleep=None,
         age_adjusted_sleep_score=76,
+        manual_entries=[],
+        planned_workouts=[],
+    )
+
+    assert verdict["status"] == "Amber"
+    assert verdict["readinessInterpretation"] is None
+
+
+def test_poor_readiness_is_not_rescued_by_age_adjusted_sleep_score() -> None:
+    daily_metric = DailyMetric(
+        user_id=uuid.uuid4(),
+        calendar_date=date(2026, 6, 1),
+        readiness_score=16,
+        readiness_level="Poor",
+        hrv_weekly_avg_ms=50,
+        hrv_baseline_low_ms=43,
+        hrv_status="Balanced",
+        raw_payload={},
+    )
+
+    verdict = _morning_verdict(
+        daily_metric=daily_metric,
+        sleep=None,
+        age_adjusted_sleep_score=78,
         manual_entries=[],
         planned_workouts=[],
     )
