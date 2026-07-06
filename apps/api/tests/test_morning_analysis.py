@@ -49,7 +49,7 @@ class FakeMorningClient:
         return ClaudeGenerationResult(
             output_markdown=(
                 "**Sleep summary:** age-adjusted sleep stays in the cautious band.\n\n"
-                "- **Verdict:** Amber, with readiness treated as load-driven."
+                "- **Verdict:** Amber, with sleep still below the green line."
             ),
             raw_response={
                 "id": "msg_test",
@@ -186,7 +186,7 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
         assert packet["prompt"]["version"] == PROMPT_VERSION
         assert packet["sleep"]["ageAdjustedScore"] == 71
         assert packet["verdict"]["status"] == "Amber"
-        assert packet["verdict"]["readinessInterpretation"] == "load_driven"
+        assert packet["verdict"]["readinessInterpretation"] is None
         assert packet["verdict"]["hasVo2WorkoutToday"] is True
         assert packet["environment"]["thermalReview"]["flags"] == [
             "thermal_disruption_likely",
