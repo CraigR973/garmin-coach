@@ -39,8 +39,11 @@ from src.services.personal_baselines import (
     serialize_training_schedule,
 )
 from src.services.post_walk_analysis import active_recovery_walk_context
+from src.services.sleep_scoring import (
+    age_adjusted_sleep_score as compute_age_adjusted_sleep_score,
+)
 
-PROMPT_VERSION = "morning-analysis-v3-2026-07-05"
+PROMPT_VERSION = "morning-analysis-v4-2026-07-06"
 ANALYSIS_TYPE = "morning"
 ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
@@ -51,15 +54,19 @@ Return concise markdown with a sleep summary line, a metrics-vs-baselines read,
 a thermal/environment review, and a Green/Amber/Red workout verdict for today.
 Bold each bullet headline. Never mention left/right power balance. Never keep
 VO2 work on a Red verdict. When Garmin readiness is Low, call it load-driven only
-if the packet explicitly says recovery signals justify that interpretation.
+if the packet explicitly says recovery signals justify that interpretation; when
+readiness is Poor, keep the day cautious.
 Use acuteChronicLoadRatio (acute:chronic training load; ~0.8-1.3 is balanced,
 >1.5 flags a fast ramp / higher strain), chronicTrainingLoad, trainingLoadBalance,
 and intensityMinutes to inform the load read and verdict rationale alongside the
 recovery signals; treat them as supporting context, not overrides of the verdict.
 When the packet marks a soft-sleep recovery override, explain that HRV/RHR/readiness
-held a mediocre sleep night without pretending the sleep was good. Respect the
-trainingSchedule rest days before recommending extra recovery days. Use
-yesterdayLoad to explain any eased ride after a hard prior session."""
+held a mediocre sleep night without pretending the sleep was good. When a sleep
+stage in ageComparison.sleepRows sits inside its healthy age band, describe it as
+healthy for the user's age rather than repeating Garmin's young-adult flag (e.g.
+"REM 16% is within the healthy 50-59 range; Garmin only flags it against a younger
+target"). Respect the trainingSchedule rest days before recommending extra recovery
+days. Use yesterdayLoad to explain any eased ride after a hard prior session."""
 
 
 class MorningAnalysisError(RuntimeError):
@@ -180,6 +187,18 @@ class MorningAnalysisService:
         )
 
         age_adjusted_sleep_score = _age_adjusted_sleep_score(sleep, knowledge_base)
+        # Persist the recomputed score back to the row so the column-reading
+        # history surfaces (baselines, reviews, sleep history, chronic patterns)
+        # catch up forward-only as each day's analysis runs — no migration, no
+        # re-sync (Batch 61 #135). Mirrors the commit=False seeding above: the
+        # write only lands when the caller commits (a read-only assemble rolls
+        # it back), so this stays side-effect-free for pure packet reads.
+        if (
+            sleep is not None
+            and age_adjusted_sleep_score is not None
+            and sleep.age_adjusted_score != age_adjusted_sleep_score
+        ):
+            sleep.age_adjusted_score = age_adjusted_sleep_score
         metrics_table = _metrics_vs_baselines(
             daily_metric,
             sleep,
@@ -748,19 +767,29 @@ def _age_adjusted_sleep_score(
     sleep: Sleep | None,
     knowledge_base: Mapping[str, Any],
 ) -> int | None:
+    """Age-adjusted sleep score, recomputed live from stored inputs.
+
+    Batch 61 (#135): a real recompute against age bands via
+    ``services/sleep_scoring`` replaces the flat Garmin "+4". Computed here at
+    analysis time (never read back from the stored column) so the verdict always
+    reflects the current logic + profile, even before the column is rewritten.
+    """
     if sleep is None:
         return None
-    if sleep.age_adjusted_score is not None:
-        return sleep.age_adjusted_score
-    if sleep.score is None:
-        return None
-    age_adjustment = knowledge_base.get("age_adjustment", {})
-    delta = 4
-    if isinstance(age_adjustment, dict):
-        raw_delta = age_adjustment.get("sleepScoreDelta")
-        if isinstance(raw_delta, int | float):
-            delta = int(raw_delta)
-    return min(100, sleep.score + delta)
+    profile = knowledge_base.get("profile", {})
+    profile = profile if isinstance(profile, Mapping) else {}
+    age = profile.get("age")
+    sex = profile.get("sex")
+    return compute_age_adjusted_sleep_score(
+        garmin_score=sleep.score,
+        factors_json=sleep.factors_json,
+        deep_sleep_sec=sleep.deep_sleep_sec,
+        light_sleep_sec=sleep.light_sleep_sec,
+        rem_sleep_sec=sleep.rem_sleep_sec,
+        awake_sleep_sec=sleep.awake_sleep_sec,
+        age=int(age) if isinstance(age, int | float) else None,
+        sex=sex if isinstance(sex, str) else None,
+    )
 
 
 def _metrics_vs_baselines(
@@ -1062,7 +1091,9 @@ def _morning_verdict(
 
     reasons: list[str] = []
     readiness_interpretation = None
-    if readiness_level == "low":
+    if readiness_level == "poor":
+        reasons.append("Garmin readiness is Poor; keep the day cautious.")
+    elif readiness_level == "low":
         if recovery_signals_good and _load_signal_present(daily_metric):
             readiness_interpretation = "load_driven"
             reasons.append(
@@ -1079,6 +1110,8 @@ def _morning_verdict(
     elif hrv_low and hrv_status in {"unbalanced", "low"}:
         status = "Red"
         reasons.append("HRV is below baseline and marked low/unbalanced.")
+    elif readiness_level == "poor":
+        status = "Amber"
     elif readiness_level == "low" and readiness_interpretation != "load_driven":
         status = "Amber"
     elif soft_sleep_override:
@@ -1143,7 +1176,7 @@ def should_recommend_breathwork(signal: Mapping[str, Any]) -> bool:
     hrv_status = str(signal.get("hrvStatus") or "").lower()
     hrv_below_baseline = bool(signal.get("hrvBelowBaseline"))
     readiness_is_recovery_low = (
-        readiness_level == "low" and readiness_interpretation != "load_driven"
+        readiness_level in {"low", "poor"} and readiness_interpretation != "load_driven"
     )
     return (
         status == "red"

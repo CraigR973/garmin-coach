@@ -52,6 +52,10 @@ export interface AgeComparisonRow {
   betterDirection: 'higher' | 'lower';
   tone: Tone;
   descriptor: string;
+  bandLow?: number | null;
+  bandHigh?: number | null;
+  garminTargetLow?: number | null;
+  garminTargetHigh?: number | null;
 }
 
 export interface AgeComparison {

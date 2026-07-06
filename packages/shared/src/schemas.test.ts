@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   activityTimeSeriesSchema,
+  ageComparisonRowSchema,
   coachingStateEnvelopeSchema,
   dailyLoopEnvelopeSchema,
   dailyLoopPostWorkoutAnalysisSchema,
@@ -306,6 +307,45 @@ describe('v1 shared schemas', () => {
 
     expect(parsed.score).toBe(70);
     expect(parsed.ageAdjustedScore).toBe(74);
+  });
+
+  it('parses an age-comparison row with a healthy band and defaults it for legacy payloads (Batch 61)', () => {
+    const banded = ageComparisonRowSchema.parse({
+      metricKey: 'rem_sleep_pct',
+      label: 'REM',
+      value: 16,
+      unit: '%',
+      ageAverage: 19,
+      ageBand: '50–59',
+      betterDirection: 'higher',
+      tone: 'good',
+      descriptor: 'Healthy for your age',
+      bandLow: 15,
+      bandHigh: 23,
+      garminTargetLow: 21,
+      garminTargetHigh: 31,
+    });
+    expect(banded.bandLow).toBe(15);
+    expect(banded.bandHigh).toBe(23);
+    expect(banded.garminTargetLow).toBe(21);
+    expect(banded.garminTargetHigh).toBe(31);
+
+    // A pre-Batch-61 payload has no band keys; they default to null and parse.
+    const legacy = ageComparisonRowSchema.parse({
+      metricKey: 'vo2max',
+      label: 'VO₂max',
+      value: 54,
+      unit: '',
+      ageAverage: 31,
+      ageBand: '50–59',
+      betterDirection: 'higher',
+      tone: 'good',
+      descriptor: 'Much better than average',
+    });
+    expect(legacy.bandLow).toBeNull();
+    expect(legacy.bandHigh).toBeNull();
+    expect(legacy.garminTargetLow).toBeNull();
+    expect(legacy.garminTargetHigh).toBeNull();
   });
 
   it('covers Performance Condition and Stamina time-series channels', () => {

@@ -58,6 +58,7 @@ from src.models.profile import Profile
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
 from src.services.insights import EarlyWarningResult, FtpDriftResult, InsightsService
 from src.services.personal_baselines import baseline_band_packet, serialize_training_schedule
+from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
 from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
 
 PROMPT_VERSION = "reviews-v3-2026-07-05"
@@ -712,12 +713,17 @@ class ReviewService:
         metric_by_date = {m.calendar_date: m for m in metrics}
         sleep_by_date = {s.calendar_date: s for s in sleeps}
         all_days = sorted(set(metric_by_date) | set(sleep_by_date) | set(verdicts))
+        profile_age, profile_sex = await self._profile_age_sex(player.id)
         days = [
             ReviewDay(
                 day=day,
                 sleep_score=sleep_by_date[day].score if day in sleep_by_date else None,
                 age_adjusted_sleep_score=(
-                    sleep_by_date[day].age_adjusted_score if day in sleep_by_date else None
+                    age_adjusted_sleep_score_for_row(
+                        sleep_by_date[day], age=profile_age, sex=profile_sex
+                    )
+                    if day in sleep_by_date
+                    else None
                 ),
                 sleep_duration_min=(
                     _minutes(sleep_by_date[day].duration_sec) if day in sleep_by_date else None
@@ -985,6 +991,21 @@ class ReviewService:
             if isinstance(rules, list):
                 return [rule for rule in rules if isinstance(rule, dict)]
         return []
+
+    async def _profile_age_sex(self, user_id: uuid.UUID) -> tuple[int | None, str | None]:
+        row = await self.session.scalar(
+            select(KnowledgeBase).where(
+                KnowledgeBase.user_id == user_id,
+                KnowledgeBase.section == "profile",
+                KnowledgeBase.is_active.is_(True),
+            )
+        )
+        content = row.content if row and isinstance(row.content, dict) else {}
+        raw_age = content.get("age")
+        raw_sex = content.get("sex")
+        age = int(raw_age) if isinstance(raw_age, int | float) else None
+        sex = raw_sex if isinstance(raw_sex, str) else None
+        return age, sex
 
 
 # ---------------------------------------------------------------------------

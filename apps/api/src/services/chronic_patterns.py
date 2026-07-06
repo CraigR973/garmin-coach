@@ -21,6 +21,7 @@ from src.models.coaching import DailyMetric, KnowledgeBase, MetricBaseline, Slee
 from src.models.profile import Profile
 from src.services.age_norms import build_age_comparison
 from src.services.insights import DriverCorrelation
+from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
 
 WINDOW_DAYS = 28
 MIN_OBSERVED_NIGHTS = 21
@@ -307,13 +308,16 @@ class ChronicPatternSuggestionService:
             .scalars()
             .all()
         )
+        profile_section = await self._profile_section(player.id)
+        age = _profile_age(profile_section)
+        sex = _profile_sex(profile_section)
         return build_chronic_pattern_suggestions(
-            sleeps=[_sleep_night(row) for row in sleep_rows],
+            sleeps=[_sleep_night(row, age=age, sex=sex) for row in sleep_rows],
             recovery_days=[_recovery_day(row) for row in metric_rows],
             baselines=await self._baselines(player.id),
             sleep_drivers=sleep_drivers,
-            age=await self._profile_age(player.id),
-            sex=await self._profile_sex(player.id),
+            age=age,
+            sex=sex,
             sleep_protocol=sleep_protocol,
             as_of=as_of,
         )
@@ -329,12 +333,10 @@ class ChronicPatternSuggestionService:
         return row.content if row and isinstance(row.content, dict) else {}
 
     async def _profile_age(self, user_id: uuid.UUID) -> int | None:
-        value = (await self._profile_section(user_id)).get("age")
-        return int(value) if isinstance(value, int | float) else None
+        return _profile_age(await self._profile_section(user_id))
 
     async def _profile_sex(self, user_id: uuid.UUID) -> str | None:
-        value = (await self._profile_section(user_id)).get("sex")
-        return value if isinstance(value, str) else None
+        return _profile_sex(await self._profile_section(user_id))
 
     async def _baselines(self, user_id: uuid.UUID) -> dict[str, BaselineBand]:
         rows = (
@@ -365,11 +367,21 @@ class ChronicPatternSuggestionService:
         }
 
 
-def _sleep_night(row: Sleep) -> SleepNight:
+def _profile_age(profile_section: Mapping[str, Any]) -> int | None:
+    value = profile_section.get("age")
+    return int(value) if isinstance(value, int | float) else None
+
+
+def _profile_sex(profile_section: Mapping[str, Any]) -> str | None:
+    value = profile_section.get("sex")
+    return value if isinstance(value, str) else None
+
+
+def _sleep_night(row: Sleep, *, age: int | None = None, sex: str | None = None) -> SleepNight:
     return SleepNight(
         calendar_date=row.calendar_date,
         score=row.score,
-        age_adjusted_score=row.age_adjusted_score,
+        age_adjusted_score=age_adjusted_sleep_score_for_row(row, age=age, sex=sex),
         duration_sec=row.duration_sec,
         deep_sleep_sec=row.deep_sleep_sec,
         light_sleep_sec=row.light_sleep_sec,
@@ -416,14 +428,22 @@ def _age_norm_flags(
             restless_moments_count=sleep.restless_moments_count,
         )
         for row in comparison.sleep_rows:
-            if row.metric_key == "light_sleep_pct":
+            # Light is not suggestion-driving (#132); Restless has no defensible
+            # population band (Batch 61) — both stay out of age-norm flagging.
+            if row.metric_key in {"light_sleep_pct", "restless_moments_count"}:
                 continue
+            if row.band_low is not None and row.band_high is not None:
+                reference = (
+                    f"healthy {row.age_band} range {row.band_low:g}–{row.band_high:g}{row.unit}"
+                )
+            else:
+                reference = f"typical {row.age_band} value {row.age_average:g}{row.unit}"
             grouped.setdefault(row.metric_key, []).append(
                 (
                     row.tone == "warn",
                     row.value,
                     row.label,
-                    f"typical {row.age_band} value {row.age_average:g}{row.unit}",
+                    reference,
                     row.better_direction,
                 )
             )

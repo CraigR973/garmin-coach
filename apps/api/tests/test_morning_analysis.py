@@ -457,6 +457,30 @@ def test_low_readiness_is_not_load_driven_without_recovery_evidence() -> None:
     assert verdict["readinessInterpretation"] is None
 
 
+def test_poor_readiness_is_not_rescued_by_age_adjusted_sleep_score() -> None:
+    daily_metric = DailyMetric(
+        user_id=uuid.uuid4(),
+        calendar_date=date(2026, 6, 1),
+        readiness_score=16,
+        readiness_level="Poor",
+        hrv_weekly_avg_ms=50,
+        hrv_baseline_low_ms=43,
+        hrv_status="Balanced",
+        raw_payload={},
+    )
+
+    verdict = _morning_verdict(
+        daily_metric=daily_metric,
+        sleep=None,
+        age_adjusted_sleep_score=78,
+        manual_entries=[],
+        planned_workouts=[],
+    )
+
+    assert verdict["status"] == "Amber"
+    assert verdict["readinessInterpretation"] is None
+
+
 def test_yesterday_load_packet_carries_hard_session_and_analysis_summary() -> None:
     user_id = uuid.uuid4()
     activity_id = uuid.uuid4()
