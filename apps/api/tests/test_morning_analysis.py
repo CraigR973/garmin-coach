@@ -48,8 +48,8 @@ class FakeMorningClient:
         self.last_prompt = user_prompt
         return ClaudeGenerationResult(
             output_markdown=(
-                "**Sleep summary:** age-adjusted sleep clears the green line.\n\n"
-                "- **Verdict:** Green, with readiness treated as load-driven."
+                "**Sleep summary:** age-adjusted sleep stays in the cautious band.\n\n"
+                "- **Verdict:** Amber, with readiness treated as load-driven."
             ),
             raw_response={
                 "id": "msg_test",
@@ -185,7 +185,7 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
         packet = result.analysis.context_packet
         assert packet["prompt"]["version"] == PROMPT_VERSION
         assert packet["sleep"]["ageAdjustedScore"] == 71
-        assert packet["verdict"]["status"] == "Green"
+        assert packet["verdict"]["status"] == "Amber"
         assert packet["verdict"]["readinessInterpretation"] == "load_driven"
         assert packet["verdict"]["hasVo2WorkoutToday"] is True
         assert packet["environment"]["thermalReview"]["flags"] == [
@@ -204,7 +204,7 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
         assert stored is not None
         assert stored.prompt_version == PROMPT_VERSION
         assert stored.model_name == "claude-test"
-        assert stored.verdict == "Green"
+        assert stored.verdict == "Amber"
         assert stored.output_markdown.startswith("**Sleep summary:**")
 
         second = await service.generate_and_store(player, subject_date, client=fake_client)
