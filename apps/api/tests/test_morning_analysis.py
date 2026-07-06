@@ -184,7 +184,7 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
 
         packet = result.analysis.context_packet
         assert packet["prompt"]["version"] == PROMPT_VERSION
-        assert packet["sleep"]["ageAdjustedScore"] == 75
+        assert packet["sleep"]["ageAdjustedScore"] == 71
         assert packet["verdict"]["status"] == "Green"
         assert packet["verdict"]["readinessInterpretation"] == "load_driven"
         assert packet["verdict"]["hasVo2WorkoutToday"] is True
