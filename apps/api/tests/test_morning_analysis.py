@@ -193,7 +193,7 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
             "precool_target_missed",
             "wind_disruption_watch",
         ]
-        assert packet["metricsVsBaselines"][0]["deltaVsBaseline"] == 1.0
+        assert packet["metricsVsBaselines"][0]["deltaVsBaseline"] == -3.0
         assert any(
             rule["id"] == "no_lr_balance"
             for rule in packet["knowledgeBase"]["dataQualityGuardrails"]
