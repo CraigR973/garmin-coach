@@ -1,6 +1,6 @@
 # Design: First-open latency — persist the cache & thin the daily-loop request (Batch 62)
 
-> Status: **implemented (not shipped)** on `claude/next-batch-model-82pgjw`. Decision **#136**.
+> Status: **shipped** — PR #86, squash `8a60a76` (production HTTP smoke pending Craig's confirmation; the agent egress policy blocked the prod hosts from the build environment). Decision **#136**.
 > Tier: 🔴 High (concurrency + cache-correctness reasoning; 62.1 alone is Mid).
 >
 > **Build note (2026-07-07):** 62.1, 62.2, the 62.3 SELECT collapse, 62.4, and 62.5
