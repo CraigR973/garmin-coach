@@ -1,7 +1,8 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { Toaster } from 'sonner';
+import { queryClient, persistOptions } from './lib/queryClient';
 import { installResumeRefetch } from './lib/resumeRefetch';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -66,15 +67,6 @@ const PinResetPage = lazy(() =>
   import('./pages/PinResetPage').then((m) => ({ default: m.PinResetPage })),
 );
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      refetchOnWindowFocus: true,
-    },
-  },
-});
-
 // Widen the focus signal so refetchOnWindowFocus also fires on iOS PWA warm
 // resume (pageshow/bfcache restore), not just visibilitychange.
 installResumeRefetch();
@@ -91,7 +83,7 @@ function RouteFallback() {
 export function App() {
   return (
     <ThemeProvider>
-      <QueryClientProvider client={queryClient}>
+      <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
         <BrowserRouter>
           <AuthProvider>
             <UpdateBanner />
@@ -134,7 +126,7 @@ export function App() {
             </ErrorBoundary>
           </AuthProvider>
         </BrowserRouter>
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
     </ThemeProvider>
   );
 }

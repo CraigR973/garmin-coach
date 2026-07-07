@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime, time
+from time import perf_counter
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -974,7 +975,9 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
     fan_intent = describe_fan_intent(
         _local_time(player.timezone), fresh_temperature_c, auto_enabled=player.fan_auto_enabled
     )
-    drivers_report = await InsightsService(db).drivers(player, as_of=snapshot.subject_date)
+    # Batch 62.2: prefer the driver report the morning pipeline cached for today;
+    # cached_drivers falls back to a live compute when the packet is absent.
+    drivers_report = await InsightsService(db).cached_drivers(player, as_of=snapshot.subject_date)
     sleep_projection = await _sleep_projection(
         player,
         snapshot,
@@ -1091,9 +1094,20 @@ async def get_daily_loop(
     subject_date: date | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> DailyLoopEnvelope:
+    # Batch 62.5: attribute server time (snapshot round-trips vs envelope compute)
+    # so the latency work can be measured before/after from the logs, not guessed.
+    started = perf_counter()
     service = DailyLoopService(db)
     snapshot = await service.get_snapshot(player, subject_date=subject_date)
-    return await _envelope(player, snapshot, db)
+    snapshot_ms = round((perf_counter() - started) * 1000, 1)
+    envelope = await _envelope(player, snapshot, db)
+    log.info(
+        "daily_loop served",
+        snapshot_ms=snapshot_ms,
+        envelope_ms=round((perf_counter() - started) * 1000 - snapshot_ms, 1),
+        total_ms=round((perf_counter() - started) * 1000, 1),
+    )
+    return envelope
 
 
 @router.put("/{subject_date}/manual-entry", response_model=DailyLoopEnvelope)

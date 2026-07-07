@@ -1,7 +1,16 @@
 # Design: First-open latency — persist the cache & thin the daily-loop request (Batch 62)
 
-> Status: **proposed**. Decision number assigned at `/batch-start` (proposed **#136**).
+> Status: **implemented (not shipped)** on `claude/next-batch-model-82pgjw`. Decision **#136**.
 > Tier: 🔴 High (concurrency + cache-correctness reasoning; 62.1 alone is Mid).
+>
+> **Build note (2026-07-07):** 62.1, 62.2, the 62.3 SELECT collapse, 62.4, and 62.5
+> shipped as specced. The 62.3 **brief parallelization** was built then reverted —
+> running the three briefs on separate `AsyncSessionLocal()` sessions breaks
+> read-your-writes within the request transaction (the identical-payload snapshot
+> test proved it: the parallel briefs read empty because the seed data lived in the
+> request's uncommitted transaction), and the win is marginal for 1–2 users. Per
+> this doc's own staging ("the SELECT collapse lands first; the brief
+> parallelization second") only the safe collapse ships. See DECISIONS #136.
 
 One-line: when Mark first opens the PWA the whole Home screen blocks on one fat
 request behind an empty cache. Persist the client cache so the last brief paints

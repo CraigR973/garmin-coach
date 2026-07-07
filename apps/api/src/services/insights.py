@@ -857,6 +857,67 @@ class InsightsService:
             window_end=end if records else None,
         )
 
+    async def record_drivers(
+        self,
+        player: Profile,
+        *,
+        as_of: date | None = None,
+        commit: bool = True,
+    ) -> DriversReport:
+        """Compute the driver correlations and cache them in the ``analyses`` audit row.
+
+        Batch 62.2: the 120-day driver correlation is deterministic per synced day,
+        so the morning pipeline computes it once and stores it. ``_envelope`` then
+        reads it back via :meth:`cached_drivers` instead of recomputing on every
+        open. Idempotent per ``subject_date`` (reuses the ``driver_correlation``
+        audit row) and only records once there is enough history, mirroring the
+        gate in :meth:`run`.
+        """
+        today = as_of or date.today()
+        report = await self.drivers(player, as_of=today)
+        if report.record_count >= MIN_CORRELATION_SAMPLES and not await self._already_recorded(
+            player, AUDIT_TYPE_DRIVERS, today
+        ):
+            self._record_audit(
+                player,
+                AUDIT_TYPE_DRIVERS,
+                today,
+                _drivers_packet(report),
+                _drivers_markdown(report),
+            )
+            if commit:
+                await self.session.commit()
+        return report
+
+    async def cached_drivers(
+        self,
+        player: Profile,
+        *,
+        as_of: date | None = None,
+    ) -> DriversReport:
+        """Return the cached driver report for the day, falling back to live compute.
+
+        Batch 62.2 read-through: on the hot ``GET /api/v1/daily-loop`` path, prefer
+        the packet the morning pipeline already stored for ``as_of``; recompute live
+        only when it is missing (a new user, a failed sync, or a past ``subjectDate``
+        with no stored row). The cache is an optimisation, never a correctness
+        dependency — the fallback returns the identical report.
+        """
+        today = as_of or date.today()
+        packet = await self.session.scalar(
+            select(Analysis.context_packet)
+            .where(
+                Analysis.user_id == player.id,
+                Analysis.analysis_type == AUDIT_TYPE_DRIVERS,
+                Analysis.subject_date == today,
+            )
+            .order_by(Analysis.generated_at_utc.desc())
+            .limit(1)
+        )
+        if isinstance(packet, dict) and "outcomes" in packet:
+            return _drivers_report_from_packet(packet)
+        return await self.drivers(player, as_of=today)
+
     async def _already_recorded(
         self, player: Profile, analysis_type: str, subject_date: date
     ) -> bool:
@@ -1011,6 +1072,37 @@ def _drivers_packet(report: DriversReport) -> dict[str, Any]:
             for outcome, correlations in report.outcomes.items()
         },
     }
+
+
+def _drivers_report_from_packet(packet: dict[str, Any]) -> DriversReport:
+    """Rebuild a :class:`DriversReport` from a stored ``_drivers_packet`` dict.
+
+    The inverse of :func:`_drivers_packet`; ``direction`` is a derived property on
+    :class:`DriverCorrelation`, so it is recomputed from the coefficient rather than
+    read back. Used by :meth:`InsightsService.cached_drivers`.
+    """
+
+    def _parse_date(value: Any) -> date | None:
+        return date.fromisoformat(value) if isinstance(value, str) else None
+
+    outcomes: dict[str, list[DriverCorrelation]] = {}
+    for outcome, correlations in (packet.get("outcomes") or {}).items():
+        outcomes[outcome] = [
+            DriverCorrelation(
+                driver=c["driver"],
+                outcome=outcome,
+                coefficient=c["coefficient"],
+                sample_count=c["sampleCount"],
+                summary=c.get("summary"),
+            )
+            for c in correlations
+        ]
+    return DriversReport(
+        outcomes=outcomes,
+        record_count=int(packet.get("recordCount", 0)),
+        window_start=_parse_date(packet.get("windowStart")),
+        window_end=_parse_date(packet.get("windowEnd")),
+    )
 
 
 def _drivers_markdown(report: DriversReport) -> str:

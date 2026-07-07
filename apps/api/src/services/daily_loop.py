@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -124,10 +125,22 @@ class DailyLoopService:
         daily_metric = await self._daily_metric(player.id, target_date)
         sleep = await self._sleep(player.id, target_date)
         manual_entry = await self._manual_entry(player.id, target_date)
-        post_workout_analyses = await self._post_workout_analyses(player.id, target_date)
-        post_flexibility_analyses = await self._post_flexibility_analyses(player.id, target_date)
-        post_strength_analyses = await self._post_strength_analyses(player.id, target_date)
-        post_walk_analyses = await self._post_walk_analyses(player.id, target_date)
+        # Batch 62.3: one query for all four post-activity analysis types, then
+        # partition in Python, instead of four separate round-trips.
+        post_analyses = await self._post_activity_analyses(
+            player.id,
+            target_date,
+            (
+                ANALYSIS_TYPE_POST_WORKOUT,
+                ANALYSIS_TYPE_POST_FLEXIBILITY,
+                ANALYSIS_TYPE_POST_STRENGTH,
+                ANALYSIS_TYPE_POST_WALK,
+            ),
+        )
+        post_workout_analyses = post_analyses[ANALYSIS_TYPE_POST_WORKOUT]
+        post_flexibility_analyses = post_analyses[ANALYSIS_TYPE_POST_FLEXIBILITY]
+        post_strength_analyses = post_analyses[ANALYSIS_TYPE_POST_STRENGTH]
+        post_walk_analyses = post_analyses[ANALYSIS_TYPE_POST_WALK]
         post_ride_checkins = await self._post_ride_checkins(player.id, target_date)
         activities = await self._activities(player.id, target_date, player.timezone)
         planned_workouts = await self._planned_workouts(player.id, target_date)
@@ -329,34 +342,19 @@ class DailyLoopService:
             .first()
         )
 
-    async def _post_workout_analyses(
+    async def _post_activity_analyses(
         self,
         user_id: uuid.UUID,
         subject_date: date,
-    ) -> list[Analysis]:
-        rows = (
-            (
-                await self.session.execute(
-                    select(Analysis)
-                    .join(Activity, Analysis.activity_id == Activity.id)
-                    .where(
-                        Analysis.user_id == user_id,
-                        Analysis.analysis_type == ANALYSIS_TYPE_POST_WORKOUT,
-                        Analysis.subject_date == subject_date,
-                    )
-                    .order_by(Activity.start_utc.desc(), Analysis.generated_at_utc.desc())
-                )
-            )
-            .scalars()
-            .all()
-        )
-        return list(rows)
+        analysis_types: Sequence[str],
+    ) -> dict[str, list[Analysis]]:
+        """Fetch every post-activity analysis for the day in one query, grouped by type.
 
-    async def _post_flexibility_analyses(
-        self,
-        user_id: uuid.UUID,
-        subject_date: date,
-    ) -> list[Analysis]:
+        Batch 62.3: replaces four near-identical single-type SELECTs. The global
+        ``(start_utc desc, generated_at_utc desc)`` order is the same each per-type
+        query applied, and Python partitioning is stable, so each returned list is
+        identical to the previous per-type query.
+        """
         rows = (
             (
                 await self.session.execute(
@@ -364,7 +362,7 @@ class DailyLoopService:
                     .join(Activity, Analysis.activity_id == Activity.id)
                     .where(
                         Analysis.user_id == user_id,
-                        Analysis.analysis_type == ANALYSIS_TYPE_POST_FLEXIBILITY,
+                        Analysis.analysis_type.in_(tuple(analysis_types)),
                         Analysis.subject_date == subject_date,
                     )
                     .order_by(Activity.start_utc.desc(), Analysis.generated_at_utc.desc())
@@ -373,53 +371,10 @@ class DailyLoopService:
             .scalars()
             .all()
         )
-        return list(rows)
-
-    async def _post_strength_analyses(
-        self,
-        user_id: uuid.UUID,
-        subject_date: date,
-    ) -> list[Analysis]:
-        rows = (
-            (
-                await self.session.execute(
-                    select(Analysis)
-                    .join(Activity, Analysis.activity_id == Activity.id)
-                    .where(
-                        Analysis.user_id == user_id,
-                        Analysis.analysis_type == ANALYSIS_TYPE_POST_STRENGTH,
-                        Analysis.subject_date == subject_date,
-                    )
-                    .order_by(Activity.start_utc.desc(), Analysis.generated_at_utc.desc())
-                )
-            )
-            .scalars()
-            .all()
-        )
-        return list(rows)
-
-    async def _post_walk_analyses(
-        self,
-        user_id: uuid.UUID,
-        subject_date: date,
-    ) -> list[Analysis]:
-        rows = (
-            (
-                await self.session.execute(
-                    select(Analysis)
-                    .join(Activity, Analysis.activity_id == Activity.id)
-                    .where(
-                        Analysis.user_id == user_id,
-                        Analysis.analysis_type == ANALYSIS_TYPE_POST_WALK,
-                        Analysis.subject_date == subject_date,
-                    )
-                    .order_by(Activity.start_utc.desc(), Analysis.generated_at_utc.desc())
-                )
-            )
-            .scalars()
-            .all()
-        )
-        return list(rows)
+        grouped: dict[str, list[Analysis]] = {analysis_type: [] for analysis_type in analysis_types}
+        for row in rows:
+            grouped[row.analysis_type].append(row)
+        return grouped
 
     async def _sleep(self, user_id: uuid.UUID, subject_date: date) -> Sleep | None:
         return (

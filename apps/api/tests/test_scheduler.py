@@ -230,6 +230,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
         jobs = scheduler.get_jobs()
         job_ids = {j.id for j in jobs}
         assert job_ids == {
+            "connection_warmup",
             "daily_backup",
             "hive_temperature_poll",
             "wake_check",

@@ -25,6 +25,13 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile, UserRole
+from src.services.daily_loop import (
+    ANALYSIS_TYPE_POST_FLEXIBILITY,
+    ANALYSIS_TYPE_POST_STRENGTH,
+    ANALYSIS_TYPE_POST_WALK,
+    ANALYSIS_TYPE_POST_WORKOUT,
+    DailyLoopService,
+)
 from src.services.executable_coaching import ExecutableCoachingService
 from src.services.workout_delivery import IntervalsCreateResult
 
@@ -775,3 +782,102 @@ async def test_get_daily_loop_exposes_delivery_state(db_conn: AsyncConnection) -
     # A coach adjustment is waiting → the card shows Approve & upload.
     assert delivery["changed"] is True
     assert delivery["adjustment"]["verdict"] == "Amber"
+
+
+@pytest.mark.asyncio
+async def test_post_activity_analyses_collapse_partitions_and_orders(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 62.3: the single collapsed query partitions by type and preserves the
+    per-type (start_utc desc, generated_at_utc desc) order the four separate
+    queries produced."""
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 6, 20)
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Collapse Test",
+                pin_hash="x" * 60,
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        # Two rides the same day: the later ride must sort first (start_utc desc).
+        early_ride = Activity(
+            id=uuid.uuid4(),
+            user_id=user_id,
+            garmin_activity_id=101,
+            activity_name="Morning ride",
+            activity_type="indoor_cycling",
+            start_utc=datetime(2026, 6, 20, 7, 0),
+            raw_summary={},
+        )
+        late_ride = Activity(
+            id=uuid.uuid4(),
+            user_id=user_id,
+            garmin_activity_id=102,
+            activity_name="Evening ride",
+            activity_type="indoor_cycling",
+            start_utc=datetime(2026, 6, 20, 18, 0),
+            raw_summary={},
+        )
+        walk = Activity(
+            id=uuid.uuid4(),
+            user_id=user_id,
+            garmin_activity_id=103,
+            activity_name="Walk",
+            activity_type="walking",
+            start_utc=datetime(2026, 6, 20, 12, 0),
+            raw_summary={},
+        )
+        session.add_all([early_ride, late_ride, walk])
+        for activity, analysis_type, gen in [
+            (early_ride, ANALYSIS_TYPE_POST_WORKOUT, datetime(2026, 6, 20, 7, 30)),
+            (late_ride, ANALYSIS_TYPE_POST_WORKOUT, datetime(2026, 6, 20, 18, 30)),
+            (walk, ANALYSIS_TYPE_POST_WALK, datetime(2026, 6, 20, 12, 30)),
+        ]:
+            session.add(
+                Analysis(
+                    user_id=user_id,
+                    activity_id=activity.id,
+                    analysis_type=analysis_type,
+                    subject_date=subject_date,
+                    generated_at_utc=gen,
+                    prompt_version="v1",
+                    output_markdown="x",
+                    raw_response={},
+                )
+            )
+        await session.commit()
+
+    async with session_factory() as session:
+        grouped = await DailyLoopService(session)._post_activity_analyses(
+            user_id,
+            subject_date,
+            (
+                ANALYSIS_TYPE_POST_WORKOUT,
+                ANALYSIS_TYPE_POST_FLEXIBILITY,
+                ANALYSIS_TYPE_POST_STRENGTH,
+                ANALYSIS_TYPE_POST_WALK,
+            ),
+        )
+
+    # Every requested type is a key, even the empty ones.
+    assert set(grouped) == {
+        ANALYSIS_TYPE_POST_WORKOUT,
+        ANALYSIS_TYPE_POST_FLEXIBILITY,
+        ANALYSIS_TYPE_POST_STRENGTH,
+        ANALYSIS_TYPE_POST_WALK,
+    }
+    assert grouped[ANALYSIS_TYPE_POST_FLEXIBILITY] == []
+    assert grouped[ANALYSIS_TYPE_POST_STRENGTH] == []
+    # Both rides land under post_workout, later ride first.
+    workout = grouped[ANALYSIS_TYPE_POST_WORKOUT]
+    assert [a.activity_id for a in workout] == [late_ride.id, early_ride.id]
+    assert [a.activity_id for a in grouped[ANALYSIS_TYPE_POST_WALK]] == [walk.id]
