@@ -47,7 +47,7 @@ const snapshot = {
 };
 
 describe('CheckInPage', () => {
-  it('saves the manual check-in via the single unified save action', async () => {
+  it('saves a quick check-in — overall tap + a chip — in a couple of taps, with no typing', async () => {
     apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
       if (options?.method === 'PUT') return Promise.resolve(snapshot);
       if (path === '/api/v1/daily-loop') return Promise.resolve(snapshot);
@@ -65,6 +65,79 @@ describe('CheckInPage', () => {
       </QueryClientProvider>,
     );
 
+    await screen.findByRole('button', { name: 'Good' });
+    // Batch 63: the BP/notes/session fields sit behind "More" and are not visible
+    // by default — the quick path never requires opening it.
+    expect(screen.queryByLabelText('Systolic')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Good' }));
+    await user.click(screen.getByRole('button', { name: 'Slept well' }));
+    await user.click(screen.getByRole('button', { name: 'Save check-in' }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/daily-loop/2026-06-20/manual-entry',
+        expect.objectContaining({ method: 'PUT' }),
+      );
+    });
+    const [, options] = apiFetchMock.mock.calls.find(
+      ([path, opts]) => path === '/api/v1/daily-loop/2026-06-20/manual-entry' && opts?.method === 'PUT',
+    ) as [string, { body: string }];
+    expect(JSON.parse(options.body)).toMatchObject({ subjectiveScore: 8, feel: 'slept well' });
+  });
+
+  it('toggles a quick chip on and off, mapping it into the right column', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/api/v1/daily-loop') return Promise.resolve(snapshot);
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    const queryClient = new QueryClient();
+    const user = userEvent.setup();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CheckInPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const niggle = await screen.findByRole('button', { name: 'Niggle' });
+    expect(niggle.getAttribute('aria-pressed')).toBe('false');
+
+    await user.click(niggle);
+    expect(niggle.getAttribute('aria-pressed')).toBe('true');
+    // Niggle maps into "notes" (a free-text column), not "feel" — opening "More"
+    // shows it landed in the right field.
+    await user.click(screen.getByRole('button', { name: /more/i }));
+    expect(((await screen.findByLabelText('Anything worth noting')) as HTMLTextAreaElement).value).toBe('niggle');
+    expect((screen.getByLabelText('In a few words') as HTMLInputElement).value).toBe('');
+
+    await user.click(niggle);
+    expect(niggle.getAttribute('aria-pressed')).toBe('false');
+    expect((screen.getByLabelText('Anything worth noting') as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it('still saves BP and per-workout adherence when "More" is opened and filled in', async () => {
+    apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
+      if (options?.method === 'PUT') return Promise.resolve(snapshot);
+      if (path === '/api/v1/daily-loop') return Promise.resolve(snapshot);
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    const queryClient = new QueryClient();
+    const user = userEvent.setup();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CheckInPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: /more/i }));
     await user.type(await screen.findByLabelText('Systolic'), '108');
     // Batch 55: one "Save check-in" button covers the whole page — no more
     // separate per-card/per-workout save buttons.
@@ -121,6 +194,7 @@ describe('CheckInPage', () => {
       </QueryClientProvider>,
     );
 
+    await user.click(await screen.findByRole('button', { name: /more/i }));
     await screen.findByText('Sweet Spot Builder');
     await user.click(screen.getByRole('button', { name: 'Save check-in' }));
 
@@ -150,6 +224,10 @@ describe('CheckInPage', () => {
 
     expect(await screen.findByText("Couldn't load today's plan")).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    // The quick check-in (overall tap + chips) stays usable even when the daily
+    // loop fails to load; the fuller fields are still reachable behind "More".
+    expect(screen.getByRole('button', { name: 'Good' })).toBeTruthy();
+    await userEvent.setup().click(screen.getByRole('button', { name: /more/i }));
     expect(screen.getByLabelText('Systolic')).toBeTruthy();
   });
 });
