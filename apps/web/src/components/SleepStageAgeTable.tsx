@@ -73,7 +73,10 @@ export function SleepStageAgeTable({
                   </td>
                   <td className="px-2 py-2 text-right sm:px-3">
                     <div className="font-medium tabular-nums text-text-secondary">
-                      {healthyRange ?? `${fmt(row.ageAverage)}${row.unit}`}
+                      {/* Descriptive-only rows (e.g. Restless — no defensible
+                          population band) show no range rather than a stray
+                          single average that reads like a norm. */}
+                      {healthyRange ?? '—'}
                     </div>
                     <div
                       className={cn(
@@ -110,8 +113,8 @@ export function SleepStageAgeTable({
       )}
 
       <p className="text-[11px] text-text-muted">
-        Healthy ranges use general-population sleep-stage bands for{' '}
-        {ageBand ? `the ${ageBand} age band` : 'your age band'} and are a rough guide, not medical
+        Healthy ranges use age-adjusted sleep-stage norms (Ohayon et al., 2004) for{' '}
+        {ageBand ? `the ${ageBand} age band` : 'your age band'} — a rough guide, not medical
         advice.
       </p>
     </div>
