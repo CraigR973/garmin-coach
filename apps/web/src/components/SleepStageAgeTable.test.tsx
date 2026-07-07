@@ -64,6 +64,35 @@ describe('SleepStageAgeTable', () => {
     expect(screen.getByText(/REM: healthy 50–59 15–23%; Garmin target 21–31%/)).toBeTruthy();
   });
 
+  it('shows a dash, not a stray average, for a descriptive-only row like Restless', () => {
+    const withRestless = [
+      ...rows,
+      {
+        metricKey: 'restless_moments_count',
+        label: 'Restless',
+        value: 45,
+        unit: '',
+        ageAverage: 13,
+        ageBand: '50–59',
+        betterDirection: 'lower' as const,
+        tone: 'neutral' as const,
+        descriptor: 'Shown for context — no age range',
+      },
+    ];
+    render(<SleepStageAgeTable rows={withRestless} ageBand="50–59" />);
+
+    const restless = rowFor('Restless');
+    expect(within(restless).getByText('45')).toBeTruthy(); // last night is still shown
+    expect(within(restless).getByText('—')).toBeTruthy(); // no misleading "healthy range"
+    expect(within(restless).queryByText('13')).toBeNull(); // the stray average is gone
+    expect(within(restless).getByText(/Shown for context/i)).toBeTruthy();
+  });
+
+  it('cites the age-norm source in the footnote', () => {
+    render(<SleepStageAgeTable rows={rows} ageBand="50–59" />);
+    expect(screen.getByText(/Ohayon et al\., 2004/)).toBeTruthy();
+  });
+
   it('renders a fallback when sleep-stage rows are not available', () => {
     render(<SleepStageAgeTable rows={[]} ageBand="50–59" />);
     expect(screen.getByText(/fills in when the overnight sleep stages are available/i)).toBeTruthy();

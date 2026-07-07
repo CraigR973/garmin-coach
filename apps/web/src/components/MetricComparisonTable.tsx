@@ -266,7 +266,12 @@ export function MetricComparisonTable({
                       {row.current == null ? '—' : `${fmt(row.current)}${row.currentUnit}`}
                     </div>
                     {range && range !== '—' && (
-                      <div className="text-[11px] font-normal text-text-muted">normal {range}</div>
+                      // "your normal" (not just "normal") so this personal-baseline
+                      // band can't be misread as a typical-for-your-age figure — the
+                      // age frame is the separate "for your age" descriptor below.
+                      <div className="text-[11px] font-normal text-text-muted">
+                        your normal {range}
+                      </div>
                     )}
                     {age && (
                       <div
