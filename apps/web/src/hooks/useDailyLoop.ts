@@ -11,5 +11,11 @@ export async function fetchDailyLoop() {
 }
 
 export function useDailyLoop() {
-  return useQuery({ queryKey: ['daily-loop'], queryFn: fetchDailyLoop });
+  // Batch 62.1: a small staleTime lets a hydrated brief render immediately on a
+  // quick reopen while a stale one still background-refetches (never blocking).
+  return useQuery({
+    queryKey: ['daily-loop'],
+    queryFn: fetchDailyLoop,
+    staleTime: 60_000,
+  });
 }

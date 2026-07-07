@@ -30,10 +30,15 @@ from src.services.insights import (
     AUDIT_TYPE_EARLY_WARNING,
     AUDIT_TYPE_FTP_DRIFT,
     DRIVER_KEYS,
+    OUTCOME_RECOVERY_HRV,
     OUTCOME_SLEEP_SCORE,
+    DriverCorrelation,
+    DriversReport,
     InsightsService,
     PowerHrSample,
     TrendDay,
+    _drivers_packet,
+    _drivers_report_from_packet,
     compute_drivers,
     detect_early_warning,
     detect_ftp_drift,
@@ -526,3 +531,167 @@ async def test_service_run_records_actionable_findings_idempotently(
         # Idempotent: a second run on the same day records nothing new.
         again = await service.run(user, as_of=_day(16))
         assert again["recorded"] == []
+
+
+# ---------------------------------------------------------------------------
+# 62.2 — driver-report cache (packet round-trip + read-through)
+# ---------------------------------------------------------------------------
+
+
+def test_drivers_packet_round_trips() -> None:
+    """`_drivers_report_from_packet` inverts `_drivers_packet` exactly."""
+    report = DriversReport(
+        outcomes={
+            OUTCOME_SLEEP_SCORE: [
+                DriverCorrelation(
+                    driver="overnight_low_c",
+                    outcome=OUTCOME_SLEEP_SCORE,
+                    coefficient=-0.72,
+                    sample_count=30,
+                    summary="Warmer nights, lower sleep score.",
+                ),
+                DriverCorrelation(
+                    driver="prev_day_training_load",
+                    outcome=OUTCOME_SLEEP_SCORE,
+                    coefficient=0.11,
+                    sample_count=30,
+                    summary=None,
+                ),
+            ],
+            OUTCOME_RECOVERY_HRV: [],
+        },
+        record_count=30,
+        window_start=_day(0),
+        window_end=_day(30),
+    )
+    rebuilt = _drivers_report_from_packet(_drivers_packet(report))
+    assert rebuilt == report
+
+
+@pytest.mark.asyncio
+async def test_record_drivers_then_cached_drivers_matches_live(
+    db_conn: AsyncConnection,
+) -> None:
+    """The morning precompute caches a packet that `cached_drivers` reads back
+    identically to a live compute."""
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        for i in range(10):
+            session.add(
+                Sleep(user_id=user_id, calendar_date=_day(i), score=80 - i, avg_sleep_stress=20.0)
+            )
+            session.add(
+                DailyMetric(
+                    user_id=user_id,
+                    calendar_date=_day(i),
+                    hrv_last_night_avg_ms=50,
+                    resting_heart_rate_bpm=45,
+                    stress_avg=30.0,
+                )
+            )
+            session.add(
+                WeatherDaily(
+                    user_id=user_id,
+                    calendar_date=_day(i),
+                    source="open_meteo",
+                    latitude=55.6,
+                    longitude=-4.5,
+                    overnight_low_c=float(i),
+                )
+            )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = InsightsService(session)
+        live = await service.drivers(user, as_of=_day(11))
+
+        recorded = await service.record_drivers(user, as_of=_day(11))
+        assert recorded == live
+        # The audit row is stored once, keyed by subject_date.
+        rows = (
+            (
+                await session.execute(
+                    select(Analysis).where(
+                        Analysis.user_id == user_id,
+                        Analysis.analysis_type == AUDIT_TYPE_DRIVERS,
+                        Analysis.subject_date == _day(11),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 1
+
+        cached = await service.cached_drivers(user, as_of=_day(11))
+        assert cached == live
+
+        # Idempotent: recording again writes no second row.
+        await service.record_drivers(user, as_of=_day(11))
+        rows_again = (
+            (
+                await session.execute(
+                    select(Analysis).where(
+                        Analysis.user_id == user_id,
+                        Analysis.analysis_type == AUDIT_TYPE_DRIVERS,
+                        Analysis.subject_date == _day(11),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows_again) == 1
+
+
+@pytest.mark.asyncio
+async def test_cached_drivers_falls_back_to_live_when_no_packet(
+    db_conn: AsyncConnection,
+) -> None:
+    """With no stored packet, `cached_drivers` returns the live compute unchanged."""
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        for i in range(10):
+            session.add(
+                Sleep(user_id=user_id, calendar_date=_day(i), score=80 - i, avg_sleep_stress=20.0)
+            )
+            session.add(
+                DailyMetric(
+                    user_id=user_id,
+                    calendar_date=_day(i),
+                    hrv_last_night_avg_ms=50,
+                    resting_heart_rate_bpm=45,
+                    stress_avg=30.0,
+                )
+            )
+            session.add(
+                WeatherDaily(
+                    user_id=user_id,
+                    calendar_date=_day(i),
+                    source="open_meteo",
+                    latitude=55.6,
+                    longitude=-4.5,
+                    overnight_low_c=float(i),
+                )
+            )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = InsightsService(session)
+        cached = await service.cached_drivers(user, as_of=_day(11))
+        live = await service.drivers(user, as_of=_day(11))
+        assert cached == live
+        # No packet was written by a read-through.
+        row = await session.scalar(
+            select(Analysis.id).where(
+                Analysis.user_id == user_id,
+                Analysis.analysis_type == AUDIT_TYPE_DRIVERS,
+            )
+        )
+        assert row is None

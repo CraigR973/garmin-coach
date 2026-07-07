@@ -34,7 +34,7 @@ import structlog
 from apscheduler.schedulers.asyncio import (  # type: ignore[import-untyped,unused-ignore]
     AsyncIOScheduler,
 )
-from sqlalchemy import desc, select
+from sqlalchemy import desc, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -73,6 +73,7 @@ from src.services.garmin_sync import (
     GarminSyncService,
     parse_sleep_fields,
 )
+from src.services.insights import InsightsService
 from src.services.morning_analysis import MorningAnalysisService
 from src.services.nudge_alerts import NudgeAlertService
 from src.services.post_flexibility_analysis import PostFlexibilityAnalysisService
@@ -115,6 +116,22 @@ async def run_scheduled_backup() -> None:
                 )
             )
             await session.commit()
+
+
+async def run_connection_warmup() -> None:
+    """Keep a pooled DB connection hot so the first open rarely pays a cold connect.
+
+    Batch 62.4: ``pool_recycle=1800`` recycles a connection idle for 30 min, so the
+    first request after a quiet spell re-establishes a Supabase-pooler connection
+    (TLS + auth) before it can even start querying. A cheap ``SELECT 1`` every few
+    minutes keeps at least one pooled connection alive so Mark's first
+    ``GET /api/v1/daily-loop`` usually lands on a warm one.
+    """
+    try:
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("SELECT 1"))
+    except Exception:
+        log.exception("connection warmup failed")
 
 
 async def run_hive_temperature_poll() -> None:
@@ -292,8 +309,10 @@ async def run_morning_weather_sync() -> None:
             analysis_service = MorningAnalysisService(session)
             coaching_service = ExecutableCoachingService(session)
             nudge_service = NudgeAlertService(session)
+            insights_service = InsightsService(session)
             proposals_regenerated = 0
             verdict_pushes = 0
+            drivers_cached = 0
             for profile in profiles:
                 subject_date = _profile_today(profile)
                 try:
@@ -341,6 +360,23 @@ async def run_morning_weather_sync() -> None:
                         profile_id=str(profile.id),
                         subject_date=subject_date.isoformat(),
                     )
+                # Batch 62.2: precompute the 120-day driver correlation once here so
+                # GET /api/v1/daily-loop reads it back instead of recomputing on
+                # every open. Wrapped so a failure never blocks the morning pipeline.
+                try:
+                    report = await insights_service.record_drivers(
+                        profile,
+                        as_of=subject_date,
+                        commit=True,
+                    )
+                    if report.record_count >= 1:
+                        drivers_cached += 1
+                except Exception:
+                    log.exception(
+                        "drivers precompute failed",
+                        profile_id=str(profile.id),
+                        subject_date=subject_date.isoformat(),
+                    )
         log.info(
             "morning weather sync complete",
             profiles=len(profiles),
@@ -351,6 +387,7 @@ async def run_morning_weather_sync() -> None:
             analyses_existing=analyses_existing,
             proposals_regenerated=proposals_regenerated,
             verdict_pushes=verdict_pushes,
+            drivers_cached=drivers_cached,
         )
     except Exception:
         log.exception("morning weather sync failed")
@@ -1010,6 +1047,18 @@ async def _execute_fan_decision(
 
 def create_scheduler() -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone="UTC")
+    scheduler.add_job(
+        # Batch 62.4: cheap SELECT 1 well inside the 30-min pool_recycle window so a
+        # pooled connection is usually hot when Mark opens the app.
+        run_connection_warmup,
+        trigger="interval",
+        minutes=10,
+        id="connection_warmup",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        next_run_time=datetime.now(UTC) + timedelta(seconds=30),
+    )
     scheduler.add_job(
         run_scheduled_backup,
         trigger="cron",

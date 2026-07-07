@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { clearPersistedCache } from '../lib/queryClient';
 import {
   clearApiCaches,
   clearTokens,
@@ -76,6 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const player = playerFromApiResponse(data);
         await clearApiCaches();
         queryClient.clear();
+        clearPersistedCache();
         storeTokens(data.access_token, data.refresh_token, player);
         setLockedPlayer(null);
         setState({ player, isLoading: false, sessionUnlockRequired: false, sessionUnlockError: null });
@@ -104,6 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const player = playerFromApiResponse(data);
         await clearApiCaches();
         queryClient.clear();
+        clearPersistedCache();
         storeDeviceToken(data.device_token, player);
         setLockedPlayer(null);
         setState({
@@ -131,6 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     await clearTokens();
     queryClient.clear();
+    clearPersistedCache();
     setLockedPlayer(null);
     setState({ player: null, isLoading: false, sessionUnlockRequired: false, sessionUnlockError: null });
   }, [queryClient]);
@@ -166,6 +170,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const player = playerFromApiResponse(data);
         await clearApiCaches();
         queryClient.clear();
+        clearPersistedCache();
         storeTokens(data.access_token, data.refresh_token, player);
         setState({ player, isLoading: false, sessionUnlockRequired: false, sessionUnlockError: null });
         setLockedPlayer(null);

@@ -4,6 +4,14 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  // Batch 62.1: a build-stable string that busts the persisted React Query cache
+  // on each deploy so an older payload shape never rehydrates. Vercel exposes the
+  // commit SHA at build; fall back to the package version, then 'dev' locally.
+  define: {
+    __APP_BUSTER__: JSON.stringify(
+      process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.npm_package_version ?? 'dev',
+    ),
+  },
   test: {
     environment: 'jsdom',
     globals: true,
