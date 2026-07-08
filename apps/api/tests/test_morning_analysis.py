@@ -302,7 +302,7 @@ async def test_amber_morning_leads_with_week_swap_and_keeps_softening(
 
     adjustments = verdict["planAdjustments"]
     # The swap leads; softening stays available as the explicit fallback.
-    assert "move it to Saturday" in adjustments[0].lower()
+    assert "move it to saturday" in adjustments[0].lower()
     assert any("cut duration" in item.lower() for item in adjustments[1:])
 
     # The KB records the swap-first coaching preference (66.1).
