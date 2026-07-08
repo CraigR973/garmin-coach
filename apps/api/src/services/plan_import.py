@@ -198,13 +198,21 @@ async def import_plan(
         session.add(obj)
         await session.flush()
         block_ids[block.sequence_index] = obj.id
+    # Assign incrementing versions per date (v1, v2, ... in row order) rather than
+    # a flat version=1, so a day that carries more than one entry — e.g. a split
+    # Saturday (Batch 65: cycle = v1, strength = v2) — satisfies the
+    # (user_id, workout_date, version) unique constraint. Deterministic + re-runnable
+    # to the same versions because ``build_plan_rows`` emits rows in a stable order.
+    version_by_date: dict[dt.date, int] = {}
     for workout in rows.workouts:
+        version = version_by_date.get(workout.workout_date, 0) + 1
+        version_by_date[workout.workout_date] = version
         session.add(
             PlannedWorkout(
                 user_id=user_id,
                 plan_block_id=block_ids.get(workout.week),
                 workout_date=workout.workout_date,
-                version=1,
+                version=version,
                 title=workout.title,
                 workout_type=workout.workout_type,
                 status="planned",

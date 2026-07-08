@@ -30,6 +30,7 @@ from src.services.executable_coaching import (
     ir_has_vo2,
 )
 from src.services.morning_analysis import MorningAnalysisResult
+from src.services.workout_categories import category_for_workout_type
 from src.services.workout_delivery import (
     STATUS_DELETED,
     STATUS_PUSHED,
@@ -1137,6 +1138,32 @@ async def _active_on(session: AsyncSession, user_id: uuid.UUID, day: date) -> Pl
     )
 
 
+async def _active_all_on(
+    session: AsyncSession, user_id: uuid.UUID, day: date
+) -> list[PlannedWorkout]:
+    return list(
+        (
+            await session.execute(
+                select(PlannedWorkout)
+                .where(
+                    PlannedWorkout.user_id == user_id,
+                    PlannedWorkout.workout_date == day,
+                    PlannedWorkout.is_active.is_(True),
+                )
+                .order_by(PlannedWorkout.version)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+def _by_category(workouts: list[PlannedWorkout], category: str) -> PlannedWorkout:
+    match = [w for w in workouts if category_for_workout_type(w.workout_type) == category]
+    assert len(match) == 1, f"expected exactly one {category} workout, got {len(match)}"
+    return match[0]
+
+
 @pytest.mark.asyncio
 async def test_edit_today_replaces_live_event_with_override(db_conn: AsyncConnection) -> None:
     user_id, workout_id = uuid.uuid4(), uuid.uuid4()
@@ -1526,3 +1553,160 @@ async def test_swap_day_refuses_a_completed_session(db_conn: AsyncConnection) ->
         with pytest.raises(HTTPException) as exc:
             await service.swap_day(user, planned_workout_id=workout_id, target_date=target_date)
         assert exc.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_swap_ride_off_a_two_session_day_leaves_strength(db_conn: AsyncConnection) -> None:
+    """Batch 65: moving a ride off a split day (ride + Bodyweight) relocates only the
+    ride — the same-day strength stays put because swap-target detection is
+    category-scoped (never drags a second same-day workout)."""
+    user_id = uuid.uuid4()
+    ride_id, strength_id = uuid.uuid4(), uuid.uuid4()
+    sat, thu = date(2026, 7, 11), date(2026, 7, 9)
+    await _seed_profile(db_conn, user_id)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add_all(
+            [
+                PlannedWorkout(
+                    id=ride_id,
+                    user_id=user_id,
+                    workout_date=sat,
+                    version=1,
+                    title="Z2 + Neuromuscular",
+                    workout_type="bike_endurance",
+                    status="planned",
+                    is_active=True,
+                    planned_duration_min=58,
+                    intensity_target="Zone 2 ~65-72% FTP",
+                    structured_workout=VO2_STRUCTURED,
+                    source="test",
+                ),
+                PlannedWorkout(
+                    id=strength_id,
+                    user_id=user_id,
+                    workout_date=sat,
+                    version=2,
+                    title="Bodyweight",
+                    workout_type="strength_maintenance",
+                    status="planned",
+                    is_active=True,
+                    planned_duration_min=15,
+                    intensity_target="Bodyweight circuit",
+                    structured_workout={"format": "strength", "focus": "bodyweight"},
+                    source="test",
+                ),
+            ]
+        )
+        await session.commit()
+
+    fake = _FakeIntervalsClient()
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session, intervals_client=fake)
+        await service.reconcile_deliveries(user, start_date=sat, end_date=sat)
+
+        moved = await service.swap_day(user, planned_workout_id=ride_id, target_date=thu)
+
+        assert moved.workout_date == thu
+        # Saturday keeps exactly the Bodyweight strength; the ride has left.
+        sat_active = await _active_all_on(session, user_id, sat)
+        assert [w.title for w in sat_active] == ["Bodyweight"]
+        # Thursday now holds only the ride — no strength dragged along.
+        thu_active = await _active_all_on(session, user_id, thu)
+        assert [w.workout_type for w in thu_active] == ["bike_endurance"]
+        # Only the ride carries a Zwift event, so exactly one cloud move happened.
+        assert [eid for eid, _ in fake.updates] == ["evt_123"]
+
+
+@pytest.mark.asyncio
+async def test_swap_two_ride_days_each_keep_their_strength(db_conn: AsyncConnection) -> None:
+    """Batch 65: swapping two ride days exchanges the rides only — each day's
+    strength session stays exactly where it was."""
+    user_id = uuid.uuid4()
+    ride_a, strength_a = uuid.uuid4(), uuid.uuid4()
+    ride_b, strength_b = uuid.uuid4(), uuid.uuid4()
+    day_a, day_b = date(2026, 7, 7), date(2026, 7, 11)
+    await _seed_profile(db_conn, user_id)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add_all(
+            [
+                PlannedWorkout(
+                    id=ride_a,
+                    user_id=user_id,
+                    workout_date=day_a,
+                    version=1,
+                    title="VO2 A",
+                    workout_type="bike_vo2",
+                    status="planned",
+                    is_active=True,
+                    planned_duration_min=60,
+                    intensity_target="105-110% FTP",
+                    structured_workout=VO2_STRUCTURED,
+                    source="test",
+                ),
+                PlannedWorkout(
+                    id=strength_a,
+                    user_id=user_id,
+                    workout_date=day_a,
+                    version=2,
+                    title="Dumbbells A",
+                    workout_type="strength_maintenance",
+                    status="planned",
+                    is_active=True,
+                    planned_duration_min=22,
+                    intensity_target="Dumbbell circuit",
+                    structured_workout={"format": "strength", "focus": "dumbbell"},
+                    source="test",
+                ),
+                PlannedWorkout(
+                    id=ride_b,
+                    user_id=user_id,
+                    workout_date=day_b,
+                    version=1,
+                    title="Sweet Spot B",
+                    workout_type="bike_sweet_spot",
+                    status="planned",
+                    is_active=True,
+                    planned_duration_min=75,
+                    intensity_target="88-94% FTP",
+                    structured_workout=SWEET_SPOT_STRUCTURED,
+                    source="test",
+                ),
+                PlannedWorkout(
+                    id=strength_b,
+                    user_id=user_id,
+                    workout_date=day_b,
+                    version=2,
+                    title="Bodyweight B",
+                    workout_type="strength_maintenance",
+                    status="planned",
+                    is_active=True,
+                    planned_duration_min=15,
+                    intensity_target="Bodyweight circuit",
+                    structured_workout={"format": "strength", "focus": "bodyweight"},
+                    source="test",
+                ),
+            ]
+        )
+        await session.commit()
+
+    fake = _FakeIntervalsClient()
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session, intervals_client=fake)
+        await service.reconcile_deliveries(user, start_date=day_a, end_date=day_b)
+
+        await service.swap_day(user, planned_workout_id=ride_a, target_date=day_b)
+
+        a_active = await _active_all_on(session, user_id, day_a)
+        b_active = await _active_all_on(session, user_id, day_b)
+        # Rides exchanged days...
+        assert _by_category(a_active, "cycle").title == "Sweet Spot B"
+        assert _by_category(b_active, "cycle").title == "VO2 A"
+        # ...while each day's strength stayed exactly where it was.
+        assert _by_category(a_active, "weights").title == "Dumbbells A"
+        assert _by_category(b_active, "weights").title == "Bodyweight B"
+        # Two rides moved (two cloud updates); the strength rows carry no event.
+        assert len(fake.updates) == 2

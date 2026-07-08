@@ -165,6 +165,62 @@ describe('WeekAheadPage', () => {
     expect(screen.queryByText('Swap a workout into this rest day')).toBeNull();
   });
 
+  it('renders a split day (ride + strength) as two independently movable rows (Batch 65)', async () => {
+    const splitSchedule = JSON.parse(JSON.stringify(schedule));
+    // Model a split Saturday: a ride and a Bodyweight strength on the same day, each
+    // its own row with its own Move control (version-as-slot, no schema change).
+    splitSchedule.data.schedule[0] = {
+      date: '2026-06-23',
+      dayState: { categories: ['cycle', 'weights'], label: 'Cycle + Weights', isRest: false },
+      workouts: [
+        {
+          id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          workoutDate: '2026-06-23',
+          version: 1,
+          title: 'Z2 + Neuromuscular',
+          workoutType: 'bike_endurance',
+          status: 'planned',
+          plannedDurationMin: 58,
+          intensityTarget: 'Zone 2 ~65-72% FTP',
+          source: 'plan_no2_import',
+        },
+        {
+          id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          workoutDate: '2026-06-23',
+          version: 2,
+          title: 'Bodyweight',
+          workoutType: 'strength_maintenance',
+          status: 'planned',
+          plannedDurationMin: 15,
+          intensityTarget: 'Bodyweight circuit',
+          source: 'plan_no2_import',
+        },
+      ],
+    };
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/api/v1/plan-actions/schedule?days=14'
+        ? Promise.resolve(splitSchedule)
+        : Promise.reject(new Error(`Unexpected request: ${path}`)),
+    );
+
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const ride = (await screen.findByText('Z2 + Neuromuscular')).closest('.rounded-xl') as HTMLElement;
+    const strength = screen.getByText('Bodyweight').closest('.rounded-xl') as HTMLElement;
+    // Two distinct rows, each with its own Move control — the ride can move without
+    // dragging the strength.
+    expect(ride).not.toBe(strength);
+    expect(within(ride).getByRole('button', { name: /^move$/i })).toBeTruthy();
+    expect(within(strength).getByRole('button', { name: /^move$/i })).toBeTruthy();
+  });
+
   it('locks a completed workout from moving and marks it Done (Batch 60)', async () => {
     const completedSchedule = JSON.parse(JSON.stringify(schedule));
     // Sweet Spot Builder on 2026-06-25 is done.

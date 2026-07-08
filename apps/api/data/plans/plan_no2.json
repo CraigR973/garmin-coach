@@ -12,18 +12,18 @@
         {
           "dow": 0,
           "rest": false,
-          "title": "15 min Bodyweight (Rest day)",
-          "workout_type": "strength_recovery",
-          "duration_min": 15,
-          "intensity_target": "Bodyweight / mobility",
+          "title": "Dumbbells (full-body)",
+          "workout_type": "strength_maintenance",
+          "duration_min": 22,
+          "intensity_target": "Dumbbell circuit",
           "structured_workout": {
             "format": "strength",
-            "summary": "15 min Bodyweight (Rest day)",
+            "summary": "~22 min full-body dumbbell circuit — 3 sets each of biceps curl, shoulder press, lying triceps extension, bent-over reverse-grip row, lying fly, shoulder matrix (lateral / Y / reverse fly), lying pullover, and spiderman crunch (core). 30s work / 15s rest. Progress by adding weight.",
             "steps": [
               {
-                "label": "15 min Bodyweight (Rest day)",
-                "target": "Bodyweight / mobility",
-                "minutes": 15
+                "label": "Dumbbell circuit (8 exercises × 3 sets)",
+                "target": "30s work / 15s rest",
+                "minutes": 22
               }
             ]
           }
@@ -93,18 +93,37 @@
         {
           "dow": 5,
           "rest": false,
-          "title": "Z2 + Neuromuscular + Dumbbells",
+          "title": "Z2 + Neuromuscular",
           "workout_type": "bike_endurance",
           "duration_min": 58,
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "58 min 5 min ramp → 30 min @65% with cadence work → 6 × (12 sec @185% + 2:48 @55%) → 5 min cooldown Then: 20min dumbbells",
+            "summary": "58 min 5 min ramp → 30 min @65% with cadence work → 6 × (12 sec @185% + 2:48 @55%) → 5 min cooldown",
             "steps": [
               {
-                "label": "Z2 + Neuromuscular + Dumbbells",
+                "label": "Z2 + Neuromuscular",
                 "target": "Zone 2 ~65–72% FTP",
                 "minutes": 58
+              }
+            ]
+          }
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Bodyweight",
+          "workout_type": "strength_maintenance",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight circuit",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "~15 min bodyweight circuit — 3 rounds of squat, dead bug, mountain climber, glute bridge, and push-up (10 reps each), 30s rest between rounds. Progress by adding reps.",
+            "steps": [
+              {
+                "label": "Bodyweight circuit (5 exercises × 3 rounds)",
+                "target": "10 reps each",
+                "minutes": 15
               }
             ]
           }
@@ -138,18 +157,18 @@
         {
           "dow": 0,
           "rest": false,
-          "title": "15 min Bodyweight (Rest day)",
-          "workout_type": "strength_recovery",
-          "duration_min": 15,
-          "intensity_target": "Bodyweight / mobility",
+          "title": "Dumbbells (full-body)",
+          "workout_type": "strength_maintenance",
+          "duration_min": 22,
+          "intensity_target": "Dumbbell circuit",
           "structured_workout": {
             "format": "strength",
-            "summary": "15 min Bodyweight (Rest day)",
+            "summary": "~22 min full-body dumbbell circuit — 3 sets each of biceps curl, shoulder press, lying triceps extension, bent-over reverse-grip row, lying fly, shoulder matrix (lateral / Y / reverse fly), lying pullover, and spiderman crunch (core). 30s work / 15s rest. Progress by adding weight.",
             "steps": [
               {
-                "label": "15 min Bodyweight (Rest day)",
-                "target": "Bodyweight / mobility",
-                "minutes": 15
+                "label": "Dumbbell circuit (8 exercises × 3 sets)",
+                "target": "30s work / 15s rest",
+                "minutes": 22
               }
             ]
           }
@@ -219,7 +238,7 @@
         {
           "dow": 5,
           "rest": false,
-          "title": "Z2 + Neuromuscular + Dumbbells",
+          "title": "Z2 + Neuromuscular",
           "workout_type": "bike_endurance",
           "duration_min": 58,
           "intensity_target": "Zone 2 ~65–72% FTP",
@@ -228,9 +247,28 @@
             "summary": "58 min",
             "steps": [
               {
-                "label": "Z2 + Neuromuscular + Dumbbells",
+                "label": "Z2 + Neuromuscular",
                 "target": "Zone 2 ~65–72% FTP",
                 "minutes": 58
+              }
+            ]
+          }
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Bodyweight",
+          "workout_type": "strength_maintenance",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight circuit",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "~15 min bodyweight circuit — 3 rounds of squat, dead bug, mountain climber, glute bridge, and push-up (10 reps each), 30s rest between rounds. Progress by adding reps.",
+            "steps": [
+              {
+                "label": "Bodyweight circuit (5 exercises × 3 rounds)",
+                "target": "10 reps each",
+                "minutes": 15
               }
             ]
           }
@@ -264,18 +302,18 @@
         {
           "dow": 0,
           "rest": false,
-          "title": "15 min Bodyweight (Rest day)",
-          "workout_type": "strength_recovery",
-          "duration_min": 15,
-          "intensity_target": "Bodyweight / mobility",
+          "title": "Dumbbells (full-body)",
+          "workout_type": "strength_maintenance",
+          "duration_min": 22,
+          "intensity_target": "Dumbbell circuit",
           "structured_workout": {
             "format": "strength",
-            "summary": "15 min Bodyweight (Rest day)",
+            "summary": "~22 min full-body dumbbell circuit — 3 sets each of biceps curl, shoulder press, lying triceps extension, bent-over reverse-grip row, lying fly, shoulder matrix (lateral / Y / reverse fly), lying pullover, and spiderman crunch (core). 30s work / 15s rest. Progress by adding weight.",
             "steps": [
               {
-                "label": "15 min Bodyweight (Rest day)",
-                "target": "Bodyweight / mobility",
-                "minutes": 15
+                "label": "Dumbbell circuit (8 exercises × 3 sets)",
+                "target": "30s work / 15s rest",
+                "minutes": 22
               }
             ]
           }
@@ -390,18 +428,18 @@
         {
           "dow": 0,
           "rest": false,
-          "title": "15 min Bodyweight (Rest day)",
-          "workout_type": "strength_recovery",
-          "duration_min": 15,
-          "intensity_target": "Bodyweight / mobility",
+          "title": "Dumbbells (full-body)",
+          "workout_type": "strength_maintenance",
+          "duration_min": 22,
+          "intensity_target": "Dumbbell circuit",
           "structured_workout": {
             "format": "strength",
-            "summary": "15 min Bodyweight (Rest day)",
+            "summary": "~22 min full-body dumbbell circuit — 3 sets each of biceps curl, shoulder press, lying triceps extension, bent-over reverse-grip row, lying fly, shoulder matrix (lateral / Y / reverse fly), lying pullover, and spiderman crunch (core). 30s work / 15s rest. Progress by adding weight.",
             "steps": [
               {
-                "label": "15 min Bodyweight (Rest day)",
-                "target": "Bodyweight / mobility",
-                "minutes": 15
+                "label": "Dumbbell circuit (8 exercises × 3 sets)",
+                "target": "30s work / 15s rest",
+                "minutes": 22
               }
             ]
           }
@@ -471,7 +509,7 @@
         {
           "dow": 5,
           "rest": false,
-          "title": "Z2 + Neuromuscular + Dumbbells",
+          "title": "Z2 + Neuromuscular",
           "workout_type": "bike_endurance",
           "duration_min": 58,
           "intensity_target": "Zone 2 ~65–72% FTP",
@@ -480,9 +518,28 @@
             "summary": "58 min",
             "steps": [
               {
-                "label": "Z2 + Neuromuscular + Dumbbells",
+                "label": "Z2 + Neuromuscular",
                 "target": "Zone 2 ~65–72% FTP",
                 "minutes": 58
+              }
+            ]
+          }
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Bodyweight",
+          "workout_type": "strength_maintenance",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight circuit",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "~15 min bodyweight circuit — 3 rounds of squat, dead bug, mountain climber, glute bridge, and push-up (10 reps each), 30s rest between rounds. Progress by adding reps.",
+            "steps": [
+              {
+                "label": "Bodyweight circuit (5 exercises × 3 rounds)",
+                "target": "10 reps each",
+                "minutes": 15
               }
             ]
           }
@@ -516,18 +573,18 @@
         {
           "dow": 0,
           "rest": false,
-          "title": "15 min Bodyweight (Rest day)",
-          "workout_type": "strength_recovery",
-          "duration_min": 15,
-          "intensity_target": "Bodyweight / mobility",
+          "title": "Dumbbells (full-body)",
+          "workout_type": "strength_maintenance",
+          "duration_min": 22,
+          "intensity_target": "Dumbbell circuit",
           "structured_workout": {
             "format": "strength",
-            "summary": "15 min Bodyweight (Rest day)",
+            "summary": "~22 min full-body dumbbell circuit — 3 sets each of biceps curl, shoulder press, lying triceps extension, bent-over reverse-grip row, lying fly, shoulder matrix (lateral / Y / reverse fly), lying pullover, and spiderman crunch (core). 30s work / 15s rest. Progress by adding weight.",
             "steps": [
               {
-                "label": "15 min Bodyweight (Rest day)",
-                "target": "Bodyweight / mobility",
-                "minutes": 15
+                "label": "Dumbbell circuit (8 exercises × 3 sets)",
+                "target": "30s work / 15s rest",
+                "minutes": 22
               }
             ]
           }
@@ -597,7 +654,7 @@
         {
           "dow": 5,
           "rest": false,
-          "title": "Z2 + Neuromuscular + Dumbbells",
+          "title": "Z2 + Neuromuscular",
           "workout_type": "bike_endurance",
           "duration_min": 58,
           "intensity_target": "Zone 2 ~65–72% FTP",
@@ -606,9 +663,28 @@
             "summary": "58 min",
             "steps": [
               {
-                "label": "Z2 + Neuromuscular + Dumbbells",
+                "label": "Z2 + Neuromuscular",
                 "target": "Zone 2 ~65–72% FTP",
                 "minutes": 58
+              }
+            ]
+          }
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Bodyweight",
+          "workout_type": "strength_maintenance",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight circuit",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "~15 min bodyweight circuit — 3 rounds of squat, dead bug, mountain climber, glute bridge, and push-up (10 reps each), 30s rest between rounds. Progress by adding reps.",
+            "steps": [
+              {
+                "label": "Bodyweight circuit (5 exercises × 3 rounds)",
+                "target": "10 reps each",
+                "minutes": 15
               }
             ]
           }
@@ -642,18 +718,18 @@
         {
           "dow": 0,
           "rest": false,
-          "title": "15 min Bodyweight (Rest day)",
-          "workout_type": "strength_recovery",
-          "duration_min": 15,
-          "intensity_target": "Bodyweight / mobility",
+          "title": "Dumbbells (full-body)",
+          "workout_type": "strength_maintenance",
+          "duration_min": 22,
+          "intensity_target": "Dumbbell circuit",
           "structured_workout": {
             "format": "strength",
-            "summary": "15 min Bodyweight (Rest day)",
+            "summary": "~22 min full-body dumbbell circuit — 3 sets each of biceps curl, shoulder press, lying triceps extension, bent-over reverse-grip row, lying fly, shoulder matrix (lateral / Y / reverse fly), lying pullover, and spiderman crunch (core). 30s work / 15s rest. Progress by adding weight.",
             "steps": [
               {
-                "label": "15 min Bodyweight (Rest day)",
-                "target": "Bodyweight / mobility",
-                "minutes": 15
+                "label": "Dumbbell circuit (8 exercises × 3 sets)",
+                "target": "30s work / 15s rest",
+                "minutes": 22
               }
             ]
           }
@@ -723,7 +799,7 @@
         {
           "dow": 5,
           "rest": false,
-          "title": "Z2 + Neuromuscular + Dumbbells",
+          "title": "Z2 + Neuromuscular",
           "workout_type": "bike_endurance",
           "duration_min": 58,
           "intensity_target": "Zone 2 ~65–72% FTP",
@@ -732,9 +808,28 @@
             "summary": "58 min",
             "steps": [
               {
-                "label": "Z2 + Neuromuscular + Dumbbells",
+                "label": "Z2 + Neuromuscular",
                 "target": "Zone 2 ~65–72% FTP",
                 "minutes": 58
+              }
+            ]
+          }
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Bodyweight",
+          "workout_type": "strength_maintenance",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight circuit",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "~15 min bodyweight circuit — 3 rounds of squat, dead bug, mountain climber, glute bridge, and push-up (10 reps each), 30s rest between rounds. Progress by adding reps.",
+            "steps": [
+              {
+                "label": "Bodyweight circuit (5 exercises × 3 rounds)",
+                "target": "10 reps each",
+                "minutes": 15
               }
             ]
           }
@@ -768,18 +863,18 @@
         {
           "dow": 0,
           "rest": false,
-          "title": "15 min Bodyweight (Rest day)",
-          "workout_type": "strength_recovery",
-          "duration_min": 15,
-          "intensity_target": "Bodyweight / mobility",
+          "title": "Dumbbells (full-body)",
+          "workout_type": "strength_maintenance",
+          "duration_min": 22,
+          "intensity_target": "Dumbbell circuit",
           "structured_workout": {
             "format": "strength",
-            "summary": "15 min Bodyweight (Rest day)",
+            "summary": "~22 min full-body dumbbell circuit — 3 sets each of biceps curl, shoulder press, lying triceps extension, bent-over reverse-grip row, lying fly, shoulder matrix (lateral / Y / reverse fly), lying pullover, and spiderman crunch (core). 30s work / 15s rest. Progress by adding weight.",
             "steps": [
               {
-                "label": "15 min Bodyweight (Rest day)",
-                "target": "Bodyweight / mobility",
-                "minutes": 15
+                "label": "Dumbbell circuit (8 exercises × 3 sets)",
+                "target": "30s work / 15s rest",
+                "minutes": 22
               }
             ]
           }
@@ -849,7 +944,7 @@
         {
           "dow": 5,
           "rest": false,
-          "title": "Z2 + Neuromuscular + Dumbbells",
+          "title": "Z2 + Neuromuscular",
           "workout_type": "bike_endurance",
           "duration_min": 58,
           "intensity_target": "Zone 2 ~65–72% FTP",
@@ -858,9 +953,28 @@
             "summary": "58 min",
             "steps": [
               {
-                "label": "Z2 + Neuromuscular + Dumbbells",
+                "label": "Z2 + Neuromuscular",
                 "target": "Zone 2 ~65–72% FTP",
                 "minutes": 58
+              }
+            ]
+          }
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Bodyweight",
+          "workout_type": "strength_maintenance",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight circuit",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "~15 min bodyweight circuit — 3 rounds of squat, dead bug, mountain climber, glute bridge, and push-up (10 reps each), 30s rest between rounds. Progress by adding reps.",
+            "steps": [
+              {
+                "label": "Bodyweight circuit (5 exercises × 3 rounds)",
+                "target": "10 reps each",
+                "minutes": 15
               }
             ]
           }
@@ -894,18 +1008,18 @@
         {
           "dow": 0,
           "rest": false,
-          "title": "15 min Bodyweight (Rest day)",
-          "workout_type": "strength_recovery",
-          "duration_min": 15,
-          "intensity_target": "Bodyweight / mobility",
+          "title": "Dumbbells (full-body)",
+          "workout_type": "strength_maintenance",
+          "duration_min": 22,
+          "intensity_target": "Dumbbell circuit",
           "structured_workout": {
             "format": "strength",
-            "summary": "15 min Bodyweight (Rest day)",
+            "summary": "~22 min full-body dumbbell circuit — 3 sets each of biceps curl, shoulder press, lying triceps extension, bent-over reverse-grip row, lying fly, shoulder matrix (lateral / Y / reverse fly), lying pullover, and spiderman crunch (core). 30s work / 15s rest. Progress by adding weight.",
             "steps": [
               {
-                "label": "15 min Bodyweight (Rest day)",
-                "target": "Bodyweight / mobility",
-                "minutes": 15
+                "label": "Dumbbell circuit (8 exercises × 3 sets)",
+                "target": "30s work / 15s rest",
+                "minutes": 22
               }
             ]
           }
@@ -975,7 +1089,7 @@
         {
           "dow": 5,
           "rest": false,
-          "title": "Z2 + Neuromuscular + Dumbbells",
+          "title": "Z2 + Neuromuscular",
           "workout_type": "bike_endurance",
           "duration_min": 58,
           "intensity_target": "Zone 2 ~65–72% FTP",
@@ -984,9 +1098,28 @@
             "summary": "58 min",
             "steps": [
               {
-                "label": "Z2 + Neuromuscular + Dumbbells",
+                "label": "Z2 + Neuromuscular",
                 "target": "Zone 2 ~65–72% FTP",
                 "minutes": 58
+              }
+            ]
+          }
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Bodyweight",
+          "workout_type": "strength_maintenance",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight circuit",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "~15 min bodyweight circuit — 3 rounds of squat, dead bug, mountain climber, glute bridge, and push-up (10 reps each), 30s rest between rounds. Progress by adding reps.",
+            "steps": [
+              {
+                "label": "Bodyweight circuit (5 exercises × 3 rounds)",
+                "target": "10 reps each",
+                "minutes": 15
               }
             ]
           }
@@ -1020,18 +1153,18 @@
         {
           "dow": 0,
           "rest": false,
-          "title": "15 min Bodyweight (Rest day)",
-          "workout_type": "strength_recovery",
-          "duration_min": 15,
-          "intensity_target": "Bodyweight / mobility",
+          "title": "Dumbbells (full-body)",
+          "workout_type": "strength_maintenance",
+          "duration_min": 22,
+          "intensity_target": "Dumbbell circuit",
           "structured_workout": {
             "format": "strength",
-            "summary": "15 min Bodyweight (Rest day)",
+            "summary": "~22 min full-body dumbbell circuit — 3 sets each of biceps curl, shoulder press, lying triceps extension, bent-over reverse-grip row, lying fly, shoulder matrix (lateral / Y / reverse fly), lying pullover, and spiderman crunch (core). 30s work / 15s rest. Progress by adding weight.",
             "steps": [
               {
-                "label": "15 min Bodyweight (Rest day)",
-                "target": "Bodyweight / mobility",
-                "minutes": 15
+                "label": "Dumbbell circuit (8 exercises × 3 sets)",
+                "target": "30s work / 15s rest",
+                "minutes": 22
               }
             ]
           }
@@ -1146,18 +1279,18 @@
         {
           "dow": 0,
           "rest": false,
-          "title": "15 min Bodyweight (Rest day)",
-          "workout_type": "strength_recovery",
-          "duration_min": 15,
-          "intensity_target": "Bodyweight / mobility",
+          "title": "Dumbbells (full-body)",
+          "workout_type": "strength_maintenance",
+          "duration_min": 22,
+          "intensity_target": "Dumbbell circuit",
           "structured_workout": {
             "format": "strength",
-            "summary": "15 min Bodyweight (Rest day)",
+            "summary": "~22 min full-body dumbbell circuit — 3 sets each of biceps curl, shoulder press, lying triceps extension, bent-over reverse-grip row, lying fly, shoulder matrix (lateral / Y / reverse fly), lying pullover, and spiderman crunch (core). 30s work / 15s rest. Progress by adding weight.",
             "steps": [
               {
-                "label": "15 min Bodyweight (Rest day)",
-                "target": "Bodyweight / mobility",
-                "minutes": 15
+                "label": "Dumbbell circuit (8 exercises × 3 sets)",
+                "target": "30s work / 15s rest",
+                "minutes": 22
               }
             ]
           }
@@ -1227,7 +1360,7 @@
         {
           "dow": 5,
           "rest": false,
-          "title": "Z2 + Neuromuscular + Dumbbells",
+          "title": "Z2 + Neuromuscular",
           "workout_type": "bike_endurance",
           "duration_min": 58,
           "intensity_target": "Zone 2 ~65–72% FTP",
@@ -1236,9 +1369,28 @@
             "summary": "58 min",
             "steps": [
               {
-                "label": "Z2 + Neuromuscular + Dumbbells",
+                "label": "Z2 + Neuromuscular",
                 "target": "Zone 2 ~65–72% FTP",
                 "minutes": 58
+              }
+            ]
+          }
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Bodyweight",
+          "workout_type": "strength_maintenance",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight circuit",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "~15 min bodyweight circuit — 3 rounds of squat, dead bug, mountain climber, glute bridge, and push-up (10 reps each), 30s rest between rounds. Progress by adding reps.",
+            "steps": [
+              {
+                "label": "Bodyweight circuit (5 exercises × 3 rounds)",
+                "target": "10 reps each",
+                "minutes": 15
               }
             ]
           }
@@ -1272,18 +1424,18 @@
         {
           "dow": 0,
           "rest": false,
-          "title": "15 min Bodyweight (Rest day)",
-          "workout_type": "strength_recovery",
-          "duration_min": 15,
-          "intensity_target": "Bodyweight / mobility",
+          "title": "Dumbbells (full-body)",
+          "workout_type": "strength_maintenance",
+          "duration_min": 22,
+          "intensity_target": "Dumbbell circuit",
           "structured_workout": {
             "format": "strength",
-            "summary": "15 min Bodyweight (Rest day)",
+            "summary": "~22 min full-body dumbbell circuit — 3 sets each of biceps curl, shoulder press, lying triceps extension, bent-over reverse-grip row, lying fly, shoulder matrix (lateral / Y / reverse fly), lying pullover, and spiderman crunch (core). 30s work / 15s rest. Progress by adding weight.",
             "steps": [
               {
-                "label": "15 min Bodyweight (Rest day)",
-                "target": "Bodyweight / mobility",
-                "minutes": 15
+                "label": "Dumbbell circuit (8 exercises × 3 sets)",
+                "target": "30s work / 15s rest",
+                "minutes": 22
               }
             ]
           }
@@ -1353,7 +1505,7 @@
         {
           "dow": 5,
           "rest": false,
-          "title": "Z2 + Neuromuscular + Dumbbells",
+          "title": "Z2 + Neuromuscular",
           "workout_type": "bike_endurance",
           "duration_min": 58,
           "intensity_target": "Zone 2 ~65–72% FTP",
@@ -1362,9 +1514,28 @@
             "summary": "58 min",
             "steps": [
               {
-                "label": "Z2 + Neuromuscular + Dumbbells",
+                "label": "Z2 + Neuromuscular",
                 "target": "Zone 2 ~65–72% FTP",
                 "minutes": 58
+              }
+            ]
+          }
+        },
+        {
+          "dow": 5,
+          "rest": false,
+          "title": "Bodyweight",
+          "workout_type": "strength_maintenance",
+          "duration_min": 15,
+          "intensity_target": "Bodyweight circuit",
+          "structured_workout": {
+            "format": "strength",
+            "summary": "~15 min bodyweight circuit — 3 rounds of squat, dead bug, mountain climber, glute bridge, and push-up (10 reps each), 30s rest between rounds. Progress by adding reps.",
+            "steps": [
+              {
+                "label": "Bodyweight circuit (5 exercises × 3 rounds)",
+                "target": "10 reps each",
+                "minutes": 15
               }
             ]
           }
@@ -1398,18 +1569,18 @@
         {
           "dow": 0,
           "rest": false,
-          "title": "15 min Bodyweight (Rest day)",
-          "workout_type": "strength_recovery",
-          "duration_min": 15,
-          "intensity_target": "Bodyweight / mobility",
+          "title": "Dumbbells (full-body)",
+          "workout_type": "strength_maintenance",
+          "duration_min": 22,
+          "intensity_target": "Dumbbell circuit",
           "structured_workout": {
             "format": "strength",
-            "summary": "15 min Bodyweight (Rest day)",
+            "summary": "~22 min full-body dumbbell circuit — 3 sets each of biceps curl, shoulder press, lying triceps extension, bent-over reverse-grip row, lying fly, shoulder matrix (lateral / Y / reverse fly), lying pullover, and spiderman crunch (core). 30s work / 15s rest. Progress by adding weight.",
             "steps": [
               {
-                "label": "15 min Bodyweight (Rest day)",
-                "target": "Bodyweight / mobility",
-                "minutes": 15
+                "label": "Dumbbell circuit (8 exercises × 3 sets)",
+                "target": "30s work / 15s rest",
+                "minutes": 22
               }
             ]
           }
@@ -1524,18 +1695,18 @@
         {
           "dow": 0,
           "rest": false,
-          "title": "15 min Bodyweight (Rest day)",
-          "workout_type": "strength_recovery",
-          "duration_min": 15,
-          "intensity_target": "Bodyweight / mobility",
+          "title": "Dumbbells (full-body)",
+          "workout_type": "strength_maintenance",
+          "duration_min": 22,
+          "intensity_target": "Dumbbell circuit",
           "structured_workout": {
             "format": "strength",
-            "summary": "15 min Bodyweight (Rest day)",
+            "summary": "~22 min full-body dumbbell circuit — 3 sets each of biceps curl, shoulder press, lying triceps extension, bent-over reverse-grip row, lying fly, shoulder matrix (lateral / Y / reverse fly), lying pullover, and spiderman crunch (core). 30s work / 15s rest. Progress by adding weight.",
             "steps": [
               {
-                "label": "15 min Bodyweight (Rest day)",
-                "target": "Bodyweight / mobility",
-                "minutes": 15
+                "label": "Dumbbell circuit (8 exercises × 3 sets)",
+                "target": "30s work / 15s rest",
+                "minutes": 22
               }
             ]
           }
