@@ -133,6 +133,7 @@ class AnalysisOut(BaseModel):
     thermalReview: dict[str, Any]
     metricsVsBaselines: list[dict[str, Any]]
     ageComparison: dict[str, Any]
+    swapSuggestion: dict[str, Any] | None = None
     feedback: FeedbackOut | None = None
 
 
@@ -534,6 +535,11 @@ def _serialize_analysis(
         thermalReview=thermal_review if isinstance(thermal_review, dict) else {},
         metricsVsBaselines=metrics_vs_baselines if isinstance(metrics_vs_baselines, list) else [],
         ageComparison=age_comparison if isinstance(age_comparison, dict) else {},
+        swapSuggestion=(
+            verdict.get("swapSuggestion")
+            if isinstance(verdict, dict) and isinstance(verdict.get("swapSuggestion"), dict)
+            else None
+        ),
         feedback=serialize_feedback(feedback) if feedback is not None else None,
     )
 

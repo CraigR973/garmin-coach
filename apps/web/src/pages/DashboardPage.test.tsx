@@ -631,6 +631,33 @@ describe('DashboardPage', () => {
     });
   });
 
+  it('leads an Amber morning with a one-tap week swap (Batch 66)', async () => {
+    const user = userEvent.setup();
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.morningAnalysis!.verdict = 'amber';
+        snapshot.data.morningAnalysis!.swapSuggestion = {
+          hardWorkoutId: WORKOUT_ID,
+          hardTitle: 'VO2 Max 30/30',
+          hardCategory: 'vo2',
+          moveToDate: '2026-06-27',
+          moveToWeekday: 'Saturday',
+          bringForwardTitle: 'Z2 + Neuromuscular',
+        };
+      }),
+    );
+
+    expect(await screen.findByText('Rearrange the week')).toBeTruthy();
+    await user.click(await screen.findByRole('button', { name: /move it to saturday/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        `/api/v1/workout-delivery/planned-workouts/${WORKOUT_ID}/swap`,
+        expect.objectContaining({ method: 'POST', body: JSON.stringify({ targetDate: '2026-06-27' }) }),
+      );
+    });
+  });
+
   it('shows the coach-changed state and approves the adjustment', async () => {
     const user = userEvent.setup();
     renderPage(

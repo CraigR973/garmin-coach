@@ -213,6 +213,186 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
         assert fake_client.calls == 1
 
 
+@pytest.mark.asyncio
+async def test_amber_morning_leads_with_week_swap_and_keeps_softening(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 66 (#139): a cautious morning with a hard session today plus a later
+    easy bike day leads with a concrete week swap; softening stays as fallback."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 1, 1)  # Thursday
+    saturday = date(2026, 1, 3)
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Swap First Test",
+            pin_hash="x" * 60,
+            role=UserRole.admin,
+            timezone="Europe/London",
+            latitude=55.6045,
+            longitude=-4.5249,
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+        session.add_all(
+            [
+                DailyMetric(
+                    user_id=user_id,
+                    calendar_date=subject_date,
+                    recorded_at_utc=datetime(2026, 1, 1, 6, 20),
+                    readiness_score=42,
+                    readiness_level="Low",
+                    hrv_weekly_avg_ms=50,
+                    hrv_status="Balanced",
+                    hrv_baseline_low_ms=43,
+                    hrv_baseline_high_ms=57,
+                    resting_heart_rate_bpm=45,
+                    raw_payload={},
+                ),
+                Sleep(
+                    user_id=user_id,
+                    calendar_date=subject_date,
+                    score=71,
+                    raw_payload={},
+                    factors_json={},
+                ),
+                PlannedWorkout(
+                    user_id=user_id,
+                    workout_date=subject_date,
+                    version=1,
+                    title="VO2 Max 30/30",
+                    workout_type="bike_vo2",
+                    status="planned",
+                    is_active=True,
+                    planned_duration_min=60,
+                    intensity_target="105-110% FTP",
+                    structured_workout={"format": "bike"},
+                    source="test",
+                ),
+                PlannedWorkout(
+                    user_id=user_id,
+                    workout_date=saturday,
+                    version=1,
+                    title="Z2 + Neuromuscular",
+                    workout_type="bike_endurance",
+                    status="planned",
+                    is_active=True,
+                    planned_duration_min=90,
+                    intensity_target="Endurance",
+                    structured_workout={"format": "bike"},
+                    source="test",
+                ),
+            ]
+        )
+        await session.commit()
+
+        packet = await MorningAnalysisService(session).assemble_context_packet(player, subject_date)
+
+    verdict = packet["verdict"]
+    assert verdict["status"] == "Amber"
+
+    swap = verdict["swapSuggestion"]
+    assert swap["hardTitle"] == "VO2 Max 30/30"
+    assert swap["moveToDate"] == saturday.isoformat()
+    assert swap["moveToWeekday"] == "Saturday"
+    assert swap["bringForwardTitle"] == "Z2 + Neuromuscular"
+
+    adjustments = verdict["planAdjustments"]
+    # The swap leads; softening stays available as the explicit fallback.
+    assert "move it to Saturday" in adjustments[0].lower()
+    assert any("cut duration" in item.lower() for item in adjustments[1:])
+
+    # The KB records the swap-first coaching preference (66.1).
+    protocol = next(
+        section
+        for section in packet["knowledgeBase"]["sections"]
+        if section["section"] == "coaching_protocol"
+    )
+    assert protocol["content"]["lowReadinessResponse"]["preference"] == "swap_first"
+
+
+@pytest.mark.asyncio
+async def test_green_morning_has_no_swap_suggestion(db_conn: AsyncConnection) -> None:
+    """A Green morning proceeds as planned — no swap suggestion is attached."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 1, 1)
+    saturday = date(2026, 1, 3)
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Green No Swap Test",
+            pin_hash="x" * 60,
+            role=UserRole.admin,
+            timezone="Europe/London",
+            latitude=55.6045,
+            longitude=-4.5249,
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+        session.add_all(
+            [
+                DailyMetric(
+                    user_id=user_id,
+                    calendar_date=subject_date,
+                    recorded_at_utc=datetime(2026, 1, 1, 6, 20),
+                    readiness_score=80,
+                    readiness_level="High",
+                    hrv_weekly_avg_ms=52,
+                    hrv_status="Balanced",
+                    hrv_baseline_low_ms=43,
+                    hrv_baseline_high_ms=57,
+                    resting_heart_rate_bpm=44,
+                    raw_payload={},
+                ),
+                Sleep(
+                    user_id=user_id,
+                    calendar_date=subject_date,
+                    score=82,
+                    raw_payload={},
+                    factors_json={},
+                ),
+                PlannedWorkout(
+                    user_id=user_id,
+                    workout_date=subject_date,
+                    version=1,
+                    title="VO2 Max 30/30",
+                    workout_type="bike_vo2",
+                    status="planned",
+                    is_active=True,
+                    planned_duration_min=60,
+                    intensity_target="105-110% FTP",
+                    structured_workout={"format": "bike"},
+                    source="test",
+                ),
+                PlannedWorkout(
+                    user_id=user_id,
+                    workout_date=saturday,
+                    version=1,
+                    title="Z2 + Neuromuscular",
+                    workout_type="bike_endurance",
+                    status="planned",
+                    is_active=True,
+                    planned_duration_min=90,
+                    intensity_target="Endurance",
+                    structured_workout={"format": "bike"},
+                    source="test",
+                ),
+            ]
+        )
+        await session.commit()
+
+        packet = await MorningAnalysisService(session).assemble_context_packet(player, subject_date)
+
+    assert packet["verdict"]["status"] == "Green"
+    assert "swapSuggestion" not in packet["verdict"]
+
+
 def test_red_verdict_never_keeps_vo2() -> None:
     daily_metric = DailyMetric(
         user_id=uuid.uuid4(),

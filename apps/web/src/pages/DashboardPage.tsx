@@ -423,6 +423,7 @@ export function DashboardPage() {
         <DayPlanBody
           workouts={todaysWorkouts}
           planAdjustments={analysis?.planAdjustments ?? []}
+          swapSuggestion={analysis?.swapSuggestion ?? null}
           flexibilityAnalyses={postFlexibilityAnalyses}
           strengthAnalyses={postStrengthAnalyses}
           walkAnalyses={postWalkAnalyses}
@@ -629,6 +630,7 @@ function NextActionStrip({
 }
 
 type TodayWorkout = DailyLoopData['plannedWorkouts'][number];
+type SwapSuggestionData = NonNullable<DailyLoopData['morningAnalysis']>['swapSuggestion'];
 
 type TodayWorkoutActions = {
   busy: boolean;
@@ -658,12 +660,54 @@ type RideCheckInHandlers = {
   isSaving: boolean;
 };
 
+/** Batch 66 (#139): the swap-first recovery lead — on a cautious morning with a
+ *  hard session scheduled, recommend rearranging the week (move the hard session,
+ *  pull an easier one forward) in one tap instead of only offering to soften.
+ *  The tap reuses the day card's category-scoped swap (Batch 65-safe on split
+ *  days); softening the ride stays available on the session row below. */
+function SwapSuggestionCard({
+  suggestion,
+  busy,
+  onSwap,
+}: {
+  suggestion: NonNullable<SwapSuggestionData>;
+  busy: boolean;
+  onSwap: (payload: { workoutId: string; targetDate: string }) => void;
+}) {
+  return (
+    <div className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-3 text-sm">
+      <p className="mb-1 flex items-center gap-1.5 font-medium text-warning">
+        <ArrowLeftRight className="h-4 w-4" aria-hidden />
+        Rearrange the week
+      </p>
+      <p className="text-text-primary">
+        Today isn&apos;t the day to force {suggestion.hardTitle}. Move it to{' '}
+        {suggestion.moveToWeekday} and bring {suggestion.bringForwardTitle} forward to today
+        — keeping the week&apos;s volume instead of softening the ride.
+      </p>
+      <Button
+        type="button"
+        size="sm"
+        className="mt-3"
+        disabled={busy}
+        onClick={() =>
+          onSwap({ workoutId: suggestion.hardWorkoutId, targetDate: suggestion.moveToDate })
+        }
+      >
+        <ArrowLeftRight className="h-4 w-4" aria-hidden />
+        Move it to {suggestion.moveToWeekday}
+      </Button>
+    </div>
+  );
+}
+
 /** The expanded body of the Today section: the day's session rows plus the
  *  day-level footer. The day label + verdict badge live in the section header
  *  (Batch 36 unified card, Batch 37 collapse). */
 function DayPlanBody({
   workouts,
   planAdjustments,
+  swapSuggestion,
   flexibilityAnalyses,
   strengthAnalyses,
   walkAnalyses,
@@ -677,6 +721,7 @@ function DayPlanBody({
 }: {
   workouts: TodayWorkout[];
   planAdjustments: string[];
+  swapSuggestion: SwapSuggestionData;
   flexibilityAnalyses: DailyLoopData['postFlexibilityAnalyses'];
   strengthAnalyses: DailyLoopData['postStrengthAnalyses'];
   walkAnalyses: DailyLoopData['postWalkAnalyses'];
@@ -696,6 +741,13 @@ function DayPlanBody({
   const hasWorkouts = workouts.length > 0;
   return (
     <div className="space-y-4">
+      {swapSuggestion ? (
+        <SwapSuggestionCard
+          suggestion={swapSuggestion}
+          busy={workoutActions.busy}
+          onSwap={workoutActions.onSwap}
+        />
+      ) : null}
       {hasWorkouts ? (
         <div className="space-y-4">
           {workouts.map((workout, index) => (
