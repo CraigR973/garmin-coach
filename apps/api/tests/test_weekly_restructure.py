@@ -460,6 +460,73 @@ async def test_apply_versions_changed_days_and_delivers_on_plan_set(
 
 
 @pytest.mark.asyncio
+async def test_apply_preserves_a_split_days_strength_row(db_conn: AsyncConnection) -> None:
+    """A restructure that changes a Batch 65 split day (bike + strength on one
+    date) re-versions only the bike and leaves the strength row active — the
+    whole-date deactivation used to silently drop it."""
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    vo2 = _planned(user_id, TUE, "bike_vo2", "VO2 Max 30/30", _VO2)
+    sweet = _planned(user_id, WED, "bike_sweet_spot", "Sweet Spot Builder", _SWEET)
+    endurance = _planned(user_id, SAT, "bike_endurance", "Z2 + Neuromuscular", _ENDURANCE)
+    # Split Saturday: bike v1 + strength v2 (Batch 65 per-date versioning).
+    strength = PlannedWorkout(
+        id=uuid.uuid4(),
+        user_id=user_id,
+        plan_block_id=None,
+        workout_date=SAT,
+        version=2,
+        title="Bodyweight",
+        workout_type="strength_maintenance",
+        status="planned",
+        is_active=True,
+        planned_duration_min=20,
+        intensity_target="Bodyweight circuit",
+        structured_workout={"format": "strength", "steps": [{"label": "Circuit", "minutes": 20}]},
+        source="test",
+    )
+    strength_id = strength.id
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add_all([vo2, sweet, endurance, strength])
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = WeeklyRestructureService(session, intervals_client=_FakeIntervalsClient())
+
+        # The adjacent VO2/Sweet-Spot conflict forces a reorder; the minimal-shift
+        # solve keeps VO2 on Tuesday and swaps Wed/Sat, so the split Saturday is a
+        # changed date. propose_delivery=False isolates the versioning behaviour.
+        result = await service.apply_for_week(user, WEEK_START, as_of=TUE, propose_delivery=False)
+        assert result.plan.changed
+        assert SAT in {change.workout_date for change in result.plan.changes}
+
+        # The strength row survives the restructure untouched.
+        strength_row = await session.get(PlannedWorkout, strength_id)
+        assert strength_row is not None
+        assert strength_row.is_active is True
+
+        # Saturday now holds exactly that strength plus the one new active bike.
+        sat_active = (
+            (
+                await session.execute(
+                    select(PlannedWorkout).where(
+                        PlannedWorkout.user_id == user_id,
+                        PlannedWorkout.workout_date == SAT,
+                        PlannedWorkout.is_active.is_(True),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(sat_active) == 2
+        assert {w.workout_type for w in sat_active} == {"strength_maintenance", "bike_sweet_spot"}
+        assert strength_id in {w.id for w in sat_active}
+
+
+@pytest.mark.asyncio
 async def test_apply_regenerates_deferred_late_build_vo2_as_ronnestad(
     db_conn: AsyncConnection,
 ) -> None:

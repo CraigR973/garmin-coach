@@ -227,7 +227,15 @@ def plan_week_restructure(
     ``fatigued``, defers hard sessions as late as possible (primary objective),
     keeping disruption minimal as the secondary objective.
     """
-    by_date_item = {item.workout_date: item for item in items}
+    # A Batch 65 split day carries a bike *and* a strength row on one date. Only
+    # bikes are reordered, so the bike must own its date in the conflict/change
+    # maps — otherwise a strength row could shadow it and hide a stacking conflict
+    # or make ``from_workout_id`` point at the strength (which apply would then
+    # wrongly deactivate). One bike per date, so bikes win deterministically.
+    by_date_item: dict[date, WeekItem] = {}
+    for item in items:
+        if item.is_bike or item.workout_date not in by_date_item:
+            by_date_item[item.workout_date] = item
     original = dict(by_date_item)
     conflicts_before = _conflicts(original)
 
@@ -575,7 +583,10 @@ class WeeklyRestructureService:
         for change in plan.changes:
             versioned.append(
                 await self._version_workout(
-                    player, change.workout_date, new_content[change.workout_date]
+                    player,
+                    change.workout_date,
+                    new_content[change.workout_date],
+                    replace_workout_id=change.from_workout_id,
                 )
             )
 
@@ -659,7 +670,12 @@ class WeeklyRestructureService:
         }
 
     async def _version_workout(
-        self, player: Profile, workout_date: date, content: dict[str, Any]
+        self,
+        player: Profile,
+        workout_date: date,
+        content: dict[str, Any],
+        *,
+        replace_workout_id: uuid.UUID,
     ) -> PlannedWorkout:
         current_version = await self.session.scalar(
             select(func.max(PlannedWorkout.version)).where(
@@ -668,11 +684,16 @@ class WeeklyRestructureService:
             )
         )
         next_version = (current_version or 0) + 1
+        # Deactivate only the bike row being replaced, not every active row on the
+        # date: a Batch 65 split day also carries a strength row that must stay
+        # active (deactivating the whole date silently dropped it — the bug this
+        # fixes). The restructurer only reorders bikes, so ``replace_workout_id``
+        # is the day's bike; the new versioned bike lands alongside the strength.
         await self.session.execute(
             update(PlannedWorkout)
             .where(
                 PlannedWorkout.user_id == player.id,
-                PlannedWorkout.workout_date == workout_date,
+                PlannedWorkout.id == replace_workout_id,
                 PlannedWorkout.is_active.is_(True),
             )
             .values(is_active=False)
