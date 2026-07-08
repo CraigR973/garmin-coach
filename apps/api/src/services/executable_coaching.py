@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.coaching import Analysis, PlannedWorkout, WorkoutDeliveryProposal
 from src.models.profile import Profile
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
+from src.services.workout_categories import category_for_workout_type
 from src.services.workout_completion import WORKOUT_STATUS_COMPLETED
 from src.services.workout_delivery import (
     STATUS_APPROVED,
@@ -775,7 +776,14 @@ class ExecutableCoachingService:
         if target_date == source_date:
             raise HTTPException(status_code=400, detail="Pick a different day to swap to")
 
-        target_workout = await self._active_workout_on(player.id, target_date)
+        # Scope swap-target detection to the source's category (Batch 65): moving a
+        # ride swaps only with the target day's ride, so a same-day strength/flexibility
+        # session is never dragged along, and swapping two ride days leaves both days'
+        # strength in place.
+        source_category = category_for_workout_type(workout.workout_type)
+        target_workout = await self._active_workout_on(
+            player.id, target_date, category=source_category
+        )
         # A completed session can't be re-slotted in either direction (Batch 60):
         # it already happened, so moving the source — or swapping it onto a day
         # that already holds a completed session — would rewrite history.
@@ -896,20 +904,35 @@ class ExecutableCoachingService:
         return None
 
     async def _active_workout_on(
-        self, user_id: uuid.UUID, workout_date: date
+        self, user_id: uuid.UUID, workout_date: date, *, category: str | None = None
     ) -> PlannedWorkout | None:
-        workout: PlannedWorkout | None = await self.session.scalar(
-            select(PlannedWorkout)
-            .where(
-                PlannedWorkout.user_id == user_id,
-                PlannedWorkout.workout_date == workout_date,
-                PlannedWorkout.is_active.is_(True),
-                PlannedWorkout.status != WORKOUT_STATUS_SKIPPED,
+        """The active (non-skipped) workout on a date, highest version first.
+
+        When ``category`` is given only a workout of that day-category matches
+        (Batch 65) — so a multi-workout day (e.g. a split Saturday's ride +
+        Bodyweight) resolves to the same-category session rather than an arbitrary
+        ``.limit(1)`` pick. With no category it keeps the prior behaviour.
+        """
+        candidates = (
+            (
+                await self.session.execute(
+                    select(PlannedWorkout)
+                    .where(
+                        PlannedWorkout.user_id == user_id,
+                        PlannedWorkout.workout_date == workout_date,
+                        PlannedWorkout.is_active.is_(True),
+                        PlannedWorkout.status != WORKOUT_STATUS_SKIPPED,
+                    )
+                    .order_by(PlannedWorkout.version.desc())
+                )
             )
-            .order_by(PlannedWorkout.version.desc())
-            .limit(1)
+            .scalars()
+            .all()
         )
-        return workout
+        for workout in candidates:
+            if category is None or category_for_workout_type(workout.workout_type) == category:
+                return workout
+        return None
 
     def _content_snapshot(self, workout: PlannedWorkout) -> dict[str, Any]:
         return {

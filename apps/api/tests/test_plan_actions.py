@@ -167,7 +167,10 @@ async def test_add_workout_appends_to_occupied_day_and_bike_reconciles(
 
 
 @pytest.mark.asyncio
-async def test_rest_day_swap_in_moves_existing_workout(db_conn: AsyncConnection) -> None:
+async def test_move_ride_onto_flexibility_day_is_category_scoped(db_conn: AsyncConnection) -> None:
+    """Batch 65: moving a ride onto a day that only holds a flexibility session is a
+    move, not a cross-category swap — the ride joins that day and the flexibility
+    stays put, so nothing is dragged back onto the vacated day."""
     user_id = uuid.uuid4()
     monday, wednesday = date(2026, 8, 17), date(2026, 8, 19)
     workout_id = uuid.uuid4()
@@ -186,23 +189,32 @@ async def test_rest_day_swap_in_moves_existing_workout(db_conn: AsyncConnection)
             user, planned_workout_id=workout_id, target_date=wednesday
         )
 
-        monday_active = (
-            (
-                await session.execute(
-                    select(PlannedWorkout).where(
-                        PlannedWorkout.user_id == user_id,
-                        PlannedWorkout.workout_date == monday,
-                        PlannedWorkout.is_active.is_(True),
+        async def _active_on(day: date) -> list[PlannedWorkout]:
+            return list(
+                (
+                    await session.execute(
+                        select(PlannedWorkout)
+                        .where(
+                            PlannedWorkout.user_id == user_id,
+                            PlannedWorkout.workout_date == day,
+                            PlannedWorkout.is_active.is_(True),
+                        )
+                        .order_by(PlannedWorkout.version)
                     )
                 )
+                .scalars()
+                .all()
             )
-            .scalars()
-            .all()
-        )
+
+        monday_active = await _active_on(monday)
+        wednesday_active = await _active_on(wednesday)
 
     assert moved.workout_date == wednesday
-    assert monday_active[0].workout_type == "mobility"
-    assert fake.updates
+    # The flexibility is NOT dragged back — Monday is now empty.
+    assert monday_active == []
+    # Wednesday carries both its flexibility and the moved ride.
+    assert sorted(w.workout_type for w in wednesday_active) == ["bike_endurance", "mobility"]
+    assert fake.updates  # the ride's Zwift event moved
 
 
 @pytest.mark.asyncio
