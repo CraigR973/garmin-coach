@@ -13,7 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import CurrentUser
 from src.database import get_db
-from src.models.coaching import Analysis, DailyMetric, ManualEntry, PlannedWorkout, Sleep
+from src.models.coaching import Analysis, DailyMetric, Feedback, ManualEntry, PlannedWorkout, Sleep
+from src.routers.feedback import FeedbackOut, serialize_feedback
 from src.services.breathwork_brief import BreathworkBriefResult
 from src.services.chronic_patterns import ChronicPatternSuggestionService
 from src.services.daily_loop import DailyLoopService, DeliveryState
@@ -132,6 +133,7 @@ class AnalysisOut(BaseModel):
     thermalReview: dict[str, Any]
     metricsVsBaselines: list[dict[str, Any]]
     ageComparison: dict[str, Any]
+    feedback: FeedbackOut | None = None
 
 
 class PostWorkoutAnalysisOut(BaseModel):
@@ -150,6 +152,7 @@ class PostWorkoutAnalysisOut(BaseModel):
     execution: dict[str, Any]
     tomorrowImpact: str | None
     postRideCheckIn: ManualEntryOut | None = None
+    feedback: FeedbackOut | None = None
 
 
 class PostFlexibilityAnalysisOut(BaseModel):
@@ -164,6 +167,7 @@ class PostFlexibilityAnalysisOut(BaseModel):
     heartRateReview: dict[str, Any]
     consistency: dict[str, Any]
     activityCheckIn: ManualEntryOut | None = None
+    feedback: FeedbackOut | None = None
 
 
 class PostStrengthAnalysisOut(BaseModel):
@@ -178,6 +182,7 @@ class PostStrengthAnalysisOut(BaseModel):
     heartRateReview: dict[str, Any]
     consistency: dict[str, Any]
     activityCheckIn: ManualEntryOut | None = None
+    feedback: FeedbackOut | None = None
 
 
 class PostWalkAnalysisOut(BaseModel):
@@ -193,6 +198,7 @@ class PostWalkAnalysisOut(BaseModel):
     paceReview: dict[str, Any]
     activeRecoveryContext: dict[str, Any]
     activityCheckIn: ManualEntryOut | None = None
+    feedback: FeedbackOut | None = None
 
 
 class DailyMetricOut(BaseModel):
@@ -487,7 +493,9 @@ def _normalize_api_verdict(verdict: str | None) -> str | None:
     return verdict.strip().lower()
 
 
-def _serialize_analysis(analysis: Analysis | None) -> AnalysisOut | None:
+def _serialize_analysis(
+    analysis: Analysis | None, feedback: Feedback | None = None
+) -> AnalysisOut | None:
     if analysis is None:
         return None
     verdict = (
@@ -526,12 +534,14 @@ def _serialize_analysis(analysis: Analysis | None) -> AnalysisOut | None:
         thermalReview=thermal_review if isinstance(thermal_review, dict) else {},
         metricsVsBaselines=metrics_vs_baselines if isinstance(metrics_vs_baselines, list) else [],
         ageComparison=age_comparison if isinstance(age_comparison, dict) else {},
+        feedback=serialize_feedback(feedback) if feedback is not None else None,
     )
 
 
 def _serialize_post_workout_analysis(
     analysis: Analysis,
     post_ride_checkin: ManualEntry | None,
+    feedback: Feedback | None = None,
 ) -> PostWorkoutAnalysisOut:
     packet = analysis.context_packet if isinstance(analysis.context_packet, dict) else {}
     activity = packet.get("activity", {}) if isinstance(packet.get("activity", {}), dict) else {}
@@ -576,12 +586,14 @@ def _serialize_post_workout_analysis(
         execution=execution,
         tomorrowImpact=tomorrow_impact if isinstance(tomorrow_impact, str) else None,
         postRideCheckIn=_serialize_manual_entry(post_ride_checkin),
+        feedback=serialize_feedback(feedback) if feedback is not None else None,
     )
 
 
 def _serialize_post_flexibility_analysis(
     analysis: Analysis,
     activity_checkin: ManualEntry | None,
+    feedback: Feedback | None = None,
 ) -> PostFlexibilityAnalysisOut:
     packet = analysis.context_packet if isinstance(analysis.context_packet, dict) else {}
     activity = packet.get("activity", {}) if isinstance(packet.get("activity", {}), dict) else {}
@@ -609,12 +621,14 @@ def _serialize_post_flexibility_analysis(
         heartRateReview=heart_rate_review,
         consistency=consistency,
         activityCheckIn=_serialize_manual_entry(activity_checkin),
+        feedback=serialize_feedback(feedback) if feedback is not None else None,
     )
 
 
 def _serialize_post_strength_analysis(
     analysis: Analysis,
     activity_checkin: ManualEntry | None,
+    feedback: Feedback | None = None,
 ) -> PostStrengthAnalysisOut:
     packet = analysis.context_packet if isinstance(analysis.context_packet, dict) else {}
     activity = packet.get("activity", {}) if isinstance(packet.get("activity", {}), dict) else {}
@@ -642,12 +656,14 @@ def _serialize_post_strength_analysis(
         heartRateReview=heart_rate_review,
         consistency=consistency,
         activityCheckIn=_serialize_manual_entry(activity_checkin),
+        feedback=serialize_feedback(feedback) if feedback is not None else None,
     )
 
 
 def _serialize_post_walk_analysis(
     analysis: Analysis,
     activity_checkin: ManualEntry | None,
+    feedback: Feedback | None = None,
 ) -> PostWalkAnalysisOut:
     packet = analysis.context_packet if isinstance(analysis.context_packet, dict) else {}
     activity = packet.get("activity", {}) if isinstance(packet.get("activity", {}), dict) else {}
@@ -681,6 +697,7 @@ def _serialize_post_walk_analysis(
         paceReview=pace_review,
         activeRecoveryContext=active_recovery,
         activityCheckIn=_serialize_manual_entry(activity_checkin),
+        feedback=serialize_feedback(feedback) if feedback is not None else None,
     )
 
 
@@ -952,7 +969,11 @@ async def _sleep_projection(
 
 
 async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> DailyLoopEnvelope:
-    morning_analysis = _serialize_analysis(snapshot.morning_analysis)
+    feedback_map = snapshot.feedback
+    morning_analysis = _serialize_analysis(
+        snapshot.morning_analysis,
+        feedback_map.get(snapshot.morning_analysis.id) if snapshot.morning_analysis else None,
+    )
     fresh_temperature = (
         snapshot.latest_temperature
         if is_hive_temperature_fresh(
@@ -1010,6 +1031,7 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
                     snapshot.post_ride_checkins.get(analysis.activity_id)
                     if analysis.activity_id
                     else None,
+                    feedback_map.get(analysis.id),
                 )
                 for analysis in snapshot.post_workout_analyses
             ],
@@ -1019,6 +1041,7 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
                     snapshot.post_ride_checkins.get(analysis.activity_id)
                     if analysis.activity_id
                     else None,
+                    feedback_map.get(analysis.id),
                 )
                 for analysis in snapshot.post_flexibility_analyses
             ],
@@ -1028,6 +1051,7 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
                     snapshot.post_ride_checkins.get(analysis.activity_id)
                     if analysis.activity_id
                     else None,
+                    feedback_map.get(analysis.id),
                 )
                 for analysis in snapshot.post_strength_analyses
             ],
@@ -1037,6 +1061,7 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
                     snapshot.post_ride_checkins.get(analysis.activity_id)
                     if analysis.activity_id
                     else None,
+                    feedback_map.get(analysis.id),
                 )
                 for analysis in snapshot.post_walk_analyses
             ],

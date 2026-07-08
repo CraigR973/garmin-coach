@@ -7,6 +7,10 @@ import {
   blockProgressionProposalSchema,
   dailyMetricSchema,
   experimentSchema,
+  feedbackInputSchema,
+  feedbackKindSchema,
+  feedbackRatingSchema,
+  feedbackSchema,
   generatedBlockDraftSchema,
   generatedBlockWeekSchema,
   generatedBlockWorkoutSchema,
@@ -33,6 +37,10 @@ export type ManualEntry = z.infer<typeof manualEntrySchema>;
 export type PlanBlock = z.infer<typeof planBlockSchema>;
 export type PlannedWorkout = z.infer<typeof plannedWorkoutSchema>;
 export type Analysis = z.infer<typeof analysisSchema>;
+export type Feedback = z.infer<typeof feedbackSchema>;
+export type FeedbackInput = z.infer<typeof feedbackInputSchema>;
+export type FeedbackKind = z.infer<typeof feedbackKindSchema>;
+export type FeedbackRating = z.infer<typeof feedbackRatingSchema>;
 export type Experiment = z.infer<typeof experimentSchema>;
 export type KnowledgeBase = z.infer<typeof knowledgeBaseSchema>;
 export type BlockProgressionProposal = z.infer<typeof blockProgressionProposalSchema>;

@@ -23,6 +23,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth import CurrentUser
 from src.database import get_db
 from src.models.coaching import Analysis
+from src.models.profile import Profile
+from src.routers.feedback import FeedbackOut, serialize_feedback
+from src.services.feedback import FeedbackService
 from src.services.reviews import (
     VALID_PERIODS,
     ReviewError,
@@ -64,10 +67,12 @@ class InsightSummary(BaseModel):
 
 
 class StoredReview(BaseModel):
+    analysisId: str
     generatedAtUtc: str
     modelName: str | None
     promptVersion: str
     markdown: str
+    feedback: FeedbackOut | None = None
 
 
 class ReviewData(BaseModel):
@@ -87,18 +92,34 @@ class ReviewEnvelope(BaseModel):
     errors: list[ApiError]
 
 
-def _stored_review(analysis: Analysis | None) -> StoredReview | None:
+def _stored_review(analysis: Analysis | None, feedback: FeedbackOut | None) -> StoredReview | None:
     if analysis is None:
         return None
     return StoredReview(
+        analysisId=str(analysis.id),
         generatedAtUtc=analysis.generated_at_utc.isoformat() + "Z",
         modelName=analysis.model_name,
         promptVersion=analysis.prompt_version,
         markdown=analysis.output_markdown,
+        feedback=feedback,
     )
 
 
-def _data(preview: ReviewPreview, review: Analysis | None) -> ReviewData:
+async def _review_feedback(
+    db: AsyncSession, player: Profile, analysis: Analysis | None
+) -> FeedbackOut | None:
+    if analysis is None:
+        return None
+    rows = await FeedbackService(db).feedback_for_analyses(player.id, [analysis.id])
+    row = rows.get(analysis.id)
+    return serialize_feedback(row) if row is not None else None
+
+
+def _data(
+    preview: ReviewPreview,
+    review: Analysis | None,
+    review_feedback: FeedbackOut | None = None,
+) -> ReviewData:
     return ReviewData(
         period=preview.period,
         periodStart=preview.period_start.isoformat(),
@@ -127,7 +148,7 @@ def _data(preview: ReviewPreview, review: Analysis | None) -> ReviewData:
             earlyWarningStatus=preview.early_warning.status,
             earlyWarningFired=preview.early_warning.fired,
         ),
-        review=_stored_review(review),
+        review=_stored_review(review, review_feedback),
     )
 
 
@@ -150,8 +171,9 @@ async def get_review(
     _validate_period(period)
     service = ReviewService(db)
     preview = await service.preview(player, period, as_of=as_of)
+    feedback = await _review_feedback(db, player, preview.latest_review)
     return ReviewEnvelope(
-        data=_data(preview, preview.latest_review),
+        data=_data(preview, preview.latest_review, feedback),
         meta=ApiMeta(generatedAtUtc=_generated_at()),
         errors=[],
     )
@@ -175,8 +197,9 @@ async def run_review(
             meta=ApiMeta(generatedAtUtc=_generated_at()),
             errors=[ApiError(code="review_generation_failed", detail=str(exc))],
         )
+    feedback = await _review_feedback(db, player, result.review)
     return ReviewEnvelope(
-        data=_data(result.preview, result.review),
+        data=_data(result.preview, result.review, feedback),
         meta=ApiMeta(generatedAtUtc=_generated_at()),
         errors=[],
     )

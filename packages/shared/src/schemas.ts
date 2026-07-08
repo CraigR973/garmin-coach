@@ -484,6 +484,48 @@ export const chronicSuggestionsSchema = z.object({
   items: z.array(chronicSuggestionItemSchema).default([]),
 });
 
+// --- Rate & correct any summary (Batch 64, Decision #137) ---
+// Two axes, chosen per content type (a suggestion can't be "inaccurate"):
+// summaries rate accuracy, suggested edits rate agreement.
+export const feedbackKindSchema = z.enum(['summary', 'suggestion']);
+export const feedbackSummaryRatingSchema = z.enum(['spot_on', 'a_bit_off', 'way_off']);
+export const feedbackSuggestionRatingSchema = z.enum(['agree', 'not_for_me', 'already_doing']);
+export const feedbackRatingSchema = z.union([
+  feedbackSummaryRatingSchema,
+  feedbackSuggestionRatingSchema,
+]);
+
+const feedbackRatingMatchesKind = (value: {
+  kind: 'summary' | 'suggestion';
+  rating: string;
+}): boolean => {
+  const allowed =
+    value.kind === 'summary'
+      ? feedbackSummaryRatingSchema.options
+      : feedbackSuggestionRatingSchema.options;
+  return (allowed as readonly string[]).includes(value.rating);
+};
+
+export const feedbackSchema = z.object({
+  id: z.string().uuid(),
+  analysisId: z.string().uuid(),
+  kind: feedbackKindSchema,
+  rating: feedbackRatingSchema,
+  correctionText: z.string().nullable().optional(),
+  createdAtUtc: isoDateTimeSchema,
+});
+
+export const feedbackInputSchema = z
+  .object({
+    kind: feedbackKindSchema,
+    rating: feedbackRatingSchema,
+    correctionText: z.string().max(2000).nullable().optional(),
+  })
+  .refine(feedbackRatingMatchesKind, {
+    message: 'rating is not valid for the given kind',
+    path: ['rating'],
+  });
+
 export const dailyLoopAnalysisSchema = z.object({
   id: z.string().uuid(),
   generatedAtUtc: isoDateTimeSchema,
@@ -497,6 +539,7 @@ export const dailyLoopAnalysisSchema = z.object({
   thermalReview: jsonObjectSchema.default({}),
   metricsVsBaselines: z.array(metricBaselineRowSchema).default([]),
   ageComparison: ageComparisonSchema.default({ rows: [] }),
+  feedback: feedbackSchema.nullable().optional(),
 });
 
 export const rideIntervalSchema = z.object({
@@ -535,6 +578,7 @@ export const dailyLoopPostWorkoutAnalysisSchema = z.object({
   execution: jsonObjectSchema.default({}),
   tomorrowImpact: z.string().nullable().optional(),
   postRideCheckIn: manualEntrySchema.nullable().optional(),
+  feedback: feedbackSchema.nullable().optional(),
 });
 
 export const dailyLoopPostFlexibilityAnalysisSchema = z.object({
@@ -549,6 +593,7 @@ export const dailyLoopPostFlexibilityAnalysisSchema = z.object({
   heartRateReview: jsonObjectSchema.default({}),
   consistency: jsonObjectSchema.default({}),
   activityCheckIn: manualEntrySchema.nullable().optional(),
+  feedback: feedbackSchema.nullable().optional(),
 });
 
 export const dailyLoopPostStrengthAnalysisSchema = z.object({
@@ -563,6 +608,7 @@ export const dailyLoopPostStrengthAnalysisSchema = z.object({
   heartRateReview: jsonObjectSchema.default({}),
   consistency: jsonObjectSchema.default({}),
   activityCheckIn: manualEntrySchema.nullable().optional(),
+  feedback: feedbackSchema.nullable().optional(),
 });
 
 export const dailyLoopPostWalkAnalysisSchema = z.object({
@@ -578,6 +624,7 @@ export const dailyLoopPostWalkAnalysisSchema = z.object({
   paceReview: jsonObjectSchema.default({}),
   activeRecoveryContext: jsonObjectSchema.default({}),
   activityCheckIn: manualEntrySchema.nullable().optional(),
+  feedback: feedbackSchema.nullable().optional(),
 });
 
 export const dailyLoopDeliverySchema = z.object({
@@ -1061,10 +1108,12 @@ export const reviewRollupSchema = z.object({
 });
 
 export const storedReviewSchema = z.object({
+  analysisId: z.string().uuid(),
   generatedAtUtc: z.string().min(1),
   modelName: z.string().nullable(),
   promptVersion: z.string(),
   markdown: z.string(),
+  feedback: feedbackSchema.nullable().optional(),
 });
 
 export const reviewEnvelopeSchema = z.object({

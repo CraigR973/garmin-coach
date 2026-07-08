@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from sqlalchemy import (
@@ -19,6 +19,10 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.models.base import Base, TimestampMixin, UpdatedAtMixin, UUIDPrimaryKeyMixin
+
+
+def _feedback_utcnow() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class DailyMetric(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
@@ -440,6 +444,38 @@ class Analysis(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     context_packet: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     output_markdown: Mapped[str] = mapped_column(Text, nullable=False)
     raw_response: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+
+
+class Feedback(Base, UUIDPrimaryKeyMixin):
+    """Mark's rating + optional free-text correction for one AI summary (Batch 64).
+
+    Every AI summary the app generates is one ``analyses`` row, so feedback is
+    keyed to ``analysis_id`` (real referential integrity) rather than a generic
+    target type. One row per ``(user, analysis)`` — the endpoint upserts. ``kind``
+    picks the rating axis for the surface: ``summary`` (accuracy) or ``suggestion``
+    (agreement with a suggested edit). ``rating`` is a short per-axis token; the
+    optional ``correction_text`` is the payload that feeds the next read forward
+    (Decision #137).
+    """
+
+    __tablename__ = "feedback"
+    __table_args__ = (
+        UniqueConstraint("user_id", "analysis_id", name="uq_feedback_user_analysis"),
+        Index("ix_feedback_user_analysis", "user_id", "analysis_id"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    analysis_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("analyses.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    rating: Mapped[str] = mapped_column(String(40), nullable=False)
+    correction_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), nullable=False, default=_feedback_utcnow
+    )
 
 
 class Experiment(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):

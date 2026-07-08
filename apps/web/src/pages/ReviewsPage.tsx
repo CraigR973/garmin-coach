@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { reviewEnvelopeSchema } from '@coach/shared';
 import { Activity, BedDouble, Dumbbell, FileText, HeartPulse, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import { FeedbackControl } from '@/components/FeedbackControl';
 import { Markdown } from '@/components/Markdown';
 import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
@@ -232,8 +233,13 @@ function ReviewBody({
         </CardHeader>
         <CardContent className="space-y-4">
           {review ? (
-            <div className="rounded-xl border border-border bg-bg px-4 py-3">
+            <div className="space-y-3 rounded-xl border border-border bg-bg px-4 py-3">
               <Markdown>{review.markdown}</Markdown>
+              <FeedbackControl
+                analysisId={review.analysisId}
+                kind="summary"
+                feedback={review.feedback ?? null}
+              />
             </div>
           ) : null}
           <div className="flex justify-end">

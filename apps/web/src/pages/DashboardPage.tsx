@@ -41,6 +41,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { VerdictHero } from '@/components/VerdictHero';
+import { FeedbackControl } from '@/components/FeedbackControl';
 import { SleepSnapshotBody } from '@/components/SleepSnapshotBody';
 import { SleepPrepBody } from '@/components/SleepPrepBody';
 import { BedroomBody } from '@/components/BedroomBody';
@@ -499,6 +500,17 @@ export function DashboardPage() {
 
       <VerdictHero verdict={analysis?.verdict} dateLabel={friendlyDate(daily.subjectDate)} />
 
+      {analysis?.id ? (
+        <FeedbackControl
+          analysisId={analysis.id}
+          // When the coach has suggested a plan edit, agreement is the salient
+          // axis; otherwise rate the read's accuracy. One row per analysis.
+          kind={(analysis.planAdjustments?.length ?? 0) > 0 ? 'suggestion' : 'summary'}
+          feedback={analysis.feedback ?? null}
+          className="px-1"
+        />
+      ) : null}
+
       <NextActionStrip action={action} onGoToSection={scrollToSection} />
 
       {/* Batch 51: on md+ the sections split into an act lane (Today / After
@@ -810,6 +822,7 @@ function FlexibilityReadList({
           <div key={item.id} className="space-y-2 border-t border-border pt-3 first:border-t-0 first:pt-0">
             <p className="text-xs text-text-secondary">Generated {formatDateTime(item.generatedAtUtc)}</p>
             <Markdown>{item.outputMarkdown}</Markdown>
+            <FeedbackControl analysisId={item.id} kind="summary" feedback={item.feedback ?? null} />
           </div>
         ))}
       </div>
@@ -838,6 +851,7 @@ function StrengthReadList({
           <div key={item.id} className="space-y-2 border-t border-border pt-3 first:border-t-0 first:pt-0">
             <p className="text-xs text-text-secondary">Generated {formatDateTime(item.generatedAtUtc)}</p>
             <Markdown>{item.outputMarkdown}</Markdown>
+            <FeedbackControl analysisId={item.id} kind="summary" feedback={item.feedback ?? null} />
           </div>
         ))}
       </div>
@@ -866,6 +880,7 @@ function WalkReadList({
           <div key={item.id} className="space-y-2 border-t border-border pt-3 first:border-t-0 first:pt-0">
             <p className="text-xs text-text-secondary">Generated {formatDateTime(item.generatedAtUtc)}</p>
             <Markdown>{item.outputMarkdown}</Markdown>
+            <FeedbackControl analysisId={item.id} kind="summary" feedback={item.feedback ?? null} />
           </div>
         ))}
       </div>
@@ -1415,6 +1430,7 @@ function CompletedRideRead({
           <div className="mt-3 space-y-4">
             <Markdown>{analysis.outputMarkdown}</Markdown>
             <RideIntervalTable intervals={analysis.intervals ?? []} />
+            <FeedbackControl analysisId={analysis.id} kind="summary" feedback={analysis.feedback ?? null} />
           </div>
         ) : null}
       </div>
@@ -1437,6 +1453,7 @@ function PostRideBody({
     intervals?: RideIntervalRow[];
     recoveryDecision?: { excluded?: boolean } | null;
     postRideCheckIn?: RideCheckInValue;
+    feedback?: RideAnalysis['feedback'];
   }>;
   onSaveCheckIn: (payload: RideCheckInPayload) => void;
   savingActivityId: string | null;
@@ -1461,6 +1478,7 @@ function PostRideBody({
             <Markdown>{item.outputMarkdown}</Markdown>
           </div>
           <RideIntervalTable intervals={item.intervals ?? []} />
+          <FeedbackControl analysisId={item.id} kind="summary" feedback={item.feedback ?? null} />
         </div>
       ))}
     </div>

@@ -25,6 +25,7 @@ from src.routers import (
     daily_loop,
     experiments,
     fan,
+    feedback,
     handover,
     health,
     holiday,
@@ -113,6 +114,7 @@ app.include_router(me.router)
 app.include_router(notifications.router)
 app.include_router(coaching_state.router)
 app.include_router(daily_loop.router)
+app.include_router(feedback.router)
 app.include_router(fan.router)
 app.include_router(bedroom.router)
 app.include_router(workout_delivery.router)

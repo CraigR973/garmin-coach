@@ -15,6 +15,7 @@ from src.models.coaching import (
     Activity,
     Analysis,
     DailyMetric,
+    Feedback,
     KnowledgeBase,
     ManualEntry,
     PlanBlock,
@@ -27,6 +28,7 @@ from src.models.coaching import (
 from src.models.profile import Profile
 from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
 from src.services.daily_loop_state import LoopState, describe_loop_state, is_evening
+from src.services.feedback import FeedbackService
 from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
 from src.services.walking_brief import WalkingBriefResult, WalkingBriefService
 from src.services.workout_delivery import STATUS_PROPOSED, STATUS_PUSHED
@@ -107,6 +109,9 @@ class DailyLoopSnapshot:
     walking_brief: WalkingBriefResult
     breathwork_brief: BreathworkBriefResult
     loop_state: LoopState
+    # Batch 64: existing feedback keyed by analysis_id, so each summary widget
+    # renders its current rating/correction rather than an empty control.
+    feedback: dict[uuid.UUID, Feedback]
 
 
 class DailyLoopService:
@@ -156,6 +161,22 @@ class DailyLoopService:
             player,
             as_of=target_date,
         )
+        # Batch 64: one query for the feedback on every analysis surfaced today,
+        # so the daily-loop payload carries each summary's current rating.
+        analysis_ids = [
+            analysis.id
+            for analysis in (
+                morning_analysis,
+                *post_workout_analyses,
+                *post_flexibility_analyses,
+                *post_strength_analyses,
+                *post_walk_analyses,
+            )
+            if analysis is not None
+        ]
+        feedback = await FeedbackService(self.session).feedback_for_analyses(
+            player.id, analysis_ids
+        )
         active_block = await self._active_block(player.id, target_date)
         loop_state = describe_loop_state(
             has_post_analysis=bool(
@@ -193,6 +214,7 @@ class DailyLoopService:
             walking_brief=walking_brief,
             breathwork_brief=breathwork_brief,
             loop_state=loop_state,
+            feedback=feedback,
         )
 
     async def upsert_manual_entry(
