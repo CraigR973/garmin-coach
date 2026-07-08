@@ -110,6 +110,26 @@ def _active_hypotheses_content() -> dict[str, Any]:
     }
 
 
+def _coaching_protocol_content() -> dict[str, Any]:
+    return {
+        "lowReadinessResponse": {
+            "preference": "swap_first",
+            "rule": (
+                "When readiness is low and a hard session (VO2/Sweet-Spot) is "
+                "scheduled, rearrange the week first — move the hard session to a "
+                "better day and pull an easier session (Z2/recovery) forward — "
+                "rather than softening the prescription. Soften the ride only when "
+                "the week can't be rearranged."
+            ),
+            "source": (
+                "Mark's 2026-07-07 feedback: he swapped sessions across the week "
+                "when readiness was low and it 'worked perfectly'; he prefers "
+                "rearranging over softening any session."
+            ),
+        },
+    }
+
+
 def _training_plan_content(cycle_start: date) -> dict[str, Any]:
     return {
         "framework": "13-week 2121",
@@ -182,6 +202,7 @@ KB_SECTION_BUILDERS: dict[str, Any] = {
     "training_plan": _training_plan_content,
     "training_schedule": _training_schedule_content,
     "active_hypotheses": _active_hypotheses_content,
+    "coaching_protocol": _coaching_protocol_content,
 }
 
 

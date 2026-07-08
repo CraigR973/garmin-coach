@@ -46,7 +46,10 @@ from src.services.sleep_scoring import (
 
 # Batch 64 (#137): the packet now carries the user's most recent corrections so
 # the read can acknowledge/adjust when Mark has told it it was wrong.
-PROMPT_VERSION = "morning-analysis-v5-2026-07-08"
+# Batch 66 (#139): on a cautious morning with a hard session scheduled, the
+# verdict leads with a week swap (move the hard session, pull an easier one
+# forward) before offering to soften — so the prompt version bumps.
+PROMPT_VERSION = "morning-analysis-v6-2026-07-08"
 ANALYSIS_TYPE = "morning"
 ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
@@ -74,7 +77,11 @@ When recentCorrections is non-empty, treat each as ground truth Mark gave about 
 past read (e.g. "my watch missed my 03:00 wake"): weigh it and adjust or
 acknowledge it, but it never overrides the Red floor, the soft-sleep rule, the
 Poor-readiness caution, or Red-never-VO2 — it is context to consider, not an
-instruction to obey."""
+instruction to obey.
+When verdict.swapSuggestion is present, lead the plan guidance with the swap —
+move the hard session to the suggested day and pull the easier session forward to
+today — matching Mark's preference to rearrange the week rather than soften. Offer
+softening the ride only as the fallback for when the week can't be rearranged."""
 
 
 class MorningAnalysisError(RuntimeError):
@@ -226,6 +233,25 @@ class MorningAnalysisService:
             yesterday_load=yesterday_load,
             breathwork_brief=breathwork_brief,
         )
+        # Batch 66 (#139): on a cautious morning with a hard session scheduled,
+        # lead with a week swap (move the hard session to a better day, pull an
+        # easier one forward) — Mark's own instinct — before offering to soften.
+        # Computed read-only from the restructure engine's spacing rules; the
+        # action the verdict card offers is a category-scoped swap_day (Batch
+        # 65-safe on split days), not the whole-week apply. Lazy import keeps the
+        # module graph acyclic (weekly_restructure pulls in daily_loop).
+        if verdict.get("status") in {"Amber", "Red"}:
+            from src.services.weekly_restructure import WeeklyRestructureService
+
+            swap = await WeeklyRestructureService(self.session).swap_suggestion_for_day(
+                player, subject_date
+            )
+            if swap is not None:
+                verdict["swapSuggestion"] = swap.to_packet()
+                verdict["planAdjustments"] = [
+                    swap.lead_text(),
+                    *verdict.get("planAdjustments", []),
+                ]
         training_schedule = serialize_training_schedule(knowledge_base)
 
         return {
@@ -283,6 +309,7 @@ class MorningAnalysisService:
                     "never_reference_left_right_power_balance",
                     "never_recommend_vo2_on_red",
                     "acknowledge_recent_user_corrections_when_relevant",
+                    "lead_with_week_swap_when_offered",
                 ],
             },
         }

@@ -162,6 +162,43 @@ class RestructurePlan:
         return bool(self.changes)
 
 
+@dataclass(frozen=True)
+class SwapSuggestion:
+    """A swap-first recovery recommendation for a single day (Batch 66, #139).
+
+    When ``subject_date`` holds a hard bike session on a cautious morning, this
+    names the day to move it to and the easier session that comes forward — the
+    exact pairwise move a category-scoped ``swap_day`` (Batch 65-safe on split
+    days) executes. It never mutates; the morning verdict leads with it and the
+    verdict card offers it as one tap, with softening the ride as the fallback.
+    """
+
+    subject_date: date
+    hard_workout_id: uuid.UUID
+    hard_title: str
+    hard_category: str
+    move_to_date: date
+    bring_forward_workout_id: uuid.UUID
+    bring_forward_title: str
+
+    def lead_text(self) -> str:
+        return (
+            f"Today isn't the day to force {self.hard_title} — move it to "
+            f"{self.move_to_date.strftime('%A')} and bring {self.bring_forward_title} "
+            "forward to today, keeping the week's volume instead of softening the ride."
+        )
+
+    def to_packet(self) -> dict[str, Any]:
+        return {
+            "hardWorkoutId": str(self.hard_workout_id),
+            "hardTitle": self.hard_title,
+            "hardCategory": self.hard_category,
+            "moveToDate": self.move_to_date.isoformat(),
+            "moveToWeekday": self.move_to_date.strftime("%A"),
+            "bringForwardTitle": self.bring_forward_title,
+        }
+
+
 def _conflicts(assignment: dict[date, WeekItem]) -> list[tuple[date, date]]:
     """Adjacent same-week VO2↔Sweet-Spot pairs (the no-stack violations)."""
     dated = sorted(assignment.items(), key=lambda kv: kv[0])
@@ -287,6 +324,66 @@ def _change_reason(
     if conflicts_before:
         return "no_stack"
     return "reorder"
+
+
+def plan_swap_first(items: Sequence[WeekItem], *, subject_date: date) -> SwapSuggestion | None:
+    """Swap-first recovery suggestion (Batch 66, #139).
+
+    When ``subject_date`` holds a hard bike session (VO2/Sweet-Spot/Threshold),
+    find the soonest *later* bike day this week carrying an easier session that
+    it can trade places with while keeping the ≥2-day VO2/Sweet-Spot no-stack
+    rule. Returns ``None`` when today has no hard session or no sound swap exists
+    (the caller then falls back to softening).
+
+    Pure and deterministic. It reuses the restructure engine's spacing
+    primitives (:data:`HARD_CATEGORIES`, :func:`_conflicts`, ``WeekItem.category``)
+    rather than a parallel rule set, and the recommended move maps to a single
+    category-scoped ``swap_day`` — never the whole-week ``apply_for_week`` path,
+    which re-versions a whole date and would drop a split day's strength row.
+    """
+    hard_today = next(
+        (
+            item
+            for item in items
+            if item.workout_date == subject_date
+            and item.is_bike
+            and item.category in HARD_CATEGORIES
+        ),
+        None,
+    )
+    if hard_today is None:
+        return None
+
+    # Conflicts only ever involve bike sessions, and this plan runs one bike per
+    # date, so a bike-only date map is complete for the no-stack check and immune
+    # to a split day's strength row shadowing the bike.
+    bike_by_date = {item.workout_date: item for item in items if item.is_bike}
+    candidates = sorted(
+        (
+            item
+            for item in items
+            if item.is_bike
+            and item.workout_date > subject_date
+            and item.category not in HARD_CATEGORIES
+        ),
+        key=lambda item: item.workout_date,
+    )
+    for target in candidates:
+        simulated = dict(bike_by_date)
+        simulated[subject_date] = target
+        simulated[target.workout_date] = hard_today
+        if _conflicts(simulated):
+            continue
+        return SwapSuggestion(
+            subject_date=subject_date,
+            hard_workout_id=hard_today.workout_id,
+            hard_title=hard_today.title,
+            hard_category=hard_today.category,
+            move_to_date=target.workout_date,
+            bring_forward_workout_id=target.workout_id,
+            bring_forward_title=target.title,
+        )
+    return None
 
 
 @dataclass(frozen=True)
@@ -424,6 +521,20 @@ class WeeklyRestructureService:
             items, week_start=week_start, fatigued=resolved_signal.fatigued
         )
         return plan, resolved_signal
+
+    async def swap_suggestion_for_day(
+        self, player: Profile, subject_date: date
+    ) -> SwapSuggestion | None:
+        """Read-only swap-first suggestion for ``subject_date`` (Batch 66).
+
+        Reads the week that contains ``subject_date`` and delegates to the pure
+        :func:`plan_swap_first`. No mutation — the morning verdict decorates its
+        packet with the result and the verdict card offers a one-tap
+        category-scoped move.
+        """
+        week_start = subject_date - timedelta(days=subject_date.weekday())
+        items, _ = await self._week_items(player, week_start)
+        return plan_swap_first(items, subject_date=subject_date)
 
     async def apply_for_week(
         self,

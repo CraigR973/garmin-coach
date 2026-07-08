@@ -4,6 +4,7 @@ import {
   activityTimeSeriesSchema,
   ageComparisonRowSchema,
   coachingStateEnvelopeSchema,
+  dailyLoopAnalysisSchema,
   dailyLoopEnvelopeSchema,
   dailyLoopPostWorkoutAnalysisSchema,
   dailyMetricSchema,
@@ -12,6 +13,7 @@ import {
   profileSchema,
   rideIntervalSchema,
   sleepSchema,
+  swapSuggestionSchema,
   weatherDailySchema,
 } from './schemas';
 
@@ -463,5 +465,37 @@ describe('v1 shared schemas', () => {
 
     expect(kb.content.bedtime).toBe('23:15');
     expect(workout.structuredWorkout.steps).toHaveLength(1);
+  });
+
+  it('parses a swap-first suggestion and keeps it optional on the analysis (Batch 66)', () => {
+    const swap = swapSuggestionSchema.parse({
+      hardWorkoutId: rowId,
+      hardTitle: 'VO2 30/15',
+      hardCategory: 'vo2',
+      moveToDate: '2026-07-11',
+      moveToWeekday: 'Saturday',
+      bringForwardTitle: 'Z2 + Neuromuscular',
+    });
+    expect(swap.moveToWeekday).toBe('Saturday');
+
+    const withSwap = dailyLoopAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-07-08T06:30:00Z',
+      verdict: 'amber',
+      promptVersion: 'morning-analysis-v6-2026-07-08',
+      outputMarkdown: '**Verdict:** Amber',
+      swapSuggestion: swap,
+    });
+    expect(withSwap.swapSuggestion?.hardTitle).toBe('VO2 30/15');
+
+    // A Green day carries no suggestion; the field is optional.
+    const withoutSwap = dailyLoopAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-07-08T06:30:00Z',
+      verdict: 'green',
+      promptVersion: 'morning-analysis-v6-2026-07-08',
+      outputMarkdown: '**Verdict:** Green',
+    });
+    expect(withoutSwap.swapSuggestion ?? null).toBeNull();
   });
 });

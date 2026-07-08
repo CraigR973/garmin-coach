@@ -28,8 +28,10 @@ from src.services.vo2_progression import (
 )
 from src.services.weekly_restructure import (
     AUDIT_TYPE_RESTRUCTURE,
+    SwapSuggestion,
     WeekItem,
     WeeklyRestructureService,
+    plan_swap_first,
     plan_week_restructure,
 )
 from src.services.workout_delivery import IntervalsCreateResult
@@ -115,6 +117,107 @@ def test_fatigue_defers_hard_session_later_in_week() -> None:
         change.reason == "defer_fatigue" and change.to_workout_id == vo2.workout_id
         for change in fatigued.changes
     )
+
+
+# ---------------------------------------------------------------------------
+# 66 — swap-first recovery suggestion (pure engine, #139)
+# ---------------------------------------------------------------------------
+
+
+def test_swap_first_moves_hard_session_and_pulls_easier_forward() -> None:
+    vo2 = _item(TUE, "bike_vo2", title="VO2 30/15")
+    endurance = _item(WED, "bike_endurance", title="Z2 endurance")
+    later = _item(SAT, "bike_endurance", title="Saturday Z2")
+
+    suggestion = plan_swap_first([vo2, endurance, later], subject_date=TUE)
+
+    assert suggestion is not None
+    # Soonest later easy bike day is chosen (Wednesday, no spacing conflict).
+    assert suggestion.hard_workout_id == vo2.workout_id
+    assert suggestion.hard_title == "VO2 30/15"
+    assert suggestion.hard_category == "vo2"
+    assert suggestion.move_to_date == WED
+    assert suggestion.bring_forward_workout_id == endurance.workout_id
+    assert suggestion.bring_forward_title == "Z2 endurance"
+
+
+def test_swap_first_skips_a_target_that_would_stack_vo2_and_sweet_spot() -> None:
+    vo2 = _item(TUE, "bike_vo2")
+    endurance = _item(WED, "bike_endurance", title="Wed Z2")
+    sweet = _item(THU, "bike_sweet_spot")
+    saturday = _item(SAT, "bike_endurance", title="Sat Z2")
+
+    suggestion = plan_swap_first([vo2, endurance, sweet, saturday], subject_date=TUE)
+
+    assert suggestion is not None
+    # Moving the VO2 to Wednesday would sit it adjacent to Thursday's Sweet-Spot,
+    # so the soonest *valid* day is Saturday instead.
+    assert suggestion.move_to_date == SAT
+    assert suggestion.bring_forward_title == "Sat Z2"
+    # The swapped VO2 keeps the ≥2-day no-stack gap from the Sweet-Spot.
+    assert abs((suggestion.move_to_date - THU).days) >= 2
+
+
+def test_swap_first_none_when_today_has_no_hard_session() -> None:
+    endurance = _item(TUE, "bike_endurance")
+    later = _item(SAT, "bike_endurance")
+
+    assert plan_swap_first([endurance, later], subject_date=TUE) is None
+
+
+def test_swap_first_none_when_no_later_easy_bike_day() -> None:
+    vo2 = _item(TUE, "bike_vo2")
+    strength = _item(THU, "strength_maintenance")
+
+    # Strength is not a bike session, so there is nothing to pull forward.
+    assert plan_swap_first([vo2, strength], subject_date=TUE) is None
+
+
+def test_swap_first_never_brings_another_hard_session_forward() -> None:
+    vo2 = _item(TUE, "bike_vo2")
+    sweet = _item(THU, "bike_sweet_spot")
+
+    # The only later bike day is itself hard, so there is no easier session to
+    # pull forward — soften instead of swapping hard-for-hard.
+    assert plan_swap_first([vo2, sweet], subject_date=TUE) is None
+
+
+def test_swap_first_ignores_a_same_day_strength_row_on_a_split_day() -> None:
+    # Batch 65 split days put a bike + strength on one date. The suggestion must
+    # read the bike, never the strength, when the target day is a split day.
+    vo2 = _item(TUE, "bike_vo2")
+    saturday_ride = _item(SAT, "bike_endurance", title="Saturday Z2")
+    saturday_strength = _item(SAT, "strength_maintenance", title="Bodyweight")
+
+    suggestion = plan_swap_first([vo2, saturday_ride, saturday_strength], subject_date=TUE)
+
+    assert suggestion is not None
+    assert suggestion.move_to_date == SAT
+    assert suggestion.bring_forward_workout_id == saturday_ride.workout_id
+
+
+def test_swap_suggestion_packet_and_lead_text() -> None:
+    suggestion = SwapSuggestion(
+        subject_date=TUE,
+        hard_workout_id=uuid.uuid4(),
+        hard_title="VO2 30/15",
+        hard_category="vo2",
+        move_to_date=SAT,
+        bring_forward_workout_id=uuid.uuid4(),
+        bring_forward_title="Saturday Z2",
+    )
+
+    packet = suggestion.to_packet()
+    assert packet["hardWorkoutId"] == str(suggestion.hard_workout_id)
+    assert packet["hardTitle"] == "VO2 30/15"
+    assert packet["moveToDate"] == SAT.isoformat()
+    assert packet["moveToWeekday"] == "Saturday"
+    assert packet["bringForwardTitle"] == "Saturday Z2"
+
+    lead = suggestion.lead_text()
+    assert "VO2 30/15" in lead
+    assert "Saturday" in lead
+    assert "Saturday Z2" in lead
 
 
 # ---------------------------------------------------------------------------

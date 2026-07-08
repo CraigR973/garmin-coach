@@ -526,6 +526,19 @@ export const feedbackInputSchema = z
     path: ['rating'],
   });
 
+// Batch 66 (#139): on an Amber/Red morning with a hard session scheduled, the
+// verdict carries a concrete week-swap the app can apply in one tap (move the
+// hard session to `moveToDate`, pull the easier `bringForwardTitle` forward).
+export const swapSuggestionSchema = z.object({
+  hardWorkoutId: z.string().uuid(),
+  hardTitle: z.string(),
+  hardCategory: z.string(),
+  moveToDate: z.string(),
+  moveToWeekday: z.string(),
+  bringForwardTitle: z.string(),
+});
+export type SwapSuggestion = z.infer<typeof swapSuggestionSchema>;
+
 export const dailyLoopAnalysisSchema = z.object({
   id: z.string().uuid(),
   generatedAtUtc: isoDateTimeSchema,
@@ -539,6 +552,7 @@ export const dailyLoopAnalysisSchema = z.object({
   thermalReview: jsonObjectSchema.default({}),
   metricsVsBaselines: z.array(metricBaselineRowSchema).default([]),
   ageComparison: ageComparisonSchema.default({ rows: [] }),
+  swapSuggestion: swapSuggestionSchema.nullable().optional(),
   feedback: feedbackSchema.nullable().optional(),
 });
 
