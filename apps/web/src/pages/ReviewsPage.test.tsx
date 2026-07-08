@@ -107,6 +107,7 @@ function envelope(period: 'weekly' | 'monthly', withReview: boolean) {
       },
       review: withReview
         ? {
+            analysisId: '11111111-1111-4111-8111-111111111111',
             generatedAtUtc: '2026-06-28T18:00:00Z',
             modelName: 'claude-sonnet-4-6',
             promptVersion: 'reviews-v1',
