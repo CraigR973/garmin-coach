@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth import CurrentUser
 from src.database import get_db
 from src.models.coaching import ManualEntry, PlannedWorkout
-from src.services.plan_actions import PlanActionService, PlanDay
+from src.services.plan_actions import PlanActionService, PlanDay, QuickAddOption, quick_add_options
 
 router = APIRouter(prefix="/api/v1/plan-actions", tags=["plan-actions"])
 
@@ -82,6 +82,27 @@ class PlanScheduleEnvelope(BaseModel):
 
 class AddWorkoutBody(BaseModel):
     category: str = Field(pattern="^(cycle|weights|flexibility)$")
+    subtype: str | None = None
+    durationMin: int | None = Field(default=None, ge=1, le=180)
+
+
+class QuickAddOptionOut(BaseModel):
+    subtype: str
+    label: str
+    defaultDurationMin: int
+    minDurationMin: int
+    maxDurationMin: int
+
+
+class QuickAddOptionsData(BaseModel):
+    category: str
+    options: list[QuickAddOptionOut]
+
+
+class QuickAddOptionsEnvelope(BaseModel):
+    data: QuickAddOptionsData
+    meta: ApiMeta
+    errors: list[ApiError]
 
 
 class SwapIntoDateBody(BaseModel):
@@ -149,6 +170,16 @@ def _day_out(day: PlanDay) -> PlanDayOut:
     )
 
 
+def _quick_add_option_out(option: QuickAddOption) -> QuickAddOptionOut:
+    return QuickAddOptionOut(
+        subtype=option.subtype,
+        label=option.label,
+        defaultDurationMin=option.default_duration_min,
+        minDurationMin=option.min_duration_min,
+        maxDurationMin=option.max_duration_min,
+    )
+
+
 def _entry_out(entry: ManualEntry) -> dict[str, Any]:
     return {
         "id": str(entry.id),
@@ -180,6 +211,22 @@ async def get_schedule(
     )
 
 
+@router.get("/quick-add-options", response_model=QuickAddOptionsEnvelope)
+async def get_quick_add_options(
+    category: str,
+    player: CurrentUser,
+) -> QuickAddOptionsEnvelope:
+    options = quick_add_options(category)
+    return QuickAddOptionsEnvelope(
+        data=QuickAddOptionsData(
+            category=category,
+            options=[_quick_add_option_out(option) for option in options],
+        ),
+        meta=ApiMeta(generatedAtUtc=_generated_at()),
+        errors=[],
+    )
+
+
 @router.post("/days/{workout_date}/workouts", response_model=WorkoutActionEnvelope)
 async def add_workout(
     workout_date: date,
@@ -188,7 +235,11 @@ async def add_workout(
     db: AsyncSession = Depends(get_db),
 ) -> WorkoutActionEnvelope:
     workout = await PlanActionService(db).add_workout(
-        player, workout_date=workout_date, category=body.category
+        player,
+        workout_date=workout_date,
+        category=body.category,
+        subtype=body.subtype,
+        duration_min=body.durationMin,
     )
     return WorkoutActionEnvelope(
         data=WorkoutActionData(workout=_workout_out(workout)),

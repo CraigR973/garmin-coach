@@ -39,39 +39,174 @@ class PlanSchedule:
     days: list[PlanDay]
 
 
+@dataclass(frozen=True)
+class QuickAddOption:
+    subtype: str
+    label: str
+    title: str
+    workout_type: str
+    intensity_target: str
+    default_duration_min: int
+    min_duration_min: int
+    max_duration_min: int
+    warmup_min: int
+    cooldown_min: int
+    main_target: str
+    structured_format: str
+    structured_focus: str | None = None
+
+
+QUICK_ADD_CATALOG: dict[str, list[QuickAddOption]] = {
+    DAY_CATEGORY_CYCLE: [
+        QuickAddOption(
+            subtype="endurance",
+            label="Endurance",
+            title="Endurance ride",
+            workout_type="bike_endurance",
+            intensity_target="Zone 2",
+            default_duration_min=45,
+            min_duration_min=20,
+            max_duration_min=90,
+            warmup_min=10,
+            cooldown_min=5,
+            main_target="zone 2",
+            structured_format="bike",
+        ),
+        QuickAddOption(
+            subtype="sweet_spot",
+            label="Sweet Spot",
+            title="Sweet Spot ride",
+            workout_type="bike_sweet_spot",
+            intensity_target="Sweet Spot ~89% FTP",
+            default_duration_min=40,
+            min_duration_min=25,
+            max_duration_min=75,
+            warmup_min=10,
+            cooldown_min=5,
+            main_target="89%",
+            structured_format="bike",
+        ),
+        QuickAddOption(
+            subtype="recovery",
+            label="Recovery spin",
+            title="Recovery spin",
+            workout_type="bike_recovery",
+            intensity_target="Recovery ~55% FTP",
+            default_duration_min=30,
+            min_duration_min=15,
+            max_duration_min=45,
+            warmup_min=5,
+            cooldown_min=5,
+            main_target="55%",
+            structured_format="bike",
+        ),
+    ],
+    DAY_CATEGORY_WEIGHTS: [
+        QuickAddOption(
+            subtype="maintenance",
+            label="Strength maintenance",
+            title="Strength maintenance",
+            workout_type="strength_maintenance",
+            intensity_target="maintenance",
+            default_duration_min=20,
+            min_duration_min=10,
+            max_duration_min=40,
+            warmup_min=0,
+            cooldown_min=0,
+            main_target="maintenance",
+            structured_format="strength",
+            structured_focus="maintenance",
+        ),
+        QuickAddOption(
+            subtype="recovery",
+            label="Strength recovery",
+            title="Strength recovery",
+            workout_type="strength_recovery",
+            intensity_target="recovery",
+            default_duration_min=15,
+            min_duration_min=10,
+            max_duration_min=30,
+            warmup_min=0,
+            cooldown_min=0,
+            main_target="recovery",
+            structured_format="strength",
+            structured_focus="recovery",
+        ),
+    ],
+    DAY_CATEGORY_FLEXIBILITY: [
+        QuickAddOption(
+            subtype="mobility",
+            label="Flexibility",
+            title="Flexibility",
+            workout_type="mobility",
+            intensity_target="easy",
+            default_duration_min=16,
+            min_duration_min=10,
+            max_duration_min=30,
+            warmup_min=0,
+            cooldown_min=0,
+            main_target="easy",
+            structured_format="mobility",
+        ),
+    ],
+}
+
+
+def quick_add_options(category: str) -> list[QuickAddOption]:
+    options = QUICK_ADD_CATALOG.get(category)
+    if options is None:
+        raise HTTPException(status_code=422, detail="Unknown workout category")
+    return options
+
+
+def _quick_add_option(category: str, subtype: str) -> QuickAddOption:
+    for option in quick_add_options(category):
+        if option.subtype == subtype:
+            return option
+    raise HTTPException(status_code=422, detail="Unknown workout subtype for category")
+
+
+def workout_for_selection(
+    category: str, *, subtype: str | None, duration_min: int | None
+) -> dict[str, Any]:
+    options = quick_add_options(category)
+    option = _quick_add_option(category, subtype) if subtype else options[0]
+    duration = duration_min if duration_min is not None else option.default_duration_min
+    if duration < option.min_duration_min or duration > option.max_duration_min:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"durationMin for '{option.subtype}' must be between "
+                f"{option.min_duration_min} and {option.max_duration_min}"
+            ),
+        )
+
+    if option.structured_format == "bike":
+        main_min = duration - option.warmup_min - option.cooldown_min
+        structured_workout: dict[str, Any] = {
+            "format": "bike",
+            "steps": [
+                {"label": "Warm-up", "minutes": option.warmup_min, "target": "easy"},
+                {"label": option.label, "minutes": main_min, "target": option.main_target},
+                {"label": "Cool-down", "minutes": option.cooldown_min, "target": "easy"},
+            ],
+        }
+    elif option.structured_format == "strength":
+        structured_workout = {"format": "strength", "focus": option.structured_focus}
+    else:
+        structured_workout = {"format": option.structured_format}
+
+    return {
+        "title": option.title,
+        "workout_type": option.workout_type,
+        "planned_duration_min": duration,
+        "intensity_target": option.intensity_target,
+        "structured_workout": structured_workout,
+    }
+
+
 def default_workout_for_category(category: str) -> dict[str, Any]:
-    if category == DAY_CATEGORY_CYCLE:
-        return {
-            "title": "Endurance ride",
-            "workout_type": "bike_endurance",
-            "planned_duration_min": 45,
-            "intensity_target": "Zone 2",
-            "structured_workout": {
-                "format": "bike",
-                "steps": [
-                    {"label": "Warm-up", "minutes": 10, "target": "easy"},
-                    {"label": "Endurance", "minutes": 30, "target": "zone 2"},
-                    {"label": "Cool-down", "minutes": 5, "target": "easy"},
-                ],
-            },
-        }
-    if category == DAY_CATEGORY_WEIGHTS:
-        return {
-            "title": "Strength maintenance",
-            "workout_type": "strength_maintenance",
-            "planned_duration_min": 20,
-            "intensity_target": "maintenance",
-            "structured_workout": {"format": "strength", "focus": "maintenance"},
-        }
-    if category == DAY_CATEGORY_FLEXIBILITY:
-        return {
-            "title": "Flexibility",
-            "workout_type": "mobility",
-            "planned_duration_min": 16,
-            "intensity_target": "easy",
-            "structured_workout": {"format": "mobility"},
-        }
-    raise HTTPException(status_code=422, detail="Unknown workout category")
+    return workout_for_selection(category, subtype=None, duration_min=None)
 
 
 class PlanActionService:
@@ -121,9 +256,15 @@ class PlanActionService:
         return PlanSchedule(start_date=start_date, days=plan_days)
 
     async def add_workout(
-        self, player: Profile, *, workout_date: date, category: str
+        self,
+        player: Profile,
+        *,
+        workout_date: date,
+        category: str,
+        subtype: str | None = None,
+        duration_min: int | None = None,
     ) -> PlannedWorkout:
-        template = default_workout_for_category(category)
+        template = workout_for_selection(category, subtype=subtype, duration_min=duration_min)
         version = await self._next_version(player.id, workout_date)
         workout = PlannedWorkout(
             user_id=player.id,
