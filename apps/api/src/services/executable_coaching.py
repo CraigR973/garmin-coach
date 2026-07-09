@@ -1282,13 +1282,13 @@ def _accepted_adjustment_target(ir: dict[str, Any]) -> str:
             intensity = manual.get("intensityScalePct")
             if isinstance(intensity, int):
                 return f"{intensity}% of planned intensity"
+        zone_drop = adjustment.get("zoneDropPct")
+        duration = adjustment.get("durationScalePct")
+        if isinstance(zone_drop, int) and zone_drop > 0 and isinstance(duration, int):
+            return f"{duration}% duration, {zone_drop} points easier"
         power_cap = adjustment.get("powerCapPct")
         if isinstance(power_cap, int):
             return f"Capped at {power_cap}% FTP"
-        zone_drop = adjustment.get("zoneDropPct")
-        duration = adjustment.get("durationScalePct")
-        if isinstance(zone_drop, int) and isinstance(duration, int):
-            return f"{duration}% duration, {zone_drop} points easier"
     return str(ir.get("name") or "Adjusted session")
 
 
