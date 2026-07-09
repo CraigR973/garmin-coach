@@ -1296,9 +1296,9 @@ def _accepted_adjustment_summary(ir: dict[str, Any]) -> str:
     adjustment = ir.get("adjustment")
     if isinstance(adjustment, dict):
         verdict = _normalize_verdict(adjustment.get("verdict"))
-        if verdict == "red":
+        if verdict == "Red":
             return "Accepted the coach's recovery substitution."
-        if verdict == "amber":
+        if verdict == "Amber":
             return "Accepted the coach's eased ride."
         manual = adjustment.get("manualOverride")
         if isinstance(manual, dict):
@@ -1306,8 +1306,7 @@ def _accepted_adjustment_summary(ir: dict[str, Any]) -> str:
             intensity = manual.get("intensityScalePct")
             if isinstance(duration, int) and isinstance(intensity, int):
                 return (
-                    f"Accepted the manual override ({duration}% duration, "
-                    f"{intensity}% intensity)."
+                    f"Accepted the manual override ({duration}% duration, {intensity}% intensity)."
                 )
     name = str(ir.get("name") or "adjusted session").strip()
     return f"Accepted the adjusted session: {name}."
