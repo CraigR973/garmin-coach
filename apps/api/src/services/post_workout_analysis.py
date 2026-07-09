@@ -23,6 +23,7 @@ from src.models.coaching import (
     KnowledgeBase,
     ManualEntry,
     PlannedWorkout,
+    WorkoutDeliveryProposal,
 )
 from src.models.profile import Profile
 from src.services.coaching_state import CoachingStateService
@@ -34,14 +35,20 @@ from src.services.ride_intervals import (
 )
 from src.services.workout_categories import DAY_CATEGORY_CYCLE
 from src.services.workout_completion import complete_matched_planned_workout
-from src.services.workout_delivery import DEFAULT_FTP_WATTS, build_structured_workout_ir
+from src.services.workout_delivery import (
+    DEFAULT_FTP_WATTS,
+    STATUS_PUSHED,
+    build_structured_workout_ir,
+)
 
 # Bumped for Batch 44: the packet now carries interval-resolved execution and the
 # prompt grades work intervals against their own %FTP targets. The bump also marks
 # older post-workout analyses for regeneration via ``_analysis_is_current``.
 # Bumped again for Batch 64 (#137): the packet now carries the user's recent
 # corrections so the read can acknowledge/adjust when he's pushed back before.
-PROMPT_VERSION = "post-workout-analysis-v3-2026-07-08"
+# Bumped for Batch 68 (#141): the packet grades against the delivered/accepted
+# proposal IR when one exists, not the stale planned row.
+PROMPT_VERSION = "post-workout-analysis-v4-2026-07-09"
 ANALYSIS_TYPE = "post_workout"
 ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
@@ -64,6 +71,11 @@ interval's `fade` and `hrDriftPct`, not on impression. When no planned intervals
 are supplied (a free or outdoor ride), read the whole-ride effort and power-zone
 distribution instead.
 
+When `gradingTarget.source` is `delivered_proposal`, treat that delivered IR as
+the workout Mark actually accepted and rode. Name the substitution or manual
+override from `gradingTarget.adjustment` / `origin` and `workoutAdherence` when
+relevant; do not narrate it as an attempt at the original planned workout.
+
 Never mention left/right power balance. Do not use wrist-HR strength sessions for
 recovery decisions. When recentCorrections is non-empty, treat each as ground
 truth Mark gave about a past read and weigh it — acknowledge or adjust — but it is
@@ -85,6 +97,42 @@ class ClaudeGenerationResult:
 class PostWorkoutAnalysisResult:
     analysis: Analysis
     generated: bool
+
+
+@dataclass(frozen=True)
+class RideGradingTarget:
+    ir: dict[str, Any] | None
+    source: str
+    planned_workout: PlannedWorkout | None
+    proposal: WorkoutDeliveryProposal | None
+
+    def to_packet(self) -> dict[str, Any]:
+        adjustment = None
+        origin = None
+        if isinstance(self.ir, dict):
+            raw_adjustment = self.ir.get("adjustment")
+            adjustment = raw_adjustment if isinstance(raw_adjustment, dict) else None
+            raw_origin = self.ir.get("origin")
+            origin = raw_origin if isinstance(raw_origin, str) else None
+        return {
+            "source": self.source,
+            "origin": origin,
+            "adjustment": adjustment,
+            "plannedWorkoutId": (
+                str(self.planned_workout.id) if self.planned_workout is not None else None
+            ),
+            "plannedWorkoutTitle": (
+                self.planned_workout.title if self.planned_workout is not None else None
+            ),
+            "proposalId": str(self.proposal.id) if self.proposal is not None else None,
+            "proposalStatus": self.proposal.status if self.proposal is not None else None,
+            "proposalPushedAtUtc": (
+                _dt(self.proposal.pushed_at_utc) if self.proposal is not None else None
+            ),
+            "intervalsEventId": (
+                self.proposal.intervals_event_id if self.proposal is not None else None
+            ),
+        }
 
 
 class PostWorkoutAnalysisClient(Protocol):
@@ -236,7 +284,18 @@ class PostWorkoutAnalysisService:
         ftp_watts = _ftp_watts(knowledge_base)
         time_series_summary = _time_series_summary(timeseries, ftp_watts)
         recovery_decision = _recovery_decision_packet(activity)
-        planned_ir = _planned_ride_ir(planned_workouts, ftp_watts)
+        grading_target = await self._ride_grading_target(
+            player.id,
+            subject_date,
+            planned_workouts,
+            ftp_watts,
+        )
+        planned_ir = grading_target.ir
+        adherence = await self._workout_adherence(
+            player.id,
+            subject_date,
+            grading_target.planned_workout.id if grading_target.planned_workout else None,
+        )
         intervals = segment_ride_intervals(timeseries, planned_ir, ftp_watts)
         execution = summarize_execution(
             intervals,
@@ -263,11 +322,13 @@ class PostWorkoutAnalysisService:
             "activity": _activity_packet(activity),
             "timeSeriesSummary": time_series_summary,
             "plannedWorkoutIr": planned_ir,
+            "gradingTarget": grading_target.to_packet(),
             "intervals": intervals,
             "execution": execution,
             "plannedWorkouts": [_planned_workout_packet(workout) for workout in planned_workouts],
             "morningVerdict": _morning_analysis_packet(morning_analysis),
             "postRideCheckIn": _manual_entry_packet(post_ride_checkin),
+            "workoutAdherence": _manual_entry_packet(adherence),
             "recentCorrections": [c.to_packet() for c in recent_corrections],
             "recoveryDecision": recovery_decision,
             "prompt": {
@@ -284,6 +345,8 @@ class PostWorkoutAnalysisService:
                     "describe_but_do_not_grade_warmup_recovery_cooldown",
                     "ground_fade_claims_in_interval_fade_and_hr_drift",
                     "fall_back_to_whole_ride_read_when_no_planned_intervals",
+                    "grade_against_delivered_proposal_ir_when_present",
+                    "name_accepted_substitution_or_manual_override_when_present",
                     "never_reference_left_right_power_balance",
                     "exclude_wrist_hr_strength_from_recovery_decisions",
                     "acknowledge_recent_user_corrections_when_relevant",
@@ -445,6 +508,28 @@ class PostWorkoutAnalysisService:
             ),
         )
 
+    async def _workout_adherence(
+        self,
+        user_id: uuid.UUID,
+        subject_date: date,
+        planned_workout_id: uuid.UUID | None,
+    ) -> ManualEntry | None:
+        if planned_workout_id is None:
+            return None
+        return cast(
+            ManualEntry | None,
+            await self.session.scalar(
+                select(ManualEntry)
+                .where(
+                    ManualEntry.user_id == user_id,
+                    ManualEntry.entry_date == subject_date,
+                    ManualEntry.planned_workout_id == planned_workout_id,
+                )
+                .order_by(desc(ManualEntry.entry_at_utc), desc(ManualEntry.created_at))
+                .limit(1)
+            ),
+        )
+
     async def _timeseries(self, activity_id: uuid.UUID) -> list[ActivityTimeSeries]:
         rows = (
             (
@@ -458,6 +543,77 @@ class PostWorkoutAnalysisService:
             .all()
         )
         return list(rows)
+
+    async def _ride_grading_target(
+        self,
+        user_id: uuid.UUID,
+        subject_date: date,
+        planned_workouts: Sequence[PlannedWorkout],
+        ftp_watts: int | None,
+    ) -> RideGradingTarget:
+        planned_workout = _planned_ride_workout(planned_workouts)
+        proposal = None
+        if planned_workout is not None:
+            proposal = await self._latest_delivered_proposal_for_workout(
+                user_id, planned_workout.id
+            )
+        if proposal is None:
+            proposal = await self._latest_delivered_proposal_for_date(user_id, subject_date)
+        if proposal is not None and isinstance(proposal.structured_workout_ir, dict):
+            return RideGradingTarget(
+                ir=proposal.structured_workout_ir,
+                source="delivered_proposal",
+                planned_workout=planned_workout,
+                proposal=proposal,
+            )
+
+        planned_ir = _planned_ride_ir(planned_workouts, ftp_watts)
+        return RideGradingTarget(
+            ir=planned_ir,
+            source="planned_workout" if planned_ir is not None else "none",
+            planned_workout=planned_workout if planned_ir is not None else None,
+            proposal=None,
+        )
+
+    async def _latest_delivered_proposal_for_workout(
+        self,
+        user_id: uuid.UUID,
+        planned_workout_id: uuid.UUID,
+    ) -> WorkoutDeliveryProposal | None:
+        return cast(
+            WorkoutDeliveryProposal | None,
+            await self.session.scalar(
+                select(WorkoutDeliveryProposal)
+                .where(
+                    WorkoutDeliveryProposal.user_id == user_id,
+                    WorkoutDeliveryProposal.planned_workout_id == planned_workout_id,
+                    WorkoutDeliveryProposal.status == STATUS_PUSHED,
+                    WorkoutDeliveryProposal.intervals_event_id.is_not(None),
+                )
+                .order_by(desc(WorkoutDeliveryProposal.created_at))
+                .limit(1)
+            ),
+        )
+
+    async def _latest_delivered_proposal_for_date(
+        self,
+        user_id: uuid.UUID,
+        subject_date: date,
+    ) -> WorkoutDeliveryProposal | None:
+        return cast(
+            WorkoutDeliveryProposal | None,
+            await self.session.scalar(
+                select(WorkoutDeliveryProposal)
+                .where(
+                    WorkoutDeliveryProposal.user_id == user_id,
+                    WorkoutDeliveryProposal.workout_date == subject_date,
+                    WorkoutDeliveryProposal.status == STATUS_PUSHED,
+                    WorkoutDeliveryProposal.intervals_event_id.is_not(None),
+                )
+                .order_by(desc(WorkoutDeliveryProposal.created_at))
+                .limit(1)
+            ),
+        )
 
 
 def build_post_workout_user_prompt(context_packet: Mapping[str, Any]) -> str:
@@ -630,16 +786,23 @@ def _planned_ride_ir(
     """Build the planned structured-workout IR (Batch 12.1) for the day's first
     structured bike workout, or ``None`` for a free/outdoor ride with no plan — in
     which case segmentation degrades to the whole-ride read (Batch 44.4)."""
+    workout = _planned_ride_workout(planned_workouts)
+    if workout is None:
+        return None
+    try:
+        return build_structured_workout_ir(workout, ftp_watts=ftp_watts or DEFAULT_FTP_WATTS)
+    except HTTPException:
+        return None
+
+
+def _planned_ride_workout(planned_workouts: Sequence[PlannedWorkout]) -> PlannedWorkout | None:
     for workout in planned_workouts:
         structured = workout.structured_workout
         if not isinstance(structured, dict) or structured.get("format") != "bike":
             continue
         if not structured.get("steps"):
             continue
-        try:
-            return build_structured_workout_ir(workout, ftp_watts=ftp_watts or DEFAULT_FTP_WATTS)
-        except HTTPException:
-            continue
+        return workout
     return None
 
 
@@ -682,9 +845,13 @@ def _manual_entry_packet(row: ManualEntry | None) -> dict[str, Any] | None:
         "entryDate": row.entry_date.isoformat(),
         "entryAtUtc": _dt(row.entry_at_utc),
         "activityId": str(row.activity_id) if row.activity_id else None,
+        "plannedWorkoutId": str(row.planned_workout_id) if row.planned_workout_id else None,
+        "plannedWorkoutVersion": row.planned_workout_version,
         "subjectiveScore": row.subjective_score,
         "rpe": row.rpe,
         "feel": row.feel,
+        "adherenceStatus": row.adherence_status,
+        "actualWorkoutJson": row.actual_workout_json,
         "notes": row.notes,
     }
 
