@@ -15,6 +15,8 @@ from src.services.workout_delivery import (
     build_intervals_payload,
     build_structured_workout_ir,
     build_zwo_xml,
+    expand_structured_steps,
+    validate_deliverable_bike_workout,
 )
 
 
@@ -127,6 +129,189 @@ def test_non_bike_workouts_are_rejected() -> None:
 
     assert exc_info.value.status_code == 422
     assert "Only bike workouts" in str(exc_info.value.detail)
+
+
+# --- Batch 67: ramp grammar, band midpoint, no-silent-fallback, import gate ---
+
+
+def test_ramp_raw_step_expands_to_a_ramp_ir_step() -> None:
+    workout = _planned_workout(
+        {
+            "format": "bike",
+            "steps": [
+                {"label": "Warm-up ramp", "minutes": 10, "ramp": [55, 80]},
+                {"label": "Cool-down ramp", "minutes": 10, "ramp": [70, 45]},
+            ],
+        }
+    )
+
+    ir = build_structured_workout_ir(workout, ftp_watts=280)
+
+    warmup, cooldown = ir["steps"]
+    assert warmup == {
+        "label": "Warm-up ramp",
+        "phase": "warmup",
+        "kind": "ramp",  # start != end, so a genuine ramp — not a flat block
+        "durationSec": 600,
+        "powerStartPct": 55,
+        "powerEndPct": 80,
+    }
+    assert cooldown["phase"] == "cooldown"
+    assert cooldown["kind"] == "ramp"
+    assert (cooldown["powerStartPct"], cooldown["powerEndPct"]) == (70, 45)
+
+
+def test_ramp_step_missing_minutes_raises_422() -> None:
+    workout = _planned_workout(
+        {"format": "bike", "steps": [{"label": "Warm-up", "ramp": [55, 80]}]}
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        build_structured_workout_ir(workout)
+    assert exc_info.value.status_code == 422
+    assert "minutes" in str(exc_info.value.detail)
+
+
+def test_ramp_step_non_numeric_power_raises_422() -> None:
+    workout = _planned_workout(
+        {"format": "bike", "steps": [{"label": "Warm-up", "minutes": 10, "ramp": [55, "easy"]}]}
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        build_structured_workout_ir(workout)
+    assert exc_info.value.status_code == 422
+
+
+def test_endash_band_target_collapses_to_its_midpoint() -> None:
+    # The plan writes "65–72%" with an en dash; it must deliver the midpoint (68),
+    # not the top of the band — so a 64.9% ride grades "on", not "under" vs 72.
+    workout = _planned_workout(
+        {
+            "format": "bike",
+            "steps": [
+                {"label": "Warm-up ramp", "minutes": 10, "ramp": [45, 60]},
+                {"label": "Long Z2", "minutes": 100, "target": "65–72%"},
+                {"label": "Cool-down ramp", "minutes": 10, "ramp": [70, 45]},
+            ],
+        }
+    )
+
+    ir = build_structured_workout_ir(workout)
+
+    main = ir["steps"][1]
+    assert main["powerStartPct"] == 68
+    assert main["powerEndPct"] == 68
+    assert main["kind"] == "steady"
+
+
+def test_unresolvable_target_raises_422_not_a_silent_55() -> None:
+    # The old code returned 55 for anything it couldn't parse — turning an
+    # unparseable VO2 into a plausible-looking flat easy ride. Now it must fail.
+    with pytest.raises(HTTPException) as exc_info:
+        expand_structured_steps(
+            {
+                "format": "bike",
+                "steps": [{"label": "VO₂", "minutes": 60, "target": "see prescription"}],
+            },
+            None,
+        )
+    assert exc_info.value.status_code == 422
+    assert "resolve a power target" in str(exc_info.value.detail)
+
+
+def test_multi_step_vo2_expands_to_ramps_intervals_and_recoveries() -> None:
+    # A whole VO2 session: warm-up ramp + priming pattern + steadies + main
+    # interval set (work/recovery pairs) + cool-down ramp — the shape the plan now
+    # authors, replacing the single collapsed block.
+    workout = _planned_workout(
+        {
+            "format": "bike",
+            "steps": [
+                {"label": "Warm-up ramp", "minutes": 10, "ramp": [55, 80]},
+                {
+                    "label": "Primer",
+                    "target": "100%",
+                    "pattern": "2 x 30s / 30s @55%",
+                    "cadenceRpm": 95,
+                },
+                {"label": "Warm-up @72%", "minutes": 3, "target": "72%"},
+                {"label": "Warm-up @55%", "minutes": 2, "target": "55%"},
+                {
+                    "label": "VO₂ 5×2min @120%",
+                    "target": "120%",
+                    "pattern": "5 x 2min / 2min @60%",
+                    "cadenceRpm": 95,
+                },
+                {"label": "Cool-down ramp", "minutes": 10, "ramp": [70, 45]},
+            ],
+        }
+    )
+
+    ir = build_structured_workout_ir(workout)
+
+    assert ir["totalDurationSec"] == 47 * 60  # 47 min, not the old hand-typed 60
+    ramps = [s for s in ir["steps"] if s["kind"] == "ramp"]
+    assert [s["phase"] for s in ramps] == ["warmup", "cooldown"]
+    work = [s for s in ir["steps"] if s["label"].startswith("VO₂") and "work" in s["label"]]
+    assert len(work) == 5
+    assert all(s["powerStartPct"] == 120 and s["cadenceRpm"] == 95 for s in work)
+    recoveries = [
+        s for s in ir["steps"] if s["label"].startswith("VO₂") and "recovery" in s["label"]
+    ]
+    assert all(s["powerStartPct"] == 60 for s in recoveries)
+
+
+def test_delivered_zwo_shows_warmup_intervals_and_cooldown() -> None:
+    workout = _planned_workout(
+        {
+            "format": "bike",
+            "steps": [
+                {"label": "Warm-up ramp", "minutes": 10, "ramp": [55, 80]},
+                {
+                    "label": "VO₂ 5×2min @120%",
+                    "target": "120%",
+                    "pattern": "5 x 2min / 2min @60%",
+                    "cadenceRpm": 95,
+                },
+                {"label": "Cool-down ramp", "minutes": 10, "ramp": [70, 45]},
+            ],
+        }
+    )
+
+    zwo = build_zwo_xml(build_structured_workout_ir(workout))
+
+    assert '<Warmup Duration="600" PowerLow="0.55" PowerHigh="0.8"/>' in zwo
+    assert '<Cooldown Duration="600" PowerLow="0.7" PowerHigh="0.45"/>' in zwo
+    # VO2 reaches Zwift as 120% intervals (Power="1.2"), not a flat 55% block.
+    assert zwo.count('Power="1.2"') == 5
+    assert 'Power="0.55"' not in zwo  # no silent 55% Z1 ride
+
+
+def test_validate_deliverable_rejects_a_single_block_bike_workout() -> None:
+    # The old plan authored every bike day as one collapsed block; the import gate
+    # must reject that shape (no ramp, no warm-up/cool-down, single step).
+    with pytest.raises(ValueError) as exc_info:
+        validate_deliverable_bike_workout(
+            {"format": "bike", "steps": [{"label": "VO₂", "minutes": 60, "target": "120%"}]},
+            "VO₂",
+            context="W1 VO₂",
+        )
+    assert "W1 VO₂" in str(exc_info.value)
+
+
+def test_validate_deliverable_accepts_a_real_structured_session() -> None:
+    steps = validate_deliverable_bike_workout(
+        {
+            "format": "bike",
+            "steps": [
+                {"label": "Warm-up ramp", "minutes": 10, "ramp": [55, 80]},
+                {"label": "Main", "target": "120%", "pattern": "5 x 2min / 2min @60%"},
+                {"label": "Cool-down ramp", "minutes": 10, "ramp": [70, 45]},
+            ],
+        },
+        "VO₂",
+    )
+    phases = {s["phase"] for s in steps}
+    assert {"warmup", "cooldown"} <= phases
+    assert any(s["kind"] == "ramp" for s in steps)
 
 
 class _FakeIntervalsClient:

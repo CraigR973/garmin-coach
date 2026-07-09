@@ -136,12 +136,18 @@ class IntervalsIcuClient:
         return IntervalsCreateResult(event_id=event_id, raw_response=body)
 
 
-def build_structured_workout_ir(
-    workout: PlannedWorkout,
-    *,
-    ftp_watts: int = DEFAULT_FTP_WATTS,
-) -> dict[str, Any]:
-    structured = workout.structured_workout or {}
+def expand_structured_steps(
+    structured: dict[str, Any] | None,
+    intensity_target: str | None,
+) -> list[dict[str, Any]]:
+    """Expand a ``structured_workout`` dict into concrete IR steps (pure, DB-free).
+
+    Shared by ``build_structured_workout_ir`` (the delivery path) and
+    ``validate_deliverable_bike_workout`` (the import gate). Raises 422 when the
+    workout is not a bike, has no steps, or a step can't resolve — no step is ever
+    silently dropped or defaulted to a plausible-looking easy ride.
+    """
+    structured = structured or {}
     if structured.get("format") != "bike":
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -159,14 +165,53 @@ def build_structured_workout_ir(
     for raw_step in raw_steps:
         if not isinstance(raw_step, dict):
             continue
-        steps.extend(_expand_step(raw_step, workout.intensity_target))
+        steps.extend(_expand_step(raw_step, intensity_target))
 
     if not steps:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Structured bike workout did not produce deliverable steps",
         )
+    return steps
 
+
+def validate_deliverable_bike_workout(
+    structured: dict[str, Any] | None,
+    intensity_target: str | None,
+    *,
+    context: str = "",
+) -> list[dict[str, Any]]:
+    """Assert a plan's bike workout is a real, deliverable structured session.
+
+    Import-time gate (Batch 67): every target must resolve (no silent 55% ride),
+    the workout must be multi-step, and it must carry a warm-up, a cool-down, and
+    at least one authored ramp. Raises ``ValueError`` (with ``context``) so a
+    malformed plan fails at import — before anything reaches Zwift. Returns the
+    expanded steps so the caller can also check ``duration_min`` traces the sum.
+    """
+    where = f" ({context})" if context else ""
+    try:
+        steps = expand_structured_steps(structured, intensity_target)
+    except HTTPException as exc:
+        raise ValueError(f"bike workout is not deliverable{where}: {exc.detail}") from exc
+    if len(steps) < 2:
+        raise ValueError(f"bike workout collapsed to a single block{where}")
+    phases = {str(step["phase"]) for step in steps}
+    if "warmup" not in phases:
+        raise ValueError(f"bike workout has no warm-up step{where}")
+    if "cooldown" not in phases:
+        raise ValueError(f"bike workout has no cool-down step{where}")
+    if not any(step["kind"] == "ramp" for step in steps):
+        raise ValueError(f"bike workout has no ramp (warm-up/cool-down authored flat){where}")
+    return steps
+
+
+def build_structured_workout_ir(
+    workout: PlannedWorkout,
+    *,
+    ftp_watts: int = DEFAULT_FTP_WATTS,
+) -> dict[str, Any]:
+    steps = expand_structured_steps(workout.structured_workout, workout.intensity_target)
     total_seconds = sum(int(step["durationSec"]) for step in steps)
     return {
         "version": 1,
@@ -642,6 +687,28 @@ def _expand_step(raw_step: dict[str, Any], workout_target: str | None) -> list[d
     phase = _phase(label)
     target_text = str(raw_step.get("target") or workout_target or label)
     cadence = _cadence(raw_step)
+
+    ramp = raw_step.get("ramp")
+    if ramp is not None:
+        # Ramp raw-step form (Batch 67): ``{"label", "minutes", "ramp": [startPct, endPct]}``
+        # authors a genuine ramp (powerStartPct != powerEndPct) — the warm-up/cool-down
+        # shape the plan needs. Without this, _expand_step could only emit steady steps,
+        # so every "warm-up" landed flat.
+        if "minutes" not in raw_step:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Ramp step {label!r} needs a 'minutes' duration",
+            )
+        if not isinstance(ramp, (list, tuple)) or len(ramp) != 2:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Ramp step {label!r} 'ramp' must be [startPct, endPct]",
+            )
+        duration = int(float(raw_step["minutes"]) * 60)
+        start_pct = _ramp_pct(ramp[0], label)
+        end_pct = _ramp_pct(ramp[1], label)
+        return [_step(label, phase, duration, start_pct, end_pct, cadence)]
+
     if "minutes" in raw_step:
         duration = int(float(raw_step["minutes"]) * 60)
         pct = _power_pct(target_text)
@@ -753,9 +820,29 @@ def _cadence(raw_step: dict[str, Any]) -> int | None:
     return None
 
 
+def _ramp_pct(value: Any, label: str) -> int:
+    try:
+        return int(round(float(value)))
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Ramp step {label!r} has a non-numeric power {value!r}",
+        ) from None
+
+
+# Range separators seen in the plan text: ASCII hyphen plus the unicode dash family
+# (hyphen U+2010, non-breaking hyphen U+2011, figure dash U+2012, en dash U+2013,
+# em dash U+2014, horizontal bar U+2015) and the minus sign U+2212. The plan uses an
+# en dash ("65–72%"), which the old ASCII-only regex missed — so it fell through to the
+# single-% branch and grabbed the *top* of the band (72), grading a fine Z2 "under".
+_RANGE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*[-‐-―−]\s*(\d+(?:\.\d+)?)\s*%")
+
+
 def _power_pct(text: str, *, fallback: int | None = None) -> int:
-    range_match = re.search(r"(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*%", text)
+    range_match = _RANGE_RE.search(text)
     if range_match:
+        # Collapse a band to its midpoint so "65-72%" delivers ~68% (and grades a
+        # 64.9% ride "on" within ±5, not "under" against 72).
         return round((float(range_match.group(1)) + float(range_match.group(2))) / 2)
     single_match = re.search(r"(\d+(?:\.\d+)?)\s*%", text)
     if single_match:
@@ -779,7 +866,12 @@ def _power_pct(text: str, *, fallback: int | None = None) -> int:
             return pct
     if fallback is not None:
         return fallback
-    return 55
+    # No silent 55% fallback (Batch 67): an unresolvable target must fail loudly at
+    # propose/import rather than deliver a plausible-looking flat easy ride to Zwift.
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=f"Could not resolve a power target from {text!r}",
+    )
 
 
 def _intervals_description(ir: dict[str, Any]) -> str:
