@@ -539,6 +539,39 @@ export const swapSuggestionSchema = z.object({
 });
 export type SwapSuggestion = z.infer<typeof swapSuggestionSchema>;
 
+// Batch 70 (#143): the week's protected quality mix (VO2×1 / Sweet-Spot×1 /
+// Zone-2×3, derived from the plan) reported as done/due/at-risk, plus — when a
+// cautious morning eases today's hard session — whether it is re-patched to a
+// later day this week or explicitly not made up.
+export const weeklyMixBucketSchema = z.object({
+  bucket: z.string(),
+  label: z.string(),
+  target: z.number(),
+  done: z.number(),
+  due: z.number(),
+  remainingPlanned: z.number().optional(),
+  atRisk: z.boolean(),
+});
+export type WeeklyMixBucket = z.infer<typeof weeklyMixBucketSchema>;
+
+export const weeklyMixShortfallSchema = z.object({
+  bucket: z.string(),
+  label: z.string(),
+  repatched: z.boolean(),
+  moveToWeekday: z.string().nullable().optional(),
+  moveToDate: z.string().nullable().optional(),
+  message: z.string(),
+});
+export type WeeklyMixShortfall = z.infer<typeof weeklyMixShortfallSchema>;
+
+export const weeklyMixSchema = z.object({
+  weekStart: z.string(),
+  subjectDate: z.string().optional(),
+  buckets: z.array(weeklyMixBucketSchema).default([]),
+  shortfall: weeklyMixShortfallSchema.nullable().optional(),
+});
+export type WeeklyMix = z.infer<typeof weeklyMixSchema>;
+
 export const dailyLoopAnalysisSchema = z.object({
   id: z.string().uuid(),
   generatedAtUtc: isoDateTimeSchema,
@@ -553,6 +586,7 @@ export const dailyLoopAnalysisSchema = z.object({
   metricsVsBaselines: z.array(metricBaselineRowSchema).default([]),
   ageComparison: ageComparisonSchema.default({ rows: [] }),
   swapSuggestion: swapSuggestionSchema.nullable().optional(),
+  weeklyMix: weeklyMixSchema.nullable().optional(),
   feedback: feedbackSchema.nullable().optional(),
 });
 

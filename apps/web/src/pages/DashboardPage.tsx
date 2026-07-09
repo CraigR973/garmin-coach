@@ -46,6 +46,7 @@ import { SleepSnapshotBody } from '@/components/SleepSnapshotBody';
 import { SleepPrepBody } from '@/components/SleepPrepBody';
 import { BedroomBody } from '@/components/BedroomBody';
 import { DetailLinkCard } from '@/components/DetailLinkCard';
+import { WeeklyMixCard } from '@/components/WeeklyMixCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { isBikeWorkout, useDailyPhase } from '@/hooks/useDailyPhase';
 import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
@@ -472,6 +473,7 @@ export function DashboardPage() {
           workouts={todaysWorkouts}
           planAdjustments={analysis?.planAdjustments ?? []}
           swapSuggestion={analysis?.swapSuggestion ?? null}
+          weeklyMix={analysis?.weeklyMix ?? null}
           flexibilityAnalyses={postFlexibilityAnalyses}
           strengthAnalyses={postStrengthAnalyses}
           walkAnalyses={postWalkAnalyses}
@@ -679,6 +681,7 @@ function NextActionStrip({
 
 type TodayWorkout = DailyLoopData['plannedWorkouts'][number];
 type SwapSuggestionData = NonNullable<DailyLoopData['morningAnalysis']>['swapSuggestion'];
+type WeeklyMixData = NonNullable<DailyLoopData['morningAnalysis']>['weeklyMix'];
 
 type TodayWorkoutActions = {
   busy: boolean;
@@ -771,6 +774,7 @@ function DayPlanBody({
   workouts,
   planAdjustments,
   swapSuggestion,
+  weeklyMix,
   flexibilityAnalyses,
   strengthAnalyses,
   walkAnalyses,
@@ -785,6 +789,7 @@ function DayPlanBody({
   workouts: TodayWorkout[];
   planAdjustments: string[];
   swapSuggestion: SwapSuggestionData;
+  weeklyMix: WeeklyMixData;
   flexibilityAnalyses: DailyLoopData['postFlexibilityAnalyses'];
   strengthAnalyses: DailyLoopData['postStrengthAnalyses'];
   walkAnalyses: DailyLoopData['postWalkAnalyses'];
@@ -811,6 +816,7 @@ function DayPlanBody({
           onSwap={workoutActions.onSwap}
         />
       ) : null}
+      {weeklyMix ? <WeeklyMixCard mix={weeklyMix} /> : null}
       {hasWorkouts ? (
         <div className="space-y-4">
           {workouts.map((workout, index) => (
