@@ -1,20 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  dailyLoopEnvelopeSchema,
-  manualEntryInputSchema,
-  plannedWorkoutAdherenceInputSchema,
-} from '@coach/shared';
+import { dailyLoopEnvelopeSchema, manualEntryInputSchema } from '@coach/shared';
 import { toast } from 'sonner';
 import { CollapsibleSection } from '@/components/CollapsibleSection';
 import { PageHeader } from '@/components/PageHeader';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ErrorState } from '@/components/EmptyState';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { apiFetch } from '@/lib/api';
@@ -69,22 +63,8 @@ type ManualFormState = {
   notes: string;
 };
 
-type AdherenceFormState = {
-  status: 'completed' | 'modified' | 'skipped';
-  rpe: string;
-  feel: string;
-  notes: string;
-  completedDurationMin: string;
-  intensity: string;
-  changeSummary: string;
-};
-
 function emptyManualForm(): ManualFormState {
   return { bpSystolic: '', bpDiastolic: '', subjectiveScore: '', feel: '', supplements: '', food: '', notes: '' };
-}
-
-function emptyAdherenceForm(): AdherenceFormState {
-  return { status: 'completed', rpe: '', feel: '', notes: '', completedDurationMin: '', intensity: '', changeSummary: '' };
 }
 
 function textSummary(value: unknown): string {
@@ -115,7 +95,6 @@ async function fetchDailyLoop() {
 export function CheckInPage() {
   const queryClient = useQueryClient();
   const [manualForm, setManualForm] = useState<ManualFormState>(emptyManualForm);
-  const [adherenceForms, setAdherenceForms] = useState<Record<string, AdherenceFormState>>({});
 
   const query = useQuery({ queryKey: ['daily-loop'], queryFn: fetchDailyLoop });
 
@@ -133,35 +112,10 @@ export function CheckInPage() {
       food: textSummary(manualEntry?.foodJson),
       notes: manualEntry?.notes ?? '',
     });
-
-    const next: Record<string, AdherenceFormState> = {};
-    for (const workout of data.plannedWorkouts) {
-      next[workout.id] = {
-        status: (workout.adherence?.adherenceStatus as AdherenceFormState['status'] | null) ?? 'completed',
-        rpe: workout.adherence?.rpe != null ? String(workout.adherence.rpe) : '',
-        feel: workout.adherence?.feel ?? '',
-        notes: workout.adherence?.notes ?? '',
-        completedDurationMin:
-          typeof workout.adherence?.actualWorkoutJson?.completedDurationMin === 'number'
-            ? String(workout.adherence.actualWorkoutJson.completedDurationMin)
-            : '',
-        intensity:
-          typeof workout.adherence?.actualWorkoutJson?.intensity === 'string'
-            ? workout.adherence.actualWorkoutJson.intensity
-            : '',
-        changeSummary:
-          typeof workout.adherence?.actualWorkoutJson?.changeSummary === 'string'
-            ? workout.adherence.actualWorkoutJson.changeSummary
-            : '',
-      };
-    }
-    setAdherenceForms(next);
   }, [query.data]);
 
-  // Batch 55: one unified save covers the whole check-in — the manual entry
-  // (how you feel / BP / yesterday) plus every session's adherence in one pass
-  // — instead of a separate save button per card/workout. Same PUT endpoints,
-  // just orchestrated together so there is one clear "am I done" action.
+  // Batch 69 keeps the morning check-in focused on the morning read. Session
+  // logging moved to the completed-ride Today card / post-ride surface.
   const saveMutation = useMutation({
     mutationFn: async () => {
       const data = query.data?.data;
@@ -180,26 +134,6 @@ export function CheckInPage() {
         method: 'PUT',
         body: JSON.stringify(manualPayload),
       });
-
-      for (const workout of data.plannedWorkouts) {
-        const form = adherenceForms[workout.id];
-        if (!form) continue;
-        const payload = plannedWorkoutAdherenceInputSchema.parse({
-          status: form.status,
-          rpe: form.rpe ? Number(form.rpe) : null,
-          feel: form.feel || null,
-          notes: form.notes || null,
-          actualWorkoutJson: {
-            completedDurationMin: form.completedDurationMin ? Number(form.completedDurationMin) : null,
-            intensity: form.intensity || null,
-            changeSummary: form.changeSummary || null,
-          },
-        });
-        await apiFetch(`/api/v1/daily-loop/${data.subjectDate}/planned-workouts/${workout.id}/adherence`, {
-          method: 'PUT',
-          body: JSON.stringify(payload),
-        });
-      }
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['daily-loop'] });
@@ -218,13 +152,6 @@ export function CheckInPage() {
     setManualForm((current) => ({
       ...current,
       [chip.field]: toggleToken(current[chip.field], chip.token),
-    }));
-  }
-
-  function setAdherence(workoutId: string, patch: Partial<AdherenceFormState>) {
-    setAdherenceForms((current) => ({
-      ...current,
-      [workoutId]: { ...(current[workoutId] ?? emptyAdherenceForm()), ...patch },
     }));
   }
 
@@ -304,7 +231,7 @@ export function CheckInPage() {
           elsewhere). */}
       <CollapsibleSection
         title="More"
-        summary="In your own words, blood pressure, supplements & food, and session logging"
+        summary="In your own words, blood pressure, and yesterday's supplements & food"
       >
         <div className="space-y-6">
           <div className="space-y-4">
@@ -380,87 +307,6 @@ export function CheckInPage() {
               />
             </div>
           </div>
-
-          {data && data.plannedWorkouts.length > 0 && (
-            <div className="space-y-4 border-t border-border pt-4">
-              <div>
-                <p className="text-sm font-semibold text-text-primary">How did your sessions go?</p>
-                <p className="text-xs text-text-secondary">
-                  Log what you actually did so tomorrow&apos;s plan stays honest.
-                </p>
-              </div>
-              {data.plannedWorkouts.map((workout) => {
-                const form = adherenceForms[workout.id] ?? emptyAdherenceForm();
-                return (
-                  <div key={workout.id} className="rounded-2xl border border-border bg-bg px-4 py-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-semibold text-text-primary">{workout.title}</p>
-                      {workout.adherence ? <Badge variant="muted">Logged</Badge> : null}
-                    </div>
-
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor={`status-${workout.id}`}>Outcome</Label>
-                        <Select
-                          value={form.status}
-                          onValueChange={(value) =>
-                            setAdherence(workout.id, { status: value as AdherenceFormState['status'] })
-                          }
-                        >
-                          <SelectTrigger id={`status-${workout.id}`}>
-                            <SelectValue placeholder="Select" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="completed">Did it as planned</SelectItem>
-                            <SelectItem value="modified">Changed it</SelectItem>
-                            <SelectItem value="skipped">Skipped it</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor={`duration-${workout.id}`}>Actual minutes</Label>
-                        <Input
-                          id={`duration-${workout.id}`}
-                          inputMode="numeric"
-                          value={form.completedDurationMin}
-                          onChange={(e) => setAdherence(workout.id, { completedDurationMin: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor={`rpe-${workout.id}`}>How hard (RPE)</Label>
-                        <Input
-                          id={`rpe-${workout.id}`}
-                          inputMode="decimal"
-                          value={form.rpe}
-                          onChange={(e) => setAdherence(workout.id, { rpe: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor={`feel-${workout.id}`}>How it felt</Label>
-                        <Input
-                          id={`feel-${workout.id}`}
-                          value={form.feel}
-                          onChange={(e) => setAdherence(workout.id, { feel: e.target.value })}
-                        />
-                      </div>
-                    </div>
-
-                    {form.status === 'modified' && (
-                      <div className="mt-3 space-y-2">
-                        <Label htmlFor={`changes-${workout.id}`}>What changed?</Label>
-                        <Textarea
-                          id={`changes-${workout.id}`}
-                          className="min-h-[100px]"
-                          value={form.changeSummary}
-                          onChange={(e) => setAdherence(workout.id, { changeSummary: e.target.value })}
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
       </CollapsibleSection>
 

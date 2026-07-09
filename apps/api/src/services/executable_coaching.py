@@ -29,7 +29,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.coaching import Analysis, PlannedWorkout, WorkoutDeliveryProposal
+from src.models.coaching import Analysis, ManualEntry, PlannedWorkout, WorkoutDeliveryProposal
 from src.models.profile import Profile
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
 from src.services.workout_categories import category_for_workout_type
@@ -703,6 +703,11 @@ class ExecutableCoachingService:
             await self.session.commit()
             raise HTTPException(status_code=409, detail="Red verdict blocks VO2 delivery to Zwift")
         delivered = await self._resync_event(player, workout, ir)
+        await self._seed_adjustment_adherence(
+            player_id=player.id,
+            workout=workout,
+            ir=ir,
+        )
         # Consume the pending proposal so the card returns to the no-changes state.
         pending.approved_at_utc = _utcnow()
         pending.approved_by_profile_id = player.id
@@ -724,6 +729,43 @@ class ExecutableCoachingService:
         await self.session.commit()
         await self.session.refresh(delivered)
         return delivered
+
+    async def _seed_adjustment_adherence(
+        self,
+        *,
+        player_id: uuid.UUID,
+        workout: PlannedWorkout,
+        ir: dict[str, Any],
+    ) -> None:
+        """Batch 69: approving an adjusted ride pre-fills adherence once."""
+        entry = await self.session.scalar(
+            select(ManualEntry).where(
+                ManualEntry.user_id == player_id,
+                ManualEntry.entry_date == workout.workout_date,
+                ManualEntry.planned_workout_id == workout.id,
+            )
+        )
+        if entry is None:
+            entry = ManualEntry(
+                user_id=player_id,
+                planned_workout_id=workout.id,
+                entry_date=workout.workout_date,
+                entry_at_utc=_utcnow(),
+            )
+            self.session.add(entry)
+
+        actual = dict(entry.actual_workout_json or {})
+        actual.setdefault("type", _accepted_adjustment_type(ir))
+        actual.setdefault("intensity", _accepted_adjustment_target(ir))
+        actual.setdefault("changeSummary", _accepted_adjustment_summary(ir))
+        actual.setdefault("source", "accepted_adjustment")
+
+        entry.entry_at_utc = _utcnow()
+        entry.planned_workout_version = workout.version
+        if entry.adherence_status in {None, "modified"}:
+            entry.adherence_status = "modified"
+        entry.actual_workout_json = actual
+        await self.session.flush()
 
     async def skip_workout(
         self,
@@ -1219,3 +1261,52 @@ def _proposal_verdict(proposal: WorkoutDeliveryProposal) -> str | None:
     if isinstance(adjustment, dict):
         return _normalize_verdict(adjustment.get("verdict"))
     return None
+
+
+def _accepted_adjustment_type(ir: dict[str, Any]) -> str:
+    origin = str(ir.get("origin") or "").strip().lower()
+    if origin == "red_substitution":
+        return "Recovery substitution"
+    if origin == "amber_regeneration":
+        return "Eased ride"
+    if origin == "manual_override":
+        return "Manual override"
+    return "Changed session"
+
+
+def _accepted_adjustment_target(ir: dict[str, Any]) -> str:
+    adjustment = ir.get("adjustment")
+    if isinstance(adjustment, dict):
+        manual = adjustment.get("manualOverride")
+        if isinstance(manual, dict):
+            intensity = manual.get("intensityScalePct")
+            if isinstance(intensity, int):
+                return f"{intensity}% of planned intensity"
+        zone_drop = adjustment.get("zoneDropPct")
+        duration = adjustment.get("durationScalePct")
+        if isinstance(zone_drop, int) and zone_drop > 0 and isinstance(duration, int):
+            return f"{duration}% duration, {zone_drop} points easier"
+        power_cap = adjustment.get("powerCapPct")
+        if isinstance(power_cap, int):
+            return f"Capped at {power_cap}% FTP"
+    return str(ir.get("name") or "Adjusted session")
+
+
+def _accepted_adjustment_summary(ir: dict[str, Any]) -> str:
+    adjustment = ir.get("adjustment")
+    if isinstance(adjustment, dict):
+        verdict = _normalize_verdict(adjustment.get("verdict"))
+        if verdict == "Red":
+            return "Accepted the coach's recovery substitution."
+        if verdict == "Amber":
+            return "Accepted the coach's eased ride."
+        manual = adjustment.get("manualOverride")
+        if isinstance(manual, dict):
+            duration = manual.get("durationScalePct")
+            intensity = manual.get("intensityScalePct")
+            if isinstance(duration, int) and isinstance(intensity, int):
+                return (
+                    f"Accepted the manual override ({duration}% duration, {intensity}% intensity)."
+                )
+    name = str(ir.get("name") or "adjusted session").strip()
+    return f"Accepted the adjusted session: {name}."
