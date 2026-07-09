@@ -4,10 +4,9 @@ import uuid
 from datetime import date
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
-
-from fastapi import HTTPException
 
 from src.models.coaching import ManualEntry, PlannedWorkout, WorkoutDeliveryProposal
 from src.models.profile import Profile, UserRole
