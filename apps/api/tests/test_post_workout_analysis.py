@@ -622,9 +622,10 @@ async def test_context_packet_prefers_delivered_proposal_ir_for_grading(
                 },
             )
         )
-        # Delivered IR windows: warm-up [0,150), work [150,210), recovery [210,300),
-        # cool-down [300,450). The planned VO2 target would mark 154 W as under;
-        # the delivered Red substitution caps the work at 55%, so it is on target.
+        # Delivered IR windows: warm-up [0,150), capped VO2 [150,210), recovery
+        # [210,300), cool-down [300,450). The planned VO2 target would mark
+        # 154 W as under; the delivered Red substitution caps that work at 60%,
+        # so it is on target with the existing interval tolerance.
         session.add_all(
             [
                 _sample(activity.id, 0, 30, 154, 110),
@@ -642,8 +643,8 @@ async def test_context_packet_prefers_delivered_proposal_ir_for_grading(
         assert packet["gradingTarget"]["adjustment"]["changed"] is True
         assert packet["plannedWorkoutIr"]["name"].startswith("Recovery substitution:")
         work = next(item for item in packet["intervals"] if item["role"] == "work")
-        assert work["targetPctFtpLow"] == 55
-        assert work["targetPctFtpHigh"] == 55
+        assert work["targetPctFtpLow"] == 60
+        assert work["targetPctFtpHigh"] == 60
         assert work["adherence"] == "on"
         assert packet["workoutAdherence"]["adherenceStatus"] == "modified"
         assert (
