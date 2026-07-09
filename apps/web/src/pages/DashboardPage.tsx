@@ -21,7 +21,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { postRideCheckInInputSchema } from '@coach/shared';
+import { plannedWorkoutAdherenceInputSchema, postRideCheckInInputSchema } from '@coach/shared';
 import { toast } from 'sonner';
 import type { AgeComparison, MetricBaselineRow } from '@/components/MetricComparisonTable';
 import { Badge } from '@/components/ui/badge';
@@ -281,6 +281,54 @@ export function DashboardPage() {
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not save ride check-in'),
   });
+  const completedRideLogMutation = useMutation({
+    mutationFn: async ({
+      workoutId,
+      activityId,
+      subjectiveScore,
+      rpe,
+      feel,
+      notes,
+      status,
+      completedDurationMin,
+      changedType,
+      intensity,
+      changeSummary,
+    }: CompletedRideLogPayload) => {
+      if (!data) throw new Error('Daily loop not loaded');
+      const ridePayload = postRideCheckInInputSchema.parse({
+        subjectiveScore,
+        rpe,
+        feel,
+        notes,
+      });
+      const adherencePayload = plannedWorkoutAdherenceInputSchema.parse({
+        status,
+        rpe,
+        feel,
+        notes,
+        actualWorkoutJson: {
+          completedDurationMin,
+          type: changedType,
+          intensity,
+          changeSummary,
+        },
+      });
+      await apiFetch(`/api/v1/daily-loop/${data.subjectDate}/activities/${activityId}/post-ride-check-in`, {
+        method: 'PUT',
+        body: JSON.stringify(ridePayload),
+      });
+      await apiFetch(`/api/v1/daily-loop/${data.subjectDate}/planned-workouts/${workoutId}/adherence`, {
+        method: 'PUT',
+        body: JSON.stringify(adherencePayload),
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['daily-loop'] });
+      toast.success('Ride log saved');
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not save ride log'),
+  });
 
   if (query.isLoading) {
     return (
@@ -352,12 +400,12 @@ export function DashboardPage() {
     onRecordActual: (payload: { label: string; notes: string | null }) =>
       actualMutation.mutate({ date: daily.subjectDate, ...payload }),
   };
-  // Shared by the completed-ride rows in the Today card and the unplanned-ride
-  // "After your ride" section — one ride check-in mutation, one saving flag.
-  const rideCheckIn: RideCheckInHandlers = {
-    onSave: (payload) => postRideCheckInMutation.mutate(payload),
-    savingActivityId: postRideCheckInMutation.variables?.activityId ?? null,
-    isSaving: postRideCheckInMutation.isPending,
+  // Batch 69: planned rides now use the combined completed-ride logger on their
+  // Today row; the standalone ride check-in mutation remains for unplanned rides.
+  const completedRideLog: CompletedRideLogHandlers = {
+    onSave: (payload) => completedRideLogMutation.mutate(payload),
+    savingWorkoutId: completedRideLogMutation.variables?.workoutId ?? null,
+    isSaving: completedRideLogMutation.isPending,
   };
 
   // Tomorrow's cue: the ride's forward look when we have one, else a verdict-shaped
@@ -433,7 +481,7 @@ export function DashboardPage() {
           workoutActions={todayActions}
           dayActions={dayActions}
           completedRides={rideByWorkoutId}
-          rideCheckIn={rideCheckIn}
+          completedRideLog={completedRideLog}
         />
       ),
     },
@@ -660,6 +708,21 @@ type RideCheckInHandlers = {
   isSaving: boolean;
 };
 
+type CompletedRideLogPayload = RideCheckInPayload & {
+  workoutId: string;
+  status: 'completed' | 'modified' | 'skipped';
+  completedDurationMin: number | null;
+  changedType: string | null;
+  intensity: string | null;
+  changeSummary: string | null;
+};
+
+type CompletedRideLogHandlers = {
+  onSave: (payload: CompletedRideLogPayload) => void;
+  savingWorkoutId: string | null;
+  isSaving: boolean;
+};
+
 /** Batch 66 (#139): the swap-first recovery lead — on a cautious morning with a
  *  hard session scheduled, recommend rearranging the week (move the hard session,
  *  pull an easier one forward) in one tap instead of only offering to soften.
@@ -717,7 +780,7 @@ function DayPlanBody({
   workoutActions,
   dayActions,
   completedRides,
-  rideCheckIn,
+  completedRideLog,
 }: {
   workouts: TodayWorkout[];
   planAdjustments: string[];
@@ -736,7 +799,7 @@ function DayPlanBody({
     onRecordActual: (payload: { label: string; notes: string | null }) => void;
   };
   completedRides: Map<string, RideAnalysis>;
-  rideCheckIn: RideCheckInHandlers;
+  completedRideLog: CompletedRideLogHandlers;
 }) {
   const hasWorkouts = workouts.length > 0;
   return (
@@ -760,7 +823,7 @@ function DayPlanBody({
                 planAdjustments={planAdjustments}
                 subjectDate={subjectDate}
                 analysis={completedRides.get(workout.id)}
-                rideCheckIn={rideCheckIn}
+                completedRideLog={completedRideLog}
                 {...workoutActions}
               />
             </div>
@@ -1122,7 +1185,7 @@ function WorkoutRow({
   planAdjustments = [],
   subjectDate,
   analysis,
-  rideCheckIn,
+  completedRideLog,
   busy,
   onEdit,
   onApprove,
@@ -1133,7 +1196,7 @@ function WorkoutRow({
   planAdjustments?: string[];
   subjectDate: string;
   analysis?: RideAnalysis;
-  rideCheckIn: RideCheckInHandlers;
+  completedRideLog: CompletedRideLogHandlers;
 } & TodayWorkoutActions) {
   const [panel, setPanel] = useState<'none' | 'edit' | 'swap' | 'skip'>('none');
   const [ignored, setIgnored] = useState(false);
@@ -1173,7 +1236,13 @@ function WorkoutRow({
             </Badge>
           </div>
         </div>
-        {analysis ? <CompletedRideRead analysis={analysis} rideCheckIn={rideCheckIn} /> : null}
+        {analysis ? (
+          <CompletedRideRead
+            analysis={analysis}
+            workout={workout}
+            completedRideLog={completedRideLog}
+          />
+        ) : null}
       </>
     );
   }
@@ -1404,6 +1473,19 @@ type RideCheckInValue = {
   notes?: string | null;
 } | null;
 
+type PlannedRideAdherenceValue = TodayWorkout['adherence'] | null;
+type PostRideFormValue = {
+  subjectiveScore: string;
+  rpe: string;
+  feel: string;
+  notes: string;
+  status?: 'completed' | 'modified' | 'skipped';
+  completedDurationMin?: string;
+  changedType?: string;
+  intensity?: string;
+  changeSummary?: string;
+};
+
 /** One ride's "how did it feel" check-in, owning its own draft so it can drop
  *  into both a completed Today-card row and the unplanned-ride section without a
  *  shared drafts map. */
@@ -1447,10 +1529,12 @@ function RideCheckIn({
  *  read + interval table sit behind a "View analysis" disclosure. */
 function CompletedRideRead({
   analysis,
-  rideCheckIn,
+  workout,
+  completedRideLog,
 }: {
   analysis: RideAnalysis;
-  rideCheckIn: RideCheckInHandlers;
+  workout: TodayWorkout;
+  completedRideLog: CompletedRideLogHandlers;
 }) {
   const [showRead, setShowRead] = useState(false);
   return (
@@ -1461,10 +1545,12 @@ function CompletedRideRead({
         </p>
       ) : null}
       {analysis.activityId ? (
-        <RideCheckIn
+        <CompletedRideLogForm
+          workoutId={workout.id}
           activityId={analysis.activityId}
           checkIn={analysis.postRideCheckIn ?? null}
-          handlers={rideCheckIn}
+          adherence={workout.adherence ?? null}
+          handlers={completedRideLog}
         />
       ) : null}
       <div>
@@ -1487,6 +1573,74 @@ function CompletedRideRead({
         ) : null}
       </div>
     </div>
+  );
+}
+
+function CompletedRideLogForm({
+  workoutId,
+  activityId,
+  checkIn,
+  adherence,
+  handlers,
+}: {
+  workoutId: string;
+  activityId: string;
+  checkIn: RideCheckInValue;
+  adherence: PlannedRideAdherenceValue;
+  handlers: CompletedRideLogHandlers;
+}) {
+  const [value, setValue] = useState({
+    subjectiveScore: checkIn?.subjectiveScore != null ? String(checkIn.subjectiveScore) : '',
+    rpe:
+      checkIn?.rpe != null
+        ? String(checkIn.rpe)
+        : adherence?.rpe != null
+          ? String(adherence.rpe)
+          : '',
+    feel: checkIn?.feel ?? adherence?.feel ?? '',
+    notes: checkIn?.notes ?? adherence?.notes ?? '',
+    status: (adherence?.adherenceStatus as 'completed' | 'modified' | 'skipped' | null) ?? 'completed',
+    completedDurationMin:
+      typeof adherence?.actualWorkoutJson?.completedDurationMin === 'number'
+        ? String(adherence.actualWorkoutJson.completedDurationMin)
+        : '',
+    changedType:
+      typeof adherence?.actualWorkoutJson?.type === 'string' ? adherence.actualWorkoutJson.type : '',
+    intensity:
+      typeof adherence?.actualWorkoutJson?.intensity === 'string'
+        ? adherence.actualWorkoutJson.intensity
+        : '',
+    changeSummary:
+      typeof adherence?.actualWorkoutJson?.changeSummary === 'string'
+        ? adherence.actualWorkoutJson.changeSummary
+        : '',
+  });
+
+  return (
+    <PostRideCheckInForm
+      activityId={activityId}
+      value={value}
+      logged={Boolean(checkIn) || Boolean(adherence)}
+      onChange={(patch) => setValue((current) => ({ ...current, ...patch }))}
+      onSave={(next) =>
+        handlers.onSave({
+          workoutId,
+          activityId,
+          subjectiveScore: next.subjectiveScore ? Number(next.subjectiveScore) : null,
+          rpe: next.rpe ? Number(next.rpe) : null,
+          feel: next.feel || null,
+          notes: next.notes || null,
+          status: next.status ?? 'completed',
+          completedDurationMin: next.completedDurationMin ? Number(next.completedDurationMin) : null,
+          changedType: next.changedType || null,
+          intensity: next.intensity || null,
+          changeSummary: next.changeSummary || null,
+        })
+      }
+      isSaving={handlers.isSaving && handlers.savingWorkoutId === workoutId}
+      saveLabel="Save ride log"
+      includeAdherence
+    />
   );
 }
 
@@ -1544,13 +1698,17 @@ function PostRideCheckInForm({
   onChange,
   onSave,
   isSaving,
+  saveLabel = 'Save ride check-in',
+  includeAdherence = false,
 }: {
   activityId: string;
-  value: { subjectiveScore: string; rpe: string; feel: string; notes: string };
+  value: PostRideFormValue;
   logged: boolean;
-  onChange: (patch: Partial<{ subjectiveScore: string; rpe: string; feel: string; notes: string }>) => void;
-  onSave: (value: { subjectiveScore: string; rpe: string; feel: string; notes: string }) => void;
+  onChange: (patch: Partial<PostRideFormValue>) => void;
+  onSave: (value: PostRideFormValue) => void;
   isSaving: boolean;
+  saveLabel?: string;
+  includeAdherence?: boolean;
 }) {
   return (
     <div className="rounded-xl border border-border bg-surface-elevated/60 px-3 py-3">
@@ -1594,10 +1752,79 @@ function PostRideCheckInForm({
             onChange={(event) => onChange({ notes: event.target.value })}
           />
         </div>
+        {includeAdherence ? (
+          <>
+            <div className="space-y-1.5">
+              <Label>Outcome</Label>
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Outcome">
+                {[
+                  ['completed', 'Did it as planned'],
+                  ['modified', 'Changed it'],
+                  ['skipped', 'Skipped it'],
+                ].map(([status, label]) => {
+                  const selected = (value.status ?? 'completed') === status;
+                  return (
+                    <Button
+                      key={status}
+                      type="button"
+                      size="sm"
+                      variant={selected ? 'default' : 'outline'}
+                      aria-pressed={selected}
+                      onClick={() =>
+                        onChange({ status: status as 'completed' | 'modified' | 'skipped' })
+                      }
+                    >
+                      {label}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={`post-ride-duration-${activityId}`}>Actual minutes</Label>
+              <Input
+                id={`post-ride-duration-${activityId}`}
+                inputMode="numeric"
+                value={value.completedDurationMin ?? ''}
+                onChange={(event) => onChange({ completedDurationMin: event.target.value })}
+              />
+            </div>
+            {value.status === 'modified' ? (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor={`post-ride-type-${activityId}`}>What did you do instead?</Label>
+                  <Input
+                    id={`post-ride-type-${activityId}`}
+                    placeholder="e.g. Recovery substitution"
+                    value={value.changedType ?? ''}
+                    onChange={(event) => onChange({ changedType: event.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor={`post-ride-intensity-${activityId}`}>Target / intensity</Label>
+                  <Input
+                    id={`post-ride-intensity-${activityId}`}
+                    placeholder="e.g. Capped at 60% FTP"
+                    value={value.intensity ?? ''}
+                    onChange={(event) => onChange({ intensity: event.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor={`post-ride-change-summary-${activityId}`}>What changed?</Label>
+                  <Textarea
+                    id={`post-ride-change-summary-${activityId}`}
+                    value={value.changeSummary ?? ''}
+                    onChange={(event) => onChange({ changeSummary: event.target.value })}
+                  />
+                </div>
+              </>
+            ) : null}
+          </>
+        ) : null}
       </div>
       <div className="mt-3 flex justify-end">
         <Button type="button" variant="outline" onClick={() => onSave(value)} disabled={isSaving}>
-          {isSaving ? 'Saving...' : 'Save ride check-in'}
+          {isSaving ? 'Saving...' : saveLabel}
         </Button>
       </div>
     </div>

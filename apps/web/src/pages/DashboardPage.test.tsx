@@ -324,6 +324,9 @@ function renderPage(snapshot = baseSnapshot) {
     if (path.includes('/post-ride-check-in')) {
       return Promise.resolve(snapshot);
     }
+    if (path.includes('/planned-workouts/') && path.includes('/adherence')) {
+      return Promise.resolve(snapshot);
+    }
     return Promise.reject(new Error(`Unexpected request: ${path}`));
   });
 
@@ -899,6 +902,7 @@ describe('DashboardPage', () => {
     // The done row shows a Completed state + read affordances, not ride controls.
     expect(screen.getByText('Completed')).toBeTruthy();
     expect(screen.getByText('How did it feel?')).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Outcome' })).toBeTruthy();
     expect(screen.getByText(/Easy endurance tomorrow\./)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /approve & upload/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /^edit$/i })).toBeNull();
@@ -912,6 +916,76 @@ describe('DashboardPage', () => {
 
     // The matched ride folds into the row → no standalone After-your-ride section.
     expect(screen.queryByText('After your ride')).toBeNull();
+  });
+
+  it('saves the completed-ride log from the Today row to both post-ride endpoints', async () => {
+    const user = userEvent.setup();
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.plannedWorkouts[0].status = 'completed';
+        snapshot.data.postWorkoutAnalyses = [
+          {
+            id: '66666666-6666-4666-8666-666666666666',
+            activityId: '77777777-7777-4777-8777-777777777777',
+            plannedWorkoutId: WORKOUT_ID,
+            activityName: 'Tempo ride',
+            activityType: 'indoor_cycling',
+            generatedAtUtc: '2026-06-20T12:20:00Z',
+            promptVersion: 'post-workout-analysis-v2-2026-07-03',
+            modelName: 'claude',
+            outputMarkdown: '**Recovery protocol:** refuel within 20 minutes.',
+            recoveryDecision: { excluded: false, status: 'ready_for_review' },
+            timeSeriesSummary: {},
+            intervals: [],
+            execution: {},
+            tomorrowImpact: 'Easy endurance tomorrow.',
+            postRideCheckIn: null,
+          },
+        ];
+      }),
+    );
+
+    await screen.findByText('How did it feel?');
+    await user.type(screen.getByLabelText('RPE'), '7');
+    await user.type(screen.getByLabelText('Legs'), '6');
+    await user.click(screen.getByRole('button', { name: 'Changed it' }));
+    await user.type(screen.getByLabelText('What did you do instead?'), 'Recovery substitution');
+    await user.type(screen.getByLabelText('Target / intensity'), 'Capped at 60% FTP');
+    await user.type(screen.getByLabelText('What changed?'), 'Accepted the easier recovery ride.');
+    await user.click(screen.getByRole('button', { name: /save ride log/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/daily-loop/2026-06-20/activities/77777777-7777-4777-8777-777777777777/post-ride-check-in',
+        expect.objectContaining({
+          method: 'PUT',
+          body: JSON.stringify({
+            subjectiveScore: 6,
+            rpe: 7,
+            feel: null,
+            notes: null,
+          }),
+        }),
+      );
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        `/api/v1/daily-loop/2026-06-20/planned-workouts/${WORKOUT_ID}/adherence`,
+        expect.objectContaining({
+          method: 'PUT',
+          body: JSON.stringify({
+            status: 'modified',
+            rpe: 7,
+            feel: null,
+            notes: null,
+            actualWorkoutJson: {
+              completedDurationMin: null,
+              type: 'Recovery substitution',
+              intensity: 'Capped at 60% FTP',
+              changeSummary: 'Accepted the easier recovery ride.',
+            },
+          }),
+        }),
+      );
+    });
   });
 
   it('rest day expands Last night and keeps the day plan collapsed-but-present', async () => {

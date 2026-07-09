@@ -119,7 +119,7 @@ describe('CheckInPage', () => {
     expect((screen.getByLabelText('Anything worth noting') as HTMLTextAreaElement).value).toBe('');
   });
 
-  it('still saves BP and per-workout adherence when "More" is opened and filled in', async () => {
+  it('still saves BP when "More" is opened and filled in', async () => {
     apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
       if (options?.method === 'PUT') return Promise.resolve(snapshot);
       if (path === '/api/v1/daily-loop') return Promise.resolve(snapshot);
@@ -139,9 +139,7 @@ describe('CheckInPage', () => {
 
     await user.click(await screen.findByRole('button', { name: /more/i }));
     await user.type(await screen.findByLabelText('Systolic'), '108');
-    // Batch 55: one "Save check-in" button covers the whole page — no more
-    // separate per-card/per-workout save buttons.
-    expect(screen.queryByRole('button', { name: 'Save session' })).toBeNull();
+    expect(screen.queryByText('How did your sessions go?')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Save check-in' }));
 
     await waitFor(() => {
@@ -152,7 +150,7 @@ describe('CheckInPage', () => {
     });
   });
 
-  it('also saves each planned workout\'s adherence in the same unified save', async () => {
+  it('does not render session logging in the morning check-in, even when workouts exist', async () => {
     const withWorkout = {
       ...snapshot,
       data: {
@@ -195,15 +193,9 @@ describe('CheckInPage', () => {
     );
 
     await user.click(await screen.findByRole('button', { name: /more/i }));
-    await screen.findByText('Sweet Spot Builder');
-    await user.click(screen.getByRole('button', { name: 'Save check-in' }));
-
-    await waitFor(() => {
-      expect(apiFetchMock).toHaveBeenCalledWith(
-        '/api/v1/daily-loop/2026-06-20/planned-workouts/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/adherence',
-        expect.objectContaining({ method: 'PUT' }),
-      );
-    });
+    await screen.findByText('Yesterday');
+    expect(screen.queryByText('Sweet Spot Builder')).toBeNull();
+    expect(screen.queryByText('How did your sessions go?')).toBeNull();
   });
 
   it('shows the shared error state when the daily loop fails to load, without blocking manual entry', async () => {
