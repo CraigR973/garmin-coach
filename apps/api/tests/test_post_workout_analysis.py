@@ -16,8 +16,10 @@ from src.models.coaching import (
     Analysis,
     ManualEntry,
     PlannedWorkout,
+    WorkoutDeliveryProposal,
 )
 from src.models.profile import Profile, UserRole
+from src.services.executable_coaching import adjust_ir_for_verdict
 from src.services.post_workout_analysis import (
     PROMPT_VERSION,
     ClaudeGenerationResult,
@@ -25,6 +27,11 @@ from src.services.post_workout_analysis import (
     _is_ride,
     _planned_ride_ir,
     _recovery_decision_packet,
+)
+from src.services.workout_delivery import (
+    build_intervals_payload,
+    build_structured_workout_ir,
+    build_zwo_xml,
 )
 
 # A structured sweet-spot session: warm-up ramp, a work + recovery block, cool-down.
@@ -34,6 +41,16 @@ _SWEET_SPOT_STRUCTURED = {
         {"label": "Warm-up", "minutes": 10, "target": "50-65%"},
         {"label": "Sweet spot", "pattern": "20 minutes / 5 minutes", "target": "88-94%"},
         {"label": "Cool-down", "minutes": 5, "target": "50%"},
+    ],
+}
+
+_VO2_STRUCTURED = {
+    "format": "bike",
+    "steps": [
+        {"label": "Warm-up", "minutes": 5, "ramp": [55, 80]},
+        {"label": "VO2", "minutes": 2, "target": "120%"},
+        {"label": "Recovery", "minutes": 3, "target": "55%"},
+        {"label": "Cool-down", "minutes": 5, "ramp": [70, 45]},
     ],
 }
 
@@ -505,6 +522,8 @@ async def test_context_packet_grades_work_intervals_for_structured_ride(
         ir = packet["plannedWorkoutIr"]
         assert ir is not None
         assert ir["steps"]
+        assert packet["gradingTarget"]["source"] == "planned_workout"
+        assert packet["gradingTarget"]["proposalId"] is None
 
         intervals = packet["intervals"]
         assert [item["role"] for item in intervals] == ["warmup", "work", "recovery", "cooldown"]
@@ -523,6 +542,114 @@ async def test_context_packet_grades_work_intervals_for_structured_ride(
         assert packet["activity"]["avgPowerWatts"] == 205
         assert "power" in packet["timeSeriesSummary"]
         assert "grade_execution_on_work_intervals_vs_ftp_targets" in packet["prompt"]["outputRules"]
+
+
+@pytest.mark.asyncio
+async def test_context_packet_prefers_delivered_proposal_ir_for_grading(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Delivered IR Packet",
+            pin_hash="x" * 60,
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+
+        activity = Activity(
+            user_id=user_id,
+            garmin_activity_id=770004,
+            activity_name="Accepted recovery substitution",
+            activity_type="indoor_cycling",
+            start_utc=datetime(2026, 1, 8, 11, 0),
+            duration_sec=900,
+            avg_power_watts=154,
+            raw_summary={},
+        )
+        planned = PlannedWorkout(
+            user_id=user_id,
+            workout_date=date(2026, 1, 8),
+            version=1,
+            title="VO2 builder",
+            workout_type="bike_vo2",
+            status="planned",
+            is_active=True,
+            intensity_target="120% FTP",
+            structured_workout=_VO2_STRUCTURED,
+            source="test",
+        )
+        session.add_all([activity, planned])
+        await session.flush()
+
+        planned_ir = build_structured_workout_ir(planned, ftp_watts=280)
+        delivered_ir = adjust_ir_for_verdict(planned_ir, "Red")
+        session.add(
+            WorkoutDeliveryProposal(
+                user_id=user_id,
+                planned_workout_id=planned.id,
+                planned_workout_version=planned.version,
+                workout_date=planned.workout_date,
+                provider="intervals_icu",
+                status="pushed",
+                proposed_at_utc=datetime(2026, 1, 8, 8, 0),
+                approved_at_utc=datetime(2026, 1, 8, 8, 5),
+                approved_by_profile_id=user_id,
+                pushed_at_utc=datetime(2026, 1, 8, 8, 6),
+                intervals_event_id="evt_recovery",
+                structured_workout_ir=delivered_ir,
+                intervals_payload=build_intervals_payload(delivered_ir),
+                zwo_xml=build_zwo_xml(delivered_ir),
+            )
+        )
+        session.add(
+            ManualEntry(
+                user_id=user_id,
+                planned_workout_id=planned.id,
+                planned_workout_version=planned.version,
+                entry_date=date(2026, 1, 8),
+                entry_at_utc=datetime(2026, 1, 8, 12, 0),
+                adherence_status="modified",
+                actual_workout_json={
+                    "changeSummary": "Accepted the recovery substitution instead of VO2.",
+                    "intensity": "easy Z2",
+                },
+            )
+        )
+        # Delivered IR windows: warm-up [0,150), work [150,210), recovery [210,300),
+        # cool-down [300,450). The planned VO2 target would mark 154 W as under;
+        # the delivered Red substitution caps the work at 55%, so it is on target.
+        session.add_all(
+            [
+                _sample(activity.id, 0, 30, 154, 110),
+                _sample(activity.id, 1, 170, 154, 120),
+                _sample(activity.id, 2, 230, 154, 118),
+                _sample(activity.id, 3, 330, 140, 112),
+            ]
+        )
+        await session.commit()
+
+        packet = await PostWorkoutAnalysisService(session).assemble_context_packet(player, activity)
+
+        assert packet["gradingTarget"]["source"] == "delivered_proposal"
+        assert packet["gradingTarget"]["origin"] == "red_substitution"
+        assert packet["gradingTarget"]["adjustment"]["changed"] is True
+        assert packet["plannedWorkoutIr"]["name"].startswith("Recovery substitution:")
+        work = next(item for item in packet["intervals"] if item["role"] == "work")
+        assert work["targetPowerPct"] == 55
+        assert work["adherence"] == "on"
+        assert packet["workoutAdherence"]["adherenceStatus"] == "modified"
+        assert (
+            "recovery substitution"
+            in packet["workoutAdherence"]["actualWorkoutJson"]["changeSummary"]
+        )
+        assert "grade_against_delivered_proposal_ir_when_present" in packet["prompt"]["outputRules"]
 
 
 @pytest.mark.asyncio
