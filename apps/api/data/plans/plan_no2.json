@@ -33,16 +33,49 @@
           "rest": false,
           "title": "VO₂ (5 × 2 min @ 120%)",
           "workout_type": "bike_vo2",
-          "duration_min": 60,
+          "duration_min": 47,
           "intensity_target": "VO₂ (see prescription)",
           "structured_workout": {
             "format": "bike",
-            "summary": "60 min WarmUp: 10 min ramp 55–80%, 2×30s @100%, 3 min @72%, 2 min @55% Main: 5 × 2 min @120% (2 min @60% recover) CoolDown: 10 min ramp 70–45%",
+            "summary": "WarmUp v1.3 · Main 5 × 2min @120% (2min @60% recover) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "VO₂ (5 × 2 min @ 120%)",
-                "target": "VO₂ (see prescription)",
-                "minutes": 60
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "VO₂ 5×2min @120%",
+                "target": "120%",
+                "pattern": "5 x 2min / 2min @60%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -56,12 +89,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "75 min 10 min ramp → 55 min @67% → 10 min cooldown",
+            "summary": "10 min ramp → 55 min @67% → 10 min ramp",
             "steps": [
               {
-                "label": "Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 75
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Z2 @67%",
+                "minutes": 55,
+                "target": "67%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  60,
+                  40
+                ]
               }
             ]
           }
@@ -71,16 +120,49 @@
           "rest": false,
           "title": "Sweet Spot (2 × 25 min @ 89%)",
           "workout_type": "bike_sweet_spot",
-          "duration_min": 88,
+          "duration_min": 81,
           "intensity_target": "Sweet Spot ~89% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "88 min WarmUp: 8 min ramp, 2×30s @100%, 3 min @72%, 2 min @55% Main: 2 × 25 min @89% (3 min @60% recover) CoolDown: 10 min ramp",
+            "summary": "WarmUp v1.3 · Main 2 × 25 min @89% (3 min @60% recover) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "Sweet Spot (2 × 25 min @ 89%)",
-                "target": "Sweet Spot ~89% FTP",
-                "minutes": 88
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 8,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "Sweet Spot 2×25 min @89%",
+                "target": "89%",
+                "pattern": "2 x 25min / 3min @60%",
+                "cadenceRpm": 90
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -99,12 +181,31 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "58 min 5 min ramp → 30 min @65% with cadence work → 6 × (12 sec @185% + 2:48 @55%) → 5 min cooldown",
+            "summary": "5 min ramp → 30 min @65% with cadence surges (5 × 1 min @100–105 rpm) → neuromuscular block 6 × (12 s @185% + 2:48 @55%) → 5 min @50%",
             "steps": [
               {
-                "label": "Z2 + Neuromuscular",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 58
+                "label": "Warm-up ramp 50→75%",
+                "minutes": 5,
+                "ramp": [
+                  50,
+                  75
+                ]
+              },
+              {
+                "label": "Z2 @65% + cadence surges (100–105 rpm)",
+                "target": "65%",
+                "pattern": "5 x 1min / 5min @65%",
+                "cadenceRpm": 102
+              },
+              {
+                "label": "Neuromuscular sprints @185%",
+                "target": "185%",
+                "pattern": "6 x 12s / 168s @55%"
+              },
+              {
+                "label": "Cool-down @50%",
+                "minutes": 5,
+                "target": "50%"
               }
             ]
           }
@@ -137,12 +238,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "2 hours 10 min ramp → 100 min @65–72% → 10 min cooldown",
+            "summary": "10 min ramp → 100 min @65–72% (midpoint 68%) → 10 min ramp",
             "steps": [
               {
-                "label": "Long Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 120
+                "label": "Warm-up ramp 45→60%",
+                "minutes": 10,
+                "ramp": [
+                  45,
+                  60
+                ]
+              },
+              {
+                "label": "Long Z2 65–72%",
+                "minutes": 100,
+                "target": "65–72%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -178,16 +295,49 @@
           "rest": false,
           "title": "VO₂ (5 × 3 min @ 119%)",
           "workout_type": "bike_vo2",
-          "duration_min": 63,
+          "duration_min": 57,
           "intensity_target": "VO₂ (see prescription)",
           "structured_workout": {
             "format": "bike",
-            "summary": "63 min WarmUp as Week 1 Main: 5 × 3 min @119% (3 min @60% recover) CoolDown: 10 min ramp",
+            "summary": "WarmUp v1.3 · Main 5 × 3min @119% (3min @60% recover) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "VO₂ (5 × 3 min @ 119%)",
-                "target": "VO₂ (see prescription)",
-                "minutes": 63
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "VO₂ 5×3min @119%",
+                "target": "119%",
+                "pattern": "5 x 3min / 3min @60%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -201,12 +351,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "75 min",
+            "summary": "10 min ramp → 55 min @67% → 10 min ramp",
             "steps": [
               {
-                "label": "Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 75
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Z2 @67%",
+                "minutes": 55,
+                "target": "67%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  60,
+                  40
+                ]
               }
             ]
           }
@@ -216,16 +382,49 @@
           "rest": false,
           "title": "Sweet Spot (2 × 25 min @ 89%)",
           "workout_type": "bike_sweet_spot",
-          "duration_min": 88,
+          "duration_min": 81,
           "intensity_target": "Sweet Spot ~89% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "88 min",
+            "summary": "WarmUp v1.3 · Main 2 × 25 min @89% (3 min @60% recover) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "Sweet Spot (2 × 25 min @ 89%)",
-                "target": "Sweet Spot ~89% FTP",
-                "minutes": 88
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 8,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "Sweet Spot 2×25 min @89%",
+                "target": "89%",
+                "pattern": "2 x 25min / 3min @60%",
+                "cadenceRpm": 90
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -244,12 +443,31 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "58 min",
+            "summary": "5 min ramp → 30 min @65% with cadence surges (5 × 1 min @100–105 rpm) → neuromuscular block 6 × (12 s @185% + 2:48 @55%) → 5 min @50%",
             "steps": [
               {
-                "label": "Z2 + Neuromuscular",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 58
+                "label": "Warm-up ramp 50→75%",
+                "minutes": 5,
+                "ramp": [
+                  50,
+                  75
+                ]
+              },
+              {
+                "label": "Z2 @65% + cadence surges (100–105 rpm)",
+                "target": "65%",
+                "pattern": "5 x 1min / 5min @65%",
+                "cadenceRpm": 102
+              },
+              {
+                "label": "Neuromuscular sprints @185%",
+                "target": "185%",
+                "pattern": "6 x 12s / 168s @55%"
+              },
+              {
+                "label": "Cool-down @50%",
+                "minutes": 5,
+                "target": "50%"
               }
             ]
           }
@@ -282,12 +500,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "2 hours",
+            "summary": "10 min ramp → 100 min @65–72% (midpoint 68%) → 10 min ramp",
             "steps": [
               {
-                "label": "Long Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 120
+                "label": "Warm-up ramp 45→60%",
+                "minutes": 10,
+                "ramp": [
+                  45,
+                  60
+                ]
+              },
+              {
+                "label": "Long Z2 65–72%",
+                "minutes": 100,
+                "target": "65–72%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -323,16 +557,48 @@
           "rest": false,
           "title": "VO₂ Light (3 × 2 min @ 115%)",
           "workout_type": "bike_vo2",
-          "duration_min": 50,
+          "duration_min": 41,
           "intensity_target": "VO₂ (see prescription)",
           "structured_workout": {
             "format": "bike",
-            "summary": "50 min",
+            "summary": "WarmUp v1.3 · Main 3 × 2min @115% (3min @60% recover) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "VO₂ Light (3 × 2 min @ 115%)",
-                "target": "VO₂ (see prescription)",
-                "minutes": 50
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100%",
+                "minutes": 1,
+                "target": "100%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "VO₂ 3×2min @115%",
+                "target": "115%",
+                "pattern": "3 x 2min / 3min @60%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -346,12 +612,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "60 min",
+            "summary": "10 min ramp → 40 min @65% → 10 min ramp",
             "steps": [
               {
-                "label": "Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 60
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Z2 @65%",
+                "minutes": 40,
+                "target": "65%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  60,
+                  40
+                ]
               }
             ]
           }
@@ -361,16 +643,54 @@
           "rest": false,
           "title": "Sweet Spot Light (1 × 20 min @ 89%)",
           "workout_type": "bike_sweet_spot",
-          "duration_min": 60,
+          "duration_min": 48,
           "intensity_target": "Sweet Spot ~89% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "60 min",
+            "summary": "WarmUp v1.3 · Main 1 × 20 min @89% (3 min @60% recover) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "Sweet Spot Light (1 × 20 min @ 89%)",
-                "target": "Sweet Spot ~89% FTP",
-                "minutes": 60
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 8,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "Sweet Spot 1×20 min @89%",
+                "minutes": 20,
+                "target": "89%",
+                "cadenceRpm": 90
+              },
+              {
+                "label": "Recover @60%",
+                "minutes": 3,
+                "target": "60%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -389,12 +709,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "45 min Dumbbells optional",
+            "summary": "5 min ramp → 35 min @60–65% (midpoint 62%) → 5 min ramp",
             "steps": [
               {
-                "label": "Easy Z2 (No Sprints)",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 45
+                "label": "Warm-up ramp 50→65%",
+                "minutes": 5,
+                "ramp": [
+                  50,
+                  65
+                ]
+              },
+              {
+                "label": "Easy Z2 60–65%",
+                "minutes": 35,
+                "target": "60–65%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 5,
+                "ramp": [
+                  60,
+                  45
+                ]
               }
             ]
           }
@@ -408,12 +744,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "90 min",
+            "summary": "10 min ramp → 70 min @60–65% (midpoint 62%) → 10 min ramp",
             "steps": [
               {
-                "label": "Easy Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 90
+                "label": "Warm-up ramp 45→60%",
+                "minutes": 10,
+                "ramp": [
+                  45,
+                  60
+                ]
+              },
+              {
+                "label": "Long Z2 60–65%",
+                "minutes": 70,
+                "target": "60–65%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -449,16 +801,48 @@
           "rest": false,
           "title": "VO₂ (6 × 2 min @ 120%)",
           "workout_type": "bike_vo2",
-          "duration_min": 63,
+          "duration_min": 51,
           "intensity_target": "VO₂ (see prescription)",
           "structured_workout": {
             "format": "bike",
-            "summary": "63 min",
+            "summary": "WarmUp v1.3 · Main 6 × 2min @120% (2min @60% recover) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "VO₂ (6 × 2 min @ 120%)",
-                "target": "VO₂ (see prescription)",
-                "minutes": 63
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "VO₂ 6×2min @120%",
+                "target": "120%",
+                "pattern": "6 x 2min / 2min @60%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -472,12 +856,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "75 min",
+            "summary": "10 min ramp → 55 min @67% → 10 min ramp",
             "steps": [
               {
-                "label": "Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 75
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Z2 @67%",
+                "minutes": 55,
+                "target": "67%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  60,
+                  40
+                ]
               }
             ]
           }
@@ -487,16 +887,49 @@
           "rest": false,
           "title": "Sweet Spot (2 × 30 min @ 89%)",
           "workout_type": "bike_sweet_spot",
-          "duration_min": 92,
+          "duration_min": 91,
           "intensity_target": "Sweet Spot ~89% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "92 min",
+            "summary": "WarmUp v1.3 · Main 2 × 30 min @89% (3 min @60% recover) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "Sweet Spot (2 × 30 min @ 89%)",
-                "target": "Sweet Spot ~89% FTP",
-                "minutes": 92
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 8,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "Sweet Spot 2×30 min @89%",
+                "target": "89%",
+                "pattern": "2 x 30min / 3min @60%",
+                "cadenceRpm": 90
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -515,12 +948,31 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "58 min",
+            "summary": "5 min ramp → 30 min @65% with cadence surges (5 × 1 min @100–105 rpm) → neuromuscular block 6 × (12 s @185% + 2:48 @55%) → 5 min @50%",
             "steps": [
               {
-                "label": "Z2 + Neuromuscular",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 58
+                "label": "Warm-up ramp 50→75%",
+                "minutes": 5,
+                "ramp": [
+                  50,
+                  75
+                ]
+              },
+              {
+                "label": "Z2 @65% + cadence surges (100–105 rpm)",
+                "target": "65%",
+                "pattern": "5 x 1min / 5min @65%",
+                "cadenceRpm": 102
+              },
+              {
+                "label": "Neuromuscular sprints @185%",
+                "target": "185%",
+                "pattern": "6 x 12s / 168s @55%"
+              },
+              {
+                "label": "Cool-down @50%",
+                "minutes": 5,
+                "target": "50%"
               }
             ]
           }
@@ -553,12 +1005,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "2 hours",
+            "summary": "10 min ramp → 100 min @65–72% (midpoint 68%) → 10 min ramp",
             "steps": [
               {
-                "label": "Long Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 120
+                "label": "Warm-up ramp 45→60%",
+                "minutes": 10,
+                "ramp": [
+                  45,
+                  60
+                ]
+              },
+              {
+                "label": "Long Z2 65–72%",
+                "minutes": 100,
+                "target": "65–72%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -594,16 +1062,49 @@
           "rest": false,
           "title": "VO₂ (6 × 3 min @ 119%)",
           "workout_type": "bike_vo2",
-          "duration_min": 66,
+          "duration_min": 63,
           "intensity_target": "VO₂ (see prescription)",
           "structured_workout": {
             "format": "bike",
-            "summary": "66 min",
+            "summary": "WarmUp v1.3 · Main 6 × 3min @119% (3min @60% recover) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "VO₂ (6 × 3 min @ 119%)",
-                "target": "VO₂ (see prescription)",
-                "minutes": 66
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "VO₂ 6×3min @119%",
+                "target": "119%",
+                "pattern": "6 x 3min / 3min @60%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -617,12 +1118,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "75 min",
+            "summary": "10 min ramp → 55 min @67% → 10 min ramp",
             "steps": [
               {
-                "label": "Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 75
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Z2 @67%",
+                "minutes": 55,
+                "target": "67%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  60,
+                  40
+                ]
               }
             ]
           }
@@ -632,16 +1149,49 @@
           "rest": false,
           "title": "Sweet Spot (3 × 22 min @ 89%)",
           "workout_type": "bike_sweet_spot",
-          "duration_min": 98,
+          "duration_min": 100,
           "intensity_target": "Sweet Spot ~89% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "98 min",
+            "summary": "WarmUp v1.3 · Main 3 × 22 min @89% (3 min @60% recover) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "Sweet Spot (3 × 22 min @ 89%)",
-                "target": "Sweet Spot ~89% FTP",
-                "minutes": 98
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 8,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "Sweet Spot 3×22 min @89%",
+                "target": "89%",
+                "pattern": "3 x 22min / 3min @60%",
+                "cadenceRpm": 90
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -660,12 +1210,31 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "58 min",
+            "summary": "5 min ramp → 30 min @65% with cadence surges (5 × 1 min @100–105 rpm) → neuromuscular block 6 × (12 s @185% + 2:48 @55%) → 5 min @50%",
             "steps": [
               {
-                "label": "Z2 + Neuromuscular",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 58
+                "label": "Warm-up ramp 50→75%",
+                "minutes": 5,
+                "ramp": [
+                  50,
+                  75
+                ]
+              },
+              {
+                "label": "Z2 @65% + cadence surges (100–105 rpm)",
+                "target": "65%",
+                "pattern": "5 x 1min / 5min @65%",
+                "cadenceRpm": 102
+              },
+              {
+                "label": "Neuromuscular sprints @185%",
+                "target": "185%",
+                "pattern": "6 x 12s / 168s @55%"
+              },
+              {
+                "label": "Cool-down @50%",
+                "minutes": 5,
+                "target": "50%"
               }
             ]
           }
@@ -698,12 +1267,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "2 hours",
+            "summary": "10 min ramp → 100 min @65–72% (midpoint 68%) → 10 min ramp",
             "steps": [
               {
-                "label": "Long Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 120
+                "label": "Warm-up ramp 45→60%",
+                "minutes": 10,
+                "ramp": [
+                  45,
+                  60
+                ]
+              },
+              {
+                "label": "Long Z2 65–72%",
+                "minutes": 100,
+                "target": "65–72%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -739,16 +1324,49 @@
           "rest": false,
           "title": "VO₂ (6 × 3 min @ 119%)",
           "workout_type": "bike_vo2",
-          "duration_min": 66,
+          "duration_min": 63,
           "intensity_target": "VO₂ (see prescription)",
           "structured_workout": {
             "format": "bike",
-            "summary": "66 min",
+            "summary": "WarmUp v1.3 · Main 6 × 3min @119% (3min @60% recover) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "VO₂ (6 × 3 min @ 119%)",
-                "target": "VO₂ (see prescription)",
-                "minutes": 66
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "VO₂ 6×3min @119%",
+                "target": "119%",
+                "pattern": "6 x 3min / 3min @60%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -762,12 +1380,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "75 min",
+            "summary": "10 min ramp → 55 min @67% → 10 min ramp",
             "steps": [
               {
-                "label": "Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 75
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Z2 @67%",
+                "minutes": 55,
+                "target": "67%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  60,
+                  40
+                ]
               }
             ]
           }
@@ -777,16 +1411,49 @@
           "rest": false,
           "title": "Sweet Spot (3 × 22 min @ 89%)",
           "workout_type": "bike_sweet_spot",
-          "duration_min": 98,
+          "duration_min": 100,
           "intensity_target": "Sweet Spot ~89% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "98 min",
+            "summary": "WarmUp v1.3 · Main 3 × 22 min @89% (3 min @60% recover) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "Sweet Spot (3 × 22 min @ 89%)",
-                "target": "Sweet Spot ~89% FTP",
-                "minutes": 98
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 8,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "Sweet Spot 3×22 min @89%",
+                "target": "89%",
+                "pattern": "3 x 22min / 3min @60%",
+                "cadenceRpm": 90
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -805,12 +1472,31 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "58 min",
+            "summary": "5 min ramp → 30 min @65% with cadence surges (5 × 1 min @100–105 rpm) → neuromuscular block 6 × (12 s @185% + 2:48 @55%) → 5 min @50%",
             "steps": [
               {
-                "label": "Z2 + Neuromuscular",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 58
+                "label": "Warm-up ramp 50→75%",
+                "minutes": 5,
+                "ramp": [
+                  50,
+                  75
+                ]
+              },
+              {
+                "label": "Z2 @65% + cadence surges (100–105 rpm)",
+                "target": "65%",
+                "pattern": "5 x 1min / 5min @65%",
+                "cadenceRpm": 102
+              },
+              {
+                "label": "Neuromuscular sprints @185%",
+                "target": "185%",
+                "pattern": "6 x 12s / 168s @55%"
+              },
+              {
+                "label": "Cool-down @50%",
+                "minutes": 5,
+                "target": "50%"
               }
             ]
           }
@@ -843,12 +1529,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "2 hours",
+            "summary": "10 min ramp → 100 min @65–72% (midpoint 68%) → 10 min ramp",
             "steps": [
               {
-                "label": "Long Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 120
+                "label": "Warm-up ramp 45→60%",
+                "minutes": 10,
+                "ramp": [
+                  45,
+                  60
+                ]
+              },
+              {
+                "label": "Long Z2 65–72%",
+                "minutes": 100,
+                "target": "65–72%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -884,16 +1586,60 @@
           "rest": false,
           "title": "VO₂ (30/30s @ 130%)",
           "workout_type": "bike_vo2",
-          "duration_min": 60,
+          "duration_min": 51,
           "intensity_target": "VO₂ (see prescription)",
           "structured_workout": {
             "format": "bike",
-            "summary": "60 min 2 × 10min blocks of: 30 sec @130% / 30 sec @55% 4 min @60% between blocks",
+            "summary": "WarmUp v1.3 · Main 2 × 10-rep blocks of 30s/30s @130% (4 min @60% between) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "VO₂ (30/30s @ 130%)",
-                "target": "VO₂ (see prescription)",
-                "minutes": 60
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "30s/30s @130% block 1",
+                "target": "130%",
+                "pattern": "10 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Recover between blocks",
+                "minutes": 4,
+                "target": "60%"
+              },
+              {
+                "label": "30s/30s @130% block 2",
+                "target": "130%",
+                "pattern": "10 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -907,12 +1653,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "75 min",
+            "summary": "10 min ramp → 55 min @67% → 10 min ramp",
             "steps": [
               {
-                "label": "Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 75
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Z2 @67%",
+                "minutes": 55,
+                "target": "67%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  60,
+                  40
+                ]
               }
             ]
           }
@@ -926,12 +1688,45 @@
           "intensity_target": "Sweet Spot ~89% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "94 min",
+            "summary": "WarmUp v1.3 · Main 3 × 20 min @89% (3 min @60% recover) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "Sweet Spot (3 × 20 min @ 89%)",
-                "target": "Sweet Spot ~89% FTP",
-                "minutes": 94
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 8,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "Sweet Spot 3×20 min @89%",
+                "target": "89%",
+                "pattern": "3 x 20min / 3min @60%",
+                "cadenceRpm": 90
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -950,12 +1745,31 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "58 min",
+            "summary": "5 min ramp → 30 min @65% with cadence surges (5 × 1 min @100–105 rpm) → neuromuscular block 6 × (12 s @185% + 2:48 @55%) → 5 min @50%",
             "steps": [
               {
-                "label": "Z2 + Neuromuscular",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 58
+                "label": "Warm-up ramp 50→75%",
+                "minutes": 5,
+                "ramp": [
+                  50,
+                  75
+                ]
+              },
+              {
+                "label": "Z2 @65% + cadence surges (100–105 rpm)",
+                "target": "65%",
+                "pattern": "5 x 1min / 5min @65%",
+                "cadenceRpm": 102
+              },
+              {
+                "label": "Neuromuscular sprints @185%",
+                "target": "185%",
+                "pattern": "6 x 12s / 168s @55%"
+              },
+              {
+                "label": "Cool-down @50%",
+                "minutes": 5,
+                "target": "50%"
               }
             ]
           }
@@ -988,12 +1802,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "2 hours",
+            "summary": "10 min ramp → 100 min @65–72% (midpoint 68%) → 10 min ramp",
             "steps": [
               {
-                "label": "Long Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 120
+                "label": "Warm-up ramp 45→60%",
+                "minutes": 10,
+                "ramp": [
+                  45,
+                  60
+                ]
+              },
+              {
+                "label": "Long Z2 65–72%",
+                "minutes": 100,
+                "target": "65–72%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -1029,16 +1859,60 @@
           "rest": false,
           "title": "VO₂ (40/20s @ 125%)",
           "workout_type": "bike_vo2",
-          "duration_min": 60,
+          "duration_min": 51,
           "intensity_target": "VO₂ (see prescription)",
           "structured_workout": {
             "format": "bike",
-            "summary": "60 min 2 × 10min blocks of: 40 sec @125% / 20 sec @55% 4 min @60% between blocks",
+            "summary": "WarmUp v1.3 · Main 2 × 10-rep blocks of 40s/20s @125% (4 min @60% between) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "VO₂ (40/20s @ 125%)",
-                "target": "VO₂ (see prescription)",
-                "minutes": 60
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "40s/20s @125% block 1",
+                "target": "125%",
+                "pattern": "10 x 40s / 20s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Recover between blocks",
+                "minutes": 4,
+                "target": "60%"
+              },
+              {
+                "label": "40s/20s @125% block 2",
+                "target": "125%",
+                "pattern": "10 x 40s / 20s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -1052,12 +1926,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "75 min",
+            "summary": "10 min ramp → 55 min @67% → 10 min ramp",
             "steps": [
               {
-                "label": "Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 75
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Z2 @67%",
+                "minutes": 55,
+                "target": "67%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  60,
+                  40
+                ]
               }
             ]
           }
@@ -1067,16 +1957,49 @@
           "rest": false,
           "title": "Sweet Spot (3 × 18 min @ 89%)",
           "workout_type": "bike_sweet_spot",
-          "duration_min": 90,
+          "duration_min": 88,
           "intensity_target": "Sweet Spot ~89% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "90 min",
+            "summary": "WarmUp v1.3 · Main 3 × 18 min @89% (3 min @60% recover) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "Sweet Spot (3 × 18 min @ 89%)",
-                "target": "Sweet Spot ~89% FTP",
-                "minutes": 90
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 8,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "Sweet Spot 3×18 min @89%",
+                "target": "89%",
+                "pattern": "3 x 18min / 3min @60%",
+                "cadenceRpm": 90
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -1095,12 +2018,31 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "58 min",
+            "summary": "5 min ramp → 30 min @65% with cadence surges (5 × 1 min @100–105 rpm) → neuromuscular block 6 × (12 s @185% + 2:48 @55%) → 5 min @50%",
             "steps": [
               {
-                "label": "Z2 + Neuromuscular",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 58
+                "label": "Warm-up ramp 50→75%",
+                "minutes": 5,
+                "ramp": [
+                  50,
+                  75
+                ]
+              },
+              {
+                "label": "Z2 @65% + cadence surges (100–105 rpm)",
+                "target": "65%",
+                "pattern": "5 x 1min / 5min @65%",
+                "cadenceRpm": 102
+              },
+              {
+                "label": "Neuromuscular sprints @185%",
+                "target": "185%",
+                "pattern": "6 x 12s / 168s @55%"
+              },
+              {
+                "label": "Cool-down @50%",
+                "minutes": 5,
+                "target": "50%"
               }
             ]
           }
@@ -1133,12 +2075,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "2 hours",
+            "summary": "10 min ramp → 100 min @65–72% (midpoint 68%) → 10 min ramp",
             "steps": [
               {
-                "label": "Long Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 120
+                "label": "Warm-up ramp 45→60%",
+                "minutes": 10,
+                "ramp": [
+                  45,
+                  60
+                ]
+              },
+              {
+                "label": "Long Z2 65–72%",
+                "minutes": 100,
+                "target": "65–72%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -1174,16 +2132,48 @@
           "rest": false,
           "title": "VO₂ Light (3 × 2 min @ 115%)",
           "workout_type": "bike_vo2",
-          "duration_min": 50,
+          "duration_min": 41,
           "intensity_target": "VO₂ (see prescription)",
           "structured_workout": {
             "format": "bike",
-            "summary": "50 min",
+            "summary": "WarmUp v1.3 · Main 3 × 2min @115% (3min @60% recover) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "VO₂ Light (3 × 2 min @ 115%)",
-                "target": "VO₂ (see prescription)",
-                "minutes": 50
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100%",
+                "minutes": 1,
+                "target": "100%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "VO₂ 3×2min @115%",
+                "target": "115%",
+                "pattern": "3 x 2min / 3min @60%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -1197,12 +2187,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "60 min",
+            "summary": "10 min ramp → 40 min @65% → 10 min ramp",
             "steps": [
               {
-                "label": "Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 60
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Z2 @65%",
+                "minutes": 40,
+                "target": "65%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  60,
+                  40
+                ]
               }
             ]
           }
@@ -1212,16 +2218,54 @@
           "rest": false,
           "title": "Sweet Spot Light (1 × 20 min @ 89%)",
           "workout_type": "bike_sweet_spot",
-          "duration_min": 60,
+          "duration_min": 48,
           "intensity_target": "Sweet Spot ~89% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "60 min",
+            "summary": "WarmUp v1.3 · Main 1 × 20 min @89% (3 min @60% recover) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "Sweet Spot Light (1 × 20 min @ 89%)",
-                "target": "Sweet Spot ~89% FTP",
-                "minutes": 60
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 8,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "Sweet Spot 1×20 min @89%",
+                "minutes": 20,
+                "target": "89%",
+                "cadenceRpm": 90
+              },
+              {
+                "label": "Recover @60%",
+                "minutes": 3,
+                "target": "60%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -1240,12 +2284,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "45 min Dumbbells optional",
+            "summary": "5 min ramp → 35 min @60–65% (midpoint 62%) → 5 min ramp",
             "steps": [
               {
-                "label": "Easy Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 45
+                "label": "Warm-up ramp 50→65%",
+                "minutes": 5,
+                "ramp": [
+                  50,
+                  65
+                ]
+              },
+              {
+                "label": "Easy Z2 60–65%",
+                "minutes": 35,
+                "target": "60–65%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 5,
+                "ramp": [
+                  60,
+                  45
+                ]
               }
             ]
           }
@@ -1259,12 +2319,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "90 min",
+            "summary": "10 min ramp → 70 min @60–65% (midpoint 62%) → 10 min ramp",
             "steps": [
               {
-                "label": "Easy Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 90
+                "label": "Warm-up ramp 45→60%",
+                "minutes": 10,
+                "ramp": [
+                  45,
+                  60
+                ]
+              },
+              {
+                "label": "Long Z2 60–65%",
+                "minutes": 70,
+                "target": "60–65%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -1304,12 +2380,45 @@
           "intensity_target": "VO₂ (see prescription)",
           "structured_workout": {
             "format": "bike",
-            "summary": "69 min",
+            "summary": "WarmUp v1.3 · Main 7 × 3min @119% (3min @60% recover) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "VO₂ (7 × 3 min @ 119%)",
-                "target": "VO₂ (see prescription)",
-                "minutes": 69
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "VO₂ 7×3min @119%",
+                "target": "119%",
+                "pattern": "7 x 3min / 3min @60%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -1323,12 +2432,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "75 min",
+            "summary": "10 min ramp → 55 min @67% → 10 min ramp",
             "steps": [
               {
-                "label": "Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 75
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Z2 @67%",
+                "minutes": 55,
+                "target": "67%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  60,
+                  40
+                ]
               }
             ]
           }
@@ -1342,12 +2467,45 @@
           "intensity_target": "Sweet Spot ~89% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "94 min",
+            "summary": "WarmUp v1.3 · Main 3 × 20 min @89% (3 min @60% recover) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "Sweet Spot (3 × 20 min @ 89%)",
-                "target": "Sweet Spot ~89% FTP",
-                "minutes": 94
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 8,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "Sweet Spot 3×20 min @89%",
+                "target": "89%",
+                "pattern": "3 x 20min / 3min @60%",
+                "cadenceRpm": 90
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -1366,12 +2524,31 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "58 min",
+            "summary": "5 min ramp → 30 min @65% with cadence surges (5 × 1 min @100–105 rpm) → neuromuscular block 6 × (12 s @185% + 2:48 @55%) → 5 min @50%",
             "steps": [
               {
-                "label": "Z2 + Neuromuscular",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 58
+                "label": "Warm-up ramp 50→75%",
+                "minutes": 5,
+                "ramp": [
+                  50,
+                  75
+                ]
+              },
+              {
+                "label": "Z2 @65% + cadence surges (100–105 rpm)",
+                "target": "65%",
+                "pattern": "5 x 1min / 5min @65%",
+                "cadenceRpm": 102
+              },
+              {
+                "label": "Neuromuscular sprints @185%",
+                "target": "185%",
+                "pattern": "6 x 12s / 168s @55%"
+              },
+              {
+                "label": "Cool-down @50%",
+                "minutes": 5,
+                "target": "50%"
               }
             ]
           }
@@ -1404,12 +2581,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "2 hours",
+            "summary": "10 min ramp → 100 min @65–72% (midpoint 68%) → 10 min ramp",
             "steps": [
               {
-                "label": "Long Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 120
+                "label": "Warm-up ramp 45→60%",
+                "minutes": 10,
+                "ramp": [
+                  45,
+                  60
+                ]
+              },
+              {
+                "label": "Long Z2 65–72%",
+                "minutes": 100,
+                "target": "65–72%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -1445,16 +2638,60 @@
           "rest": false,
           "title": "VO₂ (2 × 12min 40/20s @ 125%)",
           "workout_type": "bike_vo2",
-          "duration_min": 60,
+          "duration_min": 55,
           "intensity_target": "VO₂ (see prescription)",
           "structured_workout": {
             "format": "bike",
-            "summary": "60 min",
+            "summary": "WarmUp v1.3 · Main 2 × 12-rep blocks of 40s/20s @125% (4 min @60% between) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "VO₂ (2 × 12min 40/20s @ 125%)",
-                "target": "VO₂ (see prescription)",
-                "minutes": 60
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "40s/20s @125% block 1",
+                "target": "125%",
+                "pattern": "12 x 40s / 20s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Recover between blocks",
+                "minutes": 4,
+                "target": "60%"
+              },
+              {
+                "label": "40s/20s @125% block 2",
+                "target": "125%",
+                "pattern": "12 x 40s / 20s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -1468,12 +2705,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "75 min",
+            "summary": "10 min ramp → 55 min @67% → 10 min ramp",
             "steps": [
               {
-                "label": "Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 75
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Z2 @67%",
+                "minutes": 55,
+                "target": "67%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  60,
+                  40
+                ]
               }
             ]
           }
@@ -1483,16 +2736,49 @@
           "rest": false,
           "title": "Sweet Spot (3 × 18 min @ 89%)",
           "workout_type": "bike_sweet_spot",
-          "duration_min": 90,
+          "duration_min": 88,
           "intensity_target": "Sweet Spot ~89% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "90 min",
+            "summary": "WarmUp v1.3 · Main 3 × 18 min @89% (3 min @60% recover) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "Sweet Spot (3 × 18 min @ 89%)",
-                "target": "Sweet Spot ~89% FTP",
-                "minutes": 90
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 8,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "Sweet Spot 3×18 min @89%",
+                "target": "89%",
+                "pattern": "3 x 18min / 3min @60%",
+                "cadenceRpm": 90
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -1511,12 +2797,31 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "58 min",
+            "summary": "5 min ramp → 30 min @65% with cadence surges (5 × 1 min @100–105 rpm) → neuromuscular block 6 × (12 s @185% + 2:48 @55%) → 5 min @50%",
             "steps": [
               {
-                "label": "Z2 + Neuromuscular",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 58
+                "label": "Warm-up ramp 50→75%",
+                "minutes": 5,
+                "ramp": [
+                  50,
+                  75
+                ]
+              },
+              {
+                "label": "Z2 @65% + cadence surges (100–105 rpm)",
+                "target": "65%",
+                "pattern": "5 x 1min / 5min @65%",
+                "cadenceRpm": 102
+              },
+              {
+                "label": "Neuromuscular sprints @185%",
+                "target": "185%",
+                "pattern": "6 x 12s / 168s @55%"
+              },
+              {
+                "label": "Cool-down @50%",
+                "minutes": 5,
+                "target": "50%"
               }
             ]
           }
@@ -1549,12 +2854,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "2 hours",
+            "summary": "10 min ramp → 100 min @65–72% (midpoint 68%) → 10 min ramp",
             "steps": [
               {
-                "label": "Long Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 120
+                "label": "Warm-up ramp 45→60%",
+                "minutes": 10,
+                "ramp": [
+                  45,
+                  60
+                ]
+              },
+              {
+                "label": "Long Z2 65–72%",
+                "minutes": 100,
+                "target": "65–72%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -1590,16 +2911,48 @@
           "rest": false,
           "title": "VO₂ Light (4 × 2 min @ 115%)",
           "workout_type": "bike_vo2",
-          "duration_min": 53,
+          "duration_min": 46,
           "intensity_target": "VO₂ (see prescription)",
           "structured_workout": {
             "format": "bike",
-            "summary": "53 min",
+            "summary": "WarmUp v1.3 · Main 4 × 2min @115% (3min @60% recover) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "VO₂ Light (4 × 2 min @ 115%)",
-                "target": "VO₂ (see prescription)",
-                "minutes": 53
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100%",
+                "minutes": 1,
+                "target": "100%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "VO₂ 4×2min @115%",
+                "target": "115%",
+                "pattern": "4 x 2min / 3min @60%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -1613,12 +2966,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "60 min",
+            "summary": "10 min ramp → 40 min @65% → 10 min ramp",
             "steps": [
               {
-                "label": "Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 60
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 10,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Z2 @65%",
+                "minutes": 40,
+                "target": "65%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  60,
+                  40
+                ]
               }
             ]
           }
@@ -1628,16 +2997,54 @@
           "rest": false,
           "title": "Sweet Spot (1 × 30 min @ 89%)",
           "workout_type": "bike_sweet_spot",
-          "duration_min": 70,
+          "duration_min": 58,
           "intensity_target": "Sweet Spot ~89% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "70 min",
+            "summary": "WarmUp v1.3 · Main 1 × 30 min @89% (3 min @60% recover) · CoolDown 10 min ramp",
             "steps": [
               {
-                "label": "Sweet Spot (1 × 30 min @ 89%)",
-                "target": "Sweet Spot ~89% FTP",
-                "minutes": 70
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 8,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "Sweet Spot 1×30 min @89%",
+                "minutes": 30,
+                "target": "89%",
+                "cadenceRpm": 90
+              },
+              {
+                "label": "Recover @60%",
+                "minutes": 3,
+                "target": "60%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -1656,12 +3063,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "45 min Dumbbells optional",
+            "summary": "5 min ramp → 35 min @60–65% (midpoint 62%) → 5 min ramp",
             "steps": [
               {
-                "label": "Easy Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 45
+                "label": "Warm-up ramp 50→65%",
+                "minutes": 5,
+                "ramp": [
+                  50,
+                  65
+                ]
+              },
+              {
+                "label": "Easy Z2 60–65%",
+                "minutes": 35,
+                "target": "60–65%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 5,
+                "ramp": [
+                  60,
+                  45
+                ]
               }
             ]
           }
@@ -1675,12 +3098,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "90 min",
+            "summary": "10 min ramp → 70 min @60–65% (midpoint 62%) → 10 min ramp",
             "steps": [
               {
-                "label": "Easy Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 90
+                "label": "Warm-up ramp 45→60%",
+                "minutes": 10,
+                "ramp": [
+                  45,
+                  60
+                ]
+              },
+              {
+                "label": "Long Z2 60–65%",
+                "minutes": 70,
+                "target": "60–65%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 10,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -1716,16 +3155,48 @@
           "rest": false,
           "title": "VO₂ Primer (3 × 1 min @ 120%)",
           "workout_type": "bike_vo2",
-          "duration_min": 40,
+          "duration_min": 30,
           "intensity_target": "VO₂ (see prescription)",
           "structured_workout": {
             "format": "bike",
-            "summary": "40 min",
+            "summary": "WarmUp v1.3 · Main 3 × 1min @120% (2min @60% recover) · CoolDown 8 min ramp",
             "steps": [
               {
-                "label": "VO₂ Primer (3 × 1 min @ 120%)",
-                "target": "VO₂ (see prescription)",
-                "minutes": 40
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 8,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100%",
+                "minutes": 1,
+                "target": "100%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 2,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "VO₂ 3×1min @120%",
+                "target": "120%",
+                "pattern": "3 x 1min / 2min @60%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 8,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -1739,12 +3210,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "45 min",
+            "summary": "8 min ramp → 30 min @65% → 7 min ramp",
             "steps": [
               {
-                "label": "Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 45
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 8,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Z2 @65%",
+                "minutes": 30,
+                "target": "65%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 7,
+                "ramp": [
+                  60,
+                  40
+                ]
               }
             ]
           }
@@ -1754,16 +3241,49 @@
           "rest": false,
           "title": "Sweet Spot Primer (1 × 12 min @ 89%)",
           "workout_type": "bike_sweet_spot",
-          "duration_min": 45,
+          "duration_min": 35,
           "intensity_target": "Sweet Spot ~89% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "45 min",
+            "summary": "WarmUp v1.3 · Main 1 × 12 min @89% · CoolDown 8 min ramp",
             "steps": [
               {
-                "label": "Sweet Spot Primer (1 × 12 min @ 89%)",
-                "target": "Sweet Spot ~89% FTP",
-                "minutes": 45
+                "label": "Warm-up ramp 55→80%",
+                "minutes": 8,
+                "ramp": [
+                  55,
+                  80
+                ]
+              },
+              {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+                "cadenceRpm": 95
+              },
+              {
+                "label": "Warm-up @72%",
+                "minutes": 3,
+                "target": "72%"
+              },
+              {
+                "label": "Warm-up @55%",
+                "minutes": 2,
+                "target": "55%"
+              },
+              {
+                "label": "Sweet Spot 1×12 min @89%",
+                "minutes": 12,
+                "target": "89%",
+                "cadenceRpm": 90
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 8,
+                "ramp": [
+                  70,
+                  45
+                ]
               }
             ]
           }
@@ -1782,12 +3302,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "40 min",
+            "summary": "5 min ramp → 30 min @60–65% (midpoint 62%) → 5 min ramp",
             "steps": [
               {
-                "label": "Easy Z2",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 40
+                "label": "Warm-up ramp 50→65%",
+                "minutes": 5,
+                "ramp": [
+                  50,
+                  65
+                ]
+              },
+              {
+                "label": "Easy Z2 60–65%",
+                "minutes": 30,
+                "target": "60–65%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 5,
+                "ramp": [
+                  60,
+                  45
+                ]
               }
             ]
           }
@@ -1801,12 +3337,28 @@
           "intensity_target": "Zone 2 ~65–72% FTP",
           "structured_workout": {
             "format": "bike",
-            "summary": "Optional Ride (45 min @ 60–65%) OR Rest",
+            "summary": "5 min ramp → 35 min @60–65% (midpoint 62%) → 5 min ramp",
             "steps": [
               {
-                "label": "Optional Ride (45 min @ 60–65%) OR Rest",
-                "target": "Zone 2 ~65–72% FTP",
-                "minutes": 45
+                "label": "Warm-up ramp 50→65%",
+                "minutes": 5,
+                "ramp": [
+                  50,
+                  65
+                ]
+              },
+              {
+                "label": "Easy Z2 60–65%",
+                "minutes": 35,
+                "target": "60–65%"
+              },
+              {
+                "label": "Cool-down ramp",
+                "minutes": 5,
+                "ramp": [
+                  60,
+                  45
+                ]
               }
             ]
           }

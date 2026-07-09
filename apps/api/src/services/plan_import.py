@@ -38,6 +38,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import PlanBlock, PlannedWorkout
+from src.services.workout_delivery import validate_deliverable_bike_workout
 
 DEFAULT_BLOCK_PREFIX = "PN2"
 DEFAULT_SOURCE = "plan_import"
@@ -122,15 +123,34 @@ def build_plan_rows(
             if day.get("rest"):
                 continue
             duration = day.get("duration_min")
+            planned_duration_min = int(duration) if duration is not None else None
+            structured = dict(day.get("structured_workout", {}))
+            intensity_target = str(day.get("intensity_target", ""))[:120]
+            title = str(day["title"])[:200]
+            # Batch 67 import gate: a bike workout must be a real, deliverable
+            # structured session (every target resolves, multi-step, warm-up +
+            # cool-down + a ramp) and its planned duration must trace the summed
+            # steps — so a malformed plan fails here, before anything reaches Zwift.
+            if structured.get("format") == "bike":
+                context = f"W{week_no:02d} {title}"
+                steps = validate_deliverable_bike_workout(
+                    structured, intensity_target, context=context
+                )
+                total_seconds = sum(int(step["durationSec"]) for step in steps)
+                if planned_duration_min is not None and total_seconds != planned_duration_min * 60:
+                    raise ValueError(
+                        f"duration_min {planned_duration_min} does not trace the summed steps "
+                        f"({total_seconds / 60:g} min) ({context})"
+                    )
             workouts.append(
                 WorkoutRow(
                     week=week_no,
                     workout_date=block_start + dt.timedelta(days=int(day["dow"])),
-                    title=str(day["title"])[:200],
+                    title=title,
                     workout_type=str(day["workout_type"]),
-                    planned_duration_min=int(duration) if duration is not None else None,
-                    intensity_target=str(day.get("intensity_target", ""))[:120],
-                    structured_workout=dict(day.get("structured_workout", {})),
+                    planned_duration_min=planned_duration_min,
+                    intensity_target=intensity_target,
+                    structured_workout=structured,
                 )
             )
     return PlanRows(
