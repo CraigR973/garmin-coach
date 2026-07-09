@@ -71,11 +71,13 @@ below in Batch 68.
 1. **Delivery has no auto warm-up/cool-down.** `build_structured_workout_ir`
    (`workout_delivery.py:158`) emits exactly the authored steps; ramps exist only if a
    step is authored as a ramp. With single-block authoring, there are never any.
-2. **The multi-step engine already works when fed real steps.** `_expand_pattern`
-   (`workout_delivery.py:661`) already expands `"5 x 2min / 2min"` into work/recovery
-   pairs, `_step` marks ramps when start≠end, and `build_zwo_xml`/`_intervals_description`
-   already render ramps and intervals. So the fix is mostly **data**, not new engine —
-   the pattern grammar the authoring must target already exists and is tested.
+2. **The step grammar authors intervals but *cannot author ramps*.** `_expand_pattern`
+   (`workout_delivery.py:661`) expands `"5 x 2min / 2min"` into work/recovery pairs, but
+   `_expand_step` only ever emits **steady** steps (start==end) — there is no raw-step
+   form that produces a ramp, so even `build_vo2_structured_workout` (`vo2_progression.py:79`)
+   makes a **flat** "easy spin" warm-up. The IR format supports ramps
+   (`build_zwo_xml` Warmup/Cooldown), but nothing *authors* them. So Batch 67 is
+   **data + a small grammar extension** (ramp authoring), not data alone.
 3. **The post-workout read grades the *planned* row, never the *delivered* one.**
    `_planned_ride_ir` (`post_workout_analysis.py:626`) builds the IR from
    `planned_workouts[].structured_workout`. When a verdict adjustment, Red substitution,
@@ -111,43 +113,62 @@ below in Batch 68.
 
 ### Batch 67 — Real structured workouts + harden delivery parsing (🔴 High, data + backend)
 
-The trunk fix. Turns every bike prescription into real steps and closes the two parser
-holes so a malformed target can never again ship a flat easy ride. Resolves 1, 2, 11.
+The trunk fix, and bigger than a data edit: the delivery engine **cannot author a ramp
+today** (proven — even its own VO2 builder emits a flat warm-up), so Batch 67 is **a
+small grammar extension + a full transcription of Mark's authoritative plan doc**.
+Resolves 1, 2, 11.
 
-- **67.1 Re-author the bike prescriptions in `plan_no2.json`.** Every `bike_*` workout
-  becomes a real `steps` array — warm-up ramp, work interval(s) with an **explicit %**
-  (using the existing `pattern`/`repeats`/`target` grammar `_expand_pattern` already
-  parses), recovery valleys, cool-down ramp — with `duration_min` equal to the summed
-  step durations. VO2 → `5 x 2min / 2min @ 120%` with a `10min ramp 55-80%` warm-up and
-  `10min ramp 70-45%` cool-down (the structure already sitting in its `summary`); Z2 →
-  warm-up ramp + steady main + cool-down; Sweet-Spot → `2 x 25min / 3min @ 89%`. The
-  `summary` string stays as the human read, now consistent with the steps.
-- **67.2 Kill the silent 55% fallback.** `_power_pct` (`workout_delivery.py:782`) no
-  longer returns 55 for an unresolvable target; it raises a 422 (like the other
-  `_expand_*` guards) so an un-authorable step fails loudly at import/propose instead of
-  delivering a flat Z1 ride. Add an importer-time validation pass so a bad plan is caught
-  before it reaches Zwift.
-- **67.3 Fix band handling.** Accept en-dash / unicode range separators in the band regex
-  (`workout_delivery.py:757`) and collapse a band to its **midpoint** for steady
-  delivery. With the ±5 `ADHERENCE_TOLERANCE_PCT` this makes "65–72%" deliver ~68% and
-  grade his 65% floor as **"on"**, not "under" — resolving observation 1 without a new
-  band type. (His literal ask — a fixed FTP % per work interval — is already available
-  via the manual-override intensity dial; a per-interval editor is out of scope here and
-  noted as a later option.)
+**Source of truth:** `~/Downloads/Dad Fitness/Full 13 Wk. 2121 Plan No. 2 Start
+06.07.26.docx` — all 13 weeks are fully specified as **fixed %FTP** with ramps, cadences,
+and recoveries (the JSON `summary` strings had collapsed weeks 3–13 to bare durations, so
+we transcribe from the doc, not the lossy JSON).
+
+- **67.1 Extend the step grammar to author ramps.** Add a ramp raw-step form (e.g.
+  `{label, minutes, ramp: [55, 80]}`) that `_expand_step` expands to a ramp IR step
+  (`powerStartPct`≠`powerEndPct`). Prerequisite for every warm-up/cool-down in the plan;
+  today `_expand_step` can only emit steady steps.
+- **67.2 Transcribe all 65 bike workouts into `plan_no2.json`.** Author each `bike_*`
+  workout as a real multi-step `steps` array from the source doc — warm-up ramp, priming
+  efforts, work interval(s) at an **explicit fixed %**, recovery valleys, cool-down ramp
+  — with `duration_min` = summed step durations (fixes the 60-vs-47 drift). Keep the
+  `summary` as the human read, now consistent with the steps.
+- **67.3 Kill the silent 55% fallback + fix bands.** `_power_pct`
+  (`workout_delivery.py:782`) raises 422 on an unresolvable target instead of returning
+  55; add an import-time validation pass so a bad plan fails before Zwift. Accept en-dash
+  / unicode separators; per Mark, work sets deliver as **fixed** single % (the doc already
+  gives fixed values — only a couple of endurance mains are ranges, resolved with Mark).
 - **67.4 Re-import forward + reconcile Zwift.** Re-import **forward from the resume
   Monday** (`import_plan` `start_date` override) so the reset/holiday weeks aren't
   clobbered, then `reconcile_deliveries` re-pushes the corrected bike rows. Explicit
   closeout step, not a blind re-run (mirrors Batch 65.4).
-- **67.5 Tests + gates.** Parser: en-dash band → midpoint, unresolvable target → 422 (no
-  silent 55), authored VO2/SS/Z2 expand to the expected multi-step IR with ramps;
-  plan-JSON shape guard (no single-block bike step survives; `duration_min` == summed
-  steps); a delivered-ZWO snapshot shows ramps + interval structure. Full gates; closeout
-  prod smoke + a Zwift spot-check that the VO2 shows intervals, not a flat block.
+- **67.5 Tests + gates.** Grammar: ramp raw-step → a ramp IR step (start≠end), en-dash
+  band → midpoint, unresolvable target → 422 (no silent 55), authored VO2/SS/Z2 expand to
+  the expected multi-step IR with ramps; plan-JSON shape guard (no single-block bike step
+  survives; `duration_min` == summed steps; every bike workout has a warm-up + cool-down);
+  a delivered-ZWO snapshot shows ramps + interval structure. Full gates; closeout prod
+  smoke + a Zwift spot-check that the VO2 shows intervals, not a flat block.
+- **Decided (Mark, 2026-07-09) — no remaining unknowns.**
+  (a) **Day placement:** keep the app's current mapping — **Dumbbells Monday, Bodyweight
+  Saturday, as separate movable sessions** (Batch 65 stays; no revert). Transcribe workout
+  *content* from the doc but keep this placement (it overrides the doc's opposite Mon/Sat
+  layout). Monday therefore stays a light Dumbbells day, **not** a rest day; his "Mon & Fri
+  are rest days" is taken as a **no-hard-bike constraint for Batch 70's rebalancer**, not a
+  change here.
+  (b) **Endurance ranges → midpoint:** Long Z2 65–72% → **68%**; easy/recovery Z2 60–65% →
+  **62%**. Everything else transcribes as fixed %FTP straight from the doc.
+  (c) **Total time must trace plan → app:** `duration_min` and the app-displayed total are
+  the **true sum of the delivered steps** (not the doc's erroneous "Total Time" headers),
+  identical through JSON → app → Zwift, and asserted in the shape guard.
+  (d) **FTP = 280W** (unchanged) — stays the delivery default.
 
 ### Batch 68 — Grade what he actually rode (🔴 High, backend / analysis)
 
 Make the post-workout read reflect the **delivered/accepted** workout, not the stale
-planned VO2. Resolves 5 and the analysis half of 3b.
+planned VO2. Resolves 5 and the analysis half of 3b. **Mark independently pinpointed this
+as the core defect (2026-07-09):** the flat ride he saw was the *reduced workout he
+accepted*, and the bug is that the read still graded him against the original VO2. (The
+flat-154W delivery has a separate latent cause — the `_power_pct` fallback — which Batch
+67 closes; this batch fixes the grading.)
 
 - **68.1 Prefer the delivered IR as the grading target.** `_planned_ride_ir`
   (`post_workout_analysis.py:626`) resolves the day's grading IR from the **latest
@@ -201,6 +222,9 @@ than forced or hidden. Subject to Mark's sign-off.
   recovery") instead of silently losing it. Surfaced in the week view + verdict.
 - **70.3 Keep it advisory + safe.** Recommends, never auto-schedules; the ≥2-day no-stack
   rule and Red-never-VO2 hold for any re-patched session; softening stays the fallback.
+  **Protected days (Mark, 2026-07-09): never re-patch or schedule a hard bike session onto
+  Monday or Friday** (Gran's / coffee days) — Monday keeps its Dumbbells; the rebalancer
+  only ever uses the other bike days.
 - **70.4 Tests + gates.** Quota accounting (done/due/at-risk); a readiness-dropped VO2
   produces a re-patch suggestion when spacing allows and an explicit "not this week"
   otherwise; invariants preserved. Full gates; closeout smoke.
@@ -245,20 +269,25 @@ than forced or hidden. Subject to Mark's sign-off.
 - Each batch: backend pytest/ruff/mypy, shared typecheck, web vitest/tsc/lint/build
   (Node 20), closeout prod smoke on the merge SHA.
 
-## Proposed defaults (subject to Mark's sign-off; `/batch-start` may adjust)
+## Decisions — confirmed by Mark (2026-07-09)
+
+Both decisions below are **confirmed**; the plan is spec-complete and Batch 67 has no
+remaining unknowns (see the Batch 67 "Decided" note for the exact day-placement, range,
+total-time, and FTP answers).
 
 - **Reset question (observation 10) → fix the existing plan (Batch 67), not regenerate.**
-  The defect is **transcription, not design**: each bike workout's `summary` already holds
-  the correct, detailed prescription (VO2 = "10 min ramp 55→80% … 5×2 min @120% … 10 min
-  cooldown 70→45%") — it was simply never written into machine `steps`. So re-authoring
-  preserves Mark's own curated content and Batch 65's split-day work, authors to the **same
+  The defect is **transcription, not design**: the correct, detailed prescription for all
+  13 weeks lives in Mark's source doc `Full 13 Wk. 2121 Plan No. 2 Start 06.07.26.docx`
+  (every session as fixed %FTP with ramps, cadences, recoveries) — it was simply never
+  written into machine `steps` (the JSON `summary` strings collapsed weeks 3–13 to bare
+  durations, so we transcribe from the **doc**, not the JSON). So re-authoring preserves
+  Mark's own curated content and Batch 65's split-day work, authors to the **same
   structured-step standard `block_generator` already uses** (its fidelity without
   discarding the plan), fits the reset window, and avoids handing him a fresh *generic*
   plan to find fresh "AI errors" in (the exact observation-11 frustration). Regenerating via
   `block_generator` is the right tool only when he later wants hands-off auto-progression
-  (FTP bumps, VO2 30/30→30/15) — fixing now doesn't foreclose that. Author the steps as a
-  **faithful transcription of each `summary`**, get Mark's one-pass sign-off on the five
-  session shapes, and re-import **forward from the resume Monday** so the off week is
+  (FTP bumps, VO2 30/30→30/15) — fixing now doesn't foreclose that. Transcribe faithfully
+  from the doc, and re-import **forward from the resume Monday** so the off week is
   untouched.
 - **Mix philosophy (observation 4 / Batch 70) → soft, readiness-gated quota** (neither pure
   extreme). Treat the mix as a **target the app tracks and protects**, derived from his own
@@ -274,6 +303,21 @@ than forced or hidden. Subject to Mark's sign-off.
 - **The two reinforce each other.** Fixing the plan keeps the explicit weekly mix in the
   JSON, which is the target the soft-quota reads — fix + soft-quota is the combination where
   each piece feeds the next.
-- **Proposed Decisions #140 (Batch 67), #141 (Batch 68), #142 (Batch 69), #143 (Batch
-  70).** Sequencing: 67 → 68 → 69 → 70 (70 can start once Mark confirms the soft-quota
-  default).
+- **Decisions #140 (Batch 67), #141 (Batch 68), #142 (Batch 69), #143 (Batch 70)** —
+  assigned at `/batch-start`. Both open questions are now confirmed, so **67 is unblocked
+  and spec-complete**; sequencing 67 → 68 → 69 → 70.
+
+## Newly surfaced (2026-07-09) — candidate Batches 71–72
+
+Two items Mark raised while signing off, distinct from 67–70; logged so they aren't lost,
+to be specced at `/batch-start`:
+
+- **Batch 71 — Editable quick-add on the Week tab.** Tapping **"+ Cycle / + Weights / +
+  Flexibility"** on a day drops a **hardcoded default** (a fixed 45-min Zone-2 ride) with
+  **no session picker and no way to edit** it (screenshot, 2026-07-09). Add a choose/edit
+  step so the added session is selectable and adjustable. (Proposed Decision #144.)
+- **Batch 72 — Chronic-REM coaching depth.** His REM has been low since he got the watch;
+  the Batch 59 chronic-pattern card shows the same standing list. He wants a **broader,
+  rotating set of REM interventions delivered one or two at a time** (focused, not a static
+  list) for a persistent miss. Builds on `chronic_patterns.py`; a separate sleep thread.
+  (Proposed Decision #145.)
