@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { planScheduleEnvelopeSchema } from '@coach/shared';
+import { planScheduleEnvelopeSchema, quickAddOptionsEnvelopeSchema } from '@coach/shared';
 import { Bike, CalendarDays, Dumbbell, Moon, Plus, Trash2, Wind } from 'lucide-react';
 import { toast } from 'sonner';
 import { MoveWorkoutSheet } from '@/components/MoveWorkoutSheet';
+import { QuickAddSheet } from '@/components/QuickAddSheet';
 import { PageHeader } from '@/components/PageHeader';
 import { WeeklyMixCard } from '@/components/WeeklyMixCard';
 import { Badge } from '@/components/ui/badge';
@@ -45,6 +46,13 @@ async function fetchSchedule() {
   return planScheduleEnvelopeSchema.parse(response);
 }
 
+async function fetchQuickAddOptions(category: string) {
+  const response = await apiFetch<unknown>(
+    `/api/v1/plan-actions/quick-add-options?category=${encodeURIComponent(category)}`,
+  );
+  return quickAddOptionsEnvelopeSchema.parse(response).data.options;
+}
+
 interface MoveableWorkout extends PlanWorkout {
   day: string;
 }
@@ -56,6 +64,10 @@ export function WeekAheadPage() {
   const weeklyMix = dailyLoop.data?.data.morningAnalysis?.weeklyMix ?? null;
   const todayIso = new Date().toISOString().slice(0, 10);
   const [pickerWorkout, setPickerWorkout] = useState<MoveableWorkout | null>(null);
+  const [quickAddTarget, setQuickAddTarget] = useState<{
+    date: string;
+    category: Exclude<DayCategory, 'rest'>;
+  } | null>(null);
 
   const invalidate = async () => {
     await Promise.all([
@@ -65,13 +77,30 @@ export function WeekAheadPage() {
     ]);
   };
 
+  const quickAddOptionsQuery = useQuery({
+    queryKey: ['quick-add-options', quickAddTarget?.category],
+    queryFn: () => fetchQuickAddOptions(quickAddTarget!.category),
+    enabled: quickAddTarget !== null,
+  });
+
   const addMutation = useMutation({
-    mutationFn: ({ date, category }: { date: string; category: Exclude<DayCategory, 'rest'> }) =>
+    mutationFn: ({
+      date,
+      category,
+      subtype,
+      durationMin,
+    }: {
+      date: string;
+      category: Exclude<DayCategory, 'rest'>;
+      subtype: string;
+      durationMin: number;
+    }) =>
       apiFetch(`/api/v1/plan-actions/days/${date}/workouts`, {
         method: 'POST',
-        body: JSON.stringify({ category }),
+        body: JSON.stringify({ category, subtype, durationMin }),
       }),
     onSuccess: async () => {
+      setQuickAddTarget(null);
       await invalidate();
       toast.success('Workout added');
     },
@@ -159,7 +188,7 @@ export function WeekAheadPage() {
               day={day}
               isToday={day.date === todayIso}
               busy={busy}
-              onAdd={(category) => addMutation.mutate({ date: day.date, category })}
+              onAdd={(category) => setQuickAddTarget({ date: day.date, category })}
               onMove={(workout) => setPickerWorkout(workout)}
               onSkipDay={() => skipDayMutation.mutate(day.date)}
             />
@@ -174,6 +203,19 @@ export function WeekAheadPage() {
         days={moveOptions}
         onClose={closePicker}
         onSelect={handleMove}
+      />
+
+      <QuickAddSheet
+        open={quickAddTarget !== null}
+        category={quickAddTarget?.category ?? null}
+        options={quickAddOptionsQuery.data ?? []}
+        loading={quickAddOptionsQuery.isLoading}
+        busy={addMutation.isPending}
+        onClose={() => setQuickAddTarget(null)}
+        onConfirm={(subtype, durationMin) => {
+          if (!quickAddTarget) return;
+          addMutation.mutate({ date: quickAddTarget.date, category: quickAddTarget.category, subtype, durationMin });
+        }}
       />
     </div>
   );

@@ -386,6 +386,25 @@ export const planScheduleEnvelopeSchema = z.object({
 
 export const planAddWorkoutInputSchema = z.object({
   category: z.enum(['cycle', 'weights', 'flexibility']),
+  subtype: z.string().min(1).optional(),
+  durationMin: z.number().int().min(1).max(180).optional(),
+});
+
+export const quickAddOptionSchema = z.object({
+  subtype: z.string().min(1),
+  label: z.string().min(1),
+  defaultDurationMin: z.number().int(),
+  minDurationMin: z.number().int(),
+  maxDurationMin: z.number().int(),
+});
+
+export const quickAddOptionsEnvelopeSchema = z.object({
+  data: z.object({
+    category: z.string().min(1),
+    options: z.array(quickAddOptionSchema),
+  }),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
 });
 
 export const planSwapIntoDateInputSchema = z.object({

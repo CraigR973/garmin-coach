@@ -114,6 +114,19 @@ describe('WeekAheadPage', () => {
       if (path === '/api/v1/plan-actions/schedule?days=14') {
         return Promise.resolve(schedule);
       }
+      if (path === '/api/v1/plan-actions/quick-add-options?category=cycle') {
+        return Promise.resolve({
+          data: {
+            category: 'cycle',
+            options: [
+              { subtype: 'endurance', label: 'Endurance', defaultDurationMin: 45, minDurationMin: 20, maxDurationMin: 90 },
+              { subtype: 'sweet_spot', label: 'Sweet Spot', defaultDurationMin: 40, minDurationMin: 25, maxDurationMin: 75 },
+            ],
+          },
+          meta: { generatedAtUtc: '2026-06-23T06:40:00Z' },
+          errors: [],
+        });
+      }
       return Promise.reject(new Error(`Unexpected request: ${path}`));
     });
 
@@ -156,10 +169,16 @@ describe('WeekAheadPage', () => {
     });
 
     await user.click(screen.getAllByRole('button', { name: /^cycle$/i })[0]);
+    expect(await screen.findByText('Sweet Spot')).toBeTruthy();
+    await user.click(screen.getByText('Sweet Spot'));
+    await user.click(screen.getByRole('button', { name: /^add$/i }));
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith(
         '/api/v1/plan-actions/days/2026-06-23/workouts',
-        expect.objectContaining({ method: 'POST', body: JSON.stringify({ category: 'cycle' }) }),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ category: 'cycle', subtype: 'sweet_spot', durationMin: 40 }),
+        }),
       );
     });
     expect(screen.queryByText('Swap a workout into this rest day')).toBeNull();

@@ -4,12 +4,13 @@ import uuid
 from datetime import date
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from src.models.coaching import ManualEntry, PlannedWorkout, WorkoutDeliveryProposal
 from src.models.profile import Profile, UserRole
-from src.services.plan_actions import PlanActionService
+from src.services.plan_actions import PlanActionService, quick_add_options
 from src.services.workout_categories import day_state_for_workout_types
 from src.services.workout_delivery import STATUS_PUSHED, IntervalsCreateResult
 
@@ -164,6 +165,55 @@ async def test_add_workout_appends_to_occupied_day_and_bike_reconciles(
     assert added.version == 2
     assert fake.payloads[0]["name"] == "Endurance ride"
     assert proposals[0].status == STATUS_PUSHED
+
+
+def test_quick_add_options_lists_selectable_subtypes_per_category() -> None:
+    cycle_subtypes = {option.subtype for option in quick_add_options("cycle")}
+    weights_subtypes = {option.subtype for option in quick_add_options("weights")}
+    flexibility_subtypes = {option.subtype for option in quick_add_options("flexibility")}
+
+    assert cycle_subtypes == {"endurance", "sweet_spot", "recovery"}
+    assert weights_subtypes == {"maintenance", "recovery"}
+    assert flexibility_subtypes == {"mobility"}
+
+    with pytest.raises(HTTPException):
+        quick_add_options("rest")
+
+
+@pytest.mark.asyncio
+async def test_add_workout_honours_chosen_subtype_and_duration(db_conn: AsyncConnection) -> None:
+    user_id = uuid.uuid4()
+    day = date(2026, 8, 24)
+    fake = _FakeIntervalsClient()
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await _seed_user(session, user_id)
+        await session.commit()
+
+        added = await PlanActionService(session, intervals_client=fake).add_workout(
+            user, workout_date=day, category="cycle", subtype="sweet_spot", duration_min=50
+        )
+
+    assert added.workout_type == "bike_sweet_spot"
+    assert added.title == "Sweet Spot ride"
+    assert added.planned_duration_min == 50
+    steps = added.structured_workout["steps"]
+    assert sum(step["minutes"] for step in steps) == 50
+
+
+@pytest.mark.asyncio
+async def test_add_workout_rejects_duration_outside_subtype_bounds(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    day = date(2026, 8, 25)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await _seed_user(session, user_id)
+        await session.commit()
+
+        with pytest.raises(HTTPException):
+            await PlanActionService(session).add_workout(
+                user, workout_date=day, category="cycle", subtype="recovery", duration_min=120
+            )
 
 
 @pytest.mark.asyncio
