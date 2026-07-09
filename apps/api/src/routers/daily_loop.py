@@ -134,6 +134,7 @@ class AnalysisOut(BaseModel):
     metricsVsBaselines: list[dict[str, Any]]
     ageComparison: dict[str, Any]
     swapSuggestion: dict[str, Any] | None = None
+    weeklyMix: dict[str, Any] | None = None
     feedback: FeedbackOut | None = None
 
 
@@ -538,6 +539,11 @@ def _serialize_analysis(
         swapSuggestion=(
             verdict.get("swapSuggestion")
             if isinstance(verdict, dict) and isinstance(verdict.get("swapSuggestion"), dict)
+            else None
+        ),
+        weeklyMix=(
+            verdict.get("weeklyMix")
+            if isinstance(verdict, dict) and isinstance(verdict.get("weeklyMix"), dict)
             else None
         ),
         feedback=serialize_feedback(feedback) if feedback is not None else None,

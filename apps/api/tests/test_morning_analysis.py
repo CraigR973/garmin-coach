@@ -305,6 +305,16 @@ async def test_amber_morning_leads_with_week_swap_and_keeps_softening(
     assert "move it to saturday" in adjustments[0].lower()
     assert any("cut duration" in item.lower() for item in adjustments[1:])
 
+    # Batch 70 (#143): the same cautious morning reports the week's mix and, because
+    # today's dropped VO2 can move to Saturday, frames it as re-patched — not lost.
+    mix = verdict["weeklyMix"]
+    assert mix["shortfall"]["bucket"] == "vo2"
+    assert mix["shortfall"]["repatched"] is True
+    assert mix["shortfall"]["moveToWeekday"] == "Saturday"
+    vo2_bucket = next(bucket for bucket in mix["buckets"] if bucket["bucket"] == "vo2")
+    assert vo2_bucket["target"] == 1 and vo2_bucket["atRisk"] is True
+    assert any("short this week" in item.lower() for item in adjustments)
+
     # The KB records the swap-first coaching preference (66.1).
     protocol = next(
         section
@@ -391,6 +401,85 @@ async def test_green_morning_has_no_swap_suggestion(db_conn: AsyncConnection) ->
 
     assert packet["verdict"]["status"] == "Green"
     assert "swapSuggestion" not in packet["verdict"]
+    # Batch 70 (#143): the week's mix is still reported on a Green morning (the week
+    # view uses it), but nothing is being eased, so there is no shortfall.
+    mix = packet["verdict"]["weeklyMix"]
+    assert mix["shortfall"] is None
+    vo2_bucket = next(bucket for bucket in mix["buckets"] if bucket["bucket"] == "vo2")
+    assert vo2_bucket["target"] == 1 and vo2_bucket["atRisk"] is False
+
+
+@pytest.mark.asyncio
+async def test_cautious_morning_says_no_vo2_this_week_when_it_cannot_be_repatched(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 70 (#143): a readiness-dropped VO2 with no sound later slot is not
+    silently lost — the verdict states plainly it won't be made up this week."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 1, 2)  # Friday — VO2 today, no later bike day this week
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="No VO2 This Week Test",
+            pin_hash="x" * 60,
+            role=UserRole.admin,
+            timezone="Europe/London",
+            latitude=55.6045,
+            longitude=-4.5249,
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+        session.add_all(
+            [
+                DailyMetric(
+                    user_id=user_id,
+                    calendar_date=subject_date,
+                    recorded_at_utc=datetime(2026, 1, 2, 6, 20),
+                    readiness_score=42,
+                    readiness_level="Low",
+                    hrv_weekly_avg_ms=50,
+                    hrv_status="Balanced",
+                    hrv_baseline_low_ms=43,
+                    hrv_baseline_high_ms=57,
+                    resting_heart_rate_bpm=45,
+                    raw_payload={},
+                ),
+                Sleep(
+                    user_id=user_id,
+                    calendar_date=subject_date,
+                    score=71,
+                    raw_payload={},
+                    factors_json={},
+                ),
+                PlannedWorkout(
+                    user_id=user_id,
+                    workout_date=subject_date,
+                    version=1,
+                    title="VO2 Max 30/30",
+                    workout_type="bike_vo2",
+                    status="planned",
+                    is_active=True,
+                    planned_duration_min=60,
+                    intensity_target="105-110% FTP",
+                    structured_workout={"format": "bike"},
+                    source="test",
+                ),
+            ]
+        )
+        await session.commit()
+
+        packet = await MorningAnalysisService(session).assemble_context_packet(player, subject_date)
+
+    verdict = packet["verdict"]
+    assert verdict["status"] in {"Amber", "Red"}
+    assert "swapSuggestion" not in verdict  # no sound later slot to swap into
+    shortfall = verdict["weeklyMix"]["shortfall"]
+    assert shortfall["bucket"] == "vo2"
+    assert shortfall["repatched"] is False
+    assert any("no vo2 session this week" in item.lower() for item in verdict["planAdjustments"])
 
 
 def test_red_verdict_never_keeps_vo2() -> None:

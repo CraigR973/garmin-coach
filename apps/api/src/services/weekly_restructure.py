@@ -93,6 +93,14 @@ NO_STACK_PAIR: frozenset[str] = frozenset({CATEGORY_VO2, CATEGORY_SWEET_SPOT})
 MIN_GAP_DAYS = 2  # ≥2 calendar days apart = at least one clear day between them
 HARD_CATEGORIES: frozenset[str] = frozenset({CATEGORY_VO2, CATEGORY_SWEET_SPOT, CATEGORY_THRESHOLD})
 
+# Never move or schedule a *hard* bike session onto these weekdays (Mark,
+# 2026-07-09, Batch 70 #143): Monday is his Dumbbells / Gran's day and Friday is
+# a coffee/rest day. Monday=0 … Sunday=6. Opt-in per call (default empty) so the
+# Batch 66 pure swap engine is unchanged for existing callers; the production
+# morning path passes this set so both the swap-first lead and the Batch 70
+# re-patch keep hard rides off protected days.
+PROTECTED_WEEKDAYS: frozenset[int] = frozenset({0, 4})
+
 # Guard the permutation search against pathological weeks.
 MAX_PERMUTE_SESSIONS = 7
 
@@ -334,7 +342,12 @@ def _change_reason(
     return "reorder"
 
 
-def plan_swap_first(items: Sequence[WeekItem], *, subject_date: date) -> SwapSuggestion | None:
+def plan_swap_first(
+    items: Sequence[WeekItem],
+    *,
+    subject_date: date,
+    protected_weekdays: frozenset[int] = frozenset(),
+) -> SwapSuggestion | None:
     """Swap-first recovery suggestion (Batch 66, #139).
 
     When ``subject_date`` holds a hard bike session (VO2/Sweet-Spot/Threshold),
@@ -342,6 +355,12 @@ def plan_swap_first(items: Sequence[WeekItem], *, subject_date: date) -> SwapSug
     it can trade places with while keeping the ≥2-day VO2/Sweet-Spot no-stack
     rule. Returns ``None`` when today has no hard session or no sound swap exists
     (the caller then falls back to softening).
+
+    ``protected_weekdays`` (Batch 70, #143) excludes days the hard session must
+    never land on — Mark's Monday (Dumbbells) and Friday (coffee/rest). Given the
+    real plan those days carry no bike anyway, so this is belt-and-braces that
+    also guards a future layout; it defaults to empty so the Batch 66 callers and
+    unit tests are unchanged.
 
     Pure and deterministic. It reuses the restructure engine's spacing
     primitives (:data:`HARD_CATEGORIES`, :func:`_conflicts`, ``WeekItem.category``)
@@ -373,6 +392,7 @@ def plan_swap_first(items: Sequence[WeekItem], *, subject_date: date) -> SwapSug
             if item.is_bike
             and item.workout_date > subject_date
             and item.category not in HARD_CATEGORIES
+            and item.workout_date.weekday() not in protected_weekdays
         ),
         key=lambda item: item.workout_date,
     )
@@ -531,18 +551,26 @@ class WeeklyRestructureService:
         return plan, resolved_signal
 
     async def swap_suggestion_for_day(
-        self, player: Profile, subject_date: date
+        self,
+        player: Profile,
+        subject_date: date,
+        *,
+        protected_weekdays: frozenset[int] = frozenset(),
     ) -> SwapSuggestion | None:
         """Read-only swap-first suggestion for ``subject_date`` (Batch 66).
 
         Reads the week that contains ``subject_date`` and delegates to the pure
         :func:`plan_swap_first`. No mutation — the morning verdict decorates its
         packet with the result and the verdict card offers a one-tap
-        category-scoped move.
+        category-scoped move. ``protected_weekdays`` is threaded through so the
+        production path keeps a swapped hard ride off Mark's protected days
+        (Batch 70, #143).
         """
         week_start = subject_date - timedelta(days=subject_date.weekday())
         items, _ = await self._week_items(player, week_start)
-        return plan_swap_first(items, subject_date=subject_date)
+        return plan_swap_first(
+            items, subject_date=subject_date, protected_weekdays=protected_weekdays
+        )
 
     async def apply_for_week(
         self,

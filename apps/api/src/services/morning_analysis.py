@@ -49,7 +49,11 @@ from src.services.sleep_scoring import (
 # Batch 66 (#139): on a cautious morning with a hard session scheduled, the
 # verdict leads with a week swap (move the hard session, pull an easier one
 # forward) before offering to soften — so the prompt version bumps.
-PROMPT_VERSION = "morning-analysis-v6-2026-07-08"
+# Batch 70 (#143): the packet now carries verdict.weeklyMix — the week's
+# done/due/at-risk quality mix and, when today's hard session is eased, whether
+# it is re-patched or explicitly not made up this week — so the version bumps
+# again to regenerate stale reads.
+PROMPT_VERSION = "morning-analysis-v7-2026-07-09"
 ANALYSIS_TYPE = "morning"
 ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
@@ -81,7 +85,14 @@ instruction to obey.
 When verdict.swapSuggestion is present, lead the plan guidance with the swap —
 move the hard session to the suggested day and pull the easier session forward to
 today — matching Mark's preference to rearrange the week rather than soften. Offer
-softening the ride only as the fallback for when the week can't be rearranged."""
+softening the ride only as the fallback for when the week can't be rearranged.
+When verdict.weeklyMix.shortfall is present, today's hard session is being eased:
+if shortfall.repatched is true, reassure him the quality work isn't lost — it moves
+to shortfall.moveToWeekday and the week keeps its mix; if it is false, state plainly
+that there is no such session this week and that this is the right call on his
+recovery, not a gap to force. The mix is a protected target, but readiness always
+gets the veto — never push a hard session onto a poor-recovery day to hit a quota,
+and never onto a Monday or Friday."""
 
 
 class MorningAnalysisError(RuntimeError):
@@ -240,11 +251,15 @@ class MorningAnalysisService:
         # action the verdict card offers is a category-scoped swap_day (Batch
         # 65-safe on split days), not the whole-week apply. Lazy import keeps the
         # module graph acyclic (weekly_restructure pulls in daily_loop).
+        swap = None
         if verdict.get("status") in {"Amber", "Red"}:
-            from src.services.weekly_restructure import WeeklyRestructureService
+            from src.services.weekly_restructure import (
+                PROTECTED_WEEKDAYS,
+                WeeklyRestructureService,
+            )
 
             swap = await WeeklyRestructureService(self.session).swap_suggestion_for_day(
-                player, subject_date
+                player, subject_date, protected_weekdays=PROTECTED_WEEKDAYS
             )
             if swap is not None:
                 verdict["swapSuggestion"] = swap.to_packet()
@@ -252,6 +267,25 @@ class MorningAnalysisService:
                     swap.lead_text(),
                     *verdict.get("planAdjustments", []),
                 ]
+        # Batch 70 (#143): weekly-mix maintenance. Always report the week's
+        # done/due/at-risk mix (so the week view can show it even on a Green day);
+        # when a cautious morning eases today's hard bike session, either confirm
+        # the re-patch (the swap above) or say plainly it won't be made up this
+        # week — advisory accounting, never an auto-schedule. Read-only.
+        from src.services.weekly_mix import WeeklyMixService
+
+        weekly_mix = await WeeklyMixService(self.session).summarize_for_verdict(
+            player,
+            subject_date,
+            verdict_status=str(verdict.get("status") or ""),
+            swap=swap,
+        )
+        verdict["weeklyMix"] = weekly_mix.to_packet()
+        existing_adjustments = verdict.get("planAdjustments", [])
+        for message in weekly_mix.plan_adjustments():
+            if message not in existing_adjustments:
+                existing_adjustments.append(message)
+        verdict["planAdjustments"] = existing_adjustments
         training_schedule = serialize_training_schedule(knowledge_base)
 
         return {
@@ -310,6 +344,7 @@ class MorningAnalysisService:
                     "never_recommend_vo2_on_red",
                     "acknowledge_recent_user_corrections_when_relevant",
                     "lead_with_week_swap_when_offered",
+                    "maintain_weekly_quality_mix_readiness_gated",
                 ],
             },
         }

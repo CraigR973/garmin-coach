@@ -5,6 +5,7 @@ import { Bike, CalendarDays, Dumbbell, Moon, Plus, Trash2, Wind } from 'lucide-r
 import { toast } from 'sonner';
 import { MoveWorkoutSheet } from '@/components/MoveWorkoutSheet';
 import { PageHeader } from '@/components/PageHeader';
+import { WeeklyMixCard } from '@/components/WeeklyMixCard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +13,7 @@ import { EmptyState, ErrorState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { apiFetch } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { useDailyLoop } from '@/hooks/useDailyLoop';
 import { categoryForWorkoutType, type DayCategory } from '@/lib/workoutCategories';
 
 type PlanScheduleEnvelope = typeof planScheduleEnvelopeSchema._type;
@@ -50,6 +52,8 @@ interface MoveableWorkout extends PlanWorkout {
 export function WeekAheadPage() {
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ['plan-schedule'], queryFn: fetchSchedule });
+  const dailyLoop = useDailyLoop();
+  const weeklyMix = dailyLoop.data?.data.morningAnalysis?.weeklyMix ?? null;
   const todayIso = new Date().toISOString().slice(0, 10);
   const [pickerWorkout, setPickerWorkout] = useState<MoveableWorkout | null>(null);
 
@@ -131,6 +135,8 @@ export function WeekAheadPage() {
       <p className="text-sm text-text-secondary">
         Move a workout onto any visible day, add light work, or skip a day.
       </p>
+
+      {weeklyMix ? <WeeklyMixCard mix={weeklyMix} showShortfall /> : null}
 
       {query.isLoading ? (
         <div className="space-y-3">

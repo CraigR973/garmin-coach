@@ -15,6 +15,7 @@ import {
   sleepSchema,
   swapSuggestionSchema,
   weatherDailySchema,
+  weeklyMixSchema,
 } from './schemas';
 
 const userId = '11111111-1111-4111-8111-111111111111';
@@ -497,5 +498,47 @@ describe('v1 shared schemas', () => {
       outputMarkdown: '**Verdict:** Green',
     });
     expect(withoutSwap.swapSuggestion ?? null).toBeNull();
+  });
+
+  it('parses a weekly mix with a re-patch shortfall and keeps it optional (Batch 70)', () => {
+    const mix = weeklyMixSchema.parse({
+      weekStart: '2026-07-06',
+      subjectDate: '2026-07-07',
+      buckets: [
+        { bucket: 'vo2', label: 'VO2', target: 1, done: 0, due: 1, remainingPlanned: 0, atRisk: true },
+        { bucket: 'sweet_spot', label: 'Sweet Spot', target: 1, done: 0, due: 1, atRisk: false },
+        { bucket: 'z2', label: 'Zone 2', target: 3, done: 1, due: 2, atRisk: false },
+      ],
+      shortfall: {
+        bucket: 'vo2',
+        label: 'VO2',
+        repatched: true,
+        moveToWeekday: 'Saturday',
+        moveToDate: '2026-07-11',
+        message: 'moving it to Saturday keeps the week’s quality work',
+      },
+    });
+    expect(mix.buckets).toHaveLength(3);
+    expect(mix.shortfall?.repatched).toBe(true);
+
+    const withMix = dailyLoopAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-07-07T06:30:00Z',
+      verdict: 'amber',
+      promptVersion: 'morning-analysis-v7-2026-07-09',
+      outputMarkdown: '**Verdict:** Amber',
+      weeklyMix: mix,
+    });
+    expect(withMix.weeklyMix?.shortfall?.moveToWeekday).toBe('Saturday');
+
+    // A green day still reports the mix but carries no shortfall; both are optional.
+    const withoutMix = dailyLoopAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-07-07T06:30:00Z',
+      verdict: 'green',
+      promptVersion: 'morning-analysis-v7-2026-07-09',
+      outputMarkdown: '**Verdict:** Green',
+    });
+    expect(withoutMix.weeklyMix ?? null).toBeNull();
   });
 });

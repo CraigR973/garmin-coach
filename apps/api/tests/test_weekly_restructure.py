@@ -196,6 +196,32 @@ def test_swap_first_ignores_a_same_day_strength_row_on_a_split_day() -> None:
     assert suggestion.bring_forward_workout_id == saturday_ride.workout_id
 
 
+def test_swap_first_skips_a_target_on_a_protected_weekday() -> None:
+    # Batch 70 (#143): never move a hard bike onto Mark's protected days (Mon/Fri).
+    # Friday 2026-06-26 is the only later easy bike day; with Friday protected the
+    # swap must fall through to None (soften), not park the VO2 on a coffee day.
+    friday = date(2026, 6, 26)
+    vo2 = _item(TUE, "bike_vo2")
+    friday_ride = _item(friday, "bike_endurance", title="Friday Z2")
+
+    with_guard = plan_swap_first(
+        [vo2, friday_ride], subject_date=TUE, protected_weekdays=frozenset({0, 4})
+    )
+    assert with_guard is None
+    # Default (Batch 66 behaviour) protects nothing, so the same Friday is offered —
+    # proving the None above is the guard, not the absence of a candidate.
+    without_guard = plan_swap_first([vo2, friday_ride], subject_date=TUE)
+    assert without_guard is not None
+    assert without_guard.move_to_date == friday
+    # Saturday (unprotected) is still a valid target even with Mon/Fri protected.
+    saturday_ride = _item(SAT, "bike_endurance", title="Saturday Z2")
+    guarded = plan_swap_first(
+        [vo2, friday_ride, saturday_ride], subject_date=TUE, protected_weekdays=frozenset({0, 4})
+    )
+    assert guarded is not None
+    assert guarded.move_to_date == SAT
+
+
 def test_swap_suggestion_packet_and_lead_text() -> None:
     suggestion = SwapSuggestion(
         subject_date=TUE,
