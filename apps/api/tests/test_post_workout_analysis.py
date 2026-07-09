@@ -642,7 +642,8 @@ async def test_context_packet_prefers_delivered_proposal_ir_for_grading(
         assert packet["gradingTarget"]["adjustment"]["changed"] is True
         assert packet["plannedWorkoutIr"]["name"].startswith("Recovery substitution:")
         work = next(item for item in packet["intervals"] if item["role"] == "work")
-        assert work["targetPowerPct"] == 55
+        assert work["targetPctFtpLow"] == 55
+        assert work["targetPctFtpHigh"] == 55
         assert work["adherence"] == "on"
         assert packet["workoutAdherence"]["adherenceStatus"] == "modified"
         assert (
