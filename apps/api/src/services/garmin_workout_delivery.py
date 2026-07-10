@@ -69,12 +69,13 @@ class GarminWorkoutDeliveryService:
         fresh ``planned_workouts`` row still finds the workout already on Garmin and
         replaces it in place rather than uploading a duplicate.
         """
-        return await self.session.scalar(
+        record: GarminWorkoutDelivery | None = await self.session.scalar(
             select(GarminWorkoutDelivery).where(
                 GarminWorkoutDelivery.user_id == user_id,
                 GarminWorkoutDelivery.workout_date == workout_date,
             )
         )
+        return record
 
     async def deliveries_in_range(
         self, user_id: uuid.UUID, start_date: date, end_date: date
