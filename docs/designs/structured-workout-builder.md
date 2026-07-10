@@ -1,6 +1,6 @@
 # Structured Workout Builder
 
-Status: Implemented on `feat/batch-77-structured-builder` (not shipped). Decision #150.
+Status: Shipped via PR #102 / squash `80ff8ba` (2026-07-10). Decision #150.
 
 Source: Mark's `Workout Structure for The App 10.07.26.xlsx`.
 
