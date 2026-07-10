@@ -13,6 +13,7 @@ from src.auth import CurrentUser
 from src.database import get_db
 from src.models.coaching import ManualEntry, PlannedWorkout
 from src.services.plan_actions import PlanActionService, PlanDay, QuickAddOption, quick_add_options
+from src.services.structured_workout_builder import CustomBikeWorkoutSpec, DeliveryTarget
 
 router = APIRouter(prefix="/api/v1/plan-actions", tags=["plan-actions"])
 
@@ -54,6 +55,7 @@ class PlanWorkoutOut(BaseModel):
     plannedDurationMin: int | None
     intensityTarget: str | None
     source: str | None
+    structuredWorkout: dict[str, Any]
 
 
 class DayStateOut(BaseModel):
@@ -80,10 +82,48 @@ class PlanScheduleEnvelope(BaseModel):
     errors: list[ApiError]
 
 
+class CustomBikeWorkoutBody(BaseModel):
+    delivery: DeliveryTarget = "indoor"
+    warmupEnabled: bool = True
+    warmupDurationMin: int | None = Field(default=10, ge=1, le=60)
+    z2LeadInEnabled: bool = False
+    z2LeadInDurationMin: int | None = Field(default=None, ge=1, le=180)
+    intervalsEnabled: bool = False
+    interval1DurationMin: int | None = Field(default=None, ge=1, le=120)
+    interval1FtpPct: int | None = Field(default=None, ge=45, le=150)
+    interval2DurationMin: int | None = Field(default=None, ge=1, le=120)
+    interval2FtpPct: int | None = Field(default=None, ge=45, le=150)
+    repeats: int | None = Field(default=None, ge=1, le=40)
+    blockDurationMin: int | None = Field(default=30, ge=1, le=240)
+    blockFtpPct: int | None = Field(default=65, ge=45, le=150)
+    cooldownEnabled: bool = True
+    cooldownDurationMin: int | None = Field(default=5, ge=1, le=60)
+
+    def to_spec(self) -> CustomBikeWorkoutSpec:
+        return CustomBikeWorkoutSpec(
+            delivery=self.delivery,
+            warmup_enabled=self.warmupEnabled,
+            warmup_duration_min=self.warmupDurationMin,
+            z2_lead_in_enabled=self.z2LeadInEnabled,
+            z2_lead_in_duration_min=self.z2LeadInDurationMin,
+            intervals_enabled=self.intervalsEnabled,
+            interval_1_duration_min=self.interval1DurationMin,
+            interval_1_ftp_pct=self.interval1FtpPct,
+            interval_2_duration_min=self.interval2DurationMin,
+            interval_2_ftp_pct=self.interval2FtpPct,
+            repeats=self.repeats,
+            block_duration_min=self.blockDurationMin,
+            block_ftp_pct=self.blockFtpPct,
+            cooldown_enabled=self.cooldownEnabled,
+            cooldown_duration_min=self.cooldownDurationMin,
+        )
+
+
 class AddWorkoutBody(BaseModel):
     category: str = Field(pattern="^(cycle|weights|flexibility)$")
     subtype: str | None = None
     durationMin: int | None = Field(default=None, ge=1, le=180)
+    customBike: CustomBikeWorkoutBody | None = None
 
 
 class QuickAddOptionOut(BaseModel):
@@ -155,6 +195,7 @@ def _workout_out(workout: PlannedWorkout) -> PlanWorkoutOut:
         plannedDurationMin=workout.planned_duration_min,
         intensityTarget=workout.intensity_target,
         source=workout.source,
+        structuredWorkout=dict(workout.structured_workout or {}),
     )
 
 
@@ -240,6 +281,29 @@ async def add_workout(
         category=body.category,
         subtype=body.subtype,
         duration_min=body.durationMin,
+        custom_bike=body.customBike.to_spec() if body.customBike is not None else None,
+    )
+    return WorkoutActionEnvelope(
+        data=WorkoutActionData(workout=_workout_out(workout)),
+        meta=ApiMeta(generatedAtUtc=_generated_at()),
+        errors=[],
+    )
+
+
+@router.post(
+    "/planned-workouts/{planned_workout_id}/structured",
+    response_model=WorkoutActionEnvelope,
+)
+async def edit_structured_workout(
+    planned_workout_id: uuid.UUID,
+    body: CustomBikeWorkoutBody,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> WorkoutActionEnvelope:
+    workout = await PlanActionService(db).edit_structured_workout(
+        player,
+        planned_workout_id=planned_workout_id,
+        custom_bike=body.to_spec(),
     )
     return WorkoutActionEnvelope(
         data=WorkoutActionData(workout=_workout_out(workout)),
