@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 from fastapi import HTTPException
@@ -361,6 +361,65 @@ async def test_skip_day_skips_every_active_workout(db_conn: AsyncConnection) -> 
 
     assert len(skipped) == 2
     assert {row.status for row in rows} == {"skipped"}
+
+
+@pytest.mark.asyncio
+async def test_skip_day_leaves_completed_and_logged_workouts_intact(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    day = date(2026, 8, 20)
+    fake = _FakeIntervalsClient()
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await _seed_user(session, user_id)
+        done = await _seed_workout(session, user_id, day, workout_type="bike_endurance")
+        done.status = "completed"
+        outstanding = await _seed_workout(
+            session, user_id, day, version=2, workout_type="mobility"
+        )
+        logged = await _seed_workout(
+            session,
+            user_id,
+            day,
+            version=3,
+            workout_type="strength_maintenance",
+        )
+        session.add(
+            ManualEntry(
+                user_id=user_id,
+                planned_workout_id=logged.id,
+                entry_date=day,
+                entry_at_utc=datetime(2026, 8, 20, 8, 0, 0),
+                adherence_status="modified",
+            )
+        )
+        await session.commit()
+
+        skipped = await PlanActionService(session, intervals_client=fake).skip_day(
+            user, workout_date=day
+        )
+
+        rows = (
+            (
+                await session.execute(
+                    select(PlannedWorkout)
+                    .where(
+                        PlannedWorkout.user_id == user_id,
+                        PlannedWorkout.workout_date == day,
+                    )
+                    .order_by(PlannedWorkout.version.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    assert [workout.id for workout in skipped] == [outstanding.id]
+    assert [(row.id, row.status) for row in rows] == [
+        (done.id, "completed"),
+        (outstanding.id, "skipped"),
+        (logged.id, "planned"),
+    ]
 
 
 @pytest.mark.asyncio

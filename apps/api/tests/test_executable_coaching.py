@@ -1405,6 +1405,41 @@ async def test_skip_without_live_event_just_marks(db_conn: AsyncConnection) -> N
 
 
 @pytest.mark.asyncio
+async def test_skip_refuses_a_logged_done_session(db_conn: AsyncConnection) -> None:
+    user_id, workout_id = uuid.uuid4(), uuid.uuid4()
+    day = date(2026, 7, 15)
+    await _seed_bike(db_conn, user_id, workout_id, workout_date=day)
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            ManualEntry(
+                user_id=user_id,
+                planned_workout_id=workout_id,
+                entry_date=day,
+                entry_at_utc=datetime(2026, 7, 15, 9, 0, 0),
+                adherence_status="modified",
+            )
+        )
+        await session.commit()
+
+    fake = _FakeIntervalsClient()
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session, intervals_client=fake)
+
+        with pytest.raises(HTTPException) as exc:
+            await service.skip_workout(user, planned_workout_id=workout_id)
+
+        assert exc.value.status_code == 409
+        assert "already done" in str(exc.value.detail)
+        workout = await session.get(PlannedWorkout, workout_id)
+        assert workout is not None
+        assert workout.status == "planned"
+        assert fake.deletes == []
+
+
+@pytest.mark.asyncio
 async def test_remove_deactivates_added_workout_and_deletes_event(db_conn: AsyncConnection) -> None:
     user_id, workout_id = uuid.uuid4(), uuid.uuid4()
     day = date(2026, 7, 16)

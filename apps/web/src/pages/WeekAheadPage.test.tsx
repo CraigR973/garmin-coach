@@ -242,7 +242,8 @@ describe('WeekAheadPage', () => {
 
   it('locks a completed workout from moving and marks it Done (Batch 60)', async () => {
     const completedSchedule = JSON.parse(JSON.stringify(schedule));
-    // Sweet Spot Builder on 2026-06-25 is done.
+    // Sweet Spot Builder on 2026-06-25 is done, so the day-level skip action
+    // should clearly mean "skip what remains", not rewrite the completed ride.
     completedSchedule.data.schedule[2].workouts[0].status = 'completed';
     apiFetchMock.mockImplementation((path: string) =>
       path === '/api/v1/plan-actions/schedule?days=14'
@@ -264,6 +265,12 @@ describe('WeekAheadPage', () => {
     ) as HTMLElement;
     expect(within(doneWorkout).getByText('Done')).toBeTruthy();
     expect(within(doneWorkout).queryByRole('button', { name: /^move$/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /skip remaining/i })).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Completed sessions stay on the day. This skips only the sessions still left to do.',
+      ),
+    ).toBeTruthy();
 
     // A still-planned workout keeps its Move control.
     const plannedWorkout = screen.getByText('VO2 Max 30/30').closest('.rounded-xl') as HTMLElement;
