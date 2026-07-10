@@ -242,6 +242,16 @@ export function DashboardPage() {
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : 'Could not skip the session'),
   });
+  const removeMutation = useMutation({
+    mutationFn: ({ workoutId }: { workoutId: string }) =>
+      apiFetch(`/api/v1/workout-delivery/planned-workouts/${workoutId}/remove`, { method: 'POST' }),
+    onSuccess: async () => {
+      await invalidateLoop();
+      toast.success('Workout removed');
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Could not remove the workout'),
+  });
   const swapMutation = useMutation({
     mutationFn: ({ workoutId, targetDate }: { workoutId: string; targetDate: string }) =>
       apiFetch(`/api/v1/workout-delivery/planned-workouts/${workoutId}/swap`, {
@@ -433,6 +443,7 @@ export function DashboardPage() {
     editMutation.isPending ||
     approveMutation.isPending ||
     skipMutation.isPending ||
+    removeMutation.isPending ||
     swapMutation.isPending ||
     addWorkoutMutation.isPending ||
     skipDayMutation.isPending ||
@@ -443,6 +454,7 @@ export function DashboardPage() {
       editMutation.mutate(payload),
     onApprove: (payload: { workoutId: string }) => approveMutation.mutate(payload),
     onSkip: (payload: { workoutId: string }) => skipMutation.mutate(payload),
+    onRemove: (payload: { workoutId: string }) => removeMutation.mutate(payload),
     onSwap: (payload: { workoutId: string; targetDate: string }) => swapMutation.mutate(payload),
   };
   const dayActions = {
@@ -762,6 +774,7 @@ type TodayWorkoutActions = {
   }) => void;
   onApprove: (payload: { workoutId: string }) => void;
   onSkip: (payload: { workoutId: string }) => void;
+  onRemove: (payload: { workoutId: string }) => void;
   onSwap: (payload: { workoutId: string; targetDate: string }) => void;
 };
 
@@ -1172,6 +1185,7 @@ type WorkoutRowButton = {
 function WorkoutRowActions({
   hasPendingChange,
   isBike,
+  isRemovable,
   panel,
   busy,
   onApprove,
@@ -1180,11 +1194,12 @@ function WorkoutRowActions({
 }: {
   hasPendingChange: boolean;
   isBike: boolean;
-  panel: 'none' | 'edit' | 'swap' | 'skip';
+  isRemovable: boolean;
+  panel: 'none' | 'edit' | 'swap' | 'skip' | 'remove';
   busy: boolean;
   onApprove: () => void;
   onIgnore: () => void;
-  onTogglePanel: (next: 'edit' | 'swap' | 'skip') => void;
+  onTogglePanel: (next: 'edit' | 'swap' | 'skip' | 'remove') => void;
 }) {
   const primaryAction: WorkoutRowButton = hasPendingChange
     ? { label: 'Approve & upload', icon: Check, onClick: onApprove }
@@ -1194,6 +1209,8 @@ function WorkoutRowActions({
 
   const secondaryAction: WorkoutRowButton = hasPendingChange
     ? { label: 'Ignore', icon: X, onClick: onIgnore }
+    : isRemovable
+      ? { label: 'Remove', icon: Trash2, onClick: () => onTogglePanel('remove'), ariaExpanded: panel === 'remove' }
     : isBike
       ? { label: 'Swap day', icon: ArrowLeftRight, onClick: () => onTogglePanel('swap'), ariaExpanded: panel === 'swap' }
       : { label: 'Skip', icon: Trash2, onClick: () => onTogglePanel('skip'), ariaExpanded: panel === 'skip' };
@@ -1204,6 +1221,8 @@ function WorkoutRowActions({
         { label: 'Swap day', icon: ArrowLeftRight, onClick: () => onTogglePanel('swap') },
         { label: 'Skip', icon: Trash2, onClick: () => onTogglePanel('skip') },
       ]
+    : isRemovable
+      ? [{ label: 'Swap day', icon: ArrowLeftRight, onClick: () => onTogglePanel('swap') }]
     : isBike
       ? [{ label: 'Skip', icon: Trash2, onClick: () => onTogglePanel('skip') }]
       : [];
@@ -1266,6 +1285,7 @@ function WorkoutRow({
   onEdit,
   onApprove,
   onSkip,
+  onRemove,
   onSwap,
 }: {
   workout: TodayWorkout;
@@ -1274,19 +1294,20 @@ function WorkoutRow({
   analysis?: RideAnalysis;
   completedRideLog: CompletedRideLogHandlers;
 } & TodayWorkoutActions) {
-  const [panel, setPanel] = useState<'none' | 'edit' | 'swap' | 'skip'>('none');
+  const [panel, setPanel] = useState<'none' | 'edit' | 'swap' | 'skip' | 'remove'>('none');
   const [ignored, setIgnored] = useState(false);
   const [durationScalePct, setDurationScalePct] = useState('100');
   const [intensityScalePct, setIntensityScalePct] = useState('100');
 
   const Icon = workoutIcon(workout.workoutType);
   const isBike = isBikeWorkout(workout.workoutType);
+  const isRemovable = workout.source === 'plan_action_add';
   const delivery = workout.delivery ?? null;
   const inZwift = Boolean(delivery?.intervalsEventId);
   // The two-state split: a coach adjustment is waiting (bike only), unless Mark
   // has dismissed it for this view (Ignore is a pure front-end dismiss — #99).
   const hasPendingChange = Boolean(delivery?.changed) && isBike && !ignored;
-  const togglePanel = (next: 'edit' | 'swap' | 'skip') =>
+  const togglePanel = (next: 'edit' | 'swap' | 'skip' | 'remove') =>
     setPanel((current) => (current === next ? 'none' : next));
 
   // Batch 60: once the session is done its row shows the read, not the
@@ -1370,6 +1391,7 @@ function WorkoutRow({
         <WorkoutRowActions
           hasPendingChange={hasPendingChange}
           isBike={isBike}
+          isRemovable={isRemovable}
           panel={panel}
           busy={busy}
           onApprove={() => onApprove({ workoutId: workout.id })}
@@ -1496,6 +1518,29 @@ function WorkoutRow({
                 onClick={() => onSkip({ workoutId: workout.id })}
               >
                 {busy ? 'Skipping…' : 'Confirm skip'}
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setPanel('none')}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {panel === 'remove' && (
+          <div className="rounded-lg border border-error/30 bg-error/10 px-3 py-3">
+            <p className="text-sm text-text-primary">
+              Remove this added workout?{' '}
+              {isBike && inZwift ? 'It will be removed from Zwift.' : 'It will disappear from your plan.'}
+            </p>
+            <div className="mt-2 flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                disabled={busy}
+                onClick={() => onRemove({ workoutId: workout.id })}
+              >
+                {busy ? 'Removing…' : 'Confirm remove'}
               </Button>
               <Button type="button" size="sm" variant="outline" onClick={() => setPanel('none')}>
                 Cancel

@@ -58,6 +58,7 @@ AUDIT_TYPE_DELIVERED = "workout_delivered"
 AUDIT_TYPE_REPLACED = "workout_replaced"
 AUDIT_TYPE_MOVED = "workout_moved"
 AUDIT_TYPE_SKIPPED = "workout_skipped"
+AUDIT_TYPE_REMOVED = "workout_removed"
 WORKOUT_STATUS_SKIPPED = "skipped"
 DEFAULT_LEAD_DAYS = 0
 
@@ -796,6 +797,47 @@ class ExecutableCoachingService:
             planned_workout_version=workout.version,
             event_id=event_id,
             status=WORKOUT_STATUS_SKIPPED,
+        )
+        await self.session.commit()
+        await self.session.refresh(workout)
+        return workout
+
+    async def remove_workout(
+        self,
+        player: Profile,
+        *,
+        planned_workout_id: uuid.UUID,
+    ) -> PlannedWorkout:
+        """Remove a user-added workout outright: deactivate the row so it leaves
+        Home/Week immediately, and delete any live Zwift event without creating
+        skipped-adherence noise on a coach-planned session."""
+        workout = await self.rail._planned_workout(player.id, planned_workout_id)
+        if workout.source != "plan_action_add":
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Only user-added workouts can be removed. Planned sessions should be skipped."
+                ),
+            )
+
+        live = await self.rail.latest_delivered_for_workout(player.id, workout.id)
+        if live is None:
+            live = await self.rail.latest_delivered_for_date(player.id, workout.workout_date)
+        event_id = live.intervals_event_id if live is not None else None
+        if live is not None:
+            await self.rail.delete_event(proposal=live, commit=False)
+
+        workout.is_active = False
+        self._record_action_audit(
+            player,
+            analysis_type=AUDIT_TYPE_REMOVED,
+            tag=f"remove:{workout.id}:v{workout.version}",
+            subject_date=workout.workout_date,
+            summary=f"Removed added workout {workout.title} ({workout.workout_date.isoformat()}).",
+            planned_workout_id=workout.id,
+            planned_workout_version=workout.version,
+            event_id=event_id,
+            status="removed",
         )
         await self.session.commit()
         await self.session.refresh(workout)

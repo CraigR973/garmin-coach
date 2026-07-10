@@ -785,6 +785,72 @@ async def test_get_daily_loop_exposes_delivery_state(db_conn: AsyncConnection) -
 
 
 @pytest.mark.asyncio
+async def test_get_daily_loop_excludes_skipped_workouts(db_conn: AsyncConnection) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 6, 25)
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Skipped Workout Test",
+            pin_hash="x" * 60,
+            role=UserRole.player,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+        session.add_all(
+            [
+                PlannedWorkout(
+                    id=uuid.uuid4(),
+                    user_id=user_id,
+                    workout_date=subject_date,
+                    version=1,
+                    title="Skipped ride",
+                    workout_type="bike_endurance",
+                    status="skipped",
+                    is_active=True,
+                    planned_duration_min=45,
+                    intensity_target="Zone 2",
+                    structured_workout=_BIKE_STRUCTURED,
+                    source="test",
+                ),
+                PlannedWorkout(
+                    id=uuid.uuid4(),
+                    user_id=user_id,
+                    workout_date=subject_date,
+                    version=2,
+                    title="Strength maintenance",
+                    workout_type="strength",
+                    status="planned",
+                    is_active=True,
+                    planned_duration_min=30,
+                    intensity_target="maintenance",
+                    structured_workout={},
+                    source="test",
+                ),
+            ]
+        )
+        await session.commit()
+
+    app.dependency_overrides[get_current_user] = lambda: player
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get(
+                f"/api/v1/daily-loop?subject_date={subject_date.isoformat()}"
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    workouts = response.json()["data"]["plannedWorkouts"]
+    assert [workout["title"] for workout in workouts] == ["Strength maintenance"]
+
+
+@pytest.mark.asyncio
 async def test_post_activity_analyses_collapse_partitions_and_orders(
     db_conn: AsyncConnection,
 ) -> None:

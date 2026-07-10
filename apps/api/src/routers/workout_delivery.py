@@ -314,6 +314,22 @@ async def skip_today_workout(
 
 
 @router.post(
+    "/planned-workouts/{planned_workout_id}/remove",
+    response_model=PlannedWorkoutActionEnvelope,
+)
+async def remove_added_workout(
+    planned_workout_id: uuid.UUID,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> PlannedWorkoutActionEnvelope:
+    """Today card — Remove: deactivate a user-added workout and delete any live
+    Zwift event, keeping Skip for coach-planned adherence tracking."""
+    service = ExecutableCoachingService(db)
+    workout = await service.remove_workout(player, planned_workout_id=planned_workout_id)
+    return _planned_envelope(workout)
+
+
+@router.post(
     "/planned-workouts/{planned_workout_id}/swap",
     response_model=PlannedWorkoutActionEnvelope,
 )
