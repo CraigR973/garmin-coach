@@ -93,9 +93,10 @@ export function QuickAddSheet({
             </div>
 
             {active && (
-              <label className="block space-y-1">
+              <label className="block space-y-1" htmlFor="quick-add-duration">
                 <span className="text-sm font-medium text-text-primary">Duration (minutes)</span>
                 <Input
+                  id="quick-add-duration"
                   type="number"
                   min={active.minDurationMin}
                   max={active.maxDurationMin}

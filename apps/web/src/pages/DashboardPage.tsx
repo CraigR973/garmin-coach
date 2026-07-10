@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   Activity,
@@ -21,9 +21,14 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { plannedWorkoutAdherenceInputSchema, postRideCheckInInputSchema } from '@coach/shared';
+import {
+  plannedWorkoutAdherenceInputSchema,
+  postRideCheckInInputSchema,
+  quickAddOptionsEnvelopeSchema,
+} from '@coach/shared';
 import { toast } from 'sonner';
 import type { AgeComparison, MetricBaselineRow } from '@/components/MetricComparisonTable';
+import { QuickAddSheet } from '@/components/QuickAddSheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CollapsibleSection } from '@/components/CollapsibleSection';
@@ -79,6 +84,33 @@ function workoutIcon(type: string): LucideIcon {
 function prettyType(type: string): string {
   const cleaned = type.replace(/[_-]+/g, ' ').trim();
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+const MIN_DURATION_SCALE_PCT = 50;
+const MAX_DURATION_SCALE_PCT = 125;
+const MIN_INTENSITY_SCALE_PCT = 50;
+const MAX_INTENSITY_SCALE_PCT = 120;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function normalizeBoundedPercent(
+  value: string,
+  min: number,
+  max: number,
+  fallback: number,
+): string {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return String(fallback);
+  return String(clamp(Math.round(parsed), min, max));
+}
+
+async function fetchQuickAddOptions(category: Exclude<DayCategory, 'rest'>) {
+  const response = await apiFetch<unknown>(
+    `/api/v1/plan-actions/quick-add-options?category=${encodeURIComponent(category)}`,
+  );
+  return quickAddOptionsEnvelopeSchema.parse(response).data.options;
 }
 
 type TodaySleep = {
@@ -158,6 +190,15 @@ export function DashboardPage() {
       queryClient.invalidateQueries({ queryKey: ['week-ahead'] }),
     ]);
   };
+  const [quickAddTarget, setQuickAddTarget] = useState<{
+    date: string;
+    category: Exclude<DayCategory, 'rest'>;
+  } | null>(null);
+  const quickAddOptionsQuery = useQuery({
+    queryKey: ['quick-add-options', quickAddTarget?.category],
+    queryFn: () => fetchQuickAddOptions(quickAddTarget!.category),
+    enabled: quickAddTarget !== null,
+  });
   const editMutation = useMutation({
     mutationFn: ({
       workoutId,
@@ -215,12 +256,23 @@ export function DashboardPage() {
       toast.error(error instanceof Error ? error.message : 'Could not swap the day'),
   });
   const addWorkoutMutation = useMutation({
-    mutationFn: ({ date, category }: { date: string; category: Exclude<DayCategory, 'rest'> }) =>
+    mutationFn: ({
+      date,
+      category,
+      subtype,
+      durationMin,
+    }: {
+      date: string;
+      category: Exclude<DayCategory, 'rest'>;
+      subtype: string;
+      durationMin: number;
+    }) =>
       apiFetch(`/api/v1/plan-actions/days/${date}/workouts`, {
         method: 'POST',
-        body: JSON.stringify({ category }),
+        body: JSON.stringify({ category, subtype, durationMin }),
       }),
     onSuccess: async () => {
+      setQuickAddTarget(null);
       await invalidateLoop();
       toast.success('Workout added');
     },
@@ -396,7 +448,7 @@ export function DashboardPage() {
   const dayActions = {
     busy: actionsBusy,
     onAddWorkout: (category: Exclude<DayCategory, 'rest'>) =>
-      addWorkoutMutation.mutate({ date: daily.subjectDate, category }),
+      setQuickAddTarget({ date: daily.subjectDate, category }),
     onSkipDay: () => skipDayMutation.mutate({ date: daily.subjectDate }),
     onRecordActual: (payload: { label: string; notes: string | null }) =>
       actualMutation.mutate({ date: daily.subjectDate, ...payload }),
@@ -610,6 +662,24 @@ export function DashboardPage() {
           );
         })}
       </div>
+
+      <QuickAddSheet
+        open={quickAddTarget !== null}
+        category={quickAddTarget?.category ?? null}
+        options={quickAddOptionsQuery.data ?? []}
+        loading={quickAddOptionsQuery.isLoading}
+        busy={addWorkoutMutation.isPending}
+        onClose={() => setQuickAddTarget(null)}
+        onConfirm={(subtype, durationMin) => {
+          if (!quickAddTarget) return;
+          addWorkoutMutation.mutate({
+            date: quickAddTarget.date,
+            category: quickAddTarget.category,
+            subtype,
+            durationMin,
+          });
+        }}
+      />
     </div>
   );
 }
@@ -1313,26 +1383,52 @@ function WorkoutRow({
               <Input
                 id={`duration-${workout.id}`}
                 type="number"
-                min={50}
-                max={125}
+                min={MIN_DURATION_SCALE_PCT}
+                max={MAX_DURATION_SCALE_PCT}
                 step={5}
                 value={durationScalePct}
                 onChange={(event) => setDurationScalePct(event.target.value)}
+                onBlur={() =>
+                  setDurationScalePct(
+                    normalizeBoundedPercent(
+                      durationScalePct,
+                      MIN_DURATION_SCALE_PCT,
+                      MAX_DURATION_SCALE_PCT,
+                      100,
+                    ),
+                  )
+                }
                 aria-label="Duration percentage"
               />
+              <p className="text-xs text-text-secondary">
+                Allowed range {MIN_DURATION_SCALE_PCT}-{MAX_DURATION_SCALE_PCT}%.
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor={`intensity-${workout.id}`}>Intensity %</Label>
               <Input
                 id={`intensity-${workout.id}`}
                 type="number"
-                min={50}
-                max={120}
+                min={MIN_INTENSITY_SCALE_PCT}
+                max={MAX_INTENSITY_SCALE_PCT}
                 step={5}
                 value={intensityScalePct}
                 onChange={(event) => setIntensityScalePct(event.target.value)}
+                onBlur={() =>
+                  setIntensityScalePct(
+                    normalizeBoundedPercent(
+                      intensityScalePct,
+                      MIN_INTENSITY_SCALE_PCT,
+                      MAX_INTENSITY_SCALE_PCT,
+                      100,
+                    ),
+                  )
+                }
                 aria-label="Intensity percentage"
               />
+              <p className="text-xs text-text-secondary">
+                Allowed range {MIN_INTENSITY_SCALE_PCT}-{MAX_INTENSITY_SCALE_PCT}%.
+              </p>
             </div>
             <Button
               type="button"
@@ -1341,8 +1437,22 @@ function WorkoutRow({
               onClick={() =>
                 onEdit({
                   workoutId: workout.id,
-                  durationScalePct: Number(durationScalePct),
-                  intensityScalePct: Number(intensityScalePct),
+                  durationScalePct: Number(
+                    normalizeBoundedPercent(
+                      durationScalePct,
+                      MIN_DURATION_SCALE_PCT,
+                      MAX_DURATION_SCALE_PCT,
+                      100,
+                    ),
+                  ),
+                  intensityScalePct: Number(
+                    normalizeBoundedPercent(
+                      intensityScalePct,
+                      MIN_INTENSITY_SCALE_PCT,
+                      MAX_INTENSITY_SCALE_PCT,
+                      100,
+                    ),
+                  ),
                 })
               }
             >
