@@ -26,6 +26,12 @@ def _utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
+def _pattern_minutes(value: float) -> str:
+    # Matches the plan JSON's authored pattern grammar, e.g. "2min" (Batch 67's
+    # ``_expand_pattern`` parses "Nmin" / "Nmin / Mmin @X%" via ``_duration_sec``).
+    return f"{value:g}min"
+
+
 @dataclass(frozen=True)
 class PlanDay:
     date: date
@@ -54,6 +60,20 @@ class QuickAddOption:
     main_target: str
     structured_format: str
     structured_focus: str | None = None
+    # Batch 75: real ramp warm-up/cool-down (Batch 67 step grammar) instead of a
+    # flat "easy" block. None on both ends preserves the pre-Batch-75 flat shape.
+    warmup_ramp_pct: tuple[int, int] | None = None
+    cooldown_ramp_pct: tuple[int, int] | None = None
+    # Batch 75: authors the main block as an interval pattern (work/recovery
+    # repeats) instead of one steady block, e.g. VO2 "with efforts". The chosen
+    # duration's main portion is covered by the nearest whole rep count in
+    # [min_reps, max_reps], so the delivered duration may differ slightly from
+    # the requested one — the returned workout always reports the true total.
+    interval_work_min: float | None = None
+    interval_recovery_min: float | None = None
+    interval_recovery_target: str | None = None
+    min_reps: int | None = None
+    max_reps: int | None = None
 
 
 QUICK_ADD_CATALOG: dict[str, list[QuickAddOption]] = {
@@ -99,6 +119,43 @@ QUICK_ADD_CATALOG: dict[str, list[QuickAddOption]] = {
             cooldown_min=5,
             main_target="55%",
             structured_format="bike",
+        ),
+        QuickAddOption(
+            subtype="tempo",
+            label="Tempo / Threshold (Z3)",
+            title="Tempo / Threshold ride",
+            workout_type="bike_tempo",
+            intensity_target="Tempo/Threshold ~84% FTP",
+            default_duration_min=40,
+            min_duration_min=25,
+            max_duration_min=65,
+            warmup_min=8,
+            cooldown_min=5,
+            main_target="84%",
+            structured_format="bike",
+            warmup_ramp_pct=(55, 80),
+            cooldown_ramp_pct=(65, 40),
+        ),
+        QuickAddOption(
+            subtype="vo2_efforts",
+            label="VO2 (with efforts)",
+            title="VO2 with efforts",
+            workout_type="bike_vo2",
+            intensity_target="VO2 ~118% FTP efforts",
+            default_duration_min=38,
+            min_duration_min=30,
+            max_duration_min=50,
+            warmup_min=10,
+            cooldown_min=8,
+            main_target="118%",
+            structured_format="bike",
+            warmup_ramp_pct=(55, 80),
+            cooldown_ramp_pct=(65, 40),
+            interval_work_min=2.0,
+            interval_recovery_min=2.0,
+            interval_recovery_target="60%",
+            min_reps=3,
+            max_reps=8,
         ),
     ],
     DAY_CATEGORY_WEIGHTS: [
@@ -182,14 +239,50 @@ def workout_for_selection(
         )
 
     if option.structured_format == "bike":
-        main_min = duration - option.warmup_min - option.cooldown_min
+        if option.warmup_ramp_pct is not None:
+            warmup_start, warmup_end = option.warmup_ramp_pct
+            warmup_step = {
+                "label": "Warm-up ramp",
+                "minutes": option.warmup_min,
+                "ramp": [warmup_start, warmup_end],
+            }
+        else:
+            warmup_step = {"label": "Warm-up", "minutes": option.warmup_min, "target": "easy"}
+
+        if option.cooldown_ramp_pct is not None:
+            cooldown_start, cooldown_end = option.cooldown_ramp_pct
+            cooldown_step = {
+                "label": "Cool-down ramp",
+                "minutes": option.cooldown_min,
+                "ramp": [cooldown_start, cooldown_end],
+            }
+        else:
+            cooldown_step = {"label": "Cool-down", "minutes": option.cooldown_min, "target": "easy"}
+
+        if option.interval_work_min is not None:
+            assert option.interval_recovery_min is not None
+            assert option.min_reps is not None and option.max_reps is not None
+            cycle_min = option.interval_work_min + option.interval_recovery_min
+            remaining_min = duration - option.warmup_min - option.cooldown_min
+            reps = max(option.min_reps, min(option.max_reps, round(remaining_min / cycle_min)))
+            main_min = int(round(reps * cycle_min))
+            duration = option.warmup_min + main_min + option.cooldown_min
+            main_step: dict[str, Any] = {
+                "label": option.label,
+                "target": option.main_target,
+                "pattern": (
+                    f"{reps} x {_pattern_minutes(option.interval_work_min)} / "
+                    f"{_pattern_minutes(option.interval_recovery_min)} "
+                    f"@{option.interval_recovery_target}"
+                ),
+            }
+        else:
+            main_min = duration - option.warmup_min - option.cooldown_min
+            main_step = {"label": option.label, "minutes": main_min, "target": option.main_target}
+
         structured_workout: dict[str, Any] = {
             "format": "bike",
-            "steps": [
-                {"label": "Warm-up", "minutes": option.warmup_min, "target": "easy"},
-                {"label": option.label, "minutes": main_min, "target": option.main_target},
-                {"label": "Cool-down", "minutes": option.cooldown_min, "target": "easy"},
-            ],
+            "steps": [warmup_step, main_step, cooldown_step],
         }
     elif option.structured_format == "strength":
         structured_workout = {"format": "strength", "focus": option.structured_focus}

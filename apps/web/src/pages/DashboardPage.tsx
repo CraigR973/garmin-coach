@@ -921,6 +921,7 @@ function DayPlanBody({
       ) : (
         <p className="rounded-xl border border-dashed border-border px-4 py-4 text-sm text-text-secondary">
           Rest is the plan today. Add something light, swap a workout in from the week, or just record what happened.
+          Doing something different? Just ride it — I'll read it after.
         </p>
       )}
 

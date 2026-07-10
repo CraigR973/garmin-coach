@@ -164,6 +164,9 @@ export function WeekAheadPage() {
       <p className="text-sm text-text-secondary">
         Move a workout onto any visible day, add light work, or skip a day.
       </p>
+      <p className="text-sm text-text-secondary">
+        Doing something different? Just ride it — I'll read it after.
+      </p>
 
       {weeklyMix ? <WeeklyMixCard mix={weeklyMix} showShortfall /> : null}
 
