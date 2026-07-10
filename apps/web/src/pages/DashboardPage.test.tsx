@@ -318,6 +318,31 @@ function renderPage(snapshot = baseSnapshot) {
     if (path.includes('/api/v1/workout-delivery/planned-workouts/')) {
       return Promise.resolve({ data: { proposals: [] }, meta: { generatedAtUtc: '2026-06-20T06:45:00Z' }, errors: [] });
     }
+    if (path.includes('/api/v1/plan-actions/quick-add-options?category=')) {
+      return Promise.resolve({
+        data: {
+          category: 'cycle',
+          options: [
+            {
+              subtype: 'endurance',
+              label: 'Endurance',
+              defaultDurationMin: 45,
+              minDurationMin: 20,
+              maxDurationMin: 90,
+            },
+            {
+              subtype: 'sweet_spot',
+              label: 'Sweet Spot',
+              defaultDurationMin: 40,
+              minDurationMin: 25,
+              maxDurationMin: 75,
+            },
+          ],
+        },
+        meta: { generatedAtUtc: '2026-06-20T06:45:00Z' },
+        errors: [],
+      });
+    }
     if (path.includes('/api/v1/plan-actions/')) {
       return Promise.resolve({ data: {}, meta: { generatedAtUtc: '2026-06-20T06:45:00Z' }, errors: [] });
     }
@@ -595,6 +620,65 @@ describe('DashboardPage', () => {
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({ durationScalePct: 80, intensityScalePct: 90 }),
+        }),
+      );
+    });
+  });
+
+  it('opens the quick-add picker on Home and posts subtype plus duration', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: /^cycle$/i }));
+
+    expect(await screen.findByText('Add a ride')).toBeTruthy();
+    expect(screen.getByText('Sweet Spot')).toBeTruthy();
+
+    const durationInput = screen.getAllByRole('spinbutton')[0];
+    await user.clear(durationInput);
+    await user.type(durationInput, '60');
+    await user.click(screen.getByRole('button', { name: /^add$/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/plan-actions/days/2026-06-20/workouts',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ category: 'cycle', subtype: 'endurance', durationMin: 60 }),
+        }),
+      );
+    });
+  });
+
+  it('clamps the edit dial to the real backend bounds and shows them inline', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: /^edit$/i }));
+    expect(screen.getByText('Allowed range 50-125%.')).toBeTruthy();
+    expect(screen.getByText('Allowed range 50-120%.')).toBeTruthy();
+
+    const durationInput = screen.getByLabelText('Duration percentage');
+    const intensityInput = screen.getByLabelText('Intensity percentage');
+
+    await user.clear(durationInput);
+    await user.type(durationInput, '130');
+    await user.click(intensityInput);
+    expect((durationInput as HTMLInputElement).value).toBe('125');
+
+    await user.clear(intensityInput);
+    await user.type(intensityInput, '140');
+    await user.tab();
+    expect((intensityInput as HTMLInputElement).value).toBe('120');
+
+    await user.click(screen.getByRole('button', { name: /apply & sync/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        `/api/v1/workout-delivery/planned-workouts/${WORKOUT_ID}/edit`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ durationScalePct: 125, intensityScalePct: 120 }),
         }),
       );
     });

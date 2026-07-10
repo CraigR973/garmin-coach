@@ -13,6 +13,32 @@ const BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? '' : 'http:
 
 let refreshPromise: Promise<void> | null = null;
 
+function detailToMessage(detail: unknown): string | null {
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object') {
+          const message = 'msg' in item && typeof item.msg === 'string' ? item.msg : null;
+          const loc =
+            'loc' in item && Array.isArray(item.loc)
+              ? item.loc
+                  .map((part: unknown) => String(part))
+                  .filter((part: string) => part !== 'body')
+                  .join(' -> ')
+              : null;
+          if (message && loc) return `${loc}: ${message}`;
+          return message;
+        }
+        return null;
+      })
+      .filter((item): item is string => Boolean(item));
+    return parts.length > 0 ? parts.join('; ') : null;
+  }
+  return null;
+}
+
 async function silentRefresh(): Promise<void> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) {
@@ -85,7 +111,7 @@ export async function apiFetch<T>(
     // Try to surface the FastAPI `detail` field for a more useful error message.
     try {
       const body = await resp.json();
-      const detail = typeof body?.detail === 'string' ? body.detail : undefined;
+      const detail = detailToMessage(body?.detail);
       throw new Error(detail ?? `API error ${resp.status}`);
     } catch (e) {
       if (e instanceof Error && e.message !== `API error ${resp.status}`) throw e;
