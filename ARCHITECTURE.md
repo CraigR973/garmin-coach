@@ -66,6 +66,12 @@ into a day, skip a whole day, or record an unplanned actual. Rest stays the
 absence of active workouts, not a stored rest row. Mixed-day delivery state now
 prefers `planned_workout_id` before falling back to date-only legacy lookups, so
 multiple same-day workouts can each keep their own delivery/action state.
+Batch 76 tightens the skip semantics around that boundary: a whole-day skip now
+means "skip what remains", not "rewrite the day" — sessions already marked
+`status='completed'` or already logged via their latest adherence row stay put,
+per-item skip 409s an already-done session before any delivery mutation, and the
+Week tab labels a partially completed day as **Skip remaining** to match the
+backend truth.
 
 Batch 60 (DECISIONS #134) closes the loop after a ride: when the post-workout read
 is generated it links the `analyses` row to the day's bike `planned_workouts` row
