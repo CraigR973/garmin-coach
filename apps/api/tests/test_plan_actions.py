@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date
 
@@ -10,9 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from src.models.coaching import ManualEntry, PlannedWorkout, WorkoutDeliveryProposal
 from src.models.profile import Profile, UserRole
-from src.services.plan_actions import PlanActionService, quick_add_options
+from src.services.plan_actions import PlanActionService, quick_add_options, workout_for_selection
 from src.services.workout_categories import day_state_for_workout_types
-from src.services.workout_delivery import STATUS_PUSHED, IntervalsCreateResult
+from src.services.workout_delivery import (
+    STATUS_PUSHED,
+    IntervalsCreateResult,
+    expand_structured_steps,
+    validate_deliverable_bike_workout,
+)
 
 
 class _FakeIntervalsClient:
@@ -172,12 +178,70 @@ def test_quick_add_options_lists_selectable_subtypes_per_category() -> None:
     weights_subtypes = {option.subtype for option in quick_add_options("weights")}
     flexibility_subtypes = {option.subtype for option in quick_add_options("flexibility")}
 
-    assert cycle_subtypes == {"endurance", "sweet_spot", "recovery"}
+    assert cycle_subtypes == {"endurance", "sweet_spot", "recovery", "tempo", "vo2_efforts"}
     assert weights_subtypes == {"maintenance", "recovery"}
     assert flexibility_subtypes == {"mobility"}
 
     with pytest.raises(HTTPException):
         quick_add_options("rest")
+
+
+def test_tempo_quick_add_builds_ramp_warmup_and_cooldown() -> None:
+    """Batch 75: tempo/threshold is authored with real ramp warm-up/cool-down
+    (Batch 67 step grammar) rather than a flat 'easy' block."""
+    result = workout_for_selection("cycle", subtype="tempo", duration_min=40)
+
+    assert result["workout_type"] == "bike_tempo"
+    assert result["planned_duration_min"] == 40
+    steps = result["structured_workout"]["steps"]
+    assert steps[0]["ramp"] == [55, 80]
+    assert steps[-1]["ramp"] == [65, 40]
+    assert steps[1]["target"] == "84%"
+    assert sum(step["minutes"] for step in steps) == 40
+
+    expanded = validate_deliverable_bike_workout(
+        result["structured_workout"], result["intensity_target"], context="test"
+    )
+    assert any(step["kind"] == "ramp" for step in expanded)
+
+
+def test_vo2_efforts_quick_add_builds_interval_pattern_at_explicit_pct() -> None:
+    """Batch 75: VO2 'with efforts' authors real work/recovery interval reps
+    (not a flat block), sized to the nearest whole rep count for the chosen
+    duration, and delivers a real IR through the Batch 67 grammar."""
+    result = workout_for_selection("cycle", subtype="vo2_efforts", duration_min=38)
+
+    assert result["workout_type"] == "bike_vo2"
+    assert result["planned_duration_min"] == 38
+    main_step = result["structured_workout"]["steps"][1]
+    assert main_step["pattern"] == "5 x 2min / 2min @60%"
+    assert main_step["target"] == "118%"
+
+    expanded = expand_structured_steps(result["structured_workout"], result["intensity_target"])
+    work_steps = [step for step in expanded if step["powerStartPct"] == 118]
+    recovery_steps = [step for step in expanded if step["powerStartPct"] == 60]
+    assert len(work_steps) == 5
+    assert len(recovery_steps) == 5
+
+
+def test_vo2_efforts_quick_add_reports_true_traced_duration_off_boundary() -> None:
+    """A requested duration that doesn't land on a whole rep boundary rounds to
+    the nearest valid rep count, and the returned duration reflects what was
+    actually built — not the raw request — so it always traces the steps."""
+    result = workout_for_selection("cycle", subtype="vo2_efforts", duration_min=32)
+
+    steps = result["structured_workout"]["steps"]
+    total_ramp_min = steps[0]["minutes"] + steps[-1]["minutes"]
+    match = re.match(r"(\d+) x", steps[1]["pattern"])
+    assert match is not None
+    reps = int(match.group(1))
+    assert 3 <= reps <= 8
+    assert result["planned_duration_min"] == total_ramp_min + reps * 4
+
+
+def test_quick_add_rejects_vo2_efforts_duration_outside_bounds() -> None:
+    with pytest.raises(HTTPException):
+        workout_for_selection("cycle", subtype="vo2_efforts", duration_min=100)
 
 
 @pytest.mark.asyncio
