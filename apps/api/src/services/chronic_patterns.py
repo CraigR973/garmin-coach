@@ -21,6 +21,7 @@ from src.models.coaching import DailyMetric, KnowledgeBase, MetricBaseline, Slee
 from src.models.profile import Profile
 from src.services.age_norms import build_age_comparison
 from src.services.insights import DriverCorrelation
+from src.services.rem_interventions import RemRotation, select_rem_interventions
 from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
 
 WINDOW_DAYS = 28
@@ -126,6 +127,7 @@ class ChronicSuggestion:
     evidence: list[str]
     actions: list[str]
     driver: SuggestionDriver | None = None
+    rotation: RemRotation | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -139,6 +141,7 @@ class ChronicSuggestion:
             "evidence": self.evidence,
             "actions": self.actions,
             "driver": self.driver.to_dict() if self.driver else None,
+            "rotation": self.rotation.to_dict() if self.rotation else None,
         }
 
 
@@ -240,6 +243,7 @@ def build_chronic_pattern_suggestions(
             index=index,
             driver=_driver_for_flag(flag, drivers),
             protocol=sleep_protocol,
+            as_of=as_of,
         )
         for index, flag in enumerate(chronic[:3])
     ]
@@ -592,6 +596,7 @@ def _suggestion(
     index: int,
     driver: SuggestionDriver | None,
     protocol: Mapping[str, Any] | None,
+    as_of: date,
 ) -> ChronicSuggestion:
     tone: SuggestionTone = "protect" if flag.miss_ratio >= 0.7 else "watch"
     evidence = [(f"{flag.misses} of {flag.samples} measured nights missed {flag.comparator}.")]
@@ -599,7 +604,7 @@ def _suggestion(
         evidence.append(f"Latest value: {_format_value(flag.latest_value)}.")
     if driver and driver.summary:
         evidence.append(driver.summary)
-    actions = _actions_for(flag.metric_key, driver, protocol)
+    actions, rotation = _actions_for(flag.metric_key, driver, protocol, as_of)
     title = _title_for(flag)
     return ChronicSuggestion(
         id=f"chronic-{flag.metric_key}",
@@ -612,6 +617,7 @@ def _suggestion(
         evidence=evidence[:3],
         actions=actions[:3],
         driver=driver,
+        rotation=rotation,
     )
 
 
@@ -644,13 +650,17 @@ def _summary_for(flag: PatternFlag, driver: SuggestionDriver | None) -> str:
 
 
 def _actions_for(
-    metric_key: str, driver: SuggestionDriver | None, protocol: Mapping[str, Any] | None
-) -> list[str]:
+    metric_key: str,
+    driver: SuggestionDriver | None,
+    protocol: Mapping[str, Any] | None,
+    as_of: date,
+) -> tuple[list[str], RemRotation | None]:
     bedtime = _protocol_value(protocol, "bedtime", "23:15")
     seal = _protocol_value(protocol, "sealTargetTime", "22:00")
     breathing = _protocol_value(protocol, "coherenceBreathingTime", "20:00")
     snack = _protocol_value(protocol, "latestSnackTime", "21:30")
 
+    rotation: RemRotation | None = None
     actions: list[str] = []
     if driver:
         if driver.driver.startswith("bedroom_") or driver.driver == "overnight_low_c":
@@ -671,10 +681,14 @@ def _actions_for(
             )
 
     if metric_key == "rem_sleep_pct":
-        actions.append(f"Make {bedtime} the latest normal lights-out target for the next week.")
-        actions.append(
-            "Avoid moving the wake time earlier after a short night; REM is late-night heavy."
+        # Batch 72: a persistent REM miss gets a broader, rotating library handed
+        # out one or two at a time — not the same static pair every week.
+        rem_actions, rotation = select_rem_interventions(
+            as_of=as_of,
+            protocol=protocol,
+            driver_key=driver.driver if driver else None,
         )
+        actions.extend(rem_actions)
     elif metric_key == "deep_sleep_pct":
         actions.append(
             f"Keep the final snack before {snack} and the room cool before the first cycle."
@@ -708,7 +722,7 @@ def _actions_for(
     for action in actions:
         if action not in deduped:
             deduped.append(action)
-    return deduped
+    return deduped, rotation
 
 
 def _protocol_value(protocol: Mapping[str, Any] | None, key: str, fallback: str) -> str:

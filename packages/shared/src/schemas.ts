@@ -476,6 +476,14 @@ export const chronicSuggestionDriverSchema = z.object({
   summary: z.string().nullable().optional(),
 });
 
+// Batch 72: a chronic REM miss surfaces a focused slice of a wider rotating
+// library, so the item carries how the week's set sits inside the whole set.
+export const chronicSuggestionRotationSchema = z.object({
+  periodLabel: z.string().min(1),
+  shown: z.number().int(),
+  total: z.number().int(),
+});
+
 export const chronicSuggestionItemSchema = z.object({
   id: z.string().min(1),
   metricKey: z.string().min(1),
@@ -487,6 +495,7 @@ export const chronicSuggestionItemSchema = z.object({
   evidence: z.array(z.string()).default([]),
   actions: z.array(z.string()).default([]),
   driver: chronicSuggestionDriverSchema.nullable().optional(),
+  rotation: chronicSuggestionRotationSchema.nullable().optional(),
 });
 
 export const chronicSuggestionsSchema = z.object({

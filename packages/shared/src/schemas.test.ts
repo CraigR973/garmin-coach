@@ -151,7 +151,7 @@ describe('v1 shared schemas', () => {
               tone: 'watch',
               priority: 1,
               evidence: ['14 of 24 measured nights missed typical value.'],
-              actions: ['Make 23:15 the latest normal lights-out target.'],
+              actions: ['Pull your last caffeine back to early afternoon.'],
               driver: {
                 driver: 'prev_day_training_load',
                 label: 'training load',
@@ -159,6 +159,7 @@ describe('v1 shared schemas', () => {
                 sampleCount: 18,
                 summary: 'Higher load nights averaged 5 points lower sleep score.',
               },
+              rotation: { periodLabel: '2026-W28', shown: 2, total: 12 },
             },
           ],
         },
@@ -205,6 +206,7 @@ describe('v1 shared schemas', () => {
     expect(parsed.data.breathworkBrief?.window4w.sessionCount).toBe(18);
     expect(parsed.data.sleepProjection?.tone).toBe('protect');
     expect(parsed.data.chronicSuggestions?.items[0]?.driver?.label).toBe('training load');
+    expect(parsed.data.chronicSuggestions?.items[0]?.rotation?.total).toBe(12);
     expect(parsed.data.loopState?.dayPhase).toBe('wind_down');
     expect(parsed.data.loopState?.atBlockBoundary).toBe(true);
   });
