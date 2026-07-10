@@ -374,9 +374,7 @@ async def test_skip_day_leaves_completed_and_logged_workouts_intact(
         user = await _seed_user(session, user_id)
         done = await _seed_workout(session, user_id, day, workout_type="bike_endurance")
         done.status = "completed"
-        outstanding = await _seed_workout(
-            session, user_id, day, version=2, workout_type="mobility"
-        )
+        outstanding = await _seed_workout(session, user_id, day, version=2, workout_type="mobility")
         logged = await _seed_workout(
             session,
             user_id,
