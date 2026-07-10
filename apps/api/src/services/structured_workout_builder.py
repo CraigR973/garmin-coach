@@ -117,6 +117,12 @@ def is_indoor_bike_workout(structured: dict[str, Any] | None) -> bool:
     return structured.get("format") == "bike" and structured.get("delivery", "indoor") != "outdoor"
 
 
+def is_outdoor_bike_workout(structured: dict[str, Any] | None) -> bool:
+    if not isinstance(structured, dict):
+        return False
+    return structured.get("format") == "bike" and structured.get("delivery") == "outdoor"
+
+
 def _expand_or_422(structured: dict[str, Any]) -> list[dict[str, Any]]:
     try:
         return expand_structured_steps(structured, None)

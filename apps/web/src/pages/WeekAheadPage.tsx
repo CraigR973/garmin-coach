@@ -388,6 +388,8 @@ function WorkoutRow({
   // completed source or target, so this is UI clarity over an enforced guard).
   const isComplete = workout.status === 'completed';
   const isBike = categoryForWorkoutType(workout.workoutType) === 'cycle';
+  const isOutdoor =
+    isBike && (workout.structuredWorkout as { delivery?: string } | null)?.delivery === 'outdoor';
   return (
     <div className="rounded-xl border border-border bg-bg px-3 py-3">
       <div className="flex items-start gap-3">
@@ -406,6 +408,7 @@ function WorkoutRow({
           </Badge>
         ) : null}
       </div>
+      {isOutdoor ? <OutdoorDeliveryBadge delivery={workout.outdoorDelivery ?? null} /> : null}
       {isComplete ? null : (
         <div className="mt-3 flex flex-wrap gap-2">
           <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onMove}>
@@ -420,5 +423,29 @@ function WorkoutRow({
         </div>
       )}
     </div>
+  );
+}
+
+function OutdoorDeliveryBadge({ delivery }: { delivery: PlanWorkout['outdoorDelivery'] | null }) {
+  if (delivery?.status === 'pushed') {
+    return (
+      <p className="mt-2">
+        <Badge variant="success">Sent to Garmin</Badge>
+      </p>
+    );
+  }
+  if (delivery?.status === 'failed') {
+    return (
+      <p className="mt-2">
+        <Badge variant="error" title={delivery.lastError ?? undefined}>
+          Garmin send failed — will retry
+        </Badge>
+      </p>
+    );
+  }
+  return (
+    <p className="mt-2">
+      <Badge variant="muted">Outdoor · sends to Garmin</Badge>
+    </p>
   );
 }

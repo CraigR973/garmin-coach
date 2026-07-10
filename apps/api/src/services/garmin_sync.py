@@ -94,6 +94,20 @@ class GarminSyncResult:
     timeseries_samples_synced: int = 0
 
 
+@dataclass(frozen=True)
+class GarminScheduledWorkout:
+    """Identifiers returned after uploading + scheduling a Garmin workout.
+
+    ``workout_id`` is the workout-template id (used to delete the template);
+    ``schedule_id`` is the scheduled-workout id (used to remove it from the
+    calendar on a replace). Batch 78 stores both so an edit can re-sync in place.
+    """
+
+    workout_id: str
+    schedule_id: str
+    raw: JsonDict
+
+
 class GarminConnectClient:
     """Thin wrapper around garminconnect with token-cache first login."""
 
@@ -235,6 +249,49 @@ class GarminConnectClient:
             summaries=summaries,
             details_by_activity_id=details_by_activity_id,
         )
+
+    def upload_and_schedule_workout(
+        self, workout_json: JsonDict, calendar_date: date
+    ) -> GarminScheduledWorkout:
+        """Upload a structured workout and schedule it on ``calendar_date`` (write path).
+
+        The read/sync path is unchanged (Garmin stays ingestion-direct, #27); this is
+        the only method that *writes* to Garmin, reusing the same authenticated
+        garth session. Raises ``GarminSyncError`` if the upload returns no workout id
+        so the caller records an honest failure rather than a half-delivered slot.
+        """
+        client = self.login()
+        created = client.upload_workout(workout_json)
+        workout_id = _to_str(_as_dict(created).get("workoutId") or _as_dict(created).get("id"))
+        if not workout_id:
+            raise GarminSyncError("Garmin workout upload did not return a workout id")
+        scheduled = client.schedule_workout(workout_id, calendar_date.isoformat())
+        schedule_id = _to_str(
+            _as_dict(scheduled).get("workoutScheduleId") or _as_dict(scheduled).get("id")
+        )
+        return GarminScheduledWorkout(
+            workout_id=workout_id,
+            schedule_id=schedule_id or "",
+            raw={"created": created, "scheduled": scheduled},
+        )
+
+    def delete_scheduled_workout(self, workout_id: str | None, schedule_id: str | None) -> None:
+        """Best-effort removal of a previously delivered Garmin workout (replace/edit).
+
+        Unschedules then deletes the template. A missing/already-gone id is ignored so
+        the replace is idempotent — the fresh upload is what matters, and a leftover
+        template is a minor annoyance, never a correctness break."""
+        client = self.login()
+        if schedule_id:
+            try:
+                client.unschedule_workout(schedule_id)
+            except Exception:  # noqa: BLE001 - already-gone/transient; the re-upload is authoritative
+                pass
+        if workout_id:
+            try:
+                client.delete_workout(workout_id)
+            except Exception:  # noqa: BLE001 - already-gone/transient; the re-upload is authoritative
+                pass
 
 
 class GarminSyncService:

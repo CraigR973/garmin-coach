@@ -10,7 +10,13 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
-from src.models.coaching import Analysis, ManualEntry, PlannedWorkout, WorkoutDeliveryProposal
+from src.models.coaching import (
+    Analysis,
+    GarminWorkoutDelivery,
+    ManualEntry,
+    PlannedWorkout,
+    WorkoutDeliveryProposal,
+)
 from src.models.profile import Profile, UserRole
 from src.services.executable_coaching import (
     AUDIT_TYPE_DELIVERED,
@@ -30,6 +36,7 @@ from src.services.executable_coaching import (
     blocks_red_vo2,
     ir_has_vo2,
 )
+from src.services.garmin_sync import GarminScheduledWorkout
 from src.services.morning_analysis import MorningAnalysisResult
 from src.services.workout_categories import category_for_workout_type
 from src.services.workout_delivery import (
@@ -206,6 +213,38 @@ class _FakeIntervalsClient:
 
     async def delete_workout_event(self, event_id: str) -> None:
         self.deletes.append(event_id)
+
+
+OUTDOOR_STRUCTURED = {
+    "format": "bike",
+    "delivery": "outdoor",
+    "steps": [
+        {"label": "Warm-up ramp", "minutes": 10, "ramp": [45, 75]},
+        {"label": "Main block", "minutes": 40, "target": "75%"},
+        {"label": "Cool-down ramp", "minutes": 5, "ramp": [75, 45]},
+    ],
+}
+
+
+class _FakeGarminClient:
+    """Sync fake matching GarminConnectClient's write surface (Batch 78)."""
+
+    def __init__(self) -> None:
+        self.uploads: list[tuple[dict, date]] = []
+        self.deletes: list[tuple[str | None, str | None]] = []
+        self._counter = 2000
+
+    def upload_and_schedule_workout(
+        self, workout_json: dict, calendar_date: date
+    ) -> GarminScheduledWorkout:
+        self.uploads.append((workout_json, calendar_date))
+        self._counter += 1
+        return GarminScheduledWorkout(
+            workout_id=f"w{self._counter}", schedule_id=f"s{self._counter}", raw={}
+        )
+
+    def delete_scheduled_workout(self, workout_id: str | None, schedule_id: str | None) -> None:
+        self.deletes.append((workout_id, schedule_id))
 
 
 def _amber_analysis(user_id: uuid.UUID, subject_date: date) -> Analysis:
@@ -1020,6 +1059,65 @@ async def test_reconcile_delivers_baseline_without_approval_and_is_idempotent(
         assert again == []
         assert len(fake.payloads) == 1  # no duplicate create
         assert fake.updates == []
+
+
+@pytest.mark.asyncio
+async def test_reconcile_routes_indoor_to_zwift_and_outdoor_to_garmin(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 78: indoor rides deliver to Zwift, outdoor rides to Garmin — isolated."""
+    user_id, indoor_id, outdoor_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    indoor_day, outdoor_day = date(2026, 7, 20), date(2026, 7, 21)
+    # Indoor reuses the default (no delivery key → indoor); outdoor carries the flag.
+    await _seed_bike(db_conn, user_id, indoor_id, workout_date=indoor_day)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            PlannedWorkout(
+                id=outdoor_id,
+                user_id=user_id,
+                workout_date=outdoor_day,
+                version=1,
+                title="Outdoor endurance",
+                workout_type="bike_endurance",
+                status="planned",
+                is_active=True,
+                planned_duration_min=55,
+                intensity_target="75% FTP",
+                structured_workout=OUTDOOR_STRUCTURED,
+                source="test",
+            )
+        )
+        await session.commit()
+
+    fake_intervals = _FakeIntervalsClient()
+    fake_garmin = _FakeGarminClient()
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(
+            session, intervals_client=fake_intervals, garmin_client=fake_garmin
+        )
+
+        delivered = await service.reconcile_deliveries(
+            user, start_date=indoor_day, end_date=outdoor_day
+        )
+
+        # Only the indoor ride is a Zwift proposal; outdoor never reaches Zwift.
+        assert len(delivered) == 1
+        assert delivered[0].workout_date == indoor_day
+        assert len(fake_intervals.payloads) == 1
+        # The outdoor ride went to Garmin instead.
+        assert len(fake_garmin.uploads) == 1
+        assert fake_garmin.uploads[0][1] == outdoor_day
+        garmin_row = await session.scalar(
+            select(GarminWorkoutDelivery).where(
+                GarminWorkoutDelivery.user_id == user_id,
+                GarminWorkoutDelivery.workout_date == outdoor_day,
+            )
+        )
+        assert garmin_row is not None
+        assert garmin_row.status == STATUS_PUSHED
+        assert garmin_row.planned_workout_id == outdoor_id
 
 
 @pytest.mark.asyncio

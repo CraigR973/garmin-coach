@@ -356,6 +356,59 @@ describe('WeekAheadPage', () => {
     expect(within(plannedWorkout).getByRole('button', { name: /^move$/i })).toBeTruthy();
   });
 
+  it('surfaces the Garmin delivery status on an outdoor ride (Batch 78)', async () => {
+    const outdoorSchedule = JSON.parse(JSON.stringify(schedule));
+    // A failed outdoor upload must show on the workout, never silently drop (#97).
+    outdoorSchedule.data.schedule[0].workouts = [
+      {
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        workoutDate: '2026-06-23',
+        version: 1,
+        title: 'Outdoor endurance',
+        workoutType: 'bike_endurance',
+        status: 'planned',
+        plannedDurationMin: 55,
+        intensityTarget: '75% FTP',
+        source: 'test',
+        structuredWorkout: { format: 'bike', delivery: 'outdoor', steps: [] },
+        outdoorDelivery: { status: 'failed', lastError: 'garmin upload failed' },
+      },
+    ];
+    // A successfully delivered outdoor ride on another day shows "Sent to Garmin".
+    outdoorSchedule.data.schedule[2].workouts = [
+      {
+        id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        workoutDate: '2026-06-25',
+        version: 1,
+        title: 'Outdoor tempo',
+        workoutType: 'bike_tempo',
+        status: 'planned',
+        plannedDurationMin: 60,
+        intensityTarget: '80% FTP',
+        source: 'test',
+        structuredWorkout: { format: 'bike', delivery: 'outdoor', steps: [] },
+        outdoorDelivery: { status: 'pushed', lastError: null },
+      },
+    ];
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/api/v1/plan-actions/schedule?days=14'
+        ? Promise.resolve(outdoorSchedule)
+        : Promise.reject(new Error(`Unexpected request: ${path}`)),
+    );
+
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText(/Garmin send failed/i)).toBeTruthy();
+    expect(screen.getByText('Sent to Garmin')).toBeTruthy();
+  });
+
   it('renders the shared error state when the schedule fails to load', async () => {
     apiFetchMock.mockImplementation((path: string) =>
       path === '/api/v1/plan-actions/schedule?days=14'
