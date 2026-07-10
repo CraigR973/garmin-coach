@@ -414,6 +414,42 @@ class WorkoutDeliveryProposal(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class GarminWorkoutDelivery(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
+    """Outbound delivery of an outdoor structured workout to Garmin Connect.
+
+    Batch 78 (Decision #151): an outdoor ride is uploaded + scheduled directly on
+    Garmin via the existing garth session. Kept separate from
+    ``WorkoutDeliveryProposal`` (the intervals.icu/Zwift rail) so the Garmin write
+    path is fully isolated. Unique on ``(user_id, workout_date)`` — one live Garmin
+    delivery per calendar slot, re-synced in place across Batch 77 re-versioning.
+    """
+
+    __tablename__ = "garmin_workout_deliveries"
+    __table_args__ = (
+        UniqueConstraint("user_id", "workout_date", name="uq_garmin_workout_delivery_user_date"),
+        Index("ix_garmin_workout_deliveries_user_status", "user_id", "status"),
+        Index("ix_garmin_workout_deliveries_planned_workout", "planned_workout_id"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    planned_workout_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("planned_workouts.id", ondelete="SET NULL"), nullable=True
+    )
+    planned_workout_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    workout_date: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, server_default="pushed")
+    garmin_workout_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    garmin_schedule_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    garmin_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    structured_workout_ir: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pushed_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
+
+
 class Analysis(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "analyses"
     __table_args__ = (

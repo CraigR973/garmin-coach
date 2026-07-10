@@ -32,7 +32,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.coaching import Analysis, ManualEntry, PlannedWorkout, WorkoutDeliveryProposal
 from src.models.profile import Profile
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
-from src.services.structured_workout_builder import is_indoor_bike_workout
+from src.services.garmin_workout_delivery import (
+    GarminWorkoutClient,
+    GarminWorkoutDeliveryService,
+)
+from src.services.structured_workout_builder import (
+    is_indoor_bike_workout,
+    is_outdoor_bike_workout,
+)
 from src.services.workout_categories import category_for_workout_type
 from src.services.workout_completion import WORKOUT_STATUS_COMPLETED
 from src.services.workout_delivery import (
@@ -265,9 +272,14 @@ class ExecutableCoachingService:
         session: AsyncSession,
         *,
         intervals_client: IntervalsEventClient | None = None,
+        garmin_client: GarminWorkoutClient | None = None,
     ) -> None:
         self.session = session
         self.rail = WorkoutDeliveryService(session, intervals_client=intervals_client)
+        # Outdoor rides deliver to Garmin, not Zwift (Batch 78). The client is lazy —
+        # built only when the window actually contains an outdoor workout — so the
+        # indoor-only path never logs into Garmin.
+        self.garmin_delivery = GarminWorkoutDeliveryService(session, garmin_client=garmin_client)
 
     async def regenerate_for_verdict(
         self,
@@ -539,14 +551,17 @@ class ExecutableCoachingService:
         end_date: date,
     ) -> list[WorkoutDeliveryProposal]:
         """Push-on-plan-set: ensure every active bike workout in the window has a
-        live Zwift event matching its current content (Decision #99).
+        live delivery matching its current content (Decision #99).
 
-        The as-planned baseline is delivered **without a per-workout approval** — a
-        deliberate reversal of #29/#30 for the baseline; approval now gates only
-        the morning adjustment (the Today card's Approve & upload). Each workout is
-        reconciled in isolation so one delivery failure (e.g. a missing
-        intervals.icu key → 503) never blocks the rest, and the pass is idempotent:
-        a slot already carrying its current version is a no-op.
+        **Indoor** rides deliver to Zwift via the intervals.icu rail; **outdoor**
+        rides deliver to Garmin Connect (Batch 78, Decision #151). The as-planned
+        baseline is delivered **without a per-workout approval** — a deliberate
+        reversal of #29/#30 for the baseline; approval now gates only the morning
+        adjustment (the Today card's Approve & upload). Each workout is reconciled in
+        isolation so one delivery failure (e.g. a missing intervals.icu key → 503, or
+        a Garmin 429) never blocks the rest, and the pass is idempotent: a slot
+        already carrying its current version is a no-op. The Zwift proposals are
+        returned; outdoor Garmin delivery is a side effect recorded on its own row.
         """
         delivered: list[WorkoutDeliveryProposal] = []
         for workout in await self._active_bike_workouts_in_range(player.id, start_date, end_date):
@@ -556,6 +571,17 @@ class ExecutableCoachingService:
                 continue  # isolated; the proposal carries last_error (#97 honesty)
             if result is not None:
                 delivered.append(result)
+
+        outdoor = await self._active_outdoor_bike_workouts_in_range(player.id, start_date, end_date)
+        if outdoor:
+            ftp_watts = await self.rail._ftp_watts(player.id)
+            for workout in outdoor:
+                try:
+                    await self.garmin_delivery.reconcile_workout(
+                        player, workout, ftp_watts=ftp_watts
+                    )
+                except Exception:  # noqa: BLE001 - isolated; the row carries last_error (#97)
+                    continue
         return delivered
 
     async def _deliver_one(
@@ -612,10 +638,10 @@ class ExecutableCoachingService:
         await self.session.refresh(delivered)
         return delivered
 
-    async def _active_bike_workouts_in_range(
+    async def _active_bike_workouts_raw(
         self, user_id: uuid.UUID, start_date: date, end_date: date
     ) -> list[PlannedWorkout]:
-        workouts = (
+        return list(
             (
                 await self.session.execute(
                     select(PlannedWorkout)
@@ -635,9 +661,20 @@ class ExecutableCoachingService:
             .scalars()
             .all()
         )
-        return [
-            workout for workout in workouts if is_indoor_bike_workout(workout.structured_workout)
-        ]
+
+    async def _active_bike_workouts_in_range(
+        self, user_id: uuid.UUID, start_date: date, end_date: date
+    ) -> list[PlannedWorkout]:
+        """Active **indoor** bike workouts — the intervals.icu/Zwift rail."""
+        workouts = await self._active_bike_workouts_raw(user_id, start_date, end_date)
+        return [w for w in workouts if is_indoor_bike_workout(w.structured_workout)]
+
+    async def _active_outdoor_bike_workouts_in_range(
+        self, user_id: uuid.UUID, start_date: date, end_date: date
+    ) -> list[PlannedWorkout]:
+        """Active **outdoor** bike workouts — the Garmin delivery rail (Batch 78)."""
+        workouts = await self._active_bike_workouts_raw(user_id, start_date, end_date)
+        return [w for w in workouts if is_outdoor_bike_workout(w.structured_workout)]
 
     # ------------------------------------------------------------------
     # Today-card actions (Batch 29.3): Edit / Approve / Swap / Skip

@@ -350,6 +350,13 @@ export const todayCardSwapInputSchema = z.object({
 
 export const dayCategorySchema = z.enum(['cycle', 'weights', 'flexibility', 'rest']);
 
+// Batch 78: an outdoor ride's Garmin Connect delivery state, so a failed upload is
+// visible on the workout rather than silently dropped (#97). Absent for indoor/non-bike.
+export const outdoorDeliverySchema = z.object({
+  status: z.string().min(1),
+  lastError: z.string().nullable().optional(),
+});
+
 export const planActionWorkoutSchema = z.object({
   id: z.string().uuid(),
   workoutDate: isoDateSchema,
@@ -361,6 +368,7 @@ export const planActionWorkoutSchema = z.object({
   intensityTarget: z.string().nullable().optional(),
   source: z.string().nullable().optional(),
   structuredWorkout: jsonObjectSchema.default({}),
+  outdoorDelivery: outdoorDeliverySchema.nullable().optional(),
 });
 
 export const planDayStateSchema = z.object({

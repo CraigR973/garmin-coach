@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import CurrentUser
 from src.database import get_db
-from src.models.coaching import ManualEntry, PlannedWorkout
+from src.models.coaching import GarminWorkoutDelivery, ManualEntry, PlannedWorkout
+from src.services.garmin_workout_delivery import GarminWorkoutDeliveryService
 from src.services.plan_actions import PlanActionService, PlanDay, QuickAddOption, quick_add_options
 from src.services.structured_workout_builder import CustomBikeWorkoutSpec, DeliveryTarget
 
@@ -45,6 +46,11 @@ class ApiMeta(BaseModel):
     generatedAtUtc: str
 
 
+class OutdoorDeliveryOut(BaseModel):
+    status: str
+    lastError: str | None = None
+
+
 class PlanWorkoutOut(BaseModel):
     id: str
     workoutDate: str
@@ -56,6 +62,8 @@ class PlanWorkoutOut(BaseModel):
     intensityTarget: str | None
     source: str | None
     structuredWorkout: dict[str, Any]
+    # Batch 78: the outdoor ride's Garmin delivery state (None for indoor/non-bike).
+    outdoorDelivery: OutdoorDeliveryOut | None = None
 
 
 class DayStateOut(BaseModel):
@@ -184,7 +192,9 @@ class ManualEntryEnvelope(BaseModel):
     errors: list[ApiError]
 
 
-def _workout_out(workout: PlannedWorkout) -> PlanWorkoutOut:
+def _workout_out(
+    workout: PlannedWorkout, delivery: GarminWorkoutDelivery | None = None
+) -> PlanWorkoutOut:
     return PlanWorkoutOut(
         id=str(workout.id),
         workoutDate=workout.workout_date.isoformat(),
@@ -196,10 +206,18 @@ def _workout_out(workout: PlannedWorkout) -> PlanWorkoutOut:
         intensityTarget=workout.intensity_target,
         source=workout.source,
         structuredWorkout=dict(workout.structured_workout or {}),
+        outdoorDelivery=(
+            OutdoorDeliveryOut(status=delivery.status, lastError=delivery.last_error)
+            if delivery is not None
+            else None
+        ),
     )
 
 
-def _day_out(day: PlanDay) -> PlanDayOut:
+def _day_out(
+    day: PlanDay, deliveries: dict[uuid.UUID, GarminWorkoutDelivery] | None = None
+) -> PlanDayOut:
+    deliveries = deliveries or {}
     return PlanDayOut(
         date=day.date.isoformat(),
         dayState=DayStateOut(
@@ -207,7 +225,7 @@ def _day_out(day: PlanDay) -> PlanDayOut:
             label=day.day_state.label,
             isRest=day.day_state.is_rest,
         ),
-        workouts=[_workout_out(workout) for workout in day.workouts],
+        workouts=[_workout_out(workout, deliveries.get(workout.id)) for workout in day.workouts],
     )
 
 
@@ -241,11 +259,20 @@ async def get_schedule(
 ) -> PlanScheduleEnvelope:
     start = start_date or _local_today(player.timezone)
     schedule = await PlanActionService(db).schedule(player, start_date=start, days=days)
+    # Batch 78: attach each outdoor ride's Garmin delivery state (keyed by the delivered
+    # planned-workout id) so a failed upload shows on the workout instead of vanishing.
+    end = schedule.days[-1].date if schedule.days else start
+    delivery_rows = await GarminWorkoutDeliveryService(db).deliveries_in_range(
+        player.id, schedule.start_date, end
+    )
+    deliveries_by_id = {
+        row.planned_workout_id: row for row in delivery_rows if row.planned_workout_id is not None
+    }
     return PlanScheduleEnvelope(
         data=PlanScheduleData(
             startDate=schedule.start_date.isoformat(),
             days=days,
-            schedule=[_day_out(day) for day in schedule.days],
+            schedule=[_day_out(day, deliveries_by_id) for day in schedule.days],
         ),
         meta=ApiMeta(generatedAtUtc=_generated_at()),
         errors=[],
