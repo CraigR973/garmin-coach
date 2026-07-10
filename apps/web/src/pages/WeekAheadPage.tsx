@@ -239,6 +239,7 @@ function ScheduleDayCard({
   onMove: (workout: MoveableWorkout) => void;
   onSkipDay: () => void;
 }) {
+  const hasCompletedWorkout = day.workouts.some((workout) => workout.status === 'completed');
   return (
     <Card className={cn(isToday && 'border-primary/50')}>
       <CardHeader>
@@ -282,10 +283,15 @@ function ScheduleDayCard({
           {day.workouts.length > 0 && (
             <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onSkipDay}>
               <Trash2 className="h-4 w-4" aria-hidden />
-              Skip day
+              {hasCompletedWorkout ? 'Skip remaining' : 'Skip day'}
             </Button>
           )}
         </div>
+        {hasCompletedWorkout ? (
+          <p className="text-xs text-text-secondary">
+            Completed sessions stay on the day. This skips only the sessions still left to do.
+          </p>
+        ) : null}
       </CardContent>
     </Card>
   );

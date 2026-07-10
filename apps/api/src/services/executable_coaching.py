@@ -61,6 +61,7 @@ AUDIT_TYPE_SKIPPED = "workout_skipped"
 AUDIT_TYPE_REMOVED = "workout_removed"
 WORKOUT_STATUS_SKIPPED = "skipped"
 DEFAULT_LEAD_DAYS = 0
+DONE_ADHERENCE_STATUSES = {"completed", "modified", "done", "did_something_else"}
 
 # Verdict-driven adjustment knobs (percentage points of FTP unless noted).
 AMBER_DURATION_SCALE = 0.75  # 25% cut keeps inside the 20-30% Amber band
@@ -780,6 +781,13 @@ class ExecutableCoachingService:
         status only flips once the Zwift delete succeeds.
         """
         workout = await self.rail._planned_workout(player.id, planned_workout_id)
+        if workout.status == WORKOUT_STATUS_COMPLETED or await self._has_done_adherence(
+            player.id, workout
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="This session is already done, so it can't be skipped.",
+            )
         live = await self.rail.latest_delivered_for_workout(player.id, workout.id)
         if live is None:
             live = await self.rail.latest_delivered_for_date(player.id, workout.workout_date)
@@ -1017,6 +1025,22 @@ class ExecutableCoachingService:
             if category is None or category_for_workout_type(workout.workout_type) == category:
                 return workout
         return None
+
+    async def _has_done_adherence(self, user_id: uuid.UUID, workout: PlannedWorkout) -> bool:
+        entry = await self.session.scalar(
+            select(ManualEntry)
+            .where(
+                ManualEntry.user_id == user_id,
+                ManualEntry.entry_date == workout.workout_date,
+                ManualEntry.planned_workout_id == workout.id,
+                ManualEntry.activity_id.is_(None),
+            )
+            .order_by(ManualEntry.entry_at_utc.desc(), ManualEntry.created_at.desc())
+            .limit(1)
+        )
+        if entry is None:
+            return False
+        return (entry.adherence_status or "").strip().lower() in DONE_ADHERENCE_STATUSES
 
     def _content_snapshot(self, workout: PlannedWorkout) -> dict[str, Any]:
         return {

@@ -19,11 +19,15 @@ from src.services.workout_categories import (
     DayState,
     day_state_for_workout_types,
 )
+from src.services.workout_completion import WORKOUT_STATUS_COMPLETED
 from src.services.workout_delivery import IntervalsEventClient
 
 
 def _utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+DONE_ADHERENCE_STATUSES = {"completed", "modified", "done", "did_something_else"}
 
 
 def _pattern_minutes(value: float) -> str:
@@ -432,7 +436,7 @@ class PlanActionService:
     async def _active_workouts_on(
         self, user_id: uuid.UUID, workout_date: date
     ) -> list[PlannedWorkout]:
-        return list(
+        workouts = list(
             (
                 await self.session.execute(
                     select(PlannedWorkout)
@@ -448,3 +452,39 @@ class PlanActionService:
             .scalars()
             .all()
         )
+        logged_done_ids = await self._logged_done_workout_ids_on(user_id, workout_date)
+        return [
+            workout
+            for workout in workouts
+            if workout.status != WORKOUT_STATUS_COMPLETED and workout.id not in logged_done_ids
+        ]
+
+    async def _logged_done_workout_ids_on(
+        self, user_id: uuid.UUID, workout_date: date
+    ) -> set[uuid.UUID]:
+        entries = (
+            (
+                await self.session.execute(
+                    select(ManualEntry)
+                    .where(
+                        ManualEntry.user_id == user_id,
+                        ManualEntry.entry_date == workout_date,
+                        ManualEntry.planned_workout_id.is_not(None),
+                        ManualEntry.activity_id.is_(None),
+                    )
+                    .order_by(ManualEntry.entry_at_utc.desc(), ManualEntry.created_at.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        latest_by_workout: dict[uuid.UUID, ManualEntry] = {}
+        for entry in entries:
+            if entry.planned_workout_id is None or entry.planned_workout_id in latest_by_workout:
+                continue
+            latest_by_workout[entry.planned_workout_id] = entry
+        return {
+            workout_id
+            for workout_id, entry in latest_by_workout.items()
+            if (entry.adherence_status or "").strip().lower() in DONE_ADHERENCE_STATUSES
+        }
