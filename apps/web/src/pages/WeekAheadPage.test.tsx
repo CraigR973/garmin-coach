@@ -30,6 +30,10 @@ vi.mock('sonner', () => ({
   },
 }));
 
+vi.mock('@/hooks/useDailyLoop', () => ({
+  useDailyLoop: () => ({ data: null }),
+}));
+
 const schedule = {
   data: {
     startDate: '2026-06-23',
@@ -238,6 +242,81 @@ describe('WeekAheadPage', () => {
     expect(ride).not.toBe(strength);
     expect(within(ride).getByRole('button', { name: /^move$/i })).toBeTruthy();
     expect(within(strength).getByRole('button', { name: /^move$/i })).toBeTruthy();
+  });
+
+  it('builds a custom ride and edits a planned ride structure (Batch 77)', async () => {
+    apiFetchMock.mockImplementation((path: string, options?: { method?: string; body?: string }) => {
+      if (path === '/api/v1/plan-actions/schedule?days=14') {
+        return Promise.resolve(schedule);
+      }
+      if (options?.method === 'POST') {
+        return Promise.resolve(schedule);
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    const queryClient = new QueryClient();
+    const user = userEvent.setup();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('VO2 Max 30/30')).toBeTruthy();
+    await user.click(screen.getAllByRole('button', { name: /build ride/i })[0]);
+    expect(screen.getByText('Build a ride')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /^add workout$/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/plan-actions/days/2026-06-23/workouts',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('"customBike"'),
+        }),
+      );
+    });
+    const addCall = apiFetchMock.mock.calls.find(
+      ([path]) => path === '/api/v1/plan-actions/days/2026-06-23/workouts',
+    );
+    expect(JSON.parse(String(addCall?.[1]?.body))).toMatchObject({
+      category: 'cycle',
+      customBike: {
+        delivery: 'indoor',
+        warmupEnabled: true,
+        warmupDurationMin: 10,
+        intervalsEnabled: false,
+        blockDurationMin: 30,
+        blockFtpPct: 65,
+        cooldownEnabled: true,
+        cooldownDurationMin: 5,
+      },
+    });
+    await waitFor(() => expect(screen.queryByText('Build a ride')).toBeNull());
+
+    const firstDay = screen.getByText('VO2 Max 30/30').closest('.rounded-xl') as HTMLElement;
+    const editButton = within(firstDay).getByRole('button', { name: /edit structure/i });
+    await waitFor(() => expect(editButton.hasAttribute('disabled')).toBe(false));
+    await user.click(editButton);
+    expect(await screen.findByText('Edit VO2 Max 30/30')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /^intervals$/i }));
+    await user.clear(screen.getByLabelText('Int 1 %FTP'));
+    await user.type(screen.getByLabelText('Int 1 %FTP'), '118');
+    await user.click(screen.getByRole('button', { name: /^save structure$/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/plan-actions/planned-workouts/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/structured',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('"intervalsEnabled":true'),
+        }),
+      );
+    });
   });
 
   it('locks a completed workout from moving and marks it Done (Batch 60)', async () => {

@@ -1,10 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { planScheduleEnvelopeSchema, quickAddOptionsEnvelopeSchema } from '@coach/shared';
-import { Bike, CalendarDays, Dumbbell, Moon, Plus, Trash2, Wind } from 'lucide-react';
+import {
+  customBikeWorkoutInputSchema,
+  planScheduleEnvelopeSchema,
+  quickAddOptionsEnvelopeSchema,
+} from '@coach/shared';
+import { Bike, CalendarDays, Dumbbell, Moon, Plus, SlidersHorizontal, Trash2, Wind } from 'lucide-react';
 import { toast } from 'sonner';
 import { MoveWorkoutSheet } from '@/components/MoveWorkoutSheet';
 import { QuickAddSheet } from '@/components/QuickAddSheet';
+import { StructuredWorkoutSheet } from '@/components/StructuredWorkoutSheet';
 import { PageHeader } from '@/components/PageHeader';
 import { WeeklyMixCard } from '@/components/WeeklyMixCard';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +25,7 @@ import { categoryForWorkoutType, type DayCategory } from '@/lib/workoutCategorie
 type PlanScheduleEnvelope = typeof planScheduleEnvelopeSchema._type;
 type PlanDay = PlanScheduleEnvelope['data']['schedule'][number];
 type PlanWorkout = PlanDay['workouts'][number];
+type CustomBikeWorkoutInput = typeof customBikeWorkoutInputSchema._type;
 
 function formatDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, {
@@ -68,6 +74,9 @@ export function WeekAheadPage() {
     date: string;
     category: Exclude<DayCategory, 'rest'>;
   } | null>(null);
+  const [structuredTarget, setStructuredTarget] = useState<
+    { mode: 'add'; date: string } | { mode: 'edit'; workout: PlanWorkout } | null
+  >(null);
 
   const invalidate = async () => {
     await Promise.all([
@@ -107,6 +116,34 @@ export function WeekAheadPage() {
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not add workout'),
   });
 
+  const structuredAddMutation = useMutation({
+    mutationFn: ({ date, customBike }: { date: string; customBike: CustomBikeWorkoutInput }) =>
+      apiFetch(`/api/v1/plan-actions/days/${date}/workouts`, {
+        method: 'POST',
+        body: JSON.stringify({ category: 'cycle', customBike }),
+      }),
+    onSuccess: async () => {
+      setStructuredTarget(null);
+      await invalidate();
+      toast.success('Workout added');
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not add workout'),
+  });
+
+  const structuredEditMutation = useMutation({
+    mutationFn: ({ workoutId, customBike }: { workoutId: string; customBike: CustomBikeWorkoutInput }) =>
+      apiFetch(`/api/v1/plan-actions/planned-workouts/${workoutId}/structured`, {
+        method: 'POST',
+        body: JSON.stringify(customBike),
+      }),
+    onSuccess: async () => {
+      setStructuredTarget(null);
+      await invalidate();
+      toast.success('Structure saved');
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not save structure'),
+  });
+
   const moveMutation = useMutation({
     mutationFn: ({ workoutId, targetDate }: { workoutId: string; targetDate: string }) =>
       apiFetch(`/api/v1/workout-delivery/planned-workouts/${workoutId}/swap`, {
@@ -125,7 +162,12 @@ export function WeekAheadPage() {
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not skip day'),
   });
 
-  const busy = addMutation.isPending || moveMutation.isPending || skipDayMutation.isPending;
+  const busy =
+    addMutation.isPending ||
+    structuredAddMutation.isPending ||
+    structuredEditMutation.isPending ||
+    moveMutation.isPending ||
+    skipDayMutation.isPending;
   const moveOptions = useMemo(
     () =>
       pickerWorkout && query.data
@@ -192,7 +234,9 @@ export function WeekAheadPage() {
               isToday={day.date === todayIso}
               busy={busy}
               onAdd={(category) => setQuickAddTarget({ date: day.date, category })}
+              onBuildRide={() => setStructuredTarget({ mode: 'add', date: day.date })}
               onMove={(workout) => setPickerWorkout(workout)}
+              onEditStructure={(workout) => setStructuredTarget({ mode: 'edit', workout })}
               onSkipDay={() => skipDayMutation.mutate(day.date)}
             />
           ))}
@@ -220,6 +264,27 @@ export function WeekAheadPage() {
           addMutation.mutate({ date: quickAddTarget.date, category: quickAddTarget.category, subtype, durationMin });
         }}
       />
+
+      <StructuredWorkoutSheet
+        open={structuredTarget !== null}
+        mode={structuredTarget?.mode ?? 'add'}
+        workoutTitle={structuredTarget?.mode === 'edit' ? structuredTarget.workout.title : undefined}
+        initialStructuredWorkout={
+          structuredTarget?.mode === 'edit' ? structuredTarget.workout.structuredWorkout : null
+        }
+        busy={structuredAddMutation.isPending || structuredEditMutation.isPending}
+        onClose={() => setStructuredTarget(null)}
+        onConfirm={(customBike) => {
+          if (structuredTarget?.mode === 'add') {
+            structuredAddMutation.mutate({ date: structuredTarget.date, customBike });
+          } else if (structuredTarget?.mode === 'edit') {
+            structuredEditMutation.mutate({
+              workoutId: structuredTarget.workout.id,
+              customBike,
+            });
+          }
+        }}
+      />
     </div>
   );
 }
@@ -229,14 +294,18 @@ function ScheduleDayCard({
   isToday,
   busy,
   onAdd,
+  onBuildRide,
   onMove,
+  onEditStructure,
   onSkipDay,
 }: {
   day: PlanDay;
   isToday: boolean;
   busy: boolean;
   onAdd: (category: Exclude<DayCategory, 'rest'>) => void;
+  onBuildRide: () => void;
   onMove: (workout: MoveableWorkout) => void;
+  onEditStructure: (workout: PlanWorkout) => void;
   onSkipDay: () => void;
 }) {
   const hasCompletedWorkout = day.workouts.some((workout) => workout.status === 'completed');
@@ -263,6 +332,7 @@ function ScheduleDayCard({
               workout={workout}
               busy={busy}
               onMove={() => onMove({ ...workout, day: day.date })}
+              onEditStructure={() => onEditStructure(workout)}
             />
           ))
         )}
@@ -271,6 +341,10 @@ function ScheduleDayCard({
           <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onAdd('cycle')}>
             <Plus className="h-4 w-4" aria-hidden />
             Cycle
+          </Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onBuildRide}>
+            <SlidersHorizontal className="h-4 w-4" aria-hidden />
+            Build ride
           </Button>
           <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onAdd('weights')}>
             <Plus className="h-4 w-4" aria-hidden />
@@ -301,16 +375,19 @@ function WorkoutRow({
   workout,
   busy,
   onMove,
+  onEditStructure,
 }: {
   workout: PlanWorkout;
   busy: boolean;
   onMove: () => void;
+  onEditStructure: () => void;
 }) {
   const Icon = iconFor(workout.workoutType);
   // Batch 60: a completed session can't be re-slotted — the Move control drops
   // out and a "Done" badge takes its place (the swap endpoint also 409s a
   // completed source or target, so this is UI clarity over an enforced guard).
   const isComplete = workout.status === 'completed';
+  const isBike = categoryForWorkoutType(workout.workoutType) === 'cycle';
   return (
     <div className="rounded-xl border border-border bg-bg px-3 py-3">
       <div className="flex items-start gap-3">
@@ -334,6 +411,12 @@ function WorkoutRow({
           <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onMove}>
             Move
           </Button>
+          {isBike ? (
+            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onEditStructure}>
+              <SlidersHorizontal className="h-4 w-4" aria-hidden />
+              Edit structure
+            </Button>
+          ) : null}
         </div>
       )}
     </div>

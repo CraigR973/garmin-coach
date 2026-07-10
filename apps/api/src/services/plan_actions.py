@@ -12,6 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.coaching import ManualEntry, PlannedWorkout
 from src.models.profile import Profile
 from src.services.executable_coaching import WORKOUT_STATUS_SKIPPED, ExecutableCoachingService
+from src.services.structured_workout_builder import (
+    BuiltCustomBikeWorkout,
+    CustomBikeWorkoutSpec,
+    build_custom_bike_workout,
+    is_indoor_bike_workout,
+)
 from src.services.workout_categories import (
     DAY_CATEGORY_CYCLE,
     DAY_CATEGORY_FLEXIBILITY,
@@ -306,6 +312,12 @@ def default_workout_for_category(category: str) -> dict[str, Any]:
     return workout_for_selection(category, subtype=None, duration_min=None)
 
 
+def _template_value(template: dict[str, Any] | BuiltCustomBikeWorkout, key: str) -> Any:
+    if isinstance(template, BuiltCustomBikeWorkout):
+        return getattr(template, key)
+    return template[key]
+
+
 class PlanActionService:
     def __init__(
         self,
@@ -360,29 +372,87 @@ class PlanActionService:
         category: str,
         subtype: str | None = None,
         duration_min: int | None = None,
+        custom_bike: CustomBikeWorkoutSpec | None = None,
     ) -> PlannedWorkout:
-        template = workout_for_selection(category, subtype=subtype, duration_min=duration_min)
+        template: dict[str, Any] | BuiltCustomBikeWorkout
+        if custom_bike is not None:
+            if category != DAY_CATEGORY_CYCLE:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Custom structured workouts are only supported for cycle sessions.",
+                )
+            template = build_custom_bike_workout(custom_bike)
+        else:
+            template = workout_for_selection(category, subtype=subtype, duration_min=duration_min)
         version = await self._next_version(player.id, workout_date)
         workout = PlannedWorkout(
             user_id=player.id,
             plan_block_id=None,
             workout_date=workout_date,
             version=version,
-            title=template["title"],
-            workout_type=template["workout_type"],
+            title=_template_value(template, "title"),
+            workout_type=_template_value(template, "workout_type"),
             status="planned",
             is_active=True,
-            planned_duration_min=template["planned_duration_min"],
-            intensity_target=template["intensity_target"],
-            structured_workout=template["structured_workout"],
+            planned_duration_min=_template_value(template, "planned_duration_min"),
+            intensity_target=_template_value(template, "intensity_target"),
+            structured_workout=_template_value(template, "structured_workout"),
             source="plan_action_add",
         )
         self.session.add(workout)
         await self.session.flush()
-        if category == DAY_CATEGORY_CYCLE:
+        if category == DAY_CATEGORY_CYCLE and is_indoor_bike_workout(workout.structured_workout):
             await self.executable.reconcile_deliveries(
                 player, start_date=workout_date, end_date=workout_date
             )
+        await self.session.commit()
+        await self.session.refresh(workout)
+        return workout
+
+    async def edit_structured_workout(
+        self,
+        player: Profile,
+        *,
+        planned_workout_id: uuid.UUID,
+        custom_bike: CustomBikeWorkoutSpec,
+    ) -> PlannedWorkout:
+        current = await self.executable.rail._planned_workout(player.id, planned_workout_id)
+        if current.status == WORKOUT_STATUS_COMPLETED:
+            raise HTTPException(
+                status_code=409,
+                detail="This session is already done, so its structure can't be edited.",
+            )
+        template = build_custom_bike_workout(custom_bike, title=current.title)
+        live = await self.executable.rail.latest_delivered_for_workout(player.id, current.id)
+        if live is None:
+            live = await self.executable.rail.latest_delivered_for_date(
+                player.id, current.workout_date
+            )
+        current.is_active = False
+        await self.session.flush()
+        version = await self._next_version(player.id, current.workout_date)
+        workout = PlannedWorkout(
+            user_id=player.id,
+            plan_block_id=current.plan_block_id,
+            workout_date=current.workout_date,
+            version=version,
+            title=template.title,
+            workout_type=template.workout_type,
+            status="planned",
+            is_active=True,
+            planned_duration_min=template.planned_duration_min,
+            intensity_target=template.intensity_target,
+            structured_workout=template.structured_workout,
+            source=current.source or "structured_edit",
+        )
+        self.session.add(workout)
+        await self.session.flush()
+        if is_indoor_bike_workout(workout.structured_workout):
+            await self.executable.reconcile_deliveries(
+                player, start_date=workout.workout_date, end_date=workout.workout_date
+            )
+        elif live is not None:
+            await self.executable.rail.delete_event(proposal=live, commit=False)
         await self.session.commit()
         await self.session.refresh(workout)
         return workout

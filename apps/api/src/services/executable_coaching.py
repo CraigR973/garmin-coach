@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.coaching import Analysis, ManualEntry, PlannedWorkout, WorkoutDeliveryProposal
 from src.models.profile import Profile
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
+from src.services.structured_workout_builder import is_indoor_bike_workout
 from src.services.workout_categories import category_for_workout_type
 from src.services.workout_completion import WORKOUT_STATUS_COMPLETED
 from src.services.workout_delivery import (
@@ -635,10 +636,7 @@ class ExecutableCoachingService:
             .all()
         )
         return [
-            workout
-            for workout in workouts
-            if isinstance(workout.structured_workout, dict)
-            and workout.structured_workout.get("format") == "bike"
+            workout for workout in workouts if is_indoor_bike_workout(workout.structured_workout)
         ]
 
     # ------------------------------------------------------------------

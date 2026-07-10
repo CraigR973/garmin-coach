@@ -360,6 +360,7 @@ export const planActionWorkoutSchema = z.object({
   plannedDurationMin: z.number().int().nullable().optional(),
   intensityTarget: z.string().nullable().optional(),
   source: z.string().nullable().optional(),
+  structuredWorkout: jsonObjectSchema.default({}),
 });
 
 export const planDayStateSchema = z.object({
@@ -384,10 +385,29 @@ export const planScheduleEnvelopeSchema = z.object({
   errors: z.array(apiErrorSchema),
 });
 
+export const customBikeWorkoutInputSchema = z.object({
+  delivery: z.enum(['indoor', 'outdoor']).default('indoor'),
+  warmupEnabled: z.boolean().default(true),
+  warmupDurationMin: z.number().int().min(1).max(60).nullable().optional(),
+  z2LeadInEnabled: z.boolean().default(false),
+  z2LeadInDurationMin: z.number().int().min(1).max(180).nullable().optional(),
+  intervalsEnabled: z.boolean().default(false),
+  interval1DurationMin: z.number().int().min(1).max(120).nullable().optional(),
+  interval1FtpPct: z.number().int().min(45).max(150).nullable().optional(),
+  interval2DurationMin: z.number().int().min(1).max(120).nullable().optional(),
+  interval2FtpPct: z.number().int().min(45).max(150).nullable().optional(),
+  repeats: z.number().int().min(1).max(40).nullable().optional(),
+  blockDurationMin: z.number().int().min(1).max(240).nullable().optional(),
+  blockFtpPct: z.number().int().min(45).max(150).nullable().optional(),
+  cooldownEnabled: z.boolean().default(true),
+  cooldownDurationMin: z.number().int().min(1).max(60).nullable().optional(),
+});
+
 export const planAddWorkoutInputSchema = z.object({
   category: z.enum(['cycle', 'weights', 'flexibility']),
   subtype: z.string().min(1).optional(),
   durationMin: z.number().int().min(1).max(180).optional(),
+  customBike: customBikeWorkoutInputSchema.optional(),
 });
 
 export const quickAddOptionSchema = z.object({

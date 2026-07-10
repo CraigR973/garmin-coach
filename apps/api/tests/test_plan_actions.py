@@ -12,6 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 from src.models.coaching import ManualEntry, PlannedWorkout, WorkoutDeliveryProposal
 from src.models.profile import Profile, UserRole
 from src.services.plan_actions import PlanActionService, quick_add_options, workout_for_selection
+from src.services.structured_workout_builder import (
+    CustomBikeWorkoutSpec,
+    build_custom_bike_workout,
+)
 from src.services.workout_categories import day_state_for_workout_types
 from src.services.workout_delivery import (
     STATUS_PUSHED,
@@ -244,6 +248,40 @@ def test_quick_add_rejects_vo2_efforts_duration_outside_bounds() -> None:
         workout_for_selection("cycle", subtype="vo2_efforts", duration_min=100)
 
 
+def test_custom_builder_transcribes_marks_spreadsheet_shape() -> None:
+    built = build_custom_bike_workout(
+        CustomBikeWorkoutSpec(
+            delivery="indoor",
+            warmup_enabled=True,
+            warmup_duration_min=10,
+            z2_lead_in_enabled=True,
+            z2_lead_in_duration_min=8,
+            intervals_enabled=True,
+            interval_1_duration_min=3,
+            interval_1_ftp_pct=112,
+            interval_2_duration_min=2,
+            interval_2_ftp_pct=55,
+            repeats=4,
+            block_duration_min=None,
+            block_ftp_pct=None,
+            cooldown_enabled=True,
+            cooldown_duration_min=6,
+        )
+    )
+
+    assert built.workout_type == "bike_vo2"
+    assert built.planned_duration_min == 44
+    assert built.structured_workout["delivery"] == "indoor"
+    assert built.structured_workout["steps"] == [
+        {"label": "Warm-up ramp", "minutes": 10, "ramp": [45, 75]},
+        {"label": "Z2 lead-in", "minutes": 8, "target": "55%"},
+        {"label": "Main intervals", "target": "112%", "pattern": "4 x 3min / 2min @55%"},
+        {"label": "Cool-down ramp", "minutes": 6, "ramp": [75, 45]},
+    ]
+    expanded = expand_structured_steps(built.structured_workout, built.intensity_target)
+    assert len([step for step in expanded if step["powerEndPct"] == 112]) == 4
+
+
 @pytest.mark.asyncio
 async def test_add_workout_honours_chosen_subtype_and_duration(db_conn: AsyncConnection) -> None:
     user_id = uuid.uuid4()
@@ -265,6 +303,52 @@ async def test_add_workout_honours_chosen_subtype_and_duration(db_conn: AsyncCon
 
 
 @pytest.mark.asyncio
+async def test_add_custom_indoor_workout_delivers_and_outdoor_does_not(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    indoor_day = date(2026, 8, 26)
+    outdoor_day = date(2026, 8, 27)
+    fake = _FakeIntervalsClient()
+    custom = CustomBikeWorkoutSpec(
+        delivery="indoor",
+        warmup_enabled=True,
+        warmup_duration_min=10,
+        z2_lead_in_enabled=False,
+        z2_lead_in_duration_min=None,
+        intervals_enabled=False,
+        interval_1_duration_min=None,
+        interval_1_ftp_pct=None,
+        interval_2_duration_min=None,
+        interval_2_ftp_pct=None,
+        repeats=None,
+        block_duration_min=40,
+        block_ftp_pct=84,
+        cooldown_enabled=True,
+        cooldown_duration_min=5,
+    )
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await _seed_user(session, user_id)
+        await session.commit()
+        service = PlanActionService(session, intervals_client=fake)
+
+        indoor = await service.add_workout(
+            user, workout_date=indoor_day, category="cycle", custom_bike=custom
+        )
+        outdoor = await service.add_workout(
+            user,
+            workout_date=outdoor_day,
+            category="cycle",
+            custom_bike=CustomBikeWorkoutSpec(**{**custom.__dict__, "delivery": "outdoor"}),
+        )
+
+    assert indoor.structured_workout["delivery"] == "indoor"
+    assert outdoor.structured_workout["delivery"] == "outdoor"
+    assert len(fake.payloads) == 1
+    assert fake.payloads[0]["start_date_local"] == "2026-08-26T00:00:00"
+
+
+@pytest.mark.asyncio
 async def test_add_workout_rejects_duration_outside_subtype_bounds(
     db_conn: AsyncConnection,
 ) -> None:
@@ -278,6 +362,67 @@ async def test_add_workout_rejects_duration_outside_subtype_bounds(
             await PlanActionService(session).add_workout(
                 user, workout_date=day, category="cycle", subtype="recovery", duration_min=120
             )
+
+
+@pytest.mark.asyncio
+async def test_structured_edit_versions_row_and_resyncs_zwift(db_conn: AsyncConnection) -> None:
+    user_id = uuid.uuid4()
+    day = date(2026, 8, 28)
+    workout_id = uuid.uuid4()
+    fake = _FakeIntervalsClient()
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await _seed_user(session, user_id)
+        original = await _seed_workout(
+            session, user_id, day, workout_id=workout_id, workout_type="bike_endurance"
+        )
+        await session.commit()
+        service = PlanActionService(session, intervals_client=fake)
+        await service.executable.reconcile_deliveries(user, start_date=day, end_date=day)
+
+        edited = await service.edit_structured_workout(
+            user,
+            planned_workout_id=original.id,
+            custom_bike=CustomBikeWorkoutSpec(
+                delivery="indoor",
+                warmup_enabled=True,
+                warmup_duration_min=8,
+                z2_lead_in_enabled=False,
+                z2_lead_in_duration_min=None,
+                intervals_enabled=True,
+                interval_1_duration_min=2,
+                interval_1_ftp_pct=118,
+                interval_2_duration_min=2,
+                interval_2_ftp_pct=55,
+                repeats=5,
+                block_duration_min=None,
+                block_ftp_pct=None,
+                cooldown_enabled=True,
+                cooldown_duration_min=6,
+            ),
+        )
+        rows = (
+            (
+                await session.execute(
+                    select(PlannedWorkout)
+                    .where(PlannedWorkout.user_id == user_id, PlannedWorkout.workout_date == day)
+                    .order_by(PlannedWorkout.version.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        proposal = await session.scalar(
+            select(WorkoutDeliveryProposal).where(
+                WorkoutDeliveryProposal.planned_workout_id == edited.id
+            )
+        )
+
+    assert [(row.id, row.is_active) for row in rows] == [(original.id, False), (edited.id, True)]
+    assert edited.version == 2
+    assert edited.workout_type == "bike_vo2"
+    assert fake.updates
+    assert proposal is not None
+    assert proposal.planned_workout_version == 2
 
 
 @pytest.mark.asyncio
