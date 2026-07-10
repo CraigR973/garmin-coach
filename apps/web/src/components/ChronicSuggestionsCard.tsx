@@ -1,4 +1,4 @@
-import { Check, CircleAlert, ListChecks } from 'lucide-react';
+import { Check, CircleAlert, ListChecks, RotateCw } from 'lucide-react';
 import type { DailyLoopData } from '@/hooks/useDailyLoop';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -108,6 +108,14 @@ function SuggestionBlock({ item }: { item: Suggestion }) {
             </li>
           ))}
         </ul>
+      )}
+
+      {item.rotation && (
+        <p className="flex items-center gap-1.5 text-[11px] text-text-muted">
+          <RotateCw className="h-3 w-3 shrink-0" aria-hidden />
+          Rotating focus — {item.rotation.shown} of {item.rotation.total} levers this week, a
+          fresh set next week.
+        </p>
       )}
     </div>
   );

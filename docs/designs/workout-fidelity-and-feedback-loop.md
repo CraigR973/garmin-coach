@@ -320,4 +320,65 @@ to be specced at `/batch-start`:
   the Batch 59 chronic-pattern card shows the same standing list. He wants a **broader,
   rotating set of REM interventions delivered one or two at a time** (focused, not a static
   list) for a persistent miss. Builds on `chronic_patterns.py`; a separate sleep thread.
-  (Proposed Decision #145.)
+  (Decision #145.) **Specced 2026-07-10 — see below.**
+
+## Batch 72 — Chronic-REM coaching depth (🔴 High, backend + shared + web)
+
+A separate sleep thread from 67–71. Mark's REM has run below its age norm since he got
+the watch, so the Batch 59 chronic-pattern card flags `rem_sleep_pct` most weeks — but for
+that one metric it only ever shows the **same two static lines**. He wants, for a
+*persistent* REM miss, a **broader set of interventions handed out one or two at a time**,
+rotating so the advice stays focused instead of a list he has already read.
+
+**Root cause (in code).** `chronic_patterns._actions_for` maps `rem_sleep_pct` to exactly
+two hardcoded strings ("Make {bedtime} the latest lights-out…", "Avoid moving the wake time
+earlier…"), optionally prefixed by one driver-derived line, then `_suggestion` caps
+`actions[:3]`. There is no library and no rotation — the same pair surfaces every day the
+flag is active. Every other chronic metric is unaffected and stays as-is.
+
+**What we build.**
+
+- **72.1 — REM intervention library.** New pure `services/rem_interventions.py` with an
+  **ordered library of REM-specific levers** (≥8; ships with 12), each a short imperative
+  action grounded in the sleep protocol values where they exist (`bedtime`, `sealTargetTime`,
+  `preCoolTemperatureC`, `coherenceBreathingTime`, `latestSnackTime`) or in standard REM
+  physiology (REM is late-cycle heavy and fragile to short sleep, alcohol, warmth, late
+  stimulation, and circadian drift): wake-time anchoring, protecting the last cycle, a hard
+  bedtime, alcohol-free evenings, an afternoon caffeine cut-off, a cool room in the back half
+  of the night, evening light-down, a consistent wind-down, late-meal timing, stress offload,
+  REM-rebound recovery after a short night, and keeping hard/late rides off priority nights.
+- **72.2 — Deterministic, stateless rotation.** `select_rem_interventions(as_of, …)` hands out
+  a **focused window of two**, seeded from the calendar week (ISO-Monday-anchored) so a given
+  week always yields the same pair (stable Mon–Sun, advancing across weeks) and the rotation
+  **walks the whole library before repeating** (12 levers ÷ 2 = a 6-week cycle). No persisted
+  cursor, **no migration** — the codebase's deterministic/read-only default (cf. #132/#143).
+  A measured sleep **driver biases** the week: if the strongest driver implicates a specific
+  lever (thermal → cool-room, load → late-ride, stress → wind-down/offload), that lever is
+  pinned into the week's set even if the blind rotation had not reached it, keeping the advice
+  responsive to his real data rather than a blind cycle.
+- **72.3 — Wire into the REM suggestion only.** The `rem_sleep_pct` branch of `_actions_for`
+  now calls the selector (passing the flag's driver key) instead of the two static lines; the
+  existing driver-derived line still leads. `ChronicSuggestion` gains an optional `rotation`
+  ({`periodLabel`, `shown`, `total`}) so the surface can show it is a rotating slice of a
+  wider set. **No other chronic metric changes** (regression-guarded).
+- **72.4 — Surface.** Shared `chronicSuggestionItemSchema` gains an optional nullable
+  `rotation`; `ChronicSuggestionsCard` renders a small "Rotating focus — N of M levers this
+  week, a fresh set next week" caption under the REM actions. Renders on both Home's "Last
+  night's sleep" section and `/sleep` (the card is shared).
+- **72.5 — Tests + gates.** Pure `test_rem_interventions.py` (unique ids + rendering, stable
+  within a week, walks the whole library before repeating + wraps, driver pins its lever every
+  week, no duplicate when already scheduled, protocol values render); `test_chronic_patterns.py`
+  (REM rotates week-to-week and carries `rotation`, drops the pre-72 static line; a non-REM
+  chronic carries **no** rotation); shared + web tests for the new field/caption. Full gates.
+
+**Boundaries (non-goals).** No migration, no new endpoint. Does **not** touch the
+Green/Amber/Red verdict, #133 soft-sleep, #135 Poor-readiness, or Red-never-VO2 — it is
+read-only sleep-coaching depth, exactly the Batch 59 contract. Does **not** route through the
+Anthropic boundary — the library is deterministic and unit-testable, no `ANTHROPIC_API_KEY`.
+Does **not** change any non-REM chronic suggestion. Rotation is intentionally **stateless**
+(date-seeded), not a persisted "shown" ledger — simpler, migration-free, and reproducible in
+tests; a persisted cursor was considered and rejected as unjustified state for a 1–2-user app.
+
+**Decision #145.** Deterministic, calendar-week-seeded rotation over a curated REM library,
+window of two, REM-only, driver-biased, no migration — the version that composes with the
+existing Batch 59 read surface and the deterministic/read-only norm of the codebase.

@@ -150,6 +150,7 @@ const snapshot: DailyLoopEnvelope = {
             sampleCount: 18,
             summary: 'Higher load nights averaged 5 points lower sleep score.',
           },
+          rotation: { periodLabel: '2026-W28', shown: 2, total: 12 },
         },
       ],
     },
@@ -211,6 +212,7 @@ describe('SleepPage', () => {
     expect(screen.getByText('Sleep stages vs your age')).toBeTruthy();
     expect(screen.getByText('Chronic sleep patterns to work on')).toBeTruthy();
     expect(screen.getByText('Protect REM consistency')).toBeTruthy();
+    expect(screen.getByText(/Rotating focus/)).toBeTruthy();
     expect(screen.getByText('Duration')).toBeTruthy();
     expect(screen.getByText('REM')).toBeTruthy();
     expect(screen.getByText('Overnight room & fan')).toBeTruthy();
