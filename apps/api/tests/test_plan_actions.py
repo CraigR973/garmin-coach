@@ -306,9 +306,7 @@ async def test_schedule_excludes_skipped_workouts_for_week_parity(db_conn: Async
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
         user = await _seed_user(session, user_id)
         planned = await _seed_workout(session, user_id, day, workout_type="bike_endurance")
-        skipped = await _seed_workout(
-            session, user_id, day, version=2, workout_type="mobility"
-        )
+        skipped = await _seed_workout(session, user_id, day, version=2, workout_type="mobility")
         skipped.status = "skipped"
         await session.commit()
 

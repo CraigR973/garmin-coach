@@ -1408,9 +1408,7 @@ async def test_skip_without_live_event_just_marks(db_conn: AsyncConnection) -> N
 async def test_remove_deactivates_added_workout_and_deletes_event(db_conn: AsyncConnection) -> None:
     user_id, workout_id = uuid.uuid4(), uuid.uuid4()
     day = date(2026, 7, 16)
-    await _seed_bike(
-        db_conn, user_id, workout_id, workout_date=day, source="plan_action_add"
-    )
+    await _seed_bike(db_conn, user_id, workout_id, workout_date=day, source="plan_action_add")
     fake = _FakeIntervalsClient()
 
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:

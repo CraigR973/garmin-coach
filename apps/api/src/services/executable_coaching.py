@@ -816,8 +816,7 @@ class ExecutableCoachingService:
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    "Only user-added workouts can be removed. "
-                    "Planned sessions should be skipped."
+                    "Only user-added workouts can be removed. Planned sessions should be skipped."
                 ),
             )
 
