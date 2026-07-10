@@ -18,6 +18,7 @@ from src.services.executable_coaching import (
     AUDIT_TYPE_PROPOSED,
     AUDIT_TYPE_PUSH_BLOCKED,
     AUDIT_TYPE_PUSHED,
+    AUDIT_TYPE_REMOVED,
     AUDIT_TYPE_REPLACED,
     AUDIT_TYPE_SKIPPED,
     HIT_FLOOR_PCT,
@@ -942,6 +943,7 @@ async def _seed_bike(
     *,
     workout_date: date,
     version: int = 1,
+    source: str = "test",
 ) -> None:
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
         if await session.get(Profile, user_id) is None:
@@ -969,7 +971,7 @@ async def _seed_bike(
                 planned_duration_min=60,
                 intensity_target="105-110% FTP",
                 structured_workout=VO2_STRUCTURED,
-                source="test",
+                source=source,
             )
         )
         await session.commit()
@@ -1400,6 +1402,57 @@ async def test_skip_without_live_event_just_marks(db_conn: AsyncConnection) -> N
             .all()
         )
         assert skip_audit[0].context_packet["intervalsEventId"] is None
+
+
+@pytest.mark.asyncio
+async def test_remove_deactivates_added_workout_and_deletes_event(db_conn: AsyncConnection) -> None:
+    user_id, workout_id = uuid.uuid4(), uuid.uuid4()
+    day = date(2026, 7, 16)
+    await _seed_bike(
+        db_conn, user_id, workout_id, workout_date=day, source="plan_action_add"
+    )
+    fake = _FakeIntervalsClient()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session, intervals_client=fake)
+        await service.reconcile_deliveries(user, start_date=day, end_date=day)
+
+        workout = await service.remove_workout(user, planned_workout_id=workout_id)
+
+        assert workout.is_active is False
+        assert workout.status == "planned"
+        assert fake.deletes == ["evt_123"]
+        live = await service.rail.latest_delivered_for_workout(user_id, workout_id)
+        assert live is None
+        removed_audit = (
+            (
+                await session.execute(
+                    select(Analysis).where(Analysis.analysis_type == AUDIT_TYPE_REMOVED)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert removed_audit[0].context_packet["intervalsEventId"] == "evt_123"
+        assert removed_audit[0].context_packet["status"] == "removed"
+
+
+@pytest.mark.asyncio
+async def test_remove_rejects_non_added_workout(db_conn: AsyncConnection) -> None:
+    user_id, workout_id = uuid.uuid4(), uuid.uuid4()
+    day = date(2026, 7, 17)
+    await _seed_bike(db_conn, user_id, workout_id, workout_date=day, source="seed")
+    fake = _FakeIntervalsClient()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session, intervals_client=fake)
+
+        with pytest.raises(HTTPException, match="Only user-added workouts can be removed"):
+            await service.remove_workout(user, planned_workout_id=workout_id)
 
 
 @pytest.mark.asyncio

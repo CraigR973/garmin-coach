@@ -701,6 +701,43 @@ describe('DashboardPage', () => {
     });
   });
 
+  it('shows Remove as a first-class action for a user-added workout', async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.plannedWorkouts[0].source = 'plan_action_add';
+      }),
+    );
+
+    expect(await screen.findByRole('button', { name: /^remove$/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^skip$/i })).toBeNull();
+  });
+
+  it('removes an added workout after confirming', async () => {
+    const user = userEvent.setup();
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.plannedWorkouts[0].source = 'plan_action_add';
+        snapshot.data.plannedWorkouts[0].delivery = {
+          liveStatus: 'pushed',
+          liveOrigin: 'as_planned',
+          intervalsEventId: 'evt_1',
+          changed: false,
+          adjustment: null,
+        };
+      }),
+    );
+
+    await user.click(await screen.findByRole('button', { name: /^remove$/i }));
+    await user.click(await screen.findByRole('button', { name: /confirm remove/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        `/api/v1/workout-delivery/planned-workouts/${WORKOUT_ID}/remove`,
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+  });
+
   it('swaps the session to another day', async () => {
     const user = userEvent.setup();
     renderPage();

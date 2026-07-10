@@ -300,6 +300,24 @@ async def test_skip_day_skips_every_active_workout(db_conn: AsyncConnection) -> 
 
 
 @pytest.mark.asyncio
+async def test_schedule_excludes_skipped_workouts_for_week_parity(db_conn: AsyncConnection) -> None:
+    user_id = uuid.uuid4()
+    day = date(2026, 8, 21)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await _seed_user(session, user_id)
+        planned = await _seed_workout(session, user_id, day, workout_type="bike_endurance")
+        skipped = await _seed_workout(
+            session, user_id, day, version=2, workout_type="mobility"
+        )
+        skipped.status = "skipped"
+        await session.commit()
+
+        schedule = await PlanActionService(session).schedule(user, start_date=day, days=1)
+
+    assert [workout.id for workout in schedule.days[0].workouts] == [planned.id]
+
+
+@pytest.mark.asyncio
 async def test_record_actual_captures_unplanned_reality(db_conn: AsyncConnection) -> None:
     user_id = uuid.uuid4()
     day = date(2026, 8, 22)

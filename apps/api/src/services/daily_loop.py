@@ -38,6 +38,7 @@ ANALYSIS_TYPE_POST_WORKOUT = "post_workout"
 ANALYSIS_TYPE_POST_FLEXIBILITY = "post_flexibility"
 ANALYSIS_TYPE_POST_STRENGTH = "post_strength"
 ANALYSIS_TYPE_POST_WALK = "post_walk"
+WORKOUT_STATUS_SKIPPED = "skipped"
 
 
 def _utcnow() -> datetime:
@@ -442,6 +443,7 @@ class DailyLoopService:
                         PlannedWorkout.user_id == user_id,
                         PlannedWorkout.workout_date == subject_date,
                         PlannedWorkout.is_active.is_(True),
+                        PlannedWorkout.status != WORKOUT_STATUS_SKIPPED,
                     )
                     .order_by(PlannedWorkout.created_at.asc())
                 )
