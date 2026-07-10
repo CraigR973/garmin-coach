@@ -409,6 +409,91 @@ describe('WeekAheadPage', () => {
     expect(screen.getByText('Sent to Garmin')).toBeTruthy();
   });
 
+  it('skips just one workout without touching the rest of the day (Batch 79)', async () => {
+    apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
+      if (options?.method === 'POST') {
+        return Promise.resolve(schedule);
+      }
+      if (path === '/api/v1/plan-actions/schedule?days=14') {
+        return Promise.resolve(schedule);
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    const queryClient = new QueryClient();
+    const user = userEvent.setup();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const vo2Row = (await screen.findByText('VO2 Max 30/30')).closest('.rounded-xl') as HTMLElement;
+    await user.click(within(vo2Row).getByRole('button', { name: /^skip$/i }));
+    expect(within(vo2Row).getByText(/Skip just this session/i)).toBeTruthy();
+    await user.click(within(vo2Row).getByRole('button', { name: /confirm skip/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/workout-delivery/planned-workouts/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/skip',
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+    // The day's other workout (Flexibility) is a distinct row untouched by this action.
+    expect(screen.getByText('Flexibility', { selector: 'p' })).toBeTruthy();
+    expect(apiFetchMock).not.toHaveBeenCalledWith(
+      '/api/v1/plan-actions/days/2026-06-23/skip',
+      expect.anything(),
+    );
+  });
+
+  it('removes only a user-added workout, leaving coach-planned sessions their Skip control (Batch 79)', async () => {
+    const mixedSchedule = JSON.parse(JSON.stringify(schedule));
+    mixedSchedule.data.schedule[0].workouts[1].source = 'plan_action_add';
+    apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
+      if (options?.method === 'POST') {
+        return Promise.resolve(mixedSchedule);
+      }
+      if (path === '/api/v1/plan-actions/schedule?days=14') {
+        return Promise.resolve(mixedSchedule);
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    const queryClient = new QueryClient();
+    const user = userEvent.setup();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const vo2Row = (await screen.findByText('VO2 Max 30/30')).closest('.rounded-xl') as HTMLElement;
+    // The coach-planned VO2 session (source !== 'plan_action_add') has no Remove control.
+    expect(within(vo2Row).queryByRole('button', { name: /^remove$/i })).toBeNull();
+
+    const flexRow = screen.getByText('Flexibility', { selector: 'p' }).closest('.rounded-xl') as HTMLElement;
+    await user.click(within(flexRow).getByRole('button', { name: /^remove$/i }));
+    expect(within(flexRow).getByText(/Remove this added workout/i)).toBeTruthy();
+    await user.click(within(flexRow).getByRole('button', { name: /confirm remove/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/workout-delivery/planned-workouts/dddddddd-dddd-4ddd-8ddd-dddddddddddd/remove',
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+    // Removing the added Flexibility session leaves VO2 Max in place — same
+    // endpoints Home uses (DashboardPage), so Home ↔ Week parity holds.
+    expect(screen.getByText('VO2 Max 30/30')).toBeTruthy();
+  });
+
   it('renders the shared error state when the schedule fails to load', async () => {
     apiFetchMock.mockImplementation((path: string) =>
       path === '/api/v1/plan-actions/schedule?days=14'

@@ -162,12 +162,34 @@ export function WeekAheadPage() {
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not skip day'),
   });
 
+  const skipMutation = useMutation({
+    mutationFn: (workoutId: string) =>
+      apiFetch(`/api/v1/workout-delivery/planned-workouts/${workoutId}/skip`, { method: 'POST' }),
+    onSuccess: async () => {
+      await invalidate();
+      toast.success('Session skipped');
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not skip the session'),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (workoutId: string) =>
+      apiFetch(`/api/v1/workout-delivery/planned-workouts/${workoutId}/remove`, { method: 'POST' }),
+    onSuccess: async () => {
+      await invalidate();
+      toast.success('Workout removed');
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not remove the workout'),
+  });
+
   const busy =
     addMutation.isPending ||
     structuredAddMutation.isPending ||
     structuredEditMutation.isPending ||
     moveMutation.isPending ||
-    skipDayMutation.isPending;
+    skipDayMutation.isPending ||
+    skipMutation.isPending ||
+    removeMutation.isPending;
   const moveOptions = useMemo(
     () =>
       pickerWorkout && query.data
@@ -238,6 +260,8 @@ export function WeekAheadPage() {
               onMove={(workout) => setPickerWorkout(workout)}
               onEditStructure={(workout) => setStructuredTarget({ mode: 'edit', workout })}
               onSkipDay={() => skipDayMutation.mutate(day.date)}
+              onSkipWorkout={(workoutId) => skipMutation.mutate(workoutId)}
+              onRemoveWorkout={(workoutId) => removeMutation.mutate(workoutId)}
             />
           ))}
         </div>
@@ -298,6 +322,8 @@ function ScheduleDayCard({
   onMove,
   onEditStructure,
   onSkipDay,
+  onSkipWorkout,
+  onRemoveWorkout,
 }: {
   day: PlanDay;
   isToday: boolean;
@@ -307,6 +333,8 @@ function ScheduleDayCard({
   onMove: (workout: MoveableWorkout) => void;
   onEditStructure: (workout: PlanWorkout) => void;
   onSkipDay: () => void;
+  onSkipWorkout: (workoutId: string) => void;
+  onRemoveWorkout: (workoutId: string) => void;
 }) {
   const hasCompletedWorkout = day.workouts.some((workout) => workout.status === 'completed');
   return (
@@ -333,6 +361,8 @@ function ScheduleDayCard({
               busy={busy}
               onMove={() => onMove({ ...workout, day: day.date })}
               onEditStructure={() => onEditStructure(workout)}
+              onSkip={() => onSkipWorkout(workout.id)}
+              onRemove={() => onRemoveWorkout(workout.id)}
             />
           ))
         )}
@@ -357,13 +387,15 @@ function ScheduleDayCard({
           {day.workouts.length > 0 && (
             <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onSkipDay}>
               <Trash2 className="h-4 w-4" aria-hidden />
-              {hasCompletedWorkout ? 'Skip remaining' : 'Skip day'}
+              {hasCompletedWorkout ? 'Skip remaining' : 'Skip whole day'}
             </Button>
           )}
         </div>
-        {hasCompletedWorkout ? (
+        {day.workouts.length > 0 ? (
           <p className="text-xs text-text-secondary">
-            Completed sessions stay on the day. This skips only the sessions still left to do.
+            {hasCompletedWorkout
+              ? 'Completed sessions stay on the day. This skips only the sessions still left to do.'
+              : 'Use a session’s own Skip or Remove to get rid of just that one — Skip whole day clears everything.'}
           </p>
         ) : null}
       </CardContent>
@@ -376,12 +408,17 @@ function WorkoutRow({
   busy,
   onMove,
   onEditStructure,
+  onSkip,
+  onRemove,
 }: {
   workout: PlanWorkout;
   busy: boolean;
   onMove: () => void;
   onEditStructure: () => void;
+  onSkip: () => void;
+  onRemove: () => void;
 }) {
+  const [confirming, setConfirming] = useState<'skip' | 'remove' | null>(null);
   const Icon = iconFor(workout.workoutType);
   // Batch 60: a completed session can't be re-slotted — the Move control drops
   // out and a "Done" badge takes its place (the swap endpoint also 409s a
@@ -390,6 +427,9 @@ function WorkoutRow({
   const isBike = categoryForWorkoutType(workout.workoutType) === 'cycle';
   const isOutdoor =
     isBike && (workout.structuredWorkout as { delivery?: string } | null)?.delivery === 'outdoor';
+  // Batch 79: Remove only applies to workouts the user added (`remove_workout`
+  // 409s on anything else); coach-planned sessions use Skip instead.
+  const isAdded = workout.source === 'plan_action_add';
   return (
     <div className="rounded-xl border border-border bg-bg px-3 py-3">
       <div className="flex items-start gap-3">
@@ -409,7 +449,7 @@ function WorkoutRow({
         ) : null}
       </div>
       {isOutdoor ? <OutdoorDeliveryBadge delivery={workout.outdoorDelivery ?? null} /> : null}
-      {isComplete ? null : (
+      {isComplete ? null : confirming === null ? (
         <div className="mt-3 flex flex-wrap gap-2">
           <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onMove}>
             Move
@@ -420,6 +460,48 @@ function WorkoutRow({
               Edit structure
             </Button>
           ) : null}
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => setConfirming('skip')}>
+            <Trash2 className="h-4 w-4" aria-hidden />
+            Skip
+          </Button>
+          {isAdded ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => setConfirming('remove')}
+            >
+              <Trash2 className="h-4 w-4" aria-hidden />
+              Remove
+            </Button>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mt-3 rounded-lg border border-error/30 bg-error/10 px-3 py-3">
+          <p className="text-sm text-text-primary">
+            {confirming === 'skip'
+              ? 'Skip just this session? It will be marked as skipped.'
+              : 'Remove this added workout? It will disappear from your plan.'}
+          </p>
+          <div className="mt-2 flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              disabled={busy}
+              onClick={() => {
+                setConfirming(null);
+                if (confirming === 'skip') onSkip();
+                else onRemove();
+              }}
+            >
+              {busy ? 'Working…' : confirming === 'skip' ? 'Confirm skip' : 'Confirm remove'}
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => setConfirming(null)}>
+              Cancel
+            </Button>
+          </div>
         </div>
       )}
     </div>
