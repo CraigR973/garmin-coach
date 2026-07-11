@@ -24,11 +24,14 @@ from src.models.coaching import (
 from src.models.profile import Profile
 from src.services.anthropic_text import generate_anthropic_text
 from src.services.coaching_state import CoachingStateService
+from src.services.holiday_pause import HolidayPauseService, HolidayWindow
+from src.services.personal_baselines import serialize_training_schedule
 from src.services.post_workout_analysis import (
     ClaudeGenerationResult,
     PostWorkoutAnalysisError,
     _activity_local_date,
     _activity_packet,
+    _analysis_rules,
     _data_quality_guardrails,
     _dt,
     _manual_entry_packet,
@@ -37,12 +40,19 @@ from src.services.post_workout_analysis import (
     _utcnow,
 )
 
-PROMPT_VERSION = "post-flexibility-analysis-v2-2026-07-11"
+PROMPT_VERSION = "post-flexibility-analysis-v3-2026-07-12"
 ANALYSIS_TYPE = "post_flexibility"
 WINDOW_4W_DAYS = 28
+FORWARD_PLAN_DAYS = 14
 
 SYSTEM_PROMPT = """You are Garmin Coach, a private mobility and recovery coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
+Use `subjectWeekday` as the authoritative weekday; never derive the weekday from
+`subjectDate` yourself. Treat `mobilityBaseline` as Mark's established daily habit:
+the cycling `weeklyRhythm` is not a mobility budget, so never call a mobility
+session a bonus, overshoot, extra load, or evidence that the week is too full.
+Respect `holidayContext`: a planned workout with `isLive=false` is not live and
+must not be cited as upcoming work. Keep the one light next step within mobility.
 Return concise markdown that acknowledges the mobility session, reads consistency
 against the current routine, notes whether heart rate was unusually high for a
 mobility session, and gives one light next step. This is advisory only: do not
@@ -160,6 +170,58 @@ def compute_flexibility_consistency(
     )
 
 
+def _relevant_holiday_windows(
+    windows: Sequence[HolidayWindow],
+    *,
+    subject_date: date,
+    horizon_days: int = FORWARD_PLAN_DAYS,
+) -> list[HolidayWindow]:
+    horizon_end = subject_date + timedelta(days=horizon_days)
+    return [
+        window
+        for window in windows
+        if window.end_date >= subject_date and window.start_date <= horizon_end
+    ]
+
+
+def _holiday_context(
+    windows: Sequence[HolidayWindow],
+    *,
+    subject_date: date,
+    horizon_days: int = FORWARD_PLAN_DAYS,
+) -> dict[str, Any]:
+    next_week_start = subject_date + timedelta(days=1)
+    next_week_end = subject_date + timedelta(days=7)
+    return {
+        "forwardHorizonDays": horizon_days,
+        "nextWeekIsHoliday": any(
+            window.start_date <= next_week_end and window.end_date >= next_week_start
+            for window in windows
+        ),
+        "windows": [
+            {
+                "startDate": window.start_date.isoformat(),
+                "endDate": window.end_date.isoformat(),
+                "isActive": window.is_active,
+            }
+            for window in windows
+        ],
+    }
+
+
+def _planned_workout_with_holiday(
+    workout: PlannedWorkout,
+    windows: Sequence[HolidayWindow],
+) -> dict[str, Any]:
+    packet = _planned_workout_packet(workout)
+    inside_holiday = any(
+        window.start_date <= workout.workout_date <= window.end_date for window in windows
+    )
+    packet["insideHolidayWindow"] = inside_holiday
+    packet["isLive"] = workout.status != "skipped" and not inside_holiday
+    return packet
+
+
 class PostFlexibilityAnalysisService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -228,6 +290,11 @@ class PostFlexibilityAnalysisService:
         kb_rows = await self._active_knowledge_base(player.id)
         knowledge_base = {row.section: row.content for row in kb_rows}
         planned_workouts = await self._planned_workouts(player.id, subject_date)
+        holiday_windows = _relevant_holiday_windows(
+            await HolidayPauseService(self.session).get_windows(player),
+            subject_date=subject_date,
+        )
+        holiday_context = _holiday_context(holiday_windows, subject_date=subject_date)
         daily_metric = await self._daily_metric(player.id, subject_date)
         checkin = await self._activity_checkin(player.id, activity.id)
         sessions = await self._flexibility_sessions(player.id, as_of=subject_date)
@@ -239,6 +306,7 @@ class PostFlexibilityAnalysisService:
             "packetType": "post_flexibility_analysis",
             "packetVersion": 1,
             "subjectDate": subject_date.isoformat(),
+            "subjectWeekday": subject_date.strftime("%A"),
             "generatedAtUtc": _utcnow().isoformat() + "Z",
             "profile": {
                 "userId": str(player.id),
@@ -249,7 +317,8 @@ class PostFlexibilityAnalysisService:
             "knowledgeBase": {
                 "dataQualityGuardrails": _data_quality_guardrails(knowledge_base),
                 "trainingPlan": knowledge_base.get("training_plan", {}),
-                "analysisRules": knowledge_base.get("analysis_rules", {}),
+                "trainingSchedule": serialize_training_schedule(knowledge_base),
+                "analysisRules": _analysis_rules(knowledge_base),
             },
             "activity": _flexibility_activity_packet(activity),
             "heartRateReview": {
@@ -265,8 +334,19 @@ class PostFlexibilityAnalysisService:
                 "sessionsThisWeek": consistency.sessions_this_week,
                 "sessions4w": consistency.sessions_4w,
                 "sessionsPerWeek4w": consistency.sessions_per_week_4w,
+                "interpretation": "established_daily_mobility_habit",
             },
-            "plannedWorkouts": [_planned_workout_packet(workout) for workout in planned_workouts],
+            "mobilityBaseline": {
+                "cadence": "daily",
+                "isBaselineHabit": True,
+                "weeklyRhythmScope": "cycling_only",
+                "countsAsRecoveryLoad": False,
+            },
+            "holidayContext": holiday_context,
+            "plannedWorkouts": [
+                _planned_workout_with_holiday(workout, holiday_windows)
+                for workout in planned_workouts
+            ],
             "activityCheckIn": _manual_entry_packet(checkin),
             "guardrails": {
                 "advisoryOnly": True,
@@ -279,8 +359,11 @@ class PostFlexibilityAnalysisService:
                 "outputRules": [
                     "acknowledge_mobility_session",
                     "read_consistency_and_streak",
+                    "use_supplied_subject_weekday_never_derive_it",
+                    "treat_daily_mobility_as_baseline_not_plan_overshoot",
+                    "ignore_non_live_workouts_inside_holiday_windows",
                     "flag_unusually_high_heart_rate_when_present",
-                    "give_one_light_next_step",
+                    "give_one_light_mobility_only_next_step",
                     "do_not_discuss_power_or_zones",
                     "do_not_make_recovery_decisions",
                 ],
@@ -368,10 +451,12 @@ class PostFlexibilityAnalysisService:
                     select(PlannedWorkout)
                     .where(
                         PlannedWorkout.user_id == user_id,
-                        PlannedWorkout.workout_date == subject_date,
+                        PlannedWorkout.workout_date >= subject_date,
+                        PlannedWorkout.workout_date
+                        <= subject_date + timedelta(days=FORWARD_PLAN_DAYS),
                         PlannedWorkout.is_active.is_(True),
                     )
-                    .order_by(PlannedWorkout.version.desc())
+                    .order_by(PlannedWorkout.workout_date.asc(), PlannedWorkout.version.desc())
                 )
             )
             .scalars()

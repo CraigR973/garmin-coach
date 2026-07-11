@@ -521,6 +521,9 @@ async def test_context_packet_grades_work_intervals_for_structured_ride(
 
         packet = await PostWorkoutAnalysisService(session).assemble_context_packet(player, activity)
 
+        assert packet["subjectWeekday"] == "Monday"
+        assert packet["knowledgeBase"]["analysisRules"]["dataQualityRules"]["rules"]
+        assert packet["knowledgeBase"]["analysisRules"]["coachingProtocol"]
         ir = packet["plannedWorkoutIr"]
         assert ir is not None
         assert ir["steps"]

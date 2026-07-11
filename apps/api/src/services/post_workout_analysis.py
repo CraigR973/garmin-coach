@@ -51,7 +51,7 @@ from src.services.workout_delivery import (
 # Bumped for Batch 80 (#153): the packet carries a deterministic ``rideDeviation``
 # read so the analyst renders an honest good-call/bad-call verdict when the ride
 # diverged from the planned/delivered session (Mark's Q1a).
-PROMPT_VERSION = "post-workout-analysis-v6-2026-07-11"
+PROMPT_VERSION = "post-workout-analysis-v7-2026-07-12"
 ANALYSIS_TYPE = "post_workout"
 
 # A planned session Mark told the app he was not doing (``skip_workout`` /
@@ -60,6 +60,8 @@ ANALYSIS_TYPE = "post_workout"
 WORKOUT_STATUS_SKIPPED = "skipped"
 SYSTEM_PROMPT = """You are Garmin Coach, a private endurance post-workout analyst.
 Use only the supplied context packet. Follow every data-quality guardrail.
+Use `subjectWeekday` as the authoritative weekday; never derive the weekday from
+`subjectDate` yourself.
 Return concise markdown with a workout rating, performance read, specific timed
 recovery protocol, and tomorrow impact. Incorporate any post-ride check-in
 (RPE, feel, legs, niggles) when present. Include power, HR, zones, cadence,
@@ -315,6 +317,7 @@ class PostWorkoutAnalysisService:
             "packetType": "post_workout_analysis",
             "packetVersion": 1,
             "subjectDate": subject_date.isoformat(),
+            "subjectWeekday": subject_date.strftime("%A"),
             "generatedAtUtc": _utcnow().isoformat() + "Z",
             "profile": {
                 "userId": str(player.id),
@@ -326,7 +329,7 @@ class PostWorkoutAnalysisService:
             "knowledgeBase": {
                 "dataQualityGuardrails": _data_quality_guardrails(knowledge_base),
                 "trainingPlan": knowledge_base.get("training_plan", {}),
-                "analysisRules": knowledge_base.get("analysis_rules", {}),
+                "analysisRules": _analysis_rules(knowledge_base),
             },
             "activity": _activity_packet(activity),
             "timeSeriesSummary": time_series_summary,
@@ -678,6 +681,15 @@ def _data_quality_guardrails(knowledge_base: Mapping[str, Any]) -> list[dict[str
     if not isinstance(rules, list):
         return []
     return [rule for rule in rules if isinstance(rule, dict)]
+
+
+def _analysis_rules(knowledge_base: Mapping[str, Any]) -> dict[str, Any]:
+    """Expose the real seeded rule sections under the legacy packet key."""
+
+    return {
+        "dataQualityRules": knowledge_base.get("data_quality_rules", {}),
+        "coachingProtocol": knowledge_base.get("coaching_protocol", {}),
+    }
 
 
 def _ftp_watts(knowledge_base: Mapping[str, Any]) -> int | None:

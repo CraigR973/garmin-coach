@@ -31,6 +31,7 @@ from src.services.post_workout_analysis import (
     PostWorkoutAnalysisError,
     _activity_local_date,
     _activity_packet,
+    _analysis_rules,
     _data_quality_guardrails,
     _dt,
     _manual_entry_packet,
@@ -40,7 +41,7 @@ from src.services.post_workout_analysis import (
     _utcnow,
 )
 
-PROMPT_VERSION = "post-walk-analysis-v2-2026-07-11"
+PROMPT_VERSION = "post-walk-analysis-v3-2026-07-12"
 ANALYSIS_TYPE = "post_walk"
 WALK_ANALYSIS_MIN_DURATION_SEC = 30 * 60
 WALK_ANALYSIS_MIN_DISTANCE_M = 3_000
@@ -48,6 +49,8 @@ ACTIVE_RECOVERY_WINDOW_DAYS = 7
 
 SYSTEM_PROMPT = """You are Garmin Coach, a private Zone-2 walking and active-recovery coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
+Use `subjectWeekday` as the authoritative weekday; never derive the weekday from
+`subjectDate` yourself.
 Return concise markdown that reads whether this was genuine easy aerobic work,
 notes pace/heart-rate drift when the data supports it, places the walk in recent
 active-recovery volume, and gives one practical next step. This is advisory only:
@@ -218,6 +221,7 @@ class PostWalkAnalysisService:
             "packetType": "post_walk_analysis",
             "packetVersion": 1,
             "subjectDate": subject_date.isoformat(),
+            "subjectWeekday": subject_date.strftime("%A"),
             "generatedAtUtc": _utcnow().isoformat() + "Z",
             "profile": {
                 "userId": str(player.id),
@@ -229,7 +233,7 @@ class PostWalkAnalysisService:
             "knowledgeBase": {
                 "dataQualityGuardrails": _data_quality_guardrails(knowledge_base),
                 "trainingPlan": knowledge_base.get("training_plan", {}),
-                "analysisRules": knowledge_base.get("analysis_rules", {}),
+                "analysisRules": _analysis_rules(knowledge_base),
             },
             "activity": _walk_activity_packet(activity),
             "heartRateReview": {
