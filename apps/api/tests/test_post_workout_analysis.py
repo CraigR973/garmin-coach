@@ -24,9 +24,11 @@ from src.services.post_workout_analysis import (
     PROMPT_VERSION,
     ClaudeGenerationResult,
     PostWorkoutAnalysisService,
+    RideGradingTarget,
     _is_ride,
     _planned_ride_ir,
     _recovery_decision_packet,
+    detect_ride_deviation,
 )
 from src.services.workout_delivery import (
     build_intervals_payload,
@@ -652,6 +654,12 @@ async def test_context_packet_prefers_delivered_proposal_ir_for_grading(
             in packet["workoutAdherence"]["actualWorkoutJson"]["changeSummary"]
         )
         assert "grade_against_delivered_proposal_ir_when_present" in packet["prompt"]["outputRules"]
+        # Batch 80: an approved coach-adjustment is a sanctioned change, not a
+        # self-chosen override, so it carries no deviation verdict even though the
+        # ride grades against the eased (not the original VO2) target.
+        assert packet["rideDeviation"]["diverged"] is False
+        assert packet["rideDeviation"]["wasApprovedAdjustment"] is True
+        assert packet["rideDeviation"]["kind"] == "approved_adjustment"
 
 
 @pytest.mark.asyncio
@@ -705,6 +713,9 @@ async def test_context_packet_falls_back_to_whole_ride_without_plan(
         assert "wholeRideContextNote" not in packet["execution"]
         # The whole-ride zone histogram is still the read for a free ride.
         assert packet["timeSeriesSummary"]["powerZones"]
+        # Batch 80: no bike was planned, so a spontaneous ride is not a plan override.
+        assert packet["rideDeviation"]["diverged"] is False
+        assert packet["rideDeviation"]["kind"] == "free_ride"
 
         result = await service.generate_and_store(player, activity, client=FakePostWorkoutClient())
         assert result.generated is True
@@ -768,3 +779,479 @@ async def test_prompt_version_bump_marks_older_analysis_for_regeneration(
         assert result.analysis.prompt_version == PROMPT_VERSION
 
         assert await service.pending_ride_activities(user_id, since=datetime(2026, 1, 1)) == []
+
+
+# ---------------------------------------------------------------------------
+# Batch 80 — deviation verdict (Mark's Q1a): was overriding the plan the right call?
+# ---------------------------------------------------------------------------
+
+
+def _bike_workout(
+    *,
+    status: str = "planned",
+    workout_type: str = "bike_vo2",
+    title: str = "VO2 builder",
+) -> PlannedWorkout:
+    return PlannedWorkout(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        version=1,
+        workout_date=date(2026, 1, 8),
+        title=title,
+        workout_type=workout_type,
+        status=status,
+        is_active=True,
+        intensity_target="120% FTP",
+        planned_duration_min=47,
+        structured_workout=_VO2_STRUCTURED,
+    )
+
+
+def _ride(*, avg_power: int = 150, avg_hr: int = 120, duration_sec: int = 1800) -> Activity:
+    return Activity(
+        user_id=uuid.uuid4(),
+        garmin_activity_id=99,
+        activity_name="Self-chosen ride",
+        activity_type="indoor_cycling",
+        start_utc=datetime(2026, 1, 8, 11, 0),
+        duration_sec=duration_sec,
+        avg_power_watts=avg_power,
+        avg_heart_rate_bpm=avg_hr,
+    )
+
+
+def _grade(
+    *,
+    has_plan: bool = True,
+    work: int = 1,
+    on: int = 0,
+    over: int = 0,
+    under: int = 1,
+) -> dict[str, Any]:
+    """Mirror ``summarize_execution``'s shape for the deterministic detector."""
+    return {
+        "hasPlan": has_plan,
+        "workIntervalCount": work,
+        "onTargetCount": on,
+        "overCount": over,
+        "underCount": under,
+        "summary": f"{work} work interval(s): {on} on target, {over} over, {under} under.",
+        "wholeRideAvgPowerWatts": 150,
+    }
+
+
+def _morning(verdict: str) -> dict[str, Any]:
+    return {
+        "verdict": verdict,
+        "readinessInterpretation": "context readiness note",
+        "reasons": [],
+        "planAdjustments": [],
+    }
+
+
+def test_detect_deviation_easier_than_planned_on_low_readiness() -> None:
+    """Test case 1: a self-chosen easy ride on a hard-planned low-readiness day is a
+    deviation, anchored on the objective grade + the Red morning."""
+    planned = _bike_workout()
+    grading = RideGradingTarget(
+        ir={"name": "VO2 builder"}, source="planned_workout", planned_workout=planned, proposal=None
+    )
+    result = detect_ride_deviation(
+        grading_target=grading,
+        execution=_grade(work=1, on=0, over=0, under=1),
+        planned_workouts=[planned],
+        workout_adherence=None,
+        activity=_ride(),
+        morning_verdict=_morning("Red"),
+    )
+
+    assert result["diverged"] is True
+    assert result["kind"] == "easier_than_planned"
+    assert result["wasApprovedAdjustment"] is False
+    assert result["plannedSessionSkipped"] is False
+    assert "under target" in result["reason"]
+    assert result["morningReadiness"]["verdict"] == "Red"
+    assert result["planned"]["workoutType"] == "bike_vo2"
+    assert result["signals"]["underCount"] == 1
+
+
+def test_detect_deviation_harder_than_planned() -> None:
+    planned = _bike_workout(workout_type="bike_recovery", title="Recovery spin")
+    grading = RideGradingTarget(
+        ir={"name": "Recovery"}, source="planned_workout", planned_workout=planned, proposal=None
+    )
+    result = detect_ride_deviation(
+        grading_target=grading,
+        execution=_grade(work=2, on=0, over=2, under=0),
+        planned_workouts=[planned],
+        workout_adherence=None,
+        activity=_ride(avg_power=240),
+        morning_verdict=_morning("Green"),
+    )
+
+    assert result["diverged"] is True
+    assert result["kind"] == "harder_than_planned"
+    assert "over target" in result["reason"]
+
+
+def test_detect_deviation_on_plan_attempt_is_not_flagged() -> None:
+    """Test case 3: an on-plan ride (some work on target = a real attempt) gets no
+    deviation verdict, even if a single interval faded under."""
+    planned = _bike_workout()
+    grading = RideGradingTarget(
+        ir={"name": "VO2 builder"}, source="planned_workout", planned_workout=planned, proposal=None
+    )
+    result = detect_ride_deviation(
+        grading_target=grading,
+        execution=_grade(work=3, on=2, over=0, under=1),
+        planned_workouts=[planned],
+        workout_adherence=None,
+        activity=_ride(avg_power=250),
+        morning_verdict=_morning("Green"),
+    )
+
+    assert result["diverged"] is False
+    assert result["kind"] == "on_plan"
+
+
+def test_detect_deviation_skipped_key_session_flags_regardless_of_grade() -> None:
+    """Test case 2: an unjustified skip of a key session is a deviation even before
+    the (all-under) objective grade — the good/bad-call judgement is the prompt's,
+    anchored on the Green morning this packet carries."""
+    skipped = _bike_workout(status="skipped")
+    grading = RideGradingTarget(
+        ir={"name": "VO2 builder"}, source="planned_workout", planned_workout=skipped, proposal=None
+    )
+    result = detect_ride_deviation(
+        grading_target=grading,
+        execution=_grade(work=1, on=0, over=0, under=1),
+        planned_workouts=[skipped],
+        workout_adherence=None,
+        activity=_ride(),
+        morning_verdict=_morning("Green"),
+    )
+
+    assert result["diverged"] is True
+    assert result["kind"] == "skipped_and_rode"
+    assert result["plannedSessionSkipped"] is True
+    assert "Skipped" in result["reason"]
+    assert result["morningReadiness"]["verdict"] == "Green"
+
+
+def test_detect_deviation_approved_adjustment_is_not_a_deviation() -> None:
+    """An approved coach-adjustment (Batch 68/69) is a sanctioned change, never a
+    self-chosen override — detected via the IR adjustment flag or the adherence
+    marker, even when the ride grades all-under against the eased target."""
+    planned = _bike_workout()
+    via_ir = RideGradingTarget(
+        ir={"adjustment": {"changed": True}, "origin": "red_substitution", "name": "Recovery sub"},
+        source="delivered_proposal",
+        planned_workout=planned,
+        proposal=None,
+    )
+    result_ir = detect_ride_deviation(
+        grading_target=via_ir,
+        execution=_grade(work=1, on=0, over=0, under=1),
+        planned_workouts=[planned],
+        workout_adherence=None,
+        activity=_ride(),
+        morning_verdict=_morning("Red"),
+    )
+    assert result_ir["diverged"] is False
+    assert result_ir["wasApprovedAdjustment"] is True
+    assert result_ir["kind"] == "approved_adjustment"
+
+    via_adherence = RideGradingTarget(
+        ir={"name": "Recovery sub"},
+        source="delivered_proposal",
+        planned_workout=planned,
+        proposal=None,
+    )
+    adherence = ManualEntry(
+        user_id=uuid.uuid4(),
+        entry_date=date(2026, 1, 8),
+        entry_at_utc=datetime(2026, 1, 8, 12, 0),
+        adherence_status="modified",
+        actual_workout_json={"source": "accepted_adjustment", "changeSummary": "Eased ride."},
+    )
+    result_adh = detect_ride_deviation(
+        grading_target=via_adherence,
+        execution=_grade(work=1, on=0, over=0, under=1),
+        planned_workouts=[planned],
+        workout_adherence=adherence,
+        activity=_ride(),
+        morning_verdict=_morning("Amber"),
+    )
+    assert result_adh["diverged"] is False
+    assert result_adh["wasApprovedAdjustment"] is True
+
+
+def test_detect_deviation_free_ride_with_no_plan_is_not_flagged() -> None:
+    """A day with no bike plan is a free ride, not a plan override — nothing to
+    diverge from, so no deviation verdict (keeps spontaneous rides unflagged)."""
+    grading = RideGradingTarget(ir=None, source="none", planned_workout=None, proposal=None)
+    result = detect_ride_deviation(
+        grading_target=grading,
+        execution=_grade(has_plan=False, work=0, on=0, over=0, under=0),
+        planned_workouts=[],
+        workout_adherence=None,
+        activity=_ride(),
+        morning_verdict=None,
+    )
+
+    assert result["diverged"] is False
+    assert result["kind"] == "free_ride"
+    assert result["morningReadiness"] is None
+
+
+def test_detect_deviation_ungradable_plan_is_not_a_false_positive() -> None:
+    """A planned ride with no power trace to grade (work=0, nothing on/over/under)
+    must not be mistaken for an all-under easier ride."""
+    planned = _bike_workout()
+    grading = RideGradingTarget(
+        ir={"name": "VO2 builder"}, source="planned_workout", planned_workout=planned, proposal=None
+    )
+    result = detect_ride_deviation(
+        grading_target=grading,
+        execution=_grade(has_plan=True, work=0, on=0, over=0, under=0),
+        planned_workouts=[planned],
+        workout_adherence=None,
+        activity=_ride(),
+        morning_verdict=_morning("Green"),
+    )
+
+    assert result["diverged"] is False
+    assert result["kind"] == "on_plan"
+
+
+@pytest.mark.asyncio
+async def test_context_packet_flags_self_chosen_easy_ride_on_hard_low_readiness_day(
+    db_conn: AsyncConnection,
+) -> None:
+    """End-to-end: a planned hard VO2, a Red morning, and a self-chosen easy ride →
+    the packet carries a diverged read anchored on the Red readiness."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Deviation Easy",
+            pin_hash="x" * 60,
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+
+        session.add(
+            Analysis(
+                user_id=user_id,
+                analysis_type="morning",
+                subject_date=date(2026, 1, 8),
+                generated_at_utc=datetime(2026, 1, 8, 6, 30),
+                prompt_version="morning-analysis-test",
+                model_name="claude-test",
+                verdict="Red",
+                context_packet={"verdict": {"readinessInterpretation": "Poor readiness."}},
+                output_markdown="cautious",
+                raw_response={},
+            )
+        )
+        session.add(
+            PlannedWorkout(
+                user_id=user_id,
+                workout_date=date(2026, 1, 8),
+                version=1,
+                title="VO2 builder",
+                workout_type="bike_vo2",
+                status="planned",
+                is_active=True,
+                intensity_target="120% FTP",
+                structured_workout=_VO2_STRUCTURED,
+                source="test",
+            )
+        )
+        activity = Activity(
+            user_id=user_id,
+            garmin_activity_id=880001,
+            activity_name="Easy spin instead",
+            activity_type="indoor_cycling",
+            start_utc=datetime(2026, 1, 8, 11, 0),
+            duration_sec=900,
+            avg_power_watts=130,
+            raw_summary={},
+        )
+        session.add(activity)
+        await session.flush()
+        # VO2 IR windows: warm-up [0,300) VO2 [300,420) recovery [420,600) cool [600,900).
+        # An easy ~130 W in the VO2 window is well under the 120% work target.
+        session.add_all(
+            [
+                _sample(activity.id, 0, 100, 120, 105),
+                _sample(activity.id, 1, 360, 130, 118),
+                _sample(activity.id, 2, 500, 120, 110),
+                _sample(activity.id, 3, 700, 110, 105),
+            ]
+        )
+        await session.commit()
+
+        packet = await PostWorkoutAnalysisService(session).assemble_context_packet(player, activity)
+
+        deviation = packet["rideDeviation"]
+        assert deviation["diverged"] is True
+        assert deviation["kind"] == "easier_than_planned"
+        assert deviation["morningReadiness"]["verdict"] == "Red"
+        assert packet["execution"]["underCount"] >= 1
+        assert (
+            "render_deviation_verdict_when_ride_diverged_from_plan"
+            in packet["prompt"]["outputRules"]
+        )
+
+
+@pytest.mark.asyncio
+async def test_context_packet_flags_skipped_key_session_and_rode(
+    db_conn: AsyncConnection,
+) -> None:
+    """A skipped key session plus a self-chosen ride → diverged skip read, anchored
+    on the Green morning (the prompt renders the 'set you back' call)."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Deviation Skip",
+            pin_hash="x" * 60,
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+
+        session.add(
+            Analysis(
+                user_id=user_id,
+                analysis_type="morning",
+                subject_date=date(2026, 1, 8),
+                generated_at_utc=datetime(2026, 1, 8, 6, 30),
+                prompt_version="morning-analysis-test",
+                model_name="claude-test",
+                verdict="Green",
+                context_packet={"verdict": {"readinessInterpretation": "Good readiness."}},
+                output_markdown="go",
+                raw_response={},
+            )
+        )
+        session.add(
+            PlannedWorkout(
+                user_id=user_id,
+                workout_date=date(2026, 1, 8),
+                version=1,
+                title="VO2 builder",
+                workout_type="bike_vo2",
+                status="skipped",
+                is_active=True,
+                intensity_target="120% FTP",
+                structured_workout=_VO2_STRUCTURED,
+                source="test",
+            )
+        )
+        activity = Activity(
+            user_id=user_id,
+            garmin_activity_id=880002,
+            activity_name="Easy ride instead of VO2",
+            activity_type="indoor_cycling",
+            start_utc=datetime(2026, 1, 8, 11, 0),
+            duration_sec=900,
+            avg_power_watts=120,
+            raw_summary={},
+        )
+        session.add(activity)
+        await session.flush()
+        session.add_all(
+            [
+                _sample(activity.id, 0, 100, 120, 105),
+                _sample(activity.id, 1, 360, 125, 116),
+                _sample(activity.id, 2, 500, 118, 110),
+            ]
+        )
+        await session.commit()
+
+        packet = await PostWorkoutAnalysisService(session).assemble_context_packet(player, activity)
+
+        deviation = packet["rideDeviation"]
+        assert deviation["diverged"] is True
+        assert deviation["kind"] == "skipped_and_rode"
+        assert deviation["plannedSessionSkipped"] is True
+        assert deviation["morningReadiness"]["verdict"] == "Green"
+
+
+@pytest.mark.asyncio
+async def test_context_packet_on_plan_ride_has_no_deviation_verdict(
+    db_conn: AsyncConnection,
+) -> None:
+    """Test case 3 end-to-end: an on-target sweet-spot ride is not flagged, so the
+    read has no deviation verdict."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="On Plan Ride",
+            pin_hash="x" * 60,
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+
+        activity = Activity(
+            user_id=user_id,
+            garmin_activity_id=880003,
+            activity_name="Sweet spot as planned",
+            activity_type="indoor_cycling",
+            start_utc=datetime(2026, 1, 5, 11, 0),
+            duration_sec=2400,
+            avg_power_watts=205,
+            raw_summary={},
+        )
+        session.add(activity)
+        await session.flush()
+
+        session.add(
+            PlannedWorkout(
+                user_id=user_id,
+                workout_date=date(2026, 1, 5),
+                version=1,
+                title="Sweet spot",
+                workout_type="cycling",
+                status="planned",
+                is_active=True,
+                intensity_target="88-94%",
+                structured_workout=_SWEET_SPOT_STRUCTURED,
+                source="test",
+            )
+        )
+        # Work window [600,1800) held at ~255 W ≈ 91% of the seeded 280 W FTP = on target.
+        session.add_all(
+            [
+                _sample(activity.id, 0, 100, 150, 110),
+                _sample(activity.id, 1, 700, 255, 150),
+                _sample(activity.id, 2, 1200, 255, 150),
+                _sample(activity.id, 3, 1700, 255, 150),
+                _sample(activity.id, 4, 1900, 130, 120),
+                _sample(activity.id, 5, 2200, 120, 110),
+            ]
+        )
+        await session.commit()
+
+        packet = await PostWorkoutAnalysisService(session).assemble_context_packet(player, activity)
+
+        assert packet["execution"]["onTargetCount"] == 1
+        assert packet["rideDeviation"]["diverged"] is False
+        assert packet["rideDeviation"]["kind"] == "on_plan"
