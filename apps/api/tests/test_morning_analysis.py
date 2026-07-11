@@ -30,9 +30,11 @@ from src.services.morning_analysis import (
     MorningAnalysisService,
     _daily_metric_packet,
     _morning_verdict,
+    _thermal_action,
     _training_and_activity_fields,
     _yesterday_load_packet,
     build_morning_user_prompt,
+    build_today_actions,
 )
 
 
@@ -351,6 +353,16 @@ async def test_amber_morning_leads_with_week_swap_and_keeps_softening(
     assert swap["moveToWeekday"] == "Saturday"
     assert swap["bringForwardTitle"] == "Z2 + Neuromuscular"
 
+    # Batch 86 (#159): the same cautious morning surfaces the deterministic Today
+    # action block — the swap leads, then the eased-ride approval carrying the real
+    # today-bike id so the frontend can approve through the existing rail.
+    actions = verdict["todayActions"]
+    assert [action["kind"] for action in actions][:2] == ["apply_swap", "approve_ride"]
+    assert actions[0]["targetDate"] == saturday.isoformat()
+    assert actions[0]["plannedWorkoutId"] == swap["hardWorkoutId"]
+    approve = next(action for action in actions if action["kind"] == "approve_ride")
+    assert approve["plannedWorkoutId"] == swap["hardWorkoutId"]
+
     adjustments = verdict["planAdjustments"]
     # The swap leads; softening stays available as the explicit fallback.
     assert "move it to saturday" in adjustments[0].lower()
@@ -613,7 +625,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v8")
+    assert PROMPT_VERSION.startswith("morning-analysis-v9")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
 
@@ -973,3 +985,134 @@ def test_daily_metric_packet_safe_without_raw_payload() -> None:
     assert packet is not None
     assert packet["acuteChronicLoadRatio"] is None
     assert packet["intensityMinutes"] is None
+
+
+# --- Batch 86 (#159): deterministic "Today" action block ---------------------
+
+
+def _bike_workout(**overrides: Any) -> PlannedWorkout:
+    defaults: dict[str, Any] = {
+        "id": uuid.uuid4(),
+        "user_id": uuid.uuid4(),
+        "workout_date": date(2026, 7, 11),
+        "version": 1,
+        "title": "Sweet Spot 3x12",
+        "workout_type": "bike_sweet_spot",
+        "structured_workout": {},
+    }
+    defaults.update(overrides)
+    return PlannedWorkout(**defaults)
+
+
+def _swap_packet() -> dict[str, Any]:
+    return {
+        "hardWorkoutId": str(uuid.uuid4()),
+        "hardTitle": "VO2 5x4",
+        "hardCategory": "cycle",
+        "moveToDate": "2026-07-18",
+        "moveToWeekday": "Saturday",
+        "bringForwardTitle": "Zone 2 endurance",
+    }
+
+
+def test_build_today_actions_leads_with_swap_then_ride() -> None:
+    ride = _bike_workout()
+    swap = _swap_packet()
+    actions = build_today_actions(
+        verdict={"status": "Amber", "swapSuggestion": swap},
+        planned_workouts=[ride],
+        thermal_review={"flags": []},
+        recommend_breathwork=False,
+    )
+
+    assert [action["kind"] for action in actions] == ["apply_swap", "approve_ride"]
+    assert actions[0]["plannedWorkoutId"] == swap["hardWorkoutId"]
+    assert actions[0]["targetDate"] == "2026-07-18"
+    assert "Saturday" in actions[0]["title"]
+    assert actions[1]["plannedWorkoutId"] == str(ride.id)
+    assert actions[1]["detail"]  # a scannable hint is always present
+
+
+def test_build_today_actions_red_ride_detail_and_no_swap() -> None:
+    ride = _bike_workout(workout_type="bike_endurance")
+    actions = build_today_actions(
+        verdict={"status": "Red"},
+        planned_workouts=[ride],
+        thermal_review={"flags": []},
+        recommend_breathwork=False,
+    )
+
+    assert [action["kind"] for action in actions] == ["approve_ride"]
+    assert "recovery" in actions[0]["detail"].lower()
+
+
+def test_build_today_actions_green_clean_degrades_to_empty() -> None:
+    actions = build_today_actions(
+        verdict={"status": "Green"},
+        planned_workouts=[_bike_workout()],
+        thermal_review={"flags": []},
+        recommend_breathwork=False,
+    )
+
+    assert actions == []
+
+
+def test_build_today_actions_sleep_and_thermal_nudges() -> None:
+    actions = build_today_actions(
+        verdict={"status": "Green"},
+        planned_workouts=[],
+        thermal_review={
+            "flags": ["thermal_disruption_likely"],
+            "indoorPeakC": 20.4,
+            "targetPreCoolC": 17.0,
+        },
+        recommend_breathwork=True,
+    )
+
+    assert [action["kind"] for action in actions] == ["sleep", "thermal"]
+    sleep = actions[0]
+    assert sleep["href"] == "/sleep"
+    assert sleep["plannedWorkoutId"] is None
+    thermal = actions[1]
+    assert thermal["href"] == "/sleep"
+    assert "20.4" in thermal["detail"]
+
+
+def test_build_today_actions_skips_completed_ride_and_truncates() -> None:
+    completed = _bike_workout(status="completed")
+    active = _bike_workout(workout_type="bike_tempo")
+    verdict = {"status": "Amber", "swapSuggestion": _swap_packet()}
+    thermal = {"flags": ["precool_target_missed"], "indoorPeakC": 19.8, "targetPreCoolC": 17.0}
+
+    actions = build_today_actions(
+        verdict=verdict,
+        planned_workouts=[completed, active],
+        thermal_review=thermal,
+        recommend_breathwork=True,
+    )
+
+    # The completed session is never offered for approval; the active bike is.
+    assert [action["kind"] for action in actions] == [
+        "apply_swap",
+        "approve_ride",
+        "sleep",
+        "thermal",
+    ]
+    approve = next(action for action in actions if action["kind"] == "approve_ride")
+    assert approve["plannedWorkoutId"] == str(active.id)
+
+    # max_actions truncates in priority order.
+    capped = build_today_actions(
+        verdict=verdict,
+        planned_workouts=[completed, active],
+        thermal_review=thermal,
+        recommend_breathwork=True,
+        max_actions=2,
+    )
+    assert [action["kind"] for action in capped] == ["apply_swap", "approve_ride"]
+
+
+def test_thermal_action_ignores_a_cool_room() -> None:
+    assert _thermal_action({"flags": ["wind_disruption_watch"]}) is None
+    assert _thermal_action({"flags": []}) is None
+    assert _thermal_action({}) is None

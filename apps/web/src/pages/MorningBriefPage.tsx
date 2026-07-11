@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { TodayActions } from '@/components/TodayActions';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
 import { formatDateTime, friendlyDate } from '@/lib/dailyFlow';
 
@@ -57,6 +58,7 @@ export function MorningBriefPage() {
 
       {analysis ? (
         <>
+          <TodayActions actions={analysis.todayActions} workouts={data.plannedWorkouts} />
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">

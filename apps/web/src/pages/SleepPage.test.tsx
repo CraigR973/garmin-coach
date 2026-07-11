@@ -31,6 +31,7 @@ const snapshot: DailyLoopEnvelope = {
       planAdjustments: [],
       reasons: ['Sleep and HRV are in range.'],
       readinessInterpretation: 'load_driven',
+      todayActions: [],
       thermalReview: {},
       metricsVsBaselines: [
         {

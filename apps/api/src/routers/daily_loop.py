@@ -135,6 +135,9 @@ class AnalysisOut(BaseModel):
     ageComparison: dict[str, Any]
     swapSuggestion: dict[str, Any] | None = None
     weeklyMix: dict[str, Any] | None = None
+    # Batch 86 (#159): deterministic "Today" action block rendered above the brief
+    # prose; rides in context_packet["verdict"], so no migration.
+    todayActions: list[dict[str, Any]] = []
     feedback: FeedbackOut | None = None
 
 
@@ -545,6 +548,11 @@ def _serialize_analysis(
             verdict.get("weeklyMix")
             if isinstance(verdict, dict) and isinstance(verdict.get("weeklyMix"), dict)
             else None
+        ),
+        todayActions=(
+            verdict.get("todayActions", [])
+            if isinstance(verdict, dict) and isinstance(verdict.get("todayActions"), list)
+            else []
         ),
         feedback=serialize_feedback(feedback) if feedback is not None else None,
     )

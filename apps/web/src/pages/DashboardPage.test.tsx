@@ -50,6 +50,7 @@ const baseSnapshot: DailyLoopEnvelope = {
       planAdjustments: ['Keep the scheduled ride.'],
       reasons: ['Sleep and HRV are in range.'],
       readinessInterpretation: 'load_driven',
+      todayActions: [],
       thermalReview: {},
       metricsVsBaselines: [
         {
