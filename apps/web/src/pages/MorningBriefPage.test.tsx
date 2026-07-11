@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DailyLoopEnvelope } from '@/hooks/useDailyLoop';
@@ -30,6 +30,7 @@ const snapshot: DailyLoopEnvelope = {
       planAdjustments: ['Keep the scheduled ride.'],
       reasons: ['Sleep and HRV are in range.'],
       readinessInterpretation: 'load_driven',
+      todayActions: [],
       thermalReview: {},
       metricsVsBaselines: [
         {
@@ -99,6 +100,28 @@ describe('morning brief page', () => {
   it('renders the full morning brief page', async () => {
     renderWithQuery(<MorningBriefPage />);
     expect(await screen.findByText('Coach read')).toBeTruthy();
+    expect(screen.getByText('Green light')).toBeTruthy();
+  });
+
+  it('leads with the Today action block above the coach read (Batch 86)', async () => {
+    const withAction = structuredClone(snapshot);
+    withAction.data.morningAnalysis!.todayActions = [
+      { kind: 'sleep', title: 'Wind-down breathwork tonight', href: '/sleep' },
+    ];
+    apiFetchMock.mockImplementation(() => Promise.resolve(withAction));
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <MorningBriefPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const block = await screen.findByTestId('today-actions');
+    expect(within(block).getByText('Wind-down breathwork tonight')).toBeTruthy();
+    // The coaching reasoning still renders below the action block.
+    expect(screen.getByText('Coach read')).toBeTruthy();
     expect(screen.getByText('Green light')).toBeTruthy();
   });
 });

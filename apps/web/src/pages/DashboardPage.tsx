@@ -53,6 +53,7 @@ import { SleepPrepBody } from '@/components/SleepPrepBody';
 import { BedroomBody } from '@/components/BedroomBody';
 import { DetailLinkCard } from '@/components/DetailLinkCard';
 import { WeeklyMixCard } from '@/components/WeeklyMixCard';
+import { TodayActions } from '@/components/TodayActions';
 import { useAuth } from '@/contexts/AuthContext';
 import { isBikeWorkout, useDailyPhase } from '@/hooks/useDailyPhase';
 import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
@@ -632,6 +633,14 @@ export function DashboardPage() {
           feedback={analysis.feedback ?? null}
           className="px-1"
         />
+      ) : null}
+
+      {/* Batch 86: the day's actions lead — workout adjustment first-class and
+          tappable-to-approve, plus swap/sleep/thermal — above the reasoning the
+          Today/Sleep cards still carry below. Renders nothing until a brief exists
+          or when nothing is actionable. */}
+      {analysis ? (
+        <TodayActions actions={analysis.todayActions} workouts={todaysWorkouts} />
       ) : null}
 
       <NextActionStrip action={action} onGoToSection={scrollToSection} />

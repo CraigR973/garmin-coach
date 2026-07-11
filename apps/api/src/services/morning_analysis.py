@@ -43,6 +43,7 @@ from src.services.post_walk_analysis import active_recovery_walk_context
 from src.services.sleep_scoring import (
     age_adjusted_sleep_score as compute_age_adjusted_sleep_score,
 )
+from src.services.workout_categories import is_bike_workout_type
 
 # Batch 64 (#137): the packet now carries the user's most recent corrections so
 # the read can acknowledge/adjust when Mark has told it it was wrong.
@@ -56,7 +57,12 @@ from src.services.sleep_scoring import (
 # Batch 85 (#158): the check-in is now the primary generate trigger, so the read
 # must answer a question Mark leaves in his check-in notes (grounded in the packet)
 # — the prompt gains that instruction, so the version bumps again.
-PROMPT_VERSION = "morning-analysis-v8-2026-07-11"
+# Batch 86 (#159): the brief now leads with a deterministic "Today" action block
+# (workout adjustment first-class + tappable-to-approve, plus swap/sleep/thermal),
+# assembled next to the prose like swapSuggestion/weeklyMix. The prose becomes the
+# reasoning/"why" behind those actions and must not repeat them as a checklist, so
+# the version bumps again.
+PROMPT_VERSION = "morning-analysis-v9-2026-07-11"
 ANALYSIS_TYPE = "morning"
 SYSTEM_PROMPT = """You are Garmin Coach, a private daily endurance and sleep coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
@@ -100,7 +106,13 @@ overnight-temperature, load, and plan). Put the answer under a short
 "**Your question**" heading near the top of the read. If the packet does not hold
 what is needed to answer, say so plainly rather than guessing. Answering a question
 never overrides the Red floor, the soft-sleep rule, the Poor-readiness caution, or
-Red-never-VO2."""
+Red-never-VO2.
+The app renders a short "Today" action list above your read (the eased ride to
+approve, any week swap, and sleep/thermal nudges), assembled separately from your
+prose. Write the read as the reasoning and the "why" behind those actions — do not
+restate them as a duplicated checklist or an "Actions" header. Keep leading with the
+sleep summary, the metrics-vs-baselines read, the thermal review, and the verdict as
+before; reference an action in prose only where the reasoning needs it."""
 
 
 class MorningAnalysisError(RuntimeError):
@@ -269,6 +281,25 @@ class MorningAnalysisService:
             if message not in existing_adjustments:
                 existing_adjustments.append(message)
         verdict["planAdjustments"] = existing_adjustments
+        # Batch 86 (#159): assemble the deterministic "Today" action block now that
+        # the verdict (status, swapSuggestion, weeklyMix, planAdjustments) is final.
+        # Reuse the exact breathwork gate the adjustment text already uses so the
+        # sleep action and the prose stay in lockstep.
+        recommend_breathwork = should_recommend_breathwork(
+            {
+                "status": verdict.get("status"),
+                "readinessLevel": verdict.get("readinessLevel"),
+                "readinessInterpretation": verdict.get("readinessInterpretation"),
+                "hrvStatus": verdict.get("hrvStatus"),
+                "hrvBelowBaseline": verdict.get("hrvBelowBaseline"),
+            }
+        )
+        verdict["todayActions"] = build_today_actions(
+            verdict=verdict,
+            planned_workouts=planned_workouts,
+            thermal_review=thermal_review,
+            recommend_breathwork=recommend_breathwork,
+        )
         training_schedule = serialize_training_schedule(knowledge_base)
 
         return {
@@ -328,6 +359,7 @@ class MorningAnalysisService:
                     "acknowledge_recent_user_corrections_when_relevant",
                     "lead_with_week_swap_when_offered",
                     "maintain_weekly_quality_mix_readiness_gated",
+                    "reasoning_prose_not_duplicated_action_checklist",
                 ],
             },
         }
@@ -995,6 +1027,123 @@ def _thermal_review(
         "overnightWindGustMph": weather.overnight_wind_gust_mph if weather else None,
         "flags": flags,
     }
+
+
+# Batch 86 (#159): the deterministic "Today" action list surfaced above the brief
+# prose. Assembled from signals the packet already computes and frozen in
+# verdict["todayActions"] — the same transport as swapSuggestion/weeklyMix — then
+# rendered by the frontend TodayActions block. A workout action carries the real
+# plannedWorkoutId so the frontend approves it through the existing rail; the approve
+# affordance itself is gated live on delivery state in the UI (structured data
+# durable, layout swappable).
+_THERMAL_WARM_FLAGS = frozenset(
+    {"thermal_disruption_likely", "thermal_disruption_watch", "precool_target_missed"}
+)
+
+
+def _todays_bike_workout(planned_workouts: Sequence[PlannedWorkout]) -> PlannedWorkout | None:
+    for workout in planned_workouts:
+        if workout.status in {"completed", "skipped"}:
+            continue
+        if is_bike_workout_type(workout.workout_type):
+            return workout
+    return None
+
+
+def _eased_ride_detail(status: str) -> str:
+    if status == "Red":
+        return "Substitute recovery, mobility, or rest — no intervals."
+    return "Cut duration 20-30%, drop a zone, no HIT/VO2."
+
+
+def _thermal_action(thermal_review: Mapping[str, Any]) -> dict[str, Any] | None:
+    flags = thermal_review.get("flags")
+    if not isinstance(flags, list) or not any(flag in _THERMAL_WARM_FLAGS for flag in flags):
+        return None
+    peak = thermal_review.get("indoorPeakC")
+    target = thermal_review.get("targetPreCoolC")
+    detail: str | None = None
+    if isinstance(peak, int | float) and not isinstance(peak, bool):
+        detail = f"Bedroom peaked at {peak:.1f}°C overnight"
+        detail += (
+            f" (pre-cool target {target:.0f}°C)."
+            if isinstance(target, int | float) and not isinstance(target, bool)
+            else "."
+        )
+    return {
+        "kind": "thermal",
+        "title": "Pre-cool the bedroom tonight",
+        "detail": detail,
+        "plannedWorkoutId": None,
+        "targetDate": None,
+        "href": "/sleep",
+    }
+
+
+def build_today_actions(
+    *,
+    verdict: Mapping[str, Any],
+    planned_workouts: Sequence[PlannedWorkout],
+    thermal_review: Mapping[str, Any],
+    recommend_breathwork: bool,
+    max_actions: int = 4,
+) -> list[dict[str, Any]]:
+    """Assemble the deterministic "Today" action list for the morning brief.
+
+    Ordering follows the coaching priority: lead with the week swap (Mark's
+    rearrange-first instinct, #139), then the eased-ride approval, then the sleep
+    and thermal nudges. Every entry is scannable on its own and, where it references
+    a workout, tappable through the rail the frontend already uses.
+    """
+    actions: list[dict[str, Any]] = []
+    status = str(verdict.get("status") or "")
+
+    swap = verdict.get("swapSuggestion")
+    if isinstance(swap, dict) and swap.get("hardWorkoutId"):
+        move_to = swap.get("moveToWeekday") or swap.get("moveToDate")
+        bring_forward = swap.get("bringForwardTitle")
+        actions.append(
+            {
+                "kind": "apply_swap",
+                "title": f"Move {swap.get('hardTitle', 'the hard session')} to {move_to}",
+                "detail": (f"Pull {bring_forward} forward to today." if bring_forward else None),
+                "plannedWorkoutId": swap.get("hardWorkoutId"),
+                "targetDate": swap.get("moveToDate"),
+                "href": None,
+            }
+        )
+
+    if status in {"Amber", "Red"}:
+        ride = _todays_bike_workout(planned_workouts)
+        if ride is not None:
+            actions.append(
+                {
+                    "kind": "approve_ride",
+                    "title": "Approve today's eased ride",
+                    "detail": _eased_ride_detail(status),
+                    "plannedWorkoutId": str(ride.id),
+                    "targetDate": None,
+                    "href": None,
+                }
+            )
+
+    if recommend_breathwork:
+        actions.append(
+            {
+                "kind": "sleep",
+                "title": "Add a wind-down breathwork session tonight",
+                "detail": "Helps down-regulate the recovery signal before bed.",
+                "plannedWorkoutId": None,
+                "targetDate": None,
+                "href": "/sleep",
+            }
+        )
+
+    thermal = _thermal_action(thermal_review)
+    if thermal is not None:
+        actions.append(thermal)
+
+    return actions[:max_actions]
 
 
 def _yesterday_load_packet(

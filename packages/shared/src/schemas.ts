@@ -670,6 +670,21 @@ export const weeklyMixSchema = z.object({
 });
 export type WeeklyMix = z.infer<typeof weeklyMixSchema>;
 
+// Batch 86 (#159): the deterministic "Today" action block rendered above the brief
+// prose. Each entry is scannable on its own; where it references a workout it is
+// tappable through the rail Home already uses (approve_ride -> approve-adjustment,
+// apply_swap -> swap). The structured data is durable; the visual layout is
+// deliberately swappable so the format can be tuned after Mark reacts.
+export const todayActionSchema = z.object({
+  kind: z.enum(['approve_ride', 'apply_swap', 'sleep', 'thermal']),
+  title: z.string(),
+  detail: z.string().nullable().optional(),
+  plannedWorkoutId: z.string().uuid().nullable().optional(),
+  targetDate: z.string().nullable().optional(),
+  href: z.string().nullable().optional(),
+});
+export type TodayAction = z.infer<typeof todayActionSchema>;
+
 export const dailyLoopAnalysisSchema = z.object({
   id: z.string().uuid(),
   generatedAtUtc: isoDateTimeSchema,
@@ -685,6 +700,7 @@ export const dailyLoopAnalysisSchema = z.object({
   ageComparison: ageComparisonSchema.default({ rows: [] }),
   swapSuggestion: swapSuggestionSchema.nullable().optional(),
   weeklyMix: weeklyMixSchema.nullable().optional(),
+  todayActions: z.array(todayActionSchema).default([]),
   feedback: feedbackSchema.nullable().optional(),
 });
 

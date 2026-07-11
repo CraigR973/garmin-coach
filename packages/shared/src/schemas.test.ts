@@ -15,6 +15,7 @@ import {
   restructureEnvelopeSchema,
   sleepSchema,
   swapSuggestionSchema,
+  todayActionSchema,
   weatherDailySchema,
   weeklyMixSchema,
 } from './schemas';
@@ -543,6 +544,41 @@ describe('v1 shared schemas', () => {
       outputMarkdown: '**Verdict:** Green',
     });
     expect(withoutMix.weeklyMix ?? null).toBeNull();
+  });
+
+  it('parses the Today action block and defaults it to empty (Batch 86)', () => {
+    const approve = todayActionSchema.parse({
+      kind: 'approve_ride',
+      title: "Approve today's eased ride",
+      detail: 'Cut 20-30%, drop a zone, no HIT/VO2.',
+      plannedWorkoutId: rowId,
+    });
+    expect(approve.kind).toBe('approve_ride');
+    expect(approve.plannedWorkoutId).toBe(rowId);
+
+    const withActions = dailyLoopAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-07-11T06:30:00Z',
+      verdict: 'amber',
+      promptVersion: 'morning-analysis-v9-2026-07-11',
+      outputMarkdown: '**Verdict:** Amber',
+      todayActions: [
+        approve,
+        { kind: 'sleep', title: 'Wind-down breathwork tonight', href: '/sleep' },
+      ],
+    });
+    expect(withActions.todayActions).toHaveLength(2);
+    expect(withActions.todayActions[1].href).toBe('/sleep');
+
+    // An older/clean brief omits the field entirely; it defaults to [].
+    const withoutActions = dailyLoopAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-07-11T06:30:00Z',
+      verdict: 'green',
+      promptVersion: 'morning-analysis-v9-2026-07-11',
+      outputMarkdown: '**Verdict:** Green',
+    });
+    expect(withoutActions.todayActions).toEqual([]);
   });
 
   it('parses a restructure preview/apply envelope (Batch 83)', () => {
