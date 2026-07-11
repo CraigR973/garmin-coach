@@ -12,12 +12,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.coaching import ManualEntry, PlanBlock, PlannedWorkout
 from src.models.profile import Profile
 from src.services.coaching_state import BLOCK_SEQUENCE
-from src.services.executable_coaching import WORKOUT_STATUS_SKIPPED, ExecutableCoachingService
+from src.services.executable_coaching import (
+    WORKOUT_STATUS_SKIPPED,
+    ExecutableCoachingService,
+    blocks_red_vo2,
+)
 from src.services.holiday_pause import HolidayPauseService
 from src.services.structured_workout_builder import (
     BuiltCustomBikeWorkout,
-    CustomBikeWorkoutSpec,
-    build_custom_bike_workout,
+    FreeformBikeWorkoutSpec,
+    WorkoutWarning,
+    build_freeform_bike_workout,
     is_indoor_bike_workout,
 )
 from src.services.workout_categories import (
@@ -28,7 +33,11 @@ from src.services.workout_categories import (
     day_state_for_workout_types,
 )
 from src.services.workout_completion import WORKOUT_STATUS_COMPLETED
-from src.services.workout_delivery import IntervalsEventClient, expand_structured_steps
+from src.services.workout_delivery import (
+    IntervalsEventClient,
+    build_structured_workout_ir,
+    expand_structured_steps,
+)
 
 
 def _utcnow() -> datetime:
@@ -39,6 +48,18 @@ DONE_ADHERENCE_STATUSES = {"completed", "modified", "done", "did_something_else"
 RESET_WEEK_KEY = "manualResetWeek"
 RESET_WEEK_SOURCE = "reset_week"
 RESET_WEEK_POWER_PCT = 65
+
+
+@dataclass(frozen=True)
+class WorkoutActionResult:
+    """An add/edit result plus any non-blocking authoring warnings (Batch 88).
+
+    Quick-add and non-custom paths carry an empty ``warnings`` list; the free-form
+    manual builder can surface power / ramp / Red-VO2 advisories on a successful save.
+    """
+
+    workout: PlannedWorkout
+    warnings: list[WorkoutWarning]
 
 
 def _pattern_minutes(value: float) -> str:
@@ -564,16 +585,18 @@ class PlanActionService:
         category: str,
         subtype: str | None = None,
         duration_min: int | None = None,
-        custom_bike: CustomBikeWorkoutSpec | None = None,
-    ) -> PlannedWorkout:
+        custom_bike: FreeformBikeWorkoutSpec | None = None,
+    ) -> WorkoutActionResult:
         template: dict[str, Any] | BuiltCustomBikeWorkout
+        warnings: list[WorkoutWarning] = []
         if custom_bike is not None:
             if category != DAY_CATEGORY_CYCLE:
                 raise HTTPException(
                     status_code=422,
                     detail="Custom structured workouts are only supported for cycle sessions.",
                 )
-            template = build_custom_bike_workout(custom_bike)
+            # Mark's explicit manual authoring path: gates warn, they don't block.
+            template, warnings = build_freeform_bike_workout(custom_bike, soft_gates=True)
         else:
             template = workout_for_selection(category, subtype=subtype, duration_min=duration_min)
         version = await self._next_version(player.id, workout_date)
@@ -593,28 +616,33 @@ class PlanActionService:
         )
         self.session.add(workout)
         await self.session.flush()
+        if custom_bike is not None:
+            warnings = await self._append_red_vo2_warning(player, workout, warnings)
         if category == DAY_CATEGORY_CYCLE and is_indoor_bike_workout(workout.structured_workout):
             await self.executable.reconcile_deliveries(
                 player, start_date=workout_date, end_date=workout_date
             )
         await self.session.commit()
         await self.session.refresh(workout)
-        return workout
+        return WorkoutActionResult(workout=workout, warnings=warnings)
 
     async def edit_structured_workout(
         self,
         player: Profile,
         *,
         planned_workout_id: uuid.UUID,
-        custom_bike: CustomBikeWorkoutSpec,
-    ) -> PlannedWorkout:
+        custom_bike: FreeformBikeWorkoutSpec,
+    ) -> WorkoutActionResult:
         current = await self.executable.rail._planned_workout(player.id, planned_workout_id)
         if current.status == WORKOUT_STATUS_COMPLETED:
             raise HTTPException(
                 status_code=409,
                 detail="This session is already done, so its structure can't be edited.",
             )
-        template = build_custom_bike_workout(custom_bike, title=current.title)
+        # Mark's explicit manual authoring path: gates warn, they don't block.
+        template, warnings = build_freeform_bike_workout(
+            custom_bike, title=current.title, soft_gates=True
+        )
         live = await self.executable.rail.latest_delivered_for_workout(player.id, current.id)
         if live is None:
             live = await self.executable.rail.latest_delivered_for_date(
@@ -639,6 +667,7 @@ class PlanActionService:
         )
         self.session.add(workout)
         await self.session.flush()
+        warnings = await self._append_red_vo2_warning(player, workout, warnings)
         if is_indoor_bike_workout(workout.structured_workout):
             await self.executable.reconcile_deliveries(
                 player, start_date=workout.workout_date, end_date=workout.workout_date
@@ -647,7 +676,39 @@ class PlanActionService:
             await self.executable.rail.delete_event(proposal=live, commit=False)
         await self.session.commit()
         await self.session.refresh(workout)
-        return workout
+        return WorkoutActionResult(workout=workout, warnings=warnings)
+
+    async def _append_red_vo2_warning(
+        self,
+        player: Profile,
+        workout: PlannedWorkout,
+        warnings: list[WorkoutWarning],
+    ) -> list[WorkoutWarning]:
+        """Add the Red-never-VO2 advisory when Mark authored VO2 for a Red day.
+
+        The scoped reversal (Decision #161): the delivery gates (``send_today`` /
+        ``approve_adjustment``) keep Red-never-VO2 **hard** for coach adjustments,
+        but a session Mark explicitly built for himself is delivered with a warning
+        rather than blocked. ``blocks_red_vo2`` reuses the exact gate predicate, so
+        the threshold never drifts. No stored Red verdict for the date → no warning.
+        """
+        try:
+            ir = build_structured_workout_ir(workout)
+        except HTTPException:
+            return warnings  # non-bike / non-deliverable — nothing to warn about
+        verdict = await self.executable._morning_verdict_for(player.id, workout.workout_date)
+        if blocks_red_vo2(verdict, ir):
+            return [
+                *warnings,
+                WorkoutWarning(
+                    code="red_vo2",
+                    detail=(
+                        "This is a VO2 session on a Red-readiness day — sending it "
+                        "because you built it, but recovery would be the safer call."
+                    ),
+                ),
+            ]
+        return warnings
 
     async def swap_workout_into_date(
         self, player: Profile, *, planned_workout_id: uuid.UUID, target_date: date

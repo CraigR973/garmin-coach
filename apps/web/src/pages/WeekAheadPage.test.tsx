@@ -276,24 +276,23 @@ describe('WeekAheadPage', () => {
         '/api/v1/plan-actions/days/2026-06-23/workouts',
         expect.objectContaining({
           method: 'POST',
-          body: expect.stringContaining('"customBike"'),
+          body: expect.stringContaining('"segments"'),
         }),
       );
     });
     const addCall = apiFetchMock.mock.calls.find(
       ([path]) => path === '/api/v1/plan-actions/days/2026-06-23/workouts',
     );
+    // Free-form default (Batch 88): warm-up ramp → steady → cool-down ramp.
     expect(JSON.parse(String(addCall?.[1]?.body))).toMatchObject({
       category: 'cycle',
       customBike: {
         delivery: 'indoor',
-        warmupEnabled: true,
-        warmupDurationMin: 10,
-        intervalsEnabled: false,
-        blockDurationMin: 30,
-        blockFtpPct: 65,
-        cooldownEnabled: true,
-        cooldownDurationMin: 5,
+        segments: [
+          { kind: 'ramp', durationMin: 10, startFtpPct: 45, endFtpPct: 75 },
+          { kind: 'steady', durationMin: 20, ftpPct: 65 },
+          { kind: 'ramp', durationMin: 5, startFtpPct: 75, endFtpPct: 45 },
+        ],
       },
     });
     await waitFor(() => expect(screen.queryByText('Build a ride')).toBeNull());
@@ -303,9 +302,9 @@ describe('WeekAheadPage', () => {
     await waitFor(() => expect(editButton.hasAttribute('disabled')).toBe(false));
     await user.click(editButton);
     expect(await screen.findByText('Edit VO2 Max 30/30')).toBeTruthy();
+    // Append an interval segment and save — proves the free-form editor posts the
+    // ordered segment list to the same structured-edit endpoint.
     await user.click(screen.getByRole('button', { name: /^intervals$/i }));
-    await user.clear(screen.getByLabelText('Int 1 %FTP'));
-    await user.type(screen.getByLabelText('Int 1 %FTP'), '118');
     await user.click(screen.getByRole('button', { name: /^save structure$/i }));
 
     await waitFor(() => {
@@ -313,7 +312,7 @@ describe('WeekAheadPage', () => {
         '/api/v1/plan-actions/planned-workouts/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/structured',
         expect.objectContaining({
           method: 'POST',
-          body: expect.stringContaining('"intervalsEnabled":true'),
+          body: expect.stringContaining('"kind":"interval"'),
         }),
       );
     });
