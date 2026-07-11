@@ -1125,3 +1125,70 @@ the app untouched.
 | Batch | Tier | Status | Phases | Goal | Acceptance criteria |
 |---|---|---|---|---|---|
 | ~~Batch 89 — Enable RLS on the coach.* tables~~ | 🟢 Mid | Shipped | 89.1 New migration `015_coach_rls.py` — `ENABLE ROW LEVEL SECURITY` on the 18 `coach` tables migration 001 left uncovered (the 17 remaining model tables + `alembic_version`), **no policies** (owner bypasses; `anon` has no grants → deny-all, matching `audit_log`). Table list kept as a `RLS_TABLES` constant. Downgrade disables. Wrapped in migration 001's exact `IF EXISTS (auth schema)` guard so it runs **only on Supabase** and is a no-op on plain Postgres (CI `migration-check` + unit-test Postgres stay green).<br>89.2 Regression test (`tests/test_coach_rls_migration.py`): 001's set ∪ 015's set == the coach model tables on `Base.metadata` — a future table shipping without RLS fails the test.<br>89.3 Correct `QA_REVIEW_2026-07-11.md` Finding 1 + STATUS open item (b) to the accurate exposure picture (data not currently reachable; RLS is the backstop). | Every `coach` table carries RLS as defense-in-depth, matching the auth tables from migration 001, so a future stray `GRANT` or exposed-schema change can never leak Mark's health data — and the Supabase critical advisor clears. | Migration enables RLS on the 18 tables on Supabase and is a guarded no-op on plain Postgres (CI `migration-check` upgrade→downgrade + pytest green); the app is unaffected (owner bypass); no policies added; regression test proves 001+015 cover every coach model table; **no schema/data change** beyond the RLS flag; verdict / #133 / #135 / Red-never-VO2 untouched; backend gates green; closeout prod smoke on merge SHA **plus a post-deploy Supabase advisor recheck** (the `rls_disabled` critical lint clears and the daily-loop still serves for Mark — RLS can't be smoke-tested from the app alone). Surfaced by the QA review. Decision #162 (assigned at `/batch-start`). |
+
+## Post-roadmap — 2026-07-11 flexibility-read accuracy batch plan
+
+Mark's 2026-07-11 note (two screenshots) after logging a mobility/stretch session:
+"couple of errors in apps feedback." **Both screenshots are one `post_flexibility`
+read** — the system prompt's shape is acknowledge → consistency → heart-rate →
+*one light next step* (`post_flexibility_analysis.py:44`), and the "Advisory only —
+this analysis does not inform recovery status or cycling session decisions" footer
+is that prompt verbatim. Every sentence Mark flagged is **LLM-generated from the
+context packet** (`assemble_flexibility_packet`, `post_flexibility_analysis.py:222`),
+so each error is missing/stale packet data or a loose prompt, never a template
+string. Root cause verified against the code:
+
+1. **"today (Friday)" — wrong day.** The packet hands the model
+   `subjectDate: "2026-07-11"` as a bare ISO string (`post_flexibility_analysis.py:241`)
+   and **no weekday name**, so the model computed the day itself and got it wrong —
+   11 Jul 2026 is a **Saturday**. This is latent everywhere: no packet builder (morning
+   verdict or any `post_*`) emits a weekday string, so any read that names a day is
+   guessing.
+2. **"mobility on Mondays and Sundays … today's session is a bonus on top" /
+   "volume on the fuller side."** Straight from the `training_plan` seed's `weeklyRhythm`
+   (`coaching_state.py:148` — "Monday recovery or mobility strength" + "Sunday light
+   strength or mobility"), fed to the packet as `trainingPlan`
+   (`post_flexibility_analysis.py:251`). That rhythm is the **cycling-block scaffold**;
+   it models mobility as a Mon/Sun add-on, not Mark's daily baseline. The data even
+   contradicts it — consistency shows an 8-day streak and 6 mobility sessions this
+   week (i.e. daily) — but the model anchored to the plan text over the behaviour.
+3. **"a VO2 focus day (Tuesday) … let tomorrow be easy," blind to the holiday.**
+   "Tuesday VO2 focus" is again just `weeklyRhythm[1]` (`coaching_state.py:150`), a
+   generic template line — next Tuesday is **14 Jul, inside the holiday window Mark
+   set**. Holiday awareness is absent from every analysis packet: a grep for "holiday"
+   across morning + all `post_*` returns zero hits, and this packet loads only
+   **today's** planned workouts (`workout_date == subject_date`,
+   `post_flexibility_analysis.py:362`), never next week's — even though
+   `HolidayPauseService` already stores the window (`get_active_window`,
+   `holiday_pause.py:142`) and flips in-window workouts to `status='skipped'`
+   (`holiday_pause.py:212`). So the read had no signal the week was off and invented a
+   live VO2 Tuesday.
+4. **Daily flexibility framed as overdoing it / a whole-day recovery call.** The
+   numbers are right and mobility-only (`compute_flexibility_consistency`,
+   `post_flexibility_analysis.py:133`); 6/week *is* the habit. The "fuller side / take
+   tomorrow genuinely easy" reading comes from (2)'s stale 2×/week model plus a loose
+   "one light next step" instruction (`post_flexibility_analysis.py:44`) with no
+   guardrail that mobility is low-load baseline — so the model escalated to whole-day
+   recovery advice that **contradicts the packet's own
+   `guardrails.neverFeedsRecoveryDecision`** (`post_flexibility_analysis.py:271`) and
+   the advisory-only footer. **Two adjacent latent bugs found while tracing:** the
+   packet's `analysisRules` pulls `knowledge_base.get("analysis_rules", …)`
+   (`post_flexibility_analysis.py:252`) — a section that is **never seeded** (real
+   sections are `data_quality_rules` / `coaching_protocol`), so it is **always `{}`** in
+   all four post_* reads; and the flexibility packet **omits `training_schedule`** (only
+   the morning verdict pulls it, `morning_analysis.py:303`), the section whose
+   "respect Mon/Fri rest" and "**describe an exception as an exception instead of
+   rewriting the routine**" notes (`coaching_state.py:175`) directly temper this
+   mis-framing.
+
+Scope: **one batch** — all four threads live in the same packet + prompt
+(`post_flexibility_analysis.py`), so splitting would churn one file four ways. It is
+🔴 High (analysis-engine prompt + framing/reasoning). Because the prose is
+LLM-generated, tests assert on **packet assembly + prompt inputs** via the fakeable
+client (the Batch 6/8 pattern, #47), not on model text. Proposed Decision **#163**,
+assigned at `/batch-start`. Full spec: this section (a short design doc can be added
+at `/batch-start` if the 90.3 daily-mobility-modelling choice warrants one).
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 90 — Post-mobility read: right day, holiday-aware, daily-mobility-as-baseline | 🔴 High | Planned | 90.1 **Weekday: supply it, never let the model derive it.** Add an explicit `subjectWeekday` (`subject_date.strftime("%A")`) to the flexibility packet (`assemble_flexibility_packet`, `post_flexibility_analysis.py:238`) and an output rule that the model must use the supplied weekday and never compute the date. Fixes "today (Friday)" for a Saturday session. **Decide at `/batch-start`:** thread the same `subjectWeekday` through the other LLM reads (morning verdict, walk, strength, ride — none supply one today) so they can't make the same slip, or keep it flexibility-scoped now.<br>90.2 **Holiday awareness in the packet.** Load `HolidayPauseService.get_active_window` plus any window opening within the read's forward horizon and surface it (window dates + a "next week is a holiday" flag); add a prompt rule not to cite plan sessions (VO2 etc.) that fall inside a holiday window as live. **Decide at `/batch-start`:** holiday-window flag only vs. also pulling the next 7–14 days of planned workouts (already carrying `status='skipped'` from `holiday_pause.py:212`) so the near-future is data-driven, not template-driven.<br>90.3 **Stop reading daily mobility as plan overshoot or recovery load.** Reframe packet + prompt so the observed cadence (packet already computes `currentStreak`/`sessionsThisWeek`/`sessionsPerWeek4w`) is Mark's **baseline daily habit** and `weeklyRhythm` is the *cycling* scaffold only — not a mobility budget; kill the "bonus on top / fuller side" framing. The "one light next step" must stay **within mobility** and never issue a day/bike recovery verdict, honouring `guardrails.neverFeedsRecoveryDecision` (`post_flexibility_analysis.py:271`) + the advisory-only footer. **Decide at `/batch-start` (central design point)** where "daily mobility is baseline" lives: (a) prompt framing over the existing consistency signal [recommended — tightest, self-correcting, no KB re-seed]; (b) a durable KB fact shared by all reads (new `routine` line or folded into `training_schedule`); (c) rewrite the `training_plan.weeklyRhythm` seed (heaviest — KB re-seed + touches every read).<br>90.4 **Give the read the context it's missing + version bump.** Fix the always-empty `analysisRules` key (`post_flexibility_analysis.py:252` references the never-seeded `analysis_rules`; real sections are `data_quality_rules`/`coaching_protocol`) and add `training_schedule` to the packet (the "describe an exception, don't rewrite the routine" + Mon/Fri-rest notes reinforce 90.3). Bump `PROMPT_VERSION` (`post_flexibility_analysis.py:40`). **Decide at `/batch-start`:** fix the empty-`analysis_rules` key in the flexibility packet only, or in the identical spot in walk/strength/ride too (`post_walk_analysis.py:232`, `post_strength_analysis.py:231`, `post_workout_analysis.py:329`).<br>90.5 **Tests + gates.** Fakeable-client packet tests: the packet carries the correct `subjectWeekday` for a known Saturday date; an active/upcoming holiday window surfaces and a template VO2 day inside it is flagged/suppressed; the packet frames daily mobility as baseline (baseline flag/field present, no "exceeds plan") and now ships `training_schedule` + a non-empty rules block; the read stays advisory (no recovery-decision output rule). Backend pytest/ruff/mypy (+ any touched shared/web) green. | Make Mark's post-mobility read factually correct and correctly framed — right weekday, holiday-aware, and treating his daily flexibility as the baseline habit it is rather than plan overshoot or recovery-worthy load — without letting an advisory mobility read make whole-day recovery calls. | The flexibility packet supplies an explicit weekday and the read never miscomputes the day; holiday windows are visible so it never cites a plan session inside a holiday as live; daily mobility is framed as consistency-driven baseline, not as exceeding the plan or as fatigue load, and the "one light next step" stays within mobility and never issues a day/bike recovery verdict (honouring `neverFeedsRecoveryDecision` + the advisory-only footer); the packet no longer ships an always-empty `analysisRules` and includes `training_schedule`; `PROMPT_VERSION` bumped; **no migration** (packet/prompt/framing only — confirm at `/batch-start`); verdict / #133 / #135 / Red-never-VO2 untouched; full backend gates; closeout prod smoke on merge SHA **plus a phone eyeball** of the next real post-mobility read (correct weekday, holiday respected, no "bonus/overdoing" framing). Surfaced by Mark's 2026-07-11 feedback. Decision #163 (assigned at `/batch-start`). |
