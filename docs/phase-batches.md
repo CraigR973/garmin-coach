@@ -1076,3 +1076,32 @@ rides have a check-in form, so those types' `activityCheckIn` is never written).
 **Open `/batch-start` calls:** (1) hard-gate generation on the check-in vs. keep a
 "just read it now" affordance (a finished workout isn't a once-a-day event with a
 natural pause like waking); (2) backstop time/threshold; (3) nudge + button copy.
+
+## Post-roadmap — 2026-07-11 full-control workout editor batch plan
+
+**Scoped 2026-07-11 with Craig — full control over a cycling workout on any given
+day.** Craig wants Mark to be able to take full control of a ride's structure when he
+chooses, beyond the Batch 77 builder's single interval-pair-or-block shape and the
+Today-card's whole-workout duration/intensity scale (Mark already has the basic manual
+edits; this is the whole canvas on demand). **Traced against the code — the delivery
+format is *not* the limit:** `expand_structured_steps` (`services/workout_delivery.py:139`)
+already expands an arbitrary-length ordered `steps` list (ramp / steady /
+interval-pattern, any count, any order) into the IR that both the intervals.icu/Zwift
+push (`reconcile_deliveries`) and the Batch 78 Garmin export already consume. The
+single-pair-or-block ceiling lives only in the builder spec `CustomBikeWorkoutSpec`
+(`services/structured_workout_builder.py`) and its UI — so "full control" is a builder +
+UI change over the same rail Mark already uses, not a delivery rewrite, and the code that
+actually talks to Zwift/Garmin is untouched. **Two decisions taken with Craig:**
+(1) control level = **free-form segment builder** — add/reorder any number of segments,
+each with its own duration + %FTP; (2) guardrails = **soft warnings** — on Mark's
+explicit manual path the three gates (power 45–150% FTP, ramp-required, Red-never-VO2)
+become non-blocking warnings, while the coach/automated authoring path keeps them
+**hard**. The path-scoped soft-gating — and specifically making Red-never-VO2 a *warning*
+on a workout Mark explicitly authored for himself (a deliberate, recorded reversal of the
+long-held "Red-never-VO2 unchanged" invariant, scoped strictly to manual authoring) — is
+the batch's central design point. Full spec:
+`docs/designs/full-control-workout-editor.md`. Depends on the shipped Batch 77.
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 88 — Full-control free-form workout editor | 🔴 High | Planned | 88.1 Generalise the builder spec: replace the fixed-field `CustomBikeWorkoutSpec` (`services/structured_workout_builder.py`) with an **ordered list of segments** (`kind ∈ ramp/steady/interval`, each with its own duration + %FTP), reusing the exact per-kind step emission `build_custom_bike_workout` already does inline so any count/order authors the existing Batch 67 `steps` grammar; the `structured_workout` shape, `totalDurationMin`, and workout-type classification stay unchanged downstream.<br>88.2 **Path-scoped soft warnings:** on Mark's explicit manual authoring path only, the three delivery gates become warn-not-block — power outside 45–150% FTP (`_required_power`), no warm-up/cool-down ramp (`validate_deliverable_bike_workout`, `workout_delivery.py:178`), and VO2 on a Red-readiness day (Red-never-VO2 delivery gate). The coach/automated authoring path keeps all three **hard**. **Decide the mechanism at `/batch-start`** (spec flag vs. a separate manual-authoring validation entrypoint).<br>88.3 Warnings channel: the add/edit responses carry only hard `errors` today — add a `warnings: [...]` list so a **successful** save returns advisory messages the UI can surface. **Decide the contract at `/batch-start`.**<br>88.4 Frontend: a segment-list editor (add/remove/reorder rows, kind selector + fields) on the same Week-tab build + structured-edit surfaces Batch 77 shipped, surfacing warnings inline ("heads-up… deliver anyway") rather than blocking submit; a live power-profile preview + running total from the expanded IR (`powerStartPct/powerEndPct/durationSec`) so Mark sees the workout before it ships (**confirm in scope at `/batch-start`**).<br>88.5 Reuse the existing add (`customBike`) + structured-edit (`POST …/planned-workouts/{id}/structured`, `plan_actions.py:349`) endpoints so versioning, indoor Zwift re-sync, and outdoor Garmin routing carry over unchanged; completed workouts still cannot be structurally edited.<br>88.6 Tests (a many-segment free-form workout authors valid IR + delivers; segments in any order preserve order; each soft gate warns-not-blocks on the manual path but still hard-fails coach/automated authoring; the warnings channel surfaces on a successful save; structured edit versions + re-syncs) + backend/shared/web gates. | Let Mark take full control of a ride's structure on any given day — build an arbitrary multi-segment workout, warned but never blocked — over the same delivery rail he already uses. | A free-form multi-segment workout authors valid IR and delivers indoor→Zwift / outdoor→Garmin unchanged; segment order is preserved; on Mark's explicit manual path the power / ramp / Red-never-VO2 gates warn but don't block, while coach/automated authoring keeps them hard (proven by test); the `warnings` channel surfaces advisory messages on a successful save; structured edit still versions + re-syncs and completed workouts stay non-editable; **no migration** (segments serialize into the existing `structured_workout` `steps` — confirm at `/batch-start`); verdict / #133 / #135 unchanged; Red-never-VO2 stays hard everywhere **except** the explicit manual authoring path (Decision #161 records the scoped reversal); full backend/shared/web gates (Node 20); closeout prod smoke on merge SHA + a phone eyeball of the segment editor. Depends on Batch 77. Decision #161 (assigned at `/batch-start`). |
