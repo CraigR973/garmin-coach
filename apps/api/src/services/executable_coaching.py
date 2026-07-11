@@ -340,47 +340,44 @@ class ExecutableCoachingService:
         morning_service: MorningAnalysisService,
         client: MorningAnalysisClient | None = None,
         commit: bool = True,
-    ) -> Analysis | None:
-        """Re-run today's verdict + eased ride after a morning check-in lands.
+    ) -> Analysis:
+        """Regenerate today's brief when Mark checks in (Batch 85).
 
-        The wake verdict is computed from sleep/recovery *before* Mark checks in,
-        so his subjective read never reached it. Subjective is a downgrade-only
-        signal (a low score blocks Green; a high one never upgrades), so this only
-        ever *eases* today's session, never hardens it. Guardrails (settled
-        2026-07-05):
+        The check-in is now the *primary* generate trigger — the wake job only
+        syncs the inputs and nudges (run_morning_sync). Every submit
+        force-regenerates today's read so his just-entered notes and any question
+        fold in; an empty check-in still produces today's objective brief.
+        Guardrails preserved:
 
-        * it runs only while the eased ride is still **pending** — an already
-          approved/pushed proposal is never silently changed (Decision #29);
-        * the model is re-run **only when the verdict actually worsens** to
-          Amber/Red, so an ordinary check-in stays fast and free (the status is
-          recomputed deterministically from the packet first, no LLM call).
+        * subjective is **downgrade-only** — the packet verdict already treats a low
+          score as a cap and a high one as non-upgrading, so regenerating can only
+          ever *ease* today, never harden it or lift a Red/Amber to Green;
+        * an **approved/pushed ride is never silently re-adjusted** (Decision #29):
+          the eased-ride re-proposal runs only while the ride is still pending and
+          the recomputed verdict is Amber/Red.
 
-        Returns the regenerated analysis, or ``None`` when nothing changed.
+        Returns the regenerated analysis.
         """
-        bike_workouts = await self._deliverable_bike_workouts(player.id, subject_date)
-        if not bike_workouts:
-            return None
-        for workout in bike_workouts:
-            latest = await self._latest_proposal_for_workout(player.id, workout.id)
-            if latest is not None and latest.status != STATUS_PROPOSED:
-                # Approved / pushed / failed — never silently change a ride Mark acted on.
-                return None
-
-        stored = await morning_service.latest_analysis(player.id, subject_date)
-        stored_status = self._verdict_status(stored) if stored is not None else None
-        packet = await morning_service.assemble_context_packet(player, subject_date)
-        verdict = packet.get("verdict")
-        raw_status = verdict.get("status") if isinstance(verdict, dict) else None
-        new_status = _normalize_verdict(raw_status)
-        if new_status not in {"Amber", "Red"} or new_status == stored_status:
-            return None
-
+        # Always regenerate the brief so his notes/questions shape today's read.
         result = await morning_service.generate_and_store(
             player, subject_date, client=client, force=True, commit=False
         )
-        await self.regenerate_for_verdict(
-            player, subject_date, analysis=result.analysis, commit=False
-        )
+
+        # Ride re-adjustment stays gated — never silently change a ride Mark acted on.
+        bike_workouts = await self._deliverable_bike_workouts(player.id, subject_date)
+        ride_still_pending = True
+        for workout in bike_workouts:
+            latest = await self._latest_proposal_for_workout(player.id, workout.id)
+            if latest is not None and latest.status != STATUS_PROPOSED:
+                ride_still_pending = False
+                break
+        if bike_workouts and ride_still_pending:
+            verdict = self._verdict_status(result.analysis)
+            if verdict in {"Amber", "Red"}:
+                await self.regenerate_for_verdict(
+                    player, subject_date, analysis=result.analysis, commit=False
+                )
+
         if commit:
             await self.session.commit()
         return result.analysis

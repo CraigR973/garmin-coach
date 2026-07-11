@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { dailyLoopEnvelopeSchema, manualEntryInputSchema } from '@coach/shared';
 import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
 import { CollapsibleSection } from '@/components/CollapsibleSection';
+import { Markdown } from '@/components/Markdown';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,7 +14,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
+import { VerdictHero } from '@/components/VerdictHero';
 import { apiFetch } from '@/lib/api';
+
+type CheckInBrief = NonNullable<
+  ReturnType<typeof dailyLoopEnvelopeSchema.parse>['data']['morningAnalysis']
+>;
 
 /** Batch 63: the tap button-group for "Overall" — five presets instead of a
  *  typed 0–10 number, so the fastest path to a saved check-in is one tap. */
@@ -95,6 +103,7 @@ async function fetchDailyLoop() {
 export function CheckInPage() {
   const queryClient = useQueryClient();
   const [manualForm, setManualForm] = useState<ManualFormState>(emptyManualForm);
+  const [brief, setBrief] = useState<CheckInBrief | null>(null);
 
   const query = useQuery({ queryKey: ['daily-loop'], queryFn: fetchDailyLoop });
 
@@ -114,8 +123,9 @@ export function CheckInPage() {
     });
   }, [query.data]);
 
-  // Batch 69 keeps the morning check-in focused on the morning read. Session
-  // logging moved to the completed-ride Today card / post-ride surface.
+  // Batch 85: the check-in is the primary trigger for today's brief. Saving
+  // force-regenerates the read server-side (folding in his notes/questions) and
+  // returns the fresh snapshot, so the mutation surfaces the brief here and on Home.
   const saveMutation = useMutation({
     mutationFn: async () => {
       const data = query.data?.data;
@@ -130,14 +140,16 @@ export function CheckInPage() {
         foodJson: objectSummary(manualForm.food),
         notes: manualForm.notes || null,
       });
-      await apiFetch(`/api/v1/daily-loop/${data.subjectDate}/manual-entry`, {
+      const response = await apiFetch<unknown>(`/api/v1/daily-loop/${data.subjectDate}/manual-entry`, {
         method: 'PUT',
         body: JSON.stringify(manualPayload),
       });
+      return dailyLoopEnvelopeSchema.parse(response).data;
     },
-    onSuccess: async () => {
+    onSuccess: async (updated) => {
+      setBrief(updated.morningAnalysis ?? null);
       await queryClient.invalidateQueries({ queryKey: ['daily-loop'] });
-      toast.success('Check-in saved');
+      toast.success(updated.morningAnalysis ? 'Your brief is ready' : 'Check-in saved');
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not save your check-in'),
   });
@@ -310,13 +322,41 @@ export function CheckInPage() {
         </div>
       </CollapsibleSection>
 
-      {/* Batch 55: one save covers the whole check-in — the per-card/per-workout
-          save buttons above are gone in favour of this single clear action. */}
+      {/* Batch 85: one button generates today's brief from his check-in. An empty
+          submit still yields today's objective read; a "reading your morning…"
+          state covers the LLM call. The result surfaces below and on Home. */}
       <div className="flex justify-end">
         <Button type="button" onClick={() => saveMutation.mutate()} disabled={!data || saveMutation.isPending}>
-          Save check-in
+          {saveMutation.isPending ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              Reading your morning…
+            </>
+          ) : (
+            "Get today's brief"
+          )}
         </Button>
       </div>
+
+      {brief && (
+        <div className="space-y-4">
+          <VerdictHero verdict={brief.verdict} />
+          <Card>
+            <CardHeader>
+              <CardTitle>Today&apos;s brief</CardTitle>
+              <CardDescription>
+                Generated from your check-in.{' '}
+                <Link to="/" className="font-medium text-primary underline-offset-4 hover:underline">
+                  See it on Home →
+                </Link>
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Markdown>{brief.outputMarkdown}</Markdown>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

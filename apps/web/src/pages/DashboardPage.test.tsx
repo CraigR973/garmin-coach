@@ -421,6 +421,19 @@ describe('DashboardPage', () => {
     expect(screen.queryByText('Tomorrow')).toBeNull();
   });
 
+  it('invites a check-in with the "say good morning" CTA when no brief exists yet (Batch 85)', async () => {
+    const noBrief = JSON.parse(JSON.stringify(baseSnapshot)) as DailyLoopEnvelope;
+    noBrief.data.morningAnalysis = null;
+    renderPage(noBrief);
+
+    // The verdict slot invites him to generate today's brief rather than showing a
+    // pending verdict — the read no longer lands on its own (Batch 85).
+    expect(await screen.findByText('Say good morning')).toBeTruthy();
+    const cta = screen.getByRole('link', { name: /get today's brief/i });
+    expect(cta.getAttribute('href')).toBe('/check-in');
+    expect(screen.queryByText('Good to go')).toBeNull();
+  });
+
   it('places sections in the Batch 51 act/context desktop columns without changing the mobile stack', async () => {
     renderPage();
     await screen.findByText('Cycle day');

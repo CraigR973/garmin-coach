@@ -4,11 +4,11 @@ Current jobs:
   - daily_backup: runs at 03:00 UTC
   - hive_temperature_poll: polls Hive indoor temperature every 15 minutes
   - wake_check: every ~15 min within Mark's morning window, does a light
-    sleep-only Garmin poll and fires run_morning_weather_sync once his wake is
-    stable (back-to-sleep guard) — replaces the old fixed 06:30 cron so the
-    verdict reads finalized overnight metrics whatever time he surfaces
+    sleep-only Garmin poll and fires run_morning_sync once his wake is stable
+    (back-to-sleep guard) — replaces the old fixed 06:30 cron so the inputs are
+    synced whatever time he surfaces
   - morning_backstop: at 09:30 Europe/London, runs run_morning_weather_sync
-    regardless, so a verdict is always produced even if wake was never detected
+    regardless, so a verdict is always produced even if he never checks in
   - garmin_activity_poll: polls Garmin hourly for new rides and triggers analysis
   - workout_autopush: pushes approved workout proposals due today
   - evening_sleep_nudge: sends the 20:00 sleep-protocol push
@@ -16,9 +16,11 @@ Current jobs:
   - fan_control: every ~15 min within the overnight window, reconciles the Dreo
     bedroom fan to the live indoor temperature (Batch 27.2)
 
-run_morning_weather_sync itself is unchanged — only its trigger moved from a fixed
-06:30 cron to wake-detection (+ the 09:30 backstop). See
-docs/designs/wake-triggered-morning.md and DECISIONS #87.
+The morning splits at its sync → generate seam (Batch 85, DECISIONS #158): the wake
+job runs run_morning_sync (pull all inputs + "good morning" nudge, no LLM), the
+check-in is the primary generate trigger, and run_morning_weather_sync (full
+sync + generate + push) is now the 09:30 backstop for a morning he never engages.
+See docs/designs/wake-triggered-morning.md and DECISIONS #87 / #158.
 """
 
 from __future__ import annotations
@@ -262,49 +264,113 @@ async def _sync_garmin_daily(
     return (daily_synced, sleep_synced)
 
 
-async def run_morning_weather_sync() -> None:
-    """Sync weather + today's Garmin daily metrics/sleep, then run morning analysis.
+async def _sync_morning_inputs(
+    session: AsyncSession, profiles: list[Profile]
+) -> tuple[int, int, int]:
+    """Pull weather + today's Garmin daily metrics/sleep for the given profiles.
 
-    The Garmin daily sync runs *before* the analysis loop so the morning verdict
-    reads today's real readiness + sleep instead of empty inputs (Batch 18).
+    Returns ``(weather_days, daily_metrics, sleep)``. Weather syncs first, then the
+    Garmin daily sync, so the morning verdict reads today's real readiness + sleep
+    instead of empty inputs (Batch 18). The caller commits any final work; this
+    helper commits the two sync phases as it goes.
+    """
+    service = EnvironmentSyncService(session)
+    weather_days = 0
+    client = OpenMeteoClient()
+    for profile in profiles:
+        request = WeatherRequest(
+            latitude=profile.latitude or settings.weather_latitude,
+            longitude=profile.longitude or settings.weather_longitude,
+            timezone=profile.timezone or settings.weather_timezone,
+        )
+        payload = await _retry_async(lambda: client.fetch_daily_payload(request))
+        result = await service.sync_weather_daily(
+            profile.id,
+            payload,
+            timezone=request.timezone,
+            commit=False,
+        )
+        weather_days += result.weather_days_synced
+    await session.commit()
+
+    daily_metrics_synced, sleep_synced = await _sync_garmin_daily(session, profiles)
+    await session.commit()
+    return weather_days, daily_metrics_synced, sleep_synced
+
+
+async def run_morning_sync() -> None:
+    """Wake-triggered morning **sync + nudge** (Batch 85).
+
+    Pulls all external inputs (weather + today's Garmin daily metrics/sleep; Hive
+    indoor temp already streams from its own poll) into Postgres so they are sitting
+    ready before Mark is up, then fires the "good morning" nudge inviting him to
+    check in. Generation has moved *off* the wake trigger onto his check-in (the
+    primary trigger) and the 09:30 backstop (fallback), so by the time he taps the
+    data is already synced and the brief generates fast. Idempotent: the nudge is
+    one-per-day and is skipped once today's brief already exists (he checked in, or
+    the backstop generated it).
     """
     try:
         async with AsyncSessionLocal() as session:
-            profiles = (
-                (
-                    await session.execute(
-                        select(Profile).where(
-                            Profile.is_active.is_(True),
-                            Profile.deleted_at.is_(None),
-                        )
-                    )
-                )
-                .scalars()
-                .all()
+            profiles = await _active_profiles(session)
+            if not profiles:
+                log.info("morning sync skipped", reason="no_active_profiles")
+                return
+            weather_days, daily_metrics_synced, sleep_synced = await _sync_morning_inputs(
+                session, profiles
             )
-            service = EnvironmentSyncService(session)
-            synced = 0
+
+            morning = MorningAnalysisService(session)
+            nudge_service = NudgeAlertService(session)
+            nudges_sent = 0
+            for profile in profiles:
+                subject_date = _profile_today(profile)
+                # No point inviting a check-in once today's read is already done
+                # (he checked in, or the backstop generated it) — cheap DB read.
+                if await morning.latest_analysis(profile.id, subject_date) is not None:
+                    continue
+                try:
+                    if await nudge_service.push_good_morning(
+                        profile, subject_date=subject_date, commit=False
+                    ):
+                        nudges_sent += 1
+                except Exception:
+                    log.exception(
+                        "good morning nudge failed",
+                        profile_id=str(profile.id),
+                        subject_date=subject_date.isoformat(),
+                    )
+            await session.commit()
+        log.info(
+            "morning sync complete",
+            profiles=len(profiles),
+            days=weather_days,
+            daily_metrics=daily_metrics_synced,
+            sleep=sleep_synced,
+            nudges_sent=nudges_sent,
+        )
+    except Exception:
+        log.exception("morning sync failed")
+
+
+async def run_morning_weather_sync() -> None:
+    """Full morning pipeline: sync inputs, then generate + push the verdict.
+
+    This is the **09:30 backstop** (and the external-cron ``morning-sync`` entry) —
+    it guarantees a verdict even for a morning Mark never engaged with. On the
+    primary path generation is triggered by his check-in and the wake job runs the
+    lighter run_morning_sync (sync + nudge) instead (Batch 85). Idempotent per
+    profile: generate_and_store and push_morning_verdict short-circuit if the brief
+    / push already happened via the check-in.
+    """
+    try:
+        async with AsyncSessionLocal() as session:
+            profiles = await _active_profiles(session)
+            synced, daily_metrics_synced, sleep_synced = await _sync_morning_inputs(
+                session, profiles
+            )
             analyses_generated = 0
             analyses_existing = 0
-            client = OpenMeteoClient()
-            for profile in profiles:
-                request = WeatherRequest(
-                    latitude=profile.latitude or settings.weather_latitude,
-                    longitude=profile.longitude or settings.weather_longitude,
-                    timezone=profile.timezone or settings.weather_timezone,
-                )
-                payload = await _retry_async(lambda: client.fetch_daily_payload(request))
-                result = await service.sync_weather_daily(
-                    profile.id,
-                    payload,
-                    timezone=request.timezone,
-                    commit=False,
-                )
-                synced += result.weather_days_synced
-            await session.commit()
-
-            daily_metrics_synced, sleep_synced = await _sync_garmin_daily(session, list(profiles))
-            await session.commit()
 
             analysis_service = MorningAnalysisService(session)
             coaching_service = ExecutableCoachingService(session)
@@ -468,10 +534,11 @@ async def run_wake_check() -> None:
             waiting=waiting,
             napped=napped,
         )
-        # Run the actual sync + verdict once, on its own session, after the
-        # last-seen state is committed. Idempotent per profile.
+        # Once wake is stable, sync all inputs and fire the "good morning" nudge —
+        # generation itself waits for his check-in (Batch 85). Runs on its own
+        # session after the last-seen state is committed; idempotent per profile.
         if any_ready:
-            await run_morning_weather_sync()
+            await run_morning_sync()
     except Exception:
         log.exception("wake check failed")
 

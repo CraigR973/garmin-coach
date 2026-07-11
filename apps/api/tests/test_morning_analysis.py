@@ -24,6 +24,7 @@ from src.models.coaching import (
 from src.models.profile import Profile, UserRole
 from src.services.morning_analysis import (
     PROMPT_VERSION,
+    SYSTEM_PROMPT,
     ClaudeGenerationResult,
     MorningAnalysisError,
     MorningAnalysisService,
@@ -31,6 +32,7 @@ from src.services.morning_analysis import (
     _morning_verdict,
     _training_and_activity_fields,
     _yesterday_load_packet,
+    build_morning_user_prompt,
 )
 
 
@@ -567,6 +569,62 @@ def test_red_verdict_never_keeps_vo2() -> None:
     assert verdict["status"] == "Red"
     assert "red_never_vo2" in verdict["safetyRulesApplied"]
     assert any("Replace VO2" in item for item in verdict["planAdjustments"])
+
+
+def test_cheery_checkin_never_upgrades_a_red() -> None:
+    """Batch 85: subjective is downgrade-only — a top check-in score never lifts a
+    Red (poor overnight sleep/recovery) to Green when the brief regenerates on his
+    check-in. The Red floor owns the verdict; the subjective read cannot override it."""
+    user_id = uuid.uuid4()
+    daily_metric = DailyMetric(
+        user_id=user_id,
+        calendar_date=date(2026, 7, 11),
+        hrv_weekly_avg_ms=38,
+        hrv_baseline_low_ms=43,
+        hrv_status="Unbalanced",
+        raw_payload={},
+    )
+    sleep = Sleep(
+        user_id=user_id,
+        calendar_date=date(2026, 7, 11),
+        score=54,
+        raw_payload={},
+        factors_json={},
+    )
+    cheery = ManualEntry(
+        user_id=user_id,
+        entry_date=date(2026, 7, 11),
+        subjective_score=10,
+        feel="great, full of energy!",
+    )
+
+    verdict = _morning_verdict(
+        daily_metric=daily_metric,
+        sleep=sleep,
+        age_adjusted_sleep_score=58,  # < 60 → the Red floor
+        manual_entries=[cheery],
+        planned_workouts=[],
+    )
+
+    assert verdict["status"] == "Red"
+
+
+def test_prompt_answers_a_question_in_checkin_notes() -> None:
+    """Batch 85: the read answers a question Mark leaves in his check-in notes,
+    grounded in the packet. The instruction lives in the (version-bumped) system
+    prompt, and his note text reaches the user prompt."""
+    assert PROMPT_VERSION.startswith("morning-analysis-v8")
+    assert "Your question" in SYSTEM_PROMPT
+    assert "answer it" in SYSTEM_PROMPT.lower()
+
+    packet = {
+        "manualEntries": [
+            {"notes": "Why am I so tired even though I slept 8 hours?", "subjectiveScore": 4}
+        ],
+        "verdict": {"status": "Amber"},
+    }
+    prompt = build_morning_user_prompt(packet)
+    assert "Why am I so tired" in prompt
 
 
 def _rhr_baseline(user_id: uuid.UUID) -> MetricBaseline:

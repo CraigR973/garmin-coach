@@ -896,11 +896,12 @@ async def test_checkin_recompute_eases_ride_when_verdict_worsens(
 
 
 @pytest.mark.asyncio
-async def test_checkin_recompute_noops_when_verdict_holds(
+async def test_checkin_always_regenerates_brief_when_verdict_holds(
     db_conn: AsyncConnection,
 ) -> None:
-    """An ordinary check-in that leaves the verdict unchanged never re-runs the
-    model (the deterministic packet status gates the LLM call)."""
+    """Batch 85: the check-in is the primary generate trigger, so every submit
+    regenerates the brief — even a Green→Green check-in that changes nothing. A
+    Green verdict still proposes no eased ride."""
     user_id, workout_id = uuid.uuid4(), uuid.uuid4()
     subject = date(2026, 6, 23)
     await _seed_bike_day(db_conn, user_id, workout_id, subject)
@@ -917,10 +918,11 @@ async def test_checkin_recompute_noops_when_verdict_holds(
             user, subject, morning_service=morning
         )
 
-        assert result is None
-        assert morning.generate_calls == 0
+        assert result is not None  # the brief is always regenerated
+        assert result.verdict == "Green"
+        assert morning.generate_calls == 1
         proposals = (await session.execute(select(WorkoutDeliveryProposal))).scalars().all()
-        assert proposals == []
+        assert proposals == []  # Green → no eased ride
 
 
 @pytest.mark.asyncio
@@ -963,11 +965,40 @@ async def test_checkin_recompute_leaves_an_approved_ride_untouched(
             user, subject, morning_service=morning
         )
 
-        assert result is None
-        assert morning.generate_calls == 0  # bailed before any regeneration
+        # Batch 85: the brief still regenerates (so his notes/question fold in), but
+        # the approved ride is never silently re-adjusted (Decision #29).
+        assert result is not None
+        assert result.verdict == "Red"
+        assert morning.generate_calls == 1
         proposals = (await session.execute(select(WorkoutDeliveryProposal))).scalars().all()
-        assert len(proposals) == 1
+        assert len(proposals) == 1  # no new eased proposal was created
         assert proposals[0].status == "approved"  # left exactly as Mark approved it
+
+
+@pytest.mark.asyncio
+async def test_checkin_regenerates_brief_on_a_no_bike_day(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 85: a check-in on a rest / no-ride day still regenerates today's brief
+    (a bike-less day is no longer a short-circuit) and proposes nothing."""
+    user_id = uuid.uuid4()
+    subject = date(2026, 6, 23)
+    await _seed_profile(db_conn, user_id)
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session)
+        morning = _StubMorningService(session, stored=None, new_status="Green")
+
+        result = await service.regenerate_after_morning_checkin(
+            user, subject, morning_service=morning
+        )
+
+        assert result is not None  # the brief is generated even with no bike workout
+        assert morning.generate_calls == 1
+        proposals = (await session.execute(select(WorkoutDeliveryProposal))).scalars().all()
+        assert proposals == []
 
 
 # ---------------------------------------------------------------------------
