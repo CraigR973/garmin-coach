@@ -184,6 +184,15 @@ Assembles a context packet (KB + DB data + rolling trend + plan) and calls Claud
 
 Validated 19 Jun with a real sample → his verdict "fantastic." Demonstrated 5 wins over his Copilot flow: age-adjustment, plan-awareness, no wrong-screenshot errors, causal thermal insight, trend memory.
 
+**Shared Anthropic text boundary (Batch 84, DECISIONS #157).** All six narrative
+clients — morning, post-workout, strength, flexibility, walking, and the shared
+review boundary used by reviews/trends/handover — call one helper
+(`apps/api/src/services/anthropic_text.py`) instead of duplicating the Messages
+call. `settings.anthropic_max_tokens` is `4096` (was `1600`, too low for a rich
+morning brief); the helper treats `stop_reason == "max_tokens"` as an error so a
+truncated response is never persisted as a finished analysis — the existing
+staleness/regeneration path reruns it instead. No prompt or verdict change.
+
 ## 5. Data model (sketch — build from real JSON shapes in `~/garmin-spike/out/`)
 
 - `profiles` (pin_hash, timezone, lat/long, Garmin user profile pk, Hive home id;
