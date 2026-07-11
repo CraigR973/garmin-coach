@@ -33,7 +33,7 @@ from src.services.ride_intervals import (
     segment_ride_intervals,
     summarize_execution,
 )
-from src.services.workout_categories import DAY_CATEGORY_CYCLE
+from src.services.workout_categories import DAY_CATEGORY_CYCLE, category_for_workout_type
 from src.services.workout_completion import complete_matched_planned_workout
 from src.services.workout_delivery import (
     DEFAULT_FTP_WATTS,
@@ -48,8 +48,16 @@ from src.services.workout_delivery import (
 # corrections so the read can acknowledge/adjust when he's pushed back before.
 # Bumped for Batch 68 (#141): the packet grades against the delivered/accepted
 # proposal IR when one exists, not the stale planned row.
-PROMPT_VERSION = "post-workout-analysis-v4-2026-07-09"
+# Bumped for Batch 80 (#153): the packet carries a deterministic ``rideDeviation``
+# read so the analyst renders an honest good-call/bad-call verdict when the ride
+# diverged from the planned/delivered session (Mark's Q1a).
+PROMPT_VERSION = "post-workout-analysis-v5-2026-07-11"
 ANALYSIS_TYPE = "post_workout"
+
+# A planned session Mark told the app he was not doing (``skip_workout`` /
+# ``skip_day``). Duplicated as a local literal to avoid importing the heavy
+# ExecutableCoachingService just for the string.
+WORKOUT_STATUS_SKIPPED = "skipped"
 ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
 
@@ -75,6 +83,22 @@ When `gradingTarget.source` is `delivered_proposal`, treat that delivered IR as
 the workout Mark actually accepted and rode. Name the substitution or manual
 override from `gradingTarget.adjustment` / `origin` and `workoutAdherence` when
 relevant; do not narrate it as an attempt at the original planned workout.
+
+When `rideDeviation.diverged` is true, Mark did NOT do the planned session — he
+either skipped it and rode his own thing, or rode a materially different
+type/intensity (see `rideDeviation.reason`, `rideDeviation.planned`, and the
+objective grade in `execution`). Open the read with an explicit, honest deviation
+verdict: was overriding the plan the right call? Judge it on the numbers
+(`execution` power/HR/adherence), his morning readiness
+(`rideDeviation.morningReadiness` / `morningVerdict`), and the week's training
+goals — not on how the ride felt. Back a genuinely good call plainly (an easy ride
+on a low-readiness day when the plan was hard is a reasonable, often smart, call)
+and name a bad call plainly (skipping a key session on a green-readiness day set
+the week back). Never soften a poor call into praise and never manufacture a
+problem where the call was sound — this is the one place you must not be
+sycophantic. When `rideDeviation.diverged` is false, do NOT add a deviation
+verdict — read the ride as executed; an approved coach-adjustment
+(`rideDeviation.wasApprovedAdjustment` true) is not a deviation.
 
 Never mention left/right power balance. Do not use wrist-HR strength sessions for
 recovery decisions. When recentCorrections is non-empty, treat each as ground
@@ -301,6 +325,15 @@ class PostWorkoutAnalysisService:
             intervals,
             whole_ride_avg_power_watts=activity.avg_power_watts,
         )
+        morning_verdict = _morning_analysis_packet(morning_analysis)
+        ride_deviation = detect_ride_deviation(
+            grading_target=grading_target,
+            execution=execution,
+            planned_workouts=planned_workouts,
+            workout_adherence=adherence,
+            activity=activity,
+            morning_verdict=morning_verdict,
+        )
 
         return {
             "packetType": "post_workout_analysis",
@@ -325,8 +358,9 @@ class PostWorkoutAnalysisService:
             "gradingTarget": grading_target.to_packet(),
             "intervals": intervals,
             "execution": execution,
+            "rideDeviation": ride_deviation,
             "plannedWorkouts": [_planned_workout_packet(workout) for workout in planned_workouts],
-            "morningVerdict": _morning_analysis_packet(morning_analysis),
+            "morningVerdict": morning_verdict,
             "postRideCheckIn": _manual_entry_packet(post_ride_checkin),
             "workoutAdherence": _manual_entry_packet(adherence),
             "recentCorrections": [c.to_packet() for c in recent_corrections],
@@ -347,6 +381,9 @@ class PostWorkoutAnalysisService:
                     "fall_back_to_whole_ride_read_when_no_planned_intervals",
                     "grade_against_delivered_proposal_ir_when_present",
                     "name_accepted_substitution_or_manual_override_when_present",
+                    "render_deviation_verdict_when_ride_diverged_from_plan",
+                    "judge_override_on_readiness_and_objective_grade_never_sycophantic",
+                    "no_deviation_verdict_on_plan_or_approved_adjustment",
                     "never_reference_left_right_power_balance",
                     "exclude_wrist_hr_strength_from_recovery_decisions",
                     "acknowledge_recent_user_corrections_when_relevant",
@@ -890,6 +927,168 @@ def _recovery_decision_packet(activity: Activity) -> dict[str, Any]:
         "status": "ready_for_review",
         "excluded": False,
         "reason": "Cycling activity can inform post-workout recovery guidance.",
+    }
+
+
+def detect_ride_deviation(
+    *,
+    grading_target: RideGradingTarget,
+    execution: Mapping[str, Any],
+    planned_workouts: Sequence[PlannedWorkout],
+    workout_adherence: ManualEntry | None,
+    activity: Activity,
+    morning_verdict: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Deterministically decide whether this ride diverged from the day's
+    planned/delivered bike session (Batch 80, Mark's Q1a).
+
+    Divergence fires only when a bike session was actually on the plan/delivery and
+    Mark did not do it as prescribed — he skipped it and rode his own thing, or rode
+    a materially different type/intensity (every gradable work interval off target in
+    the same direction). It reuses the Batch 68 delivered-vs-actual grade in
+    ``execution`` as the objective anchor and never flags an approved coach-adjustment
+    (that is a sanctioned change, not a self-chosen override) or a graded attempt at
+    the plan (some work on target). A day with no bike plan is a free ride, not an
+    override, so it is not flagged. The good-call/bad-call *judgement* is left to the
+    analyst prompt, anchored on the readiness + objective grade this packet carries.
+    """
+    approved_adjustment = _is_approved_adjustment(grading_target, workout_adherence)
+    skipped_workout = _skipped_bike_workout(planned_workouts)
+    source = grading_target.source
+
+    has_gradable_plan = (
+        bool(execution.get("hasPlan")) and int(execution.get("workIntervalCount") or 0) > 0
+    )
+    work_count = int(execution.get("workIntervalCount") or 0)
+    on_target = int(execution.get("onTargetCount") or 0)
+    over = int(execution.get("overCount") or 0)
+    under = int(execution.get("underCount") or 0)
+
+    diverged = False
+    kind = "on_plan"
+    reason = "No divergence from the planned session detected."
+
+    if approved_adjustment:
+        kind = "approved_adjustment"
+        reason = (
+            "Rode the coach-adjusted session he approved — a sanctioned change, not an override."
+        )
+    elif skipped_workout is not None:
+        diverged = True
+        kind = "skipped_and_rode"
+        reason = (
+            f"Skipped the planned {skipped_workout.title} and rode a self-chosen session instead."
+        )
+    elif source in ("planned_workout", "delivered_proposal") and has_gradable_plan:
+        # A real attempt lands at least one work interval on target; every work
+        # interval off in the SAME direction is a different session, not a fade.
+        if on_target == 0 and over == 0 and under > 0:
+            diverged = True
+            kind = "easier_than_planned"
+            reason = (
+                f"Rode easier than the planned session: all {work_count} work "
+                "interval(s) came in under target."
+            )
+        elif on_target == 0 and under == 0 and over > 0:
+            diverged = True
+            kind = "harder_than_planned"
+            reason = (
+                f"Rode harder than the planned session: all {work_count} work "
+                "interval(s) came in over target."
+            )
+    elif source == "none":
+        kind = "free_ride"
+        reason = "No bike session was planned — a free ride, not a plan override."
+
+    return {
+        "diverged": diverged,
+        "kind": kind,
+        "reason": reason,
+        "wasApprovedAdjustment": approved_adjustment,
+        "plannedSessionSkipped": skipped_workout is not None,
+        "gradingSource": source,
+        "planned": _deviation_planned_summary(
+            grading_target.planned_workout or skipped_workout, grading_target.ir
+        ),
+        "actual": _deviation_actual_summary(execution, activity),
+        "morningReadiness": _deviation_readiness(morning_verdict),
+        "signals": {
+            "hasGradablePlan": has_gradable_plan,
+            "workIntervalCount": work_count,
+            "onTargetCount": on_target,
+            "overCount": over,
+            "underCount": under,
+        },
+    }
+
+
+def _is_approved_adjustment(
+    grading_target: RideGradingTarget,
+    workout_adherence: ManualEntry | None,
+) -> bool:
+    """True when the delivered IR is a coach-adjustment Mark approved (Batch 68/69),
+    so grading it against what he rode is on-plan, not a self-chosen override."""
+    if grading_target.source == "delivered_proposal" and isinstance(grading_target.ir, dict):
+        adjustment = grading_target.ir.get("adjustment")
+        if isinstance(adjustment, dict) and adjustment.get("changed") is True:
+            return True
+    if workout_adherence is not None:
+        actual = workout_adherence.actual_workout_json
+        if isinstance(actual, dict) and actual.get("source") == "accepted_adjustment":
+            return True
+    return False
+
+
+def _skipped_bike_workout(planned_workouts: Sequence[PlannedWorkout]) -> PlannedWorkout | None:
+    for workout in planned_workouts:
+        if workout.status != WORKOUT_STATUS_SKIPPED:
+            continue
+        if category_for_workout_type(workout.workout_type) == DAY_CATEGORY_CYCLE:
+            return workout
+    return None
+
+
+def _deviation_planned_summary(
+    workout: PlannedWorkout | None,
+    ir: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    if workout is None and not isinstance(ir, dict):
+        return None
+    summary: dict[str, Any] = {}
+    if workout is not None:
+        summary.update(
+            {
+                "title": workout.title,
+                "workoutType": workout.workout_type,
+                "intensityTarget": workout.intensity_target,
+                "plannedDurationMin": workout.planned_duration_min,
+                "status": workout.status,
+            }
+        )
+    if isinstance(ir, dict):
+        name = ir.get("name")
+        summary["irName"] = name if isinstance(name, str) else None
+    return summary or None
+
+
+def _deviation_actual_summary(
+    execution: Mapping[str, Any],
+    activity: Activity,
+) -> dict[str, Any]:
+    return {
+        "executionSummary": execution.get("summary"),
+        "avgPowerWatts": activity.avg_power_watts,
+        "avgHeartRateBpm": activity.avg_heart_rate_bpm,
+        "durationMin": _minutes(activity.duration_sec),
+    }
+
+
+def _deviation_readiness(morning_verdict: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(morning_verdict, Mapping):
+        return None
+    return {
+        "verdict": morning_verdict.get("verdict"),
+        "readinessInterpretation": morning_verdict.get("readinessInterpretation"),
     }
 
 
