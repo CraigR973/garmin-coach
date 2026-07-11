@@ -7,7 +7,7 @@ from datetime import date, datetime
 from typing import Any
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 
 from src.models.coaching import (
@@ -25,6 +25,7 @@ from src.models.profile import Profile, UserRole
 from src.services.morning_analysis import (
     PROMPT_VERSION,
     ClaudeGenerationResult,
+    MorningAnalysisError,
     MorningAnalysisService,
     _daily_metric_packet,
     _morning_verdict,
@@ -59,6 +60,16 @@ class FakeMorningClient:
             },
             model_name="claude-test",
         )
+
+
+class RaisingMorningClient:
+    async def generate(
+        self,
+        *,
+        context_packet: dict[str, Any],
+        user_prompt: str,
+    ) -> ClaudeGenerationResult:
+        raise MorningAnalysisError("Claude response hit max_tokens before completing.")
 
 
 @pytest.mark.asyncio
@@ -211,6 +222,44 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
         assert second.generated is False
         assert second.analysis.id == result.analysis.id
         assert fake_client.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_generate_and_store_does_not_persist_truncated_morning_analysis(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 1, 2)
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Morning Analysis Truncation Test",
+            pin_hash="x" * 60,
+            role=UserRole.admin,
+            timezone="Europe/London",
+            latitude=55.6045,
+            longitude=-4.5249,
+            is_active=True,
+        )
+        session.add(player)
+        await session.commit()
+
+        service = MorningAnalysisService(session)
+        with pytest.raises(MorningAnalysisError, match="max_tokens"):
+            await service.generate_and_store(player, subject_date, client=RaisingMorningClient())
+
+        count = await session.scalar(
+            select(func.count())
+            .select_from(Analysis)
+            .where(
+                Analysis.user_id == user_id,
+                Analysis.analysis_type == "morning",
+                Analysis.subject_date == subject_date,
+            )
+        )
+        assert count == 0
 
 
 @pytest.mark.asyncio

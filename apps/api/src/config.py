@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     weather_timezone: str = "Europe/London"
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-4-6"
-    anthropic_max_tokens: int = 1600
+    anthropic_max_tokens: int = 4096
     intervals_api_key: str = ""
     intervals_athlete_id: str = "i618709"
     intervals_base_url: str = "https://intervals.icu/api/v1"
