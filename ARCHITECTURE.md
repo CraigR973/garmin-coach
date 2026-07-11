@@ -179,6 +179,7 @@ Assembles a context packet (KB + DB data + rolling trend + plan) and calls Claud
   inline, and an empty submit remains an explicit objective-read affordance. Each prompt answers a
   question in the notes from the packet; the 20:30 backstop preserves a read for ignored sessions.
   This remains read-only coaching — it never writes a delivery adjustment.
+  **Shipped** in PR #112 (squash `011e342`; production verified on the merge SHA).
 - **Tonight:** the static KB `sleep_protocol` is personalised by a deterministic, advisory
   `sleepProjection` on `/api/v1/daily-loop` (Batch 46, DECISIONS #116). It reads today's synced
   training timing/load, Mark's measured sleep drivers (Batch 17/34), bedroom temperature, overnight
