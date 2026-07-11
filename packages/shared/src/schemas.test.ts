@@ -12,6 +12,7 @@ import {
   plannedWorkoutOverrideInputSchema,
   profileSchema,
   rideIntervalSchema,
+  restructureEnvelopeSchema,
   sleepSchema,
   swapSuggestionSchema,
   weatherDailySchema,
@@ -542,5 +543,40 @@ describe('v1 shared schemas', () => {
       outputMarkdown: '**Verdict:** Green',
     });
     expect(withoutMix.weeklyMix ?? null).toBeNull();
+  });
+
+  it('parses a restructure preview/apply envelope (Batch 83)', () => {
+    const parsed = restructureEnvelopeSchema.parse({
+      data: {
+        weekStart: '2026-07-13',
+        fatigued: true,
+        changed: true,
+        signal: {
+          fatigued: true,
+          readinessScore: 31,
+          hrvStatus: 'low',
+          recentVerdicts: ['amber', 'red'],
+          reasons: ['Training Readiness is low.', 'HRV trend is down.'],
+        },
+        changes: [
+          {
+            workoutDate: '2026-07-15',
+            fromWorkoutId: '11111111-1111-4111-8111-111111111111',
+            toWorkoutId: '22222222-2222-4222-8222-222222222222',
+            reason: 'defer_fatigue',
+          },
+        ],
+        conflictsBefore: [['2026-07-15', '2026-07-16']],
+        conflictsAfter: [],
+        notes: ['Fatigue detected — hard sessions deferred later in the week.'],
+        proposalsCreated: 2,
+      },
+      meta: { generatedAtUtc: '2026-07-11T11:10:00Z' },
+      errors: [],
+    });
+
+    expect(parsed.data.signal.readinessScore).toBe(31);
+    expect(parsed.data.changes[0]?.reason).toBe('defer_fatigue');
+    expect(parsed.data.conflictsBefore[0]?.[1]).toBe('2026-07-16');
   });
 });
