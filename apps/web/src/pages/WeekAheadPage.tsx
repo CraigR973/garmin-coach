@@ -5,6 +5,7 @@ import {
   customBikeWorkoutInputSchema,
   planScheduleEnvelopeSchema,
   quickAddOptionsEnvelopeSchema,
+  restructureEnvelopeSchema,
 } from '@coach/shared';
 import {
   Bike,
@@ -13,6 +14,7 @@ import {
   Hammer,
   Moon,
   Plus,
+  Shuffle,
   RotateCcw,
   SlidersHorizontal,
   Trash2,
@@ -23,6 +25,7 @@ import { toast } from 'sonner';
 import { MoveWorkoutSheet } from '@/components/MoveWorkoutSheet';
 import { QuickAddSheet } from '@/components/QuickAddSheet';
 import { StructuredWorkoutSheet } from '@/components/StructuredWorkoutSheet';
+import { WeekRestructureSheet } from '@/components/WeekRestructureSheet';
 import { PageHeader } from '@/components/PageHeader';
 import { WeeklyMixCard } from '@/components/WeeklyMixCard';
 import { Badge } from '@/components/ui/badge';
@@ -72,6 +75,35 @@ async function fetchQuickAddOptions(category: string) {
   return quickAddOptionsEnvelopeSchema.parse(response).data.options;
 }
 
+async function fetchRestructurePreview(weekStart: string) {
+  const response = await apiFetch<unknown>(
+    `/api/v1/restructure/week-ahead?week_start=${encodeURIComponent(weekStart)}`,
+  );
+  return restructureEnvelopeSchema.parse(response);
+}
+
+function weekStartForDate(value: string): string {
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, (month ?? 1) - 1, day ?? 1));
+  const weekday = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() - (weekday - 1));
+  return date.toISOString().slice(0, 10);
+}
+
+function formatWeekLabel(weekStart: string): string {
+  return new Date(`${weekStart}T00:00:00`).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function reasonLabel(reason: string): string {
+  if (reason === 'defer_fatigue') return 'Fatigue moved a hard session later';
+  if (reason === 'no_stack') return 'Separated hard sessions';
+  if (reason === 'reorder') return 'Rebalanced the week';
+  return reason.replace(/[_-]+/g, ' ').trim();
+}
+
 interface MoveableWorkout extends PlanWorkout {
   day: string;
 }
@@ -87,6 +119,7 @@ export function WeekAheadPage() {
     date: string;
     category: Exclude<DayCategory, 'rest'>;
   } | null>(null);
+  const [restructureWeekStart, setRestructureWeekStart] = useState<string | null>(null);
   const [structuredTarget, setStructuredTarget] = useState<
     { mode: 'add'; date: string } | { mode: 'edit'; workout: PlanWorkout } | null
   >(null);
@@ -103,6 +136,12 @@ export function WeekAheadPage() {
     queryKey: ['quick-add-options', quickAddTarget?.category],
     queryFn: () => fetchQuickAddOptions(quickAddTarget!.category),
     enabled: quickAddTarget !== null,
+  });
+
+  const restructurePreviewQuery = useQuery({
+    queryKey: ['week-restructure-preview', restructureWeekStart],
+    queryFn: () => fetchRestructurePreview(restructureWeekStart!),
+    enabled: restructureWeekStart !== null,
   });
 
   const addMutation = useMutation({
@@ -215,6 +254,18 @@ export function WeekAheadPage() {
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not restore the week'),
   });
 
+  const restructureApplyMutation = useMutation({
+    mutationFn: (weekStart: string) =>
+      apiFetch(`/api/v1/restructure/apply?week_start=${encodeURIComponent(weekStart)}`, { method: 'POST' }),
+    onSuccess: async () => {
+      setRestructureWeekStart(null);
+      await invalidate();
+      toast.success('Week rearranged');
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Could not rearrange the week'),
+  });
+
   const busy =
     addMutation.isPending ||
     structuredAddMutation.isPending ||
@@ -224,7 +275,8 @@ export function WeekAheadPage() {
     skipMutation.isPending ||
     removeMutation.isPending ||
     markResetMutation.isPending ||
-    unsetResetMutation.isPending;
+    unsetResetMutation.isPending ||
+    restructureApplyMutation.isPending;
   const moveOptions = useMemo(
     () =>
       pickerWorkout && query.data
@@ -239,6 +291,38 @@ export function WeekAheadPage() {
         : [],
     [pickerWorkout, query.data, todayIso],
   );
+
+  const workoutById = useMemo(() => {
+    const map = new Map<string, { title: string; workoutDate: string }>();
+    for (const day of query.data?.data.schedule ?? []) {
+      for (const workout of day.workouts) {
+        map.set(workout.id, { title: workout.title, workoutDate: workout.workoutDate });
+      }
+    }
+    return map;
+  }, [query.data]);
+
+  const restructurePreview = useMemo(() => {
+    const data = restructurePreviewQuery.data?.data;
+    if (!data) return null;
+    return {
+      changed: data.changed,
+      fatigued: data.fatigued,
+      reasons: data.signal.reasons,
+      notes: data.notes,
+      conflictsBefore: data.conflictsBefore,
+      changes: data.changes.map((change) => {
+        const incoming = workoutById.get(change.toWorkoutId);
+        const outgoing = workoutById.get(change.fromWorkoutId);
+        return {
+          workoutDate: formatDate(change.workoutDate),
+          incomingTitle: incoming?.title ?? 'Rescheduled ride',
+          outgoingTitle: outgoing?.title ?? 'planned ride',
+          reason: reasonLabel(change.reason),
+        };
+      }),
+    };
+  }, [restructurePreviewQuery.data, workoutById]);
 
   const closePicker = () => setPickerWorkout(null);
 
@@ -310,6 +394,7 @@ export function WeekAheadPage() {
                   <WeekCharacterBanner
                     day={day}
                     busy={busy}
+                    onRestructure={() => setRestructureWeekStart(weekStartForDate(day.date))}
                     onMarkReset={() => markResetMutation.mutate(day.date)}
                     onUnsetReset={() => unsetResetMutation.mutate(day.date)}
                   />
@@ -374,6 +459,16 @@ export function WeekAheadPage() {
           }
         }}
       />
+
+      <WeekRestructureSheet
+        open={restructureWeekStart !== null}
+        busy={restructureApplyMutation.isPending}
+        loading={restructurePreviewQuery.isLoading}
+        weekLabel={restructureWeekStart ? formatWeekLabel(restructureWeekStart) : 'week'}
+        preview={restructurePreview}
+        onClose={() => setRestructureWeekStart(null)}
+        onApply={() => restructureWeekStart && restructureApplyMutation.mutate(restructureWeekStart)}
+      />
     </div>
   );
 }
@@ -381,11 +476,13 @@ export function WeekAheadPage() {
 function WeekCharacterBanner({
   day,
   busy,
+  onRestructure,
   onMarkReset,
   onUnsetReset,
 }: {
   day: PlanDay;
   busy: boolean;
+  onRestructure: () => void;
   onMarkReset: () => void;
   onUnsetReset: () => void;
 }) {
@@ -395,6 +492,12 @@ function WeekCharacterBanner({
   return (
     <div className="flex flex-wrap items-center gap-2 px-1">
       <Badge variant={character.isHoliday || isReset ? 'accent' : 'muted'}>{character.label}</Badge>
+      {!character.isHoliday ? (
+        <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onRestructure}>
+          <Shuffle className="h-4 w-4" aria-hidden />
+          Rearrange week
+        </Button>
+      ) : null}
       {!character.isHoliday ? (
         <Button
           type="button"

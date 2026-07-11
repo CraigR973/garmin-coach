@@ -402,6 +402,39 @@ export const planScheduleEnvelopeSchema = z.object({
   errors: z.array(apiErrorSchema),
 });
 
+export const restructureSignalSchema = z.object({
+  fatigued: z.boolean(),
+  readinessScore: z.number().int().nullable().optional(),
+  hrvStatus: z.string().nullable().optional(),
+  recentVerdicts: z.array(z.string()),
+  reasons: z.array(z.string()),
+});
+
+export const restructureChangeSchema = z.object({
+  workoutDate: isoDateSchema,
+  fromWorkoutId: z.string().uuid(),
+  toWorkoutId: z.string().uuid(),
+  reason: z.string().min(1),
+});
+
+export const restructureDataSchema = z.object({
+  weekStart: isoDateSchema,
+  fatigued: z.boolean(),
+  changed: z.boolean(),
+  signal: restructureSignalSchema,
+  changes: z.array(restructureChangeSchema),
+  conflictsBefore: z.array(z.tuple([isoDateSchema, isoDateSchema])),
+  conflictsAfter: z.array(z.tuple([isoDateSchema, isoDateSchema])),
+  notes: z.array(z.string()),
+  proposalsCreated: z.number().int(),
+});
+
+export const restructureEnvelopeSchema = z.object({
+  data: restructureDataSchema,
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
+
 export const customBikeWorkoutInputSchema = z.object({
   delivery: z.enum(['indoor', 'outdoor']).default('indoor'),
   warmupEnabled: z.boolean().default(true),

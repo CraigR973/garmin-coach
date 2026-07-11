@@ -661,4 +661,89 @@ describe('WeekAheadPage', () => {
       );
     });
   });
+
+  it('previews and applies a whole-week restructure from the organiser (Batch 83)', async () => {
+    const restructureSchedule = JSON.parse(JSON.stringify(schedule));
+    restructureSchedule.data.schedule[0].weekCharacter = {
+      label: 'Build 4/13',
+      sequenceIndex: 4,
+      blockType: 'build',
+      isHoliday: false,
+      isReset: false,
+    };
+    const restructurePreview = {
+      data: {
+        weekStart: '2026-06-22',
+        fatigued: true,
+        changed: true,
+        signal: {
+          fatigued: true,
+          readinessScore: 34,
+          hrvStatus: 'low',
+          recentVerdicts: ['amber', 'amber'],
+          reasons: ['Training Readiness is low.'],
+        },
+        changes: [
+          {
+            workoutDate: '2026-06-23',
+            fromWorkoutId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            toWorkoutId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+            reason: 'defer_fatigue',
+          },
+          {
+            workoutDate: '2026-06-25',
+            fromWorkoutId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+            toWorkoutId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            reason: 'defer_fatigue',
+          },
+        ],
+        conflictsBefore: [['2026-06-23', '2026-06-25']],
+        conflictsAfter: [],
+        notes: ['Fatigue detected — hard sessions deferred later in the week.'],
+        proposalsCreated: 0,
+      },
+      meta: { generatedAtUtc: '2026-06-23T06:40:00Z' },
+      errors: [],
+    };
+    apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
+      if (path === '/api/v1/plan-actions/schedule?days=14') {
+        return Promise.resolve(restructureSchedule);
+      }
+      if (path === '/api/v1/restructure/week-ahead?week_start=2026-06-22') {
+        return Promise.resolve(restructurePreview);
+      }
+      if (path === '/api/v1/restructure/apply?week_start=2026-06-22' && options?.method === 'POST') {
+        return Promise.resolve(restructurePreview);
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    const queryClient = new QueryClient();
+    const user = userEvent.setup();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText('Build 4/13');
+    await user.click(screen.getByRole('button', { name: /rearrange week/i }));
+
+    expect(await screen.findByText('Training Readiness is low.')).toBeTruthy();
+    expect(
+      screen.getByText((content) => content.includes('Sweet Spot Builder') && content.includes('23')),
+    ).toBeTruthy();
+    expect(screen.getByText('Replaces VO2 Max 30/30 on this day.')).toBeTruthy();
+    expect(screen.getByText((content) => content.includes('VO2 Max 30/30') && content.includes('25'))).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: /apply reshuffle/i }));
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/restructure/apply?week_start=2026-06-22',
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+  });
 });
