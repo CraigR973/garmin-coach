@@ -1,6 +1,6 @@
 # Batch 90 — Post-mobility read accuracy
 
-Status: Implemented on `feat/batch-90-post-mobility-read`; not shipped. Decision #163.
+Status: Shipped in PR #115 / squash `43d4507` (2026-07-12). Decision #163.
 
 ## Problem
 
