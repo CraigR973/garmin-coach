@@ -9,9 +9,11 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.coaching import ManualEntry, PlannedWorkout
+from src.models.coaching import ManualEntry, PlanBlock, PlannedWorkout
 from src.models.profile import Profile
+from src.services.coaching_state import BLOCK_SEQUENCE
 from src.services.executable_coaching import WORKOUT_STATUS_SKIPPED, ExecutableCoachingService
+from src.services.holiday_pause import HolidayPauseService
 from src.services.structured_workout_builder import (
     BuiltCustomBikeWorkout,
     CustomBikeWorkoutSpec,
@@ -42,11 +44,59 @@ def _pattern_minutes(value: float) -> str:
     return f"{value:g}min"
 
 
+TOTAL_WEEKS = len(BLOCK_SEQUENCE)
+
+_BLOCK_TYPE_LABELS = {
+    "recovery": "Reset",
+    "taper": "Taper",
+    "consolidation": "Consolidation",
+}
+
+
+@dataclass(frozen=True)
+class WeekCharacter:
+    """Batch 81: what a day's week is, for the organiser header.
+
+    ``label`` is the human-readable character — "Build n/13" / "Reset" /
+    "Taper" / "Consolidation" / "Holiday" — used verbatim by the Week tab.
+    A holiday window overrides the underlying block's label because a paused
+    week has no training character of its own.
+    """
+
+    label: str
+    sequence_index: int | None
+    block_type: str | None
+    is_holiday: bool
+
+
+def week_character_for_day(block: PlanBlock | None, *, is_holiday: bool) -> WeekCharacter | None:
+    if is_holiday:
+        return WeekCharacter(
+            label="Holiday",
+            sequence_index=block.sequence_index if block else None,
+            block_type=block.block_type if block else None,
+            is_holiday=True,
+        )
+    if block is None or block.block_type is None:
+        return None
+    if block.block_type == "build":
+        label = f"Build {block.sequence_index}/{TOTAL_WEEKS}" if block.sequence_index else "Build"
+    else:
+        label = _BLOCK_TYPE_LABELS.get(block.block_type, block.block_type.title())
+    return WeekCharacter(
+        label=label,
+        sequence_index=block.sequence_index,
+        block_type=block.block_type,
+        is_holiday=False,
+    )
+
+
 @dataclass(frozen=True)
 class PlanDay:
     date: date
     day_state: DayState
     workouts: list[PlannedWorkout]
+    week_character: WeekCharacter | None = None
 
 
 @dataclass(frozen=True)
@@ -351,6 +401,32 @@ class PlanActionService:
         for workout in rows:
             by_date.setdefault(workout.workout_date, []).append(workout)
 
+        # Batch 81: attach each day's PlanBlock character + any active holiday
+        # window so the organiser shows where he is in the 13-week slate.
+        blocks = (
+            (
+                await self.session.execute(
+                    select(PlanBlock).where(
+                        PlanBlock.user_id == player.id,
+                        PlanBlock.start_date <= end_date,
+                        PlanBlock.end_date >= start_date,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        holiday_window = await HolidayPauseService(self.session).get_active_window(player)
+
+        def block_for(day: date) -> PlanBlock | None:
+            return next((b for b in blocks if b.start_date <= day <= b.end_date), None)
+
+        def is_holiday(day: date) -> bool:
+            return (
+                holiday_window is not None
+                and holiday_window.start_date <= day <= holiday_window.end_date
+            )
+
         plan_days: list[PlanDay] = []
         for offset in range(max(days, 1)):
             current = start_date + timedelta(days=offset)
@@ -360,6 +436,9 @@ class PlanActionService:
                     date=current,
                     day_state=day_state_for_workout_types([w.workout_type for w in workouts]),
                     workouts=workouts,
+                    week_character=week_character_for_day(
+                        block_for(current), is_holiday=is_holiday(current)
+                    ),
                 )
             )
         return PlanSchedule(start_date=start_date, days=plan_days)

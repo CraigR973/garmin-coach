@@ -1,11 +1,23 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import {
   customBikeWorkoutInputSchema,
   planScheduleEnvelopeSchema,
   quickAddOptionsEnvelopeSchema,
 } from '@coach/shared';
-import { Bike, CalendarDays, Dumbbell, Moon, Plus, SlidersHorizontal, Trash2, Wind } from 'lucide-react';
+import {
+  Bike,
+  CalendarDays,
+  Dumbbell,
+  Hammer,
+  Moon,
+  Plus,
+  SlidersHorizontal,
+  Trash2,
+  Umbrella,
+  Wind,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { MoveWorkoutSheet } from '@/components/MoveWorkoutSheet';
 import { QuickAddSheet } from '@/components/QuickAddSheet';
@@ -232,6 +244,21 @@ export function WeekAheadPage() {
         Doing something different? Just ride it — I'll read it after.
       </p>
 
+      <div className="flex flex-wrap gap-2">
+        <Button asChild size="sm" variant="outline">
+          <Link to="/holiday">
+            <Umbrella className="mr-1.5 h-4 w-4" aria-hidden />
+            Holiday
+          </Link>
+        </Button>
+        <Button asChild size="sm" variant="outline">
+          <Link to="/builder">
+            <Hammer className="mr-1.5 h-4 w-4" aria-hidden />
+            New training block
+          </Link>
+        </Button>
+      </div>
+
       {weeklyMix ? <WeeklyMixCard mix={weeklyMix} showShortfall /> : null}
 
       {query.isLoading ? (
@@ -249,21 +276,31 @@ export function WeekAheadPage() {
         <EmptyState title="No plan window yet" description="Your schedule will show up here once it's set." />
       ) : (
         <div className="space-y-3">
-          {query.data.data.schedule.map((day) => (
-            <ScheduleDayCard
-              key={day.date}
-              day={day}
-              isToday={day.date === todayIso}
-              busy={busy}
-              onAdd={(category) => setQuickAddTarget({ date: day.date, category })}
-              onBuildRide={() => setStructuredTarget({ mode: 'add', date: day.date })}
-              onMove={(workout) => setPickerWorkout(workout)}
-              onEditStructure={(workout) => setStructuredTarget({ mode: 'edit', workout })}
-              onSkipDay={() => skipDayMutation.mutate(day.date)}
-              onSkipWorkout={(workoutId) => skipMutation.mutate(workoutId)}
-              onRemoveWorkout={(workoutId) => removeMutation.mutate(workoutId)}
-            />
-          ))}
+          {query.data.data.schedule.map((day, index) => {
+            const previous = query.data.data.schedule[index - 1];
+            const showCharacter =
+              day.weekCharacter != null &&
+              (previous == null || previous.weekCharacter?.label !== day.weekCharacter.label);
+            return (
+              <div key={day.date} className="space-y-3">
+                {showCharacter && day.weekCharacter ? (
+                  <WeekCharacterBanner character={day.weekCharacter} />
+                ) : null}
+                <ScheduleDayCard
+                  day={day}
+                  isToday={day.date === todayIso}
+                  busy={busy}
+                  onAdd={(category) => setQuickAddTarget({ date: day.date, category })}
+                  onBuildRide={() => setStructuredTarget({ mode: 'add', date: day.date })}
+                  onMove={(workout) => setPickerWorkout(workout)}
+                  onEditStructure={(workout) => setStructuredTarget({ mode: 'edit', workout })}
+                  onSkipDay={() => skipDayMutation.mutate(day.date)}
+                  onSkipWorkout={(workoutId) => skipMutation.mutate(workoutId)}
+                  onRemoveWorkout={(workoutId) => removeMutation.mutate(workoutId)}
+                />
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -309,6 +346,14 @@ export function WeekAheadPage() {
           }
         }}
       />
+    </div>
+  );
+}
+
+function WeekCharacterBanner({ character }: { character: NonNullable<PlanDay['weekCharacter']> }) {
+  return (
+    <div className="flex items-center gap-2 px-1">
+      <Badge variant={character.isHoliday ? 'accent' : 'muted'}>{character.label}</Badge>
     </div>
   );
 }

@@ -2,16 +2,23 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
-from src.models.coaching import ManualEntry, PlannedWorkout, WorkoutDeliveryProposal
+from src.models.coaching import ManualEntry, PlanBlock, PlannedWorkout, WorkoutDeliveryProposal
 from src.models.profile import Profile, UserRole
-from src.services.plan_actions import PlanActionService, quick_add_options, workout_for_selection
+from src.services.holiday_pause import HolidayPauseService
+from src.services.plan_actions import (
+    TOTAL_WEEKS,
+    PlanActionService,
+    quick_add_options,
+    week_character_for_day,
+    workout_for_selection,
+)
 from src.services.structured_workout_builder import (
     CustomBikeWorkoutSpec,
     build_custom_bike_workout,
@@ -99,6 +106,29 @@ async def _seed_workout(
     session.add(workout)
     await session.flush()
     return workout
+
+
+def _block(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    seq: int,
+    block_type: str,
+    start: date,
+) -> PlanBlock:
+    block = PlanBlock(
+        id=uuid.uuid4(),
+        user_id=user_id,
+        name=f"Week {seq:02d} {block_type.title()}",
+        version=1,
+        sequence_index=seq,
+        block_type=block_type,
+        start_date=start,
+        end_date=start + timedelta(days=6),
+        goals_json={},
+        raw_plan={},
+    )
+    session.add(block)
+    return block
 
 
 def test_day_state_labels_mixed_and_rest() -> None:
@@ -579,6 +609,113 @@ async def test_schedule_excludes_skipped_workouts_for_week_parity(db_conn: Async
         schedule = await PlanActionService(session).schedule(user, start_date=day, days=1)
 
     assert [workout.id for workout in schedule.days[0].workouts] == [planned.id]
+
+
+# ----------------------------------------------------------
+# Batch 81 — calendar-aware week view: block character + holiday overlay
+# ----------------------------------------------------------
+
+
+def test_week_character_labels_each_block_type() -> None:
+    build = PlanBlock(
+        user_id=uuid.uuid4(),
+        name="Week 04 Build",
+        version=1,
+        sequence_index=4,
+        block_type="build",
+        start_date=date(2026, 8, 3),
+        end_date=date(2026, 8, 9),
+        goals_json={},
+        raw_plan={},
+    )
+    character = week_character_for_day(build, is_holiday=False)
+    assert character is not None
+    assert character.label == f"Build 4/{TOTAL_WEEKS}"
+    assert character.sequence_index == 4
+    assert character.block_type == "build"
+    assert character.is_holiday is False
+
+    for block_type, label in [
+        ("recovery", "Reset"),
+        ("taper", "Taper"),
+        ("consolidation", "Consolidation"),
+    ]:
+        build.block_type = block_type
+        result = week_character_for_day(build, is_holiday=False)
+        assert result is not None
+        assert result.label == label
+        assert result.is_holiday is False
+
+
+def test_week_character_holiday_overrides_the_block() -> None:
+    block = PlanBlock(
+        user_id=uuid.uuid4(),
+        name="Week 05 Build",
+        version=1,
+        sequence_index=5,
+        block_type="build",
+        start_date=date(2026, 8, 10),
+        end_date=date(2026, 8, 16),
+        goals_json={},
+        raw_plan={},
+    )
+    character = week_character_for_day(block, is_holiday=True)
+    assert character is not None
+    assert character.label == "Holiday"
+    assert character.is_holiday is True
+    # The overridden block's identity is still surfaced (useful for the client).
+    assert character.sequence_index == 5
+    assert character.block_type == "build"
+
+
+def test_week_character_is_none_without_a_block_or_holiday() -> None:
+    assert week_character_for_day(None, is_holiday=False) is None
+
+
+@pytest.mark.asyncio
+async def test_schedule_attaches_week_character_from_plan_block(db_conn: AsyncConnection) -> None:
+    user_id = uuid.uuid4()
+    monday = date(2026, 8, 24)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await _seed_user(session, user_id)
+        _block(session, user_id, 6, "recovery", monday)
+        await _seed_workout(session, user_id, monday, workout_type="bike_endurance")
+        await session.commit()
+
+        schedule = await PlanActionService(session).schedule(user, start_date=monday, days=3)
+
+    assert schedule.days[0].week_character is not None
+    assert schedule.days[0].week_character.label == "Reset"
+    assert schedule.days[0].week_character.is_holiday is False
+
+
+@pytest.mark.asyncio
+async def test_schedule_surfaces_active_holiday_window(db_conn: AsyncConnection) -> None:
+    user_id = uuid.uuid4()
+    monday = date(2026, 9, 7)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await _seed_user(session, user_id)
+        _block(session, user_id, 7, "build", monday)
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        await HolidayPauseService(session).pause(user, monday, monday + timedelta(days=2))
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        schedule = await PlanActionService(session).schedule(user, start_date=monday, days=5)
+
+    # Days inside the holiday window read "Holiday" even though the underlying
+    # block is a build week; days after resume revert to the block's own character.
+    assert schedule.days[0].week_character is not None
+    assert schedule.days[0].week_character.label == "Holiday"
+    assert schedule.days[2].week_character is not None
+    assert schedule.days[2].week_character.label == "Holiday"
+    assert schedule.days[4].week_character is not None
+    assert schedule.days[4].week_character.label == "Build 7/13"
 
 
 @pytest.mark.asyncio
