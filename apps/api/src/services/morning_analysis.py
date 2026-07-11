@@ -10,7 +10,6 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Protocol, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-import httpx
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +28,7 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile
 from src.services.age_norms import build_age_comparison
+from src.services.anthropic_text import generate_anthropic_text
 from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
 from src.services.coaching_state import CoachingStateService
 from src.services.feedback import FeedbackService
@@ -55,9 +55,6 @@ from src.services.sleep_scoring import (
 # again to regenerate stale reads.
 PROMPT_VERSION = "morning-analysis-v7-2026-07-09"
 ANALYSIS_TYPE = "morning"
-ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
-ANTHROPIC_VERSION = "2023-06-01"
-
 SYSTEM_PROMPT = """You are Garmin Coach, a private daily endurance and sleep coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
 Return concise markdown with a sleep summary line, a metrics-vs-baselines read,
@@ -138,43 +135,18 @@ class AnthropicMorningAnalysisClient:
     ) -> ClaudeGenerationResult:
         if not self.api_key:
             raise MorningAnalysisError("ANTHROPIC_API_KEY is not configured.")
-
-        payload: dict[str, Any] = {
-            "model": self.model_name,
-            "max_tokens": self.max_tokens,
-            "system": SYSTEM_PROMPT,
-            "messages": [{"role": "user", "content": user_prompt}],
-        }
-        headers = {
-            "x-api-key": self.api_key,
-            "anthropic-version": ANTHROPIC_VERSION,
-            "content-type": "application/json",
-        }
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(ANTHROPIC_MESSAGES_URL, headers=headers, json=payload)
-            response.raise_for_status()
-            raw = response.json()
-
-        if not isinstance(raw, dict):
-            raise MorningAnalysisError("Claude response was not a JSON object.")
-
-        text_parts: list[str] = []
-        content = raw.get("content", [])
-        if isinstance(content, list):
-            for item in content:
-                if isinstance(item, dict) and item.get("type") == "text":
-                    text = item.get("text")
-                    if isinstance(text, str):
-                        text_parts.append(text)
-        output = "\n\n".join(text_parts).strip()
-        if not output:
-            raise MorningAnalysisError("Claude response did not contain text output.")
-
-        model = raw.get("model")
+        result = await generate_anthropic_text(
+            api_key=self.api_key,
+            model_name=self.model_name,
+            max_tokens=self.max_tokens,
+            system_prompt=SYSTEM_PROMPT,
+            user_prompt=user_prompt,
+            error_cls=MorningAnalysisError,
+        )
         return ClaudeGenerationResult(
-            output_markdown=output,
-            raw_response=raw,
-            model_name=model if isinstance(model, str) else self.model_name,
+            output_markdown=result.output_markdown,
+            raw_response=result.raw_response,
+            model_name=result.model_name,
         )
 
 

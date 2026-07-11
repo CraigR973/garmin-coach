@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Protocol, cast
 
-import httpx
 from fastapi import HTTPException
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +25,7 @@ from src.models.coaching import (
     WorkoutDeliveryProposal,
 )
 from src.models.profile import Profile
+from src.services.anthropic_text import generate_anthropic_text
 from src.services.coaching_state import CoachingStateService
 from src.services.feedback import FeedbackService
 from src.services.ride_intervals import (
@@ -58,9 +58,6 @@ ANALYSIS_TYPE = "post_workout"
 # ``skip_day``). Duplicated as a local literal to avoid importing the heavy
 # ExecutableCoachingService just for the string.
 WORKOUT_STATUS_SKIPPED = "skipped"
-ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
-ANTHROPIC_VERSION = "2023-06-01"
-
 SYSTEM_PROMPT = """You are Garmin Coach, a private endurance post-workout analyst.
 Use only the supplied context packet. Follow every data-quality guardrail.
 Return concise markdown with a workout rating, performance read, specific timed
@@ -191,43 +188,18 @@ class AnthropicPostWorkoutAnalysisClient:
     ) -> ClaudeGenerationResult:
         if not self.api_key:
             raise PostWorkoutAnalysisError("ANTHROPIC_API_KEY is not configured.")
-
-        payload: dict[str, Any] = {
-            "model": self.model_name,
-            "max_tokens": self.max_tokens,
-            "system": SYSTEM_PROMPT,
-            "messages": [{"role": "user", "content": user_prompt}],
-        }
-        headers = {
-            "x-api-key": self.api_key,
-            "anthropic-version": ANTHROPIC_VERSION,
-            "content-type": "application/json",
-        }
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(ANTHROPIC_MESSAGES_URL, headers=headers, json=payload)
-            response.raise_for_status()
-            raw = response.json()
-
-        if not isinstance(raw, dict):
-            raise PostWorkoutAnalysisError("Claude response was not a JSON object.")
-
-        text_parts: list[str] = []
-        content = raw.get("content", [])
-        if isinstance(content, list):
-            for item in content:
-                if isinstance(item, dict) and item.get("type") == "text":
-                    text = item.get("text")
-                    if isinstance(text, str):
-                        text_parts.append(text)
-        output = "\n\n".join(text_parts).strip()
-        if not output:
-            raise PostWorkoutAnalysisError("Claude response did not contain text output.")
-
-        model = raw.get("model")
+        result = await generate_anthropic_text(
+            api_key=self.api_key,
+            model_name=self.model_name,
+            max_tokens=self.max_tokens,
+            system_prompt=SYSTEM_PROMPT,
+            user_prompt=user_prompt,
+            error_cls=PostWorkoutAnalysisError,
+        )
         return ClaudeGenerationResult(
-            output_markdown=output,
-            raw_response=raw,
-            model_name=model if isinstance(model, str) else self.model_name,
+            output_markdown=result.output_markdown,
+            raw_response=result.raw_response,
+            model_name=result.model_name,
         )
 
 

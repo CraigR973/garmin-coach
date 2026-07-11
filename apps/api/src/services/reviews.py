@@ -37,7 +37,6 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Protocol, cast
 
-import httpx
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -55,6 +54,7 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile
+from src.services.anthropic_text import generate_anthropic_text
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
 from src.services.insights import EarlyWarningResult, FtpDriftResult, InsightsService
 from src.services.personal_baselines import baseline_band_packet, serialize_training_schedule
@@ -74,9 +74,6 @@ _ANALYSIS_TYPE_BY_PERIOD = {
     PERIOD_WEEKLY: ANALYSIS_TYPE_WEEKLY,
     PERIOD_MONTHLY: ANALYSIS_TYPE_MONTHLY,
 }
-
-ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
-ANTHROPIC_VERSION = "2023-06-01"
 
 # Indoor temperature at/above this is treated as a thermal-disruption night
 # (matches the morning-analysis default; the sleep protocol KB can refine it).
@@ -505,43 +502,18 @@ class AnthropicReviewClient:
     ) -> ClaudeReviewResult:
         if not self.api_key:
             raise ReviewError("ANTHROPIC_API_KEY is not configured.")
-
-        payload: dict[str, Any] = {
-            "model": self.model_name,
-            "max_tokens": self.max_tokens,
-            "system": self.system_prompt,
-            "messages": [{"role": "user", "content": user_prompt}],
-        }
-        headers = {
-            "x-api-key": self.api_key,
-            "anthropic-version": ANTHROPIC_VERSION,
-            "content-type": "application/json",
-        }
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(ANTHROPIC_MESSAGES_URL, headers=headers, json=payload)
-            response.raise_for_status()
-            raw = response.json()
-
-        if not isinstance(raw, dict):
-            raise ReviewError("Claude response was not a JSON object.")
-
-        text_parts: list[str] = []
-        content = raw.get("content", [])
-        if isinstance(content, list):
-            for item in content:
-                if isinstance(item, dict) and item.get("type") == "text":
-                    text = item.get("text")
-                    if isinstance(text, str):
-                        text_parts.append(text)
-        output = "\n\n".join(text_parts).strip()
-        if not output:
-            raise ReviewError("Claude response did not contain text output.")
-
-        model = raw.get("model")
+        result = await generate_anthropic_text(
+            api_key=self.api_key,
+            model_name=self.model_name,
+            max_tokens=self.max_tokens,
+            system_prompt=self.system_prompt,
+            user_prompt=user_prompt,
+            error_cls=ReviewError,
+        )
         return ClaudeReviewResult(
-            output_markdown=output,
-            raw_response=raw,
-            model_name=model if isinstance(model, str) else self.model_name,
+            output_markdown=result.output_markdown,
+            raw_response=result.raw_response,
+            model_name=result.model_name,
         )
 
 
