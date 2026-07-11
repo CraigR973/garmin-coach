@@ -371,6 +371,20 @@ export const planActionWorkoutSchema = z.object({
   outdoorDelivery: outdoorDeliverySchema.nullable().optional(),
 });
 
+// Batch 88: a non-blocking advisory returned on a *successful* save (the analog of
+// apiError). Structured so the copy stays swappable — the UI renders detail inline.
+export const apiWarningSchema = z.object({
+  code: z.string().min(1),
+  detail: z.string().min(1),
+});
+
+export const workoutActionResponseSchema = z.object({
+  data: z.object({ workout: planActionWorkoutSchema }),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+  warnings: z.array(apiWarningSchema).default([]),
+});
+
 export const planDayStateSchema = z.object({
   categories: z.array(dayCategorySchema),
   label: z.string().min(1),
@@ -435,29 +449,45 @@ export const restructureEnvelopeSchema = z.object({
   errors: z.array(apiErrorSchema),
 });
 
-export const customBikeWorkoutInputSchema = z.object({
+// Free-form workout editor (Batch 88): an ordered list of segments Mark can build
+// in any count/order. Bounds are the *absolute* deliverable floor (power 1-300% FTP,
+// positive durations up to the total cap) — the coaching 45-150% band is enforced as
+// a non-blocking warning server-side, not here, so an aggressive value still submits.
+const FREEFORM_POWER_PCT = z.number().int().min(1).max(300);
+const FREEFORM_DURATION_MIN = z.number().int().min(1).max(480);
+
+export const workoutSegmentInputSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('ramp'),
+    durationMin: FREEFORM_DURATION_MIN,
+    startFtpPct: FREEFORM_POWER_PCT,
+    endFtpPct: FREEFORM_POWER_PCT,
+  }),
+  z.object({
+    kind: z.literal('steady'),
+    durationMin: FREEFORM_DURATION_MIN,
+    ftpPct: FREEFORM_POWER_PCT,
+  }),
+  z.object({
+    kind: z.literal('interval'),
+    repeats: z.number().int().min(1).max(50),
+    workMin: FREEFORM_DURATION_MIN,
+    workFtpPct: FREEFORM_POWER_PCT,
+    recoverMin: FREEFORM_DURATION_MIN,
+    recoverFtpPct: FREEFORM_POWER_PCT,
+  }),
+]);
+
+export const freeformBikeWorkoutInputSchema = z.object({
   delivery: z.enum(['indoor', 'outdoor']).default('indoor'),
-  warmupEnabled: z.boolean().default(true),
-  warmupDurationMin: z.number().int().min(1).max(60).nullable().optional(),
-  z2LeadInEnabled: z.boolean().default(false),
-  z2LeadInDurationMin: z.number().int().min(1).max(180).nullable().optional(),
-  intervalsEnabled: z.boolean().default(false),
-  interval1DurationMin: z.number().int().min(1).max(120).nullable().optional(),
-  interval1FtpPct: z.number().int().min(45).max(150).nullable().optional(),
-  interval2DurationMin: z.number().int().min(1).max(120).nullable().optional(),
-  interval2FtpPct: z.number().int().min(45).max(150).nullable().optional(),
-  repeats: z.number().int().min(1).max(40).nullable().optional(),
-  blockDurationMin: z.number().int().min(1).max(240).nullable().optional(),
-  blockFtpPct: z.number().int().min(45).max(150).nullable().optional(),
-  cooldownEnabled: z.boolean().default(true),
-  cooldownDurationMin: z.number().int().min(1).max(60).nullable().optional(),
+  segments: z.array(workoutSegmentInputSchema).min(1).max(40),
 });
 
 export const planAddWorkoutInputSchema = z.object({
   category: z.enum(['cycle', 'weights', 'flexibility']),
   subtype: z.string().min(1).optional(),
   durationMin: z.number().int().min(1).max(180).optional(),
-  customBike: customBikeWorkoutInputSchema.optional(),
+  customBike: freeformBikeWorkoutInputSchema.optional(),
 });
 
 export const quickAddOptionSchema = z.object({

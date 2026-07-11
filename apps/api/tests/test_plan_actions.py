@@ -9,7 +9,13 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
-from src.models.coaching import ManualEntry, PlanBlock, PlannedWorkout, WorkoutDeliveryProposal
+from src.models.coaching import (
+    Analysis,
+    ManualEntry,
+    PlanBlock,
+    PlannedWorkout,
+    WorkoutDeliveryProposal,
+)
 from src.models.profile import Profile, UserRole
 from src.services.holiday_pause import HolidayPauseService
 from src.services.plan_actions import (
@@ -20,8 +26,9 @@ from src.services.plan_actions import (
     workout_for_selection,
 )
 from src.services.structured_workout_builder import (
-    CustomBikeWorkoutSpec,
-    build_custom_bike_workout,
+    FreeformBikeWorkoutSpec,
+    WorkoutSegment,
+    build_freeform_bike_workout,
 )
 from src.services.workout_categories import day_state_for_workout_types
 from src.services.workout_delivery import (
@@ -30,6 +37,31 @@ from src.services.workout_delivery import (
     expand_structured_steps,
     validate_deliverable_bike_workout,
 )
+
+
+def _ramp(duration_min: int, start: int, end: int) -> WorkoutSegment:
+    return WorkoutSegment(
+        kind="ramp", duration_min=duration_min, start_ftp_pct=start, end_ftp_pct=end
+    )
+
+
+def _steady(duration_min: int, pct: int) -> WorkoutSegment:
+    return WorkoutSegment(kind="steady", duration_min=duration_min, ftp_pct=pct)
+
+
+def _interval(repeats: int, work: int, work_pct: int, rec: int, rec_pct: int) -> WorkoutSegment:
+    return WorkoutSegment(
+        kind="interval",
+        repeats=repeats,
+        work_min=work,
+        work_ftp_pct=work_pct,
+        recover_min=rec,
+        recover_ftp_pct=rec_pct,
+    )
+
+
+def _spec(*segments: WorkoutSegment, delivery: str = "indoor") -> FreeformBikeWorkoutSpec:
+    return FreeformBikeWorkoutSpec(delivery=delivery, segments=tuple(segments))
 
 
 class _FakeIntervalsClient:
@@ -278,38 +310,94 @@ def test_quick_add_rejects_vo2_efforts_duration_outside_bounds() -> None:
         workout_for_selection("cycle", subtype="vo2_efforts", duration_min=100)
 
 
-def test_custom_builder_transcribes_marks_spreadsheet_shape() -> None:
-    built = build_custom_bike_workout(
-        CustomBikeWorkoutSpec(
-            delivery="indoor",
-            warmup_enabled=True,
-            warmup_duration_min=10,
-            z2_lead_in_enabled=True,
-            z2_lead_in_duration_min=8,
-            intervals_enabled=True,
-            interval_1_duration_min=3,
-            interval_1_ftp_pct=112,
-            interval_2_duration_min=2,
-            interval_2_ftp_pct=55,
-            repeats=4,
-            block_duration_min=None,
-            block_ftp_pct=None,
-            cooldown_enabled=True,
-            cooldown_duration_min=6,
-        )
+def test_freeform_builder_maps_ordered_segments_to_steps() -> None:
+    built, warnings = build_freeform_bike_workout(
+        _spec(
+            _ramp(10, 45, 75),
+            _steady(8, 55),
+            _interval(4, 3, 112, 2, 55),
+            _ramp(6, 75, 45),
+        ),
+        soft_gates=True,
     )
 
+    assert warnings == []
     assert built.workout_type == "bike_vo2"
-    assert built.planned_duration_min == 44
+    assert built.planned_duration_min == 44  # 10 + 8 + 4*(3+2) + 6
     assert built.structured_workout["delivery"] == "indoor"
     assert built.structured_workout["steps"] == [
         {"label": "Warm-up ramp", "minutes": 10, "ramp": [45, 75]},
-        {"label": "Z2 lead-in", "minutes": 8, "target": "55%"},
-        {"label": "Main intervals", "target": "112%", "pattern": "4 x 3min / 2min @55%"},
+        {"label": "Steady", "minutes": 8, "target": "55%"},
+        {"label": "Intervals", "target": "112%", "pattern": "4 x 3min / 2min @55%"},
         {"label": "Cool-down ramp", "minutes": 6, "ramp": [75, 45]},
     ]
     expanded = expand_structured_steps(built.structured_workout, built.intensity_target)
     assert len([step for step in expanded if step["powerEndPct"] == 112]) == 4
+
+
+def test_freeform_builder_preserves_arbitrary_segment_order() -> None:
+    built, _ = build_freeform_bike_workout(
+        _spec(
+            _ramp(5, 45, 75),
+            _interval(2, 1, 120, 1, 50),
+            _steady(8, 80),
+            _interval(3, 2, 105, 2, 60),
+            _ramp(5, 75, 45),
+        ),
+        soft_gates=True,
+    )
+    assert [step["label"] for step in built.structured_workout["steps"]] == [
+        "Warm-up ramp",
+        "Intervals",
+        "Steady",
+        "Intervals",
+        "Cool-down ramp",
+    ]
+
+
+def test_freeform_soft_gates_warn_not_block_on_manual_path() -> None:
+    # A short 160% sprint with no cool-down ramp: both gates warn, nothing is rejected.
+    built, warnings = build_freeform_bike_workout(
+        _spec(_ramp(10, 45, 75), _steady(2, 160)), soft_gates=True
+    )
+    codes = {warning.code for warning in warnings}
+    assert codes == {"power_out_of_band", "missing_ramp"}
+    assert built.planned_duration_min == 12
+    assert built.workout_type == "bike_vo2"
+
+
+def test_freeform_hard_mode_blocks_out_of_band_and_missing_ramp() -> None:
+    # The coach/automated path (soft_gates=False, the default) keeps both gates hard.
+    with pytest.raises(HTTPException):
+        build_freeform_bike_workout(
+            _spec(_ramp(10, 45, 75), _steady(2, 160), _ramp(5, 75, 45)), soft_gates=False
+        )
+    with pytest.raises(HTTPException):
+        build_freeform_bike_workout(_spec(_steady(30, 65)), soft_gates=False)
+
+
+def test_freeform_absolute_floor_rejects_even_under_soft_gates() -> None:
+    # Power beyond the deliverable ceiling is rejected even on the manual path.
+    with pytest.raises(HTTPException):
+        build_freeform_bike_workout(
+            _spec(_ramp(10, 45, 75), _steady(10, 400), _ramp(5, 75, 45)), soft_gates=True
+        )
+    # An absurd total duration is rejected even on the manual path.
+    with pytest.raises(HTTPException):
+        build_freeform_bike_workout(
+            _spec(_ramp(10, 45, 75), _steady(300, 65), _steady(300, 65), _ramp(5, 75, 45)),
+            soft_gates=True,
+        )
+
+
+def test_import_gate_stays_hard_on_rampless_bike_workout() -> None:
+    # The coach/automated import path keeps its own hard ramp gate, independent of the
+    # builder flag — a rampless plan still fails loudly at import.
+    with pytest.raises(ValueError):
+        validate_deliverable_bike_workout(
+            {"format": "bike", "steps": [{"label": "Block", "minutes": 30, "target": "65%"}]},
+            None,
+        )
 
 
 @pytest.mark.asyncio
@@ -325,10 +413,11 @@ async def test_add_workout_honours_chosen_subtype_and_duration(db_conn: AsyncCon
             user, workout_date=day, category="cycle", subtype="sweet_spot", duration_min=50
         )
 
-    assert added.workout_type == "bike_sweet_spot"
-    assert added.title == "Sweet Spot ride"
-    assert added.planned_duration_min == 50
-    steps = added.structured_workout["steps"]
+    assert added.warnings == []
+    assert added.workout.workout_type == "bike_sweet_spot"
+    assert added.workout.title == "Sweet Spot ride"
+    assert added.workout.planned_duration_min == 50
+    steps = added.workout.structured_workout["steps"]
     assert sum(step["minutes"] for step in steps) == 50
 
 
@@ -340,40 +429,27 @@ async def test_add_custom_indoor_workout_delivers_and_outdoor_does_not(
     indoor_day = date(2026, 8, 26)
     outdoor_day = date(2026, 8, 27)
     fake = _FakeIntervalsClient()
-    custom = CustomBikeWorkoutSpec(
-        delivery="indoor",
-        warmup_enabled=True,
-        warmup_duration_min=10,
-        z2_lead_in_enabled=False,
-        z2_lead_in_duration_min=None,
-        intervals_enabled=False,
-        interval_1_duration_min=None,
-        interval_1_ftp_pct=None,
-        interval_2_duration_min=None,
-        interval_2_ftp_pct=None,
-        repeats=None,
-        block_duration_min=40,
-        block_ftp_pct=84,
-        cooldown_enabled=True,
-        cooldown_duration_min=5,
-    )
+    segments = (_ramp(10, 45, 75), _steady(40, 84), _ramp(5, 75, 45))
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
         user = await _seed_user(session, user_id)
         await session.commit()
         service = PlanActionService(session, intervals_client=fake)
 
         indoor = await service.add_workout(
-            user, workout_date=indoor_day, category="cycle", custom_bike=custom
+            user,
+            workout_date=indoor_day,
+            category="cycle",
+            custom_bike=_spec(*segments, delivery="indoor"),
         )
         outdoor = await service.add_workout(
             user,
             workout_date=outdoor_day,
             category="cycle",
-            custom_bike=CustomBikeWorkoutSpec(**{**custom.__dict__, "delivery": "outdoor"}),
+            custom_bike=_spec(*segments, delivery="outdoor"),
         )
 
-    assert indoor.structured_workout["delivery"] == "indoor"
-    assert outdoor.structured_workout["delivery"] == "outdoor"
+    assert indoor.workout.structured_workout["delivery"] == "indoor"
+    assert outdoor.workout.structured_workout["delivery"] == "outdoor"
     assert len(fake.payloads) == 1
     assert fake.payloads[0]["start_date_local"] == "2026-08-26T00:00:00"
 
@@ -412,22 +488,10 @@ async def test_structured_edit_versions_row_and_resyncs_zwift(db_conn: AsyncConn
         edited = await service.edit_structured_workout(
             user,
             planned_workout_id=original.id,
-            custom_bike=CustomBikeWorkoutSpec(
-                delivery="indoor",
-                warmup_enabled=True,
-                warmup_duration_min=8,
-                z2_lead_in_enabled=False,
-                z2_lead_in_duration_min=None,
-                intervals_enabled=True,
-                interval_1_duration_min=2,
-                interval_1_ftp_pct=118,
-                interval_2_duration_min=2,
-                interval_2_ftp_pct=55,
-                repeats=5,
-                block_duration_min=None,
-                block_ftp_pct=None,
-                cooldown_enabled=True,
-                cooldown_duration_min=6,
+            custom_bike=_spec(
+                _ramp(8, 45, 75),
+                _interval(5, 2, 118, 2, 55),
+                _ramp(6, 75, 45),
             ),
         )
         rows = (
@@ -443,16 +507,80 @@ async def test_structured_edit_versions_row_and_resyncs_zwift(db_conn: AsyncConn
         )
         proposal = await session.scalar(
             select(WorkoutDeliveryProposal).where(
-                WorkoutDeliveryProposal.planned_workout_id == edited.id
+                WorkoutDeliveryProposal.planned_workout_id == edited.workout.id
             )
         )
 
-    assert [(row.id, row.is_active) for row in rows] == [(original.id, False), (edited.id, True)]
-    assert edited.version == 2
-    assert edited.workout_type == "bike_vo2"
+    assert [(row.id, row.is_active) for row in rows] == [
+        (original.id, False),
+        (edited.workout.id, True),
+    ]
+    assert edited.workout.version == 2
+    assert edited.workout.workout_type == "bike_vo2"
     assert fake.updates
     assert proposal is not None
     assert proposal.planned_workout_version == 2
+
+
+def _seed_morning_verdict(user_id: uuid.UUID, day: date, verdict: str) -> Analysis:
+    return Analysis(
+        user_id=user_id,
+        analysis_type="morning",
+        subject_date=day,
+        generated_at_utc=datetime(day.year, day.month, day.day, 6, 30),
+        prompt_version="test",
+        verdict=verdict,
+        context_packet={},
+        output_markdown="",
+        raw_response={},
+    )
+
+
+@pytest.mark.asyncio
+async def test_add_custom_vo2_on_red_day_warns_but_still_delivers(db_conn: AsyncConnection) -> None:
+    """Batch 88 / Decision #161: a VO2 ride Mark explicitly authors for a Red-readiness
+    day is delivered with a warning rather than blocked — the scoped reversal. The
+    coach-adjustment delivery gates keep Red-never-VO2 hard (tested in executable)."""
+    user_id = uuid.uuid4()
+    day = date(2026, 9, 2)
+    fake = _FakeIntervalsClient()
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await _seed_user(session, user_id)
+        session.add(_seed_morning_verdict(user_id, day, "Red"))
+        await session.commit()
+
+        result = await PlanActionService(session, intervals_client=fake).add_workout(
+            user,
+            workout_date=day,
+            category="cycle",
+            custom_bike=_spec(_ramp(10, 45, 75), _interval(4, 4, 118, 4, 55), _ramp(5, 75, 45)),
+        )
+
+    assert any(warning.code == "red_vo2" for warning in result.warnings)
+    assert result.workout.workout_type == "bike_vo2"
+    assert len(fake.payloads) == 1  # delivered despite Red — warn-not-block on the manual path
+
+
+@pytest.mark.asyncio
+async def test_add_custom_endurance_on_red_day_has_no_vo2_warning(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    day = date(2026, 9, 3)
+    fake = _FakeIntervalsClient()
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await _seed_user(session, user_id)
+        session.add(_seed_morning_verdict(user_id, day, "Red"))
+        await session.commit()
+
+        result = await PlanActionService(session, intervals_client=fake).add_workout(
+            user,
+            workout_date=day,
+            category="cycle",
+            custom_bike=_spec(_ramp(10, 45, 75), _steady(30, 65), _ramp(5, 75, 45)),
+        )
+
+    assert result.warnings == []
 
 
 @pytest.mark.asyncio

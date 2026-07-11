@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import Annotated, Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, Query
@@ -20,7 +20,14 @@ from src.services.plan_actions import (
     WeekCharacter,
     quick_add_options,
 )
-from src.services.structured_workout_builder import CustomBikeWorkoutSpec, DeliveryTarget
+from src.services.structured_workout_builder import (
+    ABS_MAX_POWER_PCT,
+    ABS_MIN_POWER_PCT,
+    MAX_TOTAL_DURATION_MIN,
+    DeliveryTarget,
+    FreeformBikeWorkoutSpec,
+    WorkoutSegment,
+)
 
 router = APIRouter(prefix="/api/v1/plan-actions", tags=["plan-actions"])
 
@@ -44,6 +51,14 @@ def _local_today(timezone_name: str) -> date:
 
 
 class ApiError(BaseModel):
+    code: str
+    detail: str
+
+
+class ApiWarning(BaseModel):
+    """Advisory returned on a *successful* save (Batch 88) — the non-blocking analog
+    of ``ApiError``, sibling to ``errors`` on the envelope."""
+
     code: str
     detail: str
 
@@ -105,40 +120,68 @@ class PlanScheduleEnvelope(BaseModel):
     errors: list[ApiError]
 
 
-class CustomBikeWorkoutBody(BaseModel):
-    delivery: DeliveryTarget = "indoor"
-    warmupEnabled: bool = True
-    warmupDurationMin: int | None = Field(default=10, ge=1, le=60)
-    z2LeadInEnabled: bool = False
-    z2LeadInDurationMin: int | None = Field(default=None, ge=1, le=180)
-    intervalsEnabled: bool = False
-    interval1DurationMin: int | None = Field(default=None, ge=1, le=120)
-    interval1FtpPct: int | None = Field(default=None, ge=45, le=150)
-    interval2DurationMin: int | None = Field(default=None, ge=1, le=120)
-    interval2FtpPct: int | None = Field(default=None, ge=45, le=150)
-    repeats: int | None = Field(default=None, ge=1, le=40)
-    blockDurationMin: int | None = Field(default=30, ge=1, le=240)
-    blockFtpPct: int | None = Field(default=65, ge=45, le=150)
-    cooldownEnabled: bool = True
-    cooldownDurationMin: int | None = Field(default=5, ge=1, le=60)
+# Pydantic enforces the *absolute* deliverable floor only (power 1-300% FTP,
+# positive durations up to the total cap). The coaching-sensible 45-150% band is
+# deliberately NOT enforced here — an out-of-band value saves and warns on Mark's
+# manual authoring path (Batch 88, Decision #161); the builder decides warn-vs-block.
+_PowerPct = Annotated[int, Field(ge=ABS_MIN_POWER_PCT, le=ABS_MAX_POWER_PCT)]
+_DurationMin = Annotated[int, Field(ge=1, le=MAX_TOTAL_DURATION_MIN)]
 
-    def to_spec(self) -> CustomBikeWorkoutSpec:
-        return CustomBikeWorkoutSpec(
+
+class RampSegmentBody(BaseModel):
+    kind: Literal["ramp"]
+    durationMin: _DurationMin
+    startFtpPct: _PowerPct
+    endFtpPct: _PowerPct
+
+
+class SteadySegmentBody(BaseModel):
+    kind: Literal["steady"]
+    durationMin: _DurationMin
+    ftpPct: _PowerPct
+
+
+class IntervalSegmentBody(BaseModel):
+    kind: Literal["interval"]
+    repeats: int = Field(ge=1, le=50)
+    workMin: _DurationMin
+    workFtpPct: _PowerPct
+    recoverMin: _DurationMin
+    recoverFtpPct: _PowerPct
+
+
+AnySegmentBody = RampSegmentBody | SteadySegmentBody | IntervalSegmentBody
+WorkoutSegmentBody = Annotated[AnySegmentBody, Field(discriminator="kind")]
+
+
+def _segment_to_spec(body: AnySegmentBody) -> WorkoutSegment:
+    if isinstance(body, RampSegmentBody):
+        return WorkoutSegment(
+            kind="ramp",
+            duration_min=body.durationMin,
+            start_ftp_pct=body.startFtpPct,
+            end_ftp_pct=body.endFtpPct,
+        )
+    if isinstance(body, SteadySegmentBody):
+        return WorkoutSegment(kind="steady", duration_min=body.durationMin, ftp_pct=body.ftpPct)
+    return WorkoutSegment(
+        kind="interval",
+        repeats=body.repeats,
+        work_min=body.workMin,
+        work_ftp_pct=body.workFtpPct,
+        recover_min=body.recoverMin,
+        recover_ftp_pct=body.recoverFtpPct,
+    )
+
+
+class FreeformBikeWorkoutBody(BaseModel):
+    delivery: DeliveryTarget = "indoor"
+    segments: list[WorkoutSegmentBody] = Field(min_length=1, max_length=40)
+
+    def to_spec(self) -> FreeformBikeWorkoutSpec:
+        return FreeformBikeWorkoutSpec(
             delivery=self.delivery,
-            warmup_enabled=self.warmupEnabled,
-            warmup_duration_min=self.warmupDurationMin,
-            z2_lead_in_enabled=self.z2LeadInEnabled,
-            z2_lead_in_duration_min=self.z2LeadInDurationMin,
-            intervals_enabled=self.intervalsEnabled,
-            interval_1_duration_min=self.interval1DurationMin,
-            interval_1_ftp_pct=self.interval1FtpPct,
-            interval_2_duration_min=self.interval2DurationMin,
-            interval_2_ftp_pct=self.interval2FtpPct,
-            repeats=self.repeats,
-            block_duration_min=self.blockDurationMin,
-            block_ftp_pct=self.blockFtpPct,
-            cooldown_enabled=self.cooldownEnabled,
-            cooldown_duration_min=self.cooldownDurationMin,
+            segments=tuple(_segment_to_spec(segment) for segment in self.segments),
         )
 
 
@@ -146,7 +189,7 @@ class AddWorkoutBody(BaseModel):
     category: str = Field(pattern="^(cycle|weights|flexibility)$")
     subtype: str | None = None
     durationMin: int | None = Field(default=None, ge=1, le=180)
-    customBike: CustomBikeWorkoutBody | None = None
+    customBike: FreeformBikeWorkoutBody | None = None
 
 
 class QuickAddOptionOut(BaseModel):
@@ -193,6 +236,7 @@ class WorkoutActionEnvelope(BaseModel):
     data: WorkoutActionData
     meta: ApiMeta
     errors: list[ApiError]
+    warnings: list[ApiWarning] = Field(default_factory=list)
 
 
 class WorkoutsActionEnvelope(BaseModel):
@@ -330,7 +374,7 @@ async def add_workout(
     player: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> WorkoutActionEnvelope:
-    workout = await PlanActionService(db).add_workout(
+    result = await PlanActionService(db).add_workout(
         player,
         workout_date=workout_date,
         category=body.category,
@@ -339,9 +383,10 @@ async def add_workout(
         custom_bike=body.customBike.to_spec() if body.customBike is not None else None,
     )
     return WorkoutActionEnvelope(
-        data=WorkoutActionData(workout=_workout_out(workout)),
+        data=WorkoutActionData(workout=_workout_out(result.workout)),
         meta=ApiMeta(generatedAtUtc=_generated_at()),
         errors=[],
+        warnings=[ApiWarning(code=w.code, detail=w.detail) for w in result.warnings],
     )
 
 
@@ -351,19 +396,20 @@ async def add_workout(
 )
 async def edit_structured_workout(
     planned_workout_id: uuid.UUID,
-    body: CustomBikeWorkoutBody,
+    body: FreeformBikeWorkoutBody,
     player: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> WorkoutActionEnvelope:
-    workout = await PlanActionService(db).edit_structured_workout(
+    result = await PlanActionService(db).edit_structured_workout(
         player,
         planned_workout_id=planned_workout_id,
         custom_bike=body.to_spec(),
     )
     return WorkoutActionEnvelope(
-        data=WorkoutActionData(workout=_workout_out(workout)),
+        data=WorkoutActionData(workout=_workout_out(result.workout)),
         meta=ApiMeta(generatedAtUtc=_generated_at()),
         errors=[],
+        warnings=[ApiWarning(code=w.code, detail=w.detail) for w in result.warnings],
     )
 
 

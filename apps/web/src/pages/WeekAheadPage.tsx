@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
-  customBikeWorkoutInputSchema,
+  freeformBikeWorkoutInputSchema,
   planScheduleEnvelopeSchema,
   quickAddOptionsEnvelopeSchema,
   restructureEnvelopeSchema,
+  workoutActionResponseSchema,
 } from '@coach/shared';
 import {
   Bike,
@@ -41,7 +42,16 @@ import { categoryForWorkoutType, type DayCategory } from '@/lib/workoutCategorie
 type PlanScheduleEnvelope = typeof planScheduleEnvelopeSchema._type;
 type PlanDay = PlanScheduleEnvelope['data']['schedule'][number];
 type PlanWorkout = PlanDay['workouts'][number];
-type CustomBikeWorkoutInput = typeof customBikeWorkoutInputSchema._type;
+type FreeformBikeWorkoutInput = typeof freeformBikeWorkoutInputSchema._type;
+type WorkoutActionResponse = typeof workoutActionResponseSchema._type;
+
+// Batch 88: a successful free-form save can carry non-blocking advisories (power out
+// of band, no ramp, VO2 on a Red day) — surface them without blocking the save.
+function surfaceWarnings(response: WorkoutActionResponse): void {
+  for (const warning of response.warnings ?? []) {
+    toast.warning(warning.detail);
+  }
+}
 
 function formatDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, {
@@ -169,29 +179,31 @@ export function WeekAheadPage() {
   });
 
   const structuredAddMutation = useMutation({
-    mutationFn: ({ date, customBike }: { date: string; customBike: CustomBikeWorkoutInput }) =>
-      apiFetch(`/api/v1/plan-actions/days/${date}/workouts`, {
+    mutationFn: ({ date, customBike }: { date: string; customBike: FreeformBikeWorkoutInput }) =>
+      apiFetch<WorkoutActionResponse>(`/api/v1/plan-actions/days/${date}/workouts`, {
         method: 'POST',
         body: JSON.stringify({ category: 'cycle', customBike }),
       }),
-    onSuccess: async () => {
+    onSuccess: async (response) => {
       setStructuredTarget(null);
       await invalidate();
       toast.success('Workout added');
+      surfaceWarnings(response);
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not add workout'),
   });
 
   const structuredEditMutation = useMutation({
-    mutationFn: ({ workoutId, customBike }: { workoutId: string; customBike: CustomBikeWorkoutInput }) =>
-      apiFetch(`/api/v1/plan-actions/planned-workouts/${workoutId}/structured`, {
+    mutationFn: ({ workoutId, customBike }: { workoutId: string; customBike: FreeformBikeWorkoutInput }) =>
+      apiFetch<WorkoutActionResponse>(`/api/v1/plan-actions/planned-workouts/${workoutId}/structured`, {
         method: 'POST',
         body: JSON.stringify(customBike),
       }),
-    onSuccess: async () => {
+    onSuccess: async (response) => {
       setStructuredTarget(null);
       await invalidate();
       toast.success('Structure saved');
+      surfaceWarnings(response);
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not save structure'),
   });
