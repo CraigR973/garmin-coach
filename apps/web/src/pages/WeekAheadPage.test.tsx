@@ -584,4 +584,81 @@ describe('WeekAheadPage', () => {
     expect(screen.getAllByText('Build 4/13')).toHaveLength(1);
     expect(screen.getAllByText('Holiday', { selector: 'div' })).toHaveLength(1);
   });
+
+  it('marks and restores a light reset week from the week banner (Batch 82)', async () => {
+    const resetSchedule = JSON.parse(JSON.stringify(schedule));
+    resetSchedule.data.schedule[0].weekCharacter = {
+      label: 'Build 4/13',
+      sequenceIndex: 4,
+      blockType: 'build',
+      isHoliday: false,
+      isReset: false,
+    };
+    const activeResetSchedule = JSON.parse(JSON.stringify(resetSchedule));
+    activeResetSchedule.data.schedule[0].weekCharacter = {
+      label: 'Light reset',
+      sequenceIndex: 4,
+      blockType: 'build',
+      isHoliday: false,
+      isReset: true,
+    };
+    apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
+      if (path === '/api/v1/plan-actions/schedule?days=14') {
+        return Promise.resolve(resetSchedule);
+      }
+      if (path === '/api/v1/plan-actions/weeks/2026-06-23/reset' && options?.method === 'POST') {
+        return Promise.resolve(activeResetSchedule);
+      }
+      if (path === '/api/v1/plan-actions/weeks/2026-06-23/reset' && options?.method === 'DELETE') {
+        return Promise.resolve(resetSchedule);
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    const queryClient = new QueryClient();
+    const user = userEvent.setup();
+
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText('Build 4/13');
+    await user.click(screen.getByRole('button', { name: /light reset/i }));
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/plan-actions/weeks/2026-06-23/reset',
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+
+    view.unmount();
+    apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
+      if (path === '/api/v1/plan-actions/schedule?days=14') {
+        return Promise.resolve(activeResetSchedule);
+      }
+      if (path === '/api/v1/plan-actions/weeks/2026-06-23/reset' && options?.method === 'DELETE') {
+        return Promise.resolve(resetSchedule);
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText('Light reset');
+    await user.click(screen.getByRole('button', { name: /restore week/i }));
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/plan-actions/weeks/2026-06-23/reset',
+        expect.objectContaining({ method: 'DELETE' }),
+      );
+    });
+  });
 });

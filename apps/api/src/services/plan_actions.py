@@ -28,7 +28,7 @@ from src.services.workout_categories import (
     day_state_for_workout_types,
 )
 from src.services.workout_completion import WORKOUT_STATUS_COMPLETED
-from src.services.workout_delivery import IntervalsEventClient
+from src.services.workout_delivery import IntervalsEventClient, expand_structured_steps
 
 
 def _utcnow() -> datetime:
@@ -36,6 +36,9 @@ def _utcnow() -> datetime:
 
 
 DONE_ADHERENCE_STATUSES = {"completed", "modified", "done", "did_something_else"}
+RESET_WEEK_KEY = "manualResetWeek"
+RESET_WEEK_SOURCE = "reset_week"
+RESET_WEEK_POWER_PCT = 65
 
 
 def _pattern_minutes(value: float) -> str:
@@ -67,19 +70,25 @@ class WeekCharacter:
     sequence_index: int | None
     block_type: str | None
     is_holiday: bool
+    is_reset: bool
 
 
-def week_character_for_day(block: PlanBlock | None, *, is_holiday: bool) -> WeekCharacter | None:
+def week_character_for_day(
+    block: PlanBlock | None, *, is_holiday: bool, is_reset: bool = False
+) -> WeekCharacter | None:
     if is_holiday:
         return WeekCharacter(
             label="Holiday",
             sequence_index=block.sequence_index if block else None,
             block_type=block.block_type if block else None,
             is_holiday=True,
+            is_reset=False,
         )
     if block is None or block.block_type is None:
         return None
-    if block.block_type == "build":
+    if is_reset:
+        label = "Light reset"
+    elif block.block_type == "build":
         label = f"Build {block.sequence_index}/{TOTAL_WEEKS}" if block.sequence_index else "Build"
     else:
         label = _BLOCK_TYPE_LABELS.get(block.block_type, block.block_type.title())
@@ -88,6 +97,7 @@ def week_character_for_day(block: PlanBlock | None, *, is_holiday: bool) -> Week
         sequence_index=block.sequence_index,
         block_type=block.block_type,
         is_holiday=False,
+        is_reset=is_reset,
     )
 
 
@@ -368,6 +378,105 @@ def _template_value(template: dict[str, Any] | BuiltCustomBikeWorkout, key: str)
     return template[key]
 
 
+def _reset_info(block: PlanBlock | None) -> dict[str, Any]:
+    if block is None or not isinstance(block.goals_json, dict):
+        return {}
+    raw = block.goals_json.get(RESET_WEEK_KEY)
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+def _block_has_active_reset(block: PlanBlock | None) -> bool:
+    return _reset_info(block).get("active") is True
+
+
+def _set_block_reset(
+    block: PlanBlock,
+    *,
+    active: bool,
+    week_start: date,
+    week_end: date,
+    originals: list[dict[str, Any]],
+) -> None:
+    goals = dict(block.goals_json or {})
+    current = dict(goals.get(RESET_WEEK_KEY) or {})
+    current.update(
+        {
+            "active": active,
+            "mode": "z2_keep_strength",
+            "weekStart": week_start.isoformat(),
+            "weekEnd": week_end.isoformat(),
+            "powerPct": RESET_WEEK_POWER_PCT,
+            "originals": originals,
+            "updatedAtUtc": _utcnow().isoformat() + "Z",
+        }
+    )
+    if active and "recordedAtUtc" not in current:
+        current["recordedAtUtc"] = current["updatedAtUtc"]
+    if not active:
+        current["clearedAtUtc"] = current["updatedAtUtc"]
+    goals[RESET_WEEK_KEY] = current
+    block.goals_json = goals
+
+
+def _is_mutable_bike_workout(workout: PlannedWorkout) -> bool:
+    structured = workout.structured_workout or {}
+    return (
+        workout.status != WORKOUT_STATUS_COMPLETED
+        and workout.source != RESET_WEEK_SOURCE
+        and isinstance(structured, dict)
+        and structured.get("format") == "bike"
+    )
+
+
+def _reset_title(title: str) -> str:
+    return title if title.startswith("Reset Z2:") else f"Reset Z2: {title}"
+
+
+def _is_reset_structured_workout(workout: PlannedWorkout) -> bool:
+    structured = workout.structured_workout or {}
+    if not isinstance(structured, dict):
+        return False
+    raw = structured.get("resetWeek")
+    return isinstance(raw, dict) and raw.get("active") is True
+
+
+def _reset_structured_workout(
+    workout: PlannedWorkout, *, week_start: date, week_end: date
+) -> dict[str, Any]:
+    structured = dict(workout.structured_workout or {})
+    expanded = expand_structured_steps(structured, workout.intensity_target)
+    steps: list[dict[str, Any]] = []
+    for index, step in enumerate(expanded):
+        duration_min = int(step.get("durationSec", 0)) / 60
+        steps.append(
+            {
+                "label": f"Reset Z2 {index + 1}",
+                "minutes": duration_min,
+                "target": f"{RESET_WEEK_POWER_PCT}%",
+            }
+        )
+    reset = {
+        "format": "bike",
+        "delivery": structured.get("delivery", "indoor"),
+        "source": RESET_WEEK_SOURCE,
+        "steps": steps,
+        "totalDurationMin": round(sum(float(step["minutes"]) for step in steps)),
+        "resetWeek": {
+            "active": True,
+            "mode": "z2_keep_strength",
+            "weekStart": week_start.isoformat(),
+            "weekEnd": week_end.isoformat(),
+            "powerPct": RESET_WEEK_POWER_PCT,
+            "originalWorkoutId": str(workout.id),
+            "originalVersion": workout.version,
+            "originalTitle": workout.title,
+        },
+    }
+    if "cadenceCriticalExpanded" in structured:
+        reset["cadenceCriticalExpanded"] = structured["cadenceCriticalExpanded"]
+    return reset
+
+
 class PlanActionService:
     def __init__(
         self,
@@ -427,17 +536,21 @@ class PlanActionService:
                 and holiday_window.start_date <= day <= holiday_window.end_date
             )
 
+        def is_reset(block: PlanBlock | None) -> bool:
+            return _block_has_active_reset(block)
+
         plan_days: list[PlanDay] = []
         for offset in range(max(days, 1)):
             current = start_date + timedelta(days=offset)
             workouts = by_date.get(current, [])
+            block = block_for(current)
             plan_days.append(
                 PlanDay(
                     date=current,
                     day_state=day_state_for_workout_types([w.workout_type for w in workouts]),
                     workouts=workouts,
                     week_character=week_character_for_day(
-                        block_for(current), is_holiday=is_holiday(current)
+                        block, is_holiday=is_holiday(current), is_reset=is_reset(block)
                     ),
                 )
             )
@@ -552,6 +665,125 @@ class PlanActionService:
             )
         return skipped
 
+    async def mark_reset_week(self, player: Profile, *, week_date: date) -> list[PlannedWorkout]:
+        block = await self._block_for_date(player.id, week_date)
+        if block is None:
+            raise HTTPException(status_code=404, detail="No plan week found for that date.")
+        if _block_has_active_reset(block):
+            return await self._active_workouts_in_range(player.id, block.start_date, block.end_date)
+
+        workouts = await self._active_workouts_in_range(player.id, block.start_date, block.end_date)
+        reset_workouts: list[PlannedWorkout] = []
+        originals: list[dict[str, Any]] = []
+        changed_dates: set[date] = set()
+        for workout in workouts:
+            if not _is_mutable_bike_workout(workout):
+                continue
+            workout.is_active = False
+            await self.session.flush()
+            version = await self._next_version(player.id, workout.workout_date)
+            reset_workout = PlannedWorkout(
+                user_id=player.id,
+                plan_block_id=workout.plan_block_id,
+                workout_date=workout.workout_date,
+                version=version,
+                title=_reset_title(workout.title),
+                workout_type="bike_endurance",
+                status="planned",
+                is_active=True,
+                planned_duration_min=workout.planned_duration_min,
+                intensity_target=f"Z2 reset ~{RESET_WEEK_POWER_PCT}% FTP",
+                structured_workout=_reset_structured_workout(
+                    workout,
+                    week_start=block.start_date,
+                    week_end=block.end_date,
+                ),
+                source=RESET_WEEK_SOURCE,
+            )
+            self.session.add(reset_workout)
+            await self.session.flush()
+            reset_workouts.append(reset_workout)
+            changed_dates.add(reset_workout.workout_date)
+            originals.append(
+                {
+                    "originalWorkoutId": str(workout.id),
+                    "originalVersion": workout.version,
+                    "resetWorkoutId": str(reset_workout.id),
+                    "resetVersion": reset_workout.version,
+                    "date": workout.workout_date.isoformat(),
+                }
+            )
+
+        _set_block_reset(
+            block,
+            active=True,
+            week_start=block.start_date,
+            week_end=block.end_date,
+            originals=originals,
+        )
+        for changed_date in sorted(changed_dates):
+            await self.executable.reconcile_deliveries(
+                player, start_date=changed_date, end_date=changed_date
+            )
+        await self.session.commit()
+        for workout in reset_workouts:
+            await self.session.refresh(workout)
+        return await self._active_workouts_in_range(player.id, block.start_date, block.end_date)
+
+    async def unset_reset_week(self, player: Profile, *, week_date: date) -> list[PlannedWorkout]:
+        block = await self._block_for_date(player.id, week_date)
+        if block is None:
+            raise HTTPException(status_code=404, detail="No plan week found for that date.")
+        if not _block_has_active_reset(block):
+            return await self._active_workouts_in_range(player.id, block.start_date, block.end_date)
+
+        reset_info = _reset_info(block)
+        original_ids = {
+            uuid.UUID(str(item["originalWorkoutId"]))
+            for item in reset_info.get("originals", [])
+            if isinstance(item, dict) and item.get("originalWorkoutId")
+        }
+        active_workouts = await self._active_workouts_in_range(
+            player.id, block.start_date, block.end_date
+        )
+        changed_dates: set[date] = set()
+        for workout in active_workouts:
+            if workout.source == RESET_WEEK_SOURCE or _is_reset_structured_workout(workout):
+                workout.is_active = False
+                changed_dates.add(workout.workout_date)
+
+        if original_ids:
+            originals = (
+                (
+                    await self.session.execute(
+                        select(PlannedWorkout).where(
+                            PlannedWorkout.user_id == player.id,
+                            PlannedWorkout.id.in_(original_ids),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for workout in originals:
+                workout.is_active = True
+                changed_dates.add(workout.workout_date)
+
+        _set_block_reset(
+            block,
+            active=False,
+            week_start=block.start_date,
+            week_end=block.end_date,
+            originals=reset_info.get("originals", []),
+        )
+        await self.session.flush()
+        for changed_date in sorted(changed_dates):
+            await self.executable.reconcile_deliveries(
+                player, start_date=changed_date, end_date=changed_date
+            )
+        await self.session.commit()
+        return await self._active_workouts_in_range(player.id, block.start_date, block.end_date)
+
     async def record_actual(
         self,
         player: Profile,
@@ -581,6 +813,42 @@ class PlanActionService:
             )
         )
         return (current or 0) + 1
+
+    async def _block_for_date(self, user_id: uuid.UUID, target_date: date) -> PlanBlock | None:
+        return (
+            (
+                await self.session.execute(
+                    select(PlanBlock).where(
+                        PlanBlock.user_id == user_id,
+                        PlanBlock.start_date <= target_date,
+                        PlanBlock.end_date >= target_date,
+                    )
+                )
+            )
+            .scalars()
+            .one_or_none()
+        )
+
+    async def _active_workouts_in_range(
+        self, user_id: uuid.UUID, start_date: date, end_date: date
+    ) -> list[PlannedWorkout]:
+        return list(
+            (
+                await self.session.execute(
+                    select(PlannedWorkout)
+                    .where(
+                        PlannedWorkout.user_id == user_id,
+                        PlannedWorkout.workout_date >= start_date,
+                        PlannedWorkout.workout_date <= end_date,
+                        PlannedWorkout.is_active.is_(True),
+                        PlannedWorkout.status != WORKOUT_STATUS_SKIPPED,
+                    )
+                    .order_by(PlannedWorkout.workout_date.asc(), PlannedWorkout.created_at.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
 
     async def _active_workouts_on(
         self, user_id: uuid.UUID, workout_date: date
