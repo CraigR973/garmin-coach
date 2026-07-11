@@ -82,13 +82,15 @@ restores the prior bike versions. No migration: the block flag records intent,
 while each reset workout carries `structured_workout.resetWeek` provenance so
 morning analysis reads the reduced load as planned, not missed.
 
-Batch 83 (implemented on `feat/batch-83-week-restructure-ui`, pending closeout)
-adds the missing organiser surface over the existing restructure rail: the Week
+Batch 83 adds the missing organiser surface over the existing restructure rail:
+the Week
 tab can fetch `GET /api/v1/restructure/week-ahead` for a week banner, render the
 proposed reshuffle by resolving the returned workout ids back through the loaded
 schedule, and apply it in one tap through `POST /api/v1/restructure/apply`.
 Engine rules and payload ownership stay in `weekly_restructure.py`; this is UI
-wiring only and adds no migration.
+wiring only and adds no migration. Shipped in PR #108 (squash `1616003`),
+prod-verified on Railway + Vercel same-origin health and unauthenticated
+`GET /api/v1/restructure/week-ahead` 401 smoke.
 
 Batch 60 (DECISIONS #134) closes the loop after a ride: when the post-workout read
 is generated it links the `analyses` row to the day's bike `planned_workouts` row
