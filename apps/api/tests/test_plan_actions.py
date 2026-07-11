@@ -225,7 +225,7 @@ async def test_add_workout_appends_to_occupied_day_and_bike_reconciles(
             (
                 await session.execute(
                     select(WorkoutDeliveryProposal).where(
-                        WorkoutDeliveryProposal.planned_workout_id == added.id
+                        WorkoutDeliveryProposal.planned_workout_id == added.workout.id
                     )
                 )
             )
@@ -234,7 +234,7 @@ async def test_add_workout_appends_to_occupied_day_and_bike_reconciles(
         )
 
     assert len(workouts) == 2
-    assert added.version == 2
+    assert added.workout.version == 2
     assert fake.payloads[0]["name"] == "Endurance ride"
     assert proposals[0].status == STATUS_PUSHED
 
