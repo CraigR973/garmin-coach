@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import (
+    Activity,
     Analysis,
     DailyMetric,
     FanStateReading,
@@ -28,6 +29,7 @@ ANALYSIS_TYPE_STALE_SOURCE_ALERT = "stale_source_alert"
 ANALYSIS_TYPE_VERDICT_PUSH = "verdict_push"
 ANALYSIS_TYPE_ANALYSIS_PUSH = "analysis_push"
 ANALYSIS_TYPE_GOOD_MORNING = "good_morning_nudge"
+ANALYSIS_TYPE_WORKOUT_CHECKIN = "workout_checkin_nudge"
 PROMPT_VERSION = "notification-rules:v1"
 
 EVENING_NUDGE_TIME = time(20, 0)
@@ -205,6 +207,36 @@ def build_analysis_push_plan(analysis: Analysis, *, kind: str) -> NotificationPl
             "activityId": str(analysis.activity_id),
             "activityKind": kind,
             "rule": "analysis_push",
+        },
+    )
+
+
+def build_workout_checkin_plan(activity: Activity, *, kind: str) -> NotificationPlan | None:
+    """Invite the activity-linked check-in before generating its read (Batch 87)."""
+
+    label = {
+        "ride": "ride",
+        "strength": "strength session",
+        "flexibility": "mobility session",
+        "walk": "walk",
+    }.get(kind)
+    if label is None:
+        return None
+    return NotificationPlan(
+        analysis_type=ANALYSIS_TYPE_WORKOUT_CHECKIN,
+        tag=f"workout-check-in-{activity.id}",
+        title="How did it feel?",
+        body=f"Your {label} is synced — check in and I'll read it.",
+        severity="info",
+        data={
+            "url": f"/#post-workout-{activity.id}",
+            "kind": "workout_checkin",
+            "activityKind": kind,
+        },
+        context={
+            "activityId": str(activity.id),
+            "activityKind": kind,
+            "rule": "workout_checkin",
         },
     )
 
@@ -508,6 +540,29 @@ class NudgeAlertService:
             profile,
             plan,
             subject_date=analysis.subject_date,
+            commit=commit,
+            now_utc=now_utc or datetime.now(UTC),
+        )
+
+    async def push_workout_checkin(
+        self,
+        profile: Profile,
+        activity: Activity,
+        *,
+        kind: str,
+        subject_date: date,
+        now_utc: datetime | None = None,
+        commit: bool = True,
+    ) -> bool:
+        """Push one check-in invitation per synced activity (Batch 87)."""
+
+        plan = build_workout_checkin_plan(activity, kind=kind)
+        if plan is None:
+            return False
+        return await self._send_once(
+            profile,
+            plan,
+            subject_date=subject_date,
             commit=commit,
             now_utc=now_utc or datetime.now(UTC),
         )

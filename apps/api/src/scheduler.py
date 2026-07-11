@@ -9,7 +9,8 @@ Current jobs:
     synced whatever time he surfaces
   - morning_backstop: at 09:30 Europe/London, runs run_morning_weather_sync
     regardless, so a verdict is always produced even if he never checks in
-  - garmin_activity_poll: polls Garmin hourly for new rides and triggers analysis
+  - garmin_activity_poll: polls Garmin hourly and nudges for a post-session check-in
+  - post_workout_backstop: at 20:30 local, generates any same-day unread sessions
   - workout_autopush: pushes approved workout proposals due today
   - evening_sleep_nudge: sends the 20:00 sleep-protocol push
   - evening_monitoring_alerts: checks thermal and source freshness before bed
@@ -42,7 +43,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
 from src.database import AsyncSessionLocal
-from src.models.coaching import Analysis, FanStateReading, TemperatureReading
+from src.models.coaching import Activity, Analysis, FanStateReading, TemperatureReading
 from src.models.notification import ActionType, ActorType, AuditLog
 from src.models.profile import Profile
 from src.services.backup import create_backup
@@ -544,7 +545,7 @@ async def run_wake_check() -> None:
 
 
 async def run_garmin_activity_poll() -> None:
-    """Poll Garmin for recent activities, then trigger post-session analyses."""
+    """Poll Garmin for activities, then invite check-ins without running an LLM."""
     try:
         async with AsyncSessionLocal() as session:
             profiles = (
@@ -572,15 +573,7 @@ async def run_garmin_activity_poll() -> None:
             nudge_service = NudgeAlertService(session)
             activities_synced = 0
             timeseries_synced = 0
-            analyses_generated = 0
-            analyses_existing = 0
-            flexibility_analyses_generated = 0
-            flexibility_analyses_existing = 0
-            strength_analyses_generated = 0
-            strength_analyses_existing = 0
-            walk_analyses_generated = 0
-            walk_analyses_existing = 0
-            analysis_pushes = 0
+            checkin_nudges = 0
 
             for profile in profiles:
                 today = _profile_today(profile)
@@ -597,80 +590,28 @@ async def run_garmin_activity_poll() -> None:
                 timeseries_synced += sync_result.timeseries_samples_synced
 
                 since = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=None)
-                try:
-                    analysis_results = await analysis_service.generate_for_pending_rides(
-                        profile,
-                        since=since,
-                        commit=False,
-                    )
-                    analyses_generated += sum(1 for item in analysis_results if item.generated)
-                    analyses_existing += sum(1 for item in analysis_results if not item.generated)
-                    analysis_pushes += await _push_new_analyses(
-                        nudge_service, profile, analysis_results, kind="ride"
-                    )
-                except Exception:
-                    log.exception(
-                        "post-workout analysis failed",
-                        profile_id=str(profile.id),
-                    )
-                try:
-                    flexibility_results = (
-                        await flexibility_service.generate_for_pending_flexibility(
-                            profile,
-                            since=since,
-                            commit=False,
-                        )
-                    )
-                    flexibility_analyses_generated += sum(
-                        1 for item in flexibility_results if item.generated
-                    )
-                    flexibility_analyses_existing += sum(
-                        1 for item in flexibility_results if not item.generated
-                    )
-                    analysis_pushes += await _push_new_analyses(
-                        nudge_service, profile, flexibility_results, kind="flexibility"
-                    )
-                except Exception:
-                    log.exception(
-                        "post-flexibility analysis failed",
-                        profile_id=str(profile.id),
-                    )
-                try:
-                    strength_results = await strength_service.generate_for_pending_strength(
-                        profile,
-                        since=since,
-                        commit=False,
-                    )
-                    strength_analyses_generated += sum(
-                        1 for item in strength_results if item.generated
-                    )
-                    strength_analyses_existing += sum(
-                        1 for item in strength_results if not item.generated
-                    )
-                    analysis_pushes += await _push_new_analyses(
-                        nudge_service, profile, strength_results, kind="strength"
-                    )
-                except Exception:
-                    log.exception(
-                        "post-strength analysis failed",
-                        profile_id=str(profile.id),
-                    )
-                try:
-                    walk_results = await walk_service.generate_for_pending_walks(
-                        profile,
-                        since=since,
-                        commit=False,
-                    )
-                    walk_analyses_generated += sum(1 for item in walk_results if item.generated)
-                    walk_analyses_existing += sum(1 for item in walk_results if not item.generated)
-                    analysis_pushes += await _push_new_analyses(
-                        nudge_service, profile, walk_results, kind="walk"
-                    )
-                except Exception:
-                    log.exception(
-                        "post-walk analysis failed",
-                        profile_id=str(profile.id),
-                    )
+                # Batch 87: identify all four supported post-session types, but
+                # stop at the sync -> nudge seam. Generation waits for check-in.
+                candidates = [
+                    (
+                        "ride",
+                        await analysis_service.pending_ride_activities(profile.id, since=since),
+                    ),
+                    (
+                        "flexibility",
+                        await flexibility_service.pending_flexibility_activities(
+                            profile.id, since=since
+                        ),
+                    ),
+                    (
+                        "strength",
+                        await strength_service.pending_strength_activities(profile.id, since=since),
+                    ),
+                    ("walk", await walk_service.pending_walk_activities(profile.id, since=since)),
+                ]
+                checkin_nudges += await _push_pending_checkins(
+                    session, nudge_service, profile, candidates
+                )
 
             await session.commit()
         log.info(
@@ -678,18 +619,49 @@ async def run_garmin_activity_poll() -> None:
             profiles=len(profiles),
             activities=activities_synced,
             timeseries_samples=timeseries_synced,
-            analyses_generated=analyses_generated,
-            analyses_existing=analyses_existing,
-            flexibility_analyses_generated=flexibility_analyses_generated,
-            flexibility_analyses_existing=flexibility_analyses_existing,
-            strength_analyses_generated=strength_analyses_generated,
-            strength_analyses_existing=strength_analyses_existing,
-            walk_analyses_generated=walk_analyses_generated,
-            walk_analyses_existing=walk_analyses_existing,
-            analysis_pushes=analysis_pushes,
+            checkin_nudges=checkin_nudges,
         )
     except Exception:
         log.exception("garmin activity poll failed")
+
+
+async def _push_pending_checkins(
+    session: AsyncSession,
+    nudge_service: NudgeAlertService,
+    profile: Profile,
+    candidates: Iterable[tuple[str, Iterable[Activity]]],
+) -> int:
+    """Nudge only truly unread activities; prompt-version staleness is not new work."""
+
+    grouped = [(kind, activity) for kind, rows in candidates for activity in rows]
+    if not grouped:
+        return 0
+    activity_ids = [activity.id for _, activity in grouped]
+    analysed_ids = set(
+        (
+            await session.execute(
+                select(Analysis.activity_id).where(Analysis.activity_id.in_(activity_ids))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    pushed = 0
+    for kind, activity in grouped:
+        if activity.id in analysed_ids:
+            continue
+        subject_date = (
+            activity.start_utc.replace(tzinfo=UTC).astimezone(ZoneInfo(profile.timezone)).date()
+        )
+        if await nudge_service.push_workout_checkin(
+            profile,
+            activity,
+            kind=kind,
+            subject_date=subject_date,
+            commit=False,
+        ):
+            pushed += 1
+    return pushed
 
 
 async def _push_new_analyses(
@@ -722,6 +694,68 @@ async def _push_new_analyses(
                 kind=kind,
             )
     return pushed
+
+
+async def run_post_workout_backstop() -> None:
+    """Generate still-unread same-day sessions before tomorrow's morning packet."""
+
+    try:
+        async with AsyncSessionLocal() as session:
+            profiles = (
+                (
+                    await session.execute(
+                        select(Profile).where(
+                            Profile.is_active.is_(True), Profile.deleted_at.is_(None)
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            generated = 0
+            pushes = 0
+            for profile in profiles:
+                local_midnight = datetime.combine(
+                    _profile_today(profile), datetime.min.time(), tzinfo=ZoneInfo(profile.timezone)
+                )
+                since = local_midnight.astimezone(UTC).replace(tzinfo=None)
+                readers = (
+                    (
+                        "ride",
+                        PostWorkoutAnalysisService(session).generate_for_pending_rides,
+                    ),
+                    (
+                        "flexibility",
+                        PostFlexibilityAnalysisService(session).generate_for_pending_flexibility,
+                    ),
+                    (
+                        "strength",
+                        PostStrengthAnalysisService(session).generate_for_pending_strength,
+                    ),
+                    ("walk", PostWalkAnalysisService(session).generate_for_pending_walks),
+                )
+                for kind, reader in readers:
+                    try:
+                        results = await reader(profile, since=since, commit=False)
+                        generated += sum(1 for item in results if item.generated)
+                        pushes += await _push_new_analyses(
+                            NudgeAlertService(session), profile, results, kind=kind
+                        )
+                    except Exception:
+                        log.exception(
+                            "post-workout backstop reader failed",
+                            profile_id=str(profile.id),
+                            kind=kind,
+                        )
+            await session.commit()
+        log.info(
+            "post-workout backstop complete",
+            profiles=len(profiles),
+            analyses_generated=generated,
+            analysis_pushes=pushes,
+        )
+    except Exception:
+        log.exception("post-workout backstop failed")
 
 
 async def run_workout_autopush() -> None:
@@ -1188,6 +1222,17 @@ def create_scheduler() -> AsyncIOScheduler:
         coalesce=True,
         max_instances=1,
         next_run_time=datetime.now(UTC) + timedelta(minutes=5),
+    )
+    scheduler.add_job(
+        run_post_workout_backstop,
+        trigger="cron",
+        hour=20,
+        minute=30,
+        timezone=settings.weather_timezone,
+        id="post_workout_backstop",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
     )
     scheduler.add_job(
         run_workout_autopush,

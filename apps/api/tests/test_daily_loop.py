@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import date, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -665,20 +666,24 @@ async def test_post_ride_checkin_upsert_persists_against_activity(
 
     app.dependency_overrides[get_current_user] = lambda: player
     app.dependency_overrides[get_db] = _db_override(session_factory)
+    generate = AsyncMock(return_value=("ride", MagicMock()))
     try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            response = await client.put(
-                (
-                    f"/api/v1/daily-loop/{subject_date.isoformat()}"
-                    f"/activities/{activity_id}/post-ride-check-in"
-                ),
-                json={
-                    "subjectiveScore": 6,
-                    "rpe": 8,
-                    "feel": "hard but fair",
-                    "notes": "Left calf tight.",
-                },
-            )
+        with patch("src.routers.daily_loop.generate_post_activity_read", generate):
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                response = await client.put(
+                    (
+                        f"/api/v1/daily-loop/{subject_date.isoformat()}"
+                        f"/activities/{activity_id}/post-ride-check-in"
+                    ),
+                    json={
+                        "subjectiveScore": 6,
+                        "rpe": 8,
+                        "feel": "hard but fair",
+                        "notes": "Left calf tight.",
+                    },
+                )
     finally:
         app.dependency_overrides.clear()
 
@@ -689,6 +694,8 @@ async def test_post_ride_checkin_upsert_persists_against_activity(
     assert checkin["subjectiveScore"] == 6
     assert checkin["rpe"] == 8
     assert checkin["feel"] == "hard but fair"
+    generate.assert_awaited_once()
+    assert generate.await_args.kwargs["force"] is True
 
     async with session_factory() as session:
         entry = await session.scalar(

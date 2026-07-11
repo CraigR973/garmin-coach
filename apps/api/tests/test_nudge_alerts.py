@@ -22,6 +22,7 @@ from src.services.nudge_alerts import (
     build_evening_nudge_plan,
     build_good_morning_plan,
     build_verdict_push_plan,
+    build_workout_checkin_plan,
     evaluate_stale_sources,
     evaluate_thermal_alert,
     is_evening_nudge_due,
@@ -247,6 +248,19 @@ def test_analysis_push_plan_none_for_breathwork_and_missing_activity() -> None:
     assert build_analysis_push_plan(_analysis(activity_id=uuid.uuid4()), kind="breathwork") is None
     # A date-level analysis with no activity_id can never push.
     assert build_analysis_push_plan(_analysis(activity_id=None), kind="ride") is None
+
+
+def test_workout_checkin_plan_invites_input_before_the_read() -> None:
+    activity = MagicMock(spec=Activity)
+    activity.id = uuid.uuid4()
+
+    plan = build_workout_checkin_plan(activity, kind="strength")
+
+    assert plan is not None
+    assert plan.title == "How did it feel?"
+    assert plan.tag == f"workout-check-in-{activity.id}"
+    assert plan.data["url"] == f"/#post-workout-{activity.id}"
+    assert plan.context["activityKind"] == "strength"
 
 
 # ---------------------------------------------------------------------------

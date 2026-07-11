@@ -27,6 +27,7 @@ from src.scheduler import (
     run_hive_temperature_poll,
     run_morning_sync,
     run_morning_weather_sync,
+    run_post_workout_backstop,
     run_scheduled_backup,
     run_wake_check,
     run_workout_autopush,
@@ -237,6 +238,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
             "wake_check",
             "morning_backstop",
             "garmin_activity_poll",
+            "post_workout_backstop",
             "workout_autopush",
             "evening_sleep_nudge",
             "evening_monitoring_alerts",
@@ -247,6 +249,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
         wake_job = scheduler.get_job("wake_check")
         backstop_job = scheduler.get_job("morning_backstop")
         garmin_job = scheduler.get_job("garmin_activity_poll")
+        post_workout_backstop = scheduler.get_job("post_workout_backstop")
         autopush_job = scheduler.get_job("workout_autopush")
         nudge_job = scheduler.get_job("evening_sleep_nudge")
         monitoring_job = scheduler.get_job("evening_monitoring_alerts")
@@ -254,6 +257,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
         assert wake_job is not None
         assert backstop_job is not None
         assert garmin_job is not None
+        assert post_workout_backstop is not None
         assert autopush_job is not None
         assert nudge_job is not None
         assert monitoring_job is not None
@@ -263,6 +267,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
         assert str(wake_job.trigger) == "interval[0:15:00]"
         assert "hour='9', minute='30'" in str(backstop_job.trigger)
         assert str(garmin_job.trigger) == "interval[1:00:00]"
+        assert "hour='20', minute='30'" in str(post_workout_backstop.trigger)
         assert "hour='7,13,19', minute='0'" in str(autopush_job.trigger)
         assert "hour='20', minute='0'" in str(nudge_job.trigger)
         assert "hour='19-22', minute='0,15,30,45'" in str(monitoring_job.trigger)
@@ -490,14 +495,16 @@ async def test_run_morning_sync_skips_nudge_when_brief_exists() -> None:
 
 
 @pytest.mark.asyncio
-async def test_activity_poll_pushes_each_new_analysis() -> None:
-    """Each newly generated post-workout analysis triggers one push, per kind."""
+async def test_activity_poll_syncs_then_nudges_without_generating() -> None:
+    """The primary poll stops at sync -> check-in nudge for every workout kind."""
     profile = _profile()
 
     session = AsyncMock()
-    scalars = MagicMock()
-    scalars.scalars.return_value.all.return_value = [profile]
-    session.execute = AsyncMock(return_value=scalars)
+    profile_rows = MagicMock()
+    profile_rows.scalars.return_value.all.return_value = [profile]
+    analysis_rows = MagicMock()
+    analysis_rows.scalars.return_value.all.return_value = []
+    session.execute = AsyncMock(side_effect=[profile_rows, analysis_rows])
 
     class _Ctx:
         async def __aenter__(self) -> AsyncMock:
@@ -513,21 +520,21 @@ async def test_activity_poll_pushes_each_new_analysis() -> None:
         return_value=MagicMock(activities_synced=0, timeseries_samples_synced=0)
     )
 
-    def _result() -> MagicMock:
-        return MagicMock(generated=True, analysis=MagicMock(activity_id=uuid.uuid4()))
-
-    def _service(method: str) -> MagicMock:
+    def _service(pending_method: str) -> MagicMock:
         svc = MagicMock()
-        setattr(svc, method, AsyncMock(return_value=[_result()]))
+        activity = MagicMock()
+        activity.id = uuid.uuid4()
+        activity.start_utc = datetime(2026, 7, 11, 12, 0)
+        setattr(svc, pending_method, AsyncMock(return_value=[activity]))
         return svc
 
-    ride = _service("generate_for_pending_rides")
-    flex = _service("generate_for_pending_flexibility")
-    strength = _service("generate_for_pending_strength")
-    walk = _service("generate_for_pending_walks")
+    ride = _service("pending_ride_activities")
+    flex = _service("pending_flexibility_activities")
+    strength = _service("pending_strength_activities")
+    walk = _service("pending_walk_activities")
 
     nudge_service = MagicMock()
-    nudge_service.push_workout_analysis = AsyncMock(return_value=True)
+    nudge_service.push_workout_checkin = AsyncMock(return_value=True)
 
     from src.scheduler import run_garmin_activity_poll
 
@@ -543,10 +550,63 @@ async def test_activity_poll_pushes_each_new_analysis() -> None:
     ):
         await run_garmin_activity_poll()
 
-    # One push per pass (ride / flexibility / strength / walk).
-    assert nudge_service.push_workout_analysis.await_count == 4
-    kinds = {call.kwargs["kind"] for call in nudge_service.push_workout_analysis.await_args_list}
+    assert nudge_service.push_workout_checkin.await_count == 4
+    kinds = {call.kwargs["kind"] for call in nudge_service.push_workout_checkin.await_args_list}
     assert kinds == {"ride", "flexibility", "strength", "walk"}
+    for service, generate_method in (
+        (ride, "generate_for_pending_rides"),
+        (flex, "generate_for_pending_flexibility"),
+        (strength, "generate_for_pending_strength"),
+        (walk, "generate_for_pending_walks"),
+    ):
+        assert not getattr(service, generate_method).called
+
+
+@pytest.mark.asyncio
+async def test_post_workout_backstop_generates_and_pushes_all_unread_kinds() -> None:
+    profile = _profile()
+    session = AsyncMock()
+    rows = MagicMock()
+    rows.scalars.return_value.all.return_value = [profile]
+    session.execute = AsyncMock(return_value=rows)
+
+    class _Ctx:
+        async def __aenter__(self) -> AsyncMock:
+            return session
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+    def _service(method: str) -> MagicMock:
+        service = MagicMock()
+        result = MagicMock(generated=True, analysis=MagicMock(activity_id=uuid.uuid4()))
+        setattr(service, method, AsyncMock(return_value=[result]))
+        return service
+
+    ride = _service("generate_for_pending_rides")
+    flex = _service("generate_for_pending_flexibility")
+    strength = _service("generate_for_pending_strength")
+    walk = _service("generate_for_pending_walks")
+    nudge = MagicMock()
+    nudge.push_workout_analysis = AsyncMock(return_value=True)
+
+    with (
+        patch("src.scheduler.AsyncSessionLocal", return_value=_Ctx()),
+        patch("src.scheduler.PostWorkoutAnalysisService", return_value=ride),
+        patch("src.scheduler.PostFlexibilityAnalysisService", return_value=flex),
+        patch("src.scheduler.PostStrengthAnalysisService", return_value=strength),
+        patch("src.scheduler.PostWalkAnalysisService", return_value=walk),
+        patch("src.scheduler.NudgeAlertService", return_value=nudge),
+    ):
+        await run_post_workout_backstop()
+
+    assert nudge.push_workout_analysis.await_count == 4
+    assert {call.kwargs["kind"] for call in nudge.push_workout_analysis.await_args_list} == {
+        "ride",
+        "flexibility",
+        "strength",
+        "walk",
+    }
 
 
 @pytest.mark.asyncio

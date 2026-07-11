@@ -30,7 +30,7 @@ living, editable state** so he never writes one again.
 
 Spikes live in `~/garmin-spike/` (outside this repo). Raw sample JSON in `~/garmin-spike/out/` (Garmin) and `out_hive/` (Hive) — **canonical reference for real field shapes**.
 
-**Sync jobs (APScheduler):** Hive temp poll every ~15 min; **wake-triggered morning run** — a `wake_check` poll every ~15 min within Mark's morning window (03:30–10:00 Europe/London) does a light sleep-only Garmin poll and, once his Garmin `sleepEnd` is *stable* (back-to-sleep guard), fires the Garmin+weather **sync + a "good morning" nudge** (`run_morning_sync`); **generating the brief itself is triggered by his check-in** (the primary trigger — Batch 85), with the 09:30 backstop generating for a morning he never engages (DECISIONS #87/#158; replaces the old fixed 06:30 cron); hourly activity poll → on new ride triggers post-workout analysis; **overnight bedroom fan-control loop** every ~15 min reconciles the Dreo air-circulator to the live indoor temp within 21:30–08:30 when the autopilot is on (DECISIONS #96-97). NB Training Readiness is time-of-day live → morning analysis must read **after he wakes** (the whole point of the wake trigger). `recoveryTime` is in MINUTES.
+**Sync jobs (APScheduler):** Hive temp poll every ~15 min; **wake-triggered morning run** — a `wake_check` poll every ~15 min within Mark's morning window (03:30–10:00 Europe/London) does a light sleep-only Garmin poll and, once his Garmin `sleepEnd` is *stable* (back-to-sleep guard), fires the Garmin+weather **sync + a "good morning" nudge** (`run_morning_sync`); **generating the brief itself is triggered by his check-in** (the primary trigger — Batch 85), with the 09:30 backstop generating for a morning he never engages (DECISIONS #87/#158; replaces the old fixed 06:30 cron); the hourly activity poll syncs rides/strength/flexibility/walks and nudges **"How did it feel?" without running an LLM**, the activity check-in generates the correct read inline, and a 20:30 local backstop generates any same-day unread sessions before tomorrow's morning packet (Batch 87, DECISIONS #160); **overnight bedroom fan-control loop** every ~15 min reconciles the Dreo air-circulator to the live indoor temp within 21:30–08:30 when the autopilot is on (DECISIONS #96-97). NB Training Readiness is time-of-day live → morning analysis must read **after he wakes** (the whole point of the wake trigger). `recoveryTime` is in MINUTES.
 
 ### Workout delivery — OUTPUT (validated 19 Jun 26)
 
@@ -173,6 +173,12 @@ Assembles a context packet (KB + DB data + rolling trend + plan) and calls Claud
   whole-ride average, which is relabelled context; warm-up/recovery/cool-down power is described,
   never graded, and a `fade`/HR-drift signal grounds "held power / no fade" claims. A free/outdoor
   ride with no planned IR falls back to the whole-ride + zone-histogram read (Batch 44, DECISIONS #114).
+  Since Batch 87 / DECISIONS #160 this is **check-in-first for all four supported activity
+  types** (ride / strength / flexibility / deliberate walk): sync nudges without generating,
+  the generic activity-linked check-in dispatches to the correct reader and returns the new read
+  inline, and an empty submit remains an explicit objective-read affordance. Each prompt answers a
+  question in the notes from the packet; the 20:30 backstop preserves a read for ignored sessions.
+  This remains read-only coaching — it never writes a delivery adjustment.
 - **Tonight:** the static KB `sleep_protocol` is personalised by a deterministic, advisory
   `sleepProjection` on `/api/v1/daily-loop` (Batch 46, DECISIONS #116). It reads today's synced
   training timing/load, Mark's measured sleep drivers (Batch 17/34), bedroom temperature, overnight

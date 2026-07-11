@@ -51,7 +51,7 @@ from src.services.workout_delivery import (
 # Bumped for Batch 80 (#153): the packet carries a deterministic ``rideDeviation``
 # read so the analyst renders an honest good-call/bad-call verdict when the ride
 # diverged from the planned/delivered session (Mark's Q1a).
-PROMPT_VERSION = "post-workout-analysis-v5-2026-07-11"
+PROMPT_VERSION = "post-workout-analysis-v6-2026-07-11"
 ANALYSIS_TYPE = "post_workout"
 
 # A planned session Mark told the app he was not doing (``skip_workout`` /
@@ -64,6 +64,10 @@ Return concise markdown with a workout rating, performance read, specific timed
 recovery protocol, and tomorrow impact. Incorporate any post-ride check-in
 (RPE, feel, legs, niggles) when present. Include power, HR, zones, cadence,
 Performance Condition, Stamina, and Training Effect when present.
+
+If the post-ride check-in notes contain a question, answer it directly in the
+read using only the supplied packet. Say plainly when the packet cannot support
+an answer; never invent missing measurements or context.
 
 Grade execution on the WORK intervals in `execution`/`intervals`, each against its
 own %FTP target — not on the whole-ride average. On a structured session the
@@ -644,12 +648,15 @@ def _utcnow() -> datetime:
 _RIDE_TYPE_TOKENS = ("cycling", "bike", "biking")
 
 
-def _is_ride(activity: Activity) -> bool:
+def is_ride_activity(activity: Activity) -> bool:
     activity_type = activity.activity_type.lower()
     activity_name = activity.activity_name.lower()
     if activity_type == "virtual_ride" or activity_type.endswith("_ride"):
         return True
     return any(token in activity_type or token in activity_name for token in _RIDE_TYPE_TOKENS)
+
+
+_is_ride = is_ride_activity
 
 
 def _activity_local_date(activity: Activity, timezone_name: str) -> date:

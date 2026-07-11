@@ -941,6 +941,68 @@ describe('DashboardPage', () => {
     expect(screen.queryByRole('button', { name: /approve & upload/i })).toBeNull();
   });
 
+  it('offers a minimal check-in before generating a synced strength read', async () => {
+    const user = userEvent.setup();
+    const workoutId = '88888888-8888-4888-8888-888888888888';
+    const activityId = '99999999-9999-4999-8999-999999999999';
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.plannedWorkouts = [
+          {
+            id: workoutId,
+            userId: '11111111-1111-4111-8111-111111111111',
+            planBlockId: null,
+            workoutDate: '2026-06-20',
+            version: 1,
+            title: 'Dumbbells',
+            workoutType: 'strength_maintenance',
+            status: 'planned',
+            isActive: true,
+            plannedDurationMin: 30,
+            intensityTarget: null,
+            structuredWorkout: {},
+            source: 'seed',
+            adherence: null,
+          },
+        ];
+        snapshot.data.pendingPostWorkoutActivities = [
+          {
+            activityId,
+            plannedWorkoutId: workoutId,
+            activityName: 'Dumbbells',
+            activityType: 'strength_training',
+            activityKind: 'strength',
+            startUtc: '2026-06-20T11:00:00Z',
+            durationMin: 31,
+            checkIn: null,
+          },
+        ];
+      }),
+    );
+
+    expect(await screen.findByText('Synced from Garmin · 31 min')).toBeTruthy();
+    expect(screen.queryByLabelText('Legs')).toBeNull();
+    await user.type(screen.getByLabelText('RPE'), '6');
+    await user.type(screen.getByLabelText('Feel'), 'solid');
+    await user.type(screen.getByLabelText('Notes or a question'), 'Was that enough volume?');
+    await user.click(screen.getByRole('button', { name: /read my workout/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        `/api/v1/daily-loop/2026-06-20/activities/${activityId}/post-ride-check-in`,
+        expect.objectContaining({
+          method: 'PUT',
+          body: JSON.stringify({
+            subjectiveScore: null,
+            rpe: 6,
+            feel: 'solid',
+            notes: 'Was that enough volume?',
+          }),
+        }),
+      );
+    });
+  });
+
   it('post-ride expands After your ride but keeps Today and Last night present', async () => {
     renderPage(postRideSnapshot());
 
@@ -987,8 +1049,8 @@ describe('DashboardPage', () => {
     await user.type(screen.getByLabelText('RPE'), '8');
     await user.type(screen.getByLabelText('Legs'), '6');
     await user.type(screen.getByLabelText('Feel'), 'hard but fair');
-    await user.type(screen.getByLabelText('Niggles or notes'), 'Left calf tight.');
-    await user.click(screen.getByRole('button', { name: /save ride check-in/i }));
+    await user.type(screen.getByLabelText('Notes or a question'), 'Left calf tight.');
+    await user.click(screen.getByRole('button', { name: /read my workout/i }));
 
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith(
@@ -1087,7 +1149,7 @@ describe('DashboardPage', () => {
     await user.type(screen.getByLabelText('What did you do instead?'), 'Recovery substitution');
     await user.type(screen.getByLabelText('Target / intensity'), 'Capped at 60% FTP');
     await user.type(screen.getByLabelText('What changed?'), 'Accepted the easier recovery ride.');
-    await user.click(screen.getByRole('button', { name: /save ride log/i }));
+    await user.click(screen.getByRole('button', { name: /read my workout/i }));
 
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith(
