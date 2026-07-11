@@ -25,6 +25,7 @@ from src.scheduler import (
     create_scheduler,
     run_fan_control,
     run_hive_temperature_poll,
+    run_morning_sync,
     run_morning_weather_sync,
     run_scheduled_backup,
     run_wake_check,
@@ -412,6 +413,82 @@ async def test_morning_weather_sync_runs_daily_sync_before_analysis() -> None:
     assert nudge_service.push_morning_verdict.await_count == 1
 
 
+def _morning_sync_ctx(session: AsyncMock) -> object:
+    class _Ctx:
+        async def __aenter__(self) -> AsyncMock:
+            return session
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+    return _Ctx()
+
+
+@pytest.mark.asyncio
+async def test_run_morning_sync_syncs_then_nudges() -> None:
+    """Batch 85: the wake job pulls all inputs, then fires the good-morning nudge —
+    so by tap-time the data is synced and the brief generates fast."""
+    profile = _profile()
+    calls: list[str] = []
+
+    session = AsyncMock()
+    session.commit = AsyncMock()
+
+    async def fake_sync(_session: object, _profiles: object) -> tuple[int, int, int]:
+        calls.append("sync")
+        return (1, 1, 1)
+
+    morning = MagicMock()
+    morning.latest_analysis = AsyncMock(return_value=None)  # no brief yet → nudge
+
+    async def fake_nudge(_profile: object, *, subject_date: object, commit: bool = True) -> bool:
+        calls.append("nudge")
+        return True
+
+    nudge_service = MagicMock()
+    nudge_service.push_good_morning = AsyncMock(side_effect=fake_nudge)
+
+    with (
+        patch("src.scheduler.AsyncSessionLocal", return_value=_morning_sync_ctx(session)),
+        patch("src.scheduler._active_profiles", AsyncMock(return_value=[profile])),
+        patch("src.scheduler._sync_morning_inputs", side_effect=fake_sync),
+        patch("src.scheduler.MorningAnalysisService", return_value=morning),
+        patch("src.scheduler.NudgeAlertService", return_value=nudge_service),
+    ):
+        await run_morning_sync()
+
+    assert calls == ["sync", "nudge"]  # sync strictly before the nudge
+    nudge_service.push_good_morning.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_run_morning_sync_skips_nudge_when_brief_exists() -> None:
+    """Once today's brief already exists (he checked in, or the backstop ran) the
+    wake job still syncs but never nudges him to check in again."""
+    profile = _profile()
+
+    session = AsyncMock()
+    session.commit = AsyncMock()
+
+    fake_sync = AsyncMock(return_value=(1, 1, 1))
+    morning = MagicMock()
+    morning.latest_analysis = AsyncMock(return_value=MagicMock())  # brief already there
+    nudge_service = MagicMock()
+    nudge_service.push_good_morning = AsyncMock(return_value=True)
+
+    with (
+        patch("src.scheduler.AsyncSessionLocal", return_value=_morning_sync_ctx(session)),
+        patch("src.scheduler._active_profiles", AsyncMock(return_value=[profile])),
+        patch("src.scheduler._sync_morning_inputs", fake_sync),
+        patch("src.scheduler.MorningAnalysisService", return_value=morning),
+        patch("src.scheduler.NudgeAlertService", return_value=nudge_service),
+    ):
+        await run_morning_sync()
+
+    fake_sync.assert_awaited_once()  # inputs still synced
+    nudge_service.push_good_morning.assert_not_awaited()  # but no redundant nudge
+
+
 @pytest.mark.asyncio
 async def test_activity_poll_pushes_each_new_analysis() -> None:
     """Each newly generated post-workout analysis triggers one push, per kind."""
@@ -614,7 +691,7 @@ def _wake_patches(
         enter(patch("src.scheduler._last_seen_sleep_end", last_seen))
         enter(patch("src.scheduler.is_morning_ready", is_ready))
         enter(patch("src.scheduler._record_wake_check", record))
-        enter(patch("src.scheduler.run_morning_weather_sync", morning_sync))
+        enter(patch("src.scheduler.run_morning_sync", morning_sync))
         yield SimpleNamespace(
             session=session,
             morning=morning,
@@ -802,7 +879,7 @@ async def test_wake_check_persists_then_fires(db_conn: AsyncConnection) -> None:
         patch("src.scheduler.AsyncSessionLocal", new=_bind(db_conn)),
         patch("src.scheduler.GarminConnectClient", return_value=client),
         patch("src.scheduler._profile_now", lambda profile: now["value"]),
-        patch("src.scheduler.run_morning_weather_sync", morning_sync),
+        patch("src.scheduler.run_morning_sync", morning_sync),
     ):
         await run_wake_check()  # poll 1 → first sighting → wait, persist 07:00
         row1 = await _wake_check_row(db_conn, user_id)
@@ -833,7 +910,7 @@ async def test_wake_check_backstop_fires_on_unfinalized(db_conn: AsyncConnection
         patch("src.scheduler.AsyncSessionLocal", new=_bind(db_conn)),
         patch("src.scheduler.GarminConnectClient", return_value=client),
         patch("src.scheduler._profile_now", lambda profile: _local(9, 35)),
-        patch("src.scheduler.run_morning_weather_sync", morning_sync),
+        patch("src.scheduler.run_morning_sync", morning_sync),
     ):
         await run_wake_check()
 
@@ -874,7 +951,7 @@ async def test_wake_check_short_circuits_with_existing_morning_row(
         patch("src.scheduler.AsyncSessionLocal", new=_bind(db_conn)),
         patch("src.scheduler.GarminConnectClient", return_value=client),
         patch("src.scheduler._profile_now", lambda profile: _local(8, 25)),
-        patch("src.scheduler.run_morning_weather_sync", morning_sync),
+        patch("src.scheduler.run_morning_sync", morning_sync),
     ):
         await run_wake_check()
 

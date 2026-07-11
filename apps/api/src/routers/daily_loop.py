@@ -1167,10 +1167,12 @@ async def upsert_manual_entry(
         food_json=body.foodJson,
         notes=body.notes,
     )
-    # A morning check-in adds Mark's subjective read after the wake verdict was
-    # computed from sleep alone. If it worsens today's verdict while the eased ride
-    # is still pending, recompute the verdict + ride so his notes shape the session
-    # (never touches an approved/pushed ride). Best-effort — never blocks the save.
+    # Batch 85: the check-in is the primary generate trigger. On today's check-in,
+    # force-regenerate the brief so his just-entered notes/questions fold into the
+    # read (an empty submit still yields today's objective brief). Subjective stays
+    # downgrade-only and an approved/pushed ride is never silently re-adjusted
+    # (Decision #29). Best-effort — never blocks the save; the regenerated brief is
+    # returned in the snapshot below.
     if subject_date == _local_today(player.timezone):
         try:
             await ExecutableCoachingService(db).regenerate_after_morning_checkin(

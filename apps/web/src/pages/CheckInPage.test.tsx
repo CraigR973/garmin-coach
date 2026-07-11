@@ -72,7 +72,7 @@ describe('CheckInPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Good' }));
     await user.click(screen.getByRole('button', { name: 'Slept well' }));
-    await user.click(screen.getByRole('button', { name: 'Save check-in' }));
+    await user.click(screen.getByRole('button', { name: /get today's brief/i }));
 
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith(
@@ -84,6 +84,40 @@ describe('CheckInPage', () => {
       ([path, opts]) => path === '/api/v1/daily-loop/2026-06-20/manual-entry' && opts?.method === 'PUT',
     ) as [string, { body: string }];
     expect(JSON.parse(options.body)).toMatchObject({ subjectiveScore: 8, feel: 'slept well' });
+  });
+
+  it("generates and surfaces today's brief on submit (Batch 85)", async () => {
+    const briefAnalysis = {
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      generatedAtUtc: '2026-06-20T07:10:00Z',
+      verdict: 'amber',
+      promptVersion: 'morning-analysis-v8-2026-07-11',
+      outputMarkdown: '**Your question**\n\nYou are tired because your REM ran low.',
+    };
+    const withBrief = { ...snapshot, data: { ...snapshot.data, morningAnalysis: briefAnalysis } };
+
+    apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
+      if (options?.method === 'PUT') return Promise.resolve(withBrief);
+      if (path === '/api/v1/daily-loop') return Promise.resolve(snapshot); // no brief on load
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    const queryClient = new QueryClient();
+    const user = userEvent.setup();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CheckInPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: /get today's brief/i }));
+
+    // The freshly generated brief (verdict + read) surfaces on the check-in page.
+    expect(await screen.findByText(/you are tired because your rem ran low/i)).toBeTruthy();
+    expect(screen.getByText("Today's brief")).toBeTruthy();
   });
 
   it('toggles a quick chip on and off, mapping it into the right column', async () => {
@@ -140,7 +174,7 @@ describe('CheckInPage', () => {
     await user.click(await screen.findByRole('button', { name: /more/i }));
     await user.type(await screen.findByLabelText('Systolic'), '108');
     expect(screen.queryByText('How did your sessions go?')).toBeNull();
-    await user.click(screen.getByRole('button', { name: 'Save check-in' }));
+    await user.click(screen.getByRole('button', { name: /get today's brief/i }));
 
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith(

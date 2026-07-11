@@ -46,6 +46,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { VerdictHero } from '@/components/VerdictHero';
+import { GoodMorningCta } from '@/components/GoodMorningCta';
 import { FeedbackControl } from '@/components/FeedbackControl';
 import { SleepSnapshotBody } from '@/components/SleepSnapshotBody';
 import { SleepPrepBody } from '@/components/SleepPrepBody';
@@ -613,7 +614,14 @@ export function DashboardPage() {
         </p>
       </div>
 
-      <VerdictHero verdict={analysis?.verdict} dateLabel={friendlyDate(daily.subjectDate)} />
+      {/* Batch 85: the verdict no longer lands on its own — until today's brief is
+          generated (his check-in, or the 09:30 backstop), Home invites him to say
+          good morning rather than showing an auto-pending verdict. */}
+      {analysis ? (
+        <VerdictHero verdict={analysis.verdict} dateLabel={friendlyDate(daily.subjectDate)} />
+      ) : (
+        <GoodMorningCta dateLabel={friendlyDate(daily.subjectDate)} />
+      )}
 
       {analysis?.id ? (
         <FeedbackControl

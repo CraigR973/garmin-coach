@@ -27,6 +27,7 @@ ANALYSIS_TYPE_THERMAL_ALERT = "thermal_alert"
 ANALYSIS_TYPE_STALE_SOURCE_ALERT = "stale_source_alert"
 ANALYSIS_TYPE_VERDICT_PUSH = "verdict_push"
 ANALYSIS_TYPE_ANALYSIS_PUSH = "analysis_push"
+ANALYSIS_TYPE_GOOD_MORNING = "good_morning_nudge"
 PROMPT_VERSION = "notification-rules:v1"
 
 EVENING_NUDGE_TIME = time(20, 0)
@@ -160,6 +161,26 @@ def build_verdict_push_plan(analysis: Analysis, subject_date: date) -> Notificat
             "status": status,
             "rule": "verdict_push",
         },
+    )
+
+
+def build_good_morning_plan(subject_date: date) -> NotificationPlan:
+    """The wake "good morning" nudge (Batch 85).
+
+    Fired once per day after the overnight sync completes, inviting Mark to open
+    the app and check in to generate today's brief. On the primary path it
+    *replaces* the auto verdict push — generation now happens on his check-in, so
+    tap-time is always post-sync and fast. The verdict push survives only as the
+    09:30 backstop for a morning he never engages with (Decision #158).
+    """
+    return NotificationPlan(
+        analysis_type=ANALYSIS_TYPE_GOOD_MORNING,
+        tag=f"good-morning-{subject_date.isoformat()}",
+        title="Good morning ☀️",
+        body="Your overnight data's in — say good morning and I'll read your day.",
+        severity="info",
+        data={"url": "/check-in", "kind": "good_morning"},
+        context={"subjectDate": subject_date.isoformat(), "rule": "good_morning"},
     )
 
 
@@ -435,6 +456,28 @@ class NudgeAlertService:
         the 09:30 backstop and any regeneration never double-push.
         """
         plan = build_verdict_push_plan(analysis, subject_date)
+        return await self._send_once(
+            profile,
+            plan,
+            subject_date=subject_date,
+            commit=commit,
+            now_utc=now_utc or datetime.now(UTC),
+        )
+
+    async def push_good_morning(
+        self,
+        profile: Profile,
+        *,
+        subject_date: date,
+        now_utc: datetime | None = None,
+        commit: bool = True,
+    ) -> bool:
+        """Push the wake "good morning" nudge once (Batch 85).
+
+        Idempotent per (profile, subject_date) via the ``good-morning-{date}`` tag,
+        so re-firing on a later wake poll (or the backstop) never double-nudges.
+        """
+        plan = build_good_morning_plan(subject_date)
         return await self._send_once(
             profile,
             plan,

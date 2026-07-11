@@ -53,7 +53,10 @@ from src.services.sleep_scoring import (
 # done/due/at-risk quality mix and, when today's hard session is eased, whether
 # it is re-patched or explicitly not made up this week — so the version bumps
 # again to regenerate stale reads.
-PROMPT_VERSION = "morning-analysis-v7-2026-07-09"
+# Batch 85 (#158): the check-in is now the primary generate trigger, so the read
+# must answer a question Mark leaves in his check-in notes (grounded in the packet)
+# — the prompt gains that instruction, so the version bumps again.
+PROMPT_VERSION = "morning-analysis-v8-2026-07-11"
 ANALYSIS_TYPE = "morning"
 SYSTEM_PROMPT = """You are Garmin Coach, a private daily endurance and sleep coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
@@ -89,7 +92,15 @@ to shortfall.moveToWeekday and the week keeps its mix; if it is false, state pla
 that there is no such session this week and that this is the right call on his
 recovery, not a gap to force. The mix is a protected target, but readiness always
 gets the veto — never push a hard session onto a poor-recovery day to hit a quota,
-and never onto a Monday or Friday."""
+and never onto a Monday or Friday.
+When manualEntries carries a question from Mark (in his notes or feel — e.g. "why am
+I so tired?", "should I still ride today?", "is my overnight HRV normal?"), answer it
+directly and briefly, grounded only in this packet (his sleep, recovery, thermal /
+overnight-temperature, load, and plan). Put the answer under a short
+"**Your question**" heading near the top of the read. If the packet does not hold
+what is needed to answer, say so plainly rather than guessing. Answering a question
+never overrides the Red floor, the soft-sleep rule, the Poor-readiness caution, or
+Red-never-VO2."""
 
 
 class MorningAnalysisError(RuntimeError):
