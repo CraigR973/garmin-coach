@@ -14,6 +14,7 @@ from src.models.coaching import (
     Activity,
     Analysis,
     DailyMetric,
+    KnowledgeBase,
     ManualEntry,
     PlanBlock,
     PlannedWorkout,
@@ -117,7 +118,7 @@ async def test_generate_and_store_post_flexibility_analysis_is_lean_and_idempote
         session.add(
             DailyMetric(
                 user_id=user_id,
-                calendar_date=date(2026, 7, 2),
+                calendar_date=date(2026, 7, 4),
                 resting_heart_rate_bpm=45,
                 raw_payload={},
             )
@@ -139,7 +140,7 @@ async def test_generate_and_store_post_flexibility_analysis_is_lean_and_idempote
             PlannedWorkout(
                 user_id=user_id,
                 plan_block_id=block.id,
-                workout_date=date(2026, 7, 2),
+                workout_date=date(2026, 7, 4),
                 title="Mobility",
                 workout_type="mobility",
                 version=1,
@@ -147,12 +148,45 @@ async def test_generate_and_store_post_flexibility_analysis_is_lean_and_idempote
                 structured_workout={"format": "mobility"},
             )
         )
+        session.add(
+            PlannedWorkout(
+                user_id=user_id,
+                plan_block_id=block.id,
+                workout_date=date(2026, 7, 7),
+                title="Template VO2",
+                workout_type="vo2",
+                status="skipped",
+                version=1,
+                is_active=True,
+                structured_workout={"format": "bike"},
+                source="holiday_pause",
+            )
+        )
+        session.add(
+            KnowledgeBase(
+                user_id=user_id,
+                section="holiday_windows",
+                version=1,
+                is_active=True,
+                source="test",
+                content={
+                    "windows": [
+                        {
+                            "startDate": "2026-07-06",
+                            "endDate": "2026-07-12",
+                            "pausedAtUtc": "2026-07-01T09:00:00",
+                            "resumedAtUtc": None,
+                        }
+                    ]
+                },
+            )
+        )
         activity = Activity(
             user_id=user_id,
             garmin_activity_id=123456,
             activity_name="16 Min Mobility Workout",
             activity_type="other",
-            start_utc=datetime(2026, 7, 2, 7, 30),
+            start_utc=datetime(2026, 7, 4, 7, 30),
             duration_sec=960,
             avg_heart_rate_bpm=72,
             max_heart_rate_bpm=91,
@@ -164,7 +198,7 @@ async def test_generate_and_store_post_flexibility_analysis_is_lean_and_idempote
             garmin_activity_id=222222,
             activity_name="East Ayrshire Road Cycling",
             activity_type="other",
-            start_utc=datetime(2026, 7, 1, 7, 30),
+            start_utc=datetime(2026, 7, 3, 7, 30),
             duration_sec=3600,
             raw_summary={"activityType": {"typeKey": "other"}},
         )
@@ -173,7 +207,7 @@ async def test_generate_and_store_post_flexibility_analysis_is_lean_and_idempote
 
         service = PostFlexibilityAnalysisService(session)
         fake_client = FakeFlexibilityClient()
-        pending = await service.pending_flexibility_activities(user_id, since=datetime(2026, 7, 1))
+        pending = await service.pending_flexibility_activities(user_id, since=datetime(2026, 7, 3))
         assert [item.id for item in pending] == [activity.id]
 
         result = await service.generate_and_store(player, activity, client=fake_client)
@@ -186,13 +220,41 @@ async def test_generate_and_store_post_flexibility_analysis_is_lean_and_idempote
         packet = result.analysis.context_packet
         assert packet["prompt"]["version"] == PROMPT_VERSION
         assert packet["packetType"] == "post_flexibility_analysis"
+        assert packet["subjectDate"] == "2026-07-04"
+        assert packet["subjectWeekday"] == "Saturday"
         assert packet["activity"]["activityName"] == "16 Min Mobility Workout"
         assert packet["heartRateReview"]["avgAboveRestingBpm"] == 27
         assert packet["consistency"]["sessions4w"] == 1
         assert packet["plannedWorkouts"][0]["workoutType"] == "mobility"
+        holiday_vo2 = next(
+            workout for workout in packet["plannedWorkouts"] if workout["title"] == "Template VO2"
+        )
+        assert holiday_vo2["status"] == "skipped"
+        assert holiday_vo2["insideHolidayWindow"] is True
+        assert holiday_vo2["isLive"] is False
+        assert packet["holidayContext"] == {
+            "forwardHorizonDays": 14,
+            "nextWeekIsHoliday": True,
+            "windows": [
+                {
+                    "startDate": "2026-07-06",
+                    "endDate": "2026-07-12",
+                    "isActive": True,
+                }
+            ],
+        }
+        assert packet["mobilityBaseline"]["isBaselineHabit"] is True
+        assert packet["mobilityBaseline"]["countsAsRecoveryLoad"] is False
+        assert packet["consistency"]["interpretation"] == "established_daily_mobility_habit"
+        assert packet["knowledgeBase"]["trainingSchedule"]["longRideDay"] == "Saturday"
+        assert packet["knowledgeBase"]["analysisRules"]["dataQualityRules"]["rules"]
+        assert packet["knowledgeBase"]["analysisRules"]["coachingProtocol"]
         assert packet["activityCheckIn"] is None
         assert packet["guardrails"]["neverFeedsRecoveryDecision"] is True
+        assert "do_not_make_recovery_decisions" in packet["prompt"]["outputRules"]
+        assert "give_one_light_mobility_only_next_step" in packet["prompt"]["outputRules"]
         packet_json = json.dumps(packet)
+        assert "exceeds plan" not in packet_json.lower()
         assert "timeSeriesSummary" not in packet_json
         assert "powerZones" not in packet_json
         assert "avgPowerWatts" not in packet_json

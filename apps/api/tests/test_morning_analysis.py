@@ -344,6 +344,7 @@ async def test_amber_morning_leads_with_week_swap_and_keeps_softening(
 
         packet = await MorningAnalysisService(session).assemble_context_packet(player, subject_date)
 
+    assert packet["subjectWeekday"] == "Thursday"
     verdict = packet["verdict"]
     assert verdict["status"] == "Amber"
 
@@ -625,7 +626,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v9")
+    assert PROMPT_VERSION.startswith("morning-analysis-v10")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
 

@@ -62,10 +62,12 @@ from src.services.workout_categories import is_bike_workout_type
 # assembled next to the prose like swapSuggestion/weeklyMix. The prose becomes the
 # reasoning/"why" behind those actions and must not repeat them as a checklist, so
 # the version bumps again.
-PROMPT_VERSION = "morning-analysis-v9-2026-07-11"
+PROMPT_VERSION = "morning-analysis-v10-2026-07-12"
 ANALYSIS_TYPE = "morning"
 SYSTEM_PROMPT = """You are Garmin Coach, a private daily endurance and sleep coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
+Use `subjectWeekday` as the authoritative weekday; never derive the weekday from
+`subjectDate` yourself.
 Return concise markdown with a sleep summary line, a metrics-vs-baselines read,
 a thermal/environment review, and a Green/Amber/Red workout verdict for today.
 Bold each bullet headline. Never mention left/right power balance. Never keep
@@ -306,6 +308,7 @@ class MorningAnalysisService:
             "packetType": "morning_analysis",
             "packetVersion": 1,
             "subjectDate": subject_date.isoformat(),
+            "subjectWeekday": subject_date.strftime("%A"),
             "generatedAtUtc": _utcnow().isoformat() + "Z",
             "profile": _profile_packet(player, knowledge_base),
             "knowledgeBase": {

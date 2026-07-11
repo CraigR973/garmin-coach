@@ -173,6 +173,9 @@ async def test_generate_and_store_post_strength_analysis_is_lean_and_idempotent(
         packet = result.analysis.context_packet
         assert packet["prompt"]["version"] == PROMPT_VERSION
         assert packet["packetType"] == "post_strength_analysis"
+        assert packet["subjectWeekday"] == "Thursday"
+        assert packet["knowledgeBase"]["analysisRules"]["dataQualityRules"]["rules"]
+        assert packet["knowledgeBase"]["analysisRules"]["coachingProtocol"]
         assert packet["activity"]["activityName"] == "Strength maintenance"
         assert packet["heartRateReview"]["avgAboveRestingBpm"] == 51
         assert packet["consistency"]["sessions4w"] == 1

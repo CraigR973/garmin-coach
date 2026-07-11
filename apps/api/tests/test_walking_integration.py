@@ -239,6 +239,9 @@ async def test_generate_and_store_post_walk_analysis_is_hr_pace_based_and_idempo
         packet = result.analysis.context_packet
         assert packet["packetType"] == "post_walk_analysis"
         assert packet["prompt"]["version"] == PROMPT_VERSION
+        assert packet["subjectWeekday"] == "Friday"
+        assert packet["knowledgeBase"]["analysisRules"]["dataQualityRules"]["rules"]
+        assert packet["knowledgeBase"]["analysisRules"]["coachingProtocol"]
         assert packet["activity"]["activityType"] == "walking"
         assert packet["paceReview"]["avgPaceMinPerKm"] == 10.53
         assert packet["heartRateReview"]["hrZoneDistribution"]

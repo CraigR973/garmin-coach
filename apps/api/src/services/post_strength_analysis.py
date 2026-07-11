@@ -45,6 +45,7 @@ from src.services.post_workout_analysis import (
     PostWorkoutAnalysisError,
     _activity_local_date,
     _activity_packet,
+    _analysis_rules,
     _data_quality_guardrails,
     _dt,
     _manual_entry_packet,
@@ -59,10 +60,12 @@ from src.services.strength_brief import (
     is_strength_activity,
 )
 
-PROMPT_VERSION = "post-strength-analysis-v2-2026-07-11"
+PROMPT_VERSION = "post-strength-analysis-v3-2026-07-12"
 ANALYSIS_TYPE = "post_strength"
 
 SYSTEM_PROMPT = """You are Garmin Coach, a private strength and conditioning coach.
+Use `subjectWeekday` as the authoritative weekday; never derive the weekday from
+`subjectDate` yourself.
 Use only the supplied context packet. Follow every data-quality guardrail.
 Return concise markdown that acknowledges the strength session, reads frequency
 and consistency against the recent trend, notes whether heart rate was unusually
@@ -218,6 +221,7 @@ class PostStrengthAnalysisService:
             "packetType": "post_strength_analysis",
             "packetVersion": 1,
             "subjectDate": subject_date.isoformat(),
+            "subjectWeekday": subject_date.strftime("%A"),
             "generatedAtUtc": _utcnow().isoformat() + "Z",
             "profile": {
                 "userId": str(player.id),
@@ -228,7 +232,7 @@ class PostStrengthAnalysisService:
             "knowledgeBase": {
                 "dataQualityGuardrails": _data_quality_guardrails(knowledge_base),
                 "trainingPlan": knowledge_base.get("training_plan", {}),
-                "analysisRules": knowledge_base.get("analysis_rules", {}),
+                "analysisRules": _analysis_rules(knowledge_base),
             },
             "activity": _strength_activity_packet(activity),
             "heartRateReview": {
