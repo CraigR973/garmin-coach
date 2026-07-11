@@ -13,6 +13,7 @@ import {
   Hammer,
   Moon,
   Plus,
+  RotateCcw,
   SlidersHorizontal,
   Trash2,
   Umbrella,
@@ -194,6 +195,26 @@ export function WeekAheadPage() {
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not remove the workout'),
   });
 
+  const markResetMutation = useMutation({
+    mutationFn: (date: string) =>
+      apiFetch(`/api/v1/plan-actions/weeks/${date}/reset`, { method: 'POST' }),
+    onSuccess: async () => {
+      await invalidate();
+      toast.success('Week marked as reset');
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not reset the week'),
+  });
+
+  const unsetResetMutation = useMutation({
+    mutationFn: (date: string) =>
+      apiFetch(`/api/v1/plan-actions/weeks/${date}/reset`, { method: 'DELETE' }),
+    onSuccess: async () => {
+      await invalidate();
+      toast.success('Week restored');
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not restore the week'),
+  });
+
   const busy =
     addMutation.isPending ||
     structuredAddMutation.isPending ||
@@ -201,7 +222,9 @@ export function WeekAheadPage() {
     moveMutation.isPending ||
     skipDayMutation.isPending ||
     skipMutation.isPending ||
-    removeMutation.isPending;
+    removeMutation.isPending ||
+    markResetMutation.isPending ||
+    unsetResetMutation.isPending;
   const moveOptions = useMemo(
     () =>
       pickerWorkout && query.data
@@ -284,7 +307,12 @@ export function WeekAheadPage() {
             return (
               <div key={day.date} className="space-y-3">
                 {showCharacter && day.weekCharacter ? (
-                  <WeekCharacterBanner character={day.weekCharacter} />
+                  <WeekCharacterBanner
+                    day={day}
+                    busy={busy}
+                    onMarkReset={() => markResetMutation.mutate(day.date)}
+                    onUnsetReset={() => unsetResetMutation.mutate(day.date)}
+                  />
                 ) : null}
                 <ScheduleDayCard
                   day={day}
@@ -350,10 +378,35 @@ export function WeekAheadPage() {
   );
 }
 
-function WeekCharacterBanner({ character }: { character: NonNullable<PlanDay['weekCharacter']> }) {
+function WeekCharacterBanner({
+  day,
+  busy,
+  onMarkReset,
+  onUnsetReset,
+}: {
+  day: PlanDay;
+  busy: boolean;
+  onMarkReset: () => void;
+  onUnsetReset: () => void;
+}) {
+  const character = day.weekCharacter;
+  if (!character) return null;
+  const isReset = character.isReset;
   return (
-    <div className="flex items-center gap-2 px-1">
-      <Badge variant={character.isHoliday ? 'accent' : 'muted'}>{character.label}</Badge>
+    <div className="flex flex-wrap items-center gap-2 px-1">
+      <Badge variant={character.isHoliday || isReset ? 'accent' : 'muted'}>{character.label}</Badge>
+      {!character.isHoliday ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          onClick={isReset ? onUnsetReset : onMarkReset}
+        >
+          <RotateCcw className="h-4 w-4" aria-hidden />
+          {isReset ? 'Restore week' : 'Light reset'}
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -556,23 +609,23 @@ function WorkoutRow({
 function OutdoorDeliveryBadge({ delivery }: { delivery: PlanWorkout['outdoorDelivery'] | null }) {
   if (delivery?.status === 'pushed') {
     return (
-      <p className="mt-2">
+      <div className="mt-2">
         <Badge variant="success">Sent to Garmin</Badge>
-      </p>
+      </div>
     );
   }
   if (delivery?.status === 'failed') {
     return (
-      <p className="mt-2">
+      <div className="mt-2">
         <Badge variant="error" title={delivery.lastError ?? undefined}>
           Garmin send failed — will retry
         </Badge>
-      </p>
+      </div>
     );
   }
   return (
-    <p className="mt-2">
+    <div className="mt-2">
       <Badge variant="muted">Outdoor · sends to Garmin</Badge>
-    </p>
+    </div>
   );
 }

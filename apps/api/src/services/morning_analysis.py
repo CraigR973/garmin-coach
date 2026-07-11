@@ -1282,13 +1282,32 @@ def _breathwork_recommendation(
 
 
 def _plan_adjustments(status: str, planned_workouts: Sequence[PlannedWorkout]) -> list[str]:
+    reset_week = any(_is_reset_week_workout(workout) for workout in planned_workouts)
     if not planned_workouts:
-        return ["No active planned workout found for today; keep advice conservative."]
-    if status == "Green":
-        return ["Proceed with the planned workout if warm-up confirms readiness."]
-    if status == "Amber":
-        return ["Cut duration 20-30%, drop intensity by a zone, and remove HIT/VO2 work."]
-    return ["Substitute recovery, mobility, or rest."]
+        adjustments = ["No active planned workout found for today; keep advice conservative."]
+    elif status == "Green":
+        adjustments = ["Proceed with the planned workout if warm-up confirms readiness."]
+    elif status == "Amber":
+        adjustments = ["Cut duration 20-30%, drop intensity by a zone, and remove HIT/VO2 work."]
+    else:
+        adjustments = ["Substitute recovery, mobility, or rest."]
+    if reset_week:
+        adjustments.insert(
+            0,
+            (
+                "This week is an intended light reset; judge the reduced cycling load "
+                "as planned deload, not missed load."
+            ),
+        )
+    return adjustments
+
+
+def _is_reset_week_workout(workout: PlannedWorkout) -> bool:
+    structured = workout.structured_workout or {}
+    if not isinstance(structured, dict):
+        return False
+    reset = structured.get("resetWeek")
+    return isinstance(reset, dict) and reset.get("active") is True
 
 
 def _latest_subjective_score(manual_entries: Sequence[ManualEntry]) -> int | None:

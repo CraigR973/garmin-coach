@@ -718,6 +718,123 @@ async def test_schedule_surfaces_active_holiday_window(db_conn: AsyncConnection)
     assert schedule.days[4].week_character.label == "Build 7/13"
 
 
+# ----------------------------------------------------------
+# Batch 82 — manual light reset week: Z2 rides + strength kept
+# ----------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_mark_reset_week_versions_bikes_to_z2_keeps_strength_and_resyncs(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    monday = date(2026, 9, 14)
+    tuesday = monday + timedelta(days=1)
+    wednesday = monday + timedelta(days=2)
+    fake = _FakeIntervalsClient()
+    vo2_structured = {
+        "format": "bike",
+        "delivery": "indoor",
+        "steps": [
+            {"label": "Warm-up ramp", "minutes": 10, "ramp": [45, 75]},
+            {"label": "Main intervals", "target": "118%", "pattern": "4 x 2min / 2min @55%"},
+            {"label": "Cool-down ramp", "minutes": 5, "ramp": [75, 45]},
+        ],
+    }
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await _seed_user(session, user_id)
+        _block(session, user_id, 8, "build", monday)
+        ride = await _seed_workout(
+            session,
+            user_id,
+            tuesday,
+            workout_type="bike_vo2",
+            structured=vo2_structured,
+        )
+        strength = await _seed_workout(
+            session, user_id, wednesday, workout_type="strength_maintenance"
+        )
+        await session.commit()
+        service = PlanActionService(session, intervals_client=fake)
+        await service.executable.reconcile_deliveries(user, start_date=tuesday, end_date=tuesday)
+
+        active = await service.mark_reset_week(user, week_date=monday)
+
+        rows = (
+            (
+                await session.execute(
+                    select(PlannedWorkout)
+                    .where(PlannedWorkout.user_id == user_id)
+                    .order_by(PlannedWorkout.workout_date.asc(), PlannedWorkout.version.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        block = await session.scalar(select(PlanBlock).where(PlanBlock.user_id == user_id))
+        schedule = await service.schedule(user, start_date=monday, days=1)
+
+    reset_ride = next(workout for workout in active if workout.source == "reset_week")
+    assert [(row.id, row.is_active) for row in rows if row.workout_date == tuesday] == [
+        (ride.id, False),
+        (reset_ride.id, True),
+    ]
+    assert strength.id in {workout.id for workout in active}
+    assert reset_ride.title == "Reset Z2: Endurance ride"
+    assert reset_ride.workout_type == "bike_endurance"
+    assert reset_ride.intensity_target == "Z2 reset ~65% FTP"
+    expanded = expand_structured_steps(reset_ride.structured_workout, reset_ride.intensity_target)
+    assert {step["powerStartPct"] for step in expanded} == {65}
+    assert {step["powerEndPct"] for step in expanded} == {65}
+    assert reset_ride.structured_workout["resetWeek"]["originalWorkoutId"] == str(ride.id)
+    assert block is not None
+    assert block.goals_json["manualResetWeek"]["active"] is True
+    assert schedule.days[0].week_character is not None
+    assert schedule.days[0].week_character.label == "Light reset"
+    assert schedule.days[0].week_character.is_reset is True
+    assert fake.updates
+
+
+@pytest.mark.asyncio
+async def test_unset_reset_week_restores_original_versions_and_resyncs(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    monday = date(2026, 9, 21)
+    tuesday = monday + timedelta(days=1)
+    fake = _FakeIntervalsClient()
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await _seed_user(session, user_id)
+        _block(session, user_id, 9, "build", monday)
+        original = await _seed_workout(session, user_id, tuesday, workout_type="bike_sweet_spot")
+        await session.commit()
+        service = PlanActionService(session, intervals_client=fake)
+        await service.executable.reconcile_deliveries(user, start_date=tuesday, end_date=tuesday)
+        await service.mark_reset_week(user, week_date=monday)
+
+        restored = await service.unset_reset_week(user, week_date=monday)
+
+        rows = (
+            (
+                await session.execute(
+                    select(PlannedWorkout)
+                    .where(PlannedWorkout.user_id == user_id)
+                    .order_by(PlannedWorkout.version.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        block = await session.scalar(select(PlanBlock).where(PlanBlock.user_id == user_id))
+
+    assert [workout.id for workout in restored] == [original.id]
+    assert [(row.id, row.is_active) for row in rows] == [(original.id, True), (rows[1].id, False)]
+    assert rows[1].source == "reset_week"
+    assert block is not None
+    assert block.goals_json["manualResetWeek"]["active"] is False
+    assert len(fake.updates) >= 2
+
+
 @pytest.mark.asyncio
 async def test_record_actual_captures_unplanned_reality(db_conn: AsyncConnection) -> None:
     user_id = uuid.uuid4()

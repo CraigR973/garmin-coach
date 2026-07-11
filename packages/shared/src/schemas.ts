@@ -382,6 +382,7 @@ export const weekCharacterSchema = z.object({
   sequenceIndex: z.number().int().nullable(),
   blockType: z.string().nullable(),
   isHoliday: z.boolean(),
+  isReset: z.boolean().default(false),
 });
 
 export const planScheduleDaySchema = z.object({

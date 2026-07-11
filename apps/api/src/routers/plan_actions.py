@@ -83,6 +83,7 @@ class WeekCharacterOut(BaseModel):
     sequenceIndex: int | None
     blockType: str | None
     isHoliday: bool
+    isReset: bool
 
 
 class PlanDayOut(BaseModel):
@@ -236,6 +237,7 @@ def _week_character_out(character: WeekCharacter | None) -> WeekCharacterOut | N
         sequenceIndex=character.sequence_index,
         blockType=character.block_type,
         isHoliday=character.is_holiday,
+        isReset=character.is_reset,
     )
 
 
@@ -389,6 +391,34 @@ async def skip_day(
     db: AsyncSession = Depends(get_db),
 ) -> WorkoutsActionEnvelope:
     workouts = await PlanActionService(db).skip_day(player, workout_date=workout_date)
+    return WorkoutsActionEnvelope(
+        data=WorkoutsActionData(workouts=[_workout_out(workout) for workout in workouts]),
+        meta=ApiMeta(generatedAtUtc=_generated_at()),
+        errors=[],
+    )
+
+
+@router.post("/weeks/{week_date}/reset", response_model=WorkoutsActionEnvelope)
+async def mark_reset_week(
+    week_date: date,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> WorkoutsActionEnvelope:
+    workouts = await PlanActionService(db).mark_reset_week(player, week_date=week_date)
+    return WorkoutsActionEnvelope(
+        data=WorkoutsActionData(workouts=[_workout_out(workout) for workout in workouts]),
+        meta=ApiMeta(generatedAtUtc=_generated_at()),
+        errors=[],
+    )
+
+
+@router.delete("/weeks/{week_date}/reset", response_model=WorkoutsActionEnvelope)
+async def unset_reset_week(
+    week_date: date,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> WorkoutsActionEnvelope:
+    workouts = await PlanActionService(db).unset_reset_week(player, week_date=week_date)
     return WorkoutsActionEnvelope(
         data=WorkoutsActionData(workouts=[_workout_out(workout) for workout in workouts]),
         meta=ApiMeta(generatedAtUtc=_generated_at()),

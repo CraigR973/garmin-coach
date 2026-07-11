@@ -73,6 +73,15 @@ per-item skip 409s an already-done session before any delivery mutation, and the
 Week tab labels a partially completed day as **Skip remaining** to match the
 backend truth.
 
+Batch 82 adds a manual light-reset control to the same plan-action boundary:
+`POST /api/v1/plan-actions/weeks/{date}/reset` records the containing block as an
+intended deload in `plan_blocks.goals_json.manualResetWeek`, versions that week's
+active bike workouts into steady Z2 reset rows, keeps strength/flexibility on the
+day, and reconciles delivery; `DELETE /api/v1/plan-actions/weeks/{date}/reset`
+restores the prior bike versions. No migration: the block flag records intent,
+while each reset workout carries `structured_workout.resetWeek` provenance so
+morning analysis reads the reduced load as planned, not missed.
+
 Batch 60 (DECISIONS #134) closes the loop after a ride: when the post-workout read
 is generated it links the `analyses` row to the day's bike `planned_workouts` row
 (new `analyses.planned_workout_id`) and flips that workout to `status='completed'`
