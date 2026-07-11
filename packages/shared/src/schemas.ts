@@ -377,10 +377,18 @@ export const planDayStateSchema = z.object({
   isRest: z.boolean(),
 });
 
+export const weekCharacterSchema = z.object({
+  label: z.string().min(1),
+  sequenceIndex: z.number().int().nullable(),
+  blockType: z.string().nullable(),
+  isHoliday: z.boolean(),
+});
+
 export const planScheduleDaySchema = z.object({
   date: isoDateSchema,
   dayState: planDayStateSchema,
   workouts: z.array(planActionWorkoutSchema),
+  weekCharacter: weekCharacterSchema.nullable().optional(),
 });
 
 export const planScheduleEnvelopeSchema = z.object({

@@ -513,4 +513,75 @@ describe('WeekAheadPage', () => {
     expect(await screen.findByText("Plan couldn't load")).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
+
+  it('links to Holiday and New training block from the organiser (Batch 81)', async () => {
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/api/v1/plan-actions/schedule?days=14'
+        ? Promise.resolve(schedule)
+        : Promise.reject(new Error(`Unexpected request: ${path}`)),
+    );
+    const queryClient = new QueryClient();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText('VO2 Max 30/30');
+    expect(screen.getByRole('link', { name: /holiday/i }).getAttribute('href')).toBe('/holiday');
+    expect(screen.getByRole('link', { name: /new training block/i }).getAttribute('href')).toBe(
+      '/builder',
+    );
+  });
+
+  it('shows each week\'s block character, with a holiday overriding it (Batch 81)', async () => {
+    const blockSchedule = JSON.parse(JSON.stringify(schedule));
+    blockSchedule.data.schedule[0].weekCharacter = {
+      label: 'Build 4/13',
+      sequenceIndex: 4,
+      blockType: 'build',
+      isHoliday: false,
+    };
+    blockSchedule.data.schedule[1].weekCharacter = {
+      label: 'Build 4/13',
+      sequenceIndex: 4,
+      blockType: 'build',
+      isHoliday: false,
+    };
+    blockSchedule.data.schedule[2].weekCharacter = {
+      label: 'Holiday',
+      sequenceIndex: 5,
+      blockType: 'build',
+      isHoliday: true,
+    };
+    blockSchedule.data.schedule[3].weekCharacter = {
+      label: 'Holiday',
+      sequenceIndex: 5,
+      blockType: 'build',
+      isHoliday: true,
+    };
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/api/v1/plan-actions/schedule?days=14'
+        ? Promise.resolve(blockSchedule)
+        : Promise.reject(new Error(`Unexpected request: ${path}`)),
+    );
+    const queryClient = new QueryClient();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText('VO2 Max 30/30');
+    // The character banner appears once per contiguous run, not once per day.
+    // (The "Holiday" nav link also matches the text, so scope to the badge div.)
+    expect(screen.getAllByText('Build 4/13')).toHaveLength(1);
+    expect(screen.getAllByText('Holiday', { selector: 'div' })).toHaveLength(1);
+  });
 });

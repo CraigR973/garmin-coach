@@ -13,7 +13,13 @@ from src.auth import CurrentUser
 from src.database import get_db
 from src.models.coaching import GarminWorkoutDelivery, ManualEntry, PlannedWorkout
 from src.services.garmin_workout_delivery import GarminWorkoutDeliveryService
-from src.services.plan_actions import PlanActionService, PlanDay, QuickAddOption, quick_add_options
+from src.services.plan_actions import (
+    PlanActionService,
+    PlanDay,
+    QuickAddOption,
+    WeekCharacter,
+    quick_add_options,
+)
 from src.services.structured_workout_builder import CustomBikeWorkoutSpec, DeliveryTarget
 
 router = APIRouter(prefix="/api/v1/plan-actions", tags=["plan-actions"])
@@ -72,10 +78,18 @@ class DayStateOut(BaseModel):
     isRest: bool
 
 
+class WeekCharacterOut(BaseModel):
+    label: str
+    sequenceIndex: int | None
+    blockType: str | None
+    isHoliday: bool
+
+
 class PlanDayOut(BaseModel):
     date: str
     dayState: DayStateOut
     workouts: list[PlanWorkoutOut]
+    weekCharacter: WeekCharacterOut | None = None
 
 
 class PlanScheduleData(BaseModel):
@@ -214,6 +228,17 @@ def _workout_out(
     )
 
 
+def _week_character_out(character: WeekCharacter | None) -> WeekCharacterOut | None:
+    if character is None:
+        return None
+    return WeekCharacterOut(
+        label=character.label,
+        sequenceIndex=character.sequence_index,
+        blockType=character.block_type,
+        isHoliday=character.is_holiday,
+    )
+
+
 def _day_out(
     day: PlanDay, deliveries: dict[uuid.UUID, GarminWorkoutDelivery] | None = None
 ) -> PlanDayOut:
@@ -226,6 +251,7 @@ def _day_out(
             isRest=day.day_state.is_rest,
         ),
         workouts=[_workout_out(workout, deliveries.get(workout.id)) for workout in day.workouts],
+        weekCharacter=_week_character_out(day.week_character),
     )
 
 
