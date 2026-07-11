@@ -37,7 +37,7 @@ from src.services.post_workout_analysis import (
     _utcnow,
 )
 
-PROMPT_VERSION = "post-flexibility-analysis-v1-2026-07-02"
+PROMPT_VERSION = "post-flexibility-analysis-v2-2026-07-11"
 ANALYSIS_TYPE = "post_flexibility"
 WINDOW_4W_DAYS = 28
 
@@ -47,7 +47,9 @@ Return concise markdown that acknowledges the mobility session, reads consistenc
 against the current routine, notes whether heart rate was unusually high for a
 mobility session, and gives one light next step. This is advisory only: do not
 make cycling recovery decisions, do not discuss power, FTP, cadence, stamina,
-Performance Condition, Training Effect, or zones."""
+Performance Condition, Training Effect, or zones.
+If the activity check-in notes contain a question, answer it directly using only
+the supplied packet; say when the available data cannot support an answer."""
 
 
 @dataclass(frozen=True)

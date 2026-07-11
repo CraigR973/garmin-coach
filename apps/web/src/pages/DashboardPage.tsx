@@ -342,9 +342,9 @@ export function DashboardPage() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['daily-loop'] });
-      toast.success('Ride check-in saved');
+      toast.success('Workout read ready');
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not save ride check-in'),
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not read the workout'),
   });
   const completedRideLogMutation = useMutation({
     mutationFn: async ({
@@ -379,18 +379,20 @@ export function DashboardPage() {
           changeSummary,
         },
       });
-      await apiFetch(`/api/v1/daily-loop/${data.subjectDate}/activities/${activityId}/post-ride-check-in`, {
-        method: 'PUT',
-        body: JSON.stringify(ridePayload),
-      });
+      // Save adherence first so the check-in-triggered read grades the actual
+      // workout Mark logged, not the pre-submit planned state (Batch 87).
       await apiFetch(`/api/v1/daily-loop/${data.subjectDate}/planned-workouts/${workoutId}/adherence`, {
         method: 'PUT',
         body: JSON.stringify(adherencePayload),
       });
+      await apiFetch(`/api/v1/daily-loop/${data.subjectDate}/activities/${activityId}/post-ride-check-in`, {
+        method: 'PUT',
+        body: JSON.stringify(ridePayload),
+      });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['daily-loop'] });
-      toast.success('Ride log saved');
+      toast.success('Workout read ready');
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not save ride log'),
   });
@@ -429,6 +431,7 @@ export function DashboardPage() {
   const postFlexibilityAnalyses = daily.postFlexibilityAnalyses ?? [];
   const postStrengthAnalyses = daily.postStrengthAnalyses ?? [];
   const postWalkAnalyses = daily.postWalkAnalyses ?? [];
+  const pendingPostActivities = daily.pendingPostWorkoutActivities ?? [];
   // Batch 60: a completed ride's read attaches to its Today-card session row
   // (matched by plannedWorkoutId, set when the coach analysed the ride). Only
   // *unplanned* rides — with no planned row to attach to — keep the standalone
@@ -550,6 +553,12 @@ export function DashboardPage() {
           dayActions={dayActions}
           completedRides={rideByWorkoutId}
           completedRideLog={completedRideLog}
+          pendingPostActivities={pendingPostActivities}
+          checkInHandlers={{
+            onSave: (payload) => postRideCheckInMutation.mutate(payload),
+            savingActivityId: postRideCheckInMutation.variables?.activityId ?? null,
+            isSaving: postRideCheckInMutation.isPending,
+          }}
         />
       ),
     },
@@ -885,6 +894,8 @@ function DayPlanBody({
   dayActions,
   completedRides,
   completedRideLog,
+  pendingPostActivities,
+  checkInHandlers,
 }: {
   workouts: TodayWorkout[];
   planAdjustments: string[];
@@ -905,8 +916,16 @@ function DayPlanBody({
   };
   completedRides: Map<string, RideAnalysis>;
   completedRideLog: CompletedRideLogHandlers;
+  pendingPostActivities: PendingPostActivity[];
+  checkInHandlers: RideCheckInHandlers;
 }) {
   const hasWorkouts = workouts.length > 0;
+  const pendingByWorkoutId = new Map(
+    pendingPostActivities
+      .filter((activity) => activity.plannedWorkoutId)
+      .map((activity) => [activity.plannedWorkoutId!, activity]),
+  );
+  const standalonePending = pendingPostActivities.filter((activity) => !activity.plannedWorkoutId);
   return (
     <div className="space-y-4">
       {swapSuggestion ? (
@@ -930,6 +949,8 @@ function DayPlanBody({
                 subjectDate={subjectDate}
                 analysis={completedRides.get(workout.id)}
                 completedRideLog={completedRideLog}
+                pendingActivity={pendingByWorkoutId.get(workout.id)}
+                checkInHandlers={checkInHandlers}
                 {...workoutActions}
               />
             </div>
@@ -941,6 +962,10 @@ function DayPlanBody({
           Doing something different? Just ride it — I'll read it after.
         </p>
       )}
+
+      {standalonePending.length > 0 ? (
+        <PendingWorkoutCheckIns items={standalonePending} handlers={checkInHandlers} />
+      ) : null}
 
       {flexibilityAnalyses.length > 0 ? <FlexibilityReadList items={flexibilityAnalyses} /> : null}
       {strengthAnalyses.length > 0 ? <StrengthReadList items={strengthAnalyses} /> : null}
@@ -1299,6 +1324,8 @@ function WorkoutRow({
   subjectDate,
   analysis,
   completedRideLog,
+  pendingActivity,
+  checkInHandlers,
   busy,
   onEdit,
   onApprove,
@@ -1311,6 +1338,8 @@ function WorkoutRow({
   subjectDate: string;
   analysis?: RideAnalysis;
   completedRideLog: CompletedRideLogHandlers;
+  pendingActivity?: PendingPostActivity;
+  checkInHandlers: RideCheckInHandlers;
 } & TodayWorkoutActions) {
   const [panel, setPanel] = useState<'none' | 'edit' | 'swap' | 'skip' | 'remove'>('none');
   const [ignored, setIgnored] = useState(false);
@@ -1327,6 +1356,39 @@ function WorkoutRow({
   const hasPendingChange = Boolean(delivery?.changed) && isBike && !ignored;
   const togglePanel = (next: 'edit' | 'swap' | 'skip' | 'remove') =>
     setPanel((current) => (current === next ? 'none' : next));
+
+  if (pendingActivity) {
+    return (
+      <div id={`post-workout-${pendingActivity.activityId}`} className="space-y-3">
+        <div className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-3">
+          <div className="flex items-center gap-3">
+            <Icon className="h-5 w-5 shrink-0 text-primary" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-text-primary">{workout.title}</p>
+              <p className="text-sm text-text-secondary">
+                Synced from Garmin · {pendingActivity.durationMin ? `${pendingActivity.durationMin} min` : 'finished'}
+              </p>
+            </div>
+            <Badge variant="warning">Check in</Badge>
+          </div>
+        </div>
+        {pendingActivity.activityKind === 'ride' ? (
+          <CompletedRideLogForm
+            workoutId={workout.id}
+            activityId={pendingActivity.activityId}
+            checkIn={pendingActivity.checkIn ?? null}
+            adherence={workout.adherence ?? null}
+            handlers={completedRideLog}
+          />
+        ) : (
+          <ActivityCheckIn
+            activity={pendingActivity}
+            handlers={checkInHandlers}
+          />
+        )}
+      </div>
+    );
+  }
 
   // Batch 60: once the session is done its row shows the read, not the
   // approve/upload/edit/swap/skip controls — and it can no longer be moved. The
@@ -1651,6 +1713,7 @@ type RideCheckInValue = {
   feel?: string | null;
   notes?: string | null;
 } | null;
+type PendingPostActivity = NonNullable<DailyLoopData['pendingPostWorkoutActivities']>[number];
 
 type PlannedRideAdherenceValue = TodayWorkout['adherence'] | null;
 type PostRideFormValue = {
@@ -1817,9 +1880,83 @@ function CompletedRideLogForm({
         })
       }
       isSaving={handlers.isSaving && handlers.savingWorkoutId === workoutId}
-      saveLabel="Save ride log"
+      saveLabel="Read my workout"
       includeAdherence
     />
+  );
+}
+
+function ActivityCheckIn({
+  activity,
+  handlers,
+}: {
+  activity: PendingPostActivity;
+  handlers: RideCheckInHandlers;
+}) {
+  const [value, setValue] = useState<PostRideFormValue>({
+    subjectiveScore: '',
+    rpe: activity.checkIn?.rpe != null ? String(activity.checkIn.rpe) : '',
+    feel: activity.checkIn?.feel ?? '',
+    notes: activity.checkIn?.notes ?? '',
+  });
+  return (
+    <PostRideCheckInForm
+      activityId={activity.activityId}
+      value={value}
+      logged={Boolean(activity.checkIn)}
+      onChange={(patch) => setValue((current) => ({ ...current, ...patch }))}
+      onSave={(next) =>
+        handlers.onSave({
+          activityId: activity.activityId,
+          subjectiveScore: null,
+          rpe: next.rpe ? Number(next.rpe) : null,
+          feel: next.feel || null,
+          notes: next.notes || null,
+        })
+      }
+      isSaving={handlers.isSaving && handlers.savingActivityId === activity.activityId}
+      includeSubjectiveScore={false}
+      saveLabel="Read my workout"
+    />
+  );
+}
+
+function PendingWorkoutCheckIns({
+  items,
+  handlers,
+}: {
+  items: PendingPostActivity[];
+  handlers: RideCheckInHandlers;
+}) {
+  return (
+    <div className="space-y-4">
+      {items.map((activity) => (
+        <div
+          id={`post-workout-${activity.activityId}`}
+          key={activity.activityId}
+          className="space-y-3 rounded-xl border border-warning/30 bg-warning/10 px-3 py-3"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="font-semibold text-text-primary">{activity.activityName}</p>
+              <p className="text-sm text-text-secondary">
+                Synced from Garmin{activity.durationMin ? ` · ${activity.durationMin} min` : ''}
+              </p>
+            </div>
+            <Badge variant="warning">Check in</Badge>
+          </div>
+          {activity.activityKind === 'ride' ? (
+            <RideCheckIn
+              activityId={activity.activityId}
+              checkIn={activity.checkIn ?? null}
+              handlers={handlers}
+            />
+          ) : (
+            <ActivityCheckIn activity={activity} handlers={handlers} />
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -1877,8 +2014,9 @@ function PostRideCheckInForm({
   onChange,
   onSave,
   isSaving,
-  saveLabel = 'Save ride check-in',
+  saveLabel = 'Read my workout',
   includeAdherence = false,
+  includeSubjectiveScore = true,
 }: {
   activityId: string;
   value: PostRideFormValue;
@@ -1888,6 +2026,7 @@ function PostRideCheckInForm({
   isSaving: boolean;
   saveLabel?: string;
   includeAdherence?: boolean;
+  includeSubjectiveScore?: boolean;
 }) {
   return (
     <div className="rounded-xl border border-border bg-surface-elevated/60 px-3 py-3">
@@ -1905,16 +2044,18 @@ function PostRideCheckInForm({
             onChange={(event) => onChange({ rpe: event.target.value })}
           />
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor={`post-ride-legs-${activityId}`}>Legs</Label>
-          <Input
-            id={`post-ride-legs-${activityId}`}
-            inputMode="numeric"
-            placeholder="1-10"
-            value={value.subjectiveScore}
-            onChange={(event) => onChange({ subjectiveScore: event.target.value })}
-          />
-        </div>
+        {includeSubjectiveScore ? (
+          <div className="space-y-1.5">
+            <Label htmlFor={`post-ride-legs-${activityId}`}>Legs</Label>
+            <Input
+              id={`post-ride-legs-${activityId}`}
+              inputMode="numeric"
+              placeholder="1-10"
+              value={value.subjectiveScore}
+              onChange={(event) => onChange({ subjectiveScore: event.target.value })}
+            />
+          </div>
+        ) : null}
         <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor={`post-ride-feel-${activityId}`}>Feel</Label>
           <Input
@@ -1924,7 +2065,7 @@ function PostRideCheckInForm({
           />
         </div>
         <div className="space-y-1.5 sm:col-span-2">
-          <Label htmlFor={`post-ride-notes-${activityId}`}>Niggles or notes</Label>
+          <Label htmlFor={`post-ride-notes-${activityId}`}>Notes or a question</Label>
           <Textarea
             id={`post-ride-notes-${activityId}`}
             value={value.notes}
@@ -2003,7 +2144,7 @@ function PostRideCheckInForm({
       </div>
       <div className="mt-3 flex justify-end">
         <Button type="button" variant="outline" onClick={() => onSave(value)} disabled={isSaving}>
-          {isSaving ? 'Saving...' : saveLabel}
+          {isSaving ? 'Reading your workout…' : saveLabel}
         </Button>
       </div>
     </div>

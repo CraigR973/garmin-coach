@@ -40,7 +40,7 @@ from src.services.post_workout_analysis import (
     _utcnow,
 )
 
-PROMPT_VERSION = "post-walk-analysis-v1-2026-07-02"
+PROMPT_VERSION = "post-walk-analysis-v2-2026-07-11"
 ANALYSIS_TYPE = "post_walk"
 WALK_ANALYSIS_MIN_DURATION_SEC = 30 * 60
 WALK_ANALYSIS_MIN_DISTANCE_M = 3_000
@@ -52,7 +52,9 @@ Return concise markdown that reads whether this was genuine easy aerobic work,
 notes pace/heart-rate drift when the data supports it, places the walk in recent
 active-recovery volume, and gives one practical next step. This is advisory only:
 do not make cycling recovery decisions and do not discuss power, FTP, cadence,
-stamina, Performance Condition, or Training Effect."""
+stamina, Performance Condition, or Training Effect.
+If the activity check-in notes contain a question, answer it directly using only
+the supplied packet; say when the available data cannot support an answer."""
 
 
 @dataclass(frozen=True)

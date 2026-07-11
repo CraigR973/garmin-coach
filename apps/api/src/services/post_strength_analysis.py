@@ -59,7 +59,7 @@ from src.services.strength_brief import (
     is_strength_activity,
 )
 
-PROMPT_VERSION = "post-strength-analysis-v1-2026-07-02"
+PROMPT_VERSION = "post-strength-analysis-v2-2026-07-11"
 ANALYSIS_TYPE = "post_strength"
 
 SYSTEM_PROMPT = """You are Garmin Coach, a private strength and conditioning coach.
@@ -69,7 +69,9 @@ and consistency against the recent trend, notes whether heart rate was unusually
 high for a strength session, and gives one light next step. This is advisory
 only: the session was recorded on a wrist heart-rate monitor, so do not make
 cycling recovery decisions from it, and do not discuss power, FTP, cadence,
-stamina, Performance Condition, Training Effect, or zones."""
+stamina, Performance Condition, Training Effect, or zones.
+If the activity check-in notes contain a question, answer it directly using only
+the supplied packet; say when the available data cannot support an answer."""
 
 
 @dataclass(frozen=True)

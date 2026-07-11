@@ -13,7 +13,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import CurrentUser
 from src.database import get_db
-from src.models.coaching import Analysis, DailyMetric, Feedback, ManualEntry, PlannedWorkout, Sleep
+from src.models.coaching import (
+    Activity,
+    Analysis,
+    DailyMetric,
+    Feedback,
+    ManualEntry,
+    PlannedWorkout,
+    Sleep,
+)
 from src.routers.feedback import FeedbackOut, serialize_feedback
 from src.services.breathwork_brief import BreathworkBriefResult
 from src.services.chronic_patterns import ChronicPatternSuggestionService
@@ -23,6 +31,7 @@ from src.services.executable_coaching import ExecutableCoachingService
 from src.services.fan_control import describe_fan_intent
 from src.services.insights import OUTCOME_SLEEP_SCORE, DriversReport, InsightsService
 from src.services.morning_analysis import MorningAnalysisService
+from src.services.post_activity_analysis import generate_post_activity_read, post_activity_kind
 from src.services.sleep_projection import (
     SleepDriverEvidence,
     SleepProjectionInputs,
@@ -32,6 +41,12 @@ from src.services.sleep_projection import (
 )
 from src.services.strength_brief import StrengthBriefResult
 from src.services.walking_brief import WalkingBriefResult
+from src.services.workout_categories import (
+    DAY_CATEGORY_CYCLE,
+    DAY_CATEGORY_FLEXIBILITY,
+    DAY_CATEGORY_WEIGHTS,
+    category_for_workout_type,
+)
 
 router = APIRouter(prefix="/api/v1/daily-loop", tags=["daily-loop"])
 
@@ -204,6 +219,17 @@ class PostWalkAnalysisOut(BaseModel):
     activeRecoveryContext: dict[str, Any]
     activityCheckIn: ManualEntryOut | None = None
     feedback: FeedbackOut | None = None
+
+
+class PendingPostActivityOut(BaseModel):
+    activityId: str
+    activityName: str
+    activityType: str
+    activityKind: str
+    plannedWorkoutId: str | None = None
+    startUtc: str
+    durationMin: int | None
+    checkIn: ManualEntryOut | None = None
 
 
 class DailyMetricOut(BaseModel):
@@ -452,6 +478,7 @@ class DailyLoopData(BaseModel):
     postFlexibilityAnalyses: list[PostFlexibilityAnalysisOut]
     postStrengthAnalyses: list[PostStrengthAnalysisOut]
     postWalkAnalyses: list[PostWalkAnalysisOut]
+    pendingPostWorkoutActivities: list[PendingPostActivityOut]
     plannedWorkouts: list[PlannedWorkoutOut]
     thermalState: ThermalStateOut
     sleepProjection: SleepProjectionOut
@@ -1009,6 +1036,52 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
         )
         for workout in snapshot.planned_workouts
     ]
+    analysed_activity_ids = {
+        analysis.activity_id
+        for analysis in (
+            *snapshot.post_workout_analyses,
+            *snapshot.post_flexibility_analyses,
+            *snapshot.post_strength_analyses,
+            *snapshot.post_walk_analyses,
+        )
+        if analysis.activity_id is not None
+    }
+    pending_post_activities = []
+    claimed_pending_workouts: set[uuid.UUID] = set()
+    for activity in snapshot.activities:
+        kind = post_activity_kind(activity)
+        if kind is None or activity.id in analysed_activity_ids:
+            continue
+        desired_category = {
+            "ride": DAY_CATEGORY_CYCLE,
+            "strength": DAY_CATEGORY_WEIGHTS,
+            "flexibility": DAY_CATEGORY_FLEXIBILITY,
+        }.get(kind)
+        matched_workout = next(
+            (
+                workout
+                for workout in snapshot.planned_workouts
+                if desired_category is not None
+                and workout.id not in claimed_pending_workouts
+                and category_for_workout_type(workout.workout_type) == desired_category
+                and workout.status != "skipped"
+            ),
+            None,
+        )
+        if matched_workout is not None:
+            claimed_pending_workouts.add(matched_workout.id)
+        pending_post_activities.append(
+            PendingPostActivityOut(
+                activityId=str(activity.id),
+                activityName=activity.activity_name,
+                activityType=activity.activity_type,
+                activityKind=kind,
+                plannedWorkoutId=(str(matched_workout.id) if matched_workout else None),
+                startUtc=_dt(activity.start_utc) or "",
+                durationMin=(round(activity.duration_sec / 60) if activity.duration_sec else None),
+                checkIn=_serialize_manual_entry(snapshot.post_ride_checkins.get(activity.id)),
+            )
+        )
     thermal_review = morning_analysis.thermalReview if morning_analysis is not None else {}
     fresh_temperature_c = (
         round(float(fresh_temperature.temperature_c), 1) if fresh_temperature else None
@@ -1085,6 +1158,7 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
                 )
                 for analysis in snapshot.post_walk_analyses
             ],
+            pendingPostWorkoutActivities=pending_post_activities,
             plannedWorkouts=planned_workouts,
             thermalState=ThermalStateOut(
                 latestTemperatureC=(fresh_temperature.temperature_c if fresh_temperature else None),
@@ -1242,5 +1316,11 @@ async def upsert_post_ride_checkin(
         feel=body.feel,
         notes=body.notes,
     )
+    # Batch 87: the generic activity-linked check-in is the primary generation
+    # trigger for rides, strength, mobility, and deliberate walks. The save above
+    # commits first, so every reader sees the just-entered RPE/feel/notes.
+    activity = await db.get(Activity, activity_id)
+    if activity is not None and post_activity_kind(activity) is not None:
+        await generate_post_activity_read(db, player, activity, force=True)
     snapshot = await service.get_snapshot(player, subject_date=subject_date)
     return await _envelope(player, snapshot, db)
