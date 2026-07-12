@@ -65,6 +65,7 @@ import { greetingForNow, verdictLabel } from '@/lib/copy';
 import { dayStateForWorkouts, type DayCategory } from '@/lib/workoutCategories';
 import { actionSection, nextAction, type NextAction } from '@/lib/homeActions';
 import { hasReviewedSleep } from '@/lib/sleepReview';
+import { subjectiveFeelLabel } from '@/lib/subjectiveFeel';
 import {
   isEveningNow,
   orderedSections,
@@ -86,6 +87,34 @@ function workoutIcon(type: string): LucideIcon {
 function prettyType(type: string): string {
   const cleaned = type.replace(/[_-]+/g, ' ').trim();
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+function MorningFeelRecap({
+  manualEntry,
+}: {
+  manualEntry: DailyLoopData['manualEntry'];
+}) {
+  const label = subjectiveFeelLabel(manualEntry?.subjectiveScore);
+  const feel = manualEntry?.feel?.trim();
+
+  if (!label) return null;
+
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-2xl border border-border bg-bg px-4 py-3">
+      <div className="min-w-0">
+        <p className="text-xs font-medium uppercase tracking-[0.12em] text-text-muted">
+          How you feel today
+        </p>
+        <p className="mt-1 text-sm text-text-primary">
+          You said: <span className="font-semibold">{label}</span>
+          {feel ? ` · ${feel}` : ''}
+        </p>
+      </div>
+      <Button asChild type="button" size="sm" variant="outline" className="shrink-0">
+        <Link to="/check-in">Change</Link>
+      </Button>
+    </div>
+  );
 }
 
 const MIN_DURATION_SCALE_PCT = 50;
@@ -632,6 +661,8 @@ export function DashboardPage() {
       ) : (
         <GoodMorningCta dateLabel={friendlyDate(daily.subjectDate)} />
       )}
+
+      {analysis ? <MorningFeelRecap manualEntry={daily.manualEntry ?? null} /> : null}
 
       {analysis?.id ? (
         <FeedbackControl

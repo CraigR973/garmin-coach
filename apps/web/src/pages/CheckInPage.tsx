@@ -16,20 +16,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { VerdictHero } from '@/components/VerdictHero';
 import { apiFetch } from '@/lib/api';
+import { SUBJECTIVE_FEEL_OPTIONS } from '@/lib/subjectiveFeel';
 
 type CheckInBrief = NonNullable<
   ReturnType<typeof dailyLoopEnvelopeSchema.parse>['data']['morningAnalysis']
 >;
-
-/** Batch 63: the tap button-group for "Overall" — five presets instead of a
- *  typed 0–10 number, so the fastest path to a saved check-in is one tap. */
-const OVERALL_OPTIONS: Array<{ label: string; value: number }> = [
-  { label: 'Rough', value: 2 },
-  { label: 'Meh', value: 4 },
-  { label: 'OK', value: 6 },
-  { label: 'Good', value: 8 },
-  { label: 'Great', value: 10 },
-];
 
 /** Batch 63: one-tap chips that fold into the existing `feel`/`notes` free-text
  *  columns as comma-separated tokens — no new `manual_entries` columns, no new
@@ -195,9 +186,9 @@ export function CheckInPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Overall</Label>
+            <Label>How you feel today</Label>
             <div className="flex flex-wrap gap-2">
-              {OVERALL_OPTIONS.map((option) => {
+              {SUBJECTIVE_FEEL_OPTIONS.map((option) => {
                 const selected = manualForm.subjectiveScore === String(option.value);
                 return (
                   <Button

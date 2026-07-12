@@ -1322,6 +1322,31 @@ describe('DashboardPage', () => {
     expect(screen.queryByRole('region', { name: 'Next action' })).toBeNull();
   });
 
+  it('recaps the morning feel beside the verdict with the same word vocabulary and a change link', async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.manualEntry = {
+          id: '12121212-1212-4121-8121-121212121212',
+          userId: '11111111-1111-4111-8111-111111111111',
+          entryDate: '2026-06-20',
+          entryAtUtc: '2026-06-20T07:00:00Z',
+          subjectiveScore: 6,
+          feel: 'a bit more tired',
+          actualWorkoutJson: {},
+          supplementsJson: {},
+          foodJson: {},
+        };
+      }),
+    );
+
+    expect(await screen.findByText('How you feel today')).toBeTruthy();
+    expect(screen.getByText('You said:', { exact: false })).toBeTruthy();
+    expect(screen.getByText('OK')).toBeTruthy();
+    expect(screen.getByText(/a bit more tired/i)).toBeTruthy();
+    expect(screen.queryByText(/6\/10/)).toBeNull();
+    expect(screen.getByRole('link', { name: 'Change' }).getAttribute('href')).toBe('/check-in');
+  });
+
   it('groups every non-lead section under a quiet "More detail" divider (Batch 54)', async () => {
     renderPage();
     await screen.findByText('Cycle day');

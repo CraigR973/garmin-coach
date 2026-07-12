@@ -86,6 +86,27 @@ describe('CheckInPage', () => {
     expect(JSON.parse(options.body)).toMatchObject({ subjectiveScore: 8, feel: 'slept well' });
   });
 
+  it('labels the quick scale as "How you feel today" and never shows the numeric score', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/api/v1/daily-loop') return Promise.resolve(snapshot);
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    const queryClient = new QueryClient();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CheckInPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('How you feel today')).toBeTruthy();
+    expect(screen.queryByText('Overall')).toBeNull();
+    expect(screen.queryByRole('button', { name: '6' })).toBeNull();
+  });
+
   it("generates and surfaces today's brief on submit (Batch 85)", async () => {
     const briefAnalysis = {
       id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
