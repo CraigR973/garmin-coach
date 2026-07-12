@@ -354,7 +354,7 @@ async def test_morning_packet_loads_holiday_window_and_suppresses_skipped_ride(
             PlannedWorkout(
                 user_id=user_id,
                 workout_date=subject_date,
-                version=1,
+                version=2,
                 title="Holiday endurance ride",
                 workout_type="bike_endurance",
                 status="planned",
