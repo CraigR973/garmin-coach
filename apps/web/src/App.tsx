@@ -8,6 +8,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { PushNavigationController } from './components/PushNavigationController';
 import { UpdateBanner } from './components/UpdateBanner';
 import { InstallPromptController } from './components/InstallPromptController';
 import { NotificationsPromptController } from './components/NotificationsPromptController';
@@ -85,6 +86,7 @@ export function App() {
     <ThemeProvider>
       <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
         <BrowserRouter>
+          <PushNavigationController />
           <AuthProvider>
             <UpdateBanner />
             <InstallPromptController />

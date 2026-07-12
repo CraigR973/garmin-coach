@@ -5,6 +5,7 @@ import { NavigationRoute, registerRoute } from 'workbox-routing';
 import { NetworkFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
+import { focusOrOpenPushTarget } from './lib/pushNavigation';
 
 // vite-plugin-pwa replaces self.__WB_MANIFEST with the precache manifest at build time
 declare const self: ServiceWorkerGlobalScope & {
@@ -106,18 +107,16 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url: string = (event.notification.data as { url?: string } | undefined)?.url ?? '/';
+  const url = (event.notification.data as { url?: string } | undefined)?.url;
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      for (const client of windowClients) {
-        if ('focus' in client) {
-          void client.focus();
-          if ('navigate' in client) void (client as WindowClient).navigate(url);
-          return;
-        }
-      }
-      return self.clients.openWindow(url);
-    }),
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) =>
+      focusOrOpenPushTarget({
+        windowClients,
+        rawUrl: url,
+        origin: self.location.origin,
+        openWindow: (targetUrl) => self.clients.openWindow(targetUrl),
+      }),
+    ),
   );
 });
