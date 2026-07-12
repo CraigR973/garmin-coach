@@ -349,6 +349,7 @@ async def test_morning_packet_loads_holiday_window_and_suppresses_skipped_ride(
             is_active=True,
         )
         session.add(player)
+        await session.flush()
         session.add(
             PlannedWorkout(
                 user_id=user_id,
