@@ -327,6 +327,7 @@ class WeeklyMixService:
         verdict_status: str,
         swap: SwapSuggestion | None,
         protected_weekdays: frozenset[int] = PROTECTED_WEEKDAYS,
+        suppress_today_easing: bool = False,
     ) -> WeeklyMix:
         """Compute the week's mix and, on a cautious morning that eases today's
         hard bike session, the re-patch/"not this week" shortfall.
@@ -336,13 +337,19 @@ class WeeklyMixService:
         engine is re-run here so a hard drop with no accompanying swap lead still
         resolves to an explicit "not this week" (belt-and-braces, and it lets the
         shortfall stand alone in tests). Nothing is mutated or scheduled.
+
+        ``suppress_today_easing`` is the Batch 98 rest-day guard: the weekly
+        accounting remains visible, but a paused holiday session cannot become a
+        readiness-driven shortfall or re-patch suggestion.
         """
         week_start = subject_date - timedelta(days=subject_date.weekday())
         sessions, items = await self._week_sessions(player, week_start)
 
-        eased_bucket = _eased_bucket(
-            sessions, subject_date=subject_date, verdict_status=verdict_status
-        )
+        eased_bucket = None
+        if not suppress_today_easing:
+            eased_bucket = _eased_bucket(
+                sessions, subject_date=subject_date, verdict_status=verdict_status
+            )
         mix = summarize_weekly_mix(sessions, subject_date=subject_date, eased_bucket=eased_bucket)
         if eased_bucket is None:
             return mix

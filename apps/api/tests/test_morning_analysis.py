@@ -22,6 +22,7 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile, UserRole
+from src.services.holiday_pause import HolidayPauseService, HolidayWindow
 from src.services.morning_analysis import (
     PROMPT_VERSION,
     SYSTEM_PROMPT,
@@ -32,6 +33,7 @@ from src.services.morning_analysis import (
     _date_label,
     _manual_entry_packet,
     _morning_verdict,
+    _rest_day_context,
     _sleep_packet,
     _thermal_action,
     _thermal_review,
@@ -79,6 +81,90 @@ class RaisingMorningClient:
         user_prompt: str,
     ) -> ClaudeGenerationResult:
         raise MorningAnalysisError("Claude response hit max_tokens before completing.")
+
+
+def test_holiday_all_skipped_day_is_framed_as_rest_without_reviving_ride() -> None:
+    subject_date = date(2026, 7, 12)
+    user_id = uuid.uuid4()
+    skipped_ride = PlannedWorkout(
+        user_id=user_id,
+        workout_date=subject_date,
+        version=2,
+        title="Endurance Z2",
+        workout_type="bike_endurance",
+        status="skipped",
+        is_active=True,
+        source="holiday_pause",
+        structured_workout={},
+    )
+    holiday = HolidayWindow(
+        start_date=subject_date,
+        end_date=date(2026, 7, 19),
+        paused_at_utc=datetime(2026, 7, 11, 12, 0),
+    )
+
+    rest_day = _rest_day_context([skipped_ride], [holiday], subject_date=subject_date)
+    verdict = _morning_verdict(
+        daily_metric=None,
+        sleep=None,
+        age_adjusted_sleep_score=78,
+        manual_entries=[],
+        planned_workouts=[skipped_ride],
+        rest_day=rest_day,
+    )
+
+    assert rest_day == {
+        "isRestDay": True,
+        "reason": "holiday",
+        "insideHolidayWindow": True,
+        "allPlannedWorkoutsSkipped": True,
+        "holidayWindows": [
+            {
+                "startDate": "2026-07-12",
+                "endDate": "2026-07-19",
+                "isActive": True,
+            }
+        ],
+    }
+    assert verdict["status"] == "Green"
+    assert verdict["dayType"] == "rest"
+    assert verdict["hasVo2WorkoutToday"] is False
+    adjustments = " ".join(verdict["planAdjustments"]).lower()
+    assert "rest day" in adjustments
+    assert "proceed" not in adjustments
+    assert "planned workout" not in adjustments
+
+    skipped_only = _rest_day_context([skipped_ride], [], subject_date=subject_date)
+    assert skipped_only["isRestDay"] is True
+    assert skipped_only["reason"] == "all_skipped"
+
+
+def test_normal_training_day_plan_guidance_is_unchanged() -> None:
+    workout = PlannedWorkout(
+        user_id=uuid.uuid4(),
+        workout_date=date(2026, 7, 21),
+        version=1,
+        title="Endurance Z2",
+        workout_type="bike_endurance",
+        status="planned",
+        is_active=True,
+        structured_workout={},
+    )
+    rest_day = _rest_day_context([workout], [], subject_date=workout.workout_date)
+    verdict = _morning_verdict(
+        daily_metric=None,
+        sleep=None,
+        age_adjusted_sleep_score=78,
+        manual_entries=[],
+        planned_workouts=[workout],
+        rest_day=rest_day,
+    )
+
+    assert rest_day["isRestDay"] is False
+    assert verdict["dayType"] == "training"
+    assert verdict["planAdjustments"] == [
+        "Proceed with the planned workout if warm-up confirms readiness."
+    ]
 
 
 @pytest.mark.asyncio
@@ -243,6 +329,64 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
         assert second.generated is False
         assert second.analysis.id == result.analysis.id
         assert fake_client.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_morning_packet_loads_holiday_window_and_suppresses_skipped_ride(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 7, 12)
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Holiday Morning Test",
+            pin_hash="x" * 60,
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        session.add(
+            PlannedWorkout(
+                user_id=user_id,
+                workout_date=subject_date,
+                version=1,
+                title="Holiday endurance ride",
+                workout_type="bike_endurance",
+                status="planned",
+                is_active=True,
+                planned_duration_min=90,
+                structured_workout={},
+                source="test",
+            )
+        )
+        await session.commit()
+
+        pause = await HolidayPauseService(session).pause(
+            player,
+            subject_date,
+            date(2026, 7, 19),
+        )
+        assert pause.skipped_count == 1
+
+        packet = await MorningAnalysisService(session).assemble_context_packet(
+            player,
+            subject_date,
+        )
+
+        assert packet["restDay"]["isRestDay"] is True
+        assert packet["restDay"]["reason"] == "holiday"
+        assert packet["plannedWorkouts"][0]["status"] == "skipped"
+        assert packet["verdict"]["dayType"] == "rest"
+        assert "swapSuggestion" not in packet["verdict"]
+        assert packet["verdict"]["weeklyMix"]["shortfall"] is None
+        adjustments = " ".join(packet["verdict"]["planAdjustments"]).lower()
+        assert "rest day" in adjustments
+        assert "proceed with the planned workout" not in adjustments
+        assert "endurance" not in adjustments
 
 
 @pytest.mark.asyncio
@@ -643,9 +787,11 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v12")
+    assert PROMPT_VERSION.startswith("morning-analysis-v13")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
+    assert "restDay.isRestDay" in SYSTEM_PROMPT
+    assert "status is\nskipped" in SYSTEM_PROMPT
 
     packet = {
         "manualEntries": [
