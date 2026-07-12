@@ -33,6 +33,7 @@ from src.services.bedroom_overnight import night_window
 from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
 from src.services.coaching_state import CoachingStateService
 from src.services.feedback import FeedbackService
+from src.services.holiday_pause import HolidayPauseService, HolidayWindow
 from src.services.personal_baselines import (
     baseline_band_packet,
     baseline_center,
@@ -71,7 +72,9 @@ from src.services.workout_categories import is_bike_workout_type
 # Batch 92 (#165): thermal review separates the sleep-period room curve from
 # the pre-bed cool-down inside the shared bedroom night window. The prompt must
 # credit an observed pre-cool instead of narrating it as a failed target.
-PROMPT_VERSION = "morning-analysis-v12-2026-07-12"
+# Batch 98 (#171): the packet now names a holiday/all-skipped day as rest and
+# the prompt must not narrate a paused workout as today's live training choice.
+PROMPT_VERSION = "morning-analysis-v13-2026-07-12"
 ANALYSIS_TYPE = "morning"
 SYSTEM_PROMPT = """You are Garmin Coach, a private daily endurance and sleep coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
@@ -105,6 +108,11 @@ healthy for the user's age rather than repeating Garmin's young-adult flag (e.g.
 "REM 16% is within the healthy 50-59 range; Garmin only flags it against a younger
 target"). Respect the trainingSchedule rest days before recommending extra recovery
 days. Use yesterdayLoad to explain any eased ride after a hard prior session.
+When restDay.isRestDay is true, frame today's verdict as a rest day. Do not
+recommend, soften, rearrange, or relitigate a planned workout whose status is
+skipped, and do not narrate a session inside the holiday window as a live
+training decision. Recovery signals may still determine Green/Amber/Red, but
+that colour describes recovery on a rest day rather than permission to train.
 When recentCorrections is non-empty, treat each as ground truth Mark gave about a
 past read (e.g. "my watch missed my 03:00 wake"): weigh it and adjust or
 acknowledge it, but it never overrides the Red floor, the soft-sleep rule, the
@@ -215,6 +223,12 @@ class MorningAnalysisService:
         manual_entries = await self._manual_entries(player.id, subject_date)
         recent_corrections = await FeedbackService(self.session).recent_corrections(player.id)
         planned_workouts = await self._planned_workouts(player.id, subject_date)
+        holiday_windows = await HolidayPauseService(self.session).get_windows(player)
+        rest_day = _rest_day_context(
+            planned_workouts,
+            holiday_windows,
+            subject_date=subject_date,
+        )
         recent_walks = await self._recent_walks(player.id, subject_date)
         breathwork_brief = await BreathworkBriefService(self.session).brief(
             player,
@@ -265,6 +279,7 @@ class MorningAnalysisService:
             baselines=baseline_rows,
             yesterday_load=yesterday_load,
             breathwork_brief=breathwork_brief,
+            rest_day=rest_day,
         )
         # Batch 66 (#139): on a cautious morning with a hard session scheduled,
         # lead with a week swap (move the hard session to a better day, pull an
@@ -274,7 +289,7 @@ class MorningAnalysisService:
         # 65-safe on split days), not the whole-week apply. Lazy import keeps the
         # module graph acyclic (weekly_restructure pulls in daily_loop).
         swap = None
-        if verdict.get("status") in {"Amber", "Red"}:
+        if verdict.get("status") in {"Amber", "Red"} and not rest_day["isRestDay"]:
             from src.services.weekly_restructure import (
                 PROTECTED_WEEKDAYS,
                 WeeklyRestructureService,
@@ -301,6 +316,7 @@ class MorningAnalysisService:
             subject_date,
             verdict_status=str(verdict.get("status") or ""),
             swap=swap,
+            suppress_today_easing=bool(rest_day["isRestDay"]),
         )
         verdict["weeklyMix"] = weekly_mix.to_packet()
         existing_adjustments = verdict.get("planAdjustments", [])
@@ -323,7 +339,7 @@ class MorningAnalysisService:
         )
         verdict["todayActions"] = build_today_actions(
             verdict=verdict,
-            planned_workouts=planned_workouts,
+            planned_workouts=[] if rest_day["isRestDay"] else planned_workouts,
             thermal_review=thermal_review,
             recommend_breathwork=recommend_breathwork,
         )
@@ -349,6 +365,7 @@ class MorningAnalysisService:
             "manualEntries": [_manual_entry_packet(entry) for entry in manual_entries],
             "recentCorrections": [c.to_packet() for c in recent_corrections],
             "plannedWorkouts": [_planned_workout_packet(workout) for workout in planned_workouts],
+            "restDay": rest_day,
             "activeRecovery": {
                 "deliberateWalkVolume": active_recovery_walk_context(
                     recent_walks,
@@ -393,6 +410,8 @@ class MorningAnalysisService:
                     "state_local_clock_times_never_utc",
                     "use_authoritative_date_label_never_rederive",
                     "refer_to_checkin_by_word_not_number",
+                    "frame_holiday_or_all_skipped_day_as_rest",
+                    "never_treat_skipped_workout_as_live_training",
                 ],
             },
         }
@@ -856,6 +875,44 @@ def _planned_workout_packet(row: PlannedWorkout) -> dict[str, Any]:
         "intensityTarget": row.intensity_target,
         "structuredWorkout": row.structured_workout,
         "source": row.source,
+    }
+
+
+def _rest_day_context(
+    planned_workouts: Sequence[PlannedWorkout],
+    holiday_windows: Sequence[HolidayWindow],
+    *,
+    subject_date: date,
+) -> dict[str, Any]:
+    """Describe whether today's plan is intentionally paused/resting.
+
+    An explicit holiday window is authoritative even if a stale plan row was not
+    versioned correctly. Outside a holiday, a non-empty day whose every active row
+    is already ``skipped`` is also rest. An empty plan remains ``unknown`` rather
+    than being silently promoted to an intended rest day, preserving the existing
+    conservative missing-plan behaviour.
+    """
+    matching_windows = [
+        window for window in holiday_windows if window.start_date <= subject_date <= window.end_date
+    ]
+    inside_holiday = bool(matching_windows)
+    all_skipped = bool(planned_workouts) and all(
+        workout.status == "skipped" for workout in planned_workouts
+    )
+    reason = "holiday" if inside_holiday else "all_skipped" if all_skipped else None
+    return {
+        "isRestDay": reason is not None,
+        "reason": reason,
+        "insideHolidayWindow": inside_holiday,
+        "allPlannedWorkoutsSkipped": all_skipped,
+        "holidayWindows": [
+            {
+                "startDate": window.start_date.isoformat(),
+                "endDate": window.end_date.isoformat(),
+                "isActive": window.is_active,
+            }
+            for window in matching_windows
+        ],
     }
 
 
@@ -1346,6 +1403,7 @@ def _morning_verdict(
     baselines: Mapping[str, MetricBaseline] | None = None,
     yesterday_load: Mapping[str, Any] | None = None,
     breathwork_brief: BreathworkBriefResult | None = None,
+    rest_day: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     subjective_score = _latest_subjective_score(manual_entries)
     hrv_status = _lower(daily_metric.hrv_status if daily_metric else None) or _lower(
@@ -1360,7 +1418,13 @@ def _morning_verdict(
         lower_is_better=True,
     )
     readiness_center = baseline_center(baselines.get("readiness_score"))
-    has_vo2 = any("vo2" in workout.workout_type.lower() for workout in planned_workouts)
+    rest_day = rest_day or {}
+    is_rest_day = bool(rest_day.get("isRestDay"))
+    has_vo2 = not is_rest_day and any(
+        "vo2" in workout.workout_type.lower()
+        for workout in planned_workouts
+        if workout.status not in {"completed", "skipped"}
+    )
     recovery_signals_good = (
         (age_adjusted_sleep_score is not None and age_adjusted_sleep_score >= 74)
         and not hrv_low
@@ -1421,8 +1485,12 @@ def _morning_verdict(
         status = "Green"
         reasons.append("Sleep, HRV, and subjective signals clear the green rule.")
 
-    plan_adjustments = _plan_adjustments(status, planned_workouts)
-    if status != "Green" and yesterday_hard:
+    plan_adjustments = _plan_adjustments(
+        status,
+        planned_workouts,
+        is_rest_day=is_rest_day,
+    )
+    if status != "Green" and yesterday_hard and not is_rest_day:
         plan_adjustments.append(
             "Treat yesterday's hard session as extra context for easing today's work."
         )
@@ -1453,6 +1521,9 @@ def _morning_verdict(
         "restingHeartRateWithinBaseline": resting_hr_in_band,
         "softSleepRecoveryOverride": soft_sleep_override,
         "yesterdayLoadStatus": (yesterday_load or {}).get("status"),
+        "dayType": "rest" if is_rest_day else "training",
+        "isRestDay": is_rest_day,
+        "restDayReason": rest_day.get("reason"),
         "hasVo2WorkoutToday": has_vo2,
         "planAdjustments": plan_adjustments,
         "safetyRulesApplied": ["red_never_vo2"] if status == "Red" else [],
@@ -1498,10 +1569,24 @@ def _breathwork_recommendation(
     )
 
 
-def _plan_adjustments(status: str, planned_workouts: Sequence[PlannedWorkout]) -> list[str]:
-    reset_week = any(_is_reset_week_workout(workout) for workout in planned_workouts)
-    if not planned_workouts:
+def _plan_adjustments(
+    status: str,
+    planned_workouts: Sequence[PlannedWorkout],
+    *,
+    is_rest_day: bool = False,
+) -> list[str]:
+    live_workouts = [
+        workout for workout in planned_workouts if workout.status not in {"completed", "skipped"}
+    ]
+    reset_week = any(_is_reset_week_workout(workout) for workout in live_workouts)
+    if is_rest_day:
+        adjustments = ["Today is an intentional rest day; keep paused or skipped sessions paused."]
+    elif not planned_workouts:
         adjustments = ["No active planned workout found for today; keep advice conservative."]
+    elif not live_workouts:
+        adjustments = [
+            "No live workout remains today; do not revive completed or skipped sessions."
+        ]
     elif status == "Green":
         adjustments = ["Proceed with the planned workout if warm-up confirms readiness."]
     elif status == "Amber":
