@@ -529,7 +529,13 @@ export function DashboardPage() {
     isMorning,
     hasReviewedSleep: hasReviewedSleep(daily.subjectDate),
   });
-  const primary = actionSection(action) ?? primarySection(phase, { hasRide });
+  // Batch 95: before today's brief exists, don't auto-expand last night's raw
+  // sleep — `rest_day`'s phase primary would otherwise pre-empt the coached
+  // read with the un-narrated snapshot before he's even checked in. Fall back
+  // to `today` (already the pre_training default) until the brief lands.
+  const primary =
+    actionSection(action) ??
+    (analysis == null && phase === 'rest_day' ? 'today' : primarySection(phase, { hasRide }));
   // Batch 37: render the full section set every load; exactly one is expanded
   // (the action/phase primary). Presence is only ever gated by hasRide.
   const order = orderedSections(phase, { hasRide, isEvening, primary });

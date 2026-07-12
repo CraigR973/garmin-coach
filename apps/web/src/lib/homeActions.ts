@@ -22,7 +22,7 @@ export type ActionTone = 'warning' | 'default' | 'muted';
 
 export interface NextAction {
   /** Stable identifier for the firing rung (tests + React keys). */
-  key: 'review-sleep' | 'review-ride' | 'log-ride' | 'protect-sleep' | 'all-set';
+  key: 'say-good-morning' | 'review-sleep' | 'review-ride' | 'log-ride' | 'protect-sleep' | 'all-set';
   label: string;
   /** Route to navigate to, for actions that leave Home. */
   to?: string;
@@ -65,6 +65,9 @@ function reviewRide(): NextAction {
  * only then approves any eased ride — so in the `pre_training` / `rest_day`
  * phase (`isMorning`) the ladder is:
  *
+ * 0. today's brief doesn't exist yet → say good morning (`/check-in`, Batch 95 —
+ *    keeps this strip from contradicting the `GoodMorningCta` hero, which shows
+ *    whenever `morningAnalysis` is null, with a stale "You're all set");
  * 1. metrics synced & sleep not yet opened today → review last night (`/sleep`);
  * 2. a bike workout with a pending coach change → review it (expand `today`).
  *
@@ -89,7 +92,10 @@ export function nextAction(
   }: { isEvening: boolean; isMorning?: boolean; hasReviewedSleep?: boolean },
 ): NextAction {
   if (isMorning) {
-    if (data.morningAnalysis != null && !hasReviewedSleep) {
+    if (data.morningAnalysis == null) {
+      return { key: 'say-good-morning', label: 'Say good morning', to: '/check-in', tone: 'default' };
+    }
+    if (!hasReviewedSleep) {
       return { key: 'review-sleep', label: "Review last night's sleep", to: '/sleep', tone: 'default' };
     }
     if (hasPendingCoachChange(data)) {
