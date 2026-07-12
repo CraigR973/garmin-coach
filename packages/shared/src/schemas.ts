@@ -543,7 +543,7 @@ export const ageComparisonRowSchema = z.object({
   label: z.string().min(1),
   value: z.number(),
   unit: z.string().default(''),
-  ageAverage: z.number(),
+  ageAverage: z.number().nullable(),
   ageBand: z.string().min(1),
   betterDirection: z.enum(['higher', 'lower']),
   tone: z.enum(['good', 'warn', 'neutral']),

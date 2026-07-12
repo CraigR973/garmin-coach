@@ -232,7 +232,7 @@ class AgeComparisonRow:
     label: str
     value: float
     unit: str
-    age_average: float
+    age_average: float | None
     age_band: str
     better_direction: Direction
     tone: Tone
@@ -425,7 +425,7 @@ def _build_rows(
                     label=norm.label,
                     value=_round(numeric),
                     unit=norm.unit,
-                    age_average=_round(average) if average is not None else _round(numeric),
+                    age_average=None,
                     age_band=band,
                     better_direction=norm.better,
                     tone="neutral",

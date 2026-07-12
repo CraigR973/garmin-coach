@@ -66,6 +66,7 @@ def test_mark_like_profile_is_much_better_than_average() -> None:
     # Restless has no defensible population band: shown for context, never warns.
     restless = sleep_rows["restless_moments_count"]
     assert restless.tone == "neutral"  # type: ignore[attr-defined]
+    assert restless.age_average is None  # type: ignore[attr-defined]
     assert (restless.band_low, restless.band_high) == (None, None)  # type: ignore[attr-defined]
     assert (restless.garmin_target_low, restless.garmin_target_high) == (None, None)  # type: ignore[attr-defined]
 
@@ -244,6 +245,8 @@ def test_to_dict_shape_is_camel_cased_for_the_api() -> None:
     rem = next(r for r in payload["sleepRows"] if r["metricKey"] == "rem_sleep_pct")
     assert (rem["bandLow"], rem["bandHigh"]) == (15, 23)
     assert (rem["garminTargetLow"], rem["garminTargetHigh"]) == (21, 31)
+    restless = next(r for r in payload["sleepRows"] if r["metricKey"] == "restless_moments_count")
+    assert restless["ageAverage"] is None
 
 
 def test_sleep_stage_in_band_is_good_outside_warns_with_edge_tolerance() -> None:
@@ -300,7 +303,9 @@ def test_public_band_helpers_match_the_table() -> None:
     assert sleep_stage_band("rem_sleep_pct", 62, "male") == (14, 22)
     # No band for a fitness metric or an unknown age.
     assert sleep_stage_band("vo2max", 57, "male") is None
+    assert sleep_stage_band("restless_moments_count", 57, "male") is None
     assert sleep_stage_band("rem_sleep_pct", None, "male") is None
     # classify mirrors the band tone used by the age-adjusted score.
     assert classify_sleep_stage("rem_sleep_pct", 19, 57, "male") == "good"
     assert classify_sleep_stage("rem_sleep_pct", 10, 57, "male") == "warn"
+    assert classify_sleep_stage("restless_moments_count", 12, 57, "male") is None

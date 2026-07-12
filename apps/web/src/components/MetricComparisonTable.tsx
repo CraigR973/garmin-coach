@@ -47,7 +47,7 @@ export interface AgeComparisonRow {
   label: string;
   value: number;
   unit: string;
-  ageAverage: number;
+  ageAverage: number | null;
   ageBand: string;
   betterDirection: 'higher' | 'lower';
   tone: Tone;
@@ -150,6 +150,7 @@ function baselineDiff(row: MetricBaselineRow): Diff | null {
 // Tone is pre-computed direction-aware by age_norms; near-average reads as a
 // flat "about average" rather than a tiny signed number.
 function ageDiff(row: AgeComparisonRow): Diff {
+  if (row.ageAverage == null) return { tone: 'neutral', text: '—' };
   if (row.tone === 'neutral') return { tone: 'neutral', text: 'about average' };
   const delta = row.value - row.ageAverage;
   return { tone: row.tone, text: `${fmt(Math.abs(delta))} ${delta >= 0 ? 'above' : 'below'}` };

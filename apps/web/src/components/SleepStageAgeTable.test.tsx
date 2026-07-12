@@ -72,7 +72,7 @@ describe('SleepStageAgeTable', () => {
         label: 'Restless',
         value: 45,
         unit: '',
-        ageAverage: 13,
+        ageAverage: null,
         ageBand: '50–59',
         betterDirection: 'lower' as const,
         tone: 'neutral' as const,

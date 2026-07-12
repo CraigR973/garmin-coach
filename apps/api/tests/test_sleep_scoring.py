@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from src.services.age_norms import classify_sleep_stage, sleep_stage_band
 from src.services.sleep_scoring import age_adjusted_sleep_score, age_adjusted_sleep_score_for_row
 
 # Percentages are for a 57-year-old male. His 50–59 healthy bands:
@@ -147,3 +148,12 @@ def test_row_adapter_recomputes_only_when_profile_age_is_known() -> None:
 
     assert age_adjusted_sleep_score_for_row(row, age=57, sex="male") == 83
     assert age_adjusted_sleep_score_for_row(row, age=None, sex="male") == 99
+
+
+def test_restless_has_no_age_band_and_cannot_change_sleep_score() -> None:
+    factors = _factors(rem="FAIR", deep="GOOD", light="GOOD", awake="GOOD")
+    secs = _secs(rem=19, deep=16, light=60, awake=5)
+
+    assert sleep_stage_band("restless_moments_count", 57, "male") is None
+    assert classify_sleep_stage("restless_moments_count", 12, 57, "male") is None
+    assert _score(79, factors, secs) == 83
