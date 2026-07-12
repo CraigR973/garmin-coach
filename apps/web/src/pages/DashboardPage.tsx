@@ -7,6 +7,7 @@ import {
   ArrowRight,
   BedDouble,
   Bike,
+  BookOpen,
   CalendarDays,
   Check,
   ChevronDown,
@@ -65,6 +66,7 @@ import { greetingForNow, verdictLabel } from '@/lib/copy';
 import { dayStateForWorkouts, type DayCategory } from '@/lib/workoutCategories';
 import { actionSection, nextAction, type NextAction } from '@/lib/homeActions';
 import { hasReviewedSleep } from '@/lib/sleepReview';
+import { hasReviewedBrief } from '@/lib/briefReview';
 import { subjectiveFeelLabel } from '@/lib/subjectiveFeel';
 import {
   isEveningNow,
@@ -114,6 +116,31 @@ function MorningFeelRecap({
         <Link to="/check-in">Change</Link>
       </Button>
     </div>
+  );
+}
+
+/**
+ * Batch 96: today's brief has landed but Mark hasn't opened it yet — lead
+ * above the Today action block (and the thermal/plan nudges inside it) with a
+ * prominent read-it CTA, so the freshly generated read outranks "Pre-cool the
+ * bedroom" rather than sitting one tap under it. Clears (via `/brief`'s own
+ * `markBriefReviewed`) the moment he opens the brief; a per-day flag, mirroring
+ * the Sleep review rung, so it never nags once read.
+ */
+function UnviewedBriefCta() {
+  return (
+    <Link
+      to="/brief"
+      className="flex items-center gap-3 rounded-2xl border border-border-strong bg-surface-elevated px-4 py-3 shadow-sm transition-colors hover:bg-surface-elevated/80"
+      aria-label="Your morning brief is ready — read it"
+    >
+      <BookOpen className="h-5 w-5 shrink-0 text-primary" aria-hidden />
+      <div className="min-w-0 flex-1">
+        <p className="font-medium text-text-primary">Your morning brief is ready</p>
+        <p className="text-sm text-text-secondary">Read it</p>
+      </div>
+      <ArrowRight className="h-4 w-4 shrink-0 text-text-muted" aria-hidden />
+    </Link>
   );
 }
 
@@ -680,6 +707,10 @@ export function DashboardPage() {
           className="px-1"
         />
       ) : null}
+
+      {/* Batch 96: an unviewed brief outranks every action card, including the
+          thermal/plan nudges inside TodayActions. */}
+      {analysis && !hasReviewedBrief(daily.subjectDate) ? <UnviewedBriefCta /> : null}
 
       {/* Batch 86: the day's actions lead — workout adjustment first-class and
           tappable-to-approve, plus swap/sleep/thermal — above the reasoning the

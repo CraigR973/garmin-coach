@@ -146,6 +146,10 @@ export function CheckInPage() {
   });
 
   const data = query.data?.data;
+  // Batch 96: a brief exists either freshly generated this session (`brief`,
+  // set on save success) or already on the loaded snapshot (a same-day check-in
+  // or the 09:30 backstop) — either way, re-submitting shouldn't regenerate it.
+  const briefExists = brief != null || data?.morningAnalysis != null;
 
   function setManual<K extends keyof ManualFormState>(key: K, value: string) {
     setManualForm((current) => ({ ...current, [key]: value }));
@@ -315,18 +319,26 @@ export function CheckInPage() {
 
       {/* Batch 85: one button generates today's brief from his check-in. An empty
           submit still yields today's objective read; a "reading your morning…"
-          state covers the LLM call. The result surfaces below and on Home. */}
+          state covers the LLM call. The result surfaces below and on Home.
+          Batch 96: once a brief already exists, re-submitting would silently
+          regenerate it — the button instead offers to view the existing brief. */}
       <div className="flex justify-end">
-        <Button type="button" onClick={() => saveMutation.mutate()} disabled={!data || saveMutation.isPending}>
-          {saveMutation.isPending ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-              Reading your morning…
-            </>
-          ) : (
-            "Get today's brief"
-          )}
-        </Button>
+        {briefExists ? (
+          <Button asChild>
+            <Link to="/brief">View brief</Link>
+          </Button>
+        ) : (
+          <Button type="button" onClick={() => saveMutation.mutate()} disabled={!data || saveMutation.isPending}>
+            {saveMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                Reading your morning…
+              </>
+            ) : (
+              "Get today's brief"
+            )}
+          </Button>
+        )}
       </div>
 
       {brief && (
