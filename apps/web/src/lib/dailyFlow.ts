@@ -51,11 +51,18 @@ export function remContext(remSeconds: number | null | undefined): string | null
 }
 
 export interface FanState {
+  id: string;
+  label: string;
+  model?: string | null;
   autoEnabled: boolean;
+  autoTarget: boolean;
   mode: string;
   isOn: boolean | null;
   speed: number | null;
+  oscillating?: boolean | null;
+  presetMode?: string | null;
   respondingToC: number | null;
+  nextOnLocalTime?: string | null;
 }
 
 export interface OvernightGlanceSummary {
@@ -79,10 +86,20 @@ export function overnightGlanceText(summary: OvernightGlanceSummary | null | und
   return `Last night: ${range}, fan ran ${hours} h${peak}`;
 }
 
-/** A plain-language one-liner for the bedroom-fan autopilot's current intent. */
+/** A plain-language one-liner for one fan's current state / autopilot intent. */
 export function fanStatusText(fan: FanState): string {
-  if (!fan.autoEnabled) return 'Manual control';
-  if (fan.mode === 'idle') return 'Auto · standing by until tonight';
+  if (!fan.autoEnabled) {
+    if (fan.isOn) {
+      const speed = fan.speed != null ? ` at speed ${fan.speed}` : '';
+      return `Manual · on${speed}`;
+    }
+    return 'Manual control';
+  }
+  if (fan.mode === 'idle') {
+    return fan.nextOnLocalTime
+      ? `Auto · standing by until ${fan.nextOnLocalTime}`
+      : 'Auto · standing by until tonight';
+  }
   if (fan.mode === 'winddown') return 'Auto · winding down for the morning';
   if (fan.isOn === null) return 'Auto · waiting for a room temperature';
   const temp = fan.respondingToC != null ? fan.respondingToC.toFixed(1) : null;

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, date, datetime, time
 from time import perf_counter
@@ -27,6 +28,12 @@ from src.routers.feedback import FeedbackOut, serialize_feedback
 from src.services.breathwork_brief import BreathworkBriefResult
 from src.services.chronic_patterns import ChronicPatternSuggestionService
 from src.services.daily_loop import DailyLoopService, DeliveryState
+from src.services.dreo_fan import (
+    DreoConnectionError,
+    DreoCredentialsError,
+    DreoFanClient,
+    DreoFanError,
+)
 from src.services.environment_freshness import is_hive_temperature_fresh
 from src.services.executable_coaching import ExecutableCoachingService
 from src.services.fan_control import describe_fan_intent
@@ -77,6 +84,73 @@ def _local_today(timezone_name: str) -> date:
     except ZoneInfoNotFoundError:
         zone = ZoneInfo("UTC")
     return datetime.now(zone).date()
+
+
+def _fallback_fans(
+    *,
+    auto_enabled: bool,
+    timezone_name: str,
+    fresh_temperature_c: float | None,
+) -> list[FanStateOut]:
+    intent = describe_fan_intent(
+        _local_time(timezone_name), fresh_temperature_c, auto_enabled=auto_enabled
+    )
+    return [
+        FanStateOut(
+            id="default",
+            label="Bedroom fan",
+            model=None,
+            autoEnabled=intent.auto_enabled,
+            autoTarget=True,
+            mode=intent.mode,
+            isOn=intent.is_on,
+            speed=intent.speed,
+            oscillating=None,
+            presetMode=None,
+            respondingToC=intent.responding_to_c,
+            nextOnLocalTime=intent.next_on_local_time,
+        )
+    ]
+
+
+def _read_fans(
+    *,
+    auto_enabled: bool,
+    timezone_name: str,
+    fresh_temperature_c: float | None,
+) -> list[FanStateOut]:
+    client = DreoFanClient()
+    try:
+        client.connect()
+        intent = describe_fan_intent(
+            _local_time(timezone_name), fresh_temperature_c, auto_enabled=auto_enabled
+        )
+        fans: list[FanStateOut] = []
+        for snapshot in client.read_all_states():
+            is_auto_target = snapshot.info.auto_target
+            fans.append(
+                FanStateOut(
+                    id=snapshot.info.fan_id,
+                    label=snapshot.info.label,
+                    model=snapshot.info.model,
+                    autoEnabled=(intent.auto_enabled if is_auto_target else False),
+                    autoTarget=is_auto_target,
+                    mode=(intent.mode if is_auto_target else "manual"),
+                    isOn=(intent.is_on if is_auto_target else snapshot.state.is_on),
+                    speed=(intent.speed if is_auto_target else snapshot.state.fan_speed),
+                    oscillating=snapshot.state.oscillating,
+                    presetMode=snapshot.state.preset_mode,
+                    respondingToC=(intent.responding_to_c if is_auto_target else None),
+                    nextOnLocalTime=(intent.next_on_local_time if is_auto_target else None),
+                )
+            )
+        return fans or _fallback_fans(
+            auto_enabled=auto_enabled,
+            timezone_name=timezone_name,
+            fresh_temperature_c=fresh_temperature_c,
+        )
+    finally:
+        client.close()
 
 
 log = structlog.get_logger(__name__)
@@ -351,11 +425,18 @@ class PlannedWorkoutOut(BaseModel):
 
 
 class FanStateOut(BaseModel):
+    id: str
+    label: str
+    model: str | None = None
     autoEnabled: bool
+    autoTarget: bool
     mode: str
     isOn: bool | None
     speed: int | None
+    oscillating: bool | None = None
+    presetMode: str | None = None
     respondingToC: float | None
+    nextOnLocalTime: str | None = None
 
 
 class ThermalStateOut(BaseModel):
@@ -366,7 +447,7 @@ class ThermalStateOut(BaseModel):
     overnightWindMaxMph: float | None
     overnightWindGustMph: float | None
     thermalReview: dict[str, Any]
-    fan: FanStateOut
+    fans: list[FanStateOut]
 
 
 class SleepProjectionOut(BaseModel):
@@ -1124,9 +1205,20 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
     fresh_temperature_c = (
         round(float(fresh_temperature.temperature_c), 1) if fresh_temperature else None
     )
-    fan_intent = describe_fan_intent(
-        _local_time(player.timezone), fresh_temperature_c, auto_enabled=player.fan_auto_enabled
-    )
+    try:
+        fan_states = await asyncio.to_thread(
+            _read_fans,
+            auto_enabled=player.fan_auto_enabled,
+            timezone_name=player.timezone,
+            fresh_temperature_c=fresh_temperature_c,
+        )
+    except (DreoCredentialsError, DreoConnectionError, DreoFanError) as exc:
+        log.warning("daily loop fan inventory unavailable", error=str(exc))
+        fan_states = _fallback_fans(
+            auto_enabled=player.fan_auto_enabled,
+            timezone_name=player.timezone,
+            fresh_temperature_c=fresh_temperature_c,
+        )
     # Batch 62.2: prefer the driver report the morning pipeline cached for today;
     # cached_drivers falls back to a live compute when the packet is absent.
     drivers_report = await InsightsService(db).cached_drivers(player, as_of=snapshot.subject_date)
@@ -1216,13 +1308,7 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
                     snapshot.weather.overnight_wind_gust_mph if snapshot.weather else None
                 ),
                 thermalReview=thermal_review,
-                fan=FanStateOut(
-                    autoEnabled=fan_intent.auto_enabled,
-                    mode=fan_intent.mode,
-                    isOn=fan_intent.is_on,
-                    speed=fan_intent.speed,
-                    respondingToC=fan_intent.responding_to_c,
-                ),
+                fans=fan_states,
             ),
             sleepProjection=_serialize_sleep_projection(sleep_projection),
             chronicSuggestions=ChronicSuggestionsOut(**chronic_suggestions.to_dict()),

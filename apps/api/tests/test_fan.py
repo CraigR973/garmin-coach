@@ -24,7 +24,7 @@ from src.database import get_db
 from src.main import app
 from src.models.profile import Profile, UserRole
 from src.routers import fan as fan_router
-from src.services.dreo_fan import DreoConnectionError, DreoFanState
+from src.services.dreo_fan import DreoConnectionError, DreoFanInfo, DreoFanSnapshot, DreoFanState
 
 
 def _db_override(session_factory: async_sessionmaker[AsyncSession]):
@@ -58,9 +58,11 @@ class _FakeFan:
         self._connect_error = connect_error
         self.calls: list[tuple] = []
         self.closed = False
+        self.selected_fan_id = "fan-bedroom"
 
-    def connect(self) -> None:
-        self.calls.append(("connect",))
+    def connect(self, *, fan_id: str | None = None) -> None:
+        self.selected_fan_id = fan_id or self.selected_fan_id
+        self.calls.append(("connect", self.selected_fan_id))
         if self._connect_error is not None:
             raise self._connect_error
 
@@ -72,6 +74,21 @@ class _FakeFan:
 
     def read_state(self) -> DreoFanState:
         return self._state
+
+    def list_fans(self) -> list[DreoFanInfo]:
+        return [DreoFanInfo(fan_id=self.selected_fan_id, label="Bedroom fan", auto_target=True)]
+
+    def read_all_states(self) -> list[DreoFanSnapshot]:
+        return [
+            DreoFanSnapshot(
+                info=DreoFanInfo(
+                    fan_id=self.selected_fan_id,
+                    label="Bedroom fan",
+                    auto_target=True,
+                ),
+                state=self._state,
+            )
+        ]
 
     def close(self) -> None:
         self.closed = True
@@ -145,13 +162,40 @@ async def test_post_fan_command_drives_and_takes_manual_control(
     assert response.status_code == 200, response.text
     data = response.json()["data"]
     assert data["autoEnabled"] is False
-    assert data["isOn"] is True
-    assert data["speed"] == 3
+    assert data["fan"]["id"] == "fan-bedroom"
+    assert data["fan"]["isOn"] is True
+    assert data["fan"]["speed"] == 3
     assert ("power", True) in fake.calls
     assert ("set_speed", 3) in fake.calls
     assert fake.closed
     # A manual command takes control: the autopilot is now off in the DB.
     assert await _read_auto(session_factory, user_id) is False
+
+
+@pytest.mark.asyncio
+async def test_post_fan_command_targets_the_requested_fan(
+    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = await _seed_player(session_factory, fan_auto_enabled=True)
+
+    fake = _FakeFan(is_on=True, fan_speed=5)
+    monkeypatch.setattr(fan_router, "DreoFanClient", lambda: fake)
+
+    app.dependency_overrides[get_current_user] = _user_override(user_id)
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                "/api/v1/fan/command",
+                json={"fanId": "fan-office", "power": True, "speed": 5},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    assert ("connect", "fan-office") in fake.calls
+    assert response.json()["data"]["fan"]["id"] == "fan-office"
 
 
 @pytest.mark.asyncio

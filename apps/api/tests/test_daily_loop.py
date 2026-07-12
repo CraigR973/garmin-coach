@@ -431,7 +431,7 @@ async def test_get_daily_loop_hides_stale_hive_temperature(db_conn: AsyncConnect
 
 @pytest.mark.asyncio
 async def test_get_daily_loop_surfaces_fan_intent(db_conn: AsyncConnection) -> None:
-    """The fan autopilot's intent rides on thermalState.fan. With auto off the
+    """The fan autopilot's intent rides on thermalState.fans. With auto off the
     manual intent is reported deterministically (no wall-clock-dependent phase)."""
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     user_id = uuid.uuid4()
@@ -461,7 +461,7 @@ async def test_get_daily_loop_surfaces_fan_intent(db_conn: AsyncConnection) -> N
         app.dependency_overrides.clear()
 
     assert response.status_code == 200, response.text
-    fan = response.json()["data"]["thermalState"]["fan"]
+    fan = response.json()["data"]["thermalState"]["fans"][0]
     assert fan["autoEnabled"] is False
     assert fan["mode"] == "manual"
     assert fan["isOn"] is None

@@ -105,6 +105,24 @@ class DreoFanState:
     temperature: Any | None = None
 
 
+@dataclass(frozen=True)
+class DreoFanInfo:
+    """Stable identity + human label for one controllable fan on the account."""
+
+    fan_id: str
+    label: str
+    model: str | None = None
+    auto_target: bool = False
+
+
+@dataclass(frozen=True)
+class DreoFanSnapshot:
+    """One fan's identity paired with its currently reported state."""
+
+    info: DreoFanInfo
+    state: DreoFanState
+
+
 class DreoFanClient:
     """Sync ``pydreo_community`` wrapper for on/off, speed, oscillation and state.
 
@@ -125,11 +143,14 @@ class DreoFanClient:
         self.credentials = credentials or DreoCredentials.from_settings()
         self._transport_ready_timeout_s = transport_ready_timeout_s
         self._manager: Any | None = None
+        self._devices_by_id: dict[str, Any] = {}
         self._device: Any | None = None
+        self._selected_fan_id: str | None = None
+        self._auto_target_fan_id: str | None = None
 
     # -- lifecycle ---------------------------------------------------------
 
-    def connect(self) -> None:
+    def connect(self, *, fan_id: str | None = None) -> None:
         """Authenticate, resolve the fan, and open the command transport.
 
         Idempotent: a no-op once connected. When a cached ``token`` is configured
@@ -138,11 +159,13 @@ class DreoFanClient:
         is attempted once before giving up.
         """
         if self._device is not None:
+            if fan_id is not None:
+                self.select_fan(fan_id)
             return
         self.credentials.validate()
 
         try:
-            self._connect_once(use_token=bool(self.credentials.token))
+            self._connect_once(use_token=bool(self.credentials.token), fan_id=fan_id)
         except DreoConnectionError:
             can_fall_back = (
                 bool(self.credentials.token)
@@ -151,11 +174,14 @@ class DreoFanClient:
             )
             if not can_fall_back:
                 raise
-            self._connect_once(use_token=False)
+            self._connect_once(use_token=False, fan_id=fan_id)
 
     def close(self) -> None:
         """Shut the command WebSocket down. Safe to call when not connected."""
         manager, self._manager, self._device = self._manager, None, None
+        self._devices_by_id = {}
+        self._selected_fan_id = None
+        self._auto_target_fan_id = None
         if manager is not None:
             self._safe_stop(manager)
 
@@ -169,6 +195,31 @@ class DreoFanClient:
     @property
     def is_connected(self) -> bool:
         return self._device is not None
+
+    @property
+    def selected_fan_id(self) -> str | None:
+        return self._selected_fan_id
+
+    def select_fan(self, fan_id: str) -> None:
+        """Select which connected fan subsequent commands target."""
+        device = self._devices_by_id.get(fan_id)
+        if device is None:
+            raise DreoDeviceNotFoundError("Configured Dreo fan was not found on the account.")
+        self._device = device
+        self._selected_fan_id = fan_id
+
+    def list_fans(self) -> list[DreoFanInfo]:
+        """Return every controllable fan on the connected account."""
+        return [self._fan_info(device) for device in self._devices_by_id.values()]
+
+    def read_all_states(self) -> list[DreoFanSnapshot]:
+        """Return the reported state for every controllable fan on the account."""
+        if not self._devices_by_id:
+            raise DreoConnectionError("Dreo client is not connected; call connect() first.")
+        return [
+            DreoFanSnapshot(info=self._fan_info(device), state=self._read_device_state(device))
+            for device in self._devices_by_id.values()
+        ]
 
     # -- control primitives ------------------------------------------------
 
@@ -197,25 +248,19 @@ class DreoFanClient:
 
     def read_state(self) -> DreoFanState:
         """Return the fan's currently reported state."""
-        device = self._require_device()
-        return DreoFanState(
-            is_on=getattr(device, "is_on", None),
-            fan_speed=getattr(device, "fan_speed", None),
-            oscillating=getattr(device, "oscillating", None),
-            preset_mode=getattr(device, "preset_mode", None),
-            temperature=getattr(device, "temperature", None),
-        )
+        return self._read_device_state(self._require_device())
 
     # -- internals ---------------------------------------------------------
 
-    def _connect_once(self, *, use_token: bool) -> None:
+    def _connect_once(self, *, use_token: bool, fan_id: str | None) -> None:
         manager = self._build_manager(use_token=use_token)
         if not self._login(manager):
             raise DreoConnectionError(
                 "Dreo login failed; check DREO_USERNAME/DREO_PASSWORD or DREO_TOKEN."
             )
         self._load_devices(manager)
-        device = self._resolve_device(manager)
+        devices = self._resolve_devices(manager)
+        selected_fan_id = self._resolve_selected_fan_id(devices, fan_id=fan_id)
 
         manager.start_transport()
         if not self._wait_transport_ready(manager, self._transport_ready_timeout_s):
@@ -226,7 +271,9 @@ class DreoFanClient:
             )
 
         self._manager = manager
-        self._device = device
+        self._devices_by_id = {self._device_id(device): device for device in devices}
+        self._auto_target_fan_id = self._resolve_selected_fan_id(devices, fan_id=None)
+        self.select_fan(selected_fan_id)
 
     def _build_manager(self, *, use_token: bool) -> Any:
         pydreo_cls = self._import_pydreo()
@@ -253,19 +300,23 @@ class DreoFanClient:
         except Exception as exc:
             raise DreoConnectionError("Dreo device list could not be loaded.") from exc
 
-    def _resolve_device(self, manager: Any) -> Any:
+    def _resolve_devices(self, manager: Any) -> list[Any]:
         devices = list(getattr(manager, "devices", []) or [])
-        if self.credentials.device_sn:
-            for device in devices:
-                if getattr(device, "serial_number", None) == self.credentials.device_sn:
-                    return device
-            raise DreoDeviceNotFoundError(
-                "Configured Dreo device serial was not found on the account."
-            )
         fans = [device for device in devices if _is_controllable_fan(device)]
         if not fans:
             raise DreoDeviceNotFoundError("No controllable Dreo fan found on the account.")
-        return fans[0]
+        return fans
+
+    def _resolve_selected_fan_id(self, devices: list[Any], *, fan_id: str | None) -> str:
+        wanted_id = fan_id or self.credentials.device_sn
+        if wanted_id:
+            for device in devices:
+                if self._device_id(device) == wanted_id:
+                    return wanted_id
+            raise DreoDeviceNotFoundError(
+                "Configured Dreo device serial was not found on the account."
+            )
+        return self._device_id(devices[0])
 
     def _wait_transport_ready(self, manager: Any, timeout: float) -> bool:
         """Poll until the command WebSocket is actually connected.
@@ -292,6 +343,35 @@ class DreoFanClient:
             raise DreoConnectionError("Dreo client is not connected; call connect() first.")
         return self._device
 
+    def _read_device_state(self, device: Any) -> DreoFanState:
+        return DreoFanState(
+            is_on=getattr(device, "is_on", None),
+            fan_speed=getattr(device, "fan_speed", None),
+            oscillating=getattr(device, "oscillating", None),
+            preset_mode=getattr(device, "preset_mode", None),
+            temperature=getattr(device, "temperature", None),
+        )
+
+    def _fan_info(self, device: Any) -> DreoFanInfo:
+        fan_id = self._device_id(device)
+        label = (
+            getattr(device, "name", None)
+            or getattr(device, "device_name", None)
+            or getattr(device, "deviceName", None)
+            or getattr(device, "model", None)
+            or f"Fan {fan_id[-4:]}"
+        )
+        model = getattr(device, "model", None) or getattr(device, "product_name", None)
+        auto_target = fan_id == self._auto_target_fan_id
+        return DreoFanInfo(fan_id=fan_id, label=str(label), model=model, auto_target=auto_target)
+
+    @staticmethod
+    def _device_id(device: Any) -> str:
+        device_id = getattr(device, "serial_number", None) or getattr(device, "sn", None)
+        if not device_id:
+            raise DreoDeviceNotFoundError("Controllable Dreo fan is missing a stable id.")
+        return str(device_id)
+
     @staticmethod
     def _safe_stop(manager: Any) -> None:
         try:
@@ -302,10 +382,10 @@ class DreoFanClient:
     @staticmethod
     def _import_pydreo() -> Any:
         try:
-            from pydreo import PyDreo  # type: ignore[import-untyped, unused-ignore]
+            import pydreo  # type: ignore[import-not-found]
         except ImportError as exc:  # pragma: no cover - exercised only in missing envs
             raise DreoFanError("pydreo_community is not installed.") from exc
-        return PyDreo
+        return pydreo.PyDreo
 
 
 def _is_controllable_fan(device: Any) -> bool:

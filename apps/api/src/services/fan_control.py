@@ -117,6 +117,7 @@ class FanIntent:
     is_on: bool | None
     speed: int | None
     responding_to_c: float | None
+    next_on_local_time: str | None = None
 
 
 def loop_phase(
@@ -198,16 +199,30 @@ def describe_fan_intent(now: time, temperature_c: float | None, *, auto_enabled:
     is unknown — manual mode (auto off) or no fresh indoor temperature.
     """
     if not auto_enabled:
-        return FanIntent(False, "manual", None, None, temperature_c)
+        return FanIntent(False, "manual", None, None, temperature_c, next_on_local_time=None)
     phase = loop_phase(now)
     if phase == "idle":
-        return FanIntent(True, "idle", False, None, temperature_c)
+        return FanIntent(
+            True,
+            "idle",
+            False,
+            None,
+            temperature_c,
+            next_on_local_time=_format_time(WINDOW_START),
+        )
     if temperature_c is None:
-        return FanIntent(True, phase, None, None, None)
+        return FanIntent(True, phase, None, None, None, next_on_local_time=None)
     decision = decide_fan_action(
         phase=phase, temperature_c=temperature_c, fan_state=FanState(is_on=False)
     )
-    return FanIntent(True, phase, decision.target_on, decision.target_speed, temperature_c)
+    return FanIntent(
+        True,
+        phase,
+        decision.target_on,
+        decision.target_speed,
+        temperature_c,
+        next_on_local_time=None,
+    )
 
 
 def _reconcile(
@@ -232,3 +247,7 @@ def _in_overnight_window(now: time, start: time, end: time) -> bool:
     if start <= end:
         return start <= now < end
     return now >= start or now < end  # wraps midnight
+
+
+def _format_time(value: time) -> str:
+    return value.strftime("%H:%M")
