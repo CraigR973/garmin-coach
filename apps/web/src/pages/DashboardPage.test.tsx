@@ -429,10 +429,33 @@ describe('DashboardPage', () => {
 
     // The verdict slot invites him to generate today's brief rather than showing a
     // pending verdict — the read no longer lands on its own (Batch 85).
-    expect(await screen.findByText('Say good morning')).toBeTruthy();
+    expect(await screen.findByRole('region', { name: 'Say good morning' })).toBeTruthy();
     const cta = screen.getByRole('link', { name: /get today's brief/i });
     expect(cta.getAttribute('href')).toBe('/check-in');
     expect(screen.queryByText('Good to go')).toBeNull();
+  });
+
+  it('does not auto-expand last night into raw sleep before today\'s brief exists (Batch 95)', async () => {
+    // Rest-day phase primary would otherwise be `lastNight` — before a brief
+    // exists that would pre-empt the coached read with an un-narrated snapshot.
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.morningAnalysis = null;
+        snapshot.data.plannedWorkouts = [];
+      }),
+    );
+
+    expect(await screen.findByRole('region', { name: 'Say good morning' })).toBeTruthy();
+    // Last night is present but collapsed to its one-line headline, not expanded.
+    expect(screen.getByText("Last night's sleep")).toBeTruthy();
+    expect(screen.queryByText(/23 above/)).toBeNull();
+    // Today (Rest day) leads instead.
+    expect(screen.getByText('Rest day')).toBeTruthy();
+
+    // The Next strip agrees with the hero rather than showing "You're all set".
+    const strip = await screen.findByRole('region', { name: 'Next action' });
+    const cta = within(strip).getByRole('link', { name: 'Say good morning' });
+    expect(cta.getAttribute('href')).toBe('/check-in');
   });
 
   it('places sections in the Batch 51 act/context desktop columns without changing the mobile stack', async () => {

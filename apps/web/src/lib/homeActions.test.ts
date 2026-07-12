@@ -174,10 +174,20 @@ describe('nextAction morning order (sleep → eased ride; check-in optional)', (
     expect(action.sectionKey).toBeUndefined();
   });
 
-  it('does not prompt a sleep review before metrics sync (nothing to review yet)', () => {
-    // morningAnalysis null = "verdict pending" — nothing to review, and the
-    // check-in is optional, so with nothing pending the morning is all-clear.
+  it('leads with saying good morning before today\'s brief exists (Batch 95)', () => {
+    // morningAnalysis null = no brief yet. Before Batch 95 this fell through to
+    // "all-set", contradicting the GoodMorningCta hero shown in the same state.
     const action = nextAction(makeData({ manualEntry: null }), { ...morning, hasReviewedSleep: false });
+    expect(action.key).toBe('say-good-morning');
+    expect(action.label).toBe('Say good morning');
+    expect(action.to).toBe('/check-in');
+    expect(action.sectionKey).toBeUndefined();
+  });
+
+  it('does not lead with saying good morning outside the morning phase', () => {
+    // Home's GoodMorningCta hero shows whenever morningAnalysis is null, but the
+    // rung is scoped to the morning ladder — outside it the day-time ladder runs.
+    const action = nextAction(makeData({ manualEntry: null }), { isEvening: false });
     expect(action.key).toBe('all-set');
   });
 
@@ -187,6 +197,14 @@ describe('nextAction morning order (sleep → eased ride; check-in optional)', (
       hasReviewedSleep: true,
     });
     expect(action.key).toBe('all-set');
+  });
+
+  it('say-good-morning outranks a pending eased ride before the brief exists', () => {
+    const action = nextAction(makeData({ plannedWorkouts: [bikeChanged], manualEntry: null }), {
+      ...morning,
+      hasReviewedSleep: false,
+    });
+    expect(action.key).toBe('say-good-morning');
   });
 
   it('review-sleep outranks a pending eased ride in the morning', () => {

@@ -275,6 +275,42 @@ describe('SleepPage', () => {
     expect(link.getAttribute('href')).toBe('/check-in');
   });
 
+  it('leads with the "say good morning" CTA when no check-in exists yet (Batch 95)', async () => {
+    renderWithQuery(<SleepPage />); // base snapshot: manualEntry null
+
+    expect(await screen.findByText('Say good morning')).toBeTruthy();
+    const cta = screen.getByRole('link', { name: /get today's brief/i });
+    expect(cta.getAttribute('href')).toBe('/check-in');
+  });
+
+  it('does not show the "say good morning" CTA once a check-in exists', async () => {
+    const checkedIn = JSON.parse(JSON.stringify(snapshot)) as DailyLoopEnvelope;
+    checkedIn.data.manualEntry = {
+      id: '12121212-1212-4121-8121-121212121212',
+      userId: '11111111-1111-4111-8111-111111111111',
+      entryDate: '2026-06-20',
+      entryAtUtc: '2026-06-20T07:00:00Z',
+      actualWorkoutJson: {},
+      supplementsJson: {},
+      foodJson: {},
+    };
+    apiFetchMock.mockImplementation((path: string) =>
+      Promise.resolve(path.startsWith('/api/v1/bedroom/overnight') ? overnightSnapshot : checkedIn),
+    );
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SleepPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("Last night's sleep");
+    expect(screen.queryByText('Say good morning')).toBeNull();
+  });
+
   it('renders the shared error state when the daily loop fails to load', async () => {
     apiFetchMock.mockImplementation((path: string) =>
       path === '/api/v1/daily-loop'

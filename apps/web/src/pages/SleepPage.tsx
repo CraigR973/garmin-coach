@@ -12,6 +12,7 @@ import { SleepPrepBody } from '@/components/SleepPrepBody';
 import { BedroomBody } from '@/components/BedroomBody';
 import { OvernightChartCard } from '@/components/OvernightChartCard';
 import { SleepStageAgeTable } from '@/components/SleepStageAgeTable';
+import { GoodMorningCta } from '@/components/GoodMorningCta';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
 import { markSleepReviewed } from '@/lib/sleepReview';
 import { friendlyDate } from '@/lib/dailyFlow';
@@ -80,6 +81,10 @@ export function SleepPage() {
   return (
     <div className="space-y-5">
       <PageHeader title="Sleep" eyebrow={friendlyDate(data.subjectDate)} />
+
+      {/* Batch 95: the check-in is just as discoverable from Sleep as from
+          Home — pt 4 of the walkthrough. Same hero, same /check-in link. */}
+      {data.manualEntry == null ? <GoodMorningCta dateLabel={friendlyDate(data.subjectDate)} /> : null}
 
       <Tabs items={VIEW_ITEMS} value={view} onChange={setView} variant="segmented" />
 
