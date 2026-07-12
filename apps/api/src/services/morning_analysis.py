@@ -62,12 +62,23 @@ from src.services.workout_categories import is_bike_workout_type
 # assembled next to the prose like swapSuggestion/weeklyMix. The prose becomes the
 # reasoning/"why" behind those actions and must not repeat them as a checklist, so
 # the version bumps again.
-PROMPT_VERSION = "morning-analysis-v10-2026-07-12"
+# Batch 91 (#164): read fidelity — the packet now carries local wall-clock bed/wake
+# (sleepStartLocal/sleepEndLocal), an authoritative subjectDateLabel, and the
+# check-in word (subjectiveLabel). The prompt bans printing *Utc timestamps,
+# re-deriving the date, and surfacing the raw subjectiveScore number, so the version
+# bumps again.
+PROMPT_VERSION = "morning-analysis-v11-2026-07-12"
 ANALYSIS_TYPE = "morning"
 SYSTEM_PROMPT = """You are Garmin Coach, a private daily endurance and sleep coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
-Use `subjectWeekday` as the authoritative weekday; never derive the weekday from
-`subjectDate` yourself.
+Use `subjectWeekday` as the authoritative weekday and `subjectDateLabel` as the
+authoritative calendar date; never derive or reformat the date or weekday from
+`subjectDate` yourself. State bed and wake times using sleep.sleepStartLocal and
+sleep.sleepEndLocal, which are already the user's local clock time; never print a
+`*Utc` timestamp (e.g. sleepStartUtc/sleepEndUtc) or convert one yourself.
+Refer to Mark's daily check-in by its word — verdict.subjectiveLabel /
+manualEntries[].subjectiveLabel (e.g. "you said you felt OK") — and never surface
+the raw subjectiveScore number or a "6/10"-style term for how he felt.
 Return concise markdown with a sleep summary line, a metrics-vs-baselines read,
 a thermal/environment review, and a Green/Amber/Red workout verdict for today.
 Bold each bullet headline. Never mention left/right power balance. Never keep
@@ -309,6 +320,7 @@ class MorningAnalysisService:
             "packetVersion": 1,
             "subjectDate": subject_date.isoformat(),
             "subjectWeekday": subject_date.strftime("%A"),
+            "subjectDateLabel": _date_label(subject_date),
             "generatedAtUtc": _utcnow().isoformat() + "Z",
             "profile": _profile_packet(player, knowledge_base),
             "knowledgeBase": {
@@ -319,7 +331,7 @@ class MorningAnalysisService:
                 "activeHypotheses": knowledge_base.get("active_hypotheses", {}),
             },
             "dailyMetrics": _daily_metric_packet(daily_metric),
-            "sleep": _sleep_packet(sleep, age_adjusted_sleep_score),
+            "sleep": _sleep_packet(sleep, age_adjusted_sleep_score, player.timezone),
             "manualEntries": [_manual_entry_packet(entry) for entry in manual_entries],
             "recentCorrections": [c.to_packet() for c in recent_corrections],
             "plannedWorkouts": [_planned_workout_packet(workout) for workout in planned_workouts],
@@ -363,6 +375,9 @@ class MorningAnalysisService:
                     "lead_with_week_swap_when_offered",
                     "maintain_weekly_quality_mix_readiness_gated",
                     "reasoning_prose_not_duplicated_action_checklist",
+                    "state_local_clock_times_never_utc",
+                    "use_authoritative_date_label_never_rederive",
+                    "refer_to_checkin_by_word_not_number",
                 ],
             },
         }
@@ -756,13 +771,21 @@ def _daily_metric_packet(row: DailyMetric | None) -> dict[str, Any] | None:
     return packet
 
 
-def _sleep_packet(row: Sleep | None, age_adjusted_sleep_score: int | None) -> dict[str, Any] | None:
+def _sleep_packet(
+    row: Sleep | None,
+    age_adjusted_sleep_score: int | None,
+    timezone_name: str,
+) -> dict[str, Any] | None:
     if row is None:
         return None
     return {
         "calendarDate": row.calendar_date.isoformat(),
         "sleepStartUtc": _dt(row.sleep_start_utc),
         "sleepEndUtc": _dt(row.sleep_end_utc),
+        # Batch 91 (#164): local wall-clock bed/wake for the read to state verbatim,
+        # alongside the *Utc fields — so BST 00:17Z renders 01:17, never raw UTC.
+        "sleepStartLocal": _local_clock(row.sleep_start_utc, timezone_name),
+        "sleepEndLocal": _local_clock(row.sleep_end_utc, timezone_name),
         "score": row.score,
         "ageAdjustedScore": age_adjusted_sleep_score,
         "qualifier": row.qualifier,
@@ -790,6 +813,7 @@ def _manual_entry_packet(row: ManualEntry) -> dict[str, Any]:
         "bpSystolic": row.bp_systolic,
         "bpDiastolic": row.bp_diastolic,
         "subjectiveScore": row.subjective_score,
+        "subjectiveLabel": subjective_score_label(row.subjective_score),
         "rpe": row.rpe,
         "feel": row.feel,
         "supplements": row.supplements_json,
@@ -1366,6 +1390,7 @@ def _morning_verdict(
         "readinessInterpretation": readiness_interpretation,
         "ageAdjustedSleepScore": age_adjusted_sleep_score,
         "subjectiveScore": subjective_score,
+        "subjectiveLabel": subjective_score_label(subjective_score),
         "hrvStatus": hrv_status,
         "hrvBelowBaseline": hrv_low,
         "restingHeartRateWithinBaseline": resting_hr_in_band,
@@ -1516,6 +1541,47 @@ def _overnight_window_utc(subject_date: date, timezone_name: str) -> tuple[datet
 
 def _dt(value: datetime | None) -> str | None:
     return value.isoformat() + "Z" if value else None
+
+
+def _local_clock(value: datetime | None, timezone_name: str) -> str | None:
+    """Render a naive-UTC timestamp as the user's local wall-clock time ("01:17").
+
+    Bed/wake times are stored naive-UTC; DST is handled by ZoneInfo so a BST night
+    (00:17Z) reads 01:17 and a GMT night (07:31Z) reads 07:31. Batch 91 (#164)."""
+    if value is None:
+        return None
+    try:
+        timezone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        timezone = ZoneInfo("UTC")
+    return value.replace(tzinfo=UTC).astimezone(timezone).strftime("%H:%M")
+
+
+def _date_label(value: date) -> str:
+    """Authoritative human header date, e.g. "Sunday 12 July 2026".
+
+    Avoids the platform-specific %-d directive so it is portable. Batch 91 (#164)."""
+    return f"{value.strftime('%A')} {value.day} {value.strftime('%B %Y')}"
+
+
+def subjective_score_label(score: int | None) -> str | None:
+    """Map the one-tap check-in score to the word Mark actually tapped.
+
+    Source of truth for the anchors is the frontend one-tap scale
+    (apps/web/src/pages/CheckInPage.tsx OVERALL_OPTIONS): 2=Rough, 4=Meh, 6=OK,
+    8=Good, 10=Great. Off-scale legacy values fall to the nearest band so the read
+    always speaks his word, never the raw 0-10 number. Batch 91 (#164)."""
+    if score is None:
+        return None
+    if score <= 3:
+        return "Rough"
+    if score <= 5:
+        return "Meh"
+    if score <= 7:
+        return "OK"
+    if score <= 9:
+        return "Good"
+    return "Great"
 
 
 def _minutes(seconds: int | None) -> int | None:

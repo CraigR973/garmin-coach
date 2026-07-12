@@ -29,12 +29,16 @@ from src.services.morning_analysis import (
     MorningAnalysisError,
     MorningAnalysisService,
     _daily_metric_packet,
+    _date_label,
+    _manual_entry_packet,
     _morning_verdict,
+    _sleep_packet,
     _thermal_action,
     _training_and_activity_fields,
     _yesterday_load_packet,
     build_morning_user_prompt,
     build_today_actions,
+    subjective_score_label,
 )
 
 
@@ -118,6 +122,8 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
                 Sleep(
                     user_id=user_id,
                     calendar_date=subject_date,
+                    sleep_start_utc=datetime(2026, 1, 1, 0, 17),
+                    sleep_end_utc=datetime(2026, 1, 1, 7, 31),
                     score=71,
                     rem_sleep_sec=80 * 60,
                     average_spo2_pct=96.0,
@@ -200,6 +206,16 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
         packet = result.analysis.context_packet
         assert packet["prompt"]["version"] == PROMPT_VERSION
         assert packet["sleep"]["ageAdjustedScore"] == 71
+        # Batch 91: local wall-clock bed/wake alongside the *Utc fields. Jan 1 is
+        # GMT so the local clock equals the UTC clock (proves the wiring; the BST
+        # offset is covered in the pure _sleep_packet test).
+        assert packet["sleep"]["sleepStartUtc"] == "2026-01-01T00:17:00Z"
+        assert packet["sleep"]["sleepStartLocal"] == "00:17"
+        assert packet["sleep"]["sleepEndLocal"] == "07:31"
+        # Authoritative header date and the check-in spoken as Mark's word.
+        assert packet["subjectDateLabel"] == "Thursday 1 January 2026"
+        assert packet["manualEntries"][0]["subjectiveLabel"] == "OK"
+        assert packet["verdict"]["subjectiveLabel"] == "OK"
         assert packet["verdict"]["status"] == "Amber"
         assert packet["verdict"]["readinessInterpretation"] is None
         assert packet["verdict"]["hasVo2WorkoutToday"] is True
@@ -626,7 +642,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v10")
+    assert PROMPT_VERSION.startswith("morning-analysis-v11")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
 
@@ -638,6 +654,100 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     }
     prompt = build_morning_user_prompt(packet)
     assert "Why am I so tired" in prompt
+
+
+def test_sleep_packet_localizes_bed_wake_across_dst_and_keeps_utc() -> None:
+    """Batch 91: bed/wake are stored naive-UTC; the packet must add the user's
+    local wall-clock time beside the *Utc fields. A BST night gains +1h (00:17Z →
+    01:17) while a GMT night is unchanged (07:31Z → 07:31)."""
+    bst = _sleep_packet(
+        Sleep(
+            calendar_date=date(2026, 7, 12),
+            sleep_start_utc=datetime(2026, 7, 12, 0, 17),
+            sleep_end_utc=datetime(2026, 7, 12, 7, 32),
+        ),
+        None,
+        "Europe/London",
+    )
+    assert bst is not None
+    assert bst["sleepStartUtc"] == "2026-07-12T00:17:00Z"
+    assert bst["sleepEndUtc"] == "2026-07-12T07:32:00Z"
+    assert bst["sleepStartLocal"] == "01:17"
+    assert bst["sleepEndLocal"] == "08:32"
+
+    gmt = _sleep_packet(
+        Sleep(
+            calendar_date=date(2026, 1, 15),
+            sleep_start_utc=datetime(2026, 1, 15, 0, 17),
+            sleep_end_utc=datetime(2026, 1, 15, 7, 31),
+        ),
+        None,
+        "Europe/London",
+    )
+    assert gmt is not None
+    assert gmt["sleepStartLocal"] == "00:17"
+    assert gmt["sleepEndLocal"] == "07:31"
+
+
+def test_sleep_packet_local_clock_tolerates_missing_times_and_bad_zone() -> None:
+    """Missing bed/wake stay None; an unknown timezone falls back to UTC rather than
+    raising, so a stray profile timezone never breaks the morning read."""
+    partial = _sleep_packet(
+        Sleep(calendar_date=date(2026, 7, 12), sleep_start_utc=datetime(2026, 7, 12, 0, 17)),
+        None,
+        "Not/AZone",
+    )
+    assert partial is not None
+    assert partial["sleepStartLocal"] == "00:17"  # UTC fallback
+    assert partial["sleepEndLocal"] is None
+
+
+def test_date_label_is_authoritative_and_portable() -> None:
+    """Batch 91: a ready-to-print header date (no platform-specific %-d) so the read
+    never re-derives '13 July' for the 12th."""
+    assert _date_label(date(2026, 7, 12)) == "Sunday 12 July 2026"
+    assert _date_label(date(2026, 1, 1)) == "Thursday 1 January 2026"
+
+
+def test_subjective_score_label_speaks_marks_checkin_word() -> None:
+    """Batch 91: map the one-tap score to the word Mark tapped (CheckInPage
+    OVERALL_OPTIONS); off-scale legacy values fall to the nearest band; None stays
+    None so an absent check-in is simply not referenced."""
+    assert subjective_score_label(2) == "Rough"
+    assert subjective_score_label(4) == "Meh"
+    assert subjective_score_label(6) == "OK"
+    assert subjective_score_label(8) == "Good"
+    assert subjective_score_label(10) == "Great"
+    assert subjective_score_label(5) == "Meh"  # off-scale → nearest band
+    assert subjective_score_label(7) == "OK"
+    assert subjective_score_label(None) is None
+
+
+def test_manual_entry_packet_carries_both_score_and_word() -> None:
+    """Batch 91: the raw score stays for the deterministic verdict, and the word is
+    added so the read speaks 'you felt OK', never 'subjective feel 6'."""
+    packet = _manual_entry_packet(
+        ManualEntry(
+            entry_date=date(2026, 7, 12),
+            entry_at_utc=datetime(2026, 7, 12, 6, 15),
+            subjective_score=6,
+        )
+    )
+    assert packet["subjectiveScore"] == 6
+    assert packet["subjectiveLabel"] == "OK"
+
+
+def test_system_prompt_bans_utc_and_raw_score_and_uses_local_fields() -> None:
+    """Batch 91 regression: the read is instructed to use local clock times and the
+    check-in word, and never to print a *Utc timestamp or the raw subjectiveScore
+    number — the testable guard that no such term leaks into a rendered read."""
+    assert "sleepStartLocal" in SYSTEM_PROMPT
+    assert "subjectDateLabel" in SYSTEM_PROMPT
+    assert "subjectiveLabel" in SYSTEM_PROMPT
+    # normalize wrapped whitespace so the assertions are line-break agnostic
+    normalized = " ".join(SYSTEM_PROMPT.lower().split())
+    assert "never print a `*utc` timestamp" in normalized
+    assert "never surface the raw subjectivescore number" in normalized
 
 
 def _rhr_baseline(user_id: uuid.UUID) -> MetricBaseline:
