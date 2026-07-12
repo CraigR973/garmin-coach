@@ -27,6 +27,7 @@ ANALYSIS_TYPE_EVENING_NUDGE = "evening_nudge"
 ANALYSIS_TYPE_THERMAL_ALERT = "thermal_alert"
 ANALYSIS_TYPE_STALE_SOURCE_ALERT = "stale_source_alert"
 ANALYSIS_TYPE_VERDICT_PUSH = "verdict_push"
+ANALYSIS_TYPE_BRIEF_READY = "brief_ready_push"
 ANALYSIS_TYPE_ANALYSIS_PUSH = "analysis_push"
 ANALYSIS_TYPE_GOOD_MORNING = "good_morning_nudge"
 ANALYSIS_TYPE_WORKOUT_CHECKIN = "workout_checkin_nudge"
@@ -183,6 +184,25 @@ def build_good_morning_plan(subject_date: date) -> NotificationPlan:
         severity="info",
         data={"url": "/check-in", "kind": "good_morning"},
         context={"subjectDate": subject_date.isoformat(), "rule": "good_morning"},
+    )
+
+
+def build_brief_ready_plan(analysis: Analysis, subject_date: date) -> NotificationPlan:
+    """A one-per-day push announcing that today's brief is ready (Batch 97)."""
+    status = (analysis.verdict or "").strip()
+    body = _verdict_headline(analysis) or "Your morning brief is ready — tap to read it."
+    return NotificationPlan(
+        analysis_type=ANALYSIS_TYPE_BRIEF_READY,
+        tag=f"brief-ready-{subject_date.isoformat()}",
+        title="Today's brief is ready",
+        body=body,
+        severity=status.lower() if status else "info",
+        data={"url": "/brief", "kind": "brief_ready", "status": status},
+        context={
+            "subjectDate": subject_date.isoformat(),
+            "status": status,
+            "rule": "brief_ready",
+        },
     )
 
 
@@ -510,6 +530,29 @@ class NudgeAlertService:
         so re-firing on a later wake poll (or the backstop) never double-nudges.
         """
         plan = build_good_morning_plan(subject_date)
+        return await self._send_once(
+            profile,
+            plan,
+            subject_date=subject_date,
+            commit=commit,
+            now_utc=now_utc or datetime.now(UTC),
+        )
+
+    async def push_brief_ready(
+        self,
+        profile: Profile,
+        analysis: Analysis,
+        *,
+        subject_date: date,
+        now_utc: datetime | None = None,
+        commit: bool = True,
+    ) -> bool:
+        """Push today's ready brief once (Batch 97).
+
+        Idempotent per (profile, subject_date) via the ``brief-ready-{date}``
+        tag, so a regeneration or retry can never double-notify.
+        """
+        plan = build_brief_ready_plan(analysis, subject_date)
         return await self._send_once(
             profile,
             plan,

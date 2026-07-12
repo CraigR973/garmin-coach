@@ -13,12 +13,14 @@ from src.models.coaching import Activity, Analysis, FanStateReading, Temperature
 from src.models.profile import Profile, UserRole
 from src.services.nudge_alerts import (
     ANALYSIS_TYPE_ANALYSIS_PUSH,
+    ANALYSIS_TYPE_BRIEF_READY,
     ANALYSIS_TYPE_GOOD_MORNING,
     ANALYSIS_TYPE_VERDICT_PUSH,
     FanReconcileState,
     FreshnessSnapshot,
     NudgeAlertService,
     build_analysis_push_plan,
+    build_brief_ready_plan,
     build_evening_nudge_plan,
     build_good_morning_plan,
     build_verdict_push_plan,
@@ -93,6 +95,18 @@ def test_good_morning_nudge_copy_and_tag() -> None:
     assert plan.title == "Good morning ☀️"
     assert "say good morning" in plan.body.lower()
     assert plan.data["url"] == "/check-in"
+
+
+def test_brief_ready_push_plan_targets_brief_and_reuses_the_headline() -> None:
+    plan = build_brief_ready_plan(
+        _analysis(verdict="Green", reasons=["Training readiness is well recovered."]),
+        date(2026, 7, 12),
+    )
+    assert plan.analysis_type == ANALYSIS_TYPE_BRIEF_READY
+    assert plan.tag == "brief-ready-2026-07-12"
+    assert plan.title == "Today's brief is ready"
+    assert plan.body == "Training readiness is well recovered."
+    assert plan.data == {"url": "/brief", "kind": "brief_ready", "status": "Green"}
 
 
 def test_thermal_precool_alert_before_seal_window() -> None:

@@ -7,12 +7,12 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import CurrentUser
-from src.database import get_db
+from src.database import AsyncSessionLocal, get_db
 from src.models.coaching import (
     Activity,
     Analysis,
@@ -22,6 +22,7 @@ from src.models.coaching import (
     PlannedWorkout,
     Sleep,
 )
+from src.models.profile import Profile
 from src.routers.feedback import FeedbackOut, serialize_feedback
 from src.services.breathwork_brief import BreathworkBriefResult
 from src.services.chronic_patterns import ChronicPatternSuggestionService
@@ -31,6 +32,7 @@ from src.services.executable_coaching import ExecutableCoachingService
 from src.services.fan_control import describe_fan_intent
 from src.services.insights import OUTCOME_SLEEP_SCORE, DriversReport, InsightsService
 from src.services.morning_analysis import MorningAnalysisService
+from src.services.nudge_alerts import NudgeAlertService
 from src.services.post_activity_analysis import generate_post_activity_read, post_activity_kind
 from src.services.sleep_projection import (
     SleepDriverEvidence,
@@ -78,6 +80,42 @@ def _local_today(timezone_name: str) -> date:
 
 
 log = structlog.get_logger(__name__)
+
+
+async def _generate_brief_after_checkin(user_id: uuid.UUID, subject_date: date) -> None:
+    """Batch 97: finish today's brief off the request path, then notify."""
+
+    async with AsyncSessionLocal() as session:
+        player = await session.get(Profile, user_id)
+        if player is None or not player.is_active or player.deleted_at is not None:
+            log.warning(
+                "morning check-in background generation skipped",
+                profile_id=str(user_id),
+                subject_date=subject_date.isoformat(),
+            )
+            return
+
+        try:
+            analysis = await ExecutableCoachingService(session).regenerate_after_morning_checkin(
+                player,
+                subject_date,
+                morning_service=MorningAnalysisService(session),
+                commit=False,
+            )
+            await NudgeAlertService(session).push_brief_ready(
+                player,
+                analysis,
+                subject_date=subject_date,
+                commit=False,
+            )
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            log.exception(
+                "morning check-in background generation failed",
+                profile_id=str(user_id),
+                subject_date=subject_date.isoformat(),
+            )
 
 
 class ApiError(BaseModel):
@@ -1234,6 +1272,7 @@ async def upsert_manual_entry(
     subject_date: date,
     body: ManualEntryBody,
     player: CurrentUser,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> DailyLoopEnvelope:
     service = DailyLoopService(db)
@@ -1249,22 +1288,12 @@ async def upsert_manual_entry(
         food_json=body.foodJson,
         notes=body.notes,
     )
-    # Batch 85: the check-in is the primary generate trigger. On today's check-in,
-    # force-regenerate the brief so his just-entered notes/questions fold into the
-    # read (an empty submit still yields today's objective brief). Subjective stays
-    # downgrade-only and an approved/pushed ride is never silently re-adjusted
-    # (Decision #29). Best-effort — never blocks the save; the regenerated brief is
-    # returned in the snapshot below.
+    # Batch 97: keep the check-in as the primary generate trigger, but move the
+    # actual brief generation off the request path. Saving returns immediately;
+    # the background task regenerates the brief, preserves Batch 85's downgrade-
+    # only / never-touch-an-approved-ride guardrails, then fires a ready push.
     if subject_date == _local_today(player.timezone):
-        try:
-            await ExecutableCoachingService(db).regenerate_after_morning_checkin(
-                player, subject_date, morning_service=MorningAnalysisService(db)
-            )
-        except Exception:
-            log.exception(
-                "morning check-in verdict recompute failed",
-                subject_date=subject_date.isoformat(),
-            )
+        background_tasks.add_task(_generate_brief_after_checkin, player.id, subject_date)
     snapshot = await service.get_snapshot(player, subject_date=subject_date)
     return await _envelope(player, snapshot, db)
 

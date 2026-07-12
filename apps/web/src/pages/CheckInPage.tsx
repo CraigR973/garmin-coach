@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { dailyLoopEnvelopeSchema, manualEntryInputSchema } from '@coach/shared';
 import { toast } from 'sonner';
-import { Loader2 } from 'lucide-react';
+import { CheckCircle2, Loader2 } from 'lucide-react';
 import { CollapsibleSection } from '@/components/CollapsibleSection';
 import { Markdown } from '@/components/Markdown';
 import { PageHeader } from '@/components/PageHeader';
@@ -21,6 +21,9 @@ import { SUBJECTIVE_FEEL_OPTIONS } from '@/lib/subjectiveFeel';
 type CheckInBrief = NonNullable<
   ReturnType<typeof dailyLoopEnvelopeSchema.parse>['data']['morningAnalysis']
 >;
+
+const BRIEF_READY_POLL_MS = 3000;
+const BRIEF_STAGE_WINDOWS_MS = [2000, 5500] as const;
 
 /** Batch 63: one-tap chips that fold into the existing `feel`/`notes` free-text
  *  columns as comma-separated tokens — no new `manual_entries` columns, no new
@@ -91,12 +94,42 @@ async function fetchDailyLoop() {
   return dailyLoopEnvelopeSchema.parse(response);
 }
 
+function currentBriefStage(elapsedMs: number): number {
+  if (elapsedMs < BRIEF_STAGE_WINDOWS_MS[0]) return 0;
+  if (elapsedMs < BRIEF_STAGE_WINDOWS_MS[1]) return 1;
+  return 2;
+}
+
+const BRIEF_STAGES = [
+  {
+    key: 'syncing',
+    title: 'Syncing your overnight data',
+    detail: "Making sure today's snapshot is fully up to date.",
+  },
+  {
+    key: 'reading',
+    title: 'Reading your morning',
+    detail: 'Pulling your sleep, readiness, room, and notes into one read.',
+  },
+  {
+    key: 'writing',
+    title: 'Writing your brief',
+    detail: 'Finishing the brief and sending a ready notification.',
+  },
+] as const;
+
 export function CheckInPage() {
   const queryClient = useQueryClient();
   const [manualForm, setManualForm] = useState<ManualFormState>(emptyManualForm);
   const [brief, setBrief] = useState<CheckInBrief | null>(null);
+  const [queuedAtMs, setQueuedAtMs] = useState<number | null>(null);
+  const [stageNowMs, setStageNowMs] = useState<number>(() => Date.now());
 
-  const query = useQuery({ queryKey: ['daily-loop'], queryFn: fetchDailyLoop });
+  const query = useQuery({
+    queryKey: ['daily-loop'],
+    queryFn: fetchDailyLoop,
+    refetchInterval: queuedAtMs != null ? BRIEF_READY_POLL_MS : false,
+  });
 
   useEffect(() => {
     const data = query.data?.data;
@@ -113,6 +146,22 @@ export function CheckInPage() {
       notes: manualEntry?.notes ?? '',
     });
   }, [query.data]);
+
+  useEffect(() => {
+    if (queuedAtMs == null) return;
+    setStageNowMs(Date.now());
+    const interval = window.setInterval(() => setStageNowMs(Date.now()), 500);
+    return () => window.clearInterval(interval);
+  }, [queuedAtMs]);
+
+  useEffect(() => {
+    if (queuedAtMs == null) return;
+    const readyBrief = query.data?.data.morningAnalysis;
+    if (!readyBrief) return;
+    setBrief(readyBrief);
+    setQueuedAtMs(null);
+    toast.success('Your brief is ready');
+  }, [queuedAtMs, query.data]);
 
   // Batch 85: the check-in is the primary trigger for today's brief. Saving
   // force-regenerates the read server-side (folding in his notes/questions) and
@@ -139,8 +188,13 @@ export function CheckInPage() {
     },
     onSuccess: async (updated) => {
       setBrief(updated.morningAnalysis ?? null);
+      setQueuedAtMs(updated.morningAnalysis ? null : Date.now());
       await queryClient.invalidateQueries({ queryKey: ['daily-loop'] });
-      toast.success(updated.morningAnalysis ? 'Your brief is ready' : 'Check-in saved');
+      toast.success(
+        updated.morningAnalysis
+          ? 'Your brief is ready'
+          : "Check-in saved — I'll notify you when your brief is ready",
+      );
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not save your check-in'),
   });
@@ -150,6 +204,8 @@ export function CheckInPage() {
   // set on save success) or already on the loaded snapshot (a same-day check-in
   // or the 09:30 backstop) — either way, re-submitting shouldn't regenerate it.
   const briefExists = brief != null || data?.morningAnalysis != null;
+  const waitingForBrief = queuedAtMs != null && !briefExists;
+  const waitingStage = waitingForBrief ? currentBriefStage(stageNowMs - queuedAtMs) : -1;
 
   function setManual<K extends keyof ManualFormState>(key: K, value: string) {
     setManualForm((current) => ({ ...current, [key]: value }));
@@ -318,21 +374,26 @@ export function CheckInPage() {
       </CollapsibleSection>
 
       {/* Batch 85: one button generates today's brief from his check-in. An empty
-          submit still yields today's objective read; a "reading your morning…"
-          state covers the LLM call. The result surfaces below and on Home.
-          Batch 96: once a brief already exists, re-submitting would silently
-          regenerate it — the button instead offers to view the existing brief. */}
+          submit still yields today's objective read.
+          Batch 97: submitting returns immediately, then the page waits on the
+          normal daily-loop snapshot while the server finishes the brief and
+          sends a ready push. Batch 96 still prevents silent re-generation once
+          a brief exists. */}
       <div className="flex justify-end">
         {briefExists ? (
           <Button asChild>
             <Link to="/brief">View brief</Link>
+          </Button>
+        ) : waitingForBrief ? (
+          <Button type="button" disabled>
+            Today&apos;s brief is on the way
           </Button>
         ) : (
           <Button type="button" onClick={() => saveMutation.mutate()} disabled={!data || saveMutation.isPending}>
             {saveMutation.isPending ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                Reading your morning…
+                Saving check-in…
               </>
             ) : (
               "Get today's brief"
@@ -340,6 +401,57 @@ export function CheckInPage() {
           </Button>
         )}
       </div>
+
+      {waitingForBrief ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>I&apos;ll notify you when it&apos;s ready</CardTitle>
+            <CardDescription>
+              You can leave this page now. If notifications are off, this screen will update when the brief lands.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-3" aria-label="Brief progress">
+              {BRIEF_STAGES.map((stage, index) => {
+                const complete = index < waitingStage;
+                const current = index === waitingStage;
+                return (
+                  <div
+                    key={stage.key}
+                    className={`flex items-start gap-3 rounded-2xl border px-4 py-3 ${
+                      complete
+                        ? 'border-emerald-300 bg-emerald-50'
+                        : current
+                          ? 'border-primary/40 bg-primary/5'
+                          : 'border-border bg-muted/30'
+                    }`}
+                  >
+                    <div className="mt-0.5 flex h-5 w-5 items-center justify-center">
+                      {complete ? (
+                        <CheckCircle2 className="h-4 w-4 text-emerald-700" aria-hidden />
+                      ) : current ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-primary" aria-hidden />
+                      ) : (
+                        <span className="text-xs font-semibold text-text-secondary">{index + 1}</span>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-text-primary">{stage.title}</p>
+                      <p className="text-sm text-text-secondary">{stage.detail}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-text-secondary">No push? You can stay here or check back in a moment.</p>
+              <Button type="button" variant="outline" onClick={() => query.refetch()}>
+                Refresh now
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {brief && (
         <div className="space-y-4">

@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CheckInPage } from './CheckInPage';
 
 const apiFetchMock = vi.fn();
@@ -14,6 +14,11 @@ vi.mock('@/lib/api', () => ({
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
+
+afterEach(() => {
+  vi.useRealTimers();
+  apiFetchMock.mockReset();
+});
 
 const snapshot = {
   data: {
@@ -107,7 +112,7 @@ describe('CheckInPage', () => {
     expect(screen.queryByRole('button', { name: '6' })).toBeNull();
   });
 
-  it("generates and surfaces today's brief on submit (Batch 85)", async () => {
+  it("queues today's brief on submit, shows staged progress, then surfaces it when polling sees it (Batch 97)", async () => {
     const briefAnalysis = {
       id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
       generatedAtUtc: '2026-06-20T07:10:00Z',
@@ -116,10 +121,17 @@ describe('CheckInPage', () => {
       outputMarkdown: '**Your question**\n\nYou are tired because your REM ran low.',
     };
     const withBrief = { ...snapshot, data: { ...snapshot.data, morningAnalysis: briefAnalysis } };
-
+    const refetchGate: { resolve: null | (() => void) } = { resolve: null };
     apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
-      if (options?.method === 'PUT') return Promise.resolve(withBrief);
-      if (path === '/api/v1/daily-loop') return Promise.resolve(snapshot); // no brief on load
+      if (options?.method === 'PUT') return Promise.resolve(snapshot); // save returns immediately
+      if (path === '/api/v1/daily-loop') {
+        if (apiFetchMock.mock.calls.filter(([calledPath]) => calledPath === '/api/v1/daily-loop').length === 1) {
+          return Promise.resolve(snapshot); // initial load
+        }
+        return new Promise((resolve) => {
+          refetchGate.resolve = () => resolve(withBrief);
+        });
+      }
       return Promise.reject(new Error(`Unexpected request: ${path}`));
     });
 
@@ -136,7 +148,15 @@ describe('CheckInPage', () => {
 
     await user.click(await screen.findByRole('button', { name: /get today's brief/i }));
 
-    // The freshly generated brief (verdict + read) surfaces on the check-in page.
+    expect(await screen.findByText("I'll notify you when it's ready")).toBeTruthy();
+    expect(screen.getByText('Syncing your overnight data')).toBeTruthy();
+    expect(screen.getByText('Reading your morning')).toBeTruthy();
+    expect(screen.getByText('Writing your brief')).toBeTruthy();
+    if (refetchGate.resolve) {
+      refetchGate.resolve();
+    }
+
+    // The finished brief is picked up from the normal daily-loop snapshot.
     expect(await screen.findByText(/you are tired because your rem ran low/i)).toBeTruthy();
     expect(screen.getByText("Today's brief")).toBeTruthy();
 

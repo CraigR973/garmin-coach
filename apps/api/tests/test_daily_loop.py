@@ -26,6 +26,7 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile, UserRole
+from src.routers import daily_loop as daily_loop_router
 from src.services.daily_loop import (
     ANALYSIS_TYPE_POST_FLEXIBILITY,
     ANALYSIS_TYPE_POST_STRENGTH,
@@ -610,6 +611,45 @@ async def test_manual_entry_and_adherence_upserts_persist(db_conn: AsyncConnecti
     assert adherence_entry.planned_workout_version == 3
     assert adherence_entry.adherence_status == "modified"
     assert adherence_entry.actual_workout_json["completedDurationMin"] == 42
+
+
+@pytest.mark.asyncio
+async def test_manual_entry_returns_immediately_and_queues_brief_generation(
+    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 7, 12)
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Queued Brief",
+            pin_hash="x" * 60,
+            role=UserRole.player,
+            timezone="UTC",
+            is_active=True,
+        )
+        session.add(player)
+        await session.commit()
+
+    queued = AsyncMock()
+    monkeypatch.setattr(daily_loop_router, "_generate_brief_after_checkin", queued)
+
+    app.dependency_overrides[get_current_user] = lambda: player
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.put(
+                f"/api/v1/daily-loop/{subject_date.isoformat()}/manual-entry",
+                json={"subjectiveScore": 7, "feel": "steady"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["morningAnalysis"] is None
+    queued.assert_awaited_once_with(user_id, subject_date)
 
 
 @pytest.mark.asyncio
