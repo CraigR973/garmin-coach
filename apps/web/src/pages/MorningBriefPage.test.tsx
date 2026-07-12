@@ -94,6 +94,7 @@ function renderWithQuery(ui: ReactNode) {
 
 beforeEach(() => {
   apiFetchMock.mockClear();
+  localStorage.clear();
 });
 
 describe('morning brief page', () => {
@@ -101,6 +102,13 @@ describe('morning brief page', () => {
     renderWithQuery(<MorningBriefPage />);
     expect(await screen.findByText('Coach read')).toBeTruthy();
     expect(screen.getByText('Green light')).toBeTruthy();
+  });
+
+  it('marks the brief reviewed on open, clearing Home\'s unviewed-brief CTA (Batch 96)', async () => {
+    expect(localStorage.getItem('coach_brief_reviewed_date')).toBeNull();
+    renderWithQuery(<MorningBriefPage />);
+    await screen.findByText('Coach read');
+    expect(localStorage.getItem('coach_brief_reviewed_date')).toBe('2026-06-20');
   });
 
   it('leads with the Today action block above the coach read (Batch 86)', async () => {

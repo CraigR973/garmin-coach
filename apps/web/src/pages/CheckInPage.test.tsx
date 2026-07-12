@@ -139,6 +139,42 @@ describe('CheckInPage', () => {
     // The freshly generated brief (verdict + read) surfaces on the check-in page.
     expect(await screen.findByText(/you are tired because your rem ran low/i)).toBeTruthy();
     expect(screen.getByText("Today's brief")).toBeTruthy();
+
+    // Batch 96: once a brief exists, re-submitting would silently regenerate it —
+    // the button instead offers to view the existing one.
+    expect(screen.queryByRole('button', { name: /get today's brief/i })).toBeNull();
+    const viewLink = screen.getByRole('link', { name: /view brief/i });
+    expect(viewLink.getAttribute('href')).toBe('/brief');
+  });
+
+  it('shows "View brief" instead of "Get today\'s brief" when a brief already exists on load (Batch 96)', async () => {
+    const briefAnalysis = {
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      generatedAtUtc: '2026-06-20T07:10:00Z',
+      verdict: 'green',
+      promptVersion: 'morning-analysis-v8-2026-07-11',
+      outputMarkdown: '**Green light**',
+    };
+    const withBrief = { ...snapshot, data: { ...snapshot.data, morningAnalysis: briefAnalysis } };
+
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/api/v1/daily-loop') return Promise.resolve(withBrief);
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    const queryClient = new QueryClient();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CheckInPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const viewLink = await screen.findByRole('link', { name: /view brief/i });
+    expect(viewLink.getAttribute('href')).toBe('/brief');
+    expect(screen.queryByRole('button', { name: /get today's brief/i })).toBeNull();
   });
 
   it('toggles a quick chip on and off, mapping it into the right column', async () => {

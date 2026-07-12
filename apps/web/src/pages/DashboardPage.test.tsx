@@ -458,6 +458,30 @@ describe('DashboardPage', () => {
     expect(cta.getAttribute('href')).toBe('/check-in');
   });
 
+  it('leads an unviewed brief above the Today action cards, including thermal (Batch 96)', async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.morningAnalysis!.todayActions = [
+          { kind: 'thermal', title: 'Pre-cool the bedroom', href: '/sleep' },
+        ];
+      }),
+    );
+
+    const cta = await screen.findByRole('link', { name: /your morning brief is ready/i });
+    expect(cta.getAttribute('href')).toBe('/brief');
+    const todayActions = await screen.findByTestId('today-actions');
+    // The CTA precedes the action block in document order (DOCUMENT_POSITION_FOLLOWING).
+    expect(cta.compareDocumentPosition(todayActions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('drops the unviewed-brief CTA once the brief has been opened (Batch 96)', async () => {
+    localStorage.setItem('coach_brief_reviewed_date', '2026-06-20');
+    renderPage();
+
+    await screen.findByText('Cycle day');
+    expect(screen.queryByRole('link', { name: /your morning brief is ready/i })).toBeNull();
+  });
+
   it('places sections in the Batch 51 act/context desktop columns without changing the mobile stack', async () => {
     renderPage();
     await screen.findByText('Cycle day');

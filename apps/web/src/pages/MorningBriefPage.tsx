@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Activity, ClipboardCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Markdown } from '@/components/Markdown';
@@ -7,10 +8,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { TodayActions } from '@/components/TodayActions';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
+import { markBriefReviewed } from '@/lib/briefReview';
 import { formatDateTime, friendlyDate } from '@/lib/dailyFlow';
 
 export function MorningBriefPage() {
   const query = useDailyLoop();
+
+  // Opening the brief completes Home's Batch 96 unviewed-brief CTA (per-day
+  // client flag) — gated on a present morning read so a pre-sync visit doesn't
+  // mark a brief reviewed before one exists.
+  useEffect(() => {
+    const loaded = query.data?.data;
+    if (loaded?.morningAnalysis != null) {
+      markBriefReviewed(loaded.subjectDate);
+    }
+  }, [query.data]);
 
   if (query.isLoading) {
     return (
