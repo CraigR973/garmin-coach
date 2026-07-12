@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from src.services.bedroom_overnight import (
@@ -37,6 +37,15 @@ def test_night_window_gmt_is_utc() -> None:
     start, end = night_window(date(2026, 1, 15), LONDON)
     assert start == datetime(2026, 1, 15, 21, 30)
     assert end == datetime(2026, 1, 16, 9, 0)
+
+
+def test_night_window_matches_morning_subject_date_semantics() -> None:
+    # Morning analysis receives Garmin's wake date and calls this same helper
+    # with the preceding night-start date (Batch 92 #165).
+    wake_date = date(2026, 7, 12)
+    start, end = night_window(wake_date - timedelta(days=1), LONDON)
+    assert start == datetime(2026, 7, 11, 20, 30)
+    assert end == datetime(2026, 7, 12, 8, 0)
 
 
 # --- default_night ----------------------------------------------------------

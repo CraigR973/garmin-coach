@@ -34,6 +34,7 @@ from src.services.morning_analysis import (
     _morning_verdict,
     _sleep_packet,
     _thermal_action,
+    _thermal_review,
     _training_and_activity_fields,
     _yesterday_load_packet,
     build_morning_user_prompt,
@@ -220,10 +221,10 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
         assert packet["verdict"]["readinessInterpretation"] is None
         assert packet["verdict"]["hasVo2WorkoutToday"] is True
         assert packet["environment"]["thermalReview"]["flags"] == [
-            "thermal_disruption_likely",
             "precool_target_missed",
             "wind_disruption_watch",
         ]
+        assert packet["environment"]["thermalReview"]["windowSource"] == "sleep"
         assert packet["metricsVsBaselines"][0]["deltaVsBaseline"] == -3.0
         assert any(
             rule["id"] == "no_lr_balance"
@@ -642,7 +643,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v11")
+    assert PROMPT_VERSION.startswith("morning-analysis-v12")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
 
@@ -744,10 +745,68 @@ def test_system_prompt_bans_utc_and_raw_score_and_uses_local_fields() -> None:
     assert "sleepStartLocal" in SYSTEM_PROMPT
     assert "subjectDateLabel" in SYSTEM_PROMPT
     assert "subjectiveLabel" in SYSTEM_PROMPT
+    assert "precool_credited" in SYSTEM_PROMPT
     # normalize wrapped whitespace so the assertions are line-break agnostic
     normalized = " ".join(SYSTEM_PROMPT.lower().split())
     assert "never print a `*utc` timestamp" in normalized
     assert "never surface the raw subjectivescore number" in normalized
+
+
+def _temperature(at: datetime, value: float) -> TemperatureReading:
+    return TemperatureReading(
+        user_id=uuid.uuid4(),
+        source="hive",
+        product_id="thermostat",
+        captured_at_utc=at,
+        temperature_c=value,
+        raw_payload={},
+    )
+
+
+def test_thermal_review_uses_sleep_peak_and_credits_precool() -> None:
+    sleep = Sleep(
+        user_id=uuid.uuid4(),
+        calendar_date=date(2026, 7, 12),
+        sleep_start_utc=datetime(2026, 7, 12, 0, 17),
+        sleep_end_utc=datetime(2026, 7, 12, 7, 31),
+        raw_payload={},
+        factors_json={},
+    )
+    rows = [
+        _temperature(datetime(2026, 7, 11, 20, 30), 24.05),
+        _temperature(datetime(2026, 7, 11, 23, 45), 18.64),
+        _temperature(datetime(2026, 7, 12, 0, 15), 18.8),
+        _temperature(datetime(2026, 7, 12, 1, 0), 19.2),
+        _temperature(datetime(2026, 7, 12, 4, 0), 20.2),
+        _temperature(datetime(2026, 7, 12, 7, 15), 19.7),
+    ]
+
+    review = _thermal_review(rows, None, {}, sleep=sleep)
+
+    assert review["windowSource"] == "sleep"
+    assert review["sampleCount"] == 3
+    assert review["indoorPeakC"] == 20.2
+    assert review["indoorLowC"] == 19.2
+    assert review["preCoolLowC"] == 18.64
+    assert review["sleepOnsetC"] == 18.8
+    assert review["preCoolDropC"] == pytest.approx(5.41)
+    assert "precool_credited" in review["flags"]
+    assert "precool_target_missed" not in review["flags"]
+
+
+def test_thermal_review_falls_back_to_shared_night_window_without_sleep() -> None:
+    rows = [
+        _temperature(datetime(2026, 7, 11, 20, 30), 19.0),
+        _temperature(datetime(2026, 7, 12, 3, 0), 20.1),
+    ]
+
+    review = _thermal_review(rows, None, {}, sleep=None)
+
+    assert review["windowSource"] == "night_fallback"
+    assert review["sampleCount"] == 2
+    assert review["indoorPeakC"] == 20.1
+    assert review["preCoolLowC"] is None
+    assert "precool_target_missed" not in review["flags"]
 
 
 def _rhr_baseline(user_id: uuid.UUID) -> MetricBaseline:

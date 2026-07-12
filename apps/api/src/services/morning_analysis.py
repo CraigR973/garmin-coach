@@ -29,6 +29,7 @@ from src.models.coaching import (
 from src.models.profile import Profile
 from src.services.age_norms import build_age_comparison
 from src.services.anthropic_text import generate_anthropic_text
+from src.services.bedroom_overnight import night_window
 from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
 from src.services.coaching_state import CoachingStateService
 from src.services.feedback import FeedbackService
@@ -67,7 +68,10 @@ from src.services.workout_categories import is_bike_workout_type
 # check-in word (subjectiveLabel). The prompt bans printing *Utc timestamps,
 # re-deriving the date, and surfacing the raw subjectiveScore number, so the version
 # bumps again.
-PROMPT_VERSION = "morning-analysis-v11-2026-07-12"
+# Batch 92 (#165): thermal review separates the sleep-period room curve from
+# the pre-bed cool-down inside the shared bedroom night window. The prompt must
+# credit an observed pre-cool instead of narrating it as a failed target.
+PROMPT_VERSION = "morning-analysis-v12-2026-07-12"
 ANALYSIS_TYPE = "morning"
 SYSTEM_PROMPT = """You are Garmin Coach, a private daily endurance and sleep coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
@@ -81,6 +85,11 @@ manualEntries[].subjectiveLabel (e.g. "you said you felt OK") — and never surf
 the raw subjectiveScore number or a "6/10"-style term for how he felt.
 Return concise markdown with a sleep summary line, a metrics-vs-baselines read,
 a thermal/environment review, and a Green/Amber/Red workout verdict for today.
+In the thermal review, indoorPeakC/indoorLowC/indoorLastC describe only the
+sleep period when sleep times are available. Treat preCoolLowC, sleepOnsetC, and
+preCoolDropC as the distinct pre-bed cool-down: when flags contains
+`precool_credited`, explicitly credit that cooling and do not call the pre-cool
+a miss merely because it stopped above targetPreCoolC.
 Bold each bullet headline. Never mention left/right power balance. Never keep
 VO2 work on a Red verdict. When Garmin readiness is Low, call it load-driven only
 if the packet explicitly says recovery signals justify that interpretation; when
@@ -241,7 +250,12 @@ class MorningAnalysisService:
             age_adjusted_sleep_score,
         )
         age_comparison = _age_comparison(daily_metric, sleep, knowledge_base)
-        thermal_review = _thermal_review(temperature_rows, weather, knowledge_base)
+        thermal_review = _thermal_review(
+            temperature_rows,
+            weather,
+            knowledge_base,
+            sleep=sleep,
+        )
         verdict = _morning_verdict(
             daily_metric=daily_metric,
             sleep=sleep,
@@ -368,6 +382,7 @@ class MorningAnalysisService:
                     "include_sleep_summary_line",
                     "include_metrics_vs_baselines_table",
                     "include_thermal_environment_review",
+                    "credit_observed_precool_separately_from_sleep_peak",
                     "include_plan_aware_workout_verdict",
                     "never_reference_left_right_power_balance",
                     "never_recommend_vo2_on_red",
@@ -624,7 +639,13 @@ class MorningAnalysisService:
         subject_date: date,
         timezone_name: str,
     ) -> list[TemperatureReading]:
-        start_utc, end_utc = _overnight_window_utc(subject_date, timezone_name)
+        try:
+            timezone = ZoneInfo(timezone_name)
+        except ZoneInfoNotFoundError:
+            timezone = ZoneInfo("UTC")
+        # The morning subject date is Garmin's wake date; the shared bedroom
+        # helper accepts the date on which the night starts (Batch 92 #165).
+        start_utc, end_utc = night_window(subject_date - timedelta(days=1), timezone)
         rows = (
             (
                 await self.session.execute(
@@ -632,7 +653,7 @@ class MorningAnalysisService:
                     .where(
                         TemperatureReading.user_id == user_id,
                         TemperatureReading.captured_at_utc >= start_utc,
-                        TemperatureReading.captured_at_utc <= end_utc,
+                        TemperatureReading.captured_at_utc < end_utc,
                     )
                     .order_by(TemperatureReading.captured_at_utc.asc())
                 )
@@ -1010,6 +1031,8 @@ def _thermal_review(
     temperature_rows: Sequence[TemperatureReading],
     weather: WeatherDaily | None,
     knowledge_base: Mapping[str, Any],
+    *,
+    sleep: Sleep | None = None,
 ) -> dict[str, Any]:
     sleep_protocol = knowledge_base.get("sleep_protocol", {})
     threshold_low = 19.5
@@ -1028,25 +1051,59 @@ def _thermal_review(
         if isinstance(precool, int | float):
             target_precool = float(precool)
 
-    values = [row.temperature_c for row in temperature_rows]
+    all_rows = sorted(temperature_rows, key=lambda row: row.captured_at_utc)
+    sleep_start = sleep.sleep_start_utc if sleep is not None else None
+    sleep_end = sleep.sleep_end_utc if sleep is not None else None
+    has_sleep_window = sleep_start is not None and sleep_end is not None and sleep_end > sleep_start
+    if sleep_start is not None and sleep_end is not None and sleep_end > sleep_start:
+        asleep_rows = [row for row in all_rows if sleep_start <= row.captured_at_utc <= sleep_end]
+        pre_cool_rows = [row for row in all_rows if row.captured_at_utc <= sleep_start]
+    else:
+        asleep_rows = all_rows
+        pre_cool_rows = []
+    values = [float(row.temperature_c) for row in asleep_rows if row.temperature_c is not None]
     peak = max(values) if values else None
     low = min(values) if values else None
     last = values[-1] if values else None
+
+    pre_cool_values = [
+        float(row.temperature_c) for row in pre_cool_rows if row.temperature_c is not None
+    ]
+    if pre_cool_values:
+        pre_cool_low = min(pre_cool_values)
+        sleep_onset = pre_cool_values[-1]
+        pre_cool_drop = max(0.0, pre_cool_values[0] - pre_cool_low)
+    else:
+        pre_cool_low = None
+        sleep_onset = None
+        pre_cool_drop = None
+    # Credit either a material observed drop or a pre-bed low already below the
+    # disruption threshold. The latter matters when the shared 21:30 chart
+    # window begins after the largest part of an earlier-evening cool-down.
+    pre_cool_credited = (pre_cool_low is not None and pre_cool_low <= threshold_low) or (
+        pre_cool_drop is not None and pre_cool_drop >= 1.0
+    )
     flags: list[str] = []
     if peak is not None and peak >= threshold_high:
         flags.append("thermal_disruption_likely")
     elif peak is not None and peak >= threshold_low:
         flags.append("thermal_disruption_watch")
-    if low is not None and low > target_precool + 1.0:
+    if pre_cool_credited:
+        flags.append("precool_credited")
+    elif pre_cool_low is not None and pre_cool_low > target_precool + 1.0:
         flags.append("precool_target_missed")
     if weather and weather.overnight_wind_gust_mph and weather.overnight_wind_gust_mph >= 30:
         flags.append("wind_disruption_watch")
 
     return {
         "sampleCount": len(values),
+        "windowSource": "sleep" if has_sleep_window else "night_fallback",
         "indoorPeakC": peak,
         "indoorLowC": low,
         "indoorLastC": last,
+        "preCoolLowC": pre_cool_low,
+        "sleepOnsetC": sleep_onset,
+        "preCoolDropC": pre_cool_drop,
         "targetPreCoolC": target_precool,
         "disruptionThresholdC": {"low": threshold_low, "high": threshold_high},
         "overnightWeatherLowC": weather.overnight_low_c if weather else None,
@@ -1524,19 +1581,6 @@ def _load_signal_present(daily_metric: DailyMetric | None) -> bool:
     if daily_metric.acute_load is not None and daily_metric.acute_load > 0:
         return True
     return daily_metric.recovery_time_min is not None and daily_metric.recovery_time_min > 0
-
-
-def _overnight_window_utc(subject_date: date, timezone_name: str) -> tuple[datetime, datetime]:
-    try:
-        timezone = ZoneInfo(timezone_name)
-    except ZoneInfoNotFoundError:
-        timezone = ZoneInfo("UTC")
-    local_start = datetime.combine(subject_date - timedelta(days=1), time(18, 0), tzinfo=timezone)
-    local_end = datetime.combine(subject_date, time(8, 0), tzinfo=timezone)
-    return (
-        local_start.astimezone(UTC).replace(tzinfo=None),
-        local_end.astimezone(UTC).replace(tzinfo=None),
-    )
 
 
 def _dt(value: datetime | None) -> str | None:
