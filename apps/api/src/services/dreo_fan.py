@@ -29,8 +29,8 @@ check fails closed if those internals ever move.
 
 from __future__ import annotations
 
-import time
 import importlib
+import time
 from dataclasses import dataclass
 from typing import Any
 
