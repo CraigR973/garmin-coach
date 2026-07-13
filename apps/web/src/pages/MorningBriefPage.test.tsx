@@ -1,12 +1,19 @@
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { act, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DailyLoopEnvelope } from '@/hooks/useDailyLoop';
 import { MorningBriefPage } from './MorningBriefPage';
 
 const apiFetchMock = vi.fn();
+const speechSynthesisMock = {
+  speak: vi.fn(),
+  pause: vi.fn(),
+  resume: vi.fn(),
+  cancel: vi.fn(),
+};
 
 vi.mock('@/lib/api', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
@@ -105,6 +112,31 @@ function renderWithQuery(ui: ReactNode) {
 
 beforeEach(() => {
   apiFetchMock.mockClear();
+  speechSynthesisMock.speak.mockClear();
+  speechSynthesisMock.pause.mockClear();
+  speechSynthesisMock.resume.mockClear();
+  speechSynthesisMock.cancel.mockClear();
+  Object.defineProperty(window, 'speechSynthesis', {
+    configurable: true,
+    value: speechSynthesisMock,
+  });
+  Object.defineProperty(window, 'SpeechSynthesisUtterance', {
+    configurable: true,
+    value: class MockSpeechSynthesisUtterance {
+      text: string;
+      lang = '';
+      pitch = 1;
+      rate = 1;
+      onend: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onpause: (() => void) | null = null;
+      onresume: (() => void) | null = null;
+
+      constructor(text: string) {
+        this.text = text;
+      }
+    },
+  });
   localStorage.clear();
 });
 
@@ -113,6 +145,7 @@ describe('morning brief page', () => {
     renderWithQuery(<MorningBriefPage />);
     expect(await screen.findByText('Coach read')).toBeTruthy();
     expect(screen.getByText('Green light')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /listen to brief/i })).toBeTruthy();
   });
 
   it('marks the brief reviewed on open, clearing Home\'s unviewed-brief CTA (Batch 96)', async () => {
@@ -142,5 +175,32 @@ describe('morning brief page', () => {
     // The coaching reasoning still renders below the action block.
     expect(screen.getByText('Coach read')).toBeTruthy();
     expect(screen.getByText('Green light')).toBeTruthy();
+  });
+
+  it('plays, pauses, resumes, and stops the brief audio (Batch 106)', async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<MorningBriefPage />);
+    const listen = await screen.findByRole('button', { name: /listen to brief/i });
+
+    await user.click(listen);
+    expect(speechSynthesisMock.speak).toHaveBeenCalledTimes(1);
+    expect(speechSynthesisMock.speak.mock.calls[0]?.[0]?.text).toBe('Green light\n\nRested and ready.');
+    expect(screen.getByRole('button', { name: /pause brief audio/i })).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: /pause brief audio/i }));
+    expect(speechSynthesisMock.pause).toHaveBeenCalledTimes(1);
+
+    const utterance = speechSynthesisMock.speak.mock.calls[0]?.[0];
+    await act(async () => {
+      utterance?.onpause?.();
+    });
+    await user.click(screen.getByRole('button', { name: /resume brief audio/i }));
+    expect(speechSynthesisMock.resume).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      utterance?.onresume?.();
+    });
+    await user.click(screen.getByRole('button', { name: /stop brief audio/i }));
+    expect(speechSynthesisMock.cancel).toHaveBeenCalled();
   });
 });
