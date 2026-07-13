@@ -30,6 +30,7 @@ check fails closed if those internals ever move.
 from __future__ import annotations
 
 import time
+import importlib
 from dataclasses import dataclass
 from typing import Any
 
@@ -382,10 +383,10 @@ class DreoFanClient:
     @staticmethod
     def _import_pydreo() -> Any:
         try:
-            import pydreo  # type: ignore[import-not-found]
+            module = importlib.import_module("pydreo")
         except ImportError as exc:  # pragma: no cover - exercised only in missing envs
             raise DreoFanError("pydreo_community is not installed.") from exc
-        return pydreo.PyDreo
+        return module.PyDreo
 
 
 def _is_controllable_fan(device: Any) -> bool:

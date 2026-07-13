@@ -635,6 +635,7 @@ async def test_manual_entry_returns_immediately_and_queues_brief_generation(
 
     queued = AsyncMock()
     monkeypatch.setattr(daily_loop_router, "_generate_brief_after_checkin", queued)
+    monkeypatch.setattr(daily_loop_router, "_local_today", lambda timezone_name: subject_date)
 
     app.dependency_overrides[get_current_user] = lambda: player
     app.dependency_overrides[get_db] = _db_override(session_factory)
