@@ -10,7 +10,7 @@ Covers the four acceptance pillars:
 from __future__ import annotations
 
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -23,8 +23,11 @@ from src.services.holiday_pause import (
     HOLIDAY_RESUME_SOURCE,
     KB_SECTION,
     HolidayPauseService,
+    HolidayWindow,
+    active_holiday_window_for_date,
     continuation_label,
     continuation_week_number,
+    holiday_windows_covering_date,
     is_build1,
 )
 
@@ -77,6 +80,26 @@ def test_continuation_week_number_build2_gives_previous() -> None:
 
 def test_continuation_week_number_non_build_gives_one() -> None:
     assert continuation_week_number(3, "recovery") == 1
+
+
+def test_holiday_date_helpers_keep_history_but_only_active_window_means_away() -> None:
+    subject_date = date(2026, 7, 12)
+    resumed = HolidayWindow(
+        start_date=date(2026, 7, 10),
+        end_date=date(2026, 7, 14),
+        paused_at_utc=datetime(2026, 7, 9, 12, 0),
+        resumed_at_utc=datetime(2026, 7, 11, 12, 0),
+    )
+    active = HolidayWindow(
+        start_date=date(2026, 7, 12),
+        end_date=date(2026, 7, 20),
+        paused_at_utc=datetime(2026, 7, 11, 18, 0),
+    )
+
+    assert holiday_windows_covering_date([resumed, active], subject_date) == [resumed, active]
+    assert active_holiday_window_for_date([resumed, active], subject_date) is active
+    assert active_holiday_window_for_date([resumed], subject_date) is None
+    assert active_holiday_window_for_date([active], date(2026, 7, 21)) is None
 
 
 # ---------------------------------------------------------------------------

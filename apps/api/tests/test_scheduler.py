@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable
 from contextlib import ExitStack, contextmanager
-from datetime import datetime
+from datetime import date, datetime
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -23,6 +23,8 @@ from src.scheduler import (
     _retry_sync,
     _sync_garmin_daily,
     create_scheduler,
+    run_evening_monitoring_alerts,
+    run_evening_sleep_nudge,
     run_fan_control,
     run_hive_temperature_poll,
     run_morning_sync,
@@ -146,6 +148,80 @@ async def test_run_hive_temperature_poll_passes_poll_time_to_sync() -> None:
     kwargs = sync_service.sync_hive_temperatures.await_args.kwargs
     assert kwargs["commit"] is False
     assert kwargs["captured_at_utc"] is not None
+
+
+# ---------------------------------------------------------------------------
+# Batch 105 — holiday-away environment gates
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def _evening_environment_patches(*, active_window: object | None):
+    profile = _profile()
+    subject_date = date(2026, 7, 12)
+    session = AsyncMock()
+    session.commit = AsyncMock()
+
+    class _Ctx:
+        async def __aenter__(self) -> AsyncMock:
+            return session
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+    holiday_service = MagicMock()
+    holiday_service.get_active_window_for_date = AsyncMock(return_value=active_window)
+    nudge_service = MagicMock()
+    nudge_service.run_evening_nudge = AsyncMock(return_value=True)
+    nudge_service.run_monitoring_alerts = AsyncMock(return_value=1)
+
+    with ExitStack() as stack:
+        enter = stack.enter_context
+        enter(patch("src.scheduler.AsyncSessionLocal", return_value=_Ctx()))
+        enter(patch("src.scheduler._active_profiles", AsyncMock(return_value=[profile])))
+        enter(patch("src.scheduler._profile_today", return_value=subject_date))
+        enter(patch("src.scheduler.HolidayPauseService", return_value=holiday_service))
+        enter(patch("src.scheduler.NudgeAlertService", return_value=nudge_service))
+        yield SimpleNamespace(
+            profile=profile,
+            subject_date=subject_date,
+            session=session,
+            holiday=holiday_service,
+            nudge=nudge_service,
+        )
+
+
+@pytest.mark.asyncio
+async def test_holiday_suppresses_evening_nudge_and_thermal_monitoring() -> None:
+    with _evening_environment_patches(active_window=MagicMock()) as spies:
+        await run_evening_sleep_nudge()
+        await run_evening_monitoring_alerts()
+
+    assert spies.holiday.get_active_window_for_date.await_count == 2
+    for call in spies.holiday.get_active_window_for_date.await_args_list:
+        assert call.args == (spies.profile, spies.subject_date)
+    spies.nudge.run_evening_nudge.assert_not_awaited()
+    spies.nudge.run_monitoring_alerts.assert_awaited_once_with(
+        spies.profile,
+        commit=False,
+        include_thermal=False,
+    )
+    assert spies.session.commit.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_normal_day_keeps_evening_nudge_and_monitoring_alerts() -> None:
+    with _evening_environment_patches(active_window=None) as spies:
+        await run_evening_sleep_nudge()
+        await run_evening_monitoring_alerts()
+
+    spies.nudge.run_evening_nudge.assert_awaited_once_with(spies.profile, commit=False)
+    spies.nudge.run_monitoring_alerts.assert_awaited_once_with(
+        spies.profile,
+        commit=False,
+        include_thermal=True,
+    )
+    assert spies.session.commit.await_count == 2
 
 
 # ---------------------------------------------------------------------------

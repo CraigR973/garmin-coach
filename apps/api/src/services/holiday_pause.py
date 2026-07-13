@@ -18,6 +18,7 @@ No migration required (mirrors the Batch 14 no-migration pattern).
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -68,6 +69,36 @@ class HolidayWindow:
     @property
     def is_active(self) -> bool:
         return self.resumed_at_utc is None
+
+
+def holiday_windows_covering_date(
+    windows: Sequence[HolidayWindow], subject_date: date
+) -> list[HolidayWindow]:
+    """Return the stored holiday windows that cover ``subject_date``.
+
+    Historical/resumed windows intentionally remain eligible: analysis packets
+    use this helper when reconstructing the truth for a past date.
+    """
+    return [window for window in windows if window.start_date <= subject_date <= window.end_date]
+
+
+def active_holiday_window_for_date(
+    windows: Sequence[HolidayWindow], subject_date: date
+) -> HolidayWindow | None:
+    """Return the current away window when it covers ``subject_date``.
+
+    Scheduled environment jobs use the active-only form so an early resume
+    immediately re-enables the bedroom subsystem even if the original window's
+    planned end date is still in the future.
+    """
+    return next(
+        (
+            window
+            for window in reversed(holiday_windows_covering_date(windows, subject_date))
+            if window.is_active
+        ),
+        None,
+    )
 
 
 @dataclass
@@ -142,6 +173,12 @@ class HolidayPauseService:
     async def get_active_window(self, user: Profile) -> HolidayWindow | None:
         windows = await self.get_windows(user)
         return next((w for w in reversed(windows) if w.is_active), None)
+
+    async def get_active_window_for_date(
+        self, user: Profile, subject_date: date
+    ) -> HolidayWindow | None:
+        windows = await self.get_windows(user)
+        return active_holiday_window_for_date(windows, subject_date)
 
     # ------------------------------------------------------------------
     # Write helpers

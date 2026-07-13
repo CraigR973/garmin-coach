@@ -76,6 +76,7 @@ from src.services.garmin_sync import (
     GarminSyncService,
     parse_sleep_fields,
 )
+from src.services.holiday_pause import HolidayPauseService
 from src.services.insights import InsightsService
 from src.services.morning_analysis import MorningAnalysisService
 from src.services.nudge_alerts import NudgeAlertService
@@ -187,8 +188,21 @@ async def run_evening_sleep_nudge() -> None:
                 return
 
             service = NudgeAlertService(session)
+            holiday_service = HolidayPauseService(session)
             nudges_recorded = 0
             for profile in profiles:
+                subject_date = _profile_today(profile)
+                if (
+                    await holiday_service.get_active_window_for_date(profile, subject_date)
+                    is not None
+                ):
+                    log.info(
+                        "evening sleep nudge skipped",
+                        reason="holiday_away",
+                        profile_id=str(profile.id),
+                        subject_date=subject_date.isoformat(),
+                    )
+                    continue
                 if await service.run_evening_nudge(profile, commit=False):
                     nudges_recorded += 1
             await session.commit()
@@ -207,9 +221,26 @@ async def run_evening_monitoring_alerts() -> None:
                 return
 
             service = NudgeAlertService(session)
+            holiday_service = HolidayPauseService(session)
             alerts_recorded = 0
             for profile in profiles:
-                alerts_recorded += await service.run_monitoring_alerts(profile, commit=False)
+                subject_date = _profile_today(profile)
+                holiday_away = (
+                    await holiday_service.get_active_window_for_date(profile, subject_date)
+                    is not None
+                )
+                if holiday_away:
+                    log.info(
+                        "evening thermal monitoring skipped",
+                        reason="holiday_away",
+                        profile_id=str(profile.id),
+                        subject_date=subject_date.isoformat(),
+                    )
+                alerts_recorded += await service.run_monitoring_alerts(
+                    profile,
+                    commit=False,
+                    include_thermal=not holiday_away,
+                )
             await session.commit()
         log.info(
             "evening monitoring alerts complete",
@@ -1003,6 +1034,20 @@ async def run_fan_control() -> None:
             phase = loop_phase(now_local.time())
             if phase == "idle":
                 # Daytime: a true no-op — no cloud call, and not charted.
+                return
+            subject_date = now_local.date()
+            if (
+                await HolidayPauseService(session).get_active_window_for_date(profile, subject_date)
+                is not None
+            ):
+                # Holiday means Mark is away: leave the whole subsystem dormant.
+                # Do not touch Dreo and do not manufacture an overnight chart tick.
+                log.info(
+                    "fan control skipped",
+                    reason="holiday_away",
+                    profile_id=str(profile.id),
+                    subject_date=subject_date.isoformat(),
+                )
                 return
             captured_at = _floor_to_interval(datetime.now(UTC).replace(tzinfo=None))
             profile_id = profile.id
