@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Activity, ClipboardCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { BriefListenControls } from '@/components/BriefListenControls';
 import { Markdown } from '@/components/Markdown';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -77,7 +78,10 @@ export function MorningBriefPage() {
                 <Activity className="h-4 w-4 text-primary" aria-hidden />
                 Coach read
               </CardTitle>
-              <CardDescription>Generated {formatDateTime(analysis.generatedAtUtc)}</CardDescription>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <CardDescription>Generated {formatDateTime(analysis.generatedAtUtc)}</CardDescription>
+                <BriefListenControls markdown={analysis.outputMarkdown} />
+              </div>
             </CardHeader>
             <CardContent>
               <Markdown>{analysis.outputMarkdown}</Markdown>
