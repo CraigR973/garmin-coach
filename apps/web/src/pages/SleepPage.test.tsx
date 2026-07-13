@@ -217,10 +217,113 @@ const overnightSnapshot = {
   errors: [],
 };
 
-function renderWithSnapshot(loopSnapshot: DailyLoopEnvelope) {
-  apiFetchMock.mockImplementation((path: string) =>
-    Promise.resolve(path.startsWith('/api/v1/bedroom/overnight') ? overnightSnapshot : loopSnapshot),
-  );
+const historicalSnapshot: DailyLoopEnvelope = {
+  ...snapshot,
+  data: {
+    ...snapshot.data,
+    subjectDate: '2026-06-19',
+    morningAnalysis: {
+      ...snapshot.data.morningAnalysis!,
+      id: '33333333-3333-4333-8333-333333333333',
+      outputMarkdown: '**Steadier night**',
+      metricsVsBaselines: [
+        {
+          metricKey: 'hrv_7_day_avg_ms',
+          label: 'HRV (7-day)',
+          currentValue: 47,
+          baselineMedian: 49,
+          lowerQuartile: 43,
+          upperQuartile: 57,
+          sampleCount: 14,
+          excludedSampleCount: 70,
+          reliabilityStartDate: '2026-06-10',
+        },
+      ],
+      ageComparison: {
+        ageBand: '50–59',
+        rows: [],
+        sleepRows: [
+          {
+            metricKey: 'sleep_duration_hours',
+            label: 'Duration',
+            value: 7.8,
+            unit: ' h',
+            ageAverage: 7.1,
+            bandLow: 6.5,
+            bandHigh: 8,
+            garminTargetLow: null,
+            garminTargetHigh: null,
+            ageBand: '50–59',
+            betterDirection: 'higher',
+            tone: 'good',
+            descriptor: 'Healthy for your age',
+          },
+        ],
+      },
+    },
+    sleep: {
+      id: '44444444-4444-4444-8444-444444444444',
+      userId: '11111111-1111-4111-8111-111111111111',
+      calendarDate: '2026-06-19',
+      sleepStartUtc: '2026-06-18T22:35:00Z',
+      sleepEndUtc: '2026-06-19T06:50:00Z',
+      score: 81,
+      ageAdjustedScore: 85,
+      qualifier: 'good',
+      durationSec: 29700,
+      deepSleepSec: 4200,
+      lightSleepSec: 16200,
+      remSleepSec: 5400,
+      awakeSleepSec: 900,
+      unmeasurableSleepSec: 0,
+      averageSpo2Pct: 96,
+      lowestSpo2Pct: 93,
+      averageRespiration: 14.2,
+      restingHeartRateBpm: 52,
+      avgOvernightHrvMs: 48,
+      hrvStatus: 'balanced',
+      avgSleepStress: 18,
+      restlessMomentsCount: 8,
+      bodyBatteryChange: 62,
+      factorsJson: {},
+      rawPayload: {},
+    },
+    chronicSuggestions: undefined,
+  },
+};
+
+const historicalOvernightSnapshot = {
+  ...overnightSnapshot,
+  data: {
+    ...overnightSnapshot.data,
+    night: '2026-06-18',
+    temperature: [{ t: '2026-06-18T22:00:00Z', c: 19.2 }],
+    summary: {
+      minTempC: 18,
+      maxTempC: 19,
+      fanRanMinutes: 60,
+      peakSpeed: 3,
+      warningMinutes: 0,
+      criticalMinutes: 0,
+      roomVerdict: 'green',
+    },
+    nights: ['2026-06-19', '2026-06-18'],
+  },
+};
+
+function renderWithSnapshot(
+  loopSnapshot: DailyLoopEnvelope,
+  options?: {
+    dailyLoopByPath?: Record<string, DailyLoopEnvelope>;
+    overnightByPath?: Record<string, typeof overnightSnapshot>;
+  },
+) {
+  apiFetchMock.mockImplementation((path: string) => {
+    if (path.startsWith('/api/v1/bedroom/overnight')) {
+      return Promise.resolve(options?.overnightByPath?.[path] ?? overnightSnapshot);
+    }
+    return Promise.resolve(options?.dailyLoopByPath?.[path] ?? loopSnapshot);
+  });
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
   render(
@@ -297,6 +400,42 @@ describe('SleepPage', () => {
     expect(screen.getByText(/18 sessions · 54 min in 4 weeks/i)).toBeTruthy();
     const link = screen.getByRole('link', { name: /open climate/i });
     expect(link.getAttribute('href')).toBe('/environment');
+  });
+
+  it('lets Mark browse an earlier night from the sleep calendar and loads that date history', async () => {
+    const user = userEvent.setup();
+    const checkedIn = JSON.parse(JSON.stringify(snapshot)) as DailyLoopEnvelope;
+    checkedIn.data.manualEntry = {
+      id: '12121212-1212-4121-8121-121212121212',
+      userId: '11111111-1111-4111-8111-111111111111',
+      entryDate: '2026-06-20',
+      entryAtUtc: '2026-06-20T07:00:00Z',
+      actualWorkoutJson: {},
+      supplementsJson: {},
+      foodJson: {},
+    };
+
+    renderWithSnapshot(checkedIn, {
+      dailyLoopByPath: {
+        '/api/v1/daily-loop?subject_date=2026-06-19': historicalSnapshot,
+      },
+      overnightByPath: {
+        '/api/v1/bedroom/overnight?date=2026-06-18': historicalOvernightSnapshot,
+      },
+    });
+
+    await screen.findByText("Last night's sleep");
+    await user.click(screen.getByRole('button', { name: 'Friday 19 June 2026' }));
+
+    expect(
+      await screen.findByRole('heading', {
+        name: /Sleep for Friday.*19/,
+      }),
+    ).toBeTruthy();
+    expect(screen.getByText('Selected: Fri 19 Jun')).toBeTruthy();
+    expect((await screen.findByTestId('overnight-room-verdict-badge')).textContent).toBe('Green');
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/daily-loop?subject_date=2026-06-19');
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/bedroom/overnight?date=2026-06-18');
   });
 
   it('/bedroom redirects into /environment', async () => {

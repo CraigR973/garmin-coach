@@ -12,9 +12,18 @@ import { friendlyDate } from '@/lib/dailyFlow';
 /** The overnight temperature × fan × sleep hypnogram chart, with a room-verdict
  *  badge and a night pager (Batch 31). Extracted from the retired `/bedroom`
  *  page into the `/sleep` hub's "Last night" view (Batch 49). */
-export function OvernightChartCard() {
+export function OvernightChartCard({
+  night: controlledNight,
+  captionDate,
+  showPager = true,
+}: {
+  night?: string | null;
+  captionDate?: string;
+  showPager?: boolean;
+} = {}) {
   const [night, setNight] = useState<string | null>(null);
-  const query = useBedroomOvernight(night);
+  const activeNight = controlledNight ?? night;
+  const query = useBedroomOvernight(activeNight);
   const data = query.data?.data;
 
   const nights = data?.nights ?? [];
@@ -41,31 +50,33 @@ export function OvernightChartCard() {
               ) : null}
             </CardTitle>
             <CardDescription>
-              {data ? friendlyDate(data.night) : 'Room temperature, what the fan did, and your sleep.'}
+              {data ? friendlyDate(captionDate ?? data.night) : 'Room temperature, what the fan did, and your sleep.'}
             </CardDescription>
           </div>
-          <div className="flex shrink-0 items-center gap-1">
-            <Button
-              type="button"
-              size="icon"
-              variant="outline"
-              aria-label="Previous night"
-              disabled={!olderNight}
-              onClick={() => olderNight && setNight(olderNight)}
-            >
-              <ChevronLeft className="h-4 w-4" aria-hidden />
-            </Button>
-            <Button
-              type="button"
-              size="icon"
-              variant="outline"
-              aria-label="Next night"
-              disabled={!newerNight}
-              onClick={() => newerNight && setNight(newerNight)}
-            >
-              <ChevronRight className="h-4 w-4" aria-hidden />
-            </Button>
-          </div>
+          {showPager ? (
+            <div className="flex shrink-0 items-center gap-1">
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                aria-label="Previous night"
+                disabled={!olderNight}
+                onClick={() => olderNight && setNight(olderNight)}
+              >
+                <ChevronLeft className="h-4 w-4" aria-hidden />
+              </Button>
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                aria-label="Next night"
+                disabled={!newerNight}
+                onClick={() => newerNight && setNight(newerNight)}
+              >
+                <ChevronRight className="h-4 w-4" aria-hidden />
+              </Button>
+            </div>
+          ) : null}
         </div>
       </CardHeader>
       <CardContent>
