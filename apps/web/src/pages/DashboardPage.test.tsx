@@ -404,6 +404,7 @@ describe('DashboardPage', () => {
 
     // Today is the primary → expanded: its body controls are live.
     expect(await screen.findByText('Cycle day')).toBeTruthy();
+    expect(screen.getByText('Good morning, Mark. You\'re good to go this morning.')).toBeTruthy();
     expect(screen.getByText('Tempo ride')).toBeTruthy();
     // Batch 54: one primary (Edit) + one secondary (Swap day) visible directly;
     // Skip is tucked into the "More options" overflow.
@@ -544,7 +545,11 @@ describe('DashboardPage', () => {
           tone: 'protect',
           headline: "Protect tonight's wind-down",
           summary: 'A late hard session plus a warm room may make sleep more fragile.',
-          evidence: ['Latest session started 18:05.', 'Bedroom is currently 20.1C.'],
+          evidence: [
+            'Latest session started 18:05.',
+            'Nights after higher training load average lower sleep scores.',
+            'Bedroom is currently 20.1C.',
+          ],
           prepActions: [
             'Let Auto manage the pre-cool; check Bedroom if the room is still warm near 22:00.',
             'Bring the wind-down forward: breathing at 20:00 and snack finished by 21:30.',
@@ -565,6 +570,11 @@ describe('DashboardPage', () => {
 
     expect(screen.getByText("Protect tonight's wind-down")).toBeTruthy();
     expect(screen.getByText(/late hard session/)).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Right now this is based on today's training, your measured sleep drivers, and the room right now.",
+      ),
+    ).toBeTruthy();
     expect(screen.getByText(/Let Auto manage/)).toBeTruthy();
     expect(screen.getByText('Evidence')).toBeTruthy();
     expect(screen.getByText('Latest session started 18:05.')).toBeTruthy();

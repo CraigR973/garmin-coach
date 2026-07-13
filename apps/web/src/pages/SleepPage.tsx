@@ -7,9 +7,9 @@ import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/EmptyState';
 import { Tabs } from '@/components/ui/tabs';
+import { DetailLinkCard } from '@/components/DetailLinkCard';
 import { SleepSnapshotBody } from '@/components/SleepSnapshotBody';
 import { SleepPrepBody } from '@/components/SleepPrepBody';
-import { BedroomBody } from '@/components/BedroomBody';
 import { OvernightChartCard } from '@/components/OvernightChartCard';
 import { SleepStageAgeTable } from '@/components/SleepStageAgeTable';
 import { GoodMorningCta } from '@/components/GoodMorningCta';
@@ -29,9 +29,10 @@ const VIEW_ITEMS = [
  * The sleep loop's nav home (Batch 49): a Last night | Tonight split composing
  * surfaces that already exist elsewhere — the morning metrics table + overnight
  * room glance/chart (last night, retrospective) and the evening sleep
- * projection + live bedroom/fan controls (tonight, prospective). Absorbs the
- * retired `/bedroom` page. No new data — reads the same `/api/v1/daily-loop`
- * + `/api/v1/bedroom/overnight` queries the Home sections already use.
+ * projection + bedroom summary (tonight, prospective). Batch 101 moves the
+ * growing control surface to the dedicated Climate tab while keeping the sleep
+ * context here. No new data — reads the same `/api/v1/daily-loop` +
+ * `/api/v1/bedroom/overnight` queries the Home sections already use.
  */
 export function SleepPage() {
   const [view, setView] = useState<SleepView>('last-night');
@@ -140,14 +141,36 @@ export function SleepPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Fan className="h-4 w-4 text-primary" aria-hidden />
-                Bedroom &amp; fan
+                Bedroom climate
               </CardTitle>
               <CardDescription>
-                When the autopilot is on, the fan runs itself overnight from the room temperature.
+                Keep the thermal context here, then jump to Climate when you need the full controls.
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <BedroomBody thermal={thermal} variant="full" />
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                <SleepStat
+                  label="Indoor now"
+                  value={thermal.latestTemperatureC != null ? `${thermal.latestTemperatureC.toFixed(1)}°C` : 'Not synced'}
+                />
+                <SleepStat
+                  label="Thermostat"
+                  value={thermal.targetTemperatureC != null ? `${thermal.targetTemperatureC.toFixed(1)}°C` : '—'}
+                />
+                <SleepStat
+                  label="Overnight low"
+                  value={thermal.overnightLowC != null ? `${thermal.overnightLowC.toFixed(1)}°C` : '—'}
+                />
+                <SleepStat
+                  label="Wind"
+                  value={thermal.overnightWindMaxMph != null ? `${thermal.overnightWindMaxMph.toFixed(0)} mph` : '—'}
+                />
+              </div>
+              <DetailLinkCard
+                to="/environment"
+                title="Open Climate"
+                description="Control the fans and see the full overnight room chart."
+              />
             </CardContent>
           </Card>
         </div>
@@ -176,6 +199,15 @@ export function SleepPage() {
           </Button>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function SleepStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-border px-3 py-3">
+      <p className="text-xs text-text-muted">{label}</p>
+      <p className="text-lg font-semibold text-text-primary">{value}</p>
     </div>
   );
 }

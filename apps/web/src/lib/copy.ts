@@ -44,3 +44,29 @@ export function greetingForNow(date = new Date()): string {
   if (h < 18) return 'Good afternoon';
   return 'Good evening';
 }
+
+function timeContextForNow(date = new Date()): string {
+  const h = date.getHours();
+  if (h < 12) return 'this morning';
+  if (h < 18) return 'this afternoon';
+  return 'tonight';
+}
+
+export function personalStatusLine(
+  verdict: string | null | undefined,
+  displayName?: string | null,
+  date = new Date(),
+): string {
+  const greeting = `${greetingForNow(date)}${displayName ? `, ${displayName}` : ''}.`;
+
+  if (verdict === 'green') {
+    return `${greeting} You're good to go ${timeContextForNow(date)}.`;
+  }
+  if (verdict === 'amber') {
+    return `${greeting} Take it a bit easier ${timeContextForNow(date)}.`;
+  }
+  if (verdict === 'red') {
+    return `${greeting} Recovery is the right call ${timeContextForNow(date)}.`;
+  }
+  return `${greeting} Your brief will land once today's read is ready.`;
+}

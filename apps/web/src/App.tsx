@@ -31,6 +31,9 @@ const MorningBriefPage = lazy(() =>
 const SleepPage = lazy(() =>
   import('./pages/SleepPage').then((m) => ({ default: m.SleepPage })),
 );
+const EnvironmentPage = lazy(() =>
+  import('./pages/EnvironmentPage').then((m) => ({ default: m.EnvironmentPage })),
+);
 const SettingsPage = lazy(() =>
   import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 );
@@ -108,7 +111,8 @@ export function App() {
                       <Route path="/check-in" element={<CheckInPage />} />
                       <Route path="/brief" element={<MorningBriefPage />} />
                       <Route path="/sleep" element={<SleepPage />} />
-                      <Route path="/bedroom" element={<Navigate to="/sleep" replace />} />
+                      <Route path="/environment" element={<EnvironmentPage />} />
+                      <Route path="/bedroom" element={<Navigate to="/environment" replace />} />
                       <Route path="/delivery" element={<WeekAheadPage />} />
                       <Route path="/holiday" element={<HolidayPage />} />
                       <Route path="/builder" element={<BlockGeneratorPage />} />

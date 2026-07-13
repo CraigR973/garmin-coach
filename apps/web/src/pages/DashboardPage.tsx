@@ -62,7 +62,7 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { apiFetch } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { formatDateTime, friendlyDate, hm, nextDays, remContext, type FanState } from '@/lib/dailyFlow';
-import { greetingForNow, verdictLabel } from '@/lib/copy';
+import { greetingForNow, personalStatusLine, verdictLabel } from '@/lib/copy';
 import { dayStateForWorkouts, type DayCategory } from '@/lib/workoutCategories';
 import { actionSection, nextAction, type NextAction } from '@/lib/homeActions';
 import { hasReviewedSleep } from '@/lib/sleepReview';
@@ -681,7 +681,9 @@ export function DashboardPage() {
       {/* Batch 54: a compact greeting lockup (was the full PageHeader h1) so the
           verdict sits higher on cold load. */}
       <div className="flex items-baseline justify-between gap-3">
-        <p className="text-sm font-medium text-text-secondary">{greeting}</p>
+        <p className="text-sm font-medium text-text-secondary">
+          {analysis ? personalStatusLine(analysis.verdict, player?.displayName) : greeting}
+        </p>
         <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">
           {friendlyDate(daily.subjectDate)}
         </p>

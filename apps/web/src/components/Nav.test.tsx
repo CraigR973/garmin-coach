@@ -20,13 +20,14 @@ function renderAt(path: string, ui: React.ReactElement) {
   return render(<MemoryRouter initialEntries={[path]}>{ui}</MemoryRouter>);
 }
 
-describe('primary navigation (Batch 49)', () => {
-  it('TabBar renders Home / Week / Sleep as the primary tabs', () => {
+describe('primary navigation', () => {
+  it('TabBar renders Home / Week / Sleep / Climate as the primary tabs', () => {
     renderAt('/', <TabBar />);
     const nav = screen.getByRole('navigation', { name: 'Primary' });
     expect(within(nav).getByText('Home')).toBeTruthy();
     expect(within(nav).getByText('Week')).toBeTruthy();
     expect(within(nav).getByText('Sleep')).toBeTruthy();
+    expect(within(nav).getByText('Climate')).toBeTruthy();
     expect(within(nav).queryByText('Plan')).toBeNull();
     expect(within(nav).queryByText('Trends')).toBeNull();
   });
@@ -35,6 +36,12 @@ describe('primary navigation (Batch 49)', () => {
     renderAt('/sleep', <TabBar />);
     const sleepLink = screen.getByRole('link', { name: /sleep/i });
     expect(sleepLink.getAttribute('aria-current')).toBe('page');
+  });
+
+  it('TabBar marks Climate active on /environment', () => {
+    renderAt('/environment', <TabBar />);
+    const climateLink = screen.getByRole('link', { name: /climate/i });
+    expect(climateLink.getAttribute('aria-current')).toBe('page');
   });
 
   it('TabBar "More" lights active for a re-tiered secondary path', () => {
@@ -72,6 +79,7 @@ describe('primary navigation (Batch 49)', () => {
     expect(within(nav).getByText('Home')).toBeTruthy();
     expect(within(nav).getByText('Week')).toBeTruthy();
     expect(within(nav).getByText('Sleep')).toBeTruthy();
+    expect(within(nav).getByText('Climate')).toBeTruthy();
 
     await user.click(within(nav).getByText('More'));
     expect(await screen.findByText('For you')).toBeTruthy();

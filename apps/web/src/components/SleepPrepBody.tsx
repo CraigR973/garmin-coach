@@ -4,6 +4,47 @@ import type { DailyLoopData } from '@/hooks/useDailyLoop';
 
 type SleepProjection = DailyLoopData['sleepProjection'];
 
+function projectionBasisSummary(projection: NonNullable<SleepProjection>): string {
+  if (projection.status !== 'personalized') {
+    return "Right now this is your standard sleep routine. It has not seen enough personal training signal to move off the default plan yet.";
+  }
+
+  const evidence = projection.evidence.map((line) => line.toLowerCase());
+  const basis: string[] = [];
+
+  if (
+    evidence.some(
+      (line) =>
+        line.includes('latest session') ||
+        line.includes('training effect') ||
+        line.includes('load/duration') ||
+        line.includes('early/light'),
+    )
+  ) {
+    basis.push("today's training");
+  }
+  if (evidence.some((line) => line.includes('sleep score') || line.includes('measured driver'))) {
+    basis.push('your measured sleep drivers');
+  }
+  if (evidence.some((line) => line.includes('bedroom is currently'))) {
+    basis.push('the room right now');
+  } else if (evidence.some((line) => line.includes('forecast overnight low'))) {
+    basis.push('the overnight forecast');
+  }
+
+  if (basis.length === 0) {
+    return 'Right now this is based on the signals collected so far.';
+  }
+
+  if (basis.length === 1) {
+    return `Right now this is based on ${basis[0]}.`;
+  }
+
+  const head = basis.slice(0, -1).join(', ');
+  const tail = basis[basis.length - 1];
+  return `Right now this is based on ${head}, and ${tail}.`;
+}
+
 /** Tonight's evening sleep projection (Batch 46) — the wind-down headline, prep
  *  actions, and evidence disclosure. Shared by Home's "Tonight" section (compact
  *  context) and the `/sleep` hub's "Tonight" view (Batch 49) — extracted from
@@ -27,6 +68,7 @@ export function SleepPrepBody({ projection }: { projection: SleepProjection | nu
           <p className="font-medium text-text-primary">{projection.headline}</p>
         </div>
         <p className="leading-6 text-text-secondary">{projection.summary}</p>
+        <p className="text-xs leading-5 text-text-muted">{projectionBasisSummary(projection)}</p>
       </div>
       {projection.prepActions.length > 0 && (
         <ul className="space-y-2">

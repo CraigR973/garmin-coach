@@ -8,6 +8,7 @@ import {
   Home,
   MoonStar,
   Settings as SettingsIcon,
+  Thermometer,
   TrendingUp,
   Umbrella,
   type LucideIcon,
@@ -21,10 +22,9 @@ import {
  * "More" menu. This replaced a 10-tab bottom bar (unusable on a phone) and a
  * 3-item desktop nav that left 7 destinations unreachable.
  *
- * Batch 49 revises the primary bar from Home/Plan/Trends to Home/Week/Sleep —
- * the daily loop has a training half (Home/Week) and a sleep half (Sleep, the
- * new `/sleep` hub), and Trends is a browse-when-curious surface, not a daily
- * one, so it moves under "More" (DECISIONS #119).
+ * Batch 49 revised the primary bar from Home/Plan/Trends to Home/Week/Sleep.
+ * Batch 101 extends that split with a dedicated Climate tab so Sleep can keep
+ * the sleep story while Climate owns the room/fan controls.
  */
 
 export interface NavItem {
@@ -43,6 +43,7 @@ export const PRIMARY_TABS: NavItem[] = [
   { to: '/', label: 'Home', Icon: Home },
   { to: '/delivery', label: 'Week', Icon: CalendarCheck },
   { to: '/sleep', label: 'Sleep', Icon: MoonStar },
+  { to: '/environment', label: 'Climate', Icon: Thermometer },
 ];
 
 export const MORE_GROUPS: NavGroup[] = [
