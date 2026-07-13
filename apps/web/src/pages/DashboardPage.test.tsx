@@ -665,7 +665,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText(/steady work/i)).toBeTruthy();
   });
 
-  it('renders walking, breathwork, and deliberate-walk reads on the Today section', async () => {
+  it('keeps deliberate-walk reads on Today without the walking or breathwork summary cards', async () => {
     renderPage(
       buildSnapshot((snapshot) => {
         snapshot.data.postWalkAnalyses = [
@@ -687,11 +687,9 @@ describe('DashboardPage', () => {
       }),
     );
 
-    expect(await screen.findByText('Walking base')).toBeTruthy();
-    expect(screen.getByText(/6 walks · 18.5 km · 250 min/i)).toBeTruthy();
-    expect(screen.getByText('Breathwork rhythm')).toBeTruthy();
-    expect(screen.getByText(/18 sessions · 54 min in 4 weeks/i)).toBeTruthy();
-    expect(screen.getByText('Walk read')).toBeTruthy();
+    expect(await screen.findByText('Walk read')).toBeTruthy();
+    expect(screen.queryByText('Walking base')).toBeNull();
+    expect(screen.queryByText('Breathwork rhythm')).toBeNull();
     expect(screen.getByText('Morning Walk')).toBeTruthy();
     expect(screen.getByText('Walk read:')).toBeTruthy();
   });

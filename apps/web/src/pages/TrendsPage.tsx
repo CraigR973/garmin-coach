@@ -19,6 +19,8 @@ import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { WalkingBaseCard } from '@/components/WalkingBaseCard';
+import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
 import { apiFetch } from '@/lib/api';
 
 type TrendsEnvelope = typeof trendsNarrativeEnvelopeSchema._type;
@@ -67,6 +69,7 @@ export function TrendsPage() {
   const queryClient = useQueryClient();
   const [bucket, setBucket] = useState<TrendBucket>('month');
   const query = useQuery({ queryKey: ['trends', bucket], queryFn: () => fetchTrends(bucket) });
+  const dailyLoopQuery = useDailyLoop();
 
   const runMutation = useMutation({
     mutationFn: () => runTrends(bucket),
@@ -118,7 +121,12 @@ export function TrendsPage() {
           </CardHeader>
         </Card>
       ) : (
-        <TrendsBody data={query.data.data} generating={runMutation.isPending} onGenerate={() => runMutation.mutate()} />
+        <TrendsBody
+          data={query.data.data}
+          walkingBrief={dailyLoopQuery.data?.data.walkingBrief ?? null}
+          generating={runMutation.isPending}
+          onGenerate={() => runMutation.mutate()}
+        />
       )}
     </div>
   );
@@ -126,10 +134,12 @@ export function TrendsPage() {
 
 function TrendsBody({
   data,
+  walkingBrief,
   generating,
   onGenerate,
 }: {
   data: TrendsEnvelope['data'];
+  walkingBrief: DailyLoopData['walkingBrief'] | null;
   generating: boolean;
   onGenerate: () => void;
 }) {
@@ -147,6 +157,20 @@ function TrendsBody({
 
   return (
     <div className="space-y-4">
+      {walkingBrief ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Walking base</CardTitle>
+            <CardDescription>
+              Keep deliberate walking credited in the long-range view instead of inside today&apos;s workout card.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <WalkingBaseCard brief={walkingBrief} description="This 4-week base sits alongside your broader trends." />
+          </CardContent>
+        </Card>
+      ) : null}
+
       {/* Trend chart */}
       <Card>
         <CardHeader>

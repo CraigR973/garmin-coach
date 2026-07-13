@@ -1,10 +1,10 @@
-import { Fan, Thermometer } from 'lucide-react';
+import { Fan, MoonStar, Thermometer } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/EmptyState';
 import { BedroomBody } from '@/components/BedroomBody';
-import { OvernightChartCard } from '@/components/OvernightChartCard';
+import { DetailLinkCard } from '@/components/DetailLinkCard';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
 import { friendlyDate } from '@/lib/dailyFlow';
 
@@ -71,8 +71,24 @@ export function EnvironmentPage() {
           back on.
         </CardContent>
       </Card>
-
-      <OvernightChartCard />
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MoonStar className="h-4 w-4 text-primary" aria-hidden />
+            Last night
+          </CardTitle>
+          <CardDescription>
+            The retrospective overnight room and fan chart lives with Sleep, not the live Climate controls.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DetailLinkCard
+            to="/sleep"
+            title="Review last night in Sleep"
+            description="Open Sleep for the overnight room, fan, and sleep chart."
+          />
+        </CardContent>
+      </Card>
     </div>
   );
 }
