@@ -78,127 +78,130 @@ export function SleepPage() {
   const ageComparison = (analysis?.ageComparison ?? null) as AgeComparison | null;
   const chronicSuggestions = data.chronicSuggestions ?? null;
   const thermal = data.thermalState;
+  const hasSleepAccess = data.manualEntry != null || analysis != null;
 
   return (
     <div className="space-y-5">
       <PageHeader title="Sleep" eyebrow={friendlyDate(data.subjectDate)} />
 
-      {/* Batch 95: the check-in is just as discoverable from Sleep as from
-          Home — pt 4 of the walkthrough. Same hero, same /check-in link. */}
-      {data.manualEntry == null ? <GoodMorningCta dateLabel={friendlyDate(data.subjectDate)} /> : null}
+      {!hasSleepAccess ? <GoodMorningCta dateLabel={friendlyDate(data.subjectDate)} /> : null}
 
-      <Tabs items={VIEW_ITEMS} value={view} onChange={setView} variant="segmented" />
+      {hasSleepAccess ? <Tabs items={VIEW_ITEMS} value={view} onChange={setView} variant="segmented" /> : null}
 
-      {view === 'last-night' ? (
-        <div className="space-y-5">
+      {hasSleepAccess ? (
+        <>
+          {view === 'last-night' ? (
+            <div className="space-y-5">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BedDouble className="h-4 w-4 text-primary" aria-hidden />
+                    Last night&apos;s sleep
+                  </CardTitle>
+                  <CardDescription>How last night compares to your own normal and your age group.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <SleepSnapshotBody
+                    metricsVsBaselines={metricsVsBaselines}
+                    ageComparison={ageComparison}
+                    chronicSuggestions={chronicSuggestions}
+                    morningBriefLink="/brief"
+                    showOvernightGlance={false}
+                  />
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Sleep stages vs your age</CardTitle>
+                  <CardDescription>
+                    Duration and stage balance compared with the typical overnight pattern for your age
+                    group.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <SleepStageAgeTable rows={ageComparison?.sleepRows ?? []} ageBand={ageComparison?.ageBand} />
+                </CardContent>
+              </Card>
+              <OvernightChartCard />
+            </div>
+          ) : (
+            <div className="space-y-5">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <MoonStar className="h-4 w-4 text-primary" aria-hidden />
+                    Tonight&apos;s sleep prep
+                  </CardTitle>
+                  <CardDescription>What tonight's training and drivers mean for your wind-down.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <SleepPrepBody projection={data.sleepProjection ?? null} />
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Fan className="h-4 w-4 text-primary" aria-hidden />
+                    Bedroom climate
+                  </CardTitle>
+                  <CardDescription>
+                    Keep the thermal context here, then jump to Climate when you need the full controls.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                    <SleepStat
+                      label="Indoor now"
+                      value={thermal.latestTemperatureC != null ? `${thermal.latestTemperatureC.toFixed(1)}°C` : 'Not synced'}
+                    />
+                    <SleepStat
+                      label="Thermostat"
+                      value={thermal.targetTemperatureC != null ? `${thermal.targetTemperatureC.toFixed(1)}°C` : '—'}
+                    />
+                    <SleepStat
+                      label="Overnight low"
+                      value={thermal.overnightLowC != null ? `${thermal.overnightLowC.toFixed(1)}°C` : '—'}
+                    />
+                    <SleepStat
+                      label="Wind"
+                      value={thermal.overnightWindMaxMph != null ? `${thermal.overnightWindMaxMph.toFixed(0)} mph` : '—'}
+                    />
+                  </div>
+                  <DetailLinkCard
+                    to="/environment"
+                    title="Open Climate"
+                    description="Control the fans and see the full overnight room chart."
+                  />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Batch 60: the morning check-in folds into the sleep review as one step
+              and is optional — offered here (and in the Today footer), never nagged.
+              Logging how he feels can still ease today's ride (DECISIONS #126). */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <BedDouble className="h-4 w-4 text-primary" aria-hidden />
-                Last night&apos;s sleep
+                <ClipboardCheck className="h-4 w-4 text-primary" aria-hidden />
+                Add today&apos;s check-in
               </CardTitle>
-              <CardDescription>How last night compares to your own normal and your age group.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <SleepSnapshotBody
-                metricsVsBaselines={metricsVsBaselines}
-                ageComparison={ageComparison}
-                chronicSuggestions={chronicSuggestions}
-                morningBriefLink="/brief"
-                showOvernightGlance={false}
-              />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Sleep stages vs your age</CardTitle>
               <CardDescription>
-                Duration and stage balance compared with the typical overnight pattern for your age
-                group.
+                Optional — logging how you feel, plus any BP or notes, sharpens the coach&apos;s read and can
+                ease today&apos;s ride.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <SleepStageAgeTable rows={ageComparison?.sleepRows ?? []} ageBand={ageComparison?.ageBand} />
+              <Button asChild variant="outline" className="w-full">
+                <Link to="/check-in">
+                  <ClipboardCheck className="h-4 w-4" aria-hidden />
+                  Morning check-in
+                </Link>
+              </Button>
             </CardContent>
           </Card>
-          <OvernightChartCard />
-        </div>
-      ) : (
-        <div className="space-y-5">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MoonStar className="h-4 w-4 text-primary" aria-hidden />
-                Tonight&apos;s sleep prep
-              </CardTitle>
-              <CardDescription>What tonight's training and drivers mean for your wind-down.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <SleepPrepBody projection={data.sleepProjection ?? null} />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Fan className="h-4 w-4 text-primary" aria-hidden />
-                Bedroom climate
-              </CardTitle>
-              <CardDescription>
-                Keep the thermal context here, then jump to Climate when you need the full controls.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                <SleepStat
-                  label="Indoor now"
-                  value={thermal.latestTemperatureC != null ? `${thermal.latestTemperatureC.toFixed(1)}°C` : 'Not synced'}
-                />
-                <SleepStat
-                  label="Thermostat"
-                  value={thermal.targetTemperatureC != null ? `${thermal.targetTemperatureC.toFixed(1)}°C` : '—'}
-                />
-                <SleepStat
-                  label="Overnight low"
-                  value={thermal.overnightLowC != null ? `${thermal.overnightLowC.toFixed(1)}°C` : '—'}
-                />
-                <SleepStat
-                  label="Wind"
-                  value={thermal.overnightWindMaxMph != null ? `${thermal.overnightWindMaxMph.toFixed(0)} mph` : '—'}
-                />
-              </div>
-              <DetailLinkCard
-                to="/environment"
-                title="Open Climate"
-                description="Control the fans and see the full overnight room chart."
-              />
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Batch 60: the morning check-in folds into the sleep review as one step
-          and is optional — offered here (and in the Today footer), never nagged.
-          Logging how he feels can still ease today's ride (DECISIONS #126). */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ClipboardCheck className="h-4 w-4 text-primary" aria-hidden />
-            Add today&apos;s check-in
-          </CardTitle>
-          <CardDescription>
-            Optional — logging how you feel, plus any BP or notes, sharpens the coach&apos;s read and can
-            ease today&apos;s ride.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button asChild variant="outline" className="w-full">
-            <Link to="/check-in">
-              <ClipboardCheck className="h-4 w-4" aria-hidden />
-              Morning check-in
-            </Link>
-          </Button>
-        </CardContent>
-      </Card>
+        </>
+      ) : null}
     </div>
   );
 }

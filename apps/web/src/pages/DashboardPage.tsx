@@ -567,8 +567,11 @@ export function DashboardPage() {
   // Batch 37: render the full section set every load; exactly one is expanded
   // (the action/phase primary). Presence is only ever gated by hasRide.
   const order = orderedSections(phase, { hasRide, isEvening, primary });
+  // Batch 103: before today's brief exists, Home should show one clear
+  // "Say good morning" and keep the raw last-night sleep snapshot hidden.
+  const visibleOrder = analysis == null ? order.filter((key) => key !== 'lastNight') : order;
   // Batch 54: the lead section stays prominent; the rest recede under "More detail".
-  const { lead, detail } = splitPrimaryDetail(order, primary);
+  const { lead, detail } = splitPrimaryDetail(visibleOrder, primary);
   const scrollToSection = (key: HomeSectionKey) => {
     document
       .getElementById(sectionDomId(key))
@@ -723,7 +726,7 @@ export function DashboardPage() {
         <TodayActions actions={analysis.todayActions} workouts={todaysWorkouts} />
       ) : null}
 
-      <NextActionStrip action={action} onGoToSection={scrollToSection} />
+      {analysis ? <NextActionStrip action={action} onGoToSection={scrollToSection} /> : null}
 
       {/* Batch 51: on md+ the sections split into an act lane (Today / After
           your ride / Tomorrow) and a context lane (Last night / Tonight /
