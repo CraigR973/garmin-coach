@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
+import type { DailyLoopEnvelope } from '@/hooks/useDailyLoop';
 import { TrendsPage } from './TrendsPage';
 
 const apiFetchMock = vi.fn();
@@ -84,6 +85,53 @@ function envelope(status: 'ok' | 'insufficient_history', withNarrative: boolean)
   };
 }
 
+const dailyLoopEnvelope: DailyLoopEnvelope = {
+  data: {
+    subjectDate: '2026-07-15',
+    timezone: 'Europe/London',
+    morningAnalysis: null,
+    dailyMetrics: null,
+    sleep: null,
+    manualEntry: null,
+    postWorkoutAnalyses: [],
+    postFlexibilityAnalyses: [],
+    postStrengthAnalyses: [],
+    postWalkAnalyses: [],
+    plannedWorkouts: [],
+    thermalState: {
+      latestTemperatureC: null,
+      targetTemperatureC: null,
+      capturedAtUtc: null,
+      overnightLowC: null,
+      overnightWindMaxMph: null,
+      overnightWindGustMph: null,
+      thermalReview: {},
+      fans: [],
+    },
+    walkingBrief: {
+      asOfDate: '2026-07-15',
+      trend: 'building',
+      trendReason: 'Deliberate walks are becoming a steadier part of the last month.',
+      window4w: {
+        sessionCount: 6,
+        totalDistanceM: 18500,
+        totalDurationMin: 250,
+        sessionsPerWeek: 1.5,
+      },
+      window12w: {
+        sessionCount: 18,
+        totalDistanceM: 54000,
+        totalDurationMin: 750,
+        sessionsPerWeek: 1.5,
+      },
+      recentSessions: [],
+    },
+    dataQualityWarnings: [],
+  },
+  meta: { generatedAtUtc: '2026-07-15T18:00:00Z' },
+  errors: [],
+};
+
 describe('TrendsPage', () => {
   it('renders year-on-year deltas and generates a narrative', async () => {
     apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
@@ -92,6 +140,9 @@ describe('TrendsPage', () => {
       }
       if (path === '/api/v1/trends/narrative?bucket=month') {
         return Promise.resolve(envelope('ok', false));
+      }
+      if (path === '/api/v1/daily-loop') {
+        return Promise.resolve(dailyLoopEnvelope);
       }
       return Promise.reject(new Error(`Unexpected request: ${path}`));
     });
@@ -108,6 +159,8 @@ describe('TrendsPage', () => {
     );
 
     expect(await screen.findByText('July 2026 vs July 2025')).toBeTruthy();
+    expect(screen.getAllByText('Walking base')).toHaveLength(2);
+    expect(screen.getByText(/6 walks · 18.5 km · 250 min/i)).toBeTruthy();
     expect(screen.getByText(/No summary written/)).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: 'Write summary' }));
@@ -126,6 +179,9 @@ describe('TrendsPage', () => {
     apiFetchMock.mockImplementation((path: string) => {
       if (path === '/api/v1/trends/narrative?bucket=month') {
         return Promise.resolve(envelope('insufficient_history', false));
+      }
+      if (path === '/api/v1/daily-loop') {
+        return Promise.resolve(dailyLoopEnvelope);
       }
       return Promise.reject(new Error(`Unexpected request: ${path}`));
     });

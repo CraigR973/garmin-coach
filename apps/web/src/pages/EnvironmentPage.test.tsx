@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DailyLoopEnvelope } from '@/hooks/useDailyLoop';
 import { EnvironmentPage } from './EnvironmentPage';
@@ -104,13 +104,19 @@ beforeEach(() => {
 });
 
 describe('EnvironmentPage', () => {
-  it('renders the climate controls and overnight chart', async () => {
-    renderWithQuery(<EnvironmentPage />);
+  it('renders the climate controls and links last night back to Sleep', async () => {
+    renderWithQuery(
+      <Routes>
+        <Route path="/" element={<EnvironmentPage />} />
+        <Route path="/sleep" element={<div>Sleep page</div>} />
+      </Routes>,
+    );
 
     expect(await screen.findByText('Bedroom climate')).toBeTruthy();
     expect(screen.getByRole('switch', { name: /overnight fan autopilot/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Low' })).toBeTruthy();
-    expect(screen.getByText('Overnight room & fan')).toBeTruthy();
+    expect(screen.queryByText('Overnight room & fan')).toBeNull();
+    expect(screen.getByRole('link', { name: /review last night in sleep/i })).toBeTruthy();
   });
 
   it('drives the fan with a manual speed preset', async () => {

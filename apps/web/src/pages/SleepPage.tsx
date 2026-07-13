@@ -13,6 +13,7 @@ import { SleepPrepBody } from '@/components/SleepPrepBody';
 import { OvernightChartCard } from '@/components/OvernightChartCard';
 import { SleepStageAgeTable } from '@/components/SleepStageAgeTable';
 import { GoodMorningCta } from '@/components/GoodMorningCta';
+import { BreathworkRhythmCard } from '@/components/BreathworkRhythmCard';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
 import { markSleepReviewed } from '@/lib/sleepReview';
 import { friendlyDate } from '@/lib/dailyFlow';
@@ -78,6 +79,7 @@ export function SleepPage() {
   const ageComparison = (analysis?.ageComparison ?? null) as AgeComparison | null;
   const chronicSuggestions = data.chronicSuggestions ?? null;
   const thermal = data.thermalState;
+  const breathworkBrief = data.breathworkBrief ?? null;
   const hasSleepAccess = data.manualEntry != null || analysis != null;
 
   return (
@@ -135,7 +137,15 @@ export function SleepPage() {
                   <CardDescription>What tonight's training and drivers mean for your wind-down.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <SleepPrepBody projection={data.sleepProjection ?? null} />
+                  <div className="space-y-4">
+                    <SleepPrepBody projection={data.sleepProjection ?? null} />
+                    {breathworkBrief ? (
+                      <BreathworkRhythmCard
+                        brief={breathworkBrief}
+                        description="Keep the 20:00 breathing habit with tonight's wind-down, not in the workout card."
+                      />
+                    ) : null}
+                  </div>
                 </CardContent>
               </Card>
               <Card>
@@ -170,7 +180,7 @@ export function SleepPage() {
                   <DetailLinkCard
                     to="/environment"
                     title="Open Climate"
-                    description="Control the fans and see the full overnight room chart."
+                    description="Control the fans here; the overnight room chart stays on Sleep."
                   />
                 </CardContent>
               </Card>

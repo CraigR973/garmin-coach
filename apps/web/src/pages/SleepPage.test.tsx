@@ -129,6 +129,22 @@ const snapshot: DailyLoopEnvelope = {
         bedtime: '23:15',
       },
     },
+    breathworkBrief: {
+      asOfDate: '2026-06-20',
+      trend: 'stable',
+      trendReason: 'You have kept the evening breathing habit steady across the last month.',
+      window4w: {
+        sessionCount: 18,
+        totalDurationMin: 54,
+        sessionsPerWeek: 4.5,
+      },
+      window12w: {
+        sessionCount: 54,
+        totalDurationMin: 162,
+        sessionsPerWeek: 4.5,
+      },
+      recentSessions: [],
+    },
     chronicSuggestions: {
       status: 'active',
       headline: 'Chronic sleep patterns to work on',
@@ -257,7 +273,7 @@ describe('SleepPage', () => {
     expect((await screen.findByTestId('overnight-room-verdict-badge')).textContent).toBe('Red');
   });
 
-  it('switches to the Tonight view with the sleep projection and a link to Climate', async () => {
+  it('switches to the Tonight view with breathwork context and a link to Climate', async () => {
     const user = userEvent.setup();
     const checkedIn = JSON.parse(JSON.stringify(snapshot)) as DailyLoopEnvelope;
     checkedIn.data.manualEntry = {
@@ -277,6 +293,8 @@ describe('SleepPage', () => {
     expect(await screen.findByText("Protect tonight's wind-down")).toBeTruthy();
     expect(screen.getByText(/late hard session/)).toBeTruthy();
     expect(screen.getByText("Right now this is based on today's training.")).toBeTruthy();
+    expect(screen.getByText('Breathwork rhythm')).toBeTruthy();
+    expect(screen.getByText(/18 sessions · 54 min in 4 weeks/i)).toBeTruthy();
     const link = screen.getByRole('link', { name: /open climate/i });
     expect(link.getAttribute('href')).toBe('/environment');
   });

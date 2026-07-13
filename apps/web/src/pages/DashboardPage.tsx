@@ -612,8 +612,6 @@ export function DashboardPage() {
           flexibilityAnalyses={postFlexibilityAnalyses}
           strengthAnalyses={postStrengthAnalyses}
           walkAnalyses={postWalkAnalyses}
-          walkingBrief={daily.walkingBrief ?? null}
-          breathworkBrief={daily.breathworkBrief ?? null}
           subjectDate={daily.subjectDate}
           workoutActions={todayActions}
           dayActions={dayActions}
@@ -961,8 +959,6 @@ function DayPlanBody({
   flexibilityAnalyses,
   strengthAnalyses,
   walkAnalyses,
-  walkingBrief,
-  breathworkBrief,
   subjectDate,
   workoutActions,
   dayActions,
@@ -978,8 +974,6 @@ function DayPlanBody({
   flexibilityAnalyses: DailyLoopData['postFlexibilityAnalyses'];
   strengthAnalyses: DailyLoopData['postStrengthAnalyses'];
   walkAnalyses: DailyLoopData['postWalkAnalyses'];
-  walkingBrief: DailyLoopData['walkingBrief'] | null;
-  breathworkBrief: DailyLoopData['breathworkBrief'] | null;
   subjectDate: string;
   workoutActions: TodayWorkoutActions;
   dayActions: {
@@ -1044,8 +1038,6 @@ function DayPlanBody({
       {flexibilityAnalyses.length > 0 ? <FlexibilityReadList items={flexibilityAnalyses} /> : null}
       {strengthAnalyses.length > 0 ? <StrengthReadList items={strengthAnalyses} /> : null}
       {walkAnalyses.length > 0 ? <WalkReadList items={walkAnalyses} /> : null}
-      {walkingBrief ? <WalkingBriefPanel brief={walkingBrief} /> : null}
-      {breathworkBrief ? <BreathworkBriefPanel brief={breathworkBrief} /> : null}
 
       <div className={`space-y-3${hasWorkouts ? ' border-t border-border pt-4' : ''}`}>
         <AddWorkoutButtons busy={dayActions.busy} onAddWorkout={dayActions.onAddWorkout} />
@@ -1075,49 +1067,6 @@ function DayPlanBody({
         </div>
         <ActualWorkoutForm busy={dayActions.busy} onSubmit={dayActions.onRecordActual} />
       </div>
-    </div>
-  );
-}
-
-function WalkingBriefPanel({
-  brief,
-}: {
-  brief: NonNullable<DailyLoopData['walkingBrief']>;
-}) {
-  const distanceKm = brief.window4w.totalDistanceM / 1000;
-  return (
-    <div className="rounded-xl border border-border bg-bg px-3 py-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="font-semibold text-text-primary">Walking base</p>
-          <p className="text-sm text-text-secondary">
-            {brief.window4w.sessionCount} walks · {distanceKm.toFixed(1)} km · {brief.window4w.totalDurationMin} min in 4 weeks
-          </p>
-        </div>
-        <Badge variant="muted">{brief.trend.replace(/_/g, ' ')}</Badge>
-      </div>
-      <p className="mt-2 text-sm text-text-secondary">{brief.trendReason}</p>
-    </div>
-  );
-}
-
-function BreathworkBriefPanel({
-  brief,
-}: {
-  brief: NonNullable<DailyLoopData['breathworkBrief']>;
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-bg px-3 py-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="font-semibold text-text-primary">Breathwork rhythm</p>
-          <p className="text-sm text-text-secondary">
-            {brief.window4w.sessionCount} sessions · {brief.window4w.totalDurationMin} min in 4 weeks
-          </p>
-        </div>
-        <Badge variant="muted">{brief.trend.replace(/_/g, ' ')}</Badge>
-      </div>
-      <p className="mt-2 text-sm text-text-secondary">{brief.trendReason}</p>
     </div>
   );
 }
