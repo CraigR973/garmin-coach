@@ -35,7 +35,18 @@ const snapshot = {
     plannedWorkouts: [],
     thermalState: {
       thermalReview: {},
-      fan: { autoEnabled: true, mode: 'idle', isOn: false, speed: null, respondingToC: null },
+      fans: [
+        {
+          id: 'fan-bedroom',
+          label: 'Bedroom fan',
+          autoEnabled: true,
+          autoTarget: true,
+          mode: 'idle',
+          isOn: false,
+          speed: null,
+          respondingToC: null,
+        },
+      ],
     },
     dataQualityWarnings: [],
     walkingBrief: {

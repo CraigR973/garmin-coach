@@ -174,7 +174,18 @@ const baseSnapshot: DailyLoopEnvelope = {
       overnightWindMaxMph: 12,
       overnightWindGustMph: 18,
       thermalReview: {},
-      fan: { autoEnabled: true, mode: 'control', isOn: true, speed: 5, respondingToC: 20.1 },
+      fans: [
+        {
+          id: 'fan-bedroom',
+          label: 'Bedroom fan',
+          autoEnabled: true,
+          autoTarget: true,
+          mode: 'control',
+          isOn: true,
+          speed: 5,
+          respondingToC: 20.1,
+        },
+      ],
     },
     sleepProjection: {
       status: 'fallback',

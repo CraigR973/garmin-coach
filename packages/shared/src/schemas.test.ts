@@ -115,13 +115,18 @@ describe('v1 shared schemas', () => {
         postWalkAnalyses: [],
         plannedWorkouts: [],
         thermalState: {
-          fan: {
-            autoEnabled: true,
-            mode: 'idle',
-            isOn: null,
-            speed: null,
-            respondingToC: null,
-          },
+          fans: [
+            {
+              id: 'fan-bedroom',
+              label: 'Bedroom fan',
+              autoEnabled: true,
+              autoTarget: true,
+              mode: 'idle',
+              isOn: null,
+              speed: null,
+              respondingToC: null,
+            },
+          ],
         },
         sleepProjection: {
           status: 'personalized',
@@ -242,13 +247,18 @@ describe('v1 shared schemas', () => {
         postWalkAnalyses: [],
         plannedWorkouts: [],
         thermalState: {
-          fan: {
-            autoEnabled: true,
-            mode: 'idle',
-            isOn: null,
-            speed: null,
-            respondingToC: null,
-          },
+          fans: [
+            {
+              id: 'fan-bedroom',
+              label: 'Bedroom fan',
+              autoEnabled: true,
+              autoTarget: true,
+              mode: 'idle',
+              isOn: null,
+              speed: null,
+              respondingToC: null,
+            },
+          ],
         },
         dataQualityWarnings: [],
       },
@@ -287,7 +297,18 @@ describe('v1 shared schemas', () => {
         postWalkAnalyses: [],
         plannedWorkouts: [],
         thermalState: {
-          fan: { autoEnabled: true, mode: 'idle', isOn: null, speed: null, respondingToC: null },
+          fans: [
+            {
+              id: 'fan-bedroom',
+              label: 'Bedroom fan',
+              autoEnabled: true,
+              autoTarget: true,
+              mode: 'idle',
+              isOn: null,
+              speed: null,
+              respondingToC: null,
+            },
+          ],
         },
         dataQualityWarnings: [],
       },

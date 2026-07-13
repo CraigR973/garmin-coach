@@ -267,6 +267,29 @@ def test_resolve_device_by_serial(monkeypatch: pytest.MonkeyPatch) -> None:
     assert wanted.is_on is True and other.is_on is False
 
 
+def test_connect_selects_requested_fan_and_lists_all_fans(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = FakeDevice(serial_number="FIRST", name="Bedroom fan")
+    second = FakeDevice(serial_number="SECOND", name="Office fan")
+    manager = FakeManager(devices=[first, second])
+    client = _client_using(monkeypatch, manager)
+
+    client.connect(fan_id="SECOND")
+
+    fans = client.list_fans()
+    assert [fan.fan_id for fan in fans] == ["FIRST", "SECOND"]
+    assert fans[0].label == "Bedroom fan"
+    assert fans[1].label == "Office fan"
+
+    snapshots = client.read_all_states()
+    assert [snapshot.info.fan_id for snapshot in snapshots] == ["FIRST", "SECOND"]
+
+    client.power(True)
+    assert second.is_on is True
+    assert first.is_on is False
+
+
 def test_unknown_serial_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     manager = FakeManager(devices=[FakeDevice(serial_number="OTHER")])
     client = _client_using(

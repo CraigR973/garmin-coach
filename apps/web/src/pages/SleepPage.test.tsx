@@ -99,7 +99,21 @@ const snapshot: DailyLoopEnvelope = {
       overnightWindMaxMph: 12,
       overnightWindGustMph: 18,
       thermalReview: {},
-      fan: { autoEnabled: true, mode: 'control', isOn: true, speed: 5, respondingToC: 20.1 },
+      fans: [
+        {
+          id: 'fan-bedroom',
+          label: 'Bedroom fan',
+          model: 'DR-HPF008S',
+          autoEnabled: true,
+          autoTarget: true,
+          mode: 'control',
+          isOn: true,
+          speed: 5,
+          oscillating: true,
+          presetMode: 'normal',
+          respondingToC: 20.1,
+        },
+      ],
     },
     sleepProjection: {
       status: 'personalized',
@@ -243,7 +257,10 @@ describe('SleepPage', () => {
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith(
         '/api/v1/fan/command',
-        expect.objectContaining({ method: 'POST', body: JSON.stringify({ power: true, speed: 3 }) }),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ fanId: 'fan-bedroom', power: true, speed: 3 }),
+        }),
       );
     });
   });

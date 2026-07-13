@@ -20,7 +20,7 @@ type ThermalState = {
   targetTemperatureC?: number | null;
   overnightLowC?: number | null;
   overnightWindMaxMph?: number | null;
-  fan: FanState;
+  fans: FanState[];
 };
 
 /** The bedroom climate + fan read: room stats, live fan status, and (in the
@@ -51,10 +51,10 @@ export function BedroomBody({
   });
 
   const commandMutation = useMutation({
-    mutationFn: ({ power, speed }: { power?: boolean; speed?: number; label: string }) =>
+    mutationFn: ({ fanId, power, speed }: { fanId: string; power?: boolean; speed?: number; label: string }) =>
       apiFetch('/api/v1/fan/command', {
         method: 'POST',
-        body: JSON.stringify({ power, speed }),
+        body: JSON.stringify({ fanId, power, speed }),
       }),
     onSuccess: async (_data, variables) => {
       await queryClient.invalidateQueries({ queryKey: ['daily-loop'] });
@@ -65,6 +65,7 @@ export function BedroomBody({
   });
 
   const commandPending = commandMutation.isPending;
+  const autoFan = thermal.fans.find((fan) => fan.autoTarget) ?? thermal.fans[0] ?? null;
 
   return (
     <div className="space-y-4">
@@ -93,41 +94,65 @@ export function BedroomBody({
           <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-3">
             <div className="min-w-0">
               <p className="font-medium text-text-primary">Overnight autopilot</p>
-              <p className="text-sm text-text-secondary">{fanStatusText(thermal.fan)}</p>
+              <p className="text-sm text-text-secondary">
+                {autoFan ? fanStatusText(autoFan) : 'No controllable fan found'}
+              </p>
             </div>
             <Toggle
-              checked={thermal.fan.autoEnabled}
+              checked={autoFan?.autoEnabled ?? false}
               onCheckedChange={(checked) => autoMutation.mutate(checked)}
-              disabled={autoMutation.isPending}
+              disabled={autoMutation.isPending || autoFan == null}
               label="Overnight fan autopilot"
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-3">
             <p className="text-xs text-text-muted">Manual control</p>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={commandPending}
-                onClick={() => commandMutation.mutate({ power: false, label: 'Fan turned off' })}
-              >
-                Turn off
-              </Button>
-              {MANUAL_SPEEDS.map(({ label, speed }) => (
-                <Button
-                  key={speed}
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={commandPending}
-                  onClick={() => commandMutation.mutate({ power: true, speed, label: `Fan set to ${label}` })}
-                >
-                  {label}
-                </Button>
-              ))}
-            </div>
+            {thermal.fans.map((fan) => (
+              <div key={fan.id} className="rounded-xl border border-border px-3 py-3">
+                <div className="mb-3">
+                  <p className="font-medium text-text-primary">{fan.label}</p>
+                  <p className="text-sm text-text-secondary">{fanStatusText(fan)}</p>
+                  <p className="text-xs text-text-muted">
+                    {fan.presetMode ? `Mode ${fan.presetMode}` : 'Mode unknown'}
+                    {' · '}
+                    {fan.oscillating == null ? 'Oscillation unknown' : fan.oscillating ? 'Oscillating' : 'Fixed'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={commandPending}
+                    onClick={() =>
+                      commandMutation.mutate({ fanId: fan.id, power: false, label: `${fan.label} turned off` })
+                    }
+                  >
+                    Turn off
+                  </Button>
+                  {MANUAL_SPEEDS.map(({ label, speed }) => (
+                    <Button
+                      key={`${fan.id}-${speed}`}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={commandPending}
+                      onClick={() =>
+                        commandMutation.mutate({
+                          fanId: fan.id,
+                          power: true,
+                          speed,
+                          label: `${fan.label} set to ${label}`,
+                        })
+                      }
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            ))}
             <p className="text-[11px] text-text-muted">
               Using a manual control turns the overnight autopilot off.
             </p>
@@ -138,8 +163,12 @@ export function BedroomBody({
           <div className="flex items-start gap-2 rounded-xl border border-border px-3 py-3 text-sm">
             <Fan className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
             <div className="min-w-0">
-              <p className="font-medium text-text-primary">Bedroom fan</p>
-              <p className="text-text-secondary">{fanStatusText(thermal.fan)}</p>
+              <p className="font-medium text-text-primary">
+                {thermal.fans.length > 1 ? `Fans (${thermal.fans.length})` : 'Bedroom fan'}
+              </p>
+              <p className="text-text-secondary">
+                {autoFan ? fanStatusText(autoFan) : 'No controllable fan found'}
+              </p>
             </div>
           </div>
           <DetailLinkCard
