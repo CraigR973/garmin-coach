@@ -37,7 +37,9 @@ button state (pts 8, 9) · **97** passive generation — notify-when-ready + sta
 loader (pt 6) · **98** rest-day/holiday-aware verdict (pt 7, 🔴 High) · **99** iOS
 notification deep-link (pt 1) · **100** multi-fan support + telemetry (pt 10) ·
 **101** dedicated Environment/Climate tab (pt 11) · **102** presentation polish —
-personal status + "Tonight" transparency (pts 5, 13).
+personal status + "Tonight" transparency (pts 5, 13). **All shipped** as of
+2026-07-13 (PRs #118–#123, Decisions #168–#175) — see the 2026-07-13 follow-up below
+for the gaps found testing them.
 
 ---
 
@@ -207,3 +209,80 @@ control moves to its own "Environment/Climate" tab.
 ## Status
 13 points — 1 correctness (#7), 2 design calls with recommendations on record
 (#11, #12), the rest UX/feature. All reconciled against code 2026-07-12.
+
+---
+
+# Walkthrough Feedback — 2026-07-13 (follow-up)
+
+Second live "just woke up" walkthrough on prod (13th reset to pre-check-in, driven
+as Mark), this time against the **now-shipped Batches 95–102**. 8 points, all
+reconciled against the *current* code. Most are follow-up gaps in the batches that
+just landed — several in the exact code they touched.
+
+**Type legend:** 🔴 correctness · 🟡 UX/flow · 🟢 feature · 🔵 design-decided
+
+**Batched as 103–107** in [`docs/phase-batches.md`](docs/phase-batches.md)
+("2026-07-13 walkthrough follow-up batch plan"): **103** pre-check-in gating, Home +
+Sleep (Issues 1, 2, 3) · **104** right-surface placement — overnight graph + walking/
+breathwork (Issues 4, 7) · **105** holiday-aware environment (Issue 8, 🔴 High) ·
+**106** read-aloud brief (Issue 6) · **107** sleep/climate calendar (Issue 5).
+
+## Pre-check-in Home & Sleep — follow-ups to Batch 95
+
+### 1. Repetitive pre-brief CTA 🟡
+Batch 95 fixed the "You're all set" contradiction by adding a `say-good-morning`
+rung ([homeActions.ts:95-96](apps/web/src/lib/homeActions.ts:95)), but it now echoes
+the `GoodMorningCta` hero's "Say good morning" + "Get today's brief"
+([GoodMorningCta.tsx:38](apps/web/src/components/GoodMorningCta.tsx:38),
+[:44](apps/web/src/components/GoodMorningCta.tsx:44)) — two prompts for one action.
+**Fix:** suppress the strip rung while the hero renders.
+
+### 2. Last-night sleep reachable pre-brief 🟡
+Batch 95 stopped auto-expanding it; the `lastNight` section still renders collapsed
+under "More detail" pre-brief. **Fix:** don't render it until a brief exists.
+
+### 3. Sleep page ungated 🟡
+Batch 95.3 added the check-in CTA ([SleepPage.tsx:88](apps/web/src/pages/SleepPage.tsx:88))
+but the body (overnight chart, tonight, bedroom stats) still renders pre-check-in.
+**Fix:** gate the page behind `manualEntry`/brief. ⚠️ Tension with the *optional*
+check-in (Batch 60/#127) — product call at `/batch-start`.
+
+## Content placement — follow-up to Batch 101
+
+### 4. Overnight graph should be Sleep-only; Climate = current 🔵
+`OvernightChartCard` renders on both [SleepPage.tsx:124](apps/web/src/pages/SleepPage.tsx:124)
+and [EnvironmentPage.tsx:75](apps/web/src/pages/EnvironmentPage.tsx:75). **Fix:**
+remove it from `EnvironmentPage` (Climate becomes live room + fan controls only).
+
+### 7. Walking base + breathwork in the workout card 🟢
+Both render inside `DayPlanBody` at
+[DashboardPage.tsx:1044-1045](apps/web/src/pages/DashboardPage.tsx:1044). **Fix:**
+breathwork → Sleep/wind-down; walking base → baseline/Trends. Keep crediting them,
+just not in the today-workout card.
+
+## Holiday-awareness — follow-up to Batch 98
+
+### 8. Thermal subsystem ignores holiday 🔴
+`run_evening_sleep_nudge` ([scheduler.py:180](apps/api/src/scheduler.py:180)),
+`run_evening_monitoring_alerts` ([:200](apps/api/src/scheduler.py:200)) /
+`evaluate_thermal_alert` ([nudge_alerts.py:264](apps/api/src/services/nudge_alerts.py:264)),
+and `run_fan_control` ([scheduler.py:975](apps/api/src/scheduler.py:975)) never
+consult `HolidayPauseService`. Evidence: the 12th (holiday) fired an evening_nudge
+(19:00) + a **critical** thermal_alert (20:45), fan still running. Batch 98 only made
+the *morning verdict* holiday-aware. **Fix:** gate those three jobs on the active
+holiday window (holiday = Mark's away).
+
+## New features
+
+### 5. Full calendar view 🟢
+The Sleep page is a `last-night`/`tonight` binary
+([SleepPage.tsx:21-26](apps/web/src/pages/SleepPage.tsx:21)); no date browse. The
+overnight chart already has a night pager (Batch 31) + `GET /api/v1/bedroom/overnight`
+recent-nights to build on. **New.**
+
+### 6. Speak the AI summary 🟢
+No TTS anywhere. **New** — a "Listen" control on the brief via `SpeechSynthesis`.
+
+## Status
+8 points — 1 correctness (#8), 1 design-decided (#4), the rest UX/feature. Reconciled
+against current code (post-95–102) 2026-07-13. Batched 103–107.
