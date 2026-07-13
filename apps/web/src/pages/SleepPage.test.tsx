@@ -215,13 +215,50 @@ function renderWithQuery(ui: ReactNode) {
   );
 }
 
+function renderWithSnapshot(loopSnapshot: DailyLoopEnvelope) {
+  apiFetchMock.mockImplementation((path: string) =>
+    Promise.resolve(path.startsWith('/api/v1/bedroom/overnight') ? overnightSnapshot : loopSnapshot),
+  );
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <SleepPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
 beforeEach(() => {
   apiFetchMock.mockClear();
 });
 
 describe('SleepPage', () => {
+  it('gates the sleep surface to the check-in hero before a check-in or brief exists (Batch 103)', async () => {
+    const gated = JSON.parse(JSON.stringify(snapshot)) as DailyLoopEnvelope;
+    gated.data.morningAnalysis = null;
+    renderWithSnapshot(gated);
+
+    expect(await screen.findByRole('region', { name: 'Say good morning' })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'Last night' })).toBeNull();
+    expect(screen.queryByText("Last night's sleep")).toBeNull();
+    expect(screen.queryByText("Tonight's sleep prep")).toBeNull();
+    expect(screen.queryByRole('link', { name: /morning check-in/i })).toBeNull();
+  });
+
   it('renders the Last night view with the metrics table and overnight chart', async () => {
-    renderWithQuery(<SleepPage />);
+    const checkedIn = JSON.parse(JSON.stringify(snapshot)) as DailyLoopEnvelope;
+    checkedIn.data.manualEntry = {
+      id: '12121212-1212-4121-8121-121212121212',
+      userId: '11111111-1111-4111-8111-111111111111',
+      entryDate: '2026-06-20',
+      entryAtUtc: '2026-06-20T07:00:00Z',
+      actualWorkoutJson: {},
+      supplementsJson: {},
+      foodJson: {},
+    };
+    renderWithSnapshot(checkedIn);
 
     expect(await screen.findByText("Last night's sleep")).toBeTruthy();
     expect(screen.getByText('Sleep stages vs your age')).toBeTruthy();
@@ -236,7 +273,17 @@ describe('SleepPage', () => {
 
   it('switches to the Tonight view with the sleep projection and a link to Climate', async () => {
     const user = userEvent.setup();
-    renderWithQuery(<SleepPage />);
+    const checkedIn = JSON.parse(JSON.stringify(snapshot)) as DailyLoopEnvelope;
+    checkedIn.data.manualEntry = {
+      id: '12121212-1212-4121-8121-121212121212',
+      userId: '11111111-1111-4111-8111-111111111111',
+      entryDate: '2026-06-20',
+      entryAtUtc: '2026-06-20T07:00:00Z',
+      actualWorkoutJson: {},
+      supplementsJson: {},
+      foodJson: {},
+    };
+    renderWithSnapshot(checkedIn);
 
     await screen.findByText("Last night's sleep");
     await user.click(screen.getByRole('tab', { name: 'Tonight' }));
@@ -268,17 +315,29 @@ describe('SleepPage', () => {
     expect(await screen.findByText('Climate page')).toBeTruthy();
   });
 
-  it('offers a manual morning check-in link from the Sleep page (Batch 60)', async () => {
-    renderWithQuery(<SleepPage />);
+  it('offers a manual morning check-in link from the Sleep page once the sleep surface is unlocked (Batch 60)', async () => {
+    const checkedIn = JSON.parse(JSON.stringify(snapshot)) as DailyLoopEnvelope;
+    checkedIn.data.manualEntry = {
+      id: '12121212-1212-4121-8121-121212121212',
+      userId: '11111111-1111-4111-8111-111111111111',
+      entryDate: '2026-06-20',
+      entryAtUtc: '2026-06-20T07:00:00Z',
+      actualWorkoutJson: {},
+      supplementsJson: {},
+      foodJson: {},
+    };
+    renderWithSnapshot(checkedIn);
 
     const link = await screen.findByRole('link', { name: /morning check-in/i });
     expect(link.getAttribute('href')).toBe('/check-in');
   });
 
-  it('leads with the "say good morning" CTA when no check-in exists yet (Batch 95)', async () => {
-    renderWithQuery(<SleepPage />); // base snapshot: manualEntry null
+  it('leads with the "say good morning" CTA when neither a check-in nor brief exists yet (Batch 95/103)', async () => {
+    const gated = JSON.parse(JSON.stringify(snapshot)) as DailyLoopEnvelope;
+    gated.data.morningAnalysis = null;
+    renderWithSnapshot(gated);
 
-    expect(await screen.findByText('Say good morning')).toBeTruthy();
+    expect(await screen.findByRole('region', { name: 'Say good morning' })).toBeTruthy();
     const cta = screen.getByRole('link', { name: /get today's brief/i });
     expect(cta.getAttribute('href')).toBe('/check-in');
   });

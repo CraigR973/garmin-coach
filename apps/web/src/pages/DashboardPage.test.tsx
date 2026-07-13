@@ -447,7 +447,7 @@ describe('DashboardPage', () => {
     expect(screen.queryByText('Good to go')).toBeNull();
   });
 
-  it('does not auto-expand last night into raw sleep before today\'s brief exists (Batch 95)', async () => {
+  it('keeps raw last-night sleep off Home before today\'s brief exists (Batch 95/103)', async () => {
     // Rest-day phase primary would otherwise be `lastNight` — before a brief
     // exists that would pre-empt the coached read with an un-narrated snapshot.
     renderPage(
@@ -458,16 +458,27 @@ describe('DashboardPage', () => {
     );
 
     expect(await screen.findByRole('region', { name: 'Say good morning' })).toBeTruthy();
-    // Last night is present but collapsed to its one-line headline, not expanded.
-    expect(screen.getByText("Last night's sleep")).toBeTruthy();
+    // Batch 103 tightens this further: the raw sleep section stays off Home
+    // entirely until a check-in/brief exists.
+    expect(screen.queryByText("Last night's sleep")).toBeNull();
     expect(screen.queryByText(/23 above/)).toBeNull();
     // Today (Rest day) leads instead.
     expect(screen.getByText('Rest day')).toBeTruthy();
 
-    // The Next strip agrees with the hero rather than showing "You're all set".
-    const strip = await screen.findByRole('region', { name: 'Next action' });
-    const cta = within(strip).getByRole('link', { name: 'Say good morning' });
-    expect(cta.getAttribute('href')).toBe('/check-in');
+    // The hero is the only CTA in this state.
+    expect(screen.queryByRole('region', { name: 'Next action' })).toBeNull();
+  });
+
+  it('shows only the hero CTA before the brief exists — no duplicate Next strip or last-night section (Batch 103)', async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.morningAnalysis = null;
+      }),
+    );
+
+    expect(await screen.findByRole('region', { name: 'Say good morning' })).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Next action' })).toBeNull();
+    expect(screen.queryByText("Last night's sleep")).toBeNull();
   });
 
   it('leads an unviewed brief above the Today action cards, including thermal (Batch 96)', async () => {
