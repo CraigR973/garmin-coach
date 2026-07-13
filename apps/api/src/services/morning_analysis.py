@@ -33,7 +33,11 @@ from src.services.bedroom_overnight import night_window
 from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
 from src.services.coaching_state import CoachingStateService
 from src.services.feedback import FeedbackService
-from src.services.holiday_pause import HolidayPauseService, HolidayWindow
+from src.services.holiday_pause import (
+    HolidayPauseService,
+    HolidayWindow,
+    holiday_windows_covering_date,
+)
 from src.services.personal_baselines import (
     baseline_band_packet,
     baseline_center,
@@ -892,9 +896,7 @@ def _rest_day_context(
     than being silently promoted to an intended rest day, preserving the existing
     conservative missing-plan behaviour.
     """
-    matching_windows = [
-        window for window in holiday_windows if window.start_date <= subject_date <= window.end_date
-    ]
+    matching_windows = holiday_windows_covering_date(holiday_windows, subject_date)
     inside_holiday = bool(matching_windows)
     all_skipped = bool(planned_workouts) and all(
         workout.status == "skipped" for workout in planned_workouts

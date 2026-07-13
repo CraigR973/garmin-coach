@@ -616,21 +616,23 @@ class NudgeAlertService:
         *,
         now_utc: datetime | None = None,
         commit: bool = True,
+        include_thermal: bool = True,
     ) -> int:
         now = now_utc or datetime.now(UTC)
         subject_date = local_now(profile.timezone, now).date()
-        latest_temperature = await self._latest_temperature(profile.id)
-        fan = await self._fan_reconcile_state(profile)
         plans: list[NotificationPlan] = []
 
-        thermal_plan = evaluate_thermal_alert(
-            latest_temperature,
-            timezone_name=profile.timezone,
-            now_utc=now,
-            fan=fan,
-        )
-        if thermal_plan is not None:
-            plans.append(thermal_plan)
+        if include_thermal:
+            latest_temperature = await self._latest_temperature(profile.id)
+            fan = await self._fan_reconcile_state(profile)
+            thermal_plan = evaluate_thermal_alert(
+                latest_temperature,
+                timezone_name=profile.timezone,
+                now_utc=now,
+                fan=fan,
+            )
+            if thermal_plan is not None:
+                plans.append(thermal_plan)
 
         freshness = await self._freshness_snapshot(profile.id, profile.timezone, now)
         plans.extend(evaluate_stale_sources(freshness))

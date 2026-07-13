@@ -12,7 +12,8 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
@@ -348,9 +349,13 @@ def _london(hour: int, minute: int = 0) -> datetime:
 
 @contextmanager
 def _fan_patches(
-    *, profile: MagicMock, now: datetime, temperature_c: float | None = 20.0
-) -> Iterator[AsyncMock]:
-    """Isolate run_fan_control from the DB and cloud; yield the _apply spy."""
+    *,
+    profile: MagicMock,
+    now: datetime,
+    temperature_c: float | None = 20.0,
+    active_window: object | None = None,
+) -> Iterator[SimpleNamespace]:
+    """Isolate run_fan_control from the DB and cloud; yield orchestration spies."""
     session = AsyncMock()
 
     class _Ctx:
@@ -361,28 +366,55 @@ def _fan_patches(
             return None
 
     apply_mock = AsyncMock()
+    latest_temperature = AsyncMock(return_value=MagicMock())
+    record_state = AsyncMock()
+    holiday_service = MagicMock()
+    holiday_service.get_active_window_for_date = AsyncMock(return_value=active_window)
     with ExitStack() as stack:
         enter = stack.enter_context
         enter(patch("src.scheduler._fan_control_configured", return_value=True))
         enter(patch("src.scheduler.AsyncSessionLocal", return_value=_Ctx()))
         enter(patch("src.scheduler._active_profiles", AsyncMock(return_value=[profile])))
         enter(patch("src.scheduler._profile_now", lambda _profile: now))
-        enter(patch("src.scheduler._latest_temperature", AsyncMock(return_value=MagicMock())))
+        enter(patch("src.scheduler.HolidayPauseService", return_value=holiday_service))
+        enter(patch("src.scheduler._latest_temperature", latest_temperature))
         enter(patch("src.scheduler._fresh_temperature_c", MagicMock(return_value=temperature_c)))
         enter(patch("src.scheduler._apply_fan_control", apply_mock))
-        yield apply_mock
+        enter(patch("src.scheduler._record_fan_state", record_state))
+        yield SimpleNamespace(
+            apply=apply_mock,
+            latest_temperature=latest_temperature,
+            record_state=record_state,
+            holiday=holiday_service,
+        )
 
 
 async def test_run_fan_control_skips_when_auto_disabled() -> None:
     profile = _fan_profile(auto_enabled=False)
-    with _fan_patches(profile=profile, now=_london(23, 0)) as apply_mock:
+    with _fan_patches(profile=profile, now=_london(23, 0)) as spies:
         await scheduler.run_fan_control()
-    apply_mock.assert_not_awaited()
+    spies.apply.assert_not_awaited()
 
 
 async def test_run_fan_control_applies_when_auto_enabled() -> None:
     profile = _fan_profile(auto_enabled=True)
-    with _fan_patches(profile=profile, now=_london(23, 0), temperature_c=20.0) as apply_mock:
+    with _fan_patches(profile=profile, now=_london(23, 0), temperature_c=20.0) as spies:
         await scheduler.run_fan_control()
-    apply_mock.assert_awaited_once()
-    assert apply_mock.await_args.args == ("control", 20.0)
+    spies.apply.assert_awaited_once()
+    assert spies.apply.await_args.args == ("control", 20.0)
+
+
+@pytest.mark.asyncio
+async def test_run_fan_control_holiday_is_a_true_no_op() -> None:
+    profile = _fan_profile(auto_enabled=True)
+    with _fan_patches(
+        profile=profile,
+        now=_london(23, 0),
+        active_window=MagicMock(),
+    ) as spies:
+        await scheduler.run_fan_control()
+
+    spies.holiday.get_active_window_for_date.assert_awaited_once_with(profile, date(2026, 6, 24))
+    spies.latest_temperature.assert_not_awaited()
+    spies.apply.assert_not_awaited()
+    spies.record_state.assert_not_awaited()

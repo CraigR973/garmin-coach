@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy import func, select
@@ -342,6 +342,40 @@ def test_thermal_manual_nudge_unchanged_when_autopilot_off() -> None:
     )
     assert plan is not None
     assert plan.context["rule"] == "peak_19_5c"
+
+
+@pytest.mark.asyncio
+async def test_monitoring_can_skip_thermal_while_still_checking_source_freshness() -> None:
+    session = AsyncMock()
+    profile = MagicMock(spec=Profile)
+    profile.id = uuid.uuid4()
+    profile.timezone = "Europe/London"
+    now = datetime(2026, 7, 12, 19, 45, tzinfo=UTC)
+    service = NudgeAlertService(session)
+    service._latest_temperature = AsyncMock()  # type: ignore[method-assign]
+    service._fan_reconcile_state = AsyncMock()  # type: ignore[method-assign]
+    service._freshness_snapshot = AsyncMock(  # type: ignore[method-assign]
+        return_value=FreshnessSnapshot(
+            local_date=date(2026, 7, 12),
+            local_now=datetime(2026, 7, 12, 20, 45),
+            now_utc=now,
+            last_garmin_recorded_at_utc=now,
+            last_hive_captured_at_utc=now,
+            latest_weather_date=date(2026, 7, 12),
+        )
+    )
+
+    recorded = await service.run_monitoring_alerts(
+        profile,
+        now_utc=now,
+        commit=False,
+        include_thermal=False,
+    )
+
+    assert recorded == 0
+    service._latest_temperature.assert_not_awaited()
+    service._fan_reconcile_state.assert_not_awaited()
+    service._freshness_snapshot.assert_awaited_once_with(profile.id, profile.timezone, now)
 
 
 # ---------------------------------------------------------------------------
