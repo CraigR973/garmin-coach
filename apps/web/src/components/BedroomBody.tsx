@@ -26,10 +26,9 @@ type ThermalState = {
 /** The bedroom climate + fan read: room stats, live fan status, and (in the
  *  `full` variant) the Auto toggle and manual Off/Low/Med/High controls.
  *  `compact` (Home's evening "Bedroom" section) shows the read-only status line
- *  and a detail link into `/sleep`; `full` (the `/sleep` hub's Tonight view,
- *  Batch 49) carries the actual controls, moved from the retired `/bedroom`
- *  page (Batch 27). Extracted from `DashboardPage` so both render the same
- *  stats block. */
+ *  and a detail link into `/environment`; `full` (the Climate tab, Batch 101)
+ *  carries the actual controls. Extracted from `DashboardPage` so every
+ *  climate surface renders the same stats block. */
 export function BedroomBody({
   thermal,
   variant = 'compact',
@@ -172,9 +171,9 @@ export function BedroomBody({
             </div>
           </div>
           <DetailLinkCard
-            to="/sleep"
-            title="Bedroom & weather detail"
-            description="Open the full room and overnight weather read, and control the fan."
+            to="/environment"
+            title="Open Climate"
+            description="See the full room detail, overnight chart, and fan controls."
           />
         </>
       )}

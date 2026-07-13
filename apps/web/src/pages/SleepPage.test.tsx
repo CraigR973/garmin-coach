@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -234,7 +234,7 @@ describe('SleepPage', () => {
     expect((await screen.findByTestId('overnight-room-verdict-badge')).textContent).toBe('Red');
   });
 
-  it('switches to the Tonight view with the sleep projection and fan controls', async () => {
+  it('switches to the Tonight view with the sleep projection and a link to Climate', async () => {
     const user = userEvent.setup();
     renderWithQuery(<SleepPage />);
 
@@ -243,29 +243,12 @@ describe('SleepPage', () => {
 
     expect(await screen.findByText("Protect tonight's wind-down")).toBeTruthy();
     expect(screen.getByText(/late hard session/)).toBeTruthy();
-    expect(screen.getByRole('switch', { name: /overnight fan autopilot/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Low' })).toBeTruthy();
+    expect(screen.getByText("Right now this is based on today's training.")).toBeTruthy();
+    const link = screen.getByRole('link', { name: /open climate/i });
+    expect(link.getAttribute('href')).toBe('/environment');
   });
 
-  it('drives the fan with a manual speed preset from the Tonight view', async () => {
-    const user = userEvent.setup();
-    renderWithQuery(<SleepPage />);
-
-    await user.click(await screen.findByRole('tab', { name: 'Tonight' }));
-    await user.click(await screen.findByRole('button', { name: 'Low' }));
-
-    await waitFor(() => {
-      expect(apiFetchMock).toHaveBeenCalledWith(
-        '/api/v1/fan/command',
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify({ fanId: 'fan-bedroom', power: true, speed: 3 }),
-        }),
-      );
-    });
-  });
-
-  it('/bedroom redirects into /sleep', async () => {
+  it('/bedroom redirects into /environment', async () => {
     apiFetchMock.mockImplementation((path: string) =>
       Promise.resolve(path.startsWith('/api/v1/bedroom/overnight') ? overnightSnapshot : snapshot),
     );
@@ -275,14 +258,14 @@ describe('SleepPage', () => {
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={['/bedroom']}>
           <Routes>
-            <Route path="/sleep" element={<SleepPage />} />
-            <Route path="/bedroom" element={<Navigate to="/sleep" replace />} />
+            <Route path="/environment" element={<div>Climate page</div>} />
+            <Route path="/bedroom" element={<Navigate to="/environment" replace />} />
           </Routes>
         </MemoryRouter>
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByText("Last night's sleep")).toBeTruthy();
+    expect(await screen.findByText('Climate page')).toBeTruthy();
   });
 
   it('offers a manual morning check-in link from the Sleep page (Batch 60)', async () => {
