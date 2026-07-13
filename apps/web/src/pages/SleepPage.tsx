@@ -1,20 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { format, parseISO, subDays } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { BedDouble, ClipboardCheck, Fan, MoonStar } from 'lucide-react';
+import { ChronicSuggestionsCard } from '@/components/ChronicSuggestionsCard';
+import { DetailLinkCard } from '@/components/DetailLinkCard';
+import { MetricComparisonTable } from '@/components/MetricComparisonTable';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/PageHeader';
+import { SleepDateCalendar } from '@/components/SleepDateCalendar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/EmptyState';
 import { Tabs } from '@/components/ui/tabs';
-import { DetailLinkCard } from '@/components/DetailLinkCard';
-import { SleepSnapshotBody } from '@/components/SleepSnapshotBody';
 import { SleepPrepBody } from '@/components/SleepPrepBody';
 import { OvernightChartCard } from '@/components/OvernightChartCard';
 import { SleepStageAgeTable } from '@/components/SleepStageAgeTable';
 import { GoodMorningCta } from '@/components/GoodMorningCta';
 import { BreathworkRhythmCard } from '@/components/BreathworkRhythmCard';
-import { useDailyLoop } from '@/hooks/useDailyLoop';
+import { hm } from '@/lib/dailyFlow';
+import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
 import { markSleepReviewed } from '@/lib/sleepReview';
 import { friendlyDate } from '@/lib/dailyFlow';
 import type { AgeComparison, MetricBaselineRow } from '@/components/MetricComparisonTable';
@@ -37,6 +41,7 @@ const VIEW_ITEMS = [
  */
 export function SleepPage() {
   const [view, setView] = useState<SleepView>('last-night');
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const query = useDailyLoop();
 
   // Opening Sleep with synced overnight metrics completes Home's morning
@@ -49,6 +54,26 @@ export function SleepPage() {
       markSleepReviewed(loaded.subjectDate);
     }
   }, [query.data]);
+
+  useEffect(() => {
+    const subjectDate = query.data?.data.subjectDate;
+    if (selectedDate == null && subjectDate) {
+      setSelectedDate(subjectDate);
+    }
+  }, [query.data, selectedDate]);
+
+  const loadedData = query.data?.data ?? null;
+  const hasHistoricalAccess =
+    loadedData != null && (loadedData.manualEntry != null || loadedData.morningAnalysis != null);
+  const currentSubjectDate = loadedData?.subjectDate ?? selectedDate ?? '1970-01-02';
+  const historySubjectDate = selectedDate ?? loadedData?.subjectDate ?? '1970-01-02';
+  const historyQuery = useDailyLoop(historySubjectDate, {
+    enabled: hasHistoricalAccess && historySubjectDate !== currentSubjectDate,
+  });
+  const historyNight = useMemo(
+    () => format(subDays(parseISO(historySubjectDate), 1), 'yyyy-MM-dd'),
+    [historySubjectDate],
+  );
 
   if (query.isLoading) {
     return (
@@ -75,12 +100,18 @@ export function SleepPage() {
 
   const data = query.data.data;
   const analysis = data.morningAnalysis;
-  const metricsVsBaselines = (analysis?.metricsVsBaselines ?? []) as MetricBaselineRow[];
-  const ageComparison = (analysis?.ageComparison ?? null) as AgeComparison | null;
-  const chronicSuggestions = data.chronicSuggestions ?? null;
   const thermal = data.thermalState;
   const breathworkBrief = data.breathworkBrief ?? null;
   const hasSleepAccess = data.manualEntry != null || analysis != null;
+  const historyData = historySubjectDate === currentSubjectDate ? data : historyQuery.data?.data;
+  const historyLoading = historySubjectDate !== currentSubjectDate && historyQuery.isLoading;
+  const historyError = historySubjectDate !== currentSubjectDate ? historyQuery.error : null;
+  const historyAnalysis = (historyData?.morningAnalysis ?? null) as typeof analysis;
+  const historyMetricsVsBaselines = (historyAnalysis?.metricsVsBaselines ?? []) as MetricBaselineRow[];
+  const historyAgeComparison = (historyAnalysis?.ageComparison ?? null) as AgeComparison | null;
+  const historyChronicSuggestions = historyData?.chronicSuggestions ?? null;
+  const historySleep = historyData?.sleep ?? null;
+  const showingHistoricalDate = historySubjectDate !== currentSubjectDate;
 
   return (
     <div className="space-y-5">
@@ -94,37 +125,66 @@ export function SleepPage() {
         <>
           {view === 'last-night' ? (
             <div className="space-y-5">
+              <SleepDateCalendar
+                selectedDate={historySubjectDate}
+                maxDate={currentSubjectDate}
+                onSelectDate={setSelectedDate}
+              />
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <BedDouble className="h-4 w-4 text-primary" aria-hidden />
-                    Last night&apos;s sleep
+                    {showingHistoricalDate ? `Sleep for ${friendlyDate(historySubjectDate)}` : "Last night's sleep"}
                   </CardTitle>
-                  <CardDescription>How last night compares to your own normal and your age group.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <SleepSnapshotBody
-                    metricsVsBaselines={metricsVsBaselines}
-                    ageComparison={ageComparison}
-                    chronicSuggestions={chronicSuggestions}
-                    morningBriefLink="/brief"
-                    showOvernightGlance={false}
-                  />
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Sleep stages vs your age</CardTitle>
                   <CardDescription>
-                    Duration and stage balance compared with the typical overnight pattern for your age
-                    group.
+                    {showingHistoricalDate
+                      ? 'Browse the stored sleep read for that date and compare it with the overnight room history below.'
+                      : 'How last night compares to your own normal and your age group.'}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <SleepStageAgeTable rows={ageComparison?.sleepRows ?? []} ageBand={ageComparison?.ageBand} />
+                  {historyLoading ? (
+                    <Skeleton className="h-48 w-full rounded-xl" />
+                  ) : historyError ? (
+                    <p className="text-sm text-text-muted">
+                      {historyError instanceof Error ? historyError.message : 'That date could not load just now.'}
+                    </p>
+                  ) : historyAnalysis ? (
+                    <div className="space-y-4">
+                      <MetricComparisonTable rows={historyMetricsVsBaselines} ageComparison={historyAgeComparison} />
+                      <ChronicSuggestionsCard suggestions={historyChronicSuggestions} />
+                      {!showingHistoricalDate ? (
+                        <DetailLinkCard
+                          to="/brief"
+                          title="Full morning brief"
+                          description="Open the complete coach read and verdict notes."
+                        />
+                      ) : null}
+                    </div>
+                  ) : historySleep ? (
+                    <HistoricalSleepFallback sleep={historySleep} />
+                  ) : (
+                    <p className="text-sm text-text-muted">
+                      No stored sleep read was found for that date yet. The overnight room chart below will still show
+                      any climate history that exists.
+                    </p>
+                  )}
                 </CardContent>
               </Card>
-              <OvernightChartCard />
+              {historyAnalysis ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Sleep stages vs your age</CardTitle>
+                    <CardDescription>
+                      Duration and stage balance compared with the typical overnight pattern for your age group.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <SleepStageAgeTable rows={historyAgeComparison?.sleepRows ?? []} ageBand={historyAgeComparison?.ageBand} />
+                  </CardContent>
+                </Card>
+              ) : null}
+              <OvernightChartCard night={historyNight} captionDate={historySubjectDate} showPager={false} />
             </div>
           ) : (
             <div className="space-y-5">
@@ -223,4 +283,46 @@ function SleepStat({ label, value }: { label: string; value: string }) {
       <p className="text-lg font-semibold text-text-primary">{value}</p>
     </div>
   );
+}
+
+function HistoricalSleepFallback({
+  sleep,
+}: {
+  sleep: DailyLoopData['sleep'];
+}) {
+  if (!sleep) return null;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+        <SleepStat label="Score" value={sleep.score != null ? `${sleep.score}` : '—'} />
+        <SleepStat label="Age-adjusted" value={sleep.ageAdjustedScore != null ? `${sleep.ageAdjustedScore}` : '—'} />
+        <SleepStat label="Duration" value={hm(sleep.durationSec)} />
+        <SleepStat label="Restless moments" value={sleep.restlessMomentsCount != null ? `${sleep.restlessMomentsCount}` : '—'} />
+      </div>
+      <p className="text-sm leading-6 text-text-secondary">
+        Stored sleep data is available for this date even though there is no saved morning brief packet to compare
+        against baselines.
+        {sleep.sleepStartUtc || sleep.sleepEndUtc
+          ? ` ${formatSleepWindow(sleep.sleepStartUtc, sleep.sleepEndUtc)}`
+          : ''}
+      </p>
+    </div>
+  );
+}
+
+function formatSleepWindow(startUtc: string | null | undefined, endUtc: string | null | undefined): string {
+  const formatClock = (value: string | null | undefined) =>
+    value
+      ? new Date(value).toLocaleTimeString([], {
+          hour: 'numeric',
+          minute: '2-digit',
+        })
+      : null;
+  const start = formatClock(startUtc);
+  const end = formatClock(endUtc);
+  if (start && end) return `Sleep window ${start} to ${end}.`;
+  if (start) return `Sleep started around ${start}.`;
+  if (end) return `Wake time landed around ${end}.`;
+  return '';
 }
