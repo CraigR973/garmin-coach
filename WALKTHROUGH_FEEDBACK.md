@@ -286,3 +286,65 @@ No TTS anywhere. **New** — a "Listen" control on the brief via `SpeechSynthesi
 ## Status
 8 points — 1 correctness (#8), 1 design-decided (#4), the rest UX/feature. Reconciled
 against current code (post-95–102) 2026-07-13. Batched 103–107.
+
+---
+
+# Walkthrough Feedback — 2026-07-14 (follow-up)
+
+The 13th walkthrough continued into the 14th (the reset-13th test rolled past BST
+midnight). A further wave of points (Issues 9–17), reconciled against current code with
+**Batches 95–107 all shipped**. Batched as **108–112**; two need no batch (12, 16).
+
+**Type legend:** 🔴 correctness · 🟡 UX/flow · 🟢 feature · 🔵 design-decided
+
+## Resolved / not a bug
+- **16 — remove last-night from Climate → DONE.** Batch 104 removed `OvernightChartCard`
+  from [EnvironmentPage.tsx](apps/web/src/pages/EnvironmentPage.tsx).
+- **12 — "generated for the 14th" → not a bug.** The clock rolled past BST midnight;
+  `_local_today` ([daily_loop.py:128](apps/api/src/services/daily_loop.py:128)) correctly
+  returned the 14th. *(Operational: restore must now cover the 13th **and** the 14th.)*
+
+## Open follow-ups → Batches 108–112
+
+### 9. Home tonight/bedroom ignore holiday 🟡 → Batch 109
+Batch 105 gated the backend ([scheduler.py:191-242](apps/api/src/scheduler.py:191)); the
+frontend `homeSections`/`DashboardPage` sections have no holiday awareness. Hide them on
+Home/Sleep when the payload flags holiday.
+
+### 10. Gate isn't today-scoped 🔴 → Batch 108
+Batch 103's `hasSleepAccess` ([SleepPage.tsx:105](apps/web/src/pages/SleepPage.tsx:105))
+hides the whole page including Batch 107's `SleepDateCalendar`
+([:128](apps/web/src/pages/SleepPage.tsx:128)) until today's check-in. Gate today's
+detail only; let the calendar/past dates through. (Regression from the 103×107
+interaction.)
+
+### 11. Check-in flow leftovers 🟡 → Batch 110
+Staged progress is a card below the form
+([CheckInPage.tsx:405](apps/web/src/pages/CheckInPage.tsx:405)); the inline brief render
+([:456-473](apps/web/src/pages/CheckInPage.tsx:456)) still duplicates Home's
+`UnviewedBriefCta`. Move progress in-place; drop the inline brief.
+
+### 13. Robotic read-aloud voice 🟢 → Batch 111
+Batch 106 shipped the default `SpeechSynthesis` voice. Upgrade to a natural voice; weigh
+on-device vs. hosted-TTS health-data privacy.
+
+### 14. Home says the verdict twice 🟡 → Batch 110
+Lockup `personalStatusLine`+date
+([DashboardPage.tsx:684-691](apps/web/src/pages/DashboardPage.tsx:684)) duplicates
+`VerdictHero`+`dateLabel` ([:697](apps/web/src/pages/DashboardPage.tsx:697)). De-dup.
+
+### 15. Calendar polish 🟢 → Batch 108
+`SleepDateCalendar` expanded by default; a past-date view shows sleep+room only
+([SleepPage.tsx:133-168](apps/web/src/pages/SleepPage.tsx:133)) though `historyData` holds
+the whole day. Collapse by default; whole-day view.
+
+### 17. Notification audit 🟡 → Batch 112
+Critical thermal alert → `/bedroom` (retired redirect route,
+[nudge_alerts.py:388](apps/api/src/services/nudge_alerts.py:388) /
+[App.tsx:115](apps/web/src/App.tsx:115)); `verdict_push` (→`/`) overlaps
+`brief_ready_push` (→`/brief`). Fix routes; consolidate the brief push. (Holiday-gating
+already done via Batch 105.)
+
+## Status
+9 points (Issues 9–17). 2 need no batch (12 not-a-bug, 16 done); 7 → Batches 108–112.
+Reconciled against current code (post-95–107) 2026-07-14.
