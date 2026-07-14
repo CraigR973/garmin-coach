@@ -1,14 +1,15 @@
-"""Tests for the hosted read-aloud voice router (Batch 116).
+"""Tests for the hosted read-aloud voice router (Batch 116 / DECISIONS #190).
 
 `PUT /api/v1/tts/consent` persists the opt-in flag; `POST /api/v1/tts/synthesize`
-is gated on that flag *and* on an OpenAI key being configured, and never calls
-the (faked) OpenAI TTS service unless both hold.
+is gated on that flag *and* on the Piper voice model file being present, and
+never calls the (faked) Piper synthesis service unless both hold.
 """
 
 from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
 import pytest
 from fastapi import Depends
@@ -21,7 +22,7 @@ from src.database import get_db
 from src.main import app
 from src.models.profile import Profile, UserRole
 from src.routers import tts as tts_router
-from src.services.openai_tts import OpenAITTSError, OpenAITTSResult
+from src.services.piper_tts import PiperTTSError, PiperTTSResult
 
 
 def _db_override(session_factory: async_sessionmaker[AsyncSession]):
@@ -66,6 +67,15 @@ def _clear_cache() -> None:
     tts_router._audio_cache.clear()
 
 
+def _point_settings_at_existing_model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    model_path = tmp_path / "voice.onnx"
+    model_path.write_bytes(b"fake-model")
+    config_path = tmp_path / "voice.onnx.json"
+    config_path.write_text("{}")
+    monkeypatch.setattr(settings, "piper_voice_model_path", str(model_path))
+    monkeypatch.setattr(settings, "piper_voice_config_path", str(config_path))
+
+
 @pytest.mark.asyncio
 async def test_put_consent_persists(db_conn: AsyncConnection) -> None:
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
@@ -100,10 +110,10 @@ async def test_synthesize_requires_consent(db_conn: AsyncConnection) -> None:
 
 
 @pytest.mark.asyncio
-async def test_synthesize_requires_openai_key_configured(
-    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
+async def test_synthesize_requires_voice_model_configured(
+    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setattr(settings, "openai_api_key", "")
+    monkeypatch.setattr(settings, "piper_voice_model_path", str(tmp_path / "missing.onnx"))
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     user_id = await _seed_player(session_factory, hosted_tts_consent=True)
 
@@ -120,15 +130,15 @@ async def test_synthesize_requires_openai_key_configured(
 
 @pytest.mark.asyncio
 async def test_synthesize_returns_audio_and_caches(
-    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
+    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setattr(settings, "openai_api_key", "test-key")
+    _point_settings_at_existing_model(monkeypatch, tmp_path)
     calls = 0
 
-    async def _fake_synthesize(**kwargs: object) -> OpenAITTSResult:
+    async def _fake_synthesize(**kwargs: object) -> PiperTTSResult:
         nonlocal calls
         calls += 1
-        return OpenAITTSResult(audio_bytes=b"mp3-bytes", content_type="audio/mpeg")
+        return PiperTTSResult(audio_bytes=b"wav-bytes", content_type="audio/wav")
 
     monkeypatch.setattr(tts_router, "synthesize_speech", _fake_synthesize)
 
@@ -146,21 +156,21 @@ async def test_synthesize_returns_audio_and_caches(
         app.dependency_overrides.clear()
 
     assert first.status_code == 200, first.text
-    assert first.headers["content-type"] == "audio/mpeg"
-    assert first.content == b"mp3-bytes"
-    assert second.content == b"mp3-bytes"
+    assert first.headers["content-type"] == "audio/wav"
+    assert first.content == b"wav-bytes"
+    assert second.content == b"wav-bytes"
     # Second identical call is served from the in-process cache, not a fresh call.
     assert calls == 1
 
 
 @pytest.mark.asyncio
 async def test_synthesize_502_on_upstream_failure(
-    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
+    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setattr(settings, "openai_api_key", "test-key")
+    _point_settings_at_existing_model(monkeypatch, tmp_path)
 
-    async def _failing_synthesize(**kwargs: object) -> OpenAITTSResult:
-        raise OpenAITTSError("boom")
+    async def _failing_synthesize(**kwargs: object) -> PiperTTSResult:
+        raise PiperTTSError("boom")
 
     monkeypatch.setattr(tts_router, "synthesize_speech", _failing_synthesize)
 
@@ -180,9 +190,9 @@ async def test_synthesize_502_on_upstream_failure(
 
 @pytest.mark.asyncio
 async def test_synthesize_rejects_blank_text(
-    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
+    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setattr(settings, "openai_api_key", "test-key")
+    _point_settings_at_existing_model(monkeypatch, tmp_path)
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     user_id = await _seed_player(session_factory, hosted_tts_consent=True)
 
