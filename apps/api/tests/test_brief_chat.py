@@ -181,7 +181,7 @@ async def test_ask_only_offers_a_proposal_on_a_deterministic_keyword_match(
             "plannedWorkouts": [
                 {
                     "id": str(uuid.uuid4()),
-                    "workoutType": "bike",
+                    "workoutType": "bike_sweet_spot",
                     "status": "planned",
                     "structuredWorkout": {"segments": []},
                 }
@@ -212,7 +212,7 @@ async def test_ask_never_offers_a_proposal_on_a_rest_day(db_conn: AsyncConnectio
             "plannedWorkouts": [
                 {
                     "id": str(uuid.uuid4()),
-                    "workoutType": "bike",
+                    "workoutType": "bike_sweet_spot",
                     "status": "skipped",
                     "structuredWorkout": {"segments": []},
                 }
