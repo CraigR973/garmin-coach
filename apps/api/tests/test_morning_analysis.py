@@ -380,6 +380,7 @@ async def test_morning_packet_loads_holiday_window_and_suppresses_skipped_ride(
 
         assert packet["restDay"]["isRestDay"] is True
         assert packet["restDay"]["reason"] == "holiday"
+        assert packet["restDay"]["insideHolidayWindow"] is True
         assert packet["plannedWorkouts"][0]["status"] == "skipped"
         assert packet["verdict"]["dayType"] == "rest"
         assert "swapSuggestion" not in packet["verdict"]
@@ -388,6 +389,12 @@ async def test_morning_packet_loads_holiday_window_and_suppresses_skipped_ride(
         assert "rest day" in adjustments
         assert "proceed with the planned workout" not in adjustments
         assert "endurance" not in adjustments
+
+        # Batch 113 (#186): holiday = away for thermal purposes too — no bedroom
+        # review or pre-cool action while the room isn't being slept in.
+        assert packet["environment"]["thermalReview"] is None
+        assert "include_thermal_environment_review" not in packet["prompt"]["outputRules"]
+        assert all(action["kind"] != "thermal" for action in packet["verdict"]["todayActions"])
 
 
 @pytest.mark.asyncio
@@ -1391,7 +1398,7 @@ def test_build_today_actions_sleep_and_thermal_nudges() -> None:
     assert sleep["href"] == "/sleep"
     assert sleep["plannedWorkoutId"] is None
     thermal = actions[1]
-    assert thermal["href"] == "/sleep"
+    assert thermal["href"] == "/environment"
     assert "20.4" in thermal["detail"]
 
 

@@ -117,6 +117,9 @@ recommend, soften, rearrange, or relitigate a planned workout whose status is
 skipped, and do not narrate a session inside the holiday window as a live
 training decision. Recovery signals may still determine Green/Amber/Red, but
 that colour describes recovery on a rest day rather than permission to train.
+When restDay.insideHolidayWindow is true, environment.thermalReview is null
+because the bedroom isn't being slept in while away — omit the thermal/
+environment review entirely rather than writing one from stale or absent data.
 When recentCorrections is non-empty, treat each as ground truth Mark gave about a
 past read (e.g. "my watch missed my 03:00 wake"): weigh it and adjust or
 acknowledge it, but it never overrides the Red floor, the soft-sleep rule, the
@@ -274,6 +277,11 @@ class MorningAnalysisService:
             knowledge_base,
             sleep=sleep,
         )
+        # Batch 113 (#186): a holiday is "away" for thermal purposes too — the
+        # bedroom isn't being slept in, so neither the packet/prompt review nor
+        # the pre-cool action should surface. Outside a holiday window (including
+        # an all-skipped rest day, which still happens at home) the review stands.
+        thermal_review_for_output = None if rest_day["insideHolidayWindow"] else thermal_review
         verdict = _morning_verdict(
             daily_metric=daily_metric,
             sleep=sleep,
@@ -344,7 +352,7 @@ class MorningAnalysisService:
         verdict["todayActions"] = build_today_actions(
             verdict=verdict,
             planned_workouts=[] if rest_day["isRestDay"] else planned_workouts,
-            thermal_review=thermal_review,
+            thermal_review=thermal_review_for_output or {},
             recommend_breathwork=recommend_breathwork,
         )
         training_schedule = serialize_training_schedule(knowledge_base)
@@ -391,7 +399,7 @@ class MorningAnalysisService:
             "metricsVsBaselines": metrics_table,
             "ageComparison": age_comparison,
             "environment": {
-                "thermalReview": thermal_review,
+                "thermalReview": thermal_review_for_output,
                 "weather": _weather_packet(weather),
             },
             "verdict": verdict,
@@ -399,23 +407,29 @@ class MorningAnalysisService:
                 "version": PROMPT_VERSION,
                 "system": SYSTEM_PROMPT,
                 "outputRules": [
-                    "bold_each_bullet_headline",
-                    "include_sleep_summary_line",
-                    "include_metrics_vs_baselines_table",
-                    "include_thermal_environment_review",
-                    "credit_observed_precool_separately_from_sleep_peak",
-                    "include_plan_aware_workout_verdict",
-                    "never_reference_left_right_power_balance",
-                    "never_recommend_vo2_on_red",
-                    "acknowledge_recent_user_corrections_when_relevant",
-                    "lead_with_week_swap_when_offered",
-                    "maintain_weekly_quality_mix_readiness_gated",
-                    "reasoning_prose_not_duplicated_action_checklist",
-                    "state_local_clock_times_never_utc",
-                    "use_authoritative_date_label_never_rederive",
-                    "refer_to_checkin_by_word_not_number",
-                    "frame_holiday_or_all_skipped_day_as_rest",
-                    "never_treat_skipped_workout_as_live_training",
+                    rule
+                    for rule in [
+                        "bold_each_bullet_headline",
+                        "include_sleep_summary_line",
+                        "include_metrics_vs_baselines_table",
+                        "include_thermal_environment_review",
+                        "credit_observed_precool_separately_from_sleep_peak",
+                        "include_plan_aware_workout_verdict",
+                        "never_reference_left_right_power_balance",
+                        "never_recommend_vo2_on_red",
+                        "acknowledge_recent_user_corrections_when_relevant",
+                        "lead_with_week_swap_when_offered",
+                        "maintain_weekly_quality_mix_readiness_gated",
+                        "reasoning_prose_not_duplicated_action_checklist",
+                        "state_local_clock_times_never_utc",
+                        "use_authoritative_date_label_never_rederive",
+                        "refer_to_checkin_by_word_not_number",
+                        "frame_holiday_or_all_skipped_day_as_rest",
+                        "never_treat_skipped_workout_as_live_training",
+                    ]
+                    # Batch 113 (#186): holiday away means no bedroom thermal review.
+                    if rule != "include_thermal_environment_review"
+                    or not rest_day["insideHolidayWindow"]
                 ],
             },
         }
@@ -1219,7 +1233,7 @@ def _thermal_action(thermal_review: Mapping[str, Any]) -> dict[str, Any] | None:
         "detail": detail,
         "plannedWorkoutId": None,
         "targetDate": None,
-        "href": "/sleep",
+        "href": "/environment",
     }
 
 
