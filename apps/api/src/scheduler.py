@@ -392,8 +392,10 @@ async def run_morning_weather_sync() -> None:
     it guarantees a verdict even for a morning Mark never engaged with. On the
     primary path generation is triggered by his check-in and the wake job runs the
     lighter run_morning_sync (sync + nudge) instead (Batch 85). Idempotent per
-    profile: generate_and_store and push_morning_verdict short-circuit if the brief
-    / push already happened via the check-in.
+    profile: generate_and_store and push_brief_ready short-circuit if the brief /
+    push already happened via the check-in (Batch 112 converged the backstop onto
+    the same brief-ready notification the check-in path sends, so there is one
+    "your brief is ready" push regardless of which path generated it first).
     """
     try:
         async with AsyncSessionLocal() as session:
@@ -409,7 +411,7 @@ async def run_morning_weather_sync() -> None:
             nudge_service = NudgeAlertService(session)
             insights_service = InsightsService(session)
             proposals_regenerated = 0
-            verdict_pushes = 0
+            brief_ready_pushes = 0
             drivers_cached = 0
             for profile in profiles:
                 subject_date = _profile_today(profile)
@@ -430,18 +432,20 @@ async def run_morning_weather_sync() -> None:
                     )
                     continue
                 if analysis_result.generated:
-                    # Batch 45: push the verdict the moment it lands. Wrapped so a
-                    # push failure never blocks the Amber regeneration below.
+                    # Batch 112: push the same brief-ready notification the
+                    # check-in path sends, so the backstop can never announce a
+                    # second "brief ready" push under a different URL. Wrapped so
+                    # a push failure never blocks the Amber regeneration below.
                     try:
-                        if await nudge_service.push_morning_verdict(
+                        if await nudge_service.push_brief_ready(
                             profile,
                             analysis_result.analysis,
                             subject_date=subject_date,
                         ):
-                            verdict_pushes += 1
+                            brief_ready_pushes += 1
                     except Exception:
                         log.exception(
-                            "morning verdict push failed",
+                            "morning brief-ready push failed",
                             profile_id=str(profile.id),
                             subject_date=subject_date.isoformat(),
                         )
@@ -484,7 +488,7 @@ async def run_morning_weather_sync() -> None:
             analyses_generated=analyses_generated,
             analyses_existing=analyses_existing,
             proposals_regenerated=proposals_regenerated,
-            verdict_pushes=verdict_pushes,
+            brief_ready_pushes=brief_ready_pushes,
             drivers_cached=drivers_cached,
         )
     except Exception:

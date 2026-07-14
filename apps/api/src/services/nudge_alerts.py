@@ -26,7 +26,6 @@ from src.services.push_notification_service import send_notification
 ANALYSIS_TYPE_EVENING_NUDGE = "evening_nudge"
 ANALYSIS_TYPE_THERMAL_ALERT = "thermal_alert"
 ANALYSIS_TYPE_STALE_SOURCE_ALERT = "stale_source_alert"
-ANALYSIS_TYPE_VERDICT_PUSH = "verdict_push"
 ANALYSIS_TYPE_BRIEF_READY = "brief_ready_push"
 ANALYSIS_TYPE_ANALYSIS_PUSH = "analysis_push"
 ANALYSIS_TYPE_GOOD_MORNING = "good_morning_nudge"
@@ -41,6 +40,11 @@ GARMIN_FRESHNESS_HOUR = 8
 # 20.0 C step). Above this the fan runs at max, so "still warm here" is the signal
 # that airflow alone cannot cope.
 THERMAL_CRITICAL_C = 20.0
+
+# Batch 112: the one deep-link every thermal severity points at (the `/bedroom`
+# route is redirect-only — see App.tsx — so alerts must target its destination
+# directly rather than bouncing through it).
+THERMAL_URL = "/environment"
 
 # Batch 45 — reconcile the evening thermal nudges with the Batch 27 fan autopilot.
 # When the loop's latest tick is one of these, the fan is managing the room, so the
@@ -147,34 +151,17 @@ def _verdict_headline(analysis: Analysis) -> str | None:
     return None
 
 
-def build_verdict_push_plan(analysis: Analysis, subject_date: date) -> NotificationPlan:
-    """A one-per-day push announcing today's morning verdict (Batch 45)."""
-    status = (analysis.verdict or "").strip()
-    title = f"Today: {status}" if status else "Your morning verdict is ready"
-    body = _verdict_headline(analysis) or "Open the app for today's read."
-    return NotificationPlan(
-        analysis_type=ANALYSIS_TYPE_VERDICT_PUSH,
-        tag=f"verdict-{subject_date.isoformat()}",
-        title=title,
-        body=body,
-        severity=status.lower() if status else "info",
-        data={"url": "/", "kind": "verdict_push", "status": status},
-        context={
-            "subjectDate": subject_date.isoformat(),
-            "status": status,
-            "rule": "verdict_push",
-        },
-    )
-
-
 def build_good_morning_plan(subject_date: date) -> NotificationPlan:
     """The wake "good morning" nudge (Batch 85).
 
     Fired once per day after the overnight sync completes, inviting Mark to open
     the app and check in to generate today's brief. On the primary path it
-    *replaces* the auto verdict push — generation now happens on his check-in, so
-    tap-time is always post-sync and fast. The verdict push survives only as the
-    09:30 backstop for a morning he never engages with (Decision #158).
+    *replaces* the auto brief-ready push — generation now happens on his check-in,
+    so tap-time is always post-sync and fast. The brief-ready push survives only
+    as the 09:30 backstop for a morning he never engages with (Decision #158),
+    and Batch 112 converged the backstop onto the same `/brief` notification so
+    there is exactly one "your brief is ready" push regardless of which path
+    generated it.
     """
     return NotificationPlan(
         analysis_type=ANALYSIS_TYPE_GOOD_MORNING,
@@ -304,7 +291,7 @@ def evaluate_thermal_alert(
                 "Pre-cool now and keep airflow moving until it drops."
             ),
             severity="critical",
-            data={"url": "/", "kind": "thermal", "severity": "critical"},
+            data={"url": THERMAL_URL, "kind": "thermal", "severity": "critical"},
             context={**context, "rule": "peak_20c"},
         )
 
@@ -318,7 +305,7 @@ def evaluate_thermal_alert(
                 "disruption, so cool it before bed."
             ),
             severity="warning",
-            data={"url": "/", "kind": "thermal", "severity": "warning"},
+            data={"url": THERMAL_URL, "kind": "thermal", "severity": "warning"},
             context={**context, "rule": "peak_19_5c"},
         )
 
@@ -329,7 +316,7 @@ def evaluate_thermal_alert(
             title="Seal the bedroom",
             body=f"Bedroom is {temp_c:.1f}C. Seal it now and keep the pre-bed routine steady.",
             severity="info",
-            data={"url": "/", "kind": "thermal", "severity": "info"},
+            data={"url": THERMAL_URL, "kind": "thermal", "severity": "info"},
             context={**context, "rule": "seal_22"},
         )
 
@@ -343,7 +330,7 @@ def evaluate_thermal_alert(
                 "is ready before the 22:00 seal."
             ),
             severity="info",
-            data={"url": "/", "kind": "thermal", "severity": "info"},
+            data={"url": THERMAL_URL, "kind": "thermal", "severity": "info"},
             context={**context, "rule": "pre_cool_17c"},
         )
 
@@ -385,7 +372,7 @@ def _fan_reconciled_thermal_alert(
         title="Check the bedroom fan",
         body=f"Bedroom is {temp_c:.1f}C and {reason}. Go check the bedroom fan.",
         severity="critical",
-        data={"url": "/bedroom", "kind": "thermal", "severity": "critical"},
+        data={"url": THERMAL_URL, "kind": "thermal", "severity": "critical"},
         context={**context, "rule": "fan_cant_cope", "fanAction": fan.latest_action},
     )
 
@@ -493,29 +480,6 @@ class NudgeAlertService:
             now_utc=now,
         )
 
-    async def push_morning_verdict(
-        self,
-        profile: Profile,
-        analysis: Analysis,
-        *,
-        subject_date: date,
-        now_utc: datetime | None = None,
-        commit: bool = True,
-    ) -> bool:
-        """Push today's morning verdict once (Batch 45).
-
-        Idempotent per (profile, subject_date) via the ``verdict-{date}`` tag, so
-        the 09:30 backstop and any regeneration never double-push.
-        """
-        plan = build_verdict_push_plan(analysis, subject_date)
-        return await self._send_once(
-            profile,
-            plan,
-            subject_date=subject_date,
-            commit=commit,
-            now_utc=now_utc or datetime.now(UTC),
-        )
-
     async def push_good_morning(
         self,
         profile: Profile,
@@ -550,7 +514,10 @@ class NudgeAlertService:
         """Push today's ready brief once (Batch 97).
 
         Idempotent per (profile, subject_date) via the ``brief-ready-{date}``
-        tag, so a regeneration or retry can never double-notify.
+        tag, so a regeneration or retry can never double-notify — including the
+        09:30 backstop (Batch 112), which now calls this same method instead of
+        a separate verdict push, so whichever path (check-in or backstop)
+        generates the brief first is the one that sends the notification.
         """
         plan = build_brief_ready_plan(analysis, subject_date)
         return await self._send_once(
