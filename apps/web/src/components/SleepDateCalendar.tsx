@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  addDays,
   addMonths,
   eachDayOfInterval,
   endOfMonth,
@@ -11,6 +12,7 @@ import {
   parseISO,
   startOfMonth,
   startOfWeek,
+  subDays,
   subMonths,
 } from 'date-fns';
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -37,6 +39,8 @@ export function SleepDateCalendar({
   }, [selectedDate]);
 
   const maxDateObj = useMemo(() => parseISO(maxDate), [maxDate]);
+  const selectedDateObj = useMemo(() => parseISO(selectedDate), [selectedDate]);
+  const nextDayDisabled = !isAfter(maxDateObj, selectedDateObj);
   const nextMonthDisabled = isAfter(startOfMonth(addMonths(displayMonth, 1)), startOfMonth(maxDateObj));
   const days = useMemo(() => {
     const start = startOfWeek(startOfMonth(displayMonth), { weekStartsOn: 1 });
@@ -63,8 +67,8 @@ export function SleepDateCalendar({
               type="button"
               size="icon"
               variant="outline"
-              aria-label="Previous month"
-              onClick={() => setDisplayMonth((current) => subMonths(current, 1))}
+              aria-label="Previous day"
+              onClick={() => onSelectDate(format(subDays(selectedDateObj, 1), 'yyyy-MM-dd'))}
             >
               <ChevronLeft className="h-4 w-4" aria-hidden />
             </Button>
@@ -72,9 +76,9 @@ export function SleepDateCalendar({
               type="button"
               size="icon"
               variant="outline"
-              aria-label="Next month"
-              disabled={nextMonthDisabled}
-              onClick={() => setDisplayMonth((current) => addMonths(current, 1))}
+              aria-label="Next day"
+              disabled={nextDayDisabled}
+              onClick={() => onSelectDate(format(addDays(selectedDateObj, 1), 'yyyy-MM-dd'))}
             >
               <ChevronRight className="h-4 w-4" aria-hidden />
             </Button>
@@ -103,6 +107,27 @@ export function SleepDateCalendar({
           <div id="sleep-calendar-grid" className="space-y-3">
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-medium text-text-primary">{format(displayMonth, 'MMMM yyyy')}</p>
+              <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  aria-label="Previous month"
+                  onClick={() => setDisplayMonth((current) => subMonths(current, 1))}
+                >
+                  <ChevronLeft className="h-4 w-4" aria-hidden />
+                </Button>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  aria-label="Next month"
+                  disabled={nextMonthDisabled}
+                  onClick={() => setDisplayMonth((current) => addMonths(current, 1))}
+                >
+                  <ChevronRight className="h-4 w-4" aria-hidden />
+                </Button>
+              </div>
             </div>
             <div className="grid grid-cols-7 gap-1 text-center text-[11px] uppercase tracking-[0.2em] text-text-muted">
               {WEEKDAY_LABELS.map((label) => (
