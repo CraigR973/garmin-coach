@@ -101,6 +101,7 @@ export function SleepPage() {
 
   const data = query.data.data;
   const analysis = data.morningAnalysis;
+  const holiday = data.holiday;
   const thermal = data.thermalState;
   const breathworkBrief = data.breathworkBrief ?? null;
   const hasTodaySleepAccess = data.manualEntry != null || analysis != null;
@@ -194,62 +195,88 @@ export function SleepPage() {
             </div>
           ) : (
             <div className="space-y-5">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <MoonStar className="h-4 w-4 text-primary" aria-hidden />
-                    Tonight&apos;s sleep prep
-                  </CardTitle>
-                  <CardDescription>What tonight's training and drivers mean for your wind-down.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <SleepPrepBody projection={data.sleepProjection ?? null} />
-                    {breathworkBrief ? (
-                      <BreathworkRhythmCard
-                        brief={breathworkBrief}
-                        description="Keep the 20:00 breathing habit with tonight's wind-down, not in the workout card."
+              {holiday.isActive ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <MoonStar className="h-4 w-4 text-primary" aria-hidden />
+                      Holiday away
+                    </CardTitle>
+                    <CardDescription>
+                      Tonight&apos;s sleep-prep and bedroom controls stay paused while you are away.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <p className="text-sm text-text-secondary">
+                      These wind-down surfaces resume {friendlyDate(holiday.activeWindow?.endDate ?? data.subjectDate)}.
+                    </p>
+                    <DetailLinkCard
+                      to="/holiday"
+                      title="Open Holiday"
+                      description="Review or resume your holiday window."
+                    />
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <MoonStar className="h-4 w-4 text-primary" aria-hidden />
+                        Tonight&apos;s sleep prep
+                      </CardTitle>
+                      <CardDescription>What tonight's training and drivers mean for your wind-down.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        <SleepPrepBody projection={data.sleepProjection ?? null} />
+                        {breathworkBrief ? (
+                          <BreathworkRhythmCard
+                            brief={breathworkBrief}
+                            description="Keep the 20:00 breathing habit with tonight's wind-down, not in the workout card."
+                          />
+                        ) : null}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Fan className="h-4 w-4 text-primary" aria-hidden />
+                        Bedroom climate
+                      </CardTitle>
+                      <CardDescription>
+                        Keep the thermal context here, then jump to Climate when you need the full controls.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                        <SleepStat
+                          label="Indoor now"
+                          value={thermal.latestTemperatureC != null ? `${thermal.latestTemperatureC.toFixed(1)}°C` : 'Not synced'}
+                        />
+                        <SleepStat
+                          label="Thermostat"
+                          value={thermal.targetTemperatureC != null ? `${thermal.targetTemperatureC.toFixed(1)}°C` : '—'}
+                        />
+                        <SleepStat
+                          label="Overnight low"
+                          value={thermal.overnightLowC != null ? `${thermal.overnightLowC.toFixed(1)}°C` : '—'}
+                        />
+                        <SleepStat
+                          label="Wind"
+                          value={thermal.overnightWindMaxMph != null ? `${thermal.overnightWindMaxMph.toFixed(0)} mph` : '—'}
+                        />
+                      </div>
+                      <DetailLinkCard
+                        to="/environment"
+                        title="Open Climate"
+                        description="Control the fans here; the overnight room chart stays on Sleep."
                       />
-                    ) : null}
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Fan className="h-4 w-4 text-primary" aria-hidden />
-                    Bedroom climate
-                  </CardTitle>
-                  <CardDescription>
-                    Keep the thermal context here, then jump to Climate when you need the full controls.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                    <SleepStat
-                      label="Indoor now"
-                      value={thermal.latestTemperatureC != null ? `${thermal.latestTemperatureC.toFixed(1)}°C` : 'Not synced'}
-                    />
-                    <SleepStat
-                      label="Thermostat"
-                      value={thermal.targetTemperatureC != null ? `${thermal.targetTemperatureC.toFixed(1)}°C` : '—'}
-                    />
-                    <SleepStat
-                      label="Overnight low"
-                      value={thermal.overnightLowC != null ? `${thermal.overnightLowC.toFixed(1)}°C` : '—'}
-                    />
-                    <SleepStat
-                      label="Wind"
-                      value={thermal.overnightWindMaxMph != null ? `${thermal.overnightWindMaxMph.toFixed(0)} mph` : '—'}
-                    />
-                  </div>
-                  <DetailLinkCard
-                    to="/environment"
-                    title="Open Climate"
-                    description="Control the fans here; the overnight room chart stays on Sleep."
-                  />
-                </CardContent>
-              </Card>
+                    </CardContent>
+                  </Card>
+                </>
+              )}
             </div>
           )}
 

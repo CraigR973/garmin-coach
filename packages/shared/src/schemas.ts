@@ -980,12 +980,23 @@ export const loopStateSchema = z.object({
   atBlockBoundary: z.boolean(),
 });
 
+export const dailyLoopHolidayStateSchema = z.object({
+  isActive: z.boolean(),
+  activeWindow: z
+    .object({
+      startDate: isoDateSchema,
+      endDate: isoDateSchema,
+    })
+    .nullable(),
+});
+
 export const dailyLoopSchema = z.object({
   subjectDate: isoDateSchema,
   timezone: z.string().min(1),
   // Batch 48 explicit loop-state model. Optional so a stale cached payload
   // (pre-48) still parses; the frontend falls back to local derivation.
   loopState: loopStateSchema.optional(),
+  holiday: dailyLoopHolidayStateSchema,
   morningAnalysis: dailyLoopAnalysisSchema.nullable(),
   dailyMetrics: dailyMetricSchema.nullable(),
   sleep: sleepSchema.nullable(),

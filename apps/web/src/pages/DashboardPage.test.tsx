@@ -40,6 +40,10 @@ const baseSnapshot: DailyLoopEnvelope = {
   data: {
     subjectDate: '2026-06-20',
     timezone: 'Europe/London',
+    holiday: {
+      isActive: false,
+      activeWindow: null,
+    },
     morningAnalysis: {
       id: '22222222-2222-4222-8222-222222222222',
       generatedAtUtc: '2026-06-20T06:35:00Z',
@@ -1302,6 +1306,28 @@ describe('DashboardPage', () => {
     expect(tonight).toBeTruthy();
     expect(bedroom).toBeTruthy();
     expect(lastNight).toBeTruthy();
+  });
+
+  it('shows dormant tonight and bedroom sections during an active holiday', async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.holiday = {
+          isActive: true,
+          activeWindow: { startDate: '2026-07-12', endDate: '2026-07-16' },
+        };
+      }),
+    );
+
+    await screen.findByText('Cycle day');
+    await userEvent.click(screen.getByRole('button', { name: /tonight/i }));
+    await userEvent.click(screen.getByRole('button', { name: /bedroom/i }));
+    expect(screen.getAllByText('Away on holiday').length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText((_, node) => node?.textContent?.includes('Thursday, July 16') ?? false).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByRole('link', { name: /open holiday/i }).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Protect tonight's wind-down")).toBeNull();
+    expect(screen.queryByRole('link', { name: /tonight's sleep & bedroom/i })).toBeNull();
   });
 
   it('leads the morning Next strip with reviewing last night once metrics have synced', async () => {

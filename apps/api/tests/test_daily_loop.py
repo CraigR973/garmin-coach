@@ -35,6 +35,7 @@ from src.services.daily_loop import (
     DailyLoopService,
 )
 from src.services.executable_coaching import ExecutableCoachingService
+from src.services.holiday_pause import HolidayWindow
 from src.services.workout_delivery import IntervalsCreateResult
 
 _BIKE_STRUCTURED = {
@@ -896,6 +897,68 @@ async def test_get_daily_loop_excludes_skipped_workouts(db_conn: AsyncConnection
     assert response.status_code == 200, response.text
     workouts = response.json()["data"]["plannedWorkouts"]
     assert [workout["title"] for workout in workouts] == ["Strength maintenance"]
+
+
+@pytest.mark.asyncio
+async def test_get_daily_loop_surfaces_active_holiday_window(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 7, 14)
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Holiday Daily Loop Test",
+            pin_hash="x" * 60,
+            role=UserRole.player,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        await session.commit()
+
+    async with session_factory() as session:
+        session.add(
+            KnowledgeBase(
+                user_id=user_id,
+                section="holiday_windows",
+                version=1,
+                is_active=True,
+                source="holiday_manager",
+                content={
+                    "windows": [
+                        HolidayWindow(
+                            start_date=date(2026, 7, 12),
+                            end_date=date(2026, 7, 16),
+                            paused_at_utc=datetime(2026, 7, 11, 18, 0),
+                            resumed_at_utc=None,
+                        ).to_dict()
+                    ]
+                },
+            )
+        )
+        await session.commit()
+
+    app.dependency_overrides[get_current_user] = lambda: player
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get(
+                f"/api/v1/daily-loop?subject_date={subject_date.isoformat()}"
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["holiday"] == {
+        "isActive": True,
+        "activeWindow": {
+            "startDate": "2026-07-12",
+            "endDate": "2026-07-16",
+        },
+    }
 
 
 @pytest.mark.asyncio

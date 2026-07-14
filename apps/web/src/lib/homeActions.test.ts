@@ -12,6 +12,7 @@ type DataOverrides = Partial<{
   manualEntry: unknown;
   sleepProjection: { tone: string } | null;
   morningAnalysis: unknown;
+  holiday: { isActive: boolean; activeWindow: { startDate: string; endDate: string } | null };
 }>;
 
 /** A "clear" day (checked in, nothing pending) unless overridden — so each test
@@ -24,6 +25,7 @@ function makeData(overrides: DataOverrides = {}): DailyLoopData {
     manualEntry: { id: 'entry-1' },
     sleepProjection: null,
     morningAnalysis: null,
+    holiday: { isActive: false, activeWindow: null },
     ...overrides,
   } as unknown as DailyLoopData;
 }
@@ -110,6 +112,21 @@ describe('nextAction priority ladder', () => {
     // A non-protect projection in the evening → nothing to act on.
     expect(
       nextAction(makeData({ sleepProjection: { tone: 'routine' } }), { isEvening: true }).key,
+    ).toBe('all-set');
+  });
+
+  it('suppresses protect-sleep while away on holiday', () => {
+    expect(
+      nextAction(
+        makeData({
+          sleepProjection: { tone: 'protect' },
+          holiday: {
+            isActive: true,
+            activeWindow: { startDate: '2026-07-12', endDate: '2026-07-16' },
+          },
+        }),
+        { isEvening: true },
+      ).key,
     ).toBe('all-set');
   });
 

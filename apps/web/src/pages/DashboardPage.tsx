@@ -79,6 +79,42 @@ import {
 
 const SLEEP_PREP_SUMMARY = 'Keep the bedroom and bedtime routine working for you.';
 
+function holidayResumeLabel(endDate: string | null | undefined): string {
+  return endDate ? friendlyDate(endDate) : 'when you are back';
+}
+
+function holidayDormantSummary(endDate: string | null | undefined): string {
+  return `Away on holiday — resumes ${holidayResumeLabel(endDate)}.`;
+}
+
+function HolidayDormantBody({
+  kind,
+  endDate,
+}: {
+  kind: 'sleep' | 'bedroom';
+  endDate: string | null | undefined;
+}) {
+  const description =
+    kind === 'sleep'
+      ? "Tonight's wind-down stays paused while you are away."
+      : 'The bedroom fan and room checks stay paused while you are away.';
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-dashed border-border bg-bg px-4 py-4">
+        <p className="font-medium text-text-primary">Away on holiday</p>
+        <p className="mt-1 text-sm text-text-secondary">
+          {description} These surfaces resume {holidayResumeLabel(endDate)}.
+        </p>
+      </div>
+      <DetailLinkCard
+        to="/holiday"
+        title="Open Holiday"
+        description="Review or resume your holiday window."
+      />
+    </div>
+  );
+}
+
 function workoutIcon(type: string): LucideIcon {
   const t = type.toLowerCase();
   if (/dumbbell|bodyweight|strength|resist/.test(t)) return Dumbbell;
@@ -478,6 +514,8 @@ export function DashboardPage() {
   }
 
   const daily = data!;
+  const holiday = daily.holiday;
+  const holidayEndDate = holiday.activeWindow?.endDate ?? null;
   const analysis = daily.morningAnalysis;
   const ageComparison = (analysis?.ageComparison ?? null) as AgeComparison | null;
   const metricsVsBaselines = (analysis?.metricsVsBaselines ?? []) as MetricBaselineRow[];
@@ -649,10 +687,14 @@ export function DashboardPage() {
     tonight: {
       title: 'Tonight',
       icon: <MoonStar className="h-4 w-4 text-primary" aria-hidden />,
-      summary: daily.sleepProjection?.headline ?? SLEEP_PREP_SUMMARY,
+      summary: holiday.isActive
+        ? holidayDormantSummary(holidayEndDate)
+        : daily.sleepProjection?.headline ?? SLEEP_PREP_SUMMARY,
       // Batch 50: Home's evening cards stay compact and defer to the Sleep hub
       // (Batch 49) rather than duplicating the full wind-down controls.
-      body: (
+      body: holiday.isActive ? (
+        <HolidayDormantBody kind="sleep" endDate={holidayEndDate} />
+      ) : (
         <div className="space-y-4">
           <SleepPrepBody projection={daily.sleepProjection ?? null} />
           <DetailLinkCard
@@ -666,8 +708,12 @@ export function DashboardPage() {
     bedroom: {
       title: 'Bedroom',
       icon: <Thermometer className="h-4 w-4 text-primary" aria-hidden />,
-      summary: bedroomSummary(thermal),
-      body: <BedroomBody thermal={thermal} />,
+      summary: holiday.isActive ? holidayDormantSummary(holidayEndDate) : bedroomSummary(thermal),
+      body: holiday.isActive ? (
+        <HolidayDormantBody kind="bedroom" endDate={holidayEndDate} />
+      ) : (
+        <BedroomBody thermal={thermal} />
+      ),
     },
   };
 

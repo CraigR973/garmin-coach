@@ -51,6 +51,10 @@ function reviewRide(): NextAction {
   return { key: 'review-ride', label: "Review today's eased ride", sectionKey: 'today', tone: 'warning' };
 }
 
+function isHolidayAway(data: DailyLoopData): boolean {
+  return data.holiday.isActive;
+}
+
 /**
  * Resolve the top action from the deterministic priority ladder.
  *
@@ -119,6 +123,9 @@ export function nextAction(
     }
   }
   if (isEvening && data.sleepProjection?.tone === 'protect') {
+    if (isHolidayAway(data)) {
+      return { key: 'all-set', label: "You're all set", tone: 'muted' };
+    }
     return { key: 'protect-sleep', label: "Protect tonight's sleep", to: '/sleep', tone: 'warning' };
   }
   return { key: 'all-set', label: "You're all set", tone: 'muted' };

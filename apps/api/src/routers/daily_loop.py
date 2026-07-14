@@ -585,10 +585,21 @@ class LoopStateOut(BaseModel):
     atBlockBoundary: bool
 
 
+class ActiveHolidayWindowOut(BaseModel):
+    startDate: str
+    endDate: str
+
+
+class HolidayStateOut(BaseModel):
+    isActive: bool
+    activeWindow: ActiveHolidayWindowOut | None
+
+
 class DailyLoopData(BaseModel):
     subjectDate: str
     timezone: str
     loopState: LoopStateOut
+    holiday: HolidayStateOut
     morningAnalysis: AnalysisOut | None
     dailyMetrics: DailyMetricOut | None
     sleep: SleepOut | None
@@ -1243,6 +1254,17 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
                 blockPhase=snapshot.loop_state.block_phase,
                 nextAction=snapshot.loop_state.next_action,
                 atBlockBoundary=snapshot.loop_state.at_block_boundary,
+            ),
+            holiday=HolidayStateOut(
+                isActive=snapshot.active_holiday_window is not None,
+                activeWindow=(
+                    ActiveHolidayWindowOut(
+                        startDate=snapshot.active_holiday_window.start_date.isoformat(),
+                        endDate=snapshot.active_holiday_window.end_date.isoformat(),
+                    )
+                    if snapshot.active_holiday_window is not None
+                    else None
+                ),
             ),
             morningAnalysis=morning_analysis,
             dailyMetrics=_serialize_daily_metric(snapshot.daily_metric),
