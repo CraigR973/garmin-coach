@@ -62,6 +62,7 @@ const snapshot: DailyLoopEnvelope = {
     postStrengthAnalyses: [],
     postWalkAnalyses: [],
     plannedWorkouts: [],
+    holiday: { isActive: false, activeWindow: null },
     thermalState: {
       latestTemperatureC: 17.4,
       targetTemperatureC: 17,
