@@ -348,3 +348,60 @@ already done via Batch 105.)
 ## Status
 9 points (Issues 9–17). 2 need no batch (12 not-a-bug, 16 done); 7 → Batches 108–112.
 Reconciled against current code (post-95–107) 2026-07-14.
+
+---
+
+# Walkthrough Feedback — 2026-07-14 (wave 2)
+
+A second 14th wave (the walkthrough continued through the morning). 13 points, reconciled
+against current code with **Batches 95–112 all shipped**. Batched as **113–119**; Issue 1 is
+already fixed (Batch 110).
+
+**Type legend:** 🔴 correctness · 🟡 UX/flow · 🟢 feature · 🔵 design-decided
+
+## Fixed / partial
+- **1 — progress replaces the button in place → DONE** (Batch 110,
+  [CheckInPage.tsx:378](apps/web/src/pages/CheckInPage.tsx:378)); the inline brief render is
+  gone. *(Verify the check-in fields don't still render above the progress.)*
+- **4 — greeting above verdict → partial.** Batch 110 dropped the duplicate date; but
+  `personalStatusLine` still doubles the verdict above the hero
+  ([DashboardPage.tsx:733](apps/web/src/pages/DashboardPage.tsx:733)). → Batch 115.
+
+## Open → Batches 113–119
+
+### Holiday-thermal completeness → Batch 113 (Issues 3, 6, 7, 12)
+`_thermal_action`/`build_today_actions` ([morning_analysis.py:1202](apps/api/src/services/morning_analysis.py:1202))
+still emit the pre-cool action + the prompt still includes the thermal review on a holiday
+(3, 7); the pre-cool href is `/sleep` not `/environment`
+([:1222](apps/api/src/services/morning_analysis.py:1222)) (12); Sleep's Last-night tab still
+shows the fan chart on holiday ([SleepPage.tsx:194](apps/web/src/pages/SleepPage.tsx:194)) (6).
+Batch 105/109 only reached the scheduler + Home/Sleep-Tonight.
+
+### Check-in CTAs clear after check-in → Batch 114 (Issues 8, 11)
+Home hero gates on `analysis` not `manualEntry`
+([DashboardPage.tsx:739](apps/web/src/pages/DashboardPage.tsx:739)) — 8; Sleep's "Add today's
+check-in" shows when `hasSleepAccess` (i.e. after check-in)
+([SleepPage.tsx:286](apps/web/src/pages/SleepPage.tsx:286)) — 11.
+
+### Home lockup + layout → Batch 115 (Issues 4, 5)
+Status line doubles the verdict (4); "You're all set"
+([DashboardPage.tsx:770](apps/web/src/pages/DashboardPage.tsx:770)) overlaps the Today section (5).
+
+### Hosted read-aloud voice → Batch 116 (Issue 2)
+Batch 111 shipped on-device `selectBestVoice`
+([BriefListenControls.tsx:60](apps/web/src/components/BriefListenControls.tsx:60)); still
+robotic → hosted/neural TTS (privacy call).
+
+### Calendar day-stepping → Batch 117 (Issue 9)
+Chevrons page by month ([SleepDateCalendar.tsx:40](apps/web/src/components/SleepDateCalendar.tsx:40)); want day-steps.
+
+### More specific feedback → Batch 118 (Issue 13)
+`FeedbackControl` is 3-way + free-text ([FeedbackControl.tsx](apps/web/src/components/FeedbackControl.tsx)); want granular options (vocabulary TBD).
+
+### Follow-up chat on briefs → Batch 119 (Issue 10)
+New feature — conversational follow-up on a brief, grounded in its context packet. The brief
+answers only the one check-in question today.
+
+## Status
+13 points. 1 fixed (Batch 110), 1 partial → 115; 12 → Batches 113–119. Reconciled against
+current code (post-95–112) 2026-07-14.
