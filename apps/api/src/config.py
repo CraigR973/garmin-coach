@@ -56,8 +56,8 @@ class Settings(BaseSettings):
     # DECISIONS #190). A missing model file means the hosted path is
     # unavailable regardless of a user's consent flag — the frontend falls
     # back to on-device SpeechSynthesis (Batch 111, DECISIONS #184).
-    piper_voice_model_path: str = "/app/voices/en_GB-alan-medium.onnx"
-    piper_voice_config_path: str = "/app/voices/en_GB-alan-medium.onnx.json"
+    piper_voice_model_path: str = "/app/voices/en_GB-southern_english_female-low.onnx"
+    piper_voice_config_path: str = "/app/voices/en_GB-southern_english_female-low.onnx.json"
     intervals_api_key: str = ""
     intervals_athlete_id: str = "i618709"
     intervals_base_url: str = "https://intervals.icu/api/v1"
