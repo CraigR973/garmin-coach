@@ -132,10 +132,11 @@ function NotificationsSection() {
 
 // ── Voice section ─────────────────────────────────────────────────────────────
 
-/** Explicit opt-in for the hosted/neural read-aloud voice (Batch 116). Off by
- *  default — the brief only ever reads aloud on-device (Batch 111, DECISIONS
- *  #179 / #184) unless this is switched on, which sends the brief's text to
- *  OpenAI's TTS API for a more natural voice. */
+/** Explicit opt-in for the hosted/neural read-aloud voice (Batch 116, engine
+ *  swapped to self-hosted Piper in DECISIONS #190). Off by default — the
+ *  brief only ever reads aloud on-device (Batch 111, DECISIONS #179 / #184)
+ *  unless this is switched on, which generates the audio on our own server
+ *  for a more natural voice instead of the platform default. */
 function VoiceSection() {
   const queryClient = useQueryClient();
   const { data } = useDailyLoop();
@@ -162,8 +163,9 @@ function VoiceSection() {
         <div className="flex-1 space-y-1">
           <p className="text-sm font-sans text-text-primary">Natural hosted voice</p>
           <p className="text-xs text-text-secondary font-sans">
-            Reads the brief aloud in a more natural voice via OpenAI. This sends the brief&apos;s text off-device;
-            off by default, the brief reads aloud using your device&apos;s own voice instead.
+            Reads the brief aloud in a more natural voice, generated on our own server (no third
+            party). Takes a little longer to start than the default; off by default, the brief
+            reads aloud using your device&apos;s own voice instead.
           </p>
         </div>
         <Toggle

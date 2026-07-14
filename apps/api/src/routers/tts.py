@@ -4,10 +4,11 @@ The brief's default read-aloud path is on-device `SpeechSynthesis` (Batch 106
 / 111, DECISIONS #179 / #184) — text never leaves the browser. This router
 adds an explicit, off-by-default alternative: once a user flips
 `Profile.hosted_tts_consent` on via `PUT /consent`, the frontend may call
-`POST /synthesize` to have brief text read in a natural hosted voice via
-OpenAI's TTS API. Consent is required on every call, not just remembered
-client-side, so a stale client can never silently start sending health-data
-text to a third party.
+`POST /synthesize` to have brief text read in a natural voice via a
+self-hosted Piper model (DECISIONS #190 — swapped in for an earlier
+OpenAI-hosted engine so brief text never leaves our own infra). Consent is
+required on every call, not just remembered client-side, so a stale client
+can never silently start generating audio the user hasn't opted into.
 
 Synthesized audio is cached in-process only (never persisted), consistent
 with #179's "read aloud, keep nothing" precedent for this feature.
@@ -18,6 +19,7 @@ from __future__ import annotations
 import hashlib
 from collections import OrderedDict
 from datetime import UTC, datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
@@ -26,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth import CurrentUser
 from src.config import settings
 from src.database import get_db
-from src.services.openai_tts import OpenAITTSError, synthesize_speech
+from src.services.piper_tts import PiperTTSError, synthesize_speech
 
 router = APIRouter(prefix="/api/v1/tts", tags=["tts"])
 
@@ -45,7 +47,7 @@ def _now() -> str:
 
 
 def _cache_key(text: str) -> str:
-    raw = f"{settings.openai_tts_model}:{settings.openai_tts_voice}:{text}"
+    raw = f"{settings.piper_voice_model_path}:{text}"
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
@@ -106,7 +108,7 @@ async def synthesize(body: SynthesizeBody, player: CurrentUser) -> Response:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Hosted read-aloud voice is not enabled for this account.",
         )
-    if not settings.openai_api_key:
+    if not Path(settings.piper_voice_model_path).is_file():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Hosted read-aloud voice is not configured.",
@@ -119,16 +121,15 @@ async def synthesize(body: SynthesizeBody, player: CurrentUser) -> Response:
     key = _cache_key(text)
     cached = _cache_get(key)
     if cached is not None:
-        return Response(content=cached, media_type="audio/mpeg")
+        return Response(content=cached, media_type="audio/wav")
 
     try:
         result = await synthesize_speech(
-            api_key=settings.openai_api_key,
-            model_name=settings.openai_tts_model,
-            voice=settings.openai_tts_voice,
+            model_path=settings.piper_voice_model_path,
+            config_path=settings.piper_voice_config_path,
             text=text,
         )
-    except OpenAITTSError as exc:
+    except PiperTTSError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="the hosted voice could not be reached",
