@@ -15,7 +15,7 @@ from src.services.nudge_alerts import (
     ANALYSIS_TYPE_ANALYSIS_PUSH,
     ANALYSIS_TYPE_BRIEF_READY,
     ANALYSIS_TYPE_GOOD_MORNING,
-    ANALYSIS_TYPE_VERDICT_PUSH,
+    THERMAL_URL,
     FanReconcileState,
     FreshnessSnapshot,
     NudgeAlertService,
@@ -23,7 +23,6 @@ from src.services.nudge_alerts import (
     build_brief_ready_plan,
     build_evening_nudge_plan,
     build_good_morning_plan,
-    build_verdict_push_plan,
     build_workout_checkin_plan,
     evaluate_stale_sources,
     evaluate_thermal_alert,
@@ -118,6 +117,7 @@ def test_thermal_precool_alert_before_seal_window() -> None:
     assert plan is not None
     assert plan.context["rule"] == "pre_cool_17c"
     assert "pre-cooling" in plan.body
+    assert plan.data["url"] == THERMAL_URL
 
 
 def test_thermal_seal_alert_near_2200() -> None:
@@ -129,6 +129,7 @@ def test_thermal_seal_alert_near_2200() -> None:
     assert plan is not None
     assert plan.context["rule"] == "seal_22"
     assert "Seal" in plan.title
+    assert plan.data["url"] == THERMAL_URL
 
 
 def test_thermal_peak_alert_uses_disruption_threshold() -> None:
@@ -141,6 +142,7 @@ def test_thermal_peak_alert_uses_disruption_threshold() -> None:
     assert plan.context["rule"] == "peak_19_5c"
     assert plan.severity == "warning"
     assert "19.5C" in plan.body
+    assert plan.data["url"] == THERMAL_URL
 
 
 def test_thermal_critical_alert_over_20c() -> None:
@@ -152,6 +154,7 @@ def test_thermal_critical_alert_over_20c() -> None:
     assert plan is not None
     assert plan.context["rule"] == "peak_20c"
     assert plan.severity == "critical"
+    assert plan.data["url"] == THERMAL_URL
 
 
 def test_stale_source_alerts_distinguish_sources() -> None:
@@ -220,26 +223,6 @@ def test_recent_hive_threshold_boundary_is_fresh() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_verdict_push_plan_uses_status_and_first_reason() -> None:
-    plan = build_verdict_push_plan(
-        _analysis(verdict="Amber", reasons=["Age-adjusted sleep is below the 74+ green target."]),
-        date(2026, 7, 3),
-    )
-    assert plan.analysis_type == "verdict_push"
-    assert plan.tag == "verdict-2026-07-03"
-    assert plan.title == "Today: Amber"
-    assert plan.body == "Age-adjusted sleep is below the 74+ green target."
-    assert plan.severity == "amber"
-    assert plan.data == {"url": "/", "kind": "verdict_push", "status": "Amber"}
-
-
-def test_verdict_push_plan_falls_back_without_verdict_or_reasons() -> None:
-    plan = build_verdict_push_plan(_analysis(verdict=None, reasons=None), date(2026, 7, 3))
-    assert plan.title == "Your morning verdict is ready"
-    assert plan.body == "Open the app for today's read."
-    assert plan.severity == "info"
-
-
 def test_analysis_push_plan_titles_per_kind() -> None:
     activity_id = uuid.uuid4()
     titles = {
@@ -306,7 +289,7 @@ def test_thermal_escalates_when_fan_unreachable_or_no_data() -> None:
         assert plan.context["rule"] == "fan_cant_cope"
         assert plan.context["fanAction"] == action
         assert plan.severity == "critical"
-        assert plan.data["url"] == "/bedroom"
+        assert plan.data["url"] == THERMAL_URL
         assert reason in plan.body
 
 
@@ -400,8 +383,13 @@ async def _seed_profile(session: object, *, fan_auto_enabled: bool = False) -> P
 
 
 @pytest.mark.asyncio
-async def test_morning_verdict_pushes_exactly_once(db_conn: AsyncConnection) -> None:
-    """The verdict pushes once; the backstop/regeneration re-run never re-pushes."""
+async def test_brief_ready_pushes_exactly_once(db_conn: AsyncConnection) -> None:
+    """The brief-ready push fires once; the backstop/regeneration re-run never re-pushes.
+
+    Batch 112 converged the 09:30 backstop onto this same method, so this also
+    covers the backstop-after-check-in case: whichever call lands first wins and
+    the other is a no-op, giving Mark exactly one "brief ready" notification.
+    """
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     async with session_factory() as session:
         profile = await _seed_profile(session)
@@ -422,10 +410,10 @@ async def test_morning_verdict_pushes_exactly_once(db_conn: AsyncConnection) -> 
         await session.flush()
 
         service = NudgeAlertService(session)
-        first = await service.push_morning_verdict(
+        first = await service.push_brief_ready(
             profile, analysis, subject_date=subject_date, commit=False
         )
-        second = await service.push_morning_verdict(
+        second = await service.push_brief_ready(
             profile, analysis, subject_date=subject_date, commit=False
         )
         assert first is True
@@ -436,7 +424,7 @@ async def test_morning_verdict_pushes_exactly_once(db_conn: AsyncConnection) -> 
             .select_from(Analysis)
             .where(
                 Analysis.user_id == profile.id,
-                Analysis.analysis_type == ANALYSIS_TYPE_VERDICT_PUSH,
+                Analysis.analysis_type == ANALYSIS_TYPE_BRIEF_READY,
             )
         )
         assert count == 1

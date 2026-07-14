@@ -474,7 +474,7 @@ async def test_morning_weather_sync_runs_daily_sync_before_analysis() -> None:
     coaching_service = MagicMock()
     coaching_service.regenerate_for_verdict = AsyncMock(return_value=[])
     nudge_service = MagicMock()
-    nudge_service.push_morning_verdict = AsyncMock(return_value=True)
+    nudge_service.push_brief_ready = AsyncMock(return_value=True)
 
     with (
         patch("src.scheduler.AsyncSessionLocal", return_value=_Ctx()),
@@ -490,8 +490,9 @@ async def test_morning_weather_sync_runs_daily_sync_before_analysis() -> None:
     assert "garmin_daily" in calls
     assert "analysis" in calls
     assert calls.index("garmin_daily") < calls.index("analysis")
-    # Batch 45: the freshly generated verdict is pushed exactly once.
-    assert nudge_service.push_morning_verdict.await_count == 1
+    # Batch 112: the freshly generated brief is pushed exactly once via the same
+    # brief-ready notification the check-in path uses.
+    assert nudge_service.push_brief_ready.await_count == 1
 
 
 def _morning_sync_ctx(session: AsyncMock) -> object:
