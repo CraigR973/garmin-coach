@@ -22,7 +22,11 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-PIPER_TIMEOUT_SECONDS = 45
+# A `medium`-quality voice took >45s to synthesize a full brief on Railway's
+# CPU and timed out in production (DECISIONS #191) — the voice model moved to
+# `low` quality for speed, but this stays generous as a safety margin since
+# synthesis speed on shared CPU is still not something verified ahead of time.
+PIPER_TIMEOUT_SECONDS = 60
 
 
 class PiperTTSError(Exception):
