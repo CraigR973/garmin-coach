@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-4-6"
     anthropic_max_tokens: int = 4096
+    # Hosted read-aloud voice (Batch 116, opt-in). Empty key means the hosted
+    # path is unavailable regardless of a user's consent flag — the frontend
+    # falls back to on-device SpeechSynthesis (Batch 111, DECISIONS #184).
+    openai_api_key: str = ""
+    openai_tts_model: str = "tts-1"
+    openai_tts_voice: str = "alloy"
     intervals_api_key: str = ""
     intervals_athlete_id: str = "i618709"
     intervals_base_url: str = "https://intervals.icu/api/v1"

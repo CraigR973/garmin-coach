@@ -35,6 +35,12 @@ class Profile(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     # Bedroom-fan overnight autopilot master switch (Batch 27.3). When false the
     # control loop no-ops and the fan is driven manually. See DECISIONS #96.
     fan_auto_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    # Explicit opt-in for hosted/neural read-aloud voice (Batch 116). When false
+    # (the default), the brief only ever reads aloud via on-device SpeechSynthesis
+    # (Batch 111) — brief text is never sent to a third party. See DECISIONS #179.
+    hosted_tts_consent: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")

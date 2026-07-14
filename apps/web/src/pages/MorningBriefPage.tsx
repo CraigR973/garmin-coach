@@ -80,7 +80,7 @@ export function MorningBriefPage() {
               </CardTitle>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardDescription>Generated {formatDateTime(analysis.generatedAtUtc)}</CardDescription>
-                <BriefListenControls markdown={analysis.outputMarkdown} />
+                <BriefListenControls markdown={analysis.outputMarkdown} hostedTtsConsent={data.hostedTtsConsent} />
               </div>
             </CardHeader>
             <CardContent>

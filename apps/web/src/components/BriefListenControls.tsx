@@ -1,19 +1,36 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pause, Play, Square } from 'lucide-react';
+import { Loader2, Pause, Play, Square } from 'lucide-react';
 import { markdownToSpeechText } from '@/lib/markdownSpeech';
 import { selectBestVoice } from '@/lib/speechVoice';
+import { apiFetchBlob } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 
-type ListenState = 'idle' | 'playing' | 'paused' | 'unsupported';
+type ListenState = 'idle' | 'loading' | 'playing' | 'paused' | 'unsupported';
 
 function getSpeechSupport(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
 }
 
-export function BriefListenControls({ markdown }: { markdown: string }) {
+/**
+ * Reads a brief aloud. Default path is on-device `SpeechSynthesis` (Batch 106
+ * / 111, DECISIONS #179 / #184) — brief text never leaves the browser. When
+ * `hostedTtsConsent` is true (an explicit opt-in, Batch 116), a natural
+ * hosted voice is tried first via `/api/v1/tts/synthesize`; any failure
+ * (network, 403 stale consent, 503 unconfigured) falls back to the on-device
+ * voice rather than failing silently.
+ */
+export function BriefListenControls({
+  markdown,
+  hostedTtsConsent = false,
+}: {
+  markdown: string;
+  hostedTtsConsent?: boolean;
+}) {
   const [state, setState] = useState<ListenState>(() => (getSpeechSupport() ? 'idle' : 'unsupported'));
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const spokenText = useMemo(() => markdownToSpeechText(markdown), [markdown]);
 
@@ -34,18 +51,35 @@ export function BriefListenControls({ markdown }: { markdown: string }) {
       synth.onvoiceschanged = null;
       synth.cancel();
       utteranceRef.current = null;
+      stopHostedAudio();
     };
   }, []);
 
   useEffect(() => {
-    if (utteranceRef.current) {
+    if (utteranceRef.current || audioRef.current) {
       synthRef.current?.cancel();
       utteranceRef.current = null;
+      stopHostedAudio();
       setState('idle');
     }
   }, [spokenText]);
 
-  const startSpeaking = () => {
+  function stopHostedAudio() {
+    if (audioRef.current) {
+      audioRef.current.onended = null;
+      audioRef.current.onerror = null;
+      audioRef.current.onpause = null;
+      audioRef.current.onplay = null;
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+  }
+
+  const startOnDeviceSpeaking = () => {
     if (!synthRef.current || !spokenText) {
       return;
     }
@@ -77,25 +111,80 @@ export function BriefListenControls({ markdown }: { markdown: string }) {
     synthRef.current.speak(utterance);
   };
 
+  const startHostedSpeaking = async (): Promise<boolean> => {
+    try {
+      const blob = await apiFetchBlob('/api/v1/tts/synthesize', {
+        method: 'POST',
+        body: JSON.stringify({ text: spokenText }),
+      });
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioUrlRef.current = url;
+      audio.onplay = () => setState('playing');
+      audio.onpause = () => {
+        if (!audio.ended) setState('paused');
+      };
+      audio.onended = () => {
+        stopHostedAudio();
+        setState('idle');
+      };
+      audio.onerror = () => {
+        stopHostedAudio();
+        setState('idle');
+      };
+      audioRef.current = audio;
+      await audio.play();
+      return true;
+    } catch {
+      stopHostedAudio();
+      return false;
+    }
+  };
+
+  const startSpeaking = async () => {
+    if (!spokenText) {
+      return;
+    }
+
+    if (hostedTtsConsent) {
+      setState('loading');
+      const started = await startHostedSpeaking();
+      if (started) {
+        return;
+      }
+    }
+
+    startOnDeviceSpeaking();
+  };
+
   const handleListenToggle = () => {
-    if (state === 'unsupported') {
+    if (state === 'unsupported' || state === 'loading') {
       return;
     }
 
     if (state === 'playing') {
-      synthRef.current?.pause();
+      if (audioRef.current) {
+        audioRef.current.pause();
+      } else {
+        synthRef.current?.pause();
+      }
       return;
     }
 
     if (state === 'paused') {
-      synthRef.current?.resume();
+      if (audioRef.current) {
+        void audioRef.current.play();
+      } else {
+        synthRef.current?.resume();
+      }
       return;
     }
 
-    startSpeaking();
+    void startSpeaking();
   };
 
   const handleStop = () => {
+    stopHostedAudio();
     synthRef.current?.cancel();
     utteranceRef.current = null;
     setState('idle');
@@ -112,6 +201,7 @@ export function BriefListenControls({ markdown }: { markdown: string }) {
 
   const isPlaying = state === 'playing';
   const isPaused = state === 'paused';
+  const isLoading = state === 'loading';
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -120,11 +210,26 @@ export function BriefListenControls({ markdown }: { markdown: string }) {
         size="sm"
         variant="outline"
         onClick={handleListenToggle}
+        disabled={isLoading}
         aria-pressed={isPlaying || isPaused}
-        aria-label={isPlaying ? 'Pause brief audio' : isPaused ? 'Resume brief audio' : 'Listen to brief'}
+        aria-label={
+          isLoading
+            ? 'Loading brief audio'
+            : isPlaying
+              ? 'Pause brief audio'
+              : isPaused
+                ? 'Resume brief audio'
+                : 'Listen to brief'
+        }
       >
-        {isPlaying ? <Pause className="h-4 w-4" aria-hidden /> : <Play className="h-4 w-4" aria-hidden />}
-        {isPlaying ? 'Pause' : isPaused ? 'Resume' : 'Listen'}
+        {isLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+        ) : isPlaying ? (
+          <Pause className="h-4 w-4" aria-hidden />
+        ) : (
+          <Play className="h-4 w-4" aria-hidden />
+        )}
+        {isLoading ? 'Loading…' : isPlaying ? 'Pause' : isPaused ? 'Resume' : 'Listen'}
       </Button>
       <Button
         type="button"

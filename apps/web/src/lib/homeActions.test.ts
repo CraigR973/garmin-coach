@@ -25,6 +25,7 @@ function makeData(overrides: DataOverrides = {}): DailyLoopData {
     manualEntry: { id: 'entry-1' },
     sleepProjection: null,
     morningAnalysis: null,
+    hostedTtsConsent: false,
     holiday: { isActive: false, activeWindow: null },
     ...overrides,
   } as unknown as DailyLoopData;
