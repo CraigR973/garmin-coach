@@ -60,6 +60,7 @@ describe('FeedbackControl', () => {
       kind: 'summary',
       rating: 'spot_on',
       correctionText: null,
+      reasonTags: [],
     });
     // A positive rating does not reveal the correction box.
     expect(screen.queryByLabelText('What did we get wrong?')).toBeNull();
@@ -83,11 +84,57 @@ describe('FeedbackControl', () => {
         kind: 'summary',
         rating: 'way_off',
         correctionText: 'my watch missed my 03:00 wake',
+        reasonTags: [],
       });
     });
   });
 
-  it('pre-selects an existing rating and shows the saved correction', () => {
+  it('reveals kind-scoped reason chips on a negative tap and saves a tap in one tap', async () => {
+    const user = userEvent.setup();
+    renderControl({ analysisId: 'abc', kind: 'summary' });
+
+    await user.click(screen.getByRole('button', { name: 'A bit off' }));
+    expect(screen.getByRole('button', { name: 'Sleep read' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Load read' })).toBeTruthy();
+    // Suggestion-only reasons must not leak into the summary axis.
+    expect(screen.queryByRole('button', { name: 'Too cautious' })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Sleep read' }));
+
+    await waitFor(() => {
+      const last = apiFetchMock.mock.calls.at(-1);
+      expect(JSON.parse(last![1].body)).toEqual({
+        kind: 'summary',
+        rating: 'a_bit_off',
+        correctionText: null,
+        reasonTags: ['sleep_read'],
+      });
+    });
+
+    // Tapping again toggles it back off.
+    await user.click(screen.getByRole('button', { name: 'Sleep read' }));
+    await waitFor(() => {
+      const last = apiFetchMock.mock.calls.at(-1);
+      expect(JSON.parse(last![1].body)).toEqual({
+        kind: 'summary',
+        rating: 'a_bit_off',
+        correctionText: null,
+        reasonTags: [],
+      });
+    });
+  });
+
+  it('renders the agreement axis reasons for a suggestion', async () => {
+    const user = userEvent.setup();
+    renderControl({ analysisId: 'abc', kind: 'suggestion' });
+
+    await user.click(screen.getByRole('button', { name: 'Not for me' }));
+    expect(screen.getByRole('button', { name: 'Too cautious' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Too aggressive' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Sleep read' })).toBeNull();
+  });
+
+  it('pre-selects an existing rating, reason tags, and shows the saved correction', () => {
     renderControl({
       analysisId: 'a1',
       kind: 'summary',
@@ -97,9 +144,13 @@ describe('FeedbackControl', () => {
         kind: 'summary',
         rating: 'a_bit_off',
         correctionText: 'slept better than it says',
+        reasonTags: ['sleep_read'],
         createdAtUtc: '2026-07-08T06:40:00Z',
       },
     });
+    expect(screen.getByRole('button', { name: 'Sleep read' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
     expect(screen.getByRole('button', { name: 'A bit off' }).getAttribute('aria-pressed')).toBe(
       'true',
     );

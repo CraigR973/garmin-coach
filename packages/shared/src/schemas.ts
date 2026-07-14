@@ -623,6 +623,29 @@ export const feedbackRatingSchema = z.union([
   feedbackSuggestionRatingSchema,
 ]);
 
+// One-tap "what's off" reasons, scoped by kind (Batch 118). Revealed alongside
+// the free-text box on a negative tap — the reason is a faster, more Mark-legible
+// signal than typing, and the correction text stays available for anything the
+// tags don't capture.
+export const feedbackSummaryReasonTagSchema = z.enum([
+  'sleep_read',
+  'load_read',
+  'thermal_read',
+  'plan_mismatch',
+  'other',
+]);
+export const feedbackSuggestionReasonTagSchema = z.enum([
+  'too_cautious',
+  'too_aggressive',
+  'bad_timing',
+  'not_practical',
+  'other',
+]);
+export const feedbackReasonTagSchema = z.union([
+  feedbackSummaryReasonTagSchema,
+  feedbackSuggestionReasonTagSchema,
+]);
+
 const feedbackRatingMatchesKind = (value: {
   kind: 'summary' | 'suggestion';
   rating: string;
@@ -634,12 +657,24 @@ const feedbackRatingMatchesKind = (value: {
   return (allowed as readonly string[]).includes(value.rating);
 };
 
+const feedbackReasonTagsMatchKind = (value: {
+  kind: 'summary' | 'suggestion';
+  reasonTags?: string[];
+}): boolean => {
+  const allowed =
+    value.kind === 'summary'
+      ? feedbackSummaryReasonTagSchema.options
+      : feedbackSuggestionReasonTagSchema.options;
+  return (value.reasonTags ?? []).every((tag) => (allowed as readonly string[]).includes(tag));
+};
+
 export const feedbackSchema = z.object({
   id: z.string().uuid(),
   analysisId: z.string().uuid(),
   kind: feedbackKindSchema,
   rating: feedbackRatingSchema,
   correctionText: z.string().nullable().optional(),
+  reasonTags: z.array(feedbackReasonTagSchema).default([]),
   createdAtUtc: isoDateTimeSchema,
 });
 
@@ -648,10 +683,15 @@ export const feedbackInputSchema = z
     kind: feedbackKindSchema,
     rating: feedbackRatingSchema,
     correctionText: z.string().max(2000).nullable().optional(),
+    reasonTags: z.array(feedbackReasonTagSchema).optional(),
   })
   .refine(feedbackRatingMatchesKind, {
     message: 'rating is not valid for the given kind',
     path: ['rating'],
+  })
+  .refine(feedbackReasonTagsMatchKind, {
+    message: 'reasonTags contains a tag that is not valid for the given kind',
+    path: ['reasonTags'],
   });
 
 // Batch 66 (#139): on an Amber/Red morning with a hard session scheduled, the

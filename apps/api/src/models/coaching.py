@@ -491,7 +491,8 @@ class Feedback(Base, UUIDPrimaryKeyMixin):
     picks the rating axis for the surface: ``summary`` (accuracy) or ``suggestion``
     (agreement with a suggested edit). ``rating`` is a short per-axis token; the
     optional ``correction_text`` is the payload that feeds the next read forward
-    (Decision #137).
+    (Decision #137). ``reason_tags`` are one-tap, kind-scoped "what's off" reasons
+    revealed alongside the free-text box on a negative tap (Batch 118).
     """
 
     __tablename__ = "feedback"
@@ -509,6 +510,7 @@ class Feedback(Base, UUIDPrimaryKeyMixin):
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     rating: Mapped[str] = mapped_column(String(40), nullable=False)
     correction_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reason_tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     created_utc: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False, default=_feedback_utcnow
     )

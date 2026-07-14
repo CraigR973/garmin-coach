@@ -8,6 +8,7 @@ import {
   dailyLoopEnvelopeSchema,
   dailyLoopPostWorkoutAnalysisSchema,
   dailyMetricSchema,
+  feedbackInputSchema,
   knowledgeBaseUpdateInputSchema,
   plannedWorkoutOverrideInputSchema,
   profileSchema,
@@ -651,5 +652,34 @@ describe('v1 shared schemas', () => {
     expect(parsed.data.signal.readinessScore).toBe(31);
     expect(parsed.data.changes[0]?.reason).toBe('defer_fatigue');
     expect(parsed.data.conflictsBefore[0]?.[1]).toBe('2026-07-16');
+  });
+
+  it('accepts kind-scoped reason tags on feedback input (Batch 118)', () => {
+    const parsed = feedbackInputSchema.parse({
+      kind: 'summary',
+      rating: 'a_bit_off',
+      reasonTags: ['sleep_read', 'thermal_read'],
+    });
+    expect(parsed.reasonTags).toEqual(['sleep_read', 'thermal_read']);
+  });
+
+  it('rejects a reason tag that does not belong to the given kind', () => {
+    expect(() =>
+      feedbackInputSchema.parse({
+        kind: 'summary',
+        rating: 'a_bit_off',
+        reasonTags: ['too_cautious'],
+      }),
+    ).toThrow();
+  });
+
+  it('rejects a summary reason tag on a suggestion', () => {
+    expect(() =>
+      feedbackInputSchema.parse({
+        kind: 'suggestion',
+        rating: 'not_for_me',
+        reasonTags: ['sleep_read'],
+      }),
+    ).toThrow();
   });
 });

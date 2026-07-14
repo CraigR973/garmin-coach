@@ -10,6 +10,7 @@ import {
   feedbackInputSchema,
   feedbackKindSchema,
   feedbackRatingSchema,
+  feedbackReasonTagSchema,
   feedbackSchema,
   generatedBlockDraftSchema,
   generatedBlockWeekSchema,
@@ -41,6 +42,7 @@ export type Feedback = z.infer<typeof feedbackSchema>;
 export type FeedbackInput = z.infer<typeof feedbackInputSchema>;
 export type FeedbackKind = z.infer<typeof feedbackKindSchema>;
 export type FeedbackRating = z.infer<typeof feedbackRatingSchema>;
+export type FeedbackReasonTag = z.infer<typeof feedbackReasonTagSchema>;
 export type Experiment = z.infer<typeof experimentSchema>;
 export type KnowledgeBase = z.infer<typeof knowledgeBaseSchema>;
 export type BlockProgressionProposal = z.infer<typeof blockProgressionProposalSchema>;

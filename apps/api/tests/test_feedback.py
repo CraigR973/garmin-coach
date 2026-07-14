@@ -188,6 +188,61 @@ async def test_put_feedback_rejects_rating_that_does_not_match_kind(
     assert response.status_code == 422, response.text
 
 
+@pytest.mark.asyncio
+async def test_put_feedback_saves_kind_scoped_reason_tags(db_conn: AsyncConnection) -> None:
+    """Batch 118 — one-tap 'what's off' reasons ride alongside the rating."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        analysis = await _make_analysis(session, user.id)
+
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.put(
+                f"/api/v1/analyses/{analysis.id}/feedback",
+                json={
+                    "kind": "summary",
+                    "rating": "way_off",
+                    "reasonTags": ["sleep_read", "thermal_read"],
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["reasonTags"] == ["sleep_read", "thermal_read"]
+
+
+@pytest.mark.asyncio
+async def test_put_feedback_rejects_reason_tag_that_does_not_match_kind(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        analysis = await _make_analysis(session, user.id)
+
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            # 'too_cautious' is a suggestion reason, not valid for a summary.
+            response = await client.put(
+                f"/api/v1/analyses/{analysis.id}/feedback",
+                json={
+                    "kind": "summary",
+                    "rating": "way_off",
+                    "reasonTags": ["too_cautious"],
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422, response.text
+
+
 # ---------------------------------------------------------------------------
 # Service: recent corrections + feedback surfacing
 # ---------------------------------------------------------------------------
@@ -222,6 +277,37 @@ async def test_recent_corrections_are_newest_first_and_text_only(
     assert [c.correction_text for c in corrections] == ["new note", "old note"]
     assert all(c.correction_text for c in corrections)
     assert corrections[0].analysis_type == "morning"
+
+
+@pytest.mark.asyncio
+async def test_recent_corrections_include_reason_tags_only_rows(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 118 — a reason tag alone (no free-text) still feeds forward."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        tagged_only = await _make_analysis(
+            session, user.id, generated_at=datetime(2026, 7, 10, 6, 30)
+        )
+        bare = await _make_analysis(session, user.id, generated_at=datetime(2026, 7, 11, 6, 30))
+        service = FeedbackService(session)
+        await service.upsert(
+            user,
+            tagged_only.id,
+            kind="summary",
+            rating="a_bit_off",
+            correction_text=None,
+            reason_tags=["sleep_read"],
+        )
+        await service.upsert(user, bare.id, kind="summary", rating="spot_on", correction_text=None)
+
+        corrections = await service.recent_corrections(user.id)
+
+    assert len(corrections) == 1
+    assert corrections[0].analysis_id == tagged_only.id
+    assert corrections[0].reason_tags == ("sleep_read",)
+    assert corrections[0].correction_text == ""
 
 
 @pytest.mark.asyncio

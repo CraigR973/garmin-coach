@@ -42,6 +42,9 @@ class FeedbackInput(BaseModel):
     kind: str = Field(..., description="'summary' (accuracy) or 'suggestion' (agreement)")
     rating: str = Field(..., description="A short per-axis token")
     correctionText: str | None = Field(default=None, max_length=2000)
+    reasonTags: list[str] = Field(
+        default_factory=list, description="One-tap, kind-scoped 'what's off' reasons"
+    )
 
 
 class FeedbackOut(BaseModel):
@@ -50,6 +53,7 @@ class FeedbackOut(BaseModel):
     kind: str
     rating: str
     correctionText: str | None
+    reasonTags: list[str]
     createdAtUtc: str
 
 
@@ -66,6 +70,7 @@ def serialize_feedback(row: Feedback) -> FeedbackOut:
         kind=row.kind,
         rating=row.rating,
         correctionText=row.correction_text,
+        reasonTags=list(row.reason_tags or []),
         createdAtUtc=row.created_utc.isoformat() + "Z",
     )
 
@@ -84,6 +89,7 @@ async def upsert_feedback(
         kind=payload.kind,
         rating=payload.rating,
         correction_text=payload.correctionText,
+        reason_tags=payload.reasonTags,
     )
     return FeedbackEnvelope(
         data=serialize_feedback(row),

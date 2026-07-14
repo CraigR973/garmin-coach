@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import Analysis, Feedback
@@ -33,6 +33,14 @@ KIND_SUGGESTION = "suggestion"
 RATINGS_BY_KIND: dict[str, tuple[str, ...]] = {
     KIND_SUMMARY: ("spot_on", "a_bit_off", "way_off"),
     KIND_SUGGESTION: ("agree", "not_for_me", "already_doing"),
+}
+
+# One-tap "what's off" reasons, scoped by kind (Batch 118). Revealed alongside
+# the free-text box on a negative tap; the frontend also validates against this
+# list so a stale client can't send a reason that no longer applies to the kind.
+REASON_TAGS_BY_KIND: dict[str, tuple[str, ...]] = {
+    KIND_SUMMARY: ("sleep_read", "load_read", "thermal_read", "plan_mismatch", "other"),
+    KIND_SUGGESTION: ("too_cautious", "too_aggressive", "bad_timing", "not_practical", "other"),
 }
 
 # How many recent corrections feed the next read (kept small — n=1, no aggregation).
@@ -53,6 +61,7 @@ class RecentCorrection:
     kind: str
     rating: str
     correction_text: str
+    reason_tags: tuple[str, ...]
     created_utc: datetime
 
     def to_packet(self) -> dict[str, object]:
@@ -63,6 +72,7 @@ class RecentCorrection:
             "kind": self.kind,
             "rating": self.rating,
             "correction": self.correction_text,
+            "reasonTags": list(self.reason_tags),
             "createdAtUtc": self.created_utc.isoformat() + "Z",
         }
 
@@ -71,7 +81,7 @@ class FeedbackService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    def _validate(self, kind: str, rating: str) -> None:
+    def _validate(self, kind: str, rating: str, reason_tags: list[str]) -> None:
         allowed = RATINGS_BY_KIND.get(kind)
         if allowed is None:
             raise HTTPException(
@@ -82,6 +92,13 @@ class FeedbackService:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Rating '{rating}' is not valid for kind '{kind}'.",
+            )
+        allowed_reasons = REASON_TAGS_BY_KIND[kind]
+        invalid_reasons = [tag for tag in reason_tags if tag not in allowed_reasons]
+        if invalid_reasons:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Reason tag(s) {invalid_reasons} are not valid for kind '{kind}'.",
             )
 
     async def _owned_analysis(self, player: Profile, analysis_id: uuid.UUID) -> Analysis:
@@ -103,10 +120,12 @@ class FeedbackService:
         kind: str,
         rating: str,
         correction_text: str | None,
+        reason_tags: list[str] | None = None,
         commit: bool = True,
     ) -> Feedback:
         """Create or replace this user's feedback for one analysis (one row per pair)."""
-        self._validate(kind, rating)
+        tags = reason_tags or []
+        self._validate(kind, rating, tags)
         await self._owned_analysis(player, analysis_id)
 
         cleaned = correction_text.strip() if correction_text else None
@@ -123,6 +142,7 @@ class FeedbackService:
                 kind=kind,
                 rating=rating,
                 correction_text=cleaned or None,
+                reason_tags=tags,
                 created_utc=_utcnow(),
             )
             self.session.add(row)
@@ -130,6 +150,7 @@ class FeedbackService:
             row.kind = kind
             row.rating = rating
             row.correction_text = cleaned or None
+            row.reason_tags = tags
             row.created_utc = _utcnow()
 
         if commit:
@@ -162,10 +183,11 @@ class FeedbackService:
     async def recent_corrections(
         self, user_id: uuid.UUID, *, limit: int = RECENT_CORRECTIONS_LIMIT
     ) -> list[RecentCorrection]:
-        """The most recent free-text corrections for this user, newest first.
+        """The most recent free-text/reason-tag corrections for this user, newest first.
 
-        Only rows with a non-empty ``correction_text`` — a bare rating is a
-        signal, but the correction is the payload the next read acts on.
+        Only rows with a non-empty ``correction_text`` or at least one
+        ``reason_tags`` entry — a bare rating is a signal, but the correction
+        (text and/or tags) is the payload the next read acts on.
         """
         rows = (
             await self.session.execute(
@@ -173,7 +195,10 @@ class FeedbackService:
                 .join(Analysis, Feedback.analysis_id == Analysis.id)
                 .where(
                     Feedback.user_id == user_id,
-                    Feedback.correction_text.isnot(None),
+                    or_(
+                        Feedback.correction_text.isnot(None),
+                        func.jsonb_array_length(Feedback.reason_tags) > 0,
+                    ),
                 )
                 .order_by(Feedback.created_utc.desc())
                 .limit(limit)
@@ -182,7 +207,8 @@ class FeedbackService:
         corrections: list[RecentCorrection] = []
         for feedback, analysis in rows:
             text = (feedback.correction_text or "").strip()
-            if not text:
+            tags = tuple(feedback.reason_tags or [])
+            if not text and not tags:
                 continue
             corrections.append(
                 RecentCorrection(
@@ -192,6 +218,7 @@ class FeedbackService:
                     kind=feedback.kind,
                     rating=feedback.rating,
                     correction_text=text,
+                    reason_tags=tags,
                     created_utc=feedback.created_utc,
                 )
             )

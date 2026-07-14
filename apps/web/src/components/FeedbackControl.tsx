@@ -6,6 +6,7 @@ import {
   type Feedback,
   type FeedbackKind,
   type FeedbackRating,
+  type FeedbackReasonTag,
 } from '@coach/shared';
 import { apiFetch } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -46,6 +47,30 @@ const PROMPT: Record<FeedbackKind, string> = {
   suggestion: 'How does this land?',
 };
 
+interface ReasonTagOption {
+  value: FeedbackReasonTag;
+  label: string;
+}
+
+// One-tap "what's off" reasons, scoped by kind (Batch 118). Shown alongside the
+// free-text box on a negative tap, so Mark can say what's off without typing.
+const REASON_TAGS: Record<FeedbackKind, ReasonTagOption[]> = {
+  summary: [
+    { value: 'sleep_read', label: 'Sleep read' },
+    { value: 'load_read', label: 'Load read' },
+    { value: 'thermal_read', label: 'Thermal read' },
+    { value: 'plan_mismatch', label: 'Plan/schedule' },
+    { value: 'other', label: 'Other' },
+  ],
+  suggestion: [
+    { value: 'too_cautious', label: 'Too cautious' },
+    { value: 'too_aggressive', label: 'Too aggressive' },
+    { value: 'bad_timing', label: 'Bad timing' },
+    { value: 'not_practical', label: 'Not practical' },
+    { value: 'other', label: 'Other' },
+  ],
+};
+
 function isNegative(kind: FeedbackKind, rating: FeedbackRating | null): boolean {
   if (rating === null) return false;
   return OPTIONS[kind].some((option) => option.value === rating && option.negative);
@@ -64,6 +89,9 @@ export function FeedbackControl({ analysisId, kind, feedback, className }: Feedb
     (feedback?.rating as FeedbackRating | undefined) ?? null,
   );
   const [correction, setCorrection] = useState(feedback?.correctionText ?? '');
+  const [reasonTags, setReasonTags] = useState<FeedbackReasonTag[]>(
+    (feedback?.reasonTags as FeedbackReasonTag[] | undefined) ?? [],
+  );
   const [showCorrection, setShowCorrection] = useState(
     Boolean(feedback?.correctionText) || isNegative(kind, (feedback?.rating as FeedbackRating) ?? null),
   );
@@ -73,18 +101,24 @@ export function FeedbackControl({ analysisId, kind, feedback, className }: Feedb
   useEffect(() => {
     setRating((feedback?.rating as FeedbackRating | undefined) ?? null);
     setCorrection(feedback?.correctionText ?? '');
+    setReasonTags((feedback?.reasonTags as FeedbackReasonTag[] | undefined) ?? []);
     setShowCorrection(
       Boolean(feedback?.correctionText) ||
         isNegative(kind, (feedback?.rating as FeedbackRating) ?? null),
     );
-  }, [feedback?.rating, feedback?.correctionText, kind]);
+  }, [feedback?.rating, feedback?.correctionText, feedback?.reasonTags, kind]);
 
   const mutation = useMutation({
-    mutationFn: async (next: { rating: FeedbackRating; correctionText: string | null }) => {
+    mutationFn: async (next: {
+      rating: FeedbackRating;
+      correctionText: string | null;
+      reasonTags: FeedbackReasonTag[];
+    }) => {
       const payload = feedbackInputSchema.parse({
         kind,
         rating: next.rating,
         correctionText: next.correctionText,
+        reasonTags: next.reasonTags,
       });
       await apiFetch(`/api/v1/analyses/${analysisId}/feedback`, {
         method: 'PUT',
@@ -105,18 +139,37 @@ export function FeedbackControl({ analysisId, kind, feedback, className }: Feedb
   });
 
   const options = OPTIONS[kind];
+  const reasonOptions = REASON_TAGS[kind];
 
   function handleRate(next: FeedbackRating) {
     setRating(next);
     const negative = isNegative(kind, next);
+    // Switching to a positive rating hides the reason chips; drop any tags
+    // picked under a since-abandoned negative tap so they don't ride along.
+    const nextReasonTags = negative ? reasonTags : [];
+    setReasonTags(nextReasonTags);
     setShowCorrection(negative || correction.trim().length > 0);
     // A rating saves in one tap; any existing correction rides along.
-    mutation.mutate({ rating: next, correctionText: correction.trim() || null });
+    mutation.mutate({
+      rating: next,
+      correctionText: correction.trim() || null,
+      reasonTags: nextReasonTags,
+    });
+  }
+
+  function toggleReasonTag(tag: FeedbackReasonTag) {
+    if (rating === null) return;
+    const next = reasonTags.includes(tag)
+      ? reasonTags.filter((value) => value !== tag)
+      : [...reasonTags, tag];
+    setReasonTags(next);
+    // A reason tag saves in one tap, same as the rating itself.
+    mutation.mutate({ rating, correctionText: correction.trim() || null, reasonTags: next });
   }
 
   function handleSaveCorrection() {
     if (rating === null) return;
-    mutation.mutate({ rating, correctionText: correction.trim() || null });
+    mutation.mutate({ rating, correctionText: correction.trim() || null, reasonTags });
   }
 
   return (
@@ -142,6 +195,21 @@ export function FeedbackControl({ analysisId, kind, feedback, className }: Feedb
 
       {showCorrection ? (
         <div className="space-y-2">
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="What's off?">
+            {reasonOptions.map((option) => (
+              <Button
+                key={option.value}
+                type="button"
+                size="sm"
+                variant={reasonTags.includes(option.value) ? 'default' : 'outline'}
+                aria-pressed={reasonTags.includes(option.value)}
+                disabled={mutation.isPending}
+                onClick={() => toggleReasonTag(option.value)}
+              >
+                {option.label}
+              </Button>
+            ))}
+          </div>
           <Textarea
             aria-label="What did we get wrong?"
             placeholder="What did we get wrong? (optional)"
