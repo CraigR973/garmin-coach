@@ -98,6 +98,7 @@ const dailyLoopEnvelope: DailyLoopEnvelope = {
     postStrengthAnalyses: [],
     postWalkAnalyses: [],
     plannedWorkouts: [],
+    hostedTtsConsent: false,
     holiday: { isActive: false, activeWindow: null },
     thermalState: {
       latestTemperatureC: null,

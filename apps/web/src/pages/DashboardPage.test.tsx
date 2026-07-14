@@ -40,6 +40,7 @@ const baseSnapshot: DailyLoopEnvelope = {
   data: {
     subjectDate: '2026-06-20',
     timezone: 'Europe/London',
+    hostedTtsConsent: false,
     holiday: {
       isActive: false,
       activeWindow: null,

@@ -600,6 +600,7 @@ class DailyLoopData(BaseModel):
     timezone: str
     loopState: LoopStateOut
     holiday: HolidayStateOut
+    hostedTtsConsent: bool
     morningAnalysis: AnalysisOut | None
     dailyMetrics: DailyMetricOut | None
     sleep: SleepOut | None
@@ -1266,6 +1267,7 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
                     else None
                 ),
             ),
+            hostedTtsConsent=player.hosted_tts_consent,
             morningAnalysis=morning_analysis,
             dailyMetrics=_serialize_daily_metric(snapshot.daily_metric),
             sleep=_serialize_sleep(snapshot.sleep),

@@ -997,6 +997,9 @@ export const dailyLoopSchema = z.object({
   // (pre-48) still parses; the frontend falls back to local derivation.
   loopState: loopStateSchema.optional(),
   holiday: dailyLoopHolidayStateSchema,
+  // Batch 116 — explicit opt-in for the hosted/neural read-aloud voice; false
+  // (the default) means the brief only ever reads aloud on-device (#179/#184).
+  hostedTtsConsent: z.boolean(),
   morningAnalysis: dailyLoopAnalysisSchema.nullable(),
   dailyMetrics: dailyMetricSchema.nullable(),
   sleep: sleepSchema.nullable(),

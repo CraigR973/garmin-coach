@@ -70,6 +70,26 @@ async function ensureFreshToken(): Promise<void> {
   await refreshPromise;
 }
 
+/** Like `apiFetch`, but for endpoints that return a binary body (e.g. hosted
+ * TTS audio) rather than JSON. No 401-refresh-retry — callers of a
+ * best-effort, opportunistically-degraded feature should just fall back. */
+export async function apiFetchBlob(path: string, options: RequestInit = {}): Promise<Blob> {
+  await ensureFreshToken();
+
+  const accessToken = getAuthToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string>),
+  };
+  if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
+
+  const resp = await fetch(`${BASE}${path}`, { ...options, headers });
+  if (!resp.ok) {
+    throw new Error(`API error ${resp.status}`);
+  }
+  return resp.blob();
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},

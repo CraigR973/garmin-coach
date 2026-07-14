@@ -106,7 +106,8 @@ describe('v1 shared schemas', () => {
           nextAction: 'wind_down',
           atBlockBoundary: true,
         },
-        holiday: {
+        hostedTtsConsent: false,
+    holiday: {
           isActive: false,
           activeWindow: null,
         },
@@ -228,7 +229,8 @@ describe('v1 shared schemas', () => {
       data: {
         subjectDate: '2026-07-02',
         timezone: 'Europe/London',
-        holiday: {
+        hostedTtsConsent: false,
+    holiday: {
           isActive: true,
           activeWindow: { startDate: '2026-07-12', endDate: '2026-07-16' },
         },
@@ -283,7 +285,8 @@ describe('v1 shared schemas', () => {
       data: {
         subjectDate: '2026-07-06',
         timezone: 'Europe/London',
-        holiday: {
+        hostedTtsConsent: false,
+    holiday: {
           isActive: false,
           activeWindow: null,
         },

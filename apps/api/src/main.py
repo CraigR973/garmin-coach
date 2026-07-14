@@ -37,6 +37,7 @@ from src.routers import (
     reviews,
     strength_brief,
     trends,
+    tts,
     walking_brief,
     workout_delivery,
 )
@@ -130,3 +131,4 @@ app.include_router(breathwork_brief.router)
 app.include_router(reviews.router)
 app.include_router(trends.router)
 app.include_router(handover.router)
+app.include_router(tts.router)
