@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Activity, ClipboardCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { BriefFollowUpChat } from '@/components/BriefFollowUpChat';
 import { BriefListenControls } from '@/components/BriefListenControls';
 import { Markdown } from '@/components/Markdown';
 import { PageHeader } from '@/components/PageHeader';
@@ -85,6 +86,11 @@ export function MorningBriefPage() {
             </CardHeader>
             <CardContent>
               <Markdown>{analysis.outputMarkdown}</Markdown>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <BriefFollowUpChat analysisId={analysis.id} />
             </CardContent>
           </Card>
         </>

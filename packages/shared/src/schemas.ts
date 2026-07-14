@@ -694,6 +694,32 @@ export const feedbackInputSchema = z
     path: ['reasonTags'],
   });
 
+// --- Follow-up chat on a brief (Batch 119) ---
+// Every AI summary is one `analyses` row, so a conversation is keyed to
+// `analysisId` the same way feedback is. A `proposedPlannedWorkoutId` on an
+// assistant turn is set by a deterministic keyword check on Mark's own
+// question (never the model) — the frontend offers a confirm button that
+// calls the existing workout-delivery propose endpoint, not a new one.
+export const briefMessageRoleSchema = z.enum(['user', 'assistant']);
+
+export const briefMessageSchema = z.object({
+  id: z.string().uuid(),
+  analysisId: z.string().uuid(),
+  role: briefMessageRoleSchema,
+  content: z.string().min(1),
+  proposedPlannedWorkoutId: z.string().uuid().nullable().optional(),
+  createdAtUtc: isoDateTimeSchema,
+});
+
+export const briefMessageInputSchema = z.object({
+  question: z.string().min(1).max(1000),
+});
+
+export const briefMessageTurnSchema = z.object({
+  userMessage: briefMessageSchema,
+  assistantMessage: briefMessageSchema,
+});
+
 // Batch 66 (#139): on an Amber/Red morning with a hard session scheduled, the
 // verdict carries a concrete week-swap the app can apply in one tap (move the
 // hard session to `moveToDate`, pull the easier `bringForwardTitle` forward).

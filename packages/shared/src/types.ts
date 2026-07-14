@@ -5,6 +5,10 @@ import {
   activityTimeSeriesSchema,
   analysisSchema,
   blockProgressionProposalSchema,
+  briefMessageInputSchema,
+  briefMessageRoleSchema,
+  briefMessageSchema,
+  briefMessageTurnSchema,
   dailyMetricSchema,
   experimentSchema,
   feedbackInputSchema,
@@ -43,6 +47,10 @@ export type FeedbackInput = z.infer<typeof feedbackInputSchema>;
 export type FeedbackKind = z.infer<typeof feedbackKindSchema>;
 export type FeedbackRating = z.infer<typeof feedbackRatingSchema>;
 export type FeedbackReasonTag = z.infer<typeof feedbackReasonTagSchema>;
+export type BriefMessageRole = z.infer<typeof briefMessageRoleSchema>;
+export type BriefMessage = z.infer<typeof briefMessageSchema>;
+export type BriefMessageInput = z.infer<typeof briefMessageInputSchema>;
+export type BriefMessageTurn = z.infer<typeof briefMessageTurnSchema>;
 export type Experiment = z.infer<typeof experimentSchema>;
 export type KnowledgeBase = z.infer<typeof knowledgeBaseSchema>;
 export type BlockProgressionProposal = z.infer<typeof blockProgressionProposalSchema>;
