@@ -106,6 +106,10 @@ describe('v1 shared schemas', () => {
           nextAction: 'wind_down',
           atBlockBoundary: true,
         },
+        holiday: {
+          isActive: false,
+          activeWindow: null,
+        },
         morningAnalysis: null,
         dailyMetrics: null,
         sleep: null,
@@ -216,6 +220,7 @@ describe('v1 shared schemas', () => {
     expect(parsed.data.chronicSuggestions?.items[0]?.rotation?.total).toBe(12);
     expect(parsed.data.loopState?.dayPhase).toBe('wind_down');
     expect(parsed.data.loopState?.atBlockBoundary).toBe(true);
+    expect(parsed.data.holiday.isActive).toBe(false);
   });
 
   it('accepts the daily-loop post-strength analysis shape', () => {
@@ -223,6 +228,10 @@ describe('v1 shared schemas', () => {
       data: {
         subjectDate: '2026-07-02',
         timezone: 'Europe/London',
+        holiday: {
+          isActive: true,
+          activeWindow: { startDate: '2026-07-12', endDate: '2026-07-16' },
+        },
         morningAnalysis: null,
         dailyMetrics: null,
         sleep: null,
@@ -274,6 +283,10 @@ describe('v1 shared schemas', () => {
       data: {
         subjectDate: '2026-07-06',
         timezone: 'Europe/London',
+        holiday: {
+          isActive: false,
+          activeWindow: null,
+        },
         morningAnalysis: null,
         dailyMetrics: null,
         sleep: null,

@@ -33,6 +33,7 @@ const snapshot = {
     postStrengthAnalyses: [],
     postWalkAnalyses: [],
     plannedWorkouts: [],
+    holiday: { isActive: false, activeWindow: null },
     thermalState: {
       thermalReview: {},
       fans: [

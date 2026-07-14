@@ -20,6 +20,10 @@ const snapshot: DailyLoopEnvelope = {
   data: {
     subjectDate: '2026-06-20',
     timezone: 'Europe/London',
+    holiday: {
+      isActive: false,
+      activeWindow: null,
+    },
     morningAnalysis: {
       id: '22222222-2222-4222-8222-222222222222',
       generatedAtUtc: '2026-06-20T06:35:00Z',
@@ -538,6 +542,25 @@ describe('SleepPage', () => {
     );
 
     expect(await screen.findByText('Climate page')).toBeTruthy();
+  });
+
+  it('shows a holiday-away placeholder on Tonight instead of sleep prep and climate', async () => {
+    const holidaySnapshot = JSON.parse(JSON.stringify(snapshot)) as DailyLoopEnvelope;
+    holidaySnapshot.data.holiday = {
+      isActive: true,
+      activeWindow: { startDate: '2026-07-12', endDate: '2026-07-16' },
+    };
+    renderWithSnapshot(holidaySnapshot);
+
+    await userEvent.click(await screen.findByRole('tab', { name: /tonight/i }));
+
+    expect(await screen.findByText('Holiday away')).toBeTruthy();
+    expect(
+      screen.getAllByText((_, node) => node?.textContent?.includes('Thursday, July 16') ?? false).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: /open holiday/i })).toBeTruthy();
+    expect(screen.queryByText("Protect tonight's wind-down")).toBeNull();
+    expect(screen.queryByText('Bedroom climate')).toBeNull();
   });
 
   it('offers a manual morning check-in link from the Sleep page once the sleep surface is unlocked (Batch 60)', async () => {
