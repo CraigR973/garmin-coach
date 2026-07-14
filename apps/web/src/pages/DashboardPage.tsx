@@ -729,10 +729,12 @@ export function DashboardPage() {
       {/* Batch 54: a compact greeting lockup (was the full PageHeader h1) so the
           verdict sits higher on cold load.
           Batch 110: dropped the date here — VerdictHero/GoodMorningCta right below
-          already carry it, so it was showing twice. */}
-      <p className="text-sm font-medium text-text-secondary">
-        {analysis ? personalStatusLine(analysis.verdict, player?.displayName) : greeting}
-      </p>
+          already carry it, so it was showing twice.
+          Batch 115: once a verdict exists, the greeting/verdict restate folds into
+          VerdictHero's own line instead of a separate paragraph above it — the two
+          were saying "good to go" twice. Pre-verdict, the CTAs below carry no
+          greeting of their own, so the plain greeting line stays here. */}
+      {!analysis && <p className="text-sm font-medium text-text-secondary">{greeting}</p>}
 
       {/* Batch 85: the verdict no longer lands on its own — until today's brief is
           generated (his check-in, or the 09:30 backstop), Home invites him to say
@@ -741,7 +743,11 @@ export function DashboardPage() {
           usual path there), the invite is stale — swap it for a "writing your
           brief" state instead of still asking him to say good morning. */}
       {analysis ? (
-        <VerdictHero verdict={analysis.verdict} dateLabel={friendlyDate(daily.subjectDate)} />
+        <VerdictHero
+          verdict={analysis.verdict}
+          dateLabel={friendlyDate(daily.subjectDate)}
+          line={personalStatusLine(analysis.verdict, player?.displayName)}
+        />
       ) : daily.manualEntry != null ? (
         <BriefGeneratingCta dateLabel={friendlyDate(daily.subjectDate)} />
       ) : (
@@ -773,7 +779,14 @@ export function DashboardPage() {
         <TodayActions actions={analysis.todayActions} workouts={todaysWorkouts} />
       ) : null}
 
-      {analysis ? <NextActionStrip action={action} onGoToSection={scrollToSection} /> : null}
+      {/* Batch 115: on a rest/holiday day the Today card already says "Rest is the
+          plan today" (or is dormant on holiday) — an all-clear Next strip right
+          above it repeats that same "nothing to do" read a second time. Only
+          suppress the quiet all-set state; an active Next action still surfaces
+          regardless of the day type. */}
+      {analysis && !(action.key === 'all-set' && (dayState.isRest || holiday.isActive)) ? (
+        <NextActionStrip action={action} onGoToSection={scrollToSection} />
+      ) : null}
 
       {/* Batch 51: on md+ the sections split into an act lane (Today / After
           your ride / Tomorrow) and a context lane (Last night / Tonight /
