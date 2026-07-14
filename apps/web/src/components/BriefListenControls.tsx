@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pause, Play, Square } from 'lucide-react';
 import { markdownToSpeechText } from '@/lib/markdownSpeech';
+import { selectBestVoice } from '@/lib/speechVoice';
 import { Button } from '@/components/ui/button';
 
 type ListenState = 'idle' | 'playing' | 'paused' | 'unsupported';
@@ -13,6 +14,7 @@ export function BriefListenControls({ markdown }: { markdown: string }) {
   const [state, setState] = useState<ListenState>(() => (getSpeechSupport() ? 'idle' : 'unsupported'));
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const spokenText = useMemo(() => markdownToSpeechText(markdown), [markdown]);
 
   useEffect(() => {
@@ -21,10 +23,16 @@ export function BriefListenControls({ markdown }: { markdown: string }) {
       return;
     }
 
-    synthRef.current = window.speechSynthesis;
+    const synth = window.speechSynthesis;
+    synthRef.current = synth;
+
+    const loadVoices = () => setVoices(synth.getVoices());
+    loadVoices();
+    synth.onvoiceschanged = loadVoices;
 
     return () => {
-      synthRef.current?.cancel();
+      synth.onvoiceschanged = null;
+      synth.cancel();
       utteranceRef.current = null;
     };
   }, []);
@@ -48,6 +56,11 @@ export function BriefListenControls({ markdown }: { markdown: string }) {
     utterance.lang = document.documentElement.lang || navigator.language || 'en-GB';
     utterance.rate = 0.95;
     utterance.pitch = 1;
+
+    const bestVoice = selectBestVoice(voices, utterance.lang);
+    if (bestVoice) {
+      utterance.voice = bestVoice;
+    }
     utterance.onend = () => {
       utteranceRef.current = null;
       setState('idle');
