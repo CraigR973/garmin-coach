@@ -13,7 +13,7 @@ import {
   startOfWeek,
   subMonths,
 } from 'date-fns';
-import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -30,6 +30,7 @@ export function SleepDateCalendar({
   onSelectDate: (date: string) => void;
 }) {
   const [displayMonth, setDisplayMonth] = useState(() => startOfMonth(parseISO(selectedDate)));
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     setDisplayMonth(startOfMonth(parseISO(selectedDate)));
@@ -82,47 +83,71 @@ export function SleepDateCalendar({
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <p className="text-sm font-medium text-text-primary">{format(displayMonth, 'MMMM yyyy')}</p>
-          <p className="text-xs text-text-muted">Selected: {format(parseISO(selectedDate), 'EEE d MMM')}</p>
+          <p className="text-sm font-medium text-text-primary">Selected: {format(parseISO(selectedDate), 'EEE d MMM')}</p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            aria-expanded={expanded}
+            aria-controls="sleep-calendar-grid"
+            onClick={() => setExpanded((current) => !current)}
+          >
+            {expanded ? 'Hide calendar' : 'Show calendar'}
+            <ChevronDown
+              className={cn('h-4 w-4 transition-transform', expanded ? 'rotate-180' : '')}
+              aria-hidden
+            />
+          </Button>
         </div>
-        <div className="grid grid-cols-7 gap-1 text-center text-[11px] uppercase tracking-[0.2em] text-text-muted">
-          {WEEKDAY_LABELS.map((label) => (
-            <div key={label} className="py-1">
-              {label}
+        {expanded ? (
+          <div id="sleep-calendar-grid" className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-medium text-text-primary">{format(displayMonth, 'MMMM yyyy')}</p>
             </div>
-          ))}
-        </div>
-        <div className="grid grid-cols-7 gap-1">
-          {days.map((day) => {
-            const iso = format(day, 'yyyy-MM-dd');
-            const disabled = isAfter(day, maxDateObj);
-            const selected = isSameDay(day, parseISO(selectedDate));
-            const inMonth = isSameMonth(day, displayMonth);
-            const isToday = isSameDay(day, maxDateObj);
-            return (
-              <button
-                key={iso}
-                type="button"
-                aria-label={format(day, 'EEEE d MMMM yyyy')}
-                disabled={disabled}
-                onClick={() => onSelectDate(iso)}
-                className={cn(
-                  'flex min-h-12 flex-col items-center justify-center rounded-xl border px-1 py-2 text-sm transition',
-                  selected
-                    ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                    : 'border-border bg-bg text-text-primary hover:border-primary/40 hover:bg-surface-elevated',
-                  !inMonth && !selected ? 'text-text-muted/60' : '',
-                  disabled ? 'cursor-not-allowed border-border/60 bg-bg/60 text-text-muted/50 hover:border-border/60 hover:bg-bg/60' : '',
-                )}
-              >
-                <span className="font-medium">{format(day, 'd')}</span>
-                <span className={cn('text-[10px]', selected ? 'text-primary-foreground/80' : 'text-text-muted')}>
-                  {isToday ? 'Today' : format(day, 'EEE')}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+            <div className="grid grid-cols-7 gap-1 text-center text-[11px] uppercase tracking-[0.2em] text-text-muted">
+              {WEEKDAY_LABELS.map((label) => (
+                <div key={label} className="py-1">
+                  {label}
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {days.map((day) => {
+                const iso = format(day, 'yyyy-MM-dd');
+                const disabled = isAfter(day, maxDateObj);
+                const selected = isSameDay(day, parseISO(selectedDate));
+                const inMonth = isSameMonth(day, displayMonth);
+                const isToday = isSameDay(day, maxDateObj);
+                return (
+                  <button
+                    key={iso}
+                    type="button"
+                    aria-label={format(day, 'EEEE d MMMM yyyy')}
+                    disabled={disabled}
+                    onClick={() => onSelectDate(iso)}
+                    className={cn(
+                      'flex min-h-12 flex-col items-center justify-center rounded-xl border px-1 py-2 text-sm transition',
+                      selected
+                        ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                        : 'border-border bg-bg text-text-primary hover:border-primary/40 hover:bg-surface-elevated',
+                      !inMonth && !selected ? 'text-text-muted/60' : '',
+                      disabled
+                        ? 'cursor-not-allowed border-border/60 bg-bg/60 text-text-muted/50 hover:border-border/60 hover:bg-bg/60'
+                        : '',
+                    )}
+                  >
+                    <span className="font-medium">{format(day, 'd')}</span>
+                    <span
+                      className={cn('text-[10px]', selected ? 'text-primary-foreground/80' : 'text-text-muted')}
+                    >
+                      {isToday ? 'Today' : format(day, 'EEE')}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
