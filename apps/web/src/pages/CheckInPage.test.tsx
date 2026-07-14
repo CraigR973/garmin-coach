@@ -168,15 +168,17 @@ describe('CheckInPage', () => {
       refetchGate.resolve();
     }
 
-    // The finished brief is picked up from the normal daily-loop snapshot.
-    expect(await screen.findByText(/you are tired because your rem ran low/i)).toBeTruthy();
-    expect(screen.getByText("Today's brief")).toBeTruthy();
+    // Batch 110: the finished brief is picked up from the normal daily-loop
+    // snapshot but no longer renders inline here — Home surfaces it as the
+    // unviewed brief, so this page just offers a link to it.
+    const viewLink = await screen.findByRole('link', { name: /view brief/i });
+    expect(viewLink.getAttribute('href')).toBe('/brief');
+    expect(screen.queryByText(/you are tired because your rem ran low/i)).toBeNull();
+    expect(screen.queryByText("Today's brief")).toBeNull();
 
     // Batch 96: once a brief exists, re-submitting would silently regenerate it —
     // the button instead offers to view the existing one.
     expect(screen.queryByRole('button', { name: /get today's brief/i })).toBeNull();
-    const viewLink = screen.getByRole('link', { name: /view brief/i });
-    expect(viewLink.getAttribute('href')).toBe('/brief');
   });
 
   it('shows "View brief" instead of "Get today\'s brief" when a brief already exists on load (Batch 96)', async () => {
