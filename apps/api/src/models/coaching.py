@@ -516,6 +516,38 @@ class Feedback(Base, UUIDPrimaryKeyMixin):
     )
 
 
+class BriefMessage(Base, UUIDPrimaryKeyMixin):
+    """One turn of the follow-up chat on a brief (Batch 119).
+
+    Every AI summary is one ``analyses`` row, so a conversation about a brief
+    is keyed to ``analysis_id`` — same referential pattern as ``Feedback``.
+    ``role`` is ``user`` or ``assistant``; history threads via ``created_utc``.
+    ``proposed_planned_workout_id`` is set on an assistant turn only when the
+    deterministic keyword check (not the model) flags the question as wanting
+    a plan adjustment and today's planned workout is deliverable; it points at
+    the *existing* propose endpoint the frontend calls on confirm, never a new
+    mutation path (Decision assigned at Batch 119 kickoff).
+    """
+
+    __tablename__ = "brief_messages"
+    __table_args__ = (Index("ix_brief_messages_analysis_created", "analysis_id", "created_utc"),)
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    analysis_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("analyses.id", ondelete="CASCADE"), nullable=False
+    )
+    proposed_planned_workout_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("planned_workouts.id", ondelete="SET NULL"), nullable=True
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), nullable=False, default=_feedback_utcnow
+    )
+
+
 class Experiment(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     __tablename__ = "experiments"
     __table_args__ = (

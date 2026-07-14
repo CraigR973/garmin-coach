@@ -26,12 +26,21 @@ async def generate_anthropic_text(
     system_prompt: str,
     user_prompt: str,
     error_cls: type[Exception],
+    prior_messages: list[dict[str, str]] | None = None,
 ) -> AnthropicTextResult:
+    """``prior_messages`` (optional) carries earlier user/assistant turns before
+    ``user_prompt`` for a multi-turn conversation (Batch 119's brief follow-up
+    chat); single-turn callers omit it and behave exactly as before.
+    """
+    messages: list[dict[str, str]] = [
+        *(prior_messages or []),
+        {"role": "user", "content": user_prompt},
+    ]
     payload: dict[str, Any] = {
         "model": model_name,
         "max_tokens": max_tokens,
         "system": system_prompt,
-        "messages": [{"role": "user", "content": user_prompt}],
+        "messages": messages,
     }
     headers = {
         "x-api-key": api_key,
