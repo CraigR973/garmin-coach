@@ -13,6 +13,8 @@ const speechSynthesisMock = {
   pause: vi.fn(),
   resume: vi.fn(),
   cancel: vi.fn(),
+  getVoices: vi.fn(() => [] as SpeechSynthesisVoice[]),
+  onvoiceschanged: null as (() => void) | null,
 };
 
 vi.mock('@/lib/api', () => ({
@@ -117,6 +119,9 @@ beforeEach(() => {
   speechSynthesisMock.pause.mockClear();
   speechSynthesisMock.resume.mockClear();
   speechSynthesisMock.cancel.mockClear();
+  speechSynthesisMock.getVoices.mockClear();
+  speechSynthesisMock.getVoices.mockReturnValue([]);
+  speechSynthesisMock.onvoiceschanged = null;
   Object.defineProperty(window, 'speechSynthesis', {
     configurable: true,
     value: speechSynthesisMock,
@@ -203,5 +208,27 @@ describe('morning brief page', () => {
     });
     await user.click(screen.getByRole('button', { name: /stop brief audio/i }));
     expect(speechSynthesisMock.cancel).toHaveBeenCalled();
+  });
+
+  it('selects the best local voice for the read-aloud, ignoring remote-service voices (Batch 111)', async () => {
+    document.documentElement.lang = 'en-GB';
+    const user = userEvent.setup();
+    const genericLocalVoice = { name: 'English', lang: 'en-GB', localService: true } as SpeechSynthesisVoice;
+    const remoteEnhancedVoice = {
+      name: 'Google UK English Female (Natural)',
+      lang: 'en-GB',
+      localService: false,
+    } as SpeechSynthesisVoice;
+    const naturalLocalVoice = { name: 'Daniel (Enhanced)', lang: 'en-GB', localService: true } as SpeechSynthesisVoice;
+    speechSynthesisMock.getVoices.mockReturnValue([genericLocalVoice, remoteEnhancedVoice, naturalLocalVoice]);
+
+    renderWithQuery(<MorningBriefPage />);
+    const listen = await screen.findByRole('button', { name: /listen to brief/i });
+    await user.click(listen);
+
+    const utterance = speechSynthesisMock.speak.mock.calls[0]?.[0];
+    expect(utterance?.voice).toBe(naturalLocalVoice);
+
+    document.documentElement.lang = 'en';
   });
 });
