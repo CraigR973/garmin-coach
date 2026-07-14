@@ -451,6 +451,29 @@ describe('DashboardPage', () => {
     expect(screen.queryByText('Good to go')).toBeNull();
   });
 
+  it('shows a "writing your brief" state, not the check-in CTA, once he has checked in but the brief is still pending (Batch 114)', async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.morningAnalysis = null;
+        snapshot.data.manualEntry = {
+          id: '12121212-1212-4121-8121-121212121212',
+          userId: '11111111-1111-4111-8111-111111111111',
+          entryDate: '2026-06-20',
+          entryAtUtc: '2026-06-20T07:00:00Z',
+          actualWorkoutJson: {},
+          supplementsJson: {},
+          foodJson: {},
+        };
+      }),
+    );
+
+    // The Batch 97 async window (checked in, background brief still generating)
+    // must not still invite a check-in that already happened.
+    expect(await screen.findByRole('region', { name: 'Generating your brief' })).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Say good morning' })).toBeNull();
+    expect(screen.queryByRole('link', { name: /get today's brief/i })).toBeNull();
+  });
+
   it('keeps raw last-night sleep off Home before today\'s brief exists (Batch 95/103)', async () => {
     // Rest-day phase primary would otherwise be `lastNight` — before a brief
     // exists that would pre-empt the coached read with an un-narrated snapshot.

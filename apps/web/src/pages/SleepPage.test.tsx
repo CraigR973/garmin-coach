@@ -585,7 +585,17 @@ describe('SleepPage', () => {
     expect(screen.queryByText('Overnight room & fan')).toBeNull();
   });
 
-  it('offers a manual morning check-in link from the Sleep page once the sleep surface is unlocked (Batch 60)', async () => {
+  it('offers a manual morning check-in link from the Sleep page when the surface unlocked without one (Batch 60)', async () => {
+    // The sleep surface can unlock via the 09:30 backstop's auto-generated brief
+    // without Mark having checked in himself — `manualEntry` is still null, so
+    // the optional check-in link stays offered.
+    renderWithSnapshot(snapshot);
+
+    const link = await screen.findByRole('link', { name: /morning check-in/i });
+    expect(link.getAttribute('href')).toBe('/check-in');
+  });
+
+  it('drops the "Add today\'s check-in" card once he has actually checked in (Batch 114)', async () => {
     const checkedIn = JSON.parse(JSON.stringify(snapshot)) as DailyLoopEnvelope;
     checkedIn.data.manualEntry = {
       id: '12121212-1212-4121-8121-121212121212',
@@ -598,8 +608,8 @@ describe('SleepPage', () => {
     };
     renderWithSnapshot(checkedIn);
 
-    const link = await screen.findByRole('link', { name: /morning check-in/i });
-    expect(link.getAttribute('href')).toBe('/check-in');
+    await screen.findByText("Last night's sleep");
+    expect(screen.queryByRole('link', { name: /morning check-in/i })).toBeNull();
   });
 
   it('leads with the "say good morning" CTA when neither a check-in nor brief exists yet (Batch 95/103)', async () => {
