@@ -5,7 +5,6 @@ import { dailyLoopEnvelopeSchema, manualEntryInputSchema } from '@coach/shared';
 import { toast } from 'sonner';
 import { CheckCircle2, Loader2 } from 'lucide-react';
 import { CollapsibleSection } from '@/components/CollapsibleSection';
-import { Markdown } from '@/components/Markdown';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,7 +13,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { VerdictHero } from '@/components/VerdictHero';
 import { apiFetch } from '@/lib/api';
 import { SUBJECTIVE_FEEL_OPTIONS } from '@/lib/subjectiveFeel';
 
@@ -375,34 +373,18 @@ export function CheckInPage() {
 
       {/* Batch 85: one button generates today's brief from his check-in. An empty
           submit still yields today's objective read.
-          Batch 97: submitting returns immediately, then the page waits on the
-          normal daily-loop snapshot while the server finishes the brief and
-          sends a ready push. Batch 96 still prevents silent re-generation once
-          a brief exists. */}
-      <div className="flex justify-end">
-        {briefExists ? (
+          Batch 97: submitting returns immediately, then the server finishes the
+          brief and sends a ready push.
+          Batch 110: the staged progress replaces the button in place — the brief
+          itself no longer renders inline here; Home surfaces it as an unviewed
+          brief (Batch 96 `UnviewedBriefCta`), so this page's job ends at "saved". */}
+      {briefExists ? (
+        <div className="flex justify-end">
           <Button asChild>
             <Link to="/brief">View brief</Link>
           </Button>
-        ) : waitingForBrief ? (
-          <Button type="button" disabled>
-            Today&apos;s brief is on the way
-          </Button>
-        ) : (
-          <Button type="button" onClick={() => saveMutation.mutate()} disabled={!data || saveMutation.isPending}>
-            {saveMutation.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                Saving check-in…
-              </>
-            ) : (
-              "Get today's brief"
-            )}
-          </Button>
-        )}
-      </div>
-
-      {waitingForBrief ? (
+        </div>
+      ) : waitingForBrief ? (
         <Card>
           <CardHeader>
             <CardTitle>I&apos;ll notify you when it&apos;s ready</CardTitle>
@@ -451,25 +433,18 @@ export function CheckInPage() {
             </div>
           </CardContent>
         </Card>
-      ) : null}
-
-      {brief && (
-        <div className="space-y-4">
-          <VerdictHero verdict={brief.verdict} />
-          <Card>
-            <CardHeader>
-              <CardTitle>Today&apos;s brief</CardTitle>
-              <CardDescription>
-                Generated from your check-in.{' '}
-                <Link to="/" className="font-medium text-primary underline-offset-4 hover:underline">
-                  See it on Home →
-                </Link>
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Markdown>{brief.outputMarkdown}</Markdown>
-            </CardContent>
-          </Card>
+      ) : (
+        <div className="flex justify-end">
+          <Button type="button" onClick={() => saveMutation.mutate()} disabled={!data || saveMutation.isPending}>
+            {saveMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                Saving check-in…
+              </>
+            ) : (
+              "Get today's brief"
+            )}
+          </Button>
         </div>
       )}
     </div>

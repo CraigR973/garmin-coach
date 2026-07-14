@@ -726,15 +726,12 @@ export function DashboardPage() {
       )}
 
       {/* Batch 54: a compact greeting lockup (was the full PageHeader h1) so the
-          verdict sits higher on cold load. */}
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="text-sm font-medium text-text-secondary">
-          {analysis ? personalStatusLine(analysis.verdict, player?.displayName) : greeting}
-        </p>
-        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">
-          {friendlyDate(daily.subjectDate)}
-        </p>
-      </div>
+          verdict sits higher on cold load.
+          Batch 110: dropped the date here — VerdictHero/GoodMorningCta right below
+          already carry it, so it was showing twice. */}
+      <p className="text-sm font-medium text-text-secondary">
+        {analysis ? personalStatusLine(analysis.verdict, player?.displayName) : greeting}
+      </p>
 
       {/* Batch 85: the verdict no longer lands on its own — until today's brief is
           generated (his check-in, or the 09:30 backstop), Home invites him to say
