@@ -420,6 +420,9 @@ describe('DashboardPage', () => {
     // Batch 50: the verdict renders once (the VerdictHero) — the duplicated Today
     // header badge was dropped.
     expect(screen.getAllByText('Good to go').length).toBe(1);
+    // Batch 115: the greeting/verdict line is folded into VerdictHero itself —
+    // no separate paragraph restating it above the hero.
+    expect(screen.getAllByText('Good morning, Mark. You\'re good to go this morning.').length).toBe(1);
 
     // Object permanence: the other sections are present but collapsed — their
     // summaries are in the DOM, their (lazy) bodies are not.
@@ -1445,6 +1448,59 @@ describe('DashboardPage', () => {
     await screen.findByText('Cycle day');
     expect(screen.getByText(/you're all set/i)).toBeTruthy();
     // The all-clear state is a quiet status line, not a primary-action region.
+    expect(screen.queryByRole('region', { name: 'Next action' })).toBeNull();
+  });
+
+  it('suppresses the redundant all-clear strip on a rest day (Batch 115)', async () => {
+    // Same all-clear conditions as above, but no workouts today — the Today
+    // card already reads "Rest is the plan today.", so the quiet all-set strip
+    // underneath it would just repeat that.
+    markSleepReviewed('2026-06-20');
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.plannedWorkouts = [];
+        snapshot.data.manualEntry = {
+          id: '12121212-1212-4121-8121-121212121212',
+          userId: '11111111-1111-4111-8111-111111111111',
+          entryDate: '2026-06-20',
+          entryAtUtc: '2026-06-20T07:00:00Z',
+          actualWorkoutJson: {},
+          supplementsJson: {},
+          foodJson: {},
+        };
+      }),
+    );
+
+    await screen.findByText('Rest day');
+    expect(screen.getByText('Rest is the plan today.')).toBeTruthy();
+    expect(screen.queryByText(/you're all set/i)).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Next action' })).toBeNull();
+  });
+
+  it('suppresses the redundant all-clear strip during a holiday (Batch 115)', async () => {
+    // A holiday day still has (skipped) planned workouts, so dayState.isRest is
+    // false — the holiday flag itself is the "nothing to do" signal here.
+    markSleepReviewed('2026-06-20');
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.holiday = {
+          isActive: true,
+          activeWindow: { startDate: '2026-07-12', endDate: '2026-07-16' },
+        };
+        snapshot.data.manualEntry = {
+          id: '12121212-1212-4121-8121-121212121212',
+          userId: '11111111-1111-4111-8111-111111111111',
+          entryDate: '2026-06-20',
+          entryAtUtc: '2026-06-20T07:00:00Z',
+          actualWorkoutJson: {},
+          supplementsJson: {},
+          foodJson: {},
+        };
+      }),
+    );
+
+    await screen.findByText('Cycle day');
+    expect(screen.queryByText(/you're all set/i)).toBeNull();
     expect(screen.queryByRole('region', { name: 'Next action' })).toBeNull();
   });
 
