@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionm
 from src.auth import get_current_user
 from src.database import get_db
 from src.main import app
-from src.models.coaching import Analysis, BriefMessage
+from src.models.coaching import Analysis, BriefMessage, PlannedWorkout
 from src.models.profile import Profile, UserRole
 from src.services.brief_chat import (
     MAX_USER_TURNS_PER_ANALYSIS,
@@ -95,6 +95,26 @@ async def _make_analysis(
     session.add(analysis)
     await session.commit()
     return analysis
+
+
+async def _make_planned_workout(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    status: str = "planned",
+) -> PlannedWorkout:
+    workout = PlannedWorkout(
+        id=uuid.uuid4(),
+        user_id=user_id,
+        workout_date=datetime(2026, 7, 14).date(),
+        title="Sweet spot",
+        workout_type="bike_sweet_spot",
+        status=status,
+        structured_workout={"segments": []},
+    )
+    session.add(workout)
+    await session.commit()
+    return workout
 
 
 # ---------------------------------------------------------------------------
@@ -176,11 +196,12 @@ async def test_ask_only_offers_a_proposal_on_a_deterministic_keyword_match(
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     async with session_factory() as session:
         user = await _make_profile(session)
+        workout = await _make_planned_workout(session, user.id)
         packet = {
             "restDay": {"isRestDay": False},
             "plannedWorkouts": [
                 {
-                    "id": str(uuid.uuid4()),
+                    "id": str(workout.id),
                     "workoutType": "bike_sweet_spot",
                     "status": "planned",
                     "structuredWorkout": {"segments": []},
@@ -197,9 +218,7 @@ async def test_ask_only_offers_a_proposal_on_a_deterministic_keyword_match(
         )
 
     assert neutral.assistant_message.proposed_planned_workout_id is None
-    assert wants_ease.assistant_message.proposed_planned_workout_id == uuid.UUID(
-        packet["plannedWorkouts"][0]["id"]
-    )
+    assert wants_ease.assistant_message.proposed_planned_workout_id == workout.id
 
 
 @pytest.mark.asyncio
