@@ -191,7 +191,24 @@ export function SleepPage() {
                   </CardContent>
                 </Card>
               ) : null}
-              <OvernightChartCard night={historyNight} captionDate={historySubjectDate} showPager={false} />
+              {holiday.isActive ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <MoonStar className="h-4 w-4 text-primary" aria-hidden />
+                      Holiday away
+                    </CardTitle>
+                    <CardDescription>The overnight room/fan chart stays dormant while you are away.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-text-secondary">
+                      Climate history resumes {friendlyDate(holiday.activeWindow?.endDate ?? data.subjectDate)}.
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <OvernightChartCard night={historyNight} captionDate={historySubjectDate} showPager={false} />
+              )}
             </div>
           ) : (
             <div className="space-y-5">

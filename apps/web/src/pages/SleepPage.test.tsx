@@ -563,6 +563,28 @@ describe('SleepPage', () => {
     expect(screen.queryByText('Bedroom climate')).toBeNull();
   });
 
+  it('shows a dormant placeholder on Last night instead of the fan chart while on holiday (Batch 113)', async () => {
+    const holidaySnapshot = JSON.parse(JSON.stringify(snapshot)) as DailyLoopEnvelope;
+    holidaySnapshot.data.holiday = {
+      isActive: true,
+      activeWindow: { startDate: '2026-07-12', endDate: '2026-07-16' },
+    };
+    holidaySnapshot.data.manualEntry = {
+      id: '12121212-1212-4121-8121-121212121212',
+      userId: '11111111-1111-4111-8111-111111111111',
+      entryDate: '2026-06-20',
+      entryAtUtc: '2026-06-20T07:00:00Z',
+      actualWorkoutJson: {},
+      supplementsJson: {},
+      foodJson: {},
+    };
+    renderWithSnapshot(holidaySnapshot);
+
+    expect(await screen.findByText('Holiday away')).toBeTruthy();
+    expect(screen.getByText("The overnight room/fan chart stays dormant while you are away.")).toBeTruthy();
+    expect(screen.queryByText('Overnight room & fan')).toBeNull();
+  });
+
   it('offers a manual morning check-in link from the Sleep page once the sleep surface is unlocked (Batch 60)', async () => {
     const checkedIn = JSON.parse(JSON.stringify(snapshot)) as DailyLoopEnvelope;
     checkedIn.data.manualEntry = {
