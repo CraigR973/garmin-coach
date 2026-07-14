@@ -89,7 +89,23 @@ const snapshot: DailyLoopEnvelope = {
     postFlexibilityAnalyses: [],
     postStrengthAnalyses: [],
     postWalkAnalyses: [],
-    plannedWorkouts: [],
+    plannedWorkouts: [
+      {
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        userId: '11111111-1111-4111-8111-111111111111',
+        workoutDate: '2026-06-20',
+        version: 3,
+        source: 'plan_import',
+        isActive: true,
+        title: 'Endurance spin',
+        workoutType: 'bike_endurance',
+        status: 'planned',
+        plannedDurationMin: 75,
+        intensityTarget: 'Z2',
+        planBlockId: null,
+        structuredWorkout: {},
+      },
+    ],
     thermalState: {
       latestTemperatureC: 17.4,
       targetTemperatureC: 17,
@@ -261,6 +277,38 @@ const historicalSnapshot: DailyLoopEnvelope = {
         ],
       },
     },
+    plannedWorkouts: [
+      {
+        id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        userId: '11111111-1111-4111-8111-111111111111',
+        workoutDate: '2026-06-19',
+        version: 2,
+        source: 'plan_import',
+        isActive: true,
+        title: 'Tempo ride',
+        workoutType: 'bike_tempo',
+        status: 'completed',
+        plannedDurationMin: 60,
+        intensityTarget: 'Z3',
+        planBlockId: null,
+        structuredWorkout: {},
+      },
+      {
+        id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        userId: '11111111-1111-4111-8111-111111111111',
+        workoutDate: '2026-06-19',
+        version: 1,
+        source: 'plan_action_add',
+        isActive: true,
+        title: 'Mobility reset',
+        workoutType: 'mobility',
+        status: 'planned',
+        plannedDurationMin: 20,
+        intensityTarget: null,
+        planBlockId: null,
+        structuredWorkout: {},
+      },
+    ],
     sleep: {
       id: '44444444-4444-4444-8444-444444444444',
       userId: '11111111-1111-4111-8111-111111111111',
@@ -346,10 +394,13 @@ describe('SleepPage', () => {
     renderWithSnapshot(gated);
 
     expect(await screen.findByRole('region', { name: 'Say good morning' })).toBeTruthy();
+    expect(screen.getByText('Sleep calendar')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /show calendar/i })).toBeTruthy();
     expect(screen.queryByRole('tab', { name: 'Last night' })).toBeNull();
     expect(screen.queryByText("Last night's sleep")).toBeNull();
     expect(screen.queryByText("Tonight's sleep prep")).toBeNull();
-    expect(screen.queryByRole('link', { name: /morning check-in/i })).toBeNull();
+    expect(screen.getByText("Today's sleep")).toBeTruthy();
+    expect(screen.getAllByRole('link', { name: /morning check-in/i })).toHaveLength(2);
   });
 
   it('renders the Last night view with the metrics table and overnight chart', async () => {
@@ -425,6 +476,7 @@ describe('SleepPage', () => {
     });
 
     await screen.findByText("Last night's sleep");
+    await user.click(screen.getByRole('button', { name: /show calendar/i }));
     await user.click(screen.getByRole('button', { name: 'Friday 19 June 2026' }));
 
     expect(
@@ -433,9 +485,39 @@ describe('SleepPage', () => {
       }),
     ).toBeTruthy();
     expect(screen.getByText('Selected: Fri 19 Jun')).toBeTruthy();
+    expect(await screen.findByText('The whole day')).toBeTruthy();
+    expect(screen.getByText('Tempo ride')).toBeTruthy();
+    expect(screen.getByText('Mobility reset')).toBeTruthy();
+    expect(screen.getByText('Good to go')).toBeTruthy();
     expect((await screen.findByTestId('overnight-room-verdict-badge')).textContent).toBe('Green');
     expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/daily-loop?subject_date=2026-06-19');
     expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/bedroom/overnight?date=2026-06-18');
+  });
+
+  it('lets Mark browse past dates before today is unlocked while keeping today gated', async () => {
+    const user = userEvent.setup();
+    const gated = JSON.parse(JSON.stringify(snapshot)) as DailyLoopEnvelope;
+    gated.data.morningAnalysis = null;
+
+    renderWithSnapshot(gated, {
+      dailyLoopByPath: {
+        '/api/v1/daily-loop?subject_date=2026-06-19': historicalSnapshot,
+      },
+      overnightByPath: {
+        '/api/v1/bedroom/overnight?date=2026-06-18': historicalOvernightSnapshot,
+      },
+    });
+
+    expect(await screen.findByRole('region', { name: 'Say good morning' })).toBeTruthy();
+    expect(screen.getByText("Today's sleep")).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: /show calendar/i }));
+    expect(screen.getByText('June 2026')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Friday 19 June 2026' }));
+
+    expect(await screen.findByRole('heading', { name: /Sleep for Friday.*19/ })).toBeTruthy();
+    expect(screen.getByText('The whole day')).toBeTruthy();
+    expect(screen.queryByText("Today's sleep")).toBeNull();
   });
 
   it('/bedroom redirects into /environment', async () => {

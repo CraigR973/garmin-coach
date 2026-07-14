@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { format, parseISO, subDays } from 'date-fns';
 import { Link } from 'react-router-dom';
-import { BedDouble, ClipboardCheck, Fan, MoonStar } from 'lucide-react';
+import { BedDouble, CalendarDays, ClipboardCheck, Fan, MoonStar } from 'lucide-react';
 import { ChronicSuggestionsCard } from '@/components/ChronicSuggestionsCard';
 import { DetailLinkCard } from '@/components/DetailLinkCard';
 import { MetricComparisonTable } from '@/components/MetricComparisonTable';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/PageHeader';
@@ -21,6 +22,7 @@ import { hm } from '@/lib/dailyFlow';
 import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
 import { markSleepReviewed } from '@/lib/sleepReview';
 import { friendlyDate } from '@/lib/dailyFlow';
+import { verdictBadgeVariant, verdictLabel } from '@/lib/copy';
 import type { AgeComparison, MetricBaselineRow } from '@/components/MetricComparisonTable';
 
 type SleepView = 'last-night' | 'tonight';
@@ -63,12 +65,11 @@ export function SleepPage() {
   }, [query.data, selectedDate]);
 
   const loadedData = query.data?.data ?? null;
-  const hasHistoricalAccess =
-    loadedData != null && (loadedData.manualEntry != null || loadedData.morningAnalysis != null);
+  const canBrowseHistory = loadedData != null;
   const currentSubjectDate = loadedData?.subjectDate ?? selectedDate ?? '1970-01-02';
   const historySubjectDate = selectedDate ?? loadedData?.subjectDate ?? '1970-01-02';
   const historyQuery = useDailyLoop(historySubjectDate, {
-    enabled: hasHistoricalAccess && historySubjectDate !== currentSubjectDate,
+    enabled: canBrowseHistory && historySubjectDate !== currentSubjectDate,
   });
   const historyNight = useMemo(
     () => format(subDays(parseISO(historySubjectDate), 1), 'yyyy-MM-dd'),
@@ -102,7 +103,7 @@ export function SleepPage() {
   const analysis = data.morningAnalysis;
   const thermal = data.thermalState;
   const breathworkBrief = data.breathworkBrief ?? null;
-  const hasSleepAccess = data.manualEntry != null || analysis != null;
+  const hasTodaySleepAccess = data.manualEntry != null || analysis != null;
   const historyData = historySubjectDate === currentSubjectDate ? data : historyQuery.data?.data;
   const historyLoading = historySubjectDate !== currentSubjectDate && historyQuery.isLoading;
   const historyError = historySubjectDate !== currentSubjectDate ? historyQuery.error : null;
@@ -117,60 +118,65 @@ export function SleepPage() {
     <div className="space-y-5">
       <PageHeader title="Sleep" eyebrow={friendlyDate(data.subjectDate)} />
 
-      {!hasSleepAccess ? <GoodMorningCta dateLabel={friendlyDate(data.subjectDate)} /> : null}
+      {!hasTodaySleepAccess ? <GoodMorningCta dateLabel={friendlyDate(data.subjectDate)} /> : null}
 
-      {hasSleepAccess ? <Tabs items={VIEW_ITEMS} value={view} onChange={setView} variant="segmented" /> : null}
+      {hasTodaySleepAccess ? <Tabs items={VIEW_ITEMS} value={view} onChange={setView} variant="segmented" /> : null}
 
-      {hasSleepAccess ? (
+      {hasTodaySleepAccess || view === 'last-night' ? (
         <>
-          {view === 'last-night' ? (
+          {view === 'last-night' || !hasTodaySleepAccess ? (
             <div className="space-y-5">
               <SleepDateCalendar
                 selectedDate={historySubjectDate}
                 maxDate={currentSubjectDate}
                 onSelectDate={setSelectedDate}
               />
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <BedDouble className="h-4 w-4 text-primary" aria-hidden />
-                    {showingHistoricalDate ? `Sleep for ${friendlyDate(historySubjectDate)}` : "Last night's sleep"}
-                  </CardTitle>
-                  <CardDescription>
-                    {showingHistoricalDate
-                      ? 'Browse the stored sleep read for that date and compare it with the overnight room history below.'
-                      : 'How last night compares to your own normal and your age group.'}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {historyLoading ? (
-                    <Skeleton className="h-48 w-full rounded-xl" />
-                  ) : historyError ? (
-                    <p className="text-sm text-text-muted">
-                      {historyError instanceof Error ? historyError.message : 'That date could not load just now.'}
-                    </p>
-                  ) : historyAnalysis ? (
-                    <div className="space-y-4">
-                      <MetricComparisonTable rows={historyMetricsVsBaselines} ageComparison={historyAgeComparison} />
-                      <ChronicSuggestionsCard suggestions={historyChronicSuggestions} />
-                      {!showingHistoricalDate ? (
-                        <DetailLinkCard
-                          to="/brief"
-                          title="Full morning brief"
-                          description="Open the complete coach read and verdict notes."
-                        />
-                      ) : null}
-                    </div>
-                  ) : historySleep ? (
-                    <HistoricalSleepFallback sleep={historySleep} />
-                  ) : (
-                    <p className="text-sm text-text-muted">
-                      No stored sleep read was found for that date yet. The overnight room chart below will still show
-                      any climate history that exists.
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
+              {!hasTodaySleepAccess && !showingHistoricalDate ? (
+                <TodaySleepLockedCard subjectDate={data.subjectDate} />
+              ) : (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <BedDouble className="h-4 w-4 text-primary" aria-hidden />
+                      {showingHistoricalDate ? `Sleep for ${friendlyDate(historySubjectDate)}` : "Last night's sleep"}
+                    </CardTitle>
+                    <CardDescription>
+                      {showingHistoricalDate
+                        ? 'Browse the stored sleep read for that date and compare it with the overnight room history below.'
+                        : 'How last night compares to your own normal and your age group.'}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {historyLoading ? (
+                      <Skeleton className="h-48 w-full rounded-xl" />
+                    ) : historyError ? (
+                      <p className="text-sm text-text-muted">
+                        {historyError instanceof Error ? historyError.message : 'That date could not load just now.'}
+                      </p>
+                    ) : historyAnalysis ? (
+                      <div className="space-y-4">
+                        <MetricComparisonTable rows={historyMetricsVsBaselines} ageComparison={historyAgeComparison} />
+                        <ChronicSuggestionsCard suggestions={historyChronicSuggestions} />
+                        {!showingHistoricalDate ? (
+                          <DetailLinkCard
+                            to="/brief"
+                            title="Full morning brief"
+                            description="Open the complete coach read and verdict notes."
+                          />
+                        ) : null}
+                      </div>
+                    ) : historySleep ? (
+                      <HistoricalSleepFallback sleep={historySleep} />
+                    ) : (
+                      <p className="text-sm text-text-muted">
+                        No stored sleep read was found for that date yet. The overnight room chart below will still show
+                        any climate history that exists.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+              {showingHistoricalDate && !historyLoading && !historyError ? <HistoricalDayCard data={historyData ?? null} /> : null}
               {historyAnalysis ? (
                 <Card>
                   <CardHeader>
@@ -285,6 +291,97 @@ function SleepStat({ label, value }: { label: string; value: string }) {
   );
 }
 
+function TodaySleepLockedCard({ subjectDate }: { subjectDate: string }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <BedDouble className="h-4 w-4 text-primary" aria-hidden />
+          Today&apos;s sleep
+        </CardTitle>
+        <CardDescription>
+          Today&apos;s sleep detail unlocks after you say good morning. Past dates stay browseable from the calendar.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-2xl border border-dashed border-border px-4 py-4 text-sm text-text-secondary">
+          Today is {friendlyDate(subjectDate)}. Check in when you&apos;re ready and the full sleep, verdict, and room
+          read will land here.
+        </div>
+        <Button asChild variant="outline" className="w-full">
+          <Link to="/check-in">
+            <ClipboardCheck className="h-4 w-4" aria-hidden />
+            Morning check-in
+          </Link>
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function HistoricalDayCard({ data }: { data: DailyLoopData | null }) {
+  if (!data) return null;
+
+  const analysis = data.morningAnalysis;
+  const workouts = data.plannedWorkouts ?? [];
+  const readCount =
+    (data.postWorkoutAnalyses?.length ?? 0) +
+    (data.postFlexibilityAnalyses?.length ?? 0) +
+    (data.postStrengthAnalyses?.length ?? 0) +
+    (data.postWalkAnalyses?.length ?? 0);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <CalendarDays className="h-4 w-4 text-primary" aria-hidden />
+          The whole day
+        </CardTitle>
+        <CardDescription>That date&apos;s verdict and planned sessions, alongside the sleep and room history above.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-2xl border border-border px-4 py-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-medium text-text-primary">Verdict</p>
+            <Badge variant={verdictBadgeVariant(analysis?.verdict)}>{verdictLabel(analysis?.verdict)}</Badge>
+          </div>
+          <p className="mt-2 text-sm text-text-secondary">
+            {analysis?.reasons?.[0] ?? 'No stored morning verdict was saved for this date.'}
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-medium text-text-primary">Planned sessions</p>
+            {readCount > 0 ? <p className="text-xs text-text-muted">Stored reads: {readCount}</p> : null}
+          </div>
+          {workouts.length > 0 ? (
+            <div className="space-y-2">
+              {workouts.map((workout) => (
+                <div key={workout.id} className="rounded-xl border border-border px-3 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-medium text-text-primary">{workout.title}</p>
+                    <Badge variant="muted">{prettifyStatus(workout.status)}</Badge>
+                  </div>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    {prettifyType(workout.workoutType)}
+                    {workout.plannedDurationMin != null ? ` · ${workout.plannedDurationMin} min` : ''}
+                    {workout.intensityTarget ? ` · ${workout.intensityTarget}` : ''}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-xl border border-dashed border-border px-4 py-4 text-sm text-text-secondary">
+              No planned sessions were stored for that date.
+            </p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function HistoricalSleepFallback({
   sleep,
 }: {
@@ -325,4 +422,16 @@ function formatSleepWindow(startUtc: string | null | undefined, endUtc: string |
   if (start) return `Sleep started around ${start}.`;
   if (end) return `Wake time landed around ${end}.`;
   return '';
+}
+
+function prettifyType(value: string | null | undefined): string {
+  if (!value) return 'Session';
+  const cleaned = value.replace(/[_-]+/g, ' ').trim();
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+function prettifyStatus(value: string | null | undefined): string {
+  if (!value) return 'Planned';
+  const cleaned = value.replace(/[_-]+/g, ' ').trim();
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
