@@ -48,6 +48,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { VerdictHero } from '@/components/VerdictHero';
 import { GoodMorningCta } from '@/components/GoodMorningCta';
+import { BriefGeneratingCta } from '@/components/BriefGeneratingCta';
 import { FeedbackControl } from '@/components/FeedbackControl';
 import { SleepSnapshotBody } from '@/components/SleepSnapshotBody';
 import { SleepPrepBody } from '@/components/SleepPrepBody';
@@ -735,9 +736,14 @@ export function DashboardPage() {
 
       {/* Batch 85: the verdict no longer lands on its own — until today's brief is
           generated (his check-in, or the 09:30 backstop), Home invites him to say
-          good morning rather than showing an auto-pending verdict. */}
+          good morning rather than showing an auto-pending verdict.
+          Batch 114: once he's checked in (Batch 97's background generation is the
+          usual path there), the invite is stale — swap it for a "writing your
+          brief" state instead of still asking him to say good morning. */}
       {analysis ? (
         <VerdictHero verdict={analysis.verdict} dateLabel={friendlyDate(daily.subjectDate)} />
+      ) : daily.manualEntry != null ? (
+        <BriefGeneratingCta dateLabel={friendlyDate(daily.subjectDate)} />
       ) : (
         <GoodMorningCta dateLabel={friendlyDate(daily.subjectDate)} />
       )}

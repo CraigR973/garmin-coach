@@ -299,27 +299,32 @@ export function SleepPage() {
 
           {/* Batch 60: the morning check-in folds into the sleep review as one step
               and is optional — offered here (and in the Today footer), never nagged.
-              Logging how he feels can still ease today's ride (DECISIONS #126). */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ClipboardCheck className="h-4 w-4 text-primary" aria-hidden />
-                Add today&apos;s check-in
-              </CardTitle>
-              <CardDescription>
-                Optional — logging how you feel, plus any BP or notes, sharpens the coach&apos;s read and can
-                ease today&apos;s ride.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild variant="outline" className="w-full">
-                <Link to="/check-in">
-                  <ClipboardCheck className="h-4 w-4" aria-hidden />
-                  Morning check-in
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
+              Logging how he feels can still ease today's ride (DECISIONS #126).
+              Batch 114: only offer it before he's actually checked in — once
+              `manualEntry` exists the check-in is done, so this card is redundant
+              (and, per Batch 97, a brief may still be generating). */}
+          {data.manualEntry == null ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ClipboardCheck className="h-4 w-4 text-primary" aria-hidden />
+                  Add today&apos;s check-in
+                </CardTitle>
+                <CardDescription>
+                  Optional — logging how you feel, plus any BP or notes, sharpens the coach&apos;s read and can
+                  ease today&apos;s ride.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button asChild variant="outline" className="w-full">
+                  <Link to="/check-in">
+                    <ClipboardCheck className="h-4 w-4" aria-hidden />
+                    Morning check-in
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          ) : null}
         </>
       ) : null}
     </div>
