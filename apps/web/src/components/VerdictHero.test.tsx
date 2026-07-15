@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { VerdictHero } from './VerdictHero';
 
@@ -31,5 +32,25 @@ describe('VerdictHero', () => {
     render(<VerdictHero verdict="green" line="Sleep held steady despite the late finish." />);
 
     expect(screen.getByText('Sleep held steady despite the late finish.')).toBeTruthy();
+  });
+
+  it('renders an optional feel recap inside the hero', () => {
+    render(
+      <MemoryRouter>
+        <VerdictHero
+          verdict="green"
+          recap={{
+            title: 'How you feel today',
+            text: 'You said: OK · a bit more tired',
+            ctaLabel: 'Change',
+            ctaTo: '/check-in',
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('How you feel today')).toBeTruthy();
+    expect(screen.getByText('You said: OK · a bit more tired')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Change' }).getAttribute('href')).toBe('/check-in');
   });
 });

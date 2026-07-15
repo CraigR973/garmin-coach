@@ -523,9 +523,7 @@ describe('DashboardPage', () => {
 
     const cta = await screen.findByRole('link', { name: /your morning brief is ready/i });
     expect(cta.getAttribute('href')).toBe('/brief');
-    const todayActions = await screen.findByTestId('today-actions');
-    // The CTA precedes the action block in document order (DOCUMENT_POSITION_FOLLOWING).
-    expect(cta.compareDocumentPosition(todayActions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByTestId('today-actions')).toBeNull();
   });
 
   it('drops the unviewed-brief CTA once the brief has been opened (Batch 96)', async () => {
@@ -1394,6 +1392,7 @@ describe('DashboardPage', () => {
     // Base is the pre-training phase at 09:00 with a synced morning read and no
     // sleep-reviewed flag → the morning order (sleep → ride; check-in optional)
     // leads with the sleep review, deep-linking to the Sleep hub.
+    localStorage.setItem('coach_brief_reviewed_date', '2026-06-20');
     renderPage();
     const strip = await screen.findByRole('region', { name: 'Next action' });
     expect(strip.className).toContain('rounded-2xl');
@@ -1406,9 +1405,10 @@ describe('DashboardPage', () => {
     // Opening the Sleep hub sets the per-day flag; with the check-in now optional
     // (not a rung), the morning goes all-clear rather than nagging to check in.
     markSleepReviewed('2026-06-20');
+    localStorage.setItem('coach_brief_reviewed_date', '2026-06-20');
     renderPage(); // base: not checked in, sleep reviewed, nothing pending → all-clear
     await screen.findByText('Cycle day');
-    expect(screen.getByText(/you're all set/i)).toBeTruthy();
+    expect(screen.queryByText(/you're all set/i)).toBeNull();
     expect(screen.queryByRole('region', { name: 'Next action' })).toBeNull();
     // The check-in is still offered — the Today card footer keeps its link.
     expect(screen.getByRole('link', { name: /morning check-in/i }).getAttribute('href')).toBe('/check-in');
@@ -1448,12 +1448,11 @@ describe('DashboardPage', () => {
     );
 
     // The Next strip surfaces the top action (the pending change), not the check-in.
-    const strip = await screen.findByRole('region', { name: 'Next action' });
-    expect(strip.className).toContain('border-warning/45');
-    expect(within(strip).getAllByText("Review today's eased ride").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByRole('region', { name: 'Next action' })).toBeNull();
 
     // The action override makes Today lead + expand regardless of phase/clock —
     // even though a ride was analysed (which would otherwise lead After-your-ride).
+    await screen.findByText('Cycle day');
     expect(screen.getByRole('button', { name: /approve & upload/i })).toBeTruthy();
 
     // After-your-ride is collapsed (its check-in form isn't mounted) but its
@@ -1462,9 +1461,47 @@ describe('DashboardPage', () => {
     expect(screen.getByLabelText('Needs attention')).toBeTruthy();
   });
 
+  it('suppresses the Next strip when TodayActions already carries the loud next step (Batch 123)', async () => {
+    localStorage.setItem('coach_brief_reviewed_date', '2026-06-20');
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.morningAnalysis!.todayActions = [
+          {
+            kind: 'approve_ride',
+            title: "Approve today's eased ride",
+            plannedWorkoutId: '11111111-1111-4111-8111-111111111112',
+          },
+        ];
+        snapshot.data.plannedWorkouts[0].id = '11111111-1111-4111-8111-111111111112';
+        snapshot.data.plannedWorkouts[0].delivery = {
+          liveStatus: 'pushed',
+          liveOrigin: 'as_planned',
+          intervalsEventId: 'evt_1',
+          changed: true,
+          adjustment: { verdict: 'Amber', changed: true },
+        };
+      }),
+    );
+
+    expect(await screen.findByTestId('today-actions')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Next action' })).toBeNull();
+  });
+
+  it('suppresses the Next strip when it would duplicate the opened Last night section (Batch 123)', async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.plannedWorkouts = [];
+      }),
+    );
+
+    expect(await screen.findByText("Last night's sleep")).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Next action' })).toBeNull();
+  });
+
   it('shows an all-clear Next strip when nothing needs a decision (Batch 50)', async () => {
     // Morning all-clear = sleep reviewed AND checked in, with nothing pending.
     markSleepReviewed('2026-06-20');
+    localStorage.setItem('coach_brief_reviewed_date', '2026-06-20');
     renderPage(
       buildSnapshot((snapshot) => {
         snapshot.data.manualEntry = {
@@ -1480,8 +1517,7 @@ describe('DashboardPage', () => {
     );
 
     await screen.findByText('Cycle day');
-    expect(screen.getByText(/you're all set/i)).toBeTruthy();
-    // The all-clear state is a quiet status line, not a primary-action region.
+    expect(screen.queryByText(/you're all set/i)).toBeNull();
     expect(screen.queryByRole('region', { name: 'Next action' })).toBeNull();
   });
 
@@ -1538,7 +1574,7 @@ describe('DashboardPage', () => {
     expect(screen.queryByRole('region', { name: 'Next action' })).toBeNull();
   });
 
-  it('recaps the morning feel beside the verdict with the same word vocabulary and a change link', async () => {
+  it('recaps the morning feel inside the verdict hero with the same word vocabulary and a change link', async () => {
     renderPage(
       buildSnapshot((snapshot) => {
         snapshot.data.manualEntry = {
@@ -1555,12 +1591,22 @@ describe('DashboardPage', () => {
       }),
     );
 
-    expect(await screen.findByText('How you feel today')).toBeTruthy();
-    expect(screen.getByText('You said:', { exact: false })).toBeTruthy();
-    expect(screen.getByText('OK')).toBeTruthy();
-    expect(screen.getByText(/a bit more tired/i)).toBeTruthy();
+    const hero = await screen.findByRole('region', { name: "Today's verdict" });
+    expect(within(hero).getByText('How you feel today')).toBeTruthy();
+    expect(screen.getByText(/You said: OK · a bit more tired/i)).toBeTruthy();
     expect(screen.queryByText(/6\/10/)).toBeNull();
     expect(screen.getByRole('link', { name: 'Change' }).getAttribute('href')).toBe('/check-in');
+  });
+
+  it('moves the morning feedback ask into the Last night section instead of stacking it under the verdict (Batch 123)', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByRole('region', { name: "Today's verdict" });
+    expect(screen.queryByText('How does this land?')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /last night's sleep/i }));
+    expect(screen.getByText('How does this land?')).toBeTruthy();
   });
 
   it('groups every non-lead section under a quiet "More detail" divider (Batch 54)', async () => {

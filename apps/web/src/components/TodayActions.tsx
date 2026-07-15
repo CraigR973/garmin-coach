@@ -12,9 +12,9 @@ import {
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { isBikeWorkout } from '@/hooks/useDailyPhase';
 import { type DailyLoopData } from '@/hooks/useDailyLoop';
 import { apiFetch } from '@/lib/api';
+import { visibleTodayActions } from '@/lib/todayActions';
 
 type TodayAction = NonNullable<DailyLoopData['morningAnalysis']>['todayActions'][number];
 type TodayWorkout = DailyLoopData['plannedWorkouts'][number];
@@ -81,18 +81,12 @@ export function TodayActions({
   const busy = approveMutation.isPending || swapMutation.isPending;
 
   const rows: ReactNode[] = [];
-  actions.forEach((action, index) => {
+  visibleTodayActions(actions, workouts).forEach((action, index) => {
     const Icon = ICONS[action.kind];
     const key = `${action.kind}-${index}`;
 
     if (action.kind === 'approve_ride') {
-      const workout = workouts.find((item) => item.id === action.plannedWorkoutId);
-      const pending =
-        Boolean(workout?.delivery?.changed) && isBikeWorkout(workout?.workoutType ?? null);
-      if (!workout || !pending || !action.plannedWorkoutId) {
-        return;
-      }
-      const workoutId = action.plannedWorkoutId;
+      const workoutId = action.plannedWorkoutId!;
       rows.push(
         <ActionRow key={key} icon={Icon} action={action}>
           <Button
@@ -109,11 +103,8 @@ export function TodayActions({
     }
 
     if (action.kind === 'apply_swap') {
-      if (!action.plannedWorkoutId || !action.targetDate) {
-        return;
-      }
-      const workoutId = action.plannedWorkoutId;
-      const targetDate = action.targetDate;
+      const workoutId = action.plannedWorkoutId!;
+      const targetDate = action.targetDate!;
       rows.push(
         <ActionRow key={key} icon={Icon} action={action}>
           <Button

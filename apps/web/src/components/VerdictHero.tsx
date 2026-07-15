@@ -1,4 +1,5 @@
 import { CheckCircle2, AlertTriangle, OctagonAlert, Hourglass, type LucideIcon } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Logomark } from '@/components/Brand';
 import { verdictCopy, type Verdict } from '@/lib/copy';
 import { cn } from '@/lib/utils';
@@ -68,9 +69,15 @@ interface VerdictHeroProps {
   dateLabel?: string;
   /** Optional override for the plain-English line (e.g. a one-line sleep summary). */
   line?: string;
+  recap?: {
+    title: string;
+    text: string;
+    ctaLabel?: string;
+    ctaTo?: string;
+  } | null;
 }
 
-export function VerdictHero({ verdict, dateLabel, line }: VerdictHeroProps) {
+export function VerdictHero({ verdict, dateLabel, line, recap = null }: VerdictHeroProps) {
   const style =
     verdict === 'green' || verdict === 'amber' || verdict === 'red' ? STYLES[verdict] : PENDING;
   const { Icon } = style;
@@ -109,6 +116,24 @@ export function VerdictHero({ verdict, dateLabel, line }: VerdictHeroProps) {
             <span>{style.label}</span>
           </p>
           <p className="mt-0.5 text-sm text-text-secondary">{line ?? style.line}</p>
+          {recap ? (
+            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-white/10 bg-bg/45 px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-text-muted">
+                  {recap.title}
+                </p>
+                <p className="text-sm text-text-primary">{recap.text}</p>
+              </div>
+              {recap.ctaLabel && recap.ctaTo ? (
+                <Link
+                  to={recap.ctaTo}
+                  className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+                >
+                  {recap.ctaLabel}
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
           <p className="mt-3 inline-flex rounded-full border border-border bg-surface/60 px-2.5 py-1 text-[11px] font-medium text-text-secondary">
             {style.eyebrow}
           </p>
