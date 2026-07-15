@@ -240,6 +240,9 @@ export function MetricComparisonTable({
               <th className="px-2 py-2 text-right font-semibold text-text-secondary sm:px-3">
                 Last night
               </th>
+              <th className="px-2 py-2 text-right font-semibold text-text-secondary sm:px-3">
+                Status
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -254,10 +257,11 @@ export function MetricComparisonTable({
               // metrics have no age norm — so it folds into a per-row descriptor
               // that only renders when this metric actually has one.
               const age = row.age ? ageDiff(row.age) : null;
+              const primaryStatus = diff ?? age;
               return (
                 <tr key={row.key} className="border-t border-border">
                   <td className="px-2 py-2 text-text-primary sm:px-3">{row.label}</td>
-                  <td className="px-2 py-2 text-right sm:px-3">
+                  <td className="px-2 py-2 text-right font-semibold tabular-nums sm:px-3">
                     <div
                       className={cn(
                         'font-semibold tabular-nums',
@@ -266,22 +270,27 @@ export function MetricComparisonTable({
                     >
                       {row.current == null ? '—' : `${fmt(row.current)}${row.currentUnit}`}
                     </div>
+                  </td>
+                  <td className="px-2 py-2 text-right align-top sm:px-3">
                     {range && range !== '—' && (
-                      // "your normal" (not just "normal") so this personal-baseline
-                      // band can't be misread as a typical-for-your-age figure — the
-                      // age frame is the separate "for your age" descriptor below.
-                      <div className="text-[11px] font-normal text-text-muted">
-                        your normal {range}
-                      </div>
+                      <div className="font-medium tabular-nums text-text-secondary">{range}</div>
                     )}
-                    {age && (
+                    {!range || range === '—' ? (
+                      <div className="font-medium tabular-nums text-text-secondary">—</div>
+                    ) : null}
+                    {primaryStatus && (
                       <div
                         className={cn(
-                          'mt-0.5 inline-flex items-center justify-end gap-1 text-[11px] font-medium',
-                          toneText[age.tone],
+                          'mt-0.5 inline-flex items-center justify-end gap-1 text-xs font-medium',
+                          toneText[primaryStatus.tone],
                         )}
                       >
-                        <ToneIcon tone={age.tone} className="h-3 w-3" />
+                        <ToneIcon tone={primaryStatus.tone} className="h-3 w-3" />
+                        {diff ? primaryStatus.text : `${primaryStatus.text} for your age`}
+                      </div>
+                    )}
+                    {diff && age && (
+                      <div className={cn('mt-0.5 text-xs font-medium', toneText[age.tone])}>
                         {age.text} for your age
                       </div>
                     )}

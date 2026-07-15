@@ -439,6 +439,8 @@ describe('SleepPage', () => {
     renderWithSnapshot(checkedIn);
 
     expect(await screen.findByText("Last night's sleep")).toBeTruthy();
+    expect(screen.getByText('Status')).toBeTruthy();
+    expect(screen.getByText('in range')).toBeTruthy();
     expect(screen.getByText('Sleep stages vs your age')).toBeTruthy();
     expect(screen.getByText('Chronic sleep patterns to work on')).toBeTruthy();
     expect(screen.getByText('Protect REM consistency')).toBeTruthy();
