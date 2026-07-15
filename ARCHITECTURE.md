@@ -148,6 +148,8 @@ disruption, 04:00 waking) in the existing `experiments` table with a validated
 Editable structured state fed into every analysis. Source: his handover doc (see
 memory `reference_garmin_app_handover`). Includes:
 
+- **Mark-facing Coach memory read:** the retained context is no longer only an internal admin editor; authenticated users can open a plain-language "Coach memory" view of their own stored context, while the raw JSON / plan-override tools remain admin-only on the same route (Batch 124 / DECISIONS #202).
+
 - **Profile:** age 57, FTP 280W, VO2max 54, HRV band 43–57ms, RHR 45, BP ~108/68, fitness age 48.
 - **Data-quality rules (AI MUST obey):** never reference L/R power balance (single-sided meter, doubled); SpO2/HRV reliable only from 11 Jun (strap re-tightened); exclude wrist-HR strength sessions from recovery; ignore the constant/broken "Duration" column in his Excel export.
 - **Age-adjustment:** sleep score is recomputed from Garmin sleep sub-scores + stored stage seconds against age/sex sleep-stage bands (Batch 61 / DECISIONS #135), replacing the old flat `+4`; `/sleep` shows healthy range bands plus Garmin young-adult targets where comparable.
