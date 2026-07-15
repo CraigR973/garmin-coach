@@ -69,6 +69,7 @@ import { actionSection, nextAction, type NextAction } from '@/lib/homeActions';
 import { hasReviewedSleep } from '@/lib/sleepReview';
 import { hasReviewedBrief } from '@/lib/briefReview';
 import { subjectiveFeelLabel } from '@/lib/subjectiveFeel';
+import { visibleTodayActions } from '@/lib/todayActions';
 import {
   isEveningNow,
   orderedSections,
@@ -128,32 +129,18 @@ function prettyType(type: string): string {
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 
-function MorningFeelRecap({
-  manualEntry,
-}: {
-  manualEntry: DailyLoopData['manualEntry'];
-}) {
+function morningFeelRecap(manualEntry: DailyLoopData['manualEntry']) {
   const label = subjectiveFeelLabel(manualEntry?.subjectiveScore);
   const feel = manualEntry?.feel?.trim();
 
   if (!label) return null;
 
-  return (
-    <div className="flex items-start justify-between gap-3 rounded-2xl border border-border bg-bg px-4 py-3">
-      <div className="min-w-0">
-        <p className="text-xs font-medium uppercase tracking-[0.12em] text-text-muted">
-          How you feel today
-        </p>
-        <p className="mt-1 text-sm text-text-primary">
-          You said: <span className="font-semibold">{label}</span>
-          {feel ? ` · ${feel}` : ''}
-        </p>
-      </div>
-      <Button asChild type="button" size="sm" variant="outline" className="shrink-0">
-        <Link to="/check-in">Change</Link>
-      </Button>
-    </div>
-  );
+  return {
+    title: 'How you feel today',
+    text: `You said: ${label}${feel ? ` · ${feel}` : ''}`,
+    ctaLabel: 'Change',
+    ctaTo: '/check-in',
+  };
 }
 
 /**
@@ -611,6 +598,23 @@ export function DashboardPage() {
   const visibleOrder = analysis == null ? order.filter((key) => key !== 'lastNight') : order;
   // Batch 54: the lead section stays prominent; the rest recede under "More detail".
   const { lead, detail } = splitPrimaryDetail(visibleOrder, primary);
+  const hasUnreadBriefCta = Boolean(analysis && !hasReviewedBrief(daily.subjectDate));
+  const hasVisibleTodayActions = Boolean(
+    analysis && visibleTodayActions(analysis.todayActions, todaysWorkouts).length > 0,
+  );
+  const stripTargetSection: HomeSectionKey | null =
+    action.sectionKey ??
+    (action.key === 'review-sleep'
+      ? 'lastNight'
+      : action.key === 'protect-sleep'
+        ? 'tonight'
+        : null);
+  const showNextActionStrip =
+    Boolean(analysis) &&
+    !hasUnreadBriefCta &&
+    !hasVisibleTodayActions &&
+    action.key !== 'all-set' &&
+    stripTargetSection !== lead;
   const scrollToSection = (key: HomeSectionKey) => {
     document
       .getElementById(sectionDomId(key))
@@ -629,13 +633,23 @@ export function DashboardPage() {
       icon: <BedDouble className="h-4 w-4 text-primary" aria-hidden />,
       summary: sleepSummary(sleep),
       body: (
-        <SleepSnapshotBody
-          metricsVsBaselines={metricsVsBaselines}
-          ageComparison={ageComparison}
-          chronicSuggestions={chronicSuggestions}
-          morningBriefLink="/brief"
-          holiday={{ isActive: holiday.isActive, endDate: holidayEndDate }}
-        />
+        <div className="space-y-4">
+          <SleepSnapshotBody
+            metricsVsBaselines={metricsVsBaselines}
+            ageComparison={ageComparison}
+            chronicSuggestions={chronicSuggestions}
+            morningBriefLink="/brief"
+            holiday={{ isActive: holiday.isActive, endDate: holidayEndDate }}
+          />
+          {analysis?.id ? (
+            <div className="rounded-xl border border-dashed border-border bg-bg/60 px-4 py-3">
+              <FeedbackControl
+                analysisId={analysis.id}
+                kind={(analysis.planAdjustments?.length ?? 0) > 0 ? 'suggestion' : 'summary'}
+              />
+            </div>
+          ) : null}
+        </div>
       ),
     },
     today: {
@@ -753,6 +767,7 @@ export function DashboardPage() {
             undefined,
             dayState.isRest || holiday.isActive,
           )}
+          recap={morningFeelRecap(daily.manualEntry ?? null)}
         />
       ) : daily.manualEntry != null ? (
         <BriefGeneratingCta dateLabel={friendlyDate(daily.subjectDate)} />
@@ -760,28 +775,15 @@ export function DashboardPage() {
         <GoodMorningCta dateLabel={friendlyDate(daily.subjectDate)} />
       )}
 
-      {analysis ? <MorningFeelRecap manualEntry={daily.manualEntry ?? null} /> : null}
-
-      {analysis?.id ? (
-        <FeedbackControl
-          analysisId={analysis.id}
-          // When the coach has suggested a plan edit, agreement is the salient
-          // axis; otherwise rate the read's accuracy. One row per analysis.
-          kind={(analysis.planAdjustments?.length ?? 0) > 0 ? 'suggestion' : 'summary'}
-          feedback={analysis.feedback ?? null}
-          className="px-1"
-        />
-      ) : null}
-
       {/* Batch 96: an unviewed brief outranks every action card, including the
           thermal/plan nudges inside TodayActions. */}
-      {analysis && !hasReviewedBrief(daily.subjectDate) ? <UnviewedBriefCta /> : null}
+      {hasUnreadBriefCta ? <UnviewedBriefCta /> : null}
 
       {/* Batch 86: the day's actions lead — workout adjustment first-class and
           tappable-to-approve, plus swap/sleep/thermal — above the reasoning the
           Today/Sleep cards still carry below. Renders nothing until a brief exists
           or when nothing is actionable. */}
-      {analysis ? (
+      {analysis && !hasUnreadBriefCta ? (
         <TodayActions actions={analysis.todayActions} workouts={todaysWorkouts} />
       ) : null}
 
@@ -790,7 +792,7 @@ export function DashboardPage() {
           above it repeats that same "nothing to do" read a second time. Only
           suppress the quiet all-set state; an active Next action still surfaces
           regardless of the day type. */}
-      {analysis && !(action.key === 'all-set' && (dayState.isRest || holiday.isActive)) ? (
+      {showNextActionStrip ? (
         <NextActionStrip action={action} onGoToSection={scrollToSection} />
       ) : null}
 
