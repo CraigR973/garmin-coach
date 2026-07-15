@@ -19,6 +19,7 @@ import { SleepStageAgeTable } from '@/components/SleepStageAgeTable';
 import { GoodMorningCta } from '@/components/GoodMorningCta';
 import { BreathworkRhythmCard } from '@/components/BreathworkRhythmCard';
 import { hm } from '@/lib/dailyFlow';
+import { bedroomLiveSummary } from '@/lib/bedroom';
 import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
 import { useSleepCalendarVerdicts } from '@/hooks/useSleepCalendarVerdicts';
 import { markSleepReviewed } from '@/lib/sleepReview';
@@ -284,32 +285,21 @@ export function SleepPage() {
                         Bedroom climate
                       </CardTitle>
                       <CardDescription>
-                        Keep the thermal context here, then jump to Climate when you need the full controls.
+                        Climate holds the live room read and controls; Sleep keeps the overnight story and wind-down.
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                        <SleepStat
-                          label="Indoor now"
-                          value={thermal.latestTemperatureC != null ? `${thermal.latestTemperatureC.toFixed(1)}°C` : 'Not synced'}
-                        />
-                        <SleepStat
-                          label="Thermostat"
-                          value={thermal.targetTemperatureC != null ? `${thermal.targetTemperatureC.toFixed(1)}°C` : '—'}
-                        />
-                        <SleepStat
-                          label="Overnight low"
-                          value={thermal.overnightLowC != null ? `${thermal.overnightLowC.toFixed(1)}°C` : '—'}
-                        />
-                        <SleepStat
-                          label="Wind"
-                          value={thermal.overnightWindMaxMph != null ? `${thermal.overnightWindMaxMph.toFixed(0)} mph` : '—'}
-                        />
+                      <div className="rounded-xl border border-border px-4 py-4">
+                        <p className="font-medium text-text-primary">{bedroomLiveSummary(thermal)}</p>
+                        <p className="mt-1 text-sm text-text-secondary">
+                          Open Climate when you want the full room read or to change the fan. Sleep keeps the
+                          retrospective overnight chart on Last night.
+                        </p>
                       </div>
                       <DetailLinkCard
                         to="/environment"
                         title="Open Climate"
-                        description="Control the fans here; the overnight room chart stays on Sleep."
+                        description="See the live room read and fan controls there; the overnight chart stays on Sleep."
                       />
                     </CardContent>
                   </Card>

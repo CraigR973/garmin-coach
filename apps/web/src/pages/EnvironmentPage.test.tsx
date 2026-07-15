@@ -126,6 +126,7 @@ describe('EnvironmentPage', () => {
     );
 
     expect(await screen.findByText('Bedroom climate')).toBeTruthy();
+    expect(screen.getByText('Indoor now')).toBeTruthy();
     expect(screen.getByRole('switch', { name: /overnight fan autopilot/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Low' })).toBeTruthy();
     expect(screen.queryByText('Overnight room & fan')).toBeNull();

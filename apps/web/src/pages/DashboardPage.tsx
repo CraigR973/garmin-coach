@@ -61,8 +61,9 @@ import { isBikeWorkout, useDailyPhase } from '@/hooks/useDailyPhase';
 import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { apiFetch } from '@/lib/api';
+import { bedroomLiveSummary } from '@/lib/bedroom';
 import { cn } from '@/lib/utils';
-import { formatDateTime, friendlyDate, hm, nextDays, remContext, type FanState } from '@/lib/dailyFlow';
+import { formatDateTime, friendlyDate, hm, nextDays, remContext } from '@/lib/dailyFlow';
 import { greetingForNow, personalStatusLine, verdictLabel } from '@/lib/copy';
 import { dayStateForWorkouts, type DayCategory } from '@/lib/workoutCategories';
 import { actionSection, nextAction, type NextAction } from '@/lib/homeActions';
@@ -245,15 +246,6 @@ function afterRideSummary(
 /** DOM id for a Home section card, so the Next strip can scroll to it. */
 function sectionDomId(key: HomeSectionKey): string {
   return `home-section-${key}`;
-}
-
-/** Collapsed one-liner for the Bedroom section — live indoor read + fan mode. */
-function bedroomSummary(thermal: { latestTemperatureC?: number | null; fans: FanState[] }): string {
-  const temp =
-    thermal.latestTemperatureC != null ? `${thermal.latestTemperatureC.toFixed(1)}°C` : 'not synced';
-  const autoFan = thermal.fans.find((fan) => fan.autoTarget) ?? thermal.fans[0] ?? null;
-  const fan = autoFan == null ? 'fan unavailable' : autoFan.autoEnabled ? 'fan on auto' : 'fan on manual';
-  return `Indoor ${temp} · ${fan}`;
 }
 
 export function DashboardPage() {
@@ -724,7 +716,7 @@ export function DashboardPage() {
     bedroom: {
       title: 'Bedroom',
       icon: <Thermometer className="h-4 w-4 text-primary" aria-hidden />,
-      summary: holiday.isActive ? holidayDormantSummary(holidayEndDate) : bedroomSummary(thermal),
+      summary: holiday.isActive ? holidayDormantSummary(holidayEndDate) : bedroomLiveSummary(thermal),
       body: holiday.isActive ? (
         <HolidayDormantBody kind="bedroom" endDate={holidayEndDate} />
       ) : (
