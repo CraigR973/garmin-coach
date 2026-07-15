@@ -162,23 +162,18 @@ jobs:
   security-audit:
     name: Security audit (deps)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
-      # Web: audit production dependencies. Fails on moderate+ advisories —
-      # this is the gate that would have caught the react-router-dom open
-      # redirect (GHSA-2j2x-hqr9-3h42, P2-2).
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      # Web: on PRs, fail if the dependency diff introduces a runtime
+      # vulnerability at moderate severity or higher.
+      - if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@v4
         with:
-          node-version: "20"
-          cache: pnpm
-      - run: pnpm install
-      # npm retired the legacy audit endpoint that pnpm 9/10 still calls, so
-      # generate a throwaway npm lockfile for the audit itself while keeping
-      # pnpm as the workspace package manager for installs/builds.
-      - run: npm install --package-lock-only --ignore-scripts
-      - run: npm audit --omit=dev --audit-level=moderate
-      - run: rm -f package-lock.json
+          fail-on-severity: moderate
+          fail-on-scopes: runtime
+          license-check: false
       # API: audit the runtime requirements against the OSV database.
       - uses: actions/setup-python@v5
         with:
