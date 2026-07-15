@@ -162,18 +162,8 @@ jobs:
   security-audit:
     name: Security audit (deps)
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v4
-      # Web: on PRs, fail if the dependency diff introduces a runtime
-      # vulnerability at moderate severity or higher.
-      - if: github.event_name == 'pull_request'
-        uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: moderate
-          fail-on-scopes: runtime
-          license-check: false
       # API: audit the runtime requirements against the OSV database.
       - uses: actions/setup-python@v5
         with:
@@ -181,3 +171,12 @@ jobs:
       - run: pip install pip-audit
       - run: pip-audit -r requirements.txt
         working-directory: apps/api
+
+  web-security-audit:
+    name: Web security audit (OSV)
+    if: github.event_name == 'pull_request'
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@v2.3.8
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
