@@ -21,6 +21,7 @@ from src.services.dreo_fan import (
     DreoDeviceNotFoundError,
     DreoFanClient,
     DreoFanState,
+    _friendly_fan_label,
 )
 
 
@@ -280,7 +281,7 @@ def test_connect_selects_requested_fan_and_lists_all_fans(
     fans = client.list_fans()
     assert [fan.fan_id for fan in fans] == ["FIRST", "SECOND"]
     assert fans[0].label == "Bedroom fan"
-    assert fans[1].label == "Office fan"
+    assert fans[1].label == "Other fan (COND)"
 
     snapshots = client.read_all_states()
     assert [snapshot.info.fan_id for snapshot in snapshots] == ["FIRST", "SECOND"]
@@ -288,6 +289,11 @@ def test_connect_selects_requested_fan_and_lists_all_fans(
     client.power(True)
     assert second.is_on is True
     assert first.is_on is False
+
+
+def test_friendly_label_prefers_product_name_over_raw_setup_name() -> None:
+    assert _friendly_fan_label(fan_id="SN-1234", auto_target=True) == "Bedroom fan"
+    assert _friendly_fan_label(fan_id="SN-5678", auto_target=False) == "Other fan (5678)"
 
 
 def test_unknown_serial_raises(monkeypatch: pytest.MonkeyPatch) -> None:

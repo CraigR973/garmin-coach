@@ -47,7 +47,7 @@ WALK_ANALYSIS_MIN_DURATION_SEC = 30 * 60
 WALK_ANALYSIS_MIN_DISTANCE_M = 3_000
 ACTIVE_RECOVERY_WINDOW_DAYS = 7
 
-SYSTEM_PROMPT = """You are Garmin Coach, a private Zone-2 walking and active-recovery coach.
+SYSTEM_PROMPT = """You are CheckMark, a private Zone-2 walking and active-recovery coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
 Use `subjectWeekday` as the authoritative weekday; never derive the weekday from
 `subjectDate` yourself.
@@ -428,7 +428,7 @@ class PostWalkAnalysisService:
 
 def build_walk_user_prompt(context_packet: Mapping[str, Any]) -> str:
     return (
-        "Generate the post-walk Garmin Coach analysis from this context packet.\n\n"
+        "Generate the post-walk CheckMark analysis from this context packet.\n\n"
         "Context packet JSON:\n"
         f"{json.dumps(context_packet, ensure_ascii=True, sort_keys=True, default=str)}"
     )

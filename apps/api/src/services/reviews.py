@@ -79,7 +79,7 @@ _ANALYSIS_TYPE_BY_PERIOD = {
 # (matches the morning-analysis default; the sleep protocol KB can refine it).
 THERMAL_DISRUPTION_C = 20.0
 
-SYSTEM_PROMPT = """You are Garmin Coach, a private endurance and sleep coach \
+SYSTEM_PROMPT = """You are CheckMark, a private endurance and sleep coach \
 writing a periodic training-block review.
 Use only the supplied deterministic rollup packet. Follow every data-quality \
 guardrail in the packet. Write concise markdown with four bolded sections — \
@@ -520,7 +520,7 @@ class AnthropicReviewClient:
 def build_review_user_prompt(context_packet: Mapping[str, Any]) -> str:
     period = context_packet.get("period", "weekly")
     return (
-        f"Write the {period} Garmin Coach review from this deterministic rollup packet.\n\n"
+        f"Write the {period} CheckMark review from this deterministic rollup packet.\n\n"
         "Rollup packet JSON:\n"
         f"{json.dumps(context_packet, ensure_ascii=True, sort_keys=True, default=str)}"
     )

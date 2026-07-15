@@ -90,7 +90,7 @@ PROMPT_VERSION_BY_BUCKET = {
 # Indoor reading at/after this local hour belongs to the *next* morning's night.
 _EVENING_HOUR = 18
 
-TREND_SYSTEM_PROMPT = """You are Garmin Coach, a private endurance and sleep \
+TREND_SYSTEM_PROMPT = """You are CheckMark, a private endurance and sleep \
 coach writing a long-horizon trend summary.
 Use only the supplied deterministic trend packet. Compare this period against the \
 same period last year and across seasons. Write concise markdown with three \

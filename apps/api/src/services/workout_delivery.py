@@ -241,7 +241,7 @@ def build_intervals_payload(ir: dict[str, Any]) -> dict[str, Any]:
 def build_zwo_xml(ir: dict[str, Any]) -> str:
     lines = [
         "<workout_file>",
-        "  <author>Garmin Coach</author>",
+        "  <author>CheckMark</author>",
         f"  <name>{html.escape(str(ir['name']))}</name>",
         "  <sportType>bike</sportType>",
         "  <workout>",
@@ -875,7 +875,7 @@ def _power_pct(text: str, *, fallback: int | None = None) -> int:
 
 
 def _intervals_description(ir: dict[str, Any]) -> str:
-    lines = ["Garmin Coach approved workout", ""]
+    lines = ["CheckMark approved workout", ""]
     for step in ir["steps"]:
         duration = _intervals_duration(int(step["durationSec"]))
         cadence = f" {step['cadenceRpm']}rpm" if step.get("cadenceRpm") else ""

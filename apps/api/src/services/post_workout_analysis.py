@@ -58,7 +58,7 @@ ANALYSIS_TYPE = "post_workout"
 # ``skip_day``). Duplicated as a local literal to avoid importing the heavy
 # ExecutableCoachingService just for the string.
 WORKOUT_STATUS_SKIPPED = "skipped"
-SYSTEM_PROMPT = """You are Garmin Coach, a private endurance post-workout analyst.
+SYSTEM_PROMPT = """You are CheckMark, a private endurance post-workout analyst.
 Use only the supplied context packet. Follow every data-quality guardrail.
 Use `subjectWeekday` as the authoritative weekday; never derive the weekday from
 `subjectDate` yourself.
@@ -634,7 +634,7 @@ class PostWorkoutAnalysisService:
 
 def build_post_workout_user_prompt(context_packet: Mapping[str, Any]) -> str:
     return (
-        "Generate the post-workout Garmin Coach analysis from this context packet.\n\n"
+        "Generate the post-workout CheckMark analysis from this context packet.\n\n"
         "Context packet JSON:\n"
         f"{json.dumps(context_packet, ensure_ascii=True, sort_keys=True, default=str)}"
     )

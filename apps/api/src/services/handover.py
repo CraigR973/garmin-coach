@@ -91,7 +91,7 @@ HANDOVER_KB_SECTIONS: tuple[str, ...] = (
 # How far ahead to summarise the active plan slate.
 PLAN_LOOKAHEAD_DAYS = 21
 
-HANDOVER_SYSTEM_PROMPT = """You are Garmin Coach, writing the portable "handover \
+HANDOVER_SYSTEM_PROMPT = """You are CheckMark, writing the portable "handover \
 document" Mark used to hand-write to brief another AI coach.
 Use ONLY the supplied deterministic handover packet — it is the single source of \
 truth for his retained state. Reproduce his context faithfully: the athlete \
@@ -289,7 +289,7 @@ def render_handover_markdown(packet: Mapping[str, Any]) -> str:
     """
     profile = packet.get("profile", {})
     lines: list[str] = []
-    lines.append("# Garmin Coach — Handover Document")
+    lines.append("# CheckMark — Handover Document")
     name = profile.get("displayName", "Athlete")
     generated = packet.get("generatedAtUtc", "")
     lines.append("")
