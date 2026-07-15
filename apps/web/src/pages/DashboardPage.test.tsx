@@ -569,6 +569,8 @@ describe('DashboardPage', () => {
     // Tap the collapsed Last-night header → its body mounts.
     await user.click(screen.getByRole('button', { name: /last night's sleep/i }));
 
+    expect(screen.getByText('Status')).toBeTruthy();
+    expect(screen.getByText('in range')).toBeTruthy();
     expect(await screen.findByText(/23 above/)).toBeTruthy(); // VO₂max vs age, age-only row
     expect(screen.getByRole('link', { name: /full morning brief/i }).getAttribute('href')).toBe('/brief');
     // Batch 35: the standalone baselines page is retired — no baselines link.
