@@ -405,3 +405,20 @@ answers only the one check-in question today.
 ## Status
 13 points. 1 fixed (Batch 110), 1 partial → 115; 12 → Batches 113–119. Reconciled against
 current code (post-95–112) 2026-07-14.
+
+---
+
+# Walkthrough Feedback — 2026-07-14 (wave 3)
+
+A short third 14th wave (2 points), reconciled against current code (Batches 95–119 all shipped).
+
+- **Issue 1 — "pre-cool the bedroom" still on Home's Tonight → no new batch.** The holiday
+  window (12–16 Jul) is active and the Home `tonight`/`bedroom` *sections* correctly go dormant
+  ([DashboardPage.tsx:696](apps/web/src/pages/DashboardPage.tsx:696)); what shows is the brief's
+  "Pre-cool the bedroom tonight" `todayAction` (`_thermal_action`, not holiday-gated) — already
+  **Batch 113.1**.
+- **Issue 2 — colour-code calendar days by verdict → Batch 120.** `SleepDateCalendar` cells are
+  selection-styled only ([SleepDateCalendar.tsx:156](apps/web/src/components/SleepDateCalendar.tsx:156)); needs a cheap per-date verdict map.
+
+## Status
+2 points. 1 covered by Batch 113; 1 → Batch 120. Reconciled against current code (post-95–119) 2026-07-14.
