@@ -65,7 +65,7 @@ export const MORE_GROUPS: NavGroup[] = [
   {
     heading: 'Setup',
     items: [
-      { to: '/coach-state', label: 'Coach memory', Icon: ClipboardList, description: 'Edit your saved context' },
+      { to: '/coach-state', label: 'Coach memory', Icon: ClipboardList, description: 'What your coach remembers' },
       { to: '/handover', label: 'Handover', Icon: FileDown, description: 'Full briefing for a new AI chat' },
       { to: '/settings', label: 'Settings', Icon: SettingsIcon },
     ],
