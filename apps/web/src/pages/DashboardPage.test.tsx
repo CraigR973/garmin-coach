@@ -1397,6 +1397,7 @@ describe('DashboardPage', () => {
     const strip = await screen.findByRole('region', { name: 'Next action' });
     expect(strip.className).toContain('rounded-2xl');
     expect(strip.className).toContain('border-accent/45');
+    expect(within(strip).getByText('Next').className).toContain('text-xs');
     const cta = within(strip).getByRole('link', { name: /review last night's sleep/i });
     expect(cta.getAttribute('href')).toBe('/sleep');
   });
@@ -1622,6 +1623,7 @@ describe('DashboardPage', () => {
 
     expect(leadCard!.compareDocumentPosition(divider) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(divider.compareDocumentPosition(lastNightCard!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(divider.className).toContain('text-xs');
     // The receded section's card is visually quieter (no border/shadow).
     expect(lastNightCard?.className).toContain('border-transparent');
     expect(leadCard?.className).not.toContain('border-transparent');

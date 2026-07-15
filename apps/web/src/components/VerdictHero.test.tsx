@@ -28,6 +28,13 @@ describe('VerdictHero', () => {
     expect(screen.getByTestId('verdict-mark-ring')).toBeTruthy();
   });
 
+  it('keeps the verdict date and eyebrow at the raised readable floor (Batch 127)', () => {
+    render(<VerdictHero verdict="green" dateLabel="Saturday 20 June" />);
+
+    expect(screen.getByText('Saturday 20 June').className).toContain('text-xs');
+    expect(screen.getByText('Green verdict').className).toContain('text-xs');
+  });
+
   it('allows the plain-English line to be overridden', () => {
     render(<VerdictHero verdict="green" line="Sleep held steady despite the late finish." />);
 
