@@ -634,6 +634,7 @@ export function DashboardPage() {
           ageComparison={ageComparison}
           chronicSuggestions={chronicSuggestions}
           morningBriefLink="/brief"
+          holiday={{ isActive: holiday.isActive, endDate: holidayEndDate }}
         />
       ),
     },
@@ -746,7 +747,12 @@ export function DashboardPage() {
         <VerdictHero
           verdict={analysis.verdict}
           dateLabel={friendlyDate(daily.subjectDate)}
-          line={personalStatusLine(analysis.verdict, player?.displayName)}
+          line={personalStatusLine(
+            analysis.verdict,
+            player?.displayName,
+            undefined,
+            dayState.isRest || holiday.isActive,
+          )}
         />
       ) : daily.manualEntry != null ? (
         <BriefGeneratingCta dateLabel={friendlyDate(daily.subjectDate)} />

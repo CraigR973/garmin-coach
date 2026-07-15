@@ -56,8 +56,13 @@ export function personalStatusLine(
   verdict: string | null | undefined,
   displayName?: string | null,
   date = new Date(),
+  isRestOrHoliday = false,
 ): string {
   const greeting = `${greetingForNow(date)}${displayName ? `, ${displayName}` : ''}.`;
+
+  if (isRestOrHoliday) {
+    return `${greeting} Today's a rest day — recovery is the plan, not training.`;
+  }
 
   if (verdict === 'green') {
     return `${greeting} You're good to go ${timeContextForNow(date)}.`;

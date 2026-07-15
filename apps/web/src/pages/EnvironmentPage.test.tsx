@@ -87,9 +87,20 @@ const overnightSnapshot = {
   errors: [],
 };
 
-function renderWithQuery(ui: ReactNode) {
+const holidaySnapshot: DailyLoopEnvelope = {
+  ...snapshot,
+  data: {
+    ...snapshot.data,
+    holiday: {
+      isActive: true,
+      activeWindow: { startDate: '2026-06-15', endDate: '2026-06-25' },
+    },
+  },
+};
+
+function renderWithQuery(ui: ReactNode, dailyLoopData: DailyLoopEnvelope = snapshot) {
   apiFetchMock.mockImplementation((path: string) =>
-    Promise.resolve(path.startsWith('/api/v1/bedroom/overnight') ? overnightSnapshot : snapshot),
+    Promise.resolve(path.startsWith('/api/v1/bedroom/overnight') ? overnightSnapshot : dailyLoopData),
   );
 
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -119,6 +130,22 @@ describe('EnvironmentPage', () => {
     expect(screen.getByRole('button', { name: 'Low' })).toBeTruthy();
     expect(screen.queryByText('Overnight room & fan')).toBeNull();
     expect(screen.getByRole('link', { name: /review last night in sleep/i })).toBeTruthy();
+  });
+
+  it('shows a dormant holiday-away card instead of live room controls while away', async () => {
+    renderWithQuery(
+      <Routes>
+        <Route path="/" element={<EnvironmentPage />} />
+        <Route path="/holiday" element={<div>Holiday page</div>} />
+      </Routes>,
+      holidaySnapshot,
+    );
+
+    expect(await screen.findByText('Holiday away')).toBeTruthy();
+    expect(screen.getByText(/climate resumes/i)).toBeTruthy();
+    expect(screen.getByRole('link', { name: /open holiday/i })).toBeTruthy();
+    expect(screen.queryByText('Bedroom climate')).toBeNull();
+    expect(screen.queryByRole('switch', { name: /overnight fan autopilot/i })).toBeNull();
   });
 
   it('drives the fan with a manual speed preset', async () => {

@@ -7,6 +7,7 @@ import { OvernightGlance } from '@/components/OvernightGlance';
 import { DetailLinkCard } from '@/components/DetailLinkCard';
 import { ChronicSuggestionsCard } from '@/components/ChronicSuggestionsCard';
 import type { DailyLoopData } from '@/hooks/useDailyLoop';
+import { friendlyDate } from '@/lib/dailyFlow';
 
 /**
  * Last night's sleep read: the metrics-vs-baselines table, the retrospective
@@ -24,12 +25,16 @@ export function SleepSnapshotBody({
   chronicSuggestions,
   morningBriefLink,
   showOvernightGlance = true,
+  holiday,
 }: {
   metricsVsBaselines: MetricBaselineRow[];
   ageComparison: AgeComparison | null;
   chronicSuggestions?: DailyLoopData['chronicSuggestions'] | null;
   morningBriefLink: string;
   showOvernightGlance?: boolean;
+  /** Batch 121: while away, the retrospective room glance stays dormant, mirroring
+   *  Sleep's Last-night "Holiday away" card (Batch 113.3). */
+  holiday?: { isActive: boolean; endDate?: string | null };
 }) {
   return (
     <div className="space-y-4">
@@ -37,7 +42,17 @@ export function SleepSnapshotBody({
       <ChronicSuggestionsCard suggestions={chronicSuggestions} />
       {/* Last night's room read (retrospective) lives with last night's sleep;
           tonight's live fan/bedroom controls stay in the evening card (Batch 35). */}
-      {showOvernightGlance && <OvernightGlance />}
+      {holiday?.isActive ? (
+        <div className="rounded-2xl border border-dashed border-border bg-bg px-4 py-4">
+          <p className="font-medium text-text-primary">Holiday away</p>
+          <p className="mt-1 text-sm text-text-secondary">
+            The overnight room read stays dormant while you are away. Resumes{' '}
+            {holiday.endDate ? friendlyDate(holiday.endDate) : 'when you are back'}.
+          </p>
+        </div>
+      ) : (
+        showOvernightGlance && <OvernightGlance />
+      )}
       <DetailLinkCard
         to={morningBriefLink}
         title="Full morning brief"
