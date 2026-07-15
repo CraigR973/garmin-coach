@@ -369,9 +369,26 @@ function renderWithSnapshot(
   options?: {
     dailyLoopByPath?: Record<string, DailyLoopEnvelope>;
     overnightByPath?: Record<string, typeof overnightSnapshot>;
+    verdictsByPath?: Record<string, { data: { from: string; to: string; verdicts: Record<string, string | null> }; meta: { generatedAtUtc: string }; errors: never[] }>;
   },
 ) {
   apiFetchMock.mockImplementation((path: string) => {
+    if (path.startsWith('/api/v1/sleep/verdicts')) {
+      return Promise.resolve(
+        options?.verdictsByPath?.[path] ?? {
+          data: {
+            from: '2026-06-30',
+            to: '2026-08-09',
+            verdicts: {
+              '2026-06-19': 'amber',
+              '2026-06-20': 'green',
+            },
+          },
+          meta: { generatedAtUtc: '2026-06-20T06:41:00Z' },
+          errors: [],
+        },
+      );
+    }
     if (path.startsWith('/api/v1/bedroom/overnight')) {
       return Promise.resolve(options?.overnightByPath?.[path] ?? overnightSnapshot);
     }
@@ -482,7 +499,7 @@ describe('SleepPage', () => {
 
     await screen.findByText("Last night's sleep");
     await user.click(screen.getByRole('button', { name: /show calendar/i }));
-    await user.click(screen.getByRole('button', { name: 'Friday 19 June 2026' }));
+    await user.click(screen.getByRole('button', { name: 'Friday 19 June 2026 - Amber verdict' }));
 
     expect(
       await screen.findByRole('heading', {
@@ -518,7 +535,7 @@ describe('SleepPage', () => {
 
     await user.click(screen.getByRole('button', { name: /show calendar/i }));
     expect(screen.getByText('June 2026')).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: 'Friday 19 June 2026' }));
+    await user.click(screen.getByRole('button', { name: 'Friday 19 June 2026 - Amber verdict' }));
 
     expect(await screen.findByRole('heading', { name: /Sleep for Friday.*19/ })).toBeTruthy();
     expect(screen.getByText('The whole day')).toBeTruthy();

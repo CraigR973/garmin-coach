@@ -36,6 +36,7 @@ from src.routers import (
     plan_actions,
     restructure,
     reviews,
+    sleep,
     strength_brief,
     trends,
     tts,
@@ -134,3 +135,4 @@ app.include_router(reviews.router)
 app.include_router(trends.router)
 app.include_router(handover.router)
 app.include_router(tts.router)
+app.include_router(sleep.router)
