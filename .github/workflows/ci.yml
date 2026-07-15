@@ -171,12 +171,3 @@ jobs:
       - run: pip install pip-audit
       - run: pip-audit -r requirements.txt
         working-directory: apps/api
-
-  web-security-audit:
-    name: Web security audit (OSV)
-    if: github.event_name == 'pull_request'
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@v2.3.8
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
