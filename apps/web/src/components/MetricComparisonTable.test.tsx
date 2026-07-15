@@ -93,6 +93,18 @@ describe('MetricComparisonTable', () => {
     expect(screen.getByText(/typical 50–59 year-old/i)).toBeTruthy();
   });
 
+  it('keeps meaning-bearing table copy at the raised readable floor (Batch 127)', () => {
+    render(<MetricComparisonTable rows={baselineRows} ageComparison={ageComparison} />);
+
+    const status = screen.getByText(/23 below for your age/);
+    const ageNote = screen.getByText(/general-population average for/i);
+    const reliabilityNote = screen.getByText(/strap was re-fitted/i);
+
+    expect(status.className).toContain('text-sm');
+    expect(ageNote.className).toContain('text-sm');
+    expect(reliabilityNote.className).toContain('text-sm');
+  });
+
   it('shows the baseline range and the explicit status cue in the third column, tinting an in-band number green', () => {
     render(<MetricComparisonTable rows={baselineRows} ageComparison={ageComparison} />);
 

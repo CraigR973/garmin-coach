@@ -810,7 +810,7 @@ export function DashboardPage() {
           </CollapsibleSection>
         ) : null}
         {detail.length > 0 ? (
-          <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-text-muted md:col-span-2">
+          <p className="font-mono text-xs uppercase tracking-[0.25em] text-text-muted md:col-span-2">
             More detail
           </p>
         ) : null}
@@ -894,7 +894,7 @@ function NextActionStrip({
       )}
     >
       <div className="min-w-0">
-        <p className={cn('font-mono text-[10px] uppercase tracking-[0.25em]', isWarning ? 'text-warning' : 'text-accent')}>
+        <p className={cn('font-mono text-xs uppercase tracking-[0.25em]', isWarning ? 'text-warning' : 'text-accent')}>
           Next
         </p>
         <p className="mt-1 text-base font-semibold text-text-primary">{action.label}</p>
