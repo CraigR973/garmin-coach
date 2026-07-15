@@ -23,6 +23,10 @@ type ThermalState = {
   fans: FanState[];
 };
 
+function autoTargetFan(thermal: ThermalState) {
+  return thermal.fans.find((fan) => fan.autoTarget) ?? thermal.fans[0] ?? null;
+}
+
 /** The bedroom climate + fan read: room stats, live fan status, and (in the
  *  `full` variant) the Auto toggle and manual Off/Low/Med/High controls.
  *  `compact` (Home's evening "Bedroom" section) shows the read-only status line
@@ -64,7 +68,7 @@ export function BedroomBody({
   });
 
   const commandPending = commandMutation.isPending;
-  const autoFan = thermal.fans.find((fan) => fan.autoTarget) ?? thermal.fans[0] ?? null;
+  const autoFan = autoTargetFan(thermal);
 
   return (
     <div className="space-y-4">

@@ -473,6 +473,11 @@ describe('SleepPage', () => {
     expect(screen.getByText("Right now this is based on today's training.")).toBeTruthy();
     expect(screen.getByText('Breathwork rhythm')).toBeTruthy();
     expect(screen.getByText(/18 sessions · 54 min in 4 weeks/i)).toBeTruthy();
+    expect(screen.getByText(/Indoor 17\.4°C · fan on auto/)).toBeTruthy();
+    expect(screen.queryByText('Indoor now')).toBeNull();
+    expect(screen.queryByText('Thermostat')).toBeNull();
+    expect(screen.queryByText('Overnight low')).toBeNull();
+    expect(screen.queryByText(/^Wind$/)).toBeNull();
     const link = screen.getByRole('link', { name: /open climate/i });
     expect(link.getAttribute('href')).toBe('/environment');
   });
