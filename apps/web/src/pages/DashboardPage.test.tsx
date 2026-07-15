@@ -1357,6 +1357,37 @@ describe('DashboardPage', () => {
     expect(screen.queryByRole('link', { name: /tonight's sleep & bedroom/i })).toBeNull();
   });
 
+  it("hides the overnight room glance on Last night's sleep during an active holiday (Batch 121)", async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.holiday = {
+          isActive: true,
+          activeWindow: { startDate: '2026-07-12', endDate: '2026-07-16' },
+        };
+      }),
+    );
+
+    await screen.findByText('Cycle day');
+    await userEvent.click(screen.getByRole('button', { name: /last night's sleep/i }));
+    expect(screen.getByText('Holiday away')).toBeTruthy();
+    expect(screen.getByText(/the overnight room read stays dormant/i)).toBeTruthy();
+    expect(screen.queryByTestId('overnight-room-verdict-badge')).toBeNull();
+  });
+
+  it('reads the hero as recovery, not "good to go", during an active holiday (Batch 121)', async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.holiday = {
+          isActive: true,
+          activeWindow: { startDate: '2026-07-12', endDate: '2026-07-16' },
+        };
+      }),
+    );
+
+    await screen.findByText(/today's a rest day/i);
+    expect(screen.queryByText(/you're good to go/i)).toBeNull();
+  });
+
   it('leads the morning Next strip with reviewing last night once metrics have synced', async () => {
     // Base is the pre-training phase at 09:00 with a synced morning read and no
     // sleep-reviewed flag → the morning order (sleep → ride; check-in optional)

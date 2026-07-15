@@ -36,6 +36,37 @@ export function EnvironmentPage() {
   }
 
   const data = query.data.data;
+  const holiday = data.holiday;
+
+  if (holiday.isActive) {
+    return (
+      <div className="space-y-5">
+        <PageHeader title="Climate" eyebrow={friendlyDate(data.subjectDate)} />
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <MoonStar className="h-4 w-4 text-primary" aria-hidden />
+              Holiday away
+            </CardTitle>
+            <CardDescription>
+              The room read and fan controls stay dormant while you are away.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-text-secondary">
+              Climate resumes{' '}
+              {holiday.activeWindow?.endDate ? friendlyDate(holiday.activeWindow.endDate) : 'when you are back'}.
+            </p>
+            <DetailLinkCard
+              to="/holiday"
+              title="Open Holiday"
+              description="Review or resume your holiday window."
+            />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
