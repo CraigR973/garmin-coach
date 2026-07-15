@@ -11,10 +11,12 @@ import {
 import {
   Bike,
   CalendarDays,
+  CheckCircle2,
   Dumbbell,
   Hammer,
   Moon,
   Plus,
+  ShieldCheck,
   Shuffle,
   RotateCcw,
   SlidersHorizontal,
@@ -26,6 +28,7 @@ import { toast } from 'sonner';
 import { MoveWorkoutSheet } from '@/components/MoveWorkoutSheet';
 import { QuickAddSheet } from '@/components/QuickAddSheet';
 import { StructuredWorkoutSheet } from '@/components/StructuredWorkoutSheet';
+import { Tabs } from '@/components/ui/tabs';
 import { WeekRestructureSheet } from '@/components/WeekRestructureSheet';
 import { PageHeader } from '@/components/PageHeader';
 import { WeeklyMixCard } from '@/components/WeeklyMixCard';
@@ -34,6 +37,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState, ErrorState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useAuth } from '@/contexts/AuthContext';
 import { apiFetch } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
@@ -118,12 +122,17 @@ interface MoveableWorkout extends PlanWorkout {
   day: string;
 }
 
+type WeekView = 'glance' | 'edit';
+
 export function WeekAheadPage() {
+  const { player } = useAuth();
+  const isAdmin = player?.role === 'admin';
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ['plan-schedule'], queryFn: fetchSchedule });
   const dailyLoop = useDailyLoop();
   const weeklyMix = dailyLoop.data?.data.morningAnalysis?.weeklyMix ?? null;
   const todayIso = new Date().toISOString().slice(0, 10);
+  const [view, setView] = useState<WeekView>('glance');
   const [pickerWorkout, setPickerWorkout] = useState<MoveableWorkout | null>(null);
   const [quickAddTarget, setQuickAddTarget] = useState<{
     date: string;
@@ -336,6 +345,10 @@ export function WeekAheadPage() {
     };
   }, [restructurePreviewQuery.data, workoutById]);
 
+  const schedule = query.data?.data.schedule ?? [];
+  const glanceDays = schedule.slice(0, 7);
+  const laterDays = schedule.slice(7);
+
   const closePicker = () => setPickerWorkout(null);
 
   const handleMove = (targetDate: string) => {
@@ -354,29 +367,21 @@ export function WeekAheadPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Plan" />
+      <PageHeader title="Week" />
 
-      <p className="text-sm text-text-secondary">
-        Move a workout onto any visible day, add light work, or skip a day.
-      </p>
-      <p className="text-sm text-text-secondary">
-        Doing something different? Just ride it — I'll read it after.
-      </p>
+      <p className="text-sm text-text-secondary">This week at a glance: what’s on each day, what’s done, and what’s still to do.</p>
 
-      <div className="flex flex-wrap gap-2">
-        <Button asChild size="sm" variant="outline">
-          <Link to="/holiday">
-            <Umbrella className="mr-1.5 h-4 w-4" aria-hidden />
-            Holiday
-          </Link>
-        </Button>
-        <Button asChild size="sm" variant="outline">
-          <Link to="/builder">
-            <Hammer className="mr-1.5 h-4 w-4" aria-hidden />
-            New training block
-          </Link>
-        </Button>
-      </div>
+      {isAdmin ? (
+        <Tabs<WeekView>
+          items={[
+            { value: 'glance', label: 'This week' },
+            { value: 'edit', label: 'Edit week' },
+          ]}
+          value={view}
+          onChange={setView}
+          variant="segmented"
+        />
+      ) : null}
 
       {weeklyMix ? <WeeklyMixCard mix={weeklyMix} showShortfall /> : null}
 
@@ -394,39 +399,84 @@ export function WeekAheadPage() {
       ) : query.data.data.schedule.length === 0 ? (
         <EmptyState title="No plan window yet" description="Your schedule will show up here once it's set." />
       ) : (
-        <div className="space-y-3">
-          {query.data.data.schedule.map((day, index) => {
-            const previous = query.data.data.schedule[index - 1];
-            const showCharacter =
-              day.weekCharacter != null &&
-              (previous == null || previous.weekCharacter?.label !== day.weekCharacter.label);
-            return (
-              <div key={day.date} className="space-y-3">
-                {showCharacter && day.weekCharacter ? (
-                  <WeekCharacterBanner
-                    day={day}
-                    busy={busy}
-                    onRestructure={() => setRestructureWeekStart(weekStartForDate(day.date))}
-                    onMarkReset={() => markResetMutation.mutate(day.date)}
-                    onUnsetReset={() => unsetResetMutation.mutate(day.date)}
-                  />
-                ) : null}
-                <ScheduleDayCard
-                  day={day}
-                  isToday={day.date === todayIso}
-                  busy={busy}
-                  onAdd={(category) => setQuickAddTarget({ date: day.date, category })}
-                  onBuildRide={() => setStructuredTarget({ mode: 'add', date: day.date })}
-                  onMove={(workout) => setPickerWorkout(workout)}
-                  onEditStructure={(workout) => setStructuredTarget({ mode: 'edit', workout })}
-                  onSkipDay={() => skipDayMutation.mutate(day.date)}
-                  onSkipWorkout={(workoutId) => skipMutation.mutate(workoutId)}
-                  onRemoveWorkout={(workoutId) => removeMutation.mutate(workoutId)}
-                />
-              </div>
-            );
-          })}
-        </div>
+        view === 'edit' && isAdmin ? (
+          <div className="space-y-4">
+            <Card>
+              <CardContent className="space-y-3 pt-6">
+                <p className="text-sm text-text-secondary">
+                  The organiser keeps the full move, add, skip, remove, reset, and restructure rail one layer down.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button asChild size="sm" variant="outline">
+                    <Link to="/holiday">
+                      <Umbrella className="mr-1.5 h-4 w-4" aria-hidden />
+                      Holiday
+                    </Link>
+                  </Button>
+                  <Button asChild size="sm" variant="outline">
+                    <Link to="/builder">
+                      <Hammer className="mr-1.5 h-4 w-4" aria-hidden />
+                      New training block
+                    </Link>
+                  </Button>
+                </div>
+                <p className="text-sm text-text-secondary">Doing something different? Just ride it — I&apos;ll read it after.</p>
+              </CardContent>
+            </Card>
+
+            <div className="space-y-3">
+              {schedule.map((day, index) => {
+                const previous = schedule[index - 1];
+                const showCharacter =
+                  day.weekCharacter != null &&
+                  (previous == null || previous.weekCharacter?.label !== day.weekCharacter.label);
+                return (
+                  <div key={day.date} className="space-y-3">
+                    {showCharacter && day.weekCharacter ? (
+                      <WeekCharacterBanner
+                        day={day}
+                        busy={busy}
+                        onRestructure={() => setRestructureWeekStart(weekStartForDate(day.date))}
+                        onMarkReset={() => markResetMutation.mutate(day.date)}
+                        onUnsetReset={() => unsetResetMutation.mutate(day.date)}
+                      />
+                    ) : null}
+                    <ScheduleDayCard
+                      day={day}
+                      isToday={day.date === todayIso}
+                      busy={busy}
+                      onAdd={(category) => setQuickAddTarget({ date: day.date, category })}
+                      onBuildRide={() => setStructuredTarget({ mode: 'add', date: day.date })}
+                      onMove={(workout) => setPickerWorkout(workout)}
+                      onEditStructure={(workout) => setStructuredTarget({ mode: 'edit', workout })}
+                      onSkipDay={() => skipDayMutation.mutate(day.date)}
+                      onSkipWorkout={(workoutId) => skipMutation.mutate(workoutId)}
+                      onRemoveWorkout={(workoutId) => removeMutation.mutate(workoutId)}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <WeekGlanceCard days={glanceDays} todayIso={todayIso} />
+            {laterDays.length > 0 ? <WeekPreviewCard days={laterDays} /> : null}
+            {isAdmin ? (
+              <Card className="border-dashed">
+                <CardContent className="flex items-start gap-3 pt-6">
+                  <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-text-primary">Admin tools stay one layer down.</p>
+                    <p className="text-sm text-text-secondary">
+                      Open <strong>Edit week</strong> for move, add, skip, reset, and restructure controls.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+          </div>
+        )
       )}
 
       <MoveWorkoutSheet
@@ -481,6 +531,96 @@ export function WeekAheadPage() {
         onClose={() => setRestructureWeekStart(null)}
         onApply={() => restructureWeekStart && restructureApplyMutation.mutate(restructureWeekStart)}
       />
+    </div>
+  );
+}
+
+function WeekGlanceCard({ days, todayIso }: { days: PlanDay[]; todayIso: string }) {
+  const workoutCount = days.reduce((total, day) => total + day.workouts.length, 0);
+  const doneCount = days.reduce(
+    (total, day) => total + day.workouts.filter((workout) => workout.status === 'completed').length,
+    0,
+  );
+  const todoCount = Math.max(workoutCount - doneCount, 0);
+
+  return (
+    <Card>
+      <CardHeader className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <CardTitle>This week</CardTitle>
+          <Badge variant="muted">{workoutCount === 0 ? 'Rest week' : `${workoutCount} sessions`}</Badge>
+        </div>
+        <div className="flex flex-wrap gap-2 text-sm">
+          <Badge variant={doneCount > 0 ? 'success' : 'muted'}>
+            <CheckCircle2 className="mr-1 h-3.5 w-3.5" aria-hidden />
+            {doneCount} done
+          </Badge>
+          <Badge variant={todoCount > 0 ? 'accent' : 'muted'}>{todoCount} to do</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {days.map((day) => (
+          <GlanceDayRow key={day.date} day={day} isToday={day.date === todayIso} />
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function WeekPreviewCard({ days }: { days: PlanDay[] }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Coming up</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {days.map((day) => (
+          <GlanceDayRow key={day.date} day={day} isToday={false} compact />
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function GlanceDayRow({
+  day,
+  isToday,
+  compact = false,
+}: {
+  day: PlanDay;
+  isToday: boolean;
+  compact?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-bg px-3 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="font-medium text-text-primary">{formatDate(day.date)}</p>
+        {isToday ? <Badge variant="default">Today</Badge> : null}
+        <Badge variant={day.dayState.isRest ? 'muted' : 'accent'}>{day.dayState.label}</Badge>
+      </div>
+      {day.workouts.length === 0 ? (
+        <p className="mt-2 text-sm text-text-secondary">Rest day</p>
+      ) : (
+        <div className={cn('mt-3 space-y-2', compact && 'space-y-1.5')}>
+          {day.workouts.map((workout) => {
+            const isDone = workout.status === 'completed';
+            return (
+              <div key={workout.id} className="flex items-start justify-between gap-3 rounded-lg bg-surface px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-text-primary">{workout.title}</p>
+                  <p className="text-xs text-text-secondary">
+                    {prettyType(workout.workoutType)}
+                    {workout.plannedDurationMin ? ` · ${workout.plannedDurationMin} min` : ''}
+                  </p>
+                </div>
+                <Badge variant={isDone ? 'success' : 'muted'} className="shrink-0">
+                  {isDone ? 'Done' : 'To do'}
+                </Badge>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
