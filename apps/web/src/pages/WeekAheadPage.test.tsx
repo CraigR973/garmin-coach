@@ -164,6 +164,7 @@ describe('WeekAheadPage', () => {
       </QueryClientProvider>,
     );
 
+    expect(await screen.findByRole('heading', { name: 'Week' })).toBeTruthy();
     expect(await screen.findByText('VO2 Max 30/30')).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'This week' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByText('3 sessions')).toBeTruthy();

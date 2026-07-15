@@ -63,7 +63,7 @@ from src.services.strength_brief import (
 PROMPT_VERSION = "post-strength-analysis-v3-2026-07-12"
 ANALYSIS_TYPE = "post_strength"
 
-SYSTEM_PROMPT = """You are Garmin Coach, a private strength and conditioning coach.
+SYSTEM_PROMPT = """You are CheckMark, a private strength and conditioning coach.
 Use `subjectWeekday` as the authoritative weekday; never derive the weekday from
 `subjectDate` yourself.
 Use only the supplied context packet. Follow every data-quality guardrail.
@@ -424,7 +424,7 @@ class PostStrengthAnalysisService:
 
 def build_strength_user_prompt(context_packet: Mapping[str, Any]) -> str:
     return (
-        "Generate the post-strength Garmin Coach analysis from this context packet.\n\n"
+        "Generate the post-strength CheckMark analysis from this context packet.\n\n"
         "Context packet JSON:\n"
         f"{json.dumps(context_packet, ensure_ascii=True, sort_keys=True, default=str)}"
     )

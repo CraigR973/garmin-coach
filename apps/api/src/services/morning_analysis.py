@@ -80,7 +80,7 @@ from src.services.workout_categories import is_bike_workout_type
 # the prompt must not narrate a paused workout as today's live training choice.
 PROMPT_VERSION = "morning-analysis-v13-2026-07-12"
 ANALYSIS_TYPE = "morning"
-SYSTEM_PROMPT = """You are Garmin Coach, a private daily endurance and sleep coach.
+SYSTEM_PROMPT = """You are CheckMark, a private daily endurance and sleep coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
 Use `subjectWeekday` as the authoritative weekday and `subjectDateLabel` as the
 authoritative calendar date; never derive or reformat the date or weekday from
@@ -703,7 +703,7 @@ class MorningAnalysisService:
 
 def build_morning_user_prompt(context_packet: Mapping[str, Any]) -> str:
     return (
-        "Generate today's morning Garmin Coach analysis from this context packet.\n\n"
+        "Generate today's morning CheckMark analysis from this context packet.\n\n"
         "Context packet JSON:\n"
         f"{json.dumps(context_packet, ensure_ascii=True, sort_keys=True, default=str)}"
     )

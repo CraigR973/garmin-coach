@@ -68,11 +68,11 @@ def build_garmin_workout(ir: dict[str, Any], *, ftp_watts: int | None = None) ->
     if not steps:
         raise ValueError("Structured workout did not produce deliverable Garmin steps")
 
-    name = str(ir.get("name") or "Garmin Coach ride")[:_MAX_NAME_LEN]
+    name = str(ir.get("name") or "CheckMark ride")[:_MAX_NAME_LEN]
     total = int(ir.get("totalDurationSec") or sum(int(s["endConditionValue"]) for s in steps))
     return {
         "workoutName": name,
-        "description": "Garmin Coach outdoor ride",
+        "description": "CheckMark outdoor ride",
         "sportType": dict(SPORT_TYPE_CYCLING),
         "estimatedDurationInSecs": total,
         "workoutSegments": [

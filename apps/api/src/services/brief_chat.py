@@ -49,7 +49,7 @@ QUESTION_MAX_LENGTH = 1000
 
 PROMPT_VERSION = "brief-chat-v1-2026-07-14"
 
-SYSTEM_PROMPT = """You are Garmin Coach, answering a follow-up question about a
+SYSTEM_PROMPT = """You are CheckMark, answering a follow-up question about a
 brief you already wrote for Mark. You are given that brief's full context
 packet (the same metrics/plan/environment data the brief itself was written
 from) and the brief's own markdown text.

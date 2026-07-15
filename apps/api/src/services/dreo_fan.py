@@ -124,6 +124,12 @@ class DreoFanSnapshot:
     state: DreoFanState
 
 
+def _friendly_fan_label(*, fan_id: str, auto_target: bool) -> str:
+    if auto_target:
+        return "Bedroom fan"
+    return f"Other fan ({fan_id[-4:]})"
+
+
 class DreoFanClient:
     """Sync ``pydreo_community`` wrapper for on/off, speed, oscillation and state.
 
@@ -355,16 +361,14 @@ class DreoFanClient:
 
     def _fan_info(self, device: Any) -> DreoFanInfo:
         fan_id = self._device_id(device)
-        label = (
-            getattr(device, "name", None)
-            or getattr(device, "device_name", None)
-            or getattr(device, "deviceName", None)
-            or getattr(device, "model", None)
-            or f"Fan {fan_id[-4:]}"
-        )
         model = getattr(device, "model", None) or getattr(device, "product_name", None)
         auto_target = fan_id == self._auto_target_fan_id
-        return DreoFanInfo(fan_id=fan_id, label=str(label), model=model, auto_target=auto_target)
+        return DreoFanInfo(
+            fan_id=fan_id,
+            label=_friendly_fan_label(fan_id=fan_id, auto_target=auto_target),
+            model=model,
+            auto_target=auto_target,
+        )
 
     @staticmethod
     def _device_id(device: Any) -> str:

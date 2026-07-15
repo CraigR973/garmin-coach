@@ -171,7 +171,7 @@ def test_packet_composes_every_batch_output() -> None:
 
 def test_render_reflects_retained_state_faithfully() -> None:
     md = render_handover_markdown(_packet())
-    assert "# Garmin Coach — Handover Document" in md
+    assert "# CheckMark — Handover Document" in md
     # Profile, rules, plan, baselines, hypotheses, reviews, strength all present.
     assert "Mark" in md
     assert "Ignore left/right power balance." in md
@@ -351,7 +351,7 @@ async def test_preview_assembles_packet_and_never_writes(db_conn: AsyncConnectio
         assert "knowledgeBase" in preview.packet
         assert preview.packet["plan"]["blockName"] == "Build 1"
         assert preview.packet["baselines"][0]["metricKey"] == "sleep_score"
-        assert "# Garmin Coach — Handover Document" in preview.markdown
+        assert "# CheckMark — Handover Document" in preview.markdown
         assert preview.latest_export is None
 
         # GET preview must not write an analyses row (#71) — incl. no experiment seed.

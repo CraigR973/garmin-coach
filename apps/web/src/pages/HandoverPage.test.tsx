@@ -20,7 +20,7 @@ function envelope(withNarrative: boolean) {
     data: {
       subjectDate: '2026-06-23',
       packet: { packetType: 'handover_export' },
-      markdown: '# Garmin Coach — Handover Document\n\n## Athlete profile\n- **Name:** Mark',
+      markdown: '# CheckMark — Handover Document\n\n## Athlete profile\n- **Name:** Mark',
       export: withNarrative
         ? {
             generatedAtUtc: '2026-06-23T08:00:00Z',
