@@ -69,24 +69,21 @@ async def get_sleep_calendar_verdicts(
         )
 
     rows = (
-        (
-            await db.execute(
-                select(Analysis.subject_date, Analysis.verdict)
-                .where(
-                    Analysis.user_id == player.id,
-                    Analysis.analysis_type == ANALYSIS_TYPE_MORNING,
-                    Analysis.subject_date >= from_date,
-                    Analysis.subject_date <= to_date,
-                )
-                .order_by(
-                    Analysis.subject_date.asc(),
-                    desc(Analysis.generated_at_utc),
-                    desc(Analysis.id),
-                )
+        await db.execute(
+            select(Analysis.subject_date, Analysis.verdict)
+            .where(
+                Analysis.user_id == player.id,
+                Analysis.analysis_type == ANALYSIS_TYPE_MORNING,
+                Analysis.subject_date >= from_date,
+                Analysis.subject_date <= to_date,
+            )
+            .order_by(
+                Analysis.subject_date.asc(),
+                desc(Analysis.generated_at_utc),
+                desc(Analysis.id),
             )
         )
-        .all()
-    )
+    ).all()
 
     verdicts: dict[str, str | None] = {}
     for subject_date, verdict in rows:

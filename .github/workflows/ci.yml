@@ -173,7 +173,12 @@ jobs:
           node-version: "20"
           cache: pnpm
       - run: pnpm install
-      - run: pnpm audit --prod --audit-level=moderate
+      # npm retired the legacy audit endpoint that pnpm 9/10 still calls, so
+      # generate a throwaway npm lockfile for the audit itself while keeping
+      # pnpm as the workspace package manager for installs/builds.
+      - run: npm install --package-lock-only --ignore-scripts
+      - run: npm audit --omit=dev --audit-level=moderate
+      - run: rm -f package-lock.json
       # API: audit the runtime requirements against the OSV database.
       - uses: actions/setup-python@v5
         with:
