@@ -23,10 +23,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 # A `medium`-quality voice took >45s to synthesize a full brief on Railway's
-# CPU and timed out in production (DECISIONS #191) — the voice model moved to
-# `low` quality for speed, but this stays generous as a safety margin since
-# synthesis speed on shared CPU is still not something verified ahead of time.
-PIPER_TIMEOUT_SECONDS = 60
+# CPU and timed out in production once (DECISIONS #191). A live benchmark
+# against the real container (DECISIONS #196) measured ~33s for realistic
+# full-brief-length text at `medium` — that first timeout was real, but a
+# `low`-quality voice wasn't dramatically faster (~23s) at brief length, so
+# `medium` was restored for the noticeably better voice quality. 90s gives
+# roughly 2.5x headroom over the measured time for real-world variability.
+PIPER_TIMEOUT_SECONDS = 90
 
 
 class PiperTTSError(Exception):

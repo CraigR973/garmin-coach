@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { format, parseISO, subDays } from 'date-fns';
+import { endOfMonth, endOfWeek, format, parseISO, startOfMonth, startOfWeek, subDays } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { BedDouble, CalendarDays, ClipboardCheck, Fan, MoonStar } from 'lucide-react';
 import { ChronicSuggestionsCard } from '@/components/ChronicSuggestionsCard';
@@ -20,6 +20,7 @@ import { GoodMorningCta } from '@/components/GoodMorningCta';
 import { BreathworkRhythmCard } from '@/components/BreathworkRhythmCard';
 import { hm } from '@/lib/dailyFlow';
 import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
+import { useSleepCalendarVerdicts } from '@/hooks/useSleepCalendarVerdicts';
 import { markSleepReviewed } from '@/lib/sleepReview';
 import { friendlyDate } from '@/lib/dailyFlow';
 import { verdictBadgeVariant, verdictLabel } from '@/lib/copy';
@@ -44,6 +45,7 @@ const VIEW_ITEMS = [
 export function SleepPage() {
   const [view, setView] = useState<SleepView>('last-night');
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [displayMonth, setDisplayMonth] = useState(() => startOfMonth(new Date()));
   const query = useDailyLoop();
 
   // Opening Sleep with synced overnight metrics completes Home's morning
@@ -64,6 +66,12 @@ export function SleepPage() {
     }
   }, [query.data, selectedDate]);
 
+  useEffect(() => {
+    if (selectedDate) {
+      setDisplayMonth(startOfMonth(parseISO(selectedDate)));
+    }
+  }, [selectedDate]);
+
   const loadedData = query.data?.data ?? null;
   const canBrowseHistory = loadedData != null;
   const currentSubjectDate = loadedData?.subjectDate ?? selectedDate ?? '1970-01-02';
@@ -75,6 +83,16 @@ export function SleepPage() {
     () => format(subDays(parseISO(historySubjectDate), 1), 'yyyy-MM-dd'),
     [historySubjectDate],
   );
+  const verdictRange = useMemo(() => {
+    const start = startOfWeek(startOfMonth(displayMonth), { weekStartsOn: 1 });
+    const end = endOfWeek(endOfMonth(displayMonth), { weekStartsOn: 1 });
+    return {
+      from: format(start, 'yyyy-MM-dd'),
+      to: format(end, 'yyyy-MM-dd'),
+    };
+  }, [displayMonth]);
+  const verdictsQuery = useSleepCalendarVerdicts(verdictRange.from, verdictRange.to);
+  const verdictsByDate = verdictsQuery.data?.data.verdicts ?? {};
 
   if (query.isLoading) {
     return (
@@ -130,7 +148,10 @@ export function SleepPage() {
               <SleepDateCalendar
                 selectedDate={historySubjectDate}
                 maxDate={currentSubjectDate}
+                displayMonth={displayMonth}
+                onDisplayMonthChange={setDisplayMonth}
                 onSelectDate={setSelectedDate}
+                verdictsByDate={verdictsByDate}
               />
               {!hasTodaySleepAccess && !showingHistoricalDate ? (
                 <TodaySleepLockedCard subjectDate={data.subjectDate} />

@@ -1037,6 +1037,21 @@ export const bedroomOvernightEnvelopeSchema = z.object({
   errors: z.array(apiErrorSchema),
 });
 
+// Sleep calendar verdict history (Batch 120) — GET /api/v1/sleep/verdicts.
+export const sleepCalendarVerdictMapSchema = z.record(isoDateSchema, verdictSchema);
+
+export const sleepCalendarVerdictsSchema = z.object({
+  from: isoDateSchema,
+  to: isoDateSchema,
+  verdicts: sleepCalendarVerdictMapSchema,
+});
+
+export const sleepCalendarVerdictsEnvelopeSchema = z.object({
+  data: sleepCalendarVerdictsSchema,
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
+
 export const loopStateSchema = z.object({
   dayPhase: z.enum(['rest_day', 'pre_training', 'post_training', 'wind_down']),
   blockPhase: z
