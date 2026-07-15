@@ -284,7 +284,9 @@ export const knowledgeBaseSectionSchema = z.enum([
   'age_adjustment',
   'sleep_protocol',
   'training_plan',
+  'training_schedule',
   'active_hypotheses',
+  'coaching_protocol',
   'analysis_rules',
 ]);
 

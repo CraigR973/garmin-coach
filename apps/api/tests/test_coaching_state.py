@@ -69,6 +69,51 @@ async def test_get_coaching_state_seeds_defaults_and_returns_envelope(
 
 
 @pytest.mark.asyncio
+async def test_get_coach_memory_allows_non_admin_read_of_own_snapshot(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        user = Profile(
+            id=user_id,
+            display_name="Mark",
+            pin_hash="x" * 60,
+            role=UserRole.player,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(user)
+        await session.commit()
+
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/api/v1/coach-memory")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["errors"] == []
+    assert payload["data"]["knowledgeBaseSections"]
+    assert {
+        entry["section"]
+        for entry in payload["data"]["knowledgeBaseSections"]
+        if entry["isActive"] is True
+    } >= {
+        "profile",
+        "data_quality_rules",
+        "sleep_protocol",
+        "training_plan",
+        "training_schedule",
+        "active_hypotheses",
+    }
+
+
+@pytest.mark.asyncio
 async def test_update_knowledge_base_section_creates_new_active_version(
     db_conn: AsyncConnection,
 ) -> None:
