@@ -8,12 +8,13 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.auth import AdminUser
+from src.auth import AdminUser, CurrentUser
 from src.database import get_db
 from src.models.coaching import KnowledgeBase, PlanBlock, PlannedWorkout
 from src.services.coaching_state import CoachingStateService
 
 router = APIRouter(prefix="/api/v1/admin/coaching-state", tags=["coaching-state"])
+read_router = APIRouter(prefix="/api/v1/coach-memory", tags=["coach-memory"])
 
 
 def _generated_at() -> str:
@@ -169,6 +170,21 @@ def _envelope(
 @router.get("", response_model=CoachingStateEnvelope)
 async def get_coaching_state(
     player: AdminUser,
+    db: AsyncSession = Depends(get_db),
+) -> CoachingStateEnvelope:
+    service = CoachingStateService(db)
+    snapshot = await service.get_snapshot(player)
+    return _envelope(
+        knowledge_base_sections=snapshot.knowledge_base_sections,
+        plan_blocks=snapshot.plan_blocks,
+        planned_workouts=snapshot.planned_workouts,
+        seeded=snapshot.seeded,
+    )
+
+
+@read_router.get("", response_model=CoachingStateEnvelope)
+async def get_coach_memory(
+    player: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> CoachingStateEnvelope:
     service = CoachingStateService(db)
