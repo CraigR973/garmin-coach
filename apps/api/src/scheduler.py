@@ -84,6 +84,7 @@ from src.services.post_flexibility_analysis import PostFlexibilityAnalysisServic
 from src.services.post_strength_analysis import PostStrengthAnalysisService
 from src.services.post_walk_analysis import PostWalkAnalysisService
 from src.services.post_workout_analysis import PostWorkoutAnalysisService
+from src.services.tts_pregenerate import pregenerate_brief_audio
 from src.services.wake_detection import (
     BACKSTOP,
     DURATION_FLOOR_MIN,
@@ -449,6 +450,10 @@ async def run_morning_weather_sync() -> None:
                             profile_id=str(profile.id),
                             subject_date=subject_date.isoformat(),
                         )
+                    # Warms the hosted-voice cache (Batch 116 follow-up) so a
+                    # consenting user's first "Listen" tap is often already
+                    # synthesized. Best-effort — never raises.
+                    await pregenerate_brief_audio(profile, analysis_result.analysis)
                 try:
                     proposals = await coaching_service.regenerate_for_verdict(
                         profile,

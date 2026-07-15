@@ -49,6 +49,7 @@ from src.services.sleep_projection import (
     project_sleep,
 )
 from src.services.strength_brief import StrengthBriefResult
+from src.services.tts_pregenerate import pregenerate_brief_audio
 from src.services.walking_brief import WalkingBriefResult
 from src.services.workout_categories import (
     DAY_CATEGORY_CYCLE,
@@ -190,6 +191,13 @@ async def _generate_brief_after_checkin(user_id: uuid.UUID, subject_date: date) 
                 profile_id=str(user_id),
                 subject_date=subject_date.isoformat(),
             )
+            return
+
+        # Warms the hosted-voice cache (Batch 116 follow-up) so a consenting
+        # user's first "Listen" tap is often already synthesized. Best-effort
+        # — never raises, so a Piper hiccup here can't undo the brief commit
+        # above.
+        await pregenerate_brief_audio(player, analysis)
 
 
 class ApiError(BaseModel):

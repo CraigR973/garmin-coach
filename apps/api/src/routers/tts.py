@@ -16,8 +16,6 @@ with #179's "read aloud, keep nothing" precedent for this feature.
 
 from __future__ import annotations
 
-import hashlib
-from collections import OrderedDict
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -29,40 +27,13 @@ from src.auth import CurrentUser
 from src.config import settings
 from src.database import get_db
 from src.services.piper_tts import PiperTTSError, synthesize_speech
+from src.services.tts_cache import MAX_TEXT_LENGTH, cache_get, cache_key, cache_put
 
 router = APIRouter(prefix="/api/v1/tts", tags=["tts"])
-
-# Cost/abuse guard — briefs are a few hundred to a couple of thousand words;
-# this comfortably covers a full brief with room to spare.
-MAX_TEXT_LENGTH = 6000
-_CACHE_MAX_ENTRIES = 20
-
-# Process-local only (see module docstring) — a dict is enough for a
-# single-instance API process; entries evict oldest-first once full.
-_audio_cache: OrderedDict[str, bytes] = OrderedDict()
 
 
 def _now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
-
-
-def _cache_key(text: str) -> str:
-    raw = f"{settings.piper_voice_model_path}:{text}"
-    return hashlib.sha256(raw.encode()).hexdigest()
-
-
-def _cache_get(key: str) -> bytes | None:
-    audio = _audio_cache.get(key)
-    if audio is not None:
-        _audio_cache.move_to_end(key)
-    return audio
-
-
-def _cache_put(key: str, audio: bytes) -> None:
-    _audio_cache[key] = audio
-    _audio_cache.move_to_end(key)
-    while len(_audio_cache) > _CACHE_MAX_ENTRIES:
-        _audio_cache.popitem(last=False)
 
 
 class ConsentBody(BaseModel):
@@ -118,8 +89,8 @@ async def synthesize(body: SynthesizeBody, player: CurrentUser) -> Response:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required")
     text = text[:MAX_TEXT_LENGTH]
 
-    key = _cache_key(text)
-    cached = _cache_get(key)
+    key = cache_key(text)
+    cached = cache_get(key)
     if cached is not None:
         return Response(content=cached, media_type="audio/wav")
 
@@ -135,5 +106,5 @@ async def synthesize(body: SynthesizeBody, player: CurrentUser) -> Response:
             detail="the hosted voice could not be reached",
         ) from exc
 
-    _cache_put(key, result.audio_bytes)
+    cache_put(key, result.audio_bytes)
     return Response(content=result.audio_bytes, media_type=result.content_type)
