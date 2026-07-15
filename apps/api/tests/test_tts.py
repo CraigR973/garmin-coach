@@ -22,6 +22,7 @@ from src.database import get_db
 from src.main import app
 from src.models.profile import Profile, UserRole
 from src.routers import tts as tts_router
+from src.services import tts_cache
 from src.services.piper_tts import PiperTTSError, PiperTTSResult
 
 
@@ -64,7 +65,7 @@ async def _seed_player(
 
 @pytest.fixture(autouse=True)
 def _clear_cache() -> None:
-    tts_router._audio_cache.clear()
+    tts_cache._audio_cache.clear()
 
 
 def _point_settings_at_existing_model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
