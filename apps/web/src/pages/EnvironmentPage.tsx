@@ -72,14 +72,14 @@ export function EnvironmentPage() {
     <div className="space-y-5">
       <PageHeader title="Climate" eyebrow={friendlyDate(data.subjectDate)} />
 
-      <Card>
+        <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Thermometer className="h-4 w-4 text-primary" aria-hidden />
             Bedroom climate
           </CardTitle>
           <CardDescription>
-            The live room read, overnight weather, and the fan controls that run the bedroom.
+            The canonical live room read and fan controls for the bedroom.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -116,7 +116,7 @@ export function EnvironmentPage() {
           <DetailLinkCard
             to="/sleep"
             title="Review last night in Sleep"
-            description="Open Sleep for the overnight room, fan, and sleep chart."
+            description="Open Sleep for the retrospective overnight room, fan, and sleep chart."
           />
         </CardContent>
       </Card>

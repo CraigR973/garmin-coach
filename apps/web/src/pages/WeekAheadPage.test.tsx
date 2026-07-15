@@ -34,6 +34,14 @@ vi.mock('@/hooks/useDailyLoop', () => ({
   useDailyLoop: () => ({ data: null }),
 }));
 
+const useAuthMock = vi.fn(() => ({
+  player: { id: 'admin-1', displayName: 'Craig', role: 'admin', timezone: 'Europe/London' },
+}));
+
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => useAuthMock(),
+}));
+
 const schedule = {
   data: {
     startDate: '2026-06-23',
@@ -100,9 +108,20 @@ const schedule = {
   errors: [],
 };
 
+async function openEditWeek(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('tab', { name: 'Edit week' }));
+}
+
+function workoutRow(title: string): HTMLElement {
+  return screen.getAllByText(title, { selector: 'p' })[0]!.closest('div.rounded-xl.border') as HTMLElement;
+}
+
 describe('WeekAheadPage', () => {
   beforeEach(() => {
     apiFetchMock.mockReset();
+    useAuthMock.mockReturnValue({
+      player: { id: 'admin-1', displayName: 'Craig', role: 'admin', timezone: 'Europe/London' },
+    });
     vi.stubGlobal('Date', MockDate as typeof Date);
   });
 
@@ -146,11 +165,20 @@ describe('WeekAheadPage', () => {
     );
 
     expect(await screen.findByText('VO2 Max 30/30')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'This week' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByText('3 sessions')).toBeTruthy();
+    expect(screen.getByText('0 done')).toBeTruthy();
+    expect(screen.getByText('3 to do')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Edit week' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /move$/i })).toBeNull();
+
+    await openEditWeek(user);
+    expect(within(workoutRow('VO2 Max 30/30')).getByRole('button', { name: /^move$/i })).toBeTruthy();
     expect(screen.getByText('Cycle + Flexibility')).toBeTruthy();
     expect(screen.getAllByText('Rest day').length).toBeGreaterThan(0);
     expect(screen.getByText('Sweet Spot Builder')).toBeTruthy();
 
-    const firstDay = screen.getByText('VO2 Max 30/30').closest('.rounded-xl') as HTMLElement;
+    const firstDay = workoutRow('VO2 Max 30/30');
     await user.click(within(firstDay).getByRole('button', { name: /^move$/i }));
 
     expect(screen.getByText('Choose a day in the current plan window.')).toBeTruthy();
@@ -186,6 +214,33 @@ describe('WeekAheadPage', () => {
       );
     });
     expect(screen.queryByText('Swap a workout into this rest day')).toBeNull();
+  });
+
+  it('keeps Mark on a read-only week glance and hides organiser controls (Batch 126)', async () => {
+    useAuthMock.mockReturnValue({
+      player: { id: 'mark-1', displayName: 'Mark', role: 'player', timezone: 'Europe/London' },
+    });
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/api/v1/plan-actions/schedule?days=14'
+        ? Promise.resolve(schedule)
+        : Promise.reject(new Error(`Unexpected request: ${path}`)),
+    );
+
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('This week')).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'Edit week' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^move$/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^cycle$/i })).toBeNull();
+    expect(screen.queryByText('Holiday')).toBeNull();
+    expect(screen.getAllByText('To do').length).toBeGreaterThan(0);
   });
 
   it('renders a split day (ride + strength) as two independently movable rows (Batch 65)', async () => {
@@ -227,6 +282,7 @@ describe('WeekAheadPage', () => {
     );
 
     const queryClient = new QueryClient();
+    const user = userEvent.setup();
     render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter>
@@ -235,8 +291,10 @@ describe('WeekAheadPage', () => {
       </QueryClientProvider>,
     );
 
-    const ride = (await screen.findByText('Z2 + Neuromuscular')).closest('.rounded-xl') as HTMLElement;
-    const strength = screen.getByText('Bodyweight').closest('.rounded-xl') as HTMLElement;
+    await screen.findByText('Z2 + Neuromuscular');
+    await openEditWeek(user);
+    const ride = workoutRow('Z2 + Neuromuscular');
+    const strength = workoutRow('Bodyweight');
     // Two distinct rows, each with its own Move control — the ride can move without
     // dragging the strength.
     expect(ride).not.toBe(strength);
@@ -267,6 +325,7 @@ describe('WeekAheadPage', () => {
     );
 
     expect(await screen.findByText('VO2 Max 30/30')).toBeTruthy();
+    await openEditWeek(user);
     await user.click(screen.getAllByRole('button', { name: /build ride/i })[0]);
     expect(screen.getByText('Build a ride')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: /^add workout$/i }));
@@ -297,7 +356,7 @@ describe('WeekAheadPage', () => {
     });
     await waitFor(() => expect(screen.queryByText('Build a ride')).toBeNull());
 
-    const firstDay = screen.getByText('VO2 Max 30/30').closest('.rounded-xl') as HTMLElement;
+    const firstDay = workoutRow('VO2 Max 30/30');
     const editButton = within(firstDay).getByRole('button', { name: /edit structure/i });
     await waitFor(() => expect(editButton.hasAttribute('disabled')).toBe(false));
     await user.click(editButton);
@@ -330,6 +389,7 @@ describe('WeekAheadPage', () => {
     );
 
     const queryClient = new QueryClient();
+    const user = userEvent.setup();
     render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter>
@@ -338,9 +398,9 @@ describe('WeekAheadPage', () => {
       </QueryClientProvider>,
     );
 
-    const doneWorkout = (await screen.findByText('Sweet Spot Builder')).closest(
-      '.rounded-xl',
-    ) as HTMLElement;
+    await screen.findByText('Sweet Spot Builder');
+    await openEditWeek(user);
+    const doneWorkout = workoutRow('Sweet Spot Builder');
     expect(within(doneWorkout).getByText('Done')).toBeTruthy();
     expect(within(doneWorkout).queryByRole('button', { name: /^move$/i })).toBeNull();
     expect(screen.getByRole('button', { name: /skip remaining/i })).toBeTruthy();
@@ -351,7 +411,7 @@ describe('WeekAheadPage', () => {
     ).toBeTruthy();
 
     // A still-planned workout keeps its Move control.
-    const plannedWorkout = screen.getByText('VO2 Max 30/30').closest('.rounded-xl') as HTMLElement;
+    const plannedWorkout = workoutRow('VO2 Max 30/30');
     expect(within(plannedWorkout).getByRole('button', { name: /^move$/i })).toBeTruthy();
   });
 
@@ -396,6 +456,7 @@ describe('WeekAheadPage', () => {
     );
 
     const queryClient = new QueryClient();
+    const user = userEvent.setup();
     render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter>
@@ -404,6 +465,8 @@ describe('WeekAheadPage', () => {
       </QueryClientProvider>,
     );
 
+    await screen.findByText('Outdoor endurance');
+    await openEditWeek(user);
     expect(await screen.findByText(/Garmin send failed/i)).toBeTruthy();
     expect(screen.getByText('Sent to Garmin')).toBeTruthy();
   });
@@ -430,7 +493,9 @@ describe('WeekAheadPage', () => {
       </QueryClientProvider>,
     );
 
-    const vo2Row = (await screen.findByText('VO2 Max 30/30')).closest('.rounded-xl') as HTMLElement;
+    await screen.findByText('VO2 Max 30/30');
+    await openEditWeek(user);
+    const vo2Row = workoutRow('VO2 Max 30/30');
     await user.click(within(vo2Row).getByRole('button', { name: /^skip$/i }));
     expect(within(vo2Row).getByText(/Skip just this session/i)).toBeTruthy();
     await user.click(within(vo2Row).getByRole('button', { name: /confirm skip/i }));
@@ -473,11 +538,13 @@ describe('WeekAheadPage', () => {
       </QueryClientProvider>,
     );
 
-    const vo2Row = (await screen.findByText('VO2 Max 30/30')).closest('.rounded-xl') as HTMLElement;
+    await screen.findByText('VO2 Max 30/30');
+    await openEditWeek(user);
+    const vo2Row = workoutRow('VO2 Max 30/30');
     // The coach-planned VO2 session (source !== 'plan_action_add') has no Remove control.
     expect(within(vo2Row).queryByRole('button', { name: /^remove$/i })).toBeNull();
 
-    const flexRow = screen.getByText('Flexibility', { selector: 'p' }).closest('.rounded-xl') as HTMLElement;
+    const flexRow = workoutRow('Flexibility');
     await user.click(within(flexRow).getByRole('button', { name: /^remove$/i }));
     expect(within(flexRow).getByText(/Remove this added workout/i)).toBeTruthy();
     await user.click(within(flexRow).getByRole('button', { name: /confirm remove/i }));
@@ -520,6 +587,7 @@ describe('WeekAheadPage', () => {
         : Promise.reject(new Error(`Unexpected request: ${path}`)),
     );
     const queryClient = new QueryClient();
+    const user = userEvent.setup();
 
     render(
       <QueryClientProvider client={queryClient}>
@@ -530,6 +598,7 @@ describe('WeekAheadPage', () => {
     );
 
     await screen.findByText('VO2 Max 30/30');
+    await openEditWeek(user);
     expect(screen.getByRole('link', { name: /holiday/i }).getAttribute('href')).toBe('/holiday');
     expect(screen.getByRole('link', { name: /new training block/i }).getAttribute('href')).toBe(
       '/builder',
@@ -568,6 +637,7 @@ describe('WeekAheadPage', () => {
         : Promise.reject(new Error(`Unexpected request: ${path}`)),
     );
     const queryClient = new QueryClient();
+    const user = userEvent.setup();
 
     render(
       <QueryClientProvider client={queryClient}>
@@ -578,6 +648,8 @@ describe('WeekAheadPage', () => {
     );
 
     await screen.findByText('VO2 Max 30/30');
+    await openEditWeek(user);
+    await screen.findByText('Build 4/13');
     // The character banner appears once per contiguous run, not once per day.
     // (The "Holiday" nav link also matches the text, so scope to the badge div.)
     expect(screen.getAllByText('Build 4/13')).toHaveLength(1);
@@ -624,6 +696,8 @@ describe('WeekAheadPage', () => {
       </QueryClientProvider>,
     );
 
+    await screen.findByText('VO2 Max 30/30');
+    await openEditWeek(user);
     await screen.findByText('Build 4/13');
     await user.click(screen.getByRole('button', { name: /light reset/i }));
     await waitFor(() => {
@@ -651,6 +725,8 @@ describe('WeekAheadPage', () => {
       </QueryClientProvider>,
     );
 
+    await screen.findByText('VO2 Max 30/30');
+    await openEditWeek(user);
     await screen.findByText('Light reset');
     await user.click(screen.getByRole('button', { name: /restore week/i }));
     await waitFor(() => {
@@ -727,6 +803,8 @@ describe('WeekAheadPage', () => {
       </QueryClientProvider>,
     );
 
+    await screen.findByText('VO2 Max 30/30');
+    await openEditWeek(user);
     await screen.findByText('Build 4/13');
     await user.click(screen.getByRole('button', { name: /rearrange week/i }));
 
