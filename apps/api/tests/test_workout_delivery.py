@@ -42,6 +42,7 @@ def _activity(
     activity_type: str,
     name: str,
     start_utc: str,
+    user_id: uuid.UUID = uuid.UUID("22222222-2222-4222-8222-222222222222"),
     duration_sec: float = 3600,
 ) -> Activity:
     from datetime import datetime, timedelta
@@ -49,7 +50,7 @@ def _activity(
     parsed = datetime.fromisoformat(start_utc.replace("Z", "+00:00")).replace(tzinfo=None)
     return Activity(
         id=uuid.uuid4(),
-        user_id=uuid.UUID("22222222-2222-4222-8222-222222222222"),
+        user_id=user_id,
         garmin_activity_id=int(parsed.timestamp()),
         garmin_activity_uuid=str(uuid.uuid4()),
         activity_name=name,
@@ -533,6 +534,7 @@ async def test_list_week_ahead_returns_bike_workouts_with_latest_proposal(
                 activity_type="walking",
                 name="Evening Walk",
                 start_utc="2026-06-25T18:00:00Z",
+                user_id=user.id,
             )
         )
         session.add(
@@ -540,6 +542,7 @@ async def test_list_week_ahead_returns_bike_workouts_with_latest_proposal(
                 activity_type="road_biking",
                 name="Planned ride",
                 start_utc="2026-06-24T08:00:00Z",
+                user_id=user.id,
             )
         )
         await session.commit()
