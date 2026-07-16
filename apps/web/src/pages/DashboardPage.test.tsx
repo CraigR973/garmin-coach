@@ -1316,6 +1316,98 @@ describe('DashboardPage', () => {
     expect(screen.queryByText('After your ride')).toBeNull();
   });
 
+  it('floats and expands Today for a pending walk check-in on a rest day, once sleep is reviewed (Batch 132)', async () => {
+    markSleepReviewed('2026-06-20');
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.plannedWorkouts = [];
+        snapshot.data.pendingPostWorkoutActivities = [
+          {
+            activityId: 'cccccccc-1111-4111-8111-cccccccccccc',
+            activityName: 'South Lakeland Walking',
+            activityType: 'walking',
+            activityKind: 'walk',
+            plannedWorkoutId: null,
+            startUtc: '2026-06-20T07:30:00Z',
+            durationMin: 70,
+            checkIn: null,
+          },
+        ];
+      }),
+    );
+
+    // Today (holding the pending check-in) is the action override's target,
+    // so it's already the expanded lead section — no Next strip duplicates it
+    // (same "action target === lead ⇒ no strip" rule as Batch 50/123), and its
+    // content is visible without an extra click, ahead of Last night on a rest day.
+    expect(screen.queryByRole('region', { name: 'Next action' })).toBeNull();
+    expect(await screen.findByText('South Lakeland Walking')).toBeTruthy();
+    expect(screen.getByText('Synced from Garmin · 70 min')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /read my workout/i })).toBeTruthy();
+  });
+
+  it('floats Today for a generated-but-unseen walk read, and marks it seen once rendered (Batch 132)', async () => {
+    markSleepReviewed('2026-06-20');
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.plannedWorkouts = [];
+        snapshot.data.postWalkAnalyses = [
+          {
+            id: 'dddddddd-1111-4111-8111-dddddddddddd',
+            activityId: 'eeeeeeee-1111-4111-8111-eeeeeeeeeeee',
+            activityName: 'South Lakeland Walking',
+            activityType: 'walking',
+            generatedAtUtc: '2026-06-20T08:40:00Z',
+            promptVersion: 'post-walk-v1',
+            modelName: 'claude-sonnet-4-6',
+            outputMarkdown: '**Walk read:** easy active recovery.',
+            heartRateReview: {},
+            paceReview: {},
+            activeRecoveryContext: {},
+            activityCheckIn: null,
+          },
+        ];
+      }),
+    );
+
+    // Rendering the read (Today expanded/lead) marks it seen — mirroring
+    // markBriefReviewed's mount-time signal.
+    await screen.findByText('Walk read');
+    await waitFor(() => {
+      expect(localStorage.getItem('coach_walk_read_seen_date')).toBe('2026-06-20');
+    });
+  });
+
+  it('acknowledges a logged activity in the rest-day empty-plan copy instead of the ride-centric line (Batch 132)', async () => {
+    markSleepReviewed('2026-06-20');
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.plannedWorkouts = [];
+        snapshot.data.postWalkAnalyses = [
+          {
+            id: 'dddddddd-1111-4111-8111-dddddddddddd',
+            activityId: 'eeeeeeee-1111-4111-8111-eeeeeeeeeeee',
+            activityName: 'South Lakeland Walking',
+            activityType: 'walking',
+            generatedAtUtc: '2026-06-20T08:40:00Z',
+            promptVersion: 'post-walk-v1',
+            modelName: 'claude-sonnet-4-6',
+            outputMarkdown: '**Walk read:** easy active recovery.',
+            heartRateReview: {},
+            paceReview: {},
+            activeRecoveryContext: {},
+            activityCheckIn: null,
+          },
+        ];
+      }),
+    );
+
+    // A generated-but-unseen walk read makes Today the lead section (already
+    // expanded), so the empty-plan copy is visible without an extra click.
+    expect(await screen.findByText("Rest is still the plan today — I've got what you logged below.")).toBeTruthy();
+    expect(screen.queryByText(/Just ride it — I'll read it after\./)).toBeNull();
+  });
+
   it('after 20:00 floats the bedroom-prep sections above Last night (order only)', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-06-20T21:30:00'));

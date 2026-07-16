@@ -22,7 +22,14 @@ export type ActionTone = 'warning' | 'default' | 'muted';
 
 export interface NextAction {
   /** Stable identifier for the firing rung (tests + React keys). */
-  key: 'say-good-morning' | 'review-sleep' | 'review-ride' | 'log-ride' | 'protect-sleep' | 'all-set';
+  key:
+    | 'say-good-morning'
+    | 'review-sleep'
+    | 'review-ride'
+    | 'log-ride'
+    | 'read-walk'
+    | 'protect-sleep'
+    | 'all-set';
   label: string;
   /** Route to navigate to, for actions that leave Home. */
   to?: string;
@@ -45,6 +52,36 @@ function hasPendingCoachChange(data: DailyLoopData): boolean {
  *  empty, or `null` if every analysed ride has been logged. */
 function firstUnloggedRide(data: DailyLoopData): DailyLoopData['postWorkoutAnalyses'][number] | null {
   return (data.postWorkoutAnalyses ?? []).find((analysis) => analysis.postRideCheckIn == null) ?? null;
+}
+
+/** A synced walk still waiting on its check-in (the read hasn't generated yet),
+ *  or `null` once it's been logged (at which point it moves to `postWalkAnalyses`). */
+function firstPendingWalk(
+  data: DailyLoopData,
+): NonNullable<DailyLoopData['pendingPostWorkoutActivities']>[number] | null {
+  return (data.pendingPostWorkoutActivities ?? []).find((activity) => activity.activityKind === 'walk') ?? null;
+}
+
+/** A synced walk's rung (Batch 132): the pending check-in first, then its
+ *  generated read until seen. `null` once neither is outstanding. Checked in
+ *  both ladders — a walk read flips the client-derived phase to `post_training`
+ *  the moment it generates (`useDailyPhase`'s `hasAnyPostAnalysis`), so the
+ *  morning-only branch alone would stop floating Today the instant the read
+ *  landed, defeating the "recedes once seen, not once generated" intent. */
+function resolveWalkAction(data: DailyLoopData, hasSeenWalkRead: boolean): NextAction | null {
+  const pendingWalk = firstPendingWalk(data);
+  if (pendingWalk) {
+    return {
+      key: 'read-walk',
+      label: `Log how ${pendingWalk.activityName ?? 'your walk'} felt`,
+      sectionKey: 'today',
+      tone: 'default',
+    };
+  }
+  if ((data.postWalkAnalyses ?? []).length > 0 && !hasSeenWalkRead) {
+    return { key: 'read-walk', label: 'Read your walk', sectionKey: 'today', tone: 'default' };
+  }
+  return null;
 }
 
 function reviewRide(): NextAction {
@@ -73,7 +110,10 @@ function isHolidayAway(data: DailyLoopData): boolean {
  *    keeps this strip from contradicting the `GoodMorningCta` hero, which shows
  *    whenever `morningAnalysis` is null, with a stale "You're all set");
  * 1. metrics synced & sleep not yet opened today → review last night (`/sleep`);
- * 2. a bike workout with a pending coach change → review it (expand `today`).
+ * 2. a bike workout with a pending coach change → review it (expand `today`);
+ * 3. a synced walk still waiting on its check-in, or read/seen (Batch 132) →
+ *    log it or read it, expanding `today` — this is a rest/holiday day's own
+ *    activity, not a Zwift consequence, so it sits behind the eased-ride rung.
  *
  * The rest of the day keeps the need-first order (the ride's Zwift consequence
  * makes it the top concern once he's up and about):
@@ -85,7 +125,9 @@ function isHolidayAway(data: DailyLoopData): boolean {
  * a quiet "you're all set". Only protect-sleep is evening-gated.
  * `hasReviewedSleep` is a per-day client flag the caller threads (set when Mark
  * opens `/sleep`), so the sleep rung completes rather than nagging with no
- * completion signal.
+ * completion signal. `hasSeenWalkRead` mirrors it for the walk rung (Batch 132) —
+ * set once the walk's read has rendered on Home, so it recedes without a
+ * "mark as read" tap of its own.
  */
 export function nextAction(
   data: DailyLoopData,
@@ -93,7 +135,13 @@ export function nextAction(
     isEvening,
     isMorning = false,
     hasReviewedSleep = false,
-  }: { isEvening: boolean; isMorning?: boolean; hasReviewedSleep?: boolean },
+    hasSeenWalkRead = false,
+  }: {
+    isEvening: boolean;
+    isMorning?: boolean;
+    hasReviewedSleep?: boolean;
+    hasSeenWalkRead?: boolean;
+  },
 ): NextAction {
   if (isMorning) {
     if (data.morningAnalysis == null) {
@@ -104,6 +152,10 @@ export function nextAction(
     }
     if (hasPendingCoachChange(data)) {
       return reviewRide();
+    }
+    const morningWalkAction = resolveWalkAction(data, hasSeenWalkRead);
+    if (morningWalkAction) {
+      return morningWalkAction;
     }
   } else {
     if (hasPendingCoachChange(data)) {
@@ -120,6 +172,10 @@ export function nextAction(
         sectionKey: unloggedRide.plannedWorkoutId ? 'today' : 'afterRide',
         tone: 'warning',
       };
+    }
+    const dayWalkAction = resolveWalkAction(data, hasSeenWalkRead);
+    if (dayWalkAction) {
+      return dayWalkAction;
     }
   }
   if (isEvening && data.sleepProjection?.tone === 'protect') {
