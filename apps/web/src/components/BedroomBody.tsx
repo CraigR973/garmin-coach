@@ -97,8 +97,14 @@ export function BedroomBody({
           <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-3">
             <div className="min-w-0">
               <p className="font-medium text-text-primary">Overnight autopilot</p>
+              {/* Describe what the toggle does, not the live fan telemetry — that
+                  already shows on the fan's own status line below (was duplicated). */}
               <p className="text-sm text-text-secondary">
-                {autoFan ? fanStatusText(autoFan) : 'No controllable fan found'}
+                {autoFan == null
+                  ? 'No controllable fan found'
+                  : autoFan.autoEnabled
+                    ? 'Following the room overnight; winds down by morning.'
+                    : 'Off — the fan holds your manual setting.'}
               </p>
             </div>
             <Toggle
@@ -116,11 +122,18 @@ export function BedroomBody({
                 <div className="mb-3">
                   <p className="font-medium text-text-primary">{fan.label}</p>
                   <p className="text-sm text-text-secondary">{fanStatusText(fan)}</p>
-                  <p className="text-xs text-text-muted">
-                    {fan.presetMode ? `Mode ${fan.presetMode}` : 'Mode unknown'}
-                    {' · '}
-                    {fan.oscillating == null ? 'Oscillation unknown' : fan.oscillating ? 'Oscillating' : 'Fixed'}
-                  </p>
+                  {/* Only surface mode/oscillation when the integration actually
+                      reports them — "Mode unknown · Oscillation unknown" is noise. */}
+                  {fan.presetMode != null || fan.oscillating != null ? (
+                    <p className="text-xs text-text-muted">
+                      {[
+                        fan.presetMode != null ? `Mode ${fan.presetMode}` : null,
+                        fan.oscillating != null ? (fan.oscillating ? 'Oscillating' : 'Fixed') : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button

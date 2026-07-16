@@ -65,7 +65,7 @@ import { bedroomLiveSummary } from '@/lib/bedroom';
 import { cn } from '@/lib/utils';
 import { formatDateTime, friendlyDate, hm, nextDays, remContext } from '@/lib/dailyFlow';
 import { greetingForNow, personalStatusLine, verdictLabel } from '@/lib/copy';
-import { dayStateForWorkouts, type DayCategory } from '@/lib/workoutCategories';
+import { dayStateForWorkouts, workoutTypeLabel, type DayCategory } from '@/lib/workoutCategories';
 import { actionSection, nextAction, type NextAction } from '@/lib/homeActions';
 import { hasReviewedSleep } from '@/lib/sleepReview';
 import { hasReviewedBrief } from '@/lib/briefReview';
@@ -125,10 +125,6 @@ function workoutIcon(type: string): LucideIcon {
   return Activity;
 }
 
-function prettyType(type: string): string {
-  const cleaned = type.replace(/[_-]+/g, ' ').trim();
-  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-}
 
 function morningFeelRecap(manualEntry: DailyLoopData['manualEntry']) {
   const label = subjectiveFeelLabel(manualEntry?.subjectiveScore);
@@ -1487,7 +1483,7 @@ function WorkoutRow({
             <div className="min-w-0 flex-1">
               <p className="font-medium text-text-primary">{workout.title}</p>
               <p className="text-sm text-text-secondary">
-                {prettyType(workout.workoutType)}
+                {workoutTypeLabel(workout.workoutType)}
                 {workout.plannedDurationMin ? ` · ${workout.plannedDurationMin} min` : ''}
                 {workout.intensityTarget ? ` · ${workout.intensityTarget}` : ''}
               </p>
@@ -1528,7 +1524,7 @@ function WorkoutRow({
             <div className="min-w-0 flex-1">
               <p className="font-medium text-text-primary">{workout.title}</p>
               <p className="text-sm text-text-secondary">
-                {prettyType(workout.workoutType)}
+                {workoutTypeLabel(workout.workoutType)}
                 {workout.plannedDurationMin ? ` · ${workout.plannedDurationMin} min` : ''}
                 {workout.intensityTarget ? ` · ${workout.intensityTarget}` : ''}
               </p>

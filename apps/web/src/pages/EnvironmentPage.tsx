@@ -79,7 +79,7 @@ export function EnvironmentPage() {
             Bedroom climate
           </CardTitle>
           <CardDescription>
-            The canonical live room read and fan controls for the bedroom.
+            The live room read and fan controls for the bedroom.
           </CardDescription>
         </CardHeader>
         <CardContent>

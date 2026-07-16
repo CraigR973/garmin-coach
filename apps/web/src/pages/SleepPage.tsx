@@ -20,6 +20,7 @@ import { GoodMorningCta } from '@/components/GoodMorningCta';
 import { BreathworkRhythmCard } from '@/components/BreathworkRhythmCard';
 import { hm } from '@/lib/dailyFlow';
 import { bedroomLiveSummary } from '@/lib/bedroom';
+import { workoutTypeLabel } from '@/lib/workoutCategories';
 import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
 import { useSleepCalendarVerdicts } from '@/hooks/useSleepCalendarVerdicts';
 import { markSleepReviewed } from '@/lib/sleepReview';
@@ -424,7 +425,7 @@ function HistoricalDayCard({ data }: { data: DailyLoopData | null }) {
                     <Badge variant="muted">{prettifyStatus(workout.status)}</Badge>
                   </div>
                   <p className="mt-1 text-sm text-text-secondary">
-                    {prettifyType(workout.workoutType)}
+                    {workoutTypeLabel(workout.workoutType)}
                     {workout.plannedDurationMin != null ? ` · ${workout.plannedDurationMin} min` : ''}
                     {workout.intensityTarget ? ` · ${workout.intensityTarget}` : ''}
                   </p>
@@ -484,11 +485,6 @@ function formatSleepWindow(startUtc: string | null | undefined, endUtc: string |
   return '';
 }
 
-function prettifyType(value: string | null | undefined): string {
-  if (!value) return 'Session';
-  const cleaned = value.replace(/[_-]+/g, ' ').trim();
-  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-}
 
 function prettifyStatus(value: string | null | undefined): string {
   if (!value) return 'Planned';

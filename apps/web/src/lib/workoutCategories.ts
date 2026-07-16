@@ -26,6 +26,37 @@ export function isBikeWorkoutType(workoutType: string | null | undefined): boole
   return categoryForWorkoutType(workoutType) === 'cycle';
 }
 
+// Clean, human label for a workout-type enum, used in the day-card subtitle.
+// Replaces the old per-page `type.replace(/[_-]+/g, ' ')` which leaked the raw
+// discipline prefix ("Bike sweet spot", "Bike z2") beneath an already-friendly
+// title. The category badge/icon already conveys the discipline, so the label
+// drops the `bike_`/`strength_` prefix and reads as the session's character.
+const WORKOUT_TYPE_LABELS: Record<string, string> = {
+  bike_z2: 'Zone 2',
+  bike_endurance: 'Endurance',
+  bike_tempo: 'Tempo',
+  bike_sweet_spot: 'Sweet spot',
+  bike_threshold: 'Threshold',
+  bike_vo2: 'VO₂',
+  bike_recovery: 'Recovery ride',
+  strength: 'Strength',
+  mobility: 'Mobility',
+  flexibility: 'Mobility',
+  walk: 'Walk',
+  deliberate_walk: 'Walk',
+};
+
+export function workoutTypeLabel(workoutType: string | null | undefined): string {
+  const value = (workoutType ?? '').toLowerCase().trim();
+  if (!value) return 'Session';
+  const mapped = WORKOUT_TYPE_LABELS[value];
+  if (mapped) return mapped;
+  // Fallback: strip a known discipline prefix, de-underscore, sentence-case.
+  const stripped = value.replace(/^(bike|strength|cycle|ride)_/, '');
+  const cleaned = stripped.replace(/[_-]+/g, ' ').trim();
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
 export function dayStateForWorkouts(workouts: Array<Pick<DailyLoopData['plannedWorkouts'][number], 'workoutType'>>): {
   categories: DayCategory[];
   label: string;

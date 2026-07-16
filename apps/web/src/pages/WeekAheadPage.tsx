@@ -41,7 +41,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { apiFetch } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
-import { categoryForWorkoutType, type DayCategory } from '@/lib/workoutCategories';
+import { categoryForWorkoutType, workoutTypeLabel, type DayCategory } from '@/lib/workoutCategories';
 
 type PlanScheduleEnvelope = typeof planScheduleEnvelopeSchema._type;
 type PlanDay = PlanScheduleEnvelope['data']['schedule'][number];
@@ -70,11 +70,6 @@ function iconFor(workoutType: string) {
   if (category === 'cycle') return Bike;
   if (category === 'weights') return Dumbbell;
   return Wind;
-}
-
-function prettyType(type: string): string {
-  const cleaned = type.replace(/[_-]+/g, ' ').trim();
-  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 
 async function fetchSchedule() {
@@ -404,7 +399,7 @@ export function WeekAheadPage() {
             <Card>
               <CardContent className="space-y-3 pt-6">
                 <p className="text-sm text-text-secondary">
-                  The organiser keeps the full move, add, skip, remove, reset, and restructure rail one layer down.
+                  Move, add, skip, or remove a session, reset a week, or rearrange the days — all from here.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <Button asChild size="sm" variant="outline">
@@ -609,7 +604,7 @@ function GlanceDayRow({
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-text-primary">{workout.title}</p>
                   <p className="text-xs text-text-secondary">
-                    {prettyType(workout.workoutType)}
+                    {workoutTypeLabel(workout.workoutType)}
                     {workout.plannedDurationMin ? ` · ${workout.plannedDurationMin} min` : ''}
                   </p>
                 </div>
@@ -790,7 +785,7 @@ function WorkoutRow({
         <div className="min-w-0 flex-1">
           <p className="font-medium text-text-primary">{workout.title}</p>
           <p className="text-sm text-text-secondary">
-            {prettyType(workout.workoutType)}
+            {workoutTypeLabel(workout.workoutType)}
             {workout.plannedDurationMin ? ` · ${workout.plannedDurationMin} min` : ''}
             {workout.intensityTarget ? ` · ${workout.intensityTarget}` : ''}
           </p>
