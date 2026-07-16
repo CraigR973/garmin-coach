@@ -155,6 +155,13 @@ describe('morning brief page', () => {
     expect(screen.getByRole('button', { name: /listen to brief/i })).toBeTruthy();
   });
 
+  it("surfaces the metrics-vs-baselines snapshot table (Batch 130)", async () => {
+    renderWithQuery(<MorningBriefPage />);
+    expect(await screen.findByText("Last night's metrics")).toBeTruthy();
+    expect(screen.getByText('HRV (7-day)')).toBeTruthy();
+    expect(screen.getByText('50')).toBeTruthy();
+  });
+
   it('marks the brief reviewed on open, clearing Home\'s unviewed-brief CTA (Batch 96)', async () => {
     expect(localStorage.getItem('coach_brief_reviewed_date')).toBeNull();
     renderWithQuery(<MorningBriefPage />);
