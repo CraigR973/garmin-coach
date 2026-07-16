@@ -1,4 +1,3 @@
-import { Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import type { DailyLoopData } from '@/hooks/useDailyLoop';
 
@@ -73,8 +72,10 @@ export function SleepPrepBody({ projection }: { projection: SleepProjection | nu
       {projection.prepActions.length > 0 && (
         <ul className="space-y-2">
           {projection.prepActions.map((action) => (
-            <li key={action} className="flex gap-2 leading-6 text-text-primary">
-              <Check className="mt-1 h-4 w-4 shrink-0 text-success" aria-hidden />
+            <li key={action} className="flex gap-2.5 leading-6 text-text-primary">
+              {/* Neutral bullet, not a green check — these are things to do
+                  tonight, not items already completed. */}
+              <span className="mt-[0.5rem] h-1.5 w-1.5 shrink-0 rounded-full bg-text-muted" aria-hidden />
               <span>{action}</span>
             </li>
           ))}

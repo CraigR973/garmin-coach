@@ -68,15 +68,25 @@ export interface AgeComparison {
   sleepRows?: AgeComparisonRow[];
 }
 
-// Metrics where a higher value is the better outcome.
+// Direction of "better" per metric key. This list must cover every key the
+// backend emits as a baseline row (services/metric_baselines.py::_current_metric_values):
+// sleep_score, age_adjusted_sleep_score, readiness_score, resting_heart_rate_bpm,
+// body_battery_charge, average_spo2_pct, average_respiration, hrv_7_day_avg_ms.
+// A key missing here reads as "no direction", so an out-of-band value in the *good*
+// direction (e.g. readiness above your normal) would render as a ⚠ warning — the bug
+// this covers. Keep in sync when a new baseline metric is added.
 const HIGHER_IS_BETTER = new Set([
   'sleep_score',
   'age_adjusted_sleep_score',
+  'readiness_score',
   'hrv_7_day_avg_ms',
   'body_battery_charge',
   'average_spo2_pct',
 ]);
-const LOWER_IS_BETTER = new Set(['resting_heart_rate_bpm']);
+// Resting HR and overnight respiration both read as concerns when they rise above
+// the personal baseline (elevated respiration can signal stress/illness/poor recovery);
+// below the baseline is fine, so out-of-band-low stays green.
+const LOWER_IS_BETTER = new Set(['resting_heart_rate_bpm', 'average_respiration']);
 
 const BASELINE_UNIT: Record<string, string> = {
   average_spo2_pct: '%',

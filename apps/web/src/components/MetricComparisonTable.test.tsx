@@ -154,6 +154,45 @@ describe('MetricComparisonTable', () => {
     expect(status.className).toContain('text-success');
   });
 
+  it('keeps readiness green when it lands above the personal baseline (higher-is-better)', () => {
+    // Batch 129: readiness_score is emitted as a baseline row but was missing from the
+    // higher-is-better set, so an above-normal (good) readiness rendered as an amber ⚠.
+    const rows: MetricBaselineRow[] = [
+      {
+        metricKey: 'readiness_score',
+        label: 'Readiness',
+        currentValue: 88,
+        baselineMedian: 70,
+        lowerQuartile: 62,
+        upperQuartile: 78,
+      },
+    ];
+    render(<MetricComparisonTable rows={rows} ageComparison={{ rows: [] }} />);
+
+    const row = rowFor('Readiness');
+    expect(within(row).getByText('88').className).toContain('text-success');
+    const status = within(row).getByText(/10 above/);
+    expect(status.className).toContain('text-success');
+  });
+
+  it('flags overnight respiration amber when it rises above the baseline, green when it falls below', () => {
+    // Batch 129: average_respiration is a concern when elevated (stress/illness), fine when low.
+    const high: MetricBaselineRow[] = [
+      { metricKey: 'average_respiration', label: 'Respiration', currentValue: 16, baselineMedian: 12, lowerQuartile: 11, upperQuartile: 13 },
+    ];
+    const { unmount } = render(<MetricComparisonTable rows={high} ageComparison={{ rows: [] }} />);
+    expect(within(rowFor('Respiration')).getByText('16').className).toContain('text-warning');
+    expect(within(rowFor('Respiration')).getByText(/3 above/).className).toContain('text-warning');
+    unmount();
+
+    const low: MetricBaselineRow[] = [
+      { metricKey: 'average_respiration', label: 'Respiration', currentValue: 9, baselineMedian: 12, lowerQuartile: 11, upperQuartile: 13 },
+    ];
+    render(<MetricComparisonTable rows={low} ageComparison={{ rows: [] }} />);
+    expect(within(rowFor('Respiration')).getByText('9').className).toContain('text-success');
+    expect(within(rowFor('Respiration')).getByText(/2 below/).className).toContain('text-success');
+  });
+
   it('surfaces the HRV/SpO₂ reliability footnote when nights were excluded', () => {
     render(<MetricComparisonTable rows={baselineRows} ageComparison={ageComparison} />);
     expect(screen.getByText(/strap was re-fitted/i)).toBeTruthy();
