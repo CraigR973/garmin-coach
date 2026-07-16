@@ -177,6 +177,24 @@ describe('v1 shared schemas', () => {
           ],
         },
         dataQualityWarnings: [],
+        strengthBrief: {
+          asOfDate: '2026-07-02',
+          window4w: {
+            sessionCount: 4,
+            totalDurationMin: 88,
+            totalLoadProxy: 120.5,
+            sessionsPerWeek: 1.0,
+          },
+          window12w: {
+            sessionCount: 12,
+            totalDurationMin: 264,
+            totalLoadProxy: 360.0,
+            sessionsPerWeek: 1.0,
+          },
+          recentSessions: [],
+          trend: 'stable',
+          trendReason: 'Frequency holding at ~1.0/wk over 28 days.',
+        },
         walkingBrief: {
           asOfDate: '2026-07-02',
           window4w: {

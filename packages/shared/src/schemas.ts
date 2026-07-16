@@ -1097,6 +1097,37 @@ export const dailyLoopSchema = z.object({
   sleepProjection: sleepProjectionSchema.optional(),
   chronicSuggestions: chronicSuggestionsSchema.optional(),
   dataQualityWarnings: z.array(dailyLoopWarningSchema),
+  strengthBrief: z
+    .object({
+      asOfDate: isoDateSchema,
+      window4w: z.object({
+        sessionCount: z.number().int(),
+        totalDurationMin: z.number().int(),
+        totalLoadProxy: z.number(),
+        sessionsPerWeek: z.number(),
+      }),
+      window12w: z.object({
+        sessionCount: z.number().int(),
+        totalDurationMin: z.number().int(),
+        totalLoadProxy: z.number(),
+        sessionsPerWeek: z.number(),
+      }),
+      recentSessions: z
+        .array(
+          z.object({
+            activityId: z.string().uuid(),
+            activityName: z.string(),
+            activityType: z.string(),
+            sessionDate: isoDateSchema,
+            durationMin: z.number().int().nullable().optional(),
+            trainingLoad: z.number().nullable().optional(),
+          }),
+        )
+        .default([]),
+      trend: z.string(),
+      trendReason: z.string(),
+    })
+    .optional(),
   walkingBrief: z
     .object({
       asOfDate: isoDateSchema,

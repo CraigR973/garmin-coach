@@ -128,6 +128,24 @@ const dailyLoopEnvelope: DailyLoopEnvelope = {
       },
       recentSessions: [],
     },
+    strengthBrief: {
+      asOfDate: '2026-07-15',
+      trend: 'increasing',
+      trendReason: 'Recent 2-week rate (2.0/wk) up from prior 2-week rate (1.0/wk).',
+      window4w: {
+        sessionCount: 6,
+        totalDurationMin: 132,
+        totalLoadProxy: 180.5,
+        sessionsPerWeek: 1.5,
+      },
+      window12w: {
+        sessionCount: 14,
+        totalDurationMin: 308,
+        totalLoadProxy: 421.0,
+        sessionsPerWeek: 1.2,
+      },
+      recentSessions: [],
+    },
     dataQualityWarnings: [],
   },
   meta: { generatedAtUtc: '2026-07-15T18:00:00Z' },
@@ -163,6 +181,9 @@ describe('TrendsPage', () => {
     expect(await screen.findByText('July 2026 vs July 2025')).toBeTruthy();
     expect(screen.getAllByText('Walking base')).toHaveLength(2);
     expect(screen.getByText(/6 walks · 18.5 km · 250 min/i)).toBeTruthy();
+    expect(screen.getByText('Strength trend')).toBeTruthy();
+    expect(screen.getByText(/6 sessions · 132 min · 1.5\/wk in 4 weeks/i)).toBeTruthy();
+    expect(screen.getByText(/Recent 2-week rate \(2\.0\/wk\) up/i)).toBeTruthy();
     expect(screen.getByText(/No summary written/)).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: 'Write summary' }));
