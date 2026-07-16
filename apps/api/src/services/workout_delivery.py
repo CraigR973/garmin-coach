@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import re
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal, Protocol
@@ -13,8 +14,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
-from src.models.coaching import Activity, KnowledgeBase, PlannedWorkout, WorkoutDeliveryProposal
+from src.models.coaching import (
+    Activity,
+    KnowledgeBase,
+    PlannedWorkout,
+    WorkoutDeliveryProposal,
+)
 from src.models.profile import Profile
+
 DEFAULT_FTP_WATTS = 280
 PROVIDER_INTERVALS_ICU = "intervals_icu"
 STATUS_PROPOSED = "proposed"
@@ -87,7 +94,10 @@ def _is_ride_activity(activity: Activity) -> bool:
     activity_name = (activity.activity_name or "").lower()
     if activity_type == "virtual_ride" or activity_type.endswith("_ride"):
         return True
-    return any(token in activity_type or token in activity_name for token in ("cycling", "bike", "biking"))
+    return any(
+        token in activity_type or token in activity_name
+        for token in ("cycling", "bike", "biking")
+    )
 
 
 def _post_activity_kind(activity: Activity) -> PostActivityKind | None:
@@ -424,8 +434,12 @@ class WorkoutDeliveryService:
             .scalars()
             .all()
         )
-        latest_by_workout = await self._latest_proposals_by_workout(player.id, start_date, end_date)
-        activities_by_date = await self._activities_by_date(player.id, start_date, end_date, workouts)
+        latest_by_workout = await self._latest_proposals_by_workout(
+            player.id, start_date, end_date
+        )
+        activities_by_date = await self._activities_by_date(
+            player.id, start_date, end_date, workouts
+        )
 
         entries: list[WeekAheadEntry] = []
         for workout in workouts:
@@ -449,7 +463,7 @@ class WorkoutDeliveryService:
         user_id: uuid.UUID,
         start_date: date,
         end_date: date,
-        workouts: list[PlannedWorkout],
+        workouts: Sequence[PlannedWorkout],
     ) -> dict[date, list[PlanActivity]]:
         rows = (
             (

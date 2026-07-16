@@ -528,8 +528,20 @@ async def test_list_week_ahead_returns_bike_workouts_with_latest_proposal(
         assert user is not None
         service = WorkoutDeliveryService(session)
         await service.propose(player=user, planned_workout_id=bike_id)
-        session.add(_activity(activity_type="walking", name="Evening Walk", start_utc="2026-06-25T18:00:00Z"))
-        session.add(_activity(activity_type="road_biking", name="Planned ride", start_utc="2026-06-24T08:00:00Z"))
+        session.add(
+            _activity(
+                activity_type="walking",
+                name="Evening Walk",
+                start_utc="2026-06-25T18:00:00Z",
+            )
+        )
+        session.add(
+            _activity(
+                activity_type="road_biking",
+                name="Planned ride",
+                start_utc="2026-06-24T08:00:00Z",
+            )
+        )
         await session.commit()
 
         entries, day_activities = await service.list_week_ahead(

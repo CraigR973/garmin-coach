@@ -128,7 +128,7 @@ class PlanDay:
     date: date
     day_state: DayState
     workouts: list[PlannedWorkout]
-    activities: list["PlanActivity"]
+    activities: list[PlanActivity]
     week_character: WeekCharacter | None = None
 
 
@@ -540,7 +540,10 @@ def _is_ride_activity(activity: Activity) -> bool:
     activity_name = (activity.activity_name or "").lower()
     if activity_type == "virtual_ride" or activity_type.endswith("_ride"):
         return True
-    return any(token in activity_type or token in activity_name for token in ("cycling", "bike", "biking"))
+    return any(
+        token in activity_type or token in activity_name
+        for token in ("cycling", "bike", "biking")
+    )
 
 
 def _post_activity_kind(activity: Activity) -> PostActivityKind | None:

@@ -14,8 +14,8 @@ from src.database import get_db
 from src.models.coaching import GarminWorkoutDelivery, ManualEntry, PlannedWorkout
 from src.services.garmin_workout_delivery import GarminWorkoutDeliveryService
 from src.services.plan_actions import (
-    PlanActivity,
     PlanActionService,
+    PlanActivity,
     PlanDay,
     QuickAddOption,
     WeekCharacter,
