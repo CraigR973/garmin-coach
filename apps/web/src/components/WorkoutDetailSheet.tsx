@@ -1,8 +1,9 @@
-import { useMemo, type ReactNode } from 'react';
+import { useMemo } from 'react';
 import type { planActionWorkoutSchema } from '@coach/shared';
 import { Bike, Dumbbell, Wind } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Sheet } from '@/components/ui/sheet';
+import { DetailRow } from '@/components/DetailRow';
 import { PowerProfilePreview } from '@/components/PowerProfilePreview';
 import {
   categoryForWorkoutType,
@@ -117,15 +118,6 @@ export function WorkoutDetailSheet({
         )}
       </div>
     </Sheet>
-  );
-}
-
-function DetailRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-sm text-text-secondary">{label}</dt>
-      <dd className="text-right text-sm font-medium text-text-primary">{children}</dd>
-    </div>
   );
 }
 

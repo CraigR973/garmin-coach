@@ -352,6 +352,41 @@ describe('WeekAheadPage', () => {
     expect(screen.getByRole('img', { name: 'Power profile preview' })).toBeTruthy();
   });
 
+  it('opens an activity detail sheet from a logged-walk chip on the glance (Batch 136)', async () => {
+    const walkedWeek = JSON.parse(JSON.stringify(schedule));
+    walkedWeek.data.schedule[1].activities = [
+      {
+        activityKind: 'walk',
+        name: 'Evening Walk',
+        durationMin: 70,
+        startUtc: '2026-06-24T18:00:00Z',
+      },
+    ];
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/api/v1/plan-actions/schedule?days=14'
+        ? Promise.resolve(walkedWeek)
+        : Promise.reject(new Error(`Unexpected request: ${path}`)),
+    );
+
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('VO2 Max 30/30')).toBeTruthy();
+    expect(screen.queryByText(/You did this/)).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'View Walk · 70 min details' }));
+
+    expect(await screen.findByText('Logged')).toBeTruthy();
+    expect(screen.getByText(/You did this/)).toBeTruthy();
+    expect(screen.getByText('70 min')).toBeTruthy();
+  });
+
   it('opens the detail sheet from the editor row without moving the workout (Batch 135)', async () => {
     apiFetchMock.mockImplementation((path: string) =>
       path === '/api/v1/plan-actions/schedule?days=14'
