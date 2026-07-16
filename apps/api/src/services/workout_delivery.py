@@ -95,8 +95,7 @@ def _is_ride_activity(activity: Activity) -> bool:
     if activity_type == "virtual_ride" or activity_type.endswith("_ride"):
         return True
     return any(
-        token in activity_type or token in activity_name
-        for token in ("cycling", "bike", "biking")
+        token in activity_type or token in activity_name for token in ("cycling", "bike", "biking")
     )
 
 
@@ -434,9 +433,7 @@ class WorkoutDeliveryService:
             .scalars()
             .all()
         )
-        latest_by_workout = await self._latest_proposals_by_workout(
-            player.id, start_date, end_date
-        )
+        latest_by_workout = await self._latest_proposals_by_workout(player.id, start_date, end_date)
         activities_by_date = await self._activities_by_date(
             player.id, start_date, end_date, workouts
         )
@@ -472,9 +469,8 @@ class WorkoutDeliveryService:
                     .where(
                         Activity.user_id == user_id,
                         Activity.start_utc >= datetime.combine(start_date, datetime.min.time()),
-                        Activity.start_utc < datetime.combine(
-                            end_date + timedelta(days=1), datetime.min.time()
-                        ),
+                        Activity.start_utc
+                        < datetime.combine(end_date + timedelta(days=1), datetime.min.time()),
                     )
                     .order_by(Activity.start_utc.asc())
                 )

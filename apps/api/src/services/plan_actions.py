@@ -541,8 +541,7 @@ def _is_ride_activity(activity: Activity) -> bool:
     if activity_type == "virtual_ride" or activity_type.endswith("_ride"):
         return True
     return any(
-        token in activity_type or token in activity_name
-        for token in ("cycling", "bike", "biking")
+        token in activity_type or token in activity_name for token in ("cycling", "bike", "biking")
     )
 
 
@@ -649,9 +648,8 @@ class PlanActionService:
                     .where(
                         Activity.user_id == user_id,
                         Activity.start_utc >= datetime.combine(start_date, datetime.min.time()),
-                        Activity.start_utc < datetime.combine(
-                            end_date + timedelta(days=1), datetime.min.time()
-                        ),
+                        Activity.start_utc
+                        < datetime.combine(end_date + timedelta(days=1), datetime.min.time()),
                     )
                     .order_by(Activity.start_utc.asc())
                 )
@@ -663,8 +661,7 @@ class PlanActionService:
         workouts = (
             (
                 await self.session.execute(
-                    select(PlannedWorkout)
-                    .where(
+                    select(PlannedWorkout).where(
                         PlannedWorkout.user_id == user_id,
                         PlannedWorkout.workout_date >= start_date,
                         PlannedWorkout.workout_date <= end_date,
