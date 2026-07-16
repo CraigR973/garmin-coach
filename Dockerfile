@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends postgresql-clie
 COPY apps/api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Hosted read-aloud voice (Batch 116 follow-up, DECISIONS #190/#191/#196):
+# Hosted read-aloud voice (Batch 116 follow-up, DECISIONS #190/#191/#196/#210):
 # self-hosted Piper instead of a third-party TTS API, so brief text never
 # leaves our own infra even when a user opts into the hosted voice. The
 # `piper` console script comes from the pip package; the voice model itself
@@ -19,11 +19,18 @@ RUN pip install --no-cache-dir -r requirements.txt
 # (33s) — the earlier timeout was real, but low quality's speed advantage on
 # short text didn't hold at brief length, so it's not worth the noticeably
 # more robotic voice. Both fit comfortably inside PIPER_TIMEOUT_SECONDS.
+# Voice picked from a live side-by-side comparison of 6 candidates (Craig
+# listened to real synthesized samples via an artifact, not a guess): `high`
+# quality (Ryan) sounded best but measured ~95s for a full brief in an
+# isolated benchmark — too slow given real production requests run ~2.4x
+# slower under load (a `medium` request once took 82s vs a 34s isolated
+# benchmark) — so the choice stayed within `medium` tier, where Northern
+# English Male benchmarked fastest (27s) of the three medium options tried.
 RUN mkdir -p /app/voices \
-    && curl -fsSL -o /app/voices/en_GB-alan-medium.onnx \
-       https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/medium/en_GB-alan-medium.onnx \
-    && curl -fsSL -o /app/voices/en_GB-alan-medium.onnx.json \
-       https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/medium/en_GB-alan-medium.onnx.json
+    && curl -fsSL -o /app/voices/en_GB-northern_english_male-medium.onnx \
+       https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/northern_english_male/medium/en_GB-northern_english_male-medium.onnx \
+    && curl -fsSL -o /app/voices/en_GB-northern_english_male-medium.onnx.json \
+       https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/northern_english_male/medium/en_GB-northern_english_male-medium.onnx.json
 
 COPY apps/api/src/ ./src/
 COPY migrations/ ./migrations/
