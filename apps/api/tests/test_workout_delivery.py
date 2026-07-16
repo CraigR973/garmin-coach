@@ -7,7 +7,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker
 
-from src.models.coaching import PlannedWorkout, WorkoutDeliveryProposal
+from src.models.coaching import Activity, PlannedWorkout, WorkoutDeliveryProposal
 from src.models.profile import Profile, UserRole
 from src.services.workout_delivery import (
     IntervalsCreateResult,
@@ -34,6 +34,30 @@ def _planned_workout(structured_workout: dict) -> PlannedWorkout:
         intensity_target="105-110% FTP, ERG off",
         structured_workout=structured_workout,
         source="test",
+    )
+
+
+def _activity(
+    *,
+    activity_type: str,
+    name: str,
+    start_utc: str,
+    duration_sec: float = 3600,
+) -> Activity:
+    from datetime import datetime, timedelta
+
+    parsed = datetime.fromisoformat(start_utc.replace("Z", "+00:00")).replace(tzinfo=None)
+    return Activity(
+        id=uuid.uuid4(),
+        user_id=uuid.UUID("22222222-2222-4222-8222-222222222222"),
+        garmin_activity_id=int(parsed.timestamp()),
+        garmin_activity_uuid=str(uuid.uuid4()),
+        activity_name=name,
+        activity_type=activity_type,
+        start_utc=parsed,
+        end_utc=parsed + timedelta(seconds=duration_sec),
+        duration_sec=duration_sec,
+        raw_summary={},
     )
 
 
@@ -504,8 +528,13 @@ async def test_list_week_ahead_returns_bike_workouts_with_latest_proposal(
         assert user is not None
         service = WorkoutDeliveryService(session)
         await service.propose(player=user, planned_workout_id=bike_id)
+        session.add(_activity(activity_type="walking", name="Evening Walk", start_utc="2026-06-25T18:00:00Z"))
+        session.add(_activity(activity_type="road_biking", name="Planned ride", start_utc="2026-06-24T08:00:00Z"))
+        await session.commit()
 
-        entries = await service.list_week_ahead(user, start_date=date(2026, 6, 23), days=7)
+        entries, day_activities = await service.list_week_ahead(
+            user, start_date=date(2026, 6, 23), days=7
+        )
 
         by_id = {str(entry.workout.id): entry for entry in entries}
         # Strength days are not deliverable, so they are excluded.
@@ -513,6 +542,11 @@ async def test_list_week_ahead_returns_bike_workouts_with_latest_proposal(
         assert by_id[str(bike_id)].proposal is not None
         assert by_id[str(bike_id)].proposal.status == "proposed"
         assert by_id[str(bike2_id)].proposal is None
+        # A planned ride is still just the planned row, not a duplicate activity chip.
+        assert {entry.date.isoformat(): entry.activities for entry in day_activities} == {
+            "2026-06-25": [day_activities[0].activities[0]]
+        }
+        assert day_activities[0].activities[0].activity_kind == "walk"
 
 
 # ---------------------------------------------------------------------------

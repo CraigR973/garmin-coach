@@ -244,6 +244,72 @@ describe('WeekAheadPage', () => {
     expect(screen.getAllByText('To do').length).toBeGreaterThan(0);
   });
 
+  it('shows an unplanned walk chip on a rest day in the read-first week glance (Batch 133)', async () => {
+    const walkedWeek = JSON.parse(JSON.stringify(schedule));
+    walkedWeek.data.schedule[1].activities = [
+      {
+        activityKind: 'walk',
+        name: 'Evening Walk',
+        durationMin: 70,
+        startUtc: '2026-06-24T18:00:00Z',
+      },
+    ];
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/api/v1/plan-actions/schedule?days=14'
+        ? Promise.resolve(walkedWeek)
+        : Promise.reject(new Error(`Unexpected request: ${path}`)),
+    );
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('VO2 Max 30/30')).toBeTruthy();
+    expect(screen.getByText((content) => content.includes('Walk') && content.includes('70 min'))).toBeTruthy();
+  });
+
+  it('does not double-count a completed planned ride as an extra activity chip (Batch 133)', async () => {
+    const completedRideWeek = JSON.parse(JSON.stringify(schedule));
+    completedRideWeek.data.schedule[0].workouts = [
+      {
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        workoutDate: '2026-06-23',
+        version: 2,
+        title: 'VO2 Max 30/30',
+        workoutType: 'bike_vo2',
+        status: 'completed',
+        plannedDurationMin: 60,
+        intensityTarget: '105-110% FTP',
+        source: 'test',
+      },
+    ];
+    completedRideWeek.data.schedule[0].activities = [
+      // Backend suppresses same-kind activity chips when the planned session already
+      // completed, so the UI contract here is simply "no activity chip present".
+    ];
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/api/v1/plan-actions/schedule?days=14'
+        ? Promise.resolve(completedRideWeek)
+        : Promise.reject(new Error(`Unexpected request: ${path}`)),
+    );
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('VO2 Max 30/30')).toBeTruthy();
+    expect(screen.queryByText((content) => content.includes('Ride') && content.includes('60 min'))).toBeNull();
+    expect(screen.getByText('1 done')).toBeTruthy();
+  });
+
   it('renders a split day (ride + strength) as two independently movable rows (Batch 65)', async () => {
     const splitSchedule = JSON.parse(JSON.stringify(schedule));
     // Model a split Saturday: a ride and a Bodyweight strength on the same day, each

@@ -401,10 +401,18 @@ export const weekCharacterSchema = z.object({
   isReset: z.boolean().default(false),
 });
 
+export const planActivitySchema = z.object({
+  activityKind: z.enum(['ride', 'strength', 'flexibility', 'walk']),
+  name: z.string().min(1),
+  durationMin: z.number().int().nullable(),
+  startUtc: isoDateTimeSchema,
+});
+
 export const planScheduleDaySchema = z.object({
   date: isoDateSchema,
   dayState: planDayStateSchema,
   workouts: z.array(planActionWorkoutSchema),
+  activities: z.array(planActivitySchema).default([]),
   weekCharacter: weekCharacterSchema.nullable().optional(),
 });
 
@@ -1235,11 +1243,17 @@ export const weekAheadWorkoutSchema = z.object({
   proposal: workoutDeliveryProposalSchema.nullable(),
 });
 
+export const weekAheadDaySchema = z.object({
+  date: isoDateSchema,
+  activities: z.array(planActivitySchema).default([]),
+});
+
 export const weekAheadEnvelopeSchema = z.object({
   data: z.object({
     startDate: isoDateSchema,
     days: z.number().int(),
     workouts: z.array(weekAheadWorkoutSchema),
+    dayActivities: z.array(weekAheadDaySchema).default([]),
   }),
   meta: apiMetaSchema,
   errors: z.array(apiErrorSchema),

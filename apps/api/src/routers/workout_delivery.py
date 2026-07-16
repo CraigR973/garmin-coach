@@ -14,7 +14,12 @@ from src.auth import CurrentUser
 from src.database import get_db
 from src.models.coaching import PlannedWorkout, WorkoutDeliveryProposal
 from src.services.executable_coaching import ExecutableCoachingService
-from src.services.workout_delivery import WeekAheadEntry, WorkoutDeliveryService
+from src.services.workout_delivery import (
+    PlanActivity,
+    WeekAheadDayActivities,
+    WeekAheadEntry,
+    WorkoutDeliveryService,
+)
 
 router = APIRouter(prefix="/api/v1/workout-delivery", tags=["workout-delivery"])
 
@@ -117,10 +122,23 @@ class WeekAheadWorkoutOut(BaseModel):
     proposal: WorkoutDeliveryProposalOut | None
 
 
+class PlanActivityOut(BaseModel):
+    activityKind: str
+    name: str
+    durationMin: int | None
+    startUtc: str
+
+
+class WeekAheadDayActivitiesOut(BaseModel):
+    date: str
+    activities: list[PlanActivityOut]
+
+
 class WeekAheadData(BaseModel):
     startDate: str
     days: int
     workouts: list[WeekAheadWorkoutOut]
+    dayActivities: list[WeekAheadDayActivitiesOut]
 
 
 class WeekAheadEnvelope(BaseModel):
@@ -196,6 +214,27 @@ def _serialize_week_ahead(entry: WeekAheadEntry) -> WeekAheadWorkoutOut:
     )
 
 
+def _serialize_activity(entry: PlanActivity) -> PlanActivityOut:
+    duration_min = (
+        int(round(entry.activity.duration_sec / 60))
+        if entry.activity.duration_sec is not None
+        else None
+    )
+    return PlanActivityOut(
+        activityKind=entry.activity_kind,
+        name=entry.activity.activity_name,
+        durationMin=duration_min,
+        startUtc=_dt(entry.activity.start_utc) or "",
+    )
+
+
+def _serialize_day_activities(entry: WeekAheadDayActivities) -> WeekAheadDayActivitiesOut:
+    return WeekAheadDayActivitiesOut(
+        date=entry.date.isoformat(),
+        activities=[_serialize_activity(activity) for activity in entry.activities],
+    )
+
+
 @router.get("/proposals", response_model=WorkoutDeliveryEnvelope)
 async def list_workout_delivery_proposals(
     player: CurrentUser,
@@ -215,12 +254,13 @@ async def list_workout_delivery_week_ahead(
 ) -> WeekAheadEnvelope:
     service = WorkoutDeliveryService(db)
     start = start_date or _local_today(player.timezone)
-    entries = await service.list_week_ahead(player, start_date=start, days=days)
+    entries, day_activities = await service.list_week_ahead(player, start_date=start, days=days)
     return WeekAheadEnvelope(
         data=WeekAheadData(
             startDate=start.isoformat(),
             days=days,
             workouts=[_serialize_week_ahead(entry) for entry in entries],
+            dayActivities=[_serialize_day_activities(entry) for entry in day_activities],
         ),
         meta=ApiMeta(generatedAtUtc=_generated_at()),
         errors=[],
