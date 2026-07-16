@@ -19,6 +19,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { StrengthTrendCard } from '@/components/StrengthTrendCard';
 import { WalkingBaseCard } from '@/components/WalkingBaseCard';
 import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
 import { apiFetch } from '@/lib/api';
@@ -124,6 +125,7 @@ export function TrendsPage() {
         <TrendsBody
           data={query.data.data}
           walkingBrief={dailyLoopQuery.data?.data.walkingBrief ?? null}
+          strengthBrief={dailyLoopQuery.data?.data.strengthBrief ?? null}
           generating={runMutation.isPending}
           onGenerate={() => runMutation.mutate()}
         />
@@ -135,11 +137,13 @@ export function TrendsPage() {
 function TrendsBody({
   data,
   walkingBrief,
+  strengthBrief,
   generating,
   onGenerate,
 }: {
   data: TrendsEnvelope['data'];
   walkingBrief: DailyLoopData['walkingBrief'] | null;
+  strengthBrief: DailyLoopData['strengthBrief'] | null;
   generating: boolean;
   onGenerate: () => void;
 }) {
@@ -167,6 +171,24 @@ function TrendsBody({
           </CardHeader>
           <CardContent>
             <WalkingBaseCard brief={walkingBrief} description="This 4-week base sits alongside your broader trends." />
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {strengthBrief ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Strength trend</CardTitle>
+            <CardDescription>
+              A standing read on resistance work over time, alongside the per-session strength reads.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <StrengthTrendCard
+              brief={strengthBrief}
+              title="Strength sessions"
+              description="Frequency and duration over the last 4 weeks, with the direction of travel."
+            />
           </CardContent>
         </Card>
       ) : null}
