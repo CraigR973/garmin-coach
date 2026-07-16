@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
-import { Activity, ClipboardCheck } from 'lucide-react';
+import { Activity, BedDouble, ClipboardCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { BriefFollowUpChat } from '@/components/BriefFollowUpChat';
 import { BriefListenControls } from '@/components/BriefListenControls';
 import { Markdown } from '@/components/Markdown';
+import { MetricComparisonTable } from '@/components/MetricComparisonTable';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -73,6 +74,20 @@ export function MorningBriefPage() {
       {analysis ? (
         <>
           <TodayActions actions={analysis.todayActions} workouts={data.plannedWorkouts} />
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BedDouble className="h-4 w-4 text-primary" aria-hidden />
+                Last night&apos;s metrics
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <MetricComparisonTable
+                rows={analysis.metricsVsBaselines}
+                ageComparison={analysis.ageComparison}
+              />
+            </CardContent>
+          </Card>
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
