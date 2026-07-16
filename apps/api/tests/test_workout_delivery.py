@@ -557,11 +557,14 @@ async def test_list_week_ahead_returns_bike_workouts_with_latest_proposal(
         assert by_id[str(bike_id)].proposal is not None
         assert by_id[str(bike_id)].proposal.status == "proposed"
         assert by_id[str(bike2_id)].proposal is None
-        # A planned ride is still just the planned row, not a duplicate activity chip.
+        # A synced ride still shows as an activity chip until a matching planned workout
+        # has been completed; only completed planned rows suppress duplicate chips.
         assert {entry.date.isoformat(): entry.activities for entry in day_activities} == {
-            "2026-06-25": [day_activities[0].activities[0]]
+            "2026-06-24": [day_activities[0].activities[0]],
+            "2026-06-25": [day_activities[1].activities[0]],
         }
-        assert day_activities[0].activities[0].activity_kind == "walk"
+        assert day_activities[0].activities[0].activity_kind == "ride"
+        assert day_activities[1].activities[0].activity_kind == "walk"
 
 
 # ---------------------------------------------------------------------------
