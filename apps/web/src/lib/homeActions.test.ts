@@ -9,6 +9,8 @@ type DataOverrides = Partial<{
     activityName?: string | null;
     plannedWorkoutId?: string | null;
   }>;
+  postWalkAnalyses: Array<{ id?: string }>;
+  pendingPostWorkoutActivities: Array<{ activityKind: string; activityName?: string | null }>;
   manualEntry: unknown;
   sleepProjection: { tone: string } | null;
   morningAnalysis: unknown;
@@ -22,6 +24,8 @@ function makeData(overrides: DataOverrides = {}): DailyLoopData {
   return {
     plannedWorkouts: [],
     postWorkoutAnalyses: [],
+    postWalkAnalyses: [],
+    pendingPostWorkoutActivities: [],
     manualEntry: { id: 'entry-1' },
     sleepProjection: null,
     morningAnalysis: null,
@@ -255,6 +259,106 @@ describe('nextAction morning order (sleep → eased ride; check-in optional)', (
       isEvening: false,
     });
     expect(action.key).toBe('review-ride');
+  });
+});
+
+describe('nextAction walk rung (Batch 132)', () => {
+  const morning = { isEvening: false, isMorning: true } as const;
+  const synced = { morningAnalysis: { verdict: 'Green' } };
+
+  it('surfaces a pending walk check-in once sleep has been reviewed, expanding Today', () => {
+    const action = nextAction(
+      makeData({
+        ...synced,
+        manualEntry: null,
+        pendingPostWorkoutActivities: [{ activityKind: 'walk', activityName: 'South Lakeland Walking' }],
+      }),
+      { ...morning, hasReviewedSleep: true },
+    );
+    expect(action.key).toBe('read-walk');
+    expect(action.label).toBe('Log how South Lakeland Walking felt');
+    expect(action.sectionKey).toBe('today');
+    expect(action.tone).toBe('default');
+  });
+
+  it('falls back to a generic name when the pending walk has none', () => {
+    const action = nextAction(
+      makeData({
+        ...synced,
+        manualEntry: null,
+        pendingPostWorkoutActivities: [{ activityKind: 'walk', activityName: null }],
+      }),
+      { ...morning, hasReviewedSleep: true },
+    );
+    expect(action.label).toBe('Log how your walk felt');
+  });
+
+  it('review-sleep still outranks a pending walk (sleep review comes first)', () => {
+    const action = nextAction(
+      makeData({
+        ...synced,
+        manualEntry: null,
+        pendingPostWorkoutActivities: [{ activityKind: 'walk' }],
+      }),
+      { ...morning, hasReviewedSleep: false },
+    );
+    expect(action.key).toBe('review-sleep');
+  });
+
+  it('an eased ride still outranks a pending walk in the morning', () => {
+    const action = nextAction(
+      makeData({
+        ...synced,
+        plannedWorkouts: [bikeChanged],
+        manualEntry: null,
+        pendingPostWorkoutActivities: [{ activityKind: 'walk' }],
+      }),
+      { ...morning, hasReviewedSleep: true },
+    );
+    expect(action.key).toBe('review-ride');
+  });
+
+  it('a pending non-walk activity (e.g. strength) does not fire the walk rung', () => {
+    const action = nextAction(
+      makeData({
+        ...synced,
+        manualEntry: null,
+        pendingPostWorkoutActivities: [{ activityKind: 'strength' }],
+      }),
+      { ...morning, hasReviewedSleep: true },
+    );
+    expect(action.key).not.toBe('read-walk');
+  });
+
+  it('surfaces the generated walk read until seen, even outside the morning ladder', () => {
+    // A generated walk read flips the client-derived phase to post_training
+    // (any post-analysis) — the caller would thread isMorning: false here, so
+    // the rung must still fire from the day-time branch, not just the morning one.
+    const action = nextAction(makeData({ ...synced, postWalkAnalyses: [{ id: 'walk-1' }] }), {
+      isEvening: false,
+      isMorning: false,
+      hasSeenWalkRead: false,
+    });
+    expect(action.key).toBe('read-walk');
+    expect(action.label).toBe('Read your walk');
+    expect(action.sectionKey).toBe('today');
+  });
+
+  it('clears the walk rung once the read has been seen', () => {
+    const action = nextAction(makeData({ ...synced, postWalkAnalyses: [{ id: 'walk-1' }] }), {
+      isEvening: false,
+      isMorning: false,
+      hasSeenWalkRead: true,
+    });
+    expect(action.key).toBe('all-set');
+  });
+
+  it('an unlogged ride still outranks a generated-but-unseen walk read outside the morning', () => {
+    const action = nextAction(
+      makeData({ ...synced, postWorkoutAnalyses: [{ postRideCheckIn: null }], postWalkAnalyses: [{ id: 'walk-1' }] }),
+      { isEvening: false, isMorning: false, hasSeenWalkRead: false },
+    );
+    expect(action.key).toBe('log-ride');
   });
 });
 

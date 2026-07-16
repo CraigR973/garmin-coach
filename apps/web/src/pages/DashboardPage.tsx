@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
@@ -69,6 +69,7 @@ import { dayStateForWorkouts, workoutTypeLabel, type DayCategory } from '@/lib/w
 import { actionSection, nextAction, type NextAction } from '@/lib/homeActions';
 import { hasReviewedSleep } from '@/lib/sleepReview';
 import { hasReviewedBrief } from '@/lib/briefReview';
+import { hasSeenWalkRead, markWalkReadSeen } from '@/lib/walkRead';
 import { subjectiveFeelLabel } from '@/lib/subjectiveFeel';
 import { visibleTodayActions } from '@/lib/todayActions';
 import {
@@ -570,6 +571,7 @@ export function DashboardPage() {
     isEvening,
     isMorning,
     hasReviewedSleep: hasReviewedSleep(daily.subjectDate),
+    hasSeenWalkRead: hasSeenWalkRead(daily.subjectDate),
   });
   // Batch 95: before today's brief exists, don't auto-expand last night's raw
   // sleep — `rest_day`'s phase primary would otherwise pre-empt the coached
@@ -1046,6 +1048,14 @@ function DayPlanBody({
   checkInHandlers: RideCheckInHandlers;
 }) {
   const hasWorkouts = workouts.length > 0;
+  // Batch 132: the empty-plan copy assumed a rest day meant nothing happened —
+  // wrong on a day he walked, lifted, or stretched. Any logged/pending activity
+  // (not just a walk) earns the acknowledging copy instead of the ride-centric one.
+  const hasLoggedActivity =
+    flexibilityAnalyses.length > 0 ||
+    strengthAnalyses.length > 0 ||
+    walkAnalyses.length > 0 ||
+    pendingPostActivities.length > 0;
   const pendingByWorkoutId = new Map(
     pendingPostActivities
       .filter((activity) => activity.plannedWorkoutId)
@@ -1082,6 +1092,10 @@ function DayPlanBody({
             </div>
           ))}
         </div>
+      ) : hasLoggedActivity ? (
+        <p className="rounded-xl border border-dashed border-border px-4 py-4 text-sm text-text-secondary">
+          Rest is still the plan today — I've got what you logged below.
+        </p>
       ) : (
         <p className="rounded-xl border border-dashed border-border px-4 py-4 text-sm text-text-secondary">
           Rest is the plan today. Add something light, swap a workout in from the week, or just record what happened.
@@ -1095,7 +1109,7 @@ function DayPlanBody({
 
       {flexibilityAnalyses.length > 0 ? <FlexibilityReadList items={flexibilityAnalyses} /> : null}
       {strengthAnalyses.length > 0 ? <StrengthReadList items={strengthAnalyses} /> : null}
-      {walkAnalyses.length > 0 ? <WalkReadList items={walkAnalyses} /> : null}
+      {walkAnalyses.length > 0 ? <WalkReadList items={walkAnalyses} subjectDate={subjectDate} /> : null}
 
       <div className={`space-y-3${hasWorkouts ? ' border-t border-border pt-4' : ''}`}>
         <AddWorkoutButtons busy={dayActions.busy} onAddWorkout={dayActions.onAddWorkout} />
@@ -1189,9 +1203,17 @@ function StrengthReadList({
 
 function WalkReadList({
   items,
+  subjectDate,
 }: {
   items: DailyLoopData['postWalkAnalyses'];
+  subjectDate: string;
 }) {
+  // Batch 132: rendering the read (only mounted while the Today section is
+  // open — CollapsibleSection unmounts its body while closed) is Home's "seen"
+  // signal for the walk rung, mirroring `markBriefReviewed`'s mount-time mark.
+  useEffect(() => {
+    markWalkReadSeen(subjectDate);
+  }, [subjectDate]);
   return (
     <div className="space-y-3 rounded-xl border border-border bg-bg px-3 py-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
