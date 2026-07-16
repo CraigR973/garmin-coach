@@ -194,7 +194,7 @@ async def run_evening_sleep_nudge() -> None:
             for profile in profiles:
                 subject_date = _profile_today(profile)
                 if (
-                    await holiday_service.get_active_window_for_date(profile, subject_date)
+                    await holiday_service.get_overnight_away_window_for_date(profile, subject_date)
                     is not None
                 ):
                     log.info(
@@ -227,7 +227,7 @@ async def run_evening_monitoring_alerts() -> None:
             for profile in profiles:
                 subject_date = _profile_today(profile)
                 holiday_away = (
-                    await holiday_service.get_active_window_for_date(profile, subject_date)
+                    await holiday_service.get_overnight_away_window_for_date(profile, subject_date)
                     is not None
                 )
                 if holiday_away:
@@ -1046,7 +1046,9 @@ async def run_fan_control() -> None:
                 return
             subject_date = now_local.date()
             if (
-                await HolidayPauseService(session).get_active_window_for_date(profile, subject_date)
+                await HolidayPauseService(session).get_overnight_away_window_for_date(
+                    profile, subject_date
+                )
                 is not None
             ):
                 # Holiday means Mark is away: leave the whole subsystem dormant.

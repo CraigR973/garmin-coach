@@ -31,7 +31,7 @@ const snapshot: DailyLoopEnvelope = {
     postWalkAnalyses: [],
     plannedWorkouts: [],
     hostedTtsConsent: false,
-    holiday: { isActive: false, activeWindow: null },
+    holiday: { isActive: false, awayTonight: false, activeWindow: null },
     thermalState: {
       latestTemperatureC: 17.4,
       targetTemperatureC: 17,
@@ -90,11 +90,12 @@ const overnightSnapshot = {
 const holidaySnapshot: DailyLoopEnvelope = {
   ...snapshot,
   data: {
-    ...snapshot.data,
-    holiday: {
-      isActive: true,
-      activeWindow: { startDate: '2026-06-15', endDate: '2026-06-25' },
-    },
+      ...snapshot.data,
+      holiday: {
+        isActive: true,
+        awayTonight: true,
+        activeWindow: { startDate: '2026-06-15', endDate: '2026-06-25' },
+      },
   },
 };
 

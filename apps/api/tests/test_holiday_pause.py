@@ -27,8 +27,10 @@ from src.services.holiday_pause import (
     active_holiday_window_for_date,
     continuation_label,
     continuation_week_number,
+    holiday_windows_away_overnight,
     holiday_windows_covering_date,
     is_build1,
+    overnight_away_window_for_date,
 )
 
 # ---------------------------------------------------------------------------
@@ -100,6 +102,20 @@ def test_holiday_date_helpers_keep_history_but_only_active_window_means_away() -
     assert active_holiday_window_for_date([resumed, active], subject_date) is active
     assert active_holiday_window_for_date([resumed], subject_date) is None
     assert active_holiday_window_for_date([active], date(2026, 7, 21)) is None
+
+
+def test_overnight_away_helpers_are_end_exclusive() -> None:
+    active = HolidayWindow(
+        start_date=date(2026, 7, 12),
+        end_date=date(2026, 7, 16),
+        paused_at_utc=datetime(2026, 7, 11, 18, 0),
+    )
+
+    assert holiday_windows_away_overnight([active], date(2026, 7, 12)) == [active]
+    assert holiday_windows_away_overnight([active], date(2026, 7, 15)) == [active]
+    assert holiday_windows_away_overnight([active], date(2026, 7, 16)) == []
+    assert overnight_away_window_for_date([active], date(2026, 7, 15)) is active
+    assert overnight_away_window_for_date([active], date(2026, 7, 16)) is None
 
 
 # ---------------------------------------------------------------------------

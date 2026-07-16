@@ -492,6 +492,7 @@ export function DashboardPage() {
 
   const daily = data!;
   const holiday = daily.holiday;
+  const awayTonight = holiday.awayTonight ?? false;
   const holidayEndDate = holiday.activeWindow?.endDate ?? null;
   const analysis = daily.morningAnalysis;
   const ageComparison = (analysis?.ageComparison ?? null) as AgeComparison | null;
@@ -693,12 +694,12 @@ export function DashboardPage() {
     tonight: {
       title: 'Tonight',
       icon: <MoonStar className="h-4 w-4 text-primary" aria-hidden />,
-      summary: holiday.isActive
+      summary: awayTonight
         ? holidayDormantSummary(holidayEndDate)
         : daily.sleepProjection?.headline ?? SLEEP_PREP_SUMMARY,
       // Batch 50: Home's evening cards stay compact and defer to the Sleep hub
       // (Batch 49) rather than duplicating the full wind-down controls.
-      body: holiday.isActive ? (
+      body: awayTonight ? (
         <HolidayDormantBody kind="sleep" endDate={holidayEndDate} />
       ) : (
         <div className="space-y-4">
@@ -714,8 +715,8 @@ export function DashboardPage() {
     bedroom: {
       title: 'Bedroom',
       icon: <Thermometer className="h-4 w-4 text-primary" aria-hidden />,
-      summary: holiday.isActive ? holidayDormantSummary(holidayEndDate) : bedroomLiveSummary(thermal),
-      body: holiday.isActive ? (
+      summary: awayTonight ? holidayDormantSummary(holidayEndDate) : bedroomLiveSummary(thermal),
+      body: awayTonight ? (
         <HolidayDormantBody kind="bedroom" endDate={holidayEndDate} />
       ) : (
         <BedroomBody thermal={thermal} />

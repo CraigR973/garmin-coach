@@ -43,6 +43,7 @@ const baseSnapshot: DailyLoopEnvelope = {
     hostedTtsConsent: false,
     holiday: {
       isActive: false,
+      awayTonight: false,
       activeWindow: null,
     },
     morningAnalysis: {
@@ -1432,6 +1433,7 @@ describe('DashboardPage', () => {
       buildSnapshot((snapshot) => {
         snapshot.data.holiday = {
           isActive: true,
+          awayTonight: true,
           activeWindow: { startDate: '2026-07-12', endDate: '2026-07-16' },
         };
       }),
@@ -1454,6 +1456,7 @@ describe('DashboardPage', () => {
       buildSnapshot((snapshot) => {
         snapshot.data.holiday = {
           isActive: true,
+          awayTonight: false,
           activeWindow: { startDate: '2026-07-12', endDate: '2026-07-16' },
         };
       }),

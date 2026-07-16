@@ -600,6 +600,7 @@ class ActiveHolidayWindowOut(BaseModel):
 
 class HolidayStateOut(BaseModel):
     isActive: bool
+    awayTonight: bool
     activeWindow: ActiveHolidayWindowOut | None
 
 
@@ -1266,6 +1267,7 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
             ),
             holiday=HolidayStateOut(
                 isActive=snapshot.active_holiday_window is not None,
+                awayTonight=snapshot.overnight_away_window is not None,
                 activeWindow=(
                     ActiveHolidayWindowOut(
                         startDate=snapshot.active_holiday_window.start_date.isoformat(),
