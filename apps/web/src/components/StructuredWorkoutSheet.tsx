@@ -4,11 +4,21 @@ import { Bike, ChevronDown, ChevronUp, MapPin, Plus, Trash2, type LucideIcon } f
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet } from '@/components/ui/sheet';
+import { PowerProfilePreview } from '@/components/PowerProfilePreview';
 import { cn } from '@/lib/utils';
+import {
+  DEFAULT_SEGMENTS,
+  blankSegment,
+  expand,
+  isNum,
+  parseStructuredWorkout,
+  positive,
+  type Delivery,
+  type SegmentKind,
+  type WorkoutSegment,
+} from '@/lib/structuredWorkout';
 
 type FreeformBikeWorkoutInput = typeof freeformBikeWorkoutInputSchema._type;
-type Delivery = FreeformBikeWorkoutInput['delivery'];
-type SegmentKind = 'ramp' | 'steady' | 'interval';
 
 // Mirror the server floor/band (structured_workout_builder.py). The soft band only
 // drives non-blocking warnings; the hard floor blocks submit because the API 422s it.
@@ -17,45 +27,6 @@ const SOFT_MAX_PCT = 150;
 const ABS_MIN_PCT = 1;
 const ABS_MAX_PCT = 300;
 const MAX_TOTAL_MIN = 480;
-
-// Editor state carries nullable numbers (a field can be mid-edit / cleared); the
-// strict payload is assembled from a valid form on submit.
-interface EditorSegment {
-  kind: SegmentKind;
-  durationMin: number | null;
-  startFtpPct: number | null;
-  endFtpPct: number | null;
-  ftpPct: number | null;
-  repeats: number | null;
-  workMin: number | null;
-  workFtpPct: number | null;
-  recoverMin: number | null;
-  recoverFtpPct: number | null;
-}
-
-function blankSegment(kind: SegmentKind): EditorSegment {
-  const base: EditorSegment = {
-    kind,
-    durationMin: null,
-    startFtpPct: null,
-    endFtpPct: null,
-    ftpPct: null,
-    repeats: null,
-    workMin: null,
-    workFtpPct: null,
-    recoverMin: null,
-    recoverFtpPct: null,
-  };
-  if (kind === 'ramp') return { ...base, durationMin: 10, startFtpPct: 45, endFtpPct: 75 };
-  if (kind === 'steady') return { ...base, durationMin: 20, ftpPct: 65 };
-  return { ...base, repeats: 4, workMin: 4, workFtpPct: 110, recoverMin: 4, recoverFtpPct: 55 };
-}
-
-const DEFAULT_SEGMENTS: EditorSegment[] = [
-  blankSegment('ramp'),
-  blankSegment('steady'),
-  { ...blankSegment('ramp'), durationMin: 5, startFtpPct: 75, endFtpPct: 45 },
-];
 
 interface StructuredWorkoutSheetProps {
   open: boolean;
@@ -76,12 +47,16 @@ export function StructuredWorkoutSheet({
   onClose,
   onConfirm,
 }: StructuredWorkoutSheetProps) {
-  const initial = useMemo(
-    () => stateFromStructuredWorkout(initialStructuredWorkout),
-    [initialStructuredWorkout],
-  );
+  const initial = useMemo(() => {
+    // Faithful parse, then fall back to the editor's starting template when the
+    // workout has no structure yet (add flow, or a non-structured session).
+    const parsed = parseStructuredWorkout(initialStructuredWorkout);
+    return parsed.segments.length > 0
+      ? parsed
+      : { delivery: parsed.delivery, segments: DEFAULT_SEGMENTS.map((s) => ({ ...s })) };
+  }, [initialStructuredWorkout]);
   const [delivery, setDelivery] = useState<Delivery>(initial.delivery);
-  const [segments, setSegments] = useState<EditorSegment[]>(initial.segments);
+  const [segments, setSegments] = useState<WorkoutSegment[]>(initial.segments);
 
   useEffect(() => {
     if (open) {
@@ -97,7 +72,7 @@ export function StructuredWorkoutSheet({
   const canSubmit = isValid(segments) && totalMin <= MAX_TOTAL_MIN;
   const title = mode === 'edit' ? `Edit ${workoutTitle ?? 'workout'}` : 'Build a ride';
 
-  const update = (index: number, patch: Partial<EditorSegment>) =>
+  const update = (index: number, patch: Partial<WorkoutSegment>) =>
     setSegments((current) =>
       current.map((segment, idx) => (idx === index ? { ...segment, ...patch } : segment)),
     );
@@ -192,85 +167,6 @@ export function StructuredWorkoutSheet({
   );
 }
 
-interface PowerBar {
-  durationMin: number;
-  startPct: number;
-  endPct: number;
-}
-
-function PowerProfilePreview({
-  bars,
-  totalMin,
-  peakPct,
-}: {
-  bars: PowerBar[];
-  totalMin: number;
-  peakPct: number;
-}) {
-  if (bars.length === 0 || totalMin <= 0) {
-    return (
-      <div className="rounded-lg border border-border p-3 text-center text-xs text-text-secondary">
-        Fill in the segments to preview the ride.
-      </div>
-    );
-  }
-  const height = 120;
-  const yMax = Math.max(150, peakPct);
-  const y = (pct: number) => height - (Math.max(0, pct) / yMax) * height;
-  let cursor = 0;
-  const shapes = bars.map((bar, index) => {
-    const x = cursor;
-    const width = bar.durationMin;
-    cursor += width;
-    const opacity = Math.min(0.95, Math.max(0.3, 0.3 + (Math.max(bar.startPct, bar.endPct) / 200) * 0.6));
-    if (bar.startPct === bar.endPct) {
-      return (
-        <rect
-          key={index}
-          x={x}
-          y={y(bar.startPct)}
-          width={width}
-          height={height - y(bar.startPct)}
-          fill="currentColor"
-          opacity={opacity}
-        />
-      );
-    }
-    const points = `${x},${height} ${x},${y(bar.startPct)} ${x + width},${y(bar.endPct)} ${x + width},${height}`;
-    return <polygon key={index} points={points} fill="currentColor" opacity={opacity} />;
-  });
-  return (
-    <div className="space-y-1">
-      <div className="text-primary">
-        <svg
-          viewBox={`0 0 ${totalMin} ${height}`}
-          preserveAspectRatio="none"
-          className="h-24 w-full rounded-lg bg-surface-muted"
-          role="img"
-          aria-label="Power profile preview"
-        >
-          {shapes}
-          <line
-            x1={0}
-            x2={totalMin}
-            y1={y(100)}
-            y2={y(100)}
-            stroke="currentColor"
-            strokeWidth={1}
-            strokeDasharray="4 3"
-            opacity={0.5}
-            vectorEffect="non-scaling-stroke"
-          />
-        </svg>
-      </div>
-      <div className="flex justify-between text-xs text-text-secondary">
-        <span>Total {totalMin} min</span>
-        <span>Peak {peakPct}% FTP · dashed = 100%</span>
-      </div>
-    </div>
-  );
-}
-
 function SegmentRow({
   segment,
   disabled,
@@ -281,12 +177,12 @@ function SegmentRow({
   onRemove,
   onMove,
 }: {
-  segment: EditorSegment;
+  segment: WorkoutSegment;
   disabled: boolean;
   isFirst: boolean;
   isLast: boolean;
   onKind: (kind: SegmentKind) => void;
-  onChange: (patch: Partial<EditorSegment>) => void;
+  onChange: (patch: Partial<WorkoutSegment>) => void;
   onRemove: () => void;
   onMove: (delta: number) => void;
 }) {
@@ -436,40 +332,13 @@ function NumberField({
   );
 }
 
-function segmentPowers(segment: EditorSegment): number[] {
+function segmentPowers(segment: WorkoutSegment): number[] {
   if (segment.kind === 'ramp') return [segment.startFtpPct, segment.endFtpPct].filter(isNum);
   if (segment.kind === 'steady') return [segment.ftpPct].filter(isNum);
   return [segment.workFtpPct, segment.recoverFtpPct].filter(isNum);
 }
 
-function expand(segments: EditorSegment[]): PowerBar[] {
-  const bars: PowerBar[] = [];
-  for (const segment of segments) {
-    if (segment.kind === 'ramp') {
-      if (positive(segment.durationMin) && isNum(segment.startFtpPct) && isNum(segment.endFtpPct)) {
-        bars.push({ durationMin: segment.durationMin, startPct: segment.startFtpPct, endPct: segment.endFtpPct });
-      }
-    } else if (segment.kind === 'steady') {
-      if (positive(segment.durationMin) && isNum(segment.ftpPct)) {
-        bars.push({ durationMin: segment.durationMin, startPct: segment.ftpPct, endPct: segment.ftpPct });
-      }
-    } else if (
-      positive(segment.repeats) &&
-      positive(segment.workMin) &&
-      isNum(segment.workFtpPct) &&
-      positive(segment.recoverMin) &&
-      isNum(segment.recoverFtpPct)
-    ) {
-      for (let rep = 0; rep < segment.repeats; rep += 1) {
-        bars.push({ durationMin: segment.workMin, startPct: segment.workFtpPct, endPct: segment.workFtpPct });
-        bars.push({ durationMin: segment.recoverMin, startPct: segment.recoverFtpPct, endPct: segment.recoverFtpPct });
-      }
-    }
-  }
-  return bars;
-}
-
-function liveWarnings(segments: EditorSegment[]): string[] {
+function liveWarnings(segments: WorkoutSegment[]): string[] {
   const warnings: string[] = [];
   const powers = segments.flatMap(segmentPowers);
   const outOfBand = [...new Set(powers.filter((p) => p < SOFT_MIN_PCT || p > SOFT_MAX_PCT))].sort(
@@ -495,7 +364,7 @@ function validPower(value: number | null | undefined): value is number {
   return isNum(value) && value >= ABS_MIN_PCT && value <= ABS_MAX_PCT;
 }
 
-function isValidSegment(segment: EditorSegment): boolean {
+function isValidSegment(segment: WorkoutSegment): boolean {
   if (segment.kind === 'ramp') {
     return positive(segment.durationMin) && validPower(segment.startFtpPct) && validPower(segment.endFtpPct);
   }
@@ -511,11 +380,11 @@ function isValidSegment(segment: EditorSegment): boolean {
   );
 }
 
-function isValid(segments: EditorSegment[]): boolean {
+function isValid(segments: WorkoutSegment[]): boolean {
   return segments.length > 0 && segments.every(isValidSegment);
 }
 
-function toPayload(delivery: Delivery, segments: EditorSegment[]): FreeformBikeWorkoutInput | null {
+function toPayload(delivery: Delivery, segments: WorkoutSegment[]): FreeformBikeWorkoutInput | null {
   if (!isValid(segments)) return null;
   const built = segments.map((segment) => {
     if (segment.kind === 'ramp') {
@@ -543,76 +412,4 @@ function toPayload(delivery: Delivery, segments: EditorSegment[]): FreeformBikeW
     };
   });
   return { delivery, segments: built };
-}
-
-function stateFromStructuredWorkout(
-  structuredWorkout: Record<string, unknown> | null | undefined,
-): { delivery: Delivery; segments: EditorSegment[] } {
-  if (!structuredWorkout) return { delivery: 'indoor', segments: DEFAULT_SEGMENTS.map((s) => ({ ...s })) };
-  const delivery: Delivery = structuredWorkout.delivery === 'outdoor' ? 'outdoor' : 'indoor';
-  const rawSteps = Array.isArray(structuredWorkout.steps) ? structuredWorkout.steps : [];
-  const segments: EditorSegment[] = [];
-  for (const rawStep of rawSteps) {
-    const segment = segmentFromStep(rawStep);
-    if (segment) segments.push(segment);
-  }
-  if (segments.length === 0) return { delivery, segments: DEFAULT_SEGMENTS.map((s) => ({ ...s })) };
-  return { delivery, segments };
-}
-
-function segmentFromStep(rawStep: unknown): EditorSegment | null {
-  if (typeof rawStep !== 'object' || rawStep === null) return null;
-  const step = rawStep as Record<string, unknown>;
-  const minutes = numberOrNull(step.minutes);
-  const ramp = Array.isArray(step.ramp) ? step.ramp : null;
-  const target = typeof step.target === 'string' ? step.target : '';
-  const pattern = typeof step.pattern === 'string' ? step.pattern : '';
-
-  if (ramp && ramp.length === 2 && minutes) {
-    return {
-      ...blankSegment('ramp'),
-      durationMin: minutes,
-      startFtpPct: Math.round(Number(ramp[0])),
-      endFtpPct: Math.round(Number(ramp[1])),
-    };
-  }
-  if (pattern) {
-    const parsed = parsePattern(pattern, target);
-    if (parsed) return parsed;
-  }
-  const pct = parsePower(target);
-  if (minutes && pct !== null) {
-    return { ...blankSegment('steady'), durationMin: minutes, ftpPct: pct };
-  }
-  return null;
-}
-
-function parsePattern(pattern: string, target: string): EditorSegment | null {
-  const match = pattern.match(/(\d+)\s*x\s*(\d+)min\s*\/\s*(\d+)min\s*@(\d+)%/i);
-  if (!match) return null;
-  return {
-    ...blankSegment('interval'),
-    repeats: Number(match[1]),
-    workMin: Number(match[2]),
-    workFtpPct: parsePower(target) ?? 110,
-    recoverMin: Number(match[3]),
-    recoverFtpPct: Number(match[4]),
-  };
-}
-
-function parsePower(value: string): number | null {
-  const match = value.match(/(\d+(?:\.\d+)?)\s*%/);
-  return match ? Math.round(Number(match[1])) : null;
-}
-
-function numberOrNull(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
-}
-
-function isNum(value: number | null | undefined): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
-}
-
-function positive(value: number | null | undefined): value is number {
-  return isNum(value) && value > 0;
 }
