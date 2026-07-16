@@ -30,6 +30,7 @@ import { QuickAddSheet } from '@/components/QuickAddSheet';
 import { StructuredWorkoutSheet } from '@/components/StructuredWorkoutSheet';
 import { Tabs } from '@/components/ui/tabs';
 import { WeekRestructureSheet } from '@/components/WeekRestructureSheet';
+import { WorkoutDetailSheet } from '@/components/WorkoutDetailSheet';
 import { PageHeader } from '@/components/PageHeader';
 import { WeeklyMixCard } from '@/components/WeeklyMixCard';
 import { Badge } from '@/components/ui/badge';
@@ -150,6 +151,9 @@ export function WeekAheadPage() {
   const [structuredTarget, setStructuredTarget] = useState<
     { mode: 'add'; date: string } | { mode: 'edit'; workout: PlanWorkout } | null
   >(null);
+  // Batch 135: tap any workout row (read-first glance or admin editor) to open a
+  // read-only detail sheet. Distinct from structuredTarget, which *edits*.
+  const [detailWorkout, setDetailWorkout] = useState<PlanWorkout | null>(null);
 
   const invalidate = async () => {
     await Promise.all([
@@ -456,6 +460,7 @@ export function WeekAheadPage() {
                       onAdd={(category) => setQuickAddTarget({ date: day.date, category })}
                       onBuildRide={() => setStructuredTarget({ mode: 'add', date: day.date })}
                       onMove={(workout) => setPickerWorkout(workout)}
+                      onOpenDetail={(workout) => setDetailWorkout(workout)}
                       onEditStructure={(workout) => setStructuredTarget({ mode: 'edit', workout })}
                       onSkipDay={() => skipDayMutation.mutate(day.date)}
                       onSkipWorkout={(workoutId) => skipMutation.mutate(workoutId)}
@@ -468,8 +473,10 @@ export function WeekAheadPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            <WeekGlanceCard days={glanceDays} todayIso={todayIso} />
-            {laterDays.length > 0 ? <WeekPreviewCard days={laterDays} /> : null}
+            <WeekGlanceCard days={glanceDays} todayIso={todayIso} onSelectWorkout={setDetailWorkout} />
+            {laterDays.length > 0 ? (
+              <WeekPreviewCard days={laterDays} onSelectWorkout={setDetailWorkout} />
+            ) : null}
             {isAdmin ? (
               <Card className="border-dashed">
                 <CardContent className="flex items-start gap-3 pt-6">
@@ -539,11 +546,25 @@ export function WeekAheadPage() {
         onClose={() => setRestructureWeekStart(null)}
         onApply={() => restructureWeekStart && restructureApplyMutation.mutate(restructureWeekStart)}
       />
+
+      <WorkoutDetailSheet
+        open={detailWorkout !== null}
+        workout={detailWorkout}
+        onClose={() => setDetailWorkout(null)}
+      />
     </div>
   );
 }
 
-function WeekGlanceCard({ days, todayIso }: { days: PlanDay[]; todayIso: string }) {
+function WeekGlanceCard({
+  days,
+  todayIso,
+  onSelectWorkout,
+}: {
+  days: PlanDay[];
+  todayIso: string;
+  onSelectWorkout: (workout: PlanWorkout) => void;
+}) {
   const workoutCount = days.reduce((total, day) => total + day.workouts.length, 0);
   const doneCount = days.reduce(
     (total, day) => total + day.workouts.filter((workout) => workout.status === 'completed').length,
@@ -568,14 +589,20 @@ function WeekGlanceCard({ days, todayIso }: { days: PlanDay[]; todayIso: string 
       </CardHeader>
       <CardContent className="space-y-3">
         {days.map((day) => (
-          <GlanceDayRow key={day.date} day={day} isToday={day.date === todayIso} />
+          <GlanceDayRow key={day.date} day={day} isToday={day.date === todayIso} onSelectWorkout={onSelectWorkout} />
         ))}
       </CardContent>
     </Card>
   );
 }
 
-function WeekPreviewCard({ days }: { days: PlanDay[] }) {
+function WeekPreviewCard({
+  days,
+  onSelectWorkout,
+}: {
+  days: PlanDay[];
+  onSelectWorkout: (workout: PlanWorkout) => void;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -583,7 +610,7 @@ function WeekPreviewCard({ days }: { days: PlanDay[] }) {
       </CardHeader>
       <CardContent className="space-y-3">
         {days.map((day) => (
-          <GlanceDayRow key={day.date} day={day} isToday={false} compact />
+          <GlanceDayRow key={day.date} day={day} isToday={false} compact onSelectWorkout={onSelectWorkout} />
         ))}
       </CardContent>
     </Card>
@@ -594,10 +621,12 @@ function GlanceDayRow({
   day,
   isToday,
   compact = false,
+  onSelectWorkout,
 }: {
   day: PlanDay;
   isToday: boolean;
   compact?: boolean;
+  onSelectWorkout: (workout: PlanWorkout) => void;
 }) {
   return (
     <div className="rounded-xl border border-border bg-bg px-3 py-3">
@@ -613,7 +642,13 @@ function GlanceDayRow({
           {day.workouts.map((workout) => {
             const isDone = workout.status === 'completed';
             return (
-              <div key={workout.id} className="flex items-start justify-between gap-3 rounded-lg bg-surface px-3 py-2">
+              <button
+                key={workout.id}
+                type="button"
+                onClick={() => onSelectWorkout(workout)}
+                aria-label={`View ${workout.title} details`}
+                className="flex w-full items-start justify-between gap-3 rounded-lg bg-surface px-3 py-2 text-left transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:shadow-glow press-down"
+              >
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-text-primary">{workout.title}</p>
                   <p className="text-xs text-text-secondary">
@@ -624,7 +659,7 @@ function GlanceDayRow({
                 <Badge variant={isDone ? 'success' : 'muted'} className="shrink-0">
                   {isDone ? 'Done' : 'To do'}
                 </Badge>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -690,6 +725,7 @@ function ScheduleDayCard({
   onAdd,
   onBuildRide,
   onMove,
+  onOpenDetail,
   onEditStructure,
   onSkipDay,
   onSkipWorkout,
@@ -701,6 +737,7 @@ function ScheduleDayCard({
   onAdd: (category: Exclude<DayCategory, 'rest'>) => void;
   onBuildRide: () => void;
   onMove: (workout: MoveableWorkout) => void;
+  onOpenDetail: (workout: PlanWorkout) => void;
   onEditStructure: (workout: PlanWorkout) => void;
   onSkipDay: () => void;
   onSkipWorkout: (workoutId: string) => void;
@@ -730,6 +767,7 @@ function ScheduleDayCard({
               workout={workout}
               busy={busy}
               onMove={() => onMove({ ...workout, day: day.date })}
+              onOpenDetail={() => onOpenDetail(workout)}
               onEditStructure={() => onEditStructure(workout)}
               onSkip={() => onSkipWorkout(workout.id)}
               onRemove={() => onRemoveWorkout(workout.id)}
@@ -786,6 +824,7 @@ function WorkoutRow({
   workout,
   busy,
   onMove,
+  onOpenDetail,
   onEditStructure,
   onSkip,
   onRemove,
@@ -793,6 +832,7 @@ function WorkoutRow({
   workout: PlanWorkout;
   busy: boolean;
   onMove: () => void;
+  onOpenDetail: () => void;
   onEditStructure: () => void;
   onSkip: () => void;
   onRemove: () => void;
@@ -812,15 +852,22 @@ function WorkoutRow({
   return (
     <div className="rounded-xl border border-border bg-bg px-3 py-3">
       <div className="flex items-start gap-3">
-        <Icon className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden />
-        <div className="min-w-0 flex-1">
-          <p className="font-medium text-text-primary">{workout.title}</p>
-          <p className="text-sm text-text-secondary">
-            {workoutTypeLabel(workout.workoutType)}
-            {workout.plannedDurationMin ? ` · ${workout.plannedDurationMin} min` : ''}
-            {workout.intensityTarget ? ` · ${workout.intensityTarget}` : ''}
-          </p>
-        </div>
+        <button
+          type="button"
+          onClick={onOpenDetail}
+          aria-label={`View ${workout.title} details`}
+          className="flex min-w-0 flex-1 items-start gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:shadow-glow"
+        >
+          <Icon className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-text-primary">{workout.title}</p>
+            <p className="text-sm text-text-secondary">
+              {workoutTypeLabel(workout.workoutType)}
+              {workout.plannedDurationMin ? ` · ${workout.plannedDurationMin} min` : ''}
+              {workout.intensityTarget ? ` · ${workout.intensityTarget}` : ''}
+            </p>
+          </div>
+        </button>
         {isComplete ? (
           <Badge variant="success" className="shrink-0">
             Done

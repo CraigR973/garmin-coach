@@ -310,6 +310,76 @@ describe('WeekAheadPage', () => {
     expect(screen.getByText('1 done')).toBeTruthy();
   });
 
+  it('opens a read-only workout detail sheet from the read-first glance (Batch 135)', async () => {
+    useAuthMock.mockReturnValue({
+      player: { id: 'mark-1', displayName: 'Mark', role: 'player', timezone: 'Europe/London' },
+    });
+    const structuredWeek = JSON.parse(JSON.stringify(schedule));
+    structuredWeek.data.schedule[0].workouts[0].structuredWorkout = {
+      delivery: 'indoor',
+      steps: [
+        { minutes: 10, ramp: [45, 75] },
+        { pattern: '4x4min/4min@55%', target: '110%' },
+        { minutes: 5, ramp: [75, 45] },
+      ],
+    };
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/api/v1/plan-actions/schedule?days=14'
+        ? Promise.resolve(structuredWeek)
+        : Promise.reject(new Error(`Unexpected request: ${path}`)),
+    );
+
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('VO2 Max 30/30')).toBeTruthy();
+    // Nothing from the detail sheet is on the page until a workout is tapped.
+    expect(screen.queryByText('Session structure')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'View VO2 Max 30/30 details' }));
+
+    // The sheet renders the reused structured breakdown + power profile.
+    expect(await screen.findByText('Session structure')).toBeTruthy();
+    expect(screen.getByText('Warm-up')).toBeTruthy();
+    expect(screen.getByText('4× (4 min @ 110% / 4 min @ 55%)')).toBeTruthy();
+    expect(screen.getByText('Coach-planned')).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'Power profile preview' })).toBeTruthy();
+  });
+
+  it('opens the detail sheet from the editor row without moving the workout (Batch 135)', async () => {
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/api/v1/plan-actions/schedule?days=14'
+        ? Promise.resolve(schedule)
+        : Promise.reject(new Error(`Unexpected request: ${path}`)),
+    );
+
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('VO2 Max 30/30')).toBeTruthy();
+    await openEditWeek(user);
+
+    await user.click(screen.getByRole('button', { name: 'View Sweet Spot Builder details' }));
+
+    // Tapping the workout opens the read-only detail — not the move picker.
+    expect(await screen.findByText('Coach-planned')).toBeTruthy();
+    expect(screen.getByText('88-94% FTP')).toBeTruthy();
+    expect(screen.getByText('No structured breakdown for this session.')).toBeTruthy();
+    expect(screen.queryByText('Choose a day in the current plan window.')).toBeNull();
+  });
+
   it('renders a split day (ride + strength) as two independently movable rows (Batch 65)', async () => {
     const splitSchedule = JSON.parse(JSON.stringify(schedule));
     // Model a split Saturday: a ride and a Bodyweight strength on the same day, each
