@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from src.models.coaching import (
+    Activity,
     Analysis,
     ManualEntry,
     PlanBlock,
@@ -140,6 +141,31 @@ async def _seed_workout(
     return workout
 
 
+async def _seed_activity(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    name: str,
+    activity_type: str,
+    start_utc: datetime,
+    duration_sec: float = 3600,
+) -> Activity:
+    activity = Activity(
+        user_id=user_id,
+        garmin_activity_id=int(start_utc.timestamp()),
+        garmin_activity_uuid=str(uuid.uuid4()),
+        activity_name=name,
+        activity_type=activity_type,
+        start_utc=start_utc,
+        end_utc=start_utc + timedelta(seconds=duration_sec),
+        duration_sec=duration_sec,
+        raw_summary={},
+    )
+    session.add(activity)
+    await session.flush()
+    return activity
+
+
 def _block(
     session: AsyncSession,
     user_id: uuid.UUID,
@@ -190,6 +216,60 @@ async def test_schedule_groups_live_days_with_explicit_rest(db_conn: AsyncConnec
     assert len(schedule.days[0].workouts) == 2
     assert schedule.days[1].day_state.label == "Rest"
     assert schedule.days[1].workouts == []
+
+
+@pytest.mark.asyncio
+async def test_schedule_includes_unplanned_walk_activity_on_rest_day(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    day = date(2026, 8, 11)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await _seed_user(session, user_id)
+        await _seed_activity(
+            session,
+            user_id,
+            name="Evening Walk",
+            activity_type="walking",
+            start_utc=datetime(2026, 8, 11, 18, 0),
+            duration_sec=4200,
+        )
+        await session.commit()
+
+        schedule = await PlanActionService(session).schedule(user, start_date=day, days=1)
+
+    assert schedule.days[0].day_state.is_rest is True
+    assert schedule.days[0].workouts == []
+    assert len(schedule.days[0].activities) == 1
+    assert schedule.days[0].activities[0].activity_kind == "walk"
+    assert schedule.days[0].activities[0].activity.activity_name == "Evening Walk"
+
+
+@pytest.mark.asyncio
+async def test_schedule_does_not_double_count_completed_planned_ride_as_activity(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    day = date(2026, 8, 12)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await _seed_user(session, user_id)
+        workout = await _seed_workout(session, user_id, day, workout_type="bike_endurance")
+        workout.status = "completed"
+        await _seed_activity(
+            session,
+            user_id,
+            name="Endurance ride",
+            activity_type="road_biking",
+            start_utc=datetime(2026, 8, 12, 9, 0),
+            duration_sec=3600,
+        )
+        await session.commit()
+
+        schedule = await PlanActionService(session).schedule(user, start_date=day, days=1)
+
+    assert len(schedule.days[0].workouts) == 1
+    assert schedule.days[0].workouts[0].status == "completed"
+    assert schedule.days[0].activities == []
 
 
 @pytest.mark.asyncio

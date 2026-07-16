@@ -15,6 +15,7 @@ from src.models.coaching import GarminWorkoutDelivery, ManualEntry, PlannedWorko
 from src.services.garmin_workout_delivery import GarminWorkoutDeliveryService
 from src.services.plan_actions import (
     PlanActionService,
+    PlanActivity,
     PlanDay,
     QuickAddOption,
     WeekCharacter,
@@ -87,6 +88,13 @@ class PlanWorkoutOut(BaseModel):
     outdoorDelivery: OutdoorDeliveryOut | None = None
 
 
+class PlanActivityOut(BaseModel):
+    activityKind: str
+    name: str
+    durationMin: int | None
+    startUtc: str
+
+
 class DayStateOut(BaseModel):
     categories: list[str]
     label: str
@@ -105,6 +113,7 @@ class PlanDayOut(BaseModel):
     date: str
     dayState: DayStateOut
     workouts: list[PlanWorkoutOut]
+    activities: list[PlanActivityOut]
     weekCharacter: WeekCharacterOut | None = None
 
 
@@ -297,7 +306,22 @@ def _day_out(
             isRest=day.day_state.is_rest,
         ),
         workouts=[_workout_out(workout, deliveries.get(workout.id)) for workout in day.workouts],
+        activities=[_activity_out(activity) for activity in day.activities],
         weekCharacter=_week_character_out(day.week_character),
+    )
+
+
+def _activity_out(entry: PlanActivity) -> PlanActivityOut:
+    duration_min = (
+        int(round(entry.activity.duration_sec / 60))
+        if entry.activity.duration_sec is not None
+        else None
+    )
+    return PlanActivityOut(
+        activityKind=entry.activity_kind,
+        name=entry.activity.activity_name,
+        durationMin=duration_min,
+        startUtc=_dt(entry.activity.start_utc) or "",
     )
 
 

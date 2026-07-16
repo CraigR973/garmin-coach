@@ -3,9 +3,10 @@ from __future__ import annotations
 import html
 import re
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 import httpx
 from fastapi import HTTPException, status
@@ -13,7 +14,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
-from src.models.coaching import KnowledgeBase, PlannedWorkout, WorkoutDeliveryProposal
+from src.models.coaching import (
+    Activity,
+    KnowledgeBase,
+    PlannedWorkout,
+    WorkoutDeliveryProposal,
+)
 from src.models.profile import Profile
 
 DEFAULT_FTP_WATTS = 280
@@ -23,6 +29,7 @@ STATUS_APPROVED = "approved"
 STATUS_PUSHED = "pushed"
 STATUS_FAILED = "failed"
 STATUS_DELETED = "deleted"
+PostActivityKind = Literal["ride", "strength", "flexibility", "walk"]
 
 
 def _utcnow() -> datetime:
@@ -39,6 +46,69 @@ class IntervalsCreateResult:
 class WeekAheadEntry:
     workout: PlannedWorkout
     proposal: WorkoutDeliveryProposal | None
+
+
+@dataclass(frozen=True)
+class PlanActivity:
+    activity: Activity
+    activity_kind: PostActivityKind
+
+
+@dataclass(frozen=True)
+class WeekAheadDayActivities:
+    date: date
+    activities: list[PlanActivity]
+
+
+def _planned_workout_activity_kind(workout: PlannedWorkout) -> PostActivityKind | None:
+    workout_type = workout.workout_type
+    if workout_type.startswith("bike_"):
+        return "ride"
+    if workout_type.startswith("strength_"):
+        return "strength"
+    if workout_type == "mobility":
+        return "flexibility"
+    return None
+
+
+def _is_flexibility_activity(activity: Activity) -> bool:
+    name = (activity.activity_name or "").lower()
+    activity_type = (activity.activity_type or "").lower()
+    if activity_type == "yoga":
+        return False
+    return "mobility" in name
+
+
+def _is_strength_activity(activity: Activity) -> bool:
+    return bool(activity.exclude_from_recovery)
+
+
+def _is_deliberate_walk(activity: Activity) -> bool:
+    return (activity.activity_type or "").lower() == "walking" and (
+        (activity.duration_sec or 0) >= 30 * 60 or (activity.distance_m or 0) >= 3_000
+    )
+
+
+def _is_ride_activity(activity: Activity) -> bool:
+    activity_type = (activity.activity_type or "").lower()
+    activity_name = (activity.activity_name or "").lower()
+    if activity_type == "virtual_ride" or activity_type.endswith("_ride"):
+        return True
+    return any(
+        token in activity_type or token in activity_name for token in ("cycling", "bike", "biking")
+    )
+
+
+def _post_activity_kind(activity: Activity) -> PostActivityKind | None:
+    if _is_flexibility_activity(activity):
+        return "flexibility"
+    if _is_strength_activity(activity):
+        return "strength"
+    if _is_deliberate_walk(activity):
+        return "walk"
+    if _is_ride_activity(activity):
+        return "ride"
+    return None
 
 
 class IntervalsEventClient(Protocol):
@@ -336,7 +406,7 @@ class WorkoutDeliveryService:
         *,
         start_date: date,
         days: int = 7,
-    ) -> list[WeekAheadEntry]:
+    ) -> tuple[list[WeekAheadEntry], list[WeekAheadDayActivities]]:
         """Upcoming deliverable (bike) workouts with their latest proposal.
 
         Powers the PWA week-ahead surface (Decision #31): the human sees the
@@ -364,6 +434,9 @@ class WorkoutDeliveryService:
             .all()
         )
         latest_by_workout = await self._latest_proposals_by_workout(player.id, start_date, end_date)
+        activities_by_date = await self._activities_by_date(
+            player.id, start_date, end_date, workouts
+        )
 
         entries: list[WeekAheadEntry] = []
         for workout in workouts:
@@ -376,7 +449,54 @@ class WorkoutDeliveryService:
                     proposal=latest_by_workout.get(workout.id),
                 )
             )
-        return entries
+        day_activities = [
+            WeekAheadDayActivities(date=day, activities=activities)
+            for day, activities in sorted(activities_by_date.items())
+        ]
+        return entries, day_activities
+
+    async def _activities_by_date(
+        self,
+        user_id: uuid.UUID,
+        start_date: date,
+        end_date: date,
+        workouts: Sequence[PlannedWorkout],
+    ) -> dict[date, list[PlanActivity]]:
+        rows = (
+            (
+                await self.session.execute(
+                    select(Activity)
+                    .where(
+                        Activity.user_id == user_id,
+                        Activity.start_utc >= datetime.combine(start_date, datetime.min.time()),
+                        Activity.start_utc
+                        < datetime.combine(end_date + timedelta(days=1), datetime.min.time()),
+                    )
+                    .order_by(Activity.start_utc.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        completed_kinds_by_day: dict[date, set[PostActivityKind]] = {}
+        for workout in workouts:
+            if workout.status != "completed":
+                continue
+            kind = _planned_workout_activity_kind(workout)
+            if kind is None:
+                continue
+            completed_kinds_by_day.setdefault(workout.workout_date, set()).add(kind)
+
+        by_date: dict[date, list[PlanActivity]] = {}
+        for activity in rows:
+            kind = _post_activity_kind(activity)
+            if kind is None:
+                continue
+            day = activity.start_utc.date()
+            if kind in completed_kinds_by_day.get(day, set()):
+                continue
+            by_date.setdefault(day, []).append(PlanActivity(activity=activity, activity_kind=kind))
+        return by_date
 
     async def _latest_proposals_by_workout(
         self,

@@ -46,6 +46,7 @@ import { categoryForWorkoutType, workoutTypeLabel, type DayCategory } from '@/li
 type PlanScheduleEnvelope = typeof planScheduleEnvelopeSchema._type;
 type PlanDay = PlanScheduleEnvelope['data']['schedule'][number];
 type PlanWorkout = PlanDay['workouts'][number];
+type PlanActivity = PlanDay['activities'][number];
 type FreeformBikeWorkoutInput = typeof freeformBikeWorkoutInputSchema._type;
 type WorkoutActionResponse = typeof workoutActionResponseSchema._type;
 
@@ -70,6 +71,18 @@ function iconFor(workoutType: string) {
   if (category === 'cycle') return Bike;
   if (category === 'weights') return Dumbbell;
   return Wind;
+}
+
+function activityLabel(activity: PlanActivity): string {
+  const kind =
+    activity.activityKind === 'ride'
+      ? 'Ride'
+      : activity.activityKind === 'strength'
+        ? 'Strength'
+        : activity.activityKind === 'flexibility'
+          ? 'Flexibility'
+          : 'Walk';
+  return activity.durationMin ? `${kind} · ${activity.durationMin} min` : kind;
 }
 
 async function fetchSchedule() {
@@ -616,6 +629,15 @@ function GlanceDayRow({
           })}
         </div>
       )}
+      {day.activities.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {day.activities.map((activity) => (
+            <Badge key={`${activity.startUtc}-${activity.activityKind}`} variant="muted">
+              + {activityLabel(activity)}
+            </Badge>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -714,6 +736,15 @@ function ScheduleDayCard({
             />
           ))
         )}
+        {day.activities.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {day.activities.map((activity) => (
+              <Badge key={`${activity.startUtc}-${activity.activityKind}`} variant="muted">
+                + {activityLabel(activity)}
+              </Badge>
+            ))}
+          </div>
+        ) : null}
 
         <div className="flex flex-wrap gap-2">
           <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onAdd('cycle')}>
