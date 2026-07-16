@@ -82,6 +82,18 @@ def holiday_windows_covering_date(
     return [window for window in windows if window.start_date <= subject_date <= window.end_date]
 
 
+def holiday_windows_away_overnight(
+    windows: Sequence[HolidayWindow], subject_date: date
+) -> list[HolidayWindow]:
+    """Return the stored holiday windows where Mark is still away *that night*.
+
+    Overnight away is end-exclusive: on ``end_date`` Mark is home that evening,
+    so the climate/bedroom subsystem should resume for that night even though the
+    day's plan and morning "last-night" reads still treat the holiday as active.
+    """
+    return [window for window in windows if window.start_date <= subject_date < window.end_date]
+
+
 def active_holiday_window_for_date(
     windows: Sequence[HolidayWindow], subject_date: date
 ) -> HolidayWindow | None:
@@ -95,6 +107,20 @@ def active_holiday_window_for_date(
         (
             window
             for window in reversed(holiday_windows_covering_date(windows, subject_date))
+            if window.is_active
+        ),
+        None,
+    )
+
+
+def overnight_away_window_for_date(
+    windows: Sequence[HolidayWindow], subject_date: date
+) -> HolidayWindow | None:
+    """Return the active holiday window when Mark is still away that night."""
+    return next(
+        (
+            window
+            for window in reversed(holiday_windows_away_overnight(windows, subject_date))
             if window.is_active
         ),
         None,
@@ -179,6 +205,12 @@ class HolidayPauseService:
     ) -> HolidayWindow | None:
         windows = await self.get_windows(user)
         return active_holiday_window_for_date(windows, subject_date)
+
+    async def get_overnight_away_window_for_date(
+        self, user: Profile, subject_date: date
+    ) -> HolidayWindow | None:
+        windows = await self.get_windows(user)
+        return overnight_away_window_for_date(windows, subject_date)
 
     # ------------------------------------------------------------------
     # Write helpers

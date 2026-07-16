@@ -14,7 +14,11 @@ type DataOverrides = Partial<{
   manualEntry: unknown;
   sleepProjection: { tone: string } | null;
   morningAnalysis: unknown;
-  holiday: { isActive: boolean; activeWindow: { startDate: string; endDate: string } | null };
+  holiday: {
+    isActive: boolean;
+    awayTonight?: boolean;
+    activeWindow: { startDate: string; endDate: string } | null;
+  };
 }>;
 
 /** A "clear" day (checked in, nothing pending) unless overridden — so each test
@@ -30,7 +34,7 @@ function makeData(overrides: DataOverrides = {}): DailyLoopData {
     sleepProjection: null,
     morningAnalysis: null,
     hostedTtsConsent: false,
-    holiday: { isActive: false, activeWindow: null },
+    holiday: { isActive: false, awayTonight: false, activeWindow: null },
     ...overrides,
   } as unknown as DailyLoopData;
 }
@@ -127,6 +131,7 @@ describe('nextAction priority ladder', () => {
           sleepProjection: { tone: 'protect' },
           holiday: {
             isActive: true,
+            awayTonight: true,
             activeWindow: { startDate: '2026-07-12', endDate: '2026-07-16' },
           },
         }),

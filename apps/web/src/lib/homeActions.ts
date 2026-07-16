@@ -89,7 +89,7 @@ function reviewRide(): NextAction {
 }
 
 function isHolidayAway(data: DailyLoopData): boolean {
-  return data.holiday.isActive;
+  return data.holiday.awayTonight ?? false;
 }
 
 /**

@@ -37,8 +37,9 @@ export function EnvironmentPage() {
 
   const data = query.data.data;
   const holiday = data.holiday;
+  const awayTonight = holiday.awayTonight ?? false;
 
-  if (holiday.isActive) {
+  if (awayTonight) {
     return (
       <div className="space-y-5">
         <PageHeader title="Climate" eyebrow={friendlyDate(data.subjectDate)} />
@@ -72,7 +73,7 @@ export function EnvironmentPage() {
     <div className="space-y-5">
       <PageHeader title="Climate" eyebrow={friendlyDate(data.subjectDate)} />
 
-        <Card>
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Thermometer className="h-4 w-4 text-primary" aria-hidden />

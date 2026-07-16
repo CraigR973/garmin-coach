@@ -112,6 +112,7 @@ class DailyLoopSnapshot:
     breathwork_brief: BreathworkBriefResult
     loop_state: LoopState
     active_holiday_window: HolidayWindow | None
+    overnight_away_window: HolidayWindow | None
     # Batch 64: existing feedback keyed by analysis_id, so each summary widget
     # renders its current rating/correction rather than an empty control.
     feedback: dict[uuid.UUID, Feedback]
@@ -167,6 +168,9 @@ class DailyLoopService:
         active_holiday_window = await HolidayPauseService(self.session).get_active_window_for_date(
             player, target_date
         )
+        overnight_away_window = await HolidayPauseService(
+            self.session
+        ).get_overnight_away_window_for_date(player, target_date)
         # Batch 64: one query for the feedback on every analysis surfaced today,
         # so the daily-loop payload carries each summary's current rating.
         analysis_ids = [
@@ -221,6 +225,7 @@ class DailyLoopService:
             breathwork_brief=breathwork_brief,
             loop_state=loop_state,
             active_holiday_window=active_holiday_window,
+            overnight_away_window=overnight_away_window,
             feedback=feedback,
         )
 

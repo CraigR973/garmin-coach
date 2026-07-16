@@ -23,6 +23,7 @@ const snapshot: DailyLoopEnvelope = {
     hostedTtsConsent: false,
     holiday: {
       isActive: false,
+      awayTonight: false,
       activeWindow: null,
     },
     morningAnalysis: {
@@ -573,6 +574,7 @@ describe('SleepPage', () => {
     const holidaySnapshot = JSON.parse(JSON.stringify(snapshot)) as DailyLoopEnvelope;
     holidaySnapshot.data.holiday = {
       isActive: true,
+      awayTonight: true,
       activeWindow: { startDate: '2026-07-12', endDate: '2026-07-16' },
     };
     renderWithSnapshot(holidaySnapshot);
@@ -592,6 +594,7 @@ describe('SleepPage', () => {
     const holidaySnapshot = JSON.parse(JSON.stringify(snapshot)) as DailyLoopEnvelope;
     holidaySnapshot.data.holiday = {
       isActive: true,
+      awayTonight: false,
       activeWindow: { startDate: '2026-07-12', endDate: '2026-07-16' },
     };
     holidaySnapshot.data.manualEntry = {
@@ -608,6 +611,33 @@ describe('SleepPage', () => {
     expect(await screen.findByText('Holiday away')).toBeTruthy();
     expect(screen.getByText("The overnight room/fan chart stays dormant while you are away.")).toBeTruthy();
     expect(screen.queryByText('Overnight room & fan')).toBeNull();
+  });
+
+  it('keeps Last night dormant but re-enables Tonight on the return-home date', async () => {
+    const holidaySnapshot = JSON.parse(JSON.stringify(snapshot)) as DailyLoopEnvelope;
+    holidaySnapshot.data.holiday = {
+      isActive: true,
+      awayTonight: false,
+      activeWindow: { startDate: '2026-07-12', endDate: '2026-07-16' },
+    };
+    holidaySnapshot.data.manualEntry = {
+      id: '13131313-1313-4131-8131-131313131313',
+      userId: '11111111-1111-4111-8111-111111111111',
+      entryDate: '2026-06-20',
+      entryAtUtc: '2026-06-20T07:00:00Z',
+      actualWorkoutJson: {},
+      supplementsJson: {},
+      foodJson: {},
+    };
+    renderWithSnapshot(holidaySnapshot);
+
+    expect(await screen.findByText('Holiday away')).toBeTruthy();
+    expect(screen.getByText("The overnight room/fan chart stays dormant while you are away.")).toBeTruthy();
+
+    await userEvent.click(screen.getByRole('tab', { name: /tonight/i }));
+
+    expect(await screen.findByText("Tonight's sleep prep")).toBeTruthy();
+    expect(screen.queryByText("Tonight's sleep-prep and bedroom controls stay paused while you are away.")).toBeNull();
   });
 
   it('offers a manual morning check-in link from the Sleep page when the surface unlocked without one (Batch 60)', async () => {

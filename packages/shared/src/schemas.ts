@@ -1073,6 +1073,7 @@ export const loopStateSchema = z.object({
 
 export const dailyLoopHolidayStateSchema = z.object({
   isActive: z.boolean(),
+  awayTonight: z.boolean().optional(),
   activeWindow: z
     .object({
       startDate: isoDateSchema,

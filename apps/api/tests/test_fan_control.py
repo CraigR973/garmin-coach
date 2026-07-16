@@ -369,7 +369,7 @@ def _fan_patches(
     latest_temperature = AsyncMock(return_value=MagicMock())
     record_state = AsyncMock()
     holiday_service = MagicMock()
-    holiday_service.get_active_window_for_date = AsyncMock(return_value=active_window)
+    holiday_service.get_overnight_away_window_for_date = AsyncMock(return_value=active_window)
     with ExitStack() as stack:
         enter = stack.enter_context
         enter(patch("src.scheduler._fan_control_configured", return_value=True))
@@ -414,7 +414,9 @@ async def test_run_fan_control_holiday_is_a_true_no_op() -> None:
     ) as spies:
         await scheduler.run_fan_control()
 
-    spies.holiday.get_active_window_for_date.assert_awaited_once_with(profile, date(2026, 6, 24))
+    spies.holiday.get_overnight_away_window_for_date.assert_awaited_once_with(
+        profile, date(2026, 6, 24)
+    )
     spies.latest_temperature.assert_not_awaited()
     spies.apply.assert_not_awaited()
     spies.record_state.assert_not_awaited()

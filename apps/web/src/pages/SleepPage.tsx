@@ -122,6 +122,7 @@ export function SleepPage() {
   const data = query.data.data;
   const analysis = data.morningAnalysis;
   const holiday = data.holiday;
+  const awayTonight = holiday.awayTonight ?? false;
   const thermal = data.thermalState;
   const breathworkBrief = data.breathworkBrief ?? null;
   const hasTodaySleepAccess = data.manualEntry != null || analysis != null;
@@ -235,7 +236,7 @@ export function SleepPage() {
             </div>
           ) : (
             <div className="space-y-5">
-              {holiday.isActive ? (
+              {awayTonight ? (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">

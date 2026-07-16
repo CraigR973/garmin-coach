@@ -170,7 +170,7 @@ def _evening_environment_patches(*, active_window: object | None):
             return None
 
     holiday_service = MagicMock()
-    holiday_service.get_active_window_for_date = AsyncMock(return_value=active_window)
+    holiday_service.get_overnight_away_window_for_date = AsyncMock(return_value=active_window)
     nudge_service = MagicMock()
     nudge_service.run_evening_nudge = AsyncMock(return_value=True)
     nudge_service.run_monitoring_alerts = AsyncMock(return_value=1)
@@ -197,8 +197,8 @@ async def test_holiday_suppresses_evening_nudge_and_thermal_monitoring() -> None
         await run_evening_sleep_nudge()
         await run_evening_monitoring_alerts()
 
-    assert spies.holiday.get_active_window_for_date.await_count == 2
-    for call in spies.holiday.get_active_window_for_date.await_args_list:
+    assert spies.holiday.get_overnight_away_window_for_date.await_count == 2
+    for call in spies.holiday.get_overnight_away_window_for_date.await_args_list:
         assert call.args == (spies.profile, spies.subject_date)
     spies.nudge.run_evening_nudge.assert_not_awaited()
     spies.nudge.run_monitoring_alerts.assert_awaited_once_with(

@@ -954,6 +954,7 @@ async def test_get_daily_loop_surfaces_active_holiday_window(
     assert response.status_code == 200, response.text
     assert response.json()["data"]["holiday"] == {
         "isActive": True,
+        "awayTonight": True,
         "activeWindow": {
             "startDate": "2026-07-12",
             "endDate": "2026-07-16",
