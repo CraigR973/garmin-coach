@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { CloudOff, Inbox, TriangleAlert } from 'lucide-react';
+import { CloudOff, Inbox, RefreshCw, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -96,6 +96,42 @@ export function OfflineNotice({ description }: { description: string }) {
     >
       <CloudOff className="h-4 w-4 shrink-0" aria-hidden />
       {description}
+    </div>
+  );
+}
+
+/** Online, but the brief on screen is for an earlier day than today — the
+ *  persisted/service-worker cache painted a stale day before a fresh fetch
+ *  landed (Batch 138). Unlike {@link OfflineNotice}, this offers a real refresh
+ *  that bypasses the cache. */
+export function StaleDataNotice({
+  description,
+  onRefresh,
+  isRefreshing = false,
+}: {
+  description: string;
+  onRefresh: () => void;
+  isRefreshing?: boolean;
+}) {
+  return (
+    <div
+      role="status"
+      className="flex items-center gap-2 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning"
+    >
+      <RefreshCw
+        className={cn('h-4 w-4 shrink-0', isRefreshing && 'animate-spin')}
+        aria-hidden
+      />
+      <span className="flex-1">{description}</span>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onRefresh}
+        disabled={isRefreshing}
+        className="h-auto shrink-0 px-2 py-1 font-medium text-warning hover:bg-warning/20 hover:text-warning"
+      >
+        {isRefreshing ? 'Refreshing…' : 'Refresh'}
+      </Button>
     </div>
   );
 }

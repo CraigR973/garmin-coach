@@ -17,7 +17,7 @@ but a genuine two-block night can close the first session early. So we never fir
 first detection — only once today's ``sleepEnd`` has survived a prior poll unchanged
 *and* sat ``settle_min`` in the past, clearing a duration floor that excludes naps.
 A later ``sleepEnd`` means he drifted back to sleep, so we keep waiting until it
-settles at his true get-up. A ~09:30 backstop guarantees a verdict regardless.
+settles at his true get-up. A ~11:00 backstop guarantees a verdict regardless.
 
 See docs/designs/wake-triggered-morning.md for the full rationale + test matrix.
 Calibrated to Mark's 363-night backfill (median wake 08:22, range 03:45–09:24).
@@ -32,10 +32,17 @@ from typing import Any, Literal
 
 # --- Calibration (Europe/London local) -------------------------------------
 # Window brackets his real wake distribution: start before the earliest riser
-# (03:45), end past the latest (09:24). Backstop clears p90 (08:50) with margin.
+# (03:45); on the late side we deliberately sit well past the latest observed
+# wake (09:24) rather than hugging it, so a genuine lie-in is never force-read on
+# stale/unfinalized data before he is actually up. Backstop 11:00 clears p90
+# (08:50) with a wide margin; window-end trails it by 30 min so ``run_wake_check``
+# is still polling when the backstop time arrives. (Batch 138 / Decision #217 —
+# was BACKSTOP 09:30 / WINDOW_END 10:00; on a normal morning wake-detection fires
+# ~08:22 and the backstop never triggers, so this only affects lie-in / watch-not-
+# worn days.)
 WINDOW_START = time(3, 30)
-WINDOW_END = time(10, 0)
-BACKSTOP = time(9, 30)
+WINDOW_END = time(11, 30)
+BACKSTOP = time(11, 0)
 # Duration floor excludes a morning nap from ever counting as the wake; settle is
 # ~2 polls so a quick wake-then-resleep that moves sleepEnd is caught first.
 DURATION_FLOOR_MIN = 180

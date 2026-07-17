@@ -1732,6 +1732,60 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Cycle day')).toBeTruthy(); // the Today section still renders
   });
 
+  // Batch 138: when the persisted / service-worker cache paints an earlier day's
+  // brief on a cold open, the user should see a stale-data notice with a real
+  // refresh rather than silently reading yesterday.
+  it('shows a stale-data notice with a Refresh action when the brief is for an earlier day', async () => {
+    vi.setSystemTime(new Date('2026-06-21T09:00:00')); // a day past the snapshot's subjectDate (2026-06-20)
+    renderPage();
+
+    const notice = await screen.findByText(/refresh for today/i);
+    expect(notice.textContent ?? '').toMatch(/Showing .* brief/i);
+    expect(screen.getByRole('button', { name: /^refresh$/i })).toBeTruthy();
+    expect(screen.getByText('Cycle day')).toBeTruthy(); // Home still renders behind the notice
+  });
+
+  it('shows no stale-data notice when the served brief is already today', async () => {
+    // beforeEach freezes today to 2026-06-20, matching the snapshot's subjectDate.
+    renderPage();
+
+    expect(await screen.findByText('Cycle day')).toBeTruthy(); // loaded
+    expect(screen.queryByText(/refresh for today/i)).toBeNull();
+  });
+
+  it('refreshes with a cache-bypassing refetch and clears the notice once today lands', async () => {
+    vi.setSystemTime(new Date('2026-06-21T09:00:00'));
+    const freshSnapshot: DailyLoopEnvelope = {
+      ...baseSnapshot,
+      data: { ...baseSnapshot.data, subjectDate: '2026-06-21' },
+    };
+    apiFetchMock.mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/api/v1/daily-loop') {
+        // The banner's Refresh forces `cache: 'reload'`; return today's brief only then.
+        return Promise.resolve(init?.cache === 'reload' ? freshSnapshot : baseSnapshot);
+      }
+      if (path.startsWith('/api/v1/bedroom/overnight')) return Promise.resolve(overnightSnapshot);
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    const user = userEvent.setup();
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter>
+          <DashboardPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText(/refresh for today/i);
+    await user.click(screen.getByRole('button', { name: /^refresh$/i }));
+
+    await waitFor(() =>
+      expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/daily-loop', { cache: 'reload' }),
+    );
+    await waitFor(() => expect(screen.queryByText(/refresh for today/i)).toBeNull());
+  });
+
   it('renders the shared error state when the daily loop fails to load', async () => {
     apiFetchMock.mockClear();
     apiFetchMock.mockImplementation((path: string) =>

@@ -14,6 +14,25 @@ export function friendlyDate(iso: string): string {
   });
 }
 
+/** Today's calendar date (ISO `YYYY-MM-DD`) in the given IANA timezone — the
+ *  same local-today the backend derives from the profile timezone
+ *  (`daily_loop._local_today`), so client and server agree on which day it is.
+ *
+ *  Batch 138: `new Date().toISOString().slice(0, 10)` returns the *UTC* date,
+ *  which for a UK user during BST has already diverged from the local date from
+ *  ~23:00 UTC onward — so it can name the wrong day at the day boundary and made
+ *  a stale-brief check unreliable. `Intl` with an explicit `timeZone` is correct
+ *  and needs no date library. Falls back to the browser's own zone when no
+ *  timezone is supplied. `en-CA` yields a zero-padded `YYYY-MM-DD`. */
+export function localTodayIso(timeZone?: string, now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: timeZone || undefined,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+}
+
 /** The next `n` calendar days after `fromIso`, as timezone-safe ISO dates with a
  *  short human label (e.g. "Wed 1 Jul") — used by the Today card's Swap picker. */
 export function nextDays(fromIso: string, n: number): Array<{ iso: string; label: string }> {

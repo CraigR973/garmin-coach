@@ -7,7 +7,7 @@ Current jobs:
     sleep-only Garmin poll and fires run_morning_sync once his wake is stable
     (back-to-sleep guard) — replaces the old fixed 06:30 cron so the inputs are
     synced whatever time he surfaces
-  - morning_backstop: at 09:30 Europe/London, runs run_morning_weather_sync
+  - morning_backstop: at 11:00 Europe/London, runs run_morning_weather_sync
     regardless, so a verdict is always produced even if he never checks in
   - garmin_activity_poll: polls Garmin hourly and nudges for a post-session check-in
   - post_workout_backstop: at 20:30 local, generates any same-day unread sessions
@@ -20,7 +20,7 @@ Current jobs:
 The morning splits at its sync → generate seam (Batch 85, DECISIONS #158): the wake
 job runs run_morning_sync (pull all inputs + "good morning" nudge, no LLM), the
 check-in is the primary generate trigger, and run_morning_weather_sync (full
-sync + generate + push) is now the 09:30 backstop for a morning he never engages.
+sync + generate + push) is now the 11:00 backstop for a morning he never engages.
 See docs/designs/wake-triggered-morning.md and DECISIONS #87 / #158.
 """
 
@@ -338,7 +338,7 @@ async def run_morning_sync() -> None:
     indoor temp already streams from its own poll) into Postgres so they are sitting
     ready before Mark is up, then fires the "good morning" nudge inviting him to
     check in. Generation has moved *off* the wake trigger onto his check-in (the
-    primary trigger) and the 09:30 backstop (fallback), so by the time he taps the
+    primary trigger) and the 11:00 backstop (fallback), so by the time he taps the
     data is already synced and the brief generates fast. Idempotent: the nudge is
     one-per-day and is skipped once today's brief already exists (he checked in, or
     the backstop generated it).
@@ -389,7 +389,7 @@ async def run_morning_sync() -> None:
 async def run_morning_weather_sync() -> None:
     """Full morning pipeline: sync inputs, then generate + push the verdict.
 
-    This is the **09:30 backstop** (and the external-cron ``morning-sync`` entry) —
+    This is the **11:00 backstop** (and the external-cron ``morning-sync`` entry) —
     it guarantees a verdict even for a morning Mark never engaged with. On the
     primary path generation is triggered by his check-in and the wake job runs the
     lighter run_morning_sync (sync + nudge) instead (Batch 85). Idempotent per
@@ -509,7 +509,7 @@ async def run_wake_check() -> None:
     back-to-sleep stability guard against the previously persisted ``sleepEnd``
     (services/wake_detection.is_morning_ready); (4) persists the current
     ``sleepEnd`` as a ``wake_check`` audit row for the next poll's comparison. If
-    any profile is ready (stable wake, or the ~09:30 backstop) it runs the
+    any profile is ready (stable wake, or the ~11:00 backstop) it runs the
     unchanged run_morning_weather_sync once — which is idempotent per profile, so
     re-firing on later polls is harmless.
     """
@@ -1256,13 +1256,15 @@ def create_scheduler() -> AsyncIOScheduler:
     )
     scheduler.add_job(
         # Belt-and-suspenders backstop: even if wake was never detected (watch not
-        # worn / container down through the window), guarantee a verdict by 09:30.
+        # worn / container down through the window), guarantee a verdict by 11:00
+        # (Batch 138 / Decision #217 — moved later from 09:30 so a genuine lie-in
+        # isn't force-read on stale data; keep in step with wake_detection.BACKSTOP).
         # run_morning_weather_sync is idempotent per profile, so this no-ops if the
         # wake trigger already fired. In-process APScheduler handles BST/GMT.
         run_morning_weather_sync,
         trigger="cron",
-        hour=9,
-        minute=30,
+        hour=11,
+        minute=0,
         timezone=settings.weather_timezone,
         id="morning_backstop",
         replace_existing=True,

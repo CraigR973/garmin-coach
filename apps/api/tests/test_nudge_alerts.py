@@ -386,7 +386,7 @@ async def _seed_profile(session: object, *, fan_auto_enabled: bool = False) -> P
 async def test_brief_ready_pushes_exactly_once(db_conn: AsyncConnection) -> None:
     """The brief-ready push fires once; the backstop/regeneration re-run never re-pushes.
 
-    Batch 112 converged the 09:30 backstop onto this same method, so this also
+    Batch 112 converged the 11:00 backstop onto this same method, so this also
     covers the backstop-after-check-in case: whichever call lands first wins and
     the other is a no-op, giving Mark exactly one "brief ready" notification.
     """

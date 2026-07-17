@@ -50,9 +50,11 @@ def _reading(
 
 
 def test_calibration_constants_match_spec() -> None:
+    # Batch 138 / Decision #217: backstop moved 09:30 → 11:00, window-end 10:00 → 11:30
+    # so a genuine lie-in isn't force-read before he is actually up.
     assert WINDOW_START == time(3, 30)
-    assert WINDOW_END == time(10, 0)
-    assert BACKSTOP == time(9, 30)
+    assert WINDOW_END == time(11, 30)
+    assert BACKSTOP == time(11, 0)
     assert DURATION_FLOOR_MIN == 180
     assert SETTLE_MIN == 20
 
@@ -192,7 +194,7 @@ def test_past_backstop_fires_on_unfinalized_data() -> None:
         today=TODAY,
         sleep=None,
         prev_sleep_end=None,
-        now=_now(9, 35),  # past 09:30
+        now=_now(11, 5),  # past 11:00
     )
     assert decision.action == "fire"
     assert decision.reason == "backstop"
@@ -204,10 +206,27 @@ def test_backstop_boundary_is_inclusive() -> None:
         today=TODAY,
         sleep=None,
         prev_sleep_end=None,
-        now=_now(9, 30),  # exactly the backstop
+        now=_now(11, 0),  # exactly the backstop
     )
     assert decision.action == "fire"
     assert decision.reason == "backstop"
+
+
+def test_lie_in_before_new_backstop_still_waits() -> None:
+    """Batch 138 / Decision #217: a first-sighting wake at 10:00 local — past the
+    *old* 09:30 backstop but before the new 11:00 one — must WAIT for stability,
+    not force-fire. This is the whole point of moving the backstop out: a genuine
+    lie-in is no longer read on one unstable sighting before he is actually up.
+    (Under the old 09:30 backstop this same input would have fired "backstop".)"""
+    sleep_end = _sleep_end(9, 50)  # 08:50 UTC
+    decision = is_morning_ready(
+        today=TODAY,
+        sleep=_reading(sleep_end),
+        prev_sleep_end=None,  # first sighting
+        now=_now(10, 0),  # past old 09:30 backstop, before new 11:00
+    )
+    assert decision.action == "wait"
+    assert decision.reason == "awaiting_stability"
 
 
 def test_past_backstop_fires_and_persists_finalized_end() -> None:
@@ -216,7 +235,7 @@ def test_past_backstop_fires_and_persists_finalized_end() -> None:
         today=TODAY,
         sleep=_reading(sleep_end),
         prev_sleep_end=None,
-        now=_now(9, 35),
+        now=_now(11, 5),
     )
     assert decision.action == "fire"
     assert decision.reason == "backstop"
@@ -229,7 +248,7 @@ def test_past_backstop_overrides_a_nap() -> None:
         today=TODAY,
         sleep=_reading(_sleep_end(9, 0), duration_min=45),
         prev_sleep_end=None,
-        now=_now(9, 35),
+        now=_now(11, 5),
     )
     assert decision.action == "fire"
     assert decision.reason == "backstop"

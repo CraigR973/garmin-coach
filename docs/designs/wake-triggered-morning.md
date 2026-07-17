@@ -5,7 +5,8 @@ settled: App Sleeping is off (container always-on), so wake detection runs
 in-process via APScheduler (which handles BST/GMT) and `run_scheduled wake-check`
 is the external-cron fallback. Built as `apps/api/src/services/wake_detection.py`
 (pure `is_morning_ready`) + `scheduler.run_wake_check()`; the 06:30 cron is
-replaced by a `wake_check` interval job + a `morning_backstop` 09:30 cron.
+replaced by a `wake_check` interval job + a `morning_backstop` 11:00 cron
+(originally 09:30 — moved later in Batch 138, Decision #217; see the as-built note).
 **Depended on:** PR #28 (scheduler reliability + `apps/api/src/run_scheduled.py`),
 DECISIONS #86.
 **Related:** `ARCHITECTURE.md` §4 (morning analysis), §2 (sync jobs).
@@ -16,6 +17,15 @@ DECISIONS #86.
 > today's verdict exists the poll short-circuits, so a later `sleepEnd` does not
 > regenerate); state home = **`analyses`** (`wake_check`); scheduling = **in-process
 > always-on** with `run_scheduled wake-check` as the resilient fallback.
+>
+> **Update (Batch 138, 2026-07-17, Decision #217):** the backstop moved **09:30 →
+> 11:00** and the window-end **10:00 → 11:30** (cadence, `settle_min`, floor, and
+> the stability guard all unchanged). Rationale: the original 09:30 hugged his
+> latest-observed wake (09:24), so a genuine lie-in got force-read on stale/
+> unfinalized data before he was actually up; 11:00 sits well clear of it. A normal
+> morning wake-detects ~08:22 and never reaches the backstop, so this only affects
+> lie-in / watch-not-worn days. The numbers below reflect the original 09:30/10:00
+> calibration and its reasoning; the operative values are now 11:00/11:30.
 
 ## Goal
 

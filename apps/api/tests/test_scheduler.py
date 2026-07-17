@@ -339,9 +339,10 @@ def test_create_scheduler_registers_environment_jobs() -> None:
         assert monitoring_job is not None
         assert str(hive_job.trigger) == "interval[0:15:00]"
         # The fixed 06:30 morning cron was replaced by a 15-min wake-check poll
-        # plus a 09:30 backstop that still runs the (unchanged) morning sync.
+        # plus an 11:00 backstop that still runs the (unchanged) morning sync
+        # (moved later from 09:30 in Batch 138 / Decision #217).
         assert str(wake_job.trigger) == "interval[0:15:00]"
-        assert "hour='9', minute='30'" in str(backstop_job.trigger)
+        assert "hour='11', minute='0'" in str(backstop_job.trigger)
         assert str(garmin_job.trigger) == "interval[1:00:00]"
         assert "hour='20', minute='30'" in str(post_workout_backstop.trigger)
         assert "hour='7,13,19', minute='0'" in str(autopush_job.trigger)
@@ -850,7 +851,7 @@ async def test_wake_check_fires_and_triggers_morning_sync() -> None:
     m.record.assert_awaited_once()
     # The fire decision was the one persisted.
     assert m.record.await_args.args[3].action == "fire"
-    # The job feeds is_morning_ready London-local now + the 09:30 backstop + floors.
+    # The job feeds is_morning_ready London-local now + the 11:00 backstop + floors.
     kwargs = m.is_ready.call_args.kwargs
     assert kwargs["backstop"] == BACKSTOP
     assert kwargs["duration_floor_min"] == 180
@@ -1037,7 +1038,7 @@ async def test_wake_check_persists_then_fires(db_conn: AsyncConnection) -> None:
 
 @pytest.mark.asyncio
 async def test_wake_check_backstop_fires_on_unfinalized(db_conn: AsyncConnection) -> None:
-    """Past 09:30 with no finalized session → fire on whatever exists."""
+    """Past 11:00 with no finalized session → fire on whatever exists."""
     user_id = uuid.uuid4()
     await _seed_profile(db_conn, user_id)
     client = _FakeGarmin({})  # no dailySleepDTO → unfinalized
@@ -1046,7 +1047,7 @@ async def test_wake_check_backstop_fires_on_unfinalized(db_conn: AsyncConnection
     with (
         patch("src.scheduler.AsyncSessionLocal", new=_bind(db_conn)),
         patch("src.scheduler.GarminConnectClient", return_value=client),
-        patch("src.scheduler._profile_now", lambda profile: _local(9, 35)),
+        patch("src.scheduler._profile_now", lambda profile: _local(11, 5)),
         patch("src.scheduler.run_morning_sync", morning_sync),
     ):
         await run_wake_check()
