@@ -29,6 +29,13 @@ describe('control-field primitives (Batch 52)', () => {
     }
   });
 
+  it('Textarea is 16px on mobile so iOS Safari does not zoom on focus (Batch 137)', () => {
+    render(<Textarea aria-label="notes" />);
+    const area = screen.getByLabelText('notes');
+    expect(area.className).toContain('text-base');
+    expect(area.className).toContain('sm:text-sm');
+  });
+
   it('Textarea forwards value/onChange and merges a custom min-height', async () => {
     const onChange = vi.fn();
     render(<Textarea aria-label="notes" value="" onChange={onChange} className="min-h-[100px]" />);

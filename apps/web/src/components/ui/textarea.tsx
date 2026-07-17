@@ -13,7 +13,9 @@ export type TextareaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement>;
 const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
   ({ className, ...props }, ref) => (
     <textarea
-      className={cn(controlFieldClassName, 'min-h-[88px] px-3 py-3 text-sm', className)}
+      // text-base on mobile (16px) prevents iOS Safari's zoom-on-focus; falls
+      // back to text-sm at sm+ — mirrors the Input primitive (Batch 137).
+      className={cn(controlFieldClassName, 'min-h-[88px] px-3 py-3 text-base sm:text-sm', className)}
       ref={ref}
       {...props}
     />

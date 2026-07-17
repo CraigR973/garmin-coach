@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotionConfig } from 'framer-motion';
+import type { LucideIcon } from 'lucide-react';
 import { Button, type ButtonProps } from './button';
 import { cn } from '@/lib/utils';
 
@@ -10,6 +11,12 @@ export interface SaveButtonProps extends Omit<ButtonProps, 'children'> {
   idleLabel: string;
   savingLabel?: string;
   savedLabel?: string;
+  /**
+   * Optional leading icon, shown in `idle`/`saving`. On `saved` the animated
+   * check replaces it, so a converted button keeps its icon without a second
+   * glyph. Sized to match the check (14px) so button width stays stable.
+   */
+  icon?: LucideIcon;
   /**
    * How long to hold the `saved` state visually. Default 1200 ms — matches
    * the U5 spec. The button does NOT change `state` itself; callers should
@@ -42,6 +49,7 @@ export function SaveButton({
   idleLabel,
   savingLabel = 'Saving…',
   savedLabel = 'Saved',
+  icon: Icon,
   savedHoldMs: _savedHoldMs = 1200,
   className,
   disabled,
@@ -72,8 +80,10 @@ export function SaveButton({
       {...rest}
     >
       {/* Invisible spacer ensures the button width never flickers between
-          label widths. Picks the widest of the three labels. */}
-      <span className="invisible whitespace-nowrap" aria-hidden>
+          label widths. Picks the widest of the three labels (plus the leading
+          icon/check slot, which is a constant 14px in every state). */}
+      <span className="invisible whitespace-nowrap inline-flex items-center gap-1.5" aria-hidden>
+        {Icon && <Icon className="h-3.5 w-3.5" aria-hidden />}
         {[idleLabel, savingLabel, savedLabel].reduce(
           (a, b) => (b.length > a.length ? b : a),
           idleLabel,
@@ -82,7 +92,14 @@ export function SaveButton({
 
       <span className="absolute inset-0 flex items-center justify-center gap-1.5">
         {prefersReducedMotion ? (
-          <SaveButtonLabel state={state} idleLabel={idleLabel} savingLabel={savingLabel} savedLabel={savedLabel} reduced />
+          <SaveButtonLabel
+            state={state}
+            idleLabel={idleLabel}
+            savingLabel={savingLabel}
+            savedLabel={savedLabel}
+            Icon={Icon}
+            reduced
+          />
         ) : (
           <AnimatePresence mode="wait" initial={false}>
             <motion.span
@@ -93,9 +110,11 @@ export function SaveButton({
               transition={{ duration: 0.18 }}
               className="inline-flex items-center gap-1.5"
             >
-              {isSaved && (
+              {isSaved ? (
                 <CheckMark key={checkKey} reducedMotion={prefersReducedMotion ?? false} />
-              )}
+              ) : Icon ? (
+                <Icon className="h-3.5 w-3.5" aria-hidden />
+              ) : null}
               <span>
                 {isSaving ? savingLabel : isSaved ? savedLabel : idleLabel}
               </span>
@@ -112,12 +131,14 @@ function SaveButtonLabel({
   idleLabel,
   savingLabel,
   savedLabel,
+  Icon,
   reduced,
 }: {
   state: SaveButtonState;
   idleLabel: string;
   savingLabel: string;
   savedLabel: string;
+  Icon?: LucideIcon;
   reduced: boolean;
 }) {
   if (state === 'saved') {
@@ -128,7 +149,12 @@ function SaveButtonLabel({
       </span>
     );
   }
-  return <span>{state === 'saving' ? savingLabel : idleLabel}</span>;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {Icon && <Icon className="h-3.5 w-3.5" aria-hidden />}
+      <span>{state === 'saving' ? savingLabel : idleLabel}</span>
+    </span>
+  );
 }
 
 /**

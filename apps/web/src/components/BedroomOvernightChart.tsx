@@ -10,18 +10,20 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { colors } from '@/theme/tokens';
+import { useChartColors, type ChartColors } from '@/lib/chartColors';
 import { buildChartSeries, mutedSpans } from '@/lib/bedroomChart';
 import type { BedroomOvernightData } from '@/hooks/useBedroomOvernight';
 
-// Faint hypnogram band colours by Garmin sleep stage.
-const STAGE_FILL: Record<string, string> = {
-  deep: colors.primaryDark,
-  light: colors.steeleDark,
-  rem: colors.accent,
-  awake: colors.error,
-  unknown: colors.border,
-};
+// Faint hypnogram band colours by Garmin sleep stage (theme-aware — Batch 137).
+function stageFill(c: ChartColors): Record<string, string> {
+  return {
+    deep: c.primaryDark,
+    light: c.steeleDark,
+    rem: c.accent,
+    awake: c.error,
+    unknown: c.border,
+  };
+}
 
 function ms(iso: string): number {
   return new Date(iso).getTime();
@@ -32,6 +34,8 @@ function fmtClock(value: number): string {
 }
 
 export function BedroomOvernightChart({ data }: { data: BedroomOvernightData }) {
+  const c = useChartColors();
+  const fills = stageFill(c);
   const hasData = data.temperature.length > 0 || data.fan.length > 0;
   if (!hasData) {
     return (
@@ -58,7 +62,7 @@ export function BedroomOvernightChart({ data }: { data: BedroomOvernightData }) 
     <div data-testid="overnight-chart" className="space-y-3">
       <ResponsiveContainer width="100%" height={300}>
         <ComposedChart data={series} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+          <CartesianGrid strokeDasharray="3 3" stroke={c.border} />
 
           {/* Sleep behind everything: the hypnogram band if present, else the window. */}
           {stages.length > 0
@@ -68,7 +72,7 @@ export function BedroomOvernightChart({ data }: { data: BedroomOvernightData }) 
                   yAxisId="temp"
                   x1={ms(stage.start)}
                   x2={ms(stage.end)}
-                  fill={STAGE_FILL[stage.stage] ?? colors.border}
+                  fill={fills[stage.stage] ?? c.border}
                   fillOpacity={0.1}
                   stroke="none"
                 />
@@ -79,7 +83,7 @@ export function BedroomOvernightChart({ data }: { data: BedroomOvernightData }) 
                     yAxisId="temp"
                     x1={ms(sleepWindow.start as string)}
                     x2={ms(sleepWindow.end as string)}
-                    fill={colors.primary}
+                    fill={c.primary}
                     fillOpacity={0.06}
                     stroke="none"
                   />
@@ -93,7 +97,7 @@ export function BedroomOvernightChart({ data }: { data: BedroomOvernightData }) 
               yAxisId="fan"
               x1={span.start}
               x2={span.end}
-              fill={colors.locked}
+              fill={c.locked}
               fillOpacity={0.14}
               stroke="none"
             />
@@ -105,14 +109,14 @@ export function BedroomOvernightChart({ data }: { data: BedroomOvernightData }) 
             scale="time"
             domain={[startMs, endMs]}
             tickFormatter={fmtClock}
-            tick={{ fill: colors.textMuted, fontSize: 11 }}
-            stroke={colors.border}
+            tick={{ fill: c.textMuted, fontSize: 11 }}
+            stroke={c.border}
           />
           <YAxis
             yAxisId="temp"
             domain={[yLow, yHigh]}
-            tick={{ fill: colors.textMuted, fontSize: 11 }}
-            stroke={colors.border}
+            tick={{ fill: c.textMuted, fontSize: 11 }}
+            stroke={c.border}
             width={40}
             unit="°"
           />
@@ -121,21 +125,21 @@ export function BedroomOvernightChart({ data }: { data: BedroomOvernightData }) 
             orientation="right"
             domain={[0, 7]}
             ticks={[0, 3, 5, 7]}
-            tick={{ fill: colors.textMuted, fontSize: 11 }}
-            stroke={colors.border}
+            tick={{ fill: c.textMuted, fontSize: 11 }}
+            stroke={c.border}
             width={24}
           />
 
           <ReferenceLine
             yAxisId="temp"
             y={data.thresholds.onC}
-            stroke={colors.warning}
+            stroke={c.warning}
             strokeDasharray="4 4"
           />
           <ReferenceLine
             yAxisId="temp"
             y={data.thresholds.criticalC}
-            stroke={colors.error}
+            stroke={c.error}
             strokeDasharray="4 4"
           />
 
@@ -154,8 +158,8 @@ export function BedroomOvernightChart({ data }: { data: BedroomOvernightData }) 
             type="stepAfter"
             dataKey="speed"
             name="Fan speed"
-            stroke={colors.accent}
-            fill={colors.accent}
+            stroke={c.accent}
+            fill={c.accent}
             fillOpacity={0.16}
             connectNulls={false}
             dot={false}
@@ -165,7 +169,7 @@ export function BedroomOvernightChart({ data }: { data: BedroomOvernightData }) 
             type="monotone"
             dataKey="c"
             name="Room °C"
-            stroke={colors.primary}
+            stroke={c.primary}
             strokeWidth={2}
             dot={false}
             connectNulls
@@ -173,7 +177,7 @@ export function BedroomOvernightChart({ data }: { data: BedroomOvernightData }) 
         </ComposedChart>
       </ResponsiveContainer>
 
-      <ChartLegend hasSleep={stages.length > 0 || Boolean(sleepWindow)} muted={muted} />
+      <ChartLegend hasSleep={stages.length > 0 || Boolean(sleepWindow)} muted={muted} c={c} />
     </div>
   );
 }
@@ -181,19 +185,21 @@ export function BedroomOvernightChart({ data }: { data: BedroomOvernightData }) 
 function ChartLegend({
   hasSleep,
   muted,
+  c,
 }: {
   hasSleep: boolean;
   muted: ReturnType<typeof mutedSpans>;
+  c: ChartColors;
 }) {
   const mutedLabels = [...new Set(muted.map((span) => span.label))];
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-text-muted">
-      <LegendDot color={colors.primary} label="Room °C" />
-      <LegendDot color={colors.accent} label="Fan speed" />
+      <LegendDot color={c.primary} label="Room °C" />
+      <LegendDot color={c.accent} label="Fan speed" />
       <span className="text-text-muted/80">Lines: fan on 19.5° · critical 20.0°</span>
-      {hasSleep ? <LegendDot color={colors.primaryDark} label="Asleep" /> : null}
+      {hasSleep ? <LegendDot color={c.primaryDark} label="Asleep" /> : null}
       {mutedLabels.map((label) => (
-        <LegendDot key={label} color={colors.locked} label={label} />
+        <LegendDot key={label} color={c.locked} label={label} />
       ))}
     </div>
   );

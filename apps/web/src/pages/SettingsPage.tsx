@@ -11,6 +11,8 @@ import { useTheme } from '../contexts/ThemeContext';
 import { cn } from '../lib/utils';
 import { PageHeader } from '../components/PageHeader';
 import { Toggle } from '../components/ui/toggle';
+import { SaveButton } from '../components/ui/save-button';
+import { useSaveButtonState } from '../hooks/useSaveButtonState';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -198,6 +200,8 @@ function ChangePinSection() {
     onError: (err) => toast.error(String(err)),
   });
 
+  const saveState = useSaveButtonState(mutation.isPending, mutation.isSuccess);
+
   const canSubmit =
     currentPin.length === 4 &&
     newPin.length === 4 &&
@@ -232,14 +236,16 @@ function ChangePinSection() {
             <p className="text-xs text-error font-sans">PINs don't match</p>
           )}
         </div>
-        <button
+        <SaveButton
           type="submit"
+          state={saveState}
+          idleLabel="Change PIN"
+          savingLabel="Changing…"
+          savedLabel="PIN changed"
+          icon={KeyRound}
           disabled={!canSubmit}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-primary text-on-primary text-sm font-sans font-medium disabled:opacity-50 press-down"
-        >
-          <KeyRound className="h-4 w-4" aria-hidden />
-          {mutation.isPending ? 'Changing…' : 'Change PIN'}
-        </button>
+          className="w-full"
+        />
       </form>
     </section>
   );
