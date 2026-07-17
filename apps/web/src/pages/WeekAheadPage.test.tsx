@@ -129,6 +129,42 @@ describe('WeekAheadPage', () => {
     vi.unstubAllGlobals();
   });
 
+  it('marks the local day as Today across the BST/UTC boundary (Batch 138)', async () => {
+    // 2026-06-23 23:30 UTC is 2026-06-24 00:30 BST — locally already Wednesday the
+    // 24th. The old `new Date().toISOString().slice(0,10)` returned the UTC date
+    // (Tue the 23rd) and would have highlighted the wrong day; local-today fixes it.
+    const boundaryNow = new RealDate('2026-06-23T23:30:00Z');
+    class BoundaryDate extends RealDate {
+      constructor(value?: string | number | Date) {
+        super(value ?? boundaryNow);
+      }
+      static now() {
+        return boundaryNow.valueOf();
+      }
+    }
+    vi.stubGlobal('Date', BoundaryDate as typeof Date);
+
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/api/v1/plan-actions/schedule?days=14') return Promise.resolve(schedule);
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    // Wednesday the 24th carries the Today badge; Tuesday the 23rd (the UTC date) does not.
+    const wed = (await screen.findByText('Wed, Jun 24')).closest('div.rounded-xl.border') as HTMLElement;
+    const tue = screen.getByText('Tue, Jun 23').closest('div.rounded-xl.border') as HTMLElement;
+    expect(within(wed).getByText('Today')).toBeTruthy();
+    expect(within(tue).queryByText('Today')).toBeNull();
+  });
+
   it('renders a move picker with visible days and moves a workout through the swap route', async () => {
     apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
       if (options?.method === 'POST') {

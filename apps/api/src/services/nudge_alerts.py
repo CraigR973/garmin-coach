@@ -158,7 +158,7 @@ def build_good_morning_plan(subject_date: date) -> NotificationPlan:
     the app and check in to generate today's brief. On the primary path it
     *replaces* the auto brief-ready push — generation now happens on his check-in,
     so tap-time is always post-sync and fast. The brief-ready push survives only
-    as the 09:30 backstop for a morning he never engages with (Decision #158),
+    as the 11:00 backstop for a morning he never engages with (Decision #158/#217),
     and Batch 112 converged the backstop onto the same `/brief` notification so
     there is exactly one "your brief is ready" push regardless of which path
     generated it.
@@ -515,7 +515,7 @@ class NudgeAlertService:
 
         Idempotent per (profile, subject_date) via the ``brief-ready-{date}``
         tag, so a regeneration or retry can never double-notify — including the
-        09:30 backstop (Batch 112), which now calls this same method instead of
+        11:00 backstop (Batch 112), which now calls this same method instead of
         a separate verdict push, so whichever path (check-in or backstop)
         generates the brief first is the one that sends the notification.
         """

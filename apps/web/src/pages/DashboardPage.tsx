@@ -33,7 +33,7 @@ import { QuickAddSheet } from '@/components/QuickAddSheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CollapsibleSection } from '@/components/CollapsibleSection';
-import { ErrorState, OfflineNotice } from '@/components/EmptyState';
+import { ErrorState, OfflineNotice, StaleDataNotice } from '@/components/EmptyState';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,12 +58,19 @@ import { WeeklyMixCard } from '@/components/WeeklyMixCard';
 import { TodayActions } from '@/components/TodayActions';
 import { useAuth } from '@/contexts/AuthContext';
 import { isBikeWorkout, useDailyPhase } from '@/hooks/useDailyPhase';
-import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
+import { fetchDailyLoop, useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { apiFetch } from '@/lib/api';
 import { bedroomLiveSummary } from '@/lib/bedroom';
 import { cn } from '@/lib/utils';
-import { formatDateTime, friendlyDate, hm, nextDays, remContext } from '@/lib/dailyFlow';
+import {
+  formatDateTime,
+  friendlyDate,
+  hm,
+  localTodayIso,
+  nextDays,
+  remContext,
+} from '@/lib/dailyFlow';
 import { greetingForNow, personalStatusLine, verdictLabel } from '@/lib/copy';
 import { dayStateForWorkouts, workoutTypeLabel, type DayCategory } from '@/lib/workoutCategories';
 import { actionSection, nextAction, type NextAction } from '@/lib/homeActions';
@@ -261,6 +268,27 @@ export function DashboardPage() {
       queryClient.invalidateQueries({ queryKey: ['daily-loop'] }),
       queryClient.invalidateQueries({ queryKey: ['week-ahead'] }),
     ]);
+  };
+  // Batch 138: the persisted React Query cache + the service worker's NetworkFirst
+  // fallback can paint an earlier day's brief on a cold/slow open. Detect that the
+  // served brief is for a day other than local-today (derived from the profile
+  // timezone, matching the backend, not the browser's UTC date) and let the user
+  // force a genuinely fresh, cache-bypassing refetch.
+  const isStale =
+    isOnline &&
+    data != null &&
+    data.subjectDate !== localTodayIso(player?.timezone);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const refreshDailyLoop = async () => {
+    setIsRefreshing(true);
+    try {
+      await queryClient.fetchQuery({
+        queryKey: ['daily-loop', 'today'],
+        queryFn: () => fetchDailyLoop(undefined, { forceFresh: true }),
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
   };
   const [quickAddTarget, setQuickAddTarget] = useState<{
     date: string;
@@ -729,6 +757,14 @@ export function DashboardPage() {
       {!isOnline && (
         <OfflineNotice
           description={`You're offline — showing your last saved brief for ${friendlyDate(daily.subjectDate)}.`}
+        />
+      )}
+
+      {isStale && (
+        <StaleDataNotice
+          description={`Showing ${friendlyDate(daily.subjectDate)}'s brief — refresh for today's.`}
+          onRefresh={refreshDailyLoop}
+          isRefreshing={isRefreshing}
         />
       )}
 

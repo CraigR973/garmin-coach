@@ -54,13 +54,15 @@ registerRoute(
 );
 
 // Daily-loop: cached for up to 24 h so the coaching brief is readable offline.
-// The network-first strategy with a 5 s timeout means online users always get
-// the freshest data; the stale copy is the offline fallback.
+// The network-first strategy means online users get the freshest data; the stale
+// copy is the offline fallback. Batch 138: timeout raised 5 s → 10 s — a 5 s cap
+// was falling back to the day-old cache too eagerly on a cold/slow mobile open,
+// silently painting yesterday's brief; 10 s gives a live response a fairer shot.
 registerRoute(
   ({ url, request }) => request.method === 'GET' && url.pathname === '/api/v1/daily-loop',
   new NetworkFirst({
     cacheName: 'api-daily-loop',
-    networkTimeoutSeconds: 5,
+    networkTimeoutSeconds: 10,
     plugins: [
       new ExpirationPlugin({ maxEntries: 5, maxAgeSeconds: 60 * 60 * 24 }),
       new CacheableResponsePlugin({ statuses: [200] }),

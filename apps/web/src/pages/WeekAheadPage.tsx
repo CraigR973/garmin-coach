@@ -42,6 +42,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiFetch } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { localTodayIso } from '@/lib/dailyFlow';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
 import { categoryForWorkoutType, workoutTypeLabel, type DayCategory } from '@/lib/workoutCategories';
 
@@ -141,7 +142,10 @@ export function WeekAheadPage() {
   const query = useQuery({ queryKey: ['plan-schedule'], queryFn: fetchSchedule });
   const dailyLoop = useDailyLoop();
   const weeklyMix = dailyLoop.data?.data.morningAnalysis?.weeklyMix ?? null;
-  const todayIso = new Date().toISOString().slice(0, 10);
+  // Batch 138: local-today in the profile timezone, not `new Date().toISOString()`
+  // (the UTC date) — during BST the UTC date rolls a day late, so the old code
+  // could highlight the wrong day at the late-evening boundary.
+  const todayIso = localTodayIso(player?.timezone);
   const [view, setView] = useState<WeekView>('glance');
   const [pickerWorkout, setPickerWorkout] = useState<MoveableWorkout | null>(null);
   const [quickAddTarget, setQuickAddTarget] = useState<{
