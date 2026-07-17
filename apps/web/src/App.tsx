@@ -1,13 +1,14 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
-import { Toaster } from 'sonner';
 import { queryClient, persistOptions } from './lib/queryClient';
 import { installResumeRefetch } from './lib/resumeRefetch';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { AppToaster } from './components/AppToaster';
+import { ScrollToTop } from './components/ScrollToTop';
 import { PushNavigationController } from './components/PushNavigationController';
 import { UpdateBanner } from './components/UpdateBanner';
 import { InstallPromptController } from './components/InstallPromptController';
@@ -90,11 +91,12 @@ export function App() {
       <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
         <BrowserRouter>
           <PushNavigationController />
+          <ScrollToTop />
           <AuthProvider>
             <UpdateBanner />
             <InstallPromptController />
             <NotificationsPromptController />
-            <Toaster position="bottom-right" richColors closeButton />
+            <AppToaster />
             <ErrorBoundary>
               <Suspense fallback={<RouteFallback />}>
                 <Routes>

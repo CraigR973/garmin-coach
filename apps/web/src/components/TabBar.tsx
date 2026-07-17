@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { MoreHorizontal } from 'lucide-react';
 import { PRIMARY_TABS, SECONDARY_PATHS } from '@/lib/navConfig';
 import { MoreMenu } from '@/components/MoreMenu';
@@ -20,6 +20,13 @@ export function TabBar() {
   const { pathname } = useLocation();
   const layoutId = useId();
   const [moreOpen, setMoreOpen] = useState(false);
+  // Framer's layoutId spring is JS-driven, so the CSS prefers-reduced-motion
+  // block doesn't cover it — gate it here so the indicator snaps instead of
+  // sliding for reduced-motion users (Batch 137).
+  const reduceMotion = useReducedMotion();
+  const indicatorTransition = reduceMotion
+    ? { duration: 0 }
+    : { type: 'spring' as const, stiffness: 360, damping: 32 };
 
   // Close the More sheet whenever the route changes (e.g. after tapping an item).
   useEffect(() => {
@@ -53,7 +60,7 @@ export function TabBar() {
                     <motion.span
                       layoutId={layoutId}
                       className="absolute inset-x-3 top-0 h-0.5 bg-primary rounded-full"
-                      transition={{ type: 'spring', stiffness: 360, damping: 32 }}
+                      transition={indicatorTransition}
                     />
                   )}
                   <Icon
@@ -86,7 +93,7 @@ export function TabBar() {
                 <motion.span
                   layoutId={layoutId}
                   className="absolute inset-x-3 top-0 h-0.5 bg-primary rounded-full"
-                  transition={{ type: 'spring', stiffness: 360, damping: 32 }}
+                  transition={indicatorTransition}
                 />
               )}
               <MoreHorizontal

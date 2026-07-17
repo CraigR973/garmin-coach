@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { cn } from '@/lib/utils';
+import { controlFieldClassName } from '@/components/ui/input';
 
 interface PinInputProps {
   value: string;
@@ -92,11 +93,11 @@ export function PinInput({ value, onChange, maxLength = 4, autoComplete = 'curre
           onPaste={handlePaste}
           autoComplete={i === 0 ? autoComplete : 'off'}
           aria-label={`PIN digit ${i + 1}`}
+          // Shares the control-field fill/border/focus-ring system (Batch 137);
+          // w-12 overrides controlFieldClassName's w-full via tailwind-merge.
           className={cn(
-            'w-12 h-12 text-center text-lg font-mono tracking-widest',
-            'rounded-md border border-border bg-surface text-text-primary',
-            'focus:outline-none focus-visible:border-primary focus-visible:shadow-glow',
-            'caret-transparent',
+            controlFieldClassName,
+            'w-12 h-12 text-center text-lg font-mono tracking-widest caret-transparent',
           )}
         />
       ))}

@@ -9,7 +9,10 @@ const Skeleton = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivEl
       aria-busy="true"
       aria-label="Loading"
       className={cn(
-        'animate-pulse rounded-md bg-surface-elevated motion-reduce:animate-none',
+        // Batch 137: the bespoke shimmer sweep (index.css, light/dark-tuned
+        // --shimmer-stripe) over the surface-elevated fill — reads more premium
+        // than a flat opacity pulse. Reduced motion falls back to a static fill.
+        'animate-shimmer rounded-md bg-surface-elevated motion-reduce:animate-none',
         className,
       )}
       {...props}

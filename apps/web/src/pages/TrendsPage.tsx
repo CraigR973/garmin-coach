@@ -13,7 +13,7 @@ import {
 } from 'recharts';
 import { CalendarRange, Sparkles, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
-import { colors } from '@/theme/tokens';
+import { useChartColors } from '@/lib/chartColors';
 import { Markdown } from '@/components/Markdown';
 import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
@@ -149,6 +149,7 @@ function TrendsBody({
 }) {
   const { yearOnYear, recentWindows, narrative } = data;
   const insufficient = yearOnYear.status !== 'ok';
+  const c = useChartColors(); // theme-aware chart colours (Batch 137)
 
   // Oldest → newest so the line reads left-to-right (sort by window start).
   const chartData = [...recentWindows]
@@ -206,9 +207,9 @@ function TrendsBody({
           {chartData.length >= 2 ? (
             <ResponsiveContainer width="100%" height={240}>
               <LineChart data={chartData} margin={{ top: 8, right: 12, bottom: 0, left: -12 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                <XAxis dataKey="label" tick={{ fill: colors.textMuted, fontSize: 11 }} stroke={colors.border} />
-                <YAxis tick={{ fill: colors.textMuted, fontSize: 11 }} stroke={colors.border} width={36} />
+                <CartesianGrid strokeDasharray="3 3" stroke={c.border} />
+                <XAxis dataKey="label" tick={{ fill: c.textMuted, fontSize: 11 }} stroke={c.border} />
+                <YAxis tick={{ fill: c.textMuted, fontSize: 11 }} stroke={c.border} width={36} />
                 <Tooltip
                   contentStyle={{
                     background: 'var(--surface-elevated)',
@@ -218,8 +219,8 @@ function TrendsBody({
                   }}
                 />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Line type="monotone" dataKey="Sleep" stroke={colors.primary} strokeWidth={2} dot={{ r: 3 }} connectNulls />
-                <Line type="monotone" dataKey="Readiness" stroke={colors.accent} strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                <Line type="monotone" dataKey="Sleep" stroke={c.primary} strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                <Line type="monotone" dataKey="Readiness" stroke={c.accent} strokeWidth={2} dot={{ r: 3 }} connectNulls />
               </LineChart>
             </ResponsiveContainer>
           ) : (
