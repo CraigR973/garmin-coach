@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -102,6 +102,126 @@ describe('CheckInPage', () => {
       ([path, opts]) => path === '/api/v1/daily-loop/2026-06-20/manual-entry' && opts?.method === 'PUT',
     ) as [string, { body: string }];
     expect(JSON.parse(options.body)).toMatchObject({ subjectiveScore: 8, feel: 'slept well' });
+  });
+
+  it('keeps his typed check-in when a background refetch lands mid-edit, and saves it (Batch 139)', async () => {
+    // A fresh server response always differs from the cached one (at minimum a new
+    // meta.generatedAtUtc), so React Query's structural sharing yields a *new*
+    // query.data reference and the seed effect re-runs — the exact production
+    // condition. manualEntry stays null (nothing saved yet), so before Batch 139
+    // that re-run reset the form to empty.
+    const refetched = { ...snapshot, meta: { ...snapshot.meta, generatedAtUtc: '2026-06-20T06:45:00Z' } };
+    let getCalls = 0;
+    apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
+      if (options?.method === 'PUT') return Promise.resolve(snapshot);
+      if (path === '/api/v1/daily-loop') {
+        getCalls += 1;
+        return Promise.resolve(getCalls === 1 ? snapshot : refetched);
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    const queryClient = new QueryClient();
+    const user = userEvent.setup();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CheckInPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const good = await screen.findByRole('button', { name: 'Good' });
+    await user.click(good);
+    await user.click(screen.getByRole('button', { name: 'Slept well' }));
+    expect(good.getAttribute('aria-pressed')).toBe('true');
+
+    // Simulate an iOS PWA warm resume: it refetches ['daily-loop']
+    // (refetchOnWindowFocus, widened in lib/resumeRefetch.ts). The server has no
+    // saved entry yet, so the fresh snapshot's manualEntry is null — before Batch
+    // 139 the seed effect reset the form here and the next save wrote an empty entry.
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: ['daily-loop'] });
+    });
+
+    // His edits survive the refetch...
+    expect(screen.getByRole('button', { name: 'Good' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Slept well' }).getAttribute('aria-pressed')).toBe('true');
+
+    // ...and are what gets saved, not an empty entry.
+    await user.click(screen.getByRole('button', { name: /get today's brief/i }));
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/daily-loop/2026-06-20/manual-entry',
+        expect.objectContaining({ method: 'PUT' }),
+      );
+    });
+    const [, options] = apiFetchMock.mock.calls.find(
+      ([path, opts]) => path === '/api/v1/daily-loop/2026-06-20/manual-entry' && opts?.method === 'PUT',
+    ) as [string, { body: string }];
+    expect(JSON.parse(options.body)).toMatchObject({ subjectiveScore: 8, feel: 'slept well' });
+  });
+
+  it('still seeds the form from the server while it is pristine (Batch 139 guard)', async () => {
+    const withEntry = {
+      ...snapshot,
+      data: {
+        ...snapshot.data,
+        manualEntry: {
+          id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+          userId: '11111111-1111-4111-8111-111111111111',
+          plannedWorkoutId: null,
+          activityId: null,
+          plannedWorkoutVersion: null,
+          entryDate: '2026-06-20',
+          entryAtUtc: '2026-06-20T07:00:00Z',
+          bpSystolic: null,
+          bpDiastolic: null,
+          subjectiveScore: 8,
+          rpe: null,
+          feel: 'slept well',
+          adherenceStatus: null,
+          actualWorkoutJson: {},
+          supplementsJson: {},
+          foodJson: {},
+          notes: null,
+        },
+      },
+    };
+    // First load has no entry; a later refetch brings the one the backstop saved.
+    let calls = 0;
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/api/v1/daily-loop') {
+        calls += 1;
+        return Promise.resolve(calls === 1 ? snapshot : withEntry);
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    const queryClient = new QueryClient();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CheckInPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    // Pristine on first load: overall is not selected.
+    const good = await screen.findByRole('button', { name: 'Good' });
+    expect(good.getAttribute('aria-pressed')).toBe('false');
+
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: ['daily-loop'] });
+    });
+
+    // An untouched form reflects the newly-arrived server entry — the dirty guard
+    // only protects unsaved edits, it does not freeze the form to first load.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Good' }).getAttribute('aria-pressed')).toBe('true');
+    });
   });
 
   it('labels the quick scale as "How you feel today" and never shows the numeric score', async () => {

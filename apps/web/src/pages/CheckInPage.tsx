@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { dailyLoopEnvelopeSchema, manualEntryInputSchema } from '@coach/shared';
@@ -122,6 +122,11 @@ export function CheckInPage() {
   const [brief, setBrief] = useState<CheckInBrief | null>(null);
   const [queuedAtMs, setQueuedAtMs] = useState<number | null>(null);
   const [stageNowMs, setStageNowMs] = useState<number>(() => Date.now());
+  // Batch 139: has he edited the form since it was last seeded from the server?
+  // A background refetch (refetchOnWindowFocus — widened to iOS PWA warm resume in
+  // lib/resumeRefetch.ts) must not re-seed the form over unsaved edits, or his
+  // typed feel/notes are silently wiped and an empty check-in gets saved.
+  const dirtyRef = useRef(false);
 
   const query = useQuery({
     queryKey: ['daily-loop'],
@@ -132,6 +137,12 @@ export function CheckInPage() {
   useEffect(() => {
     const data = query.data?.data;
     if (!data) return;
+    // Batch 139: only mirror the server into the form while it's pristine. Once he
+    // has started editing, his input wins until it's saved — a focus/warm-resume
+    // refetch that lands mid-check-in must never reset the fields to the server's
+    // (usually empty) manualEntry. Saving re-marks the form pristine (see onSuccess),
+    // so the post-save refetch re-seeds cleanly from the stored values.
+    if (dirtyRef.current) return;
 
     const manualEntry = data.manualEntry;
     setManualForm({
@@ -185,6 +196,9 @@ export function CheckInPage() {
       return dailyLoopEnvelopeSchema.parse(response).data;
     },
     onSuccess: async (updated) => {
+      // The form now matches what was persisted, so let the invalidation's refetch
+      // re-seed it from the stored values (Batch 139).
+      dirtyRef.current = false;
       setBrief(updated.morningAnalysis ?? null);
       setQueuedAtMs(updated.morningAnalysis ? null : Date.now());
       await queryClient.invalidateQueries({ queryKey: ['daily-loop'] });
@@ -206,10 +220,12 @@ export function CheckInPage() {
   const waitingStage = waitingForBrief ? currentBriefStage(stageNowMs - queuedAtMs) : -1;
 
   function setManual<K extends keyof ManualFormState>(key: K, value: string) {
+    dirtyRef.current = true;
     setManualForm((current) => ({ ...current, [key]: value }));
   }
 
   function toggleChip(chip: (typeof QUICK_CHIPS)[number]) {
+    dirtyRef.current = true;
     setManualForm((current) => ({
       ...current,
       [chip.field]: toggleToken(current[chip.field], chip.token),
