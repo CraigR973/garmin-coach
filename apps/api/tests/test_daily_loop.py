@@ -1059,3 +1059,91 @@ async def test_post_activity_analyses_collapse_partitions_and_orders(
     workout = grouped[ANALYSIS_TYPE_POST_WORKOUT]
     assert [a.activity_id for a in workout] == [late_ride.id, early_ride.id]
     assert [a.activity_id for a in grouped[ANALYSIS_TYPE_POST_WALK]] == [walk.id]
+
+
+@pytest.mark.asyncio
+async def test_post_activity_analyses_keep_latest_per_activity(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 140: a re-read *inserts* a new ``Analysis`` row (``generate_and_store``
+    never supersedes the prior one), so a corrected ride ends up with several rows for
+    one activity. The daily-loop snapshot must surface only the newest — otherwise the
+    stale read (Mark's mistaken RPE 7) rides along and the frontend map renders it over
+    the correction (RPE 4)."""
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 7, 18)
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Latest Read Test",
+                pin_hash="x" * 60,
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.commit()
+
+    ride_id = uuid.uuid4()
+    async with session_factory() as session:
+        session.add(
+            Activity(
+                id=ride_id,
+                user_id=user_id,
+                garmin_activity_id=201,
+                activity_name="Sweet spot ride",
+                activity_type="indoor_cycling",
+                start_utc=datetime(2026, 7, 18, 7, 0),
+                raw_summary={},
+            )
+        )
+        # First read graded the mistaken RPE 7; the re-read after Mark corrected it to
+        # RPE 4 inserted a *second* row (later generated_at_utc) rather than replacing
+        # the first.
+        session.add(
+            Analysis(
+                user_id=user_id,
+                activity_id=ride_id,
+                analysis_type=ANALYSIS_TYPE_POST_WORKOUT,
+                subject_date=subject_date,
+                generated_at_utc=datetime(2026, 7, 18, 8, 0),
+                prompt_version="post-workout-analysis-v7-2026-07-12",
+                output_markdown="Solid session at RPE 7.",
+                context_packet={"postRideCheckIn": {"rpe": 7}},
+                raw_response={},
+            )
+        )
+        session.add(
+            Analysis(
+                user_id=user_id,
+                activity_id=ride_id,
+                analysis_type=ANALYSIS_TYPE_POST_WORKOUT,
+                subject_date=subject_date,
+                generated_at_utc=datetime(2026, 7, 18, 8, 5),
+                prompt_version="post-workout-analysis-v7-2026-07-12",
+                output_markdown="Comfortable session at RPE 4.",
+                context_packet={"postRideCheckIn": {"rpe": 4}},
+                raw_response={},
+            )
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        grouped = await DailyLoopService(session)._post_activity_analyses(
+            user_id,
+            subject_date,
+            (
+                ANALYSIS_TYPE_POST_WORKOUT,
+                ANALYSIS_TYPE_POST_FLEXIBILITY,
+                ANALYSIS_TYPE_POST_STRENGTH,
+                ANALYSIS_TYPE_POST_WALK,
+            ),
+        )
+
+    # Only the newest read for the activity survives; the stale RPE-7 row is dropped.
+    workout = grouped[ANALYSIS_TYPE_POST_WORKOUT]
+    assert len(workout) == 1
+    assert workout[0].context_packet["postRideCheckIn"]["rpe"] == 4
+    assert "RPE 4" in workout[0].output_markdown

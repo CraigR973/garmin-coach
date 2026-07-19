@@ -382,12 +382,20 @@ class DailyLoopService:
         subject_date: date,
         analysis_types: Sequence[str],
     ) -> dict[str, list[Analysis]]:
-        """Fetch every post-activity analysis for the day in one query, grouped by type.
+        """Fetch the *latest* post-activity analysis per activity for the day, grouped by type.
 
-        Batch 62.3: replaces four near-identical single-type SELECTs. The global
-        ``(start_utc desc, generated_at_utc desc)`` order is the same each per-type
-        query applied, and Python partitioning is stable, so each returned list is
-        identical to the previous per-type query.
+        Batch 62.3 collapsed four near-identical single-type SELECTs into one. Batch
+        140 adds the reduce-to-latest-per-activity step: a re-read (Batch 87's
+        check-in-first regeneration, or the hourly poll after a ``PROMPT_VERSION``
+        bump) *inserts* a new ``Analysis`` row rather than superseding the prior one —
+        ``generate_and_store`` never deletes, and everywhere else that needs the
+        current read uses ``latest_analysis_for_activity`` to pick it. The daily-loop
+        snapshot must do the same. Without it, a corrected ride surfaces *both* its
+        stale and fresh reads, and the frontend ``rideByWorkoutId`` map — built
+        last-write-wins over this newest-first list — then renders the *oldest* one:
+        the "changed RPE 7→4 but the read still says 7" bug. Rows arrive
+        ``(start_utc desc, generated_at_utc desc)``, so the first row seen for an
+        activity is its newest; keep that and drop the older duplicates.
         """
         rows = (
             (
@@ -406,7 +414,14 @@ class DailyLoopService:
             .all()
         )
         grouped: dict[str, list[Analysis]] = {analysis_type: [] for analysis_type in analysis_types}
+        seen_activity_ids: dict[str, set[uuid.UUID | None]] = {
+            analysis_type: set() for analysis_type in analysis_types
+        }
         for row in rows:
+            seen = seen_activity_ids[row.analysis_type]
+            if row.activity_id in seen:
+                continue
+            seen.add(row.activity_id)
             grouped[row.analysis_type].append(row)
         return grouped
 

@@ -1224,6 +1224,63 @@ describe('DashboardPage', () => {
     expect(screen.queryByText('After your ride')).toBeNull();
   });
 
+  it('renders only the latest read when a corrected ride has two analyses (Batch 140)', async () => {
+    const user = userEvent.setup();
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.plannedWorkouts[0].status = 'completed';
+        // A re-read after Mark corrected his RPE inserts a *new* analysis row rather
+        // than replacing the old one; the payload arrives newest-first. The stale
+        // RPE-7 read must not win — the old last-write-wins map surfaced exactly that.
+        snapshot.data.postWorkoutAnalyses = [
+          {
+            id: 'a1a1a1a1-aaaa-4aaa-8aaa-a1a1a1a1a1a1',
+            activityId: '77777777-7777-4777-8777-777777777777',
+            plannedWorkoutId: WORKOUT_ID,
+            activityName: 'Tempo ride',
+            activityType: 'indoor_cycling',
+            generatedAtUtc: '2026-06-20T12:25:00Z',
+            promptVersion: 'post-workout-analysis-v7-2026-07-12',
+            modelName: 'claude',
+            outputMarkdown: '**Recovery read:** comfortable at the corrected RPE 4.',
+            recoveryDecision: { excluded: false, status: 'ready_for_review' },
+            timeSeriesSummary: {},
+            intervals: [],
+            execution: {},
+            tomorrowImpact: 'Easy endurance tomorrow.',
+            postRideCheckIn: null,
+          },
+          {
+            id: 'b2b2b2b2-bbbb-4bbb-8bbb-b2b2b2b2b2b2',
+            activityId: '77777777-7777-4777-8777-777777777777',
+            plannedWorkoutId: WORKOUT_ID,
+            activityName: 'Tempo ride',
+            activityType: 'indoor_cycling',
+            generatedAtUtc: '2026-06-20T12:20:00Z',
+            promptVersion: 'post-workout-analysis-v7-2026-07-12',
+            modelName: 'claude',
+            outputMarkdown: '**Recovery read:** graded at the mistaken RPE 7.',
+            recoveryDecision: { excluded: false, status: 'ready_for_review' },
+            timeSeriesSummary: {},
+            intervals: [],
+            execution: {},
+            tomorrowImpact: 'Easy endurance tomorrow.',
+            postRideCheckIn: null,
+          },
+        ];
+      }),
+    );
+
+    await screen.findByText('Cycle day');
+    // Exactly one read folds into the Today row — not a stale + fresh pair.
+    const viewButtons = screen.getAllByRole('button', { name: /view analysis/i });
+    expect(viewButtons).toHaveLength(1);
+    await user.click(viewButtons[0]);
+    // The corrected RPE-4 read shows; the stale RPE-7 read never renders.
+    expect(await screen.findByText(/corrected RPE 4/i)).toBeTruthy();
+    expect(screen.queryByText(/mistaken RPE 7/i)).toBeNull();
+  });
+
   it('saves the completed-ride log from the Today row to both post-ride endpoints', async () => {
     const user = userEvent.setup();
     renderPage(

@@ -533,15 +533,29 @@ export function DashboardPage() {
   const postStrengthAnalyses = daily.postStrengthAnalyses ?? [];
   const postWalkAnalyses = daily.postWalkAnalyses ?? [];
   const pendingPostActivities = daily.pendingPostWorkoutActivities ?? [];
+  // Batch 140: the payload now carries one analysis per activity (the backend keeps
+  // the latest — see `_post_activity_analyses`). Belt-and-braces on the client too:
+  // dedupe to the newest read per activity before splitting into planned/unplanned,
+  // so a stray duplicate can never resurface a stale read (the "changed RPE 7→4 but
+  // the read still says 7" bug, where the old last-write-wins map picked the oldest
+  // of two rows). `postWorkouts` arrives newest-first, so the first row seen for an
+  // activity is its newest.
+  const seenRideActivityIds = new Set<string>();
+  const latestRides = postWorkouts.filter((ride) => {
+    if (!ride.activityId) return true;
+    if (seenRideActivityIds.has(ride.activityId)) return false;
+    seenRideActivityIds.add(ride.activityId);
+    return true;
+  });
   // Batch 60: a completed ride's read attaches to its Today-card session row
   // (matched by plannedWorkoutId, set when the coach analysed the ride). Only
   // *unplanned* rides — with no planned row to attach to — keep the standalone
   // "After your ride" section, so a planned ride no longer shows in two places.
   const rideByWorkoutId = new Map<string, RideAnalysis>();
-  for (const ride of postWorkouts) {
+  for (const ride of latestRides) {
     if (ride.plannedWorkoutId) rideByWorkoutId.set(ride.plannedWorkoutId, ride);
   }
-  const unplannedRides = postWorkouts.filter((ride) => !ride.plannedWorkoutId);
+  const unplannedRides = latestRides.filter((ride) => !ride.plannedWorkoutId);
   const hasRide = unplannedRides.length > 0;
   const todaysWorkouts = daily.plannedWorkouts;
   const dayState = dayStateForWorkouts(todaysWorkouts);
