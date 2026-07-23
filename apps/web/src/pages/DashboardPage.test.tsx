@@ -479,6 +479,23 @@ describe('DashboardPage', () => {
     expect(screen.queryByRole('link', { name: /get today's brief/i })).toBeNull();
   });
 
+  it('shows a retryable failure CTA, not the "writing your brief" spinner, when generation failed (Batch 141)', async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.morningAnalysis = null;
+        snapshot.data.briefGeneration = { status: 'failed', reason: 'billing' };
+      }),
+    );
+
+    // A failed generation is a retryable error here, not an endless spinner, and it
+    // outranks the "generating" state (a failure always has a check-in behind it).
+    expect(await screen.findByRole('region', { name: 'Brief generation failed' })).toBeTruthy();
+    const retry = screen.getByRole('link', { name: /try again/i });
+    expect(retry.getAttribute('href')).toBe('/check-in');
+    expect(screen.queryByRole('region', { name: 'Generating your brief' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Say good morning' })).toBeNull();
+  });
+
   it('keeps raw last-night sleep off Home before today\'s brief exists (Batch 95/103)', async () => {
     // Rest-day phase primary would otherwise be `lastNight` — before a brief
     // exists that would pre-empt the coached read with an un-narrated snapshot.

@@ -172,6 +172,18 @@ export function CheckInPage() {
     toast.success('Your brief is ready');
   }, [queuedAtMs, query.data]);
 
+  // Batch 141: a failed background generation resolves the wait to an honest,
+  // retryable error instead of polling "Writing your brief" forever. Stop polling
+  // once the envelope reports a failure (with no brief) and tell him once.
+  useEffect(() => {
+    if (queuedAtMs == null) return;
+    if (query.data?.data.morningAnalysis) return;
+    if (query.data?.data.briefGeneration?.status === 'failed') {
+      setQueuedAtMs(null);
+      toast.error("I couldn't finish your brief — tap to try again");
+    }
+  }, [queuedAtMs, query.data]);
+
   // Batch 85: the check-in is the primary trigger for today's brief. Saving
   // force-regenerates the read server-side (folding in his notes/questions) and
   // returns the fresh snapshot, so the mutation surfaces the brief here and on Home.
@@ -216,7 +228,10 @@ export function CheckInPage() {
   // set on save success) or already on the loaded snapshot (a same-day check-in
   // or the 09:30 backstop) — either way, re-submitting shouldn't regenerate it.
   const briefExists = brief != null || data?.morningAnalysis != null;
-  const waitingForBrief = queuedAtMs != null && !briefExists;
+  // Batch 141: derived from the envelope (not client state), so a failure shows
+  // even on a cold reopen with no in-flight queuedAtMs.
+  const generationFailed = !briefExists && data?.briefGeneration?.status === 'failed';
+  const waitingForBrief = queuedAtMs != null && !briefExists && !generationFailed;
   const waitingStage = waitingForBrief ? currentBriefStage(stageNowMs - queuedAtMs) : -1;
 
   function setManual<K extends keyof ManualFormState>(key: K, value: string) {
@@ -400,6 +415,13 @@ export function CheckInPage() {
             <Link to="/brief">View brief</Link>
           </Button>
         </div>
+      ) : generationFailed ? (
+        <ErrorState
+          title="Couldn't finish your brief"
+          description="Something went wrong while writing today's brief. Your check-in is saved — tap to try again."
+          retryLabel="Try again"
+          onRetry={() => saveMutation.mutate()}
+        />
       ) : waitingForBrief ? (
         <Card>
           <CardHeader>

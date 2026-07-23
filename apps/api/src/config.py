@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-4-6"
     anthropic_max_tokens: int = 4096
+    # Batch 141: operator profile that receives ops alerts (e.g. a billing/credit
+    # generation failure). A profile UUID string; empty disables the admin *push*
+    # (the structured error-log alert still fires regardless). Deliberately NOT the
+    # app ``admin`` role — the primary user holds that role, and an ops alert must
+    # never land on his phone. Set this to Craig's own seeded profile id in prod.
+    admin_alert_user_id: str = ""
     # Hosted read-aloud voice (Batch 116, opt-in; self-hosted via Piper as of
     # DECISIONS #190). A missing model file means the hosted path is
     # unavailable regardless of a user's consent flag — the frontend falls

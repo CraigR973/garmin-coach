@@ -49,6 +49,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { VerdictHero } from '@/components/VerdictHero';
 import { GoodMorningCta } from '@/components/GoodMorningCta';
 import { BriefGeneratingCta } from '@/components/BriefGeneratingCta';
+import { BriefFailedCta } from '@/components/BriefFailedCta';
 import { FeedbackControl } from '@/components/FeedbackControl';
 import { SleepSnapshotBody } from '@/components/SleepSnapshotBody';
 import { SleepPrepBody } from '@/components/SleepPrepBody';
@@ -810,6 +811,11 @@ export function DashboardPage() {
           )}
           recap={morningFeelRecap(daily.manualEntry ?? null)}
         />
+      ) : daily.briefGeneration?.status === 'failed' ? (
+        // Batch 141: a failed generation is a retryable error here too, not an
+        // endless "Writing your brief" — outranks the generating state (a failure
+        // always has a check-in behind it).
+        <BriefFailedCta dateLabel={friendlyDate(daily.subjectDate)} />
       ) : daily.manualEntry != null ? (
         <BriefGeneratingCta dateLabel={friendlyDate(daily.subjectDate)} />
       ) : (

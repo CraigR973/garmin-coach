@@ -1093,6 +1093,17 @@ export const dailyLoopSchema = z.object({
   // (the default) means the brief only ever reads aloud on-device (#179/#184).
   hostedTtsConsent: z.boolean(),
   morningAnalysis: dailyLoopAnalysisSchema.nullable(),
+  // Batch 141: the state of today's brief generation, so the app can show an
+  // honest, retryable error instead of an endless "Writing your brief" when a
+  // generation fails (e.g. the 2026-07-21 Anthropic credit outage). Optional +
+  // nullable so a pre-141 cached payload still parses; absent/null = no signal.
+  briefGeneration: z
+    .object({
+      status: z.enum(['generating', 'ready', 'failed']),
+      reason: z.string().nullable(),
+    })
+    .nullable()
+    .optional(),
   dailyMetrics: dailyMetricSchema.nullable(),
   sleep: sleepSchema.nullable(),
   manualEntry: manualEntrySchema.nullable(),
