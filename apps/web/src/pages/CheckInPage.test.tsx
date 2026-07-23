@@ -302,6 +302,55 @@ describe('CheckInPage', () => {
     expect(screen.queryByRole('button', { name: /get today's brief/i })).toBeNull();
   });
 
+  it('shows a retryable error, not an endless spinner, when generation failed (Batch 141)', async () => {
+    // The daily-loop envelope carries a failed generation (the 2026-07-21 credit
+    // outage) with no brief — pre-141 this hung on "Writing your brief" forever.
+    const failed = {
+      ...snapshot,
+      data: {
+        ...snapshot.data,
+        morningAnalysis: null,
+        briefGeneration: { status: 'failed', reason: 'billing' },
+      },
+    };
+    let putCount = 0;
+    apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
+      if (options?.method === 'PUT') {
+        putCount += 1;
+        // A retry re-triggers generation: it goes back to "generating".
+        return Promise.resolve({
+          ...failed,
+          data: { ...failed.data, briefGeneration: { status: 'generating', reason: null } },
+        });
+      }
+      if (path === '/api/v1/daily-loop') return Promise.resolve(failed);
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    const queryClient = new QueryClient();
+    const user = userEvent.setup();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CheckInPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    // The failure surfaces as a retryable error, and the spinner is gone.
+    expect(await screen.findByText(/couldn't finish your brief/i)).toBeTruthy();
+    expect(screen.queryByText('Writing your brief')).toBeNull();
+
+    // "Try again" re-triggers generation via a fresh manual-entry PUT.
+    await user.click(screen.getByRole('button', { name: /try again/i }));
+    await waitFor(() => expect(putCount).toBe(1));
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      '/api/v1/daily-loop/2026-06-20/manual-entry',
+      expect.objectContaining({ method: 'PUT' }),
+    );
+  });
+
   it('shows "View brief" instead of "Get today\'s brief" when a brief already exists on load (Batch 96)', async () => {
     const briefAnalysis = {
       id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',

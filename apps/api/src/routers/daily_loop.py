@@ -17,6 +17,7 @@ from src.database import AsyncSessionLocal, get_db
 from src.models.coaching import (
     Activity,
     Analysis,
+    BriefGenerationStatus,
     DailyMetric,
     Feedback,
     ManualEntry,
@@ -25,7 +26,9 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile
 from src.routers.feedback import FeedbackOut, serialize_feedback
+from src.services.anthropic_text import AnthropicApiError
 from src.services.breathwork_brief import BreathworkBriefResult
+from src.services.brief_generation_status import BriefGenerationStatusService
 from src.services.chronic_patterns import ChronicPatternSuggestionService
 from src.services.daily_loop import DailyLoopService, DeliveryState
 from src.services.dreo_fan import (
@@ -183,14 +186,40 @@ async def _generate_brief_after_checkin(user_id: uuid.UUID, subject_date: date) 
                 subject_date=subject_date,
                 commit=False,
             )
+            # Batch 141: record the ready state atomically with the brief so a
+            # cold reopen (no client queuedAtMs) still reads "ready", not a stale
+            # "generating".
+            await BriefGenerationStatusService(session).mark_ready(
+                user_id, subject_date, commit=False
+            )
             await session.commit()
-        except Exception:
+        except Exception as exc:
             await session.rollback()
             log.exception(
                 "morning check-in background generation failed",
                 profile_id=str(user_id),
                 subject_date=subject_date.isoformat(),
             )
+            # Batch 141: persist the failure so the app shows a retryable error
+            # instead of an endless "Writing your brief", and alert the operator on
+            # a billing/credit outage (the 2026-07-21 freeze). Best-effort — a
+            # failure to record the failure must not re-raise out of a background task.
+            reason = exc.reason if isinstance(exc, AnthropicApiError) else "other"
+            try:
+                await BriefGenerationStatusService(session).mark_failed(
+                    user_id, subject_date, reason=reason, commit=True
+                )
+                if reason == "billing":
+                    await NudgeAlertService(session).notify_admin_generation_failure(
+                        reason=reason, subject_date=subject_date, commit=True
+                    )
+            except Exception:
+                await session.rollback()
+                log.exception(
+                    "recording brief generation failure state failed",
+                    profile_id=str(user_id),
+                    subject_date=subject_date.isoformat(),
+                )
             return
 
         # Warms the hosted-voice cache (Batch 116 follow-up) so a consenting
@@ -604,6 +633,18 @@ class HolidayStateOut(BaseModel):
     activeWindow: ActiveHolidayWindowOut | None
 
 
+class BriefGenerationStatusOut(BaseModel):
+    """Batch 141: the state of today's morning-brief generation.
+
+    ``status`` is ``generating`` | ``ready`` | ``failed``; ``reason`` is a
+    classified slug (e.g. ``billing``) only on a failure. The client shows a
+    retryable error on ``failed`` instead of an endless "Writing your brief".
+    """
+
+    status: str
+    reason: str | None
+
+
 class DailyLoopData(BaseModel):
     subjectDate: str
     timezone: str
@@ -611,6 +652,7 @@ class DailyLoopData(BaseModel):
     holiday: HolidayStateOut
     hostedTtsConsent: bool
     morningAnalysis: AnalysisOut | None
+    briefGeneration: BriefGenerationStatusOut | None
     dailyMetrics: DailyMetricOut | None
     sleep: SleepOut | None
     manualEntry: ManualEntryOut | None
@@ -1155,11 +1197,27 @@ async def _sleep_projection(
     )
 
 
+def _serialize_brief_generation(
+    row: BriefGenerationStatus | None, *, has_analysis: bool
+) -> BriefGenerationStatusOut | None:
+    """Batch 141: a real brief on the day is authoritative — a stale
+    ``generating`` / ``failed`` row never overrides an analysis that exists."""
+    if has_analysis:
+        return BriefGenerationStatusOut(status="ready", reason=None)
+    if row is None:
+        return None
+    return BriefGenerationStatusOut(status=row.status, reason=row.reason)
+
+
 async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> DailyLoopEnvelope:
     feedback_map = snapshot.feedback
     morning_analysis = _serialize_analysis(
         snapshot.morning_analysis,
         feedback_map.get(snapshot.morning_analysis.id) if snapshot.morning_analysis else None,
+    )
+    brief_generation = _serialize_brief_generation(
+        await BriefGenerationStatusService(db).get(player.id, snapshot.subject_date),
+        has_analysis=snapshot.morning_analysis is not None,
     )
     fresh_temperature = (
         snapshot.latest_temperature
@@ -1279,6 +1337,7 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
             ),
             hostedTtsConsent=player.hosted_tts_consent,
             morningAnalysis=morning_analysis,
+            briefGeneration=brief_generation,
             dailyMetrics=_serialize_daily_metric(snapshot.daily_metric),
             sleep=_serialize_sleep(snapshot.sleep),
             manualEntry=_serialize_manual_entry(snapshot.manual_entry),
@@ -1413,6 +1472,10 @@ async def upsert_manual_entry(
     # the background task regenerates the brief, preserves Batch 85's downgrade-
     # only / never-touch-an-approved-ride guardrails, then fires a ready push.
     if subject_date == _local_today(player.timezone):
+        # Batch 141: mark generating before the background task runs so the
+        # envelope this request returns already reads "generating" (the task
+        # flips it to ready/failed), giving the client a real state to poll.
+        await BriefGenerationStatusService(db).mark_generating(player.id, subject_date, commit=True)
         background_tasks.add_task(_generate_brief_after_checkin, player.id, subject_date)
     snapshot = await service.get_snapshot(player, subject_date=subject_date)
     return await _envelope(player, snapshot, db)

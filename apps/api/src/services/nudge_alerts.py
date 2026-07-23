@@ -7,9 +7,11 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.config import settings
 from src.models.coaching import (
     Activity,
     Analysis,
@@ -23,6 +25,8 @@ from src.services.environment_freshness import HIVE_FRESHNESS_LIMIT, is_hive_tem
 from src.services.fan_control import MAX_SPEED, ON_THRESHOLD_C
 from src.services.push_notification_service import send_notification
 
+log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
+
 ANALYSIS_TYPE_EVENING_NUDGE = "evening_nudge"
 ANALYSIS_TYPE_THERMAL_ALERT = "thermal_alert"
 ANALYSIS_TYPE_STALE_SOURCE_ALERT = "stale_source_alert"
@@ -30,6 +34,7 @@ ANALYSIS_TYPE_BRIEF_READY = "brief_ready_push"
 ANALYSIS_TYPE_ANALYSIS_PUSH = "analysis_push"
 ANALYSIS_TYPE_GOOD_MORNING = "good_morning_nudge"
 ANALYSIS_TYPE_WORKOUT_CHECKIN = "workout_checkin_nudge"
+ANALYSIS_TYPE_ADMIN_ALERT = "admin_alert"
 PROMPT_VERSION = "notification-rules:v1"
 
 EVENING_NUDGE_TIME = time(20, 0)
@@ -189,6 +194,35 @@ def build_brief_ready_plan(analysis: Analysis, subject_date: date) -> Notificati
             "subjectDate": subject_date.isoformat(),
             "status": status,
             "rule": "brief_ready",
+        },
+    )
+
+
+def build_admin_generation_alert_plan(reason: str, subject_date: date) -> NotificationPlan:
+    """Batch 141: an operator alert that generation is failing.
+
+    ``billing`` gets a specific "top up credits" body (the 2026-07-21 outage);
+    any other reason gets a generic "check the logs". One tag per day so the
+    operator is told once, not on every failed poll/check-in.
+    """
+    if reason == "billing":
+        body = (
+            "Brief generation is failing — the Anthropic credit balance is too low. "
+            "Top up at console.anthropic.com to restore briefs."
+        )
+    else:
+        body = f"Brief generation failed ({reason}). Check the API logs."
+    return NotificationPlan(
+        analysis_type=ANALYSIS_TYPE_ADMIN_ALERT,
+        tag=f"admin-generation-alert-{subject_date.isoformat()}",
+        title="⚠️ Coach generation failing",
+        body=body,
+        severity="warning",
+        data={"url": "/", "kind": "admin_alert", "reason": reason},
+        context={
+            "subjectDate": subject_date.isoformat(),
+            "reason": reason,
+            "rule": "admin_generation_alert",
         },
     )
 
@@ -527,6 +561,53 @@ class NudgeAlertService:
             commit=commit,
             now_utc=now_utc or datetime.now(UTC),
         )
+
+    async def notify_admin_generation_failure(
+        self,
+        *,
+        reason: str,
+        subject_date: date,
+        now_utc: datetime | None = None,
+        commit: bool = True,
+    ) -> bool:
+        """Batch 141: alert the operator that a brief generation failed.
+
+        Always emits a structured ``error``-level log event — the reliable signal to
+        wire Railway/observability alerting to. Additionally web-pushes the operator
+        profile named by ``settings.admin_alert_user_id`` when one is configured and
+        has an active subscription. That recipient is deliberately decoupled from the
+        app ``admin`` role (the primary user holds it, and an ops/billing alert must
+        never land on his phone), so the push is a no-op until Craig seeds his own
+        profile in prod. Deduped once per (operator, day) via ``_send_once``.
+        Best-effort: never raises, so it can't perturb the failing generation path.
+        """
+        log.error(
+            "brief_generation_admin_alert",
+            reason=reason,
+            subject_date=subject_date.isoformat(),
+        )
+        raw_admin_id = settings.admin_alert_user_id.strip()
+        if not raw_admin_id:
+            return False
+        try:
+            admin_id = uuid.UUID(raw_admin_id)
+        except ValueError:
+            log.warning("admin_alert_user_id is not a valid uuid", value=raw_admin_id)
+            return False
+        try:
+            admin = await self.session.get(Profile, admin_id)
+            if admin is None or not admin.is_active or admin.deleted_at is not None:
+                return False
+            return await self._send_once(
+                admin,
+                build_admin_generation_alert_plan(reason, subject_date),
+                subject_date=subject_date,
+                commit=commit,
+                now_utc=now_utc or datetime.now(UTC),
+            )
+        except Exception:
+            log.exception("admin generation alert push failed", reason=reason)
+            return False
 
     async def push_workout_analysis(
         self,

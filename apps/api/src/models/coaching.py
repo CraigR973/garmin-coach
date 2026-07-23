@@ -587,3 +587,28 @@ class KnowledgeBase(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     updated_by_profile_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True
     )
+
+
+class BriefGenerationStatus(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
+    """Batch 141: the state of a day's morning-brief generation, so the app can
+    show an honest, retryable failure instead of an endless "Writing your brief".
+
+    One row per ``(user, subject_date)``, upserted by the check-in generate path:
+    ``generating`` when the background task is scheduled, ``ready`` on success,
+    ``failed`` (with a classified ``reason`` from ``anthropic_text``, e.g.
+    ``billing``) on error. The daily-loop envelope reads it, so a failure surfaces
+    even after a cold reopen — the pre-141 spinner only ever cleared when an
+    analysis appeared, so a failed generation hung forever.
+    """
+
+    __tablename__ = "brief_generation_status"
+    __table_args__ = (
+        UniqueConstraint("user_id", "subject_date", name="uq_brief_generation_status_user_date"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    subject_date: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
