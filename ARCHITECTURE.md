@@ -232,6 +232,7 @@ staleness/regeneration path reruns it instead. No prompt or verdict change.
   keyed by user+date: Garmin workout/schedule ids, uploaded payload, IR snapshot,
   status + `last_error` — Batch 78, kept separate from the intervals rail)
 - `analyses` (stored Claude outputs) · `experiments` (tracked hypotheses) · `knowledge_base`
+- `brief_generation_status` (per-`(user, subject_date)` morning-brief generation state — `generating`/`ready`/`failed` + a classified `reason` such as `billing`; migration `020`, Batch 141) surfaced on the daily-loop envelope so a failed generation resolves to a retryable error instead of an endless "Writing your brief" spinner, and a billing-classed failure alerts the operator (DECISIONS #220)
 
 Seed `sleep`/`daily_metrics` with his **84-night backfill** (`12 Weeks Sleep Data` xlsx, 24 Mar–15 Jun; trust all cols except Duration).
 
