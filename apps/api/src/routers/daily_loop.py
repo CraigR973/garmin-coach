@@ -1534,16 +1534,18 @@ async def upsert_post_ride_checkin(
     activity = await db.get(Activity, activity_id)
     read_error: ApiError | None = None
     if activity is not None and post_activity_kind(activity) is not None:
+        # Batch 143: the check-in above already committed (service.commit), so his
+        # RPE/feel/notes are safe. An Anthropic outage on the read must not 500 that
+        # away. Generate inside a SAVEPOINT so a failure rolls back only the
+        # half-written analysis (and its planned-workout completion flip), never the
+        # committed check-in — then surface a non-fatal note (the activity re-appears
+        # as a pending read carrying the saved check-in, so re-submitting is the
+        # retry) and alert on a billing outage the same way as the morning brief.
         try:
-            await generate_post_activity_read(db, player, activity, force=True)
+            async with db.begin_nested():
+                await generate_post_activity_read(db, player, activity, force=True, commit=False)
+            await db.commit()
         except AnthropicApiError as exc:
-            # Batch 143: the check-in above already committed (service.commit), so his
-            # RPE/feel/notes are safe. An Anthropic outage on the read must not 500
-            # that away — roll back the half-written analysis, surface a non-fatal
-            # note (the activity re-appears as a pending read carrying the saved
-            # check-in, so re-submitting is the retry), and alert on a billing outage
-            # the same way as the morning brief (Batch 141).
-            await db.rollback()
             if exc.reason == "billing":
                 await NudgeAlertService(db).notify_admin_generation_failure(
                     reason=exc.reason, subject_date=subject_date, commit=True
