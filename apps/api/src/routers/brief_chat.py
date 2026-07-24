@@ -11,22 +11,37 @@ when the analysis does not exist, 403 when it belongs to another profile.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import CurrentUser
 from src.database import get_db
 from src.models.coaching import BriefMessage
+from src.services.anthropic_text import (
+    AnthropicApiError,
+    anthropic_http_status,
+    anthropic_user_message,
+)
 from src.services.brief_chat import BriefChatService
+from src.services.nudge_alerts import NudgeAlertService
 
 router = APIRouter(prefix="/api/v1/briefs", tags=["brief-chat"])
 
 
 def _generated_at() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _local_today(timezone_name: str) -> date:
+    try:
+        zone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        zone = ZoneInfo("UTC")
+    return datetime.now(zone).date()
 
 
 class ApiError(BaseModel):
@@ -104,7 +119,23 @@ async def ask_brief_followup(
     db: AsyncSession = Depends(get_db),
 ) -> BriefMessageTurnEnvelope:
     service = BriefChatService(db)
-    turn = await service.ask(player, analysis_id, question=payload.question)
+    try:
+        turn = await service.ask(player, analysis_id, question=payload.question)
+    except AnthropicApiError as exc:
+        # Batch 143: this LLM call runs in-request, so an Anthropic outage (the
+        # 2026-07-20/21 credit freeze) used to propagate to a bare 500 whose
+        # plain-text "Internal Server Error" body the web client couldn't parse.
+        # Return an honest, retryable JSON error instead (no half-written turn is
+        # persisted — the model call precedes every DB write in ``ask``), and route
+        # a billing outage through the same admin alert as the morning brief (141).
+        if exc.reason == "billing":
+            await NudgeAlertService(db).notify_admin_generation_failure(
+                reason=exc.reason, subject_date=_local_today(player.timezone), commit=True
+            )
+        raise HTTPException(
+            status_code=anthropic_http_status(exc.reason),
+            detail=anthropic_user_message(exc.reason),
+        ) from exc
     return BriefMessageTurnEnvelope(
         data=BriefMessageTurnData(
             userMessage=_serialize(turn.user_message),

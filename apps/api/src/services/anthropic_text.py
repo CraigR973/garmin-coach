@@ -77,6 +77,35 @@ def classify_anthropic_error(
     return "other"
 
 
+# Reasons where the coach is *temporarily* unavailable and a retry is the honest
+# advice (credit outage, provider rate-limit/overload) vs a harder upstream fault.
+# Drives the HTTP status a day-time caller returns when a synchronous Anthropic
+# call fails (Batch 143): 503 says "try again shortly", 502 says "upstream broke".
+_RETRYABLE_ANTHROPIC_REASONS = frozenset({"billing", "rate_limit", "overloaded"})
+
+
+def anthropic_http_status(reason: str) -> int:
+    """HTTP status for a failed *in-request* Anthropic call (Batch 143).
+
+    503 for a transient/retryable outage (billing/rate-limit/overload), 502 for a
+    hard upstream failure — never a bare 500, so the web client parses a real JSON
+    body instead of the plain-text ``Internal Server Error`` that broke it on
+    2026-07-20/21.
+    """
+    return 503 if reason in _RETRYABLE_ANTHROPIC_REASONS else 502
+
+
+def anthropic_user_message(reason: str) -> str:
+    """A short, honest, retryable user-facing line for a failed Anthropic call.
+
+    Deliberately generic — the provider's billing/credit prose never reaches the
+    user; the classified ``reason`` is what goes to the logs and the admin alert.
+    """
+    if reason in _RETRYABLE_ANTHROPIC_REASONS:
+        return "The coach is briefly unavailable. Please try again in a moment."
+    return "The coach couldn't answer just now. Please try again in a moment."
+
+
 def _error_from_http_status(exc: httpx.HTTPStatusError) -> AnthropicApiError:
     """Parse + log an Anthropic non-2xx into a classified error (Batch 141).
 

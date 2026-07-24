@@ -62,6 +62,7 @@ import { isBikeWorkout, useDailyPhase } from '@/hooks/useDailyPhase';
 import { fetchDailyLoop, useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { apiFetch } from '@/lib/api';
+import { postWorkoutReadFailure } from '@/lib/postWorkoutRead';
 import { bedroomLiveSummary } from '@/lib/bedroom';
 import { cn } from '@/lib/utils';
 import {
@@ -439,9 +440,14 @@ export function DashboardPage() {
         body: JSON.stringify(payload),
       });
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ['daily-loop'] });
-      toast.success('Workout read ready');
+      // Batch 143: the check-in saved, but a day-time Anthropic outage can leave
+      // the read ungenerated (a non-fatal errors[] note). Show an honest retry
+      // toast instead of a false "read ready" — the pending card is the retry.
+      const readFailure = postWorkoutReadFailure(result);
+      if (readFailure) toast.error(readFailure);
+      else toast.success('Workout read ready');
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not read the workout'),
   });
@@ -484,14 +490,18 @@ export function DashboardPage() {
         method: 'PUT',
         body: JSON.stringify(adherencePayload),
       });
-      await apiFetch(`/api/v1/daily-loop/${data.subjectDate}/activities/${activityId}/post-ride-check-in`, {
+      return apiFetch(`/api/v1/daily-loop/${data.subjectDate}/activities/${activityId}/post-ride-check-in`, {
         method: 'PUT',
         body: JSON.stringify(ridePayload),
       });
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ['daily-loop'] });
-      toast.success('Workout read ready');
+      // Batch 143: honest retry toast when the read couldn't generate (the ride
+      // log + check-in still saved). See postRideCheckInMutation.
+      const readFailure = postWorkoutReadFailure(result);
+      if (readFailure) toast.error(readFailure);
+      else toast.success('Workout read ready');
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not save ride log'),
   });

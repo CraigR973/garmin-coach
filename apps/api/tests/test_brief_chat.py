@@ -12,6 +12,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -23,6 +24,7 @@ from src.database import get_db
 from src.main import app
 from src.models.coaching import Analysis, BriefMessage, PlannedWorkout
 from src.models.profile import Profile, UserRole
+from src.services.anthropic_text import AnthropicApiError
 from src.services.brief_chat import (
     MAX_USER_TURNS_PER_ANALYSIS,
     BriefChatClient,
@@ -318,6 +320,60 @@ async def test_get_messages_lists_history_in_order(db_conn: AsyncConnection) -> 
     assert [row["role"] for row in body] == ["user", "assistant"]
     assert body[0]["content"] == "Q1?"
     assert body[1]["content"] == "A1"
+
+
+@pytest.mark.asyncio
+async def test_post_message_anthropic_billing_failure_returns_clean_error_and_alerts(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 143: this LLM call runs in-request, so a day-time Anthropic outage
+    (the 2026-07-20/21 credit freeze) used to propagate to a bare 500 whose
+    plain-text body the web client couldn't parse. It now returns an honest,
+    retryable JSON error (503, not 500), persists no half-written turn, and routes
+    a billing outage through the same admin alert as the morning brief (141)."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        analysis = await _make_analysis(session, user.id)
+
+    async def _raise_billing(*args: object, **kwargs: object) -> str:
+        raise AnthropicApiError("Your credit balance is too low", reason="billing", status_code=400)
+
+    alert = AsyncMock(return_value=True)
+
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        with (
+            patch(
+                "src.services.brief_chat.AnthropicBriefChatClient.generate",
+                _raise_billing,
+            ),
+            patch(
+                "src.routers.brief_chat.NudgeAlertService.notify_admin_generation_failure",
+                alert,
+            ),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                response = await client.post(
+                    f"/api/v1/briefs/{analysis.id}/messages",
+                    json={"question": "Why is today Green?"},
+                )
+    finally:
+        app.dependency_overrides.clear()
+
+    # Honest, retryable, and JSON — never a bare 500 with a non-JSON body.
+    assert response.status_code == 503, response.text
+    assert "try again" in response.json()["detail"].lower()
+    # The billing outage alerts the operator exactly once (Batch 141 path).
+    alert.assert_awaited_once()
+    assert alert.await_args.kwargs["reason"] == "billing"
+    # No half-written turn is persisted on failure.
+    async with session_factory() as session:
+        count = await session.scalar(select(func.count()).select_from(BriefMessage))
+        assert count == 0
 
 
 @pytest.mark.asyncio

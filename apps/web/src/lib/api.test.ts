@@ -63,4 +63,23 @@ describe('apiFetch', () => {
       'durationScalePct: Input should be less than or equal to 125; intensityScalePct: Input should be less than or equal to 120',
     );
   });
+
+  it('falls back to a clean "API error {status}" for a non-JSON error body', async () => {
+    // Batch 143: a day-time Anthropic outage reached the client as a bare 500
+    // with a plain-text "Internal Server Error" body. Parsing it threw a
+    // SyntaxError we used to re-throw verbatim ("Unexpected token 'I'…").
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 500,
+        json: async () => {
+          throw new SyntaxError('Unexpected token \'I\', "Internal S"... is not valid JSON');
+        },
+      })),
+    );
+
+    await expect(apiFetch('/api/v1/example')).rejects.toThrow('API error 500');
+    await expect(apiFetch('/api/v1/example')).rejects.not.toThrow('Unexpected token');
+  });
 });
