@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from time import perf_counter
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import CurrentUser
+from src.config import settings
 from src.database import AsyncSessionLocal, get_db
 from src.models.coaching import (
     Activity,
@@ -28,7 +29,11 @@ from src.models.profile import Profile
 from src.routers.feedback import FeedbackOut, serialize_feedback
 from src.services.anthropic_text import AnthropicApiError, anthropic_user_message
 from src.services.breathwork_brief import BreathworkBriefResult
-from src.services.brief_generation_status import BriefGenerationStatusService
+from src.services.brief_generation_status import (
+    STATUS_FAILED,
+    STATUS_GENERATING,
+    BriefGenerationStatusService,
+)
 from src.services.chronic_patterns import ChronicPatternSuggestionService
 from src.services.daily_loop import DailyLoopService, DeliveryState
 from src.services.dreo_fan import (
@@ -1197,15 +1202,43 @@ async def _sleep_projection(
     )
 
 
+#: Batch 144: classified ``reason`` for a ``generating`` row that was never flipped
+#: to ready/failed by its background task — an orphaned generation (process restart
+#: or a hung Anthropic call) resolved at read time rather than a clean failure.
+STALE_GENERATING_REASON = "stale"
+
+
+def _is_stale_generating(row: BriefGenerationStatus, *, now: datetime | None = None) -> bool:
+    """Batch 144: has a ``generating`` row sat past the staleness threshold?
+
+    ``updated_at`` is stamped on every ``mark_*`` (so it tracks when the row was
+    last moved to ``generating``); a naive UTC datetime, matching ``now``.
+    """
+    current = now if now is not None else datetime.now(UTC).replace(tzinfo=None)
+    threshold = timedelta(minutes=settings.brief_generation_stale_after_minutes)
+    return current - row.updated_at > threshold
+
+
 def _serialize_brief_generation(
-    row: BriefGenerationStatus | None, *, has_analysis: bool
+    row: BriefGenerationStatus | None,
+    *,
+    has_analysis: bool,
+    now: datetime | None = None,
 ) -> BriefGenerationStatusOut | None:
     """Batch 141: a real brief on the day is authoritative — a stale
-    ``generating`` / ``failed`` row never overrides an analysis that exists."""
+    ``generating`` / ``failed`` row never overrides an analysis that exists.
+
+    Batch 144: a ``generating`` row orphaned by a process restart or a hung
+    Anthropic call is never flipped to ready/failed, so without this it reads
+    ``generating`` forever (the 2026-07-21 endless-spinner class). Once it is older
+    than the threshold, derive a retryable ``failed``/``stale`` state — read-time
+    only, no writer/migration/scheduler (Decision #223)."""
     if has_analysis:
         return BriefGenerationStatusOut(status="ready", reason=None)
     if row is None:
         return None
+    if row.status == STATUS_GENERATING and _is_stale_generating(row, now=now):
+        return BriefGenerationStatusOut(status=STATUS_FAILED, reason=STALE_GENERATING_REASON)
     return BriefGenerationStatusOut(status=row.status, reason=row.reason)
 
 

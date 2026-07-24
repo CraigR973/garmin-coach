@@ -58,6 +58,14 @@ class Settings(BaseSettings):
     # app ``admin`` role — the primary user holds that role, and an ops alert must
     # never land on his phone. Set this to Craig's own seeded profile id in prod.
     admin_alert_user_id: str = ""
+    # Batch 144: how long a brief-generation status row may sit at ``generating``
+    # before the daily-loop envelope treats it as a ``failed``/``stale`` generation.
+    # A task orphaned by a process restart or a hung Anthropic call never flips the
+    # row to ready/failed, so without this it reads ``generating`` forever (the
+    # 2026-07-21 90-minute-spinner class). Read-time derivation only — no writer, no
+    # migration, no scheduler (Decision #223). Also mirrored by the web client's
+    # max-wait cap. Normal generation completes in well under 2 minutes.
+    brief_generation_stale_after_minutes: int = 12
     # Hosted read-aloud voice (Batch 116, opt-in; self-hosted via Piper as of
     # DECISIONS #190). A missing model file means the hosted path is
     # unavailable regardless of a user's consent flag — the frontend falls
