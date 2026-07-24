@@ -1925,7 +1925,7 @@ function RideCheckIn({
       onSave={(next) =>
         handlers.onSave({
           activityId,
-          subjectiveScore: next.subjectiveScore ? Number(next.subjectiveScore) : null,
+          subjectiveScore: next.subjectiveScore === '' ? null : Number(next.subjectiveScore),
           rpe: next.rpe ? Number(next.rpe) : null,
           feel: next.feel || null,
           notes: next.notes || null,
@@ -2038,7 +2038,7 @@ function CompletedRideLogForm({
         handlers.onSave({
           workoutId,
           activityId,
-          subjectiveScore: next.subjectiveScore ? Number(next.subjectiveScore) : null,
+          subjectiveScore: next.subjectiveScore === '' ? null : Number(next.subjectiveScore),
           rpe: next.rpe ? Number(next.rpe) : null,
           feel: next.feel || null,
           notes: next.notes || null,

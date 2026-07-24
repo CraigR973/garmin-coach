@@ -165,7 +165,7 @@ export const manualEntrySchema = z.object({
   entryAtUtc: isoDateTimeSchema,
   bpSystolic: z.number().int().nullable().optional(),
   bpDiastolic: z.number().int().nullable().optional(),
-  subjectiveScore: z.number().int().min(1).max(10).nullable().optional(),
+  subjectiveScore: z.number().int().min(0).max(10).nullable().optional(),
   rpe: z.number().min(0).max(10).nullable().optional(),
   feel: z.string().nullable().optional(),
   adherenceStatus: z.enum(['completed', 'modified', 'skipped']).nullable().optional(),
@@ -178,7 +178,7 @@ export const manualEntrySchema = z.object({
 export const manualEntryInputSchema = z.object({
   bpSystolic: z.number().int().positive().nullable().optional(),
   bpDiastolic: z.number().int().positive().nullable().optional(),
-  subjectiveScore: z.number().int().min(1).max(10).nullable().optional(),
+  subjectiveScore: z.number().int().min(0).max(10).nullable().optional(),
   rpe: z.number().min(0).max(10).nullable().optional(),
   feel: z.string().max(80).nullable().optional(),
   supplementsJson: jsonObjectSchema.default({}),
@@ -197,7 +197,7 @@ export const plannedWorkoutAdherenceInputSchema = z.object({
 });
 
 export const postRideCheckInInputSchema = z.object({
-  subjectiveScore: z.number().int().min(1).max(10).nullable().optional(),
+  subjectiveScore: z.number().int().min(0).max(10).nullable().optional(),
   rpe: z.number().min(0).max(10).nullable().optional(),
   feel: z.string().max(80).nullable().optional(),
   notes: z.string().nullable().optional(),

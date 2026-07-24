@@ -167,6 +167,43 @@ def test_normal_training_day_plan_guidance_is_unchanged() -> None:
     ]
 
 
+def test_subjective_score_boundary_stays_at_five() -> None:
+    user_id = uuid.uuid4()
+    base_kwargs = {
+        "daily_metric": None,
+        "sleep": None,
+        "age_adjusted_sleep_score": 78,
+        "planned_workouts": [],
+    }
+
+    amber = _morning_verdict(
+        **base_kwargs,
+        manual_entries=[
+            ManualEntry(
+                user_id=user_id,
+                entry_date=date(2026, 7, 24),
+                entry_at_utc=datetime(2026, 7, 24, 7, 0),
+                subjective_score=4,
+            )
+        ],
+    )
+    green = _morning_verdict(
+        **base_kwargs,
+        manual_entries=[
+            ManualEntry(
+                user_id=user_id,
+                entry_date=date(2026, 7, 24),
+                entry_at_utc=datetime(2026, 7, 24, 7, 5),
+                subjective_score=5,
+            )
+        ],
+    )
+
+    assert amber["status"] == "Amber"
+    assert "Subjective score is below 5." in amber["reasons"]
+    assert green["status"] == "Green"
+
+
 @pytest.mark.asyncio
 async def test_generate_and_store_morning_analysis_packet_and_output(
     db_conn: AsyncConnection,
@@ -933,6 +970,7 @@ def test_subjective_score_label_speaks_marks_checkin_word() -> None:
     assert subjective_score_label(10) == "Great"
     assert subjective_score_label(5) == "Meh"  # off-scale → nearest band
     assert subjective_score_label(7) == "OK"
+    assert subjective_score_label(0) == "Rough"
     assert subjective_score_label(None) is None
 
 
