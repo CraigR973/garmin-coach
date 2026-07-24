@@ -3,11 +3,25 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   coachingStateEnvelopeSchema,
   coachingStateSchema,
+  conversationLearningEnvelopeSchema,
+  conversationLearningReviewInputSchema,
   knowledgeBaseUpdateInputSchema,
   plannedWorkoutOverrideInputSchema,
 } from '@coach/shared';
 import { toast } from 'sonner';
-import { CalendarRange, ChevronDown, ChevronUp, ClipboardList, FileJson, History, Save } from 'lucide-react';
+import {
+  Brain,
+  CalendarRange,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  ClipboardList,
+  FileJson,
+  History,
+  Save,
+  Sparkles,
+  X,
+} from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import { Tabs } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,11 +34,14 @@ import { cn } from '@/lib/utils';
 
 type CoachingState = typeof coachingStateSchema._type;
 type KnowledgeBaseSection = CoachingState['knowledgeBaseSections'][number];
+type LearningEnvelope = typeof conversationLearningEnvelopeSchema._type;
+type LearningProposal = LearningEnvelope['data']['proposals'][number];
 type SectionContent = Record<string, unknown>;
 type EditorTab = 'knowledge' | 'plan';
 
 const READ_QUERY_KEY = ['coach-memory'];
 const ADMIN_QUERY_KEY = ['coach-memory-admin'];
+const LEARNING_QUERY_KEY = ['coach-memory-learning'];
 
 const SECTION_ORDER = [
   'profile',
@@ -35,6 +52,7 @@ const SECTION_ORDER = [
   'training_schedule',
   'active_hypotheses',
   'coaching_protocol',
+  'learned_context',
 ] as const;
 
 const TAB_ITEMS = [
@@ -83,12 +101,18 @@ async function fetchAdminCoachingState() {
   return coachingStateEnvelopeSchema.parse(response);
 }
 
+async function fetchConversationLearning() {
+  const response = await apiFetch<unknown>('/api/v1/coach-memory/learning');
+  return conversationLearningEnvelopeSchema.parse(response);
+}
+
 export function CoachStatePage() {
   const { player } = useAuth();
   const queryClient = useQueryClient();
   const [showAdminTools, setShowAdminTools] = useState(false);
   const [tab, setTab] = useState<EditorTab>('knowledge');
   const [sectionDrafts, setSectionDrafts] = useState<Record<string, string>>({});
+  const [learningDrafts, setLearningDrafts] = useState<Record<string, string>>({});
   const [selectedDate, setSelectedDate] = useState('');
   const [workoutForm, setWorkoutForm] = useState({
     planBlockId: '',
@@ -112,6 +136,11 @@ export function CoachStatePage() {
     enabled: player?.role === 'admin' && showAdminTools,
   });
 
+  const learningQuery = useQuery({
+    queryKey: LEARNING_QUERY_KEY,
+    queryFn: fetchConversationLearning,
+  });
+
   const readActiveSections = useMemo(() => {
     const sections = readQuery.data?.data.knowledgeBaseSections ?? [];
     return SECTION_ORDER.map((section) => sections.find((entry) => entry.section === section && entry.isActive)).filter(
@@ -131,6 +160,7 @@ export function CoachStatePage() {
   const trainingSchedule = asRecord(readSectionsByName.training_schedule);
   const activeHypotheses = asRecord(readSectionsByName.active_hypotheses);
   const coachingProtocol = asRecord(readSectionsByName.coaching_protocol);
+  const learnedContext = asRecord(readSectionsByName.learned_context);
 
   const activeWorkouts = useMemo(
     () =>
@@ -175,6 +205,18 @@ export function CoachStatePage() {
     );
     setSectionDrafts(nextDrafts);
   }, [adminActiveSections]);
+
+  useEffect(() => {
+    const proposals = learningQuery.data?.data.proposals ?? [];
+    setLearningDrafts((current) => ({
+      ...current,
+      ...Object.fromEntries(
+        proposals
+          .filter((proposal) => proposal.status === 'pending' && current[proposal.id] === undefined)
+          .map((proposal) => [proposal.id, proposal.statement]),
+      ),
+    }));
+  }, [learningQuery.data]);
 
   useEffect(() => {
     if (!selectedDate && adminActiveWorkouts[0]) {
@@ -254,6 +296,57 @@ export function CoachStatePage() {
     },
   });
 
+  const distillLearningMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiFetch<unknown>('/api/v1/coach-memory/learning/distill', {
+        method: 'POST',
+      });
+      return conversationLearningEnvelopeSchema.parse(response);
+    },
+    onSuccess: async (response) => {
+      await queryClient.invalidateQueries({ queryKey: LEARNING_QUERY_KEY });
+      toast.success(
+        response.data.createdCount
+          ? `${response.data.createdCount} new memory ${response.data.createdCount === 1 ? 'proposal' : 'proposals'} to review`
+          : 'No new durable memory found',
+      );
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Could not review conversations');
+    },
+  });
+
+  const reviewLearningMutation = useMutation({
+    mutationFn: async ({
+      proposal,
+      decision,
+    }: {
+      proposal: LearningProposal;
+      decision: 'accept' | 'reject';
+    }) => {
+      const parsed = conversationLearningReviewInputSchema.parse({
+        decision,
+        statement: decision === 'accept' ? (learningDrafts[proposal.id] ?? proposal.statement) : null,
+      });
+      const response = await apiFetch<unknown>(`/api/v1/coach-memory/learning/${proposal.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(parsed),
+      });
+      return conversationLearningEnvelopeSchema.parse(response);
+    },
+    onSuccess: async (_response, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: LEARNING_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: READ_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: ADMIN_QUERY_KEY }),
+      ]);
+      toast.success(variables.decision === 'accept' ? 'Memory accepted' : 'Memory rejected');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Could not review memory');
+    },
+  });
+
   const profileFacts = [
     profile.athleteName ? `Name: ${profile.athleteName}` : null,
     profile.age ? `Age: ${profile.age}` : null,
@@ -314,6 +407,14 @@ export function CoachStatePage() {
   const cycleStructure = asStringArray(trainingPlan.cycleStructure);
   const trainingConstraints = asStringArray(trainingPlan.constraints);
   const swapFirstRule = valueText(asRecord(coachingProtocol.lowReadinessResponse).rule);
+  const learnedItems = Array.isArray(learnedContext.items)
+    ? learnedContext.items
+        .map((item) => asRecord(item))
+        .filter((item) => valueText(item.statement))
+    : [];
+  const pendingLearning = (learningQuery.data?.data.proposals ?? []).filter(
+    (proposal) => proposal.status === 'pending',
+  );
 
   if (readQuery.isLoading) {
     return (
@@ -380,6 +481,111 @@ export function CoachStatePage() {
               </span>
             ) : null}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Brain className="h-5 w-5 text-primary" aria-hidden />
+                Learned from conversations
+              </CardTitle>
+              <CardDescription className="mt-1">
+                The coach proposes standing facts and preferences from your chats and notes. Nothing is remembered
+                until you accept it, and learned memory can never change the verdict rules.
+              </CardDescription>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => distillLearningMutation.mutate()}
+              disabled={distillLearningMutation.isPending}
+            >
+              <Sparkles className="h-4 w-4" aria-hidden />
+              {distillLearningMutation.isPending ? 'Reviewing…' : 'Look for new memories'}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {learningQuery.isLoading ? (
+            <p className="text-sm text-text-secondary">Loading memory proposals…</p>
+          ) : learningQuery.isError ? (
+            <p className="text-sm text-text-secondary">
+              Memory proposals are unavailable. Your confirmed coach memory is unchanged.
+            </p>
+          ) : pendingLearning.length ? (
+            <div className="space-y-4" aria-label="Memory proposals awaiting review">
+              {pendingLearning.map((proposal) => (
+                <div key={proposal.id} className="space-y-3 rounded-lg border border-border bg-bg/60 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                      {sectionLabel(proposal.kind)}
+                    </span>
+                    <span className="text-xs text-text-secondary">Waiting for confirmation</span>
+                  </div>
+                  <textarea
+                    aria-label={`Edit proposed memory: ${proposal.statement}`}
+                    value={learningDrafts[proposal.id] ?? proposal.statement}
+                    onChange={(event) =>
+                      setLearningDrafts((current) => ({ ...current, [proposal.id]: event.target.value }))
+                    }
+                    className="min-h-[88px] w-full rounded-md border border-border bg-surface px-3 py-3 text-sm text-text-primary focus-visible:outline-none focus-visible:shadow-glow"
+                    maxLength={500}
+                  />
+                  <div className="space-y-1 text-xs text-text-secondary">
+                    {proposal.evidence.map((evidence) => (
+                      <p key={`${proposal.id}-${evidence.sourceId}`}>
+                        {evidence.sourceDate} · “{evidence.quote}”
+                      </p>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      onClick={() => reviewLearningMutation.mutate({ proposal, decision: 'accept' })}
+                      disabled={
+                        reviewLearningMutation.isPending ||
+                        !(learningDrafts[proposal.id] ?? proposal.statement).trim()
+                      }
+                    >
+                      <Check className="h-4 w-4" aria-hidden />
+                      Accept memory
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => reviewLearningMutation.mutate({ proposal, decision: 'reject' })}
+                      disabled={reviewLearningMutation.isPending}
+                    >
+                      <X className="h-4 w-4" aria-hidden />
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-text-secondary">No memory proposals are waiting for review.</p>
+          )}
+
+          {learnedItems.length ? (
+            <div className="space-y-3 border-t border-border pt-5">
+              <p className="text-sm font-semibold text-text-primary">Confirmed memory</p>
+              {learnedItems.map((item) => (
+                <div
+                  key={valueText(item.id) ?? valueText(item.statement)}
+                  className="rounded-lg border border-border bg-bg/60 p-4"
+                >
+                  <p className="text-sm text-text-primary">{valueText(item.statement)}</p>
+                  {valueText(item.kind) ? (
+                    <p className="mt-1 text-xs text-text-secondary">{sectionLabel(valueText(item.kind) ?? '')}</p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 

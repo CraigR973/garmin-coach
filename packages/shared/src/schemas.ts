@@ -288,6 +288,7 @@ export const knowledgeBaseSectionSchema = z.enum([
   'active_hypotheses',
   'coaching_protocol',
   'analysis_rules',
+  'learned_context',
 ]);
 
 export const knowledgeBaseSchema = z.object({
@@ -321,6 +322,48 @@ export const coachingStateEnvelopeSchema = z.object({
   data: coachingStateSchema,
   meta: apiMetaSchema,
   errors: z.array(apiErrorSchema),
+});
+
+export const conversationLearningKindSchema = z.enum([
+  'fact',
+  'preference',
+  'terminology',
+  'recurring_theme',
+]);
+
+export const conversationLearningEvidenceSchema = z.object({
+  sourceId: z.string().min(1),
+  sourceType: z.enum(['chat', 'checkin_note', 'correction']),
+  sourceDate: isoDateSchema,
+  analysisId: z.string().uuid().nullable(),
+  analysisType: z.string().nullable(),
+  quote: z.string().min(1),
+});
+
+export const conversationLearningProposalSchema = z.object({
+  id: z.string().uuid(),
+  kind: conversationLearningKindSchema,
+  destination: z.literal('learned_context'),
+  statement: z.string().min(5).max(500),
+  evidence: z.array(conversationLearningEvidenceSchema).min(1),
+  status: z.enum(['pending', 'accepted', 'rejected']),
+  reviewedStatement: z.string().nullable(),
+  reviewedAtUtc: isoDateTimeSchema.nullable(),
+  createdAtUtc: isoDateTimeSchema,
+});
+
+export const conversationLearningEnvelopeSchema = z.object({
+  data: z.object({
+    proposals: z.array(conversationLearningProposalSchema),
+    createdCount: z.number().int().nonnegative().default(0),
+  }),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
+
+export const conversationLearningReviewInputSchema = z.object({
+  decision: z.enum(['accept', 'reject']),
+  statement: z.string().min(5).max(500).nullable().optional(),
 });
 
 export const knowledgeBaseUpdateInputSchema = z.object({

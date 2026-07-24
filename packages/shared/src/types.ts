@@ -9,6 +9,9 @@ import {
   briefMessageRoleSchema,
   briefMessageSchema,
   briefMessageTurnSchema,
+  conversationLearningEvidenceSchema,
+  conversationLearningKindSchema,
+  conversationLearningProposalSchema,
   dailyMetricSchema,
   experimentSchema,
   feedbackInputSchema,
@@ -51,6 +54,9 @@ export type BriefMessageRole = z.infer<typeof briefMessageRoleSchema>;
 export type BriefMessage = z.infer<typeof briefMessageSchema>;
 export type BriefMessageInput = z.infer<typeof briefMessageInputSchema>;
 export type BriefMessageTurn = z.infer<typeof briefMessageTurnSchema>;
+export type ConversationLearningKind = z.infer<typeof conversationLearningKindSchema>;
+export type ConversationLearningEvidence = z.infer<typeof conversationLearningEvidenceSchema>;
+export type ConversationLearningProposal = z.infer<typeof conversationLearningProposalSchema>;
 export type Experiment = z.infer<typeof experimentSchema>;
 export type KnowledgeBase = z.infer<typeof knowledgeBaseSchema>;
 export type BlockProgressionProposal = z.infer<typeof blockProgressionProposalSchema>;

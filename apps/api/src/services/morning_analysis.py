@@ -38,6 +38,7 @@ from src.services.holiday_pause import (
     HolidayWindow,
     holiday_windows_covering_date,
 )
+from src.services.learned_context import learned_context_packet
 from src.services.personal_baselines import (
     baseline_band_packet,
     baseline_center,
@@ -396,6 +397,7 @@ class MorningAnalysisService:
                 "sleepProtocol": knowledge_base.get("sleep_protocol", {}),
                 "trainingSchedule": training_schedule,
                 "activeHypotheses": knowledge_base.get("active_hypotheses", {}),
+                "learnedContext": learned_context_packet(knowledge_base),
             },
             "dailyMetrics": _daily_metric_packet(daily_metric),
             "sleep": _sleep_packet(sleep, age_adjusted_sleep_score, player.timezone),

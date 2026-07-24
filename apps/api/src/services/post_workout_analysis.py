@@ -28,6 +28,7 @@ from src.models.profile import Profile
 from src.services.anthropic_text import generate_anthropic_text
 from src.services.coaching_state import CoachingStateService
 from src.services.feedback import FeedbackService
+from src.services.learned_context import learned_context_packet
 from src.services.ride_intervals import (
     power_zone,
     segment_ride_intervals,
@@ -339,6 +340,7 @@ class PostWorkoutAnalysisService:
                 "dataQualityGuardrails": _data_quality_guardrails(knowledge_base),
                 "trainingPlan": knowledge_base.get("training_plan", {}),
                 "analysisRules": _analysis_rules(knowledge_base),
+                "learnedContext": learned_context_packet(knowledge_base),
             },
             "activity": _activity_packet(activity),
             "timeSeriesSummary": time_series_summary,

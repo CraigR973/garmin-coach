@@ -4,6 +4,8 @@ import {
   activityTimeSeriesSchema,
   ageComparisonRowSchema,
   coachingStateEnvelopeSchema,
+  conversationLearningEnvelopeSchema,
+  conversationLearningReviewInputSchema,
   dailyLoopAnalysisSchema,
   dailyLoopEnvelopeSchema,
   dailyLoopPostWorkoutAnalysisSchema,
@@ -548,6 +550,51 @@ describe('v1 shared schemas', () => {
 
     expect(kb.content.bedtime).toBe('23:15');
     expect(workout.structuredWorkout.steps).toHaveLength(1);
+  });
+
+  it('parses confirm-before-apply conversation learning proposals', () => {
+    const parsed = conversationLearningEnvelopeSchema.parse({
+      data: {
+        createdCount: 1,
+        proposals: [
+          {
+            id: rowId,
+            kind: 'preference',
+            destination: 'learned_context',
+            statement: 'Mark prefers riding after breakfast.',
+            evidence: [
+              {
+                sourceId: 'chat:abc',
+                sourceType: 'chat',
+                sourceDate: '2026-07-24',
+                analysisId: userId,
+                analysisType: 'morning',
+                quote: 'I always prefer riding after breakfast',
+              },
+            ],
+            status: 'pending',
+            reviewedStatement: null,
+            reviewedAtUtc: null,
+            createdAtUtc: '2026-07-24T12:00:00Z',
+          },
+        ],
+      },
+      meta: { generatedAtUtc: '2026-07-24T12:00:00Z' },
+      errors: [],
+    });
+    const review = conversationLearningReviewInputSchema.parse({
+      decision: 'accept',
+      statement: 'Mark prefers riding after breakfast.',
+    });
+
+    expect(parsed.data.proposals[0]?.destination).toBe('learned_context');
+    expect(review.decision).toBe('accept');
+    expect(() =>
+      conversationLearningReviewInputSchema.parse({
+        decision: 'auto_apply',
+        statement: 'Change the verdict.',
+      }),
+    ).toThrow();
   });
 
   it('parses a swap-first suggestion and keeps it optional on the analysis (Batch 66)', () => {

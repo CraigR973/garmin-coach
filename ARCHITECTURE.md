@@ -149,6 +149,7 @@ Editable structured state fed into every analysis. Source: his handover doc (see
 memory `reference_garmin_app_handover`). Includes:
 
 - **Mark-facing Coach memory read:** the retained context is no longer only an internal admin editor; authenticated users can open a plain-language "Coach memory" view of their own stored context, while the raw JSON / plan-override tools remain admin-only on the same route (Batch 124 / DECISIONS #202).
+- **Confirmed conversational memory:** Batch 151 adds an on-demand distillation pass over the last 30 days of user-authored follow-up chat, check-in/post-workout notes, and corrections. Strict typed extraction plus a code-side durable/transient and coaching-integrity filter produces pending proposals only. Mark/Craig edit, accept, or reject them in Coach memory; only accepted items version the `learned_context` KB section. Packets expose that section with `classificationImpact: none`, so it can personalise narrative but cannot alter verdicts, thresholds, data-quality rules, or objective metrics (DECISIONS #231).
 
 - **Profile:** age 57, FTP 280W, VO2max 54, HRV band 43–57ms, RHR 45, BP ~108/68, fitness age 48.
 - **Data-quality rules (AI MUST obey):** never reference L/R power balance (single-sided meter, doubled); SpO2/HRV reliable only from 11 Jun (strap re-tightened); exclude wrist-HR strength sessions from recovery; ignore the constant/broken "Duration" column in his Excel export.
@@ -233,6 +234,12 @@ staleness/regeneration path reruns it instead. No prompt or verdict change.
   keyed by user+date: Garmin workout/schedule ids, uploaded payload, IR snapshot,
   status + `last_error` — Batch 78, kept separate from the intervals rail)
 - `analyses` (stored Claude outputs) · `experiments` (tracked hypotheses) · `knowledge_base`
+- `conversation_learning_proposals` (migration `021`, Batch 151): user-scoped,
+  RLS-enabled pending/accepted/rejected memory candidates with kind, proposed
+  statement, source/date/analysis evidence, deduplication fingerprint, and
+  explicit reviewer/timestamp. Pending/rejected rows never enter analysis
+  packets; acceptance copies the reviewed statement into a new active version
+  of `knowledge_base.section='learned_context'`
 - `brief_generation_status` (per-`(user, subject_date)` morning-brief generation state — `generating`/`ready`/`failed` + a classified `reason` such as `billing`; migration `020`, Batch 141) surfaced on the daily-loop envelope so a failed generation resolves to a retryable error instead of an endless "Writing your brief" spinner, and a billing-classed failure alerts the operator (DECISIONS #220). Batch 144: a `generating` row orphaned past `settings.brief_generation_stale_after_minutes` (default 12 min) reads as `failed`/`stale` at envelope-serialization time — a read-time derivation off `updated_at`, no writer/migration/scheduler — with a mirrored 12-min client max-wait cap, so a stuck/orphaned generation can never spin forever (DECISIONS #223)
 
 Seed `sleep`/`daily_metrics` with his **84-night backfill** (`12 Weeks Sleep Data` xlsx, 24 Mar–15 Jun; trust all cols except Duration).
@@ -250,7 +257,7 @@ added to it, and the v1 domain tables live beside it. Data-shape evidence is in
 
 **v3 — long game:** strength watching-brief; hypothesis tracking; weekly/monthly deep reviews; year-on-year/seasonal; auto-generated handover-doc export.
 
-**Confirmed requirement (2026-07-24) — conversational learning:** distil durable facts / preferences / recurring themes out of Mark's conversations with the coach (the follow-up chat, check-in + post-workout notes, corrections) into the persistent, editable knowledge base — so the "living handover doc" grows from dialogue and never re-forgets context, instead of each exchange being thrown away. This completes the product thesis and goes beyond today's two adjacent loops (brief chat learns nothing durable; corrections feed the next packet forward only). **Extract-and-confirm, never a verdict lever** — Green/Amber/Red stay data-grounded (#133/#135, Red-never-VO2), guarding against the sycophancy/gaming risk the coaching-integrity audit flagged. Recorded as **DECISIONS #228**; **Batch 150 shipped** the post-workout follow-up chat rail, and **Batch 151 remains planned** for learn-from-any-chat — see "Post-roadmap — 2026-07-24 — Conversational learning batch plan" in `docs/phase-batches.md`.
+**Conversational learning (2026-07-24):** distil durable facts / preferences / recurring themes out of Mark's conversations with the coach (follow-up chat, check-in + post-workout notes, corrections) into the persistent, editable knowledge base — so the "living handover doc" grows from dialogue and never re-forgets context. **Extract-and-confirm, never a verdict lever:** Green/Amber/Red stay data-grounded (#133/#135, Red-never-VO2). Batch 150 shipped the post-workout chat signal; Batch 151 is implementation-ready with an explicit Coach-memory trigger, strict typed extraction, deterministic durable/transient + sycophancy/data-quality filtering, RLS-backed pending proposals, and confirmed-only `learned_context` versioning (DECISIONS #228/#231). The learned packet contract is context-only and cannot change verdicts, thresholds, data-quality rules, or objective metrics.
 ## 7. Phase 0 status (live state in `STATUS.md`)
 
 - [x] Repo seeded from WC2026 infra + cross-tool structure

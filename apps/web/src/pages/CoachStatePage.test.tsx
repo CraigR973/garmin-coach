@@ -164,6 +164,36 @@ const coachMemoryResponse = {
   errors: [],
 };
 
+const learningResponse = {
+  data: {
+    createdCount: 0,
+    proposals: [
+      {
+        id: '99999999-9999-4999-8999-999999999999',
+        kind: 'preference',
+        destination: 'learned_context',
+        statement: 'Mark prefers riding after breakfast.',
+        evidence: [
+          {
+            sourceId: 'chat:abc',
+            sourceType: 'chat',
+            sourceDate: '2026-07-24',
+            analysisId: '11111111-1111-4111-8111-111111111111',
+            analysisType: 'morning',
+            quote: 'I always prefer riding after breakfast',
+          },
+        ],
+        status: 'pending',
+        reviewedStatement: null,
+        reviewedAtUtc: null,
+        createdAtUtc: '2026-07-24T12:00:00Z',
+      },
+    ],
+  },
+  meta: { generatedAtUtc: '2026-07-24T12:00:00Z' },
+  errors: [],
+};
+
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
@@ -190,7 +220,11 @@ describe('CoachStatePage', () => {
         timezone: 'Europe/London',
       },
     });
-    apiFetchMock.mockResolvedValue(coachMemoryResponse);
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/api/v1/coach-memory') return Promise.resolve(coachMemoryResponse);
+      if (path === '/api/v1/coach-memory/learning') return Promise.resolve(learningResponse);
+      throw new Error(`Unexpected path ${path}`);
+    });
 
     renderPage();
 
@@ -218,6 +252,7 @@ describe('CoachStatePage', () => {
     });
     apiFetchMock.mockImplementation((path: string) => {
       if (path === '/api/v1/coach-memory') return Promise.resolve(coachMemoryResponse);
+      if (path === '/api/v1/coach-memory/learning') return Promise.resolve(learningResponse);
       if (path === '/api/v1/admin/coaching-state') return Promise.resolve(coachMemoryResponse);
       throw new Error(`Unexpected path ${path}`);
     });
@@ -233,6 +268,53 @@ describe('CoachStatePage', () => {
     expect(await screen.findByLabelText('Profile JSON editor')).toBeTruthy();
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/admin/coaching-state');
+    });
+  });
+
+  it('lets Mark edit and confirm a proposed memory before it is applied', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({
+      player: {
+        id: '11111111-1111-4111-8111-111111111111',
+        displayName: 'Mark',
+        role: 'player',
+        timezone: 'Europe/London',
+      },
+    });
+    apiFetchMock.mockImplementation((path: string, options?: RequestInit) => {
+      if (path === '/api/v1/coach-memory') return Promise.resolve(coachMemoryResponse);
+      if (path === '/api/v1/coach-memory/learning') return Promise.resolve(learningResponse);
+      if (
+        path === '/api/v1/coach-memory/learning/99999999-9999-4999-8999-999999999999' &&
+        options?.method === 'PATCH'
+      ) {
+        return Promise.resolve({
+          ...learningResponse,
+          data: { createdCount: 0, proposals: [] },
+        });
+      }
+      throw new Error(`Unexpected path ${path}`);
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('Learned from conversations')).toBeTruthy();
+    const editor = await screen.findByLabelText(/edit proposed memory/i);
+    await user.clear(editor);
+    await user.type(editor, 'Mark prefers training after breakfast.');
+    await user.click(screen.getByRole('button', { name: /accept memory/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/coach-memory/learning/99999999-9999-4999-8999-999999999999',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({
+            decision: 'accept',
+            statement: 'Mark prefers training after breakfast.',
+          }),
+        }),
+      );
     });
   });
 });

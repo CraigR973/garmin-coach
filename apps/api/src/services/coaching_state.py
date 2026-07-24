@@ -130,6 +130,10 @@ def _coaching_protocol_content() -> dict[str, Any]:
     }
 
 
+def _learned_context_content() -> dict[str, Any]:
+    return {"items": []}
+
+
 def _training_plan_content(cycle_start: date) -> dict[str, Any]:
     return {
         "framework": "13-week 2121",
@@ -203,6 +207,7 @@ KB_SECTION_BUILDERS: dict[str, Any] = {
     "training_schedule": _training_schedule_content,
     "active_hypotheses": _active_hypotheses_content,
     "coaching_protocol": _coaching_protocol_content,
+    "learned_context": _learned_context_content,
 }
 
 
