@@ -12,6 +12,31 @@ against the read Copilot gives him and named a real accuracy bug in plain Englis
 
 Decision number assigned at `/batch-start` (next free **#114**).
 
+## Batch 145 correction — executed boundaries, not the planned clock
+
+The original Batch 44 design assumed a structured Zwift ride would track the
+planned IR clock. Mark's 2026-07-23 ride disproved that assumption: he executed
+2×15 minutes instead of the planned 2×25, so the first planned work window swept
+in the recovery valley and diluted a true ~250 W effort to 226–232 W.
+
+Batch 145 checked both the canonical Garmin JSON and the affected live activity.
+Activity summaries hold only `lapCount`; the separate splits endpoint holds
+timestamped `lapDTOs`, but Garmin/Zwift supplied exactly **one whole-ride lap** for
+both controlled workouts. Therefore the implementation uses a three-level,
+fail-closed boundary policy:
+
+1. credible Garmin laps matching the planned step sequence;
+2. a 5-second target-power dynamic-time-warp alignment when it fits within
+   8 %FTP RMSE and materially improves on the planned clock;
+3. the original planned-duration windows.
+
+Cycling sync stores the raw splits response inside the existing
+`activities.raw_summary` JSONB, so no migration is needed. The trace alignment
+does not make a free-ride interval detector: it requires a known structured IR
+and FTP, and a noisy/non-matching trace is rejected back to the planned clock.
+The packet records `boundarySource` and an explanatory note so the model can say
+which evidence underpins the grade. See DECISIONS #224.
+
 This is the **first batch that goes *back into* the cycling `post_workout` packet**
 to enrich it, rather than forking a lean packet away from it (Batches 40–43 did the
 opposite — they gave *non-cycling* types their own packets *because* those types
@@ -151,9 +176,9 @@ interval structure for free rides is the job of the Garmin-splits enhancement be
   decimal precision is false precision and won't reproduce run-to-run. If a rating is
   added it should be a **coarse band**, not decimals — flagged as a settling question,
   not built by default.
-- **Algorithmic interval *detection*** from the raw power trace (changepoint detection)
-  — v1 aligns to the known plan; auto-detection is only relevant for free rides and is
-  deferred with the Garmin-splits enhancement.
+- **Algorithmic interval *detection* on a free ride.** Batch 145 adds only a
+  structured-plan alignment against the known target sequence; unconstrained
+  changepoint detection for a planless/free ride remains deferred.
 - **No change to the recovery decision** (`_recovery_decision_packet`) — rides still feed
   recovery exactly as today; this batch enriches the *narrative + grading*, not the
   Green/Amber/Red or ride-recovery gate.

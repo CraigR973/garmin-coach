@@ -182,6 +182,7 @@ class _StubGarmin:
     def __init__(self, summaries: list[dict[str, object]]) -> None:
         self._summaries = summaries
         self.detail_calls: list[int] = []
+        self.split_calls: list[int] = []
 
     def get_activities_by_date(self, _start: str, _end: str) -> list[dict[str, object]]:
         return self._summaries
@@ -189,6 +190,13 @@ class _StubGarmin:
     def get_activity_details(self, activity_id: int, **_kw: object) -> dict[str, object]:
         self.detail_calls.append(activity_id)
         return {"activityId": activity_id}
+
+    def get_activity_splits(self, activity_id: int) -> dict[str, object]:
+        self.split_calls.append(activity_id)
+        return {
+            "activityId": activity_id,
+            "lapDTOs": [{"lapIndex": 1, "elapsedDuration": 600}],
+        }
 
 
 def _client_with_stub(stub: _StubGarmin) -> GarminConnectClient:
@@ -219,6 +227,8 @@ def test_fetch_activity_payloads_filters_details_by_type() -> None:
     assert [s["activityId"] for s in payloads.summaries] == [1, 2, 3, 4]
     assert sorted(stub.detail_calls) == [1, 2]
     assert set(payloads.details_by_activity_id) == {1, 2}
+    assert stub.split_calls == [1]
+    assert set(payloads.splits_by_activity_id) == {1}
 
 
 def test_fetch_activity_payloads_default_fetches_all_details() -> None:
@@ -227,6 +237,7 @@ def test_fetch_activity_payloads_default_fetches_all_details() -> None:
 
     assert sorted(stub.detail_calls) == [1, 2, 3, 4]  # detail_types=None => all types
     assert set(payloads.details_by_activity_id) == {1, 2, 3, 4}
+    assert stub.split_calls == [1]
 
 
 def test_fetch_activity_payloads_skips_all_details_when_excluded() -> None:
@@ -236,7 +247,9 @@ def test_fetch_activity_payloads_skips_all_details_when_excluded() -> None:
     )
 
     assert stub.detail_calls == []  # include_details=False short-circuits the filter
+    assert stub.split_calls == []
     assert payloads.details_by_activity_id == {}
+    assert payloads.splits_by_activity_id == {}
     assert len(payloads.summaries) == 4  # summaries still returned
 
 
@@ -320,6 +333,12 @@ async def test_sync_activities_strips_raw_metrics_for_high_volume_types(
             {"activityId": 222, "activityType": {"typeKey": "road_biking"}},
         ],
         details_by_activity_id={111: details, 222: details},
+        splits_by_activity_id={
+            111: {
+                "activityId": 111,
+                "lapDTOs": [{"lapIndex": 1, "elapsedDuration": 600}],
+            }
+        },
     )
 
     async with session_factory() as session:
@@ -361,3 +380,53 @@ async def test_sync_activities_strips_raw_metrics_for_high_volume_types(
     assert by_type["road_biking"]
     assert all(r.raw_metrics != {} for r in by_type["road_biking"])
     assert by_type["road_biking"][0].raw_metrics["directPower"] == 200.0
+
+
+@pytest.mark.asyncio
+async def test_sync_activities_keeps_captured_splits_in_raw_summary(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    summary = {"activityId": 333, "activityType": {"typeKey": "indoor_cycling"}}
+    splits = {
+        "activityId": 333,
+        "lapDTOs": [
+            {"lapIndex": 1, "elapsedDuration": 600},
+            {"lapIndex": 2, "elapsedDuration": 900},
+        ],
+    }
+
+    async with session_factory() as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Lap Capture Test",
+                pin_hash="x" * 60,
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+        service = GarminSyncService(session)
+        await service.sync_activities(
+            user_id,
+            GarminActivityPayloads(
+                summaries=[summary],
+                splits_by_activity_id={333: splits},
+            ),
+            commit=False,
+        )
+        activity = await session.scalar(select(Activity).where(Activity.garmin_activity_id == 333))
+        assert activity is not None
+        assert activity.raw_summary["activitySplits"] == splits
+
+        # An optional splits-endpoint miss on a later poll must not erase the
+        # boundaries already captured.
+        await service.sync_activities(
+            user_id,
+            GarminActivityPayloads(summaries=[summary]),
+            commit=False,
+        )
+        assert activity.raw_summary["activitySplits"] == splits

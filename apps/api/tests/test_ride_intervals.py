@@ -99,6 +99,82 @@ def test_warmup_two_sweetspot_cooldown_grades_only_work() -> None:
         assert ungraded["adherence"] is None
         assert ungraded["fade"] is None
         assert ungraded["hrDriftPct"] is None
+    assert {item["boundarySource"] for item in intervals} == {"planned_durations"}
+
+
+def test_actual_laps_grade_shortened_erg_work_at_the_power_really_held() -> None:
+    ftp = 280
+    ir = _ir(
+        _step("Warm-up", "warmup", "ramp", 600, 55, 80),
+        _step("Sweet spot 1", "interval", "steady", 1500, 89, 89),
+        _step("Recovery", "interval", "steady", 180, 60, 60),
+        _step("Sweet spot 2", "interval", "steady", 1500, 89, 89),
+        _step("Cool-down", "cooldown", "ramp", 600, 70, 45),
+    )
+    # He executed 2×15 min at 250 W with a 5-min 170 W recovery, not the
+    # planned 2×25/3-min clock.
+    trace = _trace(
+        (600, 185, 120),
+        (900, 250, 150),
+        (300, 170, 125),
+        (900, 250, 151),
+        (600, 150, 115),
+    )
+    laps = [
+        {"lapIndex": 1, "elapsedDuration": 600},
+        {"lapIndex": 2, "elapsedDuration": 900},
+        {"lapIndex": 3, "elapsedDuration": 300},
+        {"lapIndex": 4, "elapsedDuration": 900},
+        {"lapIndex": 5, "elapsedDuration": 600},
+    ]
+
+    planned_clock = segment_ride_intervals(trace, ir, None)
+    actual = segment_ride_intervals(trace, ir, ftp, actual_laps=laps)
+
+    assert planned_clock[1]["avgPowerWatts"] != 250.0
+    assert [actual[index]["avgPowerWatts"] for index in (1, 3)] == [250.0, 250.0]
+    assert [actual[index]["durationSec"] for index in (1, 3)] == [900, 900]
+    assert [actual[index]["adherence"] for index in (1, 3)] == ["on", "on"]
+    assert {item["boundarySource"] for item in actual} == {"actual_laps"}
+
+
+def test_one_whole_ride_lap_uses_executed_trace_transitions() -> None:
+    ftp = 280
+    ir = _ir(
+        _step("Warm-up", "warmup", "ramp", 600, 55, 80),
+        _step("Sweet spot 1", "interval", "steady", 1500, 89, 89),
+        _step("Recovery", "interval", "steady", 180, 60, 60),
+        _step("Sweet spot 2", "interval", "steady", 1500, 89, 89),
+        _step("Cool-down", "cooldown", "ramp", 600, 70, 45),
+    )
+    trace = _trace(
+        (600, 185, 120),
+        (900, 250, 150),
+        (300, 170, 125),
+        (900, 250, 151),
+        (600, 150, 115),
+    )
+
+    intervals = segment_ride_intervals(
+        trace,
+        ir,
+        ftp,
+        actual_laps=[{"lapIndex": 1, "elapsedDuration": 3300}],
+    )
+
+    assert [intervals[index]["avgPowerWatts"] for index in (1, 3)] == [250.0, 250.0]
+    assert all(895 <= intervals[index]["durationSec"] <= 905 for index in (1, 3))
+    assert {item["boundarySource"] for item in intervals} == {"actual_trace"}
+
+
+def test_non_matching_trace_keeps_planned_duration_fallback() -> None:
+    ir = _ir(_step("Threshold", "interval", "steady", 600, 91, 91))
+    trace = _trace((300, 50, 110))
+
+    intervals = segment_ride_intervals(trace, ir, _FTP)
+
+    assert intervals[0]["durationSec"] == 600
+    assert intervals[0]["boundarySource"] == "planned_durations"
 
 
 def test_fading_work_interval_flags_fade_and_steady_does_not() -> None:
@@ -170,7 +246,12 @@ def test_classify_roles_uses_ramp_direction_without_phase_label() -> None:
 
 def test_summarize_execution_with_work_intervals() -> None:
     intervals: list[dict[str, Any]] = [
-        {"role": "warmup", "adherence": None, "fade": None},
+        {
+            "role": "warmup",
+            "adherence": None,
+            "fade": None,
+            "boundarySource": "actual_laps",
+        },
         {
             "role": "work",
             "adherence": "on",
@@ -181,6 +262,7 @@ def test_summarize_execution_with_work_intervals() -> None:
             "targetPctFtpHigh": 91,
             "pctFtp": 91.0,
             "normalizedPowerWatts": 250,
+            "boundarySource": "actual_laps",
         },
     ]
     execution = summarize_execution(intervals, whole_ride_avg_power_watts=180)
@@ -192,12 +274,15 @@ def test_summarize_execution_with_work_intervals() -> None:
     assert "context only" in execution["wholeRideContextNote"]
     assert "on target" in execution["summary"]
     assert "Sweet spot" in execution["workIntervals"][0]
+    assert execution["boundarySource"] == "actual_laps"
+    assert "executed lap boundaries" in execution["boundarySourceNote"]
 
 
 def test_summarize_execution_without_plan_omits_context_disclaimer() -> None:
     execution = summarize_execution([], whole_ride_avg_power_watts=210)
     assert execution["hasPlan"] is False
     assert execution["workIntervalCount"] == 0
+    assert execution["boundarySource"] == "none"
     # A free ride's whole-ride average is the real read, so it is not disclaimed.
     assert "wholeRideContextNote" not in execution
     assert execution["wholeRideAvgPowerWatts"] == 210
