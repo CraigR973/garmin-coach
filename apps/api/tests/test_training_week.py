@@ -265,22 +265,22 @@ async def test_service_joins_active_plan_audit_activity_and_match(
     )
 
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
-        session.add(
-            Profile(
-                id=user_id,
-                display_name="Training week test",
-                pin_hash="x" * 60,
-                role=UserRole.admin,
-                timezone="Europe/London",
-                is_active=True,
-            )
+        profile = Profile(
+            id=user_id,
+            display_name="Training week test",
+            pin_hash="x" * 60,
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
         )
+        session.add(profile)
+        # The fixture sets raw FK ids rather than ORM relationships, so make the
+        # profile row visible before flushing its dependent rows.
+        await session.flush()
         session.add_all([old_vo2, easy, moved_vo2, actual, move_audit, match])
         await session.commit()
-        player = await session.get(Profile, user_id)
-        assert player is not None
 
-        packet = await TrainingWeekService(session).build(player, as_of=SAT)
+        packet = await TrainingWeekService(session).build(profile, as_of=SAT)
 
     tuesday = _day(packet, TUE)
     assert tuesday["changes"][0]["workout"]["title"] == "VO2 Max"
