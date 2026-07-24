@@ -552,7 +552,7 @@ async def test_context_packet_grades_work_intervals_for_structured_ride(
         assert execution["hasPlan"] is True
         assert execution["workIntervalCount"] == 1
         assert "wholeRideContextNote" in execution
-        assert execution["boundarySource"] == "actual_laps"
+        assert execution["boundarySource"] == "planned_durations"
 
         # The whole-ride average is kept as CONTEXT, not removed.
         assert packet["activity"]["avgPowerWatts"] == 205
