@@ -349,6 +349,13 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
         assert packet["verdict"]["status"] == "Amber"
         assert packet["verdict"]["readinessInterpretation"] is None
         assert packet["verdict"]["hasVo2WorkoutToday"] is True
+        assert packet["trainingWeekSoFar"]["window"] == {
+            "kind": "calendar_week_to_date",
+            "startDate": "2025-12-29",
+            "endDate": "2026-01-01",
+        }
+        assert packet["trainingWeekSoFar"]["days"][-1]["planned"][0]["title"] == "VO2 Max 30/30"
+        assert packet["trainingWeekSoFar"]["days"][-1]["executed"] == []
         assert packet["environment"]["thermalReview"]["flags"] == [
             "precool_target_missed",
             "wind_disruption_watch",
@@ -372,6 +379,15 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
         assert second.generated is False
         assert second.analysis.id == result.analysis.id
         assert fake_client.calls == 1
+
+        # A prompt bump makes the stored read stale even without force=True.
+        second.analysis.prompt_version = "morning-analysis-v14-2026-07-24"
+        await session.commit()
+        refreshed = await service.generate_and_store(player, subject_date, client=fake_client)
+        assert refreshed.generated is True
+        assert refreshed.analysis.id != result.analysis.id
+        assert refreshed.analysis.prompt_version == PROMPT_VERSION
+        assert fake_client.calls == 2
 
 
 @pytest.mark.asyncio
@@ -838,7 +854,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v14")
+    assert PROMPT_VERSION.startswith("morning-analysis-v15")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
@@ -852,6 +868,14 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     }
     prompt = build_morning_user_prompt(packet)
     assert "Why am I so tired" in prompt
+
+
+def test_prompt_grounds_week_history_in_execution_not_nominal_schedule() -> None:
+    assert "usual routine only" in SYSTEM_PROMPT
+    assert "trainingWeekSoFar" in SYSTEM_PROMPT
+    assert "executed Garmin activities are the only completion truth" in SYSTEM_PROMPT
+    assert "credit a moved-away" in SYSTEM_PROMPT
+    assert "Respect the trainingSchedule rest days" not in SYSTEM_PROMPT
 
 
 def test_sleep_packet_localizes_bed_wake_across_dst_and_keeps_utc() -> None:

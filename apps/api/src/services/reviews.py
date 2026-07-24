@@ -60,8 +60,9 @@ from src.services.insights import EarlyWarningResult, FtpDriftResult, InsightsSe
 from src.services.personal_baselines import baseline_band_packet, serialize_training_schedule
 from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
 from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
+from src.services.training_week import TrainingWeekService
 
-PROMPT_VERSION = "reviews-v3-2026-07-05"
+PROMPT_VERSION = "reviews-v4-2026-07-24"
 PACKET_VERSION = 2
 
 PERIOD_WEEKLY = "weekly"
@@ -94,7 +95,15 @@ absent or not tracked. Recommendations must be concrete and actionable for the \
 coming period. Interpret readiness, HRV, and resting HR against \
 personalBaselines before using alarming words such as eroding. Any trend claim \
 must cite the packet's from-to numbers and sample counts. Respect \
-trainingSchedule rest days before recommending an additional recovery day."""
+trainingSchedule rest days before recommending an additional recovery day, but \
+treat trainingSchedule as the usual routine only — never as evidence that a \
+session happened or that it happened on a nominal weekday. For a weekly review, \
+ground plan changes and completed-session history strictly in \
+trainingWeekSoFar: planned is the final active schedule, changes is the explicit \
+action audit, and executed Garmin activities are the only completion truth. \
+Never credit a moved-away, skipped, removed, or merely planned session as \
+executed. When trainingWeekSoFar is absent, use the deterministic rollup for \
+history and still never reconstruct it from trainingSchedule."""
 
 
 class ReviewError(RuntimeError):
@@ -581,6 +590,11 @@ class ReviewService:
         guardrails = await self._data_quality_guardrails(player.id)
         baselines = await self._metric_baselines(player.id)
         training_schedule = await self._training_schedule(player.id)
+        training_week = (
+            await TrainingWeekService(self.session).build(player, as_of=end_anchor)
+            if period == PERIOD_WEEKLY
+            else None
+        )
 
         packet = _build_packet(
             player=player,
@@ -591,6 +605,7 @@ class ReviewService:
             guardrails=guardrails,
             baselines=baselines,
             training_schedule=training_schedule,
+            training_week_so_far=training_week,
         )
         latest_review = await self.latest_review(player.id, period, period_start)
         return ReviewPreview(
@@ -617,7 +632,11 @@ class ReviewService:
     ) -> ReviewRunResult:
         """Generate the narrative and store it. Idempotent per period (#71)."""
         preview = await self.preview(player, period, as_of=as_of)
-        if not force and preview.latest_review is not None:
+        if (
+            not force
+            and preview.latest_review is not None
+            and preview.latest_review.prompt_version == PROMPT_VERSION
+        ):
             return ReviewRunResult(preview=preview, review=preview.latest_review, generated=False)
 
         user_prompt = build_review_user_prompt(preview.packet)
@@ -995,6 +1014,7 @@ def _build_packet(
     guardrails: list[dict[str, Any]],
     baselines: Sequence[MetricBaseline] = (),
     training_schedule: Mapping[str, Any] | None = None,
+    training_week_so_far: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "packetType": "deep_review",
@@ -1021,6 +1041,9 @@ def _build_packet(
             },
         ),
         "trainingSchedule": dict(training_schedule or {}),
+        "trainingWeekSoFar": (
+            dict(training_week_so_far) if training_week_so_far is not None else None
+        ),
         "strengthBrief": _strength_packet(strength),
         "insights": {
             "ftpDrift": {
@@ -1044,7 +1067,8 @@ def _build_packet(
                 "four_sections_trends_wins_concerns_recommendations",
                 "ground_every_claim_in_packet_numbers",
                 "interpret_recovery_against_personal_baselines",
-                "respect_training_schedule_rest_days",
+                "treat_training_schedule_as_nominal_only",
+                "ground_week_history_in_training_week_so_far",
                 "never_reference_left_right_power_balance",
                 "exclude_wrist_hr_strength_from_recovery",
                 "ignore_broken_sleep_duration_column",

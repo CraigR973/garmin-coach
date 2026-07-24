@@ -49,6 +49,7 @@ from src.services.post_walk_analysis import active_recovery_walk_context
 from src.services.sleep_scoring import (
     age_adjusted_sleep_score as compute_age_adjusted_sleep_score,
 )
+from src.services.training_week import TrainingWeekService
 from src.services.workout_categories import is_bike_workout_type
 
 # Batch 64 (#137): the packet now carries the user's most recent corrections so
@@ -82,7 +83,10 @@ from src.services.workout_categories import is_bike_workout_type
 # window) and timeAsleepMin alongside durationMin, and the prompt states each
 # figure as given — never re-subtracting awake from the asleep total to invent an
 # "actual sleep" number — so the version bumps again.
-PROMPT_VERSION = "morning-analysis-v14-2026-07-24"
+# Batch 148: trainingWeekSoFar is the factual planned -> changed -> executed
+# calendar-week record. The nominal trainingSchedule is no longer evidence of
+# what happened on any weekday, so the version bumps again.
+PROMPT_VERSION = "morning-analysis-v15-2026-07-24"
 ANALYSIS_TYPE = "morning"
 SYSTEM_PROMPT = """You are CheckMark, a private daily endurance and sleep coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
@@ -119,8 +123,16 @@ held a mediocre sleep night without pretending the sleep was good. When a sleep
 stage in ageComparison.sleepRows sits inside its healthy age band, describe it as
 healthy for the user's age rather than repeating Garmin's young-adult flag (e.g.
 "REM 16% is within the healthy 50-59 range; Garmin only flags it against a younger
-target"). Respect the trainingSchedule rest days before recommending extra recovery
-days. Use yesterdayLoad to explain any eased ride after a hard prior session.
+target"). knowledgeBase.trainingSchedule describes the user's usual routine only;
+never use it as evidence that a session happened this week or assign a completed
+session to one of its nominal weekdays. Ground every claim about what was planned,
+changed, completed, skipped, or accumulated this calendar week strictly in
+trainingWeekSoFar: planned is the final active schedule, changes is the explicit
+action audit, and executed Garmin activities are the only completion truth. Never
+credit a moved-away, skipped, removed, or merely planned session as executed. Where
+it helps, acknowledge the move recorded in changes. Respect the usual routine's
+rest-day preference only when making a future recommendation, not when narrating
+history. Use yesterdayLoad to explain any eased ride after a hard prior session.
 When restDay.isRestDay is true, frame today's verdict as a rest day. Do not
 recommend, soften, rearrange, or relitigate a planned workout whose status is
 skipped, and do not narrate a session inside the holiday window as a live
@@ -239,6 +251,10 @@ class MorningAnalysisService:
         manual_entries = await self._manual_entries(player.id, subject_date)
         recent_corrections = await FeedbackService(self.session).recent_corrections(player.id)
         planned_workouts = await self._planned_workouts(player.id, subject_date)
+        training_week = await TrainingWeekService(self.session).build(
+            player,
+            as_of=subject_date,
+        )
         holiday_windows = await HolidayPauseService(self.session).get_windows(player)
         rest_day = _rest_day_context(
             planned_workouts,
@@ -386,6 +402,7 @@ class MorningAnalysisService:
             "manualEntries": [_manual_entry_packet(entry) for entry in manual_entries],
             "recentCorrections": [c.to_packet() for c in recent_corrections],
             "plannedWorkouts": [_planned_workout_packet(workout) for workout in planned_workouts],
+            "trainingWeekSoFar": training_week,
             "restDay": rest_day,
             "activeRecovery": {
                 "deliberateWalkVolume": active_recovery_walk_context(
@@ -435,6 +452,8 @@ class MorningAnalysisService:
                         "refer_to_checkin_by_word_not_number",
                         "frame_holiday_or_all_skipped_day_as_rest",
                         "never_treat_skipped_workout_as_live_training",
+                        "ground_week_history_in_training_week_so_far",
+                        "treat_training_schedule_as_nominal_only",
                     ]
                     # Batch 113 (#186): holiday away means no bedroom thermal review.
                     if rule != "include_thermal_environment_review"
@@ -454,7 +473,7 @@ class MorningAnalysisService:
     ) -> MorningAnalysisResult:
         if not force:
             existing = await self.latest_analysis(player.id, subject_date)
-            if existing is not None:
+            if existing is not None and existing.prompt_version == PROMPT_VERSION:
                 return MorningAnalysisResult(analysis=existing, generated=False)
 
         context_packet = await self.assemble_context_packet(player, subject_date)
