@@ -517,16 +517,16 @@ class Feedback(Base, UUIDPrimaryKeyMixin):
 
 
 class BriefMessage(Base, UUIDPrimaryKeyMixin):
-    """One turn of the follow-up chat on a brief (Batch 119).
+    """One turn of the follow-up chat on an analysis read (Batch 119/150).
 
-    Every AI summary is one ``analyses`` row, so a conversation about a brief
+    Every AI summary/read is one ``analyses`` row, so a conversation about it
     is keyed to ``analysis_id`` — same referential pattern as ``Feedback``.
     ``role`` is ``user`` or ``assistant``; history threads via ``created_utc``.
-    ``proposed_planned_workout_id`` is set on an assistant turn only when the
-    deterministic keyword check (not the model) flags the question as wanting
-    a plan adjustment and today's planned workout is deliverable; it points at
-    the *existing* propose endpoint the frontend calls on confirm, never a new
-    mutation path (Decision assigned at Batch 119 kickoff).
+    ``proposed_planned_workout_id`` is set on a morning assistant turn only
+    when the deterministic keyword check (not the model) flags the question as
+    wanting a plan adjustment and today's planned workout is deliverable; it
+    points at the *existing* propose endpoint the frontend calls on confirm,
+    never a new mutation path. Post-workout reads are advisory-only.
     """
 
     __tablename__ = "brief_messages"

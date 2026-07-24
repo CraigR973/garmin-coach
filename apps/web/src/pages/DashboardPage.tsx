@@ -52,6 +52,7 @@ import { GoodMorningCta } from '@/components/GoodMorningCta';
 import { BriefGeneratingCta } from '@/components/BriefGeneratingCta';
 import { BriefFailedCta } from '@/components/BriefFailedCta';
 import { FeedbackControl } from '@/components/FeedbackControl';
+import { BriefFollowUpChat } from '@/components/BriefFollowUpChat';
 import { SleepSnapshotBody } from '@/components/SleepSnapshotBody';
 import { SleepPrepBody } from '@/components/SleepPrepBody';
 import { BedroomBody } from '@/components/BedroomBody';
@@ -1851,6 +1852,9 @@ function CompletedRideRead({
           <div className="mt-3 space-y-4">
             <Markdown>{analysis.outputMarkdown}</Markdown>
             <RideIntervalTable intervals={analysis.intervals ?? []} />
+            <div className="rounded-xl border border-dashed border-border bg-bg/60 px-4 py-3">
+              <BriefFollowUpChat analysisId={analysis.id} />
+            </div>
             <FeedbackControl analysisId={analysis.id} kind="summary" feedback={analysis.feedback ?? null} />
           </div>
         ) : null}

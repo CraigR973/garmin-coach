@@ -1,10 +1,10 @@
-"""Follow-up chat on a brief (Batch 119).
+"""Follow-up chat on an analysis read (Batch 119, extended by Batch 150).
 
 Today's morning brief only answers one question left in Mark's check-in notes
 (``morning_analysis.SYSTEM_PROMPT``'s "your question" rule). This adds a real
 back-and-forth: he can ask further questions about an already-generated brief
-and get an answer grounded in that brief's stored ``context_packet`` — no new
-claims beyond what the packet already holds, mirroring the brief's own
+and get an answer grounded in that read's stored ``context_packet`` — no new
+claims beyond what the packet already holds, mirroring the read's own
 guardrails.
 
 Kickoff decisions (Batch 119.3, `/batch-start`):
@@ -12,7 +12,7 @@ Kickoff decisions (Batch 119.3, `/batch-start`):
 * **Storage** — a new ``brief_messages`` table keyed to ``analysis_id`` (same
   referential pattern as ``Feedback``), not a transient/in-memory history.
 * **Turn cap** — :data:`MAX_USER_TURNS_PER_ANALYSIS` user turns per brief.
-* **Action scope** — a follow-up can surface a suggestion to propose an
+* **Action scope** — a morning-brief follow-up can surface a suggestion to propose an
   adjustment to today's ride, but the model never triggers a mutation itself.
   A **deterministic keyword check on Mark's own question** (not the model's
   answer) decides whether to attach ``proposed_planned_workout_id``; the
@@ -20,6 +20,9 @@ Kickoff decisions (Batch 119.3, `/batch-start`):
   ``POST /api/v1/workout-delivery/planned-workouts/{id}/proposals`` endpoint
   used by Delivery today — this module never calls it directly, so the
   propose→approve→push gate (Decision #29) stays exactly as it is.
+* **Batch 150 action scope** — post-workout follow-ups reuse this same table and
+  endpoint, but are advisory-only: no proposal affordance on completed-session
+  reads.
 """
 
 from __future__ import annotations
@@ -47,25 +50,25 @@ MAX_USER_TURNS_PER_ANALYSIS = 10
 MAX_HISTORY_TURNS_IN_PROMPT = 10
 QUESTION_MAX_LENGTH = 1000
 
-PROMPT_VERSION = "brief-chat-v1-2026-07-14"
+PROMPT_VERSION = "brief-chat-v2-2026-07-24"
 
 SYSTEM_PROMPT = """You are CheckMark, answering a follow-up question about a
-brief you already wrote for Mark. You are given that brief's full context
-packet (the same metrics/plan/environment data the brief itself was written
-from) and the brief's own markdown text.
+read you already wrote for Mark. You are given that read's full context
+packet (the same metrics/plan/environment/session data the read itself was
+written from) and the read's own markdown text.
 
-Answer only from the packet and the brief. Do not invent metrics, plan
+Answer only from the packet and the read. Do not invent metrics, plan
 details, or recommendations that are not supported by what you were given.
 If the packet does not hold what is needed to answer, say so plainly rather
 than guessing.
 
-Keep the same floors as the brief: never recommend VO2 on a Red day, never
+Keep the same floors as the original read: never recommend VO2 on a Red day, never
 reference left/right power balance, state any clock times in Mark's local
 timezone (never UTC), and never narrate a skipped or holiday workout as if it
 were live training.
 
-Keep answers short and conversational — a few sentences, not a restatement of
-the whole brief. Do not fabricate the ability to change the plan yourself;
+Keep answers short and conversational - a few sentences, not a restatement of
+the whole read. Do not fabricate the ability to change the plan yourself;
 if he wants an adjustment, say the app can propose one and he confirms it
 there, but do not claim to have made any change."""
 
@@ -164,6 +167,13 @@ def _todays_adjustable_workout_id(context_packet: dict[str, Any]) -> uuid.UUID |
     return None
 
 
+def _analysis_allows_adjustment_proposal(analysis: Analysis) -> bool:
+    # Batch 150: completed-session reads are advisory-only. The deterministic
+    # proposal affordance is kept to the morning brief where "today's ride" is
+    # still a live planning action.
+    return analysis.analysis_type == "morning"
+
+
 class BriefChatService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -171,11 +181,11 @@ class BriefChatService:
     async def _owned_analysis(self, player: Profile, analysis_id: uuid.UUID) -> Analysis:
         analysis = await self.session.scalar(select(Analysis).where(Analysis.id == analysis_id))
         if analysis is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Brief not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Read not found")
         if analysis.user_id != player.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only chat about your own brief",
+                detail="You can only chat about your own read",
             )
         return analysis
 
@@ -225,8 +235,8 @@ class BriefChatService:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=(
-                    f"This brief's chat is limited to {MAX_USER_TURNS_PER_ANALYSIS} questions. "
-                    "Ask again on tomorrow's brief, or note it at your next check-in."
+                    f"This read's chat is limited to {MAX_USER_TURNS_PER_ANALYSIS} questions. "
+                    "Ask again on tomorrow's read, or note it at your next check-in."
                 ),
             )
 
@@ -247,8 +257,9 @@ class BriefChatService:
         ]
 
         system_prompt = (
-            f"{SYSTEM_PROMPT}\n\nBrief context packet (JSON):\n"
-            f"{_packet_json(analysis.context_packet)}\n\nBrief text:\n{analysis.output_markdown}"
+            f"{SYSTEM_PROMPT}\n\nRead type: {analysis.analysis_type}\n\n"
+            f"Read context packet (JSON):\n{_packet_json(analysis.context_packet)}\n\n"
+            f"Read text:\n{analysis.output_markdown}"
         )
         chat_client = client or AnthropicBriefChatClient()
         answer = await chat_client.generate(
@@ -257,11 +268,9 @@ class BriefChatService:
             prior_messages=prior_messages,
         )
 
-        proposed_id = (
-            _todays_adjustable_workout_id(analysis.context_packet)
-            if _wants_adjustment(cleaned)
-            else None
-        )
+        proposed_id = None
+        if _analysis_allows_adjustment_proposal(analysis) and _wants_adjustment(cleaned):
+            proposed_id = _todays_adjustable_workout_id(analysis.context_packet)
 
         now = _utcnow()
         user_message = BriefMessage(

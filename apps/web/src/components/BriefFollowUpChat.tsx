@@ -13,13 +13,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Markdown } from '@/components/Markdown';
 
 /**
- * Follow-up chat on a brief (Batch 119). Grounded in the same context packet
- * the brief itself was generated from — "why", "what if", "should I…" — with
- * a small per-brief turn cap enforced server-side. A follow-up that reads as
- * wanting a plan adjustment can carry a `proposedPlannedWorkoutId`; tapping
- * "Propose this" calls the *existing* workout-delivery propose endpoint
- * (Decision #29's propose→approve→push gate is untouched — this only adds a
- * new entry point into the same first step).
+ * Follow-up chat on an analysis read (Batch 119, extended by Batch 150).
+ * Grounded in the same context packet the read itself was generated from —
+ * "why", "what if", "should I…" — with a small per-read turn cap enforced
+ * server-side. Morning follow-ups can carry a `proposedPlannedWorkoutId`;
+ * post-workout follow-ups are advisory-only.
  */
 
 const MAX_QUESTION_LENGTH = 1000;
@@ -82,7 +80,7 @@ export function BriefFollowUpChat({ analysisId }: BriefFollowUpChatProps) {
     <div className="space-y-3">
       <div className="flex items-center gap-2 text-sm font-medium text-text-secondary">
         <MessageCircle className="h-4 w-4" aria-hidden />
-        Ask about this brief
+        Ask about this read
       </div>
 
       {messages.length > 0 ? (

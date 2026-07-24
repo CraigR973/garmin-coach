@@ -82,11 +82,12 @@ async def _make_analysis(
     *,
     context_packet: dict[str, object] | None = None,
     output_markdown: str = "a brief",
+    analysis_type: str = "morning",
 ) -> Analysis:
     analysis = Analysis(
         id=uuid.uuid4(),
         user_id=user_id,
-        analysis_type="morning",
+        analysis_type=analysis_type,
         subject_date=datetime(2026, 7, 14, 6, 30).date(),
         generated_at_utc=datetime(2026, 7, 14, 6, 30),
         prompt_version="morning-x",
@@ -144,6 +145,8 @@ async def test_ask_grounds_in_packet_and_stores_both_turns(db_conn: AsyncConnect
     assert turn.assistant_message.content == "Because your HRV was strong overnight."
     # The packet is embedded in the system prompt so the answer is grounded.
     assert "Green" in client.calls[0]["system_prompt"]
+    assert "Read type: morning" in client.calls[0]["system_prompt"]
+    assert "Read context packet" in client.calls[0]["system_prompt"]
 
     async with session_factory() as session:
         count = await session.scalar(
@@ -247,6 +250,54 @@ async def test_ask_never_offers_a_proposal_on_a_rest_day(db_conn: AsyncConnectio
         )
 
     assert turn.assistant_message.proposed_planned_workout_id is None
+
+
+@pytest.mark.asyncio
+async def test_post_workout_read_chat_is_grounded_and_advisory_only(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 150: post-workout reads reuse the same threaded chat but never show
+    the morning-only proposal affordance, even if Mark asks for an adjustment."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        workout = await _make_planned_workout(session, user.id)
+        packet = {
+            "packetType": "post_workout_analysis",
+            "activity": {"activityName": "Tempo ride"},
+            "execution": {"rating": "on_target"},
+            # A morning-shaped field here would have triggered the old implicit
+            # packet-only proposal path. Batch 150 gates it by analysis_type.
+            "restDay": {"isRestDay": False},
+            "plannedWorkouts": [
+                {
+                    "id": str(workout.id),
+                    "workoutType": "bike_sweet_spot",
+                    "status": "planned",
+                    "structuredWorkout": {"segments": []},
+                }
+            ],
+        }
+        analysis = await _make_analysis(
+            session,
+            user.id,
+            context_packet=packet,
+            output_markdown="**Recovery:** keep tomorrow easy.",
+            analysis_type="post_workout",
+        )
+        client = FakeBriefChatClient("It means the ride landed as intended.")
+
+        turn = await BriefChatService(session).ask(
+            user,
+            analysis.id,
+            question="Can you adjust tomorrow after that ride?",
+            client=client,
+        )
+
+    assert turn.assistant_message.content == "It means the ride landed as intended."
+    assert turn.assistant_message.proposed_planned_workout_id is None
+    assert "Read type: post_workout" in client.calls[0]["system_prompt"]
+    assert "Tempo ride" in client.calls[0]["system_prompt"]
 
 
 # ---------------------------------------------------------------------------
