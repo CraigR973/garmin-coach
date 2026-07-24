@@ -22,6 +22,12 @@ type CheckInBrief = NonNullable<
 
 const BRIEF_READY_POLL_MS = 3000;
 const BRIEF_STAGE_WINDOWS_MS = [2000, 5500] as const;
+// Batch 144: cap the "Writing your brief" wait so an orphaned generation (a process
+// restart or a hung Anthropic call — the 2026-07-21 90-minute-spinner class) resolves
+// to the retryable failure card, even if the envelope is slow to report `failed` (e.g.
+// a stale service-worker cache). Mirrors the server-side staleness threshold
+// (settings.brief_generation_stale_after_minutes, 12 min).
+const BRIEF_MAX_WAIT_MS = 12 * 60_000;
 
 /** Batch 63: one-tap chips that fold into the existing `feel`/`notes` free-text
  *  columns as comma-separated tokens — no new `manual_entries` columns, no new
@@ -122,6 +128,9 @@ export function CheckInPage() {
   const [brief, setBrief] = useState<CheckInBrief | null>(null);
   const [queuedAtMs, setQueuedAtMs] = useState<number | null>(null);
   const [stageNowMs, setStageNowMs] = useState<number>(() => Date.now());
+  // Batch 144: the client's own backstop for a wait that never resolves — set once
+  // the wait exceeds BRIEF_MAX_WAIT_MS with no brief and no `failed` envelope signal.
+  const [waitTimedOut, setWaitTimedOut] = useState(false);
   // Batch 139: has he edited the form since it was last seeded from the server?
   // A background refetch (refetchOnWindowFocus — widened to iOS PWA warm resume in
   // lib/resumeRefetch.ts) must not re-seed the form over unsaved edits, or his
@@ -169,6 +178,7 @@ export function CheckInPage() {
     if (!readyBrief) return;
     setBrief(readyBrief);
     setQueuedAtMs(null);
+    setWaitTimedOut(false);
     toast.success('Your brief is ready');
   }, [queuedAtMs, query.data]);
 
@@ -184,10 +194,31 @@ export function CheckInPage() {
     }
   }, [queuedAtMs, query.data]);
 
+  // Batch 144: client-side max-wait backstop. An orphaned generation can leave the
+  // envelope stuck at `generating` with no `failed` signal (no reaper), so the two
+  // effects above never fire and the wait spins forever (the 2026-07-21 class). Arm a
+  // single timer when the wait begins; if it elapses with no brief, self-resolve to
+  // the retryable card — the client self-corrects even when the server derivation is
+  // slow to surface (e.g. a stale service-worker cache). Cleared the moment the wait
+  // ends (brief lands or a `failed` signal nulls queuedAtMs), so it never fires late.
+  useEffect(() => {
+    if (queuedAtMs == null) return;
+    const remainingMs = Math.max(0, BRIEF_MAX_WAIT_MS - (Date.now() - queuedAtMs));
+    const timer = window.setTimeout(() => {
+      setQueuedAtMs(null);
+      setWaitTimedOut(true);
+      toast.error("I couldn't finish your brief — tap to try again");
+    }, remainingMs);
+    return () => window.clearTimeout(timer);
+  }, [queuedAtMs]);
+
   // Batch 85: the check-in is the primary trigger for today's brief. Saving
   // force-regenerates the read server-side (folding in his notes/questions) and
   // returns the fresh snapshot, so the mutation surfaces the brief here and on Home.
   const saveMutation = useMutation({
+    // Batch 144: a retry from the timed-out card re-submits through here, so leave
+    // the timed-out state as generation restarts (onSuccess re-queues a fresh wait).
+    onMutate: () => setWaitTimedOut(false),
     mutationFn: async () => {
       const data = query.data?.data;
       if (!data) throw new Error('Not loaded');
@@ -230,7 +261,10 @@ export function CheckInPage() {
   const briefExists = brief != null || data?.morningAnalysis != null;
   // Batch 141: derived from the envelope (not client state), so a failure shows
   // even on a cold reopen with no in-flight queuedAtMs.
-  const generationFailed = !briefExists && data?.briefGeneration?.status === 'failed';
+  // Batch 144: `waitTimedOut` folds the client max-wait backstop into the same
+  // retryable card, for an orphaned generation the envelope never reports `failed`.
+  const generationFailed =
+    !briefExists && (data?.briefGeneration?.status === 'failed' || waitTimedOut);
   const waitingForBrief = queuedAtMs != null && !briefExists && !generationFailed;
   const waitingStage = waitingForBrief ? currentBriefStage(stageNowMs - queuedAtMs) : -1;
 

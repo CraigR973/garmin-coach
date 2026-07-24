@@ -351,6 +351,69 @@ describe('CheckInPage', () => {
     );
   });
 
+  it('resolves an orphaned generation to the retryable card past the client max-wait (Batch 144)', async () => {
+    // The envelope stays stuck at `generating` — a background task orphaned by a
+    // process restart or a hung Anthropic call is never flipped to failed (no reaper)
+    // and no analysis ever lands, so the Batch 141 `failed` signal never fires. Pre-144
+    // this spun on "Writing your brief" forever (the 2026-07-21 90-minute class).
+    const generating = {
+      ...snapshot,
+      data: {
+        ...snapshot.data,
+        morningAnalysis: null,
+        briefGeneration: { status: 'generating', reason: null },
+      },
+    };
+    apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
+      if (options?.method === 'PUT') return Promise.resolve(generating);
+      if (path === '/api/v1/daily-loop') return Promise.resolve(generating);
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    // Capture the 12-minute max-wait backstop timer without faking the clock (which
+    // fights react-query + userEvent): spy on setTimeout, grab the one long-delay
+    // callback the wait arms, and invoke it to simulate the cap elapsing. Every other
+    // (short) timer — userEvent, findBy, the 3s poll — passes through to the real one.
+    const realSetTimeout = window.setTimeout;
+    let capCallback: (() => void) | null = null;
+    const setTimeoutSpy = vi
+      .spyOn(window, 'setTimeout')
+      .mockImplementation(((handler: TimerHandler, timeout?: number, ...rest: unknown[]) => {
+        // The cap arms at ~12 min; keep clear of react-query's 5-min gcTime timer.
+        if (typeof timeout === 'number' && timeout > 600_000) {
+          capCallback = handler as () => void;
+          return 987654321 as unknown as ReturnType<typeof setTimeout>;
+        }
+        return (realSetTimeout as typeof setTimeout)(handler, timeout, ...rest);
+      }) as typeof setTimeout);
+
+    const queryClient = new QueryClient();
+    const user = userEvent.setup();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CheckInPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: /get today's brief/i }));
+
+    // The wait is showing, and the backstop timer has been armed.
+    expect(await screen.findByText("I'll notify you when it's ready")).toBeTruthy();
+    expect(screen.getByText('Writing your brief')).toBeTruthy();
+    expect(capCallback).toBeTypeOf('function');
+
+    // Simulate the 12-minute cap elapsing with the generation still stuck.
+    act(() => capCallback?.());
+
+    // The client self-corrects to the retryable card, not an endless spinner.
+    expect(await screen.findByText(/couldn't finish your brief/i)).toBeTruthy();
+    expect(screen.queryByText('Writing your brief')).toBeNull();
+    setTimeoutSpy.mockRestore();
+  });
+
   it('shows "View brief" instead of "Get today\'s brief" when a brief already exists on load (Batch 96)', async () => {
     const briefAnalysis = {
       id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,9 +13,14 @@ from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 from src.config import settings
 from src.models.coaching import BriefGenerationStatus
 from src.models.profile import Profile, UserRole
-from src.routers.daily_loop import BriefGenerationStatusOut, _serialize_brief_generation
+from src.routers.daily_loop import (
+    STALE_GENERATING_REASON,
+    BriefGenerationStatusOut,
+    _serialize_brief_generation,
+)
 from src.services.brief_generation_status import (
     STATUS_FAILED,
+    STATUS_GENERATING,
     STATUS_READY,
     BriefGenerationStatusService,
 )
@@ -28,6 +33,16 @@ def _failed_row() -> BriefGenerationStatus:
         subject_date=date(2026, 7, 21),
         status=STATUS_FAILED,
         reason="billing",
+    )
+
+
+def _generating_row(updated_at: datetime) -> BriefGenerationStatus:
+    return BriefGenerationStatus(
+        user_id=uuid.uuid4(),
+        subject_date=date(2026, 7, 21),
+        status=STATUS_GENERATING,
+        reason=None,
+        updated_at=updated_at,
     )
 
 
@@ -46,6 +61,38 @@ def test_serialize_surfaces_failure_when_no_analysis() -> None:
 
 def test_serialize_is_none_when_no_row_and_no_analysis() -> None:
     assert _serialize_brief_generation(None, has_analysis=False) is None
+
+
+def test_serialize_stale_generating_reads_as_failed() -> None:
+    # Batch 144: a `generating` row orphaned past the threshold (process restart or a
+    # hung Anthropic call — the 2026-07-21 endless-spinner class) resolves at read
+    # time to a retryable failed/stale state instead of `generating` forever.
+    now = datetime(2026, 7, 21, 12, 0, 0)
+    stale_at = now - timedelta(minutes=settings.brief_generation_stale_after_minutes + 1)
+    out = _serialize_brief_generation(_generating_row(stale_at), has_analysis=False, now=now)
+    assert out is not None
+    assert out.status == STATUS_FAILED
+    assert out.reason == STALE_GENERATING_REASON
+
+
+def test_serialize_fresh_generating_stays_generating() -> None:
+    # A generation still inside the window is left alone — normal generation takes
+    # well under 2 minutes, so a fresh row must never be mistaken for orphaned.
+    now = datetime(2026, 7, 21, 12, 0, 0)
+    fresh_at = now - timedelta(minutes=1)
+    out = _serialize_brief_generation(_generating_row(fresh_at), has_analysis=False, now=now)
+    assert out is not None
+    assert out.status == STATUS_GENERATING
+    assert out.reason is None
+
+
+def test_serialize_stale_generating_yields_to_real_analysis() -> None:
+    # A real brief on the day still outranks even a stale generating row (has_analysis
+    # short-circuits before the staleness check).
+    now = datetime(2026, 7, 21, 12, 0, 0)
+    stale_at = now - timedelta(minutes=settings.brief_generation_stale_after_minutes + 5)
+    out = _serialize_brief_generation(_generating_row(stale_at), has_analysis=True, now=now)
+    assert out == BriefGenerationStatusOut(status="ready", reason=None)
 
 
 @pytest.mark.asyncio
