@@ -44,9 +44,14 @@ vi.mock('@/contexts/AuthContext', () => ({
 
 const schedule = {
   data: {
-    startDate: '2026-06-23',
+    startDate: '2026-06-22',
     days: 14,
     schedule: [
+      {
+        date: '2026-06-22',
+        dayState: { categories: ['rest'], label: 'Rest', isRest: true },
+        workouts: [],
+      },
       {
         date: '2026-06-23',
         dayState: { categories: ['cycle', 'flexibility'], label: 'Cycle + Flexibility', isRest: false },
@@ -116,6 +121,24 @@ function workoutRow(title: string): HTMLElement {
   return screen.getAllByText(title, { selector: 'p' })[0]!.closest('div.rounded-xl.border') as HTMLElement;
 }
 
+function dayCard(label: string): HTMLElement {
+  return screen.getByText(label).closest('div.rounded-lg.border') as HTMLElement;
+}
+
+function makeCalendarSchedule(startDate: string) {
+  const [year, month, day] = startDate.split('-').map(Number);
+  return Array.from({ length: 14 }, (_, index) => {
+    const date = new Date(Date.UTC(year, (month ?? 1) - 1, (day ?? 1) + index));
+    const iso = date.toISOString().slice(0, 10);
+    return {
+      date: iso,
+      dayState: { categories: ['rest'], label: 'Rest', isRest: true },
+      workouts: [],
+      activities: [],
+    };
+  });
+}
+
 describe('WeekAheadPage', () => {
   beforeEach(() => {
     apiFetchMock.mockReset();
@@ -145,7 +168,7 @@ describe('WeekAheadPage', () => {
     vi.stubGlobal('Date', BoundaryDate as typeof Date);
 
     apiFetchMock.mockImplementation((path: string) => {
-      if (path === '/api/v1/plan-actions/schedule?days=14') return Promise.resolve(schedule);
+      if (path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14') return Promise.resolve(schedule);
       return Promise.reject(new Error(`Unexpected request: ${path}`));
     });
 
@@ -165,12 +188,194 @@ describe('WeekAheadPage', () => {
     expect(within(tue).queryByText('Today')).toBeNull();
   });
 
+  it('requests the current profile-local Monday and renders two Monday-start weeks (Batch 149)', async () => {
+    const fridayNow = new RealDate('2026-07-24T08:00:00Z');
+    class FridayDate extends RealDate {
+      constructor(value?: string | number | Date) {
+        super(value ?? fridayNow);
+      }
+      static now() {
+        return fridayNow.valueOf();
+      }
+    }
+    vi.stubGlobal('Date', FridayDate as typeof Date);
+    const mondaySchedule = JSON.parse(JSON.stringify(schedule));
+    mondaySchedule.data.startDate = '2026-07-20';
+    mondaySchedule.data.schedule = makeCalendarSchedule('2026-07-20');
+    mondaySchedule.data.schedule[0].workouts = [
+      {
+        id: '11111111-1111-4111-8111-111111111111',
+        workoutDate: '2026-07-20',
+        version: 1,
+        title: 'Monday endurance',
+        workoutType: 'bike_endurance',
+        status: 'completed',
+        plannedDurationMin: 45,
+        intensityTarget: 'Zone 2',
+        source: 'test',
+      },
+    ];
+    mondaySchedule.data.schedule[1].activities = [
+      {
+        activityKind: 'walk',
+        name: 'Evening Walk',
+        durationMin: 70,
+        startUtc: '2026-07-21T18:00:00Z',
+      },
+    ];
+    mondaySchedule.data.schedule[4].workouts = [
+      {
+        id: '22222222-2222-4222-8222-222222222222',
+        workoutDate: '2026-07-24',
+        version: 1,
+        title: 'Friday sweet spot',
+        workoutType: 'bike_sweet_spot',
+        status: 'planned',
+        plannedDurationMin: 60,
+        intensityTarget: '88-94% FTP',
+        source: 'test',
+      },
+    ];
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/api/v1/plan-actions/schedule?start_date=2026-07-20&days=14'
+        ? Promise.resolve(mondaySchedule)
+        : Promise.reject(new Error(`Unexpected request: ${path}`)),
+    );
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('Monday endurance')).toBeTruthy();
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/plan-actions/schedule?start_date=2026-07-20&days=14');
+    expect(screen.getByText('Mon, Jul 20')).toBeTruthy();
+    expect(screen.getByText('Sun, Jul 26')).toBeTruthy();
+    expect(screen.getByText('Mon, Jul 27')).toBeTruthy();
+    expect(screen.getByText('Sun, Aug 2')).toBeTruthy();
+    expect(screen.getByText('2 sessions')).toBeTruthy();
+    expect(screen.getByText('1 done')).toBeTruthy();
+    expect(screen.getByText('1 to do')).toBeTruthy();
+    expect(screen.getByText((content) => content.includes('Walk') && content.includes('70 min'))).toBeTruthy();
+  });
+
+  it('keeps Sunday inside the same Monday-start week (Batch 149)', async () => {
+    const sundayNow = new RealDate('2026-07-26T08:00:00Z');
+    class SundayDate extends RealDate {
+      constructor(value?: string | number | Date) {
+        super(value ?? sundayNow);
+      }
+      static now() {
+        return sundayNow.valueOf();
+      }
+    }
+    vi.stubGlobal('Date', SundayDate as typeof Date);
+    const sundaySchedule = JSON.parse(JSON.stringify(schedule));
+    sundaySchedule.data.startDate = '2026-07-20';
+    sundaySchedule.data.schedule = makeCalendarSchedule('2026-07-20');
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/api/v1/plan-actions/schedule?start_date=2026-07-20&days=14'
+        ? Promise.resolve(sundaySchedule)
+        : Promise.reject(new Error(`Unexpected request: ${path}`)),
+    );
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('Mon, Jul 20')).toBeTruthy();
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/plan-actions/schedule?start_date=2026-07-20&days=14');
+  });
+
+  it('keeps elapsed editor days readable but blocks their mutations and move targets (Batch 149)', async () => {
+    const pastSchedule = JSON.parse(JSON.stringify(schedule));
+    pastSchedule.data.schedule[0].workouts = [
+      {
+        id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+        workoutDate: '2026-06-22',
+        version: 1,
+        title: 'Past endurance',
+        workoutType: 'bike_endurance',
+        status: 'planned',
+        plannedDurationMin: 45,
+        intensityTarget: 'Zone 2',
+        source: 'plan_action_add',
+      },
+    ];
+    pastSchedule.data.schedule[0].weekCharacter = {
+      label: 'Build 4/13',
+      sequenceIndex: 4,
+      blockType: 'build',
+      isHoliday: false,
+      isReset: false,
+    };
+    apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
+      if (options?.method === 'POST') return Promise.resolve(pastSchedule);
+      if (path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14') {
+        return Promise.resolve(pastSchedule);
+      }
+      if (path === '/api/v1/restructure/week-ahead?week_start=2026-06-22') {
+        return Promise.resolve({
+          data: {
+            weekStart: '2026-06-22',
+            fatigued: false,
+            changed: false,
+            signal: { fatigued: false, readinessScore: null, hrvStatus: null, recentVerdicts: [], reasons: [] },
+            changes: [],
+            conflictsBefore: [],
+            conflictsAfter: [],
+            notes: [],
+            proposalsCreated: 0,
+          },
+          meta: { generatedAtUtc: '2026-06-23T06:40:00Z' },
+          errors: [],
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    const user = userEvent.setup();
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('Past endurance')).toBeTruthy();
+    await openEditWeek(user);
+    const pastRow = workoutRow('Past endurance');
+    expect(within(pastRow).getByRole('button', { name: 'View Past endurance details' })).toBeTruthy();
+    expect(within(pastRow).queryByRole('button', { name: /^move$/i })).toBeNull();
+    expect(within(pastRow).queryByRole('button', { name: /edit structure/i })).toBeNull();
+    expect(within(pastRow).queryByRole('button', { name: /^skip$/i })).toBeNull();
+    expect(within(pastRow).queryByRole('button', { name: /^remove$/i })).toBeNull();
+    expect(within(dayCard('Mon, Jun 22')).queryByRole('button', { name: /^cycle$/i })).toBeNull();
+    expect(within(dayCard('Mon, Jun 22')).queryByRole('button', { name: /build ride/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /rearrange week/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /light reset/i })).toBeTruthy();
+
+    await user.click(within(workoutRow('VO2 Max 30/30')).getByRole('button', { name: /^move$/i }));
+    expect(screen.getByRole('button', { name: /Mon, Jun 22/i }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText('Past day')).toBeTruthy();
+    expect(screen.getByText(/unavailable for moves/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Thu, Jun 25/i }).hasAttribute('disabled')).toBe(false);
+  });
+
   it('renders a move picker with visible days and moves a workout through the swap route', async () => {
     apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
       if (options?.method === 'POST') {
         return Promise.resolve(schedule);
       }
-      if (path === '/api/v1/plan-actions/schedule?days=14') {
+      if (path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14') {
         return Promise.resolve(schedule);
       }
       if (path === '/api/v1/plan-actions/quick-add-options?category=cycle') {
@@ -258,7 +463,7 @@ describe('WeekAheadPage', () => {
       player: { id: 'mark-1', displayName: 'Mark', role: 'player', timezone: 'Europe/London' },
     });
     apiFetchMock.mockImplementation((path: string) =>
-      path === '/api/v1/plan-actions/schedule?days=14'
+      path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14'
         ? Promise.resolve(schedule)
         : Promise.reject(new Error(`Unexpected request: ${path}`)),
     );
@@ -291,7 +496,7 @@ describe('WeekAheadPage', () => {
       },
     ];
     apiFetchMock.mockImplementation((path: string) =>
-      path === '/api/v1/plan-actions/schedule?days=14'
+      path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14'
         ? Promise.resolve(walkedWeek)
         : Promise.reject(new Error(`Unexpected request: ${path}`)),
     );
@@ -310,7 +515,7 @@ describe('WeekAheadPage', () => {
 
   it('does not double-count a completed planned ride as an extra activity chip (Batch 133)', async () => {
     const completedRideWeek = JSON.parse(JSON.stringify(schedule));
-    completedRideWeek.data.schedule[0].workouts = [
+    completedRideWeek.data.schedule[1].workouts = [
       {
         id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         workoutDate: '2026-06-23',
@@ -323,12 +528,12 @@ describe('WeekAheadPage', () => {
         source: 'test',
       },
     ];
-    completedRideWeek.data.schedule[0].activities = [
+    completedRideWeek.data.schedule[1].activities = [
       // Backend suppresses same-kind activity chips when the planned session already
       // completed, so the UI contract here is simply "no activity chip present".
     ];
     apiFetchMock.mockImplementation((path: string) =>
-      path === '/api/v1/plan-actions/schedule?days=14'
+      path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14'
         ? Promise.resolve(completedRideWeek)
         : Promise.reject(new Error(`Unexpected request: ${path}`)),
     );
@@ -351,7 +556,7 @@ describe('WeekAheadPage', () => {
       player: { id: 'mark-1', displayName: 'Mark', role: 'player', timezone: 'Europe/London' },
     });
     const structuredWeek = JSON.parse(JSON.stringify(schedule));
-    structuredWeek.data.schedule[0].workouts[0].structuredWorkout = {
+    structuredWeek.data.schedule[1].workouts[0].structuredWorkout = {
       delivery: 'indoor',
       steps: [
         { minutes: 10, ramp: [45, 75] },
@@ -360,7 +565,7 @@ describe('WeekAheadPage', () => {
       ],
     };
     apiFetchMock.mockImplementation((path: string) =>
-      path === '/api/v1/plan-actions/schedule?days=14'
+      path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14'
         ? Promise.resolve(structuredWeek)
         : Promise.reject(new Error(`Unexpected request: ${path}`)),
     );
@@ -399,7 +604,7 @@ describe('WeekAheadPage', () => {
       },
     ];
     apiFetchMock.mockImplementation((path: string) =>
-      path === '/api/v1/plan-actions/schedule?days=14'
+      path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14'
         ? Promise.resolve(walkedWeek)
         : Promise.reject(new Error(`Unexpected request: ${path}`)),
     );
@@ -425,7 +630,7 @@ describe('WeekAheadPage', () => {
 
   it('opens the detail sheet from the editor row without moving the workout (Batch 135)', async () => {
     apiFetchMock.mockImplementation((path: string) =>
-      path === '/api/v1/plan-actions/schedule?days=14'
+      path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14'
         ? Promise.resolve(schedule)
         : Promise.reject(new Error(`Unexpected request: ${path}`)),
     );
@@ -455,7 +660,7 @@ describe('WeekAheadPage', () => {
     const splitSchedule = JSON.parse(JSON.stringify(schedule));
     // Model a split Saturday: a ride and a Bodyweight strength on the same day, each
     // its own row with its own Move control (version-as-slot, no schema change).
-    splitSchedule.data.schedule[0] = {
+    splitSchedule.data.schedule[1] = {
       date: '2026-06-23',
       dayState: { categories: ['cycle', 'weights'], label: 'Cycle + Weights', isRest: false },
       workouts: [
@@ -484,7 +689,7 @@ describe('WeekAheadPage', () => {
       ],
     };
     apiFetchMock.mockImplementation((path: string) =>
-      path === '/api/v1/plan-actions/schedule?days=14'
+      path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14'
         ? Promise.resolve(splitSchedule)
         : Promise.reject(new Error(`Unexpected request: ${path}`)),
     );
@@ -512,7 +717,7 @@ describe('WeekAheadPage', () => {
 
   it('builds a custom ride and edits a planned ride structure (Batch 77)', async () => {
     apiFetchMock.mockImplementation((path: string, options?: { method?: string; body?: string }) => {
-      if (path === '/api/v1/plan-actions/schedule?days=14') {
+      if (path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14') {
         return Promise.resolve(schedule);
       }
       if (options?.method === 'POST') {
@@ -589,9 +794,9 @@ describe('WeekAheadPage', () => {
     const completedSchedule = JSON.parse(JSON.stringify(schedule));
     // Sweet Spot Builder on 2026-06-25 is done, so the day-level skip action
     // should clearly mean "skip what remains", not rewrite the completed ride.
-    completedSchedule.data.schedule[2].workouts[0].status = 'completed';
+    completedSchedule.data.schedule[3].workouts[0].status = 'completed';
     apiFetchMock.mockImplementation((path: string) =>
-      path === '/api/v1/plan-actions/schedule?days=14'
+      path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14'
         ? Promise.resolve(completedSchedule)
         : Promise.reject(new Error(`Unexpected request: ${path}`)),
     );
@@ -658,7 +863,7 @@ describe('WeekAheadPage', () => {
       },
     ];
     apiFetchMock.mockImplementation((path: string) =>
-      path === '/api/v1/plan-actions/schedule?days=14'
+      path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14'
         ? Promise.resolve(outdoorSchedule)
         : Promise.reject(new Error(`Unexpected request: ${path}`)),
     );
@@ -684,7 +889,7 @@ describe('WeekAheadPage', () => {
       if (options?.method === 'POST') {
         return Promise.resolve(schedule);
       }
-      if (path === '/api/v1/plan-actions/schedule?days=14') {
+      if (path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14') {
         return Promise.resolve(schedule);
       }
       return Promise.reject(new Error(`Unexpected request: ${path}`));
@@ -724,12 +929,12 @@ describe('WeekAheadPage', () => {
 
   it('removes only a user-added workout, leaving coach-planned sessions their Skip control (Batch 79)', async () => {
     const mixedSchedule = JSON.parse(JSON.stringify(schedule));
-    mixedSchedule.data.schedule[0].workouts[1].source = 'plan_action_add';
+    mixedSchedule.data.schedule[1].workouts[1].source = 'plan_action_add';
     apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
       if (options?.method === 'POST') {
         return Promise.resolve(mixedSchedule);
       }
-      if (path === '/api/v1/plan-actions/schedule?days=14') {
+      if (path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14') {
         return Promise.resolve(mixedSchedule);
       }
       return Promise.reject(new Error(`Unexpected request: ${path}`));
@@ -770,7 +975,7 @@ describe('WeekAheadPage', () => {
 
   it('renders the shared error state when the schedule fails to load', async () => {
     apiFetchMock.mockImplementation((path: string) =>
-      path === '/api/v1/plan-actions/schedule?days=14'
+      path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14'
         ? Promise.reject(new Error('Network down'))
         : Promise.reject(new Error(`Unexpected request: ${path}`)),
     );
@@ -790,7 +995,7 @@ describe('WeekAheadPage', () => {
 
   it('links to Holiday and New training block from the organiser (Batch 81)', async () => {
     apiFetchMock.mockImplementation((path: string) =>
-      path === '/api/v1/plan-actions/schedule?days=14'
+      path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14'
         ? Promise.resolve(schedule)
         : Promise.reject(new Error(`Unexpected request: ${path}`)),
     );
@@ -840,7 +1045,7 @@ describe('WeekAheadPage', () => {
       isHoliday: true,
     };
     apiFetchMock.mockImplementation((path: string) =>
-      path === '/api/v1/plan-actions/schedule?days=14'
+      path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14'
         ? Promise.resolve(blockSchedule)
         : Promise.reject(new Error(`Unexpected request: ${path}`)),
     );
@@ -882,13 +1087,13 @@ describe('WeekAheadPage', () => {
       isReset: true,
     };
     apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
-      if (path === '/api/v1/plan-actions/schedule?days=14') {
+      if (path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14') {
         return Promise.resolve(resetSchedule);
       }
-      if (path === '/api/v1/plan-actions/weeks/2026-06-23/reset' && options?.method === 'POST') {
+      if (path === '/api/v1/plan-actions/weeks/2026-06-22/reset' && options?.method === 'POST') {
         return Promise.resolve(activeResetSchedule);
       }
-      if (path === '/api/v1/plan-actions/weeks/2026-06-23/reset' && options?.method === 'DELETE') {
+      if (path === '/api/v1/plan-actions/weeks/2026-06-22/reset' && options?.method === 'DELETE') {
         return Promise.resolve(resetSchedule);
       }
       return Promise.reject(new Error(`Unexpected request: ${path}`));
@@ -910,17 +1115,17 @@ describe('WeekAheadPage', () => {
     await user.click(screen.getByRole('button', { name: /light reset/i }));
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith(
-        '/api/v1/plan-actions/weeks/2026-06-23/reset',
+        '/api/v1/plan-actions/weeks/2026-06-22/reset',
         expect.objectContaining({ method: 'POST' }),
       );
     });
 
     view.unmount();
     apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
-      if (path === '/api/v1/plan-actions/schedule?days=14') {
+      if (path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14') {
         return Promise.resolve(activeResetSchedule);
       }
-      if (path === '/api/v1/plan-actions/weeks/2026-06-23/reset' && options?.method === 'DELETE') {
+      if (path === '/api/v1/plan-actions/weeks/2026-06-22/reset' && options?.method === 'DELETE') {
         return Promise.resolve(resetSchedule);
       }
       return Promise.reject(new Error(`Unexpected request: ${path}`));
@@ -939,7 +1144,7 @@ describe('WeekAheadPage', () => {
     await user.click(screen.getByRole('button', { name: /restore week/i }));
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith(
-        '/api/v1/plan-actions/weeks/2026-06-23/reset',
+        '/api/v1/plan-actions/weeks/2026-06-22/reset',
         expect.objectContaining({ method: 'DELETE' }),
       );
     });
@@ -989,7 +1194,7 @@ describe('WeekAheadPage', () => {
       errors: [],
     };
     apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
-      if (path === '/api/v1/plan-actions/schedule?days=14') {
+      if (path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14') {
         return Promise.resolve(restructureSchedule);
       }
       if (path === '/api/v1/restructure/week-ahead?week_start=2026-06-22') {

@@ -88,8 +88,10 @@ function activityLabel(activity: PlanActivity): string {
   return activity.durationMin ? `${kind} · ${activity.durationMin} min` : kind;
 }
 
-async function fetchSchedule() {
-  const response = await apiFetch<unknown>('/api/v1/plan-actions/schedule?days=14');
+async function fetchSchedule(startDate: string) {
+  const response = await apiFetch<unknown>(
+    `/api/v1/plan-actions/schedule?start_date=${encodeURIComponent(startDate)}&days=14`,
+  );
   return planScheduleEnvelopeSchema.parse(response);
 }
 
@@ -139,13 +141,17 @@ export function WeekAheadPage() {
   const { player } = useAuth();
   const isAdmin = player?.role === 'admin';
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: ['plan-schedule'], queryFn: fetchSchedule });
   const dailyLoop = useDailyLoop();
   const weeklyMix = dailyLoop.data?.data.morningAnalysis?.weeklyMix ?? null;
   // Batch 138: local-today in the profile timezone, not `new Date().toISOString()`
   // (the UTC date) — during BST the UTC date rolls a day late, so the old code
   // could highlight the wrong day at the late-evening boundary.
   const todayIso = localTodayIso(player?.timezone);
+  const scheduleStart = weekStartForDate(todayIso);
+  const query = useQuery({
+    queryKey: ['plan-schedule', scheduleStart],
+    queryFn: () => fetchSchedule(scheduleStart),
+  });
   const [view, setView] = useState<WeekView>('glance');
   const [pickerWorkout, setPickerWorkout] = useState<MoveableWorkout | null>(null);
   const [quickAddTarget, setQuickAddTarget] = useState<{
@@ -328,6 +334,7 @@ export function WeekAheadPage() {
               day.workouts.length > 0 ? day.workouts.map((workout) => workout.title).join(' · ') : 'Rest',
             isToday: day.date === todayIso,
             isCurrent: day.date === pickerWorkout.day,
+            isPast: day.date < todayIso,
           }))
         : [],
     [pickerWorkout, query.data, todayIso],
@@ -464,6 +471,7 @@ export function WeekAheadPage() {
                     <ScheduleDayCard
                       day={day}
                       isToday={day.date === todayIso}
+                      isPast={day.date < todayIso}
                       busy={busy}
                       onAdd={(category) => setQuickAddTarget({ date: day.date, category })}
                       onBuildRide={() => setStructuredTarget({ mode: 'add', date: day.date })}
@@ -773,6 +781,7 @@ function WeekCharacterBanner({
 function ScheduleDayCard({
   day,
   isToday,
+  isPast,
   busy,
   onAdd,
   onBuildRide,
@@ -786,6 +795,7 @@ function ScheduleDayCard({
 }: {
   day: PlanDay;
   isToday: boolean;
+  isPast: boolean;
   busy: boolean;
   onAdd: (category: Exclude<DayCategory, 'rest'>) => void;
   onBuildRide: () => void;
@@ -820,6 +830,7 @@ function ScheduleDayCard({
               key={workout.id}
               workout={workout}
               busy={busy}
+              readOnly={isPast}
               onMove={() => onMove({ ...workout, day: day.date })}
               onOpenDetail={() => onOpenDetail(workout)}
               onEditStructure={() => onEditStructure(workout)}
@@ -847,37 +858,43 @@ function ScheduleDayCard({
           </div>
         ) : null}
 
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onAdd('cycle')}>
-            <Plus className="h-4 w-4" aria-hidden />
-            Cycle
-          </Button>
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onBuildRide}>
-            <SlidersHorizontal className="h-4 w-4" aria-hidden />
-            Build ride
-          </Button>
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onAdd('weights')}>
-            <Plus className="h-4 w-4" aria-hidden />
-            Weights
-          </Button>
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onAdd('flexibility')}>
-            <Plus className="h-4 w-4" aria-hidden />
-            Flexibility
-          </Button>
-          {day.workouts.length > 0 && (
-            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onSkipDay}>
-              <Trash2 className="h-4 w-4" aria-hidden />
-              {hasCompletedWorkout ? 'Skip remaining' : 'Skip whole day'}
-            </Button>
-          )}
-        </div>
-        {day.workouts.length > 0 ? (
-          <p className="text-xs text-text-secondary">
-            {hasCompletedWorkout
-              ? 'Completed sessions stay on the day. This skips only the sessions still left to do.'
-              : 'Use a session’s own Skip or Remove to get rid of just that one — Skip whole day clears everything.'}
-          </p>
-        ) : null}
+        {isPast ? (
+          <p className="text-xs text-text-secondary">Past days stay readable here, but edits are closed.</p>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onAdd('cycle')}>
+                <Plus className="h-4 w-4" aria-hidden />
+                Cycle
+              </Button>
+              <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onBuildRide}>
+                <SlidersHorizontal className="h-4 w-4" aria-hidden />
+                Build ride
+              </Button>
+              <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onAdd('weights')}>
+                <Plus className="h-4 w-4" aria-hidden />
+                Weights
+              </Button>
+              <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onAdd('flexibility')}>
+                <Plus className="h-4 w-4" aria-hidden />
+                Flexibility
+              </Button>
+              {day.workouts.length > 0 && (
+                <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onSkipDay}>
+                  <Trash2 className="h-4 w-4" aria-hidden />
+                  {hasCompletedWorkout ? 'Skip remaining' : 'Skip whole day'}
+                </Button>
+              )}
+            </div>
+            {day.workouts.length > 0 ? (
+              <p className="text-xs text-text-secondary">
+                {hasCompletedWorkout
+                  ? 'Completed sessions stay on the day. This skips only the sessions still left to do.'
+                  : 'Use a session’s own Skip or Remove to get rid of just that one — Skip whole day clears everything.'}
+              </p>
+            ) : null}
+          </>
+        )}
       </CardContent>
     </Card>
   );
@@ -886,6 +903,7 @@ function ScheduleDayCard({
 function WorkoutRow({
   workout,
   busy,
+  readOnly,
   onMove,
   onOpenDetail,
   onEditStructure,
@@ -894,6 +912,7 @@ function WorkoutRow({
 }: {
   workout: PlanWorkout;
   busy: boolean;
+  readOnly: boolean;
   onMove: () => void;
   onOpenDetail: () => void;
   onEditStructure: () => void;
@@ -938,7 +957,7 @@ function WorkoutRow({
         ) : null}
       </div>
       {isOutdoor ? <OutdoorDeliveryBadge delivery={workout.outdoorDelivery ?? null} /> : null}
-      {isComplete ? null : confirming === null ? (
+      {isComplete || readOnly ? null : confirming === null ? (
         <div className="mt-3 flex flex-wrap gap-2">
           <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onMove}>
             Move

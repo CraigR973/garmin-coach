@@ -9,6 +9,7 @@ interface MoveWorkoutDayOption {
   detail: string;
   isToday: boolean;
   isCurrent: boolean;
+  isPast: boolean;
 }
 
 interface MoveWorkoutSheetProps {
@@ -31,10 +32,10 @@ export function MoveWorkoutSheet({ open, workoutTitle, busy, days, onClose, onSe
               key={day.date}
               type="button"
               variant="outline"
-              disabled={busy || day.isCurrent}
+              disabled={busy || day.isCurrent || day.isPast}
               className={cn(
                 'h-auto w-full justify-start rounded-xl px-4 py-3 text-left',
-                day.isCurrent && 'opacity-60',
+                (day.isCurrent || day.isPast) && 'opacity-60',
               )}
               onClick={() => onSelect(day.date)}
             >
@@ -43,8 +44,11 @@ export function MoveWorkoutSheet({ open, workoutTitle, busy, days, onClose, onSe
                   <span className="text-sm font-medium text-text-primary">{day.label}</span>
                   {day.isToday && <Badge variant="default">Today</Badge>}
                   {day.isCurrent && <Badge variant="muted">Current day</Badge>}
+                  {day.isPast && <Badge variant="muted">Past day</Badge>}
                 </span>
-                <span className="mt-1 block text-xs text-text-secondary">{day.detail}</span>
+                <span className="mt-1 block text-xs text-text-secondary">
+                  {day.isPast ? `${day.detail} · unavailable for moves` : day.detail}
+                </span>
               </span>
             </Button>
           ))}
