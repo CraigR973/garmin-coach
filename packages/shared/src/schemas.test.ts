@@ -9,6 +9,8 @@ import {
   dailyLoopPostWorkoutAnalysisSchema,
   dailyMetricSchema,
   feedbackInputSchema,
+  intervalEditorEnvelopeSchema,
+  intervalWorkoutBlockSchema,
   knowledgeBaseUpdateInputSchema,
   manualEntryInputSchema,
   manualEntrySchema,
@@ -690,6 +692,45 @@ describe('v1 shared schemas', () => {
     expect(parsed.data.signal.readinessScore).toBe(31);
     expect(parsed.data.changes[0]?.reason).toBe('defer_fatigue');
     expect(parsed.data.conflictsBefore[0]?.[1]).toBe('2026-07-16');
+  });
+
+  it('parses the per-interval editor source and response contracts (Batch 147)', () => {
+    const block = intervalWorkoutBlockSchema.parse({
+      repeat: 5,
+      work: { durationSec: 120, powerPct: 120, cadenceRpm: 95 },
+      rest: { durationSec: 120, powerPct: 60, cadenceRpm: 70 },
+    });
+    const parsed = intervalEditorEnvelopeSchema.parse({
+      data: {
+        plannedWorkoutId: rowId,
+        current: block,
+        changeTo: block,
+        presets: {
+          keep: block,
+          scale: block,
+          sweetSpot: {
+            repeat: 3,
+            work: { durationSec: 600, powerPct: 90, cadenceRpm: 85 },
+            rest: { durationSec: 300, powerPct: 55, cadenceRpm: 75 },
+          },
+          zoneTwo: {
+            repeat: 1,
+            work: { durationSec: 2700, powerPct: 65, cadenceRpm: 85 },
+            rest: { durationSec: 0, powerPct: 55 },
+          },
+        },
+        fixedSteps: [
+          { index: 0, label: 'Warm-up ramp', role: 'warmup' },
+          { index: 5, label: 'Cool-down ramp', role: 'cooldown' },
+        ],
+      },
+      meta: { generatedAtUtc: '2026-07-24T14:00:00Z' },
+      errors: [],
+    });
+
+    expect(parsed.data.current.rest.cadenceRpm).toBe(70);
+    expect(parsed.data.presets.zoneTwo.repeat).toBe(1);
+    expect(parsed.data.presets.zoneTwo.rest.durationSec).toBe(0);
   });
 
   it('accepts kind-scoped reason tags on feedback input (Batch 118)', () => {

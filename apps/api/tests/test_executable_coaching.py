@@ -37,6 +37,7 @@ from src.services.executable_coaching import (
     ir_has_vo2,
 )
 from src.services.garmin_sync import GarminScheduledWorkout
+from src.services.interval_workout_editor import EditableIntervalBlock, IntervalLeg
 from src.services.morning_analysis import MorningAnalysisResult
 from src.services.workout_categories import category_for_workout_type
 from src.services.workout_delivery import (
@@ -1358,6 +1359,100 @@ async def test_edit_today_creates_event_when_slot_has_none(db_conn: AsyncConnect
         assert delivered.intervals_event_id == "evt_123"
         assert delivered.structured_workout_ir["origin"] == "manual_override"
         assert len(fake.payloads) == 1
+        assert fake.updates == []
+
+
+@pytest.mark.asyncio
+async def test_interval_edit_versions_source_and_approves_existing_event_update(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id, workout_id = uuid.uuid4(), uuid.uuid4()
+    day = date(2026, 7, 11)
+    await _seed_bike(db_conn, user_id, workout_id, workout_date=day)
+    fake = _FakeIntervalsClient()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session, intervals_client=fake)
+        await service.reconcile_deliveries(user, start_date=day, end_date=day)
+
+        delivered = await service.approve_interval_edit(
+            user,
+            planned_workout_id=workout_id,
+            block=EditableIntervalBlock(
+                repeat=3,
+                work=IntervalLeg(duration_sec=600, power_pct=90, cadence_rpm=85),
+                rest=IntervalLeg(duration_sec=300, power_pct=55, cadence_rpm=70),
+            ),
+        )
+
+        assert delivered.status == STATUS_PUSHED
+        assert delivered.approved_at_utc is not None
+        assert delivered.intervals_event_id == "evt_123"
+        assert delivered.structured_workout_ir["origin"] == "interval_editor"
+        assert [event_id for event_id, _ in fake.updates] == ["evt_123"]
+        assert 'Power="0.55" Cadence="70"' in delivered.zwo_xml
+
+        rows = (
+            (
+                await session.execute(
+                    select(PlannedWorkout)
+                    .where(PlannedWorkout.user_id == user_id)
+                    .order_by(PlannedWorkout.version)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert [(row.version, row.is_active) for row in rows] == [(1, False), (2, True)]
+        edited = rows[1]
+        assert edited.source == "interval_editor"
+        assert edited.structured_workout["steps"][0] == VO2_STRUCTURED["steps"][0]
+        assert edited.structured_workout["steps"][2] == VO2_STRUCTURED["steps"][2]
+        assert edited.structured_workout["steps"][1]["block"]["rest"] == {
+            "durationSec": 300,
+            "powerPct": 55,
+            "cadenceRpm": 70,
+        }
+
+
+@pytest.mark.asyncio
+async def test_interval_edit_keeps_red_never_vo2_hard_before_versioning(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id, workout_id = uuid.uuid4(), uuid.uuid4()
+    day = date(2026, 7, 12)
+    await _seed_bike(db_conn, user_id, workout_id, workout_date=day)
+    fake = _FakeIntervalsClient()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(_morning_analysis(user_id, day, "Red"))
+        await session.commit()
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session, intervals_client=fake)
+
+        with pytest.raises(HTTPException, match="Red verdict blocks VO2"):
+            await service.approve_interval_edit(
+                user,
+                planned_workout_id=workout_id,
+                block=EditableIntervalBlock(
+                    repeat=5,
+                    work=IntervalLeg(duration_sec=120, power_pct=120, cadence_rpm=95),
+                    rest=IntervalLeg(duration_sec=120, power_pct=60, cadence_rpm=70),
+                ),
+            )
+
+        rows = (
+            (await session.execute(select(PlannedWorkout).where(PlannedWorkout.user_id == user_id)))
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 1
+        assert rows[0].id == workout_id
+        assert rows[0].is_active is True
+        assert fake.payloads == []
         assert fake.updates == []
 
 

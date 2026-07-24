@@ -333,6 +333,9 @@ function renderPage(snapshot = baseSnapshot) {
     if (path.startsWith('/api/v1/bedroom/overnight')) {
       return Promise.resolve(overnightSnapshot);
     }
+    if (path.endsWith('/interval-editor')) {
+      return Promise.resolve(intervalEditorSnapshot);
+    }
     if (path.includes('/api/v1/workout-delivery/planned-workouts/')) {
       return Promise.resolve({ data: { proposals: [] }, meta: { generatedAtUtc: '2026-06-20T06:45:00Z' }, errors: [] });
     }
@@ -385,6 +388,50 @@ function renderPage(snapshot = baseSnapshot) {
 }
 
 const WORKOUT_ID = '55555555-5555-4555-8555-555555555555';
+const intervalEditorSnapshot = {
+  data: {
+    plannedWorkoutId: WORKOUT_ID,
+    current: {
+      repeat: 5,
+      work: { durationSec: 120, powerPct: 120, cadenceRpm: 95 },
+      rest: { durationSec: 120, powerPct: 60, cadenceRpm: null },
+    },
+    changeTo: {
+      repeat: 5,
+      work: { durationSec: 90, powerPct: 108, cadenceRpm: 95 },
+      rest: { durationSec: 90, powerPct: 54, cadenceRpm: null },
+    },
+    presets: {
+      keep: {
+        repeat: 5,
+        work: { durationSec: 120, powerPct: 120, cadenceRpm: 95 },
+        rest: { durationSec: 120, powerPct: 60, cadenceRpm: null },
+      },
+      scale: {
+        repeat: 5,
+        work: { durationSec: 90, powerPct: 108, cadenceRpm: 95 },
+        rest: { durationSec: 90, powerPct: 54, cadenceRpm: null },
+      },
+      sweetSpot: {
+        repeat: 3,
+        work: { durationSec: 600, powerPct: 90, cadenceRpm: 95 },
+        rest: { durationSec: 300, powerPct: 55, cadenceRpm: 75 },
+      },
+      zoneTwo: {
+        repeat: 1,
+        work: { durationSec: 2700, powerPct: 65, cadenceRpm: 95 },
+        rest: { durationSec: 0, powerPct: 55, cadenceRpm: null },
+      },
+    },
+    fixedSteps: [
+      { index: 0, label: 'Warm-up ramp', role: 'warmup' },
+      { index: 1, label: 'Primer', role: 'primer' },
+      { index: 5, label: 'Cool-down ramp', role: 'cooldown' },
+    ],
+  },
+  meta: { generatedAtUtc: '2026-07-24T13:00:00Z' },
+  errors: [],
+};
 
 beforeEach(() => {
   // Freeze the wall-clock to a deterministic *daytime* instant. Section ordering
@@ -743,23 +790,33 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Walk read:')).toBeTruthy();
   });
 
-  it('edits today’s session with the duration and intensity dials', async () => {
+  it('edits the interval set and approves the exact work/rest block', async () => {
     const user = userEvent.setup();
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: /^edit$/i }));
-    await user.clear(screen.getByLabelText('Duration percentage'));
-    await user.type(screen.getByLabelText('Duration percentage'), '80');
-    await user.clear(screen.getByLabelText('Intensity percentage'));
-    await user.type(screen.getByLabelText('Intensity percentage'), '90');
-    await user.click(screen.getByRole('button', { name: /apply & sync/i }));
+    expect(await screen.findByText('Change the interval set')).toBeTruthy();
+    expect(screen.getByText('Warm-up ramp')).toBeTruthy();
+    expect(screen.getByText('Cool-down ramp')).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: /sweet spot/i }));
+    const restCadence = screen.getByLabelText('Change to rest cadence');
+    await user.clear(restCadence);
+    await user.type(restCadence, '70');
+    await user.click(screen.getByRole('button', { name: /approve & upload to zwift/i }));
 
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith(
-        `/api/v1/workout-delivery/planned-workouts/${WORKOUT_ID}/edit`,
+        `/api/v1/workout-delivery/planned-workouts/${WORKOUT_ID}/interval-editor/approve`,
         expect.objectContaining({
           method: 'POST',
-          body: JSON.stringify({ durationScalePct: 80, intensityScalePct: 90 }),
+          body: JSON.stringify({
+            block: {
+              repeat: 3,
+              work: { durationSec: 600, powerPct: 90, cadenceRpm: 95 },
+              rest: { durationSec: 300, powerPct: 55, cadenceRpm: 70 },
+            },
+          }),
         }),
       );
     });
@@ -790,35 +847,29 @@ describe('DashboardPage', () => {
     });
   });
 
-  it('clamps the edit dial to the real backend bounds and shows them inline', async () => {
+  it('collapses the Z2 suggestion to one continuous effort with no rest', async () => {
     const user = userEvent.setup();
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: /^edit$/i }));
-    expect(screen.getByText('Allowed range 50-125%.')).toBeTruthy();
-    expect(screen.getByText('Allowed range 50-120%.')).toBeTruthy();
-
-    const durationInput = screen.getByLabelText('Duration percentage');
-    const intensityInput = screen.getByLabelText('Intensity percentage');
-
-    await user.clear(durationInput);
-    await user.type(durationInput, '130');
-    await user.click(intensityInput);
-    expect((durationInput as HTMLInputElement).value).toBe('125');
-
-    await user.clear(intensityInput);
-    await user.type(intensityInput, '140');
-    await user.tab();
-    expect((intensityInput as HTMLInputElement).value).toBe('120');
-
-    await user.click(screen.getByRole('button', { name: /apply & sync/i }));
+    await user.click(await screen.findByRole('button', { name: /^z2$/i }));
+    expect((screen.getByLabelText('Change to number of intervals') as HTMLInputElement).value).toBe('1');
+    expect((screen.getByLabelText('Change to rest time minutes') as HTMLInputElement).value).toBe('0');
+    expect((screen.getByLabelText('Change to rest time seconds') as HTMLInputElement).value).toBe('00');
+    await user.click(screen.getByRole('button', { name: /approve & upload to zwift/i }));
 
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith(
-        `/api/v1/workout-delivery/planned-workouts/${WORKOUT_ID}/edit`,
+        `/api/v1/workout-delivery/planned-workouts/${WORKOUT_ID}/interval-editor/approve`,
         expect.objectContaining({
           method: 'POST',
-          body: JSON.stringify({ durationScalePct: 125, intensityScalePct: 120 }),
+          body: JSON.stringify({
+            block: {
+              repeat: 1,
+              work: { durationSec: 2700, powerPct: 65, cadenceRpm: 95 },
+              rest: { durationSec: 0, powerPct: 55, cadenceRpm: null },
+            },
+          }),
         }),
       );
     });
