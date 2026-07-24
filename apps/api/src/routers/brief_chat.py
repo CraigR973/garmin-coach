@@ -1,9 +1,9 @@
-"""Follow-up chat on a brief — Batch 119.
+"""Follow-up chat on an analysis read — Batch 119, extended by Batch 150.
 
   GET  /api/v1/briefs/{analysis_id}/messages   — this user's conversation history
   POST /api/v1/briefs/{analysis_id}/messages   — ask a follow-up, get the answer
 
-Every AI summary is one ``analyses`` row, so the conversation is keyed to
+Every AI summary/read is one ``analyses`` row, so the conversation is keyed to
 ``analysis_id`` the same way ``feedback`` is. The write is user-scoped: 404
 when the analysis does not exist, 403 when it belongs to another profile.
 """

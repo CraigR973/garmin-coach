@@ -367,6 +367,9 @@ function renderPage(snapshot = baseSnapshot) {
     if (path.includes('/api/v1/plan-actions/')) {
       return Promise.resolve({ data: {}, meta: { generatedAtUtc: '2026-06-20T06:45:00Z' }, errors: [] });
     }
+    if (path.includes('/api/v1/briefs/') && path.endsWith('/messages')) {
+      return Promise.resolve({ data: [], meta: { generatedAtUtc: '2026-06-20T12:25:00Z' }, errors: [] });
+    }
     if (path.includes('/post-ride-check-in')) {
       return Promise.resolve(snapshot);
     }
@@ -1287,6 +1290,8 @@ describe('DashboardPage', () => {
     expect(screen.queryByText(/refuel within 20 minutes/i)).toBeNull();
     await user.click(screen.getByRole('button', { name: /view analysis/i }));
     expect(await screen.findByText(/refuel within 20 minutes/i)).toBeTruthy();
+    expect(await screen.findByText('Ask about this read')).toBeTruthy();
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/briefs/66666666-6666-4666-8666-666666666666/messages');
 
     // The matched ride folds into the row → no standalone After-your-ride section.
     expect(screen.queryByText('After your ride')).toBeNull();
