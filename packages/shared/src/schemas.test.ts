@@ -10,6 +10,8 @@ import {
   dailyMetricSchema,
   feedbackInputSchema,
   knowledgeBaseUpdateInputSchema,
+  manualEntryInputSchema,
+  manualEntrySchema,
   plannedWorkoutOverrideInputSchema,
   profileSchema,
   rideIntervalSchema,
@@ -79,6 +81,24 @@ describe('v1 shared schemas', () => {
 
     expect(parsed.role).toBe('admin');
     expect(parsed.timezone).toBe('Europe/London');
+  });
+
+  it('accepts the full 0-10 subjective feel contract', () => {
+    expect(manualEntryInputSchema.parse({ subjectiveScore: 0 }).subjectiveScore).toBe(0);
+    expect(
+      manualEntrySchema.parse({
+        id: rowId,
+        userId,
+        entryDate: '2026-07-24',
+        entryAtUtc: '2026-07-24T07:00:00Z',
+        subjectiveScore: 0,
+        actualWorkoutJson: {},
+        supplementsJson: {},
+        foodJson: {},
+      }).subjectiveScore,
+    ).toBe(0);
+    expect(() => manualEntryInputSchema.parse({ subjectiveScore: -1 })).toThrow();
+    expect(() => manualEntryInputSchema.parse({ subjectiveScore: 11 })).toThrow();
   });
 
   it('keeps Garmin readiness recovery time in minutes', () => {

@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { apiFetch } from '@/lib/api';
-import { SUBJECTIVE_FEEL_OPTIONS } from '@/lib/subjectiveFeel';
+import { SUBJECTIVE_FEEL_OPTIONS, subjectiveFeelLabel } from '@/lib/subjectiveFeel';
 
 type CheckInBrief = NonNullable<
   ReturnType<typeof dailyLoopEnvelopeSchema.parse>['data']['morningAnalysis']
@@ -93,6 +93,17 @@ function objectSummary(text: string): Record<string, unknown> {
   };
 }
 
+function parseOptionalNumber(value: string): number | null {
+  return value === '' ? null : Number(value);
+}
+
+function normalizeSubjectiveScore(value: string): string {
+  if (value.trim() === '') return '';
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return '';
+  return String(Math.min(10, Math.max(0, Math.round(parsed))));
+}
+
 async function fetchDailyLoop() {
   const response = await apiFetch<unknown>('/api/v1/daily-loop');
   return dailyLoopEnvelopeSchema.parse(response);
@@ -157,7 +168,7 @@ export function CheckInPage() {
     setManualForm({
       bpSystolic: manualEntry?.bpSystolic ? String(manualEntry.bpSystolic) : '',
       bpDiastolic: manualEntry?.bpDiastolic ? String(manualEntry.bpDiastolic) : '',
-      subjectiveScore: manualEntry?.subjectiveScore ? String(manualEntry.subjectiveScore) : '',
+      subjectiveScore: manualEntry?.subjectiveScore != null ? String(manualEntry.subjectiveScore) : '',
       feel: manualEntry?.feel ?? '',
       supplements: textSummary(manualEntry?.supplementsJson),
       food: textSummary(manualEntry?.foodJson),
@@ -226,7 +237,7 @@ export function CheckInPage() {
       const manualPayload = manualEntryInputSchema.parse({
         bpSystolic: manualForm.bpSystolic ? Number(manualForm.bpSystolic) : null,
         bpDiastolic: manualForm.bpDiastolic ? Number(manualForm.bpDiastolic) : null,
-        subjectiveScore: manualForm.subjectiveScore ? Number(manualForm.subjectiveScore) : null,
+        subjectiveScore: parseOptionalNumber(manualForm.subjectiveScore),
         feel: manualForm.feel || null,
         supplementsJson: objectSummary(manualForm.supplements),
         foodJson: objectSummary(manualForm.food),
@@ -273,6 +284,10 @@ export function CheckInPage() {
     setManualForm((current) => ({ ...current, [key]: value }));
   }
 
+  function setSubjectiveScore(value: string) {
+    setManual('subjectiveScore', normalizeSubjectiveScore(value));
+  }
+
   function toggleChip(chip: (typeof QUICK_CHIPS)[number]) {
     dirtyRef.current = true;
     setManualForm((current) => ({
@@ -310,7 +325,44 @@ export function CheckInPage() {
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label>How you feel today</Label>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="text-3xl font-semibold text-text-primary">
+                  {manualForm.subjectiveScore === '' ? '-' : manualForm.subjectiveScore}
+                  <span className="text-base font-medium text-text-secondary">/10</span>
+                </p>
+                <p className="text-sm text-text-secondary">
+                  {subjectiveFeelLabel(parseOptionalNumber(manualForm.subjectiveScore)) ?? 'Move the slider'}
+                </p>
+              </div>
+              <div className="w-24">
+                <Label htmlFor="subjective-score-number" className="sr-only">
+                  Feel score
+                </Label>
+                <Input
+                  id="subjective-score-number"
+                  inputMode="numeric"
+                  min={0}
+                  max={10}
+                  type="number"
+                  value={manualForm.subjectiveScore}
+                  onChange={(event) => setSubjectiveScore(event.target.value)}
+                  onBlur={(event) => setSubjectiveScore(event.target.value)}
+                  aria-label="Feel score"
+                />
+              </div>
+            </div>
+            <input
+              aria-label="0 to 10 feel score"
+              className="w-full accent-primary"
+              max={10}
+              min={0}
+              step={1}
+              type="range"
+              value={manualForm.subjectiveScore === '' ? 5 : manualForm.subjectiveScore}
+              onChange={(event) => setSubjectiveScore(event.target.value)}
+            />
+            <div className="grid grid-cols-5 gap-1 text-center text-[11px] text-text-secondary">
               {SUBJECTIVE_FEEL_OPTIONS.map((option) => {
                 const selected = manualForm.subjectiveScore === String(option.value);
                 return (
@@ -320,7 +372,8 @@ export function CheckInPage() {
                     size="sm"
                     variant={selected ? 'default' : 'outline'}
                     aria-pressed={selected}
-                    onClick={() => setManual('subjectiveScore', String(option.value))}
+                    className="min-w-0 px-1 text-xs"
+                    onClick={() => setSubjectiveScore(String(option.value))}
                   >
                     {option.label}
                   </Button>

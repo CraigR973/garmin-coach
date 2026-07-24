@@ -1727,12 +1727,12 @@ def _date_label(value: date) -> str:
 
 
 def subjective_score_label(score: int | None) -> str | None:
-    """Map the one-tap check-in score to the word Mark actually tapped.
+    """Map the numeric check-in score to the nearest word anchor.
 
-    Source of truth for the anchors is the frontend one-tap scale
-    (apps/web/src/pages/CheckInPage.tsx OVERALL_OPTIONS): 2=Rough, 4=Meh, 6=OK,
-    8=Good, 10=Great. Off-scale legacy values fall to the nearest band so the read
-    always speaks his word, never the raw 0-10 number. Batch 91 (#164)."""
+    Source of truth for the anchors is the frontend feel scale
+    (apps/web/src/lib/subjectiveFeel.ts): 2=Rough, 4=Meh, 6=OK, 8=Good,
+    10=Great. The read always speaks his word, never the raw 0-10 number.
+    Batch 91 (#164), extended to the full 0-10 input in Batch 146."""
     if score is None:
         return None
     if score <= 3:

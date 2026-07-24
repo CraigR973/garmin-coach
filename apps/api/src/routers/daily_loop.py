@@ -246,7 +246,7 @@ class ApiMeta(BaseModel):
 class ManualEntryBody(BaseModel):
     bpSystolic: int | None = None
     bpDiastolic: int | None = None
-    subjectiveScore: int | None = None
+    subjectiveScore: int | None = Field(default=None, ge=0, le=10)
     rpe: float | None = None
     feel: str | None = None
     supplementsJson: dict[str, Any] = Field(default_factory=dict)
@@ -263,7 +263,7 @@ class AdherenceBody(BaseModel):
 
 
 class PostRideCheckInBody(BaseModel):
-    subjectiveScore: int | None = None
+    subjectiveScore: int | None = Field(default=None, ge=0, le=10)
     rpe: float | None = None
     feel: str | None = None
     notes: str | None = None

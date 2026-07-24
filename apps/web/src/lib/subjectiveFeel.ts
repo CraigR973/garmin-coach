@@ -1,6 +1,6 @@
-/** Shared Batch 94 vocabulary: the morning feel input stays a one-tap word
- *  scale in the UI even though the stored contract remains `subjectiveScore`.
- *  Keep the mapping in one place so Check-in and Home can't drift. */
+/** Shared feel vocabulary: the stored contract is the full 0-10
+ *  `subjectiveScore`; the words are anchors so the app can still speak Mark's
+ *  check-in back in human terms. */
 export const SUBJECTIVE_FEEL_OPTIONS: Array<{ label: string; value: number }> = [
   { label: 'Rough', value: 2 },
   { label: 'Meh', value: 4 },

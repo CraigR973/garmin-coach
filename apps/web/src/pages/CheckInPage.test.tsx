@@ -163,6 +163,54 @@ describe('CheckInPage', () => {
     expect(JSON.parse(options.body)).toMatchObject({ subjectiveScore: 8, feel: 'slept well' });
   });
 
+  it('saves an exact odd feel score and preserves it through a warm-resume refetch (Batch 146)', async () => {
+    const refetched = { ...snapshot, meta: { ...snapshot.meta, generatedAtUtc: '2026-06-20T06:45:00Z' } };
+    let getCalls = 0;
+    apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
+      if (options?.method === 'PUT') return Promise.resolve(snapshot);
+      if (path === '/api/v1/daily-loop') {
+        getCalls += 1;
+        return Promise.resolve(getCalls === 1 ? snapshot : refetched);
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    const queryClient = new QueryClient();
+    const user = userEvent.setup();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CheckInPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const score = (await screen.findByRole('spinbutton', { name: 'Feel score' })) as HTMLInputElement;
+    await user.clear(score);
+    await user.type(score, '7');
+    expect(score.value).toBe('7');
+    expect(screen.getAllByText('OK').length).toBeGreaterThanOrEqual(1);
+
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: ['daily-loop'] });
+    });
+
+    expect((screen.getByRole('spinbutton', { name: 'Feel score' }) as HTMLInputElement).value).toBe('7');
+
+    await user.click(screen.getByRole('button', { name: /get today's brief/i }));
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/daily-loop/2026-06-20/manual-entry',
+        expect.objectContaining({ method: 'PUT' }),
+      );
+    });
+    const [, options] = apiFetchMock.mock.calls.find(
+      ([path, opts]) => path === '/api/v1/daily-loop/2026-06-20/manual-entry' && opts?.method === 'PUT',
+    ) as [string, { body: string }];
+    expect(JSON.parse(options.body)).toMatchObject({ subjectiveScore: 7 });
+  });
+
   it('still seeds the form from the server while it is pristine (Batch 139 guard)', async () => {
     const withEntry = {
       ...snapshot,
@@ -224,7 +272,7 @@ describe('CheckInPage', () => {
     });
   });
 
-  it('labels the quick scale as "How you feel today" and never shows the numeric score', async () => {
+  it('shows the 0-10 feel input with word anchors', async () => {
     apiFetchMock.mockImplementation((path: string) => {
       if (path === '/api/v1/daily-loop') return Promise.resolve(snapshot);
       return Promise.reject(new Error(`Unexpected request: ${path}`));
@@ -241,6 +289,8 @@ describe('CheckInPage', () => {
     );
 
     expect(await screen.findByText('How you feel today')).toBeTruthy();
+    expect(screen.getByRole('slider', { name: '0 to 10 feel score' })).toBeTruthy();
+    expect(screen.getByRole('spinbutton', { name: 'Feel score' })).toBeTruthy();
     expect(screen.queryByText('Overall')).toBeNull();
     expect(screen.queryByRole('button', { name: '6' })).toBeNull();
   });
