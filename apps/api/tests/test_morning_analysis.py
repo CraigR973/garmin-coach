@@ -212,6 +212,7 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
                     sleep_start_utc=datetime(2026, 1, 1, 0, 17),
                     sleep_end_utc=datetime(2026, 1, 1, 7, 31),
                     score=71,
+                    duration_sec=386 * 60,  # 6h26 asleep; 00:17->07:31 is 7h14 in bed
                     rem_sleep_sec=80 * 60,
                     average_spo2_pct=96.0,
                     average_respiration=13.4,
@@ -299,6 +300,11 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
         assert packet["sleep"]["sleepStartUtc"] == "2026-01-01T00:17:00Z"
         assert packet["sleep"]["sleepStartLocal"] == "00:17"
         assert packet["sleep"]["sleepEndLocal"] == "07:31"
+        # Batch 142: in-bed (bed->wake window) and asleep surfaced as distinct,
+        # explicitly-labelled figures so the read never conflates them.
+        assert packet["sleep"]["timeInBedMin"] == 434  # 00:17 -> 07:31 window
+        assert packet["sleep"]["timeAsleepMin"] == 386
+        assert packet["sleep"]["durationMin"] == 386
         # Authoritative header date and the check-in spoken as Mark's word.
         assert packet["subjectDateLabel"] == "Thursday 1 January 2026"
         assert packet["manualEntries"][0]["subjectiveLabel"] == "OK"
@@ -795,7 +801,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v13")
+    assert PROMPT_VERSION.startswith("morning-analysis-v14")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
@@ -855,6 +861,58 @@ def test_sleep_packet_local_clock_tolerates_missing_times_and_bad_zone() -> None
     assert partial is not None
     assert partial["sleepStartLocal"] == "00:17"  # UTC fallback
     assert partial["sleepEndLocal"] is None
+    # Batch 142: no wake time and no component totals -> in-bed and asleep stay None
+    # rather than collapsing to a misleading 0.
+    assert partial["timeInBedMin"] is None
+    assert partial["timeAsleepMin"] is None
+
+
+def test_sleep_packet_labels_time_in_bed_and_asleep_separately() -> None:
+    """Batch 142 regression (his 2026-07-19 night): durationMin is Garmin
+    sleepTimeSeconds — time *asleep*, already excluding awake — so the packet must
+    also carry timeInBedMin (the bed->wake window) and an explicitly-named
+    timeAsleepMin. Bed 00:37 -> wake 08:05 is 7h28 in bed (448 min); 6h26 asleep
+    (386 min) with a 62-min awake window sits inside it. Surfacing both, labelled,
+    is what stops the read re-subtracting awake to invent a "5h5 actual sleep"."""
+    packet = _sleep_packet(
+        Sleep(
+            calendar_date=date(2026, 7, 19),
+            sleep_start_utc=datetime(2026, 7, 19, 0, 37),
+            sleep_end_utc=datetime(2026, 7, 19, 8, 5),
+            duration_sec=6 * 3600 + 26 * 60,  # 6h26 asleep (sleepTimeSeconds)
+            awake_sleep_sec=62 * 60,
+        ),
+        None,
+        "Europe/London",
+    )
+    assert packet is not None
+    assert packet["timeInBedMin"] == 448  # 7h28 bed->wake window
+    assert packet["timeAsleepMin"] == 386  # 6h26 asleep
+    assert packet["durationMin"] == 386  # unchanged: still the asleep figure
+    assert packet["awakeSleepMin"] == 62
+    # in bed = asleep + awake (+ any unmeasurable); never asleep - awake
+    assert packet["timeInBedMin"] == packet["timeAsleepMin"] + packet["awakeSleepMin"]
+
+
+def test_sleep_packet_time_in_bed_falls_back_to_component_sum_without_window() -> None:
+    """Batch 142: when a bed/wake timestamp is missing the in-bed total falls back
+    to asleep + awake + brief unmeasurable, so the model still gets a labelled
+    figure while time asleep is unaffected."""
+    packet = _sleep_packet(
+        Sleep(
+            calendar_date=date(2026, 7, 19),
+            sleep_start_utc=datetime(2026, 7, 19, 0, 37),
+            sleep_end_utc=None,  # watch dropped the wake timestamp
+            duration_sec=6 * 3600 + 26 * 60,  # 386 min asleep
+            awake_sleep_sec=62 * 60,  # 62 min awake
+            unmeasurable_sleep_sec=6 * 60,  # 6 min unmeasurable
+        ),
+        None,
+        "Europe/London",
+    )
+    assert packet is not None
+    assert packet["timeInBedMin"] == 454  # 386 + 62 + 6, summed
+    assert packet["timeAsleepMin"] == 386
 
 
 def test_date_label_is_authoritative_and_portable() -> None:
@@ -904,6 +962,18 @@ def test_system_prompt_bans_utc_and_raw_score_and_uses_local_fields() -> None:
     normalized = " ".join(SYSTEM_PROMPT.lower().split())
     assert "never print a `*utc` timestamp" in normalized
     assert "never surface the raw subjectivescore number" in normalized
+
+
+def test_system_prompt_states_time_in_bed_and_asleep_without_re_subtracting_awake() -> None:
+    """Batch 142: the read must state time-in-bed from timeInBedMin and time-asleep
+    from timeAsleepMin, and never subtract awake from the asleep total — the
+    testable guard against the 2026-07-19 "5h5 actual sleep" mislabelling."""
+    assert "timeInBedMin" in SYSTEM_PROMPT
+    assert "timeAsleepMin" in SYSTEM_PROMPT
+    normalized = " ".join(SYSTEM_PROMPT.lower().split())
+    assert "time in bed from sleep.timeinbedmin" in normalized
+    assert "time asleep from sleep.timeasleepmin" in normalized
+    assert "never subtract awake time from it" in normalized
 
 
 def _temperature(at: datetime, value: float) -> TemperatureReading:

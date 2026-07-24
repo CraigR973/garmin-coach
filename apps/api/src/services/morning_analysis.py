@@ -78,7 +78,11 @@ from src.services.workout_categories import is_bike_workout_type
 # credit an observed pre-cool instead of narrating it as a failed target.
 # Batch 98 (#171): the packet now names a holiday/all-skipped day as rest and
 # the prompt must not narrate a paused workout as today's live training choice.
-PROMPT_VERSION = "morning-analysis-v13-2026-07-12"
+# Batch 142: the sleep packet now carries an explicit timeInBedMin (bed->wake
+# window) and timeAsleepMin alongside durationMin, and the prompt states each
+# figure as given — never re-subtracting awake from the asleep total to invent an
+# "actual sleep" number — so the version bumps again.
+PROMPT_VERSION = "morning-analysis-v14-2026-07-24"
 ANALYSIS_TYPE = "morning"
 SYSTEM_PROMPT = """You are CheckMark, a private daily endurance and sleep coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
@@ -87,6 +91,11 @@ authoritative calendar date; never derive or reformat the date or weekday from
 `subjectDate` yourself. State bed and wake times using sleep.sleepStartLocal and
 sleep.sleepEndLocal, which are already the user's local clock time; never print a
 `*Utc` timestamp (e.g. sleepStartUtc/sleepEndUtc) or convert one yourself.
+State time in bed from sleep.timeInBedMin and time asleep from sleep.timeAsleepMin
+(equivalently sleep.durationMin). timeAsleepMin is already time asleep with
+sleep.awakeSleepMin excluded, so never subtract awake time from it to compute an
+"actual sleep" figure; time in bed equals time asleep plus awake plus any brief
+unmeasurable time. State each figure as given — do not re-derive either.
 Refer to Mark's daily check-in by its word — verdict.subjectiveLabel /
 manualEntries[].subjectiveLabel (e.g. "you said you felt OK") — and never surface
 the raw subjectiveScore number or a "6/10"-style term for how he felt.
@@ -848,6 +857,14 @@ def _sleep_packet(
         "ageAdjustedScore": age_adjusted_sleep_score,
         "qualifier": row.qualifier,
         "durationMin": _minutes(row.duration_sec),
+        # Batch 142: name the two totals unambiguously. durationMin / timeAsleepMin
+        # is Garmin sleepTimeSeconds — time *asleep*, already excluding
+        # awakeSleepMin — while timeInBedMin is the bed->wake window. The model
+        # previously mislabelled durationMin as "in bed" and then re-subtracted the
+        # awake time to invent a bogus "actual sleep" figure; surfacing both totals,
+        # explicitly labelled, removes that ambiguity (the prompt states each as given).
+        "timeAsleepMin": _minutes(row.duration_sec),
+        "timeInBedMin": _time_in_bed_min(row),
         "deepSleepMin": _minutes(row.deep_sleep_sec),
         "lightSleepMin": _minutes(row.light_sleep_sec),
         "remSleepMin": _minutes(row.rem_sleep_sec),
@@ -1731,6 +1748,27 @@ def subjective_score_label(score: int | None) -> str | None:
 
 def _minutes(seconds: int | None) -> int | None:
     return round(seconds / 60) if seconds is not None else None
+
+
+def _time_in_bed_min(row: Sleep) -> int | None:
+    """Total time in bed (the bed->wake window), in minutes. Batch 142.
+
+    Garmin's ``duration_sec`` (sleepTimeSeconds) is time *asleep* — it already
+    excludes the awake window — so it must never be presented as time in bed.
+    Prefer the actual bed->wake span; when a bed/wake timestamp is missing (or is
+    non-sensical), fall back to summing asleep + awake + brief unmeasurable time so
+    the model still gets a labelled in-bed total. Returns None only when neither a
+    valid window nor any component total is available."""
+    start = row.sleep_start_utc
+    end = row.sleep_end_utc
+    if start is not None and end is not None:
+        window_sec = (end - start).total_seconds()
+        if window_sec >= 0:
+            return round(window_sec / 60)
+    components = (row.duration_sec, row.awake_sleep_sec, row.unmeasurable_sleep_sec)
+    if all(value is None for value in components):
+        return None
+    return round(sum(value or 0 for value in components) / 60)
 
 
 def _first_not_none[T](*values: T | None) -> T | None:
