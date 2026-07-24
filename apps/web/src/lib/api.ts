@@ -128,15 +128,19 @@ export async function apiFetch<T>(
   }
 
   if (!resp.ok) {
-    // Try to surface the FastAPI `detail` field for a more useful error message.
+    // Surface the FastAPI `detail` when the error body is JSON; fall back to a
+    // clean `API error {status}` when it isn't. A day-time Anthropic outage used
+    // to reach the client as a bare 500 with a plain-text "Internal Server Error"
+    // body (Batch 143) — parsing that threw a `SyntaxError` we then re-threw
+    // verbatim ("Unexpected token 'I'…"). Never surface that parse error again.
+    let detail: string | null = null;
     try {
       const body = await resp.json();
-      const detail = detailToMessage(body?.detail);
-      throw new Error(detail ?? `API error ${resp.status}`);
-    } catch (e) {
-      if (e instanceof Error && e.message !== `API error ${resp.status}`) throw e;
-      throw new Error(`API error ${resp.status}`);
+      detail = detailToMessage(body?.detail);
+    } catch {
+      detail = null;
     }
+    throw new Error(detail ?? `API error ${resp.status}`);
   }
   if (resp.status === 204) return undefined as T;
   return resp.json() as Promise<T>;

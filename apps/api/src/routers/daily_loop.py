@@ -26,7 +26,7 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile
 from src.routers.feedback import FeedbackOut, serialize_feedback
-from src.services.anthropic_text import AnthropicApiError
+from src.services.anthropic_text import AnthropicApiError, anthropic_user_message
 from src.services.breathwork_brief import BreathworkBriefResult
 from src.services.brief_generation_status import BriefGenerationStatusService
 from src.services.chronic_patterns import ChronicPatternSuggestionService
@@ -1532,7 +1532,28 @@ async def upsert_post_ride_checkin(
     # trigger for rides, strength, mobility, and deliberate walks. The save above
     # commits first, so every reader sees the just-entered RPE/feel/notes.
     activity = await db.get(Activity, activity_id)
+    read_error: ApiError | None = None
     if activity is not None and post_activity_kind(activity) is not None:
-        await generate_post_activity_read(db, player, activity, force=True)
+        try:
+            await generate_post_activity_read(db, player, activity, force=True)
+        except AnthropicApiError as exc:
+            # Batch 143: the check-in above already committed (service.commit), so his
+            # RPE/feel/notes are safe. An Anthropic outage on the read must not 500
+            # that away — roll back the half-written analysis, surface a non-fatal
+            # note (the activity re-appears as a pending read carrying the saved
+            # check-in, so re-submitting is the retry), and alert on a billing outage
+            # the same way as the morning brief (Batch 141).
+            await db.rollback()
+            if exc.reason == "billing":
+                await NudgeAlertService(db).notify_admin_generation_failure(
+                    reason=exc.reason, subject_date=subject_date, commit=True
+                )
+            read_error = ApiError(
+                code="post_workout_read_failed",
+                detail=anthropic_user_message(exc.reason),
+            )
     snapshot = await service.get_snapshot(player, subject_date=subject_date)
-    return await _envelope(player, snapshot, db)
+    envelope = await _envelope(player, snapshot, db)
+    if read_error is not None:
+        envelope.errors.append(read_error)
+    return envelope

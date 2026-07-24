@@ -27,6 +27,7 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile, UserRole
 from src.routers import daily_loop as daily_loop_router
+from src.services.anthropic_text import AnthropicApiError
 from src.services.daily_loop import (
     ANALYSIS_TYPE_POST_FLEXIBILITY,
     ANALYSIS_TYPE_POST_STRENGTH,
@@ -749,6 +750,102 @@ async def test_post_ride_checkin_upsert_persists_against_activity(
 
     assert entry is not None
     assert entry.planned_workout_id is None
+    assert entry.notes == "Left calf tight."
+
+
+@pytest.mark.asyncio
+async def test_post_ride_checkin_persists_when_read_generation_fails(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 143: an Anthropic outage on the post-ride read must not 500 away his
+    saved check-in. The check-in commits first, so an ``AnthropicApiError`` from
+    ``generate_post_activity_read`` returns the snapshot 2xx with a non-fatal
+    ``errors[]`` note (the ride re-surfaces as a pending read carrying the saved
+    check-in — the retry), and a billing outage raises one admin alert (141)."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    activity_id = uuid.uuid4()
+    subject_date = date(2026, 6, 20)
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Read Failure",
+            pin_hash="x" * 60,
+            role=UserRole.player,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        activity = Activity(
+            id=activity_id,
+            user_id=user_id,
+            garmin_activity_id=5555,
+            activity_name="Tempo ride",
+            activity_type="indoor_cycling",
+            start_utc=datetime(2026, 6, 20, 11, 30),
+            duration_sec=3600,
+            raw_summary={},
+        )
+        session.add(player)
+        await session.flush()
+        session.add(activity)
+        await session.commit()
+
+    async def _raise_billing(*args: object, **kwargs: object) -> tuple[str, object]:
+        raise AnthropicApiError("Your credit balance is too low", reason="billing", status_code=400)
+
+    alert = AsyncMock(return_value=True)
+
+    app.dependency_overrides[get_current_user] = lambda: player
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        with (
+            patch(
+                "src.routers.daily_loop.generate_post_activity_read",
+                _raise_billing,
+            ),
+            patch(
+                "src.routers.daily_loop.NudgeAlertService.notify_admin_generation_failure",
+                alert,
+            ),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                response = await client.put(
+                    (
+                        f"/api/v1/daily-loop/{subject_date.isoformat()}"
+                        f"/activities/{activity_id}/post-ride-check-in"
+                    ),
+                    json={
+                        "subjectiveScore": 6,
+                        "rpe": 8,
+                        "feel": "hard but fair",
+                        "notes": "Left calf tight.",
+                    },
+                )
+    finally:
+        app.dependency_overrides.clear()
+
+    # 2xx with a non-fatal errors[] note — never a bare 500.
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert any(err["code"] == "post_workout_read_failed" for err in payload["errors"])
+    # The billing outage alerts the operator exactly once (Batch 141 path).
+    alert.assert_awaited_once()
+    assert alert.await_args.kwargs["reason"] == "billing"
+
+    # His RPE/feel/notes persisted despite the read failing.
+    async with session_factory() as session:
+        entry = await session.scalar(
+            select(ManualEntry).where(
+                ManualEntry.user_id == user_id,
+                ManualEntry.activity_id == activity_id,
+            )
+        )
+    assert entry is not None
+    assert entry.rpe == 8
+    assert entry.feel == "hard but fair"
     assert entry.notes == "Left calf tight."
 
 
