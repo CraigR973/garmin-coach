@@ -6,7 +6,7 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, TypedDict
 
 import httpx
 from fastapi import HTTPException, status
@@ -808,6 +808,10 @@ def _expand_step(raw_step: dict[str, Any], workout_target: str | None) -> list[d
     target_text = str(raw_step.get("target") or workout_target or label)
     cadence = _cadence(raw_step)
 
+    block = raw_step.get("block")
+    if block is not None:
+        return _expand_interval_block(label, phase, block)
+
     ramp = raw_step.get("ramp")
     if ramp is not None:
         # Ramp raw-step form (Batch 67): ``{"label", "minutes", "ramp": [startPct, endPct]}``
@@ -843,6 +847,104 @@ def _expand_step(raw_step: dict[str, Any], workout_target: str | None) -> list[d
     return _expand_pattern(
         label, phase, pattern, target_text, cadence, int(raw_step.get("repeats") or 1)
     )
+
+
+def _expand_interval_block(
+    label: str,
+    phase: str,
+    raw_block: Any,
+) -> list[dict[str, Any]]:
+    """Expand Batch 147's additive, first-class work/rest source block.
+
+    Durations are stored as integer seconds so sub-minute efforts round-trip
+    without the legacy pattern string's parsing ambiguity. Work and rest carry
+    independent power and cadence; a zero-duration rest emits no recovery step.
+    """
+    if not isinstance(raw_block, dict):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Interval block {label!r} must be an object",
+        )
+    repeat = _bounded_block_int(raw_block.get("repeat"), "repeat", minimum=1, maximum=20)
+    work = _block_leg(raw_block.get("work"), "work", allow_zero_duration=False)
+    rest = _block_leg(raw_block.get("rest"), "rest", allow_zero_duration=True)
+
+    steps: list[dict[str, Any]] = []
+    for idx in range(repeat):
+        suffix = f"{idx + 1}/{repeat}"
+        steps.append(
+            _step(
+                f"{label} work {suffix}",
+                phase,
+                work["durationSec"],
+                work["powerPct"],
+                work["powerPct"],
+                work["cadenceRpm"],
+            )
+        )
+        if rest["durationSec"] > 0:
+            steps.append(
+                _step(
+                    f"{label} recovery {suffix}",
+                    phase,
+                    rest["durationSec"],
+                    rest["powerPct"],
+                    rest["powerPct"],
+                    rest["cadenceRpm"],
+                )
+            )
+    return steps
+
+
+class _BlockLeg(TypedDict):
+    durationSec: int
+    powerPct: int
+    cadenceRpm: int | None
+
+
+def _block_leg(raw_leg: Any, name: str, *, allow_zero_duration: bool) -> _BlockLeg:
+    if raw_leg is None and name == "rest":
+        raw_leg = {"durationSec": 0, "powerPct": 55}
+    if not isinstance(raw_leg, dict):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Interval block {name} must be an object",
+        )
+    duration = _bounded_block_int(
+        raw_leg.get("durationSec"),
+        f"{name}.durationSec",
+        minimum=0 if allow_zero_duration else 30,
+        maximum=3600 if allow_zero_duration else 7200,
+    )
+    power = _bounded_block_int(
+        raw_leg.get("powerPct"),
+        f"{name}.powerPct",
+        minimum=40,
+        maximum=150,
+    )
+    cadence_raw = raw_leg.get("cadenceRpm")
+    cadence = (
+        None
+        if cadence_raw is None
+        else _bounded_block_int(cadence_raw, f"{name}.cadenceRpm", minimum=40, maximum=130)
+    )
+    return {"durationSec": duration, "powerPct": power, "cadenceRpm": cadence}
+
+
+def _bounded_block_int(value: Any, field: str, *, minimum: int, maximum: int) -> int:
+    if isinstance(value, bool):
+        parsed = -1
+    else:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            parsed = -1
+    if parsed < minimum or parsed > maximum:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Interval block {field} must be between {minimum} and {maximum}",
+        )
+    return parsed
 
 
 def _expand_pattern(

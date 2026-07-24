@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from math import ceil
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -35,6 +36,11 @@ from src.services.daily_loop import ANALYSIS_TYPE_MORNING
 from src.services.garmin_workout_delivery import (
     GarminWorkoutClient,
     GarminWorkoutDeliveryService,
+)
+from src.services.interval_workout_editor import (
+    EditableIntervalBlock,
+    apply_interval_block,
+    block_workout_type,
 )
 from src.services.structured_workout_builder import (
     is_indoor_bike_workout,
@@ -52,6 +58,7 @@ from src.services.workout_delivery import (
     build_intervals_payload,
     build_structured_workout_ir,
     build_zwo_xml,
+    expand_structured_steps,
 )
 
 if TYPE_CHECKING:
@@ -710,6 +717,118 @@ class ExecutableCoachingService:
             planned_workout_version=workout.version,
             event_id=delivered.intervals_event_id,
             status=delivered.status,
+        )
+        await self.session.commit()
+        await self.session.refresh(delivered)
+        return delivered
+
+    async def approve_interval_edit(
+        self,
+        player: Profile,
+        *,
+        planned_workout_id: uuid.UUID,
+        block: EditableIntervalBlock,
+    ) -> WorkoutDeliveryProposal:
+        """Version the source interval block, approve it, and update Zwift.
+
+        The source mapper preserves warm-up/cool-down/primer JSON. The resulting
+        workout is a fresh ``planned_workouts`` version and the exact re-expanded
+        IR is retained on a normal delivery proposal before the existing live
+        intervals.icu event is replaced. Red-never-VO2 remains a hard gate.
+        """
+        current = await self.rail._planned_workout(player.id, planned_workout_id)
+        if current.status == WORKOUT_STATUS_COMPLETED:
+            raise HTTPException(
+                status_code=409,
+                detail="This session is already done, so its intervals can't be edited.",
+            )
+        if not is_indoor_bike_workout(current.structured_workout):
+            raise HTTPException(
+                status_code=422,
+                detail="The interval editor uploads indoor bike sessions to Zwift",
+            )
+
+        structured = apply_interval_block(
+            dict(current.structured_workout or {}),
+            current.intensity_target,
+            block,
+        )
+        expanded_steps = expand_structured_steps(structured, current.intensity_target)
+        verdict = await self._morning_verdict_for(player.id, current.workout_date)
+        if blocks_red_vo2(verdict, {"steps": expanded_steps}):
+            raise HTTPException(status_code=409, detail="Red verdict blocks VO2 delivery to Zwift")
+
+        live = await self.rail.latest_delivered_for_workout(player.id, current.id)
+        if live is None:
+            live = await self.rail.latest_delivered_for_date(player.id, current.workout_date)
+        current.is_active = False
+        current_version = await self.session.scalar(
+            select(func.max(PlannedWorkout.version)).where(
+                PlannedWorkout.user_id == player.id,
+                PlannedWorkout.workout_date == current.workout_date,
+            )
+        )
+        workout = PlannedWorkout(
+            user_id=player.id,
+            plan_block_id=current.plan_block_id,
+            workout_date=current.workout_date,
+            version=(current_version or 0) + 1,
+            title=current.title,
+            workout_type=block_workout_type(block),
+            status="planned",
+            is_active=True,
+            planned_duration_min=ceil(
+                sum(int(step["durationSec"]) for step in expanded_steps) / 60
+            ),
+            intensity_target=f"{block.work.power_pct}% FTP intervals",
+            structured_workout=structured,
+            source="interval_editor",
+        )
+        self.session.add(workout)
+        await self.session.flush()
+
+        ftp_watts = await self.rail._ftp_watts(player.id)
+        ir = build_structured_workout_ir(workout, ftp_watts=ftp_watts)
+        ir["origin"] = "interval_editor"
+        ir["adjustment"] = {
+            "changed": True,
+            "kind": "interval_editor",
+            "basisPlannedWorkoutId": str(current.id),
+            "basisPlannedWorkoutVersion": current.version,
+        }
+        proposal = await self.rail.propose_from_ir(
+            player=player,
+            workout=workout,
+            ir=ir,
+            commit=False,
+        )
+        proposal = await self.rail.approve(player=player, proposal_id=proposal.id)
+
+        if live is None:
+            delivered = await self.rail.push(player=player, proposal_id=proposal.id)
+        else:
+            live.planned_workout_id = workout.id
+            live.planned_workout_version = workout.version
+            await self.rail.replace_event(proposal=live, ir=ir, commit=False)
+            proposal.status = STATUS_PUSHED
+            proposal.pushed_at_utc = _utcnow()
+            proposal.intervals_event_id = live.intervals_event_id
+            proposal.last_error = None
+            await self.session.commit()
+            await self.session.refresh(proposal)
+            delivered = proposal
+
+        self._record_action_audit(
+            player,
+            analysis_type=AUDIT_TYPE_REPLACED,
+            tag=f"interval-edit:{workout.id}:v{workout.version}",
+            subject_date=workout.workout_date,
+            summary=f"Approved the interval edit for {workout.title} and uploaded it.",
+            planned_workout_id=workout.id,
+            planned_workout_version=workout.version,
+            event_id=delivered.intervals_event_id,
+            status=delivered.status,
+            verdict=verdict,
         )
         await self.session.commit()
         await self.session.refresh(delivered)

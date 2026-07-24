@@ -14,6 +14,22 @@ from src.auth import CurrentUser
 from src.database import get_db
 from src.models.coaching import PlannedWorkout, WorkoutDeliveryProposal
 from src.services.executable_coaching import ExecutableCoachingService
+from src.services.interval_workout_editor import (
+    MAX_CADENCE_RPM,
+    MAX_POWER_PCT,
+    MAX_REPEATS,
+    MAX_REST_DURATION_SEC,
+    MAX_WORK_DURATION_SEC,
+    MIN_CADENCE_RPM,
+    MIN_POWER_PCT,
+    MIN_REPEATS,
+    MIN_REST_DURATION_SEC,
+    MIN_WORK_DURATION_SEC,
+    EditableIntervalBlock,
+    IntervalEditorSnapshot,
+    IntervalLeg,
+    interval_editor_snapshot,
+)
 from src.services.workout_delivery import (
     PlanActivity,
     WeekAheadDayActivities,
@@ -83,6 +99,77 @@ class WorkoutDeliveryEnvelope(BaseModel):
 class SameDayDeliveryBody(BaseModel):
     durationScalePct: int | None = Field(default=None, ge=50, le=125)
     intensityScalePct: int | None = Field(default=None, ge=50, le=120)
+
+
+class IntervalLegBody(BaseModel):
+    durationSec: int
+    powerPct: int = Field(ge=MIN_POWER_PCT, le=MAX_POWER_PCT)
+    cadenceRpm: int | None = Field(default=None, ge=MIN_CADENCE_RPM, le=MAX_CADENCE_RPM)
+
+
+class WorkIntervalLegBody(IntervalLegBody):
+    durationSec: int = Field(ge=MIN_WORK_DURATION_SEC, le=MAX_WORK_DURATION_SEC)
+
+
+class RestIntervalLegBody(IntervalLegBody):
+    durationSec: int = Field(ge=MIN_REST_DURATION_SEC, le=MAX_REST_DURATION_SEC)
+
+
+class IntervalBlockBody(BaseModel):
+    repeat: int = Field(ge=MIN_REPEATS, le=MAX_REPEATS)
+    work: WorkIntervalLegBody
+    rest: RestIntervalLegBody
+
+    def to_domain(self) -> EditableIntervalBlock:
+        return EditableIntervalBlock(
+            repeat=self.repeat,
+            work=IntervalLeg(
+                duration_sec=self.work.durationSec,
+                power_pct=self.work.powerPct,
+                cadence_rpm=self.work.cadenceRpm,
+            ),
+            rest=IntervalLeg(
+                duration_sec=self.rest.durationSec,
+                power_pct=self.rest.powerPct,
+                cadence_rpm=self.rest.cadenceRpm,
+            ),
+        )
+
+
+class IntervalEditApproveBody(BaseModel):
+    block: IntervalBlockBody
+
+
+class IntervalLegOut(BaseModel):
+    durationSec: int
+    powerPct: int
+    cadenceRpm: int | None
+
+
+class IntervalBlockOut(BaseModel):
+    repeat: int
+    work: IntervalLegOut
+    rest: IntervalLegOut
+
+
+class FixedWorkoutStepOut(BaseModel):
+    index: int
+    label: str
+    role: str
+
+
+class IntervalEditorData(BaseModel):
+    plannedWorkoutId: str
+    current: IntervalBlockOut
+    changeTo: IntervalBlockOut
+    presets: dict[str, IntervalBlockOut]
+    fixedSteps: list[FixedWorkoutStepOut]
+
+
+class IntervalEditorEnvelope(BaseModel):
+    data: IntervalEditorData
+    meta: ApiMeta
+    errors: list[ApiError]
 
 
 class SwapDayBody(BaseModel):
@@ -235,6 +322,43 @@ def _serialize_day_activities(entry: WeekAheadDayActivities) -> WeekAheadDayActi
     )
 
 
+def _interval_leg_out(leg: IntervalLeg) -> IntervalLegOut:
+    return IntervalLegOut(
+        durationSec=leg.duration_sec,
+        powerPct=leg.power_pct,
+        cadenceRpm=leg.cadence_rpm,
+    )
+
+
+def _interval_block_out(block: EditableIntervalBlock) -> IntervalBlockOut:
+    return IntervalBlockOut(
+        repeat=block.repeat,
+        work=_interval_leg_out(block.work),
+        rest=_interval_leg_out(block.rest),
+    )
+
+
+def _interval_editor_data(
+    planned_workout_id: uuid.UUID,
+    snapshot: IntervalEditorSnapshot,
+) -> IntervalEditorData:
+    return IntervalEditorData(
+        plannedWorkoutId=str(planned_workout_id),
+        current=_interval_block_out(snapshot.current),
+        changeTo=_interval_block_out(snapshot.scaled),
+        presets={
+            "keep": _interval_block_out(snapshot.current),
+            "scale": _interval_block_out(snapshot.scaled),
+            "sweetSpot": _interval_block_out(snapshot.sweet_spot),
+            "zoneTwo": _interval_block_out(snapshot.zone_two),
+        },
+        fixedSteps=[
+            FixedWorkoutStepOut(index=step.index, label=step.label, role=step.role)
+            for step in snapshot.fixed_steps
+        ],
+    )
+
+
 @router.get("/proposals", response_model=WorkoutDeliveryEnvelope)
 async def list_workout_delivery_proposals(
     player: CurrentUser,
@@ -278,6 +402,42 @@ async def propose_workout_delivery(
 ) -> WorkoutDeliveryEnvelope:
     service = WorkoutDeliveryService(db)
     proposal = await service.propose(player=player, planned_workout_id=planned_workout_id)
+    return _envelope([proposal])
+
+
+@router.get(
+    "/planned-workouts/{planned_workout_id}/interval-editor",
+    response_model=IntervalEditorEnvelope,
+)
+async def get_interval_editor(
+    planned_workout_id: uuid.UUID,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> IntervalEditorEnvelope:
+    workout = await WorkoutDeliveryService(db)._planned_workout(player.id, planned_workout_id)
+    snapshot = interval_editor_snapshot(workout.structured_workout, workout.intensity_target)
+    return IntervalEditorEnvelope(
+        data=_interval_editor_data(workout.id, snapshot),
+        meta=ApiMeta(generatedAtUtc=_generated_at()),
+        errors=[],
+    )
+
+
+@router.post(
+    "/planned-workouts/{planned_workout_id}/interval-editor/approve",
+    response_model=WorkoutDeliveryEnvelope,
+)
+async def approve_interval_editor_change(
+    planned_workout_id: uuid.UUID,
+    body: IntervalEditApproveBody,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> WorkoutDeliveryEnvelope:
+    proposal = await ExecutableCoachingService(db).approve_interval_edit(
+        player,
+        planned_workout_id=planned_workout_id,
+        block=body.block.to_domain(),
+    )
     return _envelope([proposal])
 
 

@@ -30,6 +30,7 @@ import {
 import { toast } from 'sonner';
 import type { AgeComparison, MetricBaselineRow } from '@/components/MetricComparisonTable';
 import { QuickAddSheet } from '@/components/QuickAddSheet';
+import { IntervalWorkoutEditor } from '@/components/IntervalWorkoutEditor';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CollapsibleSection } from '@/components/CollapsibleSection';
@@ -175,26 +176,6 @@ function UnviewedBriefCta() {
   );
 }
 
-const MIN_DURATION_SCALE_PCT = 50;
-const MAX_DURATION_SCALE_PCT = 125;
-const MIN_INTENSITY_SCALE_PCT = 50;
-const MAX_INTENSITY_SCALE_PCT = 120;
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
-}
-
-function normalizeBoundedPercent(
-  value: string,
-  min: number,
-  max: number,
-  fallback: number,
-): string {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return String(fallback);
-  return String(clamp(Math.round(parsed), min, max));
-}
-
 async function fetchQuickAddOptions(category: Exclude<DayCategory, 'rest'>) {
   const response = await apiFetch<unknown>(
     `/api/v1/plan-actions/quick-add-options?category=${encodeURIComponent(category)}`,
@@ -300,27 +281,6 @@ export function DashboardPage() {
     queryKey: ['quick-add-options', quickAddTarget?.category],
     queryFn: () => fetchQuickAddOptions(quickAddTarget!.category),
     enabled: quickAddTarget !== null,
-  });
-  const editMutation = useMutation({
-    mutationFn: ({
-      workoutId,
-      durationScalePct,
-      intensityScalePct,
-    }: {
-      workoutId: string;
-      durationScalePct?: number;
-      intensityScalePct?: number;
-    }) =>
-      apiFetch(`/api/v1/workout-delivery/planned-workouts/${workoutId}/edit`, {
-        method: 'POST',
-        body: JSON.stringify({ durationScalePct, intensityScalePct }),
-      }),
-    onSuccess: async () => {
-      await invalidateLoop();
-      toast.success('Updated and synced to Zwift');
-    },
-    onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not update the session'),
   });
   const approveMutation = useMutation({
     mutationFn: ({ workoutId }: { workoutId: string }) =>
@@ -571,7 +531,6 @@ export function DashboardPage() {
   const todaysWorkouts = daily.plannedWorkouts;
   const dayState = dayStateForWorkouts(todaysWorkouts);
   const actionsBusy =
-    editMutation.isPending ||
     approveMutation.isPending ||
     skipMutation.isPending ||
     removeMutation.isPending ||
@@ -581,8 +540,6 @@ export function DashboardPage() {
     actualMutation.isPending;
   const todayActions = {
     busy: actionsBusy,
-    onEdit: (payload: { workoutId: string; durationScalePct?: number; intensityScalePct?: number }) =>
-      editMutation.mutate(payload),
     onApprove: (payload: { workoutId: string }) => approveMutation.mutate(payload),
     onSkip: (payload: { workoutId: string }) => skipMutation.mutate(payload),
     onRemove: (payload: { workoutId: string }) => removeMutation.mutate(payload),
@@ -992,11 +949,6 @@ type WeeklyMixData = NonNullable<DailyLoopData['morningAnalysis']>['weeklyMix'];
 
 type TodayWorkoutActions = {
   busy: boolean;
-  onEdit: (payload: {
-    workoutId: string;
-    durationScalePct?: number;
-    intensityScalePct?: number;
-  }) => void;
   onApprove: (payload: { workoutId: string }) => void;
   onSkip: (payload: { workoutId: string }) => void;
   onRemove: (payload: { workoutId: string }) => void;
@@ -1497,7 +1449,6 @@ function WorkoutRow({
   pendingActivity,
   checkInHandlers,
   busy,
-  onEdit,
   onApprove,
   onSkip,
   onRemove,
@@ -1513,8 +1464,6 @@ function WorkoutRow({
 } & TodayWorkoutActions) {
   const [panel, setPanel] = useState<'none' | 'edit' | 'swap' | 'skip' | 'remove'>('none');
   const [ignored, setIgnored] = useState(false);
-  const [durationScalePct, setDurationScalePct] = useState('100');
-  const [intensityScalePct, setIntensityScalePct] = useState('100');
 
   const Icon = workoutIcon(workout.workoutType);
   const isBike = isBikeWorkout(workout.workoutType);
@@ -1648,90 +1597,12 @@ function WorkoutRow({
           onIgnore={() => setIgnored(true)}
           onTogglePanel={togglePanel}
         />
-        {panel === 'edit' && (
-          <div className="grid gap-3 rounded-lg border border-border bg-surface-elevated/60 px-3 py-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-            <div className="space-y-1.5">
-              <Label htmlFor={`duration-${workout.id}`}>Duration %</Label>
-              <Input
-                id={`duration-${workout.id}`}
-                type="number"
-                min={MIN_DURATION_SCALE_PCT}
-                max={MAX_DURATION_SCALE_PCT}
-                step={5}
-                value={durationScalePct}
-                onChange={(event) => setDurationScalePct(event.target.value)}
-                onBlur={() =>
-                  setDurationScalePct(
-                    normalizeBoundedPercent(
-                      durationScalePct,
-                      MIN_DURATION_SCALE_PCT,
-                      MAX_DURATION_SCALE_PCT,
-                      100,
-                    ),
-                  )
-                }
-                aria-label="Duration percentage"
-              />
-              <p className="text-xs text-text-secondary">
-                Allowed range {MIN_DURATION_SCALE_PCT}-{MAX_DURATION_SCALE_PCT}%.
-              </p>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor={`intensity-${workout.id}`}>Intensity %</Label>
-              <Input
-                id={`intensity-${workout.id}`}
-                type="number"
-                min={MIN_INTENSITY_SCALE_PCT}
-                max={MAX_INTENSITY_SCALE_PCT}
-                step={5}
-                value={intensityScalePct}
-                onChange={(event) => setIntensityScalePct(event.target.value)}
-                onBlur={() =>
-                  setIntensityScalePct(
-                    normalizeBoundedPercent(
-                      intensityScalePct,
-                      MIN_INTENSITY_SCALE_PCT,
-                      MAX_INTENSITY_SCALE_PCT,
-                      100,
-                    ),
-                  )
-                }
-                aria-label="Intensity percentage"
-              />
-              <p className="text-xs text-text-secondary">
-                Allowed range {MIN_INTENSITY_SCALE_PCT}-{MAX_INTENSITY_SCALE_PCT}%.
-              </p>
-            </div>
-            <Button
-              type="button"
-              size="sm"
-              disabled={busy}
-              onClick={() =>
-                onEdit({
-                  workoutId: workout.id,
-                  durationScalePct: Number(
-                    normalizeBoundedPercent(
-                      durationScalePct,
-                      MIN_DURATION_SCALE_PCT,
-                      MAX_DURATION_SCALE_PCT,
-                      100,
-                    ),
-                  ),
-                  intensityScalePct: Number(
-                    normalizeBoundedPercent(
-                      intensityScalePct,
-                      MIN_INTENSITY_SCALE_PCT,
-                      MAX_INTENSITY_SCALE_PCT,
-                      100,
-                    ),
-                  ),
-                })
-              }
-            >
-              {busy ? 'Saving…' : 'Apply & sync'}
-            </Button>
-          </div>
-        )}
+        {panel === 'edit' ? (
+          <IntervalWorkoutEditor
+            workoutId={workout.id}
+            onApproved={() => setPanel('none')}
+          />
+        ) : null}
 
         {panel === 'swap' && (
           <div className="rounded-lg border border-border bg-surface-elevated/60 px-3 py-3">
