@@ -42,6 +42,12 @@ from src.services.reviews import (
     resolve_period_window,
     rollup_packet,
 )
+from src.services.reviews import (
+    PROMPT_VERSION as REVIEW_PROMPT_VERSION,
+)
+from src.services.reviews import (
+    SYSTEM_PROMPT as REVIEW_SYSTEM_PROMPT,
+)
 
 # A Wednesday, so the ISO week is Mon 2026-06-22 .. Sun 2026-06-28.
 AS_OF = date(2026, 6, 24)
@@ -366,6 +372,12 @@ async def test_preview_assembles_rollup_and_never_writes(db_conn: AsyncConnectio
         assert "ftpDrift" in preview.packet["insights"]
         assert preview.packet["personalBaselines"]["readiness_score"]["mean"] == 76
         assert preview.packet["trainingSchedule"]["restDays"] == ["Monday", "Friday"]
+        assert preview.packet["trainingWeekSoFar"]["window"] == {
+            "kind": "calendar_week_to_date",
+            "startDate": WEEK_START.isoformat(),
+            "endDate": AS_OF.isoformat(),
+        }
+        assert preview.packet["trainingWeekSoFar"]["days"][1]["executed"][0]["title"] == "Ride"
         assert preview.packet["rollup"]["coverage"]["sleepNights"] == 7
         assert preview.packet["rollup"]["adherence"]["sourceState"] == "planned_workouts_present"
         assert preview.packet["strengthBrief"]["sourceState"] == "no_tracked_strength_activity"
@@ -373,6 +385,10 @@ async def test_preview_assembles_rollup_and_never_writes(db_conn: AsyncConnectio
             "do not describe this as strength training stopped"
             in preview.packet["strengthBrief"]["zeroInterpretation"]
         )
+        assert REVIEW_PROMPT_VERSION.startswith("reviews-v4")
+        assert "usual routine only" in REVIEW_SYSTEM_PROMPT
+        assert "trainingWeekSoFar" in REVIEW_SYSTEM_PROMPT
+        assert "merely planned session as executed" in REVIEW_SYSTEM_PROMPT
 
         # GET preview must not write an analyses row (#71).
         after = await session.scalar(select(func.count()).select_from(Analysis))
@@ -430,12 +446,21 @@ async def test_run_is_idempotent_per_period(db_conn: AsyncConnection) -> None:
         assert second.generated is False
         assert len(client.calls) == 1  # the second call short-circuits
 
+        # Idempotency is prompt-version aware: a bumped prompt regenerates the
+        # period instead of serving a narrative built from an obsolete packet.
+        first.review.prompt_version = "reviews-v3-2026-07-05"
+        await session.commit()
+        refreshed = await service.run(user, PERIOD_WEEKLY, as_of=AS_OF, client=client)
+        assert refreshed.generated is True
+        assert refreshed.review.prompt_version == REVIEW_PROMPT_VERSION
+        assert len(client.calls) == 2
+
         count = await session.scalar(
             select(func.count())
             .select_from(Analysis)
             .where(Analysis.analysis_type == ANALYSIS_TYPE_WEEKLY)
         )
-        assert count == 1
+        assert count == 2
 
 
 @pytest.mark.asyncio
