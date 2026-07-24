@@ -274,10 +274,12 @@ async def test_service_joins_active_plan_audit_activity_and_match(
             is_active=True,
         )
         session.add(profile)
-        # The fixture sets raw FK ids rather than ORM relationships, so make the
-        # profile row visible before flushing its dependent rows.
+        # The fixture sets raw FK ids rather than ORM relationships, so flush
+        # each dependency tier before inserting rows that reference it.
         await session.flush()
-        session.add_all([old_vo2, easy, moved_vo2, actual, move_audit, match])
+        session.add_all([old_vo2, easy, moved_vo2, actual])
+        await session.flush()
+        session.add_all([move_audit, match])
         await session.commit()
 
         packet = await TrainingWeekService(session).build(profile, as_of=SAT)
