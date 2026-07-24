@@ -26,6 +26,10 @@ JsonList = list[Any]
 # (free-tier) DB bounded; outdoor rides keep it so their GPS/elevation survive.
 # Mirrors the 2026-06-28 historical cleanup (DECISIONS #93).
 STRIP_RAW_METRICS_TYPES = frozenset({"indoor_cycling", "walking"})
+# Garmin activity summaries expose only ``lapCount``. The actual timestamped lap
+# boundaries live behind ``get_activity_splits`` and are needed to grade a
+# shortened/edited structured ride on the steps that were really executed.
+CYCLING_ACTIVITY_TYPE_TOKENS = ("cycling", "bike", "biking")
 
 
 class GarminSyncError(RuntimeError):
@@ -84,6 +88,7 @@ class GarminDailyPayloads:
 class GarminActivityPayloads:
     summaries: list[JsonDict] = field(default_factory=list)
     details_by_activity_id: dict[int, JsonDict] = field(default_factory=dict)
+    splits_by_activity_id: dict[int, JsonDict] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -233,21 +238,33 @@ class GarminConnectClient:
         if not isinstance(summaries, list):
             summaries = []
         details_by_activity_id: dict[int, JsonDict] = {}
+        splits_by_activity_id: dict[int, JsonDict] = {}
         if include_details:
             for summary in summaries:
                 activity_id = _to_int(summary.get("activityId"))
                 if activity_id is None:
                     continue
+                type_key = _to_str(_as_dict(summary.get("activityType")).get("typeKey"))
                 if detail_types is not None:
-                    type_key = _to_str(_as_dict(summary.get("activityType")).get("typeKey"))
                     if type_key not in detail_types:
                         continue
                 details = client.get_activity_details(activity_id, maxchart=2000, maxpoly=4000)
                 if isinstance(details, dict):
                     details_by_activity_id[activity_id] = details
+                if _is_cycling_type(type_key):
+                    # Splits are an additive accuracy signal. A transient failure
+                    # must not turn the established summary/time-series sync into
+                    # an all-or-nothing operation; trace alignment remains usable.
+                    try:
+                        splits = client.get_activity_splits(activity_id)
+                    except Exception:  # noqa: BLE001 - optional Garmin read
+                        splits = None
+                    if isinstance(splits, dict):
+                        splits_by_activity_id[activity_id] = splits
         return GarminActivityPayloads(
             summaries=summaries,
             details_by_activity_id=details_by_activity_id,
+            splits_by_activity_id=splits_by_activity_id,
         )
 
     def upload_and_schedule_workout(
@@ -365,6 +382,16 @@ class GarminSyncService:
                 )
             )
             activity = result.scalar_one_or_none()
+            raw_summary = activity_fields["raw_summary"]
+            splits = payloads.splits_by_activity_id.get(int(activity_id))
+            if splits:
+                raw_summary["activitySplits"] = splits
+            elif activity is not None:
+                # Do not discard boundaries captured by an earlier successful
+                # poll when this optional Garmin endpoint is temporarily absent.
+                existing_splits = activity.raw_summary.get("activitySplits")
+                if isinstance(existing_splits, dict):
+                    raw_summary["activitySplits"] = existing_splits
             if activity is None:
                 activity = Activity(user_id=user_id, **activity_fields)
                 self.session.add(activity)
@@ -616,6 +643,17 @@ def _apply_fields(instance: Any, fields: Mapping[str, Any]) -> None:
 
 def _as_dict(value: Any) -> JsonDict:
     return value if isinstance(value, dict) else {}
+
+
+def _is_cycling_type(type_key: str | None) -> bool:
+    if not type_key:
+        return False
+    value = type_key.lower()
+    return (
+        value == "virtual_ride"
+        or value.endswith("_ride")
+        or any(token in value for token in CYCLING_ACTIVITY_TYPE_TOKENS)
+    )
 
 
 def _pick_payload_for_date(payload: Any, calendar_date: date) -> JsonDict:

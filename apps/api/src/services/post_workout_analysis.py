@@ -51,7 +51,9 @@ from src.services.workout_delivery import (
 # Bumped for Batch 80 (#153): the packet carries a deterministic ``rideDeviation``
 # read so the analyst renders an honest good-call/bad-call verdict when the ride
 # diverged from the planned/delivered session (Mark's Q1a).
-PROMPT_VERSION = "post-workout-analysis-v7-2026-07-12"
+# Bumped for Batch 145: interval boundaries prefer executed Garmin laps, then a
+# tightly-validated target-power trace alignment, before the planned clock.
+PROMPT_VERSION = "post-workout-analysis-v8-2026-07-24"
 ANALYSIS_TYPE = "post_workout"
 
 # A planned session Mark told the app he was not doing (``skip_workout`` /
@@ -298,7 +300,14 @@ class PostWorkoutAnalysisService:
             subject_date,
             grading_target.planned_workout.id if grading_target.planned_workout else None,
         )
-        intervals = segment_ride_intervals(timeseries, planned_ir, ftp_watts)
+        raw_splits = activity.raw_summary.get("activitySplits")
+        actual_laps = raw_splits.get("lapDTOs") if isinstance(raw_splits, dict) else None
+        intervals = segment_ride_intervals(
+            timeseries,
+            planned_ir,
+            ftp_watts,
+            actual_laps=actual_laps if isinstance(actual_laps, list) else None,
+        )
         execution = summarize_execution(
             intervals,
             whole_ride_avg_power_watts=activity.avg_power_watts,

@@ -381,7 +381,16 @@ async def test_post_ride_checkin_is_folded_into_next_post_workout_analysis(
             start_utc=datetime(2026, 6, 20, 12, 0),
             duration_sec=2700,
             avg_power_watts=205,
-            raw_summary={},
+            raw_summary={
+                "activitySplits": {
+                    "lapDTOs": [
+                        {"lapIndex": 1, "elapsedDuration": 600},
+                        {"lapIndex": 2, "elapsedDuration": 1200},
+                        {"lapIndex": 3, "elapsedDuration": 300},
+                        {"lapIndex": 4, "elapsedDuration": 300},
+                    ]
+                }
+            },
         )
         session.add(player)
         await session.flush()
@@ -515,6 +524,7 @@ async def test_context_packet_grades_work_intervals_for_structured_ride(
                 _sample(activity.id, 3, 1700, 255, 150),
                 _sample(activity.id, 4, 1900, 130, 120),
                 _sample(activity.id, 5, 2200, 120, 110),
+                _sample(activity.id, 6, 2399, 120, 110),
             ]
         )
         await session.commit()
@@ -542,6 +552,7 @@ async def test_context_packet_grades_work_intervals_for_structured_ride(
         assert execution["hasPlan"] is True
         assert execution["workIntervalCount"] == 1
         assert "wholeRideContextNote" in execution
+        assert execution["boundarySource"] == "actual_laps"
 
         # The whole-ride average is kept as CONTEXT, not removed.
         assert packet["activity"]["avgPowerWatts"] == 205
