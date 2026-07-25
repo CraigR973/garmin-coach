@@ -822,6 +822,31 @@ export const briefMessageTurnSchema = z.object({
   assistantMessage: briefMessageSchema,
 });
 
+// --- Batch 152: a completed workout's persisted post-workout read ---
+// The Week detail sheet fetches this lazily when a completed workout is tapped,
+// so Mark can look back at how he actually performed (not just the plan). It is
+// the stored `analyses` row for that planned workout — retrieved, never
+// regenerated — carrying the `analysisId` the FeedbackControl and follow-up chat
+// are keyed to. `read` is null when the session is completed but no read exists
+// yet (still generating, or generation failed). `verdict` is the post-session
+// recovery status string, not the morning Green/Amber/Red.
+export const workoutReadSchema = z.object({
+  analysisId: z.string().uuid(),
+  analysisType: z.string().min(1),
+  verdict: z.string().nullable().optional(),
+  generatedAtUtc: isoDateTimeSchema,
+  outputMarkdown: z.string(),
+  feedback: feedbackSchema.nullable().optional(),
+});
+export type WorkoutRead = z.infer<typeof workoutReadSchema>;
+
+export const workoutReadEnvelopeSchema = z.object({
+  data: z.object({ read: workoutReadSchema.nullable() }),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
+export type WorkoutReadEnvelope = z.infer<typeof workoutReadEnvelopeSchema>;
+
 // Batch 66 (#139): on an Amber/Red morning with a hard session scheduled, the
 // verdict carries a concrete week-swap the app can apply in one tap (move the
 // hard session to `moveToDate`, pull the easier `bringForwardTitle` forward).

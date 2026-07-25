@@ -54,7 +54,11 @@ from src.services.workout_delivery import (
 # diverged from the planned/delivered session (Mark's Q1a).
 # Bumped for Batch 145: interval boundaries prefer executed Garmin laps, then a
 # tightly-validated target-power trace alignment, before the planned clock.
-PROMPT_VERSION = "post-workout-analysis-v8-2026-07-24"
+# Bumped for Batch 152: the packet carries the athlete's ERG setup (athleteProfile)
+# and this session's prescribed ERG mode, so the read trusts ERG-held power as
+# delivered, never suggests switching ERG off, and adds one honest note when an
+# ERG-off surge protocol was ridden in ERG.
+PROMPT_VERSION = "post-workout-analysis-v9-2026-07-25"
 ANALYSIS_TYPE = "post_workout"
 
 # A planned session Mark told the app he was not doing (``skip_workout`` /
@@ -84,6 +88,17 @@ the work target. Ground any "held power / no fade / faded" claim in each work
 interval's `fade` and `hrDriftPct`, not on impression. When no planned intervals
 are supplied (a free or outdoor ride), read the whole-ride effort and power-zone
 distribution instead.
+
+When `profile.athleteProfile.indoorTrainerMode` shows Mark rides in ERG (his
+standing indoor setup), treat the prescribed %FTP as delivered: on an ERG-locked
+session the target IS what the trainer held, so read interval power as delivered
+and never frame ERG-held power as under-performance or as something he paced.
+Never suggest he switch ERG off — he has told us that is impractical mid-session
+and can cause trainer issues. The single exception is honesty, not a nudge: when
+`prescribedErgMode` is "off" (a short, sharp surge protocol the plan intends to be
+ridden with ERG off) and he rode it in ERG, add ONE plain line that ERG smoothed
+the surges so the neuromuscular hit was lighter than prescribed — without
+suggesting he change anything.
 
 When `gradingTarget.source` is `delivered_proposal`, treat that delivered IR as
 the workout Mark actually accepted and rode. Name the substitution or manual
@@ -296,6 +311,20 @@ class PostWorkoutAnalysisService:
             ftp_watts,
         )
         planned_ir = grading_target.ir
+        # Batch 152: the ERG mode the plan prescribed for this session. VO2
+        # micro-interval protocols carry a top-level ``ergMode`` of "off" (surge
+        # lag; see vo2_progression); surfacing it lets the read add one honest note
+        # when Mark rides an ERG-off surge session in ERG anyway.
+        prescribed_workout = grading_target.planned_workout
+        prescribed_structured = (
+            prescribed_workout.structured_workout
+            if prescribed_workout is not None
+            and isinstance(prescribed_workout.structured_workout, dict)
+            else {}
+        )
+        prescribed_erg_mode = prescribed_structured.get("ergMode")
+        if not isinstance(prescribed_erg_mode, str):
+            prescribed_erg_mode = None
         adherence = await self._workout_adherence(
             player.id,
             subject_date,
@@ -346,6 +375,7 @@ class PostWorkoutAnalysisService:
             "timeSeriesSummary": time_series_summary,
             "plannedWorkoutIr": planned_ir,
             "gradingTarget": grading_target.to_packet(),
+            "prescribedErgMode": prescribed_erg_mode,
             "intervals": intervals,
             "execution": execution,
             "rideDeviation": ride_deviation,
@@ -366,6 +396,9 @@ class PostWorkoutAnalysisService:
                     "include_tomorrow_impact",
                     "grade_execution_on_work_intervals_vs_ftp_targets",
                     "whole_ride_average_power_is_context_not_under_performance",
+                    "trust_erg_delivered_power_when_athlete_rides_erg",
+                    "never_suggest_switching_erg_off",
+                    "single_honest_note_when_erg_ridden_on_erg_off_surge_protocol",
                     "describe_but_do_not_grade_warmup_recovery_cooldown",
                     "ground_fade_claims_in_interval_fade_and_hr_drift",
                     "fall_back_to_whole_ride_read_when_no_planned_intervals",

@@ -7,11 +7,19 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import CurrentUser
 from src.database import get_db
-from src.models.coaching import GarminWorkoutDelivery, ManualEntry, PlannedWorkout
+from src.models.coaching import (
+    Analysis,
+    Feedback,
+    GarminWorkoutDelivery,
+    ManualEntry,
+    PlannedWorkout,
+)
+from src.routers.feedback import FeedbackOut, serialize_feedback
 from src.services.garmin_workout_delivery import GarminWorkoutDeliveryService
 from src.services.plan_actions import (
     PlanActionService,
@@ -125,6 +133,32 @@ class PlanScheduleData(BaseModel):
 
 class PlanScheduleEnvelope(BaseModel):
     data: PlanScheduleData
+    meta: ApiMeta
+    errors: list[ApiError]
+
+
+class WorkoutReadOut(BaseModel):
+    """Batch 152: the persisted post-workout read for a completed planned workout.
+
+    ``verdict`` is the post-session recovery status the read stored, not the
+    morning Green/Amber/Red. ``feedback`` mirrors the Home read so the same
+    rate/correct control shows Mark's existing rating.
+    """
+
+    analysisId: str
+    analysisType: str
+    verdict: str | None
+    generatedAtUtc: str
+    outputMarkdown: str
+    feedback: FeedbackOut | None = None
+
+
+class WorkoutReadData(BaseModel):
+    read: WorkoutReadOut | None
+
+
+class WorkoutReadEnvelope(BaseModel):
+    data: WorkoutReadData
     meta: ApiMeta
     errors: list[ApiError]
 
@@ -370,6 +404,56 @@ async def get_schedule(
             days=days,
             schedule=[_day_out(day, deliveries_by_id) for day in schedule.days],
         ),
+        meta=ApiMeta(generatedAtUtc=_generated_at()),
+        errors=[],
+    )
+
+
+@router.get(
+    "/workouts/{planned_workout_id}/analysis",
+    response_model=WorkoutReadEnvelope,
+)
+async def get_workout_analysis(
+    planned_workout_id: uuid.UUID,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> WorkoutReadEnvelope:
+    """Batch 152: the persisted post-workout read for a completed planned workout.
+
+    Tapping a completed session on the Week view shows how Mark actually performed,
+    not just the plan. The read already lives in ``analyses`` keyed to
+    ``planned_workout_id`` (set when the post-session read is generated), so this is
+    a retrieval, never a regeneration. Scoped to the caller, so a foreign or unknown
+    id simply yields ``read: null`` — the same honest empty state as a completed
+    session whose read has not generated yet.
+    """
+    analysis = await db.scalar(
+        select(Analysis)
+        .where(
+            Analysis.user_id == player.id,
+            Analysis.planned_workout_id == planned_workout_id,
+        )
+        .order_by(desc(Analysis.generated_at_utc), desc(Analysis.id))
+        .limit(1)
+    )
+    read: WorkoutReadOut | None = None
+    if analysis is not None:
+        feedback = await db.scalar(
+            select(Feedback).where(
+                Feedback.user_id == player.id,
+                Feedback.analysis_id == analysis.id,
+            )
+        )
+        read = WorkoutReadOut(
+            analysisId=str(analysis.id),
+            analysisType=analysis.analysis_type,
+            verdict=analysis.verdict,
+            generatedAtUtc=_dt(analysis.generated_at_utc) or "",
+            outputMarkdown=analysis.output_markdown,
+            feedback=serialize_feedback(feedback) if feedback is not None else None,
+        )
+    return WorkoutReadEnvelope(
+        data=WorkoutReadData(read=read),
         meta=ApiMeta(generatedAtUtc=_generated_at()),
         errors=[],
     )
