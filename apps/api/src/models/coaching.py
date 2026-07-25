@@ -548,6 +548,50 @@ class BriefMessage(Base, UUIDPrimaryKeyMixin):
     )
 
 
+class ConversationLearningProposal(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
+    """One evidence-backed memory candidate awaiting an explicit decision.
+
+    The extractor can only target ``learned_context``. Keeping the proposal
+    lifecycle separate from ``knowledge_base`` makes confirm-before-apply a
+    database invariant rather than a UI convention: pending and rejected rows
+    never enter an analysis packet.
+    """
+
+    __tablename__ = "conversation_learning_proposals"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "fingerprint",
+            name="uq_conversation_learning_user_fingerprint",
+        ),
+        Index(
+            "ix_conversation_learning_user_status",
+            "user_id",
+            "status",
+            "created_at",
+        ),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    destination: Mapped[str] = mapped_column(
+        String(80), nullable=False, server_default="learned_context"
+    )
+    statement: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence_json: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending")
+    reviewed_statement: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_by_profile_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at_utc: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+
+
 class Experiment(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     __tablename__ = "experiments"
     __table_args__ = (

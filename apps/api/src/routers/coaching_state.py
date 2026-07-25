@@ -2,16 +2,30 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import AdminUser, CurrentUser
 from src.database import get_db
-from src.models.coaching import KnowledgeBase, PlanBlock, PlannedWorkout
+from src.models.coaching import (
+    ConversationLearningProposal,
+    KnowledgeBase,
+    PlanBlock,
+    PlannedWorkout,
+)
+from src.services.anthropic_text import (
+    AnthropicApiError,
+    anthropic_http_status,
+    anthropic_user_message,
+)
 from src.services.coaching_state import CoachingStateService
+from src.services.conversation_learning import (
+    ConversationLearningError,
+    ConversationLearningService,
+)
 
 router = APIRouter(prefix="/api/v1/admin/coaching-state", tags=["coaching-state"])
 read_router = APIRouter(prefix="/api/v1/coach-memory", tags=["coach-memory"])
@@ -99,6 +113,34 @@ class CoachingStateEnvelope(BaseModel):
     errors: list[ApiError]
 
 
+class LearningProposalOut(BaseModel):
+    id: str
+    kind: str
+    destination: str
+    statement: str
+    evidence: list[dict[str, Any]]
+    status: str
+    reviewedStatement: str | None
+    reviewedAtUtc: str | None
+    createdAtUtc: str
+
+
+class LearningProposalListData(BaseModel):
+    proposals: list[LearningProposalOut]
+    createdCount: int = 0
+
+
+class LearningProposalEnvelope(BaseModel):
+    data: LearningProposalListData
+    meta: ApiMeta
+    errors: list[ApiError]
+
+
+class LearningProposalReviewBody(BaseModel):
+    decision: Literal["accept", "reject"]
+    statement: str | None = Field(default=None, min_length=5, max_length=500)
+
+
 def _serialize_knowledge_base(record: KnowledgeBase) -> KnowledgeBaseOut:
     return KnowledgeBaseOut(
         id=str(record.id),
@@ -126,6 +168,37 @@ def _serialize_plan_block(record: PlanBlock) -> PlanBlockOut:
         endDate=record.end_date.isoformat(),
         goalsJson=record.goals_json,
         rawPlan=record.raw_plan,
+    )
+
+
+def _serialize_learning_proposal(record: ConversationLearningProposal) -> LearningProposalOut:
+    return LearningProposalOut(
+        id=str(record.id),
+        kind=record.kind,
+        destination=record.destination,
+        statement=record.statement,
+        evidence=record.evidence_json,
+        status=record.status,
+        reviewedStatement=record.reviewed_statement,
+        reviewedAtUtc=(
+            record.reviewed_at_utc.isoformat() + "Z" if record.reviewed_at_utc else None
+        ),
+        createdAtUtc=record.created_at.isoformat() + "Z",
+    )
+
+
+def _learning_envelope(
+    proposals: list[ConversationLearningProposal],
+    *,
+    created_count: int = 0,
+) -> LearningProposalEnvelope:
+    return LearningProposalEnvelope(
+        data=LearningProposalListData(
+            proposals=[_serialize_learning_proposal(proposal) for proposal in proposals],
+            createdCount=created_count,
+        ),
+        meta=ApiMeta(generatedAtUtc=_generated_at()),
+        errors=[],
     )
 
 
@@ -195,6 +268,55 @@ async def get_coach_memory(
         planned_workouts=snapshot.planned_workouts,
         seeded=snapshot.seeded,
     )
+
+
+@read_router.get("/learning", response_model=LearningProposalEnvelope)
+async def get_learning_proposals(
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> LearningProposalEnvelope:
+    proposals = await ConversationLearningService(db).proposals(player)
+    return _learning_envelope(proposals)
+
+
+@read_router.post("/learning/distill", response_model=LearningProposalEnvelope)
+async def distill_learning_proposals(
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> LearningProposalEnvelope:
+    service = ConversationLearningService(db)
+    try:
+        created = await service.distill(player)
+    except AnthropicApiError as exc:
+        raise HTTPException(
+            status_code=anthropic_http_status(exc.reason),
+            detail=anthropic_user_message(exc.reason),
+        ) from exc
+    except ConversationLearningError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The coach couldn't review new memory just now. Please try again.",
+        ) from exc
+    proposals = await service.proposals(player)
+    return _learning_envelope(proposals, created_count=len(created))
+
+
+@read_router.patch("/learning/{proposal_id}", response_model=LearningProposalEnvelope)
+async def review_learning_proposal(
+    proposal_id: uuid.UUID,
+    body: LearningProposalReviewBody,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> LearningProposalEnvelope:
+    service = ConversationLearningService(db)
+    await service.review(
+        player,
+        proposal_id,
+        decision=body.decision,
+        statement=body.statement,
+    )
+    proposals = await service.proposals(player)
+    return _learning_envelope(proposals)
 
 
 @router.put("/knowledge-base/{section}", response_model=CoachingStateEnvelope)

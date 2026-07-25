@@ -40,6 +40,7 @@ from src.models.coaching import (
 from src.models.profile import Profile
 from src.services.anthropic_text import generate_anthropic_text
 from src.services.coaching_state import CoachingStateService
+from src.services.learned_context import learned_context_packet
 from src.services.post_workout_analysis import (
     ClaudeGenerationResult,
     PostWorkoutAnalysisError,
@@ -233,6 +234,7 @@ class PostStrengthAnalysisService:
                 "dataQualityGuardrails": _data_quality_guardrails(knowledge_base),
                 "trainingPlan": knowledge_base.get("training_plan", {}),
                 "analysisRules": _analysis_rules(knowledge_base),
+                "learnedContext": learned_context_packet(knowledge_base),
             },
             "activity": _strength_activity_packet(activity),
             "heartRateReview": {
