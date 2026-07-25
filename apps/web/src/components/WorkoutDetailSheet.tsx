@@ -1,9 +1,15 @@
 import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { workoutReadEnvelopeSchema } from '@coach/shared';
 import type { planActionWorkoutSchema } from '@coach/shared';
 import { Bike, Dumbbell, Wind } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Sheet } from '@/components/ui/sheet';
+import { BriefFollowUpChat } from '@/components/BriefFollowUpChat';
 import { DetailRow } from '@/components/DetailRow';
+import { FeedbackControl } from '@/components/FeedbackControl';
+import { Markdown } from '@/components/Markdown';
 import { PowerProfilePreview } from '@/components/PowerProfilePreview';
 import {
   categoryForWorkoutType,
@@ -95,6 +101,10 @@ export function WorkoutDetailSheet({
 
         {isBike && delivery === 'outdoor' ? <DeliveryLine delivery={workout.outdoorDelivery ?? null} /> : null}
 
+        {open && workout.status === 'completed' ? (
+          <CompletedWorkoutRead plannedWorkoutId={workout.id} />
+        ) : null}
+
         {structure ? (
           <div className="space-y-3">
             <p className="text-sm font-medium text-text-primary">Session structure</p>
@@ -133,4 +143,75 @@ function DeliveryLine({ delivery }: { delivery: PlanWorkout['outdoorDelivery'] |
     );
   }
   return <Badge variant="muted">Outdoor · sends to Garmin</Badge>;
+}
+
+/**
+ * Batch 152: the persisted post-workout read for a completed session, fetched
+ * lazily when its Week-view detail sheet opens. It reuses Home's read stack —
+ * verdict + Markdown + rate/correct + follow-up chat — so looking back at an old
+ * session is as rich as reading it the day of. The read is retrieved, never
+ * regenerated; an absent read (still generating, or none) shows an honest line.
+ */
+function CompletedWorkoutRead({ plannedWorkoutId }: { plannedWorkoutId: string }) {
+  const query = useQuery({
+    queryKey: ['workout-read', plannedWorkoutId],
+    queryFn: async () => {
+      const response = await apiFetch<unknown>(
+        `/api/v1/plan-actions/workouts/${plannedWorkoutId}/analysis`,
+      );
+      return workoutReadEnvelopeSchema.parse(response).data.read;
+    },
+  });
+
+  const heading = <p className="text-sm font-medium text-text-primary">How it went</p>;
+  const note = (message: string) => (
+    <p className="rounded-lg border border-dashed border-border px-3 py-3 text-sm text-text-secondary">
+      {message}
+    </p>
+  );
+
+  if (query.isPending) {
+    return (
+      <div className="space-y-3">
+        {heading}
+        {note('Loading your read…')}
+      </div>
+    );
+  }
+  if (query.isError) {
+    return (
+      <div className="space-y-3">
+        {heading}
+        {note("Couldn't load your read just now — try again shortly.")}
+      </div>
+    );
+  }
+
+  const read = query.data;
+  if (!read) {
+    return (
+      <div className="space-y-3">
+        {heading}
+        {note("No read yet — I'll write one once this session syncs and is analysed.")}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        {heading}
+        {read.verdict ? (
+          <Badge variant="muted" className="shrink-0 capitalize">
+            {read.verdict}
+          </Badge>
+        ) : null}
+      </div>
+      <div className="rounded-lg border border-border bg-bg px-3 py-3">
+        <Markdown>{read.outputMarkdown}</Markdown>
+      </div>
+      <FeedbackControl analysisId={read.analysisId} kind="summary" feedback={read.feedback ?? null} />
+      <BriefFollowUpChat analysisId={read.analysisId} />
+    </div>
+  );
 }

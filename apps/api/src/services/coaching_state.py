@@ -33,6 +33,26 @@ def _profile_content() -> dict[str, Any]:
         "restingHeartRateBpm": 45,
         "bloodPressure": {"systolic": 108, "diastolic": 68},
         "fitnessAge": 48,
+        # Batch 152 (Mark's 2026-07-25 feedback): his standing indoor setup. He
+        # rides every Zwift session in ERG, so a prescribed %FTP target is what the
+        # trainer delivered — never second-guess ERG-held power against averages,
+        # and never suggest switching ERG off (impractical mid-session and can cause
+        # trainer/technical issues on his setup). He accepts that ERG slightly
+        # softens his one weekly short-sharp-sprint VO2 session.
+        "indoorTrainerMode": {
+            "mode": "erg",
+            "appliesTo": "all Zwift indoor rides",
+            "prescribedPowerIsDelivered": True,
+            "neverSuggestErgOff": True,
+            "note": (
+                "Mark rides every Zwift session in ERG mode. Read the prescribed "
+                "%FTP as delivered, not as something he paced, and never as "
+                "under-performance. Never suggest switching ERG off — he has said it "
+                "is impractical mid-session and can cause trainer/technical issues on "
+                "his setup. He runs even his one weekly short-sharp-sprint VO2 "
+                "session in ERG and has accepted the slight softening of those surges."
+            ),
+        },
     }
 
 

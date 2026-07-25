@@ -539,6 +539,8 @@ async def test_context_packet_grades_work_intervals_for_structured_ride(
         assert ir["steps"]
         assert packet["gradingTarget"]["source"] == "planned_workout"
         assert packet["gradingTarget"]["proposalId"] is None
+        # Batch 152: a sweet-spot session carries no ergMode, so nothing is surfaced.
+        assert packet["prescribedErgMode"] is None
 
         intervals = packet["intervals"]
         assert [item["role"] for item in intervals] == ["warmup", "work", "recovery", "cooldown"]
@@ -1269,3 +1271,67 @@ async def test_context_packet_on_plan_ride_has_no_deviation_verdict(
         assert packet["execution"]["onTargetCount"] == 1
         assert packet["rideDeviation"]["diverged"] is False
         assert packet["rideDeviation"]["kind"] == "on_plan"
+
+
+@pytest.mark.asyncio
+async def test_context_packet_surfaces_prescribed_erg_off_and_athlete_erg_setup(
+    db_conn: AsyncConnection,
+) -> None:
+    # Batch 152: a VO2 micro-interval protocol prescribes ERG off (surge lag), and
+    # Mark's standing ERG setup rides along in the athlete profile. The packet
+    # surfaces both so the read can add one honest note when he rides an ERG-off
+    # surge session in ERG anyway — without grading ERG-held power as a shortfall.
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Erg Packet",
+            pin_hash="x" * 60,
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+
+        activity = Activity(
+            user_id=user_id,
+            garmin_activity_id=770009,
+            activity_name="VO2 session",
+            activity_type="indoor_cycling",
+            start_utc=datetime(2026, 1, 6, 11, 0),
+            duration_sec=900,
+            avg_power_watts=240,
+            raw_summary={},
+        )
+        session.add(activity)
+        await session.flush()
+
+        session.add(
+            PlannedWorkout(
+                user_id=user_id,
+                workout_date=date(2026, 1, 6),
+                version=1,
+                title="VO2 Max 30/15",
+                workout_type="cycling",
+                status="planned",
+                is_active=True,
+                intensity_target="105-110% FTP, ERG off",
+                structured_workout={**_VO2_STRUCTURED, "ergMode": "off"},
+                source="test",
+            )
+        )
+        session.add_all(
+            [
+                _sample(activity.id, 0, 100, 150, 120),
+                _sample(activity.id, 1, 500, 330, 165),
+            ]
+        )
+        await session.commit()
+
+        packet = await PostWorkoutAnalysisService(session).assemble_context_packet(player, activity)
+
+    assert packet["prescribedErgMode"] == "off"
+    # The seeded profile section carries the ERG-always fact into the packet.
+    assert packet["profile"]["athleteProfile"]["indoorTrainerMode"]["mode"] == "erg"

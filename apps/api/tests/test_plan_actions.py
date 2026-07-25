@@ -12,12 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 from src.models.coaching import (
     Activity,
     Analysis,
+    Feedback,
     ManualEntry,
     PlanBlock,
     PlannedWorkout,
     WorkoutDeliveryProposal,
 )
 from src.models.profile import Profile, UserRole
+from src.routers.plan_actions import get_workout_analysis
 from src.services.holiday_pause import HolidayPauseService
 from src.services.plan_actions import (
     TOTAL_WEEKS,
@@ -1064,3 +1066,106 @@ async def test_record_actual_captures_unplanned_reality(db_conn: AsyncConnection
     assert stored.planned_workout_id is None
     assert stored.adherence_status == "modified"
     assert stored.actual_workout_json == {"label": "Walked instead", "source": "did_something_else"}
+
+
+async def _seed_analysis(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    planned_workout_id: uuid.UUID | None,
+    analysis_type: str = "post_workout",
+    verdict: str | None = "maintain",
+    output_markdown: str = "You held every work interval.",
+    generated_at_utc: datetime = datetime(2026, 8, 12, 9, 30),
+) -> Analysis:
+    analysis = Analysis(
+        user_id=user_id,
+        planned_workout_id=planned_workout_id,
+        analysis_type=analysis_type,
+        subject_date=generated_at_utc.date(),
+        generated_at_utc=generated_at_utc,
+        prompt_version="post-workout-analysis-test",
+        verdict=verdict,
+        output_markdown=output_markdown,
+    )
+    session.add(analysis)
+    await session.flush()
+    return analysis
+
+
+@pytest.mark.asyncio
+async def test_workout_analysis_returns_latest_read_with_feedback(
+    db_conn: AsyncConnection,
+) -> None:
+    # Batch 152: tapping a completed Week workout retrieves its persisted post-
+    # workout read (the latest one) plus any existing rating, never regenerating.
+    user_id = uuid.uuid4()
+    day = date(2026, 8, 12)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await _seed_user(session, user_id)
+        workout = await _seed_workout(session, user_id, day, workout_type="bike_endurance")
+        workout.status = "completed"
+        await _seed_analysis(
+            session,
+            user_id,
+            planned_workout_id=workout.id,
+            output_markdown="Older read.",
+            generated_at_utc=datetime(2026, 8, 12, 8, 0),
+        )
+        latest = await _seed_analysis(
+            session,
+            user_id,
+            planned_workout_id=workout.id,
+            output_markdown="You held every work interval.",
+            generated_at_utc=datetime(2026, 8, 12, 9, 30),
+        )
+        session.add(
+            Feedback(user_id=user_id, analysis_id=latest.id, kind="summary", rating="spot_on")
+        )
+        await session.commit()
+
+        envelope = await get_workout_analysis(
+            planned_workout_id=workout.id, player=user, db=session
+        )
+
+    read = envelope.data.read
+    assert read is not None
+    assert read.analysisId == str(latest.id)
+    assert read.outputMarkdown == "You held every work interval."
+    assert read.verdict == "maintain"
+    assert read.feedback is not None
+    assert read.feedback.rating == "spot_on"
+
+
+@pytest.mark.asyncio
+async def test_workout_analysis_is_null_when_no_read_and_scoped_to_owner(
+    db_conn: AsyncConnection,
+) -> None:
+    owner_id = uuid.uuid4()
+    day = date(2026, 8, 12)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        owner = await _seed_user(session, owner_id)
+        workout = await _seed_workout(session, owner_id, day, workout_type="bike_endurance")
+        workout.status = "completed"
+        await _seed_analysis(session, owner_id, planned_workout_id=workout.id)
+        await session.commit()
+
+        owner_envelope = await get_workout_analysis(
+            planned_workout_id=workout.id, player=owner, db=session
+        )
+        # A different caller must not see the owner's read; the query is user-scoped,
+        # so a foreign id yields the same honest empty state as "no read yet".
+        stranger = Profile(
+            id=uuid.uuid4(),
+            display_name="Stranger",
+            pin_hash="x" * 60,
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        stranger_envelope = await get_workout_analysis(
+            planned_workout_id=workout.id, player=stranger, db=session
+        )
+
+    assert owner_envelope.data.read is not None
+    assert stranger_envelope.data.read is None
