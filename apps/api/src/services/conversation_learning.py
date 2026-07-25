@@ -436,13 +436,14 @@ class ConversationLearningService:
         return sources[:MAX_SOURCES]
 
     async def _active_learned_context(self, user_id: uuid.UUID) -> KnowledgeBase | None:
-        return await self.session.scalar(
+        result = await self.session.scalars(
             select(KnowledgeBase).where(
                 KnowledgeBase.user_id == user_id,
                 KnowledgeBase.section == LEARNED_CONTEXT_SECTION,
                 KnowledgeBase.is_active.is_(True),
             )
         )
+        return result.one_or_none()
 
     async def _existing_statements(self, user_id: uuid.UUID) -> list[str]:
         row = await self._active_learned_context(user_id)
