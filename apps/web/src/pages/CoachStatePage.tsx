@@ -18,6 +18,7 @@ import {
   ClipboardList,
   FileJson,
   History,
+  RefreshCw,
   Save,
   Sparkles,
   X,
@@ -437,9 +438,22 @@ export function CoachStatePage() {
           <CardHeader>
             <CardTitle>Coach memory unavailable</CardTitle>
             <CardDescription>
-              {readQuery.error instanceof Error ? readQuery.error.message : 'The saved context could not load.'}
+              The saved context could not load just now. Try again in a moment.
             </CardDescription>
           </CardHeader>
+          <CardContent>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => readQuery.refetch()}
+              disabled={readQuery.isFetching}
+            >
+              <RefreshCw className={cn('h-4 w-4', readQuery.isFetching && 'animate-spin')} aria-hidden />
+              {readQuery.isFetching ? 'Retrying...' : 'Retry'}
+            </Button>
+          </CardContent>
         </Card>
       </div>
     );

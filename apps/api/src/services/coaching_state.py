@@ -230,6 +230,8 @@ KB_SECTION_BUILDERS: dict[str, Any] = {
     "learned_context": _learned_context_content,
 }
 
+PUBLIC_KNOWLEDGE_BASE_SECTIONS = tuple(KB_SECTION_BUILDERS)
+
 
 @dataclass(frozen=True)
 class WorkoutTemplate:
@@ -642,6 +644,7 @@ class CoachingStateService:
                 await self.session.execute(
                     select(KnowledgeBase)
                     .where(KnowledgeBase.user_id == player.id)
+                    .where(KnowledgeBase.section.in_(PUBLIC_KNOWLEDGE_BASE_SECTIONS))
                     .order_by(KnowledgeBase.section.asc(), KnowledgeBase.version.desc())
                 )
             )
