@@ -5,6 +5,7 @@ from dataclasses import dataclass
 DAY_CATEGORY_CYCLE = "cycle"
 DAY_CATEGORY_WEIGHTS = "weights"
 DAY_CATEGORY_FLEXIBILITY = "flexibility"
+DAY_CATEGORY_WALK = "walk"
 DAY_CATEGORY_REST = "rest"
 
 WORKOUT_TYPE_CYCLE = {
@@ -17,6 +18,7 @@ WORKOUT_TYPE_CYCLE = {
 }
 WORKOUT_TYPE_WEIGHTS = {"strength_recovery", "strength_maintenance"}
 WORKOUT_TYPE_FLEXIBILITY = {"mobility"}
+WORKOUT_TYPE_WALK = {"walk", "walking", "walk_recovery"}
 
 
 @dataclass(frozen=True)
@@ -34,6 +36,8 @@ def category_for_workout_type(workout_type: str | None) -> str:
         return DAY_CATEGORY_WEIGHTS
     if value in WORKOUT_TYPE_FLEXIBILITY:
         return DAY_CATEGORY_FLEXIBILITY
+    if value in WORKOUT_TYPE_WALK or value.startswith("walk_"):
+        return DAY_CATEGORY_WALK
     return DAY_CATEGORY_WEIGHTS
 
 
@@ -49,6 +53,7 @@ def day_state_for_workout_types(workout_types: list[str]) -> DayState:
         DAY_CATEGORY_CYCLE: "Cycle",
         DAY_CATEGORY_WEIGHTS: "Weights",
         DAY_CATEGORY_FLEXIBILITY: "Flexibility",
+        DAY_CATEGORY_WALK: "Walk",
     }
     return DayState(
         categories=categories,

@@ -28,6 +28,7 @@ from src.services.structured_workout_builder import (
 from src.services.workout_categories import (
     DAY_CATEGORY_CYCLE,
     DAY_CATEGORY_FLEXIBILITY,
+    DAY_CATEGORY_WALK,
     DAY_CATEGORY_WEIGHTS,
     DayState,
     day_state_for_workout_types,
@@ -514,6 +515,8 @@ def _planned_workout_activity_kind(workout: PlannedWorkout) -> PostActivityKind 
         return "strength"
     if DAY_CATEGORY_FLEXIBILITY in category:
         return "flexibility"
+    if DAY_CATEGORY_WALK in category:
+        return "walk"
     return None
 
 

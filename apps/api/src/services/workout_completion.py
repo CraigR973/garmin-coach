@@ -6,7 +6,7 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.coaching import Analysis, PlannedWorkout
+from src.models.coaching import Analysis, PlannedWorkout, PostActivityGenerationStatus
 from src.services.workout_categories import category_for_workout_type
 
 WORKOUT_STATUS_COMPLETED = "completed"
@@ -54,7 +54,7 @@ async def complete_matched_planned_workout(
     if not matches:
         return None
 
-    claimed = {
+    claimed_by_analysis = {
         row
         for row in (
             (
@@ -71,6 +71,25 @@ async def complete_matched_planned_workout(
         )
         if row is not None
     }
+    claimed_by_status = {
+        row
+        for row in (
+            (
+                await session.execute(
+                    select(PostActivityGenerationStatus.planned_workout_id).where(
+                        PostActivityGenerationStatus.planned_workout_id.in_(
+                            [workout.id for workout in matches]
+                        ),
+                        PostActivityGenerationStatus.activity_id != activity_id,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if row is not None
+    }
+    claimed = claimed_by_analysis | claimed_by_status
     chosen = next((workout for workout in matches if workout.id not in claimed), matches[0])
     chosen.status = WORKOUT_STATUS_COMPLETED
     return chosen.id

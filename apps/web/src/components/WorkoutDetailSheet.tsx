@@ -159,8 +159,9 @@ function CompletedWorkoutRead({ plannedWorkoutId }: { plannedWorkoutId: string }
       const response = await apiFetch<unknown>(
         `/api/v1/plan-actions/workouts/${plannedWorkoutId}/analysis`,
       );
-      return workoutReadEnvelopeSchema.parse(response).data.read;
+      return workoutReadEnvelopeSchema.parse(response).data;
     },
+    refetchInterval: (result) => (result.state.data?.state === 'generating' ? 3_000 : false),
   });
 
   const heading = <p className="text-sm font-medium text-text-primary">How it went</p>;
@@ -187,8 +188,24 @@ function CompletedWorkoutRead({ plannedWorkoutId }: { plannedWorkoutId: string }
     );
   }
 
-  const read = query.data;
-  if (!read) {
+  const { read, state } = query.data;
+  if (state === 'generating') {
+    return (
+      <div className="space-y-3">
+        {heading}
+        {note("Writing your read now — it should be ready shortly.")}
+      </div>
+    );
+  }
+  if (state === 'failed') {
+    return (
+      <div className="space-y-3">
+        {heading}
+        {note("I couldn't write this read just now. Save the session check-in again to retry.")}
+      </div>
+    );
+  }
+  if (!read || state === 'absent') {
     return (
       <div className="space-y-3">
         {heading}

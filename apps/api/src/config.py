@@ -66,6 +66,8 @@ class Settings(BaseSettings):
     # migration, no scheduler (Decision #223). Also mirrored by the web client's
     # max-wait cap. Normal generation completes in well under 2 minutes.
     brief_generation_stale_after_minutes: int = 12
+    # Batch 159: the same orphan guard for activity-scoped post-session reads.
+    post_activity_generation_stale_after_minutes: int = 12
     # Hosted read-aloud voice (Batch 116, opt-in; self-hosted via Piper as of
     # DECISIONS #190). A missing model file means the hosted path is
     # unavailable regardless of a user's consent flag — the frontend falls
