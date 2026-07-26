@@ -133,6 +133,8 @@ def _planned_workout_activity_kind(workout: PlannedWorkout) -> PostActivityKind 
         return "strength"
     if workout_type == "mobility":
         return "flexibility"
+    if workout_type in {"walk", "walking", "walk_recovery"} or workout_type.startswith("walk_"):
+        return "walk"
     return None
 
 

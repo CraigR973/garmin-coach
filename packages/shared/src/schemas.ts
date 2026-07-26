@@ -829,7 +829,9 @@ export const briefMessageTurnSchema = z.object({
 // regenerated — carrying the `analysisId` the FeedbackControl and follow-up chat
 // are keyed to. `read` is null when the session is completed but no read exists
 // yet (still generating, or generation failed). `verdict` is the post-session
-// recovery status string, not the morning Green/Amber/Red.
+// recovery status string, not the morning Green/Amber/Red. Batch 159 adds an
+// explicit activity-scoped generation state so a missing read is no longer
+// overloaded to mean absent, in flight, or failed.
 export const workoutReadSchema = z.object({
   analysisId: z.string().uuid(),
   analysisType: z.string().min(1),
@@ -841,7 +843,11 @@ export const workoutReadSchema = z.object({
 export type WorkoutRead = z.infer<typeof workoutReadSchema>;
 
 export const workoutReadEnvelopeSchema = z.object({
-  data: z.object({ read: workoutReadSchema.nullable() }),
+  data: z.object({
+    state: z.enum(['absent', 'generating', 'failed', 'ready']),
+    reason: z.string().nullable().optional(),
+    read: workoutReadSchema.nullable(),
+  }),
   meta: apiMetaSchema,
   errors: z.array(apiErrorSchema),
 });

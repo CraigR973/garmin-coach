@@ -12,12 +12,15 @@ vi.mock('@/lib/api', () => ({
 
 const META = { generatedAtUtc: '2026-07-25T00:00:00.000Z' };
 
-// Batch 152: the read fetch and the follow-up chat's history fetch both go through
-// apiFetch. Default to a completed session that has no read yet, and an empty chat.
-function stubApi(read: unknown = null) {
+// The read fetch and follow-up chat history both go through apiFetch. Default to
+// a completed session whose read is genuinely absent, and an empty chat.
+function stubApi(
+  read: unknown = null,
+  state: 'absent' | 'generating' | 'failed' | 'ready' = read ? 'ready' : 'absent',
+) {
   apiFetchMock.mockImplementation(async (path: string) => {
     if (typeof path === 'string' && path.includes('/messages')) return { data: [] };
-    return { data: { read }, meta: META, errors: [] };
+    return { data: { state, reason: null, read }, meta: META, errors: [] };
   });
 }
 
@@ -145,5 +148,22 @@ describe('WorkoutDetailSheet completed read (Batch 152)', () => {
     // No read means no interactive stack to key to an analysis.
     expect(screen.queryByText('Was this right?')).toBeNull();
     expect(screen.queryByText('Ask about this read')).toBeNull();
+  });
+
+  it('shows an honest in-flight state while the session read is generating', async () => {
+    stubApi(null, 'generating');
+    renderSheet({ ...structuredBike, status: 'completed' });
+
+    expect(await screen.findByText(/Writing your read now/)).toBeTruthy();
+    expect(screen.queryByText(/No read yet/)).toBeNull();
+  });
+
+  it('shows a retryable failure distinct from an absent read', async () => {
+    stubApi(null, 'failed');
+    renderSheet({ ...structuredBike, status: 'completed' });
+
+    expect(await screen.findByText(/couldn't write this read/)).toBeTruthy();
+    expect(screen.getByText(/Save the session check-in again to retry/)).toBeTruthy();
+    expect(screen.queryByText(/No read yet/)).toBeNull();
   });
 });

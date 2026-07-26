@@ -38,9 +38,18 @@ from src.models.coaching import (
     PlannedWorkout,
 )
 from src.models.profile import Profile
+from src.services.analysis_currentness import (
+    analysis_matches_prompt_and_input,
+    manual_entry_input_version,
+)
 from src.services.anthropic_text import generate_anthropic_text
 from src.services.coaching_state import CoachingStateService
 from src.services.learned_context import learned_context_packet
+from src.services.post_activity_state import (
+    PostActivityGenerationStatusService,
+    mark_post_activity_generation,
+    prepare_post_activity_generation,
+)
 from src.services.post_workout_analysis import (
     ClaudeGenerationResult,
     PostWorkoutAnalysisError,
@@ -48,7 +57,6 @@ from src.services.post_workout_analysis import (
     _activity_packet,
     _analysis_rules,
     _data_quality_guardrails,
-    _dt,
     _manual_entry_packet,
     _planned_workout_packet,
     _utcnow,
@@ -174,7 +182,14 @@ class PostStrengthAnalysisService:
                 continue
             latest = await self.latest_analysis_for_activity(activity.id)
             checkin = await self._activity_checkin(activity.user_id, activity.id)
-            if latest is None or not _analysis_covers_activity_checkin(latest, checkin):
+            generation_status = await PostActivityGenerationStatusService(self.session).get(
+                user_id, activity.id
+            )
+            if (
+                latest is None
+                or not _analysis_covers_activity_checkin(latest, checkin)
+                or (latest.planned_workout_id is None and generation_status is None)
+            ):
                 pending.append(activity)
         return pending
 
@@ -279,23 +294,70 @@ class PostStrengthAnalysisService:
         force: bool = False,
         commit: bool = True,
     ) -> StrengthAnalysisResult:
+        subject_date = _activity_local_date(activity, player.timezone)
+        matched_workout_id = await prepare_post_activity_generation(
+            self.session,
+            user_id=player.id,
+            activity_id=activity.id,
+            subject_date=subject_date,
+            kind="strength",
+            commit=False,
+        )
         if not force:
             existing = await self.latest_analysis_for_activity(activity.id)
             checkin = await self._activity_checkin(player.id, activity.id)
             if existing is not None and _analysis_covers_activity_checkin(existing, checkin):
+                if (
+                    matched_workout_id is not None
+                    and existing.planned_workout_id != matched_workout_id
+                ):
+                    existing.planned_workout_id = matched_workout_id
+                await mark_post_activity_generation(
+                    self.session,
+                    user_id=player.id,
+                    activity_id=activity.id,
+                    planned_workout_id=matched_workout_id,
+                    subject_date=subject_date,
+                    kind="strength",
+                    status="ready",
+                    commit=False,
+                )
+                if commit:
+                    await self.session.commit()
+                    await self.session.refresh(existing)
+                else:
+                    await self.session.flush()
                 return StrengthAnalysisResult(analysis=existing, generated=False)
 
-        context_packet = await self.assemble_strength_packet(player, activity)
-        user_prompt = build_strength_user_prompt(context_packet)
-        analysis_client = client or AnthropicStrengthAnalysisClient()
-        generation = await analysis_client.generate(
-            context_packet=context_packet,
-            user_prompt=user_prompt,
-        )
-        subject_date = _activity_local_date(activity, player.timezone)
+        if commit:
+            await self.session.commit()
+        try:
+            context_packet = await self.assemble_strength_packet(player, activity)
+            user_prompt = build_strength_user_prompt(context_packet)
+            analysis_client = client or AnthropicStrengthAnalysisClient()
+            generation = await analysis_client.generate(
+                context_packet=context_packet,
+                user_prompt=user_prompt,
+            )
+        except Exception as exc:
+            if commit:
+                await self.session.rollback()
+            await mark_post_activity_generation(
+                self.session,
+                user_id=player.id,
+                activity_id=activity.id,
+                planned_workout_id=matched_workout_id,
+                subject_date=subject_date,
+                kind="strength",
+                status="failed",
+                reason=_generation_failure_reason(exc),
+                commit=commit,
+            )
+            raise
         analysis = Analysis(
             user_id=player.id,
             activity_id=activity.id,
+            planned_workout_id=matched_workout_id,
             analysis_type=ANALYSIS_TYPE,
             subject_date=subject_date,
             generated_at_utc=_utcnow(),
@@ -307,6 +369,16 @@ class PostStrengthAnalysisService:
             raw_response=generation.raw_response,
         )
         self.session.add(analysis)
+        await mark_post_activity_generation(
+            self.session,
+            user_id=player.id,
+            activity_id=activity.id,
+            planned_workout_id=matched_workout_id,
+            subject_date=subject_date,
+            kind="strength",
+            status="ready",
+            commit=False,
+        )
         if commit:
             await self.session.commit()
             await self.session.refresh(analysis)
@@ -458,10 +530,14 @@ def _analysis_covers_activity_checkin(
     analysis: Analysis,
     checkin: ManualEntry | None,
 ) -> bool:
-    packet = analysis.context_packet if isinstance(analysis.context_packet, dict) else {}
-    packet_checkin = packet.get("activityCheckIn")
-    if checkin is None:
-        return packet_checkin is None
-    if not isinstance(packet_checkin, dict):
-        return False
-    return packet_checkin.get("entryAtUtc") == _dt(checkin.entry_at_utc)
+    return analysis_matches_prompt_and_input(
+        analysis,
+        prompt_version=PROMPT_VERSION,
+        packet_input_key="activityCheckIn",
+        input_version=manual_entry_input_version(checkin),
+    )
+
+
+def _generation_failure_reason(exc: Exception) -> str:
+    reason = getattr(exc, "reason", None)
+    return reason if isinstance(reason, str) else "generation_error"

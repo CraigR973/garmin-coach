@@ -29,6 +29,13 @@ from src.services.plan_actions import (
     WeekCharacter,
     quick_add_options,
 )
+from src.services.post_activity_state import (
+    STATUS_FAILED,
+    STATUS_GENERATING,
+    SUPPORTED_POST_SESSION_ANALYSIS_TYPES,
+    PostActivityGenerationStatusService,
+    effective_generation_state,
+)
 from src.services.structured_workout_builder import (
     ABS_MAX_POWER_PCT,
     ABS_MIN_POWER_PCT,
@@ -154,6 +161,8 @@ class WorkoutReadOut(BaseModel):
 
 
 class WorkoutReadData(BaseModel):
+    state: Literal["absent", "generating", "failed", "ready"]
+    reason: str | None = None
     read: WorkoutReadOut | None
 
 
@@ -418,24 +427,48 @@ async def get_workout_analysis(
     player: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> WorkoutReadEnvelope:
-    """Batch 152: the persisted post-workout read for a completed planned workout.
+    """The persisted, owned post-session read for a completed planned workout.
 
-    Tapping a completed session on the Week view shows how Mark actually performed,
-    not just the plan. The read already lives in ``analyses`` keyed to
-    ``planned_workout_id`` (set when the post-session read is generated), so this is
-    a retrieval, never a regeneration. Scoped to the caller, so a foreign or unknown
-    id simply yields ``read: null`` — the same honest empty state as a completed
-    session whose read has not generated yet.
+    Batch 159 constrains selection to the four supported post-session types and
+    verifies workout ownership before looking up either the read or its activity-
+    scoped status. This remains retrieval-only; a foreign/unknown id is the same
+    non-disclosing ``absent`` state as an owned workout with no synced read.
     """
-    analysis = await db.scalar(
-        select(Analysis)
-        .where(
-            Analysis.user_id == player.id,
-            Analysis.planned_workout_id == planned_workout_id,
+    workout = await db.scalar(
+        select(PlannedWorkout).where(
+            PlannedWorkout.id == planned_workout_id,
+            PlannedWorkout.user_id == player.id,
         )
-        .order_by(desc(Analysis.generated_at_utc), desc(Analysis.id))
-        .limit(1)
     )
+    analysis: Analysis | None = None
+    generation_state: Literal["absent", "generating", "failed", "ready"] = "absent"
+    reason: str | None = None
+    if workout is not None:
+        analysis = await db.scalar(
+            select(Analysis)
+            .where(
+                Analysis.user_id == player.id,
+                Analysis.planned_workout_id == planned_workout_id,
+                Analysis.analysis_type.in_(SUPPORTED_POST_SESSION_ANALYSIS_TYPES),
+            )
+            .order_by(desc(Analysis.generated_at_utc), desc(Analysis.id))
+            .limit(1)
+        )
+        if analysis is not None:
+            generation_state = "ready"
+        else:
+            status_row = await PostActivityGenerationStatusService(db).latest_for_workout(
+                player.id, planned_workout_id
+            )
+            if status_row is not None:
+                effective_state, effective_reason = effective_generation_state(status_row)
+                if effective_state == STATUS_GENERATING:
+                    generation_state = "generating"
+                    reason = effective_reason
+                elif effective_state == STATUS_FAILED:
+                    generation_state = "failed"
+                    reason = effective_reason
+
     read: WorkoutReadOut | None = None
     if analysis is not None:
         feedback = await db.scalar(
@@ -453,7 +486,7 @@ async def get_workout_analysis(
             feedback=serialize_feedback(feedback) if feedback is not None else None,
         )
     return WorkoutReadEnvelope(
-        data=WorkoutReadData(read=read),
+        data=WorkoutReadData(state=generation_state, reason=reason, read=read),
         meta=ApiMeta(generatedAtUtc=_generated_at()),
         errors=[],
     )

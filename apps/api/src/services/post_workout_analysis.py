@@ -25,17 +25,25 @@ from src.models.coaching import (
     WorkoutDeliveryProposal,
 )
 from src.models.profile import Profile
+from src.services.analysis_currentness import (
+    analysis_matches_prompt_and_input,
+    manual_entry_input_version,
+)
 from src.services.anthropic_text import generate_anthropic_text
 from src.services.coaching_state import CoachingStateService
 from src.services.feedback import FeedbackService
 from src.services.learned_context import learned_context_packet
+from src.services.post_activity_state import (
+    PostActivityGenerationStatusService,
+    mark_post_activity_generation,
+    prepare_post_activity_generation,
+)
 from src.services.ride_intervals import (
     power_zone,
     segment_ride_intervals,
     summarize_execution,
 )
 from src.services.workout_categories import DAY_CATEGORY_CYCLE, category_for_workout_type
-from src.services.workout_completion import complete_matched_planned_workout
 from src.services.workout_delivery import (
     DEFAULT_FTP_WATTS,
     STATUS_PUSHED,
@@ -260,7 +268,14 @@ class PostWorkoutAnalysisService:
                 continue
             latest = await self.latest_analysis_for_activity(activity.id)
             checkin = await self._post_ride_checkin(activity.user_id, activity.id)
-            if latest is None or not _analysis_is_current(latest, checkin):
+            generation_status = await PostActivityGenerationStatusService(self.session).get(
+                user_id, activity.id
+            )
+            if (
+                latest is None
+                or not _analysis_is_current(latest, checkin)
+                or (latest.planned_workout_id is None and generation_status is None)
+            ):
                 pending.append(activity)
         return pending
 
@@ -424,16 +439,15 @@ class PostWorkoutAnalysisService:
         commit: bool = True,
     ) -> PostWorkoutAnalysisResult:
         subject_date = _activity_local_date(activity, player.timezone)
-        # Flip the planned bike session this ride completed to ``completed`` (Batch
-        # 60) — so its Today-card row shows the read instead of the approve/upload
-        # controls, and it can no longer be re-slotted. Runs before the current-
-        # analysis short-circuit so an already-analysed ride still gets linked.
-        matched_workout_id = await complete_matched_planned_workout(
+        # Batch 159 moves completion/linking to the shared post-activity seam so
+        # every supported session type follows the same lifecycle.
+        matched_workout_id = await prepare_post_activity_generation(
             self.session,
             user_id=player.id,
-            subject_date=subject_date,
-            category=DAY_CATEGORY_CYCLE,
             activity_id=activity.id,
+            subject_date=subject_date,
+            kind="ride",
+            commit=False,
         )
         if not force:
             existing = await self.latest_analysis_for_activity(activity.id)
@@ -444,6 +458,16 @@ class PostWorkoutAnalysisService:
                     and existing.planned_workout_id != matched_workout_id
                 ):
                     existing.planned_workout_id = matched_workout_id
+                await mark_post_activity_generation(
+                    self.session,
+                    user_id=player.id,
+                    activity_id=activity.id,
+                    planned_workout_id=matched_workout_id,
+                    subject_date=subject_date,
+                    kind="ride",
+                    status="ready",
+                    commit=False,
+                )
                 if commit:
                     await self.session.commit()
                     await self.session.refresh(existing)
@@ -451,13 +475,32 @@ class PostWorkoutAnalysisService:
                     await self.session.flush()
                 return PostWorkoutAnalysisResult(analysis=existing, generated=False)
 
-        context_packet = await self.assemble_context_packet(player, activity)
-        user_prompt = build_post_workout_user_prompt(context_packet)
-        analysis_client = client or AnthropicPostWorkoutAnalysisClient()
-        generation = await analysis_client.generate(
-            context_packet=context_packet,
-            user_prompt=user_prompt,
-        )
+        if commit:
+            # Make ``generating`` visible before the potentially slow model call.
+            await self.session.commit()
+        try:
+            context_packet = await self.assemble_context_packet(player, activity)
+            user_prompt = build_post_workout_user_prompt(context_packet)
+            analysis_client = client or AnthropicPostWorkoutAnalysisClient()
+            generation = await analysis_client.generate(
+                context_packet=context_packet,
+                user_prompt=user_prompt,
+            )
+        except Exception as exc:
+            if commit:
+                await self.session.rollback()
+            await mark_post_activity_generation(
+                self.session,
+                user_id=player.id,
+                activity_id=activity.id,
+                planned_workout_id=matched_workout_id,
+                subject_date=subject_date,
+                kind="ride",
+                status="failed",
+                reason=_generation_failure_reason(exc),
+                commit=commit,
+            )
+            raise
         verdict = context_packet.get("recoveryDecision", {}).get("status")
         analysis = Analysis(
             user_id=player.id,
@@ -474,6 +517,16 @@ class PostWorkoutAnalysisService:
             raw_response=generation.raw_response,
         )
         self.session.add(analysis)
+        await mark_post_activity_generation(
+            self.session,
+            user_id=player.id,
+            activity_id=activity.id,
+            planned_workout_id=matched_workout_id,
+            subject_date=subject_date,
+            kind="ride",
+            status="ready",
+            commit=False,
+        )
         if commit:
             await self.session.commit()
             await self.session.refresh(analysis)
@@ -933,8 +986,11 @@ def _analysis_is_current(analysis: Analysis, checkin: ManualEntry | None) -> boo
     already reflects the latest post-ride check-in. Bumping ``PROMPT_VERSION`` (Batch
     44) therefore marks older analyses as stale so the hourly poll and the backfill
     regenerate them through the new interval-resolved packet."""
-    return analysis.prompt_version == PROMPT_VERSION and _analysis_covers_post_ride_checkin(
-        analysis, checkin
+    return analysis_matches_prompt_and_input(
+        analysis,
+        prompt_version=PROMPT_VERSION,
+        packet_input_key="postRideCheckIn",
+        input_version=manual_entry_input_version(checkin),
     )
 
 
@@ -949,6 +1005,11 @@ def _analysis_covers_post_ride_checkin(
     if not isinstance(packet_checkin, dict):
         return False
     return packet_checkin.get("entryAtUtc") == _dt(checkin.entry_at_utc)
+
+
+def _generation_failure_reason(exc: Exception) -> str:
+    reason = getattr(exc, "reason", None)
+    return reason if isinstance(reason, str) else "generation_error"
 
 
 def _recovery_decision_packet(activity: Activity) -> dict[str, Any]:

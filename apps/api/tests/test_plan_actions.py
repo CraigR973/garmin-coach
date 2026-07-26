@@ -16,6 +16,7 @@ from src.models.coaching import (
     ManualEntry,
     PlanBlock,
     PlannedWorkout,
+    PostActivityGenerationStatus,
     WorkoutDeliveryProposal,
 )
 from src.models.profile import Profile, UserRole
@@ -196,9 +197,11 @@ def test_day_state_labels_mixed_and_rest() -> None:
     assert rest.label == "Rest"
     assert rest.is_rest is True
 
-    mixed = day_state_for_workout_types(["bike_endurance", "strength_maintenance", "mobility"])
-    assert mixed.categories == ["cycle", "weights", "flexibility"]
-    assert mixed.label == "Cycle + Weights + Flexibility"
+    mixed = day_state_for_workout_types(
+        ["bike_endurance", "strength_maintenance", "mobility", "walk_recovery"]
+    )
+    assert mixed.categories == ["cycle", "weights", "flexibility", "walk"]
+    assert mixed.label == "Cycle + Weights + Flexibility + Walk"
 
 
 @pytest.mark.asyncio
@@ -1093,6 +1096,37 @@ async def _seed_analysis(
     return analysis
 
 
+async def _seed_post_activity_status(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    planned_workout_id: uuid.UUID,
+    subject_date: date,
+    status: str,
+    analysis_type: str = "post_strength",
+    reason: str | None = None,
+) -> PostActivityGenerationStatus:
+    activity = await _seed_activity(
+        session,
+        user_id,
+        name="Completed session",
+        activity_type="strength_training",
+        start_utc=datetime(subject_date.year, subject_date.month, subject_date.day, 8, 0),
+    )
+    row = PostActivityGenerationStatus(
+        user_id=user_id,
+        activity_id=activity.id,
+        planned_workout_id=planned_workout_id,
+        subject_date=subject_date,
+        analysis_type=analysis_type,
+        status=status,
+        reason=reason,
+    )
+    session.add(row)
+    await session.flush()
+    return row
+
+
 @pytest.mark.asyncio
 async def test_workout_analysis_returns_latest_read_with_feedback(
     db_conn: AsyncConnection,
@@ -1130,6 +1164,7 @@ async def test_workout_analysis_returns_latest_read_with_feedback(
 
     read = envelope.data.read
     assert read is not None
+    assert envelope.data.state == "ready"
     assert read.analysisId == str(latest.id)
     assert read.outputMarkdown == "You held every work interval."
     assert read.verdict == "maintain"
@@ -1168,4 +1203,120 @@ async def test_workout_analysis_is_null_when_no_read_and_scoped_to_owner(
         )
 
     assert owner_envelope.data.read is not None
+    assert owner_envelope.data.state == "ready"
     assert stranger_envelope.data.read is None
+    assert stranger_envelope.data.state == "absent"
+
+
+@pytest.mark.asyncio
+async def test_workout_analysis_returns_absent_for_owned_workout_without_read(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    day = date(2026, 8, 12)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await _seed_user(session, user_id)
+        workout = await _seed_workout(session, user_id, day)
+        workout.status = "completed"
+        await session.commit()
+
+        envelope = await get_workout_analysis(
+            planned_workout_id=workout.id, player=user, db=session
+        )
+
+    assert envelope.data.state == "absent"
+    assert envelope.data.read is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "analysis_type",
+    ["post_workout", "post_strength", "post_flexibility", "post_walk"],
+)
+async def test_workout_analysis_returns_each_supported_post_session_type(
+    db_conn: AsyncConnection,
+    analysis_type: str,
+) -> None:
+    user_id = uuid.uuid4()
+    day = date(2026, 8, 13)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await _seed_user(session, user_id)
+        workout = await _seed_workout(session, user_id, day)
+        workout.status = "completed"
+        analysis = await _seed_analysis(
+            session,
+            user_id,
+            planned_workout_id=workout.id,
+            analysis_type=analysis_type,
+        )
+        await session.commit()
+
+        envelope = await get_workout_analysis(
+            planned_workout_id=workout.id, player=user, db=session
+        )
+
+    assert envelope.data.state == "ready"
+    assert envelope.data.read is not None
+    assert envelope.data.read.analysisId == str(analysis.id)
+    assert envelope.data.read.analysisType == analysis_type
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "reason"),
+    [("generating", None), ("failed", "billing")],
+)
+async def test_workout_analysis_returns_distinct_persisted_generation_state(
+    db_conn: AsyncConnection,
+    status: str,
+    reason: str | None,
+) -> None:
+    user_id = uuid.uuid4()
+    day = date(2026, 8, 14)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await _seed_user(session, user_id)
+        workout = await _seed_workout(session, user_id, day)
+        workout.status = "completed"
+        await _seed_post_activity_status(
+            session,
+            user_id,
+            planned_workout_id=workout.id,
+            subject_date=day,
+            status=status,
+            reason=reason,
+        )
+        await session.commit()
+
+        envelope = await get_workout_analysis(
+            planned_workout_id=workout.id, player=user, db=session
+        )
+
+    assert envelope.data.state == status
+    assert envelope.data.reason == reason
+    assert envelope.data.read is None
+
+
+@pytest.mark.asyncio
+async def test_workout_analysis_ignores_unrelated_analysis_type(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    day = date(2026, 8, 15)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await _seed_user(session, user_id)
+        workout = await _seed_workout(session, user_id, day)
+        workout.status = "completed"
+        await _seed_analysis(
+            session,
+            user_id,
+            planned_workout_id=workout.id,
+            analysis_type="weekly_restructure",
+        )
+        await session.commit()
+
+        envelope = await get_workout_analysis(
+            planned_workout_id=workout.id, player=user, db=session
+        )
+
+    assert envelope.data.state == "absent"
+    assert envelope.data.read is None

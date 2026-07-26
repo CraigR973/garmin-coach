@@ -57,6 +57,11 @@ from src.models.coaching import (
     PlannedWorkout,
 )
 from src.models.profile import Profile
+from src.services.analysis_currentness import (
+    INPUT_VERSION_KEY,
+    analysis_matches_packet_input,
+    stamp_packet_input_version,
+)
 from src.services.experiment_evaluation import ExperimentEvaluationService
 from src.services.experiment_tracker import ExperimentTrackerService
 from src.services.reviews import (
@@ -602,6 +607,7 @@ class HandoverService:
             experiments=experiments,
             strength=strength,
         )
+        stamp_packet_input_version(packet)
         markdown = render_handover_markdown(packet)
         latest = await self.latest_export(player.id, subject_date)
         return HandoverPreview(
@@ -622,7 +628,17 @@ class HandoverService:
     ) -> HandoverRunResult:
         """Generate the narrative handover and store it. Idempotent per day (#71)."""
         preview = await self.preview(player, as_of=as_of)
-        if not force and preview.latest_export is not None:
+        input_version = preview.packet[INPUT_VERSION_KEY]
+        if (
+            not force
+            and preview.latest_export is not None
+            and isinstance(input_version, str)
+            and analysis_matches_packet_input(
+                preview.latest_export,
+                prompt_version=PROMPT_VERSION,
+                input_version=input_version,
+            )
+        ):
             return HandoverRunResult(preview=preview, export=preview.latest_export, generated=False)
 
         user_prompt = build_handover_user_prompt(preview.packet)

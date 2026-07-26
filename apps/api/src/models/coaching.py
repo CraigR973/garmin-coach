@@ -656,3 +656,41 @@ class BriefGenerationStatus(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     subject_date: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+
+class PostActivityGenerationStatus(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
+    """Generation state for one activity-scoped post-session read (Batch 159).
+
+    Morning briefs can use one row per user/date, but a mixed training day can
+    contain several completed activities. Keeping this status keyed to the
+    activity prevents one failed strength read from being shown on a completed
+    ride (or vice versa) while allowing the Week view to distinguish an absent,
+    in-flight, and failed read after a cold reopen.
+    """
+
+    __tablename__ = "post_activity_generation_status"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "activity_id",
+            name="uq_post_activity_generation_status_user_activity",
+        ),
+        Index(
+            "ix_post_activity_generation_status_planned_workout",
+            "planned_workout_id",
+        ),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    activity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("activities.id", ondelete="CASCADE"), nullable=False
+    )
+    planned_workout_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("planned_workouts.id", ondelete="SET NULL"), nullable=True
+    )
+    subject_date: Mapped[date] = mapped_column(Date, nullable=False)
+    analysis_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(40), nullable=True)

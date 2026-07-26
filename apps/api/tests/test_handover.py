@@ -416,3 +416,41 @@ async def test_run_is_idempotent_per_day(db_conn: AsyncConnection) -> None:
             .where(Analysis.analysis_type == ANALYSIS_TYPE_HANDOVER)
         )
         assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_handover_regenerates_for_old_prompt_or_changed_input(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    await _seed_state(db_conn, user_id)
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = HandoverService(session)
+        client = FakeReviewClient()
+
+        first = await service.run(user, as_of=AS_OF, client=client)
+        first.export.prompt_version = "handover-old-prompt"
+        await session.commit()
+
+        prompt_refresh = await service.run(user, as_of=AS_OF, client=client)
+        assert prompt_refresh.generated is True
+        assert prompt_refresh.export.id != first.export.id
+
+        profile_kb = await session.scalar(
+            select(KnowledgeBase).where(
+                KnowledgeBase.user_id == user_id,
+                KnowledgeBase.section == "profile",
+            )
+        )
+        assert profile_kb is not None
+        profile_kb.content = {**profile_kb.content, "ftpWatts": 285}
+        await session.commit()
+
+        input_refresh = await service.run(user, as_of=AS_OF, client=client)
+        assert input_refresh.generated is True
+        assert input_refresh.export.id != prompt_refresh.export.id
+        assert len(client.calls) == 3

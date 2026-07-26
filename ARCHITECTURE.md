@@ -111,8 +111,20 @@ Today-card row — a compact done state with the tomorrow-impact, the ride check
 and the full read behind a disclosure — instead of the approve/upload controls or a
 separate "After your ride" section (which is kept only for *unplanned* rides), and
 `swap_day` refuses to re-slot a completed session in either direction (the Plan view
-hides its Move, the endpoint 409s). Ride-scoped for now; strength/flexibility
-completion can reuse the same `services/workout_completion.py` helper.
+hides its Move, the endpoint 409s).
+
+Batch 159 (DECISIONS #239) generalises that seam to cycle, strength, mobility,
+and deliberate-walk reads. Every generator completes and links the matching
+planned session before the model call, records activity-scoped
+`generating`/`ready`/`failed` state, and preserves distinct claims for same-kind
+two-a-days. Migration `022` backfills existing supported analyses onto active
+planned sessions. The Week lookup first proves workout ownership, selects only
+the four supported post-session analysis types, and returns an explicit
+`absent`/`generating`/`failed`/`ready` contract; a 12-minute read-time stale
+derivation prevents an orphaned generation from spinning forever. Regenerable
+strength/mobility/walk reads require both the current prompt and current
+activity-check-in version, while handover requires the current prompt and a
+deterministic input-packet fingerprint.
 
 Batch 14 makes the *week* adaptive (`services/weekly_restructure.py`): a
 deterministic permutation engine reorders the week's bike sessions so VO2 and
@@ -252,6 +264,12 @@ staleness/regeneration path reruns it instead. No prompt or verdict change.
   packets; acceptance copies the reviewed statement into a new active version
   of `knowledge_base.section='learned_context'`
 - `brief_generation_status` (per-`(user, subject_date)` morning-brief generation state — `generating`/`ready`/`failed` + a classified `reason` such as `billing`; migration `020`, Batch 141) surfaced on the daily-loop envelope so a failed generation resolves to a retryable error instead of an endless "Writing your brief" spinner, and a billing-classed failure alerts the operator (DECISIONS #220). Batch 144: a `generating` row orphaned past `settings.brief_generation_stale_after_minutes` (default 12 min) reads as `failed`/`stale` at envelope-serialization time — a read-time derivation off `updated_at`, no writer/migration/scheduler — with a mirrored 12-min client max-wait cap, so a stuck/orphaned generation can never spin forever (DECISIONS #223)
+- `post_activity_generation_status` (migration `022`, Batch 159): one
+  RLS-enabled row per `(user, activity)`, optionally linked to the completed
+  planned workout, carrying subject date, supported post-session analysis type,
+  `generating`/`ready`/`failed`, and a classified reason. It is deliberately
+  activity-scoped rather than reusing the date-scoped morning-brief table so
+  mixed training days cannot overwrite or misreport one another.
 
 Seed `sleep`/`daily_metrics` with his **84-night backfill** (`12 Weeks Sleep Data` xlsx, 24 Mar–15 Jun; trust all cols except Duration).
 

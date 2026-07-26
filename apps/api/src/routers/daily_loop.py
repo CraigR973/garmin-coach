@@ -48,7 +48,12 @@ from src.services.fan_control import describe_fan_intent
 from src.services.insights import OUTCOME_SLEEP_SCORE, DriversReport, InsightsService
 from src.services.morning_analysis import MorningAnalysisService
 from src.services.nudge_alerts import NudgeAlertService
-from src.services.post_activity_analysis import generate_post_activity_read, post_activity_kind
+from src.services.post_activity_analysis import (
+    generate_post_activity_read,
+    mark_prepared_post_activity_failed,
+    post_activity_kind,
+    prepare_post_activity_read,
+)
 from src.services.sleep_projection import (
     SleepDriverEvidence,
     SleepProjectionInputs,
@@ -1574,11 +1579,20 @@ async def upsert_post_ride_checkin(
         # committed check-in — then surface a non-fatal note (the activity re-appears
         # as a pending read carrying the saved check-in, so re-submitting is the
         # retry) and alert on a billing outage the same way as the morning brief.
+        prepared = await prepare_post_activity_read(db, player, activity, commit=True)
         try:
             async with db.begin_nested():
                 await generate_post_activity_read(db, player, activity, force=True, commit=False)
             await db.commit()
         except AnthropicApiError as exc:
+            await mark_prepared_post_activity_failed(
+                db,
+                player,
+                activity,
+                prepared,
+                reason=exc.reason,
+                commit=True,
+            )
             if exc.reason == "billing":
                 await NudgeAlertService(db).notify_admin_generation_failure(
                     reason=exc.reason, subject_date=subject_date, commit=True
@@ -1587,6 +1601,17 @@ async def upsert_post_ride_checkin(
                 code="post_workout_read_failed",
                 detail=anthropic_user_message(exc.reason),
             )
+        except Exception:
+            await db.rollback()
+            await mark_prepared_post_activity_failed(
+                db,
+                player,
+                activity,
+                prepared,
+                reason="generation_error",
+                commit=True,
+            )
+            raise
     snapshot = await service.get_snapshot(player, subject_date=subject_date)
     envelope = await _envelope(player, snapshot, db)
     if read_error is not None:

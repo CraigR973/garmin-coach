@@ -6,11 +6,15 @@
 
 ## Now
 
-**2026-07-26 — Batch 158 shipped on `main` via PR #187 / squash `bf7474b`.** Delivery replacement is cloud-first and transaction-owner-safe: `commit=False` never commits caller-owned state, local workout pointers advance only after intervals.icu success, and persisted delivered IR id/version is the reconciliation fingerprint. Failed interval edits and generic re-syncs preserve durable retry intent without falsely claiming new cloud content; malformed/missing-FTP bike rows persist structured failures while expected non-bike/exact-version no-ops remain row-free. No migration or change to frontend/shared contracts, prompts, verdicts, thresholds, plan rules, #133/#135, or Red-never-VO2. Branch, PR-context, and post-merge `main` CI passed all seven jobs; Vercel production is READY; Railway direct and Vercel same-origin health serve exact SHA `bf7474b`; web `/` is 200; unauthenticated workout-delivery proposals are 401 direct and proxied; Vercel's one-hour runtime-error scan is clean. Decision #238. **Next:** Batch 159 — completed-session non-ride linkage, honest generation states, and prompt-currentness.
+**2026-07-26 — Batch 159 implementation ready on `fix/batch-159-completed-session-reads`; not promoted.** The shared post-activity lifecycle now completes and links planned cycle/strength/mobility/walk sessions, including a migration-022 backfill for existing reads and collision-safe same-kind two-a-days. The owned Week lookup selects only supported post-session types and returns explicit `absent` / `generating` / `failed` / `ready` state from a new activity-scoped status table; the sheet renders and polls those states honestly, with a 12-minute stale-generation guard. Strength/flexibility/walk currentness now requires live prompt + check-in version, and handover requires live prompt + deterministic packet fingerprint. Migration `022`; Decision #239. Local backend, shared, and web gates are green; PostgreSQL-backed cases remain expected local skips and are committed for CI. No change to morning verdicts, thresholds, plan rules, #133/#135, Red-never-VO2, or post-session prompt text. **Next:** review Batch 159; promotion/closeout only on an explicit command.
 
 ---
 
 ## Log
+
+**2026-07-26 — Batch 159 implementation ready:** generalized completed-session linking across ride/strength/mobility/walk, added activity-scoped persisted read states and honest Week UI, backfilled existing post-session linkage in migration `022`, and made non-ride/handover regeneration prompt-and-input-current. Local full backend/shared/web gates green; DB-backed cases are committed but skip locally without `DATABASE_URL`. Decision #239; branch `fix/batch-159-completed-session-reads`; not promoted.
+
+---
 
 **2026-07-26 — Batch 158 shipped:** PR #187 / squash `bf7474b`; delivery replacement is now cloud-first, `commit=False` transaction-safe, IR-fingerprinted for reliable retries, and durably observable for malformed/missing-FTP failures. Branch-push, PR-context, and post-merge main CI passed all seven jobs; Vercel production READY; exact-SHA Railway/Vercel health, web 200, direct/proxied delivery auth-gate, and Vercel runtime-error smokes passed. Batch 159 is next.
 

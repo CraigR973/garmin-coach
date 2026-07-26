@@ -1,11 +1,12 @@
 import type { DailyLoopData } from '@/hooks/useDailyLoop';
 
-export type DayCategory = 'cycle' | 'weights' | 'flexibility' | 'rest';
+export type DayCategory = 'cycle' | 'weights' | 'flexibility' | 'walk' | 'rest';
 
 const LABELS: Record<Exclude<DayCategory, 'rest'>, string> = {
   cycle: 'Cycle',
   weights: 'Weights',
   flexibility: 'Flexibility',
+  walk: 'Walk',
 };
 
 export function categoryForWorkoutType(workoutType: string | null | undefined): Exclude<DayCategory, 'rest'> {
@@ -18,6 +19,9 @@ export function categoryForWorkoutType(workoutType: string | null | undefined): 
   }
   if (value === 'mobility' || /mobility|flex/.test(value)) {
     return 'flexibility';
+  }
+  if (value === 'walking' || value.startsWith('walk_') || /deliberate.?walk/.test(value)) {
+    return 'walk';
   }
   return 'weights';
 }

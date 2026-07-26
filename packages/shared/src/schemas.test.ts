@@ -25,6 +25,7 @@ import {
   todayActionSchema,
   weatherDailySchema,
   weeklyMixSchema,
+  workoutReadEnvelopeSchema,
 } from './schemas';
 
 const userId = '11111111-1111-4111-8111-111111111111';
@@ -845,5 +846,32 @@ describe('v1 shared schemas', () => {
         reasonTags: ['sleep_read'],
       }),
     ).toThrow();
+  });
+
+  it('parses distinct completed-session read generation states (Batch 159)', () => {
+    const generating = workoutReadEnvelopeSchema.parse({
+      data: { state: 'generating', reason: null, read: null },
+      meta: { generatedAtUtc: '2026-07-26T10:00:00Z' },
+      errors: [],
+    });
+    expect(generating.data.state).toBe('generating');
+
+    const ready = workoutReadEnvelopeSchema.parse({
+      data: {
+        state: 'ready',
+        reason: null,
+        read: {
+          analysisId: rowId,
+          analysisType: 'post_strength',
+          verdict: 'advisory',
+          generatedAtUtc: '2026-07-26T10:00:00Z',
+          outputMarkdown: 'Steady work.',
+          feedback: null,
+        },
+      },
+      meta: { generatedAtUtc: '2026-07-26T10:01:00Z' },
+      errors: [],
+    });
+    expect(ready.data.read?.analysisType).toBe('post_strength');
   });
 });

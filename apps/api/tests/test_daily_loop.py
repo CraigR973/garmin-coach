@@ -21,6 +21,7 @@ from src.models.coaching import (
     ManualEntry,
     PlanBlock,
     PlannedWorkout,
+    PostActivityGenerationStatus,
     Sleep,
     TemperatureReading,
     WeatherDaily,
@@ -843,10 +844,19 @@ async def test_post_ride_checkin_persists_when_read_generation_fails(
                 ManualEntry.activity_id == activity_id,
             )
         )
+        generation_status = await session.scalar(
+            select(PostActivityGenerationStatus).where(
+                PostActivityGenerationStatus.user_id == user_id,
+                PostActivityGenerationStatus.activity_id == activity_id,
+            )
+        )
     assert entry is not None
     assert entry.rpe == 8
     assert entry.feel == "hard but fair"
     assert entry.notes == "Left calf tight."
+    assert generation_status is not None
+    assert generation_status.status == "failed"
+    assert generation_status.reason == "billing"
 
 
 @pytest.mark.asyncio
