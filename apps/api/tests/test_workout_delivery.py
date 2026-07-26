@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import date
 
@@ -701,6 +702,49 @@ async def test_replace_event_failure_keeps_local_state_honest(db_conn: AsyncConn
         assert reread.structured_workout_ir["name"] == original_name
         assert reread.status == "pushed"
         assert reread.last_error is not None
+        failure = json.loads(reread.last_error)
+        assert failure == {
+            "code": "intervals_update_failed",
+            "detail": "intervals.icu event update failed",
+            "plannedWorkoutId": str(workout_id),
+            "plannedWorkoutVersion": 1,
+            "retryable": True,
+            "stage": "replace_event",
+            "userId": str(user_id),
+        }
+
+
+@pytest.mark.asyncio
+async def test_replace_event_commit_false_never_commits_callers_unit_of_work(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id, workout_id = uuid.uuid4(), uuid.uuid4()
+    await _seed_bike_workout(db_conn, user_id, workout_id)
+    fake = _FakeIntervalsClient(fail_update=True)
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        service, proposal = await _deliver_baseline(session, fake, user_id, workout_id)
+        proposal_id = proposal.id
+        workout = await session.get(PlannedWorkout, workout_id)
+        assert workout is not None
+        workout.title = "Caller-owned dirty title"
+        new_ir = dict(proposal.structured_workout_ir)
+        new_ir["name"] = "Edited never-landed"
+
+        with pytest.raises(HTTPException):
+            await service.replace_event(proposal=proposal, ir=new_ir, commit=False)
+
+        # The caller remains in control of the transaction. Rolling it back must
+        # remove both its unrelated mutation and the uncommitted error note.
+        await session.rollback()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        reread_workout = await session.get(PlannedWorkout, workout_id)
+        reread_proposal = await session.get(WorkoutDeliveryProposal, proposal_id)
+        assert reread_workout is not None
+        assert reread_workout.title == "VO2 Builder"
+        assert reread_proposal is not None
+        assert reread_proposal.last_error is None
 
 
 @pytest.mark.asyncio

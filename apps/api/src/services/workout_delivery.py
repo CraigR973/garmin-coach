@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import json
 import re
 import uuid
 from collections.abc import Sequence
@@ -30,10 +31,74 @@ STATUS_PUSHED = "pushed"
 STATUS_FAILED = "failed"
 STATUS_DELETED = "deleted"
 PostActivityKind = Literal["ride", "strength", "flexibility", "walk"]
+DeliveryFailureCode = Literal[
+    "intervals_create_failed",
+    "intervals_update_failed",
+    "intervals_delete_failed",
+    "missing_ftp",
+    "malformed_workout",
+]
+
+
+class DeliveryFailure(TypedDict):
+    code: DeliveryFailureCode
+    stage: str
+    retryable: bool
+    detail: str
+    userId: str
+    plannedWorkoutId: str | None
+    plannedWorkoutVersion: int
 
 
 def _utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _delivery_failure(
+    *,
+    code: DeliveryFailureCode,
+    stage: str,
+    retryable: bool,
+    detail: object,
+    user_id: uuid.UUID,
+    planned_workout_id: uuid.UUID | None,
+    planned_workout_version: int,
+) -> DeliveryFailure:
+    return {
+        "code": code,
+        "stage": stage,
+        "retryable": retryable,
+        "detail": str(detail),
+        "userId": str(user_id),
+        "plannedWorkoutId": (str(planned_workout_id) if planned_workout_id is not None else None),
+        "plannedWorkoutVersion": planned_workout_version,
+    }
+
+
+def _failure_json(failure: DeliveryFailure) -> str:
+    return json.dumps(failure, sort_keys=True, separators=(",", ":"))
+
+
+def _http_failure_is_retryable(exc: HTTPException) -> bool:
+    return exc.status_code == status.HTTP_429_TOO_MANY_REQUESTS or exc.status_code >= 500
+
+
+def _ir_workout_context(
+    proposal: WorkoutDeliveryProposal,
+    ir: dict[str, Any],
+) -> tuple[uuid.UUID | None, int]:
+    planned_workout_id = proposal.planned_workout_id
+    raw_workout_id = ir.get("plannedWorkoutId")
+    if raw_workout_id is not None:
+        try:
+            planned_workout_id = uuid.UUID(str(raw_workout_id))
+        except ValueError:
+            pass
+    planned_workout_version = proposal.planned_workout_version
+    raw_version = ir.get("plannedWorkoutVersion")
+    if isinstance(raw_version, int):
+        planned_workout_version = raw_version
+    return planned_workout_id, planned_workout_version
 
 
 @dataclass(frozen=True)
@@ -400,6 +465,127 @@ class WorkoutDeliveryService:
             await self.session.flush()
         return proposal
 
+    async def record_failure(
+        self,
+        *,
+        player: Profile,
+        workout: PlannedWorkout,
+        code: DeliveryFailureCode,
+        stage: str,
+        retryable: bool,
+        detail: object,
+        commit: bool = True,
+    ) -> WorkoutDeliveryProposal:
+        """Persist a delivery failure for a workout that could not produce an IR.
+
+        Reuses the existing proposal row rather than adding a parallel status
+        table. Repeated reconciliation updates the same failed workout/version,
+        keeping the diagnostic durable without producing one row per scheduler
+        pass. The structured JSON in ``last_error`` is also embedded in the IR
+        stub so operators retain code/retryability and exact workout context.
+        """
+        failure = _delivery_failure(
+            code=code,
+            stage=stage,
+            retryable=retryable,
+            detail=detail,
+            user_id=player.id,
+            planned_workout_id=workout.id,
+            planned_workout_version=workout.version,
+        )
+        proposal = await self.session.scalar(
+            select(WorkoutDeliveryProposal)
+            .where(
+                WorkoutDeliveryProposal.user_id == player.id,
+                WorkoutDeliveryProposal.planned_workout_id == workout.id,
+                WorkoutDeliveryProposal.planned_workout_version == workout.version,
+                WorkoutDeliveryProposal.status == STATUS_FAILED,
+            )
+            .order_by(WorkoutDeliveryProposal.created_at.desc())
+            .limit(1)
+        )
+        if proposal is None:
+            proposal = WorkoutDeliveryProposal(
+                user_id=player.id,
+                planned_workout_id=workout.id,
+                planned_workout_version=workout.version,
+                workout_date=workout.workout_date,
+                provider=PROVIDER_INTERVALS_ICU,
+                status=STATUS_FAILED,
+                proposed_at_utc=_utcnow(),
+                structured_workout_ir={
+                    "version": 1,
+                    "source": "delivery_failure",
+                    "plannedWorkoutId": str(workout.id),
+                    "plannedWorkoutVersion": workout.version,
+                    "workoutDate": workout.workout_date.isoformat(),
+                    "name": workout.title,
+                    "deliveryFailure": failure,
+                },
+                intervals_payload={},
+                zwo_xml="",
+                last_error=_failure_json(failure),
+            )
+            self.session.add(proposal)
+        else:
+            failure_ir = dict(proposal.structured_workout_ir or {})
+            failure_ir["deliveryFailure"] = failure
+            proposal.structured_workout_ir = failure_ir
+            proposal.last_error = _failure_json(failure)
+        if commit:
+            await self.session.commit()
+            await self.session.refresh(proposal)
+        else:
+            await self.session.flush()
+        return proposal
+
+    async def mark_retry_delivered(
+        self,
+        *,
+        workout: PlannedWorkout,
+        delivered: WorkoutDeliveryProposal,
+        commit: bool = True,
+    ) -> WorkoutDeliveryProposal | None:
+        """Resolve the durable failed intent after a replacement retry succeeds.
+
+        Interval edits intentionally retain their new plan version and a failed
+        proposal when intervals.icu is temporarily unavailable. Once normal
+        reconciliation updates the old live event, mirror that confirmed cloud
+        state onto the newer proposal so the latest status no longer says failed.
+        """
+        failed = await self.session.scalar(
+            select(WorkoutDeliveryProposal)
+            .where(
+                WorkoutDeliveryProposal.user_id == workout.user_id,
+                WorkoutDeliveryProposal.planned_workout_id == workout.id,
+                WorkoutDeliveryProposal.planned_workout_version == workout.version,
+                WorkoutDeliveryProposal.status == STATUS_FAILED,
+                WorkoutDeliveryProposal.id != delivered.id,
+            )
+            .order_by(WorkoutDeliveryProposal.created_at.desc())
+            .limit(1)
+        )
+        if failed is None:
+            return None
+        failed_ir = dict(failed.structured_workout_ir or {})
+        if failed_ir.get("source") == "delivery_failure":
+            failed_ir = dict(delivered.structured_workout_ir or {})
+        else:
+            failed_ir.pop("deliveryFailure", None)
+        failed.structured_workout_ir = failed_ir
+        failed.intervals_payload = dict(delivered.intervals_payload or {})
+        failed.zwo_xml = delivered.zwo_xml
+        failed.intervals_event_id = delivered.intervals_event_id
+        failed.status = STATUS_PUSHED
+        failed.pushed_at_utc = delivered.pushed_at_utc or _utcnow()
+        failed.last_error = None
+        if commit:
+            await self.session.commit()
+            await self.session.refresh(failed)
+        else:
+            await self.session.flush()
+        return failed
+
     async def list_week_ahead(
         self,
         player: Profile,
@@ -531,6 +717,7 @@ class WorkoutDeliveryService:
         *,
         player: Profile,
         proposal_id: uuid.UUID,
+        commit: bool = True,
     ) -> WorkoutDeliveryProposal:
         proposal = await self._proposal(player.id, proposal_id)
         if proposal.status == STATUS_PUSHED:
@@ -544,8 +731,11 @@ class WorkoutDeliveryService:
         proposal.approved_at_utc = _utcnow()
         proposal.approved_by_profile_id = player.id
         proposal.last_error = None
-        await self.session.commit()
-        await self.session.refresh(proposal)
+        if commit:
+            await self.session.commit()
+            await self.session.refresh(proposal)
+        else:
+            await self.session.flush()
         return proposal
 
     async def push(
@@ -566,7 +756,17 @@ class WorkoutDeliveryService:
             result = await self.intervals_client.create_workout_event(proposal.intervals_payload)
         except HTTPException as exc:
             proposal.status = STATUS_FAILED
-            proposal.last_error = str(exc.detail)
+            proposal.last_error = _failure_json(
+                _delivery_failure(
+                    code="intervals_create_failed",
+                    stage="push",
+                    retryable=_http_failure_is_retryable(exc),
+                    detail=exc.detail,
+                    user_id=proposal.user_id,
+                    planned_workout_id=proposal.planned_workout_id,
+                    planned_workout_version=proposal.planned_workout_version,
+                )
+            )
             await self.session.commit()
             raise
 
@@ -643,8 +843,20 @@ class WorkoutDeliveryService:
             result = await self.intervals_client.create_workout_event(payload)
         except HTTPException as exc:
             proposal.status = STATUS_FAILED
-            proposal.last_error = str(exc.detail)
-            await self.session.commit()
+            proposal.last_error = _failure_json(
+                _delivery_failure(
+                    code="intervals_create_failed",
+                    stage="create_event",
+                    retryable=_http_failure_is_retryable(exc),
+                    detail=exc.detail,
+                    user_id=proposal.user_id,
+                    planned_workout_id=proposal.planned_workout_id,
+                    planned_workout_version=proposal.planned_workout_version,
+                )
+            )
+            if commit:
+                await self.session.commit()
+                await self.session.refresh(proposal)
             raise
         return await self._persist_event(proposal, ir, payload, result.event_id, commit=commit)
 
@@ -665,13 +877,26 @@ class WorkoutDeliveryService:
         if not proposal.intervals_event_id:
             return await self.create_event(proposal=proposal, ir=ir, commit=commit)
         payload = build_intervals_payload(ir)
+        planned_workout_id, planned_workout_version = _ir_workout_context(proposal, ir)
         try:
             result = await self.intervals_client.update_workout_event(
                 proposal.intervals_event_id, payload
             )
         except HTTPException as exc:
-            proposal.last_error = str(exc.detail)
-            await self.session.commit()
+            proposal.last_error = _failure_json(
+                _delivery_failure(
+                    code="intervals_update_failed",
+                    stage="replace_event",
+                    retryable=_http_failure_is_retryable(exc),
+                    detail=exc.detail,
+                    user_id=proposal.user_id,
+                    planned_workout_id=planned_workout_id,
+                    planned_workout_version=planned_workout_version,
+                )
+            )
+            if commit:
+                await self.session.commit()
+                await self.session.refresh(proposal)
             raise
         return await self._persist_event(proposal, ir, payload, result.event_id, commit=commit)
 
@@ -696,8 +921,20 @@ class WorkoutDeliveryService:
                 proposal.intervals_event_id, payload
             )
         except HTTPException as exc:
-            proposal.last_error = str(exc.detail)
-            await self.session.commit()
+            proposal.last_error = _failure_json(
+                _delivery_failure(
+                    code="intervals_update_failed",
+                    stage="move_event",
+                    retryable=_http_failure_is_retryable(exc),
+                    detail=exc.detail,
+                    user_id=proposal.user_id,
+                    planned_workout_id=proposal.planned_workout_id,
+                    planned_workout_version=proposal.planned_workout_version,
+                )
+            )
+            if commit:
+                await self.session.commit()
+                await self.session.refresh(proposal)
             raise
         proposal.workout_date = new_date
         return await self._persist_event(proposal, ir, payload, result.event_id, commit=commit)
@@ -715,8 +952,20 @@ class WorkoutDeliveryService:
             try:
                 await self.intervals_client.delete_workout_event(proposal.intervals_event_id)
             except HTTPException as exc:
-                proposal.last_error = str(exc.detail)
-                await self.session.commit()
+                proposal.last_error = _failure_json(
+                    _delivery_failure(
+                        code="intervals_delete_failed",
+                        stage="delete_event",
+                        retryable=_http_failure_is_retryable(exc),
+                        detail=exc.detail,
+                        user_id=proposal.user_id,
+                        planned_workout_id=proposal.planned_workout_id,
+                        planned_workout_version=proposal.planned_workout_version,
+                    )
+                )
+                if commit:
+                    await self.session.commit()
+                    await self.session.refresh(proposal)
                 raise
         proposal.status = STATUS_DELETED
         proposal.last_error = None
