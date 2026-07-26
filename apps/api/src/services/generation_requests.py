@@ -13,7 +13,6 @@ from datetime import UTC, date, datetime, timedelta
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.exc import PendingRollbackError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import Analysis, GenerationRequest, ManualEntry
@@ -180,79 +179,72 @@ async def claim_generation_request(
 ) -> AsyncIterator[GenerationClaim]:
     """Serialize one artifact scope and reuse a completed request identity.
 
-    A session-level advisory lock serializes workers even across transaction
-    commits. Callers use a stable artifact scope (user/date or user/activity), so
-    a changed input waits behind an older in-flight request rather than racing its
-    state row. The unique request row then bridges the small window where a caller
-    asked for ``commit=False`` and has not committed the completed analysis yet:
-    a competing INSERT waits for that transaction before deciding whether it can
-    claim the identity.
+    A transaction-scoped advisory lock serializes workers until the completed
+    request row and analysis commit atomically. Callers use a stable artifact
+    scope (user/date or user/activity), so a changed input waits behind an older
+    in-flight request rather than racing its state row. The unique request row
+    also bridges the window where a caller asked for ``commit=False`` and has not
+    committed the completed analysis yet: a competing INSERT waits for that
+    transaction before deciding whether it can claim the identity.
     """
 
     advisory_key = _advisory_key(lease_scope or request_identity)
-    await session.scalar(select(func.pg_advisory_lock(advisory_key)))
-    try:
-        now = _utcnow()
-        statement = (
-            insert(GenerationRequest)
-            .values(
-                user_id=user_id,
-                request_identity=request_identity,
-                generation_kind=generation_kind,
-                status=STATUS_RUNNING,
-                lease_expires_at=now + LEASE_DURATION,
-            )
-            .on_conflict_do_nothing(index_elements=[GenerationRequest.request_identity])
-            .returning(GenerationRequest.id)
+    await session.scalar(select(func.pg_advisory_xact_lock(advisory_key)))
+    now = _utcnow()
+    statement = (
+        insert(GenerationRequest)
+        .values(
+            user_id=user_id,
+            request_identity=request_identity,
+            generation_kind=generation_kind,
+            status=STATUS_RUNNING,
+            lease_expires_at=now + LEASE_DURATION,
         )
-        inserted_id = await session.scalar(statement)
-        if inserted_id is not None:
-            row = await session.get(GenerationRequest, inserted_id)
-            assert row is not None
-            claim = GenerationClaim(row=row, existing_analysis=None)
-            try:
-                yield claim
-            except Exception as exc:
-                claim.mark_failed(str(getattr(exc, "reason", "generation_error")))
-                await session.flush()
-                raise
-            return
-
-        row = await session.scalar(
-            select(GenerationRequest).where(GenerationRequest.request_identity == request_identity)
-        )
-        if row is None:  # pragma: no cover - unique conflict guarantees the row
-            raise RuntimeError("generation request disappeared after identity conflict")
-
-        if row.status == STATUS_COMPLETED and row.analysis_id is not None:
-            analysis = await session.get(Analysis, row.analysis_id)
-            if analysis is not None:
-                yield GenerationClaim(row=row, existing_analysis=analysis)
-                return
-
-        if row.status == STATUS_RUNNING and row.lease_expires_at > now:
-            # The advisory lock means an active compliant worker cannot be here;
-            # this is a previously committed claim whose worker disappeared.
-            raise GenerationRequestInProgress()
-
-        row.status = STATUS_RUNNING
-        row.analysis_id = None
-        row.failure_reason = None
-        row.lease_expires_at = now + LEASE_DURATION
-        row.updated_at = now
-        await session.flush()
+        .on_conflict_do_nothing(index_elements=[GenerationRequest.request_identity])
+        .returning(GenerationRequest.id)
+    )
+    inserted_id = await session.scalar(statement)
+    if inserted_id is not None:
+        row = await session.get(GenerationRequest, inserted_id)
+        assert row is not None
         claim = GenerationClaim(row=row, existing_analysis=None)
         try:
             yield claim
         except Exception as exc:
+            if claim.row.status != STATUS_FAILED:
+                claim.mark_failed(str(getattr(exc, "reason", "generation_error")))
+                await session.flush()
+            raise
+        return
+
+    row = await session.scalar(
+        select(GenerationRequest).where(GenerationRequest.request_identity == request_identity)
+    )
+    if row is None:  # pragma: no cover - unique conflict guarantees the row
+        raise RuntimeError("generation request disappeared after identity conflict")
+
+    if row.status == STATUS_COMPLETED and row.analysis_id is not None:
+        analysis = await session.get(Analysis, row.analysis_id)
+        if analysis is not None:
+            yield GenerationClaim(row=row, existing_analysis=analysis)
+            return
+
+    if row.status == STATUS_RUNNING and row.lease_expires_at > now:
+        # The advisory lock means an active compliant worker cannot be here;
+        # this is a previously committed claim whose worker disappeared.
+        raise GenerationRequestInProgress()
+
+    row.status = STATUS_RUNNING
+    row.analysis_id = None
+    row.failure_reason = None
+    row.lease_expires_at = now + LEASE_DURATION
+    row.updated_at = now
+    await session.flush()
+    claim = GenerationClaim(row=row, existing_analysis=None)
+    try:
+        yield claim
+    except Exception as exc:
+        if claim.row.status != STATUS_FAILED:
             claim.mark_failed(str(getattr(exc, "reason", "generation_error")))
             await session.flush()
-            raise
-    finally:
-        try:
-            await session.scalar(select(func.pg_advisory_unlock(advisory_key)))
-        except PendingRollbackError:
-            # A failed statement leaves PostgreSQL's transaction aborted, but a
-            # session-level lock would otherwise survive in the pooled connection.
-            await session.rollback()
-            await session.scalar(select(func.pg_advisory_unlock(advisory_key)))
+        raise

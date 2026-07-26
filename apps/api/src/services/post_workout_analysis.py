@@ -454,6 +454,19 @@ class PostWorkoutAnalysisService:
             input_version=input_version,
             prompt_version=PROMPT_VERSION,
         )
+        # Persist Batch 159's honest ``generating`` state before taking the
+        # transaction-scoped paid-work lock. No commit occurs after the claim
+        # until the completed/failed request state is ready.
+        matched_workout_id = await prepare_post_activity_generation(
+            self.session,
+            user_id=player.id,
+            activity_id=activity.id,
+            subject_date=subject_date,
+            kind="ride",
+            commit=False,
+        )
+        if commit:
+            await self.session.commit()
         async with claim_generation_request(
             self.session,
             user_id=player.id,
@@ -461,16 +474,6 @@ class PostWorkoutAnalysisService:
             generation_kind=ANALYSIS_TYPE,
             lease_scope=f"post:{player.id}:{activity.id}",
         ) as claim:
-            # Batch 159 moves completion/linking to the shared post-activity seam
-            # so every supported session type follows the same lifecycle.
-            matched_workout_id = await prepare_post_activity_generation(
-                self.session,
-                user_id=player.id,
-                activity_id=activity.id,
-                subject_date=subject_date,
-                kind="ride",
-                commit=False,
-            )
             existing: Analysis | None = claim.existing_analysis
             if existing is not None:
                 packet = existing.context_packet
@@ -504,9 +507,6 @@ class PostWorkoutAnalysisService:
                     await self.session.flush()
                 return PostWorkoutAnalysisResult(analysis=existing, generated=False)
 
-            if commit:
-                # Make ``generating`` visible before the potentially slow model call.
-                await self.session.commit()
             if not force:
                 latest = await self.latest_analysis_for_activity(activity.id)
                 if latest is not None and _analysis_is_current(latest, checkin):
@@ -548,8 +548,6 @@ class PostWorkoutAnalysisService:
                         user_prompt=user_prompt,
                     )
             except Exception as exc:
-                if commit:
-                    await self.session.rollback()
                 claim.mark_failed(_generation_failure_reason(exc))
                 await mark_post_activity_generation(
                     self.session,

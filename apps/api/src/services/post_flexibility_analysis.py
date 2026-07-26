@@ -412,6 +412,16 @@ class PostFlexibilityAnalysisService:
             input_version=input_version,
             prompt_version=PROMPT_VERSION,
         )
+        matched_workout_id = await prepare_post_activity_generation(
+            self.session,
+            user_id=player.id,
+            activity_id=activity.id,
+            subject_date=subject_date,
+            kind="flexibility",
+            commit=False,
+        )
+        if commit:
+            await self.session.commit()
         async with claim_generation_request(
             self.session,
             user_id=player.id,
@@ -419,14 +429,6 @@ class PostFlexibilityAnalysisService:
             generation_kind=ANALYSIS_TYPE,
             lease_scope=f"post:{player.id}:{activity.id}",
         ) as claim:
-            matched_workout_id = await prepare_post_activity_generation(
-                self.session,
-                user_id=player.id,
-                activity_id=activity.id,
-                subject_date=subject_date,
-                kind="flexibility",
-                commit=False,
-            )
             existing: Analysis | None = claim.existing_analysis
             if existing is not None:
                 packet = existing.context_packet
@@ -460,8 +462,6 @@ class PostFlexibilityAnalysisService:
                     await self.session.flush()
                 return FlexibilityAnalysisResult(analysis=existing, generated=False)
 
-            if commit:
-                await self.session.commit()
             if not force:
                 latest = await self.latest_analysis_for_activity(activity.id)
                 if latest is not None and _analysis_covers_activity_checkin(latest, checkin):
@@ -503,8 +503,6 @@ class PostFlexibilityAnalysisService:
                         user_prompt=user_prompt,
                     )
             except Exception as exc:
-                if commit:
-                    await self.session.rollback()
                 claim.mark_failed(_generation_failure_reason(exc))
                 await mark_post_activity_generation(
                     self.session,
