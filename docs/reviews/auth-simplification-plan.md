@@ -1,8 +1,8 @@
 # Auth simplification — passwordless device tokens (Option B)
 
-**Status:** Phases 1-2 are live (PR #18/#19 — DECISIONS #77/#79);
-Phases 3-4 are implemented together in Batch 160 (Decision #240), pending
-promotion. Device tokens are the sole credential in the review branch. ·
+**Status:** All four phases are live. Phases 1-2 shipped in PR #18/#19
+(DECISIONS #77/#79); Phases 3-4 shipped together in Batch 160 via PR #189,
+squash `a0dd28c` (Decision #240). Device tokens are the sole credential. ·
 **Decision:** `DECISIONS.md` #73–74/#240 · **Origin:**
 `docs/reviews/v1-v2-review.md` (P1-1, P1-3, P2-1, P3-1/2/3)
 **Date:** 2026-06-22
@@ -69,14 +69,14 @@ Thereafter:  open PWA ──► every /api call carries the token ──► API 
 
 ### Phase 2 — Cut the frontend over, hide the login form — ✅ DONE (PR #19)
 - **Frontend:** `contexts/AuthContext.tsx` — on load, if a device token exists →
-  `GET /api/v1/me` for identity; else show an "ask Craig for a link" screen instead
+  `GET /api/v1/auth/me` for identity; else show an "ask Craig for a link" screen instead
   of the PIN form. Drop the silent-refresh / refresh-on-401 logic in `lib/api.ts`
   (a 401 now means "token revoked → request a new link", not "rotate").
 - **Ops:** mint Mark's link, send over a private channel, he activates once.
 - **Acceptance:** Mark uses the app with no PIN; backend PIN endpoints still exist as
   a fallback. **Reversible:** re-enable the login route if needed.
 
-### Phase 3 — Delete the PIN/JWT machinery — ✅ IMPLEMENTED (Batch 160; not promoted)
+### Phase 3 — Delete the PIN/JWT machinery — ✅ SHIPPED (Batch 160 / PR #189)
 - **Backend remove:** `routers/auth.py` `login`/`refresh`/`logout`/`change_pin`/
   `pin_reset_request`/`pin_reset` + their schemas; the bcrypt PIN helpers and HS256
   token helpers in `auth.py` (`create/decode_*`, `hash_pin`, `verify_pin`,
@@ -92,7 +92,7 @@ Thereafter:  open PWA ──► every /api call carries the token ──► API 
   `localStorage`-token risk, so it lands here (review P2-1).
 - **Tests:** replace auth tests with device-token activate/verify/revoke coverage.
 
-### Phase 4 — Schema + config cleanup — ✅ IMPLEMENTED (Batch 160; not promoted)
+### Phase 4 — Schema + config cleanup — ✅ SHIPPED (Batch 160 / PR #189)
 - **Migration:** drop `profiles.pin_hash`, `profiles.failed_login_count`,
   `profiles.locked_until`; tidy the token table (device tokens + activation codes via
   the `purpose` discriminator). Leave the `player_pin_reset` audit enum value in place

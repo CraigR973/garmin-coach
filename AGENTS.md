@@ -29,7 +29,8 @@ apps *later* — do not extract it prematurely.
 
 ## Stack
 FastAPI + async SQLAlchemy + asyncpg + Postgres (Supabase) + Alembic + APScheduler
-/ React 18 + Vite + Tailwind + shadcn/ui + recharts. Auth: name + PIN + JWT.
+/ React 18 + Vite + Tailwind + shadcn/ui + recharts. Auth: revocable opaque
+device tokens provisioned by single-use activation links.
 1–2 private users, no public sign-up. Hosting: Supabase + Railway (API) + Vercel (web).
 
 ## Bash discipline

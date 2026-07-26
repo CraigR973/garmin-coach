@@ -54,7 +54,8 @@ Migration `023` refuses to remove the PIN columns if an existing active profile
 has neither an active device token nor an unused activation code. It then revokes
 all residual `purpose='refresh'` credentials and drops the PIN/lockout columns.
 
-Remove `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` from Railway only after the
-Batch 160 deployment is healthy on its exact commit. The new runtime does not
-read them; the previous production build still does, so removing them before
-promotion would break rollback/current production.
+Batch 160 shipped on `a0dd28c`; exact-SHA health and migration `023` were
+verified before `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` were removed from
+Railway. Do not re-add them: the runtime has no JWT path. A rollback before
+Batch 160 is now a deliberate migration/config recovery exercise, not a simple
+image promotion.
