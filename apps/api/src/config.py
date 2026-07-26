@@ -111,7 +111,7 @@ class Settings(BaseSettings):
         return self
 
 
-settings = Settings()  # type: ignore[call-arg]  # env vars supply required fields at runtime
+settings = Settings()
 
 
 def docs_urls(environment: Environment) -> dict[str, str | None]:
