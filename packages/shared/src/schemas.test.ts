@@ -532,6 +532,44 @@ describe('v1 shared schemas', () => {
     expect(parsed.meta.seeded).toBe(true);
   });
 
+  it('keeps production-only internal knowledge-base sections out of the public contract', () => {
+    expect(() =>
+      coachingStateEnvelopeSchema.parse({
+        data: {
+          knowledgeBaseSections: [
+            {
+              id: rowId,
+              userId,
+              section: 'holiday_windows',
+              version: 1,
+              isActive: true,
+              source: 'production_state',
+              content: { windows: [] },
+              updatedByProfileId: null,
+            },
+            {
+              id: rowId,
+              userId,
+              section: 'generated_block',
+              version: 1,
+              isActive: true,
+              source: 'production_state',
+              content: { block: {} },
+              updatedByProfileId: null,
+            },
+          ],
+          planBlocks: [],
+          plannedWorkouts: [],
+        },
+        meta: {
+          generatedAtUtc: '2026-07-26T09:00:00.000Z',
+          seeded: false,
+        },
+        errors: [],
+      }),
+    ).toThrow();
+  });
+
   it('validates knowledge-base updates and workout override inputs', () => {
     const kb = knowledgeBaseUpdateInputSchema.parse({
       source: 'manual_edit',

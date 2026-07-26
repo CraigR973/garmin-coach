@@ -114,6 +114,68 @@ async def test_get_coach_memory_allows_non_admin_read_of_own_snapshot(
 
 
 @pytest.mark.asyncio
+async def test_get_coach_memory_filters_internal_knowledge_base_sections(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        user = Profile(
+            id=user_id,
+            display_name="Mark",
+            pin_hash="x" * 60,
+            role=UserRole.player,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(user)
+        await session.commit()
+
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            seed_response = await client.get("/api/v1/coach-memory")
+            assert seed_response.status_code == 200
+
+        async with session_factory() as session:
+            session.add_all(
+                [
+                    KnowledgeBase(
+                        user_id=user_id,
+                        section="holiday_windows",
+                        version=1,
+                        is_active=True,
+                        source="production_state",
+                        content={"windows": [{"startDate": "2026-07-20", "endDate": "2026-07-23"}]},
+                    ),
+                    KnowledgeBase(
+                        user_id=user_id,
+                        section="generated_block",
+                        version=1,
+                        is_active=True,
+                        source="production_state",
+                        content={"block": {"focus": "internal generation draft"}},
+                    ),
+                ]
+            )
+            await session.commit()
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/api/v1/coach-memory")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    sections = {entry["section"] for entry in payload["data"]["knowledgeBaseSections"]}
+    assert "holiday_windows" not in sections
+    assert "generated_block" not in sections
+    assert "profile" in sections
+
+
+@pytest.mark.asyncio
 async def test_update_knowledge_base_section_creates_new_active_version(
     db_conn: AsyncConnection,
 ) -> None:

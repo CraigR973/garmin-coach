@@ -271,6 +271,39 @@ describe('CoachStatePage', () => {
     });
   });
 
+  it('shows a user-safe retry card when the public contract parse fails', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({
+      player: {
+        id: '11111111-1111-4111-8111-111111111111',
+        displayName: 'Mark',
+        role: 'player',
+        timezone: 'Europe/London',
+      },
+    });
+    const rawSchemaMessage =
+      'Invalid enum value. Expected profile, data_quality_rules, age_adjustment. Received holiday_windows';
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/api/v1/coach-memory') {
+        const coachMemoryCalls = apiFetchMock.mock.calls.filter(([calledPath]) => calledPath === path);
+        return coachMemoryCalls.length === 1 ? Promise.reject(new Error(rawSchemaMessage)) : Promise.resolve(coachMemoryResponse);
+      }
+      if (path === '/api/v1/coach-memory/learning') return Promise.resolve(learningResponse);
+      throw new Error(`Unexpected path ${path}`);
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('Coach memory unavailable')).toBeTruthy();
+    expect(screen.getByText('The saved context could not load just now. Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText(/holiday_windows/i)).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /retry/i }));
+
+    expect(await screen.findByText('Profile facts')).toBeTruthy();
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/coach-memory');
+  });
+
   it('lets Mark edit and confirm a proposed memory before it is applied', async () => {
     const user = userEvent.setup();
     useAuthMock.mockReturnValue({
