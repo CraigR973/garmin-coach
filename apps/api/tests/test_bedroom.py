@@ -50,7 +50,6 @@ async def _seed_night(session_factory: async_sessionmaker[AsyncSession]) -> uuid
             Profile(
                 id=user_id,
                 display_name="Bedroom Read Test",
-                pin_hash="x" * 60,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,

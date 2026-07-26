@@ -95,7 +95,6 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
         player = Profile(
             id=user_id,
             display_name="Daily Loop Test",
-            pin_hash="x" * 60,
             role=UserRole.player,
             timezone="Europe/London",
             is_active=True,
@@ -377,7 +376,6 @@ async def test_get_daily_loop_hides_stale_hive_temperature(db_conn: AsyncConnect
         player = Profile(
             id=user_id,
             display_name="Daily Loop Thermal Freshness",
-            pin_hash="x" * 60,
             role=UserRole.player,
             timezone="Europe/London",
             is_active=True,
@@ -444,7 +442,6 @@ async def test_get_daily_loop_surfaces_fan_intent(db_conn: AsyncConnection) -> N
         player = Profile(
             id=user_id,
             display_name="Daily Loop Fan",
-            pin_hash="x" * 60,
             role=UserRole.player,
             timezone="Europe/London",
             is_active=True,
@@ -483,7 +480,6 @@ async def test_get_daily_loop_reports_the_block_boundary(db_conn: AsyncConnectio
         player = Profile(
             id=user_id,
             display_name="Daily Loop Block",
-            pin_hash="x" * 60,
             role=UserRole.player,
             timezone="Europe/London",
             is_active=True,
@@ -529,7 +525,6 @@ async def test_manual_entry_and_adherence_upserts_persist(db_conn: AsyncConnecti
         player = Profile(
             id=user_id,
             display_name="Daily Loop Mutations",
-            pin_hash="x" * 60,
             role=UserRole.player,
             timezone="Europe/London",
             is_active=True,
@@ -628,7 +623,6 @@ async def test_manual_entry_returns_immediately_and_queues_brief_generation(
         player = Profile(
             id=user_id,
             display_name="Queued Brief",
-            pin_hash="x" * 60,
             role=UserRole.player,
             timezone="UTC",
             is_active=True,
@@ -669,7 +663,6 @@ async def test_post_ride_checkin_upsert_persists_against_activity(
         player = Profile(
             id=user_id,
             display_name="Post Ride Mutation",
-            pin_hash="x" * 60,
             role=UserRole.player,
             timezone="Europe/London",
             is_active=True,
@@ -772,7 +765,6 @@ async def test_post_ride_checkin_persists_when_read_generation_fails(
         player = Profile(
             id=user_id,
             display_name="Read Failure",
-            pin_hash="x" * 60,
             role=UserRole.player,
             timezone="Europe/London",
             is_active=True,
@@ -873,7 +865,6 @@ async def test_get_daily_loop_exposes_delivery_state(db_conn: AsyncConnection) -
         player = Profile(
             id=user_id,
             display_name="Delivery State Test",
-            pin_hash="x" * 60,
             role=UserRole.player,
             timezone="Europe/London",
             is_active=True,
@@ -950,7 +941,6 @@ async def test_get_daily_loop_excludes_skipped_workouts(db_conn: AsyncConnection
         player = Profile(
             id=user_id,
             display_name="Skipped Workout Test",
-            pin_hash="x" * 60,
             role=UserRole.player,
             timezone="Europe/London",
             is_active=True,
@@ -1018,7 +1008,6 @@ async def test_get_daily_loop_surfaces_active_holiday_window(
         player = Profile(
             id=user_id,
             display_name="Holiday Daily Loop Test",
-            pin_hash="x" * 60,
             role=UserRole.player,
             timezone="Europe/London",
             is_active=True,
@@ -1084,7 +1073,6 @@ async def test_post_activity_analyses_collapse_partitions_and_orders(
             Profile(
                 id=user_id,
                 display_name="Collapse Test",
-                pin_hash="x" * 60,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,
@@ -1185,7 +1173,6 @@ async def test_post_activity_analyses_keep_latest_per_activity(
             Profile(
                 id=user_id,
                 display_name="Latest Read Test",
-                pin_hash="x" * 60,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,

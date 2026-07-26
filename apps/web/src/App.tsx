@@ -15,7 +15,7 @@ import { InstallPromptController } from './components/InstallPromptController';
 import { NotificationsPromptController } from './components/NotificationsPromptController';
 import { Skeleton } from './components/ui/skeleton';
 import { ActivatePage } from './pages/ActivatePage';
-import { LoginPage } from './pages/LoginPage';
+import { AccessPage } from './pages/AccessPage';
 
 // Layout pulls framer-motion + OfflineBanner — lazy-load to keep login chunk lean.
 const Layout = lazy(() => import('./components/Layout').then((m) => ({ default: m.Layout })));
@@ -65,13 +65,6 @@ const HandoverPage = lazy(() =>
 const OfflinePage = lazy(() =>
   import('./pages/OfflinePage').then((m) => ({ default: m.OfflinePage })),
 );
-const ForgotPinPage = lazy(() =>
-  import('./pages/ForgotPinPage').then((m) => ({ default: m.ForgotPinPage })),
-);
-const PinResetPage = lazy(() =>
-  import('./pages/PinResetPage').then((m) => ({ default: m.PinResetPage })),
-);
-
 // Widen the focus signal so refetchOnWindowFocus also fires on iOS PWA warm
 // resume (pageshow/bfcache restore), not just visibilitychange.
 installResumeRefetch();
@@ -102,9 +95,8 @@ export function App() {
                 <Routes>
                   {/* Public routes */}
                   <Route path="/activate" element={<ActivatePage />} />
-                  <Route path="/login" element={<LoginPage />} />
-                  <Route path="/forgot-pin" element={<ForgotPinPage />} />
-                  <Route path="/pin/reset/:token" element={<PinResetPage />} />
+                  <Route path="/access" element={<AccessPage />} />
+                  <Route path="/login" element={<Navigate to="/access" replace />} />
 
                   {/* Protected routes */}
                   <Route element={<ProtectedRoute />}>

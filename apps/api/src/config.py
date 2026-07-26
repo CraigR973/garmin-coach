@@ -3,9 +3,6 @@ from enum import StrEnum
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_PLACEHOLDER_SECRETS = {"change-me-access", "change-me-refresh"}
-_MIN_SECRET_LEN = 32
-
 
 class Environment(StrEnum):
     development = "development"
@@ -18,10 +15,6 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/garmin_coach"
-
-    # Auth
-    jwt_access_secret: str
-    jwt_refresh_secret: str
 
     # External APIs
     supabase_url: str = ""
@@ -103,16 +96,6 @@ class Settings(BaseSettings):
         if self.environment == Environment.development:
             return self
         errors: list[str] = []
-        if self.jwt_access_secret in _PLACEHOLDER_SECRETS:
-            errors.append("jwt_access_secret is a placeholder value")
-        if self.jwt_refresh_secret in _PLACEHOLDER_SECRETS:
-            errors.append("jwt_refresh_secret is a placeholder value")
-        if len(self.jwt_access_secret) < _MIN_SECRET_LEN:
-            errors.append(f"jwt_access_secret must be at least {_MIN_SECRET_LEN} characters")
-        if len(self.jwt_refresh_secret) < _MIN_SECRET_LEN:
-            errors.append(f"jwt_refresh_secret must be at least {_MIN_SECRET_LEN} characters")
-        if self.jwt_access_secret == self.jwt_refresh_secret:
-            errors.append("jwt_access_secret and jwt_refresh_secret must be different")
         if not self.vapid_private_key:
             errors.append("vapid_private_key is empty")
         if not self.supabase_service_key:

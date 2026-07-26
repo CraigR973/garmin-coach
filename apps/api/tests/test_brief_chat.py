@@ -66,7 +66,6 @@ async def _make_profile(session: AsyncSession, name: str = "Chat Test") -> Profi
     user = Profile(
         id=uuid.uuid4(),
         display_name=name,
-        pin_hash="x" * 60,
         role=UserRole.admin,
         timezone="Europe/London",
         is_active=True,

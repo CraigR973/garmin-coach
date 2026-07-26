@@ -38,7 +38,6 @@ async def _make_profile(session: AsyncSession, name: str = "Feedback Test") -> P
     user = Profile(
         id=uuid.uuid4(),
         display_name=name,
-        pin_hash="x" * 60,
         role=UserRole.admin,
         timezone="Europe/London",
         is_active=True,

@@ -199,7 +199,6 @@ def _profile() -> Profile:
     return Profile(
         id=uuid.uuid4(),
         display_name="Mix Test",
-        pin_hash="x" * 60,
         role=UserRole.admin,
         timezone="Europe/London",
         latitude=55.6045,

@@ -39,30 +39,6 @@ def test_parse_health_empty() -> None:
 
 
 # ---------------------------------------------------------------------------
-# parse_login_response
-# ---------------------------------------------------------------------------
-
-
-def test_parse_login_data_envelope() -> None:
-    token = _smoke.parse_login_response({"data": {"access_token": "tok123"}})
-    assert token == "tok123"
-
-
-def test_parse_login_flat() -> None:
-    token = _smoke.parse_login_response({"access_token": "tok456"})
-    assert token == "tok456"
-
-
-def test_parse_login_missing() -> None:
-    assert _smoke.parse_login_response({}) == ""
-
-
-def test_parse_login_prefers_data_envelope() -> None:
-    body = {"data": {"access_token": "inner"}, "access_token": "outer"}
-    assert _smoke.parse_login_response(body) == "inner"
-
-
-# ---------------------------------------------------------------------------
 # parse_daily_loop_response
 # ---------------------------------------------------------------------------
 

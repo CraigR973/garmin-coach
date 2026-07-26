@@ -269,7 +269,6 @@ async def test_garmin_sync_upserts_without_duplicate_rows(db_conn: AsyncConnecti
             Profile(
                 id=user_id,
                 display_name="Garmin Sync Test",
-                pin_hash="x" * 60,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,
@@ -346,7 +345,6 @@ async def test_sync_activities_strips_raw_metrics_for_high_volume_types(
             Profile(
                 id=user_id,
                 display_name="Strip Test",
-                pin_hash="x" * 60,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,
@@ -402,7 +400,6 @@ async def test_sync_activities_keeps_captured_splits_in_raw_summary(
             Profile(
                 id=user_id,
                 display_name="Lap Capture Test",
-                pin_hash="x" * 60,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,

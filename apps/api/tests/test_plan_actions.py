@@ -93,7 +93,6 @@ async def _seed_user(session: AsyncSession, user_id: uuid.UUID) -> Profile:
     user = Profile(
         id=user_id,
         display_name="Plan Action Test",
-        pin_hash="x" * 60,
         role=UserRole.admin,
         timezone="Europe/London",
         is_active=True,
@@ -1193,7 +1192,6 @@ async def test_workout_analysis_is_null_when_no_read_and_scoped_to_owner(
         stranger = Profile(
             id=uuid.uuid4(),
             display_name="Stranger",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,

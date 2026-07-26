@@ -35,7 +35,6 @@ async def test_get_coaching_state_seeds_defaults_and_returns_envelope(
         user = Profile(
             id=user_id,
             display_name="Coach State Test",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
@@ -79,7 +78,6 @@ async def test_get_coach_memory_allows_non_admin_read_of_own_snapshot(
         user = Profile(
             id=user_id,
             display_name="Mark",
-            pin_hash="x" * 60,
             role=UserRole.player,
             timezone="Europe/London",
             is_active=True,
@@ -124,7 +122,6 @@ async def test_get_coach_memory_filters_internal_knowledge_base_sections(
         user = Profile(
             id=user_id,
             display_name="Mark",
-            pin_hash="x" * 60,
             role=UserRole.player,
             timezone="Europe/London",
             is_active=True,
@@ -186,7 +183,6 @@ async def test_update_knowledge_base_section_creates_new_active_version(
         user = Profile(
             id=user_id,
             display_name="KB Update Test",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
@@ -250,7 +246,6 @@ async def test_override_planned_workout_preserves_prior_versions(
         user = Profile(
             id=user_id,
             display_name="Workout Override Test",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,

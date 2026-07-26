@@ -25,7 +25,11 @@ def _activation_url(code: str) -> str:
     return f"{settings.frontend_origin.rstrip('/')}/activate?code={quote(code, safe='')}"
 
 
-async def mint_activation_link(profile_name: str) -> str:
+async def mint_activation_link(
+    profile_name: str,
+    *,
+    revoke_existing_devices: bool = False,
+) -> str:
     async with AsyncSessionLocal() as db:
         profile = (
             await db.execute(
@@ -38,6 +42,17 @@ async def mint_activation_link(profile_name: str) -> str:
         ).scalar_one_or_none()
         if profile is None:
             raise SystemExit(f"Active profile not found: {profile_name}")
+
+        if revoke_existing_devices:
+            await db.execute(
+                update(RefreshToken)
+                .where(
+                    RefreshToken.user_id == profile.id,
+                    RefreshToken.purpose == "device",
+                    RefreshToken.revoked_at.is_(None),
+                )
+                .values(revoked_at=_now())
+            )
 
         await db.execute(
             update(RefreshToken)
@@ -68,12 +83,22 @@ async def mint_activation_link(profile_name: str) -> str:
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Mint a one-time Garmin Coach activation link.")
     parser.add_argument("--profile", required=True, help="Exact display name of the profile")
+    parser.add_argument(
+        "--revoke-existing-devices",
+        action="store_true",
+        help="Revoke every active device for the profile before minting the recovery link",
+    )
     return parser.parse_args()
 
 
 async def _main() -> None:
     args = _parse_args()
-    print(await mint_activation_link(args.profile))
+    print(
+        await mint_activation_link(
+            args.profile,
+            revoke_existing_devices=args.revoke_existing_devices,
+        )
+    )
 
 
 if __name__ == "__main__":

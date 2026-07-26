@@ -63,9 +63,9 @@ Two things line up only on a fresh launch:
    The ~0.10 s above is only the 401 that bails *before* any of this runs, so the
    authenticated cost is materially higher and unmeasured until 62.5.
 
-Secondary: `apiFetch` calls `ensureFreshToken()` first (`lib/api.ts:36`), which
-can fire `/auth/refresh` *before* daily-loop — but only for PIN/JWT sessions;
-device-token sessions skip it (`lib/api.ts:37`).
+Auth Phase 3 (Batch 160) subsequently removed the PIN/JWT refresh preflight:
+`apiFetch` now sends the sole opaque device token directly, so daily-loop is
+always the first authenticated request.
 
 ## What we build
 
@@ -82,7 +82,7 @@ persist packages.
 - Give `useDailyLoop` a small `staleTime` (≈60 s) so a hydrated brief renders
   immediately and the refetch is background, not blocking; keep
   `refetchOnWindowFocus` and `installResumeRefetch`.
-- On login / activate / unlock / logout, `AuthContext` already calls
+- On device activation / logout, `AuthContext` already calls
   `queryClient.clear()`; also **remove the persisted client** (clear the
   `gc-rq-cache` key) so one user's health data can't rehydrate into another
   session.
@@ -177,8 +177,8 @@ Potentially the single biggest factor and a **config-only** fix.
 - No new user-facing feature; latency and perceived-latency only.
 - No DB migration if the drivers cache reuses the `analyses` audit row (preferred).
   A dedicated cache table would be a migration — avoid unless 62.2 proves it needed.
-- Not touching the auth/refresh preflight beyond noting it; a device-token session
-  already skips it.
+- Auth Phase 3 later removed the refresh preflight entirely; this design does not
+  add another credential exchange.
 
 ## Verification plan
 Backend pytest/ruff/mypy, shared typecheck + tests, web vitest/tsc/lint/build under

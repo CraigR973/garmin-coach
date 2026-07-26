@@ -15,8 +15,6 @@ def _build_settings(**overrides: object) -> Settings:
     """
     params: dict[str, object] = {
         "environment": Environment.production,
-        "jwt_access_secret": "a" * 32,
-        "jwt_refresh_secret": "b" * 32,
         "vapid_private_key": "vapid-private",
         "supabase_service_key": "supabase-service",
         "anthropic_api_key": "sk-ant-test",
@@ -40,26 +38,6 @@ def test_production_rejects_missing_anthropic_api_key() -> None:
 def test_development_allows_missing_anthropic_api_key() -> None:
     settings = _build_settings(environment=Environment.development, anthropic_api_key="")
     assert settings.anthropic_api_key == ""
-
-
-def test_production_rejects_short_jwt_secret() -> None:
-    with pytest.raises(ValueError, match="jwt_access_secret must be at least"):
-        _build_settings(jwt_access_secret="short")
-
-
-def test_production_rejects_identical_jwt_secrets() -> None:
-    with pytest.raises(ValueError, match="must be different"):
-        _build_settings(jwt_access_secret="x" * 40, jwt_refresh_secret="x" * 40)
-
-
-def test_development_allows_weak_jwt_secrets() -> None:
-    # The validator is fully skipped in development, so a short/identical pair is fine.
-    settings = _build_settings(
-        environment=Environment.development,
-        jwt_access_secret="dev",
-        jwt_refresh_secret="dev",
-    )
-    assert settings.jwt_access_secret == "dev"
 
 
 def test_docs_urls_disabled_in_production() -> None:

@@ -255,7 +255,6 @@ async def _seed_profile(db_conn: AsyncConnection, user_id: uuid.UUID) -> None:
             Profile(
                 id=user_id,
                 display_name="Reviews Test",
-                pin_hash="x" * 60,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,

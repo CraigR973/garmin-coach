@@ -151,7 +151,6 @@ async def _profile(session: AsyncSession) -> Profile:
     player = Profile(
         id=uuid.uuid4(),
         display_name="Learning Test",
-        pin_hash="x" * 60,
         role=UserRole.player,
         timezone="Europe/London",
         is_active=True,

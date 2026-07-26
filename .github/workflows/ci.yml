@@ -69,8 +69,6 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/coach_test
-      JWT_ACCESS_SECRET: ci-test-access-secret-not-used-in-prod
-      JWT_REFRESH_SECRET: ci-test-refresh-secret-not-used-in-prod
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -115,13 +113,9 @@ jobs:
       - run: alembic upgrade head
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/coach_migration
-          JWT_ACCESS_SECRET: ci-migration-access-secret
-          JWT_REFRESH_SECRET: ci-migration-refresh-secret
       - run: alembic downgrade base
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/coach_migration
-          JWT_ACCESS_SECRET: ci-migration-access-secret
-          JWT_REFRESH_SECRET: ci-migration-refresh-secret
 
   build-web:
     name: Build web (lint + typecheck + vite)

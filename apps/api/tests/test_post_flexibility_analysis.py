@@ -107,7 +107,6 @@ async def test_generate_and_store_post_flexibility_analysis_is_lean_and_idempote
         player = Profile(
             id=user_id,
             display_name="Flexibility Test",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
@@ -285,7 +284,6 @@ async def test_newer_activity_checkin_makes_flexibility_analysis_pending(
         player = Profile(
             id=user_id,
             display_name="Flexibility Checkin",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,

@@ -150,7 +150,6 @@ async def test_shared_prepare_links_and_completes_every_post_activity_type(
         player = Profile(
             id=user_id,
             display_name="Post-activity seam",
-            pin_hash="x" * 60,
             role=UserRole.player,
             timezone="Europe/London",
             is_active=True,
@@ -206,7 +205,6 @@ async def test_shared_prepare_claims_distinct_same_kind_sessions(
         player = Profile(
             id=user_id,
             display_name="Two-a-day",
-            pin_hash="x" * 60,
             role=UserRole.player,
             timezone="Europe/London",
             is_active=True,

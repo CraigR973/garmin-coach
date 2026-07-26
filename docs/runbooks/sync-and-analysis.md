@@ -46,8 +46,7 @@ triggering the jobs:
 
 ```bash
 API_URL=https://api-production-e2bc7.up.railway.app \
-SMOKE_DISPLAY_NAME=Mark \
-SMOKE_PIN=<real-pin> \
+SMOKE_DEVICE_TOKEN=<active-device-token> \
 SMOKE_STRICT_DAILY_LOOP=1 \
 python3 scripts/smoke_daily_loop.py
 ```

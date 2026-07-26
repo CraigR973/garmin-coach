@@ -52,7 +52,6 @@ async def _seed_player(
             Profile(
                 id=user_id,
                 display_name="TTS Router Test",
-                pin_hash="x" * 60,
                 role=UserRole.player,
                 timezone="Europe/London",
                 is_active=True,

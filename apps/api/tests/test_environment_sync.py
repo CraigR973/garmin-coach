@@ -293,7 +293,6 @@ async def test_environment_sync_upserts_without_duplicate_rows(
             Profile(
                 id=user_id,
                 display_name="Environment Sync Test",
-                pin_hash="x" * 60,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 hive_home_id="aa1fbb37-6b65-4622-b609-5d75534fafd3",

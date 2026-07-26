@@ -139,7 +139,6 @@ async def test_generate_and_store_post_walk_analysis_is_hr_pace_based_and_idempo
         player = Profile(
             id=user_id,
             display_name="Walk Test",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,

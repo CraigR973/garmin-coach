@@ -120,7 +120,6 @@ async def test_status_service_upserts_in_place(db_conn: AsyncConnection) -> None
             Profile(
                 id=user_id,
                 display_name="Status Test",
-                pin_hash="x" * 60,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,

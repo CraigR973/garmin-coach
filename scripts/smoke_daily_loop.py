@@ -5,8 +5,8 @@ Non-mutating end-to-end smoke test for the garmin-coach daily loop.
 Usage:
     API_URL=https://api-production-e2bc7.up.railway.app python3 scripts/smoke_daily_loop.py
 
-Optional authentication (runs login + daily-loop checks when both are set):
-    SMOKE_DISPLAY_NAME=Mark SMOKE_PIN=1234 ... python3 scripts/smoke_daily_loop.py
+Optional authentication (runs the daily-loop check when set):
+    SMOKE_DEVICE_TOKEN=<opaque-device-token> ... python3 scripts/smoke_daily_loop.py
 
 Exit code 0 on pass, 1 on failure.
 """
@@ -24,8 +24,7 @@ from typing import Any
 API_URL = os.environ.get(
     "API_URL", "https://api-production-e2bc7.up.railway.app"
 ).rstrip("/")
-SMOKE_DISPLAY_NAME = os.environ.get("SMOKE_DISPLAY_NAME", "")
-SMOKE_PIN = os.environ.get("SMOKE_PIN", "")
+SMOKE_DEVICE_TOKEN = os.environ.get("SMOKE_DEVICE_TOKEN", "")
 SMOKE_STRICT_DAILY_LOOP = os.environ.get("SMOKE_STRICT_DAILY_LOOP", "").lower() in {
     "1",
     "true",
@@ -56,23 +55,6 @@ def _get(url: str, headers: dict[str, str] | None = None) -> tuple[int, Any]:
         return 0, {"_error": str(exc)}
 
 
-def _post(url: str, body: dict[str, Any]) -> tuple[int, Any]:
-    data = json.dumps(body).encode()
-    req = urllib.request.Request(
-        url,
-        data=data,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return resp.status, json.loads(resp.read())
-    except urllib.error.HTTPError as exc:
-        return exc.code, {}
-    except Exception as exc:  # noqa: BLE001
-        return 0, {"_error": str(exc)}
-
-
 # ---------------------------------------------------------------------------
 # Response parsers (importable/testable)
 # ---------------------------------------------------------------------------
@@ -80,10 +62,6 @@ def _post(url: str, body: dict[str, Any]) -> tuple[int, Any]:
 
 def parse_health_response(body: dict[str, Any]) -> bool:
     return body.get("status") == "ok"
-
-
-def parse_login_response(body: dict[str, Any]) -> str:
-    return body.get("data", {}).get("access_token", "") or body.get("access_token", "")
 
 
 def parse_daily_loop_response(body: dict[str, Any]) -> dict[str, Any]:
@@ -122,19 +100,6 @@ def check_health(api_url: str) -> CheckResult:
         return CheckResult("health", False, f"status={body.get('status')!r}")
     sha = body.get("sha", "unknown")
     return CheckResult("health", True, f"sha={sha}")
-
-
-def check_login(api_url: str, display_name: str, pin: str) -> tuple[CheckResult, str]:
-    status, body = _post(
-        f"{api_url}/api/v1/auth/login",
-        {"display_name": display_name, "pin": pin},
-    )
-    if status != 200:
-        return CheckResult("login", False, f"HTTP {status}"), ""
-    token = parse_login_response(body)
-    if not token:
-        return CheckResult("login", False, "no access_token in response"), ""
-    return CheckResult("login", True, f"display_name={display_name!r}"), token
 
 
 def check_daily_loop(api_url: str, token: str, *, strict: bool = False) -> CheckResult:
@@ -179,21 +144,14 @@ def main() -> int:
     results.append(health_result)
     _print(health_result)
 
-    if SMOKE_DISPLAY_NAME and SMOKE_PIN:
-        login_result, token = check_login(API_URL, SMOKE_DISPLAY_NAME, SMOKE_PIN)
-        results.append(login_result)
-        _print(login_result)
-
-        if token:
-            loop_result = check_daily_loop(
-                API_URL, token, strict=SMOKE_STRICT_DAILY_LOOP
-            )
-            results.append(loop_result)
-            _print(loop_result)
-    else:
-        print(
-            "[smoke] SMOKE_DISPLAY_NAME/SMOKE_PIN not set — skipping authenticated checks"
+    if SMOKE_DEVICE_TOKEN:
+        loop_result = check_daily_loop(
+            API_URL, SMOKE_DEVICE_TOKEN, strict=SMOKE_STRICT_DAILY_LOOP
         )
+        results.append(loop_result)
+        _print(loop_result)
+    else:
+        print("[smoke] SMOKE_DEVICE_TOKEN not set — skipping authenticated checks")
 
     passed = sum(1 for r in results if r.passed)
     total = len(results)

@@ -63,8 +63,6 @@ Required setup:
 3. Use the repo-root `railway.toml`; it pins the Dockerfile builder.
 4. Set environment variables:
    - `DATABASE_URL`: Supabase session-mode pooler URL on port `5432`
-   - `JWT_ACCESS_SECRET`
-   - `JWT_REFRESH_SECRET`
    - `FRONTEND_ORIGIN`
    - `VAPID_PUBLIC_KEY`
    - `VAPID_PRIVATE_KEY`
@@ -111,7 +109,7 @@ Required setup:
 ## Smoke Test
 
 1. Open `https://garmin-coach-one.vercel.app`.
-2. Confirm the login page loads without console errors.
+2. Confirm the device-setup page loads without console errors.
 3. Confirm backend health:
 
 ```bash
@@ -124,7 +122,9 @@ Expected:
 {"status":"ok"}
 ```
 
-4. If a seeded user exists, log in and confirm the dashboard loads.
+4. Seed the profile, mint a one-time activation link with
+   `python -m src.activate --profile <name>`, activate the device, and confirm
+   the dashboard loads.
 
 ## First Checks When It Fails
 
