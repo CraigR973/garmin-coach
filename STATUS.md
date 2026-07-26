@@ -6,11 +6,15 @@
 
 ## Now
 
-**2026-07-26 — Batch 159 implementation ready on `fix/batch-159-completed-session-reads`; not promoted.** The shared post-activity lifecycle now completes and links planned cycle/strength/mobility/walk sessions, including a migration-022 backfill for existing reads and collision-safe same-kind two-a-days. The owned Week lookup selects only supported post-session types and returns explicit `absent` / `generating` / `failed` / `ready` state from a new activity-scoped status table; the sheet renders and polls those states honestly, with a 12-minute stale-generation guard. Strength/flexibility/walk currentness now requires live prompt + check-in version, and handover requires live prompt + deterministic packet fingerprint. Migration `022`; Decision #239. Local backend, shared, and web gates are green; branch CI run `30209503582` passed all seven jobs, including 936 PostgreSQL-backed tests and the migration round trip. No change to morning verdicts, thresholds, plan rules, #133/#135, Red-never-VO2, or post-session prompt text. **Next:** review Batch 159; promotion/closeout only on an explicit command.
+**2026-07-26 — Batch 159 shipped on `main` via PR #188 / squash `5aaa594`.** Completed cycle/strength/mobility/walk reads now share one completion/linking lifecycle; migration `022` backfilled existing reads and added activity-scoped persisted `generating`/`ready`/`failed` state, while Week renders explicit absent/in-flight/failure/ready states. The lookup is ownership-checked and limited to supported post-session types; strength/flexibility/walk and handover regenerate when their prompt or current input changes. Branch, PR-context, and post-merge `main` CI passed all seven jobs (936 PostgreSQL tests plus Alembic round trip); Vercel preview and production were READY; Railway and Vercel same-origin health served exact SHA `5aaa594`; web `/` returned 200; the completed-read route returned 401 unauthenticated direct and proxied; Vercel's one-hour runtime-error scan was clean. Decision #239. No change to morning verdicts, thresholds, plan rules, #133/#135, Red-never-VO2, or post-session prompt text. **Next:** Batch 160 — Auth Phase 3: remove the PIN/JWT fallback.
 
 ---
 
 ## Log
+
+**2026-07-26 — Batch 159 shipped:** PR #188 / squash `5aaa594`; shared completed-session linkage, activity-scoped honest read states, migration-022 legacy backfill, and prompt/input currentness are live. Branch, PR-context, and post-merge CI passed all seven jobs; Vercel preview/production READY; exact-SHA Railway/Vercel health, web 200, direct/proxied completed-read auth gate, and Vercel runtime-error smokes passed. Batch 160 is next.
+
+---
 
 **2026-07-26 — Batch 159 implementation ready:** generalized completed-session linking across ride/strength/mobility/walk, added activity-scoped persisted read states and honest Week UI, backfilled existing post-session linkage in migration `022`, and made non-ride/handover regeneration prompt-and-input-current. Local full backend/shared/web gates green; branch CI run `30209503582` passed all seven jobs (936 PostgreSQL tests plus Alembic round trip). Decision #239; branch `fix/batch-159-completed-session-reads`; not promoted.
 
