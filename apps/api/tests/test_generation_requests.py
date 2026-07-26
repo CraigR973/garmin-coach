@@ -94,6 +94,7 @@ async def test_identical_morning_generation_calls_once_but_changed_input_adds_hi
                 is_active=True,
             )
         )
+        await session.flush()
         session.add(
             ManualEntry(
                 id=entry_id,
@@ -220,6 +221,7 @@ async def test_identical_post_activity_generation_calls_once(
                 is_active=True,
             )
         )
+        await session.flush()
         session.add(
             Activity(
                 id=activity_id,
@@ -294,6 +296,7 @@ async def test_expired_or_failed_generation_lease_can_be_reclaimed(
                 is_active=True,
             )
         )
+        await session.flush()
         session.add(
             GenerationRequest(
                 id=request_id,

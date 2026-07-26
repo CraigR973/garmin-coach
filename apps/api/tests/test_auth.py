@@ -145,6 +145,7 @@ async def test_concurrent_activation_consumes_code_once_and_mints_one_device(
                 is_active=True,
             )
         )
+        await session.flush()
         session.add(
             RefreshToken(
                 user_id=user_id,
@@ -185,6 +186,7 @@ async def test_concurrent_activation_consumes_code_once_and_mints_one_device(
             )
         )
         assert device_count == 1
+        await session.execute(delete(RefreshToken).where(RefreshToken.user_id == user_id))
         await session.execute(delete(Profile).where(Profile.id == user_id))
         await session.commit()
 
