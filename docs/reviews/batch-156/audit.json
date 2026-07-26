@@ -1,0 +1,2841 @@
+{
+  "generatedAtUtc": "2026-07-26T10:25:36.364Z",
+  "method": {
+    "localOrigin": "http://127.0.0.1:5173",
+    "productionApi": "https://api-production-e2bc7.up.railway.app",
+    "focusedOnly": false,
+    "focusedInteractionReplay": true,
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "routes": [
+      {
+        "name": "home",
+        "route": "/"
+      },
+      {
+        "name": "check-in",
+        "route": "/check-in"
+      },
+      {
+        "name": "brief",
+        "route": "/brief"
+      },
+      {
+        "name": "sleep",
+        "route": "/sleep"
+      },
+      {
+        "name": "climate",
+        "route": "/environment"
+      },
+      {
+        "name": "week",
+        "route": "/delivery"
+      },
+      {
+        "name": "holiday",
+        "route": "/holiday"
+      },
+      {
+        "name": "builder",
+        "route": "/builder"
+      },
+      {
+        "name": "reviews",
+        "route": "/reviews"
+      },
+      {
+        "name": "trends",
+        "route": "/trends"
+      },
+      {
+        "name": "experiments",
+        "route": "/experiments"
+      },
+      {
+        "name": "handover",
+        "route": "/handover"
+      },
+      {
+        "name": "coach-memory",
+        "route": "/coach-state"
+      },
+      {
+        "name": "settings",
+        "route": "/settings"
+      },
+      {
+        "name": "offline",
+        "route": "/offline"
+      }
+    ]
+  },
+  "routeCaptures": [
+    {
+      "theme": "dark",
+      "name": "home",
+      "route": "/",
+      "finalUrl": "/",
+      "screenshot": "01-dark-home.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Good morning, Mark",
+        "bodyExcerpt": "CHECKMARK Mark Good morning, Mark Home Week Sleep Climate More",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 2,
+        "controls": 3,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": []
+    },
+    {
+      "theme": "dark",
+      "name": "check-in",
+      "route": "/check-in",
+      "finalUrl": "/check-in",
+      "screenshot": "02-dark-check-in.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Check in",
+        "bodyExcerpt": "CHECKMARK Mark HOME Check in How are you feeling? A few taps — your read feeds every analysis. How you feel today -/10 Move the slider Feel score Rough Meh OK Good Great Anything to flag? Slept well Low energy Niggle More In your own words, blood pressure, and yesterday's supplements & food Get today's brief Home Week Sleep Climate More",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 2,
+        "controls": 15,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "input",
+            "label": "0 to 10 feel score",
+            "width": 316,
+            "height": 16
+          },
+          {
+            "tag": "button",
+            "label": "Rough",
+            "width": 60,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Meh",
+            "width": 60,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "OK",
+            "width": 60,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Good",
+            "width": 60,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Great",
+            "width": 60,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Slept well",
+            "width": 73,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Low energy",
+            "width": 85,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Niggle",
+            "width": 58,
+            "height": 36
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": []
+    },
+    {
+      "theme": "dark",
+      "name": "brief",
+      "route": "/brief",
+      "finalUrl": "/brief",
+      "screenshot": "03-dark-brief.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Morning brief",
+        "bodyExcerpt": "CHECKMARK Mark HOME SUNDAY, JULY 26 Morning brief Check in Today Pre-cool the bedroom tonight Bedroom peaked at 20.3°C overnight (pre-cool target 17°C). Last night's metrics Metric Last night Status Age-adjusted sleep score 88 72–84 4 above Average respiration 11 11–12 in range Average Pulse Ox 97% 95–96.8% in range Body Battery charge 74 56–70 4 above 7-day average HRV 47 46–50 in range 17 above for your age Training readiness 57 26–65 in range Resting heart rate 43 43–45 in range 28 below for your age Sleep score 80 68–80 in range HRV & SpO₂ baselines use readings from after the strap was re-fitted (11 Jun); earlier nights are excluded. “vs your age” compares you with the general-population average for the typical 50–59 year-old — a rough guide, not medical advice. Coach read Generated 7",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 7,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "Listen to brief",
+            "width": 80,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Stop brief audio",
+            "width": 71,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Ask",
+            "width": 75,
+            "height": 36
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": [
+        {
+          "id": "scrollable-region-focusable",
+          "impact": "serious",
+          "help": "Scrollable region must have keyboard access",
+          "nodes": 1,
+          "targets": [
+            [
+              ".my-3"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "name": "sleep",
+      "route": "/sleep",
+      "finalUrl": "/sleep",
+      "screenshot": "04-dark-sleep.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Sleep",
+        "bodyExcerpt": "CHECKMARK Mark SUNDAY, JULY 26 Sleep Last night Tonight Sleep calendar Pick a date to review that night's sleep and room history. Tonight's look-ahead stays on the Tonight tab. Selected: Sun 26 Jul Show calendar Last night's sleep How last night compares to your own normal and your age group. Metric Last night Status Age-adjusted sleep score 88 72–84 4 above Average respiration 11 11–12 in range Average Pulse Ox 97% 95–96.8% in range Body Battery charge 74 56–70 4 above 7-day average HRV 47 46–50 in range 17 above for your age Training readiness 57 26–65 in range Resting heart rate 43 43–45 in range 28 below for your age Sleep score 80 68–80 in range HRV & SpO₂ baselines use readings from after the strap was re-fitted (11 Jun); earlier nights are excluded. “vs your age” compares you with t",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 8,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "Show calendar",
+            "width": 125,
+            "height": 36
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1,
+          "targets": [
+            [
+              ".px-2\\.5"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "name": "climate",
+      "route": "/environment",
+      "finalUrl": "/environment",
+      "screenshot": "05-dark-climate.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Climate",
+        "bodyExcerpt": "CHECKMARK Mark SUNDAY, JULY 26 Climate Bedroom climate The live room read and fan controls for the bedroom. Indoor now 20.1°C Thermostat 9.0°C Overnight low 13.0°C Wind 13 mph Overnight autopilot Off — the fan holds your manual setting. Manual control Bedroom fan Manual control Mode normal · Oscillating Turn off Low Medium High Other fan (000s) Manual · on at speed 7 Mode normal · Fixed Turn off Low Medium High Other fan (000s) Manual · on at speed 5 Mode normal · Oscillating Turn off Low Medium High Using a manual control turns the overnight autopilot off. Auto mode The overnight autopilot follows the room temperature and winds down in the morning. Manual controls always work. Using one turns the overnight autopilot off until you switch it back on. Last night The retrospective overnight r",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 16,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "Overnight fan autopilot",
+            "width": 48,
+            "height": 28
+          },
+          {
+            "tag": "button",
+            "label": "Turn off",
+            "width": 66,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Low",
+            "width": 47,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Medium",
+            "width": 67,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "High",
+            "width": 49,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Turn off",
+            "width": 66,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Low",
+            "width": 47,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Medium",
+            "width": 67,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "High",
+            "width": 49,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Turn off",
+            "width": 66,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Low",
+            "width": 47,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Medium",
+            "width": 67,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "High",
+            "width": 49,
+            "height": 36
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": []
+    },
+    {
+      "theme": "dark",
+      "name": "week",
+      "route": "/delivery",
+      "finalUrl": "/delivery",
+      "screenshot": "06-dark-week.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Week",
+        "bodyExcerpt": "CHECKMARK Mark Week This week at a glance: what’s on each day, what’s done, and what’s still to do. This week Edit week This week's mix VO2 1/1 Sweet Spot 1/1 Zone 2 2/3 This week 7 sessions 4 done 3 to do Mon, Jul 20 Weights Dumbbells (full-body) Maintenance · 22 min To do + Strength · 20 min + Flexibility · 16 min Tue, Jul 21 Cycle Z2 Endurance · 75 min Done + Flexibility · 16 min Wed, Jul 22 Cycle Z2 + Neuromuscular Endurance · 58 min Done + Flexibility · 3 min + Flexibility · 16 min Thu, Jul 23 Cycle Sweet Spot (2 × 25 min @ 89%) Sweet spot · 81 min Done + Flexibility · 16 min Fri, Jul 24 Rest Rest day Sat, Jul 25 Cycle VO₂ (5 × 2 min @ 120%) VO₂ · 47 min Done Sun, Jul 26 Today Cycle + Weights Long Z2 Endurance · 120 min To do Bodyweight Maintenance · 15 min To do Coming up Mon, Jul 27",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 25,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "View Strength · 20 min details",
+            "width": 123,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 3 min details",
+            "width": 119,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": []
+    },
+    {
+      "theme": "dark",
+      "name": "holiday",
+      "route": "/holiday",
+      "finalUrl": "/holiday",
+      "screenshot": "07-dark-holiday.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Holiday",
+        "bodyExcerpt": "CHECKMARK Mark Holiday Going on holiday? Set your dates and the coach pauses your training — your sessions become rest days. When you're back, it picks your plan up in the right place automatically. Holiday active Sun, Jul 12, 2026 → Thu, Jul 16, 2026 Active Resume plan Home Week Sleep Climate More",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 4,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": []
+    },
+    {
+      "theme": "dark",
+      "name": "builder",
+      "route": "/builder",
+      "finalUrl": "/builder",
+      "screenshot": "08-dark-builder.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Plan builder",
+        "bodyExcerpt": "CHECKMARK Mark Plan builder Mould it, then lock it The coach generates a 13-week 2121 block (2 build / 1 recovery, taper, consolidation). Refine any day, then lock it — locked workouts feed your daily plan and deliver to Zwift on approval. Generate a new block Defaults to next Monday and the last-block FTP proposal when enough history exists. Override if you want. Start date (optional) FTP watts (optional) Generate block Home Week Sleep Climate More",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 6,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "width": 316,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "width": 316,
+            "height": 36
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": []
+    },
+    {
+      "theme": "dark",
+      "name": "reviews",
+      "route": "/reviews",
+      "finalUrl": "/reviews",
+      "screenshot": "09-dark-reviews.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Reviews",
+        "bodyExcerpt": "CHECKMARK Mark Reviews Weekly Monthly This week Jul 20 – Jul 26 · 7 days at a glance. Coverage is good: 7/7 sleep nights and 7/7 recovery days. Sleep Improving Nights 7 Coverage 7/7 Avg score 72.1 Trend basis 69.3 → 74.2 (+4.9) Recovery Steady Days 7 Coverage 7/7 Avg HRV 47.1 ms Readiness trend 55.7 → 52.8 (-2.9) Training load Activities 23 Total load 519.69 Total time 555 min Plan source planned workouts present Verdicts 3G · 1A · 3R Strength & signals Slipping Sessions (4w) 5 Per week (4w) 1.25 Source tracked strength activity present Fitness trend stable Recent 2-week rate (0.5/wk) down from prior 2-week rate (2.0/wk). Written review No review has been generated for this period yet. Generate review Home Week Sleep Climate More",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 6,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1,
+          "targets": [
+            [
+              ".bg-error\\/20"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "name": "trends",
+      "route": "/trends",
+      "finalUrl": "/trends",
+      "screenshot": "10-dark-trends.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Trends",
+        "bodyExcerpt": "CHECKMARK Mark Trends By month By season Walking base Keep deliberate walking credited in the long-range view instead of inside today's workout card. Walking base 31 walks · 41.7 km · 612 min in 4 weeks stable Frequency holding at ~7.8/wk over 28 days. This 4-week base sits alongside your broader trends. Strength trend A standing read on resistance work over time, alongside the per-session strength reads. Strength sessions 5 sessions · 97 min · 1.3/wk in 4 weeks decreasing Recent 2-week rate (0.5/wk) down from prior 2-week rate (2.0/wk). Frequency and duration over the last 4 weeks, with the direction of travel. Sleep & readiness over time Your averages for each month. ReadinessSleep April 2026 May 2026 July 2026 0 20 40 60 80 July 2026 vs July 2025 How this period compares with the same t",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 6,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2,
+          "targets": [
+            [
+              ".justify-between.gap-3.text-sm:nth-child(1) > .gap-2.flex.items-center > .bg-error\\/20.text-error.border-error\\/30"
+            ],
+            [
+              ".justify-between.gap-3.text-sm:nth-child(2) > .gap-2.flex.items-center > .bg-error\\/20.text-error.border-error\\/30"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "name": "experiments",
+      "route": "/experiments",
+      "finalUrl": "/experiments",
+      "screenshot": "11-dark-experiments.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "What we're testing",
+        "bodyExcerpt": "CHECKMARK Mark What we're testing Collagen reintroduction active Reintroducing collagen disrupts sleep; only retry after 7 consecutive 74+ (age-adjusted) nights. Evaluate evidence Recovery-week sleep disruption active Recovery weeks (lower training load) coincide with worse sleep/recovery rather than better. Evaluate evidence 04:00 waking pattern active Waking around 04:00 is driven by an identifiable trigger (thermal, alcohol, late snack, or stress). Evaluate evidence Home Week Sleep Climate More",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 6,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": []
+    },
+    {
+      "theme": "dark",
+      "name": "handover",
+      "route": "/handover",
+      "finalUrl": "/handover",
+      "screenshot": "12-dark-handover.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Handover",
+        "bodyExcerpt": "CHECKMARK Mark Handover Full briefing for a new AI chat Everything your coach knows about you — profile, plan, baselines, reviews and what you're testing — in one document. Always up to date, ready to paste into a new AI chat. Download Write summary The document View raw text Exactly what “Download” saves. CheckMark — Handover Document Auto-generated retained-state briefing for Mark — 2026-07-26T10:17:58Z. This document is the living context the coach holds, exported so it can brief another AI without rewriting it by hand. Athlete profile Name: Mark Age: 57 FTP (W): 280 VO2 max: 54 Resting HR (bpm): 45 Fitness age: 48 HRV band (ms): 43–57 Blood pressure: 108/68 Data-quality rules (the AI MUST obey) Ignore left/right power balance. — Single-sided meter doubles one leg and makes balance unus",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 6,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "View raw text",
+            "width": 93,
+            "height": 36
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": [
+        {
+          "id": "scrollable-region-focusable",
+          "impact": "serious",
+          "help": "Scrollable region must have keyboard access",
+          "nodes": 2,
+          "targets": [
+            [
+              ".max-h-\\[480px\\]"
+            ],
+            [
+              ".my-3"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "name": "coach-memory",
+      "route": "/coach-state",
+      "finalUrl": "/coach-state",
+      "screenshot": "13-dark-coach-memory.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Coach memory",
+        "bodyExcerpt": "CHECKMARK Mark WHAT YOUR COACH KNOWS ABOUT YOU Coach memory Loading coach memory… Home Week Sleep Climate More",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 3,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": []
+    },
+    {
+      "theme": "dark",
+      "name": "settings",
+      "route": "/settings",
+      "finalUrl": "/settings",
+      "screenshot": "14-dark-settings.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Settings",
+        "bodyExcerpt": "CHECKMARK Mark Settings APPEARANCE Light Dark System NOTIFICATIONS Enabling… VOICE Natural hosted voice Reads the brief aloud in a more natural voice, generated on our own server (no third party). Takes a little longer to start than the default; off by default, the brief reads aloud using your device's own voice instead. CHANGE PIN Current PIN New PIN Confirm new PIN Change PIN Home Week Sleep Climate More",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 21,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "Enable hosted read-aloud voice",
+            "width": 48,
+            "height": 28
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": []
+    },
+    {
+      "theme": "dark",
+      "name": "offline",
+      "route": "/offline",
+      "finalUrl": "/offline",
+      "screenshot": "15-dark-offline.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "You're offline",
+        "bodyExcerpt": "CHECKMARK Mark 📡 You're offline No internet connection detected. Check your connection and try again. Retry Home Week Sleep Climate More",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 4,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": []
+    },
+    {
+      "theme": "light",
+      "name": "home",
+      "route": "/",
+      "finalUrl": "/",
+      "screenshot": "01-light-home.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": null,
+        "bodyExcerpt": "CHECKMARK Mark SUNDAY, JULY 26 Good to go Good morning, Mark. You're good to go this morning. HOW YOU FEEL TODAY You said: Good · slept well Change Green verdict Today Pre-cool the bedroom tonight Bedroom peaked at 20.3°C overnight (pre-cool target 17°C). Cycle + Weights day This week's mix VO2 1/1 Sweet Spot 1/1 Zone 2 2/3 Long Z2 Endurance · 120 min · Zone 2 ~65–72% FTP Already in Zwift, ready to ride. Edit Swap day More options Bodyweight Maintenance · 15 min · Bodyweight circuit Non-bike session — nothing to upload to Zwift. Swap day Skip Cycle Weights Flexibility View week Morning check-in Skip whole day I did something else MORE DETAIL Last night's sleep 7h 48m asleep · GOOD · REM below your 65–90 min range Tonight Give tonight a little extra margin Bedroom Indoor 20.1°C · fan on man",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 17,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "Edit",
+            "width": 69,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Swap day",
+            "width": 100,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "More options",
+            "width": 114,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Swap day",
+            "width": 98,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Skip",
+            "width": 71,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Cycle",
+            "width": 77,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Weights",
+            "width": 91,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Flexibility",
+            "width": 97,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Skip whole day",
+            "width": 124,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "I did something else",
+            "width": 122,
+            "height": 36
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2,
+          "targets": [
+            [
+              ".border-success\\/30.bg-success\\/10.text-success:nth-child(1)"
+            ],
+            [
+              ".border-success\\/30.bg-success\\/10.text-success:nth-child(2)"
+            ]
+          ]
+        },
+        {
+          "id": "page-has-heading-one",
+          "impact": "moderate",
+          "help": "Page should contain a level-one heading",
+          "nodes": 1,
+          "targets": [
+            [
+              "html"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "check-in",
+      "route": "/check-in",
+      "finalUrl": "/check-in",
+      "screenshot": "02-light-check-in.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Check in",
+        "bodyExcerpt": "CHECKMARK Mark HOME Check in How are you feeling? A few taps — your read feeds every analysis. How you feel today -/10 Move the slider Feel score Rough Meh OK Good Great Anything to flag? Slept well Low energy Niggle More In your own words, blood pressure, and yesterday's supplements & food Get today's brief Home Week Sleep Climate More",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 2,
+        "controls": 15,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "input",
+            "label": "0 to 10 feel score",
+            "width": 316,
+            "height": 16
+          },
+          {
+            "tag": "button",
+            "label": "Rough",
+            "width": 60,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Meh",
+            "width": 60,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "OK",
+            "width": 60,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Good",
+            "width": 60,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Great",
+            "width": 60,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Slept well",
+            "width": 73,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Low energy",
+            "width": 85,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Niggle",
+            "width": 58,
+            "height": 36
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": []
+    },
+    {
+      "theme": "light",
+      "name": "brief",
+      "route": "/brief",
+      "finalUrl": "/brief",
+      "screenshot": "03-light-brief.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Morning brief",
+        "bodyExcerpt": "CHECKMARK Mark HOME SUNDAY, JULY 26 Morning brief Check in Today Pre-cool the bedroom tonight Bedroom peaked at 20.3°C overnight (pre-cool target 17°C). Last night's metrics Metric Last night Status Age-adjusted sleep score 88 72–84 4 above Average respiration 11 11–12 in range Average Pulse Ox 97% 95–96.8% in range Body Battery charge 74 56–70 4 above 7-day average HRV 47 46–50 in range 17 above for your age Training readiness 57 26–65 in range Resting heart rate 43 43–45 in range 28 below for your age Sleep score 80 68–80 in range HRV & SpO₂ baselines use readings from after the strap was re-fitted (11 Jun); earlier nights are excluded. “vs your age” compares you with the general-population average for the typical 50–59 year-old — a rough guide, not medical advice. Coach read Generated 7",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 7,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "Listen to brief",
+            "width": 80,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Stop brief audio",
+            "width": 71,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Ask",
+            "width": 75,
+            "height": 36
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 18,
+          "targets": [
+            [
+              ".border-t:nth-child(1) > .text-right.tabular-nums.px-2 > .text-success.tabular-nums.font-semibold"
+            ],
+            [
+              ".border-t:nth-child(1) > .align-top.text-right.px-2 > .justify-end.mt-0\\.5.gap-1"
+            ],
+            [
+              ".border-t:nth-child(2) > .text-right.tabular-nums.px-2 > .text-success.tabular-nums.font-semibold"
+            ],
+            [
+              ".border-t:nth-child(2) > .align-top.text-right.px-2 > .justify-end.mt-0\\.5.gap-1"
+            ],
+            [
+              ".border-t:nth-child(3) > .text-right.tabular-nums.px-2 > .text-success.tabular-nums.font-semibold"
+            ],
+            [
+              ".border-t:nth-child(3) > .align-top.text-right.px-2 > .justify-end.mt-0\\.5.gap-1"
+            ]
+          ]
+        },
+        {
+          "id": "scrollable-region-focusable",
+          "impact": "serious",
+          "help": "Scrollable region must have keyboard access",
+          "nodes": 1,
+          "targets": [
+            [
+              ".my-3"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "sleep",
+      "route": "/sleep",
+      "finalUrl": "/sleep",
+      "screenshot": "04-light-sleep.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Sleep",
+        "bodyExcerpt": "CHECKMARK Mark SUNDAY, JULY 26 Sleep Last night Tonight Sleep calendar Pick a date to review that night's sleep and room history. Tonight's look-ahead stays on the Tonight tab. Selected: Sun 26 Jul Show calendar Last night's sleep How last night compares to your own normal and your age group. Metric Last night Status Age-adjusted sleep score 88 72–84 4 above Average respiration 11 11–12 in range Average Pulse Ox 97% 95–96.8% in range Body Battery charge 74 56–70 4 above 7-day average HRV 47 46–50 in range 17 above for your age Training readiness 57 26–65 in range Resting heart rate 43 43–45 in range 28 below for your age Sleep score 80 68–80 in range HRV & SpO₂ baselines use readings from after the strap was re-fitted (11 Jun); earlier nights are excluded. “vs your age” compares you with t",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 8,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "Show calendar",
+            "width": 125,
+            "height": 36
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 24,
+          "targets": [
+            [
+              "tr:nth-child(1) > .text-right.tabular-nums.font-semibold > .text-success.tabular-nums.font-semibold"
+            ],
+            [
+              "tr:nth-child(1) > .align-top.text-right > .justify-end.mt-0\\.5.gap-1"
+            ],
+            [
+              "tr:nth-child(2) > .text-right.tabular-nums.font-semibold > .text-success.tabular-nums.font-semibold"
+            ],
+            [
+              "tr:nth-child(2) > .align-top.text-right > .justify-end.mt-0\\.5.gap-1"
+            ],
+            [
+              "tr:nth-child(3) > .text-right.tabular-nums.font-semibold > .text-success.tabular-nums.font-semibold"
+            ],
+            [
+              "tr:nth-child(3) > .align-top.text-right > .justify-end.mt-0\\.5.gap-1"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "climate",
+      "route": "/environment",
+      "finalUrl": "/environment",
+      "screenshot": "05-light-climate.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Climate",
+        "bodyExcerpt": "CHECKMARK Mark SUNDAY, JULY 26 Climate Bedroom climate The live room read and fan controls for the bedroom. Indoor now 20.1°C Thermostat 9.0°C Overnight low 13.0°C Wind 13 mph Overnight autopilot Off — the fan holds your manual setting. Manual control Bedroom fan Manual control Mode normal · Oscillating Turn off Low Medium High Other fan (000s) Manual · on at speed 7 Mode normal · Fixed Turn off Low Medium High Other fan (000s) Manual · on at speed 5 Mode normal · Oscillating Turn off Low Medium High Using a manual control turns the overnight autopilot off. Auto mode The overnight autopilot follows the room temperature and winds down in the morning. Manual controls always work. Using one turns the overnight autopilot off until you switch it back on. Last night The retrospective overnight r",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 16,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "Overnight fan autopilot",
+            "width": 48,
+            "height": 28
+          },
+          {
+            "tag": "button",
+            "label": "Turn off",
+            "width": 66,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Low",
+            "width": 47,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Medium",
+            "width": 67,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "High",
+            "width": 49,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Turn off",
+            "width": 66,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Low",
+            "width": 47,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Medium",
+            "width": 67,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "High",
+            "width": 49,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Turn off",
+            "width": 66,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Low",
+            "width": 47,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Medium",
+            "width": 67,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "High",
+            "width": 49,
+            "height": 36
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1,
+          "targets": [
+            [
+              ".text-\\[10px\\].text-primary"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "week",
+      "route": "/delivery",
+      "finalUrl": "/delivery",
+      "screenshot": "06-light-week.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Week",
+        "bodyExcerpt": "CHECKMARK Mark Week This week at a glance: what’s on each day, what’s done, and what’s still to do. This week Edit week This week's mix VO2 1/1 Sweet Spot 1/1 Zone 2 2/3 This week 7 sessions 4 done 3 to do Mon, Jul 20 Weights Dumbbells (full-body) Maintenance · 22 min To do + Strength · 20 min + Flexibility · 16 min Tue, Jul 21 Cycle Z2 Endurance · 75 min Done + Flexibility · 16 min Wed, Jul 22 Cycle Z2 + Neuromuscular Endurance · 58 min Done + Flexibility · 3 min + Flexibility · 16 min Thu, Jul 23 Cycle Sweet Spot (2 × 25 min @ 89%) Sweet spot · 81 min Done + Flexibility · 16 min Fri, Jul 24 Rest Rest day Sat, Jul 25 Cycle VO₂ (5 × 2 min @ 120%) VO₂ · 47 min Done Sun, Jul 26 Today Cycle + Weights Long Z2 Endurance · 120 min To do Bodyweight Maintenance · 15 min To do Coming up Mon, Jul 27",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 25,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "View Strength · 20 min details",
+            "width": 123,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 3 min details",
+            "width": 119,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 41,
+          "targets": [
+            [
+              ".bg-success\\/10.py-1.border-success\\/30:nth-child(1)"
+            ],
+            [
+              ".bg-success\\/10.py-1.border-success\\/30:nth-child(2)"
+            ],
+            [
+              ".space-y-3.p-5.flex-col > .flex-wrap.gap-2.flex:nth-child(1) > .bg-surface-elevated.text-text-muted.py-0\\.5"
+            ],
+            [
+              ".flex-wrap.gap-2.text-sm > .bg-success\\/20.text-success.border-success\\/30"
+            ],
+            [
+              ".flex-wrap.gap-2.text-sm > .bg-accent\\/20.text-accent.border-accent\\/30"
+            ],
+            [
+              ".shadow-sm.rounded-lg.bg-surface:nth-child(1) > .pt-0.space-y-3.p-5 > .rounded-xl.bg-bg.py-3:nth-child(1) > .flex-wrap.gap-2.flex:nth-child(1) > .bg-accent\\/20.text-accent.border-accent\\/30"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "holiday",
+      "route": "/holiday",
+      "finalUrl": "/holiday",
+      "screenshot": "07-light-holiday.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Holiday",
+        "bodyExcerpt": "CHECKMARK Mark Holiday Going on holiday? Set your dates and the coach pauses your training — your sessions become rest days. When you're back, it picks your plan up in the right place automatically. Holiday active Sun, Jul 12, 2026 → Thu, Jul 16, 2026 Active Resume plan Home Week Sleep Climate More",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 4,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2,
+          "targets": [
+            [
+              ".px-2\\.5"
+            ],
+            [
+              ".text-primary.text-\\[10px\\].font-medium"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "builder",
+      "route": "/builder",
+      "finalUrl": "/builder",
+      "screenshot": "08-light-builder.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Plan builder",
+        "bodyExcerpt": "CHECKMARK Mark Plan builder Mould it, then lock it The coach generates a 13-week 2121 block (2 build / 1 recovery, taper, consolidation). Refine any day, then lock it — locked workouts feed your daily plan and deliver to Zwift on approval. Generate a new block Defaults to next Monday and the last-block FTP proposal when enough history exists. Override if you want. Start date (optional) FTP watts (optional) Generate block Home Week Sleep Climate More",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 6,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "width": 316,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "width": 316,
+            "height": 36
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1,
+          "targets": [
+            [
+              ".text-primary.text-\\[10px\\]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "reviews",
+      "route": "/reviews",
+      "finalUrl": "/reviews",
+      "screenshot": "09-light-reviews.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Reviews",
+        "bodyExcerpt": "CHECKMARK Mark Reviews Weekly Monthly This week Jul 20 – Jul 26 · 7 days at a glance. Coverage is good: 7/7 sleep nights and 7/7 recovery days. Sleep Improving Nights 7 Coverage 7/7 Avg score 72.1 Trend basis 69.3 → 74.2 (+4.9) Recovery Steady Days 7 Coverage 7/7 Avg HRV 47.1 ms Readiness trend 55.7 → 52.8 (-2.9) Training load Activities 23 Total load 519.69 Total time 555 min Plan source planned workouts present Verdicts 3G · 1A · 3R Strength & signals Slipping Sessions (4w) 5 Per week (4w) 1.25 Source tracked strength activity present Fitness trend stable Recent 2-week rate (0.5/wk) down from prior 2-week rate (2.0/wk). Written review No review has been generated for this period yet. Generate review Home Week Sleep Climate More",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 6,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 3,
+          "targets": [
+            [
+              ".bg-success\\/20"
+            ],
+            [
+              ".bg-warning\\/20"
+            ],
+            [
+              ".text-\\[10px\\].text-primary"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "trends",
+      "route": "/trends",
+      "finalUrl": "/trends",
+      "screenshot": "10-light-trends.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Trends",
+        "bodyExcerpt": "CHECKMARK Mark Trends By month By season Walking base Keep deliberate walking credited in the long-range view instead of inside today's workout card. Walking base 31 walks · 41.7 km · 612 min in 4 weeks stable Frequency holding at ~7.8/wk over 28 days. This 4-week base sits alongside your broader trends. Strength trend A standing read on resistance work over time, alongside the per-session strength reads. Strength sessions 5 sessions · 97 min · 1.3/wk in 4 weeks decreasing Recent 2-week rate (0.5/wk) down from prior 2-week rate (2.0/wk). Frequency and duration over the last 4 weeks, with the direction of travel. Sleep & readiness over time Your averages for each month. ReadinessSleep April 2026 May 2026 July 2026 0 20 40 60 80 July 2026 vs July 2025 How this period compares with the same t",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 6,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 4,
+          "targets": [
+            [
+              ".rounded-lg.bg-surface.shadow-sm:nth-child(1) > .pt-0.p-5 > .rounded-xl.py-3.bg-bg > .flex-wrap.items-start.justify-between > .bg-surface-elevated.px-2\\.5.py-0\\.5"
+            ],
+            [
+              ".rounded-lg.bg-surface.shadow-sm:nth-child(2) > .pt-0.p-5 > .rounded-xl.py-3.bg-bg > .flex-wrap.items-start.justify-between > .bg-surface-elevated.px-2\\.5.py-0\\.5"
+            ],
+            [
+              ".justify-between.gap-3.text-sm:nth-child(3) > .gap-2.flex.items-center > .bg-success\\/20.text-success.border-success\\/30"
+            ],
+            [
+              ".justify-between.gap-3.text-sm:nth-child(4) > .gap-2.flex.items-center > .bg-success\\/20.text-success.border-success\\/30"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "experiments",
+      "route": "/experiments",
+      "finalUrl": "/experiments",
+      "screenshot": "11-light-experiments.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "What we're testing",
+        "bodyExcerpt": "CHECKMARK Mark What we're testing Collagen reintroduction active Reintroducing collagen disrupts sleep; only retry after 7 consecutive 74+ (age-adjusted) nights. Evaluate evidence Recovery-week sleep disruption active Recovery weeks (lower training load) coincide with worse sleep/recovery rather than better. Evaluate evidence 04:00 waking pattern active Waking around 04:00 is driven by an identifiable trigger (thermal, alcohol, late snack, or stress). Evaluate evidence Home Week Sleep Climate More",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 6,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 4,
+          "targets": [
+            [
+              ".rounded-lg.bg-surface.border-border:nth-child(1) > .space-y-1\\.5.p-5.flex-col > .items-start.justify-between.gap-3 > .px-2\\.5.py-0\\.5.text-xs"
+            ],
+            [
+              ".rounded-lg.bg-surface.border-border:nth-child(2) > .space-y-1\\.5.p-5.flex-col > .items-start.justify-between.gap-3 > .px-2\\.5.py-0\\.5.text-xs"
+            ],
+            [
+              ".rounded-lg.bg-surface.border-border:nth-child(3) > .space-y-1\\.5.p-5.flex-col > .items-start.justify-between.gap-3 > .px-2\\.5.py-0\\.5.text-xs"
+            ],
+            [
+              ".text-\\[10px\\].text-primary"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "handover",
+      "route": "/handover",
+      "finalUrl": "/handover",
+      "screenshot": "12-light-handover.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Handover",
+        "bodyExcerpt": "CHECKMARK Mark Handover Full briefing for a new AI chat Everything your coach knows about you — profile, plan, baselines, reviews and what you're testing — in one document. Always up to date, ready to paste into a new AI chat. Download Write summary The document View raw text Exactly what “Download” saves. CheckMark — Handover Document Auto-generated retained-state briefing for Mark — 2026-07-26T10:19:10Z. This document is the living context the coach holds, exported so it can brief another AI without rewriting it by hand. Athlete profile Name: Mark Age: 57 FTP (W): 280 VO2 max: 54 Resting HR (bpm): 45 Fitness age: 48 HRV band (ms): 43–57 Blood pressure: 108/68 Data-quality rules (the AI MUST obey) Ignore left/right power balance. — Single-sided meter doubles one leg and makes balance unus",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 6,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "View raw text",
+            "width": 93,
+            "height": 36
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": [
+        {
+          "id": "scrollable-region-focusable",
+          "impact": "serious",
+          "help": "Scrollable region must have keyboard access",
+          "nodes": 2,
+          "targets": [
+            [
+              ".max-h-\\[480px\\]"
+            ],
+            [
+              ".my-3"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "coach-memory",
+      "route": "/coach-state",
+      "finalUrl": "/coach-state",
+      "screenshot": "13-light-coach-memory.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Coach memory",
+        "bodyExcerpt": "CHECKMARK Mark WHAT YOUR COACH KNOWS ABOUT YOU Coach memory Coach memory unavailable [ { \"received\": \"holiday_windows\", \"code\": \"invalid_enum_value\", \"options\": [ \"profile\", \"data_quality_rules\", \"age_adjustment\", \"sleep_protocol\", \"training_plan\", \"training_schedule\", \"active_hypotheses\", \"coaching_protocol\", \"analysis_rules\", \"learned_context\" ], \"path\": [ \"data\", \"knowledgeBaseSections\", 4, \"section\" ], \"message\": \"Invalid enum value. Expected 'profile' | 'data_quality_rules' | 'age_adjustment' | 'sleep_protocol' | 'training_plan' | 'training_schedule' | 'active_hypotheses' | 'coaching_protocol' | 'analysis_rules' | 'learned_context', received 'holiday_windows'\" } ] Home Week Sleep Climate More",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 3,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1,
+          "targets": [
+            [
+              ".text-primary.text-\\[10px\\].font-medium"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "settings",
+      "route": "/settings",
+      "finalUrl": "/settings",
+      "screenshot": "14-light-settings.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Settings",
+        "bodyExcerpt": "CHECKMARK Mark Settings APPEARANCE Light Dark System NOTIFICATIONS Enabling… VOICE Natural hosted voice Reads the brief aloud in a more natural voice, generated on our own server (no third party). Takes a little longer to start than the default; off by default, the brief reads aloud using your device's own voice instead. CHANGE PIN Current PIN New PIN Confirm new PIN Change PIN Home Week Sleep Climate More",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 21,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "Enable hosted read-aloud voice",
+            "width": 48,
+            "height": 28
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2,
+          "targets": [
+            [
+              ".bg-primary\\/10"
+            ],
+            [
+              ".text-primary.text-\\[10px\\].font-medium"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "offline",
+      "route": "/offline",
+      "finalUrl": "/offline",
+      "screenshot": "15-light-offline.png",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "You're offline",
+        "bodyExcerpt": "CHECKMARK Mark 📡 You're offline No internet connection detected. Check your connection and try again. Retry Home Week Sleep Climate More",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 4,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": []
+    }
+  ],
+  "interactionCaptures": [
+    {
+      "name": "31-dark-week-completed-read",
+      "screenshot": "31-dark-week-completed-read.png",
+      "note": "View Z2 details",
+      "finalUrl": "/delivery",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Week",
+        "bodyExcerpt": "CHECKMARK Mark Week This week at a glance: what’s on each day, what’s done, and what’s still to do. This week Edit week This week 7 sessions 4 done 3 to do Mon, Jul 20 Weights Dumbbells (full-body) Maintenance · 22 min To do + Strength · 20 min + Flexibility · 16 min Tue, Jul 21 Cycle Z2 Endurance · 75 min Done + Flexibility · 16 min Wed, Jul 22 Cycle Z2 + Neuromuscular Endurance · 58 min Done + Flexibility · 3 min + Flexibility · 16 min Thu, Jul 23 Cycle Sweet Spot (2 × 25 min @ 89%) Sweet spot · 81 min Done + Flexibility · 16 min Fri, Jul 24 Rest Rest day Sat, Jul 25 Cycle VO₂ (5 × 2 min @ 120%) VO₂ · 47 min Done Sun, Jul 26 Today Cycle + Weights Long Z2 Endurance · 120 min To do Bodyweight Maintenance · 15 min To do Coming up Mon, Jul 27 Weights Dumbbells (full-body) Maintenance · 22 mi",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 31,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "View Strength · 20 min details",
+            "width": 123,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 3 min details",
+            "width": 119,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "Spot on",
+            "width": 64,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "A bit off",
+            "width": 66,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Way off",
+            "width": 66,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Ask",
+            "width": 75,
+            "height": 36
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": []
+    },
+    {
+      "name": "32-dark-post-workout-chat-draft",
+      "screenshot": "32-dark-post-workout-chat-draft.png",
+      "note": "Drafted but deliberately not submitted to production.",
+      "finalUrl": "/delivery",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Week",
+        "bodyExcerpt": "CHECKMARK Mark Week This week at a glance: what’s on each day, what’s done, and what’s still to do. This week Edit week This week 7 sessions 4 done 3 to do Mon, Jul 20 Weights Dumbbells (full-body) Maintenance · 22 min To do + Strength · 20 min + Flexibility · 16 min Tue, Jul 21 Cycle Z2 Endurance · 75 min Done + Flexibility · 16 min Wed, Jul 22 Cycle Z2 + Neuromuscular Endurance · 58 min Done + Flexibility · 3 min + Flexibility · 16 min Thu, Jul 23 Cycle Sweet Spot (2 × 25 min @ 89%) Sweet spot · 81 min Done + Flexibility · 16 min Fri, Jul 24 Rest Rest day Sat, Jul 25 Cycle VO₂ (5 × 2 min @ 120%) VO₂ · 47 min Done Sun, Jul 26 Today Cycle + Weights Long Z2 Endurance · 120 min To do Bodyweight Maintenance · 15 min To do Coming up Mon, Jul 27 Weights Dumbbells (full-body) Maintenance · 22 mi",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 31,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "View Strength · 20 min details",
+            "width": 123,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 3 min details",
+            "width": 119,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "Spot on",
+            "width": 64,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "A bit off",
+            "width": 66,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Way off",
+            "width": 66,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Ask",
+            "width": 75,
+            "height": 36
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": []
+    },
+    {
+      "name": "33-dark-week-read-loading",
+      "screenshot": "33-dark-week-read-loading.png",
+      "note": "Browser-only delayed response; no production write.",
+      "finalUrl": "/delivery",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Week",
+        "bodyExcerpt": "CHECKMARK Mark Week This week at a glance: what’s on each day, what’s done, and what’s still to do. This week Edit week This week's mix VO2 1/1 Sweet Spot 1/1 Zone 2 2/3 This week 7 sessions 4 done 3 to do Mon, Jul 20 Weights Dumbbells (full-body) Maintenance · 22 min To do + Strength · 20 min + Flexibility · 16 min Tue, Jul 21 Cycle Z2 Endurance · 75 min Done + Flexibility · 16 min Wed, Jul 22 Cycle Z2 + Neuromuscular Endurance · 58 min Done + Flexibility · 3 min + Flexibility · 16 min Thu, Jul 23 Cycle Sweet Spot (2 × 25 min @ 89%) Sweet spot · 81 min Done + Flexibility · 16 min Fri, Jul 24 Rest Rest day Sat, Jul 25 Cycle VO₂ (5 × 2 min @ 120%) VO₂ · 47 min Done Sun, Jul 26 Today Cycle + Weights Long Z2 Endurance · 120 min To do Bodyweight Maintenance · 15 min To do Coming up Mon, Jul 27",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 26,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "View Strength · 20 min details",
+            "width": 123,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 3 min details",
+            "width": 119,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": []
+    },
+    {
+      "name": "34-dark-week-read-none",
+      "screenshot": "34-dark-week-read-none.png",
+      "note": "Browser-only null read over the live schedule; no production write.",
+      "finalUrl": "/delivery",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Week",
+        "bodyExcerpt": "CHECKMARK Mark Week This week at a glance: what’s on each day, what’s done, and what’s still to do. This week Edit week This week's mix VO2 1/1 Sweet Spot 1/1 Zone 2 2/3 This week 7 sessions 4 done 3 to do Mon, Jul 20 Weights Dumbbells (full-body) Maintenance · 22 min To do + Strength · 20 min + Flexibility · 16 min Tue, Jul 21 Cycle Z2 Endurance · 75 min Done + Flexibility · 16 min Wed, Jul 22 Cycle Z2 + Neuromuscular Endurance · 58 min Done + Flexibility · 3 min + Flexibility · 16 min Thu, Jul 23 Cycle Sweet Spot (2 × 25 min @ 89%) Sweet spot · 81 min Done + Flexibility · 16 min Fri, Jul 24 Rest Rest day Sat, Jul 25 Cycle VO₂ (5 × 2 min @ 120%) VO₂ · 47 min Done Sun, Jul 26 Today Cycle + Weights Long Z2 Endurance · 120 min To do Bodyweight Maintenance · 15 min To do Coming up Mon, Jul 27",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 26,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "View Strength · 20 min details",
+            "width": 123,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 3 min details",
+            "width": 119,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": []
+    },
+    {
+      "name": "35-dark-week-read-failed",
+      "screenshot": "35-dark-week-read-failed.png",
+      "note": "Browser-only 503 over the live schedule; no production write.",
+      "finalUrl": "/delivery",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Week",
+        "bodyExcerpt": "CHECKMARK Mark Week This week at a glance: what’s on each day, what’s done, and what’s still to do. This week Edit week This week's mix VO2 1/1 Sweet Spot 1/1 Zone 2 2/3 This week 7 sessions 4 done 3 to do Mon, Jul 20 Weights Dumbbells (full-body) Maintenance · 22 min To do + Strength · 20 min + Flexibility · 16 min Tue, Jul 21 Cycle Z2 Endurance · 75 min Done + Flexibility · 16 min Wed, Jul 22 Cycle Z2 + Neuromuscular Endurance · 58 min Done + Flexibility · 3 min + Flexibility · 16 min Thu, Jul 23 Cycle Sweet Spot (2 × 25 min @ 89%) Sweet spot · 81 min Done + Flexibility · 16 min Fri, Jul 24 Rest Rest day Sat, Jul 25 Cycle VO₂ (5 × 2 min @ 120%) VO₂ · 47 min Done Sun, Jul 26 Today Cycle + Weights Long Z2 Endurance · 120 min To do Bodyweight Maintenance · 15 min To do Coming up Mon, Jul 27",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 26,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "View Strength · 20 min details",
+            "width": 123,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 3 min details",
+            "width": 119,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": []
+    },
+    {
+      "name": "36-dark-memory-proposal-edited",
+      "screenshot": "36-dark-memory-proposal-edited.png",
+      "note": "Browser-only pending proposal over the live Coach-memory read.",
+      "finalUrl": "/coach-state",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Coach memory",
+        "bodyExcerpt": "CHECKMARK Mark WHAT YOUR COACH KNOWS ABOUT YOU Coach memory Open editor This is the retained context your coach uses to interpret your sleep, your training, and the rules it should follow when it talks to you. Generated 7/26/2026, 11:25:45 AM 9 active memory sections 118 active planned workouts Learned from conversations The coach proposes standing facts and preferences from your chats and notes. Nothing is remembered until you accept it, and learned memory can never change the verdict rules. Look for new memories Preference Waiting for confirmation 2026-07-24 · “I always prefer riding after breakfast” Accept memory Reject Profile facts The fixed background your coach keeps in mind every day. Name: Mark Age: 57 FTP: 280 W VO2max: 54 Typical HRV band: 43-57 ms Resting heart rate: 45 bpm Usu",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 8,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": []
+    },
+    {
+      "name": "37-dark-memory-proposal-accepted",
+      "screenshot": "37-dark-memory-proposal-accepted.png",
+      "note": "Browser-only mocked PATCH; production memory was not changed.",
+      "finalUrl": "/coach-state",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Coach memory",
+        "bodyExcerpt": "Memory accepted CHECKMARK Mark WHAT YOUR COACH KNOWS ABOUT YOU Coach memory Open editor This is the retained context your coach uses to interpret your sleep, your training, and the rules it should follow when it talks to you. Generated 7/26/2026, 11:25:45 AM 9 active memory sections 118 active planned workouts Learned from conversations The coach proposes standing facts and preferences from your chats and notes. Nothing is remembered until you accept it, and learned memory can never change the verdict rules. Look for new memories No memory proposals are waiting for review. Profile facts The fixed background your coach keeps in mind every day. Name: Mark Age: 57 FTP: 280 W VO2max: 54 Typical HRV band: 43-57 ms Resting heart rate: 45 bpm Usual blood pressure: 108-68 Fitness age: 48 Sleep pro",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 6,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Close toast",
+            "width": 20,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": []
+    },
+    {
+      "name": "38-dark-interval-editor",
+      "screenshot": "38-dark-interval-editor.png",
+      "note": "Live editor data for Long Z2; approval deliberately not clicked.",
+      "finalUrl": "/",
+      "dom": {
+        "title": "CheckMark",
+        "heading": null,
+        "bodyExcerpt": "CHECKMARK Mark Good morning, Mark SUNDAY, JULY 26 Say good morning Check in and I'll read your day — your overnight data's already in. Get today's brief Cycle day Long Z2 Endurance · 120 min · Zone 2 ~65–72% FTP Not yet in Zwift. Edit Swap day More options Change the interval set Warm-up, cool-down and primer steps stay fixed. Choose a suggestion, then fine-tune it. Keep current Scale down Sweet Spot Z2 SETTING CURRENT CHANGE TO No. of intervals 1 Work time 100:00 : Work %FTP 68% % Work cadence Open rpm Rest time 0:00 : Rest %FTP 55% % Rest cadence Open rpm HELD CONSTANT Warm-up ramp 45→60% Warmup Cool-down ramp Cooldown Approve & upload to Zwift Cycle Weights Flexibility View week Morning check-in Skip whole day I did something else MORE DETAIL Tonight Give tonight a little extra margin B",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 28,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "Edit",
+            "width": 69,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Swap day",
+            "width": 100,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "More options",
+            "width": 114,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Keep current",
+            "width": 91,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Scale down",
+            "width": 83,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Sweet Spot",
+            "width": 110,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Z2",
+            "width": 39,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to number of intervals",
+            "width": 96,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to work time minutes",
+            "width": 96,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to work time seconds",
+            "width": 96,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to work percent FTP",
+            "width": 80,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to work cadence",
+            "width": 96,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to rest time minutes",
+            "width": 96,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to rest time seconds",
+            "width": 96,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to rest percent FTP",
+            "width": 80,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to rest cadence",
+            "width": 96,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Cycle",
+            "width": 77,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Weights",
+            "width": 91,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Flexibility",
+            "width": 97,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Skip whole day",
+            "width": 124,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "I did something else",
+            "width": 122,
+            "height": 36
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": [
+        {
+          "id": "page-has-heading-one",
+          "impact": "moderate",
+          "help": "Page should contain a level-one heading",
+          "nodes": 1,
+          "targets": [
+            [
+              "html"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "38-light-interval-editor",
+      "screenshot": "38-light-interval-editor.png",
+      "note": "Live editor data for Long Z2; approval deliberately not clicked.",
+      "finalUrl": "/",
+      "dom": {
+        "title": "CheckMark",
+        "heading": null,
+        "bodyExcerpt": "CHECKMARK Mark Good morning, Mark SUNDAY, JULY 26 Say good morning Check in and I'll read your day — your overnight data's already in. Get today's brief Cycle day Long Z2 Endurance · 120 min · Zone 2 ~65–72% FTP Not yet in Zwift. Edit Swap day More options Change the interval set Warm-up, cool-down and primer steps stay fixed. Choose a suggestion, then fine-tune it. Keep current Scale down Sweet Spot Z2 SETTING CURRENT CHANGE TO No. of intervals 1 Work time 100:00 : Work %FTP 68% % Work cadence Open rpm Rest time 0:00 : Rest %FTP 55% % Rest cadence Open rpm HELD CONSTANT Warm-up ramp 45→60% Warmup Cool-down ramp Cooldown Approve & upload to Zwift Cycle Weights Flexibility View week Morning check-in Skip whole day I did something else MORE DETAIL Tonight Give tonight a little extra margin B",
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 28,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "Edit",
+            "width": 69,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Swap day",
+            "width": 100,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "More options",
+            "width": 114,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Keep current",
+            "width": 91,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Scale down",
+            "width": 83,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Sweet Spot",
+            "width": 110,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Z2",
+            "width": 39,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to number of intervals",
+            "width": 96,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to work time minutes",
+            "width": 96,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to work time seconds",
+            "width": 96,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to work percent FTP",
+            "width": 80,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to work cadence",
+            "width": 96,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to rest time minutes",
+            "width": 96,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to rest time seconds",
+            "width": 96,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to rest percent FTP",
+            "width": 80,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to rest cadence",
+            "width": 96,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Cycle",
+            "width": 77,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Weights",
+            "width": 91,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Flexibility",
+            "width": 97,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Skip whole day",
+            "width": 124,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "I did something else",
+            "width": 122,
+            "height": 36
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 2,
+          "targets": [
+            [
+              "div[aria-label=\"Workout type suggestions\"] > .text-on-primary.hover\\:bg-primary-dark.bg-primary"
+            ],
+            [
+              ".text-\\[10px\\].text-primary.tracking-tight"
+            ]
+          ]
+        },
+        {
+          "id": "page-has-heading-one",
+          "impact": "moderate",
+          "help": "Page should contain a level-one heading",
+          "nodes": 1,
+          "targets": [
+            [
+              "html"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "40-light-interval-editor-desktop",
+      "screenshot": "40-light-interval-editor-desktop.png",
+      "note": "Responsive desktop capture of the same non-submitted editor state.",
+      "finalUrl": "/",
+      "dom": {
+        "title": "CheckMark",
+        "heading": null,
+        "bodyExcerpt": "CHECKMARK Home Week Sleep Climate More Mark Good morning, Mark SUNDAY, JULY 26 Say good morning Check in and I'll read your day — your overnight data's already in. Get today's brief Cycle day Long Z2 Endurance · 120 min · Zone 2 ~65–72% FTP Not yet in Zwift. Edit Swap day More options Change the interval set Warm-up, cool-down and primer steps stay fixed. Choose a suggestion, then fine-tune it. Keep current Scale down Sweet Spot Z2 SETTING CURRENT CHANGE TO No. of intervals 1 Work time 100:00 : Work %FTP 68% % Work cadence Open rpm Rest time 0:00 : Rest %FTP 55% % Rest cadence Open rpm HELD CONSTANT Warm-up ramp 45→60% Warmup Cool-down ramp Cooldown Approve & upload to Zwift Cycle Weights Flexibility View week Morning check-in Skip whole day I did something else MORE DETAIL Tonight Give to",
+        "documentWidth": 1280,
+        "viewportWidth": 1280,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 28,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "More",
+            "width": 75,
+            "height": 32
+          },
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "Edit",
+            "width": 69,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Swap day",
+            "width": 100,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "More options",
+            "width": 114,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Keep current",
+            "width": 91,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Scale down",
+            "width": 83,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Sweet Spot",
+            "width": 110,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Z2",
+            "width": 39,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to number of intervals",
+            "width": 96,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to work time minutes",
+            "width": 96,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to work time seconds",
+            "width": 96,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to work percent FTP",
+            "width": 80,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to work cadence",
+            "width": 96,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to rest time minutes",
+            "width": 96,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to rest time seconds",
+            "width": 96,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to rest percent FTP",
+            "width": 80,
+            "height": 36
+          },
+          {
+            "tag": "input",
+            "label": "Change to rest cadence",
+            "width": 96,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Cycle",
+            "width": 77,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Weights",
+            "width": 91,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Flexibility",
+            "width": 97,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Skip whole day",
+            "width": 124,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "I did something else",
+            "width": 122,
+            "height": 36
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1,
+          "targets": [
+            [
+              ".bg-primary\\/15"
+            ]
+          ]
+        },
+        {
+          "id": "page-has-heading-one",
+          "impact": "moderate",
+          "help": "Page should contain a level-one heading",
+          "nodes": 1,
+          "targets": [
+            [
+              "html"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "41-dark-week-completed-read-desktop",
+      "screenshot": "41-dark-week-completed-read-desktop.png",
+      "note": "View Z2 details",
+      "finalUrl": "/delivery",
+      "dom": {
+        "title": "CheckMark",
+        "heading": "Week",
+        "bodyExcerpt": "CHECKMARK Home Week Sleep Climate More Mark Week This week at a glance: what’s on each day, what’s done, and what’s still to do. This week Edit week This week 7 sessions 4 done 3 to do Mon, Jul 20 Weights Dumbbells (full-body) Maintenance · 22 min To do + Strength · 20 min + Flexibility · 16 min Tue, Jul 21 Cycle Z2 Endurance · 75 min Done + Flexibility · 16 min Wed, Jul 22 Cycle Z2 + Neuromuscular Endurance · 58 min Done + Flexibility · 3 min + Flexibility · 16 min Thu, Jul 23 Cycle Sweet Spot (2 × 25 min @ 89%) Sweet spot · 81 min Done + Flexibility · 16 min Fri, Jul 24 Rest Rest day Sat, Jul 25 Cycle VO₂ (5 × 2 min @ 120%) VO₂ · 47 min Done Sun, Jul 26 Today Cycle + Weights Long Z2 Endurance · 120 min To do Bodyweight Maintenance · 15 min To do Coming up Mon, Jul 27 Weights Dumbbells (f",
+        "documentWidth": 1280,
+        "viewportWidth": 1280,
+        "horizontalOverflow": false,
+        "skeletons": 0,
+        "loadingLabels": 0,
+        "controls": 31,
+        "smallControls": [
+          {
+            "tag": "button",
+            "label": "More",
+            "width": 75,
+            "height": 32
+          },
+          {
+            "tag": "button",
+            "label": "Account menu (Mark)",
+            "width": 32,
+            "height": 20
+          },
+          {
+            "tag": "button",
+            "label": "View Strength · 20 min details",
+            "width": 123,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 3 min details",
+            "width": 119,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "View Flexibility · 16 min details",
+            "width": 124,
+            "height": 22
+          },
+          {
+            "tag": "button",
+            "label": "Spot on",
+            "width": 64,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "A bit off",
+            "width": 66,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Way off",
+            "width": 66,
+            "height": 36
+          },
+          {
+            "tag": "button",
+            "label": "Ask",
+            "width": 75,
+            "height": 36
+          }
+        ],
+        "unlabeledButtons": 0
+      },
+      "axe": []
+    }
+  ],
+  "consoleErrors": [
+    {
+      "label": "failed-read",
+      "text": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+    },
+    {
+      "label": "failed-read",
+      "text": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+    }
+  ],
+  "pageErrors": [],
+  "requestFailures": [
+    {
+      "label": "main",
+      "method": "GET",
+      "path": "/api/v1/daily-loop",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "label": "main",
+      "method": "GET",
+      "path": "/api/v1/daily-loop",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "label": "interval-editor",
+      "method": "GET",
+      "path": "/src/components/OfflineBanner.tsx",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "label": "interval-editor",
+      "method": "GET",
+      "path": "/src/components/PageTransition.tsx",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "label": "interval-editor",
+      "method": "GET",
+      "path": "/src/components/TabBar.tsx",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "label": "interval-editor",
+      "method": "GET",
+      "path": "/src/components/TopBar.tsx",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/briefs/6eb7bdea-5d74-4bdc-b4ac-cfc11534cf0d/messages",
+      "error": "Error: route.fetch: Target page, context or browser has been closed\nCall log:\n\u001b[2m  - → GET https://api-production-e2bc7.up.railway.app/api/v1/briefs/6eb7bdea-5d74-4bdc-b4ac-cfc11534cf0d/messages\u001b[22m\n\u001b[2m    - user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.7778.96 Safari/537.36\u001b[22m\n\u001b[2m    - accept: */*\u001b[22m\n\u001b[2m    - accept-encoding: gzip,deflate,br\u001b[22m\n\u001b[2m    - authorization: Bearer [REDACTED]\u001b[22m\n\u001b[2m    - content-type: application/json\u001b[22m\n\u001b[2m    - sec-ch-ua: \"Chromium\";v=\"148\", \"HeadlessChrome\";v=\"148\", \"Not/A)Brand\";v=\"99\"\u001b[22m\n\u001b[2m    - sec-ch-ua-mobile: ?0\u001b[22m\n\u001b[2m    - sec-ch-ua-platform: \"macOS\"\u001b[22m\n"
+    }
+  ],
+  "apiErrors": [],
+  "liveDataSummary": {
+    "subjectDate": "2026-07-26",
+    "morningAnalysis": true,
+    "todayWorkoutCount": 2,
+    "scheduleDayCount": 14,
+    "completedWorkoutCount": 4,
+    "pendingLearningCount": 0
+  }
+}
