@@ -33,6 +33,12 @@ from src.services.bedroom_overnight import night_window
 from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
 from src.services.coaching_state import CoachingStateService
 from src.services.feedback import FeedbackService
+from src.services.generation_requests import (
+    claim_generation_request,
+    manual_entry_generation_version,
+    morning_generation_identity,
+    stamp_generation_identity,
+)
 from src.services.holiday_pause import (
     HolidayPauseService,
     HolidayWindow,
@@ -51,6 +57,7 @@ from src.services.sleep_scoring import (
     age_adjusted_sleep_score as compute_age_adjusted_sleep_score,
 )
 from src.services.training_week import TrainingWeekService
+from src.services.workload_budget import workload_slot
 from src.services.workout_categories import is_bike_workout_type
 
 # Batch 64 (#137): the packet now carries the user's most recent corrections so
@@ -473,39 +480,82 @@ class MorningAnalysisService:
         force: bool = False,
         commit: bool = True,
     ) -> MorningAnalysisResult:
-        if not force:
-            existing = await self.latest_analysis(player.id, subject_date)
-            if existing is not None and existing.prompt_version == PROMPT_VERSION:
-                return MorningAnalysisResult(analysis=existing, generated=False)
-
-        context_packet = await self.assemble_context_packet(player, subject_date)
-        user_prompt = build_morning_user_prompt(context_packet)
-        analysis_client = client or AnthropicMorningAnalysisClient()
-        generation = await analysis_client.generate(
-            context_packet=context_packet,
-            user_prompt=user_prompt,
+        manual_entries = await self._manual_entries(player.id, subject_date)
+        input_version = manual_entry_generation_version(
+            manual_entries[0] if manual_entries else None
         )
-        verdict = context_packet.get("verdict", {}).get("status")
-        analysis = Analysis(
+        request_identity = morning_generation_identity(
             user_id=player.id,
-            activity_id=None,
-            analysis_type=ANALYSIS_TYPE,
             subject_date=subject_date,
-            generated_at_utc=_utcnow(),
+            input_version=input_version,
             prompt_version=PROMPT_VERSION,
-            model_name=generation.model_name,
-            verdict=verdict if isinstance(verdict, str) else None,
-            context_packet=context_packet,
-            output_markdown=generation.output_markdown,
-            raw_response=generation.raw_response,
         )
-        self.session.add(analysis)
-        if commit:
-            await self.session.commit()
-            await self.session.refresh(analysis)
-        else:
+        async with claim_generation_request(
+            self.session,
+            user_id=player.id,
+            request_identity=request_identity,
+            generation_kind=ANALYSIS_TYPE,
+            lease_scope=f"morning:{player.id}:{subject_date.isoformat()}",
+        ) as claim:
+            if claim.existing_analysis is not None:
+                packet = claim.existing_analysis.context_packet
+                if (
+                    claim.existing_analysis.prompt_version == PROMPT_VERSION
+                    and isinstance(packet, dict)
+                    and packet.get("generationIdentity") == request_identity
+                ):
+                    return MorningAnalysisResult(
+                        analysis=claim.existing_analysis,
+                        generated=False,
+                    )
+                claim.restart()
+
+            if not force:
+                existing = await self.latest_analysis(player.id, subject_date)
+                if existing is not None and existing.prompt_version == PROMPT_VERSION:
+                    claim.mark_completed(existing)
+                    if commit:
+                        await self.session.commit()
+                    else:
+                        await self.session.flush()
+                    return MorningAnalysisResult(analysis=existing, generated=False)
+
+            context_packet = await self.assemble_context_packet(player, subject_date)
+            stamp_generation_identity(
+                context_packet,
+                request_identity=request_identity,
+                input_version=input_version,
+            )
+            user_prompt = build_morning_user_prompt(context_packet)
+            analysis_client = client or AnthropicMorningAnalysisClient()
+            async with workload_slot(workload="anthropic", user_id=player.id):
+                generation = await analysis_client.generate(
+                    context_packet=context_packet,
+                    user_prompt=user_prompt,
+                )
+            verdict = context_packet.get("verdict", {}).get("status")
+            analysis = Analysis(
+                user_id=player.id,
+                activity_id=None,
+                analysis_type=ANALYSIS_TYPE,
+                subject_date=subject_date,
+                generated_at_utc=_utcnow(),
+                prompt_version=PROMPT_VERSION,
+                model_name=generation.model_name,
+                verdict=verdict if isinstance(verdict, str) else None,
+                context_packet=context_packet,
+                output_markdown=generation.output_markdown,
+                raw_response=generation.raw_response,
+            )
+            self.session.add(analysis)
             await self.session.flush()
-        return MorningAnalysisResult(analysis=analysis, generated=True)
+            claim.mark_completed(analysis)
+            if commit:
+                await self.session.commit()
+                await self.session.refresh(analysis)
+            else:
+                await self.session.flush()
+            return MorningAnalysisResult(analysis=analysis, generated=True)
 
     async def latest_analysis(self, user_id: uuid.UUID, subject_date: date) -> Analysis | None:
         return cast(

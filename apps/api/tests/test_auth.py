@@ -1,5 +1,6 @@
 """Tests for passwordless activation, device verification, and revocation."""
 
+import asyncio
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -9,7 +10,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete, func, select, text
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from structlog.testing import capture_logs
 
 from src.auth import generate_opaque_token, hash_token, require_admin
@@ -17,10 +19,6 @@ from src.database import get_db
 from src.main import app
 from src.models.profile import Profile, UserRole
 from src.models.refresh_token import RefreshToken
-
-
-def _now() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def _make_user(role: UserRole = UserRole.player) -> Profile:
@@ -32,18 +30,6 @@ def _make_user(role: UserRole = UserRole.player) -> Profile:
     user.deleted_at = None
     user.is_active = True
     return user
-
-
-def _make_activation_record(user_id: uuid.UUID, code: str, *, expired: bool = False) -> MagicMock:
-    record = MagicMock(spec=RefreshToken)
-    record.id = uuid.uuid4()
-    record.user_id = user_id
-    record.token_hash = hash_token(code)
-    record.purpose = "activation"
-    record.used_at = None
-    record.revoked_at = None
-    record.expires_at = _now() - timedelta(minutes=1) if expired else _now() + timedelta(minutes=30)
-    return record
 
 
 def _stub_db(execute_results: list[object]) -> AsyncMock:
@@ -93,8 +79,7 @@ async def test_activate_success_mints_device_token_without_logging_credentials(
 ) -> None:
     user = _make_user(role=UserRole.admin)
     code = "activate-me-once"
-    code_record = _make_activation_record(user.id, code)
-    mock_db = _stub_db([_scalar(code_record), _scalar(user)])
+    mock_db = _stub_db([_scalar(user.id), _scalar(user)])
 
     with capture_logs() as logs:
         async with _override_db(mock_db):
@@ -108,7 +93,10 @@ async def test_activate_success_mints_device_token_without_logging_credentials(
     data = response.json()
     raw_device_token = data["device_token"]
     assert data["player"]["display_name"] == "Test User"
-    assert code_record.used_at is not None
+    consume_statement = mock_db.execute.await_args_list[0].args[0]
+    consume_params = consume_statement.compile().params
+    assert "activation" in consume_params.values()
+    assert hash_token(code) in consume_params.values()
 
     added = mock_db.add.call_args[0][0]
     assert isinstance(added, RefreshToken)
@@ -121,9 +109,8 @@ async def test_activate_success_mints_device_token_without_logging_credentials(
 
 
 async def test_activate_rejects_expired_code(client: AsyncClient) -> None:
-    user = _make_user()
     code = "expired-code"
-    mock_db = _stub_db([_scalar(_make_activation_record(user.id, code, expired=True))])
+    mock_db = _stub_db([_scalar(None)])
 
     async with _override_db(mock_db):
         response = await client.post("/api/v1/auth/activate", json={"code": code})
@@ -139,6 +126,67 @@ async def test_activate_rejects_unknown_code(client: AsyncClient) -> None:
         response = await client.post("/api/v1/auth/activate", json={"code": "unknown-code"})
 
     assert response.status_code == 401
+
+
+async def test_concurrent_activation_consumes_code_once_and_mints_one_device(
+    db_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    code = generate_opaque_token()
+    async with session_factory() as session:
+        await session.execute(text("SET search_path TO coach, public"))
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Atomic Activation",
+                role=UserRole.player,
+                timezone="UTC",
+                is_active=True,
+            )
+        )
+        session.add(
+            RefreshToken(
+                user_id=user_id,
+                token_hash=hash_token(code),
+                purpose="activation",
+                expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=30),
+            )
+        )
+        await session.commit()
+
+    async def _db_override() -> AsyncGenerator[AsyncSession, None]:
+        async with session_factory() as session:
+            await session.execute(text("SET search_path TO coach, public"))
+            try:
+                yield session
+            finally:
+                await session.rollback()
+
+    app.dependency_overrides[get_db] = _db_override
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
+            first, second = await asyncio.gather(
+                http.post("/api/v1/auth/activate", json={"code": code}),
+                http.post("/api/v1/auth/activate", json={"code": code}),
+            )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert sorted((first.status_code, second.status_code)) == [200, 401]
+    async with session_factory() as session:
+        await session.execute(text("SET search_path TO coach, public"))
+        device_count = await session.scalar(
+            select(func.count())
+            .select_from(RefreshToken)
+            .where(
+                RefreshToken.user_id == user_id,
+                RefreshToken.purpose == "device",
+            )
+        )
+        assert device_count == 1
+        await session.execute(delete(Profile).where(Profile.id == user_id))
+        await session.commit()
 
 
 async def test_me_profile_accepts_device_token(client: AsyncClient) -> None:

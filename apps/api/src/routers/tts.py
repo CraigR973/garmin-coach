@@ -19,15 +19,17 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import CurrentUser
 from src.config import settings
 from src.database import get_db
+from src.rate_limit import tts_synthesis_limit
 from src.services.piper_tts import PiperTTSError, synthesize_speech
 from src.services.tts_cache import MAX_TEXT_LENGTH, cache_get, cache_key, cache_put
+from src.services.workload_budget import workload_slot
 
 router = APIRouter(prefix="/api/v1/tts", tags=["tts"])
 
@@ -73,7 +75,8 @@ async def set_hosted_tts_consent(
 
 
 @router.post("/synthesize")
-async def synthesize(body: SynthesizeBody, player: CurrentUser) -> Response:
+@tts_synthesis_limit
+async def synthesize(body: SynthesizeBody, request: Request, player: CurrentUser) -> Response:
     if not player.hosted_tts_consent:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -95,11 +98,12 @@ async def synthesize(body: SynthesizeBody, player: CurrentUser) -> Response:
         return Response(content=cached, media_type="audio/wav")
 
     try:
-        result = await synthesize_speech(
-            model_path=settings.piper_voice_model_path,
-            config_path=settings.piper_voice_config_path,
-            text=text,
-        )
+        async with workload_slot(workload="tts", user_id=player.id):
+            result = await synthesize_speech(
+                model_path=settings.piper_voice_model_path,
+                config_path=settings.piper_voice_config_path,
+                text=text,
+            )
     except PiperTTSError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

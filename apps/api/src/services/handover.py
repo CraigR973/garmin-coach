@@ -77,6 +77,7 @@ from src.services.trends import (
     TrendsService,
     year_on_year_json,
 )
+from src.services.workload_budget import workload_slot
 
 PROMPT_VERSION = "handover-v1-2026-06-23"
 PACKET_VERSION = 1
@@ -644,10 +645,11 @@ class HandoverService:
         user_prompt = build_handover_user_prompt(preview.packet)
         review_client = client or AnthropicReviewClient(system_prompt=HANDOVER_SYSTEM_PROMPT)
         try:
-            generation = await review_client.generate(
-                context_packet=preview.packet,
-                user_prompt=user_prompt,
-            )
+            async with workload_slot(workload="anthropic", user_id=player.id):
+                generation = await review_client.generate(
+                    context_packet=preview.packet,
+                    user_prompt=user_prompt,
+                )
         except ReviewError as exc:  # re-surface under the batch's own error type
             raise HandoverError(str(exc)) from exc
 

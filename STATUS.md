@@ -6,11 +6,15 @@
 
 ## Now
 
-**2026-07-26 — Batch 160 shipped via PR #189, squash `a0dd28c`; production verified.** Garmin Coach now accepts only revocable opaque device tokens: the PIN/JWT endpoints, helpers, dependencies, frontend fallback, refresh rotation, lockout columns, and Railway JWT secrets are gone. Migration `023` is live; a read-only production check confirmed Alembic head `023`, zero legacy profile columns, zero unrevoked legacy refresh credentials, no `purpose` default, and all nine active device credentials retained. Branch, PR-context, and post-merge CI passed all seven jobs; Vercel preview/production reached READY; Railway direct and Vercel same-origin health served exact SHA `a0dd28c`; web `/access` returned 200; login/refresh returned 404 direct and proxied; unauthenticated `me`/`revoke` returned 401; Vercel's one-hour runtime-error scan was clean. Decision #240. **Gotcha:** activation redemption remains non-atomic until Batch 161; do not deliberately open one single-use link concurrently on multiple tabs/devices. **Next:** `/batch-start 161`.
+**2026-07-26 — Batch 161 implementation ready on `fix/batch-161-concurrency-budgets`; not promoted.** Activation consumption is one atomic `UPDATE … RETURNING`, and the PWA coalesces StrictMode/remount activation calls. Migration `024` adds durable paid-generation identities and reclaimable leases; artifact-scoped advisory locks make identical morning/post-session requests share one stored analysis and paid call while changed input/prompt versions keep Decision #219 history. All Anthropic/Piper boundaries now have fail-fast per-user/global concurrency slots, and user-triggered paid/TTS routes have shared authenticated rate limits across device tokens. Local gates pass: backend **663 passed / 271 expected PostgreSQL skips**, full web **359 passed**, Ruff/format/mypy/TypeScript/lint/build clean (the six known Fast Refresh warnings remain), and Alembic reports single head `024`. The separate-session PostgreSQL race/lease cases are present but require CI's database. Decision #241. **Next:** review branch CI, then run `/phase-closeout 161` only when explicitly requested.
 
 ---
 
 ## Log
+
+**2026-07-26 — Batch 161 implementation ready:** atomic activation plus a StrictMode client guard; migration `024` generation identities/leases with artifact-scoped advisory locking; per-user/global paid-work concurrency and shared authenticated rate limits; DB concurrency, idempotency, cache-bypass, revocation, and timeout-recovery coverage. Local backend/web/static gates are green; PostgreSQL race cases await branch CI. Branch not promoted. Decision #241.
+
+---
 
 **2026-07-26 — Batch 160 shipped:** PR #189 / squash `a0dd28c`; device-token-only auth, migration `023`, current-device revoke, recovery tooling/runbook, and PIN/JWT/schema/config removal are live. Branch-push, PR-context, and post-merge `main` CI passed all seven jobs; Vercel preview/production reached READY; exact-SHA Railway/Vercel health, web `/access`, direct/proxied legacy-route 404s, unauthenticated device-route 401s, and Vercel runtime-error smokes passed. Production schema verification found head `023`, no legacy auth columns/default, zero unrevoked refresh credentials, and nine active device credentials; the two Railway JWT secrets were then removed. Batch 161 is next.
 

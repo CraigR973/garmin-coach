@@ -7,20 +7,24 @@ never calls the (faked) Piper synthesis service unless both hold.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from fastapi import Depends
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker
 
-from src.auth import get_current_user
+from src.auth import generate_opaque_token, get_current_user, hash_token
 from src.config import settings
 from src.database import get_db
 from src.main import app
 from src.models.profile import Profile, UserRole
+from src.models.refresh_token import RefreshToken
 from src.routers import tts as tts_router
 from src.services import tts_cache
 from src.services.piper_tts import PiperTTSError, PiperTTSResult
@@ -164,13 +168,130 @@ async def test_synthesize_returns_audio_and_caches(
 
 
 @pytest.mark.asyncio
+async def test_unique_tts_input_is_refused_while_user_slot_busy_then_recovers(
+    db_conn: AsyncConnection,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _point_settings_at_existing_model(monkeypatch, tmp_path)
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls = 0
+
+    async def _blocking_synthesize(**kwargs: object) -> PiperTTSResult:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            started.set()
+            await release.wait()
+        return PiperTTSResult(
+            audio_bytes=f"wav-{calls}".encode(),
+            content_type="audio/wav",
+        )
+
+    monkeypatch.setattr(tts_router, "synthesize_speech", _blocking_synthesize)
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = await _seed_player(session_factory, hosted_tts_consent=True)
+
+    app.dependency_overrides[get_current_user] = _user_override(user_id)
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            first_task = asyncio.create_task(
+                client.post("/api/v1/tts/synthesize", json={"text": "first unique input"})
+            )
+            await asyncio.wait_for(started.wait(), timeout=5)
+            busy = await client.post(
+                "/api/v1/tts/synthesize",
+                json={"text": "second unique input"},
+            )
+            release.set()
+            first = await first_task
+            recovered = await client.post(
+                "/api/v1/tts/synthesize",
+                json={"text": "second unique input"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert first.status_code == 200
+    assert busy.status_code == 429
+    assert "already running" in busy.json()["detail"]
+    assert recovered.status_code == 200
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_revoked_device_cannot_drive_tts_work(
+    db_conn: AsyncConnection,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _point_settings_at_existing_model(monkeypatch, tmp_path)
+    calls = 0
+
+    async def _fake_synthesize(**kwargs: object) -> PiperTTSResult:
+        nonlocal calls
+        calls += 1
+        return PiperTTSResult(audio_bytes=b"wav", content_type="audio/wav")
+
+    monkeypatch.setattr(tts_router, "synthesize_speech", _fake_synthesize)
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = await _seed_player(session_factory, hosted_tts_consent=True)
+    raw_token = generate_opaque_token()
+    async with session_factory() as session:
+        session.add(
+            RefreshToken(
+                user_id=user_id,
+                token_hash=hash_token(raw_token),
+                purpose="device",
+                expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=365),
+            )
+        )
+        await session.commit()
+
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = {"Authorization": f"Bearer {raw_token}"}
+            first = await client.post(
+                "/api/v1/tts/synthesize",
+                json={"text": "before revocation"},
+                headers=headers,
+            )
+            async with session_factory() as session:
+                row = await session.scalar(
+                    select(RefreshToken).where(RefreshToken.token_hash == hash_token(raw_token))
+                )
+                assert row is not None
+                row.revoked_at = datetime.now(UTC).replace(tzinfo=None)
+                await session.commit()
+            revoked = await client.post(
+                "/api/v1/tts/synthesize",
+                json={"text": "after revocation"},
+                headers=headers,
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert first.status_code == 200
+    assert revoked.status_code == 401
+    assert calls == 1
+
+
+@pytest.mark.asyncio
 async def test_synthesize_502_on_upstream_failure(
     db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _point_settings_at_existing_model(monkeypatch, tmp_path)
+    calls = 0
 
     async def _failing_synthesize(**kwargs: object) -> PiperTTSResult:
-        raise PiperTTSError("boom")
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise PiperTTSError("Piper synthesis timed out")
+        return PiperTTSResult(audio_bytes=b"recovered", content_type="audio/wav")
 
     monkeypatch.setattr(tts_router, "synthesize_speech", _failing_synthesize)
 
@@ -182,10 +303,16 @@ async def test_synthesize_502_on_upstream_failure(
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.post("/api/v1/tts/synthesize", json={"text": "hello"})
+            recovered = await client.post(
+                "/api/v1/tts/synthesize",
+                json={"text": "hello after timeout"},
+            )
     finally:
         app.dependency_overrides.clear()
 
     assert response.status_code == 502, response.text
+    assert recovered.status_code == 200, recovered.text
+    assert recovered.content == b"recovered"
 
 
 @pytest.mark.asyncio

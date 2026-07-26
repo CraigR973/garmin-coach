@@ -8,7 +8,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +26,7 @@ from src.models.coaching import (
     Sleep,
 )
 from src.models.profile import Profile
+from src.rate_limit import paid_generation_limit
 from src.routers.feedback import FeedbackOut, serialize_feedback
 from src.services.anthropic_text import AnthropicApiError, anthropic_user_message
 from src.services.breathwork_brief import BreathworkBriefResult
@@ -1485,9 +1486,11 @@ async def get_daily_loop(
 
 
 @router.put("/{subject_date}/manual-entry", response_model=DailyLoopEnvelope)
+@paid_generation_limit
 async def upsert_manual_entry(
     subject_date: date,
     body: ManualEntryBody,
+    request: Request,
     player: CurrentUser,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
@@ -1549,10 +1552,12 @@ async def upsert_workout_adherence(
     "/{subject_date}/activities/{activity_id}/post-ride-check-in",
     response_model=DailyLoopEnvelope,
 )
+@paid_generation_limit
 async def upsert_post_ride_checkin(
     subject_date: date,
     activity_id: uuid.UUID,
     body: PostRideCheckInBody,
+    request: Request,
     player: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> DailyLoopEnvelope:

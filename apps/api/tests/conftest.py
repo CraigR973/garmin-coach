@@ -21,8 +21,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 def reset_rate_limits() -> None:
     """Reset in-memory rate-limit storage before every test for hermetic runs."""
     from src.rate_limit import limiter
+    from src.services.workload_budget import reset_workload_budgets
 
     limiter._storage.reset()
+    reset_workload_budgets()
 
 
 DATABASE_URL = os.environ.get("DATABASE_URL")

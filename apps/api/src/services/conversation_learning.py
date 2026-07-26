@@ -36,6 +36,7 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile
 from src.services.anthropic_text import generate_anthropic_text
+from src.services.workload_budget import workload_slot
 
 LEARNED_CONTEXT_SECTION = "learned_context"
 SOURCE_WINDOW_DAYS = 30
@@ -489,10 +490,11 @@ class ConversationLearningService:
             return []
         existing_statements = await self._existing_statements(player.id)
         extractor = client or AnthropicConversationLearningClient()
-        output = await extractor.generate(
-            sources=sources,
-            existing_statements=existing_statements,
-        )
+        async with workload_slot(workload="anthropic", user_id=player.id):
+            output = await extractor.generate(
+                sources=sources,
+                existing_statements=existing_statements,
+            )
         candidates = filter_candidates(
             parse_extraction_output(output),
             sources=sources,

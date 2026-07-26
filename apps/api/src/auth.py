@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 import structlog
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -69,6 +69,7 @@ async def _resolve_device_token(raw_token: str, db: AsyncSession) -> Profile | N
 
 
 async def get_current_user(
+    request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(_bearer)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Profile:
@@ -77,6 +78,7 @@ async def get_current_user(
     user = await _resolve_device_token(token, db)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    request.state.current_user_id = str(user.id)
     return user
 
 

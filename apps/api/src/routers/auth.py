@@ -61,17 +61,22 @@ async def activate(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ActivateResponse:
     """Exchange a single-use activation code for a long-lived device token."""
-    code_record = (
+    now = _now()
+    user_id = (
         await db.execute(
-            select(RefreshToken).where(
+            update(RefreshToken)
+            .where(
                 RefreshToken.token_hash == hash_token(body.code),
                 RefreshToken.purpose == "activation",
                 RefreshToken.used_at.is_(None),
                 RefreshToken.revoked_at.is_(None),
+                RefreshToken.expires_at >= now,
             )
+            .values(used_at=now)
+            .returning(RefreshToken.user_id)
         )
     ).scalar_one_or_none()
-    if code_record is None or code_record.expires_at < _now():
+    if user_id is None:
         log.info("activation failed — invalid or expired code")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -81,7 +86,7 @@ async def activate(
     user = (
         await db.execute(
             select(Profile).where(
-                Profile.id == code_record.user_id,
+                Profile.id == user_id,
                 Profile.deleted_at.is_(None),
                 Profile.is_active.is_(True),
             )
@@ -93,7 +98,6 @@ async def activate(
             detail="Invalid or expired activation code",
         )
 
-    code_record.used_at = _now()
     raw_token = generate_opaque_token()
     device_hint = request.headers.get("User-Agent", "")[:100]
     db.add(
@@ -103,7 +107,7 @@ async def activate(
             token_hash=hash_token(raw_token),
             purpose="device",
             device_hint=device_hint,
-            expires_at=_now() + DEVICE_TOKEN_TTL,
+            expires_at=now + DEVICE_TOKEN_TTL,
         )
     )
     await db.commit()

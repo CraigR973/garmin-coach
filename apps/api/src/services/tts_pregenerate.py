@@ -22,6 +22,7 @@ from src.models.profile import Profile
 from src.services.markdown_speech import markdown_to_speech_text
 from src.services.piper_tts import PiperTTSError, synthesize_speech
 from src.services.tts_cache import MAX_TEXT_LENGTH, cache_get, cache_key, cache_put
+from src.services.workload_budget import WorkloadBudgetExceeded, workload_slot
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -42,12 +43,13 @@ async def pregenerate_brief_audio(player: Profile, analysis: Analysis) -> None:
         return
 
     try:
-        result = await synthesize_speech(
-            model_path=settings.piper_voice_model_path,
-            config_path=settings.piper_voice_config_path,
-            text=text,
-        )
-    except PiperTTSError as exc:
+        async with workload_slot(workload="tts", user_id=player.id):
+            result = await synthesize_speech(
+                model_path=settings.piper_voice_model_path,
+                config_path=settings.piper_voice_config_path,
+                text=text,
+            )
+    except (PiperTTSError, WorkloadBudgetExceeded) as exc:
         log.warning("tts_pregenerate_failed", analysis_id=str(analysis.id), error=str(exc))
         return
 
