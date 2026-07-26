@@ -1,12 +1,205 @@
 # Coaching-Integrity Audit — Garmin Coach
 
-**Date:** 2026-07-10 · **Auditor lens:** exercise physiologist + cycling coach ·
-**Scope:** how the app derives its scores and verdicts, and whether the run of
-Mark-driven feedback batches has eroded the guardrails.
+**Original audit:** 2026-07-10 · **This refresh:** 2026-07-26 (Batch 155) ·
+**Auditor lens:** exercise physiologist + cycling coach ·
+**Scope of refresh:** re-run the 2026-07-10 lenses against current code, audit the
+four new coaching-brain surfaces shipped since (Batches 148 / 150 / 151 / 152), and
+re-grade against real `coach`-schema reads for 2026-07-10 → 2026-07-26.
 **Status:** internal / candid — this document names the exact input-manipulation
-vectors. Not for Mark. (A Mark-safe scorecard exists separately.)
+vectors. Not for Mark. (A Mark-safe scorecard is at
+`docs/reviews/BATCH_155_MARK_SCORECARD.md`.)
 
 ---
+
+## 2026-07-26 Refresh (Batch 155)
+
+### Refresh bottom line
+
+**Nothing regressed.** The four new brain-surface changes did not open a single new
+path to the verdict, and two of them (the ERG honest-note and the factual
+training-week grounding) actively *raise* honesty. The two structural gaps the
+original audit named — **F1** (self-recalibrating baselines) and **F2** (training
+load cannot move the light) — are **both still open, unchanged in code**; F2 now has
+its first *real-morning* instance (07-24) rather than only a synthetic probe. One
+new low-severity item (**F9**: confirmed memory has no volume cap or decay). The
+acute defences got fresh real-world confirmation: a genuine four-Red cluster fired
+on real signals, the soft-sleep override stayed rare (1 / 16), and 19 real chat
+turns show substantive dialogue with **zero** "just tell me I'm fine" gaming.
+
+**Grade: B+ (held).** Acute honesty reconfirmed in the wild; the chronic F1/F2 gaps
+are unchanged, and closing them is still what would move this to A−.
+
+### F1 / F2 — still the open gaps (re-verified in current code)
+
+- **F1 — HIGH · baselines still self-recalibrate. OPEN, unchanged.** The
+  soft-sleep→Green override still floors readiness at Mark's *own* rolling median
+  (`_soft_sleep_recovery_override` → `readiness_floor = readiness_center`,
+  [morning_analysis.py:1696](apps/api/src/services/morning_analysis.py:1696)),
+  resting-HR "in band" still keys off his personal quartiles
+  ([personal_baselines.py:49-62](apps/api/src/services/personal_baselines.py:49)),
+  and the window is still `DEFAULT_WINDOW_DAYS = 84`
+  ([metric_baselines.py:36](apps/api/src/services/metric_baselines.py:36)). No
+  absolute-anchor constant exists anywhere in the verdict/baseline code. The
+  categorical Garmin Low/Poor backstop (`readiness_level not in {"low","poor"}`)
+  and the absolute Red floor (age-adjusted sleep < 60) still hold, so the finding
+  is unchanged — neither closed nor worsened.
+- **F2 — HIGH · load still cannot move the light. OPEN, unchanged — now seen in
+  real data.** `_morning_verdict` still takes no ACWR/ramp parameter (only the
+  advisory `yesterday_load`,
+  [morning_analysis.py:1450-1461](apps/api/src/services/morning_analysis.py:1450));
+  a hard prior day only appends a plan-note when the day is already non-Green
+  ([:1547-1550](apps/api/src/services/morning_analysis.py:1547)); and the one place
+  load enters the ladder *relaxes* rather than caps — a Low Garmin readiness with
+  clean recovery signals + any load present is read as "load-driven" and escapes the
+  auto-Amber ([:1503-1508,1522](apps/api/src/services/morning_analysis.py:1503)).
+  **Real instance (07-24):** Garmin readiness **LOW** + yesterday **HARD** →
+  **Green**, `readinessInterpretation="load_driven"`, reason *"Garmin readiness is
+  Low but recovery signals justify a load-driven read."* The original audit could
+  prove F2 only with synthetic Probe 5; it now fires on a live morning. (The
+  `load_driven` path predates the 07-10 audit — commit `743770f`, 2026-07-02 — so
+  this is F2 unchanged, not a new regression.)
+- **F3–F7 unchanged.** The verdict ladder is structurally identical
+  ([:1514-1540](apps/api/src/services/morning_analysis.py:1514)): one-directional
+  age-sleep credit (F3), first-match with no stacking (F4), `None`-subjective and
+  `None`-HRV still read as passing (F5), chronic surveillance still advisory-only
+  (F6), corrections still fed as ground truth with no decay (F7). F7 is **active in
+  real data** — Mark repeatedly corrected the watch's sleep-start (07-19), and the
+  07-23 read acknowledges it (*"you've flagged again that the watch mis-detected
+  sleep start"*) — but it steered only narrative; 07-19 stayed **Red**.
+- **F8 — still RESOLVED.** See the refreshed Prong B below.
+
+### New coaching surfaces (155.2) — integrity assessment
+
+**(a) ERG-always trust (Batch 152) — sound; a small honesty *credit*.** The
+instruction to "treat ERG-held power as delivered … never frame ERG-held power as
+under-performance" is *physically accurate* (an ERG-locked trainer holds the target
+watt), and it is grounded in **real recorded execution data**, not the prescription:
+`intervals`/`execution` come from `segment_ride_intervals(timeseries, …,
+actual_laps=…)` + `activity.avg_power_watts`
+([post_workout_analysis.py:335-343](apps/api/src/services/post_workout_analysis.py:335)),
+so genuine under-performance still surfaces via each work interval's `fade` /
+`hrDriftPct` / `workoutAdherence`. The trust only removes the false-negative of
+reading a structurally-low *whole-ride average* as pacing failure. The weekly surge
+honest-note (`prescribedErgMode == "off"` ridden in ERG) is calibrated as *one plain
+line, no change-suggestion*
+([:97-101](apps/api/src/services/post_workout_analysis.py:97)) — it tells Mark a
+mildly unwelcome truth (ERG softened the neuromuscular hit) without nagging. **No
+masking of under-performance or over-reach** (over-reach is an FTP / block-progression
+concern, not a read concern). Real data: the 07-25 indoor VO₂ read correctly labels
+whole-ride avg *"207 W (context only — structured session)"*; the surge honest-note
+path is not yet exercised (07-25 was a 2-min VO₂ protocol, not a 30/15 surge).
+*Dependency to preserve:* the trust stays honest only because `execution` is real
+recorded data (Batch 145) — never grade an ERG session off the prescription.
+
+**(b) Conversational learning (Batch 151) — well-defended; cannot reach the light.**
+Five independent layers hold: (1) sources are **user-authored only**
+(`BriefMessage.role == "user"`, own notes, own corrections,
+[conversation_learning.py:328-329](apps/api/src/services/conversation_learning.py:328)),
+so the coach can never learn its own reassurance; (2) a deterministic filter rejects
+verdict / threshold / Red-VO2 / data-quality / L-R-balance / reliability content
+*and* the explicit sycophancy patterns ("just tell/mark me fine/green/ready", "tell
+me I'm fine"), applied to both the statement and every evidence quote
+([:177-197,262-295](apps/api/src/services/conversation_learning.py:177)); (3)
+evidence must be a **verbatim** quote from a real user source; (4) the accept gate is
+confirmed-only and re-validates edited text (`statement_is_durable` → HTTP 422,
+[:609-617](apps/api/src/services/conversation_learning.py:609)), user-scoped,
+idempotent; (5) accepted items land in `learned_context`, packet-marked
+`classificationImpact:"none"` with an explicit "cannot alter verdicts/thresholds"
+rule ([learned_context.py:13-20](apps/api/src/services/learned_context.py:13)), and
+**`_morning_verdict` never reads it**. The sycophancy trap ("I feel great / just
+tell me I'm fine") yields *no* durable item. **Residual (F9, LOW):**
+`learned_context_packet` returns *all* confirmed items with no volume cap and no
+decay/aging — over long accumulation this could grow the prompt and subtly warm
+prose tone (human-curated, cannot touch the light); parallels F7. Real data: **0
+proposals have ever been distilled** (only the empty seed row), so there is no
+accumulation to drift yet — the assessment is code-level plus "unused in the wild."
+
+**(c) Post-workout follow-up chat (Batch 150) — structurally advisory-only;
+non-gaming on the verdict.** The plan-change proposal affordance is gated to
+`analysis_type == "morning"`
+([brief_chat.py:170-174,272](apps/api/src/services/brief_chat.py:170)), so a
+completed-session chat can *never* emit a proposal — confirmed in real data
+(`proposals_on_nonmorning_chat = 0`). The chat inherits the shared floors (no
+VO2-on-Red, no L/R balance, local times, no skipped/holiday-as-live,
+[:65-68](apps/api/src/services/brief_chat.py:65)) and cannot touch the verdict — it
+is immutable data in the packet. The 19 real user turns are substantive coaching
+dialogue and factual corrections; **none** is a "just tell me I'm fine" attempt.
+**Low-severity hardening note:** unlike the post-workout *read* prompt ("this is the
+one place you must not be sycophantic"), the chat prompt carries no explicit
+anti-sycophancy directive — a tone-only residual, since the verdict is immutable.
+
+**(d) Training-week grounding (Batch 148) — a strength; cannot confabulate.** The
+deterministic assembler populates a day's `executed` **only** from real Garmin
+activities
+([training_week.py:248-256](apps/api/src/services/training_week.py:248)), and
+`_day_status` returns `"executed"` only when a real activity is present
+([:346-362](apps/api/src/services/training_week.py:346)); a moved-away, skipped,
+removed, or merely-planned session resolves to its own honest status and can never
+read as executed. The packet's `grounding` block tells the model "executed = the
+only completion truth" and refuses to infer that a change followed an app suggestion
+without a durable audit link. This is exactly the factual grounding that *prevents*
+narrative confabulation. Real reads confirm honest deviation verdicts in the wild
+(07-10 skip flagged `diverged: true`; 07-21 Red-day flagged; 07-23 "approved
+adjustment, not a deviation").
+
+### Prong B refresh — real `coach`-schema reads, 2026-07-10 → 2026-07-26
+
+Read-only queries against Mark's live data (garmin-coach tables live in the `coach`
+schema, not `public`).
+
+```
+MORNING VERDICT DISTRIBUTION (n=16 mornings; 07-13 has no analysis):
+  Green 11 | Amber 1 | Red 4
+  Genuine 4-Red cluster 07-19..07-22 on real HRV-unbalanced / age-adj<60 signals
+  -> the acute Red gate fires honestly; bad days are not suppressed.
+
+SOFT-SLEEP -> GREEN OVERRIDE: 1 / 16 (07-16, age-adj 61 -> Green) -> rare (F1 surface)
+
+NARRATIVE vs LIGHT (every non-Green + override morning): no softening. Examples --
+  07-16 Green(override): "Garmin scores this Poor (raw 57; age-adjusted 61) ...
+                          this is a recovery override situation"
+  07-21 Red : answers his snack question honestly; "Age-adjusted sleep is below 60"
+  07-22 Red : great sleep (age-adj 83) but Red on unbalanced HRV -- NOT gameable
+              by a good sleep score
+  07-23 Amber: "Garmin readiness is Low without enough recovery evidence"
+
+F2 IN THE WILD (new evidence):
+  07-24 Green despite readiness LOW + yesterday HARD; readinessInterpretation=
+        "load_driven" -> load relaxed the Low-readiness Amber (F2's exact shape)
+
+ERG (152) IN THE WILD:
+  07-25 indoor VO2: whole-ride avg "207 W (context only -- structured session)";
+        has_erg_profile=true -> guard fires. Surge honest-note not yet exercised.
+
+LEARNING (151) IN THE WILD:
+  conversation_learning_proposals: 0 total (feature live, never run)
+  proposals_on_nonmorning_chat: 0 -> advisory-only gate holds
+
+CHAT (150) IN THE WILD:
+  19 user turns: substantive Q&A + factual corrections; 0 sycophancy attempts
+```
+
+### Remediation stubs (diagnose-only — no code changed in Batch 155)
+
+- **R155-A (= close F2):** give the verdict a load input with a hard cap (ACWR ≥
+  ~1.5, or Garmin recovery-time over a threshold, caps the day at Amber) so load can
+  *cap*, not only relax. 07-24 is the motivating real case. **HIGH.**
+- **R155-B (= close F1):** anchor the personal floors with an absolute floor (e.g.
+  never treat readiness < 50 as "at median") and/or alarm on the 84-day median
+  *trend* so a slow slide is visible. **HIGH.**
+- **R155-C (F9):** cap and/or age `learned_context` items in the packet, and decay
+  old corrections (F7), so confirmed memory cannot grow or warm tone unboundedly.
+  **LOW.**
+- **R155-D:** add an explicit "do not cave to reassurance pressure" line to the
+  brief-chat system prompt, matching the post-workout read. **LOW.**
+
+(F3–F6 remediation stubs remain as recorded in the 2026-07-10 audit below.)
+
+---
+
+> **The sections below are the original 2026-07-10 audit — the baseline this refresh
+> updates.** F1 / F2 / F8 statuses above supersede their entries in the ranked
+> findings; F3–F7 are unchanged.
 
 ## Bottom line
 
