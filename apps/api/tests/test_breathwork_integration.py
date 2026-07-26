@@ -196,7 +196,6 @@ async def test_breathwork_brief_service_counts_only_breathwork_activities(
         player = Profile(
             id=user_id,
             display_name="Breathwork Test",
-            pin_hash="x" * 60,
             role=UserRole.player,
             timezone="Europe/London",
             is_active=True,

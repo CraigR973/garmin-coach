@@ -216,7 +216,6 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
         player = Profile(
             id=user_id,
             display_name="Morning Analysis Test",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             latitude=55.6045,
@@ -402,7 +401,6 @@ async def test_morning_packet_loads_holiday_window_and_suppresses_skipped_ride(
         player = Profile(
             id=user_id,
             display_name="Holiday Morning Test",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
@@ -468,7 +466,6 @@ async def test_generate_and_store_does_not_persist_truncated_morning_analysis(
         player = Profile(
             id=user_id,
             display_name="Morning Analysis Truncation Test",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             latitude=55.6045,
@@ -509,7 +506,6 @@ async def test_amber_morning_leads_with_week_swap_and_keeps_softening(
         player = Profile(
             id=user_id,
             display_name="Swap First Test",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             latitude=55.6045,
@@ -628,7 +624,6 @@ async def test_green_morning_has_no_swap_suggestion(db_conn: AsyncConnection) ->
         player = Profile(
             id=user_id,
             display_name="Green No Swap Test",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             latitude=55.6045,
@@ -715,7 +710,6 @@ async def test_cautious_morning_says_no_vo2_this_week_when_it_cannot_be_repatche
         player = Profile(
             id=user_id,
             display_name="No VO2 This Week Test",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             latitude=55.6045,

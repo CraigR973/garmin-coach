@@ -1,6 +1,10 @@
 # Auth simplification — passwordless device tokens (Option B)
 
-**Status:** Phases 1-2 shipped and live in production (PR #18, #19 — DECISIONS #77/#79); device tokens are now the default sign-in, PIN demoted to a fallback toggle. Phase 3 (destructive) is the only step left, to land after a soak. · **Decision:** `DECISIONS.md` #73–74 · **Origin:** `docs/reviews/v1-v2-review.md` (P1-1, P1-3, P2-1, P3-1/2/3)
+**Status:** Phases 1-2 are live (PR #18/#19 — DECISIONS #77/#79);
+Phases 3-4 are implemented together in Batch 160 (Decision #240), pending
+promotion. Device tokens are the sole credential in the review branch. ·
+**Decision:** `DECISIONS.md` #73–74/#240 · **Origin:**
+`docs/reviews/v1-v2-review.md` (P1-1, P1-3, P2-1, P3-1/2/3)
 **Date:** 2026-06-22
 
 > Replaces the inherited **display-name + 4-digit-PIN + JWT** login with a
@@ -39,9 +43,9 @@ Thereafter:  open PWA ──► every /api call carries the token ──► API 
   Profile in one indexed lookup. No JWT decode, no rotation.
 - **Provisioning** — admin-only, out-of-band. A CLI mints a **short-lived,
   single-use activation *code*** (not the durable token) and prints a
-  `…/activate#code=…` link. The durable token never travels in a shareable link,
-  and the `#fragment` keeps the code out of server/proxy logs. The PWA exchanges
-  the code once (`POST /api/v1/auth/activate`) for the device token.
+  `…/activate?code=…` link. The durable token never travels in a shareable link;
+  the PWA exchanges the short-lived code once (`POST /api/v1/auth/activate`) for
+  the device token and immediately strips it from browser history.
 - **Identity** — `token → profile`. Two users (Craig + Mark) = two tokens;
   `require_admin` still reads `profile.role`. Lost phone = revoke + mint a new link.
 
@@ -49,7 +53,7 @@ Thereafter:  open PWA ──► every /api call carries the token ──► API 
 
 ### Phase 1 — Add the device-token path alongside PIN (additive, fully reversible) — ✅ DONE (PR #18)
 - **CLI:** `python -m src.activate --profile <name>` → mints a single-use code,
-  prints the `…/activate#code=…` link. Bootstraps your own device too (no
+  prints the `…/activate?code=…` link. Bootstraps your own device too (no
   chicken-and-egg). Activation codes can live in the existing token table with a
   `purpose` discriminator + `used_at` (small additive migration) or a tiny new table.
 - **API:** `POST /api/v1/auth/activate {code}` → validate code (unused, unexpired),
@@ -57,9 +61,9 @@ Thereafter:  open PWA ──► every /api call carries the token ──► API 
   one route.
 - **API:** teach `auth.get_current_user` to accept **either** today's PIN-issued JWT
   **or** a device token (try JWT decode; on failure, do the token-hash lookup).
-- **Frontend:** `pages/ActivatePage.tsx` at `/activate` — read `location.hash`, call
-  activate, store the token via `lib/tokens.ts`, `history.replaceState` to strip the
-  hash, redirect to dashboard.
+- **Frontend:** `pages/ActivatePage.tsx` at `/activate` — read the `code` query
+  parameter, call activate, store the token via `lib/tokens.ts`, then redirect to
+  strip the activation code from browser history.
 - **Acceptance:** activate your own phone via a link; PIN login still works; existing
   tests stay green. **Reversible:** nothing removed.
 
@@ -72,7 +76,7 @@ Thereafter:  open PWA ──► every /api call carries the token ──► API 
 - **Acceptance:** Mark uses the app with no PIN; backend PIN endpoints still exist as
   a fallback. **Reversible:** re-enable the login route if needed.
 
-### Phase 3 — Delete the PIN/JWT machinery (first destructive step; after Phase 2 is stable)
+### Phase 3 — Delete the PIN/JWT machinery — ✅ IMPLEMENTED (Batch 160; not promoted)
 - **Backend remove:** `routers/auth.py` `login`/`refresh`/`logout`/`change_pin`/
   `pin_reset_request`/`pin_reset` + their schemas; the bcrypt PIN helpers and HS256
   token helpers in `auth.py` (`create/decode_*`, `hash_pin`, `verify_pin`,
@@ -88,7 +92,7 @@ Thereafter:  open PWA ──► every /api call carries the token ──► API 
   `localStorage`-token risk, so it lands here (review P2-1).
 - **Tests:** replace auth tests with device-token activate/verify/revoke coverage.
 
-### Phase 4 — Schema + config cleanup
+### Phase 4 — Schema + config cleanup — ✅ IMPLEMENTED (Batch 160; not promoted)
 - **Migration:** drop `profiles.pin_hash`, `profiles.failed_login_count`,
   `profiles.locked_until`; tidy the token table (device tokens + activation codes via
   the `purpose` discriminator). Leave the `player_pin_reset` audit enum value in place
@@ -96,7 +100,7 @@ Thereafter:  open PWA ──► every /api call carries the token ──► API 
 - **Config:** remove `jwt_access_secret` / `jwt_refresh_secret` from `config.py` and
   Railway (no JWTs remain → two fewer required secrets). Simplify CORS if fully
   same-origin.
-- **Docs:** this file → `Status: Done`; tick `DECISIONS.md` #73–74; update
+- **Docs:** this file records implementation/promotion state; update
   `ARCHITECTURE.md` (auth section), `STATUS.md`, `.env.example`.
 
 ## What gets deleted (the win)

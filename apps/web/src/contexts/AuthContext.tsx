@@ -4,13 +4,9 @@ import { clearPersistedCache } from '../lib/queryClient';
 import {
   clearApiCaches,
   clearTokens,
-  getAccessToken,
   getDeviceToken,
-  getRefreshToken,
   getStoredPlayer,
-  isAccessTokenExpired,
   storeDeviceToken,
-  storeTokens,
   type StoredPlayer,
 } from '../lib/tokens';
 
@@ -20,16 +16,12 @@ const BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? '' : 'http:
 interface AuthState {
   player: StoredPlayer | null;
   isLoading: boolean;
-  sessionUnlockRequired: boolean;
-  sessionUnlockError: string | null;
 }
 
 interface AuthContextValue extends AuthState {
-  login: (displayName: string, pin: string) => Promise<void>;
   activateDevice: (code: string) => Promise<void>;
   logout: () => Promise<void>;
   updatePlayer: (patch: Partial<StoredPlayer>) => void;
-  unlockStoredSession: (pin: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -47,47 +39,12 @@ function playerFromApiResponse(data: {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
-  const initialPlayer = getStoredPlayer();
-  const initialRequiresUnlock =
-    !!initialPlayer && !!getRefreshToken() && !getDeviceToken() && isAccessTokenExpired();
-  const [lockedPlayer, setLockedPlayer] = useState<StoredPlayer | null>(
-    initialRequiresUnlock ? initialPlayer : null,
-  );
+  const deviceToken = getDeviceToken();
+  const initialPlayer = deviceToken ? getStoredPlayer() : null;
   const [state, setState] = useState<AuthState>({
     player: initialPlayer,
     isLoading: false,
-    sessionUnlockRequired: initialRequiresUnlock,
-    sessionUnlockError: null,
   });
-
-  const login = useCallback(
-    async (displayName: string, pin: string) => {
-      setState((s) => ({ ...s, isLoading: true }));
-      try {
-        const resp = await fetch(`${BASE}/api/v1/auth/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ display_name: displayName, pin }),
-        });
-        if (!resp.ok) {
-          const err = await resp.json().catch(() => ({}));
-          throw new Error((err as { detail?: string }).detail ?? 'Login failed');
-        }
-        const data = await resp.json();
-        const player = playerFromApiResponse(data);
-        await clearApiCaches();
-        queryClient.clear();
-        clearPersistedCache();
-        storeTokens(data.access_token, data.refresh_token, player);
-        setLockedPlayer(null);
-        setState({ player, isLoading: false, sessionUnlockRequired: false, sessionUnlockError: null });
-      } catch (err) {
-        setState((s) => ({ ...s, isLoading: false }));
-        throw err;
-      }
-    },
-    [queryClient],
-  );
 
   const activateDevice = useCallback(
     async (code: string) => {
@@ -108,13 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         queryClient.clear();
         clearPersistedCache();
         storeDeviceToken(data.device_token, player);
-        setLockedPlayer(null);
-        setState({
-          player,
-          isLoading: false,
-          sessionUnlockRequired: false,
-          sessionUnlockError: null,
-        });
+        setState({ player, isLoading: false });
       } catch (err) {
         setState((s) => ({ ...s, isLoading: false }));
         throw err;
@@ -124,73 +75,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    const refreshToken = getRefreshToken();
-    if (refreshToken) {
-      fetch(`${BASE}/api/v1/auth/logout`, {
+    const token = getDeviceToken();
+    if (token) {
+      await fetch(`${BASE}/api/v1/auth/revoke`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: refreshToken }),
+        headers: { Authorization: `Bearer ${token}` },
       }).catch(() => {});
     }
     await clearTokens();
     queryClient.clear();
     clearPersistedCache();
-    setLockedPlayer(null);
-    setState({ player: null, isLoading: false, sessionUnlockRequired: false, sessionUnlockError: null });
+    setState({ player: null, isLoading: false });
   }, [queryClient]);
 
   const updatePlayer = useCallback((patch: Partial<StoredPlayer>) => {
     setState((s) => {
       if (!s.player) return s;
       const updated = { ...s.player, ...patch };
-      const access = getAccessToken();
-      const refresh = getRefreshToken();
-      const deviceToken = getDeviceToken();
-      if (deviceToken) storeDeviceToken(deviceToken, updated);
-      else if (access && refresh) storeTokens(access, refresh, updated);
+      const token = getDeviceToken();
+      if (token) storeDeviceToken(token, updated);
       return { ...s, player: updated };
     });
   }, []);
 
-  const unlockStoredSession = useCallback(
-    async (pin: string) => {
-      if (!lockedPlayer) return;
-      setState((s) => ({ ...s, isLoading: true, sessionUnlockError: null }));
-      try {
-        const resp = await fetch(`${BASE}/api/v1/auth/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ display_name: lockedPlayer.displayName, pin }),
-        });
-        if (!resp.ok) {
-          const err = await resp.json().catch(() => ({}));
-          throw new Error((err as { detail?: string }).detail ?? 'Invalid PIN');
-        }
-        const data = await resp.json();
-        const player = playerFromApiResponse(data);
-        await clearApiCaches();
-        queryClient.clear();
-        clearPersistedCache();
-        storeTokens(data.access_token, data.refresh_token, player);
-        setState({ player, isLoading: false, sessionUnlockRequired: false, sessionUnlockError: null });
-        setLockedPlayer(null);
-      } catch (err) {
-        setState((s) => ({
-          ...s,
-          isLoading: false,
-          sessionUnlockRequired: true,
-          sessionUnlockError: 'Invalid PIN. Try again or log out if this is not your account.',
-        }));
-        throw err;
-      }
-    },
-    [lockedPlayer, queryClient],
-  );
-
   return (
-    <AuthContext.Provider
-      value={{ ...state, login, activateDevice, logout, updatePlayer, unlockStoredSession }}
-    >
+    <AuthContext.Provider value={{ ...state, activateDevice, logout, updatePlayer }}>
       {children}
     </AuthContext.Provider>
   );

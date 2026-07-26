@@ -114,7 +114,6 @@ async def test_import_plan_assigns_per_date_versions(db_conn: AsyncConnection, p
             Profile(
                 id=user_id,
                 display_name="Import Test",
-                pin_hash="x" * 60,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,

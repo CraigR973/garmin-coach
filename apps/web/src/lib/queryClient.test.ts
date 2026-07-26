@@ -44,7 +44,7 @@ describe('persistOptions', () => {
 });
 
 describe('clearPersistedCache', () => {
-  it('removes the persisted cache key on logout/login', () => {
+  it('removes the persisted cache key on logout/device activation', () => {
     window.localStorage.setItem(PERSIST_KEY, JSON.stringify({ clientState: {} }));
     expect(window.localStorage.getItem(PERSIST_KEY)).not.toBeNull();
     clearPersistedCache();

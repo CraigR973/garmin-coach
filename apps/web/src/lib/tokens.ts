@@ -1,9 +1,6 @@
-const KEYS = {
-  access: 'coach_access',
-  refresh: 'coach_refresh',
-  device: 'coach_device_token',
-  player: 'coach_player',
-} as const;
+const DEVICE_TOKEN_KEY = 'coach_device_token';
+const PLAYER_KEY = 'coach_player';
+const LEGACY_AUTH_KEYS = ['coach_access', 'coach_refresh'] as const;
 
 export interface StoredPlayer {
   id: string;
@@ -12,38 +9,22 @@ export interface StoredPlayer {
   timezone: string;
 }
 
-export function storeTokens(access: string, refresh: string, player: StoredPlayer): void {
-  localStorage.removeItem(KEYS.device);
-  localStorage.setItem(KEYS.access, access);
-  localStorage.setItem(KEYS.refresh, refresh);
-  localStorage.setItem(KEYS.player, JSON.stringify(player));
-}
-
 export function storeDeviceToken(token: string, player: StoredPlayer): void {
-  localStorage.removeItem(KEYS.access);
-  localStorage.removeItem(KEYS.refresh);
-  localStorage.setItem(KEYS.device, token);
-  localStorage.setItem(KEYS.player, JSON.stringify(player));
-}
-
-export function getAccessToken(): string | null {
-  return localStorage.getItem(KEYS.access);
-}
-
-export function getRefreshToken(): string | null {
-  return localStorage.getItem(KEYS.refresh);
+  LEGACY_AUTH_KEYS.forEach((key) => localStorage.removeItem(key));
+  localStorage.setItem(DEVICE_TOKEN_KEY, token);
+  localStorage.setItem(PLAYER_KEY, JSON.stringify(player));
 }
 
 export function getDeviceToken(): string | null {
-  return localStorage.getItem(KEYS.device);
+  return localStorage.getItem(DEVICE_TOKEN_KEY);
 }
 
 export function getAuthToken(): string | null {
-  return getDeviceToken() ?? getAccessToken();
+  return getDeviceToken();
 }
 
 export function getStoredPlayer(): StoredPlayer | null {
-  const raw = localStorage.getItem(KEYS.player);
+  const raw = localStorage.getItem(PLAYER_KEY);
   if (!raw) return null;
   try {
     return JSON.parse(raw) as StoredPlayer;
@@ -62,34 +43,8 @@ export async function clearApiCaches(): Promise<void> {
 }
 
 export async function clearTokens(): Promise<void> {
-  Object.values(KEYS).forEach((k) => localStorage.removeItem(k));
+  localStorage.removeItem(DEVICE_TOKEN_KEY);
+  localStorage.removeItem(PLAYER_KEY);
+  LEGACY_AUTH_KEYS.forEach((key) => localStorage.removeItem(key));
   await clearApiCaches();
-}
-
-/** Decode JWT payload without verifying — used only to read exp for proactive refresh. */
-export function jwtPayload(token: string): Record<string, unknown> | null {
-  try {
-    const [, b64] = token.split('.');
-    return JSON.parse(atob(b64.replace(/-/g, '+').replace(/_/g, '/')));
-  } catch {
-    return null;
-  }
-}
-
-/** Returns true if the access token is expired or within 60 s of expiry. */
-export function isAccessTokenExpiringSoon(): boolean {
-  const token = getAccessToken();
-  if (!token) return false;
-  const payload = jwtPayload(token);
-  if (!payload || typeof payload.exp !== 'number') return true;
-  return payload.exp - Date.now() / 1000 < 60;
-}
-
-/** Returns true only when the access token has actually passed its expiry. */
-export function isAccessTokenExpired(): boolean {
-  const token = getAccessToken();
-  if (!token) return false;
-  const payload = jwtPayload(token);
-  if (!payload || typeof payload.exp !== 'number') return true;
-  return payload.exp < Date.now() / 1000;
 }

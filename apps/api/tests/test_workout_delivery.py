@@ -379,7 +379,6 @@ async def test_delivery_service_requires_approval_before_push(db_conn: AsyncConn
         user = Profile(
             id=user_id,
             display_name="Delivery Test",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
@@ -449,7 +448,6 @@ async def test_list_week_ahead_returns_bike_workouts_with_latest_proposal(
             Profile(
                 id=user_id,
                 display_name="Week Ahead",
-                pin_hash="x" * 60,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,
@@ -595,7 +593,6 @@ async def _seed_bike_workout(
                 Profile(
                     id=user_id,
                     display_name=f"Rail {user_id.hex[:6]}",
-                    pin_hash="x" * 60,
                     role=UserRole.admin,
                     timezone="Europe/London",
                     is_active=True,

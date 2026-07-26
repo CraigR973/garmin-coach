@@ -89,8 +89,8 @@ export function ActivatePage() {
                 <p role="alert" className="text-sm font-sans text-error">
                   {error}
                 </p>
-                <Button type="button" variant="outline" className="w-full" onClick={() => navigate('/login', { replace: true })}>
-                  Back to sign in
+                <Button type="button" variant="outline" className="w-full" onClick={() => navigate('/access', { replace: true })}>
+                  Back to device setup
                 </Button>
               </>
             )}

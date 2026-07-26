@@ -146,7 +146,6 @@ async def test_generate_and_store_post_workout_analysis_is_idempotent(
         player = Profile(
             id=user_id,
             display_name="Post Workout Test",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
@@ -258,7 +257,6 @@ async def test_generate_and_store_marks_matched_planned_ride_completed(
             Profile(
                 id=user_id,
                 display_name="Completion Test",
-                pin_hash="x" * 60,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,
@@ -318,7 +316,6 @@ async def test_generate_and_store_leaves_unplanned_ride_unlinked(
             Profile(
                 id=user_id,
                 display_name="Unplanned Ride Test",
-                pin_hash="x" * 60,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,
@@ -368,7 +365,6 @@ async def test_post_ride_checkin_is_folded_into_next_post_workout_analysis(
         player = Profile(
             id=user_id,
             display_name="Post Ride Checkin",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
@@ -480,7 +476,6 @@ async def test_context_packet_grades_work_intervals_for_structured_ride(
         player = Profile(
             id=user_id,
             display_name="Interval Packet",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
@@ -573,7 +568,6 @@ async def test_context_packet_prefers_delivered_proposal_ir_for_grading(
         player = Profile(
             id=user_id,
             display_name="Delivered IR Packet",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
@@ -689,7 +683,6 @@ async def test_context_packet_falls_back_to_whole_ride_without_plan(
         player = Profile(
             id=user_id,
             display_name="Free Ride Packet",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
@@ -749,7 +742,6 @@ async def test_prompt_version_bump_marks_older_analysis_for_regeneration(
         player = Profile(
             id=user_id,
             display_name="Prompt Bump",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
@@ -1053,7 +1045,6 @@ async def test_context_packet_flags_self_chosen_easy_ride_on_hard_low_readiness_
         player = Profile(
             id=user_id,
             display_name="Deviation Easy",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
@@ -1139,7 +1130,6 @@ async def test_context_packet_flags_skipped_key_session_and_rode(
         player = Profile(
             id=user_id,
             display_name="Deviation Skip",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
@@ -1218,7 +1208,6 @@ async def test_context_packet_on_plan_ride_has_no_deviation_verdict(
         player = Profile(
             id=user_id,
             display_name="On Plan Ride",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
@@ -1287,7 +1276,6 @@ async def test_context_packet_surfaces_prescribed_erg_off_and_athlete_erg_setup(
         player = Profile(
             id=user_id,
             display_name="Erg Packet",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,

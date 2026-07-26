@@ -222,7 +222,6 @@ async def test_sleep_history_import_dry_run_and_rerun_are_idempotent(
     profile = Profile(
         id=uuid.uuid4(),
         display_name="Mark",
-        pin_hash="x" * 60,
         role=UserRole.admin,
         timezone="Europe/London",
         is_active=True,

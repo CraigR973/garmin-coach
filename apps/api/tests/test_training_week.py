@@ -268,7 +268,6 @@ async def test_service_joins_active_plan_audit_activity_and_match(
         profile = Profile(
             id=user_id,
             display_name="Training week test",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,

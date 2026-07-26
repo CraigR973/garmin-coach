@@ -19,7 +19,6 @@ def _player(*, hosted_tts_consent: bool) -> Profile:
     return Profile(
         id=uuid.uuid4(),
         display_name="Pregenerate Test",
-        pin_hash="x" * 60,
         role=UserRole.player,
         timezone="Europe/London",
         is_active=True,

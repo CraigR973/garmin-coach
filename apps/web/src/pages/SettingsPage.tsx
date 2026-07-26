@@ -1,7 +1,5 @@
-import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, BellOff, Download, Send, Sun, Moon, Monitor, KeyRound, Volume2 } from 'lucide-react';
-import { PinInput } from '../components/PinInput';
+import { Bell, BellOff, Download, Send, Sun, Moon, Monitor, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '../lib/api';
 import { usePushSubscription } from '../hooks/usePushSubscription';
@@ -11,15 +9,6 @@ import { useTheme } from '../contexts/ThemeContext';
 import { cn } from '../lib/utils';
 import { PageHeader } from '../components/PageHeader';
 import { Toggle } from '../components/ui/toggle';
-import { SaveButton } from '../components/ui/save-button';
-import { useSaveButtonState } from '../hooks/useSaveButtonState';
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface ChangePinBody {
-  current_pin: string;
-  new_pin: string;
-}
 
 // ── Theme section ─────────────────────────────────────────────────────────────
 
@@ -181,76 +170,6 @@ function VoiceSection() {
   );
 }
 
-// ── Change PIN section ────────────────────────────────────────────────────────
-
-function ChangePinSection() {
-  const [currentPin, setCurrentPin] = useState('');
-  const [newPin, setNewPin] = useState('');
-  const [confirmPin, setConfirmPin] = useState('');
-
-  const mutation = useMutation({
-    mutationFn: (body: ChangePinBody) =>
-      apiFetch<void>('/api/v1/auth/me/pin', { method: 'PUT', body: JSON.stringify(body) }),
-    onSuccess: () => {
-      toast.success('PIN changed');
-      setCurrentPin('');
-      setNewPin('');
-      setConfirmPin('');
-    },
-    onError: (err) => toast.error(String(err)),
-  });
-
-  const saveState = useSaveButtonState(mutation.isPending, mutation.isSuccess);
-
-  const canSubmit =
-    currentPin.length === 4 &&
-    newPin.length === 4 &&
-    confirmPin.length === 4 &&
-    newPin === confirmPin &&
-    !mutation.isPending;
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!canSubmit) return;
-    mutation.mutate({ current_pin: currentPin, new_pin: newPin });
-  }
-
-  return (
-    <section aria-labelledby="pin-heading" className="space-y-3">
-      <h2 id="pin-heading" className="text-sm font-semibold text-text-secondary uppercase tracking-wide font-sans">
-        Change PIN
-      </h2>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="space-y-1">
-          <label className="text-xs text-text-secondary font-sans">Current PIN</label>
-          <PinInput value={currentPin} onChange={setCurrentPin} autoComplete="current-password" />
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs text-text-secondary font-sans">New PIN</label>
-          <PinInput value={newPin} onChange={setNewPin} autoComplete="new-password" />
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs text-text-secondary font-sans">Confirm new PIN</label>
-          <PinInput value={confirmPin} onChange={setConfirmPin} autoComplete="new-password" />
-          {confirmPin.length === 4 && newPin !== confirmPin && (
-            <p className="text-xs text-error font-sans">PINs don't match</p>
-          )}
-        </div>
-        <SaveButton
-          type="submit"
-          state={saveState}
-          idleLabel="Change PIN"
-          savingLabel="Changing…"
-          savedLabel="PIN changed"
-          icon={KeyRound}
-          disabled={!canSubmit}
-          className="w-full"
-        />
-      </form>
-    </section>
-  );
-}
-
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function SettingsPage() {
@@ -260,7 +179,6 @@ export function SettingsPage() {
       <ThemeSection />
       <NotificationsSection />
       <VoiceSection />
-      <ChangePinSection />
     </div>
   );
 }

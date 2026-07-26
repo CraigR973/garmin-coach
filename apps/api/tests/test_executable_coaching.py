@@ -269,7 +269,6 @@ async def _seed_profile(db_conn: AsyncConnection, user_id: uuid.UUID) -> None:
             Profile(
                 id=user_id,
                 display_name="Coaching Test",
-                pin_hash="x" * 60,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,
@@ -1023,7 +1022,6 @@ async def _seed_bike(
                 Profile(
                     id=user_id,
                     display_name=f"Reconcile {user_id.hex[:6]}",
-                    pin_hash="x" * 60,
                     role=UserRole.admin,
                     timezone="Europe/London",
                     is_active=True,
@@ -1505,7 +1503,6 @@ async def test_reconcile_non_bike_is_an_intentional_no_op_without_failure(
             Profile(
                 id=user_id,
                 display_name="Non-bike no-op",
-                pin_hash="x" * 60,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,

@@ -248,7 +248,6 @@ async def test_strength_brief_service_empty_history(db_conn: AsyncConnection) ->
         player = Profile(
             id=user_id,
             display_name="StrengthBriefTestEmpty",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
@@ -276,7 +275,6 @@ async def test_strength_brief_service_counts_only_excluded_activities(
         player = Profile(
             id=user_id,
             display_name="StrengthBriefTestCounts",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
@@ -338,7 +336,6 @@ async def test_strength_brief_service_ignores_activities_outside_12w_window(
         player = Profile(
             id=user_id,
             display_name="StrengthBriefTestWindow",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
@@ -397,7 +394,6 @@ async def test_strength_brief_recovery_isolation_invariant(db_conn: AsyncConnect
         player = Profile(
             id=user_id,
             display_name="IsolationTest",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,

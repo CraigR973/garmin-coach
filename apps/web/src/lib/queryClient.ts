@@ -46,7 +46,7 @@ export const persistOptions: Omit<PersistQueryClientOptions, 'queryClient'> = {
 
 /**
  * Drop the persisted cache from disk. Called alongside `queryClient.clear()` on
- * login / activate / unlock / logout so one user's health data can never
+ * device activation / logout so one user's health data can never
  * rehydrate into another session.
  */
 export function clearPersistedCache(): void {

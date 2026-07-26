@@ -99,7 +99,7 @@ export function BrowserOnboarding() {
             )}
             <li className="flex gap-3 text-sm font-sans text-text-secondary">
               <span className="shrink-0 font-mono text-primary font-semibold">{canInstall || isIos ? '2.' : '1.'}</span>
-              <span>Sign in with your name and PIN</span>
+              <span>Open the one-time activation link Craig sent for this device</span>
             </li>
           </ol>
         </div>

@@ -5,12 +5,10 @@ an operator, not through a public signup flow.
 """
 
 import asyncio
-import os
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.auth import hash_pin
 from src.database import AsyncSessionLocal
 from src.models.profile import Profile, UserRole
 
@@ -22,16 +20,9 @@ KILMARNOCK_LATITUDE = 55.6045
 KILMARNOCK_LONGITUDE = -4.5249
 
 
-def _validate_pin(pin: str) -> None:
-    if len(pin) != 4 or not pin.isdecimal():
-        raise ValueError("MARK_PIN must be exactly four digits")
-
-
-def build_mark_profile(pin: str) -> Profile:
-    _validate_pin(pin)
+def build_mark_profile() -> Profile:
     return Profile(
         display_name=MARK_DISPLAY_NAME,
-        pin_hash=hash_pin(pin),
         role=UserRole.admin,
         timezone=MARK_TIMEZONE,
         garmin_user_profile_pk=MARK_GARMIN_USER_PROFILE_PK,
@@ -42,10 +33,9 @@ def build_mark_profile(pin: str) -> Profile:
     )
 
 
-async def seed_mark_profile(db: AsyncSession, pin: str) -> Profile:
+async def seed_mark_profile(db: AsyncSession) -> Profile:
     """Create or update Mark's private admin profile."""
 
-    _validate_pin(pin)
     result = await db.execute(
         select(Profile).where(
             Profile.display_name == MARK_DISPLAY_NAME,
@@ -54,10 +44,9 @@ async def seed_mark_profile(db: AsyncSession, pin: str) -> Profile:
     )
     profile = result.scalar_one_or_none()
     if profile is None:
-        profile = build_mark_profile(pin)
+        profile = build_mark_profile()
         db.add(profile)
     else:
-        profile.pin_hash = hash_pin(pin)
         profile.role = UserRole.admin
         profile.timezone = MARK_TIMEZONE
         profile.garmin_user_profile_pk = MARK_GARMIN_USER_PROFILE_PK
@@ -71,12 +60,8 @@ async def seed_mark_profile(db: AsyncSession, pin: str) -> Profile:
 
 
 async def _main() -> None:
-    pin = os.environ.get("MARK_PIN")
-    if pin is None:
-        raise SystemExit("Set MARK_PIN to Mark's four-digit PIN before running this seed.")
-
     async with AsyncSessionLocal() as db:
-        profile = await seed_mark_profile(db, pin)
+        profile = await seed_mark_profile(db)
         print(f"Seeded profile {profile.display_name} ({profile.id})")
 
 

@@ -371,7 +371,6 @@ async def _seed_profile(session: object, *, fan_auto_enabled: bool = False) -> P
     profile = Profile(
         id=user_id,
         display_name=f"Push Test {user_id.hex[:6]}",
-        pin_hash="x" * 60,
         role=UserRole.admin,
         timezone="Europe/London",
         is_active=True,

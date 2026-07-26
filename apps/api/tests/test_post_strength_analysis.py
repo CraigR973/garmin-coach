@@ -91,7 +91,6 @@ async def test_generate_and_store_post_strength_analysis_is_lean_and_idempotent(
         player = Profile(
             id=user_id,
             display_name="Strength Test",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
@@ -213,7 +212,6 @@ async def test_newer_activity_checkin_makes_strength_analysis_pending(
         player = Profile(
             id=user_id,
             display_name="Strength Checkin",
-            pin_hash="x" * 60,
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,

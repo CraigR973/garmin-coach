@@ -44,7 +44,6 @@ async def _seed_user(session_factory: async_sessionmaker[AsyncSession]) -> uuid.
                 Profile(
                     id=user_id,
                     display_name="Sleep Verdict Test",
-                    pin_hash="x" * 60,
                     role=UserRole.player,
                     timezone="Europe/London",
                     is_active=True,
@@ -52,7 +51,6 @@ async def _seed_user(session_factory: async_sessionmaker[AsyncSession]) -> uuid.
                 Profile(
                     id=other_user_id,
                     display_name="Other User",
-                    pin_hash="y" * 60,
                     role=UserRole.player,
                     timezone="Europe/London",
                     is_active=True,

@@ -72,7 +72,6 @@ async def _seed_outdoor(
                 Profile(
                     id=user_id,
                     display_name=f"Garmin {user_id.hex[:6]}",
-                    pin_hash="x" * 60,
                     role=UserRole.admin,
                     timezone="Europe/London",
                     is_active=True,

@@ -4,11 +4,6 @@ import { apiFetch } from './api';
 vi.mock('./tokens', () => ({
   clearTokens: vi.fn(async () => {}),
   getAuthToken: vi.fn(() => null),
-  getDeviceToken: vi.fn(() => null),
-  getRefreshToken: vi.fn(() => null),
-  getStoredPlayer: vi.fn(() => null),
-  isAccessTokenExpiringSoon: vi.fn(() => false),
-  storeTokens: vi.fn(),
 }));
 
 describe('apiFetch', () => {
