@@ -46,7 +46,11 @@ from src.services.vo2_progression import (
     VO2_PROTOCOL_30_30,
     VO2_PROTOCOL_RONNESTAD_30_15,
 )
-from src.services.workout_delivery import IntervalsCreateResult, build_structured_workout_ir
+from src.services.workout_delivery import (
+    IntervalsCreateResult,
+    build_structured_workout_ir,
+    expand_structured_steps,
+)
 
 START = date(2026, 8, 3)  # a Monday
 
@@ -103,6 +107,27 @@ def test_generate_block_plan_shape() -> None:
         assert week["startDate"] == (START + timedelta(days=(i - 1) * 7)).isoformat()
         assert week["endDate"] == (START + timedelta(days=(i - 1) * 7 + 6)).isoformat()
         assert week["workouts"]
+
+
+def test_generated_bike_templates_expand_to_delivery_steps() -> None:
+    plan = generate_block_plan(
+        start_date=START,
+        ftp_watts=290,
+        athlete_name="Mark",
+        generated_at_utc=datetime(2026, 7, 1, 6, 0, 0),
+    )
+
+    checked = 0
+    for week in plan["weeks"]:
+        for workout in week["workouts"]:
+            structured = workout["structuredWorkout"]
+            if structured.get("format") != "bike":
+                continue
+            steps = expand_structured_steps(structured, workout["intensityTarget"])
+            assert steps, f"week {week['weekNumber']}: {workout['title']}"
+            checked += 1
+
+    assert checked > 0
 
 
 def test_generate_block_plan_2121_block_types() -> None:

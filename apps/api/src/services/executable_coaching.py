@@ -1169,11 +1169,19 @@ class ExecutableCoachingService:
         if source_live is not None:
             source_live.planned_workout_id = new_source.id
             source_live.planned_workout_version = new_source.version
+            source_ir = dict(source_live.structured_workout_ir or {})
+            source_ir["plannedWorkoutId"] = str(new_source.id)
+            source_ir["plannedWorkoutVersion"] = new_source.version
+            source_live.structured_workout_ir = source_ir
         if target_content is not None:
             new_target = await self._reslot(player, target_content, source_date)
             if target_live is not None:
                 target_live.planned_workout_id = new_target.id
                 target_live.planned_workout_version = new_target.version
+                target_ir = dict(target_live.structured_workout_ir or {})
+                target_ir["plannedWorkoutId"] = str(new_target.id)
+                target_ir["plannedWorkoutVersion"] = new_target.version
+                target_live.structured_workout_ir = target_ir
 
         summary = (
             f"Moved {workout.title} from {source_date.isoformat()} to {target_date.isoformat()}."

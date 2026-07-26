@@ -342,7 +342,7 @@ def _recovery_templates() -> list[WorkoutTemplate]:
             structured_workout={
                 "format": "bike",
                 "steps": [
-                    {"label": "Easy spin", "minutes": 35, "target": "Zone 1-2"},
+                    {"label": "Easy spin", "minutes": 35, "target": "50-65% FTP"},
                     {"label": "Openers", "repeats": 4, "pattern": "20s spin-up / 2 min easy"},
                 ],
             },
@@ -405,14 +405,14 @@ def _taper_templates() -> list[WorkoutTemplate]:
             structured_workout={
                 "format": "bike",
                 "steps": [
-                    {"label": "Warm-up", "minutes": 15},
+                    {"label": "Warm-up", "minutes": 15, "target": "50% FTP"},
                     {
                         "label": "Main set",
                         "repeats": 6,
                         "pattern": "1 min on / 2 min easy",
                         "target": "110% FTP",
                     },
-                    {"label": "Cool-down", "minutes": 10},
+                    {"label": "Cool-down", "minutes": 10, "target": "50% FTP"},
                 ],
             },
         ),
