@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import date
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
@@ -701,6 +703,46 @@ async def test_replace_event_failure_keeps_local_state_honest(db_conn: AsyncConn
         assert reread.structured_workout_ir["name"] == original_name
         assert reread.status == "pushed"
         assert reread.last_error is not None
+        failure = json.loads(reread.last_error)
+        assert failure == {
+            "code": "intervals_update_failed",
+            "detail": "intervals.icu event update failed",
+            "plannedWorkoutId": str(workout_id),
+            "plannedWorkoutVersion": 1,
+            "retryable": True,
+            "stage": "replace_event",
+            "userId": str(user_id),
+        }
+
+
+@pytest.mark.asyncio
+async def test_replace_event_commit_false_never_commits_callers_unit_of_work(
+    db_conn: AsyncConnection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id, workout_id = uuid.uuid4(), uuid.uuid4()
+    await _seed_bike_workout(db_conn, user_id, workout_id)
+    fake = _FakeIntervalsClient(fail_update=True)
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        service, proposal = await _deliver_baseline(session, fake, user_id, workout_id)
+        workout = await session.get(PlannedWorkout, workout_id)
+        assert workout is not None
+        workout.title = "Caller-owned dirty title"
+        new_ir = dict(proposal.structured_workout_ir)
+        new_ir["name"] = "Edited never-landed"
+        commit_spy = AsyncMock(wraps=session.commit)
+        monkeypatch.setattr(session, "commit", commit_spy)
+
+        with pytest.raises(HTTPException):
+            await service.replace_event(proposal=proposal, ir=new_ir, commit=False)
+
+        # The caller retains the dirty model and the uncommitted failure note;
+        # most importantly, the rail never closes over either with an internal
+        # commit. Session cleanup rolls this caller-owned unit of work back.
+        commit_spy.assert_not_awaited()
+        assert workout.title == "Caller-owned dirty title"
+        assert proposal.last_error is not None
 
 
 @pytest.mark.asyncio

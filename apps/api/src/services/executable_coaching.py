@@ -112,6 +112,27 @@ def _normalize_verdict(value: str | None) -> str | None:
     return {"green": "Green", "amber": "Amber", "red": "Red"}.get(value.strip().lower())
 
 
+def _proposal_content_matches_workout(
+    proposal: WorkoutDeliveryProposal,
+    workout: PlannedWorkout,
+) -> bool:
+    """Require both the local pointer and delivered IR fingerprint to match.
+
+    The IR is the persisted snapshot of what intervals.icu last accepted. Using
+    its workout id/version alongside the mutable relationship columns prevents a
+    stale or legacy false pointer from suppressing reconciliation.
+    """
+    ir = proposal.structured_workout_ir
+    if not isinstance(ir, dict):
+        return False
+    return (
+        proposal.planned_workout_id == workout.id
+        and proposal.planned_workout_version == workout.version
+        and ir.get("plannedWorkoutId") == str(workout.id)
+        and ir.get("plannedWorkoutVersion") == workout.version
+    )
+
+
 def _step_power(step: dict[str, Any]) -> int:
     return max(int(step.get("powerStartPct", 0)), int(step.get("powerEndPct", 0)))
 
@@ -571,8 +592,19 @@ class ExecutableCoachingService:
         for workout in await self._active_bike_workouts_in_range(player.id, start_date, end_date):
             try:
                 result = await self._deliver_one(player, workout)
-            except HTTPException:
-                continue  # isolated; the proposal carries last_error (#97 honesty)
+            except HTTPException as exc:
+                # The rail was called with commit=False: this service owns the
+                # unit of work and deliberately persists only the honest failure
+                # state after the cloud operation has failed.
+                await self.session.commit()
+                log.warning(
+                    "workout_delivery_failed",
+                    user_id=str(player.id),
+                    planned_workout_id=str(workout.id),
+                    planned_workout_version=workout.version,
+                    status_code=exc.status_code,
+                )
+                continue
             if result is not None:
                 delivered.append(result)
 
@@ -593,28 +625,68 @@ class ExecutableCoachingService:
     ) -> WorkoutDeliveryProposal | None:
         try:
             ftp_watts = await self.rail._ftp_watts(player.id)
+        except HTTPException as exc:
+            failure = await self.rail.record_failure(
+                player=player,
+                workout=workout,
+                code="missing_ftp",
+                stage="load_ftp",
+                retryable=exc.status_code >= 500,
+                detail=exc.detail,
+            )
+            log.warning(
+                "workout_not_deliverable",
+                user_id=str(player.id),
+                planned_workout_id=str(workout.id),
+                planned_workout_version=workout.version,
+                failure_code="missing_ftp",
+                retryable=exc.status_code >= 500,
+                proposal_id=str(failure.id),
+            )
+            return None
+        try:
             base_ir = build_structured_workout_ir(workout, ftp_watts=ftp_watts)
-        except HTTPException:
-            return None  # malformed/non-deliverable — skip safely
+        except HTTPException as exc:
+            failure = await self.rail.record_failure(
+                player=player,
+                workout=workout,
+                code="malformed_workout",
+                stage="build_ir",
+                retryable=False,
+                detail=exc.detail,
+            )
+            log.warning(
+                "workout_not_deliverable",
+                user_id=str(player.id),
+                planned_workout_id=str(workout.id),
+                planned_workout_version=workout.version,
+                failure_code="malformed_workout",
+                retryable=False,
+                proposal_id=str(failure.id),
+            )
+            return None
         base_ir["origin"] = "as_planned"
         base_ir["adjustment"] = {"verdict": None, "changed": False}
 
         live = await self.rail.latest_delivered_for_workout(player.id, workout.id)
         if live is None:
             live = await self.rail.latest_delivered_for_date(player.id, workout.workout_date)
-        if (
-            live is not None
-            and live.planned_workout_id == workout.id
-            and live.planned_workout_version == workout.version
-        ):
+        if live is not None and _proposal_content_matches_workout(live, workout):
             return None  # this exact version is already on Zwift — idempotent
 
         if live is not None:
             # A restructure re-versioned the slot — re-sync the existing event in
             # place so Zwift never carries a stale or duplicate session.
+            delivered = await self.rail.replace_event(proposal=live, ir=base_ir, commit=False)
             live.planned_workout_id = workout.id
             live.planned_workout_version = workout.version
-            delivered = await self.rail.replace_event(proposal=live, ir=base_ir, commit=False)
+            retried = await self.rail.mark_retry_delivered(
+                workout=workout,
+                delivered=live,
+                commit=False,
+            )
+            if retried is not None:
+                delivered = retried
             audit_type = AUDIT_TYPE_REPLACED
             summary = (
                 f"Re-synced Zwift event for {workout.title} ({workout.workout_date.isoformat()})."
@@ -669,9 +741,23 @@ class ExecutableCoachingService:
     async def _active_bike_workouts_in_range(
         self, user_id: uuid.UUID, start_date: date, end_date: date
     ) -> list[PlannedWorkout]:
-        """Active **indoor** bike workouts — the intervals.icu/Zwift rail."""
+        """Active **indoor** bike workouts — including malformed bike rows.
+
+        A known indoor shape follows ``is_indoor_bike_workout``. A row whose
+        workout type says bike but whose structure is malformed must also reach
+        ``_deliver_one`` so it records a durable failure instead of disappearing
+        at this filter. Explicit outdoor rows remain on the Garmin rail.
+        """
         workouts = await self._active_bike_workouts_raw(user_id, start_date, end_date)
-        return [w for w in workouts if is_indoor_bike_workout(w.structured_workout)]
+        return [
+            workout
+            for workout in workouts
+            if is_indoor_bike_workout(workout.structured_workout)
+            or (
+                workout.workout_type.startswith("bike_")
+                and not is_outdoor_bike_workout(workout.structured_workout)
+            )
+        ]
 
     async def _active_outdoor_bike_workouts_in_range(
         self, user_id: uuid.UUID, start_date: date, end_date: date
@@ -802,14 +888,25 @@ class ExecutableCoachingService:
             ir=ir,
             commit=False,
         )
-        proposal = await self.rail.approve(player=player, proposal_id=proposal.id)
+        proposal = await self.rail.approve(
+            player=player,
+            proposal_id=proposal.id,
+            commit=False,
+        )
 
         if live is None:
             delivered = await self.rail.push(player=player, proposal_id=proposal.id)
         else:
+            try:
+                await self.rail.replace_event(proposal=live, ir=ir, commit=False)
+            except HTTPException:
+                proposal.status = STATUS_FAILED
+                proposal.last_error = live.last_error
+                await self.session.commit()
+                await self.session.refresh(proposal)
+                raise
             live.planned_workout_id = workout.id
             live.planned_workout_version = workout.version
-            await self.rail.replace_event(proposal=live, ir=ir, commit=False)
             proposal.status = STATUS_PUSHED
             proposal.pushed_at_utc = _utcnow()
             proposal.intervals_event_id = live.intervals_event_id
@@ -1072,11 +1169,19 @@ class ExecutableCoachingService:
         if source_live is not None:
             source_live.planned_workout_id = new_source.id
             source_live.planned_workout_version = new_source.version
+            source_ir = dict(source_live.structured_workout_ir or {})
+            source_ir["plannedWorkoutId"] = str(new_source.id)
+            source_ir["plannedWorkoutVersion"] = new_source.version
+            source_live.structured_workout_ir = source_ir
         if target_content is not None:
             new_target = await self._reslot(player, target_content, source_date)
             if target_live is not None:
                 target_live.planned_workout_id = new_target.id
                 target_live.planned_workout_version = new_target.version
+                target_ir = dict(target_live.structured_workout_ir or {})
+                target_ir["plannedWorkoutId"] = str(new_target.id)
+                target_ir["plannedWorkoutVersion"] = new_target.version
+                target_live.structured_workout_ir = target_ir
 
         summary = (
             f"Moved {workout.title} from {source_date.isoformat()} to {target_date.isoformat()}."
@@ -1110,10 +1215,19 @@ class ExecutableCoachingService:
             proposal = await self.rail.propose_from_ir(
                 player=player, workout=workout, ir=ir, commit=False
             )
-            return await self.rail.create_event(proposal=proposal, ir=ir, commit=False)
+            try:
+                return await self.rail.create_event(proposal=proposal, ir=ir, commit=False)
+            except HTTPException:
+                await self.session.commit()
+                raise
+        try:
+            delivered = await self.rail.replace_event(proposal=live, ir=ir, commit=False)
+        except HTTPException:
+            await self.session.commit()
+            raise
         live.planned_workout_id = workout.id
         live.planned_workout_version = workout.version
-        return await self.rail.replace_event(proposal=live, ir=ir, commit=False)
+        return delivered
 
     async def _pending_adjustment(
         self, user_id: uuid.UUID, workout: PlannedWorkout
