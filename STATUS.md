@@ -6,11 +6,15 @@
 
 ## Now
 
-**2026-07-26 — Batch 161 implementation ready on `fix/batch-161-concurrency-budgets`; not promoted.** Activation consumption is one atomic `UPDATE … RETURNING`, and the PWA coalesces StrictMode/remount activation calls. Migration `024` adds durable paid-generation identities and reclaimable leases; transaction-scoped artifact locks make identical morning/post-session requests share one stored analysis and paid call while changed input/prompt versions keep Decision #219 history. All Anthropic/Piper boundaries now have fail-fast per-user/global concurrency slots, and user-triggered paid/TTS routes have shared authenticated rate limits across device tokens. Local gates pass: backend **663 passed / 271 expected PostgreSQL skips**, full web **359 passed**, Ruff/format/mypy/TypeScript/lint/build clean (the six known Fast Refresh warnings remain), and Alembic reports single head `024`. Branch CI run `30214334873` passed all seven jobs, including **934 PostgreSQL-backed tests** and the migration upgrade/downgrade. Decision #241. **Next:** review the branch, then run `/phase-closeout 161` only when explicitly requested.
+**2026-07-27 — Batch 161 shipped.** PR #190 / implementation squash `bc057ea` is live: activation redemption is atomic and client-coalesced; migration `024` adds durable generation identities/reclaimable leases with artifact-scoped transaction locks; Anthropic/Piper calls now have fail-fast per-user/global slots and user-triggered paid/TTS routes share authenticated rate limits across a profile's device tokens. Final branch, PR-context, and post-merge `main` CI runs passed all seven jobs; Vercel preview and production reached READY; Railway direct and Vercel same-origin health served exact SHA `bc057ea`; web `/` and `/activate` returned 200; unauthenticated daily-loop and TTS probes returned 401 direct and proxied; Railway and Vercel runtime-error scans were clean. Read-only production verification found Alembic head `024`, RLS enabled, the expected ten `generation_requests` columns and one unique request-identity constraint, with zero rows. Decision #241. **Next:** `/batch-start 162` (learning-memory integrity).
 
 ---
 
 ## Log
+
+**2026-07-27 — Batch 161 shipped:** PR #190 / squash `bc057ea`; atomic activation, durable paid-generation identities/leases, artifact-scoped locking, paid-work concurrency slots, and per-profile authenticated budgets are live. Final branch, PR-context, and post-merge `main` CI passed all seven jobs; Vercel preview/production reached READY; exact-SHA Railway/Vercel health, web, auth-gate, schema, and runtime-error checks passed. Batch 162 is next. Decision #241.
+
+---
 
 **2026-07-26 — Batch 161 implementation ready:** atomic activation plus a StrictMode client guard; migration `024` generation identities/leases with transaction-scoped artifact locking; per-user/global paid-work concurrency and shared authenticated rate limits; DB concurrency, idempotency, cache-bypass, revocation, and timeout-recovery coverage. Local backend/web/static gates and branch CI run `30214334873` are green; CI covered 934 PostgreSQL-backed tests and the Alembic round trip. Branch not promoted. Decision #241.
 
