@@ -482,6 +482,33 @@ class Analysis(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     raw_response: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
 
 
+class GenerationRequest(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
+    """One durable identity/lease for a regenerable paid analysis request.
+
+    ``analyses`` deliberately keeps historical rows. This table prevents two
+    workers from paying for the *same* input/prompt identity while still allowing
+    a new check-in or prompt version to create a new historical analysis.
+    """
+
+    __tablename__ = "generation_requests"
+    __table_args__ = (
+        UniqueConstraint("request_identity", name="uq_generation_requests_identity"),
+        Index("ix_generation_requests_user_status", "user_id", "status"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    request_identity: Mapped[str] = mapped_column(String(64), nullable=False)
+    generation_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    lease_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False)
+    analysis_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("analyses.id", ondelete="SET NULL"), nullable=True
+    )
+    failure_reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+
 class Feedback(Base, UUIDPrimaryKeyMixin):
     """Mark's rating + optional free-text correction for one AI summary (Batch 64).
 

@@ -61,6 +61,7 @@ from src.services.personal_baselines import baseline_band_packet, serialize_trai
 from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
 from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
 from src.services.training_week import TrainingWeekService
+from src.services.workload_budget import workload_slot
 
 PROMPT_VERSION = "reviews-v4-2026-07-24"
 PACKET_VERSION = 2
@@ -641,10 +642,11 @@ class ReviewService:
 
         user_prompt = build_review_user_prompt(preview.packet)
         review_client = client or AnthropicReviewClient()
-        generation = await review_client.generate(
-            context_packet=preview.packet,
-            user_prompt=user_prompt,
-        )
+        async with workload_slot(workload="anthropic", user_id=player.id):
+            generation = await review_client.generate(
+                context_packet=preview.packet,
+                user_prompt=user_prompt,
+            )
         analysis = Analysis(
             user_id=player.id,
             activity_id=None,

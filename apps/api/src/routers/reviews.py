@@ -16,7 +16,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +24,7 @@ from src.auth import CurrentUser
 from src.database import get_db
 from src.models.coaching import Analysis
 from src.models.profile import Profile
+from src.rate_limit import paid_generation_limit
 from src.routers.feedback import FeedbackOut, serialize_feedback
 from src.services.feedback import FeedbackService
 from src.services.reviews import (
@@ -180,8 +181,10 @@ async def get_review(
 
 
 @router.post("/{period}/run", response_model=ReviewEnvelope)
+@paid_generation_limit
 async def run_review(
     period: str,
+    request: Request,
     player: CurrentUser,
     as_of: date | None = None,
     force: bool = False,

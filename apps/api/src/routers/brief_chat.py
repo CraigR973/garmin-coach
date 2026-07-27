@@ -14,13 +14,14 @@ import uuid
 from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import CurrentUser
 from src.database import get_db
 from src.models.coaching import BriefMessage
+from src.rate_limit import paid_generation_limit
 from src.services.anthropic_text import (
     AnthropicApiError,
     anthropic_http_status,
@@ -112,9 +113,11 @@ async def list_brief_messages(
 
 
 @router.post("/{analysis_id}/messages", response_model=BriefMessageTurnEnvelope)
+@paid_generation_limit
 async def ask_brief_followup(
     analysis_id: uuid.UUID,
     payload: BriefMessageInput,
+    request: Request,
     player: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> BriefMessageTurnEnvelope:

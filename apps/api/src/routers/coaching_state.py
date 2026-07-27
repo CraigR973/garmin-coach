@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, date, datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +16,7 @@ from src.models.coaching import (
     PlanBlock,
     PlannedWorkout,
 )
+from src.rate_limit import paid_generation_limit
 from src.services.anthropic_text import (
     AnthropicApiError,
     anthropic_http_status,
@@ -280,7 +281,9 @@ async def get_learning_proposals(
 
 
 @read_router.post("/learning/distill", response_model=LearningProposalEnvelope)
+@paid_generation_limit
 async def distill_learning_proposals(
+    request: Request,
     player: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> LearningProposalEnvelope:

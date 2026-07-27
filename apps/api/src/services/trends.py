@@ -62,6 +62,7 @@ from src.services.reviews import (
     ReviewClient,
     ReviewError,
 )
+from src.services.workload_budget import workload_slot
 
 # Bucketing
 BUCKET_MONTH = "month"
@@ -650,10 +651,11 @@ class TrendsService:
 
         user_prompt = build_trend_user_prompt(preview.packet)
         review_client = client or AnthropicReviewClient(system_prompt=TREND_SYSTEM_PROMPT)
-        generation = await review_client.generate(
-            context_packet=preview.packet,
-            user_prompt=user_prompt,
-        )
+        async with workload_slot(workload="anthropic", user_id=player.id):
+            generation = await review_client.generate(
+                context_packet=preview.packet,
+                user_prompt=user_prompt,
+            )
         analysis = Analysis(
             user_id=player.id,
             activity_id=None,

@@ -30,6 +30,12 @@ from src.services.analysis_currentness import (
 )
 from src.services.anthropic_text import generate_anthropic_text
 from src.services.coaching_state import CoachingStateService
+from src.services.generation_requests import (
+    claim_generation_request,
+    manual_entry_generation_version,
+    post_activity_generation_identity,
+    stamp_generation_identity,
+)
 from src.services.learned_context import learned_context_packet
 from src.services.post_activity_state import (
     PostActivityGenerationStatusService,
@@ -49,6 +55,7 @@ from src.services.post_workout_analysis import (
     _series_stats,
     _utcnow,
 )
+from src.services.workload_budget import workload_slot
 
 PROMPT_VERSION = "post-walk-analysis-v3-2026-07-12"
 ANALYSIS_TYPE = "post_walk"
@@ -305,6 +312,14 @@ class PostWalkAnalysisService:
         commit: bool = True,
     ) -> WalkAnalysisResult:
         subject_date = _activity_local_date(activity, player.timezone)
+        checkin = await self._activity_checkin(player.id, activity.id)
+        input_version = manual_entry_generation_version(checkin)
+        request_identity = post_activity_generation_identity(
+            user_id=player.id,
+            activity_id=activity.id,
+            input_version=input_version,
+            prompt_version=PROMPT_VERSION,
+        )
         matched_workout_id = await prepare_post_activity_generation(
             self.session,
             user_id=player.id,
@@ -313,10 +328,26 @@ class PostWalkAnalysisService:
             kind="walk",
             commit=False,
         )
-        if not force:
-            existing = await self.latest_analysis_for_activity(activity.id)
-            checkin = await self._activity_checkin(player.id, activity.id)
-            if existing is not None and _analysis_covers_activity_checkin(existing, checkin):
+        if commit:
+            await self.session.commit()
+        async with claim_generation_request(
+            self.session,
+            user_id=player.id,
+            request_identity=request_identity,
+            generation_kind=ANALYSIS_TYPE,
+            lease_scope=f"post:{player.id}:{activity.id}",
+        ) as claim:
+            existing: Analysis | None = claim.existing_analysis
+            if existing is not None:
+                packet = existing.context_packet
+                if not (
+                    existing.prompt_version == PROMPT_VERSION
+                    and isinstance(packet, dict)
+                    and packet.get("generationIdentity") == request_identity
+                ):
+                    claim.restart()
+                    existing = None
+            if existing is not None:
                 if (
                     matched_workout_id is not None
                     and existing.planned_workout_id != matched_workout_id
@@ -339,19 +370,77 @@ class PostWalkAnalysisService:
                     await self.session.flush()
                 return WalkAnalysisResult(analysis=existing, generated=False)
 
-        if commit:
-            await self.session.commit()
-        try:
-            context_packet = await self.assemble_walk_packet(player, activity)
-            user_prompt = build_walk_user_prompt(context_packet)
-            analysis_client = client or AnthropicWalkAnalysisClient()
-            generation = await analysis_client.generate(
+            if not force:
+                latest = await self.latest_analysis_for_activity(activity.id)
+                if latest is not None and _analysis_covers_activity_checkin(latest, checkin):
+                    if (
+                        matched_workout_id is not None
+                        and latest.planned_workout_id != matched_workout_id
+                    ):
+                        latest.planned_workout_id = matched_workout_id
+                    claim.mark_completed(latest)
+                    await mark_post_activity_generation(
+                        self.session,
+                        user_id=player.id,
+                        activity_id=activity.id,
+                        planned_workout_id=matched_workout_id,
+                        subject_date=subject_date,
+                        kind="walk",
+                        status="ready",
+                        commit=False,
+                    )
+                    if commit:
+                        await self.session.commit()
+                        await self.session.refresh(latest)
+                    else:
+                        await self.session.flush()
+                    return WalkAnalysisResult(analysis=latest, generated=False)
+
+            try:
+                context_packet = await self.assemble_walk_packet(player, activity)
+                stamp_generation_identity(
+                    context_packet,
+                    request_identity=request_identity,
+                    input_version=input_version,
+                )
+                user_prompt = build_walk_user_prompt(context_packet)
+                analysis_client = client or AnthropicWalkAnalysisClient()
+                async with workload_slot(workload="anthropic", user_id=player.id):
+                    generation = await analysis_client.generate(
+                        context_packet=context_packet,
+                        user_prompt=user_prompt,
+                    )
+            except Exception as exc:
+                claim.mark_failed(_generation_failure_reason(exc))
+                await mark_post_activity_generation(
+                    self.session,
+                    user_id=player.id,
+                    activity_id=activity.id,
+                    planned_workout_id=matched_workout_id,
+                    subject_date=subject_date,
+                    kind="walk",
+                    status="failed",
+                    reason=_generation_failure_reason(exc),
+                    commit=commit,
+                )
+                raise
+            analysis = Analysis(
+                user_id=player.id,
+                activity_id=activity.id,
+                planned_workout_id=matched_workout_id,
+                analysis_type=ANALYSIS_TYPE,
+                subject_date=subject_date,
+                generated_at_utc=_utcnow(),
+                prompt_version=PROMPT_VERSION,
+                model_name=generation.model_name,
+                verdict="advisory",
                 context_packet=context_packet,
-                user_prompt=user_prompt,
+                output_markdown=generation.output_markdown,
+                raw_response=generation.raw_response,
             )
-        except Exception as exc:
-            if commit:
-                await self.session.rollback()
+            self.session.add(analysis)
+            await self.session.flush()
+            claim.mark_completed(analysis)
             await mark_post_activity_generation(
                 self.session,
                 user_id=player.id,
@@ -359,42 +448,15 @@ class PostWalkAnalysisService:
                 planned_workout_id=matched_workout_id,
                 subject_date=subject_date,
                 kind="walk",
-                status="failed",
-                reason=_generation_failure_reason(exc),
-                commit=commit,
+                status="ready",
+                commit=False,
             )
-            raise
-        analysis = Analysis(
-            user_id=player.id,
-            activity_id=activity.id,
-            planned_workout_id=matched_workout_id,
-            analysis_type=ANALYSIS_TYPE,
-            subject_date=subject_date,
-            generated_at_utc=_utcnow(),
-            prompt_version=PROMPT_VERSION,
-            model_name=generation.model_name,
-            verdict="advisory",
-            context_packet=context_packet,
-            output_markdown=generation.output_markdown,
-            raw_response=generation.raw_response,
-        )
-        self.session.add(analysis)
-        await mark_post_activity_generation(
-            self.session,
-            user_id=player.id,
-            activity_id=activity.id,
-            planned_workout_id=matched_workout_id,
-            subject_date=subject_date,
-            kind="walk",
-            status="ready",
-            commit=False,
-        )
-        if commit:
-            await self.session.commit()
-            await self.session.refresh(analysis)
-        else:
-            await self.session.flush()
-        return WalkAnalysisResult(analysis=analysis, generated=True)
+            if commit:
+                await self.session.commit()
+                await self.session.refresh(analysis)
+            else:
+                await self.session.flush()
+            return WalkAnalysisResult(analysis=analysis, generated=True)
 
     async def latest_analysis_for_activity(self, activity_id: uuid.UUID) -> Analysis | None:
         return cast(

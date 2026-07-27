@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth import CurrentUser
 from src.database import get_db
 from src.models.coaching import Analysis
+from src.rate_limit import paid_generation_limit
 from src.services.handover import (
     HandoverError,
     HandoverPreview,
@@ -101,7 +102,9 @@ async def get_handover(
 
 
 @router.post("/run", response_model=HandoverEnvelope)
+@paid_generation_limit
 async def run_handover(
+    request: Request,
     player: CurrentUser,
     as_of: date | None = None,
     force: bool = False,

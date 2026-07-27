@@ -41,6 +41,7 @@ from src.config import settings
 from src.models.coaching import Analysis, BriefMessage
 from src.models.profile import Profile
 from src.services.anthropic_text import generate_anthropic_text
+from src.services.workload_budget import workload_slot
 from src.services.workout_categories import is_bike_workout_type
 
 ROLE_USER = "user"
@@ -262,11 +263,12 @@ class BriefChatService:
             f"Read text:\n{analysis.output_markdown}"
         )
         chat_client = client or AnthropicBriefChatClient()
-        answer = await chat_client.generate(
-            system_prompt=system_prompt,
-            user_prompt=cleaned,
-            prior_messages=prior_messages,
-        )
+        async with workload_slot(workload="anthropic", user_id=player.id):
+            answer = await chat_client.generate(
+                system_prompt=system_prompt,
+                user_prompt=cleaned,
+                prior_messages=prior_messages,
+            )
 
         proposed_id = None
         if _analysis_allows_adjustment_proposal(analysis) and _wants_adjustment(cleaned):

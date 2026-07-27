@@ -279,6 +279,13 @@ staleness/regeneration path reruns it instead. No prompt or verdict change.
   `generating`/`ready`/`failed`, and a classified reason. It is deliberately
   activity-scoped rather than reusing the date-scoped morning-brief table so
   mixed training days cannot overwrite or misreport one another.
+- `generation_requests` (migration `024`, Batch 161): durable SHA-256 request
+  identities for paid morning/post-session generations, with
+  `running`/`completed`/`failed`, a short reclaimable lease, and an optional
+  completed `analyses.id`. Artifact-scoped PostgreSQL advisory locks serialize
+  same-day/same-activity work before the paid boundary; the request identity
+  coalesces identical retries while changed substantive input or prompt versions
+  create a new `analyses` row, preserving Decision #219's history contract.
 
 Seed `sleep`/`daily_metrics` with his **84-night backfill** (`12 Weeks Sleep Data` xlsx, 24 Mar–15 Jun; trust all cols except Duration).
 

@@ -9,6 +9,19 @@ import { brand } from '@/theme/tokens';
 type ActivateState = 'activating' | 'error';
 
 const PENDING_ACTIVATION_CODE = 'coach_pending_activation_code';
+const inFlightActivations = new Map<string, Promise<void>>();
+
+function activateOnce(code: string, activateDevice: (code: string) => Promise<void>) {
+  const existing = inFlightActivations.get(code);
+  if (existing) return existing;
+  const request = activateDevice(code).finally(() => {
+    if (inFlightActivations.get(code) === request) {
+      inFlightActivations.delete(code);
+    }
+  });
+  inFlightActivations.set(code, request);
+  return request;
+}
 
 export function ActivatePage() {
   const navigate = useNavigate();
@@ -42,7 +55,7 @@ export function ActivatePage() {
       }
 
       try {
-        await activateDevice(code);
+        await activateOnce(code, activateDevice);
         if (cancelled) return;
         window.localStorage.removeItem(PENDING_ACTIVATION_CODE);
         window.history.replaceState(null, '', '/activate');

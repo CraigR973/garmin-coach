@@ -20,13 +20,14 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import CurrentUser
 from src.database import get_db
 from src.models.coaching import Analysis
+from src.rate_limit import paid_generation_limit
 from src.services.trends import (
     VALID_BUCKETS,
     ReviewError,
@@ -194,7 +195,9 @@ async def get_narrative(
 
 
 @router.post("/narrative/run", response_model=NarrativeEnvelope)
+@paid_generation_limit
 async def run_narrative(
+    request: Request,
     player: CurrentUser,
     bucket: str = "season",
     as_of: date | None = None,

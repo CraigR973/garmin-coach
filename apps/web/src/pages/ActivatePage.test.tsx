@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
@@ -58,5 +59,30 @@ describe('ActivatePage', () => {
 
     await waitFor(() => expect(activateDeviceMock).toHaveBeenCalledWith('stored-abc'));
     expect(screen.queryByText(/Activation failed/i)).toBeNull();
+  });
+
+  it('coalesces Strict Mode remounts into one activation request', async () => {
+    let resolveActivation = () => {};
+    activateDeviceMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveActivation = resolve;
+        }),
+    );
+    window.history.pushState({}, '', '/activate?code=strict-mode-code');
+
+    render(
+      <StrictMode>
+        <MemoryRouter initialEntries={['/activate?code=strict-mode-code']}>
+          <ActivatePage />
+        </MemoryRouter>
+      </StrictMode>,
+    );
+
+    await waitFor(() => expect(activateDeviceMock).toHaveBeenCalledTimes(1));
+    resolveActivation();
+    await waitFor(() =>
+      expect(window.localStorage.getItem('coach_pending_activation_code')).toBeNull(),
+    );
   });
 });
