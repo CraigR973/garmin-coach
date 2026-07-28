@@ -45,7 +45,7 @@ export function TopBar() {
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label={`Account menu (${player.displayName})`}
-        className="inline-flex items-center gap-2 press-down rounded-full focus-visible:outline-none focus-visible:shadow-glow"
+        className="tap-target inline-flex items-center justify-center gap-2 rounded-full px-2 press-down focus-visible:outline-none focus-visible:shadow-glow"
       >
         <span className="text-sm text-text-secondary font-sans">{player.displayName}</span>
       </DropdownMenuTrigger>

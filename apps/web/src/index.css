@@ -106,9 +106,11 @@
     /* Brand */
     --primary: #10B981;
     --primary-dark: #059669;
+    --primary-text: #10B981;
     --primary-glow: rgba(16, 185, 129, 0.35);
     --accent: #C8943C;
     --accent-dark: #A77C2A;
+    --accent-text: #F0B85B;
     --accent-glow: rgba(200, 148, 60, 0.35);
     --steele: #E8EBF0;
     --steele-mid: #B0B8C4;
@@ -124,15 +126,22 @@
 
     /* Semantic */
     --success: #10B981;
+    --success-text: #10B981;
     --warning: #F59E0B;
+    --warning-text: #F5B13D;
     --error: #EF4444;
+    --error-text: #F87171;
     --live: #EF4444;
+    --live-text: #F87171;
     --locked: #7B859B;
 
     /* Rank medals */
     --gold: #E5C46B;
+    --gold-text: #E5C46B;
     --silver: #B8C0CC;
+    --silver-text: #D1D5DB;
     --bronze: #C28B5C;
+    --bronze-text: #D6A171;
 
     /* Elevation — restrained, soft shadows on dark bg (Batch 52): the widened
        surface value ramp now carries most of the depth, so shadows are a whisper
@@ -178,9 +187,11 @@
     /* Brand — slightly darker variants for AA contrast on white */
     --primary: #059669;
     --primary-dark: #047857;
+    --primary-text: #047857;
     --primary-glow: rgba(5, 150, 105, 0.20);
     --accent: #A77C2A;
     --accent-dark: #8B6320;
+    --accent-text: #6F4E16;
     --accent-glow: rgba(167, 124, 42, 0.22);
 
     /* Steele in light mode is a dark slate gradient — keeps the
@@ -197,15 +208,22 @@
 
     /* Semantic */
     --success: #059669;
+    --success-text: #047857;
     --warning: #D97706;
+    --warning-text: #92400E;
     --error: #DC2626;
+    --error-text: #B91C1C;
     --live: #DC2626;
+    --live-text: #B91C1C;
     --locked: #9CA3AF;
 
     /* Rank medals — slightly darker for contrast on light bg */
     --gold: #B8862E;
+    --gold-text: #725217;
     --silver: #8A93A1;
+    --silver-text: #4B5563;
     --bronze: #A65E2A;
+    --bronze-text: #7C3F17;
 
     /* Elevation — much softer on light bg */
     --shadow-sm: 0 1px 2px 0 rgba(20, 24, 31, 0.06);

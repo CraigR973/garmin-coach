@@ -172,86 +172,80 @@ function IntervalWorkoutEditorForm({
         ))}
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[34rem] border-separate border-spacing-y-1 text-sm">
-          <thead>
-            <tr className="text-left text-xs uppercase tracking-wide text-text-secondary">
-              <th className="px-2 py-1 font-medium">Setting</th>
-              <th className="px-2 py-1 font-medium">Current</th>
-              <th className="px-2 py-1 font-medium">Change to</th>
-            </tr>
-          </thead>
-          <tbody>
-            <EditorRow label="No. of intervals" current={String(editor.current.repeat)}>
-              <BoundedNumberInput
-                ariaLabel="Change to number of intervals"
-                value={changeTo.repeat}
-                min={1}
-                max={20}
-                onChange={(repeat) => {
-                  setSelectedPreset(null);
-                  setChangeTo((current) => ({ ...current, repeat }));
-                }}
-              />
-            </EditorRow>
-            <EditorRow label="Work time" current={formatDuration(editor.current.work.durationSec)}>
-              <DurationInput
-                label="Change to work time"
-                value={changeTo.work.durationSec}
-                maxMinutes={120}
-                onChange={(durationSec) => updateDuration('work', durationSec)}
-              />
-            </EditorRow>
-            <EditorRow label="Work %FTP" current={`${editor.current.work.powerPct}%`}>
-              <BoundedNumberInput
-                ariaLabel="Change to work percent FTP"
-                value={changeTo.work.powerPct}
-                min={40}
-                max={150}
-                suffix="%"
-                onChange={(value) => updateLeg('work', 'powerPct', value)}
-              />
-            </EditorRow>
-            <EditorRow
-              label="Work cadence"
-              current={editor.current.work.cadenceRpm ? `${editor.current.work.cadenceRpm} rpm` : 'Open'}
-            >
-              <NullableCadenceInput
-                label="Change to work cadence"
-                value={changeTo.work.cadenceRpm ?? null}
-                onChange={(value) => updateLeg('work', 'cadenceRpm', value)}
-              />
-            </EditorRow>
-            <EditorRow label="Rest time" current={formatDuration(editor.current.rest.durationSec)}>
-              <DurationInput
-                label="Change to rest time"
-                value={changeTo.rest.durationSec}
-                maxMinutes={60}
-                onChange={(durationSec) => updateDuration('rest', durationSec)}
-              />
-            </EditorRow>
-            <EditorRow label="Rest %FTP" current={`${editor.current.rest.powerPct}%`}>
-              <BoundedNumberInput
-                ariaLabel="Change to rest percent FTP"
-                value={changeTo.rest.powerPct}
-                min={40}
-                max={150}
-                suffix="%"
-                onChange={(value) => updateLeg('rest', 'powerPct', value)}
-              />
-            </EditorRow>
-            <EditorRow
-              label="Rest cadence"
-              current={editor.current.rest.cadenceRpm ? `${editor.current.rest.cadenceRpm} rpm` : 'Open'}
-            >
-              <NullableCadenceInput
-                label="Change to rest cadence"
-                value={changeTo.rest.cadenceRpm ?? null}
-                onChange={(value) => updateLeg('rest', 'cadenceRpm', value)}
-              />
-            </EditorRow>
-          </tbody>
-        </table>
+      <div aria-label="Interval settings" className="space-y-2 sm:space-y-1">
+        <div className="hidden grid-cols-[minmax(10rem,1fr)_minmax(7rem,0.8fr)_minmax(12rem,1fr)] gap-3 px-2 py-1 text-left text-xs uppercase tracking-wide text-text-secondary sm:grid">
+          <span className="font-medium">Setting</span>
+          <span className="font-medium">Current</span>
+          <span className="font-medium">Change to</span>
+        </div>
+        <EditorRow label="No. of intervals" current={String(editor.current.repeat)}>
+          <BoundedNumberInput
+            ariaLabel="Change to number of intervals"
+            value={changeTo.repeat}
+            min={1}
+            max={20}
+            onChange={(repeat) => {
+              setSelectedPreset(null);
+              setChangeTo((current) => ({ ...current, repeat }));
+            }}
+          />
+        </EditorRow>
+        <EditorRow label="Work time" current={formatDuration(editor.current.work.durationSec)}>
+          <DurationInput
+            label="Change to work"
+            value={changeTo.work.durationSec}
+            maxMinutes={120}
+            onChange={(durationSec) => updateDuration('work', durationSec)}
+          />
+        </EditorRow>
+        <EditorRow label="Work %FTP" current={`${editor.current.work.powerPct}%`}>
+          <BoundedNumberInput
+            ariaLabel="Change to work percent FTP"
+            value={changeTo.work.powerPct}
+            min={40}
+            max={150}
+            suffix="%"
+            onChange={(value) => updateLeg('work', 'powerPct', value)}
+          />
+        </EditorRow>
+        <EditorRow
+          label="Work cadence"
+          current={editor.current.work.cadenceRpm ? `${editor.current.work.cadenceRpm} rpm` : 'Open'}
+        >
+          <NullableCadenceInput
+            label="Change to work cadence"
+            value={changeTo.work.cadenceRpm ?? null}
+            onChange={(value) => updateLeg('work', 'cadenceRpm', value)}
+          />
+        </EditorRow>
+        <EditorRow label="Rest time" current={formatDuration(editor.current.rest.durationSec)}>
+          <DurationInput
+            label="Change to rest"
+            value={changeTo.rest.durationSec}
+            maxMinutes={60}
+            onChange={(durationSec) => updateDuration('rest', durationSec)}
+          />
+        </EditorRow>
+        <EditorRow label="Rest %FTP" current={`${editor.current.rest.powerPct}%`}>
+          <BoundedNumberInput
+            ariaLabel="Change to rest percent FTP"
+            value={changeTo.rest.powerPct}
+            min={40}
+            max={150}
+            suffix="%"
+            onChange={(value) => updateLeg('rest', 'powerPct', value)}
+          />
+        </EditorRow>
+        <EditorRow
+          label="Rest cadence"
+          current={editor.current.rest.cadenceRpm ? `${editor.current.rest.cadenceRpm} rpm` : 'Open'}
+        >
+          <NullableCadenceInput
+            label="Change to rest cadence"
+            value={changeTo.rest.cadenceRpm ?? null}
+            onChange={(value) => updateLeg('rest', 'cadenceRpm', value)}
+          />
+        </EditorRow>
       </div>
 
       {editor.fixedSteps.length > 0 ? (
@@ -293,13 +287,19 @@ function EditorRow({
   children: ReactNode;
 }) {
   return (
-    <tr>
-      <th scope="row" className="rounded-l-md bg-bg/70 px-2 py-2 text-left font-medium text-text-primary">
-        {label}
-      </th>
-      <td className="bg-bg/70 px-2 py-2 tabular-nums text-text-secondary">{current}</td>
-      <td className="rounded-r-md bg-bg/70 px-2 py-2">{children}</td>
-    </tr>
+    <div className="rounded-md bg-bg/70 px-3 py-3 sm:grid sm:grid-cols-[minmax(10rem,1fr)_minmax(7rem,0.8fr)_minmax(12rem,1fr)] sm:items-center sm:gap-3 sm:px-2 sm:py-2">
+      <div className="font-medium text-text-primary">{label}</div>
+      <div className="mt-1 flex items-baseline gap-2 tabular-nums text-sm text-text-secondary sm:mt-0">
+        <span className="text-xs font-medium uppercase tracking-wide text-text-muted sm:hidden">Current</span>
+        <span>{current}</span>
+      </div>
+      <div className="mt-3 sm:mt-0">
+        <div className="mb-1 text-xs font-medium uppercase tracking-wide text-text-muted sm:hidden">
+          Change to
+        </div>
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -317,7 +317,7 @@ function DurationInput({
   const minutes = Math.floor(value / 60);
   const seconds = value % 60;
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5">
       <BoundedNumberInput
         ariaLabel={`${label} minutes`}
         value={minutes}
@@ -352,7 +352,7 @@ function NullableCadenceInput({
     setDraft(value == null ? '' : String(value));
   }, [value]);
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5">
       <Input
         type="number"
         inputMode="numeric"
@@ -361,7 +361,7 @@ function NullableCadenceInput({
         max={130}
         value={draft}
         placeholder="Open"
-        className="h-9 w-24 tabular-nums"
+        className="h-11 w-24 tabular-nums"
         onChange={(event) => {
           const next = event.target.value;
           setDraft(next);
@@ -403,7 +403,7 @@ function BoundedNumberInput({
     setDraft(displayed);
   }, [displayed]);
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5">
       <Input
         type="number"
         inputMode="numeric"
@@ -411,7 +411,7 @@ function BoundedNumberInput({
         min={min}
         max={max}
         value={draft}
-        className={cn('h-9 tabular-nums', suffix ? 'w-20' : 'w-24')}
+        className={cn('h-11 tabular-nums', suffix ? 'w-20' : 'w-24')}
         onChange={(event) => {
           const next = event.target.value;
           setDraft(next);

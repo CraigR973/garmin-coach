@@ -6,11 +6,15 @@
 
 ## Now
 
-**2026-07-28 — Batch 162 shipped (learning-memory integrity).** PR #192 / squash `3a58debe`: conversational-memory confirmation is now immutable and evidence-bound; every cited user-owned chat/check-in/correction source is revalidated before a KB write; confirmed statements reach all five learned-context prompt consumers only as structurally delimited untrusted quoted data; Coach memory is confirm/reject only; and cross-user plus registered-route auth regressions pin the ownership boundary. No migration; deterministic verdicts, #133/#135, Red-never-VO2, plan, and delivery are unchanged. Branch-push, PR-context, and post-merge `main` CI passed all seven jobs; Vercel preview/production reached READY. Production verification on `3a58debe`: Railway direct and Vercel same-origin health matched the exact SHA, web `/` + `/coach-state` returned 200, unauthenticated learning-route access returned 401 direct and proxied, and the Vercel runtime-error scan was clean. Decision #243. **Next:** Batch 163 (mobile accessibility and responsive UI).
+**2026-07-28 — Batch 163 implementation ready (mobile a11y & responsive).** Frontend-only UX156-03/04/05/06 remediation on `feat/batch-163-mobile-a11y-responsive`: semantic badge/status text now uses AA-verified text tokens separate from decorative fills; small buttons, account trigger, activity chips, feedback controls, and chat actions meet the 44px floor; Week activity chips keep compact pill visuals with larger invisible hit areas; Markdown tables plus Handover document panes are keyboard-focusable scroll regions; and the interval editor now uses responsive setting rows with 44px inputs instead of the 34rem horizontal table, including Z2 zero-rest coverage. No API/shared-schema/backend/migration, no prompt/verdict/plan/delivery change. Local gates green: focused a11y/responsive tests 19 passed; full web vitest 375 passed; web `tsc --noEmit` clean; eslint 0 errors / 6 known Fast Refresh warnings; production build clean. Decision #244. **Next:** review branch/CI, then `/closeout 163` when Craig is ready.
 
 ---
 
 ## Log
+
+**2026-07-28 — Batch 163 implementation ready:** mobile a11y/responsive remediation for UX156-03/04/05/06 is ready on `feat/batch-163-mobile-a11y-responsive`: AA semantic text tokens for badges, 44px small controls/account/activity-chip hit areas, keyboard-focusable Markdown/Handover scroll regions, and responsive no-horizontal-scroll interval editor rows with Z2 zero-rest coverage. Frontend-only; no migration or coaching behavior change. Full web/static gates green. Decision #244; not promoted.
+
+---
 
 **2026-07-28 — Batch 162 shipped:** PR #192 / squash `3a58debe`; immutable evidence-bound memory confirmation, current-source revalidation, untrusted-quoted-data prompt boundaries, and cross-user/all-route auth regressions are live. All three CI waves passed seven jobs; Vercel preview/production READY; exact-SHA Railway/Vercel health, web, auth-gate, and runtime-error smokes passed. No migration or verdict/delivery change. Decision #243; Batch 163 is next.
 

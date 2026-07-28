@@ -18,4 +18,13 @@ describe('Markdown', () => {
     expect(screen.getByText('HRV')).toBeTruthy();
     expect(screen.getByText('51')).toBeTruthy();
   });
+
+  it('makes overflowing markdown tables keyboard focusable', () => {
+    const md = ['| Metric | Last night |', '| --- | --- |', '| HRV | 51 |'].join('\n');
+    render(<Markdown>{md}</Markdown>);
+
+    const region = screen.getByRole('region', { name: 'Scrollable markdown table' });
+    expect(region.getAttribute('tabindex')).toBe('0');
+    expect(region.className).toContain('focus-visible:shadow-glow');
+  });
 });

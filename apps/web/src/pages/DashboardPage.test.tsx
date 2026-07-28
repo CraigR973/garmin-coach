@@ -857,8 +857,8 @@ describe('DashboardPage', () => {
     await user.click(await screen.findByRole('button', { name: /^edit$/i }));
     await user.click(await screen.findByRole('button', { name: /^z2$/i }));
     expect((screen.getByLabelText('Change to number of intervals') as HTMLInputElement).value).toBe('1');
-    expect((screen.getByLabelText('Change to rest time minutes') as HTMLInputElement).value).toBe('0');
-    expect((screen.getByLabelText('Change to rest time seconds') as HTMLInputElement).value).toBe('00');
+    expect((screen.getByLabelText('Change to rest minutes') as HTMLInputElement).value).toBe('0');
+    expect((screen.getByLabelText('Change to rest seconds') as HTMLInputElement).value).toBe('00');
     await user.click(screen.getByRole('button', { name: /approve & upload to zwift/i }));
 
     await waitFor(() => {

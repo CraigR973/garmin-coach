@@ -63,7 +63,12 @@ const components: Components = {
     </code>
   ),
   table: ({ children }) => (
-    <div className="my-3 overflow-x-auto rounded-xl border border-border">
+    <div
+      tabIndex={0}
+      role="region"
+      aria-label="Scrollable markdown table"
+      className="my-3 overflow-x-auto rounded-xl border border-border focus-visible:outline-none focus-visible:shadow-glow"
+    >
       <table className="w-full border-collapse text-sm">{children}</table>
     </div>
   ),
