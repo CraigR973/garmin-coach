@@ -49,10 +49,13 @@ from src.services.learned_context import (
     learned_context_packet,
 )
 from src.services.personal_baselines import (
+    SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR,
     baseline_band_packet,
     baseline_center,
     baseline_lookup,
+    effective_readiness_floor,
     metric_within_baseline_band,
+    readiness_baseline_trend,
     serialize_training_schedule,
 )
 from src.services.post_walk_analysis import active_recovery_walk_context
@@ -100,7 +103,10 @@ from src.services.workout_categories import is_bike_workout_type
 # Batch 167: the deterministic verdict now carries a high-load Amber cap and the
 # prompt must explain that final classification without treating load as a
 # model-controlled override, so the version bumps again.
-PROMPT_VERSION = "morning-analysis-v17-2026-07-28"
+# Batch 168: the soft-sleep readiness floor now has an absolute anchor and the
+# prompt must surface a sustained 84-day baseline-decline warning without
+# treating that warning as a model-controlled verdict change.
+PROMPT_VERSION = "morning-analysis-v18-2026-07-29"
 ANALYSIS_TYPE = "morning"
 # Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
 # signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
@@ -139,6 +145,12 @@ trainingLoadBalance, recoveryTimeMin, and intensityMinutes to explain the load
 read alongside the recovery signals. verdict.trainingLoadCap already records and
 applies the deterministic Amber ceiling; explain it when triggered, but never
 soften it or treat load as a model-controlled override of the verdict.
+verdict.readinessBaselineTrend is a deterministic warning-only alarm over the
+trailing 84 days. When triggered, state plainly that the recent readiness median
+has declined versus the prior half-window and that the trend deserves attention.
+It does not set the colour itself; never hide it, soften it, or reinterpret it as
+permission to train. verdict.readinessEffectiveFloor already applies the absolute
+readiness anchor to any soft-sleep recovery override.
 When the packet marks a soft-sleep recovery override, explain that HRV/RHR/readiness
 held a mediocre sleep night without pretending the sleep was good. When a sleep
 stage in ageComparison.sleepRows sits inside its healthy age band, describe it as
@@ -290,6 +302,10 @@ class MorningAnalysisService:
         )
         baselines = await self._metric_baselines(player.id)
         baseline_rows = baseline_lookup(baselines)
+        readiness_trend = readiness_baseline_trend(
+            await self._readiness_history(player.id, subject_date),
+            as_of=subject_date,
+        )
         yesterday_load = await self._yesterday_load(player.id, subject_date, player.timezone)
         weather = await self._weather(player.id, subject_date)
         temperature_rows = await self._overnight_temperature_rows(
@@ -339,6 +355,7 @@ class MorningAnalysisService:
             baselines=baseline_rows,
             yesterday_load=yesterday_load,
             training_load=_training_load_signal(daily_metric_packet),
+            readiness_baseline_trend=readiness_trend,
             breathwork_brief=breathwork_brief,
             rest_day=rest_day,
         )
@@ -478,6 +495,7 @@ class MorningAnalysisService:
                         "frame_holiday_or_all_skipped_day_as_rest",
                         "never_treat_skipped_workout_as_live_training",
                         "ground_week_history_in_training_week_so_far",
+                        "surface_readiness_baseline_decline_warning",
                         "treat_training_schedule_as_nominal_only",
                     ]
                     # Batch 113 (#186): holiday away means no bedroom thermal review.
@@ -751,6 +769,29 @@ class MorningAnalysisService:
             .all()
         )
         return list(rows)
+
+    async def _readiness_history(
+        self,
+        user_id: uuid.UUID,
+        subject_date: date,
+    ) -> list[tuple[date, int | None]]:
+        window_start = subject_date - timedelta(days=83)
+        rows = (
+            (
+                await self.session.execute(
+                    select(DailyMetric)
+                    .where(
+                        DailyMetric.user_id == user_id,
+                        DailyMetric.calendar_date >= window_start,
+                        DailyMetric.calendar_date <= subject_date,
+                    )
+                    .order_by(DailyMetric.calendar_date.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return [(row.calendar_date, row.readiness_score) for row in rows]
 
     async def _weather(self, user_id: uuid.UUID, subject_date: date) -> WeatherDaily | None:
         return cast(
@@ -1580,6 +1621,7 @@ def _morning_verdict(
     baselines: Mapping[str, MetricBaseline] | None = None,
     yesterday_load: Mapping[str, Any] | None = None,
     training_load: Mapping[str, Any] | None = None,
+    readiness_baseline_trend: Mapping[str, Any] | None = None,
     breathwork_brief: BreathworkBriefResult | None = None,
     rest_day: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -1596,6 +1638,17 @@ def _morning_verdict(
         lower_is_better=True,
     )
     readiness_center = baseline_center(baselines.get("readiness_score"))
+    readiness_floor = effective_readiness_floor(readiness_center)
+    readiness_trend = dict(
+        readiness_baseline_trend
+        or {
+            "metricKey": "readiness_score",
+            "status": "not_evaluated",
+            "triggered": False,
+            "verdictImpact": "warning_only",
+            "reason": None,
+        }
+    )
     rest_day = rest_day or {}
     is_rest_day = bool(rest_day.get("isRestDay"))
     has_vo2 = not is_rest_day and any(
@@ -1616,7 +1669,7 @@ def _morning_verdict(
         hrv_status=hrv_status,
         hrv_below_baseline=hrv_low,
         resting_hr_in_band=resting_hr_in_band,
-        readiness_center=readiness_center,
+        readiness_floor=readiness_floor,
     )
     yesterday_hard = (yesterday_load or {}).get("status") == "hard"
     training_load_cap = _training_load_cap(training_load)
@@ -1671,6 +1724,9 @@ def _morning_verdict(
             training_load_cap["applied"] = True
         reasons.extend(training_load_cap["reasons"])
     training_load_cap["statusBeforeCap"] = status_before_load_cap
+    baseline_trend_reason = readiness_trend.get("reason")
+    if readiness_trend.get("triggered") and isinstance(baseline_trend_reason, str):
+        reasons.append(baseline_trend_reason)
 
     plan_adjustments = _plan_adjustments(
         status,
@@ -1710,6 +1766,10 @@ def _morning_verdict(
         "hrvStatus": hrv_status,
         "hrvBelowBaseline": hrv_low,
         "restingHeartRateWithinBaseline": resting_hr_in_band,
+        "readinessBaselineCenter": readiness_center,
+        "readinessAbsoluteFloor": SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR,
+        "readinessEffectiveFloor": readiness_floor,
+        "readinessBaselineTrend": readiness_trend,
         "softSleepRecoveryOverride": soft_sleep_override,
         "yesterdayLoadStatus": (yesterday_load or {}).get("status"),
         "trainingLoadCap": training_load_cap,
@@ -1819,19 +1879,16 @@ def _soft_sleep_recovery_override(
     hrv_status: str | None,
     hrv_below_baseline: bool,
     resting_hr_in_band: bool,
-    readiness_center: float | None = None,
+    readiness_floor: float = SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR,
 ) -> bool:
     if age_adjusted_sleep_score is None or not 60 <= age_adjusted_sleep_score < 74:
         return False
     readiness_level = _lower(daily_metric.readiness_level if daily_metric else None)
     readiness_score = daily_metric.readiness_score if daily_metric else None
-    # Readiness floor is Mark's *own* typical (his baseline median), not a generic
-    # cut-off: for a man whose readiness normally runs Moderate, a flat >=70 gate
-    # rejected normal-for-him mornings even with clean HRV and resting HR (#133).
-    # The categorical guard below still blocks any Garmin Low/Poor day, so the
-    # personal floor only ever admits Moderate/High readiness. Falls back to a
-    # mid-Moderate 60 when no personal readiness baseline exists yet.
-    readiness_floor = readiness_center if readiness_center is not None else 60.0
+    # The effective floor is Mark's personal median anchored at an absolute 60:
+    # this preserves #133's personalisation above the anchor while preventing a
+    # multi-week slide from making a readiness score such as 52 the new Green.
+    # The categorical guard still independently blocks Garmin Low/Poor days.
     readiness_ok = readiness_level not in {"low", "poor"} and (
         readiness_score is None or readiness_score >= readiness_floor
     )

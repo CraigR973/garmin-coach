@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -45,6 +45,13 @@ from src.services.morning_analysis import (
     build_morning_user_prompt,
     build_today_actions,
     subjective_score_label,
+)
+from src.services.personal_baselines import (
+    BASELINE_TREND_WINDOW_DAYS,
+    READINESS_TREND_DECLINE_POINTS,
+    READINESS_TREND_MIN_SAMPLES_PER_HALF,
+    SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR,
+    readiness_baseline_trend,
 )
 
 
@@ -350,6 +357,7 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
         assert packet["verdict"]["subjectiveLabel"] == "OK"
         assert packet["verdict"]["status"] == "Amber"
         assert packet["verdict"]["readinessInterpretation"] is None
+        assert packet["verdict"]["readinessBaselineTrend"]["status"] == "insufficient_data"
         assert packet["verdict"]["hasVo2WorkoutToday"] is True
         assert packet["trainingWeekSoFar"]["window"] == {
             "kind": "calendar_week_to_date",
@@ -851,7 +859,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v17")
+    assert PROMPT_VERSION.startswith("morning-analysis-v18")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
@@ -879,6 +887,12 @@ def test_prompt_treats_the_training_load_cap_as_deterministic() -> None:
     assert ">=1.5 triggers the deterministic high-load cap" in SYSTEM_PROMPT
     assert "verdict.trainingLoadCap already records and" in SYSTEM_PROMPT
     assert "model-controlled override" in SYSTEM_PROMPT
+
+
+def test_prompt_treats_readiness_baseline_decline_as_warning_only() -> None:
+    assert "readinessBaselineTrend is a deterministic warning-only alarm" in SYSTEM_PROMPT
+    assert "It does not set the colour itself" in SYSTEM_PROMPT
+    assert "readinessEffectiveFloor" in SYSTEM_PROMPT
 
 
 def test_sleep_packet_localizes_bed_wake_across_dst_and_keeps_utc() -> None:
@@ -1216,10 +1230,10 @@ def test_soft_sleep_override_requires_resting_hr_inside_personal_band() -> None:
     assert verdict["softSleepRecoveryOverride"] is False
 
 
-def test_soft_sleep_override_uses_personal_readiness_floor_not_generic_70() -> None:
+def test_soft_sleep_override_preserves_healthy_personal_baseline_behaviour() -> None:
     # Mark's real 2026-07-05: soft sleep (72) + Moderate readiness 66 (below the old
-    # generic >=70 gate) but above his personal readiness median (53.5), with clean
-    # HRV and resting HR in band -> stays Green under the #133 personal floor.
+    # generic >=70 gate) but above the anchored floor (60), with clean HRV and
+    # resting HR in band -> stays Green under the #133 personal-floor rule.
     user_id = uuid.uuid4()
     daily_metric = DailyMetric(
         user_id=user_id,
@@ -1247,6 +1261,133 @@ def test_soft_sleep_override_uses_personal_readiness_floor_not_generic_70() -> N
 
     assert verdict["status"] == "Green"
     assert verdict["softSleepRecoveryOverride"] is True
+    assert verdict["readinessBaselineCenter"] == 53.5
+    assert verdict["readinessAbsoluteFloor"] == SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR
+    assert verdict["readinessEffectiveFloor"] == SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR
+
+
+def test_soft_sleep_override_cannot_follow_a_drifted_baseline_below_absolute_floor() -> None:
+    """Audit Probe 4: readiness 52 stays Amber even after its median sinks to 50."""
+    user_id = uuid.uuid4()
+    daily_metric = DailyMetric(
+        user_id=user_id,
+        calendar_date=date(2026, 7, 5),
+        readiness_score=52,
+        readiness_level="Moderate",
+        hrv_weekly_avg_ms=48,
+        hrv_baseline_low_ms=43,
+        hrv_status="Balanced",
+        resting_heart_rate_bpm=43,
+        raw_payload={},
+    )
+
+    verdict = _morning_verdict(
+        daily_metric=daily_metric,
+        sleep=None,
+        age_adjusted_sleep_score=72,
+        manual_entries=[],
+        planned_workouts=[],
+        baselines={
+            "resting_heart_rate_bpm": _rhr_baseline(user_id),
+            "readiness_score": _readiness_baseline(user_id, median=50),
+        },
+    )
+
+    assert verdict["status"] == "Amber"
+    assert verdict["softSleepRecoveryOverride"] is False
+    assert verdict["readinessBaselineCenter"] == 50
+    assert verdict["readinessEffectiveFloor"] == SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR
+
+
+def test_readiness_baseline_trend_alarms_on_sustained_84_day_decline() -> None:
+    as_of = date(2026, 7, 29)
+    window_start = as_of - timedelta(days=BASELINE_TREND_WINDOW_DAYS - 1)
+    observations = [
+        (window_start + timedelta(days=offset), 68 if offset < 42 else 58)
+        for offset in range(BASELINE_TREND_WINDOW_DAYS)
+    ]
+
+    trend = readiness_baseline_trend(observations, as_of=as_of)
+
+    assert trend["status"] == "declining"
+    assert trend["triggered"] is True
+    assert trend["verdictImpact"] == "warning_only"
+    assert trend["firstHalfMedian"] == 68
+    assert trend["secondHalfMedian"] == 58
+    assert trend["delta"] == -10
+    assert trend["firstHalfSampleCount"] == 42
+    assert trend["secondHalfSampleCount"] == 42
+    assert trend["minimumSamplesPerHalf"] == READINESS_TREND_MIN_SAMPLES_PER_HALF
+    assert trend["declineThresholdPoints"] == READINESS_TREND_DECLINE_POINTS
+    assert "Readiness baseline trend warning" in trend["reason"]
+
+
+def test_readiness_baseline_trend_ignores_noise_and_requires_coverage() -> None:
+    as_of = date(2026, 7, 29)
+    window_start = as_of - timedelta(days=BASELINE_TREND_WINDOW_DAYS - 1)
+    stable = [
+        (window_start + timedelta(days=offset), 68 if offset < 42 else 64)
+        for offset in range(BASELINE_TREND_WINDOW_DAYS)
+    ]
+    sparse = stable[:20] + stable[42:62]
+
+    stable_trend = readiness_baseline_trend(stable, as_of=as_of)
+    sparse_trend = readiness_baseline_trend(sparse, as_of=as_of)
+
+    assert stable_trend["status"] == "stable"
+    assert stable_trend["delta"] == -4
+    assert stable_trend["triggered"] is False
+    assert stable_trend["reason"] is None
+    assert sparse_trend["status"] == "insufficient_data"
+    assert sparse_trend["firstHalfMedian"] is None
+    assert sparse_trend["secondHalfMedian"] is None
+
+
+@pytest.mark.parametrize(
+    ("age_adjusted_sleep_score", "readiness_level", "expected_status"),
+    [
+        (58, "High", "Red"),
+        (80, "Poor", "Amber"),
+        (80, "High", "Green"),
+    ],
+)
+def test_readiness_baseline_alarm_never_softens_the_verdict(
+    age_adjusted_sleep_score: int,
+    readiness_level: str,
+    expected_status: str,
+) -> None:
+    daily_metric = DailyMetric(
+        user_id=uuid.uuid4(),
+        calendar_date=date(2026, 7, 29),
+        readiness_score=75,
+        readiness_level=readiness_level,
+        hrv_weekly_avg_ms=50,
+        hrv_baseline_low_ms=43,
+        hrv_status="Balanced",
+        raw_payload={},
+    )
+    kwargs = {
+        "daily_metric": daily_metric,
+        "sleep": None,
+        "age_adjusted_sleep_score": age_adjusted_sleep_score,
+        "manual_entries": [],
+        "planned_workouts": [],
+    }
+    warning = {
+        "metricKey": "readiness_score",
+        "status": "declining",
+        "triggered": True,
+        "verdictImpact": "warning_only",
+        "reason": "Readiness baseline trend warning: sustained decline.",
+    }
+
+    without_warning = _morning_verdict(**kwargs)
+    with_warning = _morning_verdict(**kwargs, readiness_baseline_trend=warning)
+
+    assert without_warning["status"] == expected_status
+    assert with_warning["status"] == expected_status
+    assert with_warning["readinessBaselineTrend"] == warning
+    assert warning["reason"] in with_warning["reasons"]
 
 
 def test_soft_sleep_override_rejects_readiness_below_personal_median() -> None:
