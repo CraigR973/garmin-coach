@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import stat
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,6 +14,7 @@ from urllib.parse import unquote, urlsplit, urlunsplit
 import structlog
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
+BACKUP_RETENTION_COUNT = 7
 
 
 @dataclass
@@ -50,13 +52,33 @@ def _safe_filename(filename: str) -> bool:
     return bool(re.fullmatch(r"coach_\d{8}_\d{6}\.sql", filename))
 
 
+def _prepare_backup_dir(path: Path) -> None:
+    path.mkdir(parents=True, mode=0o700, exist_ok=True)
+    os.chmod(path, 0o700)
+
+
+def _set_owner_only_file(path: Path) -> None:
+    os.chmod(path, 0o600)
+
+
+def _prune_old_backups(path: Path, keep: int = BACKUP_RETENTION_COUNT) -> None:
+    files = sorted(
+        (f for f in path.glob("coach_*.sql") if _safe_filename(f.name)),
+        key=lambda f: f.stat().st_mtime,
+        reverse=True,
+    )
+    for old in files[keep:]:
+        old.unlink(missing_ok=True)
+
+
 async def create_backup(backup_dir: str, database_url: str) -> BackupInfo:
     path = Path(backup_dir)
-    path.mkdir(parents=True, exist_ok=True)
+    _prepare_backup_dir(path)
 
     now = datetime.now(UTC)
     filename = f"coach_{now.strftime('%Y%m%d_%H%M%S')}.sql"
     filepath = path / filename
+    partial = path / f".{filename}.partial"
 
     env = os.environ.copy()
     password = _pg_password(database_url)
@@ -67,8 +89,9 @@ async def create_backup(backup_dir: str, database_url: str) -> BackupInfo:
         "pg_dump",
         "--no-password",
         "--format=plain",
+        "--schema=coach",
         "--file",
-        str(filepath),
+        str(partial),
         _pg_dsn(database_url),
         env=env,
         stdout=asyncio.subprocess.PIPE,
@@ -76,9 +99,13 @@ async def create_backup(backup_dir: str, database_url: str) -> BackupInfo:
     )
     _, stderr = await proc.communicate()
     if proc.returncode != 0:
-        if filepath.exists():
-            filepath.unlink()
+        partial.unlink(missing_ok=True)
         raise RuntimeError(f"pg_dump failed: {stderr.decode().strip()}")
+
+    _set_owner_only_file(partial)
+    os.replace(partial, filepath)
+    _set_owner_only_file(filepath)
+    _prune_old_backups(path)
 
     size = filepath.stat().st_size
     log.info("backup created", filename=filename, size_bytes=size)
@@ -89,6 +116,8 @@ def list_backups(backup_dir: str) -> list[BackupInfo]:
     path = Path(backup_dir)
     if not path.exists():
         return []
+    if stat.S_IMODE(path.stat().st_mode) & 0o077:
+        log.warning("backup directory permissions are too broad", backup_dir=backup_dir)
     files = sorted(
         (f for f in path.glob("coach_*.sql") if _safe_filename(f.name)),
         reverse=True,

@@ -1,12 +1,12 @@
-FROM python:3.12-slim
+FROM python:3.12.11-slim-bookworm@sha256:519591d6871b7bc437060736b9f7456b8731f1499a57e22e6c285135ae657bf7
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY apps/api/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY apps/api/requirements.lock .
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 # Hosted read-aloud voice (Batch 116 follow-up, DECISIONS #190/#191/#196/#210):
 # self-hosted Piper instead of a third-party TTS API, so brief text never

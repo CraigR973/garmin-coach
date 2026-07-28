@@ -158,10 +158,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       # API: audit the runtime requirements against the OSV database.
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install pip-audit
-      - run: pip-audit -r requirements.txt
+      - run: pip-audit -r requirements.lock --require-hashes --no-deps --disable-pip
         working-directory: apps/api
+      # Web/shared: pnpm audit with explicit reviewed exceptions for currently
+      # non-reachable React Router moderate advisories; any unreviewed advisory
+      # or any applicable High/Critical fails the job.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: python scripts/audit_js_advisories.py
+      - run: python scripts/check_rls_posture.py --allow-missing-url
+        env:
+          RLS_POSTURE_DATABASE_URL: ${{ secrets.RLS_POSTURE_DATABASE_URL }}
+      # Tracked-content/history-aware secret scan. Full checkout is intentional.
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

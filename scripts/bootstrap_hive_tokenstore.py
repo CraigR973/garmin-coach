@@ -3,11 +3,11 @@
 Mark's Hive account uses AWS Cognito ``SMS_MFA``, so the unattended poller cannot
 do a password login. Run this once (with the account phone to hand for the SMS
 code) to exchange a full SMS-2FA login for a refresh token, then store the
-printed ``HIVE_TOKENSTORE_B64`` value as a deployment secret. The poller resumes
+stored ``HIVE_TOKENSTORE_B64`` value as a deployment secret. The poller resumes
 from it via ``REFRESH_TOKEN_AUTH`` without further SMS prompts.
 
     HIVE_EMAIL=... HIVE_PASSWORD=... \
-        apps/api/.venv/bin/python scripts/bootstrap_hive_tokenstore.py
+        apps/api/.venv/bin/python scripts/bootstrap_hive_tokenstore.py --env-output hive.env
 """
 
 from __future__ import annotations
@@ -19,6 +19,8 @@ import os
 from argparse import ArgumentParser
 from pathlib import Path
 
+from secure_artifacts import write_secret_file
+
 
 def main() -> None:
     parser = ArgumentParser(description=__doc__)
@@ -27,7 +29,17 @@ def main() -> None:
         type=Path,
         help="Optional path to write a HIVE_TOKENSTORE_B64 line.",
     )
+    parser.add_argument(
+        "--stdout",
+        action="store_true",
+        help=(
+            "Print HIVE_TOKENSTORE_B64 to stdout. Use only in a private shell; "
+            "stdout may be captured by terminal, CI, or remote-session logs."
+        ),
+    )
     args = parser.parse_args()
+    if not args.env_output and not args.stdout:
+        parser.error("choose --env-output FILE for a 0600 file, or explicit --stdout")
 
     try:
         from pyhiveapi import Auth  # type: ignore[import-untyped, unused-ignore]
@@ -53,8 +65,8 @@ def main() -> None:
     ).decode()
 
     if args.env_output:
-        args.env_output.write_text(f"HIVE_TOKENSTORE_B64={blob}\n", encoding="utf-8")
-        print(f"HIVE_TOKENSTORE_B64 written to {args.env_output}")
+        write_secret_file(args.env_output, f"HIVE_TOKENSTORE_B64={blob}\n")
+        print(f"HIVE_TOKENSTORE_B64 written to {args.env_output} (0600)")
     else:
         print(f"HIVE_TOKENSTORE_B64={blob}")
 
