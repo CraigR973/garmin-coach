@@ -6,11 +6,15 @@
 
 ## Now
 
-**2026-07-28 — Batch 162 implementation ready (learning-memory integrity).** On `fix/batch-162-learning-memory-integrity`, proposal confirmation is now exact-wording accept/reject: extraction requires lexical evidence support and rejects instruction-shaped candidates; acceptance re-resolves every cited user-owned chat/check-in/correction source, rejects missing/changed/foreign/unsupported evidence, and refuses any confirmation-time rewrite. Coach memory no longer offers an editor. Confirmed statements enter analysis packets only as `contentRole='untrusted_user_data'` / `untrustedQuotedData[]`, with one fixed instruction/data guardrail versioned into morning plus ride/strength/mobility/walk prompts. Added cross-user endpoint coverage and a registered-route auth inventory (four explicit public routes; every other API route must resolve `CurrentUser`/`AdminUser`). No migration; deterministic verdicts, #133/#135, Red-never-VO2, plan, and delivery unchanged. Full local gates green: backend 666 passed / 273 expected PostgreSQL skips, shared 24 passed, full web suite, Ruff/format/mypy/TypeScript/lint/build clean. Decision #243. Branch not promoted. **Next:** review, then `/closeout 162`.
+**2026-07-28 — Batch 162 shipped (learning-memory integrity).** PR #192 / squash `3a58debe`: conversational-memory confirmation is now immutable and evidence-bound; every cited user-owned chat/check-in/correction source is revalidated before a KB write; confirmed statements reach all five learned-context prompt consumers only as structurally delimited untrusted quoted data; Coach memory is confirm/reject only; and cross-user plus registered-route auth regressions pin the ownership boundary. No migration; deterministic verdicts, #133/#135, Red-never-VO2, plan, and delivery are unchanged. Branch-push, PR-context, and post-merge `main` CI passed all seven jobs; Vercel preview/production reached READY. Production verification on `3a58debe`: Railway direct and Vercel same-origin health matched the exact SHA, web `/` + `/coach-state` returned 200, unauthenticated learning-route access returned 401 direct and proxied, and the Vercel runtime-error scan was clean. Decision #243. **Next:** Batch 163 (mobile accessibility and responsive UI).
 
 ---
 
 ## Log
+
+**2026-07-28 — Batch 162 shipped:** PR #192 / squash `3a58debe`; immutable evidence-bound memory confirmation, current-source revalidation, untrusted-quoted-data prompt boundaries, and cross-user/all-route auth regressions are live. All three CI waves passed seven jobs; Vercel preview/production READY; exact-SHA Railway/Vercel health, web, auth-gate, and runtime-error smokes passed. No migration or verdict/delivery change. Decision #243; Batch 163 is next.
+
+---
 
 **2026-07-28 — Batch 162 implementation ready:** immutable evidence-bound conversational-memory confirmation; current-source revalidation; instruction-shaped/unsupported candidate rejection; `untrustedQuotedData` prompt boundary across all five learned-memory consumers; exact confirm/reject Coach-memory UI; cross-user no-KB-write regression; all-route auth inventory. No migration or verdict/delivery change. Full local gates green (backend 666 / 273 expected DB skips; shared 24; full web suite; static/build gates clean). Decision #243; branch `fix/batch-162-learning-memory-integrity`; not promoted.
 
