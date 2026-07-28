@@ -7,7 +7,7 @@ from datetime import date, datetime
 from typing import Any
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 
 from src.models.coaching import (
@@ -17,6 +17,7 @@ from src.models.coaching import (
     ManualEntry,
     PlanBlock,
     PlannedWorkout,
+    PostActivityGenerationStatus,
 )
 from src.models.profile import Profile, UserRole
 from src.services.post_strength_analysis import (
@@ -257,3 +258,113 @@ async def test_newer_activity_checkin_makes_strength_analysis_pending(
         assert second.generated is True
         assert second.analysis.id != first.analysis.id
         assert second.analysis.context_packet["activityCheckIn"]["feel"] == "legs worked"
+
+
+@pytest.mark.asyncio
+async def test_pending_strength_bulk_lookup_has_bounded_queries_for_multi_activity_week(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Strength Bulk",
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+
+        pending_id: uuid.UUID | None = None
+        for index in range(7):
+            activity = Activity(
+                user_id=user_id,
+                garmin_activity_id=880_000 + index,
+                activity_name=f"Strength {index}",
+                activity_type="strength_training",
+                start_utc=datetime(2026, 7, 1 + index, 7, 30),
+                duration_sec=1800,
+                avg_heart_rate_bpm=95,
+                exclude_from_recovery=True,
+                raw_summary={},
+            )
+            session.add(activity)
+            await session.flush()
+
+            session.add(
+                PostActivityGenerationStatus(
+                    user_id=user_id,
+                    activity_id=activity.id,
+                    subject_date=date(2026, 7, 1 + index),
+                    analysis_type=ANALYSIS_TYPE,
+                    status="ready",
+                )
+            )
+
+            context_packet: dict[str, object] = {"activityCheckIn": None}
+            if index == 0:
+                pending_id = activity.id
+                old_checkin = ManualEntry(
+                    user_id=user_id,
+                    activity_id=activity.id,
+                    entry_date=date(2026, 7, 1),
+                    entry_at_utc=datetime(2026, 7, 1, 9, 0),
+                    feel="old notes",
+                )
+                new_checkin = ManualEntry(
+                    user_id=user_id,
+                    activity_id=activity.id,
+                    entry_date=date(2026, 7, 1),
+                    entry_at_utc=datetime(2026, 7, 1, 10, 0),
+                    feel="new notes",
+                )
+                session.add_all([old_checkin, new_checkin])
+                context_packet = {
+                    "activityCheckIn": {
+                        "entryAtUtc": "2026-07-01T09:00:00Z",
+                    }
+                }
+
+            session.add(
+                Analysis(
+                    user_id=user_id,
+                    activity_id=activity.id,
+                    analysis_type=ANALYSIS_TYPE,
+                    subject_date=date(2026, 7, 1 + index),
+                    generated_at_utc=datetime(2026, 7, 1 + index, 11, 0),
+                    prompt_version=PROMPT_VERSION,
+                    context_packet=context_packet,
+                    output_markdown="Strength read",
+                    raw_response={},
+                )
+            )
+        await session.commit()
+
+        statements: list[str] = []
+
+        def _record_select(
+            conn: object,
+            cursor: object,
+            statement: str,
+            parameters: object,
+            context: object,
+            executemany: bool,
+        ) -> None:
+            if statement.lstrip().upper().startswith("SELECT"):
+                statements.append(statement)
+
+        event.listen(db_conn.sync_connection, "before_cursor_execute", _record_select)
+        try:
+            pending = await PostStrengthAnalysisService(session).pending_strength_activities(
+                user_id,
+                since=datetime(2026, 7, 1),
+            )
+        finally:
+            event.remove(db_conn.sync_connection, "before_cursor_execute", _record_select)
+
+    assert [activity.id for activity in pending] == [pending_id]
+    assert len(statements) <= 4

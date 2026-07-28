@@ -37,6 +37,10 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile
 from src.services.anthropic_text import generate_anthropic_text
+from src.services.bulk_post_activity_lookups import (
+    latest_analyses_by_activity,
+    latest_morning_analyses_by_date,
+)
 from src.services.workload_budget import workload_slot
 
 LEARNED_CONTEXT_SECTION = "learned_context"
@@ -467,6 +471,21 @@ class ConversationLearningService:
             )
         ).all()
 
+        activity_ids = [
+            entry.activity_id for entry in checkin_rows if entry.activity_id is not None
+        ]
+        entry_dates = [entry.entry_date for entry in checkin_rows if entry.activity_id is None]
+        activity_analysis_by_id = await latest_analyses_by_activity(
+            self.session,
+            user_id=user_id,
+            activity_ids=activity_ids,
+        )
+        morning_analysis_by_date = await latest_morning_analyses_by_date(
+            self.session,
+            user_id=user_id,
+            subject_dates=entry_dates,
+        )
+
         sources: list[LearningSource] = []
         for message, analysis in chat_rows:
             text = message.content.strip()
@@ -485,28 +504,11 @@ class ConversationLearningService:
         for entry in checkin_rows:
             text = (entry.notes or "").strip()
             if text:
-                linked_analysis = None
-                if entry.activity_id is not None:
-                    linked_analysis = await self.session.scalar(
-                        select(Analysis)
-                        .where(
-                            Analysis.user_id == user_id,
-                            Analysis.activity_id == entry.activity_id,
-                        )
-                        .order_by(Analysis.generated_at_utc.desc())
-                        .limit(1)
-                    )
-                else:
-                    linked_analysis = await self.session.scalar(
-                        select(Analysis)
-                        .where(
-                            Analysis.user_id == user_id,
-                            Analysis.analysis_type == "morning",
-                            Analysis.subject_date == entry.entry_date,
-                        )
-                        .order_by(Analysis.generated_at_utc.desc())
-                        .limit(1)
-                    )
+                linked_analysis = (
+                    activity_analysis_by_id.get(entry.activity_id)
+                    if entry.activity_id is not None
+                    else morning_analysis_by_date.get(entry.entry_date)
+                )
                 sources.append(
                     LearningSource(
                         source_id=f"checkin:{entry.id}",
