@@ -151,6 +151,7 @@ async def _seed_activity(
     activity_type: str,
     start_utc: datetime,
     duration_sec: float = 3600,
+    exclude_from_recovery: bool = False,
 ) -> Activity:
     activity = Activity(
         user_id=user_id,
@@ -161,6 +162,7 @@ async def _seed_activity(
         start_utc=start_utc,
         end_utc=start_utc + timedelta(seconds=duration_sec),
         duration_sec=duration_sec,
+        exclude_from_recovery=exclude_from_recovery,
         raw_summary={},
     )
     session.add(activity)
@@ -266,6 +268,74 @@ async def test_schedule_does_not_double_count_completed_planned_ride_as_activity
             activity_type="road_biking",
             start_utc=datetime(2026, 8, 12, 9, 0),
             duration_sec=3600,
+        )
+        await session.commit()
+
+        schedule = await PlanActionService(session).schedule(user, start_date=day, days=1)
+
+    assert len(schedule.days[0].workouts) == 1
+    assert schedule.days[0].workouts[0].status == "completed"
+    assert schedule.days[0].activities == []
+
+
+@pytest.mark.asyncio
+async def test_schedule_groups_midnight_boundary_activities_by_profile_local_date(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    bst_day = date(2026, 7, 28)
+    gmt_day = date(2026, 1, 28)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await _seed_user(session, user_id)
+        await _seed_activity(
+            session,
+            user_id,
+            name="Late Walk",
+            activity_type="walking",
+            # 00:30 BST on 2026-07-28, but still 2026-07-27 in UTC.
+            start_utc=datetime(2026, 7, 27, 23, 30),
+            duration_sec=3600,
+        )
+        await _seed_activity(
+            session,
+            user_id,
+            name="Winter Walk",
+            activity_type="walking",
+            start_utc=datetime(2026, 1, 28, 0, 30),
+            duration_sec=3600,
+        )
+        await session.commit()
+
+        summer = await PlanActionService(session).schedule(user, start_date=bst_day, days=1)
+        winter = await PlanActionService(session).schedule(user, start_date=gmt_day, days=1)
+
+    assert [activity.activity.activity_name for activity in summer.days[0].activities] == [
+        "Late Walk"
+    ]
+    assert [activity.activity.activity_name for activity in winter.days[0].activities] == [
+        "Winter Walk"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_schedule_uses_local_date_for_completed_kind_dedup(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    day = date(2026, 7, 28)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await _seed_user(session, user_id)
+        workout = await _seed_workout(session, user_id, day, workout_type="strength_maintenance")
+        workout.status = "completed"
+        await _seed_activity(
+            session,
+            user_id,
+            name="Late Strength",
+            activity_type="strength_training",
+            # 00:30 BST on the workout date; UTC date is the previous day.
+            start_utc=datetime(2026, 7, 27, 23, 30),
+            duration_sec=1800,
+            exclude_from_recovery=True,
         )
         await session.commit()
 

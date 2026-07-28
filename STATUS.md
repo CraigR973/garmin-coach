@@ -6,11 +6,15 @@
 
 ## Now
 
-**2026-07-28 — Batch 164 shipped (security/ops hygiene).** PR #194 / squash `8c71003`; DS154-03/04/06 remediation is live: PostCSS 8.5.24, hashed Python runtime lock + digest-pinned Docker base, CI JS/Python/Gitleaks/RLS-posture gates, explicit secure Garmin/Hive bootstrap outputs, scoped/permissioned/retained backups, and migration `025` for legacy RLS policy/search_path hardening. React Router 7 and least-privilege FastAPI role/FORCE RLS remain deliberate follow-ups. Branch, PR-context, and post-merge `main` CI passed all seven jobs; Vercel preview and production reached READY; Railway health returned exact SHA `8c71003314a75099d4ae37da5e5ac0221d9b8148`; web `/` returned 200; direct unauthenticated `GET /api/v1/daily-loop` returned 401; Vercel runtime errors were clear for the recent window. Same-origin API paths on Vercel currently return 404, so closeout used direct backend auth/health smokes. Decision #245. **Next:** Batch 165.
+**2026-07-28 — Batch 165 implementation ready (chat/week correctness).** `fix/batch-165-chat-week-correctness` closes CR153-03, CR153-07, and R155-D: brief chat now uses deterministic composite ordering (`created_utc`, user-before-assistant, id) without a migration, builds the adjustment-proposal wording from the read type so post-session chats stay advisory-only, carries an explicit anti-sycophancy directive, and Plan Week activity chips query/group by the profile-local timezone across GMT/BST midnight boundaries. Backend-only; no migration, shared schema, verdict, plan, or delivery change. Local gates green: backend pytest 673 passed / 276 expected DB skips; ruff clean; mypy clean across 122 source files. Decision #246. Branch not promoted. **Next:** open PR / close out Batch 165 when reviewed.
 
 ---
 
 ## Log
+
+**2026-07-28 — Batch 165 implementation ready:** `fix/batch-165-chat-week-correctness` closes CR153-03, CR153-07, and R155-D with deterministic brief-chat ordering, read-type-specific adjustment capability wording, an explicit anti-sycophancy chat directive, and profile-local Week activity grouping/dedup across GMT/BST midnight boundaries. Backend-only; no migration/shared-schema/verdict/plan/delivery change. Local gates green: backend pytest 673 passed / 276 expected DB skips; ruff clean; mypy clean (122 files). Decision #246; not promoted.
+
+---
 
 **2026-07-28 — Batch 164 shipped:** PR #194 / squash `8c71003`; security/ops hygiene for DS154-03/04/06 is live: reproducible Python lock + digest-pinned Docker base, PostCSS 8.5.24, pnpm audit gate with reviewed React Router moderate exceptions, Gitleaks history scan, optional live RLS posture check, 0600 Garmin/Hive bootstrap env files, scoped/permissioned/retained backups, and migration `025` for legacy policy/search_path hardening. Branch, PR-context, and post-merge `main` CI passed all seven jobs; Vercel preview/production reached READY; Railway exact-SHA health, web `/` 200, direct auth-gate 401, and Vercel runtime-error smokes passed. Same-origin API paths on Vercel currently return 404, so production API smokes used the direct backend. React Router 7 and least-privilege backend role/FORCE RLS deferred. Decision #245; Batch 165 is next.
 

@@ -145,6 +145,9 @@ async def test_ask_grounds_in_packet_and_stores_both_turns(db_conn: AsyncConnect
     # The packet is embedded in the system prompt so the answer is grounded.
     assert "Green" in client.calls[0]["system_prompt"]
     assert "Read type: morning" in client.calls[0]["system_prompt"]
+    assert "live morning read" in client.calls[0]["system_prompt"]
+    assert "the app can propose one" in client.calls[0]["system_prompt"]
+    assert "Do not cave to reassurance pressure" in client.calls[0]["system_prompt"]
     assert "Read context packet" in client.calls[0]["system_prompt"]
 
     async with session_factory() as session:
@@ -296,6 +299,8 @@ async def test_post_workout_read_chat_is_grounded_and_advisory_only(
     assert turn.assistant_message.content == "It means the ride landed as intended."
     assert turn.assistant_message.proposed_planned_workout_id is None
     assert "Read type: post_workout" in client.calls[0]["system_prompt"]
+    assert "advisory-only" in client.calls[0]["system_prompt"]
+    assert "Do not say the app can propose" in client.calls[0]["system_prompt"]
     assert "Tempo ride" in client.calls[0]["system_prompt"]
 
 
@@ -370,6 +375,51 @@ async def test_get_messages_lists_history_in_order(db_conn: AsyncConnection) -> 
     assert [row["role"] for row in body] == ["user", "assistant"]
     assert body[0]["content"] == "Q1?"
     assert body[1]["content"] == "A1"
+
+
+@pytest.mark.asyncio
+async def test_get_messages_orders_same_timestamp_user_before_assistant(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    same_time = datetime(2026, 7, 14, 8, 0)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        analysis = await _make_analysis(session, user.id)
+        session.add_all(
+            [
+                BriefMessage(
+                    id=uuid.uuid4(),
+                    user_id=user.id,
+                    analysis_id=analysis.id,
+                    role="assistant",
+                    content="A1",
+                    created_utc=same_time,
+                ),
+                BriefMessage(
+                    id=uuid.uuid4(),
+                    user_id=user.id,
+                    analysis_id=analysis.id,
+                    role="user",
+                    content="Q1?",
+                    created_utc=same_time,
+                ),
+            ]
+        )
+        await session.commit()
+
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get(f"/api/v1/briefs/{analysis.id}/messages")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    body = response.json()["data"]
+    assert [row["role"] for row in body] == ["user", "assistant"]
+    assert [row["content"] for row in body] == ["Q1?", "A1"]
 
 
 @pytest.mark.asyncio

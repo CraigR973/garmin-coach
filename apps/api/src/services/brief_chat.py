@@ -34,7 +34,7 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
@@ -51,7 +51,7 @@ MAX_USER_TURNS_PER_ANALYSIS = 10
 MAX_HISTORY_TURNS_IN_PROMPT = 10
 QUESTION_MAX_LENGTH = 1000
 
-PROMPT_VERSION = "brief-chat-v2-2026-07-24"
+PROMPT_VERSION = "brief-chat-v3-2026-07-28"
 
 SYSTEM_PROMPT = """You are CheckMark, answering a follow-up question about a
 read you already wrote for Mark. You are given that read's full context
@@ -69,9 +69,9 @@ timezone (never UTC), and never narrate a skipped or holiday workout as if it
 were live training.
 
 Keep answers short and conversational - a few sentences, not a restatement of
-the whole read. Do not fabricate the ability to change the plan yourself;
-if he wants an adjustment, say the app can propose one and he confirms it
-there, but do not claim to have made any change."""
+the whole read. Do not cave to reassurance pressure: if Mark asks you to soften,
+ignore, or talk around a hard recovery signal, hold the line kindly and keep the
+deterministic verdict intact."""
 
 
 class BriefChatError(Exception):
@@ -175,6 +175,32 @@ def _analysis_allows_adjustment_proposal(analysis: Analysis) -> bool:
     return analysis.analysis_type == "morning"
 
 
+def _message_ordering() -> tuple[Any, ...]:
+    return (
+        BriefMessage.created_utc.asc(),
+        case(
+            (BriefMessage.role == ROLE_USER, 0),
+            (BriefMessage.role == ROLE_ASSISTANT, 1),
+            else_=2,
+        ),
+        BriefMessage.id.asc(),
+    )
+
+
+def _capability_instruction(analysis: Analysis) -> str:
+    if _analysis_allows_adjustment_proposal(analysis):
+        return (
+            "Capability for this read: this is a live morning read. You cannot change the "
+            "plan yourself, but if Mark asks for an adjustment, you may say the app can "
+            "propose one for him to confirm there."
+        )
+    return (
+        "Capability for this read: this is a completed-session or retrospective read. "
+        "It is advisory-only. Do not say the app can propose, confirm, upload, or change "
+        "a workout from this chat."
+    )
+
+
 class BriefChatService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -197,7 +223,7 @@ class BriefChatService:
                 await self.session.execute(
                     select(BriefMessage)
                     .where(BriefMessage.analysis_id == analysis_id)
-                    .order_by(BriefMessage.created_utc.asc())
+                    .order_by(*_message_ordering())
                 )
             )
             .scalars()
@@ -246,7 +272,7 @@ class BriefChatService:
                 await self.session.execute(
                     select(BriefMessage)
                     .where(BriefMessage.analysis_id == analysis_id)
-                    .order_by(BriefMessage.created_utc.asc())
+                    .order_by(*_message_ordering())
                 )
             )
             .scalars()
@@ -259,6 +285,7 @@ class BriefChatService:
 
         system_prompt = (
             f"{SYSTEM_PROMPT}\n\nRead type: {analysis.analysis_type}\n\n"
+            f"{_capability_instruction(analysis)}\n\n"
             f"Read context packet (JSON):\n{_packet_json(analysis.context_packet)}\n\n"
             f"Read text:\n{analysis.output_markdown}"
         )

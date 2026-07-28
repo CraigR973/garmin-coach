@@ -4,6 +4,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -43,6 +44,30 @@ from src.services.workout_delivery import (
 
 def _utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _timezone_or_utc(timezone_name: str | None) -> ZoneInfo:
+    try:
+        return ZoneInfo(timezone_name or "UTC")
+    except ZoneInfoNotFoundError:
+        return ZoneInfo("UTC")
+
+
+def _local_date_bounds_utc(
+    start_date: date, end_date: date, timezone_name: str | None
+) -> tuple[datetime, datetime]:
+    tz = _timezone_or_utc(timezone_name)
+    start_local = datetime.combine(start_date, datetime.min.time(), tzinfo=tz)
+    end_local = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=tz)
+    return (
+        start_local.astimezone(UTC).replace(tzinfo=None),
+        end_local.astimezone(UTC).replace(tzinfo=None),
+    )
+
+
+def _local_activity_date(activity: Activity, timezone_name: str | None) -> date:
+    tz = _timezone_or_utc(timezone_name)
+    return activity.start_utc.replace(tzinfo=UTC).astimezone(tz).date()
 
 
 DONE_ADHERENCE_STATUSES = {"completed", "modified", "done", "did_something_else"}
@@ -592,7 +617,9 @@ class PlanActionService:
         by_date: dict[date, list[PlannedWorkout]] = {}
         for workout in rows:
             by_date.setdefault(workout.workout_date, []).append(workout)
-        activities_by_date = await self._activities_by_date(player.id, start_date, end_date)
+        activities_by_date = await self._activities_by_date(
+            player.id, start_date, end_date, player.timezone
+        )
 
         # Batch 81: attach each day's PlanBlock character + any active holiday
         # window so the organiser shows where he is in the 13-week slate.
@@ -642,17 +669,17 @@ class PlanActionService:
         return PlanSchedule(start_date=start_date, days=plan_days)
 
     async def _activities_by_date(
-        self, user_id: uuid.UUID, start_date: date, end_date: date
+        self, user_id: uuid.UUID, start_date: date, end_date: date, timezone_name: str | None
     ) -> dict[date, list[PlanActivity]]:
+        start_utc, end_utc = _local_date_bounds_utc(start_date, end_date, timezone_name)
         rows = (
             (
                 await self.session.execute(
                     select(Activity)
                     .where(
                         Activity.user_id == user_id,
-                        Activity.start_utc >= datetime.combine(start_date, datetime.min.time()),
-                        Activity.start_utc
-                        < datetime.combine(end_date + timedelta(days=1), datetime.min.time()),
+                        Activity.start_utc >= start_utc,
+                        Activity.start_utc < end_utc,
                     )
                     .order_by(Activity.start_utc.asc())
                 )
@@ -688,7 +715,7 @@ class PlanActionService:
             kind = _post_activity_kind(activity)
             if kind is None:
                 continue
-            day = activity.start_utc.date()
+            day = _local_activity_date(activity, timezone_name)
             if kind in completed_kinds_by_day.get(day, set()):
                 continue
             by_date.setdefault(day, []).append(PlanActivity(activity=activity, activity_kind=kind))
