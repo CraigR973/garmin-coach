@@ -6,11 +6,15 @@
 
 ## Now
 
-**2026-07-28 — Batch 165 shipped (chat/week correctness).** PR #195 / squash `c1c3896`; CR153-03, CR153-07, and R155-D remediation is live: deterministic brief-chat ordering without a migration, read-type-specific adjustment capability wording, an explicit anti-sycophancy chat directive, and profile-local Week activity grouping/dedup across GMT/BST midnight boundaries. Branch, PR-context, and post-merge `main` CI passed all seven jobs; Vercel preview passed; Railway direct health served exact SHA `c1c38969c285e043b70637c8c30d9ca36392e2ed`; web `/` returned 200; protected direct API smokes for brief chat messages and Week schedule returned 401. Same-origin Vercel API paths still return the known 404, so production API smokes used the direct backend. Backend-only; no migration/shared-schema/verdict/plan/delivery change. Decision #246. **Next:** Batch 167 (Batch 166 remains Deferred).
+**2026-07-28 — Batch 166 implementation ready (bulk source/lookups).** `fix/batch-166-bulk-source-lookups` closes CR153-06: conversation learning now bulk-links up to 60 check-in sources to latest activity/date analyses, and ride/strength/flexibility/walk pending scans bulk-fetch latest analyses, activity check-ins, and generation statuses once per scan while preserving source ordering and Decision #219 latest-wins/history. Backend-only; no migration/shared-schema/verdict/plan/delivery change. Local gates green: backend pytest 673 passed / 278 expected DB skips; ruff clean; mypy clean (123 files). Decision #247; not promoted. **Next:** review/push Batch 166 or start Batch 167 after this branch is handled.
 
 ---
 
 ## Log
+
+**2026-07-28 — Batch 166 implementation ready:** `fix/batch-166-bulk-source-lookups` closes CR153-06 with shared bulk latest-analysis/date/check-in/status maps for conversation learning and post-activity pending scans, preserving source order and Decision #219's historical analysis rows. Backend-only; no migration/shared-schema/verdict/plan/delivery change. Local gates green: backend pytest 673 passed / 278 expected DB skips; ruff clean; mypy clean (123 files). Decision #247; not promoted.
+
+---
 
 **2026-07-28 — Batch 165 shipped:** PR #195 / squash `c1c3896`; chat/week correctness remediation is live: deterministic brief-chat ordering, read-type-specific adjustment capability wording, anti-sycophancy chat directive, and profile-local Week activity grouping/dedup across GMT/BST. Branch, PR-context, and post-merge `main` CI passed all seven jobs; Vercel preview passed; production verified exact-SHA Railway health, web `/` 200, and protected direct API smokes for brief chat + Week schedule 401. Same-origin Vercel API paths still return the known 404, so production API smokes used the direct backend. Backend-only; no migration/shared-schema/verdict/plan/delivery change. Decision #246; Batch 167 is next because Batch 166 remains Deferred.
 

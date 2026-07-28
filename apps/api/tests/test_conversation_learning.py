@@ -7,10 +7,11 @@ import uuid
 from datetime import date, datetime
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker
 
 from src.models.coaching import (
+    Activity,
     Analysis,
     BriefMessage,
     ConversationLearningProposal,
@@ -264,6 +265,107 @@ async def test_distillation_reads_all_user_sources_but_does_not_silently_write_k
     }
     assert all(source.text != "I will remember that." for source in client.sources)
     assert active_kb is None
+
+
+@pytest.mark.asyncio
+async def test_sources_bulk_link_sixty_checkins_without_per_entry_queries(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+
+    async with session_factory() as session:
+        player = await _profile(session)
+        base = datetime(2026, 7, 1, 8, 0)
+        activity_ids: list[uuid.UUID] = []
+
+        for index in range(30):
+            activity = Activity(
+                user_id=player.id,
+                garmin_activity_id=700_000 + index,
+                activity_name=f"Ride {index}",
+                activity_type="road_biking",
+                start_utc=base.replace(day=index + 1),
+                duration_sec=3600,
+                exclude_from_recovery=False,
+                raw_summary={},
+            )
+            session.add(activity)
+            await session.flush()
+            activity_ids.append(activity.id)
+            session.add(
+                Analysis(
+                    user_id=player.id,
+                    activity_id=activity.id,
+                    analysis_type="post_workout",
+                    subject_date=date(2026, 7, index + 1),
+                    generated_at_utc=base.replace(day=index + 1, hour=10),
+                    prompt_version="test",
+                    context_packet={},
+                    output_markdown="Read",
+                    raw_response={},
+                )
+            )
+            session.add(
+                ManualEntry(
+                    user_id=player.id,
+                    activity_id=activity.id,
+                    entry_date=date(2026, 7, index + 1),
+                    entry_at_utc=base.replace(day=index + 1, hour=9),
+                    notes=f"Activity note {index}",
+                )
+            )
+
+        for index in range(30):
+            source_date = date(2026, 7, index + 1)
+            session.add(
+                Analysis(
+                    user_id=player.id,
+                    analysis_type="morning",
+                    subject_date=source_date,
+                    generated_at_utc=datetime(2026, 7, index + 1, 11, 0),
+                    prompt_version="test",
+                    context_packet={},
+                    output_markdown="Morning read",
+                    raw_response={},
+                )
+            )
+            session.add(
+                ManualEntry(
+                    user_id=player.id,
+                    entry_date=source_date,
+                    entry_at_utc=datetime(2026, 7, index + 1, 8, 30),
+                    notes=f"Morning note {index}",
+                )
+            )
+        await session.commit()
+
+        statements: list[str] = []
+
+        def _record_select(
+            conn: object,
+            cursor: object,
+            statement: str,
+            parameters: object,
+            context: object,
+            executemany: bool,
+        ) -> None:
+            if statement.lstrip().upper().startswith("SELECT"):
+                statements.append(statement)
+
+        event.listen(db_conn.sync_connection, "before_cursor_execute", _record_select)
+        try:
+            sources = await ConversationLearningService(session)._sources(
+                player.id,
+                now=datetime(2026, 7, 31, 6, 0),
+            )
+        finally:
+            event.remove(db_conn.sync_connection, "before_cursor_execute", _record_select)
+
+    assert len(sources) == 60
+    assert [source.text for source in sources[:2]] == ["Activity note 29", "Morning note 29"]
+    assert all(source.analysis_id is not None for source in sources)
+    assert len(statements) <= 5
+    assert len(activity_ids) == 30
 
 
 @pytest.mark.asyncio

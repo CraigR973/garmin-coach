@@ -30,6 +30,11 @@ from src.services.analysis_currentness import (
     manual_entry_input_version,
 )
 from src.services.anthropic_text import generate_anthropic_text
+from src.services.bulk_post_activity_lookups import (
+    generation_statuses_by_activity,
+    latest_analyses_by_activity,
+    latest_checkins_by_activity,
+)
 from src.services.coaching_state import CoachingStateService
 from src.services.feedback import FeedbackService
 from src.services.generation_requests import (
@@ -43,7 +48,6 @@ from src.services.learned_context import (
     learned_context_packet,
 )
 from src.services.post_activity_state import (
-    PostActivityGenerationStatusService,
     mark_post_activity_generation,
     prepare_post_activity_generation,
 )
@@ -273,15 +277,30 @@ class PostWorkoutAnalysisService:
             .all()
         )
 
+        ride_rows = [activity for activity in rows if _is_ride(activity)]
+        activity_ids = [activity.id for activity in ride_rows]
+        latest_by_activity = await latest_analyses_by_activity(
+            self.session,
+            user_id=user_id,
+            activity_ids=activity_ids,
+            analysis_type=ANALYSIS_TYPE,
+        )
+        checkin_by_activity = await latest_checkins_by_activity(
+            self.session,
+            user_id=user_id,
+            activity_ids=activity_ids,
+        )
+        status_by_activity = await generation_statuses_by_activity(
+            self.session,
+            user_id=user_id,
+            activity_ids=activity_ids,
+        )
+
         pending: list[Activity] = []
-        for activity in rows:
-            if not _is_ride(activity):
-                continue
-            latest = await self.latest_analysis_for_activity(activity.id)
-            checkin = await self._post_ride_checkin(activity.user_id, activity.id)
-            generation_status = await PostActivityGenerationStatusService(self.session).get(
-                user_id, activity.id
-            )
+        for activity in ride_rows:
+            latest = latest_by_activity.get(activity.id)
+            checkin = checkin_by_activity.get(activity.id)
+            generation_status = status_by_activity.get(activity.id)
             if (
                 latest is None
                 or not _analysis_is_current(latest, checkin)
