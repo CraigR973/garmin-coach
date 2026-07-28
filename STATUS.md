@@ -6,11 +6,15 @@
 
 ## Now
 
-**2026-07-28 — Batch 167 implementation ready (deterministic training-load verdict cap).** `fix/batch-167-training-load-cap` closes F2 / R155-A: `_morning_verdict` now receives computed ACWR + Garmin recovery time and applies an Amber ceiling at ACWR ≥1.50 or recovery time >24 hours. The pre-existing Low-readiness `load_driven` interpretation remains descriptive but is subordinate to the cap; the 2026-07-24 real-case shape now resolves Amber, while existing Amber/Red lights and all acute gates remain unchanged. The structured `verdict.trainingLoadCap` records values, thresholds, sources, pre-cap status, and whether the colour changed; prompt v17 explains but cannot soften/model-set it. Backend + architecture/decision docs only; no migration, shared schema, plan, delivery, auth, or hosting change. Local gates green: backend pytest **682 passed / 278 expected DB skips**; Ruff + format clean; mypy clean (**123 source files**). Decision #248; not promoted.
+**2026-07-28 — Batch 167 shipped (deterministic training-load verdict cap).** PR #197 / squash `596b2b9`; F2 / R155-A is closed: computed ACWR ≥1.50 or Garmin recovery time >24 hours now sets a deterministic Amber ceiling, subordinating the Low-readiness `load_driven` relax path without changing existing Amber/Red or acute gates. Branch-push, PR-context, and post-merge `main` CI passed all seven jobs; Vercel preview and exact-SHA production deployments reached `READY`; Railway health served exact SHA `596b2b98e98852d909410b3de83e9eaff0b3d3c5`; web `/` returned 200; readiness returned 200; and the protected direct daily-loop smoke returned 401. Backend + docs only; no migration/shared-schema/plan/delivery/auth/hosting change. Decision #248. **Next:** Batch 168.
 
 ---
 
 ## Log
+
+**2026-07-28 — Batch 167 shipped:** PR #197 / squash `596b2b9`; the deterministic one-way Amber ceiling at ACWR ≥1.50 or Garmin recovery time >24 hours is live, closing F2 / R155-A. The 07-24 load-driven Low-readiness shape now resolves Amber; existing Amber/Red and the acute gates remain unchanged. All three CI waves passed seven jobs; Vercel preview/production and Railway production passed exact-SHA verification; web/readiness/protected daily-loop smokes passed. Backend + docs only; no migration/shared-schema/plan/delivery/auth/hosting change. Decision #248; Batch 168 is next.
+
+---
 
 **2026-07-28 — Batch 167 implementation ready:** `fix/batch-167-training-load-cap` closes F2 / R155-A with a deterministic one-way Amber ceiling at computed ACWR ≥1.50 or Garmin recovery time >24 hours. The 07-24 Low-readiness + hard-yesterday load-driven shape now resolves Amber; severity-matrix regressions prove load never makes an existing light greener, and acute Amber/Red gates are unchanged. Prompt v17 explains the structured cap without controlling it. Backend + architecture/decision docs only; no migration/shared-schema/plan/delivery/auth/hosting change. Local gates green: backend 682 passed / 278 expected DB skips; Ruff/format/mypy clean (123 source files). Decision #248; not promoted.
 
