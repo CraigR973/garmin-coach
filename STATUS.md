@@ -6,11 +6,15 @@
 
 ## Now
 
-**2026-07-28 — Batch 165 implementation ready (chat/week correctness).** `fix/batch-165-chat-week-correctness` closes CR153-03, CR153-07, and R155-D: brief chat now uses deterministic composite ordering (`created_utc`, user-before-assistant, id) without a migration, builds the adjustment-proposal wording from the read type so post-session chats stay advisory-only, carries an explicit anti-sycophancy directive, and Plan Week activity chips query/group by the profile-local timezone across GMT/BST midnight boundaries. Backend-only; no migration, shared schema, verdict, plan, or delivery change. Local gates green: backend pytest 673 passed / 276 expected DB skips; ruff clean; mypy clean across 122 source files. Decision #246. Branch not promoted. **Next:** open PR / close out Batch 165 when reviewed.
+**2026-07-28 — Batch 165 shipped (chat/week correctness).** PR #195 / squash `c1c3896`; CR153-03, CR153-07, and R155-D remediation is live: deterministic brief-chat ordering without a migration, read-type-specific adjustment capability wording, an explicit anti-sycophancy chat directive, and profile-local Week activity grouping/dedup across GMT/BST midnight boundaries. Branch, PR-context, and post-merge `main` CI passed all seven jobs; Vercel preview passed; Railway direct health served exact SHA `c1c38969c285e043b70637c8c30d9ca36392e2ed`; web `/` returned 200; protected direct API smokes for brief chat messages and Week schedule returned 401. Same-origin Vercel API paths still return the known 404, so production API smokes used the direct backend. Backend-only; no migration/shared-schema/verdict/plan/delivery change. Decision #246. **Next:** Batch 167 (Batch 166 remains Deferred).
 
 ---
 
 ## Log
+
+**2026-07-28 — Batch 165 shipped:** PR #195 / squash `c1c3896`; chat/week correctness remediation is live: deterministic brief-chat ordering, read-type-specific adjustment capability wording, anti-sycophancy chat directive, and profile-local Week activity grouping/dedup across GMT/BST. Branch, PR-context, and post-merge `main` CI passed all seven jobs; Vercel preview passed; production verified exact-SHA Railway health, web `/` 200, and protected direct API smokes for brief chat + Week schedule 401. Same-origin Vercel API paths still return the known 404, so production API smokes used the direct backend. Backend-only; no migration/shared-schema/verdict/plan/delivery change. Decision #246; Batch 167 is next because Batch 166 remains Deferred.
+
+---
 
 **2026-07-28 — Batch 165 implementation ready:** `fix/batch-165-chat-week-correctness` closes CR153-03, CR153-07, and R155-D with deterministic brief-chat ordering, read-type-specific adjustment capability wording, an explicit anti-sycophancy chat directive, and profile-local Week activity grouping/dedup across GMT/BST midnight boundaries. Backend-only; no migration/shared-schema/verdict/plan/delivery change. Local gates green: backend pytest 673 passed / 276 expected DB skips; ruff clean; mypy clean (122 files). Decision #246; not promoted.
 
