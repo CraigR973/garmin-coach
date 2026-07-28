@@ -161,11 +161,21 @@ function HandoverBody({
         </CardHeader>
         <CardContent>
           {showRaw ? (
-            <div className="max-h-[480px] overflow-auto rounded-xl border border-border bg-bg px-4 py-3 font-mono text-xs leading-5 text-text-primary whitespace-pre-wrap">
+            <div
+              tabIndex={0}
+              role="region"
+              aria-label="Scrollable raw handover document"
+              className="max-h-[480px] overflow-auto rounded-xl border border-border bg-bg px-4 py-3 font-mono text-xs leading-5 text-text-primary whitespace-pre-wrap focus-visible:outline-none focus-visible:shadow-glow"
+            >
               {markdown}
             </div>
           ) : (
-            <div className="max-h-[480px] overflow-auto rounded-xl border border-border bg-bg px-4 py-3">
+            <div
+              tabIndex={0}
+              role="region"
+              aria-label="Scrollable formatted handover document"
+              className="max-h-[480px] overflow-auto rounded-xl border border-border bg-bg px-4 py-3 focus-visible:outline-none focus-visible:shadow-glow"
+            >
               <Markdown>{markdown}</Markdown>
             </div>
           )}

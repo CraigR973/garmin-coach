@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HandoverPage } from './HandoverPage';
 
 const apiFetchMock = vi.fn();
@@ -35,7 +35,21 @@ function envelope(withNarrative: boolean) {
   };
 }
 
+function renderPage(queryClient = new QueryClient()) {
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <HandoverPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
 describe('HandoverPage', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+  });
+
   it('renders the deterministic export and generates a narrative', async () => {
     apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
       if (options?.method === 'POST' && path === '/api/v1/handover/run') {
@@ -50,13 +64,7 @@ describe('HandoverPage', () => {
     const queryClient = new QueryClient();
     const user = userEvent.setup();
 
-    render(
-      <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
-          <HandoverPage />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
+    renderPage(queryClient);
 
     // The briefing is shown first, with no written summary yet.
     expect(await screen.findByText('Full briefing for a new AI chat')).toBeTruthy();
@@ -73,5 +81,20 @@ describe('HandoverPage', () => {
     });
 
     expect(await screen.findByText(/57-year-old endurance athlete/)).toBeTruthy();
+  });
+
+  it('makes the formatted handover scroll region keyboard focusable', async () => {
+    apiFetchMock.mockResolvedValue(envelope(false));
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    renderPage(queryClient);
+
+    const region = await screen.findByRole('region', {
+      name: 'Scrollable formatted handover document',
+    });
+    expect(region.getAttribute('tabindex')).toBe('0');
+    expect(region.className).toContain('focus-visible:shadow-glow');
   });
 });

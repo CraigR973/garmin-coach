@@ -718,22 +718,37 @@ function GlanceDayRow({
       {day.activities.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {day.activities.map((activity) => (
-            <button
+            <ActivityChipButton
               key={`${activity.startUtc}-${activity.activityKind}`}
-              type="button"
+              activity={activity}
               onClick={() => onSelectActivity(activity)}
-              aria-label={`View ${activityLabel(activity)} details`}
-              className={cn(
-                badgeVariants({ variant: 'muted' }),
-                'hover:text-text-secondary focus-visible:outline-none focus-visible:shadow-glow press-down',
-              )}
-            >
-              + {activityLabel(activity)}
-            </button>
+            />
           ))}
         </div>
       ) : null}
     </div>
+  );
+}
+
+function ActivityChipButton({
+  activity,
+  onClick,
+}: {
+  activity: PlanActivity;
+  onClick: () => void;
+}) {
+  const label = activityLabel(activity);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`View ${label} details`}
+      className="tap-target inline-flex items-center justify-center rounded-full press-down focus-visible:outline-none focus-visible:shadow-glow"
+    >
+      <span className={cn(badgeVariants({ variant: 'muted' }), 'pointer-events-none')}>
+        + {label}
+      </span>
+    </button>
   );
 }
 
@@ -842,18 +857,11 @@ function ScheduleDayCard({
         {day.activities.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {day.activities.map((activity) => (
-              <button
+              <ActivityChipButton
                 key={`${activity.startUtc}-${activity.activityKind}`}
-                type="button"
+                activity={activity}
                 onClick={() => onOpenActivity(activity)}
-                aria-label={`View ${activityLabel(activity)} details`}
-                className={cn(
-                  badgeVariants({ variant: 'muted' }),
-                  'hover:text-text-secondary focus-visible:outline-none focus-visible:shadow-glow press-down',
-                )}
-              >
-                + {activityLabel(activity)}
-              </button>
+              />
             ))}
           </div>
         ) : null}

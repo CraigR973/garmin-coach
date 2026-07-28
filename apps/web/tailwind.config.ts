@@ -31,10 +31,12 @@ export default {
         primary: {
           DEFAULT: 'var(--primary)',
           dark: 'var(--primary-dark)',
+          text: 'var(--primary-text)',
         },
         accent: {
           DEFAULT: 'var(--accent)',
           dark: 'var(--accent-dark)',
+          text: 'var(--accent-text)',
         },
         steele: {
           DEFAULT: 'var(--steele)',
@@ -43,16 +45,37 @@ export default {
         },
 
         // Semantic
-        success: 'var(--success)',
-        warning: 'var(--warning)',
-        error: 'var(--error)',
+        success: {
+          DEFAULT: 'var(--success)',
+          text: 'var(--success-text)',
+        },
+        warning: {
+          DEFAULT: 'var(--warning)',
+          text: 'var(--warning-text)',
+        },
+        error: {
+          DEFAULT: 'var(--error)',
+          text: 'var(--error-text)',
+        },
         locked: 'var(--locked)',
-        live: 'var(--live)',
+        live: {
+          DEFAULT: 'var(--live)',
+          text: 'var(--live-text)',
+        },
 
         // Rank medals
-        gold: 'var(--gold)',
-        silver: 'var(--silver)',
-        bronze: 'var(--bronze)',
+        gold: {
+          DEFAULT: 'var(--gold)',
+          text: 'var(--gold-text)',
+        },
+        silver: {
+          DEFAULT: 'var(--silver)',
+          text: 'var(--silver-text)',
+        },
+        bronze: {
+          DEFAULT: 'var(--bronze)',
+          text: 'var(--bronze-text)',
+        },
       },
       fontFamily: {
         sans: ['Outfit', 'system-ui', 'sans-serif'],
