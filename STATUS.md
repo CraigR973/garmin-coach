@@ -6,11 +6,15 @@
 
 ## Now
 
-**2026-07-28 — Batch 163 implementation ready (mobile a11y & responsive).** Frontend-only UX156-03/04/05/06 remediation on `feat/batch-163-mobile-a11y-responsive`: semantic badge/status text now uses AA-verified text tokens separate from decorative fills; small buttons, account trigger, activity chips, feedback controls, and chat actions meet the 44px floor; Week activity chips keep compact pill visuals with larger invisible hit areas; Markdown tables plus Handover document panes are keyboard-focusable scroll regions; and the interval editor now uses responsive setting rows with 44px inputs instead of the 34rem horizontal table, including Z2 zero-rest coverage. No API/shared-schema/backend/migration, no prompt/verdict/plan/delivery change. Local gates green: focused a11y/responsive tests 19 passed; full web vitest 375 passed; web `tsc --noEmit` clean; eslint 0 errors / 6 known Fast Refresh warnings; production build clean. Decision #244. **Next:** review branch/CI, then `/closeout 163` when Craig is ready.
+**2026-07-28 — Batch 163 shipped (mobile a11y & responsive).** PR #193 / squash `5bcb888`; UX156-03/04/05/06 frontend remediation is live: semantic badge/status text now uses AA-verified text tokens separate from decorative fills; small buttons, account trigger, activity chips, feedback controls, and chat actions meet the 44px floor; Markdown tables plus Handover document panes are keyboard-focusable scroll regions; and the interval editor now uses responsive 44px setting rows instead of the 34rem horizontal table, including Z2 zero-rest coverage. No API/shared-schema/backend/migration, no prompt/verdict/plan/delivery change. Branch-push, PR-context, and post-merge `main` CI passed all seven jobs; production health served exact SHA `5bcb888` direct and same-origin; web `/` returned 200; and the served production CSS contains the new semantic text tokens plus 44px min-height utilities. Decision #244. **Next:** Batch 164 security/ops hygiene.
 
 ---
 
 ## Log
+
+**2026-07-28 — Batch 163 shipped:** PR #193 / squash `5bcb888`; mobile a11y/responsive remediation for UX156-03/04/05/06 is live. All three CI waves passed seven jobs; production verified exact-SHA health direct + same-origin, web `/` 200, and served CSS containing the new semantic text tokens + 44px min-height utilities. Frontend-only; no migration or coaching behavior change. Decision #244; Batch 164 is next.
+
+---
 
 **2026-07-28 — Batch 163 implementation ready:** mobile a11y/responsive remediation for UX156-03/04/05/06 is ready on `feat/batch-163-mobile-a11y-responsive`: AA semantic text tokens for badges, 44px small controls/account/activity-chip hit areas, keyboard-focusable Markdown/Handover scroll regions, and responsive no-horizontal-scroll interval editor rows with Z2 zero-rest coverage. Frontend-only; no migration or coaching behavior change. Full web/static gates green. Decision #244; not promoted.
 
