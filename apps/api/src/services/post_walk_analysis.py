@@ -36,7 +36,10 @@ from src.services.generation_requests import (
     post_activity_generation_identity,
     stamp_generation_identity,
 )
-from src.services.learned_context import learned_context_packet
+from src.services.learned_context import (
+    LEARNED_CONTEXT_PROMPT_GUARDRAIL,
+    learned_context_packet,
+)
 from src.services.post_activity_state import (
     PostActivityGenerationStatusService,
     mark_post_activity_generation,
@@ -57,7 +60,7 @@ from src.services.post_workout_analysis import (
 )
 from src.services.workload_budget import workload_slot
 
-PROMPT_VERSION = "post-walk-analysis-v3-2026-07-12"
+PROMPT_VERSION = "post-walk-analysis-v4-2026-07-28"
 ANALYSIS_TYPE = "post_walk"
 WALK_ANALYSIS_MIN_DURATION_SEC = 30 * 60
 WALK_ANALYSIS_MIN_DISTANCE_M = 3_000
@@ -74,6 +77,7 @@ do not make cycling recovery decisions and do not discuss power, FTP, cadence,
 stamina, Performance Condition, or Training Effect.
 If the activity check-in notes contain a question, answer it directly using only
 the supplied packet; say when the available data cannot support an answer."""
+SYSTEM_PROMPT = "\n\n".join((SYSTEM_PROMPT, LEARNED_CONTEXT_PROMPT_GUARDRAIL))
 
 
 @dataclass(frozen=True)

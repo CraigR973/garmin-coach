@@ -361,10 +361,11 @@ export const conversationLearningEnvelopeSchema = z.object({
   errors: z.array(apiErrorSchema),
 });
 
-export const conversationLearningReviewInputSchema = z.object({
-  decision: z.enum(['accept', 'reject']),
-  statement: z.string().min(5).max(500).nullable().optional(),
-});
+export const conversationLearningReviewInputSchema = z
+  .object({
+    decision: z.enum(['accept', 'reject']),
+  })
+  .strict();
 
 export const knowledgeBaseUpdateInputSchema = z.object({
   source: z.string().min(1).nullable().optional(),

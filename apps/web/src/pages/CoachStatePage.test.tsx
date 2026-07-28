@@ -304,7 +304,7 @@ describe('CoachStatePage', () => {
     expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/coach-memory');
   });
 
-  it('lets Mark edit and confirm a proposed memory before it is applied', async () => {
+  it('lets Mark confirm only the evidence-bound proposed wording', async () => {
     const user = userEvent.setup();
     useAuthMock.mockReturnValue({
       player: {
@@ -332,9 +332,9 @@ describe('CoachStatePage', () => {
     renderPage();
 
     expect(await screen.findByText('Learned from conversations')).toBeTruthy();
-    const editor = await screen.findByLabelText(/edit proposed memory/i);
-    await user.clear(editor);
-    await user.type(editor, 'Mark prefers training after breakfast.');
+    expect(await screen.findByText('Mark prefers riding after breakfast.')).toBeTruthy();
+    expect(screen.queryByLabelText(/edit proposed memory/i)).toBeNull();
+    expect(screen.getByText(/wording is locked to its evidence/i)).toBeTruthy();
     await user.click(screen.getByRole('button', { name: /accept memory/i }));
 
     await waitFor(() => {
@@ -344,7 +344,6 @@ describe('CoachStatePage', () => {
           method: 'PATCH',
           body: JSON.stringify({
             decision: 'accept',
-            statement: 'Mark prefers training after breakfast.',
           }),
         }),
       );

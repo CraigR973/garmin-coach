@@ -44,7 +44,10 @@ from src.services.holiday_pause import (
     HolidayWindow,
     holiday_windows_covering_date,
 )
-from src.services.learned_context import learned_context_packet
+from src.services.learned_context import (
+    LEARNED_CONTEXT_PROMPT_GUARDRAIL,
+    learned_context_packet,
+)
 from src.services.personal_baselines import (
     baseline_band_packet,
     baseline_center,
@@ -94,7 +97,7 @@ from src.services.workout_categories import is_bike_workout_type
 # Batch 148: trainingWeekSoFar is the factual planned -> changed -> executed
 # calendar-week record. The nominal trainingSchedule is no longer evidence of
 # what happened on any weekday, so the version bumps again.
-PROMPT_VERSION = "morning-analysis-v15-2026-07-24"
+PROMPT_VERSION = "morning-analysis-v16-2026-07-28"
 ANALYSIS_TYPE = "morning"
 SYSTEM_PROMPT = """You are CheckMark, a private daily endurance and sleep coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
@@ -179,6 +182,7 @@ prose. Write the read as the reasoning and the "why" behind those actions — do
 restate them as a duplicated checklist or an "Actions" header. Keep leading with the
 sleep summary, the metrics-vs-baselines read, the thermal review, and the verdict as
 before; reference an action in prose only where the reasoning needs it."""
+SYSTEM_PROMPT = "\n\n".join((SYSTEM_PROMPT, LEARNED_CONTEXT_PROMPT_GUARDRAIL))
 
 
 class MorningAnalysisError(RuntimeError):

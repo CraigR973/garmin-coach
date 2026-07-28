@@ -113,7 +113,6 @@ export function CoachStatePage() {
   const [showAdminTools, setShowAdminTools] = useState(false);
   const [tab, setTab] = useState<EditorTab>('knowledge');
   const [sectionDrafts, setSectionDrafts] = useState<Record<string, string>>({});
-  const [learningDrafts, setLearningDrafts] = useState<Record<string, string>>({});
   const [selectedDate, setSelectedDate] = useState('');
   const [workoutForm, setWorkoutForm] = useState({
     planBlockId: '',
@@ -206,18 +205,6 @@ export function CoachStatePage() {
     );
     setSectionDrafts(nextDrafts);
   }, [adminActiveSections]);
-
-  useEffect(() => {
-    const proposals = learningQuery.data?.data.proposals ?? [];
-    setLearningDrafts((current) => ({
-      ...current,
-      ...Object.fromEntries(
-        proposals
-          .filter((proposal) => proposal.status === 'pending' && current[proposal.id] === undefined)
-          .map((proposal) => [proposal.id, proposal.statement]),
-      ),
-    }));
-  }, [learningQuery.data]);
 
   useEffect(() => {
     if (!selectedDate && adminActiveWorkouts[0]) {
@@ -327,7 +314,6 @@ export function CoachStatePage() {
     }) => {
       const parsed = conversationLearningReviewInputSchema.parse({
         decision,
-        statement: decision === 'accept' ? (learningDrafts[proposal.id] ?? proposal.statement) : null,
       });
       const response = await apiFetch<unknown>(`/api/v1/coach-memory/learning/${proposal.id}`, {
         method: 'PATCH',
@@ -508,7 +494,7 @@ export function CoachStatePage() {
               </CardTitle>
               <CardDescription className="mt-1">
                 The coach proposes standing facts and preferences from your chats and notes. Nothing is remembered
-                until you accept it, and learned memory can never change the verdict rules.
+                until you accept the evidence-bound wording, and learned memory can never change the verdict rules.
               </CardDescription>
             </div>
             <Button
@@ -539,15 +525,9 @@ export function CoachStatePage() {
                     </span>
                     <span className="text-xs text-text-secondary">Waiting for confirmation</span>
                   </div>
-                  <textarea
-                    aria-label={`Edit proposed memory: ${proposal.statement}`}
-                    value={learningDrafts[proposal.id] ?? proposal.statement}
-                    onChange={(event) =>
-                      setLearningDrafts((current) => ({ ...current, [proposal.id]: event.target.value }))
-                    }
-                    className="min-h-[88px] w-full rounded-md border border-border bg-surface px-3 py-3 text-sm text-text-primary focus-visible:outline-none focus-visible:shadow-glow"
-                    maxLength={500}
-                  />
+                  <p className="rounded-md border border-border bg-surface px-3 py-3 text-sm text-text-primary">
+                    {proposal.statement}
+                  </p>
                   <div className="space-y-1 text-xs text-text-secondary">
                     {proposal.evidence.map((evidence) => (
                       <p key={`${proposal.id}-${evidence.sourceId}`}>
@@ -559,10 +539,7 @@ export function CoachStatePage() {
                     <Button
                       type="button"
                       onClick={() => reviewLearningMutation.mutate({ proposal, decision: 'accept' })}
-                      disabled={
-                        reviewLearningMutation.isPending ||
-                        !(learningDrafts[proposal.id] ?? proposal.statement).trim()
-                      }
+                      disabled={reviewLearningMutation.isPending}
                     >
                       <Check className="h-4 w-4" aria-hidden />
                       Accept memory
@@ -577,6 +554,10 @@ export function CoachStatePage() {
                       Reject
                     </Button>
                   </div>
+                  <p className="text-xs text-text-secondary">
+                    The wording is locked to its evidence. If it is not right, reject it and correct the source in a
+                    later chat or note.
+                  </p>
                 </div>
               ))}
             </div>

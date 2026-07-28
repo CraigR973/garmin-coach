@@ -273,14 +273,23 @@ async def test_accept_versions_learned_context_and_reject_never_applies(
     factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     async with factory() as session:
         player = await _profile(session)
+        source = ManualEntry(
+            user_id=player.id,
+            entry_date=date(2026, 7, 24),
+            entry_at_utc=datetime(2026, 7, 24, 8, 0),
+            notes="I always prefer training after breakfast.",
+        )
+        session.add(source)
+        await session.commit()
+        await session.refresh(source)
         accepted = ConversationLearningProposal(
             user_id=player.id,
             kind="preference",
             destination="learned_context",
-            statement="Mark prefers training after breakfast.",
+            statement="Mark prefers riding after breakfast.",
             evidence_json=[
                 {
-                    "sourceId": "checkin:1",
+                    "sourceId": f"checkin:{source.id}",
                     "sourceType": "checkin_note",
                     "sourceDate": "2026-07-24",
                     "analysisId": None,
@@ -319,7 +328,6 @@ async def test_accept_versions_learned_context_and_reject_never_applies(
             player,
             accepted.id,
             decision="accept",
-            statement="Mark prefers riding after breakfast.",
         )
         await service.review(player, rejected.id, decision="reject")
 
@@ -340,10 +348,11 @@ async def test_accept_versions_learned_context_and_reject_never_applies(
     assert active_kb is not None
     packet = learned_context_packet({"learned_context": active_kb.content})
     assert packet["classificationImpact"] == "none"
-    assert [item["statement"] for item in packet["items"]] == [
+    assert packet["contentRole"] == "untrusted_user_data"
+    assert [item["quote"] for item in packet["untrustedQuotedData"]] == [
         "Mark prefers riding after breakfast."
     ]
-    assert next_packet["knowledgeBase"]["learnedContext"]["items"][0]["statement"] == (
+    assert next_packet["knowledgeBase"]["learnedContext"]["untrustedQuotedData"][0]["quote"] == (
         "Mark prefers riding after breakfast."
     )
     assert next_packet["knowledgeBase"]["learnedContext"]["classificationImpact"] == "none"

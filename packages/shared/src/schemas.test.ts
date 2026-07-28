@@ -623,11 +623,16 @@ describe('v1 shared schemas', () => {
     });
     const review = conversationLearningReviewInputSchema.parse({
       decision: 'accept',
-      statement: 'Mark prefers riding after breakfast.',
     });
 
     expect(parsed.data.proposals[0]?.destination).toBe('learned_context');
     expect(review.decision).toBe('accept');
+    expect(() =>
+      conversationLearningReviewInputSchema.parse({
+        decision: 'accept',
+        statement: 'Edited wording is not part of the immutable review contract.',
+      }),
+    ).toThrow();
     expect(() =>
       conversationLearningReviewInputSchema.parse({
         decision: 'auto_apply',
