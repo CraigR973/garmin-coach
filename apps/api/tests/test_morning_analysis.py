@@ -24,7 +24,9 @@ from src.models.coaching import (
 from src.models.profile import Profile, UserRole
 from src.services.holiday_pause import HolidayPauseService, HolidayWindow
 from src.services.morning_analysis import (
+    ACWR_AMBER_CAP_THRESHOLD,
     PROMPT_VERSION,
+    RECOVERY_TIME_AMBER_CAP_MIN,
     SYSTEM_PROMPT,
     ClaudeGenerationResult,
     MorningAnalysisError,
@@ -38,6 +40,7 @@ from src.services.morning_analysis import (
     _thermal_action,
     _thermal_review,
     _training_and_activity_fields,
+    _training_load_signal,
     _yesterday_load_packet,
     build_morning_user_prompt,
     build_today_actions,
@@ -848,7 +851,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v16")
+    assert PROMPT_VERSION.startswith("morning-analysis-v17")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
@@ -870,6 +873,12 @@ def test_prompt_grounds_week_history_in_execution_not_nominal_schedule() -> None
     assert "executed Garmin activities are the only completion truth" in SYSTEM_PROMPT
     assert "credit a moved-away" in SYSTEM_PROMPT
     assert "Respect the trainingSchedule rest days" not in SYSTEM_PROMPT
+
+
+def test_prompt_treats_the_training_load_cap_as_deterministic() -> None:
+    assert ">=1.5 triggers the deterministic high-load cap" in SYSTEM_PROMPT
+    assert "verdict.trainingLoadCap already records and" in SYSTEM_PROMPT
+    assert "model-controlled override" in SYSTEM_PROMPT
 
 
 def test_sleep_packet_localizes_bed_wake_across_dst_and_keeps_utc() -> None:
@@ -1435,6 +1444,169 @@ def test_daily_metric_packet_safe_without_raw_payload() -> None:
     assert packet is not None
     assert packet["acuteChronicLoadRatio"] is None
     assert packet["intensityMinutes"] is None
+
+
+def test_training_load_signal_uses_packet_acwr_and_recovery_time() -> None:
+    packet = _daily_metric_packet(
+        DailyMetric(
+            user_id=uuid.uuid4(),
+            calendar_date=date(2026, 7, 24),
+            recovery_time_min=2880,
+            raw_payload=_RAW_PAYLOAD_WITH_LOAD,
+        )
+    )
+
+    assert _training_load_signal(packet) == {
+        "acuteChronicLoadRatio": 1.51,
+        "recoveryTimeMin": 2880,
+    }
+
+
+@pytest.mark.parametrize(
+    ("training_load", "expected_status", "expected_source"),
+    [
+        (
+            {
+                "acuteChronicLoadRatio": ACWR_AMBER_CAP_THRESHOLD,
+                "recoveryTimeMin": 0,
+            },
+            "Amber",
+            "acute_chronic_load_ratio",
+        ),
+        (
+            {
+                "acuteChronicLoadRatio": ACWR_AMBER_CAP_THRESHOLD - 0.01,
+                "recoveryTimeMin": RECOVERY_TIME_AMBER_CAP_MIN + 1,
+            },
+            "Amber",
+            "recovery_time",
+        ),
+        (
+            {
+                "acuteChronicLoadRatio": ACWR_AMBER_CAP_THRESHOLD - 0.01,
+                "recoveryTimeMin": RECOVERY_TIME_AMBER_CAP_MIN,
+            },
+            "Green",
+            None,
+        ),
+    ],
+)
+def test_training_load_thresholds_cap_only_above_the_set_boundaries(
+    training_load: dict[str, float | int],
+    expected_status: str,
+    expected_source: str | None,
+) -> None:
+    daily_metric = DailyMetric(
+        user_id=uuid.uuid4(),
+        calendar_date=date(2026, 7, 24),
+        readiness_level="High",
+        hrv_weekly_avg_ms=50,
+        hrv_baseline_low_ms=43,
+        hrv_status="Balanced",
+        raw_payload={},
+    )
+
+    verdict = _morning_verdict(
+        daily_metric=daily_metric,
+        sleep=None,
+        age_adjusted_sleep_score=80,
+        manual_entries=[],
+        planned_workouts=[],
+        training_load=training_load,
+    )
+
+    assert verdict["status"] == expected_status
+    assert verdict["trainingLoadCap"]["triggered"] is (expected_source is not None)
+    assert verdict["trainingLoadCap"]["applied"] is (expected_source is not None)
+    assert verdict["trainingLoadCap"]["sources"] == (
+        [expected_source] if expected_source is not None else []
+    )
+
+
+def test_july_24_load_driven_shape_is_capped_at_amber() -> None:
+    """The Batch 155 real case: LOW + hard yesterday previously escaped to Green."""
+    daily_metric = DailyMetric(
+        user_id=uuid.uuid4(),
+        calendar_date=date(2026, 7, 24),
+        readiness_level="Low",
+        recovery_time_min=2880,
+        hrv_weekly_avg_ms=50,
+        hrv_baseline_low_ms=43,
+        hrv_status="Balanced",
+        raw_payload={},
+    )
+    kwargs = {
+        "daily_metric": daily_metric,
+        "sleep": None,
+        "age_adjusted_sleep_score": 80,
+        "manual_entries": [],
+        "planned_workouts": [],
+        "yesterday_load": {"status": "hard"},
+    }
+
+    before_cap = _morning_verdict(**kwargs)
+    after_cap = _morning_verdict(
+        **kwargs,
+        training_load={
+            "acuteChronicLoadRatio": None,
+            "recoveryTimeMin": daily_metric.recovery_time_min,
+        },
+    )
+
+    assert before_cap["status"] == "Green"
+    assert before_cap["readinessInterpretation"] == "load_driven"
+    assert after_cap["status"] == "Amber"
+    assert after_cap["readinessInterpretation"] == "load_driven"
+    assert after_cap["trainingLoadCap"]["applied"] is True
+    assert after_cap["trainingLoadCap"]["sources"] == ["recovery_time"]
+    assert "training_load_amber_cap" in after_cap["safetyRulesApplied"]
+
+
+@pytest.mark.parametrize(
+    ("age_adjusted_sleep_score", "readiness_level", "hrv_status", "expected_without_load"),
+    [
+        (58, "High", "Balanced", "Red"),
+        (80, "Poor", "Balanced", "Amber"),
+        (80, "High", "Balanced", "Green"),
+    ],
+)
+def test_training_load_cap_never_makes_the_existing_light_greener(
+    age_adjusted_sleep_score: int,
+    readiness_level: str,
+    hrv_status: str,
+    expected_without_load: str,
+) -> None:
+    daily_metric = DailyMetric(
+        user_id=uuid.uuid4(),
+        calendar_date=date(2026, 7, 24),
+        readiness_level=readiness_level,
+        hrv_weekly_avg_ms=50,
+        hrv_baseline_low_ms=43,
+        hrv_status=hrv_status,
+        raw_payload={},
+    )
+    kwargs = {
+        "daily_metric": daily_metric,
+        "sleep": None,
+        "age_adjusted_sleep_score": age_adjusted_sleep_score,
+        "manual_entries": [],
+        "planned_workouts": [],
+    }
+
+    without_load = _morning_verdict(**kwargs)
+    with_load = _morning_verdict(
+        **kwargs,
+        training_load={
+            "acuteChronicLoadRatio": ACWR_AMBER_CAP_THRESHOLD,
+            "recoveryTimeMin": 0,
+        },
+    )
+    caution_rank = {"Green": 0, "Amber": 1, "Red": 2}
+
+    assert without_load["status"] == expected_without_load
+    assert caution_rank[with_load["status"]] >= caution_rank[without_load["status"]]
+    expected_with_load = "Amber" if expected_without_load == "Green" else expected_without_load
+    assert with_load["status"] == expected_with_load
 
 
 # --- Batch 86 (#159): deterministic "Today" action block ---------------------
