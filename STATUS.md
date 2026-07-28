@@ -6,11 +6,15 @@
 
 ## Now
 
-**2026-07-28 — Batch 166 shipped (bulk source/lookups).** PR #196 / squash `aa65a9e`; CR153-06 remediation is live: conversation learning bulk-links up to 60 check-in sources to latest activity/date analyses, and ride/strength/flexibility/walk pending scans bulk-fetch latest analyses, activity check-ins, and generation statuses once per scan while preserving source ordering and Decision #219 latest-wins/history. Branch-push, PR-context, and post-merge `main` CI passed all seven jobs; Vercel preview passed; Railway direct health served exact SHA `aa65a9ec7e2fb19248e030571ef2fa25b98b6125`; web `/` returned 200; protected direct smokes for Coach-memory learning and Week schedule returned 401. Same-origin Vercel API paths still return the known 404, so production API smokes used the direct backend. Backend-only; no migration/shared-schema/verdict/plan/delivery change. Decision #247. **Next:** Batch 167.
+**2026-07-28 — Batch 167 implementation ready (deterministic training-load verdict cap).** `fix/batch-167-training-load-cap` closes F2 / R155-A: `_morning_verdict` now receives computed ACWR + Garmin recovery time and applies an Amber ceiling at ACWR ≥1.50 or recovery time >24 hours. The pre-existing Low-readiness `load_driven` interpretation remains descriptive but is subordinate to the cap; the 2026-07-24 real-case shape now resolves Amber, while existing Amber/Red lights and all acute gates remain unchanged. The structured `verdict.trainingLoadCap` records values, thresholds, sources, pre-cap status, and whether the colour changed; prompt v17 explains but cannot soften/model-set it. Backend + architecture/decision docs only; no migration, shared schema, plan, delivery, auth, or hosting change. Local gates green: backend pytest **682 passed / 278 expected DB skips**; Ruff + format clean; mypy clean (**123 source files**). Decision #248; not promoted.
 
 ---
 
 ## Log
+
+**2026-07-28 — Batch 167 implementation ready:** `fix/batch-167-training-load-cap` closes F2 / R155-A with a deterministic one-way Amber ceiling at computed ACWR ≥1.50 or Garmin recovery time >24 hours. The 07-24 Low-readiness + hard-yesterday load-driven shape now resolves Amber; severity-matrix regressions prove load never makes an existing light greener, and acute Amber/Red gates are unchanged. Prompt v17 explains the structured cap without controlling it. Backend + architecture/decision docs only; no migration/shared-schema/plan/delivery/auth/hosting change. Local gates green: backend 682 passed / 278 expected DB skips; Ruff/format/mypy clean (123 source files). Decision #248; not promoted.
+
+---
 
 **2026-07-28 — Batch 166 shipped:** PR #196 / squash `aa65a9e`; CR153-06 remediation is live: shared bulk latest-analysis/date/check-in/status maps for conversation learning and post-activity pending scans, preserving source order and Decision #219's historical analysis rows. Branch-push, PR-context, and post-merge `main` CI passed all seven jobs; Vercel preview passed; production verified exact-SHA Railway health, web `/` 200, and protected direct smokes for Coach-memory learning + Week schedule 401. Same-origin Vercel API paths still return the known 404, so production API smokes used the direct backend. Backend-only; no migration/shared-schema/verdict/plan/delivery change. Decision #247; Batch 167 is next.
 

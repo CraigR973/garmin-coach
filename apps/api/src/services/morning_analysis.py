@@ -97,8 +97,16 @@ from src.services.workout_categories import is_bike_workout_type
 # Batch 148: trainingWeekSoFar is the factual planned -> changed -> executed
 # calendar-week record. The nominal trainingSchedule is no longer evidence of
 # what happened on any weekday, so the version bumps again.
-PROMPT_VERSION = "morning-analysis-v16-2026-07-28"
+# Batch 167: the deterministic verdict now carries a high-load Amber cap and the
+# prompt must explain that final classification without treating load as a
+# model-controlled override, so the version bumps again.
+PROMPT_VERSION = "morning-analysis-v17-2026-07-28"
 ANALYSIS_TYPE = "morning"
+# Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
+# signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
+# the user will not be ready for another hard session within the coming day.
+ACWR_AMBER_CAP_THRESHOLD = 1.5
+RECOVERY_TIME_AMBER_CAP_MIN = 24 * 60
 SYSTEM_PROMPT = """You are CheckMark, a private daily endurance and sleep coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
 Use `subjectWeekday` as the authoritative weekday and `subjectDateLabel` as the
@@ -126,9 +134,11 @@ VO2 work on a Red verdict. When Garmin readiness is Low, call it load-driven onl
 if the packet explicitly says recovery signals justify that interpretation; when
 readiness is Poor, keep the day cautious.
 Use acuteChronicLoadRatio (acute:chronic training load; ~0.8-1.3 is balanced,
->1.5 flags a fast ramp / higher strain), chronicTrainingLoad, trainingLoadBalance,
-and intensityMinutes to inform the load read and verdict rationale alongside the
-recovery signals; treat them as supporting context, not overrides of the verdict.
+>=1.5 triggers the deterministic high-load cap), chronicTrainingLoad,
+trainingLoadBalance, recoveryTimeMin, and intensityMinutes to explain the load
+read alongside the recovery signals. verdict.trainingLoadCap already records and
+applies the deterministic Amber ceiling; explain it when triggered, but never
+soften it or treat load as a model-controlled override of the verdict.
 When the packet marks a soft-sleep recovery override, explain that HRV/RHR/readiness
 held a mediocre sleep night without pretending the sleep was good. When a sleep
 stage in ageComparison.sleepRows sits inside its healthy age band, describe it as
@@ -319,6 +329,7 @@ class MorningAnalysisService:
         # the pre-cool action should surface. Outside a holiday window (including
         # an all-skipped rest day, which still happens at home) the review stands.
         thermal_review_for_output = None if rest_day["insideHolidayWindow"] else thermal_review
+        daily_metric_packet = _daily_metric_packet(daily_metric)
         verdict = _morning_verdict(
             daily_metric=daily_metric,
             sleep=sleep,
@@ -327,6 +338,7 @@ class MorningAnalysisService:
             planned_workouts=planned_workouts,
             baselines=baseline_rows,
             yesterday_load=yesterday_load,
+            training_load=_training_load_signal(daily_metric_packet),
             breathwork_brief=breathwork_brief,
             rest_day=rest_day,
         )
@@ -410,7 +422,7 @@ class MorningAnalysisService:
                 "activeHypotheses": knowledge_base.get("active_hypotheses", {}),
                 "learnedContext": learned_context_packet(knowledge_base),
             },
-            "dailyMetrics": _daily_metric_packet(daily_metric),
+            "dailyMetrics": daily_metric_packet,
             "sleep": _sleep_packet(sleep, age_adjusted_sleep_score, player.timezone),
             "manualEntries": [_manual_entry_packet(entry) for entry in manual_entries],
             "recentCorrections": [c.to_packet() for c in recent_corrections],
@@ -847,6 +859,15 @@ def _coerce_int(value: Any) -> int | None:
         return None
 
 
+def _coerce_float(value: Any) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _training_and_activity_fields(raw_payload: Mapping[str, Any]) -> dict[str, Any]:
     """Surface load + daily-activity context already captured in ``raw_payload``.
 
@@ -911,6 +932,17 @@ def _daily_metric_packet(row: DailyMetric | None) -> dict[str, Any] | None:
     }
     packet.update(_training_and_activity_fields(row.raw_payload or {}))
     return packet
+
+
+def _training_load_signal(
+    daily_metric_packet: Mapping[str, Any] | None,
+) -> dict[str, float | int | None]:
+    """Extract only the load inputs allowed to harden the verdict."""
+    packet = daily_metric_packet or {}
+    return {
+        "acuteChronicLoadRatio": _coerce_float(packet.get("acuteChronicLoadRatio")),
+        "recoveryTimeMin": _coerce_int(packet.get("recoveryTimeMin")),
+    }
 
 
 def _sleep_packet(
@@ -1501,6 +1533,43 @@ def _analysis_summary(analysis: Analysis) -> str:
     return text[:500]
 
 
+def _training_load_cap(
+    training_load: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    signal = training_load or {}
+    acwr = _coerce_float(signal.get("acuteChronicLoadRatio"))
+    recovery_time_min = _coerce_int(signal.get("recoveryTimeMin"))
+    sources: list[str] = []
+    reasons: list[str] = []
+
+    if acwr is not None and acwr >= ACWR_AMBER_CAP_THRESHOLD:
+        sources.append("acute_chronic_load_ratio")
+        reasons.append(
+            "Training load sets an Amber ceiling: acute:chronic load ratio "
+            f"{acwr:.2f} is at or above {ACWR_AMBER_CAP_THRESHOLD:.2f}."
+        )
+    if recovery_time_min is not None and recovery_time_min > RECOVERY_TIME_AMBER_CAP_MIN:
+        sources.append("recovery_time")
+        recovery_hours = recovery_time_min / 60
+        reasons.append(
+            "Training load sets an Amber ceiling: Garmin recovery time "
+            f"{recovery_hours:.1f} hours is beyond 24 hours."
+        )
+
+    return {
+        "triggered": bool(sources),
+        "applied": False,
+        "sources": sources,
+        "acuteChronicLoadRatio": acwr,
+        "recoveryTimeMin": recovery_time_min,
+        "thresholds": {
+            "acuteChronicLoadRatio": ACWR_AMBER_CAP_THRESHOLD,
+            "recoveryTimeMinExclusive": RECOVERY_TIME_AMBER_CAP_MIN,
+        },
+        "reasons": reasons,
+    }
+
+
 def _morning_verdict(
     *,
     daily_metric: DailyMetric | None,
@@ -1510,6 +1579,7 @@ def _morning_verdict(
     planned_workouts: Sequence[PlannedWorkout],
     baselines: Mapping[str, MetricBaseline] | None = None,
     yesterday_load: Mapping[str, Any] | None = None,
+    training_load: Mapping[str, Any] | None = None,
     breathwork_brief: BreathworkBriefResult | None = None,
     rest_day: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -1549,6 +1619,7 @@ def _morning_verdict(
         readiness_center=readiness_center,
     )
     yesterday_hard = (yesterday_load or {}).get("status") == "hard"
+    training_load_cap = _training_load_cap(training_load)
 
     reasons: list[str] = []
     readiness_interpretation = None
@@ -1593,6 +1664,14 @@ def _morning_verdict(
         status = "Green"
         reasons.append("Sleep, HRV, and subjective signals clear the green rule.")
 
+    status_before_load_cap = status
+    if training_load_cap["triggered"]:
+        if status == "Green":
+            status = "Amber"
+            training_load_cap["applied"] = True
+        reasons.extend(training_load_cap["reasons"])
+    training_load_cap["statusBeforeCap"] = status_before_load_cap
+
     plan_adjustments = _plan_adjustments(
         status,
         planned_workouts,
@@ -1616,6 +1695,10 @@ def _morning_verdict(
             _breathwork_recommendation(breathwork_brief, age_adjusted_sleep_score)
         )
 
+    safety_rules = ["red_never_vo2"] if status == "Red" else []
+    if training_load_cap["triggered"]:
+        safety_rules.append("training_load_amber_cap")
+
     return {
         "status": status,
         "reasons": reasons,
@@ -1629,12 +1712,13 @@ def _morning_verdict(
         "restingHeartRateWithinBaseline": resting_hr_in_band,
         "softSleepRecoveryOverride": soft_sleep_override,
         "yesterdayLoadStatus": (yesterday_load or {}).get("status"),
+        "trainingLoadCap": training_load_cap,
         "dayType": "rest" if is_rest_day else "training",
         "isRestDay": is_rest_day,
         "restDayReason": rest_day.get("reason"),
         "hasVo2WorkoutToday": has_vo2,
         "planAdjustments": plan_adjustments,
-        "safetyRulesApplied": ["red_never_vo2"] if status == "Red" else [],
+        "safetyRulesApplied": safety_rules,
     }
 
 
