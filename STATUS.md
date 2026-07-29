@@ -6,11 +6,15 @@
 
 ## Now
 
-**2026-07-28 — Batch 167 shipped (deterministic training-load verdict cap).** PR #197 / squash `596b2b9`; F2 / R155-A is closed: computed ACWR ≥1.50 or Garmin recovery time >24 hours now sets a deterministic Amber ceiling, subordinating the Low-readiness `load_driven` relax path without changing existing Amber/Red or acute gates. Branch-push, PR-context, and post-merge `main` CI passed all seven jobs; Vercel preview and exact-SHA production deployments reached `READY`; Railway health served exact SHA `596b2b98e98852d909410b3de83e9eaff0b3d3c5`; web `/` returned 200; readiness returned 200; and the protected direct daily-loop smoke returned 401. Backend + docs only; no migration/shared-schema/plan/delivery/auth/hosting change. Decision #248. **Next:** Batch 168.
+**2026-07-29 — Batch 168 implementation ready (absolute readiness anchor + baseline-drift alarm).** `fix/batch-168-baseline-drift-anchor` closes F1 / R155-B: the soft-sleep readiness gate now uses `max(personal median, 60)`, so the audit's readiness-52 / median-50 drift probe stays Amber while the healthy readiness-66 case stays Green. The trailing 84-day readiness window is split into calendar-based 42-day halves; with ≥21 samples per half, a ≥5-point median decline emits a structured warning-only verdict reason and prompt-v18 instruction without changing the colour. Backend + architecture/decision docs only; no migration/shared-schema/plan/delivery/auth/hosting change. Local gates green: backend 689 passed / 278 expected PostgreSQL skips; Ruff/format/mypy clean (123 source files). Decision #249; not promoted. **Next:** review and explicitly close out Batch 168 when ready; Batch 169 remains unstarted.
 
 ---
 
 ## Log
+
+**2026-07-29 — Batch 168 implementation ready:** `fix/batch-168-baseline-drift-anchor` closes F1 / R155-B with a 60-point absolute anchor under the personal readiness median and a warning-only 84-day median-decline alarm (42-day halves, ≥21 samples/half, ≥5-point decline). Probe 4 now stays Amber, healthy-baseline behavior is preserved, and the alarm cannot soften Green/Amber/Red. Prompt v18 owns the narrative boundary. Backend + architecture/decision docs only; no migration/shared-schema/plan/delivery/auth/hosting change. Local gates green: backend 689 passed / 278 expected PostgreSQL skips; Ruff/format/mypy clean (123 files). Decision #249; not promoted.
+
+---
 
 **2026-07-28 — Batch 167 shipped:** PR #197 / squash `596b2b9`; the deterministic one-way Amber ceiling at ACWR ≥1.50 or Garmin recovery time >24 hours is live, closing F2 / R155-A. The 07-24 load-driven Low-readiness shape now resolves Amber; existing Amber/Red and the acute gates remain unchanged. All three CI waves passed seven jobs; Vercel preview/production and Railway production passed exact-SHA verification; web/readiness/protected daily-loop smokes passed. Backend + docs only; no migration/shared-schema/plan/delivery/auth/hosting change. Decision #248; Batch 168 is next.
 
