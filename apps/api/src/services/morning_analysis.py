@@ -108,7 +108,9 @@ from src.services.workout_categories import is_bike_workout_type
 # treating that warning as a model-controlled verdict change.
 # Batch 169: recent corrections now decay and the prompt explicitly keeps them
 # subordinate to measured facts, so stale reads should regenerate.
-PROMPT_VERSION = "morning-analysis-v19-2026-07-29"
+# Batch 170: the deterministic verdict ladder now hardens credited-sleep Green
+# crossings, Poor-readiness stacking, and missing-HRV evidence.
+PROMPT_VERSION = "morning-analysis-v20-2026-07-29"
 ANALYSIS_TYPE = "morning"
 # Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
 # signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
@@ -153,8 +155,16 @@ has declined versus the prior half-window and that the trend deserves attention.
 It does not set the colour itself; never hide it, soften it, or reinterpret it as
 permission to train. verdict.readinessEffectiveFloor already applies the absolute
 readiness anchor to any soft-sleep recovery override.
-When the packet marks a soft-sleep recovery override, explain that HRV/RHR/readiness
-held a mediocre sleep night without pretending the sleep was good. When a sleep
+When the packet marks a soft-sleep recovery override, explain that measured
+HRV/RHR/readiness plus the current check-in held a mediocre sleep night without
+pretending the sleep was good. When age credit reaches the Green line only
+because of age adjustment, verdict.sleepCreditCeiling records whether the
+deterministic ladder allowed Green or capped the day at Amber; explain that
+structure rather than treating the model as the judge. When
+verdict.cumulativeEscalation is applied, state plainly that Poor readiness plus
+another negative recovery signal makes the day Red. Missing HRV and absent
+subjective check-ins are neutral only: never describe absent data as proof that
+recovery is clean.
 stage in ageComparison.sleepRows sits inside its healthy age band, describe it as
 healthy for the user's age rather than repeating Garmin's young-adult flag (e.g.
 "REM 16% is within the healthy 50-59 range; Garmin only flags it against a younger
@@ -1616,6 +1626,92 @@ def _training_load_cap(
     }
 
 
+def _has_hrv_measurement(daily_metric: DailyMetric | None, sleep: Sleep | None) -> bool:
+    return any(
+        value is not None
+        for value in (
+            daily_metric.hrv_weekly_avg_ms if daily_metric else None,
+            daily_metric.hrv_last_night_avg_ms if daily_metric else None,
+            sleep.avg_overnight_hrv_ms if sleep else None,
+        )
+    )
+
+
+def _positive_hrv_evidence(
+    *,
+    daily_metric: DailyMetric | None,
+    sleep: Sleep | None,
+    hrv_status: str | None,
+    hrv_below_baseline: bool,
+) -> bool:
+    return (
+        _has_hrv_measurement(daily_metric, sleep)
+        and not hrv_below_baseline
+        and hrv_status in {"balanced", "stable", "optimal", "normal"}
+    )
+
+
+def _readiness_score_ok(
+    daily_metric: DailyMetric | None,
+    *,
+    readiness_floor: float,
+) -> bool:
+    if daily_metric is None:
+        return False
+    readiness_level = _lower(daily_metric.readiness_level)
+    readiness_score = daily_metric.readiness_score
+    return readiness_level not in {"low", "poor"} and (
+        readiness_score is not None and readiness_score >= readiness_floor
+    )
+
+
+def _resting_hr_elevated(
+    daily_metric: DailyMetric | None,
+    baseline: MetricBaseline | None,
+) -> bool:
+    resting_hr = daily_metric.resting_heart_rate_bpm if daily_metric else None
+    ceiling = baseline.upper_quartile_value if baseline else None
+    return resting_hr is not None and ceiling is not None and float(resting_hr) > float(ceiling)
+
+
+def _sleep_credit_ceiling(
+    *,
+    sleep: Sleep | None,
+    age_adjusted_sleep_score: int | None,
+    positive_hrv_evidence: bool,
+    resting_hr_in_band: bool,
+    readiness_ok: bool,
+    positive_subjective_evidence: bool,
+) -> dict[str, Any]:
+    raw_sleep_score = sleep.score if sleep is not None else None
+    crossed_green = (
+        raw_sleep_score is not None
+        and raw_sleep_score < 74
+        and age_adjusted_sleep_score is not None
+        and age_adjusted_sleep_score >= 74
+    )
+    objective_recovery_corroborated = positive_hrv_evidence and resting_hr_in_band and readiness_ok
+    exception_evidence_complete = objective_recovery_corroborated and positive_subjective_evidence
+    allowed_green = (not crossed_green) or exception_evidence_complete
+    reason = None
+    if crossed_green and not allowed_green:
+        reason = (
+            "Age-adjusted sleep reaches the Green line, but the raw Garmin sleep score "
+            "is below 74 without complete measured recovery and check-in evidence."
+        )
+    return {
+        "rawSleepScore": raw_sleep_score,
+        "ageAdjustedSleepScore": age_adjusted_sleep_score,
+        "crossedGreenThreshold": crossed_green,
+        "corroboratedByObjectiveRecovery": objective_recovery_corroborated,
+        "positiveSubjectiveEvidence": positive_subjective_evidence,
+        "exceptionEvidenceComplete": exception_evidence_complete,
+        "allowedGreen": allowed_green,
+        "applied": False,
+        "reason": reason,
+    }
+
+
 def _morning_verdict(
     *,
     daily_metric: DailyMetric | None,
@@ -1637,11 +1733,13 @@ def _morning_verdict(
     hrv_low = _hrv_below_baseline(daily_metric)
     readiness_level = _lower(daily_metric.readiness_level if daily_metric else None)
     baselines = baselines or {}
+    resting_hr_baseline = baselines.get("resting_heart_rate_bpm")
     resting_hr_in_band = metric_within_baseline_band(
         daily_metric.resting_heart_rate_bpm if daily_metric else None,
-        baselines.get("resting_heart_rate_bpm"),
+        resting_hr_baseline,
         lower_is_better=True,
     )
+    resting_hr_elevated = _resting_hr_elevated(daily_metric, resting_hr_baseline)
     readiness_center = baseline_center(baselines.get("readiness_score"))
     readiness_floor = effective_readiness_floor(readiness_center)
     readiness_trend = dict(
@@ -1661,23 +1759,41 @@ def _morning_verdict(
         for workout in planned_workouts
         if workout.status not in {"completed", "skipped"}
     )
+    positive_hrv_evidence = _positive_hrv_evidence(
+        daily_metric=daily_metric,
+        sleep=sleep,
+        hrv_status=hrv_status,
+        hrv_below_baseline=hrv_low,
+    )
+    readiness_ok_for_override = _readiness_score_ok(
+        daily_metric,
+        readiness_floor=readiness_floor,
+    )
+    positive_subjective_evidence = subjective_score is not None and subjective_score >= 5
     recovery_signals_good = (
         (age_adjusted_sleep_score is not None and age_adjusted_sleep_score >= 74)
-        and not hrv_low
-        and (hrv_status in {None, "balanced", "stable", "optimal", "normal"})
-        and (subjective_score is None or subjective_score >= 5)
+        and positive_hrv_evidence
+        and positive_subjective_evidence
     )
     soft_sleep_override = _soft_sleep_recovery_override(
-        daily_metric=daily_metric,
         age_adjusted_sleep_score=age_adjusted_sleep_score,
         subjective_score=subjective_score,
         hrv_status=hrv_status,
         hrv_below_baseline=hrv_low,
+        positive_hrv_evidence=positive_hrv_evidence,
         resting_hr_in_band=resting_hr_in_band,
-        readiness_floor=readiness_floor,
+        readiness_ok=readiness_ok_for_override,
     )
     yesterday_hard = (yesterday_load or {}).get("status") == "hard"
     training_load_cap = _training_load_cap(training_load)
+    sleep_credit_ceiling = _sleep_credit_ceiling(
+        sleep=sleep,
+        age_adjusted_sleep_score=age_adjusted_sleep_score,
+        positive_hrv_evidence=positive_hrv_evidence,
+        resting_hr_in_band=resting_hr_in_band,
+        readiness_ok=readiness_ok_for_override,
+        positive_subjective_evidence=positive_subjective_evidence,
+    )
 
     reasons: list[str] = []
     readiness_interpretation = None
@@ -1707,7 +1823,8 @@ def _morning_verdict(
     elif soft_sleep_override:
         status = "Green"
         reasons.append(
-            "Age-adjusted sleep is soft, but HRV, resting HR, and readiness hold the day Green."
+            "Age-adjusted sleep is soft, but measured HRV, resting HR, readiness, "
+            "and the current check-in hold the day Green."
         )
     elif age_adjusted_sleep_score is not None and age_adjusted_sleep_score < 74:
         status = "Amber"
@@ -1720,7 +1837,59 @@ def _morning_verdict(
         reasons.append("Subjective score is below 5.")
     else:
         status = "Green"
-        reasons.append("Sleep, HRV, and subjective signals clear the green rule.")
+        if positive_hrv_evidence and positive_subjective_evidence:
+            reasons.append(
+                "Sleep, measured HRV, and the current subjective signal clear the green rule."
+            )
+        elif positive_hrv_evidence:
+            reasons.append(
+                "Sleep and measured HRV clear the green rule; no current subjective "
+                "check-in was used as positive evidence."
+            )
+        elif positive_subjective_evidence:
+            reasons.append(
+                "Sleep clears the green rule and the current check-in is positive; "
+                "missing HRV is neutral, not positive evidence."
+            )
+        else:
+            reasons.append(
+                "Sleep clears the green rule; missing HRV/check-in data is neutral "
+                "and did not provide positive evidence."
+            )
+
+    cumulative_escalation: dict[str, Any] = {
+        "triggered": False,
+        "applied": False,
+        "readinessLevel": readiness_level,
+        "negativeSignals": [],
+        "reason": None,
+    }
+    if readiness_level == "poor":
+        negative_signals: list[str] = []
+        if age_adjusted_sleep_score is not None and 60 <= age_adjusted_sleep_score < 74:
+            negative_signals.append("soft_sleep")
+        if subjective_score is not None and subjective_score < 5:
+            negative_signals.append("low_subjective")
+        if yesterday_hard:
+            negative_signals.append("hard_yesterday")
+        if resting_hr_elevated:
+            negative_signals.append("elevated_resting_heart_rate")
+        cumulative_escalation["negativeSignals"] = negative_signals
+        cumulative_escalation["triggered"] = bool(negative_signals)
+        if status == "Amber" and negative_signals:
+            status = "Red"
+            cumulative_escalation["applied"] = True
+            cumulative_escalation["reason"] = (
+                "Garmin readiness is Poor and a second recovery signal is negative."
+            )
+            reasons.append(str(cumulative_escalation["reason"]))
+
+    if status == "Green" and not sleep_credit_ceiling["allowedGreen"]:
+        status = "Amber"
+        sleep_credit_ceiling["applied"] = True
+        reason = sleep_credit_ceiling.get("reason")
+        if isinstance(reason, str):
+            reasons.append(reason)
 
     status_before_load_cap = status
     if training_load_cap["triggered"]:
@@ -1759,6 +1928,10 @@ def _morning_verdict(
     safety_rules = ["red_never_vo2"] if status == "Red" else []
     if training_load_cap["triggered"]:
         safety_rules.append("training_load_amber_cap")
+    if sleep_credit_ceiling["applied"]:
+        safety_rules.append("sleep_credit_green_ceiling")
+    if cumulative_escalation["applied"]:
+        safety_rules.append("poor_readiness_cumulative_red")
 
     return {
         "status": status,
@@ -1768,14 +1941,19 @@ def _morning_verdict(
         "ageAdjustedSleepScore": age_adjusted_sleep_score,
         "subjectiveScore": subjective_score,
         "subjectiveLabel": subjective_score_label(subjective_score),
+        "positiveSubjectiveEvidence": positive_subjective_evidence,
         "hrvStatus": hrv_status,
         "hrvBelowBaseline": hrv_low,
+        "positiveHrvEvidence": positive_hrv_evidence,
         "restingHeartRateWithinBaseline": resting_hr_in_band,
+        "restingHeartRateElevated": resting_hr_elevated,
         "readinessBaselineCenter": readiness_center,
         "readinessAbsoluteFloor": SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR,
         "readinessEffectiveFloor": readiness_floor,
         "readinessBaselineTrend": readiness_trend,
         "softSleepRecoveryOverride": soft_sleep_override,
+        "sleepCreditCeiling": sleep_credit_ceiling,
+        "cumulativeEscalation": cumulative_escalation,
         "yesterdayLoadStatus": (yesterday_load or {}).get("status"),
         "trainingLoadCap": training_load_cap,
         "dayType": "rest" if is_rest_day else "training",
@@ -1878,31 +2056,27 @@ def _latest_subjective_score(manual_entries: Sequence[ManualEntry]) -> int | Non
 
 def _soft_sleep_recovery_override(
     *,
-    daily_metric: DailyMetric | None,
     age_adjusted_sleep_score: int | None,
     subjective_score: int | None,
     hrv_status: str | None,
     hrv_below_baseline: bool,
+    positive_hrv_evidence: bool,
     resting_hr_in_band: bool,
-    readiness_floor: float = SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR,
+    readiness_ok: bool,
 ) -> bool:
     if age_adjusted_sleep_score is None or not 60 <= age_adjusted_sleep_score < 74:
         return False
-    readiness_level = _lower(daily_metric.readiness_level if daily_metric else None)
-    readiness_score = daily_metric.readiness_score if daily_metric else None
-    # The effective floor is Mark's personal median anchored at an absolute 60:
-    # this preserves #133's personalisation above the anchor while preventing a
-    # multi-week slide from making a readiness score such as 52 the new Green.
-    # The categorical guard still independently blocks Garmin Low/Poor days.
-    readiness_ok = readiness_level not in {"low", "poor"} and (
-        readiness_score is None or readiness_score >= readiness_floor
-    )
+    # ``readiness_ok`` applies Mark's personal median anchored at 60 and requires
+    # a measured score outside Garmin's Low/Poor categories. Missing HRV,
+    # readiness, or check-in data is neutral and cannot satisfy this exception.
     return (
         not hrv_below_baseline
-        and hrv_status in {None, "balanced", "stable", "optimal", "normal"}
+        and hrv_status in {"balanced", "stable", "optimal", "normal"}
+        and positive_hrv_evidence
         and resting_hr_in_band
         and readiness_ok
-        and (subjective_score is None or subjective_score >= 5)
+        and subjective_score is not None
+        and subjective_score >= 5
     )
 
 
