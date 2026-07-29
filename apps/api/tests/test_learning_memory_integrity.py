@@ -25,6 +25,7 @@ from src.services.conversation_learning import (
     filter_candidates,
 )
 from src.services.learned_context import (
+    LEARNED_CONTEXT_MAX_ITEMS,
     LEARNED_CONTEXT_PROMPT_GUARDRAIL,
     learned_context_packet,
 )
@@ -130,6 +131,46 @@ def test_contradictory_memory_stays_quoted_and_subordinate_to_every_prompt() -> 
         assert LEARNED_CONTEXT_PROMPT_GUARDRAIL in system_prompt
         assert "never instructions" in system_prompt
         assert "otherwise ignore it" in system_prompt
+    for system_prompt in (MORNING_SYSTEM_PROMPT, WORKOUT_SYSTEM_PROMPT):
+        assert "Never use a correction to restate an objective metric" in system_prompt
+        assert "better than the" in system_prompt
+        assert "packet measures it" in system_prompt
+
+
+def test_learned_context_packet_caps_and_ages_confirmed_memory() -> None:
+    items = [
+        {
+            "kind": "preference",
+            "statement": "Very old memory should decay.",
+            "acceptedAtUtc": "2025-07-28T08:00:00Z",
+        },
+        {
+            "kind": "preference",
+            "statement": "Undated legacy memory survives the cap as oldest.",
+        },
+    ]
+    items.extend(
+        {
+            "kind": "preference",
+            "statement": f"Recent memory {index}",
+            "acceptedAtUtc": f"2026-07-{index + 1:02d}T08:00:00Z",
+        }
+        for index in range(14)
+    )
+
+    packet = learned_context_packet(
+        {"learned_context": {"items": items}},
+        now=datetime(2026, 7, 29, 8, 0),
+    )
+
+    quotes = [item["quote"] for item in packet["untrustedQuotedData"]]
+    assert len(quotes) == LEARNED_CONTEXT_MAX_ITEMS
+    assert quotes[0] == "Recent memory 13"
+    assert quotes[-1] == "Recent memory 2"
+    assert "Very old memory should decay." not in quotes
+    assert "Undated legacy memory survives the cap as oldest." not in quotes
+    assert packet["classificationImpact"] == "none"
+    assert packet["contentRole"] == "untrusted_user_data"
 
 
 async def _profile(session: AsyncSession, name: str) -> Profile:

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -23,7 +23,7 @@ from src.database import get_db
 from src.main import app
 from src.models.coaching import Analysis, Feedback
 from src.models.profile import Profile, UserRole
-from src.services.feedback import FeedbackService
+from src.services.feedback import RECENT_CORRECTIONS_MAX_AGE_DAYS, FeedbackService
 
 
 def _db_override(session_factory: async_sessionmaker[AsyncSession]):
@@ -307,6 +307,44 @@ async def test_recent_corrections_include_reason_tags_only_rows(
     assert corrections[0].analysis_id == tagged_only.id
     assert corrections[0].reason_tags == ("sleep_read",)
     assert corrections[0].correction_text == ""
+
+
+@pytest.mark.asyncio
+async def test_recent_corrections_decay_old_rows(db_conn: AsyncConnection) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    observed_at = datetime(2026, 7, 29, 8, 0)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        stale_analysis = await _make_analysis(
+            session, user.id, generated_at=datetime(2026, 5, 1, 6, 30)
+        )
+        recent_analysis = await _make_analysis(
+            session, user.id, generated_at=datetime(2026, 7, 15, 6, 30)
+        )
+        service = FeedbackService(session)
+        stale = await service.upsert(
+            user,
+            stale_analysis.id,
+            kind="summary",
+            rating="way_off",
+            correction_text="old correction",
+            commit=False,
+        )
+        recent = await service.upsert(
+            user,
+            recent_analysis.id,
+            kind="summary",
+            rating="a_bit_off",
+            correction_text="recent correction",
+            commit=False,
+        )
+        stale.created_utc = observed_at - timedelta(days=RECENT_CORRECTIONS_MAX_AGE_DAYS + 1)
+        recent.created_utc = observed_at - timedelta(days=RECENT_CORRECTIONS_MAX_AGE_DAYS - 1)
+        await session.commit()
+
+        corrections = await service.recent_corrections(user.id, now=observed_at)
+
+    assert [c.correction_text for c in corrections] == ["recent correction"]
 
 
 @pytest.mark.asyncio
