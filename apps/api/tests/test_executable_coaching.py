@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from fastapi import HTTPException
@@ -32,6 +32,7 @@ from src.services.executable_coaching import (
     RECOVERY_CAP_PCT,
     WORKOUT_STATUS_SKIPPED,
     ExecutableCoachingService,
+    adjust_ir_for_chronic_deload,
     adjust_ir_for_verdict,
     apply_manual_override_to_ir,
     blocks_red_vo2,
@@ -164,6 +165,33 @@ def test_green_is_passthrough() -> None:
     assert adjusted["totalDurationSec"] == base["totalDurationSec"]
     assert adjusted["origin"] == "as_planned"
     assert adjusted["adjustment"]["changed"] is False
+
+
+def test_chronic_deload_uses_lighter_transform_without_setting_verdict() -> None:
+    base = build_structured_workout_ir(_planned_workout(VO2_STRUCTURED), ftp_watts=280)
+
+    adjusted = adjust_ir_for_chronic_deload(
+        base,
+        {
+            "kind": "deload_proposal",
+            "triggerSources": ["sustained_recovery_marker"],
+            "recoveryMarkers": ["readiness_score"],
+            "redMorningCount": 0,
+            "reasons": ["Readiness repeatedly missed its personal band."],
+        },
+    )
+
+    assert adjusted["origin"] == "chronic_deload"
+    assert adjusted["name"].startswith("Chronic deload: ")
+    assert (
+        base["totalDurationSec"] * 0.70
+        <= adjusted["totalDurationSec"]
+        <= (base["totalDurationSec"] * 0.80)
+    )
+    assert _max_power(adjusted) < HIT_FLOOR_PCT
+    assert adjusted["adjustment"]["changed"] is True
+    assert adjusted["adjustment"]["verdict"] is None
+    assert adjusted["adjustment"]["chronicAction"]["verdictImpact"] == "none"
 
 
 def test_manual_override_scales_duration_and_intensity() -> None:
@@ -384,6 +412,186 @@ async def test_regenerate_for_verdict_skips_non_amber(db_conn: AsyncConnection) 
         assert created == []
         proposals = (await session.execute(select(WorkoutDeliveryProposal))).scalars().all()
         assert proposals == []
+
+
+@pytest.mark.asyncio
+async def test_chronic_deload_proposes_seven_day_window_and_preserves_acute_precedence(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    subject = date(2026, 6, 23)
+    await _seed_profile(db_conn, user_id)
+    workout_ids = [uuid.uuid4() for _ in range(4)]
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        for workout_id, offset in zip(workout_ids, (0, 1, 5, 7), strict=True):
+            session.add(
+                PlannedWorkout(
+                    id=workout_id,
+                    user_id=user_id,
+                    workout_date=subject + timedelta(days=offset),
+                    version=1,
+                    title=f"Bike day {offset}",
+                    workout_type="bike_vo2",
+                    status="planned",
+                    is_active=True,
+                    planned_duration_min=60,
+                    intensity_target="105-110% FTP",
+                    structured_workout=VO2_STRUCTURED,
+                    source="test",
+                )
+            )
+        # Tomorrow already has a safer acute proposal. The chronic pass must not
+        # replace it with a second, less-specific adjustment.
+        session.add(
+            WorkoutDeliveryProposal(
+                id=uuid.uuid4(),
+                user_id=user_id,
+                planned_workout_id=workout_ids[1],
+                planned_workout_version=1,
+                workout_date=subject + timedelta(days=1),
+                provider="intervals_icu",
+                status="proposed",
+                proposed_at_utc=datetime(2026, 6, 23, 7, 0),
+                structured_workout_ir={
+                    "origin": "red_substitution",
+                    "adjustment": {"changed": True, "verdict": "Red"},
+                },
+                intervals_payload={"category": "WORKOUT", "name": "Recovery"},
+                zwo_xml="<workout_file/>",
+            )
+        )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        analysis = Analysis(
+            user_id=user_id,
+            analysis_type="morning",
+            subject_date=subject,
+            generated_at_utc=datetime(2026, 6, 23, 7, 5),
+            prompt_version="morning-analysis-v21-test",
+            verdict="Green",
+            context_packet={
+                "verdict": {
+                    "status": "Green",
+                    "chronicAction": {
+                        "triggered": True,
+                        "kind": "deload_proposal",
+                        "proposalWindowDays": 7,
+                        "triggerSources": ["sustained_recovery_marker"],
+                        "recoveryMarkers": ["readiness_score"],
+                        "redMorningCount": 0,
+                        "reasons": ["Readiness repeatedly missed its personal band."],
+                        "verdictImpact": "none",
+                    },
+                }
+            },
+            output_markdown="Green verdict with a separate deload proposal.",
+            raw_response={},
+        )
+        service = ExecutableCoachingService(session)
+
+        created = await service.propose_chronic_deload(user, subject, analysis=analysis)
+
+        assert {proposal.planned_workout_id for proposal in created} == {
+            workout_ids[0],
+            workout_ids[2],
+        }
+        assert analysis.verdict == "Green"
+        assert all(proposal.status == "proposed" for proposal in created)
+        assert all(
+            proposal.structured_workout_ir["origin"] == "chronic_deload" for proposal in created
+        )
+        assert all(
+            proposal.structured_workout_ir["adjustment"]["verdict"] is None for proposal in created
+        )
+        # Day +7 is outside the inclusive seven-day window; tomorrow's Red
+        # proposal remains the only proposal for that workout.
+        proposals = (await session.execute(select(WorkoutDeliveryProposal))).scalars().all()
+        by_workout: dict[uuid.UUID | None, list[WorkoutDeliveryProposal]] = {}
+        for proposal in proposals:
+            by_workout.setdefault(proposal.planned_workout_id, []).append(proposal)
+        assert workout_ids[3] not in by_workout
+        assert len(by_workout[workout_ids[1]]) == 1
+        assert by_workout[workout_ids[1]][0].structured_workout_ir["origin"] == "red_substitution"
+
+        audits = (
+            (
+                await session.execute(
+                    select(Analysis).where(Analysis.analysis_type == AUDIT_TYPE_PROPOSED)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert {audit.context_packet["tag"] for audit in audits} == {
+            f"chronic-deload:{workout_ids[0]}:v1",
+            f"chronic-deload:{workout_ids[2]}:v1",
+        }
+        assert all(audit.verdict is None for audit in audits)
+
+        again = await service.propose_chronic_deload(user, subject, analysis=analysis)
+        assert again == []
+
+
+@pytest.mark.asyncio
+async def test_chronic_deload_does_nothing_without_deterministic_trigger(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    workout_id = uuid.uuid4()
+    subject = date(2026, 6, 23)
+    await _seed_profile(db_conn, user_id)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            PlannedWorkout(
+                id=workout_id,
+                user_id=user_id,
+                workout_date=subject,
+                version=1,
+                title="VO2 Max 30/30",
+                workout_type="bike_vo2",
+                status="planned",
+                is_active=True,
+                planned_duration_min=60,
+                intensity_target="105-110% FTP",
+                structured_workout=VO2_STRUCTURED,
+                source="test",
+            )
+        )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        analysis = Analysis(
+            user_id=user_id,
+            analysis_type="morning",
+            subject_date=subject,
+            generated_at_utc=datetime(2026, 6, 23, 7, 5),
+            prompt_version="morning-analysis-v21-test",
+            verdict="Green",
+            context_packet={
+                "verdict": {
+                    "status": "Green",
+                    "chronicAction": {
+                        "triggered": False,
+                        "kind": "deload_proposal",
+                        "verdictImpact": "none",
+                    },
+                }
+            },
+            output_markdown="Green verdict.",
+            raw_response={},
+        )
+
+        created = await ExecutableCoachingService(session).propose_chronic_deload(
+            user, subject, analysis=analysis
+        )
+
+        assert created == []
+        assert (await session.execute(select(WorkoutDeliveryProposal))).scalars().all() == []
 
 
 def _proposal(

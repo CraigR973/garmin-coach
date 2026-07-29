@@ -412,6 +412,7 @@ async def run_morning_weather_sync() -> None:
             nudge_service = NudgeAlertService(session)
             insights_service = InsightsService(session)
             proposals_regenerated = 0
+            chronic_deload_proposals = 0
             brief_ready_pushes = 0
             drivers_cached = 0
             for profile in profiles:
@@ -467,6 +468,19 @@ async def run_morning_weather_sync() -> None:
                         profile_id=str(profile.id),
                         subject_date=subject_date.isoformat(),
                     )
+                try:
+                    deloads = await coaching_service.propose_chronic_deload(
+                        profile,
+                        subject_date,
+                        analysis=analysis_result.analysis,
+                    )
+                    chronic_deload_proposals += len(deloads)
+                except Exception:
+                    log.exception(
+                        "chronic deload proposal failed",
+                        profile_id=str(profile.id),
+                        subject_date=subject_date.isoformat(),
+                    )
                 # Batch 62.2: precompute the 120-day driver correlation once here so
                 # GET /api/v1/daily-loop reads it back instead of recomputing on
                 # every open. Wrapped so a failure never blocks the morning pipeline.
@@ -493,6 +507,7 @@ async def run_morning_weather_sync() -> None:
             analyses_generated=analyses_generated,
             analyses_existing=analyses_existing,
             proposals_regenerated=proposals_regenerated,
+            chronic_deload_proposals=chronic_deload_proposals,
             brief_ready_pushes=brief_ready_pushes,
             drivers_cached=drivers_cached,
         )

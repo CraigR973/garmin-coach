@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import Analysis, ManualEntry, PlannedWorkout, WorkoutDeliveryProposal
 from src.models.profile import Profile
+from src.services.chronic_patterns import CHRONIC_DELOAD_WINDOW_DAYS
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
 from src.services.garmin_workout_delivery import (
     GarminWorkoutClient,
@@ -249,6 +250,42 @@ def adjust_ir_for_verdict(base_ir: dict[str, Any], verdict: str | None) -> dict[
     return adjusted
 
 
+def adjust_ir_for_chronic_deload(
+    base_ir: dict[str, Any],
+    action: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the Batch 171 lighter proposal without changing the daily verdict.
+
+    The existing Amber transform supplies the established 25% duration cut,
+    one-zone drop, and HIT removal. The persisted annotation then names chronic
+    evidence—not a verdict—as the reason, so the normal propose → approve → push
+    rail can surface and deliver it without implying that Green became Amber.
+    """
+
+    adjusted = adjust_ir_for_verdict(base_ir, "Amber")
+    basis_name = str(base_ir.get("name") or "Workout")
+    raw_adjustment = adjusted.get("adjustment")
+    adjustment = dict(raw_adjustment) if isinstance(raw_adjustment, dict) else {}
+    adjustment.update(
+        {
+            "verdict": None,
+            "reason": "sustained_recovery_strain",
+            "chronicAction": {
+                "kind": action.get("kind"),
+                "triggerSources": list(action.get("triggerSources") or []),
+                "recoveryMarkers": list(action.get("recoveryMarkers") or []),
+                "redMorningCount": action.get("redMorningCount"),
+                "reasons": list(action.get("reasons") or []),
+                "verdictImpact": "none",
+            },
+        }
+    )
+    adjusted["name"] = f"Chronic deload: {basis_name}"
+    adjusted["origin"] = "chronic_deload"
+    adjusted["adjustment"] = adjustment
+    return adjusted
+
+
 def apply_manual_override_to_ir(
     base_ir: dict[str, Any],
     *,
@@ -360,6 +397,87 @@ class ExecutableCoachingService:
             await self.session.commit()
         return created
 
+    async def propose_chronic_deload(
+        self,
+        player: Profile,
+        subject_date: date,
+        *,
+        analysis: Analysis,
+        commit: bool = True,
+    ) -> list[WorkoutDeliveryProposal]:
+        """Queue persistent lighter proposals across the next seven days.
+
+        The trigger is already frozen in the deterministic morning packet. This
+        method only translates it into delivery proposals; it never changes the
+        analysis verdict. Existing pending or acted-on coach adjustments win, so
+        an acute Amber/Red regeneration is never overwritten. Audit tags make the
+        pass idempotent while an ignored proposal remains visible on its workout.
+        """
+
+        packet = analysis.context_packet if isinstance(analysis.context_packet, dict) else {}
+        verdict_packet = packet.get("verdict")
+        action = verdict_packet.get("chronicAction") if isinstance(verdict_packet, dict) else None
+        if (
+            not isinstance(action, dict)
+            or action.get("triggered") is not True
+            or action.get("kind") != "deload_proposal"
+        ):
+            return []
+
+        end_date = subject_date + timedelta(days=CHRONIC_DELOAD_WINDOW_DAYS - 1)
+        created: list[WorkoutDeliveryProposal] = []
+        workouts = await self._active_bike_workouts_in_range(player.id, subject_date, end_date)
+        for workout in workouts:
+            if workout.status == WORKOUT_STATUS_COMPLETED:
+                continue
+            tag = _chronic_deload_tag(workout)
+            if await self._already_recorded(
+                player.id, AUDIT_TYPE_PROPOSED, tag, workout.workout_date
+            ):
+                continue
+            if await self._pending_adjustment(player.id, workout) is not None:
+                continue
+            latest = await self._latest_proposal_for_workout(player.id, workout.id)
+            latest_ir = (
+                latest.structured_workout_ir
+                if latest is not None and isinstance(latest.structured_workout_ir, dict)
+                else {}
+            )
+            latest_adjustment = latest_ir.get("adjustment")
+            if (
+                latest is not None
+                and latest.status != STATUS_PROPOSED
+                and isinstance(latest_adjustment, dict)
+                and latest_adjustment.get("changed") is True
+            ):
+                continue
+            try:
+                ftp_watts = await self.rail._ftp_watts(player.id)
+                base_ir = build_structured_workout_ir(workout, ftp_watts=ftp_watts)
+            except HTTPException:
+                continue
+            adjusted = adjust_ir_for_chronic_deload(base_ir, action)
+            proposal = await self.rail.propose_from_ir(
+                player=player, workout=workout, ir=adjusted, commit=False
+            )
+            self._record_delivery_audit(
+                player,
+                proposal,
+                analysis_type=AUDIT_TYPE_PROPOSED,
+                tag=tag,
+                subject_date=workout.workout_date,
+                verdict=None,
+                summary=(
+                    f"Seven-day chronic deload proposed for {workout.title}; "
+                    "the daily verdict is unchanged."
+                ),
+            )
+            created.append(proposal)
+
+        if commit:
+            await self.session.commit()
+        return created
+
     async def regenerate_after_morning_checkin(
         self,
         player: Profile,
@@ -405,6 +523,12 @@ class ExecutableCoachingService:
                 await self.regenerate_for_verdict(
                     player, subject_date, analysis=result.analysis, commit=False
                 )
+        await self.propose_chronic_deload(
+            player,
+            subject_date,
+            analysis=result.analysis,
+            commit=False,
+        )
 
         if commit:
             await self.session.commit()
@@ -1567,6 +1691,10 @@ def _delivery_action_tag(proposal: WorkoutDeliveryProposal, action: str) -> str:
 
 def _regen_tag(workout: PlannedWorkout, verdict: str) -> str:
     return f"{verdict.lower()}-regen:{workout.id}:v{workout.version}"
+
+
+def _chronic_deload_tag(workout: PlannedWorkout) -> str:
+    return f"chronic-deload:{workout.id}:v{workout.version}"
 
 
 def _push_tag(proposal: WorkoutDeliveryProposal) -> str:

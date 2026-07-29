@@ -401,6 +401,106 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
 
 
 @pytest.mark.asyncio
+async def test_morning_packet_turns_two_recent_reds_into_deload_action(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 7, 29)
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Chronic Action Test",
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+        for offset in range(21):
+            day = subject_date - timedelta(days=20 - offset)
+            session.add(
+                Sleep(
+                    user_id=user_id,
+                    calendar_date=day,
+                    score=85,
+                    duration_sec=7 * 3600,
+                    rem_sleep_sec=90 * 60,
+                    deep_sleep_sec=70 * 60,
+                    light_sleep_sec=240 * 60,
+                    awake_sleep_sec=20 * 60,
+                    raw_payload={},
+                    factors_json={},
+                )
+            )
+            session.add(
+                DailyMetric(
+                    user_id=user_id,
+                    calendar_date=day,
+                    recorded_at_utc=datetime.combine(day, datetime.min.time()),
+                    readiness_score=75,
+                    readiness_level="High",
+                    hrv_weekly_avg_ms=52,
+                    hrv_status="Balanced",
+                    hrv_baseline_low_ms=43,
+                    hrv_baseline_high_ms=57,
+                    resting_heart_rate_bpm=45,
+                    raw_payload={},
+                )
+            )
+        for day in (subject_date - timedelta(days=6), subject_date - timedelta(days=1)):
+            session.add(
+                Analysis(
+                    user_id=user_id,
+                    analysis_type="morning",
+                    subject_date=day,
+                    generated_at_utc=datetime.combine(day, datetime.min.time()),
+                    prompt_version="historical-test",
+                    verdict="Red",
+                    context_packet={"verdict": {"status": "Red"}},
+                    output_markdown="Red.",
+                    raw_response={},
+                )
+            )
+        session.add_all(
+            [
+                ManualEntry(
+                    user_id=user_id,
+                    entry_date=subject_date,
+                    entry_at_utc=datetime(2026, 7, 29, 6, 30),
+                    subjective_score=7,
+                ),
+                PlannedWorkout(
+                    user_id=user_id,
+                    workout_date=subject_date,
+                    version=1,
+                    title="VO2 Max 30/30",
+                    workout_type="bike_vo2",
+                    status="planned",
+                    is_active=True,
+                    planned_duration_min=60,
+                    structured_workout={"format": "bike"},
+                    source="test",
+                ),
+            ]
+        )
+        await session.commit()
+
+        packet = await MorningAnalysisService(session).assemble_context_packet(player, subject_date)
+
+    action = packet["verdict"]["chronicAction"]
+    assert action["triggered"] is True
+    assert action["triggerSources"] == ["red_morning_cluster"]
+    assert action["redMorningCount"] == 2
+    assert action["verdictImpact"] == "none"
+    assert any(
+        item["title"] == "Approve today's deload ride" for item in packet["verdict"]["todayActions"]
+    )
+    assert "surface_chronic_deload_without_changing_verdict" in packet["prompt"]["outputRules"]
+
+
+@pytest.mark.asyncio
 async def test_morning_packet_loads_holiday_window_and_suppresses_skipped_ride(
     db_conn: AsyncConnection,
 ) -> None:
@@ -859,7 +959,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v20")
+    assert PROMPT_VERSION.startswith("morning-analysis-v21")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
@@ -2123,6 +2223,28 @@ def test_build_today_actions_green_clean_degrades_to_empty() -> None:
     )
 
     assert actions == []
+
+
+def test_build_today_actions_surfaces_green_chronic_deload_proposal() -> None:
+    ride = _bike_workout()
+    actions = build_today_actions(
+        verdict={
+            "status": "Green",
+            "chronicAction": {
+                "triggered": True,
+                "kind": "deload_proposal",
+                "verdictImpact": "none",
+            },
+        },
+        planned_workouts=[ride],
+        thermal_review={"flags": []},
+        recommend_breathwork=False,
+    )
+
+    assert [action["kind"] for action in actions] == ["approve_ride"]
+    assert actions[0]["title"] == "Approve today's deload ride"
+    assert actions[0]["plannedWorkoutId"] == str(ride.id)
+    assert "Sustained recovery strain" in actions[0]["detail"]
 
 
 def test_build_today_actions_sleep_and_thermal_nudges() -> None:

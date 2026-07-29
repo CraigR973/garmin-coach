@@ -474,6 +474,7 @@ async def test_morning_weather_sync_runs_daily_sync_before_analysis() -> None:
 
     coaching_service = MagicMock()
     coaching_service.regenerate_for_verdict = AsyncMock(return_value=[])
+    coaching_service.propose_chronic_deload = AsyncMock(return_value=[])
     nudge_service = MagicMock()
     nudge_service.push_brief_ready = AsyncMock(return_value=True)
 
@@ -494,6 +495,7 @@ async def test_morning_weather_sync_runs_daily_sync_before_analysis() -> None:
     # Batch 112: the freshly generated brief is pushed exactly once via the same
     # brief-ready notification the check-in path uses.
     assert nudge_service.push_brief_ready.await_count == 1
+    assert coaching_service.propose_chronic_deload.await_count == 1
 
 
 def _morning_sync_ctx(session: AsyncMock) -> object:
