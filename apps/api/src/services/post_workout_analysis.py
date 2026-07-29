@@ -30,6 +30,7 @@ from src.services.analysis_currentness import (
     manual_entry_input_version,
 )
 from src.services.anthropic_text import generate_anthropic_text
+from src.services.body_metrics import resolve_effective_weight_kg
 from src.services.bulk_post_activity_lookups import (
     generation_statuses_by_activity,
     latest_analyses_by_activity,
@@ -84,7 +85,10 @@ from src.services.workout_delivery import (
 # facts, so old ride reads should regenerate under the explicit boundary.
 # Batch 174: tomorrow impact is grounded in the next two days of real active
 # planned rows, with the prose weekly rhythm used only when those rows are absent.
-PROMPT_VERSION = "post-workout-analysis-v12-2026-07-29"
+# Batch 176: the packet carries the most recent weigh-in within a 7-day window
+# (with its as-of date) and a computed powerToWeight block, so the read leads
+# with W/kg instead of admitting it has no bodyweight to compare against.
+PROMPT_VERSION = "post-workout-analysis-v13-2026-07-29"
 ANALYSIS_TYPE = "post_workout"
 
 # A planned session Mark told the app he was not doing (``skip_workout`` /
@@ -161,7 +165,15 @@ calendar days. Name the actual session, date, and planned duration when present
 (for example, "tomorrow's Long Z2, 120 min") and assess recovery against that
 row. The training plan's prose `weeklyRhythm` is only a fallback for a date with
 no real upcoming workout row; never let the template replace, rename, or
-contradict an `upcomingWorkouts` session."""
+contradict an `upcomingWorkouts` session.
+
+When `powerToWeight` is present, lead the performance read with it — FTP W/kg
+is the headline power-to-weight figure, alongside whichever session W/kg
+figures (`wholeRideAvgWattsPerKg`, `workIntervalAvgWattsPerKg`) are present —
+because it is the more meaningful comparison than raw watts. `weightAsOfDate`
+may be earlier than today; if it is, say the weight is from that date, not
+today's. When `powerToWeight` is absent (`weightOnFile` is false), say plainly
+that no recent weight is on file rather than estimating or inventing one."""
 SYSTEM_PROMPT = "\n\n".join((SYSTEM_PROMPT, LEARNED_CONTEXT_PROMPT_GUARDRAIL))
 
 
@@ -363,6 +375,9 @@ class PostWorkoutAnalysisService:
         recent_corrections = await FeedbackService(self.session).recent_corrections(player.id)
         timeseries = await self._timeseries(activity.id)
         ftp_watts = _ftp_watts(knowledge_base)
+        weight_kg, weight_as_of_date = await resolve_effective_weight_kg(
+            self.session, player.id, subject_date
+        )
         time_series_summary = _time_series_summary(timeseries, ftp_watts)
         recovery_decision = _recovery_decision_packet(activity)
         grading_target = await self._ride_grading_target(
@@ -403,6 +418,12 @@ class PostWorkoutAnalysisService:
             intervals,
             whole_ride_avg_power_watts=activity.avg_power_watts,
         )
+        power_to_weight = _power_to_weight_packet(
+            weight_kg=weight_kg,
+            ftp_watts=ftp_watts,
+            whole_ride_avg_power_watts=activity.avg_power_watts,
+            intervals=intervals,
+        )
         morning_verdict = _morning_analysis_packet(morning_analysis)
         ride_deviation = detect_ride_deviation(
             grading_target=grading_target,
@@ -425,6 +446,9 @@ class PostWorkoutAnalysisService:
                 "timezone": player.timezone,
                 "athleteProfile": knowledge_base.get("profile", {}),
                 "ftpWatts": ftp_watts,
+                "weightKg": weight_kg,
+                "weightAsOfDate": weight_as_of_date.isoformat() if weight_as_of_date else None,
+                "weightOnFile": weight_kg is not None,
             },
             "knowledgeBase": {
                 "dataQualityGuardrails": _data_quality_guardrails(knowledge_base),
@@ -439,6 +463,7 @@ class PostWorkoutAnalysisService:
             "prescribedErgMode": prescribed_erg_mode,
             "intervals": intervals,
             "execution": execution,
+            "powerToWeight": power_to_weight,
             "rideDeviation": ride_deviation,
             "plannedWorkouts": [_planned_workout_packet(workout) for workout in planned_workouts],
             "upcomingWorkouts": [_planned_workout_packet(workout) for workout in upcoming_workouts],
@@ -473,6 +498,8 @@ class PostWorkoutAnalysisService:
                     "never_reference_left_right_power_balance",
                     "exclude_wrist_hr_strength_from_recovery_decisions",
                     "acknowledge_recent_user_corrections_when_relevant",
+                    "lead_performance_read_with_power_to_weight_when_present",
+                    "state_weight_not_on_file_when_missing_never_fabricate",
                 ],
             },
         }
@@ -927,6 +954,40 @@ def _ftp_watts(knowledge_base: Mapping[str, Any]) -> int | None:
     if isinstance(ftp, int | float):
         return int(ftp)
     return None
+
+
+def _watts_per_kg(watts: float | int | None, weight_kg: float | None) -> float | None:
+    if watts is None or weight_kg is None or weight_kg <= 0:
+        return None
+    return round(watts / weight_kg, 2)
+
+
+def _power_to_weight_packet(
+    *,
+    weight_kg: float | None,
+    ftp_watts: int | None,
+    whole_ride_avg_power_watts: float | int | None,
+    intervals: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    """FTP and session watts-per-kg, or ``None`` when no weight is on file.
+
+    Never divides by a fabricated weight: the read must state plainly that no
+    recent weight is on file rather than estimating one (Batch 176).
+    """
+
+    if weight_kg is None:
+        return None
+    work_powers: list[float] = [
+        item["avgPowerWatts"]
+        for item in intervals
+        if item.get("role") == "work" and isinstance(item.get("avgPowerWatts"), int | float)
+    ]
+    work_avg_power = sum(work_powers) / len(work_powers) if work_powers else None
+    return {
+        "ftpWattsPerKg": _watts_per_kg(ftp_watts, weight_kg),
+        "wholeRideAvgWattsPerKg": _watts_per_kg(whole_ride_avg_power_watts, weight_kg),
+        "workIntervalAvgWattsPerKg": _watts_per_kg(work_avg_power, weight_kg),
+    }
 
 
 def _activity_packet(row: Activity) -> dict[str, Any]:
