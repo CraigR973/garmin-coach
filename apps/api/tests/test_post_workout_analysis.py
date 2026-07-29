@@ -14,6 +14,7 @@ from src.models.coaching import (
     Activity,
     ActivityTimeSeries,
     Analysis,
+    DailyMetric,
     ManualEntry,
     PlannedWorkout,
     WorkoutDeliveryProposal,
@@ -555,6 +556,138 @@ async def test_context_packet_grades_work_intervals_for_structured_ride(
         assert packet["activity"]["avgPowerWatts"] == 205
         assert "power" in packet["timeSeriesSummary"]
         assert "grade_execution_on_work_intervals_vs_ftp_targets" in packet["prompt"]["outputRules"]
+
+
+@pytest.mark.asyncio
+async def test_context_packet_computes_power_to_weight_from_carried_forward_weight(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 176: a weigh-in within the lookback window carries forward and drives
+    a computed powerToWeight block (FTP W/kg headline + work-interval W/kg)."""
+
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Weight Packet",
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+
+        # Ride is on 2026-01-05; weigh-in is 3 days earlier, inside the 7-day window.
+        session.add(
+            DailyMetric(
+                user_id=user_id,
+                calendar_date=date(2026, 1, 2),
+                weight_kg=70.0,
+                raw_payload={},
+            )
+        )
+
+        activity = Activity(
+            user_id=user_id,
+            garmin_activity_id=770002,
+            activity_name="Sweet spot session",
+            activity_type="indoor_cycling",
+            start_utc=datetime(2026, 1, 5, 11, 0),
+            duration_sec=2400,
+            avg_power_watts=210,
+            raw_summary={},
+        )
+        session.add(activity)
+        await session.flush()
+
+        session.add(
+            PlannedWorkout(
+                user_id=user_id,
+                workout_date=date(2026, 1, 5),
+                version=1,
+                title="Sweet spot",
+                workout_type="cycling",
+                status="planned",
+                is_active=True,
+                intensity_target="88-94%",
+                structured_workout=_SWEET_SPOT_STRUCTURED,
+                source="test",
+            )
+        )
+        session.add_all(
+            [
+                _sample(activity.id, 0, 100, 150, 110),
+                _sample(activity.id, 1, 700, 280, 150),
+                _sample(activity.id, 2, 1200, 280, 150),
+                _sample(activity.id, 3, 1700, 280, 150),
+                _sample(activity.id, 4, 1900, 130, 120),
+                _sample(activity.id, 5, 2200, 120, 110),
+                _sample(activity.id, 6, 2399, 120, 110),
+            ]
+        )
+        await session.commit()
+
+        packet = await PostWorkoutAnalysisService(session).assemble_context_packet(player, activity)
+
+        assert packet["profile"]["weightKg"] == 70.0
+        assert packet["profile"]["weightAsOfDate"] == "2026-01-02"
+        assert packet["profile"]["weightOnFile"] is True
+
+        power_to_weight = packet["powerToWeight"]
+        assert power_to_weight is not None
+        # Seeded default FTP is 280 W (see _ftp_watts / seeded profile).
+        assert power_to_weight["ftpWattsPerKg"] == pytest.approx(4.0)
+        assert power_to_weight["wholeRideAvgWattsPerKg"] == pytest.approx(210 / 70.0)
+        assert power_to_weight["workIntervalAvgWattsPerKg"] == pytest.approx(280 / 70.0)
+        assert (
+            "lead_performance_read_with_power_to_weight_when_present"
+            in packet["prompt"]["outputRules"]
+        )
+
+
+@pytest.mark.asyncio
+async def test_context_packet_omits_power_to_weight_with_no_weight_on_file(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 176: no weigh-in in the lookback window means no fabricated weight —
+    powerToWeight is omitted and weightOnFile is explicitly false."""
+
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="No Weight Packet",
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+
+        activity = Activity(
+            user_id=user_id,
+            garmin_activity_id=770003,
+            activity_name="Free ride",
+            activity_type="indoor_cycling",
+            start_utc=datetime(2026, 1, 5, 11, 0),
+            duration_sec=1200,
+            avg_power_watts=180,
+            raw_summary={},
+        )
+        session.add(activity)
+        await session.flush()
+        await session.commit()
+
+        packet = await PostWorkoutAnalysisService(session).assemble_context_packet(player, activity)
+
+        assert packet["profile"]["weightKg"] is None
+        assert packet["profile"]["weightAsOfDate"] is None
+        assert packet["profile"]["weightOnFile"] is False
+        assert packet["powerToWeight"] is None
 
 
 @pytest.mark.asyncio
