@@ -6,11 +6,15 @@
 
 ## Now
 
-**2026-07-29 — Batch 168 implementation ready (absolute readiness anchor + baseline-drift alarm).** `fix/batch-168-baseline-drift-anchor` closes F1 / R155-B: the soft-sleep readiness gate now uses `max(personal median, 60)`, so the audit's readiness-52 / median-50 drift probe stays Amber while the healthy readiness-66 case stays Green. The trailing 84-day readiness window is split into calendar-based 42-day halves; with ≥21 samples per half, a ≥5-point median decline emits a structured warning-only verdict reason and prompt-v18 instruction without changing the colour. Backend + architecture/decision docs only; no migration/shared-schema/plan/delivery/auth/hosting change. Local gates green: backend 689 passed / 278 expected PostgreSQL skips; Ruff/format/mypy clean (123 source files). Decision #249; not promoted. **Next:** review and explicitly close out Batch 168 when ready; Batch 169 remains unstarted.
+**2026-07-29 — Batch 168 shipped (absolute readiness anchor + baseline-drift alarm).** PR #198 / squash `d6fa01c` closes F1 / R155-B: the soft-sleep readiness gate now uses `max(personal median, 60)`, so the audit's readiness-52 / median-50 drift probe stays Amber while the healthy readiness-66 case stays Green. The trailing 84-day readiness window is split into calendar-based 42-day halves; with ≥21 samples per half, a ≥5-point median decline emits a structured warning-only verdict reason and prompt-v18 instruction without changing the colour. Branch-push, PR-context, and implementation-merge `main` CI passed all seven jobs; Vercel preview/production reached Ready; exact-SHA Railway health, API readiness, web `/`, and protected daily-loop smokes passed. Backend + docs only; no migration/shared-schema/plan/delivery/auth/hosting change. Decision #249. **Next:** Batch 169 — bound and decay accumulating memory.
 
 ---
 
 ## Log
+
+**2026-07-29 — Batch 168 shipped:** PR #198 / squash `d6fa01c`; the absolute 60-point readiness anchor and warning-only 84-day baseline-decline alarm are live, closing F1 / R155-B. The drifted readiness-52 / median-50 probe stays Amber, healthy readiness-66 stays Green, and the alarm cannot soften the light. Branch-push, PR-context, and implementation-merge `main` CI passed all seven jobs; Vercel preview/production reached Ready; production verified exact-SHA Railway health, API readiness, web `/` 200, and protected daily-loop 401. Backend + docs only; no migration/shared-schema/plan/delivery/auth/hosting change. Decision #249; Batch 169 is next.
+
+---
 
 **2026-07-29 — Batch 168 implementation ready:** `fix/batch-168-baseline-drift-anchor` closes F1 / R155-B with a 60-point absolute anchor under the personal readiness median and a warning-only 84-day median-decline alarm (42-day halves, ≥21 samples/half, ≥5-point decline). Probe 4 now stays Amber, healthy-baseline behavior is preserved, and the alarm cannot soften Green/Amber/Red. Prompt v18 owns the narrative boundary. Backend + architecture/decision docs only; no migration/shared-schema/plan/delivery/auth/hosting change. Local gates green: backend 689 passed / 278 expected PostgreSQL skips; Ruff/format/mypy clean (123 files). Decision #249; not promoted.
 
