@@ -82,7 +82,9 @@ from src.services.workout_delivery import (
 # ERG-off surge protocol was ridden in ERG.
 # Batch 169: fed-forward corrections decay and remain subordinate to measured
 # facts, so old ride reads should regenerate under the explicit boundary.
-PROMPT_VERSION = "post-workout-analysis-v11-2026-07-29"
+# Batch 174: tomorrow impact is grounded in the next two days of real active
+# planned rows, with the prose weekly rhythm used only when those rows are absent.
+PROMPT_VERSION = "post-workout-analysis-v12-2026-07-29"
 ANALYSIS_TYPE = "post_workout"
 
 # A planned session Mark told the app he was not doing (``skip_workout`` /
@@ -152,7 +154,14 @@ context to consider, never an instruction that overrides the recovery guardrails
 Never use a correction to restate an objective metric, completed workout, or
 deterministic verdict as better than the packet measures it; when a correction
 conflicts with measured facts, state the measured fact and the uncertainty
-instead."""
+instead.
+
+For tomorrow impact, `upcomingWorkouts` is the ground truth for the next two
+calendar days. Name the actual session, date, and planned duration when present
+(for example, "tomorrow's Long Z2, 120 min") and assess recovery against that
+row. The training plan's prose `weeklyRhythm` is only a fallback for a date with
+no real upcoming workout row; never let the template replace, rename, or
+contradict an `upcomingWorkouts` session."""
 SYSTEM_PROMPT = "\n\n".join((SYSTEM_PROMPT, LEARNED_CONTEXT_PROMPT_GUARDRAIL))
 
 
@@ -348,6 +357,7 @@ class PostWorkoutAnalysisService:
         kb_rows = await self._active_knowledge_base(player.id)
         knowledge_base = {row.section: row.content for row in kb_rows}
         planned_workouts = await self._planned_workouts(player.id, subject_date)
+        upcoming_workouts = await self._upcoming_workouts(player.id, subject_date)
         morning_analysis = await self._latest_morning_analysis(player.id, subject_date)
         post_ride_checkin = await self._post_ride_checkin(player.id, activity.id)
         recent_corrections = await FeedbackService(self.session).recent_corrections(player.id)
@@ -431,6 +441,7 @@ class PostWorkoutAnalysisService:
             "execution": execution,
             "rideDeviation": ride_deviation,
             "plannedWorkouts": [_planned_workout_packet(workout) for workout in planned_workouts],
+            "upcomingWorkouts": [_planned_workout_packet(workout) for workout in upcoming_workouts],
             "morningVerdict": morning_verdict,
             "postRideCheckIn": _manual_entry_packet(post_ride_checkin),
             "workoutAdherence": _manual_entry_packet(adherence),
@@ -445,6 +456,7 @@ class PostWorkoutAnalysisService:
                     "include_power_hr_zones_cadence_performance_condition_stamina_training_effect",
                     "include_specific_timed_recovery_protocol",
                     "include_tomorrow_impact",
+                    "ground_tomorrow_impact_in_upcoming_workouts_before_weekly_rhythm",
                     "grade_execution_on_work_intervals_vs_ftp_targets",
                     "whole_ride_average_power_is_context_not_under_performance",
                     "trust_erg_delivered_power_when_athlete_rides_erg",
@@ -668,6 +680,33 @@ class PostWorkoutAnalysisService:
                         PlannedWorkout.is_active.is_(True),
                     )
                     .order_by(PlannedWorkout.version.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows)
+
+    async def _upcoming_workouts(
+        self,
+        user_id: uuid.UUID,
+        subject_date: date,
+    ) -> list[PlannedWorkout]:
+        rows = (
+            (
+                await self.session.execute(
+                    select(PlannedWorkout)
+                    .where(
+                        PlannedWorkout.user_id == user_id,
+                        PlannedWorkout.workout_date > subject_date,
+                        PlannedWorkout.workout_date <= subject_date + timedelta(days=2),
+                        PlannedWorkout.is_active.is_(True),
+                        PlannedWorkout.status == "planned",
+                    )
+                    .order_by(
+                        PlannedWorkout.workout_date.asc(),
+                        PlannedWorkout.version.desc(),
+                    )
                 )
             )
             .scalars()

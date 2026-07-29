@@ -961,7 +961,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v22")
+    assert PROMPT_VERSION.startswith("morning-analysis-v23")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
@@ -1907,10 +1907,68 @@ def test_yesterday_load_packet_carries_hard_session_and_analysis_summary() -> No
     packet = _yesterday_load_packet([activity], [analysis])
 
     assert packet["status"] == "hard"
+    assert packet["statusScope"] == "exercise_only"
     assert packet["totalTrainingLoad"] == 165
     assert packet["hardestActivity"]["name"] == "VO2 Max 30/15"
     assert packet["postSessionAnalyses"][0]["analysisType"] == "post_workout"
     assert "hard session" in packet["postSessionAnalyses"][0]["summary"]
+    assert packet["wholeDayCost"] == {
+        "calendarDate": None,
+        "allDayStressAvg": None,
+        "bodyBatteryDrained": None,
+        "bodyBatteryEnd": None,
+        "classificationImpact": "none",
+    }
+
+
+@pytest.mark.asyncio
+async def test_yesterday_load_includes_whole_day_cost_without_exercise(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 7, 29)
+
+    async with session_factory() as session:
+        session.add_all(
+            [
+                Profile(
+                    id=user_id,
+                    display_name="Whole-day cost test",
+                    role=UserRole.admin,
+                    timezone="Europe/London",
+                    is_active=True,
+                ),
+                DailyMetric(
+                    user_id=user_id,
+                    calendar_date=subject_date - timedelta(days=1),
+                    stress_avg=61,
+                    body_battery_drained=78,
+                    body_battery_end=9,
+                    raw_payload={},
+                ),
+            ]
+        )
+        await session.commit()
+
+        packet = await MorningAnalysisService(session)._yesterday_load(
+            user_id,
+            subject_date,
+            "Europe/London",
+        )
+
+    assert packet["activityCount"] == 0
+    assert packet["status"] == "none"
+    assert packet["statusScope"] == "exercise_only"
+    assert packet["totalTrainingLoad"] == 0
+    assert packet["wholeDayCost"] == {
+        "calendarDate": "2026-07-28",
+        "allDayStressAvg": 61,
+        "bodyBatteryDrained": 78,
+        "bodyBatteryEnd": 9,
+        "classificationImpact": "none",
+    }
+    assert "`yesterdayLoad.wholeDayCost` independently" in SYSTEM_PROMPT
 
 
 _RAW_PAYLOAD_WITH_LOAD = {
