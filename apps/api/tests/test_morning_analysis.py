@@ -859,7 +859,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v19")
+    assert PROMPT_VERSION.startswith("morning-analysis-v20")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
@@ -887,6 +887,13 @@ def test_prompt_treats_the_training_load_cap_as_deterministic() -> None:
     assert ">=1.5 triggers the deterministic high-load cap" in SYSTEM_PROMPT
     assert "verdict.trainingLoadCap already records and" in SYSTEM_PROMPT
     assert "model-controlled override" in SYSTEM_PROMPT
+
+
+def test_prompt_keeps_batch_170_verdict_rules_deterministic() -> None:
+    assert "verdict.sleepCreditCeiling" in SYSTEM_PROMPT
+    assert "verdict.cumulativeEscalation" in SYSTEM_PROMPT
+    assert "Missing HRV and absent" in SYSTEM_PROMPT
+    assert "never describe absent data as proof" in SYSTEM_PROMPT
 
 
 def test_prompt_treats_readiness_baseline_decline_as_warning_only() -> None:
@@ -1148,6 +1155,19 @@ def _readiness_baseline(user_id: uuid.UUID, *, median: float = 53.5) -> MetricBa
     )
 
 
+def _positive_morning_checkin(
+    user_id: uuid.UUID,
+    *,
+    score: int = 6,
+) -> ManualEntry:
+    return ManualEntry(
+        user_id=user_id,
+        entry_date=date(2026, 7, 29),
+        entry_at_utc=datetime(2026, 7, 29, 7, 0),
+        subjective_score=score,
+    )
+
+
 def test_soft_sleep_can_stay_green_when_personal_recovery_signals_are_strong() -> None:
     user_id = uuid.uuid4()
     daily_metric = DailyMetric(
@@ -1166,7 +1186,7 @@ def test_soft_sleep_can_stay_green_when_personal_recovery_signals_are_strong() -
         daily_metric=daily_metric,
         sleep=None,
         age_adjusted_sleep_score=72,
-        manual_entries=[],
+        manual_entries=[_positive_morning_checkin(user_id)],
         planned_workouts=[],
         baselines={"resting_heart_rate_bpm": _rhr_baseline(user_id)},
     )
@@ -1194,7 +1214,7 @@ def test_soft_sleep_override_does_not_cross_red_floor() -> None:
         daily_metric=daily_metric,
         sleep=None,
         age_adjusted_sleep_score=57,
-        manual_entries=[],
+        manual_entries=[_positive_morning_checkin(user_id)],
         planned_workouts=[],
         baselines={"resting_heart_rate_bpm": _rhr_baseline(user_id)},
     )
@@ -1221,7 +1241,7 @@ def test_soft_sleep_override_requires_resting_hr_inside_personal_band() -> None:
         daily_metric=daily_metric,
         sleep=None,
         age_adjusted_sleep_score=72,
-        manual_entries=[],
+        manual_entries=[_positive_morning_checkin(user_id)],
         planned_workouts=[],
         baselines={"resting_heart_rate_bpm": _rhr_baseline(user_id)},
     )
@@ -1251,7 +1271,7 @@ def test_soft_sleep_override_preserves_healthy_personal_baseline_behaviour() -> 
         daily_metric=daily_metric,
         sleep=None,
         age_adjusted_sleep_score=72,
-        manual_entries=[],
+        manual_entries=[_positive_morning_checkin(user_id)],
         planned_workouts=[],
         baselines={
             "resting_heart_rate_bpm": _rhr_baseline(user_id),
@@ -1285,7 +1305,7 @@ def test_soft_sleep_override_cannot_follow_a_drifted_baseline_below_absolute_flo
         daily_metric=daily_metric,
         sleep=None,
         age_adjusted_sleep_score=72,
-        manual_entries=[],
+        manual_entries=[_positive_morning_checkin(user_id)],
         planned_workouts=[],
         baselines={
             "resting_heart_rate_bpm": _rhr_baseline(user_id),
@@ -1297,6 +1317,291 @@ def test_soft_sleep_override_cannot_follow_a_drifted_baseline_below_absolute_flo
     assert verdict["softSleepRecoveryOverride"] is False
     assert verdict["readinessBaselineCenter"] == 50
     assert verdict["readinessEffectiveFloor"] == SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR
+
+
+def _batch_170_metric(
+    user_id: uuid.UUID,
+    *,
+    readiness_level: str = "Moderate",
+    readiness_score: int | None = 76,
+    hrv_weekly_avg_ms: int | None = 48,
+    resting_heart_rate_bpm: int | None = 44,
+) -> DailyMetric:
+    return DailyMetric(
+        user_id=user_id,
+        calendar_date=date(2026, 7, 29),
+        readiness_score=readiness_score,
+        readiness_level=readiness_level,
+        hrv_weekly_avg_ms=hrv_weekly_avg_ms,
+        hrv_baseline_low_ms=43,
+        hrv_status="Balanced",
+        resting_heart_rate_bpm=resting_heart_rate_bpm,
+        raw_payload={},
+    )
+
+
+def _batch_170_sleep(user_id: uuid.UUID, *, score: int) -> Sleep:
+    return Sleep(
+        user_id=user_id,
+        calendar_date=date(2026, 7, 29),
+        score=score,
+        raw_payload={},
+        factors_json={},
+    )
+
+
+def _batch_170_audit_case(case: str) -> dict[str, Any]:
+    user_id = uuid.uuid4()
+    daily_metric = _batch_170_metric(user_id)
+    sleep: Sleep | None = None
+    adjusted_score = 72
+    manual_entries = [_positive_morning_checkin(user_id)]
+    baselines: dict[str, MetricBaseline] = {
+        "resting_heart_rate_bpm": _rhr_baseline(user_id),
+        "readiness_score": _readiness_baseline(user_id),
+    }
+    yesterday_load: dict[str, str] | None = None
+    training_load: dict[str, int] | None = None
+
+    if case == "credited_green_without_corroboration":
+        daily_metric = None
+        sleep = _batch_170_sleep(user_id, score=62)
+        adjusted_score = 74
+        baselines = {}
+    elif case == "poor_readiness_stack":
+        daily_metric = _batch_170_metric(
+            user_id,
+            readiness_level="Poor",
+            readiness_score=16,
+        )
+        adjusted_score = 62
+        manual_entries = [_positive_morning_checkin(user_id, score=3)]
+        yesterday_load = {"status": "hard"}
+        training_load = {"recoveryTimeMin": 1400}
+    elif case == "missing_hrv":
+        daily_metric = _batch_170_metric(user_id, hrv_weekly_avg_ms=None)
+    elif case == "missing_subjective":
+        manual_entries = []
+    elif case == "acute_red":
+        adjusted_score = 58
+    elif case == "clean_soft_sleep":
+        pass
+    else:  # pragma: no cover - protects the test fixture itself
+        raise AssertionError(f"Unknown Batch 170 audit case: {case}")
+
+    return _morning_verdict(
+        daily_metric=daily_metric,
+        sleep=sleep,
+        age_adjusted_sleep_score=adjusted_score,
+        manual_entries=manual_entries,
+        planned_workouts=[],
+        baselines=baselines,
+        yesterday_load=yesterday_load,
+        training_load=training_load,
+    )
+
+
+@pytest.mark.parametrize(
+    ("case", "pre_batch_status", "expected_status"),
+    [
+        ("credited_green_without_corroboration", "Green", "Amber"),
+        ("poor_readiness_stack", "Amber", "Red"),
+        ("missing_hrv", "Green", "Amber"),
+        ("missing_subjective", "Green", "Amber"),
+        ("acute_red", "Red", "Red"),
+        ("clean_soft_sleep", "Green", "Green"),
+    ],
+)
+def test_batch_170_audit_matrix_only_hardens_the_light(
+    case: str,
+    pre_batch_status: str,
+    expected_status: str,
+) -> None:
+    verdict = _batch_170_audit_case(case)
+    caution_rank = {"Green": 0, "Amber": 1, "Red": 2}
+
+    assert verdict["status"] == expected_status
+    assert caution_rank[verdict["status"]] >= caution_rank[pre_batch_status]
+
+
+def test_sleep_credit_crossing_requires_complete_exception_evidence() -> None:
+    user_id = uuid.uuid4()
+    sleep = _batch_170_sleep(user_id, score=62)
+    no_corroboration = _morning_verdict(
+        daily_metric=None,
+        sleep=sleep,
+        age_adjusted_sleep_score=74,
+        manual_entries=[_positive_morning_checkin(user_id)],
+        planned_workouts=[],
+    )
+    corroborated = _morning_verdict(
+        daily_metric=_batch_170_metric(user_id),
+        sleep=sleep,
+        age_adjusted_sleep_score=74,
+        manual_entries=[_positive_morning_checkin(user_id)],
+        planned_workouts=[],
+        baselines={
+            "resting_heart_rate_bpm": _rhr_baseline(user_id),
+            "readiness_score": _readiness_baseline(user_id),
+        },
+    )
+
+    assert no_corroboration["status"] == "Amber"
+    assert no_corroboration["sleepCreditCeiling"] == {
+        "rawSleepScore": 62,
+        "ageAdjustedSleepScore": 74,
+        "crossedGreenThreshold": True,
+        "corroboratedByObjectiveRecovery": False,
+        "positiveSubjectiveEvidence": True,
+        "exceptionEvidenceComplete": False,
+        "allowedGreen": False,
+        "applied": True,
+        "reason": (
+            "Age-adjusted sleep reaches the Green line, but the raw Garmin sleep score "
+            "is below 74 without complete measured recovery and check-in evidence."
+        ),
+    }
+    assert "sleep_credit_green_ceiling" in no_corroboration["safetyRulesApplied"]
+    assert corroborated["status"] == "Green"
+    assert corroborated["sleepCreditCeiling"]["exceptionEvidenceComplete"] is True
+    assert corroborated["sleepCreditCeiling"]["applied"] is False
+
+
+def test_sleep_credit_can_still_lift_within_the_amber_band() -> None:
+    user_id = uuid.uuid4()
+    verdict = _morning_verdict(
+        daily_metric=None,
+        sleep=_batch_170_sleep(user_id, score=53),
+        age_adjusted_sleep_score=65,
+        manual_entries=[],
+        planned_workouts=[],
+    )
+
+    assert verdict["status"] == "Amber"
+    assert verdict["sleepCreditCeiling"]["crossedGreenThreshold"] is False
+    assert verdict["sleepCreditCeiling"]["applied"] is False
+
+
+@pytest.mark.parametrize(
+    ("missing_signal", "expected_field"),
+    [
+        ("hrv", "positiveHrvEvidence"),
+        ("readiness", None),
+        ("subjective", "positiveSubjectiveEvidence"),
+    ],
+)
+def test_missing_recovery_evidence_cannot_unlock_soft_sleep_green(
+    missing_signal: str,
+    expected_field: str | None,
+) -> None:
+    user_id = uuid.uuid4()
+    daily_metric = _batch_170_metric(
+        user_id,
+        hrv_weekly_avg_ms=None if missing_signal == "hrv" else 48,
+        readiness_score=None if missing_signal == "readiness" else 76,
+    )
+    verdict = _morning_verdict(
+        daily_metric=daily_metric,
+        sleep=None,
+        age_adjusted_sleep_score=72,
+        manual_entries=(
+            [] if missing_signal == "subjective" else [_positive_morning_checkin(user_id)]
+        ),
+        planned_workouts=[],
+        baselines={
+            "resting_heart_rate_bpm": _rhr_baseline(user_id),
+            "readiness_score": _readiness_baseline(user_id),
+        },
+    )
+
+    assert verdict["status"] == "Amber"
+    assert verdict["softSleepRecoveryOverride"] is False
+    if expected_field is not None:
+        assert verdict[expected_field] is False
+
+
+def test_missing_hrv_and_checkin_stay_neutral_on_a_raw_green_night() -> None:
+    user_id = uuid.uuid4()
+    verdict = _morning_verdict(
+        daily_metric=None,
+        sleep=_batch_170_sleep(user_id, score=80),
+        age_adjusted_sleep_score=80,
+        manual_entries=[],
+        planned_workouts=[],
+    )
+
+    assert verdict["status"] == "Green"
+    assert verdict["positiveHrvEvidence"] is False
+    assert verdict["positiveSubjectiveEvidence"] is False
+    assert verdict["reasons"] == [
+        (
+            "Sleep clears the green rule; missing HRV/check-in data is neutral "
+            "and did not provide positive evidence."
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("second_negative", "expected_signal"),
+    [
+        ("soft_sleep", "soft_sleep"),
+        ("low_subjective", "low_subjective"),
+        ("hard_yesterday", "hard_yesterday"),
+        ("elevated_rhr", "elevated_resting_heart_rate"),
+    ],
+)
+def test_poor_readiness_plus_each_second_negative_escalates_to_red(
+    second_negative: str,
+    expected_signal: str,
+) -> None:
+    user_id = uuid.uuid4()
+    daily_metric = _batch_170_metric(
+        user_id,
+        readiness_level="Poor",
+        readiness_score=16,
+        resting_heart_rate_bpm=48 if second_negative == "elevated_rhr" else 44,
+    )
+    verdict = _morning_verdict(
+        daily_metric=daily_metric,
+        sleep=None,
+        age_adjusted_sleep_score=72 if second_negative == "soft_sleep" else 80,
+        manual_entries=[
+            _positive_morning_checkin(
+                user_id,
+                score=3 if second_negative == "low_subjective" else 6,
+            )
+        ],
+        planned_workouts=[],
+        baselines={"resting_heart_rate_bpm": _rhr_baseline(user_id)},
+        yesterday_load={"status": "hard"} if second_negative == "hard_yesterday" else None,
+    )
+
+    assert verdict["status"] == "Red"
+    assert verdict["cumulativeEscalation"]["triggered"] is True
+    assert verdict["cumulativeEscalation"]["applied"] is True
+    assert expected_signal in verdict["cumulativeEscalation"]["negativeSignals"]
+    assert "poor_readiness_cumulative_red" in verdict["safetyRulesApplied"]
+
+
+def test_poor_readiness_does_not_treat_missing_rhr_baseline_as_elevated() -> None:
+    user_id = uuid.uuid4()
+    verdict = _morning_verdict(
+        daily_metric=_batch_170_metric(
+            user_id,
+            readiness_level="Poor",
+            readiness_score=16,
+            resting_heart_rate_bpm=48,
+        ),
+        sleep=None,
+        age_adjusted_sleep_score=80,
+        manual_entries=[_positive_morning_checkin(user_id)],
+        planned_workouts=[],
+        baselines={},
+    )
+
+    assert verdict["status"] == "Amber"
+    assert verdict["restingHeartRateElevated"] is False
+    assert verdict["cumulativeEscalation"]["negativeSignals"] == []
 
 
 def test_readiness_baseline_trend_alarms_on_sustained_84_day_decline() -> None:
@@ -1410,7 +1715,7 @@ def test_soft_sleep_override_rejects_readiness_below_personal_median() -> None:
         daily_metric=daily_metric,
         sleep=None,
         age_adjusted_sleep_score=72,
-        manual_entries=[],
+        manual_entries=[_positive_morning_checkin(user_id)],
         planned_workouts=[],
         baselines={
             "resting_heart_rate_bpm": _rhr_baseline(user_id),
@@ -1665,7 +1970,7 @@ def test_training_load_thresholds_cap_only_above_the_set_boundaries(
 
 
 def test_july_24_load_driven_shape_is_capped_at_amber() -> None:
-    """The Batch 155 real case: LOW + hard yesterday previously escaped to Green."""
+    """Hold Batch 170 evidence positive so the Batch 167 load cap stays isolated."""
     daily_metric = DailyMetric(
         user_id=uuid.uuid4(),
         calendar_date=date(2026, 7, 24),
@@ -1680,7 +1985,7 @@ def test_july_24_load_driven_shape_is_capped_at_amber() -> None:
         "daily_metric": daily_metric,
         "sleep": None,
         "age_adjusted_sleep_score": 80,
-        "manual_entries": [],
+        "manual_entries": [_positive_morning_checkin(daily_metric.user_id)],
         "planned_workouts": [],
         "yesterday_load": {"status": "hard"},
     }
