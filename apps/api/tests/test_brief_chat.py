@@ -148,6 +148,8 @@ async def test_ask_grounds_in_packet_and_stores_both_turns(db_conn: AsyncConnect
     assert "live morning read" in client.calls[0]["system_prompt"]
     assert "the app can propose one" in client.calls[0]["system_prompt"]
     assert "Do not cave to reassurance pressure" in client.calls[0]["system_prompt"]
+    assert "General principle:" in client.calls[0]["system_prompt"]
+    assert "Mark-specific answers are packet-bound" in client.calls[0]["system_prompt"]
     assert "Read context packet" in client.calls[0]["system_prompt"]
 
     async with session_factory() as session:
@@ -226,6 +228,103 @@ async def test_ask_only_offers_a_proposal_on_a_deterministic_keyword_match(
 
     assert neutral.assistant_message.proposed_planned_workout_id is None
     assert wants_ease.assistant_message.proposed_planned_workout_id == workout.id
+
+
+@pytest.mark.asyncio
+async def test_general_endurance_science_question_is_allowed_with_a_label(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 175: general training-science can be answered even when the
+    packet does not contain that background, provided it is labelled and not
+    turned into a personal prescription."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        analysis = await _make_analysis(
+            session,
+            user.id,
+            context_packet={"verdict": {"status": "Amber"}},
+            output_markdown="Amber today. Keep the ride easier.",
+        )
+        client = FakeBriefChatClient(
+            "General principle: VO2 adaptations usually need work near VO2 intensity, "
+            "but this is not a personal prescription."
+        )
+
+        turn = await BriefChatService(session).ask(
+            user,
+            analysis.id,
+            question="What %FTP could someone drop VO2 intervals to and keep similar benefit?",
+            client=client,
+        )
+
+    assert turn.assistant_message.content.startswith("General principle:")
+    assert turn.assistant_message.proposed_planned_workout_id is None
+    system_prompt = str(client.calls[0]["system_prompt"])
+    assert "You may answer general, non-personalized endurance-training science" in system_prompt
+    assert 'Label those answers with "General principle:"' in system_prompt
+    assert "turning them into Mark-specific instructions" in system_prompt
+
+
+@pytest.mark.asyncio
+async def test_mark_specific_question_stays_packet_bound(db_conn: AsyncConnection) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        analysis = await _make_analysis(
+            session,
+            user.id,
+            context_packet={"verdict": {"status": "Amber"}},
+        )
+        client = FakeBriefChatClient("The packet does not show Mark's FTP history.")
+
+        turn = await BriefChatService(session).ask(
+            user,
+            analysis.id,
+            question="What FTP has Mark usually held for VO2 intervals this block?",
+            client=client,
+        )
+
+    assert "packet does not show" in turn.assistant_message.content
+    system_prompt = str(client.calls[0]["system_prompt"])
+    assert "do not invent his metrics, plan" in system_prompt
+    assert "question about Mark" in system_prompt
+
+
+@pytest.mark.asyncio
+async def test_plan_change_request_still_uses_propose_confirm_and_red_floor(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        workout = await _make_planned_workout(session, user.id)
+        packet = {
+            "verdict": {"status": "Red"},
+            "restDay": {"isRestDay": False},
+            "plannedWorkouts": [
+                {
+                    "id": str(workout.id),
+                    "workoutType": "bike_vo2",
+                    "status": "planned",
+                    "structuredWorkout": {"segments": []},
+                }
+            ],
+        }
+        analysis = await _make_analysis(session, user.id, context_packet=packet)
+        client = FakeBriefChatClient("The app can propose an easier version for you to confirm.")
+
+        turn = await BriefChatService(session).ask(
+            user,
+            analysis.id,
+            question="Can you reduce today's ride?",
+            client=client,
+        )
+
+    assert turn.assistant_message.proposed_planned_workout_id == workout.id
+    system_prompt = str(client.calls[0]["system_prompt"])
+    assert "Any actual workout change remains confirm-before-apply" in system_prompt
+    assert "never recommend VO2 on a Red day" in system_prompt
 
 
 @pytest.mark.asyncio
