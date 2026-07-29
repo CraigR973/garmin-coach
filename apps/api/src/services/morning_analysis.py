@@ -116,7 +116,10 @@ from src.services.workout_delivery import build_structured_workout_ir
 # crossings, Poor-readiness stacking, and missing-HRV evidence.
 # Batch 171: a sustained recovery-marker pattern or clustered pair of Red
 # mornings now queues a seven-day deload proposal without changing the light.
-PROMPT_VERSION = "morning-analysis-v22-2026-07-29"
+# Batch 174: yesterdayLoad now includes the prior DailyMetric's all-day stress
+# and Body Battery cost even when no exercise was recorded. Narrative context
+# only; the deterministic verdict inputs are unchanged.
+PROMPT_VERSION = "morning-analysis-v23-2026-07-29"
 ANALYSIS_TYPE = "morning"
 # Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
 # signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
@@ -188,7 +191,14 @@ action audit, and executed Garmin activities are the only completion truth. Neve
 credit a moved-away, skipped, removed, or merely planned session as executed. Where
 it helps, acknowledge the move recorded in changes. Respect the usual routine's
 rest-day preference only when making a future recommendation, not when narrating
-history. Use yesterdayLoad to explain any eased ride after a hard prior session.
+history. `yesterdayLoad.status` and its training totals describe exercise only;
+never equate a low/absent training load with a low-cost whole day. Use
+`yesterdayLoad.wholeDayCost` independently: when allDayStressAvg,
+bodyBatteryDrained, or bodyBatteryEnd is present, describe that non-exercise
+cost even when activityCount is zero. wholeDayCost.classificationImpact is
+`none`, so this context explains the read but never changes the deterministic
+Green/Amber/Red verdict. Use the exercise fields to explain any eased ride after
+a hard prior session.
 When restDay.isRestDay is true, frame today's verdict as a rest day. Do not
 recommend, soften, rearrange, or relitigate a planned workout whose status is
 skipped, and do not narrate a session inside the holiday window as a live
@@ -547,6 +557,7 @@ class MorningAnalysisService:
                         "frame_holiday_or_all_skipped_day_as_rest",
                         "never_treat_skipped_workout_as_live_training",
                         "ground_week_history_in_training_week_so_far",
+                        "include_yesterday_whole_day_cost_when_present",
                         "surface_readiness_baseline_decline_warning",
                         "surface_chronic_deload_without_changing_verdict",
                         "treat_training_schedule_as_nominal_only",
@@ -789,8 +800,17 @@ class MorningAnalysisService:
             .scalars()
             .all()
         )
+        daily_metric = cast(
+            DailyMetric | None,
+            await self.session.scalar(
+                select(DailyMetric).where(
+                    DailyMetric.user_id == user_id,
+                    DailyMetric.calendar_date == yesterday,
+                )
+            ),
+        )
         if not activities:
-            return _yesterday_load_packet([], [])
+            return _yesterday_load_packet([], [], daily_metric)
 
         activity_ids = [activity.id for activity in activities]
         analyses = list(
@@ -807,7 +827,7 @@ class MorningAnalysisService:
             .scalars()
             .all()
         )
-        return _yesterday_load_packet(activities, analyses)
+        return _yesterday_load_packet(activities, analyses, daily_metric)
 
     async def _metric_baselines(self, user_id: uuid.UUID) -> list[MetricBaseline]:
         rows = (
@@ -1574,15 +1594,29 @@ def build_today_actions(
 def _yesterday_load_packet(
     activities: Sequence[Activity],
     analyses: Sequence[Analysis],
+    daily_metric: DailyMetric | None = None,
 ) -> dict[str, Any]:
+    whole_day_cost = {
+        "calendarDate": (
+            daily_metric.calendar_date.isoformat() if daily_metric is not None else None
+        ),
+        "allDayStressAvg": daily_metric.stress_avg if daily_metric is not None else None,
+        "bodyBatteryDrained": (
+            daily_metric.body_battery_drained if daily_metric is not None else None
+        ),
+        "bodyBatteryEnd": daily_metric.body_battery_end if daily_metric is not None else None,
+        "classificationImpact": "none",
+    }
     if not activities:
         return {
             "activityCount": 0,
             "status": "none",
+            "statusScope": "exercise_only",
             "totalTrainingLoad": 0,
             "totalDurationMin": 0,
             "hardestActivity": None,
             "postSessionAnalyses": [],
+            "wholeDayCost": whole_day_cost,
         }
 
     def load_score(activity: Activity) -> float:
@@ -1616,6 +1650,7 @@ def _yesterday_load_packet(
     return {
         "activityCount": len(activities),
         "status": status,
+        "statusScope": "exercise_only",
         "totalTrainingLoad": total_load,
         "totalDurationMin": total_duration_min,
         "maxAerobicTrainingEffect": max_aerobic_te,
@@ -1640,6 +1675,7 @@ def _yesterday_load_packet(
             for activity in activities
             if activity.id in analyses_by_activity
         ],
+        "wholeDayCost": whole_day_cost,
     }
 
 

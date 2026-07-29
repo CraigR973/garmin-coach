@@ -708,6 +708,55 @@ async def test_context_packet_falls_back_to_whole_ride_without_plan(
                 _sample(activity.id, 0, 0, 200, 140),
                 _sample(activity.id, 1, 600, 240, 150),
                 _sample(activity.id, 2, 1200, 190, 145),
+                PlannedWorkout(
+                    user_id=user_id,
+                    workout_date=date(2026, 1, 7),
+                    version=1,
+                    title="Long Z2",
+                    workout_type="bike_endurance",
+                    status="planned",
+                    is_active=True,
+                    planned_duration_min=120,
+                    intensity_target="65-70% FTP",
+                    structured_workout={"format": "bike"},
+                    source="test",
+                ),
+                PlannedWorkout(
+                    user_id=user_id,
+                    workout_date=date(2026, 1, 8),
+                    version=1,
+                    title="Strength maintenance",
+                    workout_type="strength",
+                    status="planned",
+                    is_active=True,
+                    planned_duration_min=30,
+                    structured_workout={"format": "strength"},
+                    source="test",
+                ),
+                PlannedWorkout(
+                    user_id=user_id,
+                    workout_date=date(2026, 1, 7),
+                    version=2,
+                    title="Skipped template ride",
+                    workout_type="bike_vo2",
+                    status="skipped",
+                    is_active=True,
+                    planned_duration_min=60,
+                    structured_workout={"format": "bike"},
+                    source="test",
+                ),
+                PlannedWorkout(
+                    user_id=user_id,
+                    workout_date=date(2026, 1, 9),
+                    version=1,
+                    title="Outside the two-day window",
+                    workout_type="mobility",
+                    status="planned",
+                    is_active=True,
+                    planned_duration_min=20,
+                    structured_workout={"format": "mobility"},
+                    source="test",
+                ),
             ]
         )
         await session.commit()
@@ -725,6 +774,20 @@ async def test_context_packet_falls_back_to_whole_ride_without_plan(
         # Batch 80: no bike was planned, so a spontaneous ride is not a plan override.
         assert packet["rideDeviation"]["diverged"] is False
         assert packet["rideDeviation"]["kind"] == "free_ride"
+        # Batch 174: tomorrow impact uses the actual active rows for the next
+        # two days instead of guessing from trainingPlan.weeklyRhythm.
+        assert [
+            (row["workoutDate"], row["title"], row["plannedDurationMin"])
+            for row in packet["upcomingWorkouts"]
+        ] == [
+            ("2026-01-07", "Long Z2", 120),
+            ("2026-01-08", "Strength maintenance", 30),
+        ]
+        assert "upcomingWorkouts` is the ground truth" in packet["prompt"]["system"]
+        assert (
+            "ground_tomorrow_impact_in_upcoming_workouts_before_weekly_rhythm"
+            in packet["prompt"]["outputRules"]
+        )
 
         result = await service.generate_and_store(player, activity, client=FakePostWorkoutClient())
         assert result.generated is True
