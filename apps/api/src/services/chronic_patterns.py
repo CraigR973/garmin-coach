@@ -1,8 +1,11 @@
-"""Deterministic chronic sleep-pattern suggestions.
+"""Deterministic chronic sleep-pattern suggestions and structural action signal.
 
 Batch 59 turns the age-norm and personal-baseline reads into small, grounded
-actions when a pattern repeats across weeks. It stays read-only: no analyses row,
-no migration, no verdict or delivery-rule change.
+actions when a pattern repeats across weeks. Batch 171 keeps those advisory cards
+unchanged, but also derives a deterministic deload-proposal signal from a protected
+recovery-marker pattern or a clustered pair of Red mornings. This module still
+does not mutate the plan or set the daily verdict; the executable-coaching service
+owns proposal creation through the existing approval rail.
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ from typing import Any, Literal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.coaching import DailyMetric, KnowledgeBase, MetricBaseline, Sleep
+from src.models.coaching import Analysis, DailyMetric, KnowledgeBase, MetricBaseline, Sleep
 from src.models.profile import Profile
 from src.services.age_norms import build_age_comparison
 from src.services.insights import DriverCorrelation
@@ -28,6 +31,14 @@ WINDOW_DAYS = 28
 MIN_OBSERVED_NIGHTS = 21
 MIN_METRIC_SAMPLES = 10
 MIN_DRIVER_SAMPLES = 8
+CHRONIC_ACTION_MISS_RATIO = 0.7
+CHRONIC_ACTION_RED_WINDOW_DAYS = 7
+CHRONIC_ACTION_RED_THRESHOLD = 2
+CHRONIC_DELOAD_WINDOW_DAYS = 7
+
+_RECOVERY_ACTION_METRICS = frozenset(
+    {"readiness_score", "hrv_7_day_avg_ms", "resting_heart_rate_bpm"}
+)
 
 SuggestionTone = Literal["watch", "protect"]
 SuggestionStatus = Literal["insufficient_history", "clear", "active"]
@@ -77,6 +88,38 @@ class PatternFlag:
     comparator: str
     latest_value: float | None
     better: Literal["higher", "lower"]
+
+
+@dataclass(frozen=True)
+class VerdictDay:
+    calendar_date: date
+    verdict: str | None
+
+
+@dataclass(frozen=True)
+class ChronicActionSignal:
+    triggered: bool
+    trigger_sources: tuple[str, ...] = ()
+    recovery_markers: tuple[str, ...] = ()
+    red_morning_count: int = 0
+    reasons: tuple[str, ...] = ()
+    kind: Literal["deload_proposal"] = "deload_proposal"
+    proposal_window_days: int = CHRONIC_DELOAD_WINDOW_DAYS
+
+    def to_packet(self) -> dict[str, Any]:
+        return {
+            "triggered": self.triggered,
+            "kind": self.kind,
+            "proposalWindowDays": self.proposal_window_days,
+            "triggerSources": list(self.trigger_sources),
+            "recoveryMarkers": list(self.recovery_markers),
+            "redMorningCount": self.red_morning_count,
+            "redMorningThreshold": CHRONIC_ACTION_RED_THRESHOLD,
+            "redMorningWindowDays": CHRONIC_ACTION_RED_WINDOW_DAYS,
+            "reasons": list(self.reasons),
+            "deliveryContract": "propose_approve_push",
+            "verdictImpact": "none",
+        }
 
 
 @dataclass(frozen=True)
@@ -152,6 +195,9 @@ class ChronicSuggestionResult:
     summary: str
     evidence_window: EvidenceWindow
     items: list[ChronicSuggestion] = field(default_factory=list)
+    action_signal: ChronicActionSignal = field(
+        default_factory=lambda: ChronicActionSignal(triggered=False)
+    )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -206,6 +252,7 @@ def build_chronic_pattern_suggestions(
     sleep_protocol: Mapping[str, Any] | None,
     as_of: date,
     window_days: int = WINDOW_DAYS,
+    recent_verdicts: Sequence[VerdictDay] = (),
 ) -> ChronicSuggestionResult:
     """Detect repeated below-norm/baseline misses and map them to actions."""
     start = as_of - timedelta(days=window_days - 1)
@@ -225,6 +272,7 @@ def build_chronic_pattern_suggestions(
                 f"{MIN_OBSERVED_NIGHTS} are needed before the app calls a chronic pattern."
             ),
             evidence_window=window,
+            action_signal=_chronic_action_signal([], recent_verdicts, as_of=as_of),
         )
 
     flags = _age_norm_flags(sleeps, age=age, sex=sex, start=start, end=as_of)
@@ -235,6 +283,7 @@ def build_chronic_pattern_suggestions(
         if flag.samples >= MIN_METRIC_SAMPLES and flag.misses >= _miss_threshold(flag.samples)
     ]
     chronic.sort(key=lambda flag: (flag.miss_ratio, flag.misses), reverse=True)
+    action_signal = _chronic_action_signal(chronic, recent_verdicts, as_of=as_of)
 
     drivers = _useful_drivers(sleep_drivers)
     suggestions = [
@@ -256,6 +305,7 @@ def build_chronic_pattern_suggestions(
                 "its age norm or personal band often enough to call it chronic."
             ),
             evidence_window=window,
+            action_signal=action_signal,
         )
     return ChronicSuggestionResult(
         status="active",
@@ -266,6 +316,7 @@ def build_chronic_pattern_suggestions(
         ),
         evidence_window=window,
         items=suggestions,
+        action_signal=action_signal,
     )
 
 
@@ -280,6 +331,7 @@ class ChronicPatternSuggestionService:
         as_of: date,
         sleep_drivers: Sequence[DriverCorrelation],
         sleep_protocol: Mapping[str, Any] | None = None,
+        current_verdict: str | None = None,
     ) -> ChronicSuggestionResult:
         start = as_of - timedelta(days=WINDOW_DAYS - 1)
         sleep_rows = (
@@ -315,6 +367,11 @@ class ChronicPatternSuggestionService:
         profile_section = await self._profile_section(player.id)
         age = _profile_age(profile_section)
         sex = _profile_sex(profile_section)
+        recent_verdicts = await self._recent_verdicts(player.id, as_of=as_of)
+        if current_verdict is not None:
+            recent_verdicts = [row for row in recent_verdicts if row.calendar_date != as_of] + [
+                VerdictDay(calendar_date=as_of, verdict=current_verdict)
+            ]
         return build_chronic_pattern_suggestions(
             sleeps=[_sleep_night(row, age=age, sex=sex) for row in sleep_rows],
             recovery_days=[_recovery_day(row) for row in metric_rows],
@@ -324,6 +381,7 @@ class ChronicPatternSuggestionService:
             sex=sex,
             sleep_protocol=sleep_protocol,
             as_of=as_of,
+            recent_verdicts=recent_verdicts,
         )
 
     async def _profile_section(self, user_id: uuid.UUID) -> Mapping[str, Any]:
@@ -369,6 +427,36 @@ class ChronicPatternSuggestionService:
             )
             for key, row in selected.items()
         }
+
+    async def _recent_verdicts(self, user_id: uuid.UUID, *, as_of: date) -> list[VerdictDay]:
+        start = as_of - timedelta(days=CHRONIC_ACTION_RED_WINDOW_DAYS - 1)
+        rows = (
+            (
+                await self.session.execute(
+                    select(Analysis)
+                    .where(
+                        Analysis.user_id == user_id,
+                        Analysis.analysis_type == "morning",
+                        Analysis.subject_date >= start,
+                        Analysis.subject_date <= as_of,
+                    )
+                    .order_by(
+                        Analysis.subject_date.asc(),
+                        Analysis.generated_at_utc.asc(),
+                        Analysis.created_at.asc(),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        latest_by_date: dict[date, str | None] = {}
+        for row in rows:
+            latest_by_date[row.subject_date] = row.verdict
+        return [
+            VerdictDay(calendar_date=day, verdict=latest_by_date[day])
+            for day in sorted(latest_by_date)
+        ]
 
 
 def _profile_age(profile_section: Mapping[str, Any]) -> int | None:
@@ -543,6 +631,64 @@ def _flag_from_group(
 
 def _miss_threshold(samples: int) -> int:
     return max(MIN_METRIC_SAMPLES, math.ceil(samples * 0.5))
+
+
+def _chronic_action_signal(
+    chronic_flags: Sequence[PatternFlag],
+    recent_verdicts: Sequence[VerdictDay],
+    *,
+    as_of: date,
+) -> ChronicActionSignal:
+    """Escalate only repeated, objective recovery evidence into a deload signal.
+
+    Advisory ``watch`` patterns remain advisory. A recovery marker must miss its
+    personal band on at least 70% of the already-qualified samples, or two Red
+    mornings must cluster inside the rolling seven-day window. Missing values and
+    a single bad day are neutral.
+    """
+
+    recovery_flags = [
+        flag
+        for flag in chronic_flags
+        if flag.source == "personal_baseline"
+        and flag.metric_key in _RECOVERY_ACTION_METRICS
+        and flag.samples >= MIN_METRIC_SAMPLES
+        and flag.miss_ratio >= CHRONIC_ACTION_MISS_RATIO
+    ]
+    recovery_flags.sort(key=lambda flag: (flag.miss_ratio, flag.misses), reverse=True)
+
+    verdict_start = as_of - timedelta(days=CHRONIC_ACTION_RED_WINDOW_DAYS - 1)
+    latest_by_date: dict[date, str | None] = {}
+    for row in recent_verdicts:
+        if verdict_start <= row.calendar_date <= as_of:
+            latest_by_date[row.calendar_date] = row.verdict
+    red_count = sum(
+        1 for verdict in latest_by_date.values() if (verdict or "").strip().lower() == "red"
+    )
+
+    trigger_sources: list[str] = []
+    reasons: list[str] = []
+    if recovery_flags:
+        trigger_sources.append("sustained_recovery_marker")
+        markers = ", ".join(flag.label for flag in recovery_flags)
+        reasons.append(
+            f"{markers} missed the personal recovery band on at least "
+            f"{CHRONIC_ACTION_MISS_RATIO * 100:.0f}% of measured days."
+        )
+    if red_count >= CHRONIC_ACTION_RED_THRESHOLD:
+        trigger_sources.append("red_morning_cluster")
+        reasons.append(
+            f"{red_count} Red mornings occurred inside the last "
+            f"{CHRONIC_ACTION_RED_WINDOW_DAYS} days."
+        )
+
+    return ChronicActionSignal(
+        triggered=bool(trigger_sources),
+        trigger_sources=tuple(trigger_sources),
+        recovery_markers=tuple(flag.metric_key for flag in recovery_flags),
+        red_morning_count=red_count,
+        reasons=tuple(reasons),
+    )
 
 
 def _useful_drivers(drivers: Sequence[DriverCorrelation]) -> list[SuggestionDriver]:

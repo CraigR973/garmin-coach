@@ -31,6 +31,7 @@ from src.services.age_norms import build_age_comparison
 from src.services.anthropic_text import generate_anthropic_text
 from src.services.bedroom_overnight import night_window
 from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
+from src.services.chronic_patterns import ChronicPatternSuggestionService
 from src.services.coaching_state import CoachingStateService
 from src.services.feedback import FeedbackService
 from src.services.generation_requests import (
@@ -110,7 +111,9 @@ from src.services.workout_categories import is_bike_workout_type
 # subordinate to measured facts, so stale reads should regenerate.
 # Batch 170: the deterministic verdict ladder now hardens credited-sleep Green
 # crossings, Poor-readiness stacking, and missing-HRV evidence.
-PROMPT_VERSION = "morning-analysis-v20-2026-07-29"
+# Batch 171: a sustained recovery-marker pattern or clustered pair of Red
+# mornings now queues a seven-day deload proposal without changing the light.
+PROMPT_VERSION = "morning-analysis-v21-2026-07-29"
 ANALYSIS_TYPE = "morning"
 # Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
 # signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
@@ -165,6 +168,11 @@ verdict.cumulativeEscalation is applied, state plainly that Poor readiness plus
 another negative recovery signal makes the day Red. Missing HRV and absent
 subjective check-ins are neutral only: never describe absent data as proof that
 recovery is clean.
+verdict.chronicAction is a deterministic structural-action signal, not a colour
+rule. When triggered, state plainly that a seven-day deload has been proposed
+because of the listed sustained recovery evidence. It remains human-approved
+through the existing delivery rail and has verdictImpact `none`: never claim it
+changed, softened, or set today's Green/Amber/Red result.
 stage in ageComparison.sleepRows sits inside its healthy age band, describe it as
 healthy for the user's age rather than repeating Garmin's young-adult flag (e.g.
 "REM 16% is within the healthy 50-59 range; Garmin only flags it against a younger
@@ -374,6 +382,18 @@ class MorningAnalysisService:
             breathwork_brief=breathwork_brief,
             rest_day=rest_day,
         )
+        # Batch 171: keep the chronic card's existing advisory copy, but derive a
+        # separate deterministic structural-action signal from protected
+        # recovery-marker misses or a rolling pair of Red mornings. The current
+        # verdict is supplied explicitly because it has not been persisted yet.
+        chronic_result = await ChronicPatternSuggestionService(self.session).suggestions(
+            player,
+            as_of=subject_date,
+            sleep_drivers=[],
+            sleep_protocol=knowledge_base.get("sleep_protocol", {}),
+            current_verdict=str(verdict.get("status") or ""),
+        )
+        verdict["chronicAction"] = chronic_result.action_signal.to_packet()
         # Batch 66 (#139): on a cautious morning with a hard session scheduled,
         # lead with a week swap (move the hard session to a better day, pull an
         # easier one forward) — Mark's own instinct — before offering to soften.
@@ -511,6 +531,7 @@ class MorningAnalysisService:
                         "never_treat_skipped_workout_as_live_training",
                         "ground_week_history_in_training_week_so_far",
                         "surface_readiness_baseline_decline_warning",
+                        "surface_chronic_deload_without_changing_verdict",
                         "treat_training_schedule_as_nominal_only",
                     ]
                     # Batch 113 (#186): holiday away means no bedroom thermal review.
@@ -1450,14 +1471,28 @@ def build_today_actions(
             }
         )
 
-    if status in {"Amber", "Red"}:
+    chronic_action = verdict.get("chronicAction")
+    chronic_deload = (
+        isinstance(chronic_action, Mapping)
+        and chronic_action.get("triggered") is True
+        and chronic_action.get("kind") == "deload_proposal"
+    )
+    if status in {"Amber", "Red"} or chronic_deload:
         ride = _todays_bike_workout(planned_workouts)
         if ride is not None:
             actions.append(
                 {
                     "kind": "approve_ride",
-                    "title": "Approve today's eased ride",
-                    "detail": _eased_ride_detail(status),
+                    "title": (
+                        "Approve today's eased ride"
+                        if status in {"Amber", "Red"}
+                        else "Approve today's deload ride"
+                    ),
+                    "detail": (
+                        _eased_ride_detail(status)
+                        if status in {"Amber", "Red"}
+                        else "Sustained recovery strain: cut duration 25%, drop a zone, no HIT/VO2."
+                    ),
                     "plannedWorkoutId": str(ride.id),
                     "targetDate": None,
                     "href": None,

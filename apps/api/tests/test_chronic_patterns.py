@@ -6,6 +6,7 @@ from src.services.chronic_patterns import (
     BaselineBand,
     RecoveryDay,
     SleepNight,
+    VerdictDay,
     build_chronic_pattern_suggestions,
 )
 from src.services.insights import DriverCorrelation
@@ -147,6 +148,13 @@ def test_non_rem_suggestion_carries_no_rotation() -> None:
     assert result.status == "active"
     readiness = next(item for item in result.items if item.metric_key == "readiness_score")
     assert readiness.rotation is None
+    assert (
+        "Pair the suggestion with the existing Green/Amber/Red read; do not chase load."
+        in readiness.actions
+    )
+    assert result.action_signal.triggered is True
+    assert result.action_signal.trigger_sources == ("sustained_recovery_marker",)
+    assert result.action_signal.recovery_markers == ("readiness_score",)
 
 
 def test_insufficient_history_is_explicit() -> None:
@@ -204,3 +212,77 @@ def test_clear_when_misses_do_not_repeat_enough() -> None:
 
     assert result.status == "clear"
     assert result.items == []
+
+
+def test_single_bad_recovery_day_does_not_trigger_structural_action() -> None:
+    as_of = date(2026, 7, 5)
+    recovery_days = [
+        RecoveryDay(
+            calendar_date=as_of - timedelta(days=27 - offset),
+            readiness_score=55 if offset == 27 else 78,
+            hrv_7_day_avg_ms=50,
+            resting_heart_rate_bpm=45,
+        )
+        for offset in range(28)
+    ]
+
+    result = build_chronic_pattern_suggestions(
+        sleeps=_nights(as_of, rem_pct=0.22),
+        recovery_days=recovery_days,
+        baselines={
+            "readiness_score": BaselineBand(
+                metric_key="readiness_score",
+                label="Readiness",
+                lower_quartile=70,
+                upper_quartile=84,
+                median=78,
+                mean=77,
+                sample_count=28,
+            )
+        },
+        sleep_drivers=[],
+        age=57,
+        sex="male",
+        sleep_protocol={},
+        as_of=as_of,
+    )
+
+    assert result.action_signal.triggered is False
+    assert result.action_signal.recovery_markers == ()
+    assert result.action_signal.red_morning_count == 0
+
+
+def test_two_red_mornings_in_seven_days_trigger_but_one_does_not() -> None:
+    as_of = date(2026, 7, 5)
+    common = {
+        "sleeps": _nights(as_of, rem_pct=0.22),
+        "recovery_days": [],
+        "baselines": {},
+        "sleep_drivers": [],
+        "age": 57,
+        "sex": "male",
+        "sleep_protocol": {},
+        "as_of": as_of,
+    }
+    one_red = build_chronic_pattern_suggestions(
+        **common,
+        recent_verdicts=[
+            VerdictDay(calendar_date=as_of - timedelta(days=1), verdict="Red"),
+            VerdictDay(calendar_date=as_of, verdict="Green"),
+        ],
+    )
+    two_red = build_chronic_pattern_suggestions(
+        **common,
+        recent_verdicts=[
+            VerdictDay(calendar_date=as_of - timedelta(days=6), verdict="Red"),
+            VerdictDay(calendar_date=as_of - timedelta(days=1), verdict="red"),
+            VerdictDay(calendar_date=as_of, verdict="Green"),
+        ],
+    )
+
+    assert one_red.action_signal.triggered is False
+    assert one_red.action_signal.red_morning_count == 1
+    assert two_red.action_signal.triggered is True
+    assert two_red.action_signal.trigger_sources == ("red_morning_cluster",)
+    assert two_red.action_signal.red_morning_count == 2
+    assert two_red.action_signal.to_packet()["verdictImpact"] == "none"
