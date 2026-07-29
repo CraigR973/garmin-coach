@@ -3,12 +3,14 @@
 Batch 13 turns the daily verdict into an *acted-on* workout (Decision #30):
 
   * On an **Amber or Red** morning verdict, ``regenerate_for_verdict`` rebuilds
-    today's bike workout — Amber as an adjusted proposal (cut duration 20-30%,
-    drop a zone, remove HIT), Red as an easy recovery substitution — and stores
-    it through the Batch 12 rail.
-  * ``adjust_ir_for_verdict`` is a deterministic transform on the normalized
-    ``%FTP`` IR, so the verdict framework — and the hard guarantee that **Red
-    never emits VO2** — is testable rule code, not an LLM call.
+    today's bike workout — Amber as an adjusted proposal (cut duration ~25% and
+    ease hard intervals a zone via ``verdict_scaling``, holding an already-Zone-2
+    ride's intensity — Batch 173.2), Red as an easy recovery substitution — and
+    stores it through the Batch 12 rail.
+  * ``adjust_ir_for_verdict`` (now shared from ``verdict_scaling``) is a
+    deterministic transform on the normalized ``%FTP`` IR, so the verdict framework
+    — and the hard guarantee that **Red never emits VO2** — is testable rule code,
+    not an LLM call.
   * ``auto_push_due`` delivers already-**approved** proposals due today; Batch 25
     supersedes the old couple-days-ahead lead window from Decision #31. It never
     pushes anything unapproved (Decision #29),
@@ -47,6 +49,13 @@ from src.services.structured_workout_builder import (
     is_indoor_bike_workout,
     is_outdoor_bike_workout,
 )
+from src.services.verdict_scaling import (
+    MIN_POWER_PCT,
+    _normalize_verdict,
+    adjust_ir_for_chronic_deload,
+    adjust_ir_for_verdict,
+    blocks_red_vo2,
+)
 from src.services.workout_categories import category_for_workout_type
 from src.services.workout_completion import WORKOUT_STATUS_COMPLETED
 from src.services.workout_delivery import (
@@ -79,14 +88,10 @@ WORKOUT_STATUS_SKIPPED = "skipped"
 DEFAULT_LEAD_DAYS = 0
 DONE_ADHERENCE_STATUSES = {"completed", "modified", "done", "did_something_else"}
 
-# Verdict-driven adjustment knobs (percentage points of FTP unless noted).
-AMBER_DURATION_SCALE = 0.75  # 25% cut keeps inside the 20-30% Amber band
-RED_DURATION_SCALE = 0.5
-ZONE_DROP_PCT = 13  # one training zone is ~13 percentage points of FTP
-HIT_FLOOR_PCT = 106  # VO2/anaerobic work begins around 106% FTP
-AMBER_POWER_CAP_PCT = 98  # Amber removes HIT: cap at threshold
-RECOVERY_CAP_PCT = 60  # Red easy-spin ceiling — guarantees no VO2
-MIN_POWER_PCT = 45
+# The verdict-scaling knobs (AMBER/RED duration, zone drop, caps, MIN_POWER_PCT)
+# and the deterministic transform now live in ``verdict_scaling`` so the delivery
+# transform, the interval-editor preset, and the narrative share one rule
+# (Batch 173.2). Only the manual-override ceiling is specific to this module.
 MAX_MANUAL_POWER_PCT = 150
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
@@ -105,12 +110,6 @@ def _local_today(timezone_name: str, now_utc: datetime | None = None) -> date:
     except ZoneInfoNotFoundError:
         timezone = ZoneInfo("UTC")
     return now.astimezone(timezone).date()
-
-
-def _normalize_verdict(value: str | None) -> str | None:
-    if not value:
-        return None
-    return {"green": "Green", "amber": "Amber", "red": "Red"}.get(value.strip().lower())
 
 
 def _proposal_content_matches_workout(
@@ -132,158 +131,6 @@ def _proposal_content_matches_workout(
         and ir.get("plannedWorkoutId") == str(workout.id)
         and ir.get("plannedWorkoutVersion") == workout.version
     )
-
-
-def _step_power(step: dict[str, Any]) -> int:
-    return max(int(step.get("powerStartPct", 0)), int(step.get("powerEndPct", 0)))
-
-
-def ir_has_vo2(ir: dict[str, Any] | None) -> bool:
-    """True when any step in a structured-workout IR reaches VO2/anaerobic
-    intensity (>= ``HIT_FLOOR_PCT`` of FTP)."""
-    steps = ir.get("steps") if isinstance(ir, dict) else None
-    if not isinstance(steps, list):
-        return False
-    return any(isinstance(step, dict) and _step_power(step) >= HIT_FLOOR_PCT for step in steps)
-
-
-def blocks_red_vo2(verdict: str | None, ir: dict[str, Any] | None) -> bool:
-    """The Red-never-VO2 *delivery* guarantee, as a pure predicate.
-
-    A proposal carrying VO2 intensity must never be pushed on a day whose morning
-    verdict is Red. Returns True when the push should be blocked. Keeping this a
-    pure function (verdict + IR in, bool out) makes the safety property unit-
-    testable without a database, matching the Batch 13 design (Decision #61).
-    """
-    return _normalize_verdict(verdict) == "Red" and ir_has_vo2(ir)
-
-
-def _clamp_power(value: int, cap: int) -> int:
-    return max(MIN_POWER_PCT, min(value, cap))
-
-
-def _adjust_step(
-    step: dict[str, Any],
-    *,
-    duration_scale: float,
-    power_cap: int,
-    zone_drop: int,
-) -> dict[str, Any]:
-    phase = str(step.get("phase") or "interval")
-    duration = max(1, round(int(step.get("durationSec", 0)) * duration_scale))
-    # "Drop a zone" applies to the working intervals; warm-up/cool-down ramps
-    # are already easy, so they keep their shape but still honour the HIT cap.
-    drop = zone_drop if phase == "interval" else 0
-    start = _clamp_power(int(step.get("powerStartPct", 0)) - drop, power_cap)
-    end = _clamp_power(int(step.get("powerEndPct", 0)) - drop, power_cap)
-    new_step: dict[str, Any] = {
-        "label": step.get("label", "Step"),
-        "phase": phase,
-        "kind": "ramp" if start != end else "steady",
-        "durationSec": duration,
-        "powerStartPct": start,
-        "powerEndPct": end,
-    }
-    cadence = step.get("cadenceRpm")
-    if cadence:
-        new_step["cadenceRpm"] = cadence
-    return new_step
-
-
-def adjust_ir_for_verdict(base_ir: dict[str, Any], verdict: str | None) -> dict[str, Any]:
-    """Return a verdict-adjusted copy of a structured-workout IR.
-
-    * **Green** (or unknown): proceed as planned — the IR is returned unchanged
-      apart from an ``origin``/``adjustment`` annotation.
-    * **Amber**: cut every step to 75% duration, drop the working intervals by a
-      zone, and cap power at threshold so no HIT/VO2 survives.
-    * **Red**: substitute an easy recovery spin — half duration and every step
-      capped at ``RECOVERY_CAP_PCT``, which guarantees the output can never be a
-      VO2 push.
-    """
-    status = _normalize_verdict(verdict)
-    raw_steps = base_ir.get("steps")
-    steps = [s for s in raw_steps if isinstance(s, dict)] if isinstance(raw_steps, list) else []
-    original_name = str(base_ir.get("name") or "Workout")
-
-    if status == "Amber":
-        duration_scale, power_cap, zone_drop = (
-            AMBER_DURATION_SCALE,
-            AMBER_POWER_CAP_PCT,
-            ZONE_DROP_PCT,
-        )
-        origin, name_prefix = "amber_regeneration", "Amber-adjusted"
-    elif status == "Red":
-        duration_scale, power_cap, zone_drop = RED_DURATION_SCALE, RECOVERY_CAP_PCT, 0
-        origin, name_prefix = "red_substitution", "Recovery substitution"
-    else:
-        unchanged = dict(base_ir)
-        unchanged["origin"] = "as_planned"
-        unchanged["adjustment"] = {"verdict": status or "Unknown", "changed": False}
-        return unchanged
-
-    removed_hit = any(_step_power(step) >= HIT_FLOOR_PCT for step in steps)
-    new_steps = [
-        _adjust_step(step, duration_scale=duration_scale, power_cap=power_cap, zone_drop=zone_drop)
-        for step in steps
-    ]
-    basis_total = int(
-        base_ir.get("totalDurationSec") or sum(int(step.get("durationSec", 0)) for step in steps)
-    )
-
-    adjusted = dict(base_ir)
-    adjusted["steps"] = new_steps
-    adjusted["totalDurationSec"] = sum(int(step["durationSec"]) for step in new_steps)
-    adjusted["name"] = f"{name_prefix}: {original_name}"
-    adjusted["origin"] = origin
-    adjusted["cadenceCriticalExpanded"] = True
-    adjusted["adjustment"] = {
-        "verdict": status,
-        "changed": True,
-        "durationScalePct": round(duration_scale * 100),
-        "zoneDropPct": zone_drop,
-        "powerCapPct": power_cap,
-        "removedHit": removed_hit,
-        "basisName": original_name,
-        "basisTotalDurationSec": basis_total,
-    }
-    return adjusted
-
-
-def adjust_ir_for_chronic_deload(
-    base_ir: dict[str, Any],
-    action: dict[str, Any],
-) -> dict[str, Any]:
-    """Build the Batch 171 lighter proposal without changing the daily verdict.
-
-    The existing Amber transform supplies the established 25% duration cut,
-    one-zone drop, and HIT removal. The persisted annotation then names chronic
-    evidence—not a verdict—as the reason, so the normal propose → approve → push
-    rail can surface and deliver it without implying that Green became Amber.
-    """
-
-    adjusted = adjust_ir_for_verdict(base_ir, "Amber")
-    basis_name = str(base_ir.get("name") or "Workout")
-    raw_adjustment = adjusted.get("adjustment")
-    adjustment = dict(raw_adjustment) if isinstance(raw_adjustment, dict) else {}
-    adjustment.update(
-        {
-            "verdict": None,
-            "reason": "sustained_recovery_strain",
-            "chronicAction": {
-                "kind": action.get("kind"),
-                "triggerSources": list(action.get("triggerSources") or []),
-                "recoveryMarkers": list(action.get("recoveryMarkers") or []),
-                "redMorningCount": action.get("redMorningCount"),
-                "reasons": list(action.get("reasons") or []),
-                "verdictImpact": "none",
-            },
-        }
-    )
-    adjusted["name"] = f"Chronic deload: {basis_name}"
-    adjusted["origin"] = "chronic_deload"
-    adjusted["adjustment"] = adjustment
-    return adjusted
 
 
 def apply_manual_override_to_ir(
@@ -363,6 +210,13 @@ class ExecutableCoachingService:
         auto-approved — so a human still approves before anything is pushed, and
         the Red-never-VO2 guarantee is additionally enforced at the push gate
         (``auto_push_due``).
+
+        Batch 173.1: a ride is skipped only when Mark has *deliberately acted on it
+        today* (``_deliberately_acted``). A ride the plan pre-delivered to Zwift by
+        push-on-plan-set (Decision #99) is **not** "acted on", so it still receives a
+        proposed morning adjustment — the fix for the adjustment that used to appear
+        only at the 11:00 backstop. This guard lives here so the check-in and the
+        backstop apply the same rule.
         """
         verdict = self._verdict_status(analysis)
         if verdict not in {"Amber", "Red"}:
@@ -372,6 +226,8 @@ class ExecutableCoachingService:
         for workout in await self._deliverable_bike_workouts(player.id, subject_date):
             tag = _regen_tag(workout, verdict)
             if await self._already_recorded(player.id, AUDIT_TYPE_PROPOSED, tag, subject_date):
+                continue
+            if await self._deliberately_acted(player.id, workout):
                 continue
             try:
                 ftp_watts = await self.rail._ftp_watts(player.id)
@@ -498,9 +354,12 @@ class ExecutableCoachingService:
         * subjective is **downgrade-only** — the packet verdict already treats a low
           score as a cap and a high one as non-upgrading, so regenerating can only
           ever *ease* today, never harden it or lift a Red/Amber to Green;
-        * an **approved/pushed ride is never silently re-adjusted** (Decision #29):
-          the eased-ride re-proposal runs only while the ride is still pending and
-          the recomputed verdict is Amber/Red.
+        * a ride Mark **deliberately approved or hand-edited today is never silently
+          re-adjusted** (Decision #29). Batch 173.1 moved that guard into
+          ``regenerate_for_verdict`` (``_deliberately_acted``) so a ride merely
+          *pre-delivered* by push-on-plan-set (Decision #99) still gets a proposed
+          adjustment at check-in — not only from the late 11:00 backstop — and both
+          paths share one rule.
 
         Returns the regenerated analysis.
         """
@@ -509,20 +368,13 @@ class ExecutableCoachingService:
             player, subject_date, client=client, force=True, commit=False
         )
 
-        # Ride re-adjustment stays gated — never silently change a ride Mark acted on.
-        bike_workouts = await self._deliverable_bike_workouts(player.id, subject_date)
-        ride_still_pending = True
-        for workout in bike_workouts:
-            latest = await self._latest_proposal_for_workout(player.id, workout.id)
-            if latest is not None and latest.status != STATUS_PROPOSED:
-                ride_still_pending = False
-                break
-        if bike_workouts and ride_still_pending:
-            verdict = self._verdict_status(result.analysis)
-            if verdict in {"Amber", "Red"}:
-                await self.regenerate_for_verdict(
-                    player, subject_date, analysis=result.analysis, commit=False
-                )
+        # Offer the eased ride the moment the verdict is cautious; the per-ride
+        # acted-on-today guard inside regenerate_for_verdict keeps Decision #29.
+        verdict = self._verdict_status(result.analysis)
+        if verdict in {"Amber", "Red"}:
+            await self.regenerate_for_verdict(
+                player, subject_date, analysis=result.analysis, commit=False
+            )
         await self.propose_chronic_deload(
             player,
             subject_date,
@@ -1620,6 +1472,48 @@ class ExecutableCoachingService:
             .limit(1)
         )
         return proposal
+
+    async def _deliberately_acted(self, user_id: uuid.UUID, workout: PlannedWorkout) -> bool:
+        """True when Mark has *deliberately* acted on today's ride (Batch 173.1).
+
+        "Acted on" means he approved the coach adjustment, sent it same-day, or
+        hand-edited the session — signals that carry either an explicit approver
+        (``approved_by_profile_id``, set only by ``approve``/``send_today``/the
+        interval-edit approve, never by push-on-plan-set) or a delivered change
+        (``status == pushed`` with an ``adjustment.changed`` IR, e.g. a manual
+        ``edit_today``). The push-on-plan-set baseline (``origin=as_planned``,
+        ``changed=False``, no approver) is deliberately *not* "acted on", so a
+        pre-delivered ride still receives a proposed morning adjustment; a ride Mark
+        acted on is never silently re-adjusted (Decision #29).
+        """
+        proposals = (
+            (
+                await self.session.execute(
+                    select(WorkoutDeliveryProposal).where(
+                        WorkoutDeliveryProposal.user_id == user_id,
+                        WorkoutDeliveryProposal.planned_workout_id == workout.id,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for proposal in proposals:
+            if proposal.approved_by_profile_id is not None:
+                return True
+            ir = (
+                proposal.structured_workout_ir
+                if isinstance(proposal.structured_workout_ir, dict)
+                else {}
+            )
+            adjustment = ir.get("adjustment")
+            if (
+                proposal.status == STATUS_PUSHED
+                and isinstance(adjustment, dict)
+                and adjustment.get("changed") is True
+            ):
+                return True
+        return False
 
     async def _already_recorded(
         self,

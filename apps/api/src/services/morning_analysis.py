@@ -10,6 +10,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Protocol, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from fastapi import HTTPException
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -64,8 +65,10 @@ from src.services.sleep_scoring import (
     age_adjusted_sleep_score as compute_age_adjusted_sleep_score,
 )
 from src.services.training_week import TrainingWeekService
+from src.services.verdict_scaling import summarize_verdict_adjustment
 from src.services.workload_budget import workload_slot
 from src.services.workout_categories import is_bike_workout_type
+from src.services.workout_delivery import build_structured_workout_ir
 
 # Batch 64 (#137): the packet now carries the user's most recent corrections so
 # the read can acknowledge/adjust when Mark has told it it was wrong.
@@ -113,7 +116,7 @@ from src.services.workout_categories import is_bike_workout_type
 # crossings, Poor-readiness stacking, and missing-HRV evidence.
 # Batch 171: a sustained recovery-marker pattern or clustered pair of Red
 # mornings now queues a seven-day deload proposal without changing the light.
-PROMPT_VERSION = "morning-analysis-v21-2026-07-29"
+PROMPT_VERSION = "morning-analysis-v22-2026-07-29"
 ANALYSIS_TYPE = "morning"
 # Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
 # signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
@@ -206,6 +209,12 @@ When verdict.swapSuggestion is present, lead the plan guidance with the swap —
 move the hard session to the suggested day and pull the easier session forward to
 today — matching Mark's preference to rearrange the week rather than soften. Offer
 softening the ride only as the fallback for when the week can't be rearranged.
+When verdict.verdictAdjustment is present it is the app's own deterministic easing of
+today's ride — planned vs adjusted duration and the resulting %FTP. If you describe
+the softened session, quote those exact figures; never invent a different percentage
+or duration. When verdictAdjustment.intensityHeldAtEndurance is true the ride is
+already Zone 2, so it is only shortened, not dropped in intensity — say so rather
+than implying a zone drop.
 When verdict.weeklyMix.shortfall is present, today's hard session is being eased:
 if shortfall.repatched is true, reassure him the quality work isn't lost — it moves
 to shortfall.moveToWeekday and the week keeps its mix; if it is false, state plainly
@@ -449,6 +458,14 @@ class MorningAnalysisService:
                 "hrvStatus": verdict.get("hrvStatus"),
                 "hrvBelowBaseline": verdict.get("hrvBelowBaseline"),
             }
+        )
+        # Batch 173.3: surface the deterministic Amber/Red adjustment numbers (the
+        # same transform the delivery rail and editor use) so the narrative and
+        # brief-chat quote the app's own figures instead of guessing. Explanatory
+        # only — it cannot set the verdict or the numbers.
+        verdict["verdictAdjustment"] = _verdict_adjustment_packet(
+            str(verdict.get("status") or ""),
+            [] if rest_day["isRestDay"] else planned_workouts,
         )
         verdict["todayActions"] = build_today_actions(
             verdict=verdict,
@@ -1408,10 +1425,46 @@ def _todays_bike_workout(planned_workouts: Sequence[PlannedWorkout]) -> PlannedW
     return None
 
 
-def _eased_ride_detail(status: str) -> str:
+def _verdict_adjustment_packet(
+    status: str, planned_workouts: Sequence[PlannedWorkout]
+) -> dict[str, Any] | None:
+    """The deterministic Amber/Red adjustment for today's ride, for the packet.
+
+    Batch 173.3: built from the *same* ``adjust_ir_for_verdict`` transform the
+    delivery rail and the interval editor use, so the narrative and brief-chat can
+    quote the app's own duration/%FTP figures. Explanatory only — returns ``None``
+    on Green, a rest/no-ride day, or a malformed ride, and never influences the
+    verdict or the numbers.
+    """
+    if status not in {"Amber", "Red"}:
+        return None
+    ride = _todays_bike_workout(planned_workouts)
+    if ride is None:
+        return None
+    try:
+        base_ir = build_structured_workout_ir(ride)
+    except HTTPException:
+        return None
+    summary = summarize_verdict_adjustment(base_ir, status)
+    if summary is None:
+        return None
+    return {**summary, "plannedWorkoutId": str(ride.id)}
+
+
+def _eased_ride_detail(status: str, adjustment: Mapping[str, Any] | None = None) -> str:
     if status == "Red":
         return "Substitute recovery, mobility, or rest — no intervals."
-    return "Cut duration 20-30%, drop a zone, no HIT/VO2."
+    if isinstance(adjustment, Mapping):
+        adjusted_min = adjustment.get("adjustedDurationMin")
+        adjusted_power = adjustment.get("adjustedWorkPowerPct")
+        if isinstance(adjusted_min, int) and isinstance(adjusted_power, int):
+            if adjustment.get("intensityHeldAtEndurance"):
+                return (
+                    f"Hold Zone 2 (~{adjusted_power}% FTP) but cut to {adjusted_min} min "
+                    "— shorter, not harder."
+                )
+            return f"Ease to ~{adjusted_power}% FTP and cut to {adjusted_min} min — no HIT/VO2."
+    return "Cut duration 20-30%, ease hard intervals a zone, hold Zone 2, no HIT/VO2."
 
 
 def _thermal_action(thermal_review: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -1489,7 +1542,7 @@ def build_today_actions(
                         else "Approve today's deload ride"
                     ),
                     "detail": (
-                        _eased_ride_detail(status)
+                        _eased_ride_detail(status, verdict.get("verdictAdjustment"))
                         if status in {"Amber", "Red"}
                         else "Sustained recovery strain: cut duration 25%, drop a zone, no HIT/VO2."
                     ),

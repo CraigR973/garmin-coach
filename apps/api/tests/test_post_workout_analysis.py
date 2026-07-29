@@ -19,7 +19,6 @@ from src.models.coaching import (
     WorkoutDeliveryProposal,
 )
 from src.models.profile import Profile, UserRole
-from src.services.executable_coaching import adjust_ir_for_verdict
 from src.services.post_workout_analysis import (
     PROMPT_VERSION,
     ClaudeGenerationResult,
@@ -30,6 +29,7 @@ from src.services.post_workout_analysis import (
     _recovery_decision_packet,
     detect_ride_deviation,
 )
+from src.services.verdict_scaling import adjust_ir_for_verdict
 from src.services.workout_delivery import (
     build_intervals_payload,
     build_structured_workout_ir,

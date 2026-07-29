@@ -28,19 +28,24 @@ from src.services.executable_coaching import (
     AUDIT_TYPE_REMOVED,
     AUDIT_TYPE_REPLACED,
     AUDIT_TYPE_SKIPPED,
-    HIT_FLOOR_PCT,
-    RECOVERY_CAP_PCT,
     WORKOUT_STATUS_SKIPPED,
     ExecutableCoachingService,
-    adjust_ir_for_chronic_deload,
-    adjust_ir_for_verdict,
     apply_manual_override_to_ir,
-    blocks_red_vo2,
-    ir_has_vo2,
 )
 from src.services.garmin_sync import GarminScheduledWorkout
 from src.services.interval_workout_editor import EditableIntervalBlock, IntervalLeg
 from src.services.morning_analysis import MorningAnalysisResult
+from src.services.verdict_scaling import (
+    ENDURANCE_CEILING_PCT,
+    HIT_FLOOR_PCT,
+    RECOVERY_CAP_PCT,
+    adjust_ir_for_chronic_deload,
+    adjust_ir_for_verdict,
+    blocks_red_vo2,
+    ease_amber_power_pct,
+    ir_has_vo2,
+    summarize_verdict_adjustment,
+)
 from src.services.workout_categories import category_for_workout_type
 from src.services.workout_delivery import (
     STATUS_DELETED,
@@ -73,6 +78,14 @@ SWEET_SPOT_STRUCTURED = {
             "pattern": "8 min on / 4 min easy",
             "target": "88-94% FTP",
         },
+        {"label": "Cool-down", "minutes": 10, "target": "easy spin"},
+    ],
+}
+ENDURANCE_STRUCTURED = {
+    "format": "bike",
+    "steps": [
+        {"label": "Warm-up", "minutes": 10, "target": "easy spin"},
+        {"label": "Endurance", "minutes": 90, "target": "64-70% FTP 85rpm"},
         {"label": "Cool-down", "minutes": 10, "target": "easy spin"},
     ],
 }
@@ -211,6 +224,63 @@ def test_manual_override_scales_duration_and_intensity() -> None:
         "intensityScalePct": 90,
         "basisTotalDurationSec": base["totalDurationSec"],
     }
+
+
+def test_amber_holds_zone_two_ride_and_cuts_duration_only() -> None:
+    """Batch 173.2: an already-Zone-2 endurance ride keeps its intensity (67% FTP)
+    and is only shortened — never dropped below the Zone-2 floor (the old 54%/60%)."""
+    base = build_structured_workout_ir(_planned_workout(ENDURANCE_STRUCTURED), ftp_watts=280)
+    base_total = base["totalDurationSec"]
+    assert _max_power(base) == 67
+
+    adjusted = adjust_ir_for_verdict(base, "Amber")
+
+    assert _max_power(adjusted) == 67  # held at Zone 2, not 54 (−13) or 60 (×0.9)
+    assert base_total * 0.70 <= adjusted["totalDurationSec"] <= base_total * 0.80
+    assert adjusted["adjustment"]["zoneDropPct"] == 0  # honest: no drop was applied
+    assert adjusted["adjustment"]["removedHit"] is False
+
+
+def test_ease_amber_power_is_zone_aware() -> None:
+    assert ease_amber_power_pct(55) == 55
+    assert ease_amber_power_pct(ENDURANCE_CEILING_PCT) == ENDURANCE_CEILING_PCT
+    assert ease_amber_power_pct(67) == 67  # endurance held
+    assert ease_amber_power_pct(76) == ENDURANCE_CEILING_PCT  # a drop never lands below Z2
+    assert ease_amber_power_pct(91) == 78  # sweet spot drops a zone
+    assert ease_amber_power_pct(108) == 95  # VO2 dropped and capped below the HIT floor
+    assert ease_amber_power_pct(108) < HIT_FLOOR_PCT
+
+
+def test_summarize_verdict_adjustment_matches_the_transform_everywhere() -> None:
+    """One rule everywhere: the packet summary equals what the delivery transform
+    actually produces, and mirrors ease_amber_power_pct (Batch 173.2/173.3)."""
+    for structured, held in (
+        (ENDURANCE_STRUCTURED, True),
+        (VO2_STRUCTURED, False),
+        (SWEET_SPOT_STRUCTURED, False),
+    ):
+        base = build_structured_workout_ir(_planned_workout(structured), ftp_watts=280)
+        summary = summarize_verdict_adjustment(base, "Amber")
+        adjusted = adjust_ir_for_verdict(base, "Amber")
+        assert summary is not None
+        assert summary["adjustedWorkPowerPct"] == _max_power(adjusted)
+        assert summary["adjustedWorkPowerPct"] == ease_amber_power_pct(
+            summary["plannedWorkPowerPct"]
+        )
+        assert summary["adjustedDurationMin"] < summary["plannedDurationMin"]
+        assert summary["intensityHeldAtEndurance"] is held
+        assert summary["classificationImpact"] == "none"
+
+
+def test_summarize_verdict_adjustment_red_and_green() -> None:
+    base = build_structured_workout_ir(_planned_workout(VO2_STRUCTURED), ftp_watts=280)
+    red = summarize_verdict_adjustment(base, "Red")
+    assert red is not None
+    assert red["adjustedWorkPowerPct"] <= RECOVERY_CAP_PCT
+    assert red["intensityHeldAtEndurance"] is False
+    # Green (or no verdict) is explanatory-absent — never a guessed number.
+    assert summarize_verdict_adjustment(base, "Green") is None
+    assert summarize_verdict_adjustment({"steps": []}, "Amber") is None
 
 
 # ---------------------------------------------------------------------------
@@ -1138,8 +1208,10 @@ async def test_checkin_always_regenerates_brief_when_verdict_holds(
 async def test_checkin_recompute_leaves_an_approved_ride_untouched(
     db_conn: AsyncConnection,
 ) -> None:
-    """Once today's ride is approved (or pushed), a later check-in never silently
-    rewrites it — even if the verdict would now worsen (Decision #29)."""
+    """A ride Mark *deliberately approved today* is never silently rewritten — even
+    if the verdict would now worsen (Decision #29). Batch 173.1 keys "acted on" to
+    an explicit approver (``approved_by_profile_id``), so this is the genuine
+    human-approval case (distinct from a pre-delivered baseline)."""
     user_id, workout_id = uuid.uuid4(), uuid.uuid4()
     subject = date(2026, 6, 23)
     await _seed_bike_day(db_conn, user_id, workout_id, subject)
@@ -1155,6 +1227,7 @@ async def test_checkin_recompute_leaves_an_approved_ride_untouched(
                 status="approved",
                 proposed_at_utc=datetime(2026, 6, 23, 6, 30),
                 approved_at_utc=datetime(2026, 6, 23, 6, 45),
+                approved_by_profile_id=user_id,
                 structured_workout_ir={"origin": "baseline"},
                 intervals_payload={"category": "WORKOUT", "name": "Test"},
                 zwo_xml="<workout_file/>",
@@ -1182,6 +1255,111 @@ async def test_checkin_recompute_leaves_an_approved_ride_untouched(
         proposals = (await session.execute(select(WorkoutDeliveryProposal))).scalars().all()
         assert len(proposals) == 1  # no new eased proposal was created
         assert proposals[0].status == "approved"  # left exactly as Mark approved it
+
+
+@pytest.mark.asyncio
+async def test_checkin_proposes_adjustment_on_pre_delivered_ride(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 173.1: a ride the plan pre-delivered to Zwift (push-on-plan-set,
+    Decision #99) is *not* "acted on", so an Amber check-in proposes the eased ride
+    then and there — the fix for an adjustment that used to appear only at the 11:00
+    backstop. The baseline is never overwritten and the eased ride is never
+    auto-pushed."""
+    user_id, workout_id = uuid.uuid4(), uuid.uuid4()
+    subject = date(2026, 6, 23)
+    await _seed_bike_day(db_conn, user_id, workout_id, subject)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            WorkoutDeliveryProposal(
+                id=uuid.uuid4(),
+                user_id=user_id,
+                planned_workout_id=workout_id,
+                planned_workout_version=1,
+                workout_date=subject,
+                provider="intervals_icu",
+                status="pushed",
+                proposed_at_utc=datetime(2026, 6, 15, 6, 0),
+                pushed_at_utc=datetime(2026, 6, 15, 6, 5),
+                intervals_event_id="evt-baseline",
+                structured_workout_ir={
+                    "origin": "as_planned",
+                    "adjustment": {"verdict": None, "changed": False},
+                    "plannedWorkoutId": str(workout_id),
+                    "plannedWorkoutVersion": 1,
+                },
+                intervals_payload={"category": "WORKOUT", "name": "Test"},
+                zwo_xml="<workout_file/>",
+            )
+        )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session)
+        morning = _StubMorningService(
+            session, stored=_morning_analysis(user_id, subject, "Green"), new_status="Amber"
+        )
+
+        await service.regenerate_after_morning_checkin(user, subject, morning_service=morning)
+
+        proposals = (await session.execute(select(WorkoutDeliveryProposal))).scalars().all()
+        eased = [p for p in proposals if p.status == "proposed"]
+        baseline = [p for p in proposals if p.status == "pushed"]
+        assert len(eased) == 1  # a new proposed adjustment at check-in
+        assert eased[0].structured_workout_ir["origin"] == "amber_regeneration"
+        assert eased[0].structured_workout_ir["adjustment"]["changed"] is True
+        assert len(baseline) == 1  # baseline untouched, never auto-pushed the adjustment
+
+
+@pytest.mark.asyncio
+async def test_regenerate_for_verdict_skips_a_deliberately_edited_ride(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 173.1: the acted-on-today guard lives in regenerate_for_verdict, so the
+    check-in *and* the 11:00 backstop share one rule. A ride Mark hand-edited
+    (pushed, ``adjustment.changed``) is skipped — never silently re-adjusted."""
+    user_id, workout_id = uuid.uuid4(), uuid.uuid4()
+    subject = date(2026, 6, 23)
+    await _seed_bike_day(db_conn, user_id, workout_id, subject)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            WorkoutDeliveryProposal(
+                id=uuid.uuid4(),
+                user_id=user_id,
+                planned_workout_id=workout_id,
+                planned_workout_version=1,
+                workout_date=subject,
+                provider="intervals_icu",
+                status="pushed",
+                proposed_at_utc=datetime(2026, 6, 23, 6, 0),
+                pushed_at_utc=datetime(2026, 6, 23, 6, 5),
+                intervals_event_id="evt-edited",
+                structured_workout_ir={
+                    "origin": "manual_override",
+                    "adjustment": {"changed": True},
+                    "plannedWorkoutId": str(workout_id),
+                    "plannedWorkoutVersion": 1,
+                },
+                intervals_payload={"category": "WORKOUT", "name": "Test"},
+                zwo_xml="<workout_file/>",
+            )
+        )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session)
+
+        created = await service.regenerate_for_verdict(
+            user, subject, analysis=_amber_analysis(user_id, subject)
+        )
+
+        assert created == []  # the hand-edited ride is left exactly as Mark set it
+        proposals = (await session.execute(select(WorkoutDeliveryProposal))).scalars().all()
+        assert len(proposals) == 1  # only the manual override remains
 
 
 @pytest.mark.asyncio
