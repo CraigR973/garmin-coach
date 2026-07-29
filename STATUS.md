@@ -6,11 +6,15 @@
 
 ## Now
 
-**2026-07-29 — Batch 168 shipped (absolute readiness anchor + baseline-drift alarm).** PR #198 / squash `d6fa01c` closes F1 / R155-B: the soft-sleep readiness gate now uses `max(personal median, 60)`, so the audit's readiness-52 / median-50 drift probe stays Amber while the healthy readiness-66 case stays Green. The trailing 84-day readiness window is split into calendar-based 42-day halves; with ≥21 samples per half, a ≥5-point median decline emits a structured warning-only verdict reason and prompt-v18 instruction without changing the colour. Branch-push, PR-context, and implementation-merge `main` CI passed all seven jobs; Vercel preview/production reached Ready; exact-SHA Railway health, API readiness, web `/`, and protected daily-loop smokes passed. Backend + docs only; no migration/shared-schema/plan/delivery/auth/hosting change. Decision #249. **Next:** Batch 169 — bound and decay accumulating memory.
+**2026-07-29 — Batch 169 implementation ready (memory cap + correction decay).** `feat/batch-169-memory-decay` closes F9 / R155-C plus F7's decay half: `learnedContext` now emits at most the latest 12 eligible confirmed items, dated items older than 365 days decay out, undated legacy items sort oldest, and fed-forward `recentCorrections` keeps the latest five rows within 45 days. Morning/post-workout prompts bumped to v19/v11 and explicitly prevent corrections from restating objective metrics, completed workouts, or deterministic verdicts as better than measured. `_morning_verdict` remains unable to read learned memory. Backend + docs only; no migration/shared-schema/plan/delivery/auth/hosting change. Local gates green: backend pytest 690 passed / 279 expected PostgreSQL skips; targeted memory/correction/prompt tests 74 passed / 31 expected skips; Ruff/format/mypy clean (123 files). Decision #250; not promoted. **Next:** open PR / run branch CI for Batch 169, then `/closeout 169` only when explicitly requested.
 
 ---
 
 ## Log
+
+**2026-07-29 — Batch 169 implementation ready:** `feat/batch-169-memory-decay` bounds and ages accumulating memory: confirmed `learned_context` packets are capped at 12, dated items older than 365 days decay, undated legacy items sort oldest, and corrections are limited to five within 45 days. Morning/post-workout prompts v19/v11 keep corrections subordinate to measured facts; `_morning_verdict` still has no learned-memory parameter. Backend + docs only; no migration/shared-schema/plan/delivery/auth/hosting change. Local gates green: backend pytest 690 passed / 279 expected DB skips; targeted tests 74 passed / 31 expected skips; Ruff/format/mypy clean. Decision #250; branch not promoted.
+
+---
 
 **2026-07-29 — Batch 168 shipped:** PR #198 / squash `d6fa01c`; the absolute 60-point readiness anchor and warning-only 84-day baseline-decline alarm are live, closing F1 / R155-B. The drifted readiness-52 / median-50 probe stays Amber, healthy readiness-66 stays Green, and the alarm cannot soften the light. Branch-push, PR-context, and implementation-merge `main` CI passed all seven jobs; Vercel preview/production reached Ready; production verified exact-SHA Railway health, API readiness, web `/` 200, and protected daily-loop 401. Backend + docs only; no migration/shared-schema/plan/delivery/auth/hosting change. Decision #249; Batch 169 is next.
 

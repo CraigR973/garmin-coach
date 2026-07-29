@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
@@ -43,8 +43,9 @@ REASON_TAGS_BY_KIND: dict[str, tuple[str, ...]] = {
     KIND_SUGGESTION: ("too_cautious", "too_aggressive", "bad_timing", "not_practical", "other"),
 }
 
-# How many recent corrections feed the next read (kept small — n=1, no aggregation).
+# How many recent corrections feed the next read (kept small, no aggregation).
 RECENT_CORRECTIONS_LIMIT = 5
+RECENT_CORRECTIONS_MAX_AGE_DAYS = 45
 
 
 def _utcnow() -> datetime:
@@ -181,7 +182,11 @@ class FeedbackService:
         return {row.analysis_id: row for row in rows}
 
     async def recent_corrections(
-        self, user_id: uuid.UUID, *, limit: int = RECENT_CORRECTIONS_LIMIT
+        self,
+        user_id: uuid.UUID,
+        *,
+        limit: int = RECENT_CORRECTIONS_LIMIT,
+        now: datetime | None = None,
     ) -> list[RecentCorrection]:
         """The most recent free-text/reason-tag corrections for this user, newest first.
 
@@ -189,6 +194,9 @@ class FeedbackService:
         ``reason_tags`` entry — a bare rating is a signal, but the correction
         (text and/or tags) is the payload the next read acts on.
         """
+        cutoff = _coerce_utc_naive(now or datetime.now(UTC)) - timedelta(
+            days=RECENT_CORRECTIONS_MAX_AGE_DAYS
+        )
         rows = (
             await self.session.execute(
                 select(Feedback, Analysis)
@@ -199,6 +207,7 @@ class FeedbackService:
                         Feedback.correction_text.isnot(None),
                         func.jsonb_array_length(Feedback.reason_tags) > 0,
                     ),
+                    Feedback.created_utc >= cutoff,
                 )
                 .order_by(Feedback.created_utc.desc())
                 .limit(limit)
@@ -223,3 +232,9 @@ class FeedbackService:
                 )
             )
         return corrections
+
+
+def _coerce_utc_naive(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(UTC).replace(tzinfo=None)
