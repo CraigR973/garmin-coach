@@ -1930,24 +1930,25 @@ async def test_yesterday_load_includes_whole_day_cost_without_exercise(
     subject_date = date(2026, 7, 29)
 
     async with session_factory() as session:
-        session.add_all(
-            [
-                Profile(
-                    id=user_id,
-                    display_name="Whole-day cost test",
-                    role=UserRole.admin,
-                    timezone="Europe/London",
-                    is_active=True,
-                ),
-                DailyMetric(
-                    user_id=user_id,
-                    calendar_date=subject_date - timedelta(days=1),
-                    stress_avg=61,
-                    body_battery_drained=78,
-                    body_battery_end=9,
-                    raw_payload={},
-                ),
-            ]
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Whole-day cost test",
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+        session.add(
+            DailyMetric(
+                user_id=user_id,
+                calendar_date=subject_date - timedelta(days=1),
+                stress_avg=61,
+                body_battery_drained=78,
+                body_battery_end=9,
+                raw_payload={},
+            )
         )
         await session.commit()
 
