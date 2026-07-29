@@ -16,7 +16,6 @@ from src.services.coaching_state import BLOCK_SEQUENCE
 from src.services.executable_coaching import (
     WORKOUT_STATUS_SKIPPED,
     ExecutableCoachingService,
-    blocks_red_vo2,
 )
 from src.services.holiday_pause import HolidayPauseService
 from src.services.structured_workout_builder import (
@@ -26,6 +25,7 @@ from src.services.structured_workout_builder import (
     build_freeform_bike_workout,
     is_indoor_bike_workout,
 )
+from src.services.verdict_scaling import blocks_red_vo2
 from src.services.workout_categories import (
     DAY_CATEGORY_CYCLE,
     DAY_CATEGORY_FLEXIBILITY,

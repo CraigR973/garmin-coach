@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import HTTPException, status
 
+from src.services.verdict_scaling import AMBER_DURATION_SCALE, ease_amber_power_pct
 from src.services.workout_delivery import _expand_step
 
 MIN_REPEATS = 1
@@ -135,17 +136,27 @@ def block_to_source(block: EditableIntervalBlock) -> dict[str, Any]:
 
 
 def scale_block(block: EditableIntervalBlock) -> EditableIntervalBlock:
-    """The deterministic, cautious scale preset replacing the old 75%/90% dials."""
+    """The "Scale down" preset — the *same* Zone-2-aware ease the delivery
+    transform and the morning narrative use (Batch 173.2).
+
+    Cuts duration to :data:`AMBER_DURATION_SCALE` and eases the working power via
+    :func:`ease_amber_power_pct`: a hard interval drops a zone (never below the
+    Zone-2 floor), but an already-endurance ride *keeps* its intensity — so a 67%
+    Z2 ride now stays 67% instead of the old ``×0.9`` drop to 60% that Mark hand-
+    reset on 2026-07-29.
+    """
     return EditableIntervalBlock(
         repeat=block.repeat,
         work=IntervalLeg(
-            duration_sec=max(MIN_WORK_DURATION_SEC, round(block.work.duration_sec * 0.75)),
-            power_pct=max(MIN_POWER_PCT, round(block.work.power_pct * 0.9)),
+            duration_sec=max(
+                MIN_WORK_DURATION_SEC, round(block.work.duration_sec * AMBER_DURATION_SCALE)
+            ),
+            power_pct=max(MIN_POWER_PCT, ease_amber_power_pct(block.work.power_pct)),
             cadence_rpm=block.work.cadence_rpm,
         ),
         rest=IntervalLeg(
-            duration_sec=round(block.rest.duration_sec * 0.75),
-            power_pct=max(MIN_POWER_PCT, round(block.rest.power_pct * 0.9)),
+            duration_sec=round(block.rest.duration_sec * AMBER_DURATION_SCALE),
+            power_pct=max(MIN_POWER_PCT, ease_amber_power_pct(block.rest.power_pct)),
             cadence_rpm=block.rest.cadence_rpm,
         ),
     )

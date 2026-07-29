@@ -33,6 +33,7 @@ from src.services.morning_analysis import (
     MorningAnalysisService,
     _daily_metric_packet,
     _date_label,
+    _eased_ride_detail,
     _manual_entry_packet,
     _morning_verdict,
     _rest_day_context,
@@ -41,6 +42,7 @@ from src.services.morning_analysis import (
     _thermal_review,
     _training_and_activity_fields,
     _training_load_signal,
+    _verdict_adjustment_packet,
     _yesterday_load_packet,
     build_morning_user_prompt,
     build_today_actions,
@@ -959,7 +961,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v21")
+    assert PROMPT_VERSION.startswith("morning-analysis-v22")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
@@ -2245,6 +2247,101 @@ def test_build_today_actions_surfaces_green_chronic_deload_proposal() -> None:
     assert actions[0]["title"] == "Approve today's deload ride"
     assert actions[0]["plannedWorkoutId"] == str(ride.id)
     assert "Sustained recovery strain" in actions[0]["detail"]
+
+
+_ENDURANCE_STRUCTURED = {
+    "format": "bike",
+    "steps": [
+        {"label": "Warm-up", "minutes": 10, "target": "easy spin"},
+        {"label": "Endurance", "minutes": 90, "target": "64-70% FTP 85rpm"},
+        {"label": "Cool-down", "minutes": 10, "target": "easy spin"},
+    ],
+}
+_HARD_VO2_STRUCTURED = {
+    "format": "bike",
+    "steps": [
+        {"label": "Warm-up", "minutes": 15, "target": "easy spin"},
+        {
+            "label": "Main set",
+            "repeats": 3,
+            "pattern": "5x 30s on / 30s off",
+            "target": "105-110% FTP 95rpm",
+        },
+        {"label": "Cool-down", "minutes": 10, "target": "easy spin"},
+    ],
+}
+
+
+def test_verdict_adjustment_packet_holds_zone_two_and_cuts_duration() -> None:
+    """Batch 173.3: an already-Zone-2 ride is only shortened — the packet says the
+    intensity is held (not dropped to 54/60), and the eased-ride hint quotes it."""
+    ride = _bike_workout(
+        workout_type="bike_endurance",
+        intensity_target="64-70% FTP",
+        structured_workout=_ENDURANCE_STRUCTURED,
+    )
+    packet = _verdict_adjustment_packet("Amber", [ride])
+    assert packet is not None
+    assert packet["intensityHeldAtEndurance"] is True
+    assert packet["plannedWorkPowerPct"] == 67
+    assert packet["adjustedWorkPowerPct"] == 67  # held at Zone 2
+    assert packet["adjustedDurationMin"] < packet["plannedDurationMin"]
+    assert packet["classificationImpact"] == "none"
+    assert packet["plannedWorkoutId"] == str(ride.id)
+
+    detail = _eased_ride_detail("Amber", packet)
+    assert "Zone 2" in detail
+    assert f"{packet['adjustedWorkPowerPct']}% FTP" in detail
+    assert f"{packet['adjustedDurationMin']} min" in detail
+
+
+def test_verdict_adjustment_packet_eases_hard_ride_and_removes_hit() -> None:
+    ride = _bike_workout(
+        workout_type="bike_vo2",
+        intensity_target="105-110% FTP",
+        structured_workout=_HARD_VO2_STRUCTURED,
+    )
+    packet = _verdict_adjustment_packet("Amber", [ride])
+    assert packet is not None
+    assert packet["intensityHeldAtEndurance"] is False
+    assert packet["adjustedWorkPowerPct"] < packet["plannedWorkPowerPct"]
+    assert packet["adjustedWorkPowerPct"] <= 98  # HIT capped away
+    assert packet["removedHit"] is True
+
+    detail = _eased_ride_detail("Amber", packet)
+    assert "no HIT/VO2" in detail
+    assert f"{packet['adjustedWorkPowerPct']}% FTP" in detail
+
+
+def test_verdict_adjustment_packet_is_none_when_not_cautious() -> None:
+    ride = _bike_workout(
+        workout_type="bike_endurance",
+        intensity_target="64-70% FTP",
+        structured_workout=_ENDURANCE_STRUCTURED,
+    )
+    assert _verdict_adjustment_packet("Green", [ride]) is None
+    assert _verdict_adjustment_packet("Amber", []) is None  # no ride today
+
+
+def test_build_today_actions_quotes_the_deterministic_adjustment() -> None:
+    """The eased-ride action detail quotes verdict.verdictAdjustment, so the home
+    card and the narrative show one set of numbers (Batch 173.2/173.3)."""
+    ride = _bike_workout(
+        workout_type="bike_endurance",
+        intensity_target="64-70% FTP",
+        structured_workout=_ENDURANCE_STRUCTURED,
+    )
+    packet = _verdict_adjustment_packet("Amber", [ride])
+    actions = build_today_actions(
+        verdict={"status": "Amber", "verdictAdjustment": packet},
+        planned_workouts=[ride],
+        thermal_review={"flags": []},
+        recommend_breathwork=False,
+    )
+    approve = next(a for a in actions if a["kind"] == "approve_ride")
+    assert "Zone 2" in approve["detail"]
+    assert packet is not None
+    assert f"{packet['adjustedWorkPowerPct']}% FTP" in approve["detail"]
 
 
 def test_build_today_actions_sleep_and_thermal_nudges() -> None:

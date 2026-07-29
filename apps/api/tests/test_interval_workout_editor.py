@@ -3,9 +3,13 @@ from __future__ import annotations
 from copy import deepcopy
 
 from src.services.interval_workout_editor import (
+    EditableIntervalBlock,
+    IntervalLeg,
     apply_interval_block,
     interval_editor_snapshot,
+    scale_block,
 )
+from src.services.verdict_scaling import ease_amber_power_pct
 from src.services.workout_delivery import (
     build_zwo_xml,
     expand_structured_steps,
@@ -99,7 +103,35 @@ def test_mapper_round_trips_primary_block_and_leaves_every_pass_through_step_ide
         if step["label"].startswith("VO₂ 5×2min") and " work " in step["label"]
     )
     assert edited_work["durationSec"] == 90
-    assert edited_work["powerEndPct"] == 108
+    # Batch 173.2: the "Scale down" preset now shares the delivery transform's
+    # Zone-2-aware ease, so a 120% VO2 leg drops a zone and is capped at threshold
+    # (HIT removed) — 98% — instead of the old ×0.9 that kept it at a near-VO2 108%.
+    assert edited_work["powerEndPct"] == 98
+
+
+def test_scale_block_holds_zone_two_and_matches_the_shared_ease() -> None:
+    """Batch 173.2: the "Scale down" preset uses the same Zone-2-aware ease as the
+    delivery transform — a 67% Z2 ride stays 67% (Mark's 2026-07-29 hand-reset), a
+    hard leg drops via ease_amber_power_pct — so the editor and the delivered ride
+    quote one number."""
+    z2 = EditableIntervalBlock(
+        repeat=1,
+        work=IntervalLeg(duration_sec=3600, power_pct=67, cadence_rpm=85),
+        rest=IntervalLeg(duration_sec=0, power_pct=55, cadence_rpm=None),
+    )
+    scaled_z2 = scale_block(z2)
+    assert scaled_z2.work.power_pct == 67  # held, not 60 (the old ×0.9)
+    assert scaled_z2.work.duration_sec == 2700  # 25% duration cut
+    assert scaled_z2.work.power_pct == ease_amber_power_pct(z2.work.power_pct)
+
+    hard = EditableIntervalBlock(
+        repeat=4,
+        work=IntervalLeg(duration_sec=240, power_pct=105, cadence_rpm=90),
+        rest=IntervalLeg(duration_sec=120, power_pct=55, cadence_rpm=None),
+    )
+    scaled_hard = scale_block(hard)
+    assert scaled_hard.work.power_pct == ease_amber_power_pct(105)  # drops a zone, capped
+    assert scaled_hard.work.power_pct < 105
 
 
 def test_sweet_spot_and_zone_two_presets_are_deterministic() -> None:
