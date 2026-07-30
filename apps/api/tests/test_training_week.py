@@ -289,3 +289,56 @@ async def test_service_joins_active_plan_audit_activity_and_match(
     assert tuesday["executed"][0]["matchedPlannedWorkout"]["title"] == "Easy Z2"
     saturday = _day(packet, SAT)
     assert saturday["changes"][0]["direction"] == "in"
+
+
+def test_week_to_date_still_separates_a_missed_day_from_the_subject_day() -> None:
+    """Batch 178 made the anchor explicit; the week-to-date reading is unchanged.
+
+    A planned day already behind the subject date with nothing recorded is a
+    gap; the subject date itself is simply still planned.
+    """
+    missed = _workout(workout_date=TUE, title="Sweet Spot", workout_type="bike_sweet_spot")
+    today = _workout(workout_date=SAT, title="Long Ride", workout_type="bike_endurance")
+    missed.user_id = today.user_id
+
+    packet = build_training_week_packet(
+        start_date=MON,
+        end_date=SAT,
+        timezone_name="Europe/London",
+        planned_workouts=[missed, today],
+        action_audits=[],
+        activities=[],
+    )
+
+    assert packet["window"]["kind"] == "calendar_week_to_date"
+    assert _day(packet, TUE)["dayStatus"] == "no_activity_recorded"
+    assert _day(packet, SAT)["dayStatus"] == "planned"
+
+
+def test_forward_window_calls_upcoming_planned_days_planned_not_missed() -> None:
+    """Batch 178.3 reuses this reducer for the week ahead.
+
+    Chat needs "what's coming up" from the same planned -> changed -> executed
+    grounding the morning read uses, and a day Mark has not reached yet must
+    never read as a day he failed to train.
+    """
+    upcoming = _workout(workout_date=WED, title="VO2 Max", workout_type="bike_vo2")
+    later = _workout(workout_date=SAT, title="Long Ride", workout_type="bike_endurance")
+    upcoming.user_id = later.user_id
+
+    packet = build_training_week_packet(
+        start_date=TUE,
+        end_date=SAT,
+        timezone_name="Europe/London",
+        planned_workouts=[upcoming, later],
+        action_audits=[],
+        activities=[],
+        subject_date=TUE,
+        window_kind="week_ahead_from_today",
+    )
+
+    assert packet["window"]["kind"] == "week_ahead_from_today"
+    assert packet["window"]["startDate"] == TUE.isoformat()
+    assert _day(packet, WED)["dayStatus"] == "planned"
+    assert _day(packet, SAT)["dayStatus"] == "planned"
+    assert _day(packet, TUE)["dayStatus"] == "rest_day"

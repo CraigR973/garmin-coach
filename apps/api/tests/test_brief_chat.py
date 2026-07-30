@@ -1,17 +1,21 @@
 """Tests for Batch 119 — follow-up chat on a brief.
 
 Covers the acceptance pillars:
-  119.1/119.2 — a follow-up is answered grounded in the brief's context packet
+  119.1/119.2 — a follow-up is answered grounded in the read's own record
   119.3 kickoff decisions — storage/threading, the turn cap, and the
         deterministic (never model-decided) propose-adjustment trigger
-  119.4 — guardrails hold (no fabrication beyond the packet) and history threads
+  119.4 — guardrails hold (no fabrication beyond the data) and history threads
+
+Batch 178 extends the same surface: context is assembled when the question is
+asked, it reaches beyond the single read, and the app's internal vocabulary
+never reaches Mark.
 """
 
 from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -22,13 +26,21 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionm
 from src.auth import get_current_user
 from src.database import get_db
 from src.main import app
-from src.models.coaching import Analysis, BriefMessage, PlannedWorkout
+from src.models.coaching import (
+    Activity,
+    Analysis,
+    BriefMessage,
+    DailyMetric,
+    PlannedWorkout,
+)
 from src.models.profile import Profile, UserRole
 from src.services.anthropic_text import AnthropicApiError
 from src.services.brief_chat import (
     MAX_USER_TURNS_PER_ANALYSIS,
+    NO_PLUMBING_RULE,
     BriefChatClient,
     BriefChatService,
+    internal_vocabulary_hits,
 )
 
 
@@ -52,6 +64,15 @@ class FakeBriefChatClient(BriefChatClient):
             }
         )
         return self.answer
+
+
+def _flat(text: object) -> str:
+    """Whitespace-normalized prompt text.
+
+    The system prompt is a wrapped literal, so a phrase can straddle a newline
+    (the Batch 175 CI lesson). Assert against normalized text.
+    """
+    return " ".join(str(text).split())
 
 
 def _db_override(session_factory: async_sessionmaker[AsyncSession]):
@@ -143,14 +164,18 @@ async def test_ask_grounds_in_packet_and_stores_both_turns(db_conn: AsyncConnect
     assert turn.assistant_message.role == "assistant"
     assert turn.assistant_message.content == "Because your HRV was strong overnight."
     # The packet is embedded in the system prompt so the answer is grounded.
-    assert "Green" in client.calls[0]["system_prompt"]
-    assert "Read type: morning" in client.calls[0]["system_prompt"]
-    assert "live morning read" in client.calls[0]["system_prompt"]
-    assert "the app can propose one" in client.calls[0]["system_prompt"]
-    assert "Do not cave to reassurance pressure" in client.calls[0]["system_prompt"]
-    assert "General principle:" in client.calls[0]["system_prompt"]
-    assert "Mark-specific answers are packet-bound" in client.calls[0]["system_prompt"]
-    assert "Read context packet" in client.calls[0]["system_prompt"]
+    prompt = _flat(client.calls[0]["system_prompt"])
+    assert "Green" in prompt
+    assert "You are talking about this morning's brief" in prompt
+    assert "live morning read" in prompt
+    assert "the app can propose one" in prompt
+    assert "Do not cave to reassurance pressure" in prompt
+    assert "General principle:" in prompt
+    assert "never invent his metrics, plan, history, readiness, or prescription" in prompt
+    assert "Mark's information behind that read" in prompt
+    # Batch 178.2: current app state travels alongside the read's own record.
+    assert "Where things stand right now" in prompt
+    assert "anythingChangedSinceRead" in prompt
 
     async with session_factory() as session:
         count = await session.scalar(
@@ -260,7 +285,7 @@ async def test_general_endurance_science_question_is_allowed_with_a_label(
 
     assert turn.assistant_message.content.startswith("General principle:")
     assert turn.assistant_message.proposed_planned_workout_id is None
-    system_prompt = str(client.calls[0]["system_prompt"])
+    system_prompt = _flat(client.calls[0]["system_prompt"])
     assert "You may answer general, non-personalized endurance-training science" in system_prompt
     assert 'Label those answers with "General principle:"' in system_prompt
     assert "turning them into Mark-specific instructions" in system_prompt
@@ -276,7 +301,7 @@ async def test_mark_specific_question_stays_packet_bound(db_conn: AsyncConnectio
             user.id,
             context_packet={"verdict": {"status": "Amber"}},
         )
-        client = FakeBriefChatClient("The packet does not show Mark's FTP history.")
+        client = FakeBriefChatClient("I've no record of his VO2 sessions this block here.")
 
         turn = await BriefChatService(session).ask(
             user,
@@ -285,10 +310,10 @@ async def test_mark_specific_question_stays_packet_bound(db_conn: AsyncConnectio
             client=client,
         )
 
-    assert "packet does not show" in turn.assistant_message.content
-    system_prompt = str(client.calls[0]["system_prompt"])
-    assert "do not invent his metrics, plan" in system_prompt
-    assert "question about Mark" in system_prompt
+    assert "no record of" in turn.assistant_message.content
+    system_prompt = _flat(client.calls[0]["system_prompt"])
+    assert "never invent his metrics, plan, history, readiness, or prescription" in system_prompt
+    assert "say it the way a coach would" in system_prompt
 
 
 @pytest.mark.asyncio
@@ -322,7 +347,7 @@ async def test_plan_change_request_still_uses_propose_confirm_and_red_floor(
         )
 
     assert turn.assistant_message.proposed_planned_workout_id == workout.id
-    system_prompt = str(client.calls[0]["system_prompt"])
+    system_prompt = _flat(client.calls[0]["system_prompt"])
     assert "Any actual workout change remains confirm-before-apply" in system_prompt
     assert "never recommend VO2 on a Red day" in system_prompt
 
@@ -397,10 +422,176 @@ async def test_post_workout_read_chat_is_grounded_and_advisory_only(
 
     assert turn.assistant_message.content == "It means the ride landed as intended."
     assert turn.assistant_message.proposed_planned_workout_id is None
-    assert "Read type: post_workout" in client.calls[0]["system_prompt"]
-    assert "advisory-only" in client.calls[0]["system_prompt"]
-    assert "Do not say the app can propose" in client.calls[0]["system_prompt"]
-    assert "Tempo ride" in client.calls[0]["system_prompt"]
+    prompt = _flat(client.calls[0]["system_prompt"])
+    assert "You are talking about the read on his completed session" in prompt
+    assert "advisory-only" in prompt
+    assert "Do not say the app can propose" in prompt
+    assert "Tempo ride" in prompt
+
+
+# ---------------------------------------------------------------------------
+# Batch 178: ask-time context, wider app state, and the register
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ask_sees_an_activity_completed_after_the_read_was_written(
+    db_conn: AsyncConnection,
+) -> None:
+    """178.2: the morning packet froze at 06:30; the ride happened at 17:00.
+
+    Before this batch the ride simply was not in the conversation — the exact
+    discontinuity behind Mark's "almost disconnected" report.
+    """
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        analysis = await _make_analysis(
+            session, user.id, context_packet={"verdict": {"status": "Green"}}
+        )
+        session.add(
+            Activity(
+                id=uuid.uuid4(),
+                user_id=user.id,
+                garmin_activity_id=555000111,
+                activity_name="Evening sweet spot",
+                activity_type="indoor_cycling",
+                start_utc=datetime(2026, 7, 14, 17, 30),
+                duration_sec=3600,
+                avg_power_watts=198,
+                raw_summary={},
+            )
+        )
+        await session.commit()
+
+        client = FakeBriefChatClient("You rode 198W average this evening.")
+        await BriefChatService(session).ask(
+            user, analysis.id, question="How did tonight's ride look?", client=client
+        )
+
+    prompt = _flat(client.calls[0]["system_prompt"])
+    assert "Evening sweet spot" in prompt
+    assert "activitiesCompletedSinceRead" in prompt
+
+
+@pytest.mark.asyncio
+async def test_ask_carries_the_wider_app_state_the_questions_need(
+    db_conn: AsyncConnection,
+) -> None:
+    """178.3: a trend question is answerable from the series the app computed."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    today = datetime.now(UTC).date()
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        for day_offset in range(1, 15):
+            session.add(
+                DailyMetric(
+                    id=uuid.uuid4(),
+                    user_id=user.id,
+                    calendar_date=today - timedelta(days=day_offset),
+                    hrv_last_night_avg_ms=52,
+                    readiness_score=64,
+                    resting_heart_rate_bpm=51,
+                    raw_payload={},
+                )
+            )
+        session.add(
+            Analysis(
+                id=uuid.uuid4(),
+                user_id=user.id,
+                analysis_type="weekly_review",
+                subject_date=today - timedelta(days=9),
+                generated_at_utc=datetime(2026, 7, 14, 5, 0),
+                prompt_version="review-x",
+                context_packet={},
+                output_markdown="Endurance volume held; sleep was the limiter.",
+                raw_response={},
+            )
+        )
+        await session.commit()
+        analysis = await _make_analysis(session, user.id)
+
+        client = FakeBriefChatClient("Your HRV has been flat around 52ms.")
+        await BriefChatService(session).ask(
+            user, analysis.id, question="Has my HRV been trending down?", client=client
+        )
+
+    prompt = _flat(client.calls[0]["system_prompt"])
+    # The measured series, the week ahead, and the review conclusions Mark was
+    # already given — all previously invisible to the conversation.
+    assert "hrv_ms" in prompt
+    assert "recentWindows" in prompt
+    assert "week_ahead_from_today" in prompt
+    assert "sleep was the limiter" in prompt
+
+
+@pytest.mark.asyncio
+async def test_ask_retires_a_proposal_for_a_ride_closed_after_the_read(
+    db_conn: AsyncConnection,
+) -> None:
+    """Ask-time state can only remove a stale affordance, never add one.
+
+    The proposal gate itself is unchanged (Batch 179.3 re-keys it); this stops
+    the frozen packet offering to ease a ride Mark has already ridden.
+    """
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        workout = await _make_planned_workout(session, user.id, status="completed")
+        packet = {
+            "restDay": {"isRestDay": False},
+            "plannedWorkouts": [
+                {
+                    # As it stood at 06:30, before he rode it.
+                    "id": str(workout.id),
+                    "workoutType": "bike_sweet_spot",
+                    "status": "planned",
+                    "structuredWorkout": {"segments": []},
+                }
+            ],
+        }
+        analysis = await _make_analysis(session, user.id, context_packet=packet)
+
+        turn = await BriefChatService(session).ask(
+            user,
+            analysis.id,
+            question="Can you ease today's ride?",
+            client=FakeBriefChatClient("You've already ridden it."),
+        )
+
+    assert turn.assistant_message.proposed_planned_workout_id is None
+
+
+@pytest.mark.asyncio
+async def test_ask_never_hands_the_model_the_apps_internal_vocabulary(
+    db_conn: AsyncConnection,
+) -> None:
+    """178.1: outside the rule that forbids them, the nouns are gone.
+
+    The old prompt said "packet" eight times and told the model to say when the
+    packet could not answer, which is how "that isn't in the packet" reached
+    Mark. The data blocks below the instructions are machine input; the
+    instructions themselves no longer contain the wording to copy.
+    """
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        analysis = await _make_analysis(session, user.id)
+        client = FakeBriefChatClient("I don't have last winter's rides in front of me here.")
+
+        turn = await BriefChatService(session).ask(
+            user,
+            analysis.id,
+            question="How did last winter's rides compare?",
+            client=client,
+        )
+
+    # The not-known path reads as a coach's sentence, not a schema complaint.
+    assert internal_vocabulary_hits(turn.assistant_message.content) == ()
+    system_prompt = str(client.calls[0]["system_prompt"])
+    instructions = system_prompt.split("What you wrote in that read:")[0]
+    assert internal_vocabulary_hits(instructions.replace(NO_PLUMBING_RULE, "")) == ()
+    assert NO_PLUMBING_RULE in _flat(system_prompt)
 
 
 # ---------------------------------------------------------------------------
