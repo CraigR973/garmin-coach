@@ -240,6 +240,25 @@ morning brief); the helper treats `stop_reason == "max_tokens"` as an error so a
 truncated response is never persisted as a finished analysis — the existing
 staleness/regeneration path reruns it instead. No prompt or verdict change.
 
+**Coach conversation context (Batch 119; ask-time assembly in Batch 178,
+DECISIONS #258).** A follow-up chat on a read was originally grounded in exactly
+one thing: that read's `context_packet`, frozen when the read was generated. From
+Batch 178 the stored packet remains the read's own record — the read's markdown
+was written from it — and `services/chat_context.py` layers a freshly assembled
+app-state block alongside it *when the question is asked*: what has happened
+since the read (activities, check-ins, plan-action audits, newer reads, and
+whether the read still reflects the latest check-in, using Batch 159's check-in
+version), today's plan, the week ahead, the monthly trend series plus the
+year-on-year comparison, the latest weekly/monthly review conclusions, recent
+sessions, and sleep history. It reuses the existing deterministic builders
+(`TrainingWeekService.build_window`, `TrendsService.windows` +
+`compute_year_on_year`, stored review rows) rather than duplicating them, is
+capped at a documented character budget, and *names* anything trimmed so an
+omission can never read as an absence. Deterministic pre-assembly, not tool-use:
+the shared Anthropic text boundary has no tool support and the app's builders are
+already cheap and unit-tested. Explanatory only — it cannot move Green/Amber/Red
+or any floor, and plan changes stay on the propose/confirm rail (#29).
+
 ## 5. Data model (sketch — build from real JSON shapes in `~/garmin-spike/out/`)
 
 - `profiles` (display name/role, timezone, lat/long, Garmin user profile pk, Hive home id;

@@ -700,6 +700,30 @@ class TrendsService:
             ),
         )
 
+    async def windows(
+        self,
+        player: Profile,
+        *,
+        bucket: str,
+        as_of: date | None = None,
+        lookback_days: int = DEFAULT_LOOKBACK_DAYS,
+    ) -> list[TrendWindow]:
+        """Bucketed windows for callers that need the series and a comparison.
+
+        Batch 178: brief chat needs both the recent series and the year-on-year
+        deltas, and ``seasonal``/``year_on_year`` would each reload the samples.
+        Exposing the loader keeps chat on one sample load and one definition of a
+        trend window. Never writes (#71).
+        """
+        if bucket not in VALID_BUCKETS:
+            raise ValueError(f"Unknown trend bucket: {bucket!r}")
+        return await self._windows(
+            player,
+            bucket=bucket,
+            as_of=as_of or date.today(),
+            lookback_days=lookback_days,
+        )
+
     # -- sample assembly ----------------------------------------------------
 
     async def _windows(

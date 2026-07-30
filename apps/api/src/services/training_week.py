@@ -42,13 +42,37 @@ class TrainingWeekService:
         self.session = session
 
     async def build(self, player: Profile, *, as_of: date) -> dict[str, Any]:
-        week_start = as_of - timedelta(days=as_of.weekday())
-        planned = await self._active_planned_workouts(player.id, week_start, as_of)
+        return await self.build_window(
+            player,
+            start_date=as_of - timedelta(days=as_of.weekday()),
+            end_date=as_of,
+            subject_date=as_of,
+        )
+
+    async def build_window(
+        self,
+        player: Profile,
+        *,
+        start_date: date,
+        end_date: date,
+        subject_date: date,
+        window_kind: str = "calendar_week_to_date",
+    ) -> dict[str, Any]:
+        """Assemble the same packet over an arbitrary window.
+
+        Batch 178 reuses this forward (today through the week ahead) so chat can
+        answer "what's coming up" from the same planned → changed → executed
+        reducer the morning read already grounds week history in, rather than a
+        second notion of the schedule. ``subject_date`` separates "nothing
+        recorded yet" from "already missed": a planned day at or after it is
+        still ahead of Mark, never a gap.
+        """
+        planned = await self._active_planned_workouts(player.id, start_date, end_date)
         audits = await self._action_audits(player.id)
         activities = await self._activities(
             player.id,
-            week_start,
-            as_of,
+            start_date,
+            end_date,
             player.timezone,
         )
 
@@ -62,14 +86,16 @@ class TrainingWeekService:
         workouts_by_id = await self._workouts_by_id(lookup_ids)
 
         return build_training_week_packet(
-            start_date=week_start,
-            end_date=as_of,
+            start_date=start_date,
+            end_date=end_date,
             timezone_name=player.timezone,
             planned_workouts=planned,
             action_audits=audits,
             activities=activities,
             workouts_by_id=workouts_by_id,
             matched_planned_workout_ids=matched_ids,
+            subject_date=subject_date,
+            window_kind=window_kind,
         )
 
     async def _active_planned_workouts(
@@ -213,10 +239,13 @@ def build_training_week_packet(
     activities: Sequence[Activity],
     workouts_by_id: Mapping[uuid.UUID, PlannedWorkout] | None = None,
     matched_planned_workout_ids: Mapping[uuid.UUID, uuid.UUID] | None = None,
+    subject_date: date | None = None,
+    window_kind: str = "calendar_week_to_date",
 ) -> dict[str, Any]:
     """Reduce already-loaded rows into a deterministic per-day packet."""
     if end_date < start_date:
         raise ValueError("end_date must be on or after start_date")
+    anchor = subject_date if subject_date is not None else end_date
 
     lookup = dict(workouts_by_id or {})
     matches = dict(matched_planned_workout_ids or {})
@@ -265,11 +294,11 @@ def build_training_week_packet(
             )
         )
         packet["executed"].sort(key=lambda item: (item["startUtc"], item["activityId"]))
-        packet["dayStatus"] = _day_status(packet, is_subject_date=day == end_date)
+        packet["dayStatus"] = _day_status(packet, is_before_subject_date=day < anchor)
 
     return {
         "window": {
-            "kind": "calendar_week_to_date",
+            "kind": window_kind,
             "startDate": start_date.isoformat(),
             "endDate": end_date.isoformat(),
         },
@@ -343,7 +372,7 @@ def _add_change_event(
         )
 
 
-def _day_status(packet: Mapping[str, Any], *, is_subject_date: bool) -> str:
+def _day_status(packet: Mapping[str, Any], *, is_before_subject_date: bool) -> str:
     executed = cast(list[dict[str, Any]], packet["executed"])
     planned = cast(list[dict[str, Any]], packet["planned"])
     changes = cast(list[dict[str, Any]], packet["changes"])
@@ -356,7 +385,9 @@ def _day_status(packet: Mapping[str, Any], *, is_subject_date: bool) -> str:
     if any(change["action"] == "removed" for change in changes) and not planned:
         return "removed"
     if planned:
-        return "planned" if is_subject_date else "no_activity_recorded"
+        # Only a day already behind the subject date can be a gap; the subject
+        # date itself and anything ahead of it is still simply planned.
+        return "no_activity_recorded" if is_before_subject_date else "planned"
     if changes:
         return "changed_no_activity"
     return "rest_day"

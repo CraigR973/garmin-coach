@@ -23,6 +23,21 @@ Kickoff decisions (Batch 119.3, `/batch-start`):
 * **Batch 150 action scope** — post-workout follow-ups reuse this same table and
   endpoint, but are advisory-only: no proposal affordance on completed-session
   reads.
+
+Batch 178 kickoff decisions (`/batch-start`):
+
+* **Context is assembled when the question is asked**, not frozen at read time.
+  The stored ``context_packet`` stays the read's own record — the read's markdown
+  was written from it — and :mod:`src.services.chat_context` layers current app
+  state (week ahead, trend series, latest review conclusions, recent sessions,
+  sleep history, and what has happened since the read) alongside it.
+* **The internal vocabulary never reaches Mark.** The prompt describes what the
+  coach has in front of him, not the app's data structures, and explicitly bans
+  the plumbing nouns. Honesty is unchanged — only the register.
+* **The proposal gate is untouched, but a dead affordance is retired.** The
+  ``analysis_type == "morning"`` gate stays exactly as it is (re-keying it to
+  live plan state is Batch 179.3's job); ask-time state is used only to *drop* a
+  proposal for a ride Mark has since completed or skipped, never to add one.
 """
 
 from __future__ import annotations
@@ -41,6 +56,7 @@ from src.config import settings
 from src.models.coaching import Analysis, BriefMessage
 from src.models.profile import Profile
 from src.services.anthropic_text import generate_anthropic_text
+from src.services.chat_context import ChatContextService, app_state_json
 from src.services.workload_budget import workload_slot
 from src.services.workout_categories import is_bike_workout_type
 
@@ -51,28 +67,76 @@ MAX_USER_TURNS_PER_ANALYSIS = 10
 MAX_HISTORY_TURNS_IN_PROMPT = 10
 QUESTION_MAX_LENGTH = 1000
 
-PROMPT_VERSION = "brief-chat-v4-2026-07-29"
+PROMPT_VERSION = "brief-chat-v5-2026-07-30"
 
-SYSTEM_PROMPT = """You are CheckMark, answering a follow-up question about a
-read you already wrote for Mark. You are given that read's full context
-packet (the same metrics/plan/environment/session data the read itself was
-written from) and the read's own markdown text.
+# Batch 178.1: the words the app uses about itself. The old prompt said "packet"
+# eight times and told the model to say when the packet could not answer, so
+# Mark was told his question was not "in the packet". These never reach him.
+INTERNAL_VOCABULARY = (
+    "context packet",
+    "packet",
+    "json",
+    "schema",
+    "database field",
+    "context block",
+    "data structure",
+)
 
-Mark-specific answers are packet-bound: do not invent his metrics, plan
-details, history, readiness, or prescription. If the packet does not hold what
-is needed to answer a question about Mark, say so plainly rather than guessing.
+
+def internal_vocabulary_hits(text: str) -> tuple[str, ...]:
+    """Internal nouns present in user-facing text.
+
+    Batch 178.1 fixes the leak at its source — the prompt no longer gives the
+    model this wording — and this makes the contract checkable: over the prompt
+    itself, over every string this module can put in front of Mark, and over a
+    stored answer.
+    """
+    lowered = text.lower()
+    return tuple(term for term in INTERNAL_VOCABULARY if term in lowered)
+
+
+#: The one place the internal nouns are allowed to appear: naming them in order
+#: to forbid them. Tests assert that the rest of the prompt is free of them, so
+#: there is no wording left for the model to copy back to Mark.
+NO_PLUMBING_RULE = (
+    "Never describe the app's own plumbing: do not say packet, context packet, "
+    "JSON, schema, database field, or context block, and never tell Mark that "
+    "something is missing from a data structure."
+)
+
+SYSTEM_PROMPT = f"""You are CheckMark, Mark's coach, talking with him about a read
+you wrote for him.
+
+You have three things in front of you: the read itself, the information that read
+was written from, and where the app stands right now - his week ahead, his
+measured trend series, his latest review conclusions, his recent sessions and
+sleep, and anything that has happened since the read was written. Use all of it.
+If the answer to his question is something the app has already worked out, give
+him that answer rather than telling him you cannot see it.
+
+Ground everything you say about Mark in that information: never invent his
+metrics, plan, history, readiness, or prescription. When something genuinely is
+not in front of you, say it the way a coach would - "I don't have your sleep
+history from before June here" - and offer what you do have. {NO_PLUMBING_RULE}
+If something says it was trimmed for length, that means you cannot see it right
+now, not that the app does not hold it - say so that way.
+
+Where the current state and the read disagree, the current state is what is true
+now and the read is what was true when it was written; say which is which rather
+than repeating a figure that has moved on.
 
 You may answer general, non-personalized endurance-training science questions
-from established exercise physiology even when the packet does not contain that
-background. Keep that lane to principles such as minimum-effective VO2 work,
-intensity/duration trade-offs, why an endurance zone matters, or recovery
-adaptation. Label those answers with "General principle:" and explicitly avoid
-turning them into Mark-specific instructions unless the packet supports it.
+from established exercise physiology even when Mark's own information does not
+cover that background. Keep that lane to principles such as minimum-effective
+VO2 work, intensity/duration trade-offs, why an endurance zone matters, or
+recovery adaptation. Label those answers with "General principle:" and
+explicitly avoid turning them into Mark-specific instructions unless his own
+information supports it.
 
 Any actual workout change remains confirm-before-apply. You cannot change the
 plan yourself; if Mark asks to alter a live workout, keep the answer in the
-existing propose/confirm path and quote any app-calculated adjustment figures
-from the packet when they are present.
+existing propose/confirm path and quote the app's own adjustment figures when
+they are there.
 
 Keep the same floors as the original read: never recommend VO2 on a Red day, never
 reference left/right power balance, state any clock times in Mark's local
@@ -83,6 +147,16 @@ Keep answers short and conversational - a few sentences, not a restatement of
 the whole read. Do not cave to reassurance pressure: if Mark asks you to soften,
 ignore, or talk around a hard recovery signal, hold the line kindly and keep the
 deterministic verdict intact."""
+
+# Human labels for the read under discussion. The old prompt passed the raw
+# ``analysis_type`` ("Read type: post_workout"), which is another internal name.
+_READ_LABELS = {
+    "morning": "this morning's brief",
+    "post_workout": "the read on his completed session",
+    "post_walk": "the read on his completed walk",
+    "post_strength": "the read on his completed strength session",
+    "post_flexibility": "the read on his completed mobility session",
+}
 
 
 class BriefChatError(Exception):
@@ -198,6 +272,11 @@ def _message_ordering() -> tuple[Any, ...]:
     )
 
 
+def _read_description(analysis: Analysis) -> str:
+    label = _READ_LABELS.get(analysis.analysis_type, "a read you wrote for him")
+    return f"You are talking about {label}, written for {analysis.subject_date.isoformat()}."
+
+
 def _capability_instruction(analysis: Analysis) -> str:
     if _analysis_allows_adjustment_proposal(analysis):
         return (
@@ -294,11 +373,17 @@ class BriefChatService:
             for row in prior_rows[-(MAX_HISTORY_TURNS_IN_PROMPT * 2) :]
         ]
 
+        now = _utcnow()
+        # Batch 178.2: assembled now, not frozen at read time, so a ride
+        # completed or a plan edited after the read is visible to this answer.
+        context = await ChatContextService(self.session).build(player, analysis, asked_at_utc=now)
         system_prompt = (
-            f"{SYSTEM_PROMPT}\n\nRead type: {analysis.analysis_type}\n\n"
+            f"{SYSTEM_PROMPT}\n\n{_read_description(analysis)}\n\n"
             f"{_capability_instruction(analysis)}\n\n"
-            f"Read context packet (JSON):\n{_packet_json(analysis.context_packet)}\n\n"
-            f"Read text:\n{analysis.output_markdown}"
+            f"What you wrote in that read:\n{analysis.output_markdown}\n\n"
+            "Mark's information behind that read, as it stood when you wrote it:\n"
+            f"{_packet_json(analysis.context_packet)}\n\n"
+            f"Where things stand right now:\n{app_state_json(context.app_state)}"
         )
         chat_client = client or AnthropicBriefChatClient()
         async with workload_slot(workload="anthropic", user_id=player.id):
@@ -311,8 +396,13 @@ class BriefChatService:
         proposed_id = None
         if _analysis_allows_adjustment_proposal(analysis) and _wants_adjustment(cleaned):
             proposed_id = _todays_adjustable_workout_id(analysis.context_packet)
+            # Batch 178.2: the gate itself is unchanged (Batch 179.3 re-keys it),
+            # but ask-time state retires an affordance the frozen packet would
+            # still offer for a ride Mark has since completed or skipped. This
+            # can only ever remove a proposal, never add one.
+            if proposed_id is not None and not context.workout_is_live(proposed_id):
+                proposed_id = None
 
-        now = _utcnow()
         user_message = BriefMessage(
             user_id=player.id,
             analysis_id=analysis_id,
