@@ -341,6 +341,14 @@ class ChatContextService:
         user_id: uuid.UUID,
         workout_date: date,
     ) -> list[PlannedWorkout]:
+        """Active rows on one date, in plan order.
+
+        A date can carry more than one row — a split day writes the cycle and
+        the strength session as ascending versions (`plan_import`, guarded by
+        the `(user_id, workout_date, version)` unique constraint) — so these are
+        siblings rather than revisions of each other, and ascending version is
+        the order Mark's plan actually reads in.
+        """
         rows = (
             (
                 await self.session.execute(
@@ -350,7 +358,7 @@ class ChatContextService:
                         PlannedWorkout.is_active.is_(True),
                         PlannedWorkout.workout_date == workout_date,
                     )
-                    .order_by(desc(PlannedWorkout.version), PlannedWorkout.id.asc())
+                    .order_by(PlannedWorkout.version.asc(), PlannedWorkout.id.asc())
                 )
             )
             .scalars()

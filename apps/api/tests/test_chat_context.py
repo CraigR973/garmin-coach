@@ -433,10 +433,14 @@ async def test_live_workout_ids_exclude_a_ride_closed_after_the_read(
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     async with session_factory() as session:
         user = await _make_profile(session)
+        # A split day (Batch 65): two rows on one date, distinguished by
+        # incrementing versions the way `plan_import` writes them — the
+        # `(user_id, workout_date, version)` unique constraint requires it.
         done = PlannedWorkout(
             id=uuid.uuid4(),
             user_id=user.id,
             workout_date=TODAY,
+            version=1,
             title="Sweet spot",
             workout_type="bike_sweet_spot",
             status="completed",
@@ -447,6 +451,7 @@ async def test_live_workout_ids_exclude_a_ride_closed_after_the_read(
             id=uuid.uuid4(),
             user_id=user.id,
             workout_date=TODAY,
+            version=2,
             title="Core",
             workout_type="strength_core",
             status="planned",
@@ -463,3 +468,7 @@ async def test_live_workout_ids_exclude_a_ride_closed_after_the_read(
     assert not context.workout_is_live(done.id)
     closed = context.app_state["sinceThisRead"]["subjectDateWorkoutsClosedSinceRead"]
     assert [row["title"] for row in closed] == ["Sweet spot"]
+    # Listed in plan order, so a split day reads cycle-then-strength.
+    today_titles = [row["title"] for row in context.app_state["today"]["plannedWorkouts"]]
+    assert today_titles == ["Sweet spot", "Core"]
+    assert [row["isLive"] for row in context.app_state["today"]["plannedWorkouts"]] == [False, True]
