@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionm
 
 from src.models.coaching import DailyMetric
 from src.models.profile import Profile, UserRole
-from src.services.body_metrics import resolve_effective_weight_kg
+from src.services.body_metrics import resolve_effective_vo2max, resolve_effective_weight_kg
 
 
 async def _seed_player(session: AsyncSession, user_id: uuid.UUID) -> None:
@@ -113,3 +113,94 @@ async def test_resolve_effective_weight_kg_prefers_the_newest_row_in_window(
 
         assert weight_kg == 78.5
         assert as_of == date(2026, 7, 28)
+
+
+@pytest.mark.asyncio
+async def test_resolve_effective_vo2max_carries_most_recent_reading_forward(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        await _seed_player(session, user_id)
+        session.add(
+            DailyMetric(
+                user_id=user_id,
+                calendar_date=date(2026, 6, 15),
+                vo2max=55.0,
+                raw_payload={},
+            )
+        )
+        session.add(
+            DailyMetric(
+                user_id=user_id,
+                calendar_date=date(2026, 7, 27),
+                vo2max=None,
+                raw_payload={},
+            )
+        )
+        await session.commit()
+
+        vo2max, as_of = await resolve_effective_vo2max(session, user_id, date(2026, 7, 29))
+
+        assert vo2max == 55.0
+        assert as_of == date(2026, 6, 15)
+
+
+@pytest.mark.asyncio
+async def test_resolve_effective_vo2max_ignores_reading_outside_lookback_window(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        await _seed_player(session, user_id)
+        session.add(
+            DailyMetric(
+                user_id=user_id,
+                calendar_date=date(2026, 3, 1),
+                vo2max=55.0,
+                raw_payload={},
+            )
+        )
+        await session.commit()
+
+        vo2max, as_of = await resolve_effective_vo2max(session, user_id, date(2026, 7, 29))
+
+        assert vo2max is None
+        assert as_of is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_effective_vo2max_prefers_the_newest_row_in_window(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        await _seed_player(session, user_id)
+        session.add(
+            DailyMetric(
+                user_id=user_id,
+                calendar_date=date(2026, 6, 1),
+                vo2max=54.0,
+                raw_payload={},
+            )
+        )
+        session.add(
+            DailyMetric(
+                user_id=user_id,
+                calendar_date=date(2026, 7, 10),
+                vo2max=55.0,
+                raw_payload={},
+            )
+        )
+        await session.commit()
+
+        vo2max, as_of = await resolve_effective_vo2max(session, user_id, date(2026, 7, 29))
+
+        assert vo2max == 55.0
+        assert as_of == date(2026, 7, 10)

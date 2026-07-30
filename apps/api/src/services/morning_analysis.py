@@ -31,6 +31,7 @@ from src.models.profile import Profile
 from src.services.age_norms import build_age_comparison
 from src.services.anthropic_text import generate_anthropic_text
 from src.services.bedroom_overnight import night_window
+from src.services.body_metrics import resolve_effective_vo2max
 from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
 from src.services.chronic_patterns import ChronicPatternSuggestionService
 from src.services.coaching_state import CoachingStateService
@@ -119,7 +120,11 @@ from src.services.workout_delivery import build_structured_workout_ir
 # Batch 174: yesterdayLoad now includes the prior DailyMetric's all-day stress
 # and Body Battery cost even when no exercise was recorded. Narrative context
 # only; the deterministic verdict inputs are unchanged.
-PROMPT_VERSION = "morning-analysis-v23-2026-07-29"
+# Batch 177: profile.athleteProfile.vo2max is now the live daily Garmin value
+# (falling back to the stored baseline only when no live reading is on file
+# within the lookback window), with profile.vo2maxAsOfDate stating which day
+# it's from. Explanatory only — VO2max never touches the verdict ladder.
+PROMPT_VERSION = "morning-analysis-v24-2026-07-29"
 ANALYSIS_TYPE = "morning"
 # Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
 # signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
@@ -240,6 +245,14 @@ overnight-temperature, load, and plan). Put the answer under a short
 what is needed to answer, say so plainly rather than guessing. Answering a question
 never overrides the Red floor, the soft-sleep rule, the Poor-readiness caution, or
 Red-never-VO2.
+profile.athleteProfile.vo2max is Garmin's live measured value as of
+profile.vo2maxAsOfDate, not a fixed baseline — it may differ from a number you
+recall stating in a previous read, and that difference is real, not an error.
+State it as his current VO2max; if vo2maxAsOfDate is not today, say the reading
+is from that date rather than implying it was measured today. Only remark on a
+change if you are comparing against a figure explicitly given elsewhere in this
+same packet — never invent a trend from memory or from a single reading alone.
+This is explanatory context only and never moves the Green/Amber/Red verdict.
 The app renders a short "Today" action list above your read (the eased ride to
 approve, any week swap, and sleep/thermal nudges), assembled separately from your
 prose. Write the read as the reasoning and the "why" behind those actions — do not
@@ -354,6 +367,9 @@ class MorningAnalysisService:
             player.id,
             subject_date,
             player.timezone,
+        )
+        effective_vo2max, vo2max_as_of_date = await resolve_effective_vo2max(
+            self.session, player.id, subject_date
         )
 
         age_adjusted_sleep_score = _age_adjusted_sleep_score(sleep, knowledge_base)
@@ -492,7 +508,7 @@ class MorningAnalysisService:
             "subjectWeekday": subject_date.strftime("%A"),
             "subjectDateLabel": _date_label(subject_date),
             "generatedAtUtc": _utcnow().isoformat() + "Z",
-            "profile": _profile_packet(player, knowledge_base),
+            "profile": _profile_packet(player, knowledge_base, effective_vo2max, vo2max_as_of_date),
             "knowledgeBase": {
                 "sections": [_knowledge_base_packet(row) for row in kb_rows],
                 "dataQualityGuardrails": _data_quality_guardrails(knowledge_base),
@@ -923,14 +939,26 @@ def _utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-def _profile_packet(player: Profile, knowledge_base: Mapping[str, Any]) -> dict[str, Any]:
+def _profile_packet(
+    player: Profile,
+    knowledge_base: Mapping[str, Any],
+    effective_vo2max: float | None,
+    vo2max_as_of_date: date | None,
+) -> dict[str, Any]:
+    # Batch 177 (#257): overlay the live daily VO2max onto the static KB profile
+    # number so the packet carries the real current value, not a hardcoded one.
+    profile = knowledge_base.get("profile", {})
+    athlete_profile = dict(profile) if isinstance(profile, Mapping) else {}
+    if effective_vo2max is not None:
+        athlete_profile["vo2max"] = effective_vo2max
     return {
         "userId": str(player.id),
         "displayName": player.display_name,
         "timezone": player.timezone,
         "latitude": player.latitude,
         "longitude": player.longitude,
-        "athleteProfile": knowledge_base.get("profile", {}),
+        "athleteProfile": athlete_profile,
+        "vo2maxAsOfDate": vo2max_as_of_date.isoformat() if vo2max_as_of_date else None,
     }
 
 

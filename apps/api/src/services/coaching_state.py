@@ -28,6 +28,11 @@ def _profile_content() -> dict[str, Any]:
         "age": 57,
         "sex": "male",
         "ftpWatts": 280,
+        # Fallback-only (Batch 177 #257): overlaid at packet-build with the live
+        # daily Garmin value (`body_metrics.resolve_effective_vo2max`) whenever one
+        # is on file within the lookback window; this static number is used only
+        # when no live reading exists. Seeding fills missing sections only, so
+        # this cannot be corrected for Mark's existing row by editing it here.
         "vo2max": 54,
         "hrvBandMs": {"low": 43, "high": 57},
         "restingHeartRateBpm": 45,

@@ -6,6 +6,10 @@
 
 ## Now
 
+**2026-07-30 — Batch 177 implementation ready (live VO2max in the packet profile).** `feat/batch-177-live-vo2max` overlays the live daily Garmin VO2max onto `profile.athleteProfile.vo2max` in both the morning and post-workout packets (new `services/body_metrics.resolve_effective_vo2max`, 90-day lookback — VO2max updates far less often than a weigh-in — resolved at packet-build, no new column/migration), with `profile.vo2maxAsOfDate` stating which day the effective figure is from. The static seeded `vo2max: 54` in `coaching_state._profile_content()` stays as a documented fallback-only value (seeding fills missing sections only, so it cannot fix Mark's existing prod row directly). Prompts bumped to `morning-analysis-v24` / `post-workout-analysis-v14`: state the value as live/dated, permit noting a real difference from a previously-stated figure, but forbid inventing a trend from memory. `_age_comparison`/`_morning_verdict` were already reading live VO2max (not hardcoded) and are untouched — only the packet's `athleteProfile` mirror was stale; the deterministic Green/Amber/Red ladder is unchanged. Backend-only; no migration/shared-schema/new-endpoint/frontend/provider/auth/hosting change. Local gates pass: backend pytest 722 passed / 300 expected PostgreSQL skips; Ruff clean; mypy clean across 125 source files. Decision #257; branch not promoted.
+
+---
+
 **2026-07-29 — Batch 176 shipped (weight → watts-per-kg in the ride read).** PR #205 / squash `c14d154` carries Mark's most recent Garmin weigh-in forward (new `services/body_metrics.resolve_effective_weight_kg`, 7-day lookback, resolved at packet-build with no new column/migration) and computes a `powerToWeight` block (FTP W/kg headline, whole-ride and work-interval W/kg) into the post-workout packet; prompt bumped to v13 to lead with W/kg when present and to state plainly when no recent weight is on file rather than fabricating one. Brief-chat inherits the figures automatically via the stored context packet. Ride-only scope (morning packet + trend series deferred, per acceptance criteria's optional scope). Backend-only; no migration/shared-schema/new-endpoint/frontend/provider/auth/hosting/verdict change — explanatory-only, does not touch Green/Amber/Red. Branch-push, PR-context, and post-merge `main` CI passed all seven jobs. Production verified exact-SHA Railway + Vercel health on `c14d154`, web `/` 200, and protected daily-loop 401 direct/proxied. Decision #256. **Next:** Batch 177 (VO2 max read live from Garmin) is the next unshipped batch in `docs/phase-batches.md`.
 
 ---
@@ -15,6 +19,10 @@
 ---
 
 ## Log
+
+**2026-07-30 — Batch 177 implementation ready:** `feat/batch-177-live-vo2max` adds `services/body_metrics.resolve_effective_vo2max` (90-day lookback) and overlays the effective value onto `profile.athleteProfile.vo2max` in both packets, with `profile.vo2maxAsOfDate` alongside it; the static profile seed stays as a documented fallback only. Prompts bumped to v24/v14 with guidance to state the value as live/dated without inventing a trend. No verdict-ladder change. Local gates green: backend pytest 722 passed / 300 expected DB skips; Ruff/mypy clean. Decision #257; branch not promoted.
+
+---
 
 **2026-07-29 — Batch 175 shipped:** PR #204 / squash `4aeb5c1`; brief-chat now answers general endurance-science from established physiology when labelled `General principle:`, while Mark-specific data/prescription stays packet-bound and plan changes stay propose/confirm. Red-never-VO2 and deterministic floors are unchanged. First PR pytest found newline-sensitive assertions in new DB-backed tests; amended branch commit `9750d22` fixed them, after which branch, PR-context, and post-merge `main` CI passed all seven jobs. Production verified exact-SHA Railway + Vercel health, web `/` 200, and protected brief-chat POST 401 direct/proxied. Backend prompt-policy + tests/docs only; no migration/frontend/shared-schema/provider/auth/hosting change. Decision #255; no unshipped batch rows remain.
 
