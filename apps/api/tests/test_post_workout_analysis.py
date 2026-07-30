@@ -691,6 +691,99 @@ async def test_context_packet_omits_power_to_weight_with_no_weight_on_file(
 
 
 @pytest.mark.asyncio
+async def test_context_packet_overlays_live_vo2max_onto_athlete_profile(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 177 (#257): a live daily VO2max reading within the lookback window
+    overlays the static seeded profile number (54) in athleteProfile."""
+
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="VO2max Packet",
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+
+        # Ride is on 2026-01-05; the VO2max reading is from a month earlier, well
+        # inside the 90-day lookback window.
+        session.add(
+            DailyMetric(
+                user_id=user_id,
+                calendar_date=date(2025, 12, 5),
+                vo2max=55.0,
+                raw_payload={},
+            )
+        )
+
+        activity = Activity(
+            user_id=user_id,
+            garmin_activity_id=770004,
+            activity_name="Free ride",
+            activity_type="indoor_cycling",
+            start_utc=datetime(2026, 1, 5, 11, 0),
+            duration_sec=1200,
+            avg_power_watts=180,
+            raw_summary={},
+        )
+        session.add(activity)
+        await session.flush()
+        await session.commit()
+
+        packet = await PostWorkoutAnalysisService(session).assemble_context_packet(player, activity)
+
+        assert packet["profile"]["athleteProfile"]["vo2max"] == 55.0
+        assert packet["profile"]["vo2maxAsOfDate"] == "2025-12-05"
+
+
+@pytest.mark.asyncio
+async def test_context_packet_falls_back_to_static_vo2max_with_no_reading_on_file(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 177 (#257): with no live VO2max reading in the window, the packet
+    falls back to the static seeded profile number rather than surfacing None."""
+
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="No VO2max Packet",
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+
+        activity = Activity(
+            user_id=user_id,
+            garmin_activity_id=770005,
+            activity_name="Free ride",
+            activity_type="indoor_cycling",
+            start_utc=datetime(2026, 1, 5, 11, 0),
+            duration_sec=1200,
+            avg_power_watts=180,
+            raw_summary={},
+        )
+        session.add(activity)
+        await session.flush()
+        await session.commit()
+
+        packet = await PostWorkoutAnalysisService(session).assemble_context_packet(player, activity)
+
+        assert packet["profile"]["athleteProfile"]["vo2max"] == 54
+        assert packet["profile"]["vo2maxAsOfDate"] is None
+
+
+@pytest.mark.asyncio
 async def test_context_packet_prefers_delivered_proposal_ir_for_grading(
     db_conn: AsyncConnection,
 ) -> None:

@@ -30,7 +30,7 @@ from src.services.analysis_currentness import (
     manual_entry_input_version,
 )
 from src.services.anthropic_text import generate_anthropic_text
-from src.services.body_metrics import resolve_effective_weight_kg
+from src.services.body_metrics import resolve_effective_vo2max, resolve_effective_weight_kg
 from src.services.bulk_post_activity_lookups import (
     generation_statuses_by_activity,
     latest_analyses_by_activity,
@@ -88,7 +88,11 @@ from src.services.workout_delivery import (
 # Batch 176: the packet carries the most recent weigh-in within a 7-day window
 # (with its as-of date) and a computed powerToWeight block, so the read leads
 # with W/kg instead of admitting it has no bodyweight to compare against.
-PROMPT_VERSION = "post-workout-analysis-v13-2026-07-29"
+# Batch 177: profile.athleteProfile.vo2max is now the live daily Garmin value
+# (falling back to the stored baseline only when no live reading is on file
+# within the lookback window), with profile.vo2maxAsOfDate stating which day
+# it's from. Explanatory only — VO2max never touches the verdict ladder.
+PROMPT_VERSION = "post-workout-analysis-v14-2026-07-29"
 ANALYSIS_TYPE = "post_workout"
 
 # A planned session Mark told the app he was not doing (``skip_workout`` /
@@ -173,7 +177,16 @@ figures (`wholeRideAvgWattsPerKg`, `workIntervalAvgWattsPerKg`) are present —
 because it is the more meaningful comparison than raw watts. `weightAsOfDate`
 may be earlier than today; if it is, say the weight is from that date, not
 today's. When `powerToWeight` is absent (`weightOnFile` is false), say plainly
-that no recent weight is on file rather than estimating or inventing one."""
+that no recent weight is on file rather than estimating or inventing one.
+
+profile.athleteProfile.vo2max is Garmin's live measured value as of
+profile.vo2maxAsOfDate, not a fixed baseline — it may differ from a number you
+recall stating in a previous read, and that difference is real, not an error.
+State it as his current VO2max; if vo2maxAsOfDate is not today, say the reading
+is from that date rather than implying it was measured today. Only remark on a
+change if you are comparing against a figure explicitly given elsewhere in this
+same packet — never invent a trend from memory or from a single reading alone.
+This is explanatory context only and never touches the workout rating."""
 SYSTEM_PROMPT = "\n\n".join((SYSTEM_PROMPT, LEARNED_CONTEXT_PROMPT_GUARDRAIL))
 
 
@@ -378,6 +391,9 @@ class PostWorkoutAnalysisService:
         weight_kg, weight_as_of_date = await resolve_effective_weight_kg(
             self.session, player.id, subject_date
         )
+        effective_vo2max, vo2max_as_of_date = await resolve_effective_vo2max(
+            self.session, player.id, subject_date
+        )
         time_series_summary = _time_series_summary(timeseries, ftp_watts)
         recovery_decision = _recovery_decision_packet(activity)
         grading_target = await self._ride_grading_target(
@@ -444,7 +460,8 @@ class PostWorkoutAnalysisService:
                 "userId": str(player.id),
                 "displayName": player.display_name,
                 "timezone": player.timezone,
-                "athleteProfile": knowledge_base.get("profile", {}),
+                "athleteProfile": _athlete_profile_packet(knowledge_base, effective_vo2max),
+                "vo2maxAsOfDate": vo2max_as_of_date.isoformat() if vo2max_as_of_date else None,
                 "ftpWatts": ftp_watts,
                 "weightKg": weight_kg,
                 "weightAsOfDate": weight_as_of_date.isoformat() if weight_as_of_date else None,
@@ -944,6 +961,18 @@ def _analysis_rules(knowledge_base: Mapping[str, Any]) -> dict[str, Any]:
         "dataQualityRules": knowledge_base.get("data_quality_rules", {}),
         "coachingProtocol": knowledge_base.get("coaching_protocol", {}),
     }
+
+
+def _athlete_profile_packet(
+    knowledge_base: Mapping[str, Any], effective_vo2max: float | None
+) -> dict[str, Any]:
+    """Overlay the live daily VO2max onto the static KB profile (Batch 177 #257)."""
+
+    profile = knowledge_base.get("profile", {})
+    athlete_profile = dict(profile) if isinstance(profile, Mapping) else {}
+    if effective_vo2max is not None:
+        athlete_profile["vo2max"] = effective_vo2max
+    return athlete_profile
 
 
 def _ftp_watts(knowledge_base: Mapping[str, Any]) -> int | None:

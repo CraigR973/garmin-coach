@@ -810,6 +810,71 @@ async def test_green_morning_has_no_swap_suggestion(db_conn: AsyncConnection) ->
 
 
 @pytest.mark.asyncio
+async def test_morning_packet_overlays_live_vo2max_onto_athlete_profile(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 177 (#257): a live daily VO2max reading within the lookback window
+    overlays the static seeded profile number (54) in athleteProfile."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 1, 5)
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Morning VO2max Packet",
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+        # The reading is from a month earlier, well inside the 90-day lookback.
+        session.add(
+            DailyMetric(
+                user_id=user_id,
+                calendar_date=date(2025, 12, 5),
+                vo2max=55.0,
+                raw_payload={},
+            )
+        )
+        await session.commit()
+
+        packet = await MorningAnalysisService(session).assemble_context_packet(player, subject_date)
+
+    assert packet["profile"]["athleteProfile"]["vo2max"] == 55.0
+    assert packet["profile"]["vo2maxAsOfDate"] == "2025-12-05"
+
+
+@pytest.mark.asyncio
+async def test_morning_packet_falls_back_to_static_vo2max_with_no_reading_on_file(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 177 (#257): with no live VO2max reading in the window, the packet
+    falls back to the static seeded profile number rather than surfacing None."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 1, 5)
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="No Morning VO2max Packet",
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+        await session.commit()
+
+        packet = await MorningAnalysisService(session).assemble_context_packet(player, subject_date)
+
+    assert packet["profile"]["athleteProfile"]["vo2max"] == 54
+    assert packet["profile"]["vo2maxAsOfDate"] is None
+
+
+@pytest.mark.asyncio
 async def test_cautious_morning_says_no_vo2_this_week_when_it_cannot_be_repatched(
     db_conn: AsyncConnection,
 ) -> None:
@@ -961,7 +1026,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v23")
+    assert PROMPT_VERSION.startswith("morning-analysis-v24")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
