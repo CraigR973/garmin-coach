@@ -138,11 +138,15 @@ async def _make_planned_workout(
     status: str = "planned",
     workout_date: date | None = None,
     workout_type: str = "bike_sweet_spot",
+    version: int = 1,
 ) -> PlannedWorkout:
     workout = PlannedWorkout(
         id=uuid.uuid4(),
         user_id=user_id,
         workout_date=workout_date or TODAY,
+        # A split day writes its rows as ascending versions (`plan_import`), and
+        # `(user_id, workout_date, version)` is unique — siblings, not revisions.
+        version=version,
         title="Sweet spot",
         workout_type=workout_type,
         status=status,
@@ -493,8 +497,10 @@ async def test_propose_affordance_follows_the_plan_not_the_read_type(
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     async with session_factory() as session:
         user = await _make_profile(session)
-        await _make_planned_workout(session, user.id, status="completed", workout_type="walking")
-        live_ride = await _make_planned_workout(session, user.id)
+        await _make_planned_workout(
+            session, user.id, status="completed", workout_type="walking", version=1
+        )
+        live_ride = await _make_planned_workout(session, user.id, version=2)
         analysis = await _make_analysis(
             session, user.id, analysis_type="post_walk", context_packet={}
         )
