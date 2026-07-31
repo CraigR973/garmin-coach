@@ -240,8 +240,8 @@ morning brief); the helper treats `stop_reason == "max_tokens"` as an error so a
 truncated response is never persisted as a finished analysis — the existing
 staleness/regeneration path reruns it instead. No prompt or verdict change.
 
-**Coach conversation context (Batch 119; ask-time assembly in Batch 178,
-DECISIONS #258).** A follow-up chat on a read was originally grounded in exactly
+**Coach conversation context (Batch 119; ask-time assembly in Batch 178, PR #207
+/ squash `5d5abee`, DECISIONS #258).** A follow-up chat on a read was originally grounded in exactly
 one thing: that read's `context_packet`, frozen when the read was generated. From
 Batch 178 the stored packet remains the read's own record — the read's markdown
 was written from it — and `services/chat_context.py` layers a freshly assembled
