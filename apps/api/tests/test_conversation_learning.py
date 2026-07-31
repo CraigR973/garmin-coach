@@ -487,3 +487,51 @@ async def test_accept_rejects_an_edited_verdict_lever(db_conn: AsyncConnection) 
             )
 
     assert getattr(excinfo.value, "status_code", None) == 422
+
+
+@pytest.mark.asyncio
+async def test_an_unanchored_message_is_still_a_learning_source(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 179.2 — the regression this batch could most easily have caused.
+
+    Making ``analysis_id`` nullable while leaving the inner joins in place would
+    have dropped every unanchored message out of this pipeline with no error at
+    all: Mark's best conversations, the ones he starts by just opening the
+    coach, would quietly stop teaching it anything.
+    """
+    factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with factory() as session:
+        player = await _profile(session)
+        unanchored = BriefMessage(
+            user_id=player.id,
+            analysis_id=None,
+            origin_kind="sleep",
+            origin_date=date(2026, 7, 24),
+            role="user",
+            content="I always sleep badly the night before a hard turbo session.",
+            created_utc=datetime(2026, 7, 24, 21, 30),
+        )
+        session.add(unanchored)
+        await session.commit()
+        await session.refresh(unanchored)
+
+        service = ConversationLearningService(session)
+        sources = await service._sources(player.id, now=datetime(2026, 7, 25, 6, 0))
+        resolved = await service._current_evidence_source(
+            player.id, f"chat:{unanchored.id}", "chat"
+        )
+
+    assert [source.source_id for source in sources] == [f"chat:{unanchored.id}"]
+    assert sources[0].analysis_id is None
+    assert sources[0].analysis_type is None
+    # With no read to take a subject date from, the origin says which day it was
+    # about; the text itself is unchanged.
+    assert sources[0].source_date == date(2026, 7, 24)
+    assert "hard turbo session" in sources[0].text
+
+    # And it stays re-verifiable evidence, so an accepted memory can be checked
+    # against its source rather than becoming an unresolvable id.
+    assert resolved is not None
+    assert resolved.source_date == date(2026, 7, 24)
+    assert resolved.analysis_id is None

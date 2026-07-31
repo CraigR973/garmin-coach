@@ -544,27 +544,40 @@ class Feedback(Base, UUIDPrimaryKeyMixin):
 
 
 class BriefMessage(Base, UUIDPrimaryKeyMixin):
-    """One turn of the follow-up chat on an analysis read (Batch 119/150).
+    """One turn of Mark's coach conversation (Batch 119/150, opened up by 179).
 
-    Every AI summary/read is one ``analyses`` row, so a conversation about it
-    is keyed to ``analysis_id`` — same referential pattern as ``Feedback``.
-    ``role`` is ``user`` or ``assistant``; history threads via ``created_utc``.
-    ``proposed_planned_workout_id`` is set on a morning assistant turn only
-    when the deterministic keyword check (not the model) flags the question as
-    wanting a plan adjustment and today's planned workout is deliverable; it
+    The rows *are* the thread: one rolling per-user conversation ordered by
+    ``created_utc``, with ``role`` either ``user`` or ``assistant``. Batch 179
+    made ``analysis_id`` **nullable** — the schema used to assert that a
+    conversation cannot exist without a document, which is why the Sleep page
+    (no ``Analysis`` of its own) and the breathwork/strength/walking briefs (not
+    ``analyses`` rows at all) could not host one. An anchor is now a *context
+    seed*: it says which read a question was asked from, not what the
+    conversation is allowed to be about. ``origin_kind``/``origin_date`` carry
+    the same seed for surfaces with no analysis row.
+
+    ``proposed_planned_workout_id`` is set on an assistant turn only when the
+    deterministic keyword check (not the model) flags the question as wanting a
+    plan adjustment *and* today's real plan holds a live, deliverable workout —
+    Batch 179.3 re-keyed that gate off ``analysis_type`` onto plan state. It
     points at the *existing* propose endpoint the frontend calls on confirm,
-    never a new mutation path. Post-workout reads are advisory-only.
+    never a new mutation path.
     """
 
     __tablename__ = "brief_messages"
-    __table_args__ = (Index("ix_brief_messages_analysis_created", "analysis_id", "created_utc"),)
+    __table_args__ = (
+        Index("ix_brief_messages_analysis_created", "analysis_id", "created_utc"),
+        Index("ix_brief_messages_user_created", "user_id", "created_utc"),
+    )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
     )
-    analysis_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("analyses.id", ondelete="CASCADE"), nullable=False
+    analysis_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("analyses.id", ondelete="CASCADE"), nullable=True
     )
+    origin_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    origin_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     proposed_planned_workout_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("planned_workouts.id", ondelete="SET NULL"), nullable=True
     )

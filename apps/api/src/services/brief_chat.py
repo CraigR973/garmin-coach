@@ -1,43 +1,43 @@
-"""Follow-up chat on an analysis read (Batch 119, extended by Batch 150).
+"""Mark's coach conversation (Batch 119 → 150 → 178, opened up by Batch 179).
 
-Today's morning brief only answers one question left in Mark's check-in notes
-(``morning_analysis.SYSTEM_PROMPT``'s "your question" rule). This adds a real
-back-and-forth: he can ask further questions about an already-generated brief
-and get an answer grounded in that read's stored ``context_packet`` — no new
-claims beyond what the packet already holds, mirroring the read's own
-guardrails.
+This started as a follow-up chat bolted to one generated read and grew into the
+only place Mark talks to his coach. Batch 179 finished that: there is now **one
+rolling conversation**, reachable from any surface, and the document a question
+was asked from is a context seed rather than a fence.
 
-Kickoff decisions (Batch 119.3, `/batch-start`):
+Kickoff decisions carried forward:
 
-* **Storage** — a new ``brief_messages`` table keyed to ``analysis_id`` (same
-  referential pattern as ``Feedback``), not a transient/in-memory history.
-* **Turn cap** — :data:`MAX_USER_TURNS_PER_ANALYSIS` user turns per brief.
-* **Action scope** — a morning-brief follow-up can surface a suggestion to propose an
-  adjustment to today's ride, but the model never triggers a mutation itself.
-  A **deterministic keyword check on Mark's own question** (not the model's
-  answer) decides whether to attach ``proposed_planned_workout_id``; the
-  frontend then shows a confirm button that calls the *existing*
-  ``POST /api/v1/workout-delivery/planned-workouts/{id}/proposals`` endpoint
-  used by Delivery today — this module never calls it directly, so the
-  propose→approve→push gate (Decision #29) stays exactly as it is.
-* **Batch 150 action scope** — post-workout follow-ups reuse this same table and
-  endpoint, but are advisory-only: no proposal affordance on completed-session
-  reads.
+* **Batch 119.3** — turns are rows in ``brief_messages``; a plan change is only
+  ever *offered*, chosen by a deterministic keyword check on **Mark's own
+  question** (never the model's answer), and applied through the existing
+  ``POST /api/v1/workout-delivery/planned-workouts/{id}/proposals`` endpoint, so
+  the propose→approve→push gate (Decision #29) is untouched.
+* **Batch 178** — context is assembled when the question is asked, not frozen at
+  read time (:mod:`src.services.chat_context`), and the app's internal
+  vocabulary never reaches Mark.
 
-Batch 178 kickoff decisions (`/batch-start`):
+Batch 179 kickoff decisions (`/batch-start`):
 
-* **Context is assembled when the question is asked**, not frozen at read time.
-  The stored ``context_packet`` stays the read's own record — the read's markdown
-  was written from it — and :mod:`src.services.chat_context` layers current app
-  state (week ahead, trend series, latest review conclusions, recent sessions,
-  sleep history, and what has happened since the read) alongside it.
-* **The internal vocabulary never reaches Mark.** The prompt describes what the
-  coach has in front of him, not the app's data structures, and explicitly bans
-  the plumbing nouns. Honesty is unchanged — only the register.
-* **The proposal gate is untouched, but a dead affordance is retired.** The
-  ``analysis_type == "morning"`` gate stays exactly as it is (re-keying it to
-  live plan state is Batch 179.3's job); ask-time state is used only to *drop* a
-  proposal for a ride Mark has since completed or skipped, never to add one.
+* **One rolling thread, nullable anchor.** The rows already were the thread, so
+  ``analysis_id`` simply became optional (migration 026) rather than growing a
+  ``conversations``/``conversation_messages`` pair. History for the prompt is
+  the tail of the *conversation*, not of one document, so it survives a read
+  rolling over; the per-read view stays readable because filtering by
+  ``analysis_id`` still selects exactly the rows it always did.
+* **The cap moved with it.** A per-document cap made no sense once the document
+  stopped bounding the conversation, so :data:`MAX_USER_TURNS_PER_DAY` bounds
+  the paid calls over Mark's local day instead.
+* **The propose gate is keyed on the plan, not the paperwork** (179.3). The old
+  ``analysis_type == "morning"`` test was a proxy for "there is a live
+  adjustable ride"; :attr:`ChatContext.adjustable_workout_id` answers that
+  question directly from live plan rows, so the affordance appears from every
+  entry point exactly when it can do something — and is absent on a rest day,
+  inside a holiday, or once the ride is completed or skipped, which is what
+  "never on a retrospective read" means in plan terms. Blocking a genuine "make
+  today easier" just because it was asked from yesterday's read would recreate
+  the document-fencing this batch exists to remove.
+* **The rules live in one module** (:mod:`src.services.coach_policy`), so every
+  entry point is handed the same floors.
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any, Protocol
 
 from fastapi import HTTPException, status
@@ -56,99 +56,90 @@ from src.config import settings
 from src.models.coaching import Analysis, BriefMessage
 from src.models.profile import Profile
 from src.services.anthropic_text import generate_anthropic_text
-from src.services.chat_context import ChatContextService, app_state_json
+from src.services.chat_context import (
+    ChatContextService,
+    CoachOrigin,
+    app_state_json,
+    day_start_utc,
+    local_date,
+    normalize_origin_kind,
+)
+from src.services.coach_policy import (
+    ANTI_SYCOPHANCY_RULE,
+    GENERAL_SCIENCE_RULE,
+    GROUNDING_RULE,
+    INTERNAL_VOCABULARY,
+    NO_PLUMBING_RULE,
+    PROPOSE_CONFIRM_RULE,
+    floors_sentence,
+    internal_vocabulary_hits,
+)
 from src.services.workload_budget import workload_slot
-from src.services.workout_categories import is_bike_workout_type
+
+__all__ = [
+    "INTERNAL_VOCABULARY",
+    "MAX_HISTORY_TURNS_IN_PROMPT",
+    "MAX_USER_TURNS_PER_DAY",
+    "NO_PLUMBING_RULE",
+    "PROMPT_VERSION",
+    "QUESTION_MAX_LENGTH",
+    "SYSTEM_PROMPT",
+    "THREAD_PAGE_LIMIT",
+    "AnthropicBriefChatClient",
+    "BriefChatClient",
+    "BriefChatError",
+    "BriefChatService",
+    "BriefChatTurn",
+    "internal_vocabulary_hits",
+]
 
 ROLE_USER = "user"
 ROLE_ASSISTANT = "assistant"
 
-MAX_USER_TURNS_PER_ANALYSIS = 10
+#: Paid Anthropic calls per local day. Batch 179 replaced the per-read cap of 10
+#: with a daily one: two reads used to allow 20 questions across two dead-end
+#: chats, so this is the same order of spend spent on one conversation that
+#: actually continues.
+MAX_USER_TURNS_PER_DAY = 20
 MAX_HISTORY_TURNS_IN_PROMPT = 10
+#: Messages returned when the whole thread is read. The conversation is rolling,
+#: so the API returns a recent window rather than everything Mark has ever asked.
+THREAD_PAGE_LIMIT = 60
 QUESTION_MAX_LENGTH = 1000
 
-PROMPT_VERSION = "brief-chat-v5-2026-07-30"
+PROMPT_VERSION = "coach-chat-v6-2026-07-31"
 
-# Batch 178.1: the words the app uses about itself. The old prompt said "packet"
-# eight times and told the model to say when the packet could not answer, so
-# Mark was told his question was not "in the packet". These never reach him.
-INTERNAL_VOCABULARY = (
-    "context packet",
-    "packet",
-    "json",
-    "schema",
-    "database field",
-    "context block",
-    "data structure",
-)
+SYSTEM_PROMPT = f"""You are CheckMark, Mark's coach, talking with him.
 
-
-def internal_vocabulary_hits(text: str) -> tuple[str, ...]:
-    """Internal nouns present in user-facing text.
-
-    Batch 178.1 fixes the leak at its source — the prompt no longer gives the
-    model this wording — and this makes the contract checkable: over the prompt
-    itself, over every string this module can put in front of Mark, and over a
-    stored answer.
-    """
-    lowered = text.lower()
-    return tuple(term for term in INTERNAL_VOCABULARY if term in lowered)
-
-
-#: The one place the internal nouns are allowed to appear: naming them in order
-#: to forbid them. Tests assert that the rest of the prompt is free of them, so
-#: there is no wording left for the model to copy back to Mark.
-NO_PLUMBING_RULE = (
-    "Never describe the app's own plumbing: do not say packet, context packet, "
-    "JSON, schema, database field, or context block, and never tell Mark that "
-    "something is missing from a data structure."
-)
-
-SYSTEM_PROMPT = f"""You are CheckMark, Mark's coach, talking with him about a read
-you wrote for him.
-
-You have three things in front of you: the read itself, the information that read
-was written from, and where the app stands right now - his week ahead, his
+You have where the app stands right now in front of you - his week ahead, his
 measured trend series, his latest review conclusions, his recent sessions and
-sleep, and anything that has happened since the read was written. Use all of it.
-If the answer to his question is something the app has already worked out, give
-him that answer rather than telling him you cannot see it.
+sleep, and today's plan - and, when he asked from one of your reads, that read
+and the information it was written from. Use all of it. If the answer to his
+question is something the app has already worked out, give him that answer
+rather than telling him you cannot see it.
 
-Ground everything you say about Mark in that information: never invent his
-metrics, plan, history, readiness, or prescription. When something genuinely is
-not in front of you, say it the way a coach would - "I don't have your sleep
-history from before June here" - and offer what you do have. {NO_PLUMBING_RULE}
-If something says it was trimmed for length, that means you cannot see it right
-now, not that the app does not hold it - say so that way.
+This is one continuing conversation, not a fresh start on each page. Mark may
+open it from anywhere; where he opened it tells you what he is most likely
+asking about, but it does not limit what he can ask. Earlier turns may be about
+a different day or a different session - carry them forward rather than
+pretending they did not happen.
 
-Where the current state and the read disagree, the current state is what is true
+{GROUNDING_RULE}
+
+Where the current state and a read disagree, the current state is what is true
 now and the read is what was true when it was written; say which is which rather
 than repeating a figure that has moved on.
 
-You may answer general, non-personalized endurance-training science questions
-from established exercise physiology even when Mark's own information does not
-cover that background. Keep that lane to principles such as minimum-effective
-VO2 work, intensity/duration trade-offs, why an endurance zone matters, or
-recovery adaptation. Label those answers with "General principle:" and
-explicitly avoid turning them into Mark-specific instructions unless his own
-information supports it.
+{GENERAL_SCIENCE_RULE}
 
-Any actual workout change remains confirm-before-apply. You cannot change the
-plan yourself; if Mark asks to alter a live workout, keep the answer in the
-existing propose/confirm path and quote the app's own adjustment figures when
-they are there.
+{PROPOSE_CONFIRM_RULE}
 
-Keep the same floors as the original read: never recommend VO2 on a Red day, never
-reference left/right power balance, state any clock times in Mark's local
-timezone (never UTC), and never narrate a skipped or holiday workout as if it
-were live training.
+{floors_sentence()}
 
 Keep answers short and conversational - a few sentences, not a restatement of
-the whole read. Do not cave to reassurance pressure: if Mark asks you to soften,
-ignore, or talk around a hard recovery signal, hold the line kindly and keep the
-deterministic verdict intact."""
+the whole read. {ANTI_SYCOPHANCY_RULE}"""
 
-# Human labels for the read under discussion. The old prompt passed the raw
+# Human labels for the read under discussion. The pre-178 prompt passed the raw
 # ``analysis_type`` ("Read type: post_workout"), which is another internal name.
 _READ_LABELS = {
     "morning": "this morning's brief",
@@ -156,6 +147,16 @@ _READ_LABELS = {
     "post_walk": "the read on his completed walk",
     "post_strength": "the read on his completed strength session",
     "post_flexibility": "the read on his completed mobility session",
+}
+
+#: Which surface an anchored question came from, so the stored row is
+#: self-describing even when the client sends no origin of its own.
+_ANALYSIS_ORIGINS = {
+    "morning": "morning_brief",
+    "post_workout": "workout",
+    "post_walk": "workout",
+    "post_strength": "workout",
+    "post_flexibility": "workout",
 }
 
 
@@ -231,35 +232,6 @@ def _wants_adjustment(question: str) -> bool:
     return any(keyword in lowered for keyword in _ADJUSTMENT_KEYWORDS)
 
 
-def _todays_adjustable_workout_id(context_packet: dict[str, Any]) -> uuid.UUID | None:
-    """The one planned workout a follow-up could offer to propose against.
-
-    Mirrors ``morning_analysis._todays_bike_workout``'s selection but reads
-    from the already-serialized packet, not live ORM rows, and additionally
-    requires a structured workout (deliverable) and no rest day.
-    """
-    if context_packet.get("restDay", {}).get("isRestDay"):
-        return None
-    for workout in context_packet.get("plannedWorkouts", []):
-        if workout.get("status") in {"completed", "skipped"}:
-            continue
-        if not workout.get("structuredWorkout"):
-            continue
-        if is_bike_workout_type(workout.get("workoutType")):
-            try:
-                return uuid.UUID(workout["id"])
-            except (KeyError, ValueError, TypeError):
-                return None
-    return None
-
-
-def _analysis_allows_adjustment_proposal(analysis: Analysis) -> bool:
-    # Batch 150: completed-session reads are advisory-only. The deterministic
-    # proposal affordance is kept to the morning brief where "today's ride" is
-    # still a live planning action.
-    return analysis.analysis_type == "morning"
-
-
 def _message_ordering() -> tuple[Any, ...]:
     return (
         BriefMessage.created_utc.asc(),
@@ -274,20 +246,38 @@ def _message_ordering() -> tuple[Any, ...]:
 
 def _read_description(analysis: Analysis) -> str:
     label = _READ_LABELS.get(analysis.analysis_type, "a read you wrote for him")
-    return f"You are talking about {label}, written for {analysis.subject_date.isoformat()}."
+    return (
+        f"He asked this from {label}, written for {analysis.subject_date.isoformat()}. "
+        "That is the starting point, not the boundary."
+    )
 
 
-def _capability_instruction(analysis: Analysis) -> str:
-    if _analysis_allows_adjustment_proposal(analysis):
+def _origin_description(origin: CoachOrigin, *, local_today: date) -> str:
+    subject = origin.subject_date or local_today
+    return (
+        f"He opened the conversation from {origin.label} "
+        f"({subject.isoformat()}). That is the starting point, not the boundary; "
+        "there is no read behind this question."
+    )
+
+
+def _capability_instruction(adjustable_workout_id: uuid.UUID | None) -> str:
+    """What the coach may offer, from today's plan rather than the read type.
+
+    Batch 179.3 re-keyed this: the affordance now follows whether a live,
+    deliverable workout actually exists today, so it is right from every entry
+    point instead of only from the morning read.
+    """
+    if adjustable_workout_id is not None:
         return (
-            "Capability for this read: this is a live morning read. You cannot change the "
-            "plan yourself, but if Mark asks for an adjustment, you may say the app can "
-            "propose one for him to confirm there."
+            "Capability right now: today's plan holds a live workout that can still be "
+            "adjusted. You cannot change it yourself, but if Mark asks for an adjustment, "
+            "you may say the app can propose one for him to confirm."
         )
     return (
-        "Capability for this read: this is a completed-session or retrospective read. "
-        "It is advisory-only. Do not say the app can propose, confirm, upload, or change "
-        "a workout from this chat."
+        "Capability right now: there is no live workout to adjust today - it is rest, "
+        "away, or already done. Do not say the app can propose, confirm, upload, or "
+        "change a workout from this conversation."
     )
 
 
@@ -307,6 +297,11 @@ class BriefChatService:
         return analysis
 
     async def history(self, player: Profile, analysis_id: uuid.UUID) -> list[BriefMessage]:
+        """The turns asked from one read.
+
+        Kept exactly as it was so the inline chat on a read still shows that
+        read's own exchange rather than the whole conversation.
+        """
         await self._owned_analysis(player, analysis_id)
         rows = (
             (
@@ -321,14 +316,53 @@ class BriefChatService:
         )
         return list(rows)
 
+    async def thread(
+        self,
+        player: Profile,
+        *,
+        limit: int = THREAD_PAGE_LIMIT,
+    ) -> list[BriefMessage]:
+        """The rolling conversation, most recent window, oldest first."""
+        rows = await self._recent_messages(player.id, limit=limit)
+        return rows
+
+    async def _recent_messages(self, user_id: uuid.UUID, *, limit: int) -> list[BriefMessage]:
+        newest_first = (
+            (
+                await self.session.execute(
+                    select(BriefMessage)
+                    .where(BriefMessage.user_id == user_id)
+                    .order_by(
+                        BriefMessage.created_utc.desc(),
+                        case(
+                            (BriefMessage.role == ROLE_ASSISTANT, 0),
+                            (BriefMessage.role == ROLE_USER, 1),
+                            else_=2,
+                        ),
+                        BriefMessage.id.desc(),
+                    )
+                    .limit(limit)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return sorted(
+            newest_first,
+            key=lambda row: (row.created_utc, 0 if row.role == ROLE_USER else 1, str(row.id)),
+        )
+
     async def ask(
         self,
         player: Profile,
-        analysis_id: uuid.UUID,
+        analysis_id: uuid.UUID | None = None,
         *,
         question: str,
+        origin_kind: str | None = None,
+        origin_date: date | None = None,
         client: BriefChatClient | None = None,
         commit: bool = True,
+        now: datetime | None = None,
     ) -> BriefChatTurn:
         cleaned = question.strip()
         if not cleaned:
@@ -341,49 +375,38 @@ class BriefChatService:
                 detail=f"Question must be {QUESTION_MAX_LENGTH} characters or fewer.",
             )
 
-        analysis = await self._owned_analysis(player, analysis_id)
-
-        turn_count = await self.session.scalar(
-            select(func.count())
-            .select_from(BriefMessage)
-            .where(BriefMessage.analysis_id == analysis_id, BriefMessage.role == ROLE_USER)
+        analysis = (
+            await self._owned_analysis(player, analysis_id) if analysis_id is not None else None
         )
-        if (turn_count or 0) >= MAX_USER_TURNS_PER_ANALYSIS:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=(
-                    f"This read's chat is limited to {MAX_USER_TURNS_PER_ANALYSIS} questions. "
-                    "Ask again on tomorrow's read, or note it at your next check-in."
-                ),
-            )
 
-        prior_rows = (
-            (
-                await self.session.execute(
-                    select(BriefMessage)
-                    .where(BriefMessage.analysis_id == analysis_id)
-                    .order_by(*_message_ordering())
-                )
-            )
-            .scalars()
-            .all()
+        # ``now`` is injectable because the propose gate and the daily cap are
+        # both anchored to Mark's local day (179.3/179.4); a test that cannot
+        # name "today" cannot exercise either.
+        now = now or _utcnow()
+        local_today = local_date(now, player.timezone)
+        await self._enforce_daily_cap(player, local_today)
+
+        resolved_origin_kind = (
+            _ANALYSIS_ORIGINS.get(analysis.analysis_type, "general")
+            if analysis is not None and origin_kind is None
+            else normalize_origin_kind(origin_kind)
         )
-        prior_messages = [
-            {"role": row.role, "content": row.content}
-            for row in prior_rows[-(MAX_HISTORY_TURNS_IN_PROMPT * 2) :]
-        ]
+        origin = CoachOrigin(kind=resolved_origin_kind, subject_date=origin_date)
 
-        now = _utcnow()
+        prior_rows = await self._recent_messages(player.id, limit=MAX_HISTORY_TURNS_IN_PROMPT * 2)
+        prior_messages = [{"role": row.role, "content": row.content} for row in prior_rows]
+
         # Batch 178.2: assembled now, not frozen at read time, so a ride
         # completed or a plan edited after the read is visible to this answer.
-        context = await ChatContextService(self.session).build(player, analysis, asked_at_utc=now)
-        system_prompt = (
-            f"{SYSTEM_PROMPT}\n\n{_read_description(analysis)}\n\n"
-            f"{_capability_instruction(analysis)}\n\n"
-            f"What you wrote in that read:\n{analysis.output_markdown}\n\n"
-            "Mark's information behind that read, as it stood when you wrote it:\n"
-            f"{_packet_json(analysis.context_packet)}\n\n"
-            f"Where things stand right now:\n{app_state_json(context.app_state)}"
+        context = await ChatContextService(self.session).build(
+            player, analysis, asked_at_utc=now, origin=origin
+        )
+        system_prompt = _build_system_prompt(
+            analysis=analysis,
+            origin=origin,
+            local_today=local_today,
+            app_state=context.app_state,
+            adjustable_workout_id=context.adjustable_workout_id,
         )
         chat_client = client or AnthropicBriefChatClient()
         async with workload_slot(workload="anthropic", user_id=player.id):
@@ -393,19 +416,16 @@ class BriefChatService:
                 prior_messages=prior_messages,
             )
 
-        proposed_id = None
-        if _analysis_allows_adjustment_proposal(analysis) and _wants_adjustment(cleaned):
-            proposed_id = _todays_adjustable_workout_id(analysis.context_packet)
-            # Batch 178.2: the gate itself is unchanged (Batch 179.3 re-keys it),
-            # but ask-time state retires an affordance the frozen packet would
-            # still offer for a ride Mark has since completed or skipped. This
-            # can only ever remove a proposal, never add one.
-            if proposed_id is not None and not context.workout_is_live(proposed_id):
-                proposed_id = None
+        # Batch 179.3: one deterministic question — is there a live workout to
+        # adjust today — replacing the read-type proxy and the frozen-packet
+        # lookup. The model still triggers nothing.
+        proposed_id = context.adjustable_workout_id if _wants_adjustment(cleaned) else None
 
         user_message = BriefMessage(
             user_id=player.id,
             analysis_id=analysis_id,
+            origin_kind=resolved_origin_kind,
+            origin_date=origin_date,
             role=ROLE_USER,
             content=cleaned,
             created_utc=now,
@@ -413,6 +433,8 @@ class BriefChatService:
         assistant_message = BriefMessage(
             user_id=player.id,
             analysis_id=analysis_id,
+            origin_kind=resolved_origin_kind,
+            origin_date=origin_date,
             role=ROLE_ASSISTANT,
             content=answer,
             proposed_planned_workout_id=proposed_id,
@@ -427,6 +449,50 @@ class BriefChatService:
         else:
             await self.session.flush()
         return BriefChatTurn(user_message=user_message, assistant_message=assistant_message)
+
+    async def _enforce_daily_cap(self, player: Profile, local_today: date) -> None:
+        since = day_start_utc(local_today, player.timezone)
+        asked_today = await self.session.scalar(
+            select(func.count())
+            .select_from(BriefMessage)
+            .where(
+                BriefMessage.user_id == player.id,
+                BriefMessage.role == ROLE_USER,
+                BriefMessage.created_utc >= since,
+            )
+        )
+        if (asked_today or 0) >= MAX_USER_TURNS_PER_DAY:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"You've asked {MAX_USER_TURNS_PER_DAY} questions today. "
+                    "Pick it up tomorrow, or note it at your next check-in."
+                ),
+            )
+
+
+def _build_system_prompt(
+    *,
+    analysis: Analysis | None,
+    origin: CoachOrigin,
+    local_today: date,
+    app_state: dict[str, Any],
+    adjustable_workout_id: uuid.UUID | None,
+) -> str:
+    parts = [SYSTEM_PROMPT]
+    if analysis is not None:
+        parts.append(_read_description(analysis))
+    else:
+        parts.append(_origin_description(origin, local_today=local_today))
+    parts.append(_capability_instruction(adjustable_workout_id))
+    if analysis is not None:
+        parts.append(f"What you wrote in that read:\n{analysis.output_markdown}")
+        parts.append(
+            "Mark's information behind that read, as it stood when you wrote it:\n"
+            f"{_packet_json(analysis.context_packet)}"
+        )
+    parts.append(f"Where things stand right now:\n{app_state_json(app_state)}")
+    return "\n\n".join(parts)
 
 
 def _packet_json(context_packet: dict[str, Any]) -> str:

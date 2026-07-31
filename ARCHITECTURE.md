@@ -259,6 +259,31 @@ the shared Anthropic text boundary has no tool support and the app's builders ar
 already cheap and unit-tested. Explanatory only — it cannot move Green/Amber/Red
 or any floor, and plan changes stay on the propose/confirm rail (#29).
 
+**One coach conversation (Batch 179, DECISIONS #259).** Until this batch the
+schema asserted that a conversation cannot exist without a document —
+`brief_messages.analysis_id` was `NOT NULL` — so there was no way to just ask the
+coach something, and Sleep (which borrows the morning read) and the
+breathwork/strength/walking briefs (not `analyses` rows at all) could not host a
+chat. Migration `026` makes the anchor optional, and the rows now *are* one
+rolling per-user thread: the read a question came from is a **context seed**, not
+a fence, and `origin_kind`/`origin_date` carry the same seed for the surfaces
+with no read. `GET|POST /api/v1/coach/messages` serves that thread from a
+launcher mounted app-wide in `Layout`; the per-read
+`/api/v1/briefs/{id}/messages` surface is unchanged and still lists only that
+read's turns, so a brief shows its own exchange while both write into one
+conversation. Three consequences are load-bearing: the learning pipeline's joins
+to `analyses` became **outer** joins, or every unanchored message would have
+dropped out of Batch 151's distillation silently; the turn cap moved from
+per-document to per-local-day, because a document no longer bounds the
+conversation; and the propose affordance is keyed on **today's real plan state**
+(`ChatContext.adjustable_workout_id` — active, unclosed, structured, a bike
+session, and not inside a holiday window) rather than on `analysis_type`, so it
+appears from any entry point exactly when something is adjustable. The floors,
+the grounding and no-plumbing rules, the Batch 175 science lane, propose/confirm
+and anti-sycophancy live in one `services/coach_policy.py` registry the
+conversation composes from, and the deterministic read prompts are audited
+against it rather than rewritten. Decision #29 and Red-never-VO2 are untouched.
+
 ## 5. Data model (sketch — build from real JSON shapes in `~/garmin-spike/out/`)
 
 - `profiles` (display name/role, timezone, lat/long, Garmin user profile pk, Hive home id;

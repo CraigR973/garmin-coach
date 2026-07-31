@@ -403,6 +403,20 @@ def filter_candidates(
     return accepted
 
 
+def _chat_source_date(message: BriefMessage, analysis: Analysis | None) -> date:
+    """The day a chat source belongs to.
+
+    Batch 179 made the anchor optional, so a message may have no read to take a
+    subject date from. The origin the question was asked from is the next best
+    statement of what day it was about; failing that, the day it was asked.
+    """
+    if analysis is not None:
+        return analysis.subject_date
+    if message.origin_date is not None:
+        return message.origin_date
+    return message.created_utc.date()
+
+
 def _fingerprint(candidate: ExtractedCandidate) -> str:
     evidence_ids = sorted({evidence.source_id for evidence in candidate.evidence})
     payload = json.dumps(
@@ -428,10 +442,14 @@ class ConversationLearningService:
     ) -> list[LearningSource]:
         cutoff = now - timedelta(days=SOURCE_WINDOW_DAYS)
 
+        # Batch 179.2: an OUTER join, because ``analysis_id`` is now nullable.
+        # An inner join here would have made every unanchored message vanish
+        # from this pipeline silently — no error, just Mark's best conversations
+        # quietly ceasing to be learning sources.
         chat_rows = (
             await self.session.execute(
                 select(BriefMessage, Analysis)
-                .join(Analysis, BriefMessage.analysis_id == Analysis.id)
+                .outerjoin(Analysis, BriefMessage.analysis_id == Analysis.id)
                 .where(
                     BriefMessage.user_id == user_id,
                     BriefMessage.role == "user",
@@ -494,11 +512,11 @@ class ConversationLearningService:
                     LearningSource(
                         source_id=f"chat:{message.id}",
                         source_type="chat",
-                        source_date=analysis.subject_date,
+                        source_date=_chat_source_date(message, analysis),
                         text=text,
                         occurred_at_utc=message.created_utc,
-                        analysis_id=analysis.id,
-                        analysis_type=analysis.analysis_type,
+                        analysis_id=analysis.id if analysis is not None else None,
+                        analysis_type=analysis.analysis_type if analysis is not None else None,
                     )
                 )
         for entry in checkin_rows:
@@ -713,14 +731,19 @@ class ConversationLearningService:
             return None
 
         if prefix == "chat":
+            # Batch 179.2: outer join for the same reason as ``_sources`` — an
+            # unanchored message must remain re-verifiable evidence, not silently
+            # become an unresolvable source id.
             result = await self.session.execute(
                 select(BriefMessage, Analysis)
-                .join(Analysis, BriefMessage.analysis_id == Analysis.id)
+                .outerjoin(
+                    Analysis,
+                    (BriefMessage.analysis_id == Analysis.id) & (Analysis.user_id == user_id),
+                )
                 .where(
                     BriefMessage.id == record_id,
                     BriefMessage.user_id == user_id,
                     BriefMessage.role == "user",
-                    Analysis.user_id == user_id,
                 )
             )
             record = result.one_or_none()
@@ -730,11 +753,11 @@ class ConversationLearningService:
             return LearningSource(
                 source_id=source_id,
                 source_type=source_type,
-                source_date=analysis.subject_date,
+                source_date=_chat_source_date(message, analysis),
                 text=message.content,
                 occurred_at_utc=message.created_utc,
-                analysis_id=analysis.id,
-                analysis_type=analysis.analysis_type,
+                analysis_id=analysis.id if analysis is not None else None,
+                analysis_type=analysis.analysis_type if analysis is not None else None,
             )
 
         if prefix == "checkin":

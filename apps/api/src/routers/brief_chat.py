@@ -1,11 +1,16 @@
-"""Follow-up chat on an analysis read — Batch 119, extended by Batch 150.
+"""Follow-up chat on an analysis read — Batch 119, extended by Batch 150/179.
 
-  GET  /api/v1/briefs/{analysis_id}/messages   — this user's conversation history
-  POST /api/v1/briefs/{analysis_id}/messages   — ask a follow-up, get the answer
+  GET  /api/v1/briefs/{analysis_id}/messages   — the turns asked from this read
+  POST /api/v1/briefs/{analysis_id}/messages   — ask from this read, get the answer
 
-Every AI summary/read is one ``analyses`` row, so the conversation is keyed to
-``analysis_id`` the same way ``feedback`` is. The write is user-scoped: 404
-when the analysis does not exist, 403 when it belongs to another profile.
+The write is user-scoped: 404 when the analysis does not exist, 403 when it
+belongs to another profile.
+
+Batch 179 turned the storage underneath into one rolling conversation
+(``/api/v1/coach/messages``), but kept this surface unchanged: the inline chat
+on a read should show that read's own exchange, not everything Mark has ever
+asked. The two endpoints are two views of the same thread, and the envelope
+they share is defined here.
 """
 
 from __future__ import annotations
@@ -33,7 +38,7 @@ from src.services.nudge_alerts import NudgeAlertService
 router = APIRouter(prefix="/api/v1/briefs", tags=["brief-chat"])
 
 
-def _generated_at() -> str:
+def generated_at() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
@@ -60,7 +65,10 @@ class BriefMessageInput(BaseModel):
 
 class BriefMessageOut(BaseModel):
     id: str
-    analysisId: str
+    #: Null since Batch 179: a conversation no longer needs a document.
+    analysisId: str | None
+    originKind: str | None
+    originDate: str | None
     role: str
     content: str
     proposedPlannedWorkoutId: str | None
@@ -84,10 +92,12 @@ class BriefMessageTurnEnvelope(BaseModel):
     errors: list[ApiError]
 
 
-def _serialize(row: BriefMessage) -> BriefMessageOut:
+def serialize_message(row: BriefMessage) -> BriefMessageOut:
     return BriefMessageOut(
         id=str(row.id),
-        analysisId=str(row.analysis_id),
+        analysisId=str(row.analysis_id) if row.analysis_id else None,
+        originKind=row.origin_kind,
+        originDate=row.origin_date.isoformat() if row.origin_date else None,
         role=row.role,
         content=row.content,
         proposedPlannedWorkoutId=(
@@ -106,8 +116,8 @@ async def list_brief_messages(
     service = BriefChatService(db)
     rows = await service.history(player, analysis_id)
     return BriefMessageListEnvelope(
-        data=[_serialize(row) for row in rows],
-        meta=ApiMeta(generatedAtUtc=_generated_at()),
+        data=[serialize_message(row) for row in rows],
+        meta=ApiMeta(generatedAtUtc=generated_at()),
         errors=[],
     )
 
@@ -123,7 +133,7 @@ async def ask_brief_followup(
 ) -> BriefMessageTurnEnvelope:
     service = BriefChatService(db)
     try:
-        turn = await service.ask(player, analysis_id, question=payload.question)
+        turn = await service.ask(player, question=payload.question, analysis_id=analysis_id)
     except AnthropicApiError as exc:
         # Batch 143: this LLM call runs in-request, so an Anthropic outage (the
         # 2026-07-20/21 credit freeze) used to propagate to a bare 500 whose
@@ -141,9 +151,9 @@ async def ask_brief_followup(
         ) from exc
     return BriefMessageTurnEnvelope(
         data=BriefMessageTurnData(
-            userMessage=_serialize(turn.user_message),
-            assistantMessage=_serialize(turn.assistant_message),
+            userMessage=serialize_message(turn.user_message),
+            assistantMessage=serialize_message(turn.assistant_message),
         ),
-        meta=ApiMeta(generatedAtUtc=_generated_at()),
+        meta=ApiMeta(generatedAtUtc=generated_at()),
         errors=[],
     )
