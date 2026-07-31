@@ -38,6 +38,15 @@ Kickoff decisions (Batch 178.2 / 178.3, ``/batch-start``):
   ``omittedForLength`` — a truncation must never be able to read as "no such
   data", which is the failure mode this batch exists to remove.
 
+Batch 179 opened the same assembly up to a conversation with no read at all.
+An unanchored question ("just ask the coach", or a question from Sleep, which
+has no ``Analysis`` of its own) gets the identical app-state block with no
+frozen packet beside it and no ``sinceThisRead`` delta — there is no read for
+anything to be *since* — plus an ``origin`` note saying which surface Mark asked
+from, which seeds the conversation without fencing it. The same pass also
+resolves today's adjustable workout from live plan rows rather than from a
+frozen packet, so the propose affordance can be keyed on plan state (179.3).
+
 The block is explanatory context only. It cannot move the deterministic
 Green/Amber/Red ladder or any floor, and a plan change still goes through the
 propose/confirm rail (Decision #29).
@@ -59,6 +68,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.coaching import Activity, Analysis, ManualEntry, PlannedWorkout, Sleep
 from src.models.profile import Profile
 from src.services.analysis_currentness import manual_entry_input_version
+from src.services.holiday_pause import HolidayPauseService, holiday_windows_covering_date
 from src.services.reviews import ANALYSIS_TYPE_MONTHLY, ANALYSIS_TYPE_WEEKLY
 from src.services.training_week import ACTION_AUDIT_TYPES, TrainingWeekService
 from src.services.trends import (
@@ -70,6 +80,7 @@ from src.services.trends import (
     window_key,
     year_on_year_json,
 )
+from src.services.workout_categories import is_bike_workout_type
 
 APP_STATE_KEY = "appState"
 APP_STATE_VERSION = 1
@@ -98,6 +109,50 @@ _READ_TYPES = ("morning", "post_workout", "post_walk", "post_strength", "post_fl
 #: Statuses that mean a planned workout is no longer live to adjust.
 _CLOSED_WORKOUT_STATUSES = frozenset({"completed", "skipped"})
 
+#: Surfaces the coach can be opened from, and how the prompt names each one.
+#: Batch 179.4: the origin *seeds* the conversation — "we're talking about last
+#: night's sleep" — without fencing it to that subject. The client sends a kind,
+#: never a sentence: an unrecognised value falls back to
+#: :data:`DEFAULT_ORIGIN_KIND` and the raw string is never interpolated into the
+#: prompt, so this field cannot become an injection route (Decision #243's rule
+#: that Mark's words are data, applied to the app's own controls).
+ORIGIN_KINDS: dict[str, str] = {
+    "general": "no particular page - he just opened the coach",
+    "home": "his home screen",
+    "morning_brief": "this morning's brief",
+    "sleep": "his sleep page",
+    "week": "his week and delivery page",
+    "workout": "a workout's detail sheet",
+    "trends": "his trends page",
+    "reviews": "his weekly and monthly reviews",
+    "environment": "his bedroom climate page",
+    "breathwork": "his breathwork brief",
+    "strength": "his strength brief",
+    "walking": "his walking brief",
+    "check_in": "his check-in",
+}
+DEFAULT_ORIGIN_KIND = "general"
+
+
+def normalize_origin_kind(kind: str | None) -> str:
+    """Coerce a client-supplied origin to one this module knows how to describe."""
+    if kind is not None and kind in ORIGIN_KINDS:
+        return kind
+    return DEFAULT_ORIGIN_KIND
+
+
+@dataclass(frozen=True)
+class CoachOrigin:
+    """Where Mark opened the conversation from, for an unanchored question."""
+
+    kind: str = DEFAULT_ORIGIN_KIND
+    subject_date: date | None = None
+
+    @property
+    def label(self) -> str:
+        return ORIGIN_KINDS[normalize_origin_kind(self.kind)]
+
+
 #: Dropped in this order when the block exceeds the budget: recent sessions and
 #: review prose first (largest, and most reconstructable from the rest), sleep
 #: history next. ``weekAhead``, ``today`` and ``sinceThisRead`` are small and
@@ -108,16 +163,16 @@ _DROP_ORDER = ("recentActivities", "latestReviews", "sleepHistory")
 
 @dataclass(frozen=True)
 class ChatContext:
-    """Everything chat knows beyond the read itself, assembled at ask-time."""
+    """Everything the coach knows beyond the read itself, assembled at ask-time."""
 
     app_state: dict[str, Any]
-    #: Planned workouts on the read's subject date that are still open. Used to
-    #: retire a proposal affordance the frozen packet would still offer for a
-    #: ride Mark has since completed or skipped.
-    live_workout_ids: frozenset[uuid.UUID]
-
-    def workout_is_live(self, workout_id: uuid.UUID) -> bool:
-        return workout_id in self.live_workout_ids
+    #: Batch 179.3: today's one live, deliverable bike workout, resolved from the
+    #: plan itself rather than from a frozen packet, so the propose affordance is
+    #: keyed on what is actually adjustable right now — from any entry point, and
+    #: absent when the day is rest, holiday, or already closed out. This replaces
+    #: Batch 178's subject-date liveness set, which could only ever *retire* an
+    #: affordance the packet had already offered.
+    adjustable_workout_id: uuid.UUID | None = None
 
 
 class ChatContextService:
@@ -127,22 +182,32 @@ class ChatContextService:
     async def build(
         self,
         player: Profile,
-        analysis: Analysis,
+        analysis: Analysis | None,
         *,
         asked_at_utc: datetime,
+        origin: CoachOrigin | None = None,
     ) -> ChatContext:
-        local_today = _local_date(asked_at_utc, player.timezone)
-        subject_date = analysis.subject_date
-        read_generated_at = analysis.generated_at_utc
+        """Assemble the conversation's context.
+
+        ``analysis`` is the read the question was asked from, when there is one.
+        Batch 179 made it optional: an unanchored question gets the identical
+        app-state block with no ``sinceThisRead`` delta — there is no read for
+        anything to be *since* — and an ``origin`` note instead.
+        """
+        local_today = local_date(asked_at_utc, player.timezone)
+        origin = origin or CoachOrigin()
+        subject_date = (
+            analysis.subject_date if analysis is not None else (origin.subject_date or local_today)
+        )
 
         subject_workouts = await self._planned_workouts_on(player.id, subject_date)
-        live_workout_ids = frozenset(
-            row.id for row in subject_workouts if row.status not in _CLOSED_WORKOUT_STATUSES
-        )
         today_workouts = (
             subject_workouts
             if subject_date == local_today
             else await self._planned_workouts_on(player.id, local_today)
+        )
+        adjustable_workout_id = await self._adjustable_workout_id(
+            player, local_today, today_workouts
         )
 
         week_ahead = await TrainingWeekService(self.session).build_window(
@@ -156,24 +221,21 @@ class ChatContextService:
         reviews = await self._latest_reviews(player.id)
         activities = await self._recent_activities(player.id, local_today, player.timezone)
         sleep_nights = await self._sleep_history(player.id, local_today)
-        since_read = await self._since_read(
-            player,
-            analysis,
-            subject_workouts=subject_workouts,
-            read_generated_at=read_generated_at,
-        )
 
         state: dict[str, Any] = {
             "version": APP_STATE_VERSION,
             "assembledAtUtc": _dt(asked_at_utc),
-            "meaning": (
-                "State of the app right now, assembled when this question was asked. "
-                "The read packet alongside it is the frozen record of what the read was "
-                "written from; where the two differ, this block is the current truth."
-            ),
+            "meaning": _state_meaning(anchored=analysis is not None),
             "todayLocalDate": local_today.isoformat(),
-            "readSubjectDate": subject_date.isoformat(),
-            "sinceThisRead": since_read,
+            "conversationOpenedFrom": {
+                "surface": origin.label,
+                "subjectDate": subject_date.isoformat(),
+                "meaning": (
+                    "Where Mark opened the conversation. Start there if his question is "
+                    "open-ended, but the conversation is not limited to it - answer "
+                    "whatever he actually asks from anything below."
+                ),
+            },
             "today": {
                 "localDate": local_today.isoformat(),
                 "plannedWorkouts": [_planned_workout_state(row) for row in today_workouts],
@@ -185,10 +247,53 @@ class ChatContextService:
             "sleepHistory": sleep_nights,
             "omittedForLength": [],
         }
+        if analysis is not None:
+            state["readSubjectDate"] = subject_date.isoformat()
+            state["sinceThisRead"] = await self._since_read(
+                player,
+                analysis,
+                subject_workouts=subject_workouts,
+                read_generated_at=analysis.generated_at_utc,
+            )
         _apply_char_budget(state)
-        return ChatContext(app_state=state, live_workout_ids=live_workout_ids)
+        return ChatContext(app_state=state, adjustable_workout_id=adjustable_workout_id)
 
     # -- sections -----------------------------------------------------------
+
+    async def _adjustable_workout_id(
+        self,
+        player: Profile,
+        local_today: date,
+        today_workouts: Sequence[PlannedWorkout],
+    ) -> uuid.UUID | None:
+        """Today's one workout a proposal could act on, from live plan rows.
+
+        Batch 179.3: the pre-179 gate asked ``analysis_type == "morning"`` as a
+        proxy for "there is a live adjustable ride", and read the candidate out
+        of a frozen packet. Both are answered properly here — the plan itself
+        says whether anything is open, deliverable and a bike session, so the
+        affordance appears from any entry point exactly when it can do
+        something, and never on a rest day, inside a holiday, or once the ride
+        is completed or skipped.
+        """
+        if not today_workouts:
+            return None
+        candidates = [
+            row
+            for row in today_workouts
+            if row.status not in _CLOSED_WORKOUT_STATUSES
+            and row.structured_workout
+            and is_bike_workout_type(row.workout_type)
+        ]
+        if not candidates:
+            return None
+        # An explicit holiday window is authoritative even when a stale plan row
+        # was never re-versioned, so it is checked against the window rather than
+        # inferred from statuses (``morning_analysis._rest_day_context``).
+        windows = await HolidayPauseService(self.session).get_windows(player)
+        if holiday_windows_covering_date(windows, local_today):
+            return None
+        return candidates[0].id
 
     async def _since_read(
         self,
@@ -301,7 +406,7 @@ class ChatContextService:
         as_of: date,
         timezone_name: str,
     ) -> list[dict[str, Any]]:
-        start_utc = _day_start_utc(as_of - timedelta(days=RECENT_ACTIVITY_DAYS - 1), timezone_name)
+        start_utc = day_start_utc(as_of - timedelta(days=RECENT_ACTIVITY_DAYS - 1), timezone_name)
         rows = (
             (
                 await self.session.execute(
@@ -538,6 +643,19 @@ def _apply_char_budget(state: dict[str, Any]) -> None:
         )
 
 
+def _state_meaning(*, anchored: bool) -> str:
+    base = "State of the app right now, assembled when this question was asked. "
+    if anchored:
+        return base + (
+            "The read alongside it is the frozen record of what that read was written "
+            "from; where the two differ, this block is the current truth."
+        )
+    return base + (
+        "There is no earlier read behind this question, so this block is everything "
+        "you have and all of it is current."
+    )
+
+
 def app_state_length(state: dict[str, Any]) -> int:
     return len(app_state_json(state))
 
@@ -584,7 +702,7 @@ def _planned_workout_state(row: PlannedWorkout) -> dict[str, Any]:
 def _activity_state(row: Activity, timezone_name: str) -> dict[str, Any]:
     return {
         "activityId": str(row.id),
-        "localDate": _local_date(row.start_utc, timezone_name).isoformat(),
+        "localDate": local_date(row.start_utc, timezone_name).isoformat(),
         "title": row.activity_name,
         "activityType": row.activity_type,
         "durationMin": _minutes(row.duration_sec),
@@ -630,11 +748,11 @@ def _dt(value: datetime | None) -> str | None:
     return value.isoformat() + ("" if value.tzinfo is not None else "Z")
 
 
-def _local_date(value: datetime, timezone_name: str) -> date:
+def local_date(value: datetime, timezone_name: str) -> date:
     return value.replace(tzinfo=UTC).astimezone(_timezone(timezone_name)).date()
 
 
-def _day_start_utc(day: date, timezone_name: str) -> datetime:
+def day_start_utc(day: date, timezone_name: str) -> datetime:
     return (
         datetime.combine(day, time.min, tzinfo=_timezone(timezone_name))
         .astimezone(UTC)

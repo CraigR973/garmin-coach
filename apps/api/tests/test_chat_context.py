@@ -23,6 +23,7 @@ from src.models.coaching import (
     Activity,
     Analysis,
     DailyMetric,
+    KnowledgeBase,
     ManualEntry,
     PlannedWorkout,
     Sleep,
@@ -31,10 +32,12 @@ from src.models.profile import Profile, UserRole
 from src.services.chat_context import (
     APP_STATE_CHAR_BUDGET,
     ChatContextService,
+    CoachOrigin,
     _apply_char_budget,
     _packet_check_in_versions,
     app_state_length,
 )
+from src.services.holiday_pause import KB_SECTION as HOLIDAY_KB_SECTION
 
 ASKED_AT = datetime(2026, 7, 30, 9, 0)
 TODAY = date(2026, 7, 30)
@@ -427,9 +430,16 @@ async def test_latest_review_conclusions_and_sleep_history_reach_the_conversatio
 
 
 @pytest.mark.asyncio
-async def test_live_workout_ids_exclude_a_ride_closed_after_the_read(
+async def test_adjustable_workout_is_resolved_from_live_plan_rows(
     db_conn: AsyncConnection,
 ) -> None:
+    """Batch 179.3 replaced Batch 178's subject-date liveness set.
+
+    The old mechanism could only *retire* a proposal the frozen packet had
+    already offered; this answers the real question — is there a live,
+    deliverable bike session on today's plan — so the affordance is right from
+    any entry point.
+    """
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     async with session_factory() as session:
         user = await _make_profile(session)
@@ -464,11 +474,129 @@ async def test_live_workout_ids_exclude_a_ride_closed_after_the_read(
 
         context = await ChatContextService(session).build(user, analysis, asked_at_utc=ASKED_AT)
 
-    assert context.workout_is_live(still_open.id)
-    assert not context.workout_is_live(done.id)
+    # The completed ride is not adjustable, and the open row is strength, not a
+    # deliverable bike session — so there is nothing to propose against.
+    assert context.adjustable_workout_id is None
     closed = context.app_state["sinceThisRead"]["subjectDateWorkoutsClosedSinceRead"]
     assert [row["title"] for row in closed] == ["Sweet spot"]
     # Listed in plan order, so a split day reads cycle-then-strength.
     today_titles = [row["title"] for row in context.app_state["today"]["plannedWorkouts"]]
     assert today_titles == ["Sweet spot", "Core"]
     assert [row["isLive"] for row in context.app_state["today"]["plannedWorkouts"]] == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_adjustable_workout_is_todays_live_deliverable_ride(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        ride = PlannedWorkout(
+            id=uuid.uuid4(),
+            user_id=user.id,
+            workout_date=TODAY,
+            version=1,
+            title="Sweet spot",
+            workout_type="bike_sweet_spot",
+            status="planned",
+            is_active=True,
+            structured_workout={"format": "bike"},
+        )
+        session.add(ride)
+        await session.commit()
+        analysis = await _make_read(session, user.id)
+
+        context = await ChatContextService(session).build(user, analysis, asked_at_utc=ASKED_AT)
+
+    assert context.adjustable_workout_id == ride.id
+
+
+@pytest.mark.asyncio
+async def test_a_holiday_window_leaves_nothing_adjustable(db_conn: AsyncConnection) -> None:
+    """An explicit holiday is authoritative even over a stale, un-reversioned row.
+
+    This mirrors ``morning_analysis._rest_day_context``: a plan row inside a
+    holiday window can still say ``planned``, and the coach must not offer to
+    reshape a session Mark is away for.
+    """
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        session.add(
+            PlannedWorkout(
+                id=uuid.uuid4(),
+                user_id=user.id,
+                workout_date=TODAY,
+                version=1,
+                title="Sweet spot",
+                workout_type="bike_sweet_spot",
+                status="planned",
+                is_active=True,
+                structured_workout={"format": "bike"},
+            )
+        )
+        session.add(
+            KnowledgeBase(
+                id=uuid.uuid4(),
+                user_id=user.id,
+                section=HOLIDAY_KB_SECTION,
+                content={
+                    "windows": [
+                        {
+                            "startDate": (TODAY - timedelta(days=2)).isoformat(),
+                            "endDate": (TODAY + timedelta(days=2)).isoformat(),
+                            "pausedAtUtc": READ_AT.isoformat(),
+                        }
+                    ]
+                },
+                is_active=True,
+            )
+        )
+        await session.commit()
+        analysis = await _make_read(session, user.id)
+
+        context = await ChatContextService(session).build(user, analysis, asked_at_utc=ASKED_AT)
+
+    assert context.adjustable_workout_id is None
+
+
+@pytest.mark.asyncio
+async def test_an_unanchored_question_gets_the_state_without_a_read(
+    db_conn: AsyncConnection,
+) -> None:
+    """179.1: Sleep has no ``Analysis`` of its own, and now needs none."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        session.add(
+            Sleep(
+                id=uuid.uuid4(),
+                user_id=user.id,
+                calendar_date=TODAY,
+                score=78,
+                duration_sec=27000,
+                raw_payload={},
+            )
+        )
+        await session.commit()
+
+        context = await ChatContextService(session).build(
+            user,
+            None,
+            asked_at_utc=ASKED_AT,
+            origin=CoachOrigin(kind="sleep", subject_date=TODAY),
+        )
+
+    state = context.app_state
+    # No read behind it, so nothing to be "since" — and the block says as much
+    # rather than leaving a hole that could read as an absence.
+    assert "sinceThisRead" not in state
+    assert "readSubjectDate" not in state
+    assert "everything you have and all of it is current" in state["meaning"]
+    assert state["conversationOpenedFrom"]["surface"] == "his sleep page"
+    assert state["conversationOpenedFrom"]["subjectDate"] == TODAY.isoformat()
+    # The rest of the app is still all there.
+    assert [night["score"] for night in state["sleepHistory"]] == [78]
+    assert "weekAhead" in state
+    assert "trends" in state

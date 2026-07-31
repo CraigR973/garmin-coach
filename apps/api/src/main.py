@@ -22,6 +22,7 @@ from src.routers import (
     block_generator,
     breathwork_brief,
     brief_chat,
+    coach_chat,
     coaching_state,
     daily_loop,
     experiments,
@@ -120,6 +121,7 @@ app.include_router(coaching_state.read_router)
 app.include_router(daily_loop.router)
 app.include_router(feedback.router)
 app.include_router(brief_chat.router)
+app.include_router(coach_chat.router)
 app.include_router(fan.router)
 app.include_router(bedroom.router)
 app.include_router(workout_delivery.router)

@@ -797,17 +797,38 @@ export const feedbackInputSchema = z
     path: ['reasonTags'],
   });
 
-// --- Follow-up chat on a brief (Batch 119) ---
-// Every AI summary is one `analyses` row, so a conversation is keyed to
-// `analysisId` the same way feedback is. A `proposedPlannedWorkoutId` on an
-// assistant turn is set by a deterministic keyword check on Mark's own
-// question (never the model) — the frontend offers a confirm button that
-// calls the existing workout-delivery propose endpoint, not a new one.
+// --- The coach conversation (Batch 119, opened up by Batch 179) ---
+// One rolling thread. `analysisId` is the read a question was asked from when
+// there is one — a context seed, not a fence — and is null for the surfaces
+// with no `analyses` row of their own (Sleep, the breathwork/strength/walking
+// briefs, or a cold open), which carry `originKind`/`originDate` instead. A
+// `proposedPlannedWorkoutId` on an assistant turn is set by a deterministic
+// keyword check on Mark's own question (never the model) plus today's real plan
+// state — the frontend offers a confirm button that calls the existing
+// workout-delivery propose endpoint, not a new one.
 export const briefMessageRoleSchema = z.enum(['user', 'assistant']);
+
+export const coachOriginKindSchema = z.enum([
+  'general',
+  'home',
+  'morning_brief',
+  'sleep',
+  'week',
+  'workout',
+  'trends',
+  'reviews',
+  'environment',
+  'breathwork',
+  'strength',
+  'walking',
+  'check_in',
+]);
 
 export const briefMessageSchema = z.object({
   id: z.string().uuid(),
-  analysisId: z.string().uuid(),
+  analysisId: z.string().uuid().nullable(),
+  originKind: z.string().nullable().optional(),
+  originDate: isoDateSchema.nullable().optional(),
   role: briefMessageRoleSchema,
   content: z.string().min(1),
   proposedPlannedWorkoutId: z.string().uuid().nullable().optional(),
@@ -816,6 +837,13 @@ export const briefMessageSchema = z.object({
 
 export const briefMessageInputSchema = z.object({
   question: z.string().min(1).max(1000),
+});
+
+export const coachMessageInputSchema = z.object({
+  question: z.string().min(1).max(1000),
+  analysisId: z.string().uuid().optional(),
+  originKind: coachOriginKindSchema.optional(),
+  originDate: isoDateSchema.optional(),
 });
 
 export const briefMessageTurnSchema = z.object({
