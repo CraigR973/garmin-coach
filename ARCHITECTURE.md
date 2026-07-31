@@ -259,7 +259,7 @@ the shared Anthropic text boundary has no tool support and the app's builders ar
 already cheap and unit-tested. Explanatory only — it cannot move Green/Amber/Red
 or any floor, and plan changes stay on the propose/confirm rail (#29).
 
-**One coach conversation (Batch 179, DECISIONS #259).** Until this batch the
+**One coach conversation (Batch 179, PR #208 / squash `94f10b8`, DECISIONS #259).** Until this batch the
 schema asserted that a conversation cannot exist without a document —
 `brief_messages.analysis_id` was `NOT NULL` — so there was no way to just ask the
 coach something, and Sleep (which borrows the morning read) and the
