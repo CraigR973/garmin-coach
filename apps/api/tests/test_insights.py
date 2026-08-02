@@ -815,4 +815,4 @@ async def test_stale_driver_cache_falls_back_and_regenerates_current_version(
             ).scalars()
         )
 
-    assert sorted(versions) == [INSIGHTS_PROMPT_VERSION, "insights:v1"]
+    assert sorted(versions) == ["insights:v1", INSIGHTS_PROMPT_VERSION]
