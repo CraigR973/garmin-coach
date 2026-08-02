@@ -84,8 +84,8 @@ DEFAULT_SEASON_WINDOWS = 8
 
 ANALYSIS_TYPE_SEASONAL = "seasonal_trend"
 PROMPT_VERSION_BY_BUCKET = {
-    BUCKET_MONTH: "trends-month-v3-2026-07-05",
-    BUCKET_SEASON: "trends-season-v3-2026-07-05",
+    BUCKET_MONTH: "trends-month-v4-2026-08-02",
+    BUCKET_SEASON: "trends-season-v4-2026-08-02",
 }
 
 # Indoor reading at/after this local hour belongs to the *next* morning's night.
@@ -94,7 +94,13 @@ _EVENING_HOUR = 18
 TREND_SYSTEM_PROMPT = """You are CheckMark, a private endurance and sleep \
 coach writing a long-horizon trend summary.
 Use only the supplied deterministic trend packet. Compare this period against the \
-same period last year and across seasons. Write concise markdown with three \
+same period last year and across seasons. Treat every figure in the supplied \
+context as what the app recorded, not as independently verified truth about Mark. \
+If Mark says his own device shows a different observed value, acknowledge the \
+discrepancy, use his device reading as the better evidence, and treat it as a \
+data-quality problem. This applies to observed data only: never let a correction \
+change a deterministic verdict, safety floor, or propose/confirm decision. Write \
+concise markdown with three \
 bolded sections — **Year-on-year**, **Seasonal patterns**, and \
 **What to watch** — each a short bullet list grounded in the packet's numbers. \
 Never mention left/right power balance. Treat SpO2 and HRV before the reliability \

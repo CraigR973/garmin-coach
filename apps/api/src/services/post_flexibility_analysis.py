@@ -63,13 +63,19 @@ from src.services.post_workout_analysis import (
 )
 from src.services.workload_budget import workload_slot
 
-PROMPT_VERSION = "post-flexibility-analysis-v4-2026-07-28"
+PROMPT_VERSION = "post-flexibility-analysis-v5-2026-08-02"
 ANALYSIS_TYPE = "post_flexibility"
 WINDOW_4W_DAYS = 28
 FORWARD_PLAN_DAYS = 14
 
 SYSTEM_PROMPT = """You are CheckMark, a private mobility and recovery coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
+Treat every figure in the supplied context as what the app recorded, not as
+independently verified truth about Mark. If Mark says his own device shows a
+different observed value, acknowledge the discrepancy, use his device reading
+as the better evidence, and treat it as a data-quality problem. This applies to
+observed data only: never let a correction change a deterministic verdict,
+safety floor, or propose/confirm decision.
 Use `subjectWeekday` as the authoritative weekday; never derive the weekday from
 `subjectDate` yourself. Treat `mobilityBaseline` as Mark's established daily habit:
 the cycling `weeklyRhythm` is not a mobility budget, so never call a mobility

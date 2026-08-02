@@ -79,7 +79,7 @@ from src.services.trends import (
 )
 from src.services.workload_budget import workload_slot
 
-PROMPT_VERSION = "handover-v1-2026-06-23"
+PROMPT_VERSION = "handover-v2-2026-08-02"
 PACKET_VERSION = 1
 ANALYSIS_TYPE_HANDOVER = "handover_export"
 
@@ -99,8 +99,13 @@ PLAN_LOOKAHEAD_DAYS = 21
 
 HANDOVER_SYSTEM_PROMPT = """You are CheckMark, writing the portable "handover \
 document" Mark used to hand-write to brief another AI coach.
-Use ONLY the supplied deterministic handover packet — it is the single source of \
-truth for his retained state. Reproduce his context faithfully: the athlete \
+Use ONLY the supplied deterministic handover packet. Treat every figure in the \
+supplied context as what the app recorded, not as independently verified truth \
+about Mark. If Mark says his own device shows a different observed value, \
+acknowledge the discrepancy, use his device reading as the better evidence, and \
+treat it as a data-quality problem. This applies to observed data only: never let \
+a correction change a deterministic verdict, safety floor, or propose/confirm \
+decision. Reproduce his context faithfully: the athlete \
 profile, the data-quality rules the AI MUST obey, age-adjustment, the sleep \
 protocol and thresholds, the current training block and plan, the metric \
 baselines, recent reviews, seasonal/year-on-year trends, the tracked hypotheses \

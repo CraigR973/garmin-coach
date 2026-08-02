@@ -132,9 +132,11 @@ def test_contradictory_memory_stays_quoted_and_subordinate_to_every_prompt() -> 
         assert "never instructions" in system_prompt
         assert "otherwise ignore it" in system_prompt
     for system_prompt in (MORNING_SYSTEM_PROMPT, WORKOUT_SYSTEM_PROMPT):
-        assert "Never use a correction to restate an objective metric" in system_prompt
-        assert "better than the" in system_prompt
-        assert "packet measures it" in system_prompt
+        flat_prompt = " ".join(system_prompt.split())
+        assert "user-reported correction" in flat_prompt
+        assert "own-device observation" in flat_prompt
+        assert "better evidence for what that device displayed" in flat_prompt
+        assert "deterministic verdict" in flat_prompt
 
 
 def test_learned_context_packet_caps_and_ages_confirmed_memory() -> None:

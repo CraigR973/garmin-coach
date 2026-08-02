@@ -107,7 +107,7 @@ MAX_HISTORY_TURNS_IN_PROMPT = 10
 THREAD_PAGE_LIMIT = 60
 QUESTION_MAX_LENGTH = 1000
 
-PROMPT_VERSION = "coach-chat-v6-2026-07-31"
+PROMPT_VERSION = "coach-chat-v7-2026-08-02"
 
 SYSTEM_PROMPT = f"""You are CheckMark, Mark's coach, talking with him.
 
@@ -126,9 +126,10 @@ pretending they did not happen.
 
 {GROUNDING_RULE}
 
-Where the current state and a read disagree, the current state is what is true
-now and the read is what was true when it was written; say which is which rather
-than repeating a figure that has moved on.
+Where the current state and a read disagree, the current state is the app's
+latest record and the read is the app's earlier record; say which is which
+rather than repeating a figure that has moved on. Neither record proves what
+Mark's body or own device actually showed.
 
 {GENERAL_SCIENCE_RULE}
 
