@@ -258,13 +258,12 @@ async def _sync_garmin_daily(
     *,
     client: GarminConnectClient | None = None,
 ) -> tuple[int, int]:
-    """Sync today's Garmin daily metrics + sleep for each profile (429-safe).
+    """Sync today plus the last three closed Garmin days (429-safe).
 
     Returns ``(daily_metrics_synced, sleep_synced)``. The fetch is wrapped in an
-    exponential-backoff retry so a transient Garmin 429 is survived, and each
-    profile's sync is isolated: one profile's Garmin failure is logged and
-    skipped so it cannot block the others or the downstream morning analysis.
-    The caller commits.
+    exponential-backoff retry so a transient Garmin 429 is survived. Each date
+    is isolated, so one failed historical fetch cannot block today's inputs or
+    another date's self-heal. The caller commits.
     """
     if not profiles:
         return (0, 0)
@@ -274,33 +273,37 @@ async def _sync_garmin_daily(
     daily_synced = 0
     sleep_synced = 0
     for profile in profiles:
-        subject_date = _profile_today(profile)
-        try:
-            payloads: GarminDailyPayloads = await _retry_sync(
-                lambda: client.fetch_daily_payloads(subject_date),
-                backoff=2.0,
-            )
-            result = await sync_service.sync_daily(
-                profile.id,
-                subject_date,
-                payloads,
-                commit=False,
-            )
-            daily_synced += result.daily_metrics_synced
-            sleep_synced += result.sleep_synced
-        except Exception:
-            log.exception(
-                "garmin daily sync failed",
-                profile_id=str(profile.id),
-                subject_date=subject_date.isoformat(),
-            )
+        today = _profile_today(profile)
+        # Today keeps the morning verdict current. D-1..D-3 overwrite the
+        # waking snapshots once those local days have closed and self-heal up to
+        # two missed mornings without adding an evening scheduler path.
+        for subject_date in (today - timedelta(days=offset) for offset in range(4)):
+            try:
+                payloads: GarminDailyPayloads = await _retry_sync(
+                    lambda: client.fetch_daily_payloads(subject_date),
+                    backoff=2.0,
+                )
+                result = await sync_service.sync_daily(
+                    profile.id,
+                    subject_date,
+                    payloads,
+                    commit=False,
+                )
+                daily_synced += result.daily_metrics_synced
+                sleep_synced += result.sleep_synced
+            except Exception:
+                log.exception(
+                    "garmin daily sync failed",
+                    profile_id=str(profile.id),
+                    subject_date=subject_date.isoformat(),
+                )
     return (daily_synced, sleep_synced)
 
 
 async def _sync_morning_inputs(
     session: AsyncSession, profiles: list[Profile]
 ) -> tuple[int, int, int]:
-    """Pull weather + today's Garmin daily metrics/sleep for the given profiles.
+    """Pull weather + current/finalized Garmin daily data for the given profiles.
 
     Returns ``(weather_days, daily_metrics, sleep)``. Weather syncs first, then the
     Garmin daily sync, so the morning verdict reads today's real readiness + sleep

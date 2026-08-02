@@ -314,6 +314,71 @@ async def test_garmin_sync_upserts_without_duplicate_rows(db_conn: AsyncConnecti
 
 
 @pytest.mark.asyncio
+async def test_completed_july_31_resync_overwrites_morning_snapshot(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 180 regression: 12/1/92 becomes the finished 28/70/16 in place."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 7, 31)
+    partial = GarminDailyPayloads(
+        stress={
+            "calendarDate": "2026-07-31",
+            "startTimestampLocal": "2026-07-31T00:00:00.0",
+            "endTimestampLocal": "2026-07-31T08:44:00.0",
+            "avgStressLevel": 12,
+        },
+        body_battery=[
+            {
+                "date": "2026-07-31",
+                "charged": 81,
+                "drained": 1,
+                "startTimestampLocal": "2026-07-31T00:00:00.0",
+                "endTimestampLocal": "2026-07-31T08:44:00.0",
+                "bodyBatteryValuesArray": [[1785452400000, 12], [1785480240000, 92]],
+            }
+        ],
+    )
+    completed = GarminDailyPayloads(
+        stress=load_fixture("stress_2026-07-31_complete.json"),
+        body_battery=load_fixture("body_battery_2026-07-31_complete.json"),
+    )
+
+    async with session_factory() as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="July 31 daily repair",
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+        service = GarminSyncService(session)
+        await service.sync_daily(user_id, subject_date, partial, commit=False)
+        await service.sync_daily(user_id, subject_date, completed, commit=False)
+
+        rows = (
+            (
+                await session.execute(
+                    select(DailyMetric).where(
+                        DailyMetric.user_id == user_id,
+                        DailyMetric.calendar_date == subject_date,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    assert len(rows) == 1
+    assert rows[0].stress_avg == 28
+    assert rows[0].body_battery_drained == 70
+    assert rows[0].body_battery_end == 16
+
+
+@pytest.mark.asyncio
 async def test_sync_activities_strips_raw_metrics_for_high_volume_types(
     db_conn: AsyncConnection,
 ) -> None:

@@ -53,8 +53,11 @@ from src.services.bedroom_overnight import (
     summarize_overnight,
 )
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
+from src.services.daily_metric_coverage import daily_aggregate_coverage
 
-PROMPT_VERSION = "insights:v1"
+# v2 excludes incomplete local-day stress aggregates. Cached v1 driver packets
+# must not survive the Batch 180 history repair as if they were still current.
+PROMPT_VERSION = "insights:v2-2026-08-02"
 
 AUDIT_TYPE_FTP_DRIFT = "ftp_drift"
 AUDIT_TYPE_EARLY_WARNING = "early_warning"
@@ -796,6 +799,11 @@ class InsightsService:
         records: list[dict[str, float | None]] = []
         for day in sorted(set(metric_by_date) | set(sleep_by_date)):
             metric = metric_by_date.get(day)
+            aggregate_coverage = (
+                daily_aggregate_coverage(metric.calendar_date, metric.raw_payload)
+                if metric is not None
+                else None
+            )
             sleep = sleep_by_date.get(day)
             weather_row = weather_by_date.get(day)
             bedroom = bedroom_by_date.get(day)
@@ -820,7 +828,10 @@ class InsightsService:
                     "bedroom_peak_fan_speed": bedroom.peak_fan_speed if bedroom else None,
                     "prev_day_training_load": prev_load,
                     "daytime_stress_avg": float(metric.stress_avg)
-                    if metric and metric.stress_avg is not None
+                    if metric
+                    and metric.stress_avg is not None
+                    and aggregate_coverage is not None
+                    and aggregate_coverage.stress.complete
                     else None,
                     "resting_heart_rate_bpm": float(metric.resting_heart_rate_bpm)
                     if metric and metric.resting_heart_rate_bpm is not None
@@ -876,7 +887,10 @@ class InsightsService:
         today = as_of or date.today()
         report = await self.drivers(player, as_of=today)
         if report.record_count >= MIN_CORRELATION_SAMPLES and not await self._already_recorded(
-            player, AUDIT_TYPE_DRIVERS, today
+            player,
+            AUDIT_TYPE_DRIVERS,
+            today,
+            prompt_version=PROMPT_VERSION,
         ):
             self._record_audit(
                 player,
@@ -904,8 +918,8 @@ class InsightsService:
         dependency — the fallback returns the identical report.
         """
         today = as_of or date.today()
-        packet = await self.session.scalar(
-            select(Analysis.context_packet)
+        analysis = await self.session.scalar(
+            select(Analysis)
             .where(
                 Analysis.user_id == player.id,
                 Analysis.analysis_type == AUDIT_TYPE_DRIVERS,
@@ -914,20 +928,31 @@ class InsightsService:
             .order_by(Analysis.generated_at_utc.desc())
             .limit(1)
         )
-        if isinstance(packet, dict) and "outcomes" in packet:
-            return _drivers_report_from_packet(packet)
+        if (
+            analysis is not None
+            and analysis.prompt_version == PROMPT_VERSION
+            and isinstance(analysis.context_packet, dict)
+            and "outcomes" in analysis.context_packet
+        ):
+            return _drivers_report_from_packet(analysis.context_packet)
         return await self.drivers(player, as_of=today)
 
     async def _already_recorded(
-        self, player: Profile, analysis_type: str, subject_date: date
+        self,
+        player: Profile,
+        analysis_type: str,
+        subject_date: date,
+        *,
+        prompt_version: str | None = None,
     ) -> bool:
-        existing = await self.session.scalar(
-            select(Analysis.id).where(
-                Analysis.user_id == player.id,
-                Analysis.analysis_type == analysis_type,
-                Analysis.subject_date == subject_date,
-            )
+        query = select(Analysis.id).where(
+            Analysis.user_id == player.id,
+            Analysis.analysis_type == analysis_type,
+            Analysis.subject_date == subject_date,
         )
+        if prompt_version is not None:
+            query = query.where(Analysis.prompt_version == prompt_version)
+        existing = await self.session.scalar(query)
         return existing is not None
 
     def _record_audit(
@@ -1003,7 +1028,12 @@ class InsightsService:
 
         if (
             drivers_report.record_count >= MIN_CORRELATION_SAMPLES
-            and not await self._already_recorded(player, AUDIT_TYPE_DRIVERS, today)
+            and not await self._already_recorded(
+                player,
+                AUDIT_TYPE_DRIVERS,
+                today,
+                prompt_version=PROMPT_VERSION,
+            )
         ):
             self._record_audit(
                 player,

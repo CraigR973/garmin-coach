@@ -1026,7 +1026,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v24")
+    assert PROMPT_VERSION.startswith("morning-analysis-v25")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
@@ -1941,6 +1941,23 @@ def test_poor_readiness_is_not_rescued_by_age_adjusted_sleep_score() -> None:
     assert verdict["readinessInterpretation"] is None
 
 
+def _daily_aggregate_raw(calendar_date: date, end_local: str) -> dict[str, object]:
+    start_local = f"{calendar_date.isoformat()}T00:00:00.0"
+    return {
+        "stress": {
+            "avgStressLevel": 61,
+            "startTimestampLocal": start_local,
+            "endTimestampLocal": end_local,
+        },
+        "body_battery": {
+            "drained": 78,
+            "bodyBatteryValuesArray": [[0, 9]],
+            "startTimestampLocal": start_local,
+            "endTimestampLocal": end_local,
+        },
+    }
+
+
 def test_yesterday_load_packet_carries_hard_session_and_analysis_summary() -> None:
     user_id = uuid.uuid4()
     activity_id = uuid.uuid4()
@@ -1982,6 +1999,12 @@ def test_yesterday_load_packet_carries_hard_session_and_analysis_summary() -> No
         "allDayStressAvg": None,
         "bodyBatteryDrained": None,
         "bodyBatteryEnd": None,
+        "coverage": {
+            "status": "unknown",
+            "stressStatus": "unknown",
+            "bodyBatteryStatus": "unknown",
+            "asOfLocal": None,
+        },
         "classificationImpact": "none",
     }
 
@@ -2012,7 +2035,10 @@ async def test_yesterday_load_includes_whole_day_cost_without_exercise(
                 stress_avg=61,
                 body_battery_drained=78,
                 body_battery_end=9,
-                raw_payload={},
+                raw_payload=_daily_aggregate_raw(
+                    subject_date - timedelta(days=1),
+                    "2026-07-29T00:00:00.0",
+                ),
             )
         )
         await session.commit()
@@ -2032,9 +2058,79 @@ async def test_yesterday_load_includes_whole_day_cost_without_exercise(
         "allDayStressAvg": 61,
         "bodyBatteryDrained": 78,
         "bodyBatteryEnd": 9,
+        "coverage": {
+            "status": "complete",
+            "stressStatus": "complete",
+            "bodyBatteryStatus": "complete",
+            "asOfLocal": "2026-07-29T00:00:00",
+        },
         "classificationImpact": "none",
     }
     assert "`yesterdayLoad.wholeDayCost` independently" in SYSTEM_PROMPT
+
+
+def test_yesterday_load_omits_partial_day_aggregates() -> None:
+    calendar_date = date(2026, 7, 31)
+    metric = DailyMetric(
+        user_id=uuid.uuid4(),
+        calendar_date=calendar_date,
+        stress_avg=12,
+        body_battery_drained=1,
+        body_battery_end=92,
+        raw_payload=_daily_aggregate_raw(calendar_date, "2026-07-31T08:44:00.0"),
+    )
+
+    packet = _yesterday_load_packet([], [], metric)["wholeDayCost"]
+
+    assert packet["allDayStressAvg"] is None
+    assert packet["bodyBatteryDrained"] is None
+    assert packet["bodyBatteryEnd"] is None
+    assert packet["coverage"] == {
+        "status": "incomplete",
+        "stressStatus": "incomplete",
+        "bodyBatteryStatus": "incomplete",
+        "asOfLocal": "2026-07-31T08:44:00",
+    }
+
+
+def test_partial_or_completed_day_cost_never_changes_deterministic_verdict() -> None:
+    calendar_date = date(2026, 7, 31)
+    common = {
+        "user_id": uuid.uuid4(),
+        "calendar_date": calendar_date,
+        "readiness_score": 72,
+        "readiness_level": "High",
+        "hrv_weekly_avg_ms": 51,
+        "hrv_baseline_low_ms": 43,
+        "hrv_status": "Balanced",
+        "resting_heart_rate_bpm": 44,
+    }
+    partial = DailyMetric(
+        **common,
+        stress_avg=12,
+        body_battery_drained=1,
+        body_battery_end=92,
+        raw_payload=_daily_aggregate_raw(calendar_date, "2026-07-31T08:44:00.0"),
+    )
+    complete = DailyMetric(
+        **common,
+        stress_avg=28,
+        body_battery_drained=70,
+        body_battery_end=16,
+        raw_payload=_daily_aggregate_raw(calendar_date, "2026-08-01T00:00:00.0"),
+    )
+
+    kwargs = {
+        "sleep": None,
+        "age_adjusted_sleep_score": 82,
+        "manual_entries": [],
+        "planned_workouts": [],
+    }
+
+    assert _morning_verdict(daily_metric=partial, **kwargs) == _morning_verdict(
+        daily_metric=complete,
+        **kwargs,
+    )
 
 
 _RAW_PAYLOAD_WITH_LOAD = {

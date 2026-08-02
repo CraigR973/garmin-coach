@@ -21,6 +21,12 @@ injected; data lands in prod Supabase):
     railway run --service api python -m src.garmin_history_backfill \
         --start 2025-06-24 --dry-run
     # then drop --dry-run to write
+
+Completed-day aggregate repair (dry-run first, then repeat without it):
+
+    railway run --service api python -m src.garmin_history_backfill \
+        --start 2026-06-21 --end <yesterday> --no-skip-existing \
+        --no-activities --require-complete-daily --dry-run
 """
 
 from __future__ import annotations
@@ -38,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database import AsyncSessionLocal
 from src.models.coaching import DailyMetric
 from src.models.profile import Profile
+from src.services.daily_metric_coverage import daily_aggregate_coverage
 from src.services.garmin_sync import (
     GarminConnectClient,
     GarminSyncService,
@@ -154,6 +161,7 @@ async def run_backfill(
     activities: bool = True,
     activity_details: bool = True,
     detail_types: set[str] | None = None,
+    require_complete_daily: bool = False,
     log_fn: Callable[[str], None] = print,
 ) -> BackfillSummary:
     """Backfill daily metrics/sleep (per day) and activities (per month chunk)."""
@@ -169,8 +177,15 @@ async def run_backfill(
             continue
         try:
             payloads = await _retry(lambda: client.fetch_daily_payloads(day))
+            metric_fields = parse_daily_metric_fields(day, payloads)
+            coverage = daily_aggregate_coverage(day, metric_fields.get("raw_payload"))
+            if require_complete_daily and coverage.status != "complete":
+                raise ValueError(
+                    "daily aggregate window is not complete "
+                    f"(stress={coverage.stress.status}, "
+                    f"body_battery={coverage.body_battery.status})"
+                )
             if dry_run:
-                metric_fields = parse_daily_metric_fields(day, payloads)
                 sleep_fields = parse_sleep_fields(payloads.sleep)
                 has_metric = any(
                     metric_fields.get(k) is not None
@@ -182,7 +197,8 @@ async def run_backfill(
                 summary.days_synced += 1
                 log_fn(
                     f"  {day.isoformat()}  metrics={'y' if has_metric else '-'}  "
-                    f"sleep={sleep_fields.get('score') if has_sleep else '-'}  (dry-run)"
+                    f"sleep={sleep_fields.get('score') if has_sleep else '-'}  "
+                    f"aggregates={coverage.status}  (dry-run)"
                 )
             else:
                 result = await sync_service.sync_daily(profile.id, day, payloads, commit=True)
@@ -260,6 +276,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Re-sync days that already have a daily_metrics row",
     )
     parser.add_argument(
+        "--require-complete-daily",
+        action="store_true",
+        help=(
+            "Fail a day instead of writing it unless stress and Body Battery cover the "
+            "closed local day (intended for completed-day history repair)"
+        ),
+    )
+    parser.add_argument(
         "--no-activities",
         dest="activities",
         action="store_false",
@@ -322,6 +346,7 @@ async def _main() -> None:
             activities=args.activities,
             activity_details=args.activity_details,
             detail_types=detail_types,
+            require_complete_daily=args.require_complete_daily,
         )
 
     print("\n" + summary.render())

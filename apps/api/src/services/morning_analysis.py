@@ -35,6 +35,7 @@ from src.services.body_metrics import resolve_effective_vo2max
 from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
 from src.services.chronic_patterns import ChronicPatternSuggestionService
 from src.services.coaching_state import CoachingStateService
+from src.services.daily_metric_coverage import coverage_packet, daily_aggregate_coverage
 from src.services.feedback import FeedbackService
 from src.services.generation_requests import (
     claim_generation_request,
@@ -124,7 +125,9 @@ from src.services.workout_delivery import build_structured_workout_ir
 # (falling back to the stored baseline only when no live reading is on file
 # within the lookback window), with profile.vo2maxAsOfDate stating which day
 # it's from. Explanatory only — VO2max never touches the verdict ladder.
-PROMPT_VERSION = "morning-analysis-v24-2026-07-29"
+# Batch 180: yesterday's stress / Body Battery figures now require a completed
+# raw Garmin local-day window; the prompt must not reconstruct omitted partials.
+PROMPT_VERSION = "morning-analysis-v25-2026-08-02"
 ANALYSIS_TYPE = "morning"
 # Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
 # signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
@@ -202,8 +205,11 @@ never equate a low/absent training load with a low-cost whole day. Use
 bodyBatteryDrained, or bodyBatteryEnd is present, describe that non-exercise
 cost even when activityCount is zero. wholeDayCost.classificationImpact is
 `none`, so this context explains the read but never changes the deterministic
-Green/Amber/Red verdict. Use the exercise fields to explain any eased ride after
-a hard prior session.
+Green/Amber/Red verdict. Each figure is populated only when its Garmin source
+window covers the closed local day. If wholeDayCost.coverage is incomplete or
+unknown, do not infer, reconstruct, or describe the missing figures as finished-
+day totals. Use the exercise fields to explain any eased ride after a hard prior
+session.
 When restDay.isRestDay is true, frame today's verdict as a rest day. Do not
 recommend, soften, rearrange, or relitigate a planned workout whose status is
 skipped, and do not narrate a session inside the holiday window as a live
@@ -1624,15 +1630,40 @@ def _yesterday_load_packet(
     analyses: Sequence[Analysis],
     daily_metric: DailyMetric | None = None,
 ) -> dict[str, Any]:
+    coverage = (
+        daily_aggregate_coverage(daily_metric.calendar_date, daily_metric.raw_payload)
+        if daily_metric is not None
+        else None
+    )
     whole_day_cost = {
         "calendarDate": (
             daily_metric.calendar_date.isoformat() if daily_metric is not None else None
         ),
-        "allDayStressAvg": daily_metric.stress_avg if daily_metric is not None else None,
-        "bodyBatteryDrained": (
-            daily_metric.body_battery_drained if daily_metric is not None else None
+        "allDayStressAvg": (
+            daily_metric.stress_avg
+            if daily_metric is not None and coverage is not None and coverage.stress.complete
+            else None
         ),
-        "bodyBatteryEnd": daily_metric.body_battery_end if daily_metric is not None else None,
+        "bodyBatteryDrained": (
+            daily_metric.body_battery_drained
+            if daily_metric is not None and coverage is not None and coverage.body_battery.complete
+            else None
+        ),
+        "bodyBatteryEnd": (
+            daily_metric.body_battery_end
+            if daily_metric is not None and coverage is not None and coverage.body_battery.complete
+            else None
+        ),
+        "coverage": (
+            coverage_packet(coverage)
+            if coverage is not None
+            else {
+                "status": "unknown",
+                "stressStatus": "unknown",
+                "bodyBatteryStatus": "unknown",
+                "asOfLocal": None,
+            }
+        ),
         "classificationImpact": "none",
     }
     if not activities:
