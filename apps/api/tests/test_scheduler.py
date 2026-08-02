@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable
 from contextlib import ExitStack, contextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -376,7 +376,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
 
 @pytest.mark.asyncio
 async def test_sync_garmin_daily_syncs_metrics_and_sleep() -> None:
-    """Each active profile's daily metrics + sleep are synced and counted."""
+    """Today plus D-1..D-3 are synced and counted for each active profile."""
     session = AsyncMock()
     profiles = [_profile(), _profile()]
 
@@ -388,12 +388,24 @@ async def test_sync_garmin_daily_syncs_metrics_and_sleep() -> None:
         return_value=MagicMock(daily_metrics_synced=1, sleep_synced=1)
     )
 
-    with patch("src.scheduler.GarminSyncService", return_value=sync_service):
+    today = date(2026, 8, 2)
+    with (
+        patch("src.scheduler.GarminSyncService", return_value=sync_service),
+        patch("src.scheduler._profile_today", return_value=today),
+    ):
         daily, sleep = await _sync_garmin_daily(session, profiles, client=client)
 
-    assert (daily, sleep) == (2, 2)
-    assert client.fetch_daily_payloads.call_count == 2
-    assert sync_service.sync_daily.await_count == 2
+    assert (daily, sleep) == (8, 8)
+    assert client.fetch_daily_payloads.call_count == 8
+    assert sync_service.sync_daily.await_count == 8
+    expected_dates = [today - timedelta(days=offset) for offset in range(4)]
+    for profile_index, profile in enumerate(profiles):
+        profile_calls = sync_service.sync_daily.await_args_list[
+            profile_index * 4 : (profile_index + 1) * 4
+        ]
+        assert [call.args[:2] for call in profile_calls] == [
+            (profile.id, subject_date) for subject_date in expected_dates
+        ]
     # commit is the caller's responsibility — the helper only syncs with commit=False
     for call in sync_service.sync_daily.await_args_list:
         assert call.kwargs["commit"] is False
@@ -417,12 +429,15 @@ async def test_sync_garmin_daily_isolates_profile_failure() -> None:
 
     sync_service.sync_daily = AsyncMock(side_effect=sync_daily)
 
-    with patch("src.scheduler.GarminSyncService", return_value=sync_service):
+    with (
+        patch("src.scheduler.GarminSyncService", return_value=sync_service),
+        patch("src.scheduler._profile_today", return_value=date(2026, 8, 2)),
+    ):
         daily, sleep = await _sync_garmin_daily(session, [bad, good], client=client)
 
     # The failing profile contributes nothing; the healthy one still syncs.
-    assert (daily, sleep) == (1, 1)
-    assert sync_service.sync_daily.await_count == 2
+    assert (daily, sleep) == (4, 4)
+    assert sync_service.sync_daily.await_count == 8
 
 
 @pytest.mark.asyncio

@@ -9,7 +9,7 @@ network.
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from sqlalchemy import func, select
@@ -136,6 +136,36 @@ class FakeGarminClient:
         self.activity_calls.append((start_date, end_date, include_details))
         self.detail_types_seen.append(detail_types)
         return GarminActivityPayloads(summaries=[], details_by_activity_id={})
+
+
+class CompleteDailyGarminClient(FakeGarminClient):
+    def fetch_daily_payloads(
+        self, calendar_date: date, lookback_days: int = 7
+    ) -> GarminDailyPayloads:
+        base = super().fetch_daily_payloads(calendar_date, lookback_days)
+        next_day = calendar_date + timedelta(days=1)
+        return GarminDailyPayloads(
+            training_readiness=base.training_readiness,
+            sleep=base.sleep,
+            hrv=base.hrv,
+            rhr=base.rhr,
+            stress={
+                "calendarDate": calendar_date.isoformat(),
+                "avgStressLevel": 28,
+                "startTimestampLocal": f"{calendar_date.isoformat()}T00:00:00.0",
+                "endTimestampLocal": f"{next_day.isoformat()}T00:00:00.0",
+            },
+            body_battery=[
+                {
+                    "date": calendar_date.isoformat(),
+                    "charged": 74,
+                    "drained": 70,
+                    "startTimestampLocal": f"{calendar_date.isoformat()}T00:00:00.0",
+                    "endTimestampLocal": f"{next_day.isoformat()}T00:00:00.0",
+                    "bodyBatteryValuesArray": [[0, 16]],
+                }
+            ],
+        )
 
 
 async def _seed_profile(db_conn: AsyncConnection, user_id: uuid.UUID) -> None:
@@ -266,6 +296,54 @@ async def test_run_backfill_dry_run_writes_nothing(db_conn: AsyncConnection) -> 
     assert summary.sleep_synced == 2
     assert len(client.daily_calls) == 2  # dry-run still fetches to report coverage
     assert await _count(db_conn, DailyMetric, user_id) == 0  # but writes nothing
+
+
+@pytest.mark.asyncio
+async def test_history_repair_requires_completed_daily_windows(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    subject_date = date(2026, 7, 31)
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        profile = await session.get(Profile, user_id)
+        assert profile is not None
+        rejected = await run_backfill(
+            session,
+            profile,
+            client=FakeGarminClient(),
+            start=subject_date,
+            end=subject_date,
+            require_complete_daily=True,
+            activities=False,
+            throttle=0.0,
+            log_fn=lambda _m: None,
+        )
+
+    assert rejected.days_failed == 1
+    assert rejected.days_synced == 0
+    assert "not complete" in rejected.errors[0]
+    assert await _count(db_conn, DailyMetric, user_id) == 0
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        profile = await session.get(Profile, user_id)
+        assert profile is not None
+        repaired = await run_backfill(
+            session,
+            profile,
+            client=CompleteDailyGarminClient(),
+            start=subject_date,
+            end=subject_date,
+            require_complete_daily=True,
+            activities=False,
+            throttle=0.0,
+            log_fn=lambda _m: None,
+        )
+
+    assert repaired.days_synced == 1
+    assert repaired.days_failed == 0
+    assert await _count(db_conn, DailyMetric, user_id) == 1
 
 
 @pytest.mark.asyncio

@@ -44,12 +44,32 @@ from src.services.insights import (
     detect_ftp_drift,
     pearson,
 )
+from src.services.insights import (
+    PROMPT_VERSION as INSIGHTS_PROMPT_VERSION,
+)
 
 D0 = date(2026, 5, 1)
 
 
 def _day(n: int) -> date:
     return D0 + timedelta(days=n)
+
+
+def _daily_aggregate_raw(day: date, end_local: str) -> dict[str, object]:
+    start_local = f"{day.isoformat()}T00:00:00.0"
+    return {
+        "stress": {
+            "avgStressLevel": 30,
+            "startTimestampLocal": start_local,
+            "endTimestampLocal": end_local,
+        },
+        "body_battery": {
+            "drained": 60,
+            "bodyBatteryValuesArray": [[0, 20]],
+            "startTimestampLocal": start_local,
+            "endTimestampLocal": end_local,
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -475,6 +495,53 @@ async def test_service_driver_records_keep_missing_bedroom_data_none(
 
 
 @pytest.mark.asyncio
+async def test_service_driver_records_exclude_partial_day_stress(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    complete_day = date(2026, 7, 30)
+    partial_day = date(2026, 7, 31)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add_all(
+            [
+                Sleep(user_id=user_id, calendar_date=complete_day, score=70),
+                Sleep(user_id=user_id, calendar_date=partial_day, score=71),
+                DailyMetric(
+                    user_id=user_id,
+                    calendar_date=complete_day,
+                    stress_avg=28,
+                    raw_payload=_daily_aggregate_raw(
+                        complete_day,
+                        "2026-07-31T00:00:00.0",
+                    ),
+                ),
+                DailyMetric(
+                    user_id=user_id,
+                    calendar_date=partial_day,
+                    stress_avg=12,
+                    raw_payload=_daily_aggregate_raw(
+                        partial_day,
+                        "2026-07-31T08:44:00.0",
+                    ),
+                ),
+            ]
+        )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        records = await InsightsService(session)._driver_records(
+            user,
+            start=complete_day,
+            end=partial_day,
+        )
+
+    assert [record["daytime_stress_avg"] for record in records] == [28.0, None]
+
+
+@pytest.mark.asyncio
 async def test_service_run_records_actionable_findings_idempotently(
     db_conn: AsyncConnection,
 ) -> None:
@@ -694,3 +761,58 @@ async def test_cached_drivers_falls_back_to_live_when_no_packet(
             )
         )
         assert row is None
+
+
+@pytest.mark.asyncio
+async def test_stale_driver_cache_falls_back_and_regenerates_current_version(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    subject_date = _day(11)
+    stale_report = DriversReport(
+        outcomes={OUTCOME_SLEEP_SCORE: [], OUTCOME_RECOVERY_HRV: []},
+        record_count=999,
+        window_start=_day(0),
+        window_end=subject_date,
+    )
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        for i in range(10):
+            session.add(Sleep(user_id=user_id, calendar_date=_day(i), score=80 - i))
+        session.add(
+            Analysis(
+                user_id=user_id,
+                analysis_type=AUDIT_TYPE_DRIVERS,
+                subject_date=subject_date,
+                generated_at_utc=datetime(2026, 4, 1),
+                prompt_version="insights:v1",
+                context_packet=_drivers_packet(stale_report),
+                output_markdown="stale",
+                raw_response={},
+            )
+        )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = InsightsService(session)
+        live = await service.drivers(user, as_of=subject_date)
+        cached = await service.cached_drivers(user, as_of=subject_date)
+        assert cached == live
+        assert cached.record_count == 10
+
+        await service.record_drivers(user, as_of=subject_date)
+        versions = list(
+            (
+                await session.execute(
+                    select(Analysis.prompt_version).where(
+                        Analysis.user_id == user_id,
+                        Analysis.analysis_type == AUDIT_TYPE_DRIVERS,
+                        Analysis.subject_date == subject_date,
+                    )
+                )
+            ).scalars()
+        )
+
+    assert sorted(versions) == ["insights:v1", INSIGHTS_PROMPT_VERSION]
