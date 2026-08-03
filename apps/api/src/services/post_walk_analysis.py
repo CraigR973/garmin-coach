@@ -64,7 +64,7 @@ from src.services.post_workout_analysis import (
 )
 from src.services.workload_budget import workload_slot
 
-PROMPT_VERSION = "post-walk-analysis-v4-2026-07-28"
+PROMPT_VERSION = "post-walk-analysis-v5-2026-08-02"
 ANALYSIS_TYPE = "post_walk"
 WALK_ANALYSIS_MIN_DURATION_SEC = 30 * 60
 WALK_ANALYSIS_MIN_DISTANCE_M = 3_000
@@ -72,6 +72,12 @@ ACTIVE_RECOVERY_WINDOW_DAYS = 7
 
 SYSTEM_PROMPT = """You are CheckMark, a private Zone-2 walking and active-recovery coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
+Treat every figure in the supplied context as what the app recorded, not as
+independently verified truth about Mark. If Mark says his own device shows a
+different observed value, acknowledge the discrepancy, use his device reading
+as the better evidence, and treat it as a data-quality problem. This applies to
+observed data only: never let a correction change a deterministic verdict,
+safety floor, or propose/confirm decision.
 Use `subjectWeekday` as the authoritative weekday; never derive the weekday from
 `subjectDate` yourself.
 Return concise markdown that reads whether this was genuine easy aerobic work,

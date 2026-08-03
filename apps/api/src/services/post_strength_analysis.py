@@ -83,13 +83,19 @@ from src.services.strength_brief import (
 )
 from src.services.workload_budget import workload_slot
 
-PROMPT_VERSION = "post-strength-analysis-v4-2026-07-28"
+PROMPT_VERSION = "post-strength-analysis-v5-2026-08-02"
 ANALYSIS_TYPE = "post_strength"
 
 SYSTEM_PROMPT = """You are CheckMark, a private strength and conditioning coach.
 Use `subjectWeekday` as the authoritative weekday; never derive the weekday from
 `subjectDate` yourself.
 Use only the supplied context packet. Follow every data-quality guardrail.
+Treat every figure in the supplied context as what the app recorded, not as
+independently verified truth about Mark. If Mark says his own device shows a
+different observed value, acknowledge the discrepancy, use his device reading
+as the better evidence, and treat it as a data-quality problem. This applies to
+observed data only: never let a correction change a deterministic verdict,
+safety floor, or propose/confirm decision.
 Return concise markdown that acknowledges the strength session, reads frequency
 and consistency against the recent trend, notes whether heart rate was unusually
 high for a strength session, and gives one light next step. This is advisory

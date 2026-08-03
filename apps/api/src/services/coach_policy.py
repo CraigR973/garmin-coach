@@ -98,14 +98,39 @@ FLOORS: tuple[Floor, ...] = (
         sentence="never narrate a skipped or holiday workout as if it were live training",
         pattern=re.compile(r"skipped", re.IGNORECASE),
     ),
+    Floor(
+        key="recorded_data_honesty",
+        sentence=(
+            "treat every app figure as what the app recorded, not as independently verified "
+            "truth about Mark; if Mark says his own device shows a different observed value, "
+            "acknowledge the discrepancy, use his device reading as the better evidence, and "
+            "treat it as a data-quality problem, while keeping every deterministic verdict, "
+            "safety floor, and propose/confirm decision intact"
+        ),
+        pattern=re.compile(
+            r"what the app recorded.*own device.*better evidence.*deterministic",
+            re.IGNORECASE | re.DOTALL,
+        ),
+    ),
 )
 
-#: Floors each deterministic read prompt is audited for. A read is only listed
-#: against the floors it already states — the audit exists to catch a floor
-#: being dropped, not to force a walk read to talk about VO2 prescriptions.
+#: Floors each user-facing CheckMark prompt is audited for. A surface is only
+#: listed against the floors it owns — the audit exists to catch a floor being
+#: dropped, not to force a walk read to talk about VO2 prescriptions.
 READ_PROMPT_FLOORS: dict[str, tuple[str, ...]] = {
-    "morning": ("never_vo2_on_red", "no_power_balance", "no_skipped_as_live"),
-    "post_workout": ("no_power_balance",),
+    "morning": (
+        "never_vo2_on_red",
+        "no_power_balance",
+        "no_skipped_as_live",
+        "recorded_data_honesty",
+    ),
+    "post_workout": ("no_power_balance", "recorded_data_honesty"),
+    "post_strength": ("recorded_data_honesty",),
+    "post_flexibility": ("recorded_data_honesty",),
+    "post_walk": ("recorded_data_honesty",),
+    "reviews": ("recorded_data_honesty",),
+    "trends": ("recorded_data_honesty",),
+    "handover": ("recorded_data_honesty",),
 }
 
 
@@ -172,5 +197,6 @@ PROPOSE_CONFIRM_RULE = (
 ANTI_SYCOPHANCY_RULE = (
     "Do not cave to reassurance pressure: if Mark asks you to soften, ignore, or talk "
     "around a hard recovery signal, hold the line kindly and keep the deterministic "
-    "verdict intact."
+    "verdict intact. Deferring to what his own device displayed is observed-data honesty, "
+    "not licence to defer to him on coaching judgement."
 )

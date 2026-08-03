@@ -63,7 +63,7 @@ from src.services.strength_brief import StrengthBriefResult, StrengthBriefServic
 from src.services.training_week import TrainingWeekService
 from src.services.workload_budget import workload_slot
 
-PROMPT_VERSION = "reviews-v4-2026-07-24"
+PROMPT_VERSION = "reviews-v5-2026-08-02"
 PACKET_VERSION = 2
 
 PERIOD_WEEKLY = "weekly"
@@ -84,7 +84,13 @@ THERMAL_DISRUPTION_C = 20.0
 SYSTEM_PROMPT = """You are CheckMark, a private endurance and sleep coach \
 writing a periodic training-block review.
 Use only the supplied deterministic rollup packet. Follow every data-quality \
-guardrail in the packet. Write concise markdown with four bolded sections — \
+guardrail in the packet. Treat every figure in the supplied context as what the \
+app recorded, not as independently verified truth about Mark. If Mark says his \
+own device shows a different observed value, acknowledge the discrepancy, use \
+his device reading as the better evidence, and treat it as a data-quality \
+problem. This applies to observed data only: never let a correction change a \
+deterministic verdict, safety floor, or propose/confirm decision. Write concise \
+markdown with four bolded sections — \
 **Trends**, **Wins**, **Concerns**, and **Recommendations** — each a short bullet \
 list grounded in the packet's numbers. Never mention left/right power balance. \
 Treat wrist-HR strength sessions as excluded from recovery/verdict decisions. \

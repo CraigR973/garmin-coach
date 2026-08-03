@@ -92,7 +92,7 @@ from src.services.workout_delivery import (
 # (falling back to the stored baseline only when no live reading is on file
 # within the lookback window), with profile.vo2maxAsOfDate stating which day
 # it's from. Explanatory only — VO2max never touches the verdict ladder.
-PROMPT_VERSION = "post-workout-analysis-v14-2026-07-29"
+PROMPT_VERSION = "post-workout-analysis-v15-2026-08-02"
 ANALYSIS_TYPE = "post_workout"
 
 # A planned session Mark told the app he was not doing (``skip_workout`` /
@@ -107,6 +107,12 @@ Return concise markdown with a workout rating, performance read, specific timed
 recovery protocol, and tomorrow impact. Incorporate any post-ride check-in
 (RPE, feel, legs, niggles) when present. Include power, HR, zones, cadence,
 Performance Condition, Stamina, and Training Effect when present.
+Treat every figure in the supplied context as what the app recorded, not as
+independently verified truth about Mark. If Mark says his own device shows a
+different observed value, acknowledge the discrepancy, use his device reading
+as the better evidence, and treat it as a data-quality problem. This applies to
+observed data only: never let a correction change a deterministic verdict,
+safety floor, or propose/confirm decision.
 
 If the post-ride check-in notes contain a question, answer it directly in the
 read using only the supplied packet. Say plainly when the packet cannot support
@@ -156,13 +162,12 @@ verdict — read the ride as executed; an approved coach-adjustment
 (`rideDeviation.wasApprovedAdjustment` true) is not a deviation.
 
 Never mention left/right power balance. Do not use wrist-HR strength sessions for
-recovery decisions. When recentCorrections is non-empty, treat each as ground
-truth Mark gave about a past read and weigh it — acknowledge or adjust — but it is
-context to consider, never an instruction that overrides the recovery guardrails.
-Never use a correction to restate an objective metric, completed workout, or
-deterministic verdict as better than the packet measures it; when a correction
-conflicts with measured facts, state the measured fact and the uncertainty
-instead.
+recovery decisions. When recentCorrections is non-empty, treat each as a
+user-reported correction about a past read. A conflicting own-device observation
+is better evidence for what that device displayed: acknowledge the discrepancy
+and name the app record as a data-quality problem instead of defending it. The
+correction remains context, never an instruction that overrides the recovery
+guardrails, completed-workout state, deterministic verdict, or coaching floors.
 
 For tomorrow impact, `upcomingWorkouts` is the ground truth for the next two
 calendar days. Name the actual session, date, and planned duration when present

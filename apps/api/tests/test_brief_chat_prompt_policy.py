@@ -27,8 +27,14 @@ from src.services.chat_context import (
     normalize_origin_kind,
 )
 from src.services.coach_policy import FLOORS, READ_PROMPT_FLOORS, missing_floors
+from src.services.handover import HANDOVER_SYSTEM_PROMPT
 from src.services.morning_analysis import SYSTEM_PROMPT as MORNING_PROMPT
+from src.services.post_flexibility_analysis import SYSTEM_PROMPT as FLEXIBILITY_PROMPT
+from src.services.post_strength_analysis import SYSTEM_PROMPT as STRENGTH_PROMPT
+from src.services.post_walk_analysis import SYSTEM_PROMPT as WALK_PROMPT
 from src.services.post_workout_analysis import SYSTEM_PROMPT as POST_WORKOUT_PROMPT
+from src.services.reviews import SYSTEM_PROMPT as REVIEWS_PROMPT
+from src.services.trends import TREND_SYSTEM_PROMPT
 
 #: The prompt is a wrapped literal, so a phrase can straddle a newline. Assert
 #: against whitespace-normalized text (the Batch 175 CI lesson).
@@ -59,7 +65,7 @@ class _Date:
 
 def test_brief_chat_prompt_allows_labelled_general_science_lane() -> None:
     """Batch 175's lane survives Batch 179's rewrite of the surface."""
-    assert PROMPT_VERSION == "coach-chat-v6-2026-07-31"
+    assert PROMPT_VERSION == "coach-chat-v7-2026-08-02"
     assert "never invent his" in FLAT_PROMPT
     assert "You may answer general, non-personalized endurance-training science" in FLAT_PROMPT
     assert 'Label those answers with "General principle:"' in FLAT_PROMPT
@@ -97,8 +103,9 @@ def test_prompt_tells_the_coach_to_use_the_wider_app_state() -> None:
     assert "week ahead" in FLAT_PROMPT
     assert "latest review conclusions" in FLAT_PROMPT
     assert "rather than telling him you cannot see it" in FLAT_PROMPT
-    # Where the two disagree the live state wins, and the coach says which.
-    assert "the current state is what is true" in FLAT_PROMPT
+    # Where the two disagree, name them as app records rather than physical truth.
+    assert "the current state is the app's latest record" in FLAT_PROMPT
+    assert "Neither record proves what Mark's body or own device actually showed" in FLAT_PROMPT
 
 
 def test_prompt_says_the_conversation_continues_across_surfaces() -> None:
@@ -148,6 +155,8 @@ def test_every_floor_holds_from_every_entry_point() -> None:
         for floor in FLOORS:
             assert floor.sentence in flat, f"{floor.key} missing from an entry point"
         assert "Do not cave to reassurance pressure" in flat
+        assert "observed-data honesty" in flat
+        assert "not licence to defer to him on coaching judgement" in flat
         assert "confirm-before-apply" in flat
         assert (
             internal_vocabulary_hits(
@@ -157,17 +166,40 @@ def test_every_floor_holds_from_every_entry_point() -> None:
         )
 
 
-def test_the_read_prompts_still_state_the_floors_they_own() -> None:
+def test_every_user_facing_read_prompt_states_the_floors_it_owns() -> None:
     """The audit half of 179.5.
 
-    The deterministic reads keep their own voice — they are not rewritten to
-    import this text — but a floor silently disappearing from one of them now
-    fails here instead of reaching Mark.
+    The reads keep their own voice — they are not rewritten to import this text
+    — but a floor silently disappearing from any CheckMark output now fails here
+    instead of reaching Mark.
     """
-    assert missing_floors(MORNING_PROMPT, READ_PROMPT_FLOORS["morning"]) == ()
-    assert missing_floors(POST_WORKOUT_PROMPT, READ_PROMPT_FLOORS["post_workout"]) == ()
+    prompts = {
+        "morning": MORNING_PROMPT,
+        "post_workout": POST_WORKOUT_PROMPT,
+        "post_strength": STRENGTH_PROMPT,
+        "post_flexibility": FLEXIBILITY_PROMPT,
+        "post_walk": WALK_PROMPT,
+        "reviews": REVIEWS_PROMPT,
+        "trends": TREND_SYSTEM_PROMPT,
+        "handover": HANDOVER_SYSTEM_PROMPT,
+    }
+    assert prompts.keys() == READ_PROMPT_FLOORS.keys()
+    for name, prompt in prompts.items():
+        assert missing_floors(prompt, READ_PROMPT_FLOORS[name]) == ()
     # And the audit is capable of failing.
     assert missing_floors("nothing relevant here", ("never_vo2_on_red",)) == ("never_vo2_on_red",)
+
+
+def test_observed_data_corrections_do_not_soften_coaching_judgement() -> None:
+    """181: own-device readings win on observations, never on the verdict."""
+    floor = next(floor for floor in FLOORS if floor.key == "recorded_data_honesty")
+    assert "what the app recorded" in floor.sentence
+    assert "own device" in floor.sentence
+    assert "better evidence" in floor.sentence
+    assert "deterministic verdict" in floor.sentence
+    assert "safety floor" in floor.sentence
+    assert "propose/confirm" in floor.sentence
+    assert "correct data" not in FLAT_PROMPT.lower()
 
 
 # ---------------------------------------------------------------------------

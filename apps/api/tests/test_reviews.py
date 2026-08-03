@@ -384,7 +384,7 @@ async def test_preview_assembles_rollup_and_never_writes(db_conn: AsyncConnectio
             "do not describe this as strength training stopped"
             in preview.packet["strengthBrief"]["zeroInterpretation"]
         )
-        assert REVIEW_PROMPT_VERSION.startswith("reviews-v4")
+        assert REVIEW_PROMPT_VERSION.startswith("reviews-v5")
         assert "usual routine only" in REVIEW_SYSTEM_PROMPT
         assert "trainingWeekSoFar" in REVIEW_SYSTEM_PROMPT
         assert "merely planned session as executed" in REVIEW_SYSTEM_PROMPT

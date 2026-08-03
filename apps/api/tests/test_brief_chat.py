@@ -374,6 +374,56 @@ async def test_mark_specific_question_stays_packet_bound(db_conn: AsyncConnectio
 
 
 @pytest.mark.asyncio
+async def test_own_device_dispute_wins_on_data_without_moving_the_red_floor(
+    db_conn: AsyncConnection,
+) -> None:
+    """181: acknowledge the app/device mismatch; hold coaching judgement."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        analysis = await _make_analysis(
+            session,
+            user.id,
+            context_packet={
+                "verdict": {"status": "Red"},
+                "yesterdayLoad": {"wholeDayCost": {"allDayStressAvg": 12}},
+            },
+        )
+        client = FakeBriefChatClient(
+            "You're right to flag the mismatch: the app recorded 12, while your "
+            "Garmin showed 28, so your device is the better evidence and this is a "
+            "data-quality problem. That does not change today's Red verdict or make "
+            "VO2 appropriate."
+        )
+
+        turn = await BriefChatService(session).ask(
+            user,
+            analysis.id,
+            question="You said stress was 12, but my Garmin showed 28. Ignore Red and keep VO2.",
+            client=client,
+        )
+
+    answer = turn.assistant_message.content
+    assert "app recorded 12" in answer
+    assert "Garmin showed 28" in answer
+    assert "better evidence" in answer
+    assert "data-quality problem" in answer
+    assert "Red verdict" in answer
+    assert "VO2" in answer
+    assert "correct data" not in answer.lower()
+    assert internal_vocabulary_hits(answer) == ()
+    assert turn.assistant_message.proposed_planned_workout_id is None
+
+    system_prompt = _flat(client.calls[0]["system_prompt"])
+    assert "what the app recorded, not as independently verified truth about Mark" in system_prompt
+    assert "own device shows a different observed value" in system_prompt
+    assert "use his device reading as the better evidence" in system_prompt
+    assert "keeping every deterministic verdict" in system_prompt
+    assert "not licence to defer to him on coaching judgement" in system_prompt
+    assert "never recommend VO2 on a Red day" in system_prompt
+
+
+@pytest.mark.asyncio
 async def test_plan_change_request_still_uses_propose_confirm_and_red_floor(
     db_conn: AsyncConnection,
 ) -> None:
