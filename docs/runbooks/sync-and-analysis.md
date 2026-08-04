@@ -180,13 +180,33 @@ These jobs send web push notifications and write audit rows to `analyses`.
 
 ## Backup
 
-The daily 03:00 UTC backup calls `pg_dump` and writes a `.sql` file to `backup_dir` (default `/tmp/garmin_coach_backups`).
+The daily 03:00 UTC backup calls `pg_dump` and writes a compressed custom-format
+`.dump` archive to `backup_dir` (default `/tmp/garmin_coach_backups`), keeping the
+most recent `BACKUP_RETENTION_COUNT` (7).
+
+Restore with `pg_restore`, not `psql` — the archive is not plain SQL:
+
+```bash
+pg_restore --clean --if-exists --no-owner --dbname "$DATABASE_URL" coach_20260803_030000.dump
+```
 
 **Notes:**
 
-- Railway containers use ephemeral storage: `/tmp/` backups do not survive redeployment. For durable backups, set `BACKUP_DIR` to a mounted volume or export the Railway service volume.
-- `pg_dump` failure writes an `AuditLog` row with `action_type=backup_failed`; check the Railway logs for `scheduled backup failed`.
-- The Supabase dashboard also provides point-in-time restore for the production database independently of these backups.
+- `coach.activity_timeseries` rows are deliberately excluded (`--exclude-table-data`);
+  the table definition is restored empty. It is ~85% of the database and is the one
+  table replayable from upstream — refill it with `garmin_history_backfill`. Everything
+  authored (analyses, check-ins, plans, profile, chat) is included.
+- `pg_dump` must be at least the server's major version. Supabase runs PostgreSQL 17,
+  so the image installs `postgresql-client-17` from PGDG rather than bookworm's 15 —
+  a mismatch aborts every run with `server version mismatch` (this silently broke the
+  backup for five nights from 2026-07-29).
+- Railway containers use ephemeral storage: `/tmp/` backups do not survive redeployment.
+  For durable backups, set `BACKUP_DIR` to a mounted volume or export the Railway service volume.
+- `pg_dump` failure writes an `AuditLog` row with `action_type=backup_failed`; check the
+  Railway logs for `scheduled backup failed`. Nothing pages on this, so a run of
+  `backup_failed` rows can accumulate unnoticed — worth checking after any base-image change.
+- Supabase point-in-time restore is a **paid-plan** feature; on the free plan these dumps
+  are the only backup that exists.
 
 ## Manual job trigger
 

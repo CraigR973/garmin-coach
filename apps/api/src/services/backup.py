@@ -16,6 +16,14 @@ import structlog
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 BACKUP_RETENTION_COUNT = 7
 
+# Per-second sample streams are ~85% of the database and are the one thing here
+# that is re-derivable from an upstream source (garmin_history_backfill replays
+# them from Garmin). Dumping them nightly cost hundreds of MB of Supabase egress
+# per run for data we can always fetch again, so the table's *definition* is
+# kept and its rows are left out. Everything Claude wrote or Mark entered —
+# analyses, check-ins, plans, profile, chat — is irreplaceable and stays in.
+EXCLUDED_TABLE_DATA = ("coach.activity_timeseries",)
+
 
 @dataclass
 class BackupInfo:
@@ -49,7 +57,7 @@ def _pg_password(database_url: str) -> str | None:
 
 def _safe_filename(filename: str) -> bool:
     """Accept only filenames that look like our own backup files."""
-    return bool(re.fullmatch(r"coach_\d{8}_\d{6}\.sql", filename))
+    return bool(re.fullmatch(r"coach_\d{8}_\d{6}\.dump", filename))
 
 
 def _prepare_backup_dir(path: Path) -> None:
@@ -63,7 +71,7 @@ def _set_owner_only_file(path: Path) -> None:
 
 def _prune_old_backups(path: Path, keep: int = BACKUP_RETENTION_COUNT) -> None:
     files = sorted(
-        (f for f in path.glob("coach_*.sql") if _safe_filename(f.name)),
+        (f for f in path.glob("coach_*.dump") if _safe_filename(f.name)),
         key=lambda f: f.stat().st_mtime,
         reverse=True,
     )
@@ -76,7 +84,7 @@ async def create_backup(backup_dir: str, database_url: str) -> BackupInfo:
     _prepare_backup_dir(path)
 
     now = datetime.now(UTC)
-    filename = f"coach_{now.strftime('%Y%m%d_%H%M%S')}.sql"
+    filename = f"coach_{now.strftime('%Y%m%d_%H%M%S')}.dump"
     filepath = path / filename
     partial = path / f".{filename}.partial"
 
@@ -88,8 +96,11 @@ async def create_backup(backup_dir: str, database_url: str) -> BackupInfo:
     proc = await asyncio.create_subprocess_exec(
         "pg_dump",
         "--no-password",
-        "--format=plain",
+        # Custom format is compressed on the way out of the server, which is what
+        # actually bills as egress, and it restores selectively via pg_restore.
+        "--format=custom",
         "--schema=coach",
+        *(f"--exclude-table-data={table}" for table in EXCLUDED_TABLE_DATA),
         "--file",
         str(partial),
         _pg_dsn(database_url),
@@ -119,7 +130,7 @@ def list_backups(backup_dir: str) -> list[BackupInfo]:
     if stat.S_IMODE(path.stat().st_mode) & 0o077:
         log.warning("backup directory permissions are too broad", backup_dir=backup_dir)
     files = sorted(
-        (f for f in path.glob("coach_*.sql") if _safe_filename(f.name)),
+        (f for f in path.glob("coach_*.dump") if _safe_filename(f.name)),
         reverse=True,
     )
     return [
