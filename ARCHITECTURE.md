@@ -294,7 +294,15 @@ against it rather than rewritten. Decision #29 and Red-never-VO2 are untouched.
 - `daily_metrics` (readiness, recovery_time_min, training_status, stress, body_battery, hrv_*, rhr_*, weight_kg, vo2max)
 - `sleep` (score, qualifier, stage secs, spo2, resp, restless, factors_json)
 - `metric_baselines` (persisted trailing-window summary stats for morning analysis, with reliability cutoffs such as pre-11 Jun SpO2/HRV exclusion). Two interchangeable producers, tagged by `source`: the 84-night xlsx import (`source=sleep_history_xlsx`, Batch 4) and — once real history exists — recomputation from stored `daily_metrics` + `sleep` via `src.metric_baselines_backfill` (`source=db_history`, default trailing 84 nights; DECISIONS #88). The morning read consumes all baseline rows regardless of source and falls back to the static KB profile bands when the table is empty.
-- `activities` (+ `activity_timeseries`: power/hr/cadence/resp/performance_condition/stamina)
+- `activities` (+ `activity_timeseries`: power/hr/cadence/resp/performance_condition/stamina).
+  `activity_timeseries` is by far the largest table (~85% of the database) and the only
+  one replayable from an upstream source, so it is the single table whose *row data* the
+  nightly backup excludes — restore leaves it empty and `garmin_history_backfill` refills
+  it from Garmin (DECISIONS #262). Its write path is guarded: the poll rewrites an
+  activity's samples only when the stored row count **or** the latest sample timestamp
+  differs from the incoming payload, since details are fetched with `maxchart=2000` and a
+  long ride returns exactly 2000 points both mid-session and once finished. A payload that
+  parses to zero samples never deletes.
 - `temperature_readings` (Hive poll) · `weather_daily` (daily high/low,
   overnight low/wind, precipitation, sunrise/sunset)
 - `fan_state_readings` (overnight fan-control time series, migration `011`, Batch 31): one
