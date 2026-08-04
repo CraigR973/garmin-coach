@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { MessageCircle, Send } from 'lucide-react';
 import { toast } from 'sonner';
@@ -24,8 +24,20 @@ import { Markdown } from '@/components/Markdown';
 
 const MAX_QUESTION_LENGTH = 1000;
 
+function localDateKey(formatter: Intl.DateTimeFormat, date: Date): string {
+  const parts = Object.fromEntries(
+    formatter
+      .formatToParts(date)
+      .filter((part) => part.type === 'year' || part.type === 'month' || part.type === 'day')
+      .map((part) => [part.type, part.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
 export interface CoachConversationProps {
   messages: BriefMessage[];
+  /** IANA timezone from the authenticated profile. */
+  timeZone?: string;
   heading: string;
   placeholder: string;
   /** Accessible name for the composer — each surface says what it is asking about. */
@@ -39,6 +51,7 @@ export interface CoachConversationProps {
 
 export function CoachConversation({
   messages,
+  timeZone,
   heading,
   placeholder,
   inputLabel,
@@ -49,6 +62,60 @@ export function CoachConversation({
 }: CoachConversationProps) {
   const queryClient = useQueryClient();
   const [question, setQuestion] = useState('');
+  const dateKeyFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat('en-GB', {
+        timeZone: timeZone || undefined,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }),
+    [timeZone],
+  );
+  const dateLabelFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat('en-GB', {
+        timeZone: timeZone || undefined,
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      }),
+    [timeZone],
+  );
+  const timeFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat('en-GB', {
+        timeZone: timeZone || undefined,
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      }),
+    [timeZone],
+  );
+  // Typing in the composer updates local state on every keystroke. Keep the
+  // timezone work out of that hot path, especially for the unbounded rolling
+  // thread in the app-wide launcher.
+  const presentedMessages = useMemo(() => {
+    // The query surfaces already fail closed to an empty history while loading.
+    // Retain that boundary if a stale/malformed cached payload reaches this
+    // presentation component; it must not take down the rest of a read page.
+    if (!Array.isArray(messages)) return [];
+    let previousDayKey: string | null = null;
+    return messages.map((message) => {
+      const sentAt = new Date(message.createdAtUtc);
+      const dayKey = localDateKey(dateKeyFormatter, sentAt);
+      const presentation = {
+        message,
+        dayKey,
+        dayLabel: dateLabelFormatter.format(sentAt),
+        timeLabel: timeFormatter.format(sentAt),
+        startsDay: dayKey !== previousDayKey,
+      };
+      previousDayKey = dayKey;
+      return presentation;
+    });
+  }, [dateKeyFormatter, dateLabelFormatter, messages, timeFormatter]);
 
   const proposeMutation = useMutation({
     mutationFn: (plannedWorkoutId: string) =>
@@ -90,37 +157,62 @@ export function CoachConversation({
           }
           aria-label="Coach conversation"
         >
-          {messages.map((message) => (
-            <li
-              key={message.id}
-              className={
-                message.role === 'user'
-                  ? 'ml-auto max-w-[85%] rounded-2xl bg-primary/10 px-3 py-2 text-sm'
-                  : 'max-w-[85%] rounded-2xl bg-surface px-3 py-2 text-sm'
-              }
-            >
-              {message.role === 'assistant' ? (
-                <Markdown>{message.content}</Markdown>
-              ) : (
-                <p>{message.content}</p>
-              )}
-              {message.role === 'assistant' && message.proposedPlannedWorkoutId ? (
-                <div className="mt-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="subtle"
-                    disabled={proposeMutation.isPending}
-                    onClick={() =>
-                      proposeMutation.mutate(message.proposedPlannedWorkoutId as string)
+          {presentedMessages.map(({ message, dayKey, dayLabel, timeLabel, startsDay }) => {
+            return (
+              <Fragment key={message.id}>
+                {startsDay ? (
+                  <li
+                    role="separator"
+                    aria-label={dayLabel}
+                    className="flex items-center gap-3 py-1 text-xs text-text-muted"
+                  >
+                    <span className="h-px flex-1 bg-border" aria-hidden />
+                    <time dateTime={dayKey}>{dayLabel}</time>
+                    <span className="h-px flex-1 bg-border" aria-hidden />
+                  </li>
+                ) : null}
+                <li
+                  className={
+                    message.role === 'user'
+                      ? 'ml-auto max-w-[85%] rounded-2xl bg-primary/10 px-3 py-2 text-sm'
+                      : 'max-w-[85%] rounded-2xl bg-surface px-3 py-2 text-sm'
+                  }
+                >
+                  {message.role === 'assistant' ? (
+                    <Markdown>{message.content}</Markdown>
+                  ) : (
+                    <p>{message.content}</p>
+                  )}
+                  {message.role === 'assistant' && message.proposedPlannedWorkoutId ? (
+                    <div className="mt-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="subtle"
+                        disabled={proposeMutation.isPending}
+                        onClick={() =>
+                          proposeMutation.mutate(message.proposedPlannedWorkoutId as string)
+                        }
+                      >
+                        Propose this adjustment
+                      </Button>
+                    </div>
+                  ) : null}
+                  <time
+                    dateTime={message.createdAtUtc}
+                    aria-label={`Sent ${dayLabel} at ${timeLabel}`}
+                    className={
+                      message.role === 'user'
+                        ? 'mt-1 block text-right text-[11px] text-text-muted'
+                        : 'mt-1 block text-[11px] text-text-muted'
                     }
                   >
-                    Propose this adjustment
-                  </Button>
-                </div>
-              ) : null}
-            </li>
-          ))}
+                    {timeLabel}
+                  </time>
+                </li>
+              </Fragment>
+            );
+          })}
         </ol>
       ) : emptyHint ? (
         <p className="text-sm text-text-muted">{emptyHint}</p>

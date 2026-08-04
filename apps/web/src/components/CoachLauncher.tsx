@@ -28,7 +28,7 @@ import { cn } from '@/lib/utils';
 
 const ROUTES_WITHOUT_LAUNCHER = ['/access', '/activate', '/offline'];
 
-export function CoachLauncher() {
+export function CoachLauncher({ timeZone }: { timeZone?: string }) {
   const { pathname } = useLocation();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -83,6 +83,7 @@ export function CoachLauncher() {
       <Sheet open={open} onClose={() => setOpen(false)} title="Your coach">
         <CoachConversation
           messages={threadQuery.data?.data ?? []}
+          timeZone={timeZone}
           heading={ORIGIN_PROMPTS[origin]}
           placeholder="Ask anything — your plan, your sleep, how a session went…"
           inputLabel="Ask your coach a question"

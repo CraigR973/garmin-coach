@@ -47,10 +47,12 @@ function iconFor(workoutType: string) {
 export function WorkoutDetailSheet({
   open,
   workout,
+  timeZone,
   onClose,
 }: {
   open: boolean;
   workout: PlanWorkout | null;
+  timeZone?: string;
   onClose: () => void;
 }) {
   const structure = useMemo(() => {
@@ -102,7 +104,7 @@ export function WorkoutDetailSheet({
         {isBike && delivery === 'outdoor' ? <DeliveryLine delivery={workout.outdoorDelivery ?? null} /> : null}
 
         {open && workout.status === 'completed' ? (
-          <CompletedWorkoutRead plannedWorkoutId={workout.id} />
+          <CompletedWorkoutRead plannedWorkoutId={workout.id} timeZone={timeZone} />
         ) : null}
 
         {structure ? (
@@ -152,7 +154,13 @@ function DeliveryLine({ delivery }: { delivery: PlanWorkout['outdoorDelivery'] |
  * session is as rich as reading it the day of. The read is retrieved, never
  * regenerated; an absent read (still generating, or none) shows an honest line.
  */
-function CompletedWorkoutRead({ plannedWorkoutId }: { plannedWorkoutId: string }) {
+function CompletedWorkoutRead({
+  plannedWorkoutId,
+  timeZone,
+}: {
+  plannedWorkoutId: string;
+  timeZone?: string;
+}) {
   const query = useQuery({
     queryKey: ['workout-read', plannedWorkoutId],
     queryFn: async () => {
@@ -228,7 +236,7 @@ function CompletedWorkoutRead({ plannedWorkoutId }: { plannedWorkoutId: string }
         <Markdown>{read.outputMarkdown}</Markdown>
       </div>
       <FeedbackControl analysisId={read.analysisId} kind="summary" feedback={read.feedback ?? null} />
-      <BriefFollowUpChat analysisId={read.analysisId} />
+      <BriefFollowUpChat analysisId={read.analysisId} timeZone={timeZone} />
     </div>
   );
 }

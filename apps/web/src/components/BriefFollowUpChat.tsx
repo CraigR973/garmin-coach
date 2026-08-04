@@ -20,9 +20,10 @@ import { CoachConversation } from '@/components/CoachConversation';
 
 export interface BriefFollowUpChatProps {
   analysisId: string;
+  timeZone?: string;
 }
 
-export function BriefFollowUpChat({ analysisId }: BriefFollowUpChatProps) {
+export function BriefFollowUpChat({ analysisId, timeZone }: BriefFollowUpChatProps) {
   const queryClient = useQueryClient();
 
   const historyQuery = useQuery({
@@ -49,6 +50,7 @@ export function BriefFollowUpChat({ analysisId }: BriefFollowUpChatProps) {
   return (
     <CoachConversation
       messages={historyQuery.data?.data ?? []}
+      timeZone={timeZone}
       heading="Ask about this read"
       placeholder="Ask a follow-up — why, what if, should I…"
       inputLabel="Ask a follow-up question"

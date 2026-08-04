@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { CoachLauncher } from './CoachLauncher';
@@ -16,12 +16,12 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
-function renderLauncher(route = '/') {
+function renderLauncher(route = '/', timeZone = 'Europe/London') {
   const queryClient = new QueryClient();
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[route]}>
-        <CoachLauncher />
+        <CoachLauncher timeZone={timeZone} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -75,7 +75,7 @@ describe('CoachLauncher', () => {
     });
   });
 
-  it('shows the rolling thread, including turns asked from other surfaces', async () => {
+  it('shows the rolling thread in order with profile-local day separators and times', async () => {
     const user = userEvent.setup();
     apiFetchMock.mockResolvedValue({
       data: [
@@ -87,7 +87,7 @@ describe('CoachLauncher', () => {
           role: 'user',
           content: 'Why is today Amber?',
           proposedPlannedWorkoutId: null,
-          createdAtUtc: '2026-07-31T06:40:00Z',
+          createdAtUtc: '2026-07-31T22:50:00Z',
         },
         {
           id: 'm2',
@@ -97,7 +97,17 @@ describe('CoachLauncher', () => {
           role: 'assistant',
           content: 'Your HRV dropped overnight.',
           proposedPlannedWorkoutId: null,
-          createdAtUtc: '2026-07-31T21:10:00Z',
+          createdAtUtc: '2026-07-31T22:55:00Z',
+        },
+        {
+          id: 'm3',
+          analysisId: null,
+          originKind: 'trends',
+          originDate: '2026-08-01',
+          role: 'user',
+          content: 'How has that changed this month?',
+          proposedPlannedWorkoutId: null,
+          createdAtUtc: '2026-07-31T23:10:00Z',
         },
       ],
     });
@@ -108,6 +118,23 @@ describe('CoachLauncher', () => {
     // The conversation survives the read it started on (179.4).
     expect(await screen.findByText('Why is today Amber?')).toBeTruthy();
     expect(await screen.findByText('Your HRV dropped overnight.')).toBeTruthy();
+    expect(screen.getByText('How has that changed this month?')).toBeTruthy();
+
+    // Europe/London is one hour ahead of UTC in July. The final message crosses
+    // local midnight even though all three UTC timestamps are still 31 July.
+    expect(screen.getAllByRole('separator')).toHaveLength(2);
+    expect(screen.getByRole('separator', { name: 'Friday, 31 July 2026' })).toBeTruthy();
+    expect(screen.getByRole('separator', { name: 'Saturday, 1 August 2026' })).toBeTruthy();
+    expect(screen.getByLabelText('Sent Friday, 31 July 2026 at 23:50')).toBeTruthy();
+    expect(screen.getByLabelText('Sent Friday, 31 July 2026 at 23:55')).toBeTruthy();
+    expect(screen.getByLabelText('Sent Saturday, 1 August 2026 at 00:10')).toBeTruthy();
+
+    const conversation = screen.getByRole('list', { name: 'Coach conversation' });
+    expect(within(conversation).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      'Why is today Amber?23:50',
+      'Your HRV dropped overnight.23:55',
+      'How has that changed this month?00:10',
+    ]);
   });
 
   it('stays out of the way on the pre-auth routes', () => {

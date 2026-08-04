@@ -105,7 +105,7 @@ export function MorningBriefPage() {
           </Card>
           <Card>
             <CardContent className="pt-6">
-              <BriefFollowUpChat analysisId={analysis.id} />
+              <BriefFollowUpChat analysisId={analysis.id} timeZone={data.timezone} />
             </CardContent>
           </Card>
         </>
