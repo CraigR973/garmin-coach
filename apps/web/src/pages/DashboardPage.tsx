@@ -662,6 +662,7 @@ export function DashboardPage() {
       body: (
         <DayPlanBody
           workouts={todaysWorkouts}
+          timeZone={daily.timezone}
           planAdjustments={analysis?.planAdjustments ?? []}
           swapSuggestion={analysis?.swapSuggestion ?? null}
           weeklyMix={analysis?.weeklyMix ?? null}
@@ -1034,6 +1035,7 @@ function SwapSuggestionCard({
  *  (Batch 36 unified card, Batch 37 collapse). */
 function DayPlanBody({
   workouts,
+  timeZone,
   planAdjustments,
   swapSuggestion,
   weeklyMix,
@@ -1049,6 +1051,7 @@ function DayPlanBody({
   checkInHandlers,
 }: {
   workouts: TodayWorkout[];
+  timeZone?: string;
   planAdjustments: string[];
   swapSuggestion: SwapSuggestionData;
   weeklyMix: WeeklyMixData;
@@ -1102,6 +1105,7 @@ function DayPlanBody({
             >
               <WorkoutRow
                 workout={workout}
+                timeZone={timeZone}
                 planAdjustments={planAdjustments}
                 subjectDate={subjectDate}
                 analysis={completedRides.get(workout.id)}
@@ -1444,6 +1448,7 @@ function WorkoutRowActions({
  *  expand independently and their controls never cross-wire (Batch 36). */
 function WorkoutRow({
   workout,
+  timeZone,
   planAdjustments = [],
   subjectDate,
   analysis,
@@ -1457,6 +1462,7 @@ function WorkoutRow({
   onSwap,
 }: {
   workout: TodayWorkout;
+  timeZone?: string;
   planAdjustments?: string[];
   subjectDate: string;
   analysis?: RideAnalysis;
@@ -1538,6 +1544,7 @@ function WorkoutRow({
           <CompletedRideRead
             analysis={analysis}
             workout={workout}
+            timeZone={timeZone}
             completedRideLog={completedRideLog}
           />
         ) : null}
@@ -1815,10 +1822,12 @@ function RideCheckIn({
 function CompletedRideRead({
   analysis,
   workout,
+  timeZone,
   completedRideLog,
 }: {
   analysis: RideAnalysis;
   workout: TodayWorkout;
+  timeZone?: string;
   completedRideLog: CompletedRideLogHandlers;
 }) {
   const [showRead, setShowRead] = useState(false);
@@ -1854,7 +1863,7 @@ function CompletedRideRead({
             <Markdown>{analysis.outputMarkdown}</Markdown>
             <RideIntervalTable intervals={analysis.intervals ?? []} />
             <div className="rounded-xl border border-dashed border-border bg-bg/60 px-4 py-3">
-              <BriefFollowUpChat analysisId={analysis.id} />
+              <BriefFollowUpChat analysisId={analysis.id} timeZone={timeZone} />
             </div>
             <FeedbackControl analysisId={analysis.id} kind="summary" feedback={analysis.feedback ?? null} />
           </div>
