@@ -1,7 +1,31 @@
 # Deload escalation — what Mark's own data says
 
-**Date:** 2026-08-01 · **Status:** findings complete, one question outstanding with Mark
+**Date:** 2026-08-01 · **Amended:** 2026-08-04 · **Status:** question answered; Finding 3 withdrawn
 **Feeds:** Batch 182 (`docs/phase-batches.md`, 2026-08-01 section)
+
+> ## Amendment — 2026-08-04
+>
+> **Mark answered, and the answer withdraws the actionable half of this document.**
+> **Eight of the nine low-training stretches below were holidays** (only 18–21 Jul
+> 2025 was a plain training break). The confound flagged in the caveats was not
+> hypothetical — it was dominant.
+>
+> - **Finding 3 (the day-4 inflection) is withdrawn as a basis for action.** It is
+>   substantially a travel effect: different bed, later nights, alcohol, broken
+>   routine. It should not be used to size a deload.
+> - **Finding 2 is weakened for the same reason** — those holiday days populate
+>   the low-load bucket that produced the "rest is worse" contrast.
+> - **Finding 1 stands untouched.** It concerns one day's physiology and has
+>   nothing to do with the stretches.
+>
+> Mark's own reading is the disciplined one and is recorded here in preference to
+> a cleaner conclusion: *"don't think right to say 100% of impact was holiday and
+> expect not training would at least have been a factor. In saying this accept
+> impossible to establish what % due to holiday and what % to not training which
+> means it is more something to monitor going forward."*
+>
+> Two further corrections came with it, both to readings of Mark's position rather
+> than to the data — see **Corrections** at the end.
 
 ## Why this exists
 
@@ -116,52 +140,103 @@ already begun; the decline happens as it continues) but see the caveats.
 Findings 2 and 3 are *consistent with* Mark's belief, and nothing in the data
 supports the opposite. That is the honest summary; it is not proof.
 
-## Outstanding question for Mark — what were these nine stretches?
+## Answered 2026-08-04 — what these nine stretches were
 
 **The app records no reason for a low-training period.** There is no
 holiday/illness/absence table (all 28 `coach` tables checked); holidays exist as
-plan state, not as a cause. So the entire basis of Finding 3 is nine stretches
-whose cause is unknown to the app and to us.
+plan state, not as a cause. The entire basis of Finding 3 was therefore nine
+stretches whose cause was unknown to the app and to us — so Mark was asked
+directly. His answers are in the right-hand column.
 
-| Period | Days | Avg sleep | Avg HRV |
-|---|---|---|---|
-| 2025-07-18 → 07-21 | 4 | 63.5 | 46.8 |
-| 2025-08-08 → 08-13 | 6 | 67.0 | 52.0 |
-| 2025-09-13 → 09-17 | 5 | 69.4 | 44.0 |
-| 2025-09-28 → 10-05 | 8 | 67.8 | 44.6 |
-| **2025-11-16 → 11-25** | **10** | **58.4** | 48.5 |
-| 2026-02-25 → 03-01 | 5 | **75.4** | 44.4 |
-| 2026-03-11 → 03-15 | 5 | **75.2** | 48.8 |
-| 2026-04-27 → 05-05 | 9 | 74.0 | **40.2** |
-| 2026-07-12 → 07-17 | 6 | 71.5 | 45.0 |
+| Period | Days | Avg sleep | Avg HRV | Mark's answer |
+|---|---|---|---|---|
+| 2025-07-18 → 07-21 | 4 | 63.5 | 46.8 | **Not holiday — training break** |
+| 2025-08-08 → 08-13 | 6 | 67.0 | 52.0 | Holiday (3 days) |
+| 2025-09-13 → 09-17 | 5 | 69.4 | 44.0 | Holiday (14–17 Sep) |
+| 2025-09-28 → 10-05 | 8 | 67.8 | 44.6 | Holiday (7 days) |
+| **2025-11-16 → 11-25** | **10** | **58.4** | 48.5 | Holiday (7 days) |
+| 2026-02-25 → 03-01 | 5 | **75.4** | 44.4 | Holiday |
+| 2026-03-11 → 03-15 | 5 | **75.2** | 48.8 | Holiday |
+| 2026-04-27 → 05-05 | 9 | 74.0 | **40.2** | Holiday (7 days) |
+| 2026-07-12 → 07-17 | 6 | 71.5 | 45.0 | Holiday (4 days) |
 
-The spread is too wide to be one phenomenon: November has his worst sleep of the
-set, the two spring stretches his best. **If most were illness or travel, the
-deterioration is caused by being ill or away from home and Finding 3 collapses.**
+**Eight of nine were holidays.** One stretch — the shortest, and the one with the
+second-worst sleep — was a plain training break, which is not enough to carry the
+finding. The spread that looked like "too wide to be one phenomenon" is better
+explained as *different holidays*, not different causes.
 
-Raised with Mark 2026-08-01; he asked to discuss in person rather than by
-message. **Do not encode a duration cap until this is answered.**
+Finding 3 is therefore withdrawn as a basis for sizing an intervention. What
+remains true and worth keeping: **the question was unanswerable from the data and
+had to be asked**, which is itself the argument for recording a reason against
+low-training stretches in future (Batch 182.5).
 
-A second, scope-level question is also outstanding: whether he ever wants a
-week-scale proposal at all, or would rather the app flag "this looks like more
-than a blip" and leave the decision to him.
+## Corrections — 2026-08-04
+
+Two readings of Mark's position were wrong, both mine, both corrected by him with
+evidence. Recorded because each changed the batch design.
+
+**1. "Rearrange" is not "reduce".** His objection was read as being about
+week-scale changes in general. It is not — rearranging a week is a tool he uses
+deliberately: *"a key tool I currently use so I'm totally bought into it… If I
+feel a bit below par on Tues when scheduled to do VO2 I'll swap it with a Z2
+workout as doing so preserves integrity of my weekly mix but makes sure I'm doing
+each type of workout when my personal feel & metrics support it."* The app's only
+chronic lever is a **deload** — 75% duration, a zone drop, no HIT. He is bought
+into the intervention we do not offer and objects to the one we do. This became
+Batch 182.4.
+
+**2. The assumption that he would train at all costs.** He named it directly:
+*"I do think need to be careful that your view that I'll train at all costs
+doesn't colour the app."* His counter-evidence: when Copilot designed his current
+13-week block it dropped several of the "1" recovery weeks, and **he challenged
+it and argued for keeping them** — the AI pushed for more load, not him. This is
+corroborated in `plan_blocks`, where W04–W08 run as five consecutive BUILD weeks
+with no recovery week between them.
+
+He also clarified that his questions on 31 July were not an attempt to be allowed
+to train more, but a check on whether the app understands the 2121 structure —
+*"if we are moving into a '1' lighter week anyway, then plan already allowing for
+this and it doesn't need to change anything."* That is Batch 182.3, and the 1
+August proposal was indeed redundant: `plan_blocks` already scheduled **PN2 W03
+RECOVERY for 2026-08-03 → 08-09**, starting two days later.
+
+The design principle these were weighed against still holds — a safety backstop
+should not be removable by preference, and the sustained-marker path stays
+untouched. Applying that caution *to Mark specifically*, as though he were
+looking for permission, was not supported.
+
+**3. He already tells the app.** Asked whether it should prompt for an
+explanation on a bad morning: *"Yes it can ask although I'm always likely to tell
+it in morning check (which I did on Saturday morning)."* Verified — Saturday's
+`manual_entries` row at 08:44 carried `subjective_score` 3, feel *"Have a bit of
+a hangover today"* and notes naming 13 UK units and poor sleep; the morning
+analysis generated at 08:45:49, **one minute later**, and the escalation used
+none of it. Friday's check-in likewise attributed the poor night to *"a harder
+day's training yesterday and cumulative 3 day training load"*. The planned
+capture surface was therefore dropped: both Reds were already explained in Mark's
+own words before either brief ran.
 
 ## What this implies for Batch 182
 
+*Revised 2026-08-04 after Mark's answers.*
+
 1. **Read *why* a Red happened** — recovery-debt-with-healthy-markers (expected,
-   post-block) vs markers-crashed (genuine acute). Only the second should feed
-   chronic escalation. Derivable from stored fields; **unblocked**.
-2. **Scale the intervention to the evidence.** Findings 2–3 suggest the useful
-   deload for Mark is short, not a week. **Blocked** on the stretch question.
-3. **Leave the sustained-marker path untouched** (≥70% miss over ≥10 samples in a
-   ≥21-night window). That is genuine chronic evidence. Softening it on the
-   strength of "Mark believes rest hurts him" would convert a safety mechanism
-   into a lever for avoiding recovery — the integrity line this work must hold.
-4. **Keep a manual "explained" marker** for what the app cannot see. Saturday
-   needed one; Friday did not.
-5. **Prefer showing the reasoning to hiding a constant.** Mark asked the app to
-   tell him from its knowledge. A proposal that shows him this curve is both more
-   honest and closer to what he asked for than a silent `3`.
+   post-block) vs markers-crashed (genuine acute), **plus the check-in text Mark
+   already writes**. Only genuinely unexplained Reds should feed chronic
+   escalation. Derivable from stored fields. → Batch 182.2
+2. **Know where he is in the plan.** Suppress or narrow a chronic proposal when
+   `plan_blocks` already schedules a recovery/taper/consolidation week across the
+   horizon. The 1 August proposal was redundant on this test alone. → Batch 182.3
+3. **Propose a rearrange, not a reduction.** Swap a hard session for an easier one
+   within the week, preserving the weekly mix — the intervention Mark uses and
+   wants. Reserve the deload for the sustained path. → Batch 182.4
+4. **Leave the sustained-marker path untouched** (≥70% miss over ≥10 samples in a
+   ≥21-night window). Genuine chronic evidence, and the backstop stays.
+5. **Record why a quiet period happened**, so this question is answerable from
+   data next time. → Batch 182.5
+
+**Withdrawn:** scaling the deload to a ~3-day cap (the evidence collapsed), and a
+new capture surface for "explained" days (the check-in already carries it).
 
 Nothing here may alter today's deterministic Green/Amber/Red verdict — this
 governs *chronic escalation only* (verdict-engine safety rule).
