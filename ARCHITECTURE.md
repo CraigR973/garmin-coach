@@ -226,7 +226,12 @@ Assembles a context packet (KB + DB data + rolling trend + plan) and calls Claud
   weather, and `fan_auto_enabled`, then emits a qualitative `routine` / `watch` / `protect` read
   plus 1-2 prep actions for Home's Tonight section. It deliberately predicts no numeric sleep score,
   writes no `analyses` row, and never changes Green/Amber/Red or fan thresholds; rest days and
-  insufficient driver history fall back to the plain protocol.
+  insufficient driver history fall back to the plain protocol. Batch 184 (DECISIONS #264) moves
+  that input assembly into one shared service used by both the daily-loop and scheduler, applies the
+  45-minute Hive freshness rule at that boundary, and makes the 20:00 push carry the same projection.
+  `watch` and `protect` notify with evidence-naming copy, personalised `routine` stays silent, and the
+  fixed fallback protocol is capped at once per profile-local Monday-Sunday week; the existing daily
+  idempotency tag, 20-minute fire window, holiday-away skip and notification delivery rail remain.
 - **Output rules:** bold each bullet headline; sleep summary line; ignore the phase-frequency system (he wants DAILY always); specific recovery suggestions.
 
 Validated 19 Jun with a real sample → his verdict "fantastic." Demonstrated 5 wins over his Copilot flow: age-adjustment, plan-awareness, no wrong-screenshot errors, causal thermal insight, trend memory.
