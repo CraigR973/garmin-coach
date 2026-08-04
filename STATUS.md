@@ -6,7 +6,7 @@
 
 ## Now
 
-**2026-08-04 — Batch 183 shipped (dates on the coach conversation).** PR #214 / squash `7d1d479` adds local-date separators at calendar-day boundaries and a 24-hour local time to every message in the shared `CoachConversation`. All four production mounts receive the user's IANA timezone: the app-wide launcher reads the authenticated profile, Morning Brief and Home use the daily-loop timezone, and historical Week uses the profile timezone. Existing global ordering and the per-read endpoint/filter are unchanged, with BST-boundary regressions covering both surfaces. Frontend-only; no backend, API, shared schema, query, index, migration, auth, provider or hosting change, and no durable architectural decision. Local gates passed (380 web tests, TypeScript/production PWA build, ESLint with zero errors); branch-push and PR-context CI passed all seven jobs and the Vercel preview succeeded. Production verified on exact SHA `7d1d479`: Railway and Vercel health matched, DB readiness was `ok`, web `/` returned 200, the deployed coach bundle contained the timestamp formatter/copy, and both coach routes returned 401 direct and proxied. **Next:** no unshipped batch rows remain in `docs/phase-batches.md`.
+**2026-08-04 — Batch 184 implementation ready (tonight's nudge is about tonight).** On `feat/batch-184-tonights-nudge`, new `SleepProjectionContextService` owns the activity, cached measured-driver, sleep-protocol, fresh-bedroom and overnight-weather assembly used by both daily-loop/Home/Sleep and the scheduler; the API path reuses its loaded snapshot, while the scheduler path loads only those focused sources. Stale/future Hive readings are omitted through the shared 45-minute freshness rule. The 20:00 push now carries the same projection's evidence-naming headline plus up to two actions, with `watch`/`protect` mapped to warning/critical; a personalized `routine` night stays silent, and the fixed unpersonalized protocol fallback is capped at once per local Monday–Sunday week. Same-day `_send_once` idempotency retains `sleep-protocol-{date}`; the 20:00–20:20 window and holiday-away skip are unchanged. Backend-only plus handoff docs; no migration, shared schema, endpoint, frontend, provider, auth, hosting, fan, verdict, safety-floor or plan/delivery change. Local gates pass: backend 762 passed / 334 expected PostgreSQL skips; focused 60 / 29 expected skips; Ruff/format clean (218 files); mypy clean (130 source files). The two new DB-backed projection/cadence regressions await CI's PostgreSQL run. Decision #264. **Next:** review branch CI, then `/phase-closeout 184` only on explicit instruction; Batch 185 is the next planned row after 184 ships.
 
 ---
 
@@ -31,6 +31,10 @@
 ---
 
 ## Log
+
+**2026-08-04 — Batch 184 implementation ready:** the 20:00 sleep nudge now uses the same projection assembly as daily-loop/Home/Sleep, names the measured late/hard/warm driver, sends `watch`/`protect`, stays silent for personalized `routine`, and limits the fixed fallback protocol to once per local calendar week while preserving per-day tags, the fire window and holiday skip. Full backend/static gates pass (762 / 334 expected PostgreSQL skips; Ruff/format/mypy clean). Decision #264; branch not promoted.
+
+---
 
 **2026-08-04 — Batch 183 shipped:** PR #214 / squash `7d1d479`; local-date separators and per-message local times now render across the app-wide coach thread and all three inline reads without changing ordering or per-read filtering. Local gates, branch-push and PR-context CI passed; Vercel preview and exact-SHA Railway/Vercel production verification passed, including DB readiness, web, deployed-bundle and protected-route smokes. Frontend-only; no API/schema/migration or durable decision. No unshipped batch row remains.
 

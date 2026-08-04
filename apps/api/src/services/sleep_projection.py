@@ -91,20 +91,29 @@ def project_sleep(inputs: SleepProjectionInputs) -> SleepProjectionResult:
     weather_driver = next((d for d in risk_drivers if d.driver == "overnight_low_c"), None)
 
     load_risk = training["late"] or training["high_intensity"] or training["big_load"]
-    room_risk = warm_room or (
-        warm_forecast and (bedroom_driver is not None or weather_driver is not None)
-    )
+    forecast_risk = warm_forecast and (bedroom_driver is not None or weather_driver is not None)
+    room_risk = warm_room or forecast_risk
     protect = load_risk and (training_driver is not None or room_risk)
     watch = load_risk or room_risk
 
     if protect:
         tone = "protect"
-        headline = "Protect tonight's wind-down"
-        summary = _protect_summary(training, warm_room=warm_room, warm_forecast=warm_forecast)
+        headline = _risk_headline(
+            "Protect tonight after",
+            training,
+            warm_room=warm_room,
+            warm_forecast=forecast_risk,
+        )
+        summary = _protect_summary(training, warm_room=warm_room, warm_forecast=forecast_risk)
     elif watch:
         tone = "watch"
-        headline = "Give tonight a little extra margin"
-        summary = _watch_summary(training, warm_room=warm_room, warm_forecast=warm_forecast)
+        headline = _risk_headline(
+            "Give tonight extra margin for",
+            training,
+            warm_room=warm_room,
+            warm_forecast=forecast_risk,
+        )
+        summary = _watch_summary(training, warm_room=warm_room, warm_forecast=forecast_risk)
     else:
         tone = "routine"
         headline = "Tonight looks like a standard protocol night"
@@ -117,7 +126,7 @@ def project_sleep(inputs: SleepProjectionInputs) -> SleepProjectionResult:
         training,
         measured,
         warm_room=warm_room,
-        warm_forecast=warm_forecast,
+        warm_forecast=forecast_risk,
         latest_bedroom_temperature_c=inputs.latest_bedroom_temperature_c,
         overnight_low_c=inputs.overnight_low_c,
     )
@@ -200,6 +209,33 @@ def _training_summary(training: list[TrainingSignal]) -> dict[str, Any]:
 
 def _risk_drivers(drivers: list[SleepDriverEvidence]) -> list[SleepDriverEvidence]:
     return [driver for driver in drivers if driver.coefficient < 0]
+
+
+def _risk_headline(
+    prefix: str,
+    training: dict[str, Any],
+    *,
+    warm_room: bool,
+    warm_forecast: bool,
+) -> str:
+    drivers: list[str] = []
+    if training["late"]:
+        drivers.append("a late session")
+    if training["high_intensity"]:
+        drivers.append("a hard session")
+    elif training["big_load"]:
+        drivers.append("a bigger training load")
+    if warm_room:
+        drivers.append("a warm bedroom")
+    elif warm_forecast:
+        drivers.append("a warm overnight low")
+    if not drivers:
+        return prefix
+    if len(drivers) == 1:
+        joined = drivers[0]
+    else:
+        joined = f"{', '.join(drivers[:-1])} and {drivers[-1]}"
+    return f"{prefix} {joined}"
 
 
 def _protect_summary(training: dict[str, Any], *, warm_room: bool, warm_forecast: bool) -> str:
