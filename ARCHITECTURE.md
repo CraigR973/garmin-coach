@@ -284,6 +284,16 @@ and anti-sycophancy live in one `services/coach_policy.py` registry the
 conversation composes from, and the deterministic read prompts are audited
 against it rather than rewritten. Decision #29 and Red-never-VO2 are untouched.
 
+**Conversation dates (Batch 183, PR #214 / squash `7d1d479`).** The shared
+`CoachConversation` renderer inserts a local-date separator whenever the ordered
+thread crosses a calendar-day boundary and shows a 24-hour local time on every
+message. Every mount supplies the user's IANA timezone: the app-wide launcher
+uses the authenticated profile, Morning Brief and Home use the daily-loop
+timezone, and historical Week uses the profile timezone. The existing
+`createdAtUtc` transport and storage, global index/order, and per-read filter are
+unchanged. This is a frontend-only presentation change with no API, schema,
+query, index, or migration work.
+
 ## 5. Data model (sketch — build from real JSON shapes in `~/garmin-spike/out/`)
 
 - `profiles` (display name/role, timezone, lat/long, Garmin user profile pk, Hive home id;

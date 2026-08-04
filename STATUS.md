@@ -6,7 +6,7 @@
 
 ## Now
 
-**2026-08-04 — Batch 183 implementation ready (dates on the coach conversation).** The shared `CoachConversation` now renders a full local-date separator whenever the ordered thread crosses a day boundary and a 24-hour local time on every message. Every production mount supplies the real user timezone: the app-wide launcher reads the authenticated profile, the Morning Brief and Home inline reads use the daily-loop timezone, and the historical Week read uses the profile timezone. The existing global-thread ordering and per-read endpoint/filter are unchanged; the timestamp presentation is memoized so typing in the composer does not reformat the unbounded history. BST-boundary regressions prove that several UTC timestamps still on 31 July split into 31 July / 1 August in `Europe/London`, with one separator per local day and message order intact on both the global launcher and inline read view. Frontend-only; no backend, API, shared-schema, query, index, migration, auth, provider or hosting change, and no durable architectural decision. Local gates pass: web 380 tests, TypeScript/production PWA build, and ESLint with zero errors (six pre-existing Fast Refresh warnings). Branch `feat/batch-183-chat-dates` is ready for review and has not been promoted. **Next:** run `/batch-verify 183`; do not run `/closeout` until explicitly requested.
+**2026-08-04 — Batch 183 shipped (dates on the coach conversation).** PR #214 / squash `7d1d479` adds local-date separators at calendar-day boundaries and a 24-hour local time to every message in the shared `CoachConversation`. All four production mounts receive the user's IANA timezone: the app-wide launcher reads the authenticated profile, Morning Brief and Home use the daily-loop timezone, and historical Week uses the profile timezone. Existing global ordering and the per-read endpoint/filter are unchanged, with BST-boundary regressions covering both surfaces. Frontend-only; no backend, API, shared schema, query, index, migration, auth, provider or hosting change, and no durable architectural decision. Local gates passed (380 web tests, TypeScript/production PWA build, ESLint with zero errors); branch-push and PR-context CI passed all seven jobs and the Vercel preview succeeded. Production verified on exact SHA `7d1d479`: Railway and Vercel health matched, DB readiness was `ok`, web `/` returned 200, the deployed coach bundle contained the timestamp formatter/copy, and both coach routes returned 401 direct and proxied. **Next:** no unshipped batch rows remain in `docs/phase-batches.md`.
 
 ---
 
@@ -31,6 +31,10 @@
 ---
 
 ## Log
+
+**2026-08-04 — Batch 183 shipped:** PR #214 / squash `7d1d479`; local-date separators and per-message local times now render across the app-wide coach thread and all three inline reads without changing ordering or per-read filtering. Local gates, branch-push and PR-context CI passed; Vercel preview and exact-SHA Railway/Vercel production verification passed, including DB readiness, web, deployed-bundle and protected-route smokes. Frontend-only; no API/schema/migration or durable decision. No unshipped batch row remains.
+
+---
 
 **2026-08-04 — Batch 183 implementation ready:** the shared coach renderer now shows local-date separators and per-message times across the app-wide thread plus all three inline per-read mounts, using the profile/daily-loop IANA timezone while preserving ordering and filtered history. BST-boundary tests cover both surfaces; full web 380, build/typecheck and zero-error lint pass. Frontend-only, no API/schema/migration or durable decision; branch not promoted.
 
