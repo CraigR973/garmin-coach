@@ -7,7 +7,7 @@ Rønnestad 30/15 emission, and versioned + approval-gated delivery.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -32,6 +32,7 @@ from src.services.weekly_restructure import (
     WeekItem,
     WeeklyRestructureService,
     plan_swap_first,
+    plan_swap_in_horizon,
     plan_week_restructure,
 )
 from src.services.workout_delivery import IntervalsCreateResult
@@ -236,14 +237,28 @@ def test_swap_suggestion_packet_and_lead_text() -> None:
     packet = suggestion.to_packet()
     assert packet["hardWorkoutId"] == str(suggestion.hard_workout_id)
     assert packet["hardTitle"] == "VO2 30/15"
+    assert packet["hardDate"] == TUE.isoformat()
+    assert packet["hardWeekday"] == "Tuesday"
     assert packet["moveToDate"] == SAT.isoformat()
     assert packet["moveToWeekday"] == "Saturday"
+    assert packet["bringForwardWorkoutId"] == str(suggestion.bring_forward_workout_id)
     assert packet["bringForwardTitle"] == "Saturday Z2"
 
     lead = suggestion.lead_text()
     assert "VO2 30/15" in lead
     assert "Saturday" in lead
     assert "Saturday Z2" in lead
+
+
+def test_horizon_swap_never_moves_a_hard_session_into_the_next_week() -> None:
+    sunday = date(2026, 7, 12)
+    monday = sunday + timedelta(days=1)
+    items = [
+        _item(sunday, "bike_vo2", title="Sunday VO2"),
+        _item(monday, "bike_endurance", title="Next-week Z2"),
+    ]
+
+    assert plan_swap_in_horizon(items, start_date=sunday, end_date=monday) is None
 
 
 # ---------------------------------------------------------------------------

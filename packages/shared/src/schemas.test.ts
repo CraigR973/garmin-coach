@@ -646,11 +646,15 @@ describe('v1 shared schemas', () => {
       hardWorkoutId: rowId,
       hardTitle: 'VO2 30/15',
       hardCategory: 'vo2',
+      hardDate: '2026-07-07',
+      hardWeekday: 'Tuesday',
       moveToDate: '2026-07-11',
       moveToWeekday: 'Saturday',
+      bringForwardWorkoutId: '22222222-2222-4222-8222-222222222222',
       bringForwardTitle: 'Z2 + Neuromuscular',
     });
     expect(swap.moveToWeekday).toBe('Saturday');
+    expect(swap.hardWeekday).toBe('Tuesday');
 
     const withSwap = dailyLoopAnalysisSchema.parse({
       id: rowId,

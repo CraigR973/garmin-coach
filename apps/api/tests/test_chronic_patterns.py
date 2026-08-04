@@ -5,9 +5,12 @@ from datetime import date, timedelta
 from src.services.chronic_patterns import (
     BaselineBand,
     RecoveryDay,
+    RedDayEvidence,
+    ScheduledRecoveryBlock,
     SleepNight,
     VerdictDay,
     build_chronic_pattern_suggestions,
+    classify_check_in_causes,
 )
 from src.services.insights import DriverCorrelation
 
@@ -252,7 +255,7 @@ def test_single_bad_recovery_day_does_not_trigger_structural_action() -> None:
     assert result.action_signal.red_morning_count == 0
 
 
-def test_two_red_mornings_in_seven_days_trigger_but_one_does_not() -> None:
+def test_two_unexplained_red_mornings_propose_rearrange_but_one_does_not() -> None:
     as_of = date(2026, 7, 5)
     common = {
         "sleeps": _nights(as_of, rem_pct=0.22),
@@ -284,5 +287,180 @@ def test_two_red_mornings_in_seven_days_trigger_but_one_does_not() -> None:
     assert one_red.action_signal.red_morning_count == 1
     assert two_red.action_signal.triggered is True
     assert two_red.action_signal.trigger_sources == ("red_morning_cluster",)
+    assert two_red.action_signal.kind == "rearrange_proposal"
     assert two_red.action_signal.red_morning_count == 2
-    assert two_red.action_signal.to_packet()["verdictImpact"] == "none"
+    packet = two_red.action_signal.to_packet()
+    assert packet["deliveryContract"] == "restructure_preview_apply"
+    assert packet["humanApprovalRequired"] is True
+    assert packet["verdictImpact"] == "none"
+
+
+def test_training_debt_with_intact_markers_is_excluded_but_crashed_red_counts() -> None:
+    as_of = date(2026, 8, 1)
+    friday = as_of - timedelta(days=1)
+    result = build_chronic_pattern_suggestions(
+        sleeps=_nights(as_of, rem_pct=0.22),
+        recovery_days=[],
+        baselines={},
+        sleep_drivers=[],
+        age=57,
+        sex="male",
+        sleep_protocol={},
+        as_of=as_of,
+        recent_verdicts=[
+            VerdictDay(calendar_date=friday, verdict="Red"),
+            VerdictDay(calendar_date=as_of, verdict="Red"),
+        ],
+        red_day_evidence={
+            friday: RedDayEvidence(
+                calendar_date=friday,
+                recovery_time_min=2584,
+                acute_load=198,
+                hrv_ms=52,
+                hrv_status="Balanced",
+                hrv_floor_ms=43,
+                resting_heart_rate_bpm=43,
+                resting_hr_ceiling_bpm=46,
+            ),
+            as_of: RedDayEvidence(
+                calendar_date=as_of,
+                recovery_time_min=1370,
+                acute_load=0,
+                hrv_ms=35,
+                hrv_status="Low",
+                hrv_floor_ms=43,
+                resting_heart_rate_bpm=48,
+                resting_hr_ceiling_bpm=46,
+            ),
+        },
+    )
+
+    action = result.action_signal
+    assert action.red_morning_observed_count == 2
+    assert action.red_morning_count == 1
+    assert action.triggered is False
+    assert [item.classification for item in action.red_morning_qualifications] == [
+        "expected_training_debt",
+        "systemic_markers_strained",
+    ]
+
+
+def test_check_in_cause_excludes_red_even_when_systemic_markers_are_strained() -> None:
+    as_of = date(2026, 8, 1)
+    result = build_chronic_pattern_suggestions(
+        sleeps=_nights(as_of, rem_pct=0.22),
+        recovery_days=[],
+        baselines={},
+        sleep_drivers=[],
+        age=57,
+        sex="male",
+        sleep_protocol={},
+        as_of=as_of,
+        recent_verdicts=[VerdictDay(calendar_date=as_of, verdict="Red")],
+        red_day_evidence={
+            as_of: RedDayEvidence(
+                calendar_date=as_of,
+                hrv_ms=35,
+                hrv_status="Low",
+                hrv_floor_ms=43,
+                resting_heart_rate_bpm=48,
+                resting_hr_ceiling_bpm=46,
+                check_in_reasons=("alcohol",),
+            )
+        },
+    )
+
+    qualification = result.action_signal.red_morning_qualifications[0]
+    assert qualification.classification == "explained_by_check_in"
+    assert qualification.counts_toward_cluster is False
+    assert result.action_signal.red_morning_count == 0
+
+
+def test_sustained_marker_deload_is_suppressed_by_scheduled_recovery_block() -> None:
+    as_of = date(2026, 8, 1)
+    recovery_days = [
+        RecoveryDay(
+            calendar_date=as_of - timedelta(days=27 - offset),
+            readiness_score=50,
+            hrv_7_day_avg_ms=50,
+            resting_heart_rate_bpm=45,
+        )
+        for offset in range(28)
+    ]
+    result = build_chronic_pattern_suggestions(
+        sleeps=_nights(as_of, rem_pct=0.22),
+        recovery_days=recovery_days,
+        baselines={
+            "readiness_score": BaselineBand(
+                metric_key="readiness_score",
+                label="Readiness",
+                lower_quartile=70,
+                upper_quartile=84,
+                median=78,
+                mean=77,
+                sample_count=28,
+            )
+        },
+        sleep_drivers=[],
+        age=57,
+        sex="male",
+        sleep_protocol={},
+        as_of=as_of,
+        scheduled_recovery_blocks=[
+            ScheduledRecoveryBlock(
+                name="PN2 W03 RECOVERY",
+                block_type="recovery",
+                start_date=date(2026, 8, 3),
+                end_date=date(2026, 8, 9),
+            )
+        ],
+    )
+
+    action = result.action_signal
+    assert action.kind == "deload_proposal"
+    assert action.trigger_sources == ("sustained_recovery_marker",)
+    assert action.suppressed_by_plan is True
+    assert action.triggered is False
+    assert "already schedules" in action.reasons[-1]
+
+
+def test_red_cluster_rearrange_is_suppressed_by_scheduled_recovery_block() -> None:
+    as_of = date(2026, 8, 1)
+    result = build_chronic_pattern_suggestions(
+        sleeps=_nights(as_of, rem_pct=0.22),
+        recovery_days=[],
+        baselines={},
+        sleep_drivers=[],
+        age=57,
+        sex="male",
+        sleep_protocol={},
+        as_of=as_of,
+        recent_verdicts=[
+            VerdictDay(calendar_date=as_of - timedelta(days=1), verdict="Red"),
+            VerdictDay(calendar_date=as_of, verdict="Red"),
+        ],
+        scheduled_recovery_blocks=[
+            ScheduledRecoveryBlock(
+                name="PN2 W03 RECOVERY",
+                block_type="recovery",
+                start_date=date(2026, 8, 3),
+                end_date=date(2026, 8, 9),
+            )
+        ],
+    )
+
+    assert result.action_signal.kind == "rearrange_proposal"
+    assert result.action_signal.suppressed_by_plan is True
+    assert result.action_signal.triggered is False
+
+
+def test_check_in_cause_classifier_captures_marks_words_and_respects_negation() -> None:
+    assert classify_check_in_causes(
+        "Have a bit of a hangover today",
+        "Was out last night drinking, around 13 UK units.",
+    ) == ("alcohol",)
+    assert classify_check_in_causes(
+        None,
+        "Presumably due to a harder day's training yesterday and cumulative 3 day training load.",
+    ) == ("training_load",)
+    assert classify_check_in_causes(None, "No alcohol and not feeling ill.") == ()

@@ -889,8 +889,11 @@ export const swapSuggestionSchema = z.object({
   hardWorkoutId: z.string().uuid(),
   hardTitle: z.string(),
   hardCategory: z.string(),
+  hardDate: z.string().optional(),
+  hardWeekday: z.string().optional(),
   moveToDate: z.string(),
   moveToWeekday: z.string(),
+  bringForwardWorkoutId: z.string().uuid().optional(),
   bringForwardTitle: z.string(),
 });
 export type SwapSuggestion = z.infer<typeof swapSuggestionSchema>;

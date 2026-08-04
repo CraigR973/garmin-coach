@@ -958,6 +958,8 @@ describe('DashboardPage', () => {
           hardWorkoutId: WORKOUT_ID,
           hardTitle: 'VO2 Max 30/30',
           hardCategory: 'vo2',
+          hardDate: '2026-06-23',
+          hardWeekday: 'Tuesday',
           moveToDate: '2026-06-27',
           moveToWeekday: 'Saturday',
           bringForwardTitle: 'Z2 + Neuromuscular',
@@ -966,6 +968,7 @@ describe('DashboardPage', () => {
     );
 
     expect(await screen.findByText('Rearrange the week')).toBeTruthy();
+    expect(await screen.findByText(/move vo2 max 30\/30 from tuesday to saturday/i)).toBeTruthy();
     await user.click(await screen.findByRole('button', { name: /move it to saturday/i }));
 
     await waitFor(() => {

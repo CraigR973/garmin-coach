@@ -606,8 +606,17 @@ async def test_chronic_deload_proposes_seven_day_window_and_preserves_acute_prec
 
 
 @pytest.mark.asyncio
-async def test_chronic_deload_does_nothing_without_deterministic_trigger(
+@pytest.mark.parametrize(
+    ("triggered", "kind"),
+    [
+        (False, "deload_proposal"),
+        (True, "rearrange_proposal"),
+    ],
+)
+async def test_chronic_deload_ignores_inactive_or_rearrange_signal(
     db_conn: AsyncConnection,
+    triggered: bool,
+    kind: str,
 ) -> None:
     user_id = uuid.uuid4()
     workout_id = uuid.uuid4()
@@ -646,8 +655,8 @@ async def test_chronic_deload_does_nothing_without_deterministic_trigger(
                 "verdict": {
                     "status": "Green",
                     "chronicAction": {
-                        "triggered": False,
-                        "kind": "deload_proposal",
+                        "triggered": triggered,
+                        "kind": kind,
                         "verdictImpact": "none",
                     },
                 }
