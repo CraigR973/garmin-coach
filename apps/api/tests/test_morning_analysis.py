@@ -488,7 +488,7 @@ async def test_morning_packet_turns_two_unexplained_reds_into_swap_action(
                 ),
                 PlannedWorkout(
                     user_id=user_id,
-                    workout_date=subject_date + timedelta(days=2),
+                    workout_date=subject_date + timedelta(days=3),
                     version=1,
                     title="Endurance Z2",
                     workout_type="bike_endurance",
@@ -512,7 +512,7 @@ async def test_morning_packet_turns_two_unexplained_reds_into_swap_action(
     assert action["verdictImpact"] == "none"
     swap = packet["verdict"]["swapSuggestion"]
     assert swap["hardDate"] == subject_date.isoformat()
-    assert swap["moveToDate"] == (subject_date + timedelta(days=2)).isoformat()
+    assert swap["moveToDate"] == (subject_date + timedelta(days=3)).isoformat()
     assert packet["verdict"]["todayActions"][0]["kind"] == "apply_swap"
     assert all(
         item["title"] != "Approve today's deload ride" for item in packet["verdict"]["todayActions"]
@@ -950,7 +950,7 @@ async def test_amber_morning_leads_with_week_swap_and_keeps_softening(
 
     adjustments = verdict["planAdjustments"]
     # The swap leads; softening stays available as the explicit fallback.
-    assert "move it to saturday" in adjustments[0].lower()
+    assert "move vo2 max 30/30 from thursday to saturday" in adjustments[0].lower()
     assert any("cut duration" in item.lower() for item in adjustments[1:])
 
     # Batch 70 (#143): the same cautious morning reports the week's mix and, because
