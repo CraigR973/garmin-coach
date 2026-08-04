@@ -76,7 +76,7 @@ async def test_create_backup_scopes_schema_permissions_and_retention(
 ) -> None:
     calls: list[tuple[Any, ...]] = []
     for index in range(8):
-        old = tmp_path / f"coach_20260727_03000{index}.sql"
+        old = tmp_path / f"coach_20260727_03000{index}.dump"
         old.write_text("old\n", encoding="utf-8")
         os.utime(old, (index, index))
 
@@ -100,7 +100,7 @@ async def test_create_backup_scopes_schema_permissions_and_retention(
     assert Path(argv[argv.index("--file") + 1]).name.startswith(".coach_")
     assert _mode(tmp_path) == 0o700
     assert _mode(tmp_path / info.filename) == 0o600
-    assert len(list(tmp_path.glob("coach_*.sql"))) == backup.BACKUP_RETENTION_COUNT
+    assert len(list(tmp_path.glob("coach_*.dump"))) == backup.BACKUP_RETENTION_COUNT
 
 
 @pytest.mark.asyncio
@@ -118,7 +118,7 @@ async def test_create_backup_removes_failed_partial(
         await backup.create_backup(str(tmp_path), "postgresql+asyncpg://coach@db/garmin")
 
     assert list(tmp_path.glob("*.partial")) == []
-    assert list(tmp_path.glob("coach_*.sql")) == []
+    assert list(tmp_path.glob("coach_*.dump")) == []
 
 
 def test_rls_posture_evaluator_fails_simulated_regressions() -> None:

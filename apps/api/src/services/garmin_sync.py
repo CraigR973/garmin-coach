@@ -11,7 +11,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
@@ -402,16 +402,47 @@ class GarminSyncService:
 
             details = payloads.details_by_activity_id.get(int(activity_id))
             if details:
-                await self.session.execute(
-                    delete(ActivityTimeSeries).where(ActivityTimeSeries.activity_id == activity.id)
-                )
                 rows = parse_activity_timeseries_fields(details)
-                strip_raw = activity_fields.get("activity_type") in STRIP_RAW_METRICS_TYPES
-                for row in rows:
-                    if strip_raw:
-                        row["raw_metrics"] = {}
-                    self.session.add(ActivityTimeSeries(activity_id=activity.id, **row))
-                sample_count += len(rows)
+                # The poll re-reads a rolling multi-day window every hour, so an
+                # activity's details come back ~96 times before it drops out of
+                # range. Rewriting an unchanged sample stream on each pass
+                # amplified writes on the largest table in the database by that
+                # same factor.
+                #
+                # Sample count alone is not a safe staleness test: details are
+                # requested with maxchart=2000, so a ride already past that many
+                # points mid-session comes back downsampled to exactly 2000, and
+                # so does the finished ride. Pairing the count with the latest
+                # sample timestamp distinguishes them — a session that has since
+                # progressed always carries a later last sample. An empty parse
+                # is treated as "this payload carried no samples" rather than as
+                # a deletion, so a thin or partial details response can no longer
+                # wipe a stream we already captured.
+                stored_count, stored_latest = (
+                    await self.session.execute(
+                        select(
+                            func.count(ActivityTimeSeries.id),
+                            func.max(ActivityTimeSeries.timestamp_utc),
+                        ).where(ActivityTimeSeries.activity_id == activity.id)
+                    )
+                ).one()
+                incoming_stamps = [
+                    row["timestamp_utc"] for row in rows if row.get("timestamp_utc") is not None
+                ]
+                incoming_latest = max(incoming_stamps) if incoming_stamps else None
+                unchanged = stored_count == len(rows) and stored_latest == incoming_latest
+                if rows and not unchanged:
+                    await self.session.execute(
+                        delete(ActivityTimeSeries).where(
+                            ActivityTimeSeries.activity_id == activity.id
+                        )
+                    )
+                    strip_raw = activity_fields.get("activity_type") in STRIP_RAW_METRICS_TYPES
+                    for row in rows:
+                        if strip_raw:
+                            row["raw_metrics"] = {}
+                        self.session.add(ActivityTimeSeries(activity_id=activity.id, **row))
+                    sample_count += len(rows)
 
         if commit:
             await self.session.commit()

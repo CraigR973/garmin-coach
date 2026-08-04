@@ -2,7 +2,20 @@ FROM python:3.12.11-slim-bookworm@sha256:519591d6871b7bc437060736b9f7456b8731f14
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client curl \
+# pg_dump refuses to dump a server newer than itself. Supabase runs PostgreSQL
+# 17, but bookworm's own `postgresql-client` is 15 — so pinning the base image
+# to slim-bookworm (from a floating `3.12-slim` tag that had moved on to trixie)
+# silently broke the nightly backup with "aborting because of server version
+# mismatch". Take the 17 client from PGDG so the pinned digest above can stay.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && install -d /etc/apt/keyrings \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+        -o /etc/apt/keyrings/pgdg.asc \
+    && echo "deb [signed-by=/etc/apt/keyrings/pgdg.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+        > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client-17 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY apps/api/requirements.lock .

@@ -6,7 +6,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 
 from src.models.coaching import Activity, ActivityTimeSeries, DailyMetric, Sleep
@@ -492,3 +492,203 @@ async def test_sync_activities_keeps_captured_splits_in_raw_summary(
             commit=False,
         )
         assert activity.raw_summary["activitySplits"] == splits
+
+
+@pytest.mark.asyncio
+async def test_repeat_poll_leaves_stored_samples_untouched(db_conn: AsyncConnection) -> None:
+    """The hourly poll must not rewrite a settled sample stream.
+
+    The activity poll re-reads a rolling multi-day window every hour, so the
+    same details payload arrives ~96 times before the activity drops out of
+    range. Each pass used to DELETE and re-INSERT every sample, amplifying
+    writes on the largest table in the database by that factor.
+    """
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    details = {
+        "metricDescriptors": [
+            {"key": "directPower", "metricsIndex": 0},
+            {"key": "directHeartRate", "metricsIndex": 1},
+        ],
+        "activityDetailMetrics": [{"metrics": [200.0, 150.0]}, {"metrics": [205.0, 151.0]}],
+    }
+    payloads = GarminActivityPayloads(
+        summaries=[{"activityId": 444, "activityType": {"typeKey": "road_biking"}}],
+        details_by_activity_id={444: details},
+    )
+
+    async with session_factory() as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Repeat Poll Test",
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+        service = GarminSyncService(session)
+
+        first = await service.sync_activities(user_id, payloads, commit=False)
+        activity = await session.scalar(select(Activity).where(Activity.garmin_activity_id == 444))
+        assert activity is not None
+        stored_ids = set(
+            (
+                await session.execute(
+                    select(ActivityTimeSeries.id).where(
+                        ActivityTimeSeries.activity_id == activity.id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert first.timeseries_samples_synced == 2
+        assert len(stored_ids) == 2
+
+        second = await service.sync_activities(user_id, payloads, commit=False)
+        after_ids = set(
+            (
+                await session.execute(
+                    select(ActivityTimeSeries.id).where(
+                        ActivityTimeSeries.activity_id == activity.id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    # Same primary keys, not merely the same count: a delete-and-reinsert would
+    # mint fresh ids even though the row count looked identical.
+    assert after_ids == stored_ids
+    assert second.timeseries_samples_synced == 0
+
+
+@pytest.mark.asyncio
+async def test_details_payload_without_samples_does_not_wipe_stored_stream(
+    db_conn: AsyncConnection,
+) -> None:
+    """A thin details response must not delete a stream we already captured."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    summary = {"activityId": 555, "activityType": {"typeKey": "road_biking"}}
+    full_details = {
+        "metricDescriptors": [{"key": "directPower", "metricsIndex": 0}],
+        "activityDetailMetrics": [{"metrics": [210.0]}, {"metrics": [215.0]}],
+    }
+    # Truthy, so it still reaches the import path, but carries no samples.
+    empty_details = {
+        "metricDescriptors": [{"key": "directPower", "metricsIndex": 0}],
+        "activityDetailMetrics": [],
+    }
+
+    async with session_factory() as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Thin Details Test",
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+        service = GarminSyncService(session)
+
+        await service.sync_activities(
+            user_id,
+            GarminActivityPayloads(summaries=[summary], details_by_activity_id={555: full_details}),
+            commit=False,
+        )
+        await service.sync_activities(
+            user_id,
+            GarminActivityPayloads(
+                summaries=[summary], details_by_activity_id={555: empty_details}
+            ),
+            commit=False,
+        )
+
+        activity = await session.scalar(select(Activity).where(Activity.garmin_activity_id == 555))
+        assert activity is not None
+        samples = (
+            (
+                await session.execute(
+                    select(ActivityTimeSeries).where(ActivityTimeSeries.activity_id == activity.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    assert len(samples) == 2
+
+
+@pytest.mark.asyncio
+async def test_extended_session_rewrites_despite_equal_sample_count(
+    db_conn: AsyncConnection,
+) -> None:
+    """A ride polled mid-session and again when finished must still update.
+
+    Details are requested with maxchart=2000, so a long ride is downsampled to
+    the same number of points whether it is half done or complete. Count alone
+    would call those equal and freeze the partial stream in place.
+    """
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    summary = {"activityId": 666, "activityType": {"typeKey": "road_biking"}}
+
+    def details_ending_at(last_iso: str, mid_iso: str) -> dict[str, object]:
+        return {
+            "metricDescriptors": [
+                {"key": "directTimestamp", "metricsIndex": 0},
+                {"key": "directPower", "metricsIndex": 1},
+            ],
+            "activityDetailMetrics": [
+                {"metrics": ["2026-08-01T10:00:00", 200.0]},
+                {"metrics": [mid_iso, 210.0]},
+                {"metrics": [last_iso, 220.0]},
+            ],
+        }
+
+    mid_session = details_ending_at("2026-08-01T10:30:00", "2026-08-01T10:15:00")
+    completed = details_ending_at("2026-08-01T12:00:00", "2026-08-01T11:00:00")
+
+    async with session_factory() as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Extended Session Test",
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+        service = GarminSyncService(session)
+
+        await service.sync_activities(
+            user_id,
+            GarminActivityPayloads(summaries=[summary], details_by_activity_id={666: mid_session}),
+            commit=False,
+        )
+        second = await service.sync_activities(
+            user_id,
+            GarminActivityPayloads(summaries=[summary], details_by_activity_id={666: completed}),
+            commit=False,
+        )
+
+        activity = await session.scalar(select(Activity).where(Activity.garmin_activity_id == 666))
+        assert activity is not None
+        latest = await session.scalar(
+            select(func.max(ActivityTimeSeries.timestamp_utc)).where(
+                ActivityTimeSeries.activity_id == activity.id
+            )
+        )
+
+    # Same row count both times, but the finished ride must have replaced the
+    # mid-session snapshot rather than being skipped as "unchanged".
+    assert second.timeseries_samples_synced == 3
+    assert latest is not None
+    assert latest.hour == 12
