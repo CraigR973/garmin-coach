@@ -200,11 +200,37 @@ pg_restore --clean --if-exists --no-owner --dbname "$DATABASE_URL" coach_2026080
   so the image installs `postgresql-client-17` from PGDG rather than bookworm's 15 —
   a mismatch aborts every run with `server version mismatch` (this silently broke the
   backup for five nights from 2026-07-29).
-- Railway containers use ephemeral storage: `/tmp/` backups do not survive redeployment.
-  For durable backups, set `BACKUP_DIR` to a mounted volume or export the Railway service volume.
-- `pg_dump` failure writes an `AuditLog` row with `action_type=backup_failed`; check the
-  Railway logs for `scheduled backup failed`. Nothing pages on this, so a run of
-  `backup_failed` rows can accumulate unnoticed — worth checking after any base-image change.
+- **Durable since 2026-08-04:** Railway volume `api-volume` (5 GB) is attached to service `api`
+  at `/data/backups`, and `BACKUP_DIR=/data/backups` is set, so archives survive redeployment.
+  Before this, `BACKUP_DIR` defaulted to the container's ephemeral `/tmp` and every archive was
+  lost on the next deploy. A verified run writes ~7.4 MB.
+
+  Pull an off-site copy whenever you want one — this is the deliberate answer to "the volume is
+  on the same platform as the app", and needs no upload code, bucket or third party holding
+  health data:
+
+  ```bash
+  railway volume files --volume api-volume list /
+  railway volume files --volume api-volume download /coach_20260804_030000.dump ~/somewhere/
+  ```
+
+  Treat a downloaded archive as sensitive health data: it holds every analysis, check-in, plan
+  and chat message. Don't leave copies in temp directories or shared folders.
+- `pg_dump` failure writes an `AuditLog` row with `action_type=backup_failed` and emits a
+  structured `error` log `scheduled backup failed`. **Nothing pages on either**, which is how
+  five consecutive failures went unnoticed from 2026-07-29. Note `settings.admin_alert_user_id`
+  does *not* cover this: that push is wired only to brief-generation failure (Batch 141), and
+  by design it targets a separate operator profile that does not exist in production — the
+  app `admin` role belongs to the primary user, and an ops alert must never land on his phone.
+  Seeding an operator profile is not a config-only change either, because the scheduler's job
+  loops iterate *every* active profile and would try to run Garmin syncs and brief generation
+  for it. Until that is designed, check `backup_failed` rows after any base-image or
+  dependency change:
+
+  ```sql
+  select "timestamp", changes from coach.audit_log
+  where action_type = 'backup_failed' order by "timestamp" desc limit 5;
+  ```
 - Supabase point-in-time restore is a **paid-plan** feature; on the free plan these dumps
   are the only backup that exists.
 
