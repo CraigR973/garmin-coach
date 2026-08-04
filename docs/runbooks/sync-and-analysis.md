@@ -208,6 +208,16 @@ pg_restore --clean --if-exists --no-owner --dbname "$DATABASE_URL" coach_2026080
 - Supabase point-in-time restore is a **paid-plan** feature; on the free plan these dumps
   are the only backup that exists.
 
+## Dependency gotcha — `cryptography` on an Intel Mac
+
+From 50.0.0, `cryptography` publishes macOS wheels for **arm64 only**. On this Intel Mac a
+`pip install -r apps/api/requirements.lock` therefore falls back to the sdist and tries to
+compile against OpenSSL and Rust, which fails without those toolchains. Linux is unaffected
+— 50.0.0 ships manylinux wheels covering both ubuntu CI and the Debian bookworm image
+(`cp39-abi3-manylinux_2_28_x86_64` satisfies Python 3.12), so CI and production install a
+prebuilt wheel normally. The local `apps/api/.venv` can stay on an older build for running
+pytest/ruff/mypy; it is not what ships.
+
 ## Manual job trigger
 
 APScheduler does not expose an HTTP API for triggering jobs. To run a job on demand:
