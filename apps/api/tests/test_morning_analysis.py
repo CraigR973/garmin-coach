@@ -16,6 +16,7 @@ from src.models.coaching import (
     DailyMetric,
     ManualEntry,
     MetricBaseline,
+    PlanBlock,
     PlannedWorkout,
     Sleep,
     TemperatureReading,
@@ -403,7 +404,7 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
 
 
 @pytest.mark.asyncio
-async def test_morning_packet_turns_two_recent_reds_into_deload_action(
+async def test_morning_packet_turns_two_unexplained_reds_into_swap_action(
     db_conn: AsyncConnection,
 ) -> None:
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
@@ -485,6 +486,18 @@ async def test_morning_packet_turns_two_recent_reds_into_deload_action(
                     structured_workout={"format": "bike"},
                     source="test",
                 ),
+                PlannedWorkout(
+                    user_id=user_id,
+                    workout_date=subject_date + timedelta(days=2),
+                    version=1,
+                    title="Endurance Z2",
+                    workout_type="bike_endurance",
+                    status="planned",
+                    is_active=True,
+                    planned_duration_min=75,
+                    structured_workout={"format": "bike"},
+                    source="test",
+                ),
             ]
         )
         await session.commit()
@@ -493,13 +506,239 @@ async def test_morning_packet_turns_two_recent_reds_into_deload_action(
 
     action = packet["verdict"]["chronicAction"]
     assert action["triggered"] is True
+    assert action["kind"] == "rearrange_proposal"
     assert action["triggerSources"] == ["red_morning_cluster"]
     assert action["redMorningCount"] == 2
     assert action["verdictImpact"] == "none"
-    assert any(
-        item["title"] == "Approve today's deload ride" for item in packet["verdict"]["todayActions"]
+    swap = packet["verdict"]["swapSuggestion"]
+    assert swap["hardDate"] == subject_date.isoformat()
+    assert swap["moveToDate"] == (subject_date + timedelta(days=2)).isoformat()
+    assert packet["verdict"]["todayActions"][0]["kind"] == "apply_swap"
+    assert all(
+        item["title"] != "Approve today's deload ride" for item in packet["verdict"]["todayActions"]
     )
-    assert "surface_chronic_deload_without_changing_verdict" in packet["prompt"]["outputRules"]
+    assert "qualify_reds_before_structural_action" in packet["prompt"]["outputRules"]
+
+
+@pytest.mark.asyncio
+async def test_morning_packet_excludes_marks_two_explained_reds(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 8, 1)
+    friday = subject_date - timedelta(days=1)
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Explained Reds Test",
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+        session.add(_rhr_baseline(user_id))
+        for offset in range(21):
+            day = subject_date - timedelta(days=20 - offset)
+            is_friday = day == friday
+            is_saturday = day == subject_date
+            session.add(
+                Sleep(
+                    user_id=user_id,
+                    calendar_date=day,
+                    score=51 if is_saturday else 68 if is_friday else 85,
+                    duration_sec=7 * 3600,
+                    rem_sleep_sec=90 * 60,
+                    deep_sleep_sec=70 * 60,
+                    light_sleep_sec=240 * 60,
+                    awake_sleep_sec=20 * 60,
+                    raw_payload={},
+                    factors_json={},
+                )
+            )
+            session.add(
+                DailyMetric(
+                    user_id=user_id,
+                    calendar_date=day,
+                    recorded_at_utc=datetime.combine(day, datetime.min.time()),
+                    readiness_score=27 if is_saturday else 20 if is_friday else 75,
+                    readiness_level="Low" if is_saturday else "Poor" if is_friday else "High",
+                    recovery_time_min=1370 if is_saturday else 2584 if is_friday else 0,
+                    acute_load=0 if is_saturday else 198 if is_friday else 50,
+                    hrv_weekly_avg_ms=35 if is_saturday else 52,
+                    hrv_status="Low" if is_saturday else "Balanced",
+                    hrv_baseline_low_ms=43,
+                    hrv_baseline_high_ms=57,
+                    resting_heart_rate_bpm=48 if is_saturday else 43 if is_friday else 45,
+                    raw_payload={},
+                )
+            )
+        session.add_all(
+            [
+                Analysis(
+                    user_id=user_id,
+                    analysis_type="morning",
+                    subject_date=friday,
+                    generated_at_utc=datetime(2026, 7, 31, 8, 0),
+                    prompt_version="historical-test",
+                    verdict="Red",
+                    context_packet={"verdict": {"status": "Red"}},
+                    output_markdown="Red.",
+                    raw_response={},
+                ),
+                ManualEntry(
+                    user_id=user_id,
+                    entry_date=friday,
+                    entry_at_utc=datetime(2026, 7, 31, 7, 30),
+                    subjective_score=4,
+                    notes=(
+                        "Presumably due to a harder day's training yesterday and cumulative "
+                        "3 day training load."
+                    ),
+                ),
+                ManualEntry(
+                    user_id=user_id,
+                    entry_date=subject_date,
+                    entry_at_utc=datetime(2026, 8, 1, 8, 44),
+                    subjective_score=3,
+                    feel="Have a bit of a hangover today",
+                    notes="Was out last night drinking, around 13 UK units.",
+                ),
+            ]
+        )
+        await session.commit()
+
+        packet = await MorningAnalysisService(session).assemble_context_packet(player, subject_date)
+
+    action = packet["verdict"]["chronicAction"]
+    assert action["redMorningObservedCount"] == 2
+    assert action["redMorningCount"] == 0
+    assert action["triggered"] is False
+    assert [item["classification"] for item in action["redMorningQualifications"]] == [
+        "explained_by_check_in",
+        "explained_by_check_in",
+    ]
+    assert {item["reason"] for item in action["recordedTrainingContext"]} >= {
+        "training_load",
+        "alcohol",
+    }
+
+
+@pytest.mark.asyncio
+async def test_morning_packet_suppresses_sustained_deload_for_recovery_block(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 8, 1)
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Recovery Block Test",
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+        recovery_block = PlanBlock(
+            user_id=user_id,
+            name="PN2 W03 RECOVERY",
+            version=1,
+            sequence_index=3,
+            block_type="recovery",
+            start_date=date(2026, 8, 3),
+            end_date=date(2026, 8, 9),
+            goals_json={},
+            raw_plan={},
+        )
+        session.add(recovery_block)
+        await session.flush()
+        session.add(
+            MetricBaseline(
+                user_id=user_id,
+                metric_key="readiness_score",
+                metric_label="Training readiness",
+                source="test",
+                window_start_date=date(2026, 5, 1),
+                window_end_date=date(2026, 7, 31),
+                sample_count=84,
+                excluded_sample_count=0,
+                mean_value=77,
+                median_value=78,
+                lower_quartile_value=70,
+                upper_quartile_value=84,
+                raw_payload={},
+            )
+        )
+        for offset in range(21):
+            day = subject_date - timedelta(days=20 - offset)
+            session.add_all(
+                [
+                    Sleep(
+                        user_id=user_id,
+                        calendar_date=day,
+                        score=85,
+                        duration_sec=7 * 3600,
+                        rem_sleep_sec=90 * 60,
+                        deep_sleep_sec=70 * 60,
+                        light_sleep_sec=240 * 60,
+                        awake_sleep_sec=20 * 60,
+                        raw_payload={},
+                        factors_json={},
+                    ),
+                    DailyMetric(
+                        user_id=user_id,
+                        calendar_date=day,
+                        recorded_at_utc=datetime.combine(day, datetime.min.time()),
+                        readiness_score=50,
+                        readiness_level="Low",
+                        hrv_weekly_avg_ms=52,
+                        hrv_status="Balanced",
+                        hrv_baseline_low_ms=43,
+                        hrv_baseline_high_ms=57,
+                        resting_heart_rate_bpm=45,
+                        raw_payload={},
+                    ),
+                ]
+            )
+        session.add(
+            PlannedWorkout(
+                user_id=user_id,
+                plan_block_id=recovery_block.id,
+                workout_date=date(2026, 8, 3),
+                version=1,
+                title="Recovery Z2",
+                workout_type="bike_recovery",
+                status="planned",
+                is_active=True,
+                planned_duration_min=45,
+                structured_workout={"format": "bike"},
+                source="test",
+            )
+        )
+        await session.commit()
+
+        packet = await MorningAnalysisService(session).assemble_context_packet(player, subject_date)
+
+    action = packet["verdict"]["chronicAction"]
+    assert action["triggerSources"] == ["sustained_recovery_marker"]
+    assert action["suppressedByPlan"] is True
+    assert action["triggered"] is False
+    assert action["scheduledRecoveryBlocks"] == [
+        {
+            "name": "PN2 W03 RECOVERY",
+            "blockType": "recovery",
+            "startDate": "2026-08-03",
+            "endDate": "2026-08-09",
+        }
+    ]
+    assert all(
+        item["title"] != "Approve today's deload ride" for item in packet["verdict"]["todayActions"]
+    )
 
 
 @pytest.mark.asyncio
@@ -555,6 +794,14 @@ async def test_morning_packet_loads_holiday_window_and_suppresses_skipped_ride(
         assert packet["verdict"]["dayType"] == "rest"
         assert "swapSuggestion" not in packet["verdict"]
         assert packet["verdict"]["weeklyMix"]["shortfall"] is None
+        assert packet["verdict"]["chronicAction"]["recordedTrainingContext"] == [
+            {
+                "startDate": "2026-07-12",
+                "endDate": "2026-07-19",
+                "reason": "holiday",
+                "source": "holiday_plan",
+            }
+        ]
         adjustments = " ".join(packet["verdict"]["planAdjustments"]).lower()
         assert "rest day" in adjustments
         assert "proceed with the planned workout" not in adjustments
@@ -1026,7 +1273,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v26")
+    assert PROMPT_VERSION.startswith("morning-analysis-v27")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT

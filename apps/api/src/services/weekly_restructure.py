@@ -191,9 +191,10 @@ class SwapSuggestion:
 
     def lead_text(self) -> str:
         return (
-            f"Today isn't the day to force {self.hard_title} — move it to "
+            f"Move {self.hard_title} from {self.subject_date.strftime('%A')} to "
             f"{self.move_to_date.strftime('%A')} and bring {self.bring_forward_title} "
-            "forward to today, keeping the week's volume instead of softening the ride."
+            f"forward to {self.subject_date.strftime('%A')}, keeping the week's volume "
+            "instead of softening the ride."
         )
 
     def to_packet(self) -> dict[str, Any]:
@@ -201,8 +202,11 @@ class SwapSuggestion:
             "hardWorkoutId": str(self.hard_workout_id),
             "hardTitle": self.hard_title,
             "hardCategory": self.hard_category,
+            "hardDate": self.subject_date.isoformat(),
+            "hardWeekday": self.subject_date.strftime("%A"),
             "moveToDate": self.move_to_date.isoformat(),
             "moveToWeekday": self.move_to_date.strftime("%A"),
+            "bringForwardWorkoutId": str(self.bring_forward_workout_id),
             "bringForwardTitle": self.bring_forward_title,
         }
 
@@ -414,6 +418,38 @@ def plan_swap_first(
     return None
 
 
+def plan_swap_in_horizon(
+    items: Sequence[WeekItem],
+    *,
+    start_date: date,
+    end_date: date,
+    protected_weekdays: frozenset[int] = frozenset(),
+) -> SwapSuggestion | None:
+    """Find the first valid swap without moving load between training weeks."""
+
+    hard_dates = sorted(
+        {
+            item.workout_date
+            for item in items
+            if start_date <= item.workout_date <= end_date
+            and item.is_bike
+            and item.category in HARD_CATEGORIES
+        }
+    )
+    for hard_date in hard_dates:
+        week_start = hard_date - timedelta(days=hard_date.weekday())
+        week_end = week_start + timedelta(days=6)
+        week_items = [item for item in items if week_start <= item.workout_date <= week_end]
+        suggestion = plan_swap_first(
+            week_items,
+            subject_date=hard_date,
+            protected_weekdays=protected_weekdays,
+        )
+        if suggestion is not None and suggestion.move_to_date <= end_date:
+            return suggestion
+    return None
+
+
 @dataclass(frozen=True)
 class RecoverySignal:
     fatigued: bool
@@ -570,6 +606,54 @@ class WeeklyRestructureService:
         items, _ = await self._week_items(player, week_start)
         return plan_swap_first(
             items, subject_date=subject_date, protected_weekdays=protected_weekdays
+        )
+
+    async def swap_suggestion_in_horizon(
+        self,
+        player: Profile,
+        start_date: date,
+        *,
+        end_date: date,
+        protected_weekdays: frozenset[int] = frozenset(),
+    ) -> SwapSuggestion | None:
+        """Find the first sound hard↔easy swap in an upcoming action horizon.
+
+        Batch 182 reuses the same pure category-scoped swap engine for an acute
+        Red cluster even when the morning itself is a rest/easy day. Nothing is
+        applied here: the returned packet still needs Mark's explicit Apply tap.
+        """
+
+        workouts = (
+            (
+                await self.session.execute(
+                    select(PlannedWorkout)
+                    .where(
+                        PlannedWorkout.user_id == player.id,
+                        PlannedWorkout.is_active.is_(True),
+                        PlannedWorkout.status == "planned",
+                        PlannedWorkout.workout_date >= start_date,
+                        PlannedWorkout.workout_date <= end_date,
+                    )
+                    .order_by(PlannedWorkout.workout_date.asc(), PlannedWorkout.version.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        items = [
+            WeekItem(
+                workout_id=workout.id,
+                workout_date=workout.workout_date,
+                title=workout.title,
+                workout_type=workout.workout_type,
+            )
+            for workout in workouts
+        ]
+        return plan_swap_in_horizon(
+            items,
+            start_date=start_date,
+            end_date=end_date,
+            protected_weekdays=protected_weekdays,
         )
 
     async def apply_for_week(

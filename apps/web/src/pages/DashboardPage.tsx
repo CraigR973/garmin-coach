@@ -1008,9 +1008,10 @@ function SwapSuggestionCard({
         Rearrange the week
       </p>
       <p className="text-text-primary">
-        Today isn&apos;t the day to force {suggestion.hardTitle}. Move it to{' '}
-        {suggestion.moveToWeekday} and bring {suggestion.bringForwardTitle} forward to today
-        — keeping the week&apos;s volume instead of softening the ride.
+        Move {suggestion.hardTitle} from {suggestion.hardWeekday ?? 'its planned day'} to{' '}
+        {suggestion.moveToWeekday} and bring {suggestion.bringForwardTitle} forward to{' '}
+        {suggestion.hardWeekday ?? 'that day'} — keeping the week&apos;s volume instead of
+        softening the ride.
       </p>
       <Button
         type="button"

@@ -2,25 +2,36 @@
 
 Batch 59 turns the age-norm and personal-baseline reads into small, grounded
 actions when a pattern repeats across weeks. Batch 171 keeps those advisory cards
-unchanged, but also derives a deterministic deload-proposal signal from a protected
-recovery-marker pattern or a clustered pair of Red mornings. This module still
-does not mutate the plan or set the daily verdict; the executable-coaching service
-owns proposal creation through the existing approval rail.
+unchanged and derives a deterministic deload-proposal signal from a protected
+recovery-marker pattern. Batch 182 qualifies clustered Red mornings by cause and
+limits that acute path to a week-preserving rearrangement. This module still does
+not mutate the plan or set the daily verdict; the executable-coaching and
+restructure services own action behind the existing approval rails.
 """
 
 from __future__ import annotations
 
 import math
+import re
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any, Literal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.coaching import Analysis, DailyMetric, KnowledgeBase, MetricBaseline, Sleep
+from src.models.coaching import (
+    Analysis,
+    DailyMetric,
+    KnowledgeBase,
+    ManualEntry,
+    MetricBaseline,
+    PlanBlock,
+    PlannedWorkout,
+    Sleep,
+)
 from src.models.profile import Profile
 from src.services.age_norms import build_age_comparison
 from src.services.insights import DriverCorrelation
@@ -35,6 +46,50 @@ CHRONIC_ACTION_MISS_RATIO = 0.7
 CHRONIC_ACTION_RED_WINDOW_DAYS = 7
 CHRONIC_ACTION_RED_THRESHOLD = 2
 CHRONIC_DELOAD_WINDOW_DAYS = 7
+RECOVERY_DEBT_EXPLAINED_MIN = 24 * 60
+
+_PLANNED_RECOVERY_BLOCK_TYPES = frozenset({"recovery", "taper", "consolidation"})
+_HEALTHY_HRV_STATES = frozenset({"balanced", "stable", "optimal", "normal"})
+
+_CHECK_IN_CAUSE_PATTERNS: dict[str, tuple[str, ...]] = {
+    "alcohol": (
+        r"\bhangover\b",
+        r"\balcohol\b",
+        r"\bdrank\b",
+        r"\bdrinking\b",
+        r"\b\d+(?:\.\d+)?\s*(?:uk\s+)?units?\b",
+    ),
+    "illness": (
+        r"\bunwell\b",
+        r"\bill(?:ness)?\b",
+        r"\bsick\b",
+        r"\bflu\b",
+        r"\binfection\b",
+        r"\b(?:head|chest\s+)?cold\b",
+    ),
+    "travel": (
+        r"\bholiday\b",
+        r"\btravell?(?:ing|ed)?\b",
+        r"\baway (?:from home|overnight|on holiday)\b",
+        r"\bjet\s*lag\b",
+        r"\bdifferent bed\b",
+    ),
+    "deliberate_rest": (
+        r"\btraining break\b",
+        r"\brest day\b",
+        r"\brecovery week\b",
+        r"\bdeload\b",
+        r"\bdeliberate(?:ly)? rest\b",
+    ),
+    "training_load": (
+        r"\btraining load\b",
+        r"\bcumulative\b.{0,24}\btraining\b",
+        r"\bhard(?:er)? day(?:'s)? training\b",
+        r"\bhard(?:er)? training\b",
+        r"\bback[- ]to[- ]back\b",
+        r"\b(?:three|3)[- ]day\b.{0,24}\b(?:block|load|training)\b",
+    ),
+}
 
 _RECOVERY_ACTION_METRICS = frozenset(
     {"readiness_score", "hrv_7_day_avg_ms", "resting_heart_rate_bpm"}
@@ -64,6 +119,12 @@ class RecoveryDay:
     readiness_score: int | None = None
     hrv_7_day_avg_ms: int | None = None
     resting_heart_rate_bpm: int | None = None
+    recovery_time_min: int | None = None
+    acute_load: float | None = None
+    hrv_last_night_avg_ms: int | None = None
+    hrv_status: str | None = None
+    hrv_baseline_low_ms: int | None = None
+    hrv_baseline_high_ms: int | None = None
 
 
 @dataclass(frozen=True)
@@ -97,14 +158,92 @@ class VerdictDay:
 
 
 @dataclass(frozen=True)
+class RedDayEvidence:
+    calendar_date: date
+    recovery_time_min: int | None = None
+    acute_load: float | None = None
+    hrv_ms: int | None = None
+    hrv_status: str | None = None
+    hrv_floor_ms: float | None = None
+    resting_heart_rate_bpm: int | None = None
+    resting_hr_ceiling_bpm: float | None = None
+    check_in_reasons: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RedMorningQualification:
+    calendar_date: date
+    counts_toward_cluster: bool
+    classification: str
+    explanation_sources: tuple[str, ...]
+    evidence: RedDayEvidence | None = None
+
+    def to_packet(self) -> dict[str, Any]:
+        evidence = self.evidence
+        return {
+            "date": self.calendar_date.isoformat(),
+            "countsTowardCluster": self.counts_toward_cluster,
+            "classification": self.classification,
+            "explanationSources": list(self.explanation_sources),
+            "physiology": {
+                "recoveryTimeMin": evidence.recovery_time_min if evidence else None,
+                "acuteLoad": evidence.acute_load if evidence else None,
+                "hrvMs": evidence.hrv_ms if evidence else None,
+                "hrvStatus": evidence.hrv_status if evidence else None,
+                "hrvFloorMs": evidence.hrv_floor_ms if evidence else None,
+                "restingHeartRateBpm": (evidence.resting_heart_rate_bpm if evidence else None),
+                "restingHrCeilingBpm": (evidence.resting_hr_ceiling_bpm if evidence else None),
+            },
+            "checkInReasons": list(evidence.check_in_reasons) if evidence else [],
+        }
+
+
+@dataclass(frozen=True)
+class ScheduledRecoveryBlock:
+    name: str
+    block_type: str
+    start_date: date
+    end_date: date
+
+    def to_packet(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "blockType": self.block_type,
+            "startDate": self.start_date.isoformat(),
+            "endDate": self.end_date.isoformat(),
+        }
+
+
+@dataclass(frozen=True)
+class RecordedTrainingContext:
+    start_date: date
+    end_date: date
+    reason: str
+    source: Literal["holiday_plan", "morning_check_in"]
+
+    def to_packet(self) -> dict[str, Any]:
+        return {
+            "startDate": self.start_date.isoformat(),
+            "endDate": self.end_date.isoformat(),
+            "reason": self.reason,
+            "source": self.source,
+        }
+
+
+@dataclass(frozen=True)
 class ChronicActionSignal:
     triggered: bool
     trigger_sources: tuple[str, ...] = ()
     recovery_markers: tuple[str, ...] = ()
     red_morning_count: int = 0
+    red_morning_observed_count: int = 0
+    red_morning_qualifications: tuple[RedMorningQualification, ...] = ()
     reasons: tuple[str, ...] = ()
-    kind: Literal["deload_proposal"] = "deload_proposal"
+    kind: Literal["deload_proposal", "rearrange_proposal"] = "deload_proposal"
     proposal_window_days: int = CHRONIC_DELOAD_WINDOW_DAYS
+    suppressed_by_plan: bool = False
+    scheduled_recovery_blocks: tuple[ScheduledRecoveryBlock, ...] = ()
+    recorded_training_context: tuple[RecordedTrainingContext, ...] = ()
 
     def to_packet(self) -> dict[str, Any]:
         return {
@@ -114,10 +253,26 @@ class ChronicActionSignal:
             "triggerSources": list(self.trigger_sources),
             "recoveryMarkers": list(self.recovery_markers),
             "redMorningCount": self.red_morning_count,
+            "redMorningObservedCount": self.red_morning_observed_count,
             "redMorningThreshold": CHRONIC_ACTION_RED_THRESHOLD,
             "redMorningWindowDays": CHRONIC_ACTION_RED_WINDOW_DAYS,
+            "redMorningQualifications": [
+                item.to_packet() for item in self.red_morning_qualifications
+            ],
             "reasons": list(self.reasons),
-            "deliveryContract": "propose_approve_push",
+            "suppressedByPlan": self.suppressed_by_plan,
+            "scheduledRecoveryBlocks": [
+                block.to_packet() for block in self.scheduled_recovery_blocks
+            ],
+            "recordedTrainingContext": [
+                item.to_packet() for item in self.recorded_training_context
+            ],
+            "deliveryContract": (
+                "restructure_preview_apply"
+                if self.kind == "rearrange_proposal"
+                else "propose_approve_push"
+            ),
+            "humanApprovalRequired": True,
             "verdictImpact": "none",
         }
 
@@ -253,6 +408,9 @@ def build_chronic_pattern_suggestions(
     as_of: date,
     window_days: int = WINDOW_DAYS,
     recent_verdicts: Sequence[VerdictDay] = (),
+    red_day_evidence: Mapping[date, RedDayEvidence] | None = None,
+    scheduled_recovery_blocks: Sequence[ScheduledRecoveryBlock] = (),
+    recorded_training_context: Sequence[RecordedTrainingContext] = (),
 ) -> ChronicSuggestionResult:
     """Detect repeated below-norm/baseline misses and map them to actions."""
     start = as_of - timedelta(days=window_days - 1)
@@ -272,7 +430,14 @@ def build_chronic_pattern_suggestions(
                 f"{MIN_OBSERVED_NIGHTS} are needed before the app calls a chronic pattern."
             ),
             evidence_window=window,
-            action_signal=_chronic_action_signal([], recent_verdicts, as_of=as_of),
+            action_signal=_chronic_action_signal(
+                [],
+                recent_verdicts,
+                as_of=as_of,
+                red_day_evidence=red_day_evidence,
+                scheduled_recovery_blocks=scheduled_recovery_blocks,
+                recorded_training_context=recorded_training_context,
+            ),
         )
 
     flags = _age_norm_flags(sleeps, age=age, sex=sex, start=start, end=as_of)
@@ -283,7 +448,14 @@ def build_chronic_pattern_suggestions(
         if flag.samples >= MIN_METRIC_SAMPLES and flag.misses >= _miss_threshold(flag.samples)
     ]
     chronic.sort(key=lambda flag: (flag.miss_ratio, flag.misses), reverse=True)
-    action_signal = _chronic_action_signal(chronic, recent_verdicts, as_of=as_of)
+    action_signal = _chronic_action_signal(
+        chronic,
+        recent_verdicts,
+        as_of=as_of,
+        red_day_evidence=red_day_evidence,
+        scheduled_recovery_blocks=scheduled_recovery_blocks,
+        recorded_training_context=recorded_training_context,
+    )
 
     drivers = _useful_drivers(sleep_drivers)
     suggestions = [
@@ -367,21 +539,128 @@ class ChronicPatternSuggestionService:
         profile_section = await self._profile_section(player.id)
         age = _profile_age(profile_section)
         sex = _profile_sex(profile_section)
+        baseline_bands = await self._baselines(player.id)
+        manual_rows = await self._manual_entries(player.id, start=start, end=as_of)
         recent_verdicts = await self._recent_verdicts(player.id, as_of=as_of)
         if current_verdict is not None:
             recent_verdicts = [row for row in recent_verdicts if row.calendar_date != as_of] + [
                 VerdictDay(calendar_date=as_of, verdict=current_verdict)
             ]
+        recovery_days = [_recovery_day(row) for row in metric_rows]
         return build_chronic_pattern_suggestions(
             sleeps=[_sleep_night(row, age=age, sex=sex) for row in sleep_rows],
-            recovery_days=[_recovery_day(row) for row in metric_rows],
-            baselines=await self._baselines(player.id),
+            recovery_days=recovery_days,
+            baselines=baseline_bands,
             sleep_drivers=sleep_drivers,
             age=age,
             sex=sex,
             sleep_protocol=sleep_protocol,
             as_of=as_of,
             recent_verdicts=recent_verdicts,
+            red_day_evidence=_red_day_evidence(
+                recovery_days,
+                manual_rows=manual_rows,
+                baselines=baseline_bands,
+            ),
+            scheduled_recovery_blocks=await self._scheduled_recovery_blocks(player.id, as_of=as_of),
+            recorded_training_context=await self._recorded_training_context(
+                player.id,
+                start=start,
+                end=as_of,
+                manual_rows=manual_rows,
+            ),
+        )
+
+    async def _manual_entries(
+        self, user_id: uuid.UUID, *, start: date, end: date
+    ) -> list[ManualEntry]:
+        rows = await self.session.execute(
+            select(ManualEntry)
+            .where(
+                ManualEntry.user_id == user_id,
+                ManualEntry.entry_date >= start,
+                ManualEntry.entry_date <= end,
+                ManualEntry.planned_workout_id.is_(None),
+                ManualEntry.activity_id.is_(None),
+            )
+            .order_by(ManualEntry.entry_date.asc(), ManualEntry.entry_at_utc.asc())
+        )
+        return list(rows.scalars().all())
+
+    async def _scheduled_recovery_blocks(
+        self, user_id: uuid.UUID, *, as_of: date
+    ) -> list[ScheduledRecoveryBlock]:
+        end = as_of + timedelta(days=CHRONIC_DELOAD_WINDOW_DAYS - 1)
+        rows = (
+            (
+                await self.session.execute(
+                    select(PlanBlock)
+                    .join(PlannedWorkout, PlannedWorkout.plan_block_id == PlanBlock.id)
+                    .where(
+                        PlanBlock.user_id == user_id,
+                        func.lower(PlanBlock.block_type).in_(_PLANNED_RECOVERY_BLOCK_TYPES),
+                        PlanBlock.start_date <= end,
+                        PlanBlock.end_date >= as_of,
+                        PlannedWorkout.user_id == user_id,
+                        PlannedWorkout.is_active.is_(True),
+                        PlannedWorkout.status == "planned",
+                        PlannedWorkout.workout_date >= as_of,
+                        PlannedWorkout.workout_date <= end,
+                    )
+                    .order_by(PlanBlock.start_date.asc(), PlanBlock.name.asc())
+                )
+            )
+            .scalars()
+            .unique()
+            .all()
+        )
+        return [
+            ScheduledRecoveryBlock(
+                name=row.name,
+                block_type=str(row.block_type or "").lower(),
+                start_date=row.start_date,
+                end_date=row.end_date,
+            )
+            for row in rows
+        ]
+
+    async def _recorded_training_context(
+        self,
+        user_id: uuid.UUID,
+        *,
+        start: date,
+        end: date,
+        manual_rows: Sequence[ManualEntry],
+    ) -> list[RecordedTrainingContext]:
+        recorded = _check_in_training_context(manual_rows)
+        row = await self.session.scalar(
+            select(KnowledgeBase).where(
+                KnowledgeBase.user_id == user_id,
+                KnowledgeBase.section == "holiday_windows",
+                KnowledgeBase.is_active.is_(True),
+            )
+        )
+        windows = row.content.get("windows", []) if row and isinstance(row.content, dict) else []
+        for raw in windows:
+            if not isinstance(raw, dict):
+                continue
+            try:
+                window_start = date.fromisoformat(str(raw["startDate"]))
+                window_end = date.fromisoformat(str(raw["endDate"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+            if window_start <= end and window_end >= start:
+                recorded.append(
+                    RecordedTrainingContext(
+                        start_date=window_start,
+                        end_date=window_end,
+                        reason="holiday",
+                        source="holiday_plan",
+                    )
+                )
+        return sorted(
+            recorded,
+            key=lambda item: (item.start_date, item.end_date, item.reason, item.source),
         )
 
     async def _profile_section(self, user_id: uuid.UUID) -> Mapping[str, Any]:
@@ -490,7 +769,107 @@ def _recovery_day(row: DailyMetric) -> RecoveryDay:
         readiness_score=row.readiness_score,
         hrv_7_day_avg_ms=row.hrv_weekly_avg_ms,
         resting_heart_rate_bpm=row.resting_heart_rate_bpm,
+        recovery_time_min=row.recovery_time_min,
+        acute_load=row.acute_load,
+        hrv_last_night_avg_ms=row.hrv_last_night_avg_ms,
+        hrv_status=row.hrv_status,
+        hrv_baseline_low_ms=row.hrv_baseline_low_ms,
+        hrv_baseline_high_ms=row.hrv_baseline_high_ms,
     )
+
+
+def classify_check_in_causes(feel: str | None, notes: str | None) -> tuple[str, ...]:
+    """Turn Mark's persisted free-text explanation into narrow acute-cause tags.
+
+    This is deliberately a deterministic vocabulary rather than an LLM read: the
+    tags can qualify chronic escalation, so the same text must produce the same
+    result on every run. Unknown wording stays unknown and therefore cannot make a
+    Red disappear. A small negation check avoids treating phrases such as "no
+    alcohol" as an explanation.
+    """
+
+    text = " ".join(part.strip() for part in (feel, notes) if part and part.strip()).lower()
+    if not text:
+        return ()
+    found: list[str] = []
+    for cause, patterns in _CHECK_IN_CAUSE_PATTERNS.items():
+        if any(_non_negated_match(text, pattern) for pattern in patterns):
+            found.append(cause)
+    return tuple(found)
+
+
+def _non_negated_match(text: str, pattern: str) -> bool:
+    for match in re.finditer(pattern, text):
+        prefix = text[max(0, match.start() - 18) : match.start()]
+        if not re.search(
+            r"(?:\bno|\bnot|\bwithout|\bdidn['’]?t)(?:\s+\w+){0,2}\s+$",
+            prefix,
+        ):
+            return True
+    return False
+
+
+def _check_in_training_context(
+    manual_rows: Sequence[ManualEntry],
+) -> list[RecordedTrainingContext]:
+    recorded: list[RecordedTrainingContext] = []
+    seen: set[tuple[date, str]] = set()
+    for row in manual_rows:
+        for cause in classify_check_in_causes(row.feel, row.notes):
+            key = (row.entry_date, cause)
+            if key in seen:
+                continue
+            seen.add(key)
+            recorded.append(
+                RecordedTrainingContext(
+                    start_date=row.entry_date,
+                    end_date=row.entry_date,
+                    reason=cause,
+                    source="morning_check_in",
+                )
+            )
+    return recorded
+
+
+def _red_day_evidence(
+    recovery_days: Sequence[RecoveryDay],
+    *,
+    manual_rows: Sequence[ManualEntry],
+    baselines: Mapping[str, BaselineBand],
+) -> dict[date, RedDayEvidence]:
+    text_by_date: dict[date, list[str | None]] = {}
+    for manual_row in manual_rows:
+        text_by_date.setdefault(manual_row.entry_date, []).extend(
+            (manual_row.feel, manual_row.notes)
+        )
+
+    hrv_baseline = baselines.get("hrv_7_day_avg_ms")
+    rhr_baseline = baselines.get("resting_heart_rate_bpm")
+    evidence: dict[date, RedDayEvidence] = {}
+    for recovery_day in recovery_days:
+        texts = text_by_date.get(recovery_day.calendar_date, [])
+        feel = " ".join(part for part in texts[::2] if part) or None
+        notes = " ".join(part for part in texts[1::2] if part) or None
+        evidence[recovery_day.calendar_date] = RedDayEvidence(
+            calendar_date=recovery_day.calendar_date,
+            recovery_time_min=recovery_day.recovery_time_min,
+            acute_load=recovery_day.acute_load,
+            hrv_ms=recovery_day.hrv_7_day_avg_ms or recovery_day.hrv_last_night_avg_ms,
+            hrv_status=recovery_day.hrv_status,
+            hrv_floor_ms=(
+                float(recovery_day.hrv_baseline_low_ms)
+                if recovery_day.hrv_baseline_low_ms is not None
+                else hrv_baseline.lower_quartile
+                if hrv_baseline is not None
+                else None
+            ),
+            resting_heart_rate_bpm=recovery_day.resting_heart_rate_bpm,
+            resting_hr_ceiling_bpm=(
+                rhr_baseline.upper_quartile if rhr_baseline is not None else None
+            ),
+            check_in_reasons=classify_check_in_causes(feel, notes),
+        )
+    return evidence
 
 
 def _age_norm_flags(
@@ -638,13 +1017,17 @@ def _chronic_action_signal(
     recent_verdicts: Sequence[VerdictDay],
     *,
     as_of: date,
+    red_day_evidence: Mapping[date, RedDayEvidence] | None = None,
+    scheduled_recovery_blocks: Sequence[ScheduledRecoveryBlock] = (),
+    recorded_training_context: Sequence[RecordedTrainingContext] = (),
 ) -> ChronicActionSignal:
-    """Escalate only repeated, objective recovery evidence into a deload signal.
+    """Escalate chronic evidence to a deload and acute clusters to rearrange.
 
-    Advisory ``watch`` patterns remain advisory. A recovery marker must miss its
-    personal band on at least 70% of the already-qualified samples, or two Red
-    mornings must cluster inside the rolling seven-day window. Missing values and
-    a single bad day are neutral.
+    A protected recovery marker must still miss its personal band on at least 70%
+    of already-qualified samples before the seven-day deload path can fire. A
+    clustered pair of Reds is a different, acute signal: each Red is first
+    qualified using its same-day physiology and persisted check-in explanation,
+    and a qualifying pair may only propose a week-preserving rearrangement.
     """
 
     recovery_flags = [
@@ -662,12 +1045,19 @@ def _chronic_action_signal(
     for row in recent_verdicts:
         if verdict_start <= row.calendar_date <= as_of:
             latest_by_date[row.calendar_date] = row.verdict
-    red_count = sum(
-        1 for verdict in latest_by_date.values() if (verdict or "").strip().lower() == "red"
-    )
+    evidence_by_date = red_day_evidence or {}
+    red_days = [
+        day
+        for day, verdict in sorted(latest_by_date.items())
+        if (verdict or "").strip().lower() == "red"
+    ]
+    qualifications = tuple(_qualify_red_morning(day, evidence_by_date.get(day)) for day in red_days)
+    red_count = sum(1 for item in qualifications if item.counts_toward_cluster)
 
     trigger_sources: list[str] = []
     reasons: list[str] = []
+    kind: Literal["deload_proposal", "rearrange_proposal"] = "deload_proposal"
+    suppressed_by_plan = False
     if recovery_flags:
         trigger_sources.append("sustained_recovery_marker")
         markers = ", ".join(flag.label for flag in recovery_flags)
@@ -675,19 +1065,101 @@ def _chronic_action_signal(
             f"{markers} missed the personal recovery band on at least "
             f"{CHRONIC_ACTION_MISS_RATIO * 100:.0f}% of measured days."
         )
-    if red_count >= CHRONIC_ACTION_RED_THRESHOLD:
+    elif red_count >= CHRONIC_ACTION_RED_THRESHOLD:
+        kind = "rearrange_proposal"
         trigger_sources.append("red_morning_cluster")
         reasons.append(
-            f"{red_count} Red mornings occurred inside the last "
-            f"{CHRONIC_ACTION_RED_WINDOW_DAYS} days."
+            f"{red_count} unexplained or systemically strained Red mornings occurred "
+            f"inside the last {CHRONIC_ACTION_RED_WINDOW_DAYS} days; preserve the "
+            "weekly mix by rearranging rather than reducing the week."
+        )
+
+    recovery_blocks = tuple(scheduled_recovery_blocks)
+    if trigger_sources and recovery_blocks:
+        suppressed_by_plan = True
+        block_labels = ", ".join(f"{block.name} ({block.block_type})" for block in recovery_blocks)
+        reasons.append(
+            "No extra structural proposal because the plan already schedules "
+            f"{block_labels} inside the seven-day action horizon."
         )
 
     return ChronicActionSignal(
-        triggered=bool(trigger_sources),
+        triggered=bool(trigger_sources) and not suppressed_by_plan,
         trigger_sources=tuple(trigger_sources),
         recovery_markers=tuple(flag.metric_key for flag in recovery_flags),
         red_morning_count=red_count,
+        red_morning_observed_count=len(red_days),
+        red_morning_qualifications=qualifications,
         reasons=tuple(reasons),
+        kind=kind,
+        suppressed_by_plan=suppressed_by_plan,
+        scheduled_recovery_blocks=recovery_blocks,
+        recorded_training_context=tuple(recorded_training_context),
+    )
+
+
+def _qualify_red_morning(
+    calendar_date: date, evidence: RedDayEvidence | None
+) -> RedMorningQualification:
+    if evidence is None:
+        return RedMorningQualification(
+            calendar_date=calendar_date,
+            counts_toward_cluster=True,
+            classification="unexplained_red",
+            explanation_sources=(),
+            evidence=None,
+        )
+
+    if evidence.check_in_reasons:
+        return RedMorningQualification(
+            calendar_date=calendar_date,
+            counts_toward_cluster=False,
+            classification="explained_by_check_in",
+            explanation_sources=("morning_check_in",),
+            evidence=evidence,
+        )
+
+    hrv_status = str(evidence.hrv_status or "").strip().lower()
+    hrv_not_below_floor = evidence.hrv_ms is not None and (
+        evidence.hrv_floor_ms is None or float(evidence.hrv_ms) >= evidence.hrv_floor_ms
+    )
+    hrv_intact = hrv_not_below_floor and hrv_status in _HEALTHY_HRV_STATES
+    resting_hr_intact = (
+        evidence.resting_heart_rate_bpm is not None
+        and evidence.resting_hr_ceiling_bpm is not None
+        and float(evidence.resting_heart_rate_bpm) <= evidence.resting_hr_ceiling_bpm
+    )
+    recovery_debt = (
+        evidence.recovery_time_min is not None
+        and evidence.recovery_time_min > RECOVERY_DEBT_EXPLAINED_MIN
+    )
+    if recovery_debt and hrv_intact and resting_hr_intact:
+        return RedMorningQualification(
+            calendar_date=calendar_date,
+            counts_toward_cluster=False,
+            classification="expected_training_debt",
+            explanation_sources=("recovery_debt", "intact_hrv", "intact_resting_hr"),
+            evidence=evidence,
+        )
+
+    hrv_crashed = evidence.hrv_ms is not None and (
+        (evidence.hrv_floor_ms is not None and float(evidence.hrv_ms) < evidence.hrv_floor_ms)
+        or hrv_status in {"unbalanced", "low", "poor"}
+    )
+    resting_hr_crashed = (
+        evidence.resting_heart_rate_bpm is not None
+        and evidence.resting_hr_ceiling_bpm is not None
+        and float(evidence.resting_heart_rate_bpm) > evidence.resting_hr_ceiling_bpm
+    )
+    classification = (
+        "systemic_markers_strained" if hrv_crashed or resting_hr_crashed else "unexplained_red"
+    )
+    return RedMorningQualification(
+        calendar_date=calendar_date,
+        counts_toward_cluster=True,
+        classification=classification,
+        explanation_sources=(),
+        evidence=evidence,
     )
 
 
