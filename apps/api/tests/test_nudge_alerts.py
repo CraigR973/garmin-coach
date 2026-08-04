@@ -16,6 +16,7 @@ from src.services.nudge_alerts import (
     ANALYSIS_TYPE_BRIEF_READY,
     ANALYSIS_TYPE_EVENING_NUDGE,
     ANALYSIS_TYPE_GOOD_MORNING,
+    ANALYSIS_TYPE_WEEKLY_REVIEW_PUSH,
     THERMAL_URL,
     FanReconcileState,
     FreshnessSnapshot,
@@ -24,6 +25,7 @@ from src.services.nudge_alerts import (
     build_brief_ready_plan,
     build_evening_nudge_plan,
     build_good_morning_plan,
+    build_weekly_review_plan,
     build_workout_checkin_plan,
     evaluate_stale_sources,
     evaluate_thermal_alert,
@@ -230,6 +232,24 @@ def test_brief_ready_push_plan_targets_brief_and_reuses_the_headline() -> None:
     assert plan.title == "Today's brief is ready"
     assert plan.body == "Training readiness is well recovered."
     assert plan.data == {"url": "/brief", "kind": "brief_ready", "status": "Green"}
+
+
+def test_weekly_review_push_carries_the_conclusion_into_the_coach_thread() -> None:
+    review = _analysis(subject_date=date(2026, 7, 27))
+    review.id = uuid.uuid4()
+    conclusion = "Recovery held steady while the planned load increased."
+
+    plan = build_weekly_review_plan(review, conclusion=conclusion, subject_date=date(2026, 8, 2))
+
+    assert plan.analysis_type == ANALYSIS_TYPE_WEEKLY_REVIEW_PUSH
+    assert plan.tag == "weekly-review-2026-07-27"
+    assert plan.body == conclusion
+    assert "ready" not in plan.body.casefold()
+    assert plan.data == {
+        "url": "/?coach=open",
+        "kind": "weekly_review",
+        "analysisId": str(review.id),
+    }
 
 
 def test_thermal_precool_alert_before_seal_window() -> None:

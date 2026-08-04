@@ -41,6 +41,7 @@ Run each job from an external scheduler via the single-job runner:
 | `backup`        | 03:00 UTC            | `0 3 * * *`            |
 | `morning-sync`  | 06:30 Europe/London  | `30 6 * * *`  ⚠ DST    |
 | `autopush`      | 07/13/19 London      | `0 7,13,19 * * *`  ⚠   |
+| `weekly-review` | Sunday 18:00 London  | `0 18 * * 0`  ⚠       |
 | `evening-nudge` | 20:00 London         | `0 20 * * *`  ⚠        |
 | `evening-alerts`| 19–22 London, /15    | `*/15 19-22 * * *`  ⚠  |
 

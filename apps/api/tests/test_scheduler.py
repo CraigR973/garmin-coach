@@ -32,8 +32,10 @@ from src.scheduler import (
     run_post_workout_backstop,
     run_scheduled_backup,
     run_wake_check,
+    run_weekly_review_delivery,
     run_workout_autopush,
 )
+from src.services.anthropic_text import AnthropicApiError
 from src.services.dreo_fan import DreoFanError, DreoFanState
 from src.services.wake_detection import (
     BACKSTOP,
@@ -225,6 +227,92 @@ async def test_normal_day_keeps_evening_nudge_and_monitoring_alerts() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Batch 185 — scheduled weekly review delivery
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_weekly_review_delivery_uses_sunday_and_skips_holiday() -> None:
+    profile = _profile()
+    sunday = date(2026, 8, 2)
+    session = AsyncMock()
+
+    class _Ctx:
+        async def __aenter__(self) -> AsyncMock:
+            return session
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+    holiday = MagicMock()
+    holiday.get_active_window_for_date = AsyncMock(return_value=MagicMock())
+    delivery = MagicMock()
+    delivery.run = AsyncMock()
+
+    with (
+        patch("src.scheduler.AsyncSessionLocal", return_value=_Ctx()),
+        patch("src.scheduler._active_profiles", AsyncMock(return_value=[profile])),
+        patch("src.scheduler._profile_today", return_value=sunday),
+        patch("src.scheduler.HolidayPauseService", return_value=holiday),
+        patch("src.scheduler.WeeklyReviewDeliveryService", return_value=delivery),
+    ):
+        await run_weekly_review_delivery()
+
+    holiday.get_active_window_for_date.assert_awaited_once_with(profile, sunday)
+    delivery.run.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_weekly_review_failure_rolls_back_and_uses_admin_alert_path() -> None:
+    profile = _profile()
+    sunday = date(2026, 8, 2)
+    session = AsyncMock()
+    session.rollback = AsyncMock()
+
+    class _Ctx:
+        async def __aenter__(self) -> AsyncMock:
+            return session
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+    holiday = MagicMock()
+    holiday.get_active_window_for_date = AsyncMock(return_value=None)
+    delivery = MagicMock()
+    delivery.run = AsyncMock(
+        side_effect=AnthropicApiError("credits", reason="billing", status_code=400)
+    )
+    delivery.record_failure = AsyncMock(return_value=(MagicMock(), True))
+    nudge = MagicMock()
+    nudge.notify_admin_generation_failure = AsyncMock(return_value=True)
+
+    with (
+        patch("src.scheduler.AsyncSessionLocal", return_value=_Ctx()),
+        patch("src.scheduler._active_profiles", AsyncMock(return_value=[profile])),
+        patch("src.scheduler._profile_today", return_value=sunday),
+        patch("src.scheduler.HolidayPauseService", return_value=holiday),
+        patch("src.scheduler.WeeklyReviewDeliveryService", return_value=delivery),
+        patch("src.scheduler.NudgeAlertService", return_value=nudge),
+    ):
+        await run_weekly_review_delivery()
+
+    delivery.run.assert_awaited_once_with(profile, as_of=sunday, commit=True)
+    session.rollback.assert_awaited_once()
+    delivery.record_failure.assert_awaited_once_with(
+        profile,
+        subject_date=sunday,
+        commit=False,
+    )
+    nudge.notify_admin_generation_failure.assert_awaited_once_with(
+        reason="billing",
+        subject_date=sunday,
+        artifact="weekly_review",
+        commit=False,
+    )
+    session.commit.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
 # create_scheduler
 # ---------------------------------------------------------------------------
 
@@ -316,6 +404,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
             "garmin_activity_poll",
             "post_workout_backstop",
             "workout_autopush",
+            "weekly_review_delivery",
             "evening_sleep_nudge",
             "evening_monitoring_alerts",
             "fan_control",
@@ -328,6 +417,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
         post_workout_backstop = scheduler.get_job("post_workout_backstop")
         autopush_job = scheduler.get_job("workout_autopush")
         nudge_job = scheduler.get_job("evening_sleep_nudge")
+        weekly_review_job = scheduler.get_job("weekly_review_delivery")
         monitoring_job = scheduler.get_job("evening_monitoring_alerts")
         assert hive_job is not None
         assert wake_job is not None
@@ -336,6 +426,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
         assert post_workout_backstop is not None
         assert autopush_job is not None
         assert nudge_job is not None
+        assert weekly_review_job is not None
         assert monitoring_job is not None
         assert str(hive_job.trigger) == "interval[0:15:00]"
         # The fixed 06:30 morning cron was replaced by a 15-min wake-check poll
@@ -347,6 +438,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
         assert "hour='20', minute='30'" in str(post_workout_backstop.trigger)
         assert "hour='7,13,19', minute='0'" in str(autopush_job.trigger)
         assert "hour='20', minute='0'" in str(nudge_job.trigger)
+        assert "day_of_week='sun', hour='18', minute='0'" in str(weekly_review_job.trigger)
         assert "hour='19-22', minute='0,15,30,45'" in str(monitoring_job.trigger)
         assert hive_job.coalesce is True
         assert wake_job.coalesce is True
@@ -363,6 +455,8 @@ def test_create_scheduler_registers_environment_jobs() -> None:
         assert autopush_job.coalesce is True
         assert autopush_job.max_instances == 1
         assert nudge_job.coalesce is True
+        assert weekly_review_job.coalesce is True
+        assert weekly_review_job.max_instances == 1
         assert monitoring_job.max_instances == 1
     finally:
         if scheduler.running:

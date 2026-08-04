@@ -148,6 +148,7 @@ _READ_LABELS = {
     "post_walk": "the read on his completed walk",
     "post_strength": "the read on his completed strength session",
     "post_flexibility": "the read on his completed mobility session",
+    "weekly_review": "the weekly review you sent him",
 }
 
 #: Which surface an anchored question came from, so the stored row is
@@ -158,6 +159,7 @@ _ANALYSIS_ORIGINS = {
     "post_walk": "workout",
     "post_strength": "workout",
     "post_flexibility": "workout",
+    "weekly_review": "weekly_review",
 }
 
 

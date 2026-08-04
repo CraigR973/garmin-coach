@@ -817,6 +817,7 @@ export const coachOriginKindSchema = z.enum([
   'workout',
   'trends',
   'reviews',
+  'weekly_review',
   'environment',
   'breathwork',
   'strength',
