@@ -46,7 +46,7 @@ from src.services.dreo_fan import (
 from src.services.environment_freshness import is_hive_temperature_fresh
 from src.services.executable_coaching import ExecutableCoachingService
 from src.services.fan_control import describe_fan_intent
-from src.services.insights import OUTCOME_SLEEP_SCORE, DriversReport, InsightsService
+from src.services.insights import OUTCOME_SLEEP_SCORE
 from src.services.morning_analysis import MorningAnalysisService
 from src.services.nudge_alerts import NudgeAlertService
 from src.services.post_activity_analysis import (
@@ -55,13 +55,8 @@ from src.services.post_activity_analysis import (
     post_activity_kind,
     prepare_post_activity_read,
 )
-from src.services.sleep_projection import (
-    SleepDriverEvidence,
-    SleepProjectionInputs,
-    SleepProjectionResult,
-    TrainingSignal,
-    project_sleep,
-)
+from src.services.sleep_projection import SleepProjectionResult
+from src.services.sleep_projection_context import SleepProjectionContextService
 from src.services.strength_brief import StrengthBriefResult
 from src.services.tts_pregenerate import pregenerate_brief_audio
 from src.services.walking_brief import WalkingBriefResult
@@ -1141,73 +1136,6 @@ def _serialize_sleep_projection(result: SleepProjectionResult) -> SleepProjectio
     )
 
 
-def _activity_training_signals(snapshot: Any, timezone_name: str) -> list[TrainingSignal]:
-    try:
-        zone = ZoneInfo(timezone_name)
-    except ZoneInfoNotFoundError:
-        zone = ZoneInfo("UTC")
-    signals: list[TrainingSignal] = []
-    for activity in snapshot.activities:
-        local_start = activity.start_utc.replace(tzinfo=UTC).astimezone(zone).time()
-        signals.append(
-            TrainingSignal(
-                name=activity.activity_name,
-                activity_type=activity.activity_type,
-                local_start=local_start,
-                duration_min=(
-                    round(float(activity.duration_sec) / 60, 1)
-                    if activity.duration_sec is not None
-                    else None
-                ),
-                training_load=(
-                    float(activity.training_load) if activity.training_load is not None else None
-                ),
-                aerobic_training_effect=(
-                    float(activity.aerobic_training_effect)
-                    if activity.aerobic_training_effect is not None
-                    else None
-                ),
-                anaerobic_training_effect=(
-                    float(activity.anaerobic_training_effect)
-                    if activity.anaerobic_training_effect is not None
-                    else None
-                ),
-            )
-        )
-    return signals
-
-
-async def _sleep_projection(
-    player: CurrentUser,
-    snapshot: Any,
-    *,
-    latest_bedroom_temperature_c: float | None,
-    drivers_report: DriversReport,
-) -> SleepProjectionResult:
-    sleep_drivers = [
-        SleepDriverEvidence(
-            driver=driver.driver,
-            coefficient=driver.coefficient,
-            sample_count=driver.sample_count,
-            summary=driver.summary,
-        )
-        for driver in drivers_report.outcomes.get(OUTCOME_SLEEP_SCORE, [])
-    ]
-    return project_sleep(
-        SleepProjectionInputs(
-            training=_activity_training_signals(snapshot, player.timezone),
-            sleep_drivers=sleep_drivers,
-            sleep_protocol=snapshot.sleep_protocol,
-            latest_bedroom_temperature_c=latest_bedroom_temperature_c,
-            overnight_low_c=snapshot.weather.overnight_low_c if snapshot.weather else None,
-            overnight_wind_max_mph=(
-                snapshot.weather.overnight_wind_max_mph if snapshot.weather else None
-            ),
-            fan_auto_enabled=player.fan_auto_enabled,
-        )
-    )
-
-
 #: Batch 144: classified ``reason`` for a ``generating`` row that was never flipped
 #: to ready/failed by its background task — an orphaned generation (process restart
 #: or a hung Anthropic call) resolved at read time rather than a clean failure.
@@ -1337,15 +1265,12 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
             timezone_name=player.timezone,
             fresh_temperature_c=fresh_temperature_c,
         )
-    # Batch 62.2: prefer the driver report the morning pipeline cached for today;
-    # cached_drivers falls back to a live compute when the packet is absent.
-    drivers_report = await InsightsService(db).cached_drivers(player, as_of=snapshot.subject_date)
-    sleep_projection = await _sleep_projection(
+    projection_build = await SleepProjectionContextService(db).build_from_snapshot(
         player,
         snapshot,
-        latest_bedroom_temperature_c=fresh_temperature_c,
-        drivers_report=drivers_report,
     )
+    sleep_projection = projection_build.projection
+    drivers_report = projection_build.drivers_report
     chronic_suggestions = await ChronicPatternSuggestionService(db).suggestions(
         player,
         as_of=snapshot.subject_date,

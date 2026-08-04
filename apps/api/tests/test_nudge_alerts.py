@@ -14,6 +14,7 @@ from src.models.profile import Profile, UserRole
 from src.services.nudge_alerts import (
     ANALYSIS_TYPE_ANALYSIS_PUSH,
     ANALYSIS_TYPE_BRIEF_READY,
+    ANALYSIS_TYPE_EVENING_NUDGE,
     ANALYSIS_TYPE_GOOD_MORNING,
     THERMAL_URL,
     FanReconcileState,
@@ -28,6 +29,7 @@ from src.services.nudge_alerts import (
     evaluate_thermal_alert,
     is_evening_nudge_due,
 )
+from src.services.sleep_projection import SleepProjectionResult
 
 
 def _analysis(
@@ -75,14 +77,136 @@ def test_evening_nudge_due_uses_profile_timezone() -> None:
     )
 
 
-def test_evening_nudge_copy_contains_sleep_protocol_steps() -> None:
-    plan = build_evening_nudge_plan(date(2026, 6, 20))
+def _sleep_projection(
+    *,
+    status: str = "personalized",
+    tone: str = "protect",
+    headline: str = "Protect tonight's wind-down",
+    actions: list[str] | None = None,
+) -> SleepProjectionResult:
+    return SleepProjectionResult(
+        status=status,
+        tone=tone,
+        headline=headline,
+        summary="A late hard session is the measured risk tonight.",
+        evidence=["Latest session started 18:05."],
+        prep_actions=actions
+        or [
+            "Let Auto manage the pre-cool.",
+            "Bring the wind-down forward: breathing at 20:00.",
+        ],
+        protocol={},
+    )
+
+
+def test_evening_nudge_carries_projection_headline_actions_and_tone() -> None:
+    plan = build_evening_nudge_plan(date(2026, 6, 20), _sleep_projection())
     assert plan.tag == "sleep-protocol-2026-06-20"
-    assert "20:00 breathing" in plan.body
+    assert plan.title == "Protect tonight's wind-down"
+    assert plan.body == (
+        "Let Auto manage the pre-cool. Bring the wind-down forward: breathing at 20:00."
+    )
+    assert plan.severity == "critical"
+    assert plan.context["projectionStatus"] == "personalized"
+    assert plan.context["evidence"] == ["Latest session started 18:05."]
+
+
+def test_evening_nudge_fallback_uses_fixed_protocol_copy() -> None:
+    plan = build_evening_nudge_plan(
+        date(2026, 6, 20),
+        _sleep_projection(
+            status="fallback",
+            tone="routine",
+            headline="Use the usual sleep protocol",
+            actions=[
+                "Pre-cool the bedroom toward 17C.",
+                "Breathing at 20:00, snack by 21:30, seal near 22:00, bed 23:15.",
+            ],
+        ),
+    )
+    assert plan.title == "Use the usual sleep protocol"
     assert "17C" in plan.body
     assert "21:30" in plan.body
     assert "22:00" in plan.body
     assert "23:15" in plan.body
+    assert plan.severity == "info"
+    assert plan.context["rule"] == "sleep_protocol"
+
+
+@pytest.mark.asyncio
+async def test_evening_nudge_stays_quiet_for_a_routine_projection() -> None:
+    session = AsyncMock()
+    profile = MagicMock(spec=Profile)
+    profile.id = uuid.uuid4()
+    profile.timezone = "Europe/London"
+    service = NudgeAlertService(session)
+    service.sleep_projection.build = AsyncMock(  # type: ignore[method-assign]
+        return_value=SimpleNamespace(
+            projection=_sleep_projection(tone="routine", headline="Standard protocol night")
+        )
+    )
+    service._send_once = AsyncMock()  # type: ignore[method-assign]
+
+    recorded = await service.run_evening_nudge(
+        profile,
+        now_utc=datetime(2026, 6, 20, 19, 5, tzinfo=UTC),
+        commit=False,
+    )
+
+    assert recorded is False
+    service._send_once.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_evening_nudge_always_sends_a_protect_projection_once_due() -> None:
+    session = AsyncMock()
+    profile = MagicMock(spec=Profile)
+    profile.id = uuid.uuid4()
+    profile.timezone = "Europe/London"
+    service = NudgeAlertService(session)
+    service.sleep_projection.build = AsyncMock(  # type: ignore[method-assign]
+        return_value=SimpleNamespace(projection=_sleep_projection())
+    )
+    service._fallback_recorded_this_week = AsyncMock()  # type: ignore[method-assign]
+    service._send_once = AsyncMock(return_value=True)  # type: ignore[method-assign]
+
+    recorded = await service.run_evening_nudge(
+        profile,
+        now_utc=datetime(2026, 6, 20, 19, 5, tzinfo=UTC),
+        commit=False,
+    )
+
+    assert recorded is True
+    service._fallback_recorded_this_week.assert_not_awaited()
+    plan = service._send_once.await_args.args[1]
+    assert plan.title == "Protect tonight's wind-down"
+    assert plan.severity == "critical"
+
+
+@pytest.mark.asyncio
+async def test_evening_nudge_sends_fallback_only_when_weekly_copy_is_due() -> None:
+    session = AsyncMock()
+    profile = MagicMock(spec=Profile)
+    profile.id = uuid.uuid4()
+    profile.timezone = "Europe/London"
+    service = NudgeAlertService(session)
+    service.sleep_projection.build = AsyncMock(  # type: ignore[method-assign]
+        return_value=SimpleNamespace(
+            projection=_sleep_projection(status="fallback", tone="routine")
+        )
+    )
+    service._fallback_recorded_this_week = AsyncMock(  # type: ignore[method-assign]
+        side_effect=[False, True]
+    )
+    service._send_once = AsyncMock(return_value=True)  # type: ignore[method-assign]
+    now = datetime(2026, 6, 20, 19, 5, tzinfo=UTC)
+
+    assert await service.run_evening_nudge(profile, now_utc=now, commit=False) is True
+    assert await service.run_evening_nudge(profile, now_utc=now, commit=False) is False
+    service._send_once.assert_awaited_once()
+    plan = service._send_once.await_args.args[1]
+    assert plan.tag == "sleep-protocol-2026-06-20"
+    assert plan.context["projectionStatus"] == "fallback"
 
 
 def test_good_morning_nudge_copy_and_tag() -> None:
@@ -379,6 +503,37 @@ async def _seed_profile(session: object, *, fan_auto_enabled: bool = False) -> P
     session.add(profile)  # type: ignore[attr-defined]
     await session.flush()  # type: ignore[attr-defined]
     return profile
+
+
+@pytest.mark.asyncio
+async def test_evening_fallback_is_limited_to_once_per_calendar_week(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        profile = await _seed_profile(session)
+        session.add(
+            Analysis(
+                user_id=profile.id,
+                activity_id=None,
+                analysis_type=ANALYSIS_TYPE_EVENING_NUDGE,
+                subject_date=date(2026, 7, 7),
+                generated_at_utc=datetime(2026, 7, 7, 19, 0),
+                prompt_version="notification-rules:v2",
+                verdict="info",
+                context_packet={
+                    "tag": "sleep-protocol-2026-07-07",
+                    "projectionStatus": "fallback",
+                },
+                output_markdown="Use the usual sleep protocol.",
+                raw_response={},
+            )
+        )
+        await session.flush()
+
+        service = NudgeAlertService(session)
+        assert await service._fallback_recorded_this_week(profile.id, date(2026, 7, 10)) is True
+        assert await service._fallback_recorded_this_week(profile.id, date(2026, 7, 13)) is False
 
 
 @pytest.mark.asyncio

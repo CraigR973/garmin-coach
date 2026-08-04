@@ -12,7 +12,7 @@ Current jobs:
   - garmin_activity_poll: polls Garmin hourly and nudges for a post-session check-in
   - post_workout_backstop: at 20:30 local, generates any same-day unread sessions
   - workout_autopush: pushes approved workout proposals due today
-  - evening_sleep_nudge: sends the 20:00 sleep-protocol push
+  - evening_sleep_nudge: sends a quiet, projection-backed 20:00 sleep push
   - evening_monitoring_alerts: checks thermal and source freshness before bed
   - fan_control: every ~15 min within the overnight window, reconciles the Dreo
     bedroom fan to the live indoor temperature (Batch 27.2)
@@ -180,7 +180,7 @@ async def run_hive_temperature_poll() -> None:
 
 
 async def run_evening_sleep_nudge() -> None:
-    """Send the daily sleep-protocol nudge in each active profile's timezone."""
+    """Send useful projected sleep guidance in each active profile's timezone."""
     try:
         async with AsyncSessionLocal() as session:
             profiles = await _active_profiles(session)

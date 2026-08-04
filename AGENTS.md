@@ -49,7 +49,8 @@ device tokens provisioned by single-use activation links.
 - Tests ship with every change.
 
 ## Commands (once the api venv + web deps exist)
-- Backend test/lint/type: `PYTHONPATH=apps/api apps/api/.venv/bin/python -m pytest|ruff check|mypy src` (use absolute paths in the sandbox).
+- Backend test: `PYTHONPATH=apps/api apps/api/.venv/bin/python -m pytest -c apps/api/pyproject.toml` (the explicit config keeps `asyncio_mode=auto` when invoked from the repo root).
+- Backend lint/type: `PYTHONPATH=apps/api apps/api/.venv/bin/python -m ruff check apps/api/src apps/api/tests` and `PYTHONPATH=apps/api apps/api/.venv/bin/python -m mypy apps/api/src` (use absolute paths in the sandbox).
 - Frontend: `pnpm --dir apps/web test|build|lint`.
 
 ## Session handoff protocol (both tools)

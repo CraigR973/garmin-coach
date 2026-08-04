@@ -24,6 +24,8 @@ from src.models.profile import Profile
 from src.services.environment_freshness import HIVE_FRESHNESS_LIMIT, is_hive_temperature_fresh
 from src.services.fan_control import MAX_SPEED, ON_THRESHOLD_C
 from src.services.push_notification_service import send_notification
+from src.services.sleep_projection import SleepProjectionResult
+from src.services.sleep_projection_context import SleepProjectionContextService
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -35,7 +37,7 @@ ANALYSIS_TYPE_ANALYSIS_PUSH = "analysis_push"
 ANALYSIS_TYPE_GOOD_MORNING = "good_morning_nudge"
 ANALYSIS_TYPE_WORKOUT_CHECKIN = "workout_checkin_nudge"
 ANALYSIS_TYPE_ADMIN_ALERT = "admin_alert"
-PROMPT_VERSION = "notification-rules:v1"
+PROMPT_VERSION = "notification-rules:v2"
 
 EVENING_NUDGE_TIME = time(20, 0)
 EVENING_NUDGE_WINDOW_MIN = 20
@@ -66,6 +68,12 @@ ANALYSIS_PUSH_TITLES: dict[str, str] = {
     "strength": "Strength read ready",
     "flexibility": "Mobility read ready",
     "walk": "Walk read ready",
+}
+
+EVENING_NUDGE_SEVERITY = {
+    "routine": "info",
+    "watch": "warning",
+    "protect": "critical",
 }
 
 
@@ -129,18 +137,34 @@ def is_evening_nudge_due(
     return target_dt <= current < target_dt + timedelta(minutes=window_min)
 
 
-def build_evening_nudge_plan(subject_date: date) -> NotificationPlan:
+def build_evening_nudge_plan(
+    subject_date: date,
+    projection: SleepProjectionResult,
+) -> NotificationPlan:
+    actions = projection.prep_actions[:2]
+    rule = "sleep_projection" if projection.status == "personalized" else "sleep_protocol"
+    severity = EVENING_NUDGE_SEVERITY.get(projection.tone, "info")
     return NotificationPlan(
         analysis_type=ANALYSIS_TYPE_EVENING_NUDGE,
         tag=f"sleep-protocol-{subject_date.isoformat()}",
-        title="Evening sleep protocol",
-        body=(
-            "20:00 breathing, pre-cool the room toward 17C, finish snack by "
-            "21:30, seal the bedroom near 22:00, bed 23:15."
-        ),
-        severity="info",
-        data={"url": "/", "kind": "evening_nudge"},
-        context={"subjectDate": subject_date.isoformat(), "rule": "sleep_protocol"},
+        title=projection.headline,
+        body=" ".join(actions),
+        severity=severity,
+        data={
+            "url": "/",
+            "kind": "evening_nudge",
+            "severity": severity,
+        },
+        context={
+            "subjectDate": subject_date.isoformat(),
+            "rule": rule,
+            "projectionStatus": projection.status,
+            "tone": projection.tone,
+            "headline": projection.headline,
+            "summary": projection.summary,
+            "evidence": projection.evidence,
+            "prepActions": actions,
+        },
     )
 
 
@@ -493,6 +517,7 @@ def evaluate_stale_sources(snapshot: FreshnessSnapshot) -> list[NotificationPlan
 class NudgeAlertService:
     def __init__(self, session: AsyncSession):
         self.session = session
+        self.sleep_projection = SleepProjectionContextService(session)
 
     async def run_evening_nudge(
         self,
@@ -504,8 +529,34 @@ class NudgeAlertService:
         if not is_evening_nudge_due(timezone_name=profile.timezone, now_utc=now_utc):
             return False
         now = now_utc or datetime.now(UTC)
-        subject_date = local_now(profile.timezone, now_utc).date()
-        plan = build_evening_nudge_plan(subject_date)
+        subject_date = local_now(profile.timezone, now).date()
+        projection = (
+            await self.sleep_projection.build(
+                profile,
+                subject_date=subject_date,
+                now_utc=now,
+            )
+        ).projection
+        if projection.status == "personalized" and projection.tone == "routine":
+            log.info(
+                "evening sleep nudge skipped",
+                reason="routine_projection",
+                profile_id=str(profile.id),
+                subject_date=subject_date.isoformat(),
+            )
+            return False
+        if projection.status == "fallback" and await self._fallback_recorded_this_week(
+            profile.id,
+            subject_date,
+        ):
+            log.info(
+                "evening sleep nudge skipped",
+                reason="weekly_fallback_already_sent",
+                profile_id=str(profile.id),
+                subject_date=subject_date.isoformat(),
+            )
+            return False
+        plan = build_evening_nudge_plan(subject_date, projection)
         return await self._send_once(
             profile,
             plan,
@@ -764,6 +815,38 @@ class NudgeAlertService:
             .all()
         )
         return any(row.context_packet.get("tag") == tag for row in rows)
+
+    async def _fallback_recorded_this_week(
+        self,
+        user_id: uuid.UUID,
+        subject_date: date,
+    ) -> bool:
+        """Limit unpersonalized protocol copy to once per local calendar week.
+
+        The current date is deliberately excluded: same-day retries still reach
+        ``_send_once`` and retain the existing per-day tag idempotency path.
+        Pre-Batch-184 static protocol rows count, so a mid-week deploy cannot send
+        the same generic copy twice.
+        """
+        week_start = subject_date - timedelta(days=subject_date.weekday())
+        packets = (
+            await self.session.execute(
+                select(Analysis.context_packet).where(
+                    Analysis.user_id == user_id,
+                    Analysis.analysis_type == ANALYSIS_TYPE_EVENING_NUDGE,
+                    Analysis.subject_date >= week_start,
+                    Analysis.subject_date < subject_date,
+                )
+            )
+        ).scalars()
+        return any(
+            isinstance(packet, dict)
+            and (
+                packet.get("projectionStatus") == "fallback"
+                or packet.get("rule") == "sleep_protocol"
+            )
+            for packet in packets
+        )
 
     async def _latest_temperature(self, user_id: uuid.UUID) -> TemperatureReading | None:
         return (
