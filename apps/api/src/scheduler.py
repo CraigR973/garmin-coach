@@ -13,6 +13,7 @@ Current jobs:
   - post_workout_backstop: at 20:30 local, generates any same-day unread sessions
   - workout_autopush: pushes approved workout proposals due today
   - weekly_review_delivery: Sunday 18:00 local, writes the week into the coach thread
+  - state_change_coach: late morning local, writes one meaningful transition into the coach thread
   - evening_sleep_nudge: sends a quiet, projection-backed 20:00 sleep push
   - evening_monitoring_alerts: checks thermal and source freshness before bed
   - fan_control: every ~15 min within the overnight window, reconciles the Dreo
@@ -86,6 +87,7 @@ from src.services.post_flexibility_analysis import PostFlexibilityAnalysisServic
 from src.services.post_strength_analysis import PostStrengthAnalysisService
 from src.services.post_walk_analysis import PostWalkAnalysisService
 from src.services.post_workout_analysis import PostWorkoutAnalysisService
+from src.services.state_change_coach import StateChangeCoachService
 from src.services.tts_pregenerate import pregenerate_brief_audio
 from src.services.wake_detection import (
     BACKSTOP,
@@ -295,6 +297,47 @@ async def run_weekly_review_delivery() -> None:
         )
     except Exception:
         log.exception("weekly review delivery failed")
+
+
+async def run_state_change_coach() -> None:
+    """Deliver at most one meaningful state-change coach turn per profile/week."""
+    try:
+        async with AsyncSessionLocal() as session:
+            profiles = await _active_profiles(session)
+            if not profiles:
+                log.info("state-change coach skipped", reason="no_active_profiles")
+                return
+
+            service = StateChangeCoachService(session)
+            delivered = 0
+            skipped_budget = 0
+            skipped_no_transition = 0
+            failed = 0
+            for profile in profiles:
+                subject_date = _profile_today(profile)
+                try:
+                    result = await service.run(profile, as_of=subject_date, commit=True)
+                    delivered += int(result.message_created)
+                    skipped_budget += int(result.reason == "budget_spent")
+                    skipped_no_transition += int(result.reason == "no_transition")
+                except Exception:
+                    failed += 1
+                    await session.rollback()
+                    log.exception(
+                        "state-change coach failed",
+                        profile_id=str(profile.id),
+                        subject_date=subject_date.isoformat(),
+                    )
+        log.info(
+            "state-change coach complete",
+            profiles=len(profiles),
+            delivered=delivered,
+            skipped_budget=skipped_budget,
+            skipped_no_transition=skipped_no_transition,
+            failed=failed,
+        )
+    except Exception:
+        log.exception("state-change coach failed")
 
 
 async def run_evening_monitoring_alerts() -> None:
@@ -1414,6 +1457,17 @@ def create_scheduler() -> AsyncIOScheduler:
         minute=0,
         timezone=settings.weather_timezone,
         id="weekly_review_delivery",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        run_state_change_coach,
+        trigger="cron",
+        hour=11,
+        minute=45,
+        timezone=settings.weather_timezone,
+        id="state_change_coach",
         replace_existing=True,
         coalesce=True,
         max_instances=1,
