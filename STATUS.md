@@ -6,7 +6,7 @@
 
 ## Now
 
-**2026-08-05 — Batch 186 implementation ready (the week ahead joins the Sunday review).** Branch `feat/batch-186-week-ahead-guidance` adds a deterministic `weekAhead` packet to weekly reviews for the coming Monday-Sunday week: forward `TrainingWeekService.build_window`, active `PlanBlock` context, week-derived mix targets, quality sessions, the hardest planned session, and the previous night that protects it. Kickoff decision: fold this into Batch 185's existing Sunday weekly-review coach message, not a new analysis type or second push; monthly remains retrospective with `weekAhead: null`. Review prompt v7 is explanatory-only and says recovery/taper/consolidation weeks are deliberate structure (`target=0` quality buckets are not shortfalls). Backend-only; no migration/shared-schema/new-endpoint/frontend/provider/auth/hosting/scheduler/push/verdict/plan-delivery change. Local backend gates pass: pytest 767 passed / 338 expected PostgreSQL skips, Ruff clean, mypy clean across 132 source files. Decision #267. **Next:** review/PR and close out Batch 186 when Craig explicitly asks; do not run phase closeout automatically.
+**2026-08-05 — Batch 186 shipped (the week ahead joins the Sunday review).** PR #217 / squash `ccaed51` adds a deterministic `weekAhead` packet to weekly reviews for the coming Monday-Sunday week: forward `TrainingWeekService.build_window`, active `PlanBlock` context, week-derived mix targets, quality sessions, the hardest planned session, and the previous night that protects it. The kickoff decision stands: fold this into Batch 185's existing Sunday weekly-review coach message, not a new analysis type or second push; monthly remains retrospective with `weekAhead: null`. Review prompt v7 is explanatory-only and says recovery/taper/consolidation weeks are deliberate structure (`target=0` quality buckets are not shortfalls). Backend-only; no migration/shared-schema/new-endpoint/frontend/provider/auth/hosting/scheduler/push/verdict/plan-delivery change. Local backend gates passed; branch, PR-context, and post-merge `main` CI all passed seven jobs; production Railway direct and Vercel same-origin health served the exact SHA, DB readiness was `ok`, web `/` returned 200, and protected weekly-review route smokes returned 401 direct/proxied. Decision #267. **Next:** Batch 187 (the coach speaks when something changes) is the next unshipped batch.
 
 ---
 
@@ -31,6 +31,10 @@
 ---
 
 ## Log
+
+**2026-08-05 — Batch 186 shipped:** PR #217 / squash `ccaed51`; branch, PR-context and post-merge `main` CI passed, exact-SHA Railway/Vercel production health and protected weekly-review route smokes passed. The Sunday review now carries the forward week-ahead packet without a second push. Decision #267; Batch 187 is next.
+
+---
 
 **2026-08-05 — Batch 186 implementation ready:** `feat/batch-186-week-ahead-guidance` folds coming-week guidance into the Sunday weekly review with a deterministic `weekAhead` packet, prompt v7, and backend regressions. Full local backend gate passed (767 / 338 expected skips; Ruff/mypy clean). Decision #267; branch not promoted.
 
