@@ -62,10 +62,11 @@ from src.services.personal_baselines import baseline_band_packet, serialize_trai
 from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
 from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
 from src.services.training_week import TrainingWeekService
+from src.services.week_ahead import WeekAheadService
 from src.services.workload_budget import workload_slot
 
-PROMPT_VERSION = "reviews-v6-2026-08-04"
-PACKET_VERSION = 2
+PROMPT_VERSION = "reviews-v7-2026-08-05"
+PACKET_VERSION = 3
 
 PERIOD_WEEKLY = "weekly"
 PERIOD_MONTHLY = "monthly"
@@ -114,8 +115,16 @@ ground plan changes and completed-session history strictly in \
 trainingWeekSoFar: planned is the final active schedule, changes is the explicit \
 action audit, and executed Garmin activities are the only completion truth. \
 Never credit a moved-away, skipped, removed, or merely planned session as \
-executed. When trainingWeekSoFar is absent, use the deterministic rollup for \
-history and still never reconstruct it from trainingSchedule."""
+executed. For a weekly review, also use weekAhead to add a short forward-looking \
+part: say what the coming Monday-Sunday week asks of him, which planned day is \
+hardest, which previous night protects it, whether the week is build/recovery/\
+taper/consolidation, and what the week's own mix targets still need. A \
+recovery, taper, or consolidation week is deliberate structure; any target=0 \
+bucket is not a shortfall. This forward guidance is explanatory only: never \
+directly propose, approve, move, skip, or change a workout, and never alter the \
+deterministic Green/Amber/Red verdict or safety floors. When trainingWeekSoFar \
+is absent, use the deterministic rollup for history and still never reconstruct \
+it from trainingSchedule."""
 
 
 class ReviewError(RuntimeError):
@@ -638,6 +647,14 @@ class ReviewService:
             if period == PERIOD_WEEKLY
             else None
         )
+        week_ahead = (
+            await WeekAheadService(self.session).build(
+                player,
+                week_start=period_end + timedelta(days=1),
+            )
+            if period == PERIOD_WEEKLY
+            else None
+        )
 
         packet = _build_packet(
             player=player,
@@ -649,6 +666,7 @@ class ReviewService:
             baselines=baselines,
             training_schedule=training_schedule,
             training_week_so_far=training_week,
+            week_ahead=week_ahead,
         )
         latest_review = await self.latest_review(player.id, period, period_start)
         return ReviewPreview(
@@ -1071,6 +1089,7 @@ def _build_packet(
     baselines: Sequence[MetricBaseline] = (),
     training_schedule: Mapping[str, Any] | None = None,
     training_week_so_far: Mapping[str, Any] | None = None,
+    week_ahead: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "packetType": "deep_review",
@@ -1100,6 +1119,7 @@ def _build_packet(
         "trainingWeekSoFar": (
             dict(training_week_so_far) if training_week_so_far is not None else None
         ),
+        "weekAhead": dict(week_ahead) if week_ahead is not None else None,
         "strengthBrief": _strength_packet(strength),
         "insights": {
             "ftpDrift": {
@@ -1125,6 +1145,9 @@ def _build_packet(
                 "interpret_recovery_against_personal_baselines",
                 "treat_training_schedule_as_nominal_only",
                 "ground_week_history_in_training_week_so_far",
+                "fold_week_ahead_guidance_into_weekly_review",
+                "week_ahead_is_explanatory_only",
+                "recovery_week_targets_zero_are_not_shortfalls",
                 "never_reference_left_right_power_balance",
                 "exclude_wrist_hr_strength_from_recovery",
                 "ignore_broken_sleep_duration_column",

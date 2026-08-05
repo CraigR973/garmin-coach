@@ -23,6 +23,7 @@ from src.models.coaching import (
     DailyMetric,
     KnowledgeBase,
     MetricBaseline,
+    PlanBlock,
     PlannedWorkout,
     Sleep,
 )
@@ -332,6 +333,57 @@ async def _seed_week(db_conn: AsyncConnection, user_id: uuid.UUID) -> None:
                 is_active=True,
             )
         )
+        next_block_id = uuid.uuid4()
+        next_week_start = WEEK_END + timedelta(days=1)
+        session.add(
+            PlanBlock(
+                id=next_block_id,
+                user_id=user_id,
+                name="Build 2",
+                version=1,
+                sequence_index=2,
+                block_type="build",
+                start_date=next_week_start,
+                end_date=next_week_start + timedelta(days=6),
+            )
+        )
+        session.add_all(
+            [
+                PlannedWorkout(
+                    user_id=user_id,
+                    plan_block_id=next_block_id,
+                    workout_date=next_week_start + timedelta(days=1),
+                    version=2,
+                    title="VO2 Max",
+                    workout_type="bike_vo2",
+                    status="planned",
+                    is_active=True,
+                    planned_duration_min=60,
+                ),
+                PlannedWorkout(
+                    user_id=user_id,
+                    plan_block_id=next_block_id,
+                    workout_date=next_week_start + timedelta(days=3),
+                    version=3,
+                    title="Sweet Spot",
+                    workout_type="bike_sweet_spot",
+                    status="planned",
+                    is_active=True,
+                    planned_duration_min=75,
+                ),
+                PlannedWorkout(
+                    user_id=user_id,
+                    plan_block_id=next_block_id,
+                    workout_date=next_week_start + timedelta(days=6),
+                    version=4,
+                    title="Long Z2",
+                    workout_type="bike_endurance",
+                    status="planned",
+                    is_active=True,
+                    planned_duration_min=120,
+                ),
+            ]
+        )
         session.add(
             MetricBaseline(
                 user_id=user_id,
@@ -396,6 +448,19 @@ async def test_preview_assembles_rollup_and_never_writes(db_conn: AsyncConnectio
             "endDate": AS_OF.isoformat(),
         }
         assert preview.packet["trainingWeekSoFar"]["days"][1]["executed"][0]["title"] == "Ride"
+        assert preview.packet["weekAhead"]["window"] == {
+            "kind": "coming_iso_week",
+            "startDate": "2026-06-29",
+            "endDate": "2026-07-05",
+        }
+        assert preview.packet["weekAhead"]["blockSummary"]["primaryBlockType"] == "build"
+        assert preview.packet["weekAhead"]["hardestSession"]["title"] == "VO2 Max"
+        assert preview.packet["weekAhead"]["protectingNight"]["date"] == "2026-06-29"
+        next_mix = {
+            item["bucket"]: item for item in preview.packet["weekAhead"]["weeklyMix"]["buckets"]
+        }
+        assert next_mix["vo2"]["target"] == 1
+        assert next_mix["sweet_spot"]["target"] == 1
         assert preview.packet["rollup"]["coverage"]["sleepNights"] == 7
         assert preview.packet["rollup"]["adherence"]["sourceState"] == "planned_workouts_present"
         assert preview.packet["strengthBrief"]["sourceState"] == "no_tracked_strength_activity"
@@ -403,12 +468,14 @@ async def test_preview_assembles_rollup_and_never_writes(db_conn: AsyncConnectio
             "do not describe this as strength training stopped"
             in preview.packet["strengthBrief"]["zeroInterpretation"]
         )
-        assert REVIEW_PROMPT_VERSION.startswith("reviews-v6")
+        assert REVIEW_PROMPT_VERSION.startswith("reviews-v7")
         assert "**Bottom line:**" in REVIEW_SYSTEM_PROMPT
         assert "never announce" in REVIEW_SYSTEM_PROMPT
         assert "usual routine only" in REVIEW_SYSTEM_PROMPT
         assert "trainingWeekSoFar" in REVIEW_SYSTEM_PROMPT
         assert "merely planned session as executed" in REVIEW_SYSTEM_PROMPT
+        assert "weekAhead" in REVIEW_SYSTEM_PROMPT
+        assert "target=0" in REVIEW_SYSTEM_PROMPT
 
         # GET preview must not write an analyses row (#71).
         after = await session.scalar(select(func.count()).select_from(Analysis))
@@ -498,5 +565,6 @@ async def test_monthly_run_uses_monthly_window_and_type(db_conn: AsyncConnection
         assert result.review.analysis_type == ANALYSIS_TYPE_MONTHLY
         assert result.review.subject_date == date(2026, 6, 1)
         assert result.preview.period_end == date(2026, 6, 30)
+        assert result.preview.packet["weekAhead"] is None
         # The 7 seeded days all fall inside June, so the monthly rollup sees them.
         assert result.preview.rollup.sleep.nights == 7
