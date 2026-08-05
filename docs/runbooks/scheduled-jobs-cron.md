@@ -75,8 +75,11 @@ the `weekly-review` service at both Sunday candidates, `0 17,18 * * 0`, and its
 start command runs `python -m src.run_scheduled weekly-review` only when
 `TZ=Europe/London date +%H` is `18`. One candidate runs at 18:00 through BST and
 GMT; the other exits cleanly. The service references the API service's database,
-Anthropic, production-validation and VAPID variables, has no public domain or
-healthcheck, and uses `restartPolicyType=NEVER`.
+Anthropic, production-validation and VAPID variables, has no public domain, and
+uses `restartPolicyType=NEVER`. The shared root `railway.toml` leaves the API
+healthcheck path in the resolved deployment manifest; that is web-cutover
+metadata, not cron verification. For this run-to-completion service, verify the
+scheduled service status plus each execution's exit and logs.
 
 Keep the API's in-process scheduler enabled while only this one external job is
 provisioned. The weekly review's PostgreSQL advisory lock plus review/message/
