@@ -6,7 +6,7 @@
 
 ## Now
 
-**2026-08-05 — Batch 185 shipped (the weekly review starts the conversation).** PR #216 / squash `368ef69` generates the ending ISO week at Sunday 18:00 Europe/London, writes the full review once as an anchored `weekly_review` assistant turn, pushes the same authored `Bottom line` once into `/?coach=open`, and makes an unseen weekly turn visible through the per-profile client-side launcher marker. Monthly stays manual; active Sunday holidays skip; failures leave one quiet retry turn plus the existing operator alert. Local gates, branch-push, PR-context and post-merge `main` CI all passed; the Vercel preview and exact-SHA Railway/Vercel production deploys passed, including DB readiness, app, protected coach-route and deployed lazy-chunk smokes. Production now has a dedicated Railway `weekly-review` cron service: because Railway cron is UTC-only, `0 17,18 * * 0` is gated by the start command to local hour 18, preserving 18:00 through BST/GMT; API APScheduler remains enabled and the PostgreSQL advisory lock makes overlap safe. No migration or new endpoint; shared origin is additive. Decisions #265-266. **Next:** Batch 186 (the week ahead, before it starts) is the next unshipped batch.
+**2026-08-05 — Batch 186 implementation ready (the week ahead joins the Sunday review).** Branch `feat/batch-186-week-ahead-guidance` adds a deterministic `weekAhead` packet to weekly reviews for the coming Monday-Sunday week: forward `TrainingWeekService.build_window`, active `PlanBlock` context, week-derived mix targets, quality sessions, the hardest planned session, and the previous night that protects it. Kickoff decision: fold this into Batch 185's existing Sunday weekly-review coach message, not a new analysis type or second push; monthly remains retrospective with `weekAhead: null`. Review prompt v7 is explanatory-only and says recovery/taper/consolidation weeks are deliberate structure (`target=0` quality buckets are not shortfalls). Backend-only; no migration/shared-schema/new-endpoint/frontend/provider/auth/hosting/scheduler/push/verdict/plan-delivery change. Local backend gates pass: pytest 767 passed / 338 expected PostgreSQL skips, Ruff clean, mypy clean across 132 source files. Decision #267. **Next:** review/PR and close out Batch 186 when Craig explicitly asks; do not run phase closeout automatically.
 
 ---
 
@@ -31,6 +31,10 @@
 ---
 
 ## Log
+
+**2026-08-05 — Batch 186 implementation ready:** `feat/batch-186-week-ahead-guidance` folds coming-week guidance into the Sunday weekly review with a deterministic `weekAhead` packet, prompt v7, and backend regressions. Full local backend gate passed (767 / 338 expected skips; Ruff/mypy clean). Decision #267; branch not promoted.
+
+---
 
 **2026-08-05 — Batch 185 shipped:** PR #216 / squash `368ef69`; all local and three CI waves passed, exact-SHA Railway/Vercel production smokes passed, and the DST-safe Railway `weekly-review` cron service is built and scheduled. The ending review now arrives as one visible, replyable coach turn with one conclusion-bearing push. Decisions #265-266; Batch 186 is next.
 
