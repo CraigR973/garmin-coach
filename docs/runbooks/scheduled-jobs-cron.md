@@ -68,6 +68,20 @@ can't also be a cron, so add one Railway service per cron job (same repo/image):
 - Same env vars as `api` (`DATABASE_URL`, `GARMIN_*`, `HIVE_TOKENSTORE_B64`,
   `ANTHROPIC_*`, `INTERVALS_*`).
 
+#### Production weekly-review service (Batch 185)
+
+Railway evaluates cron expressions in UTC only. Production therefore schedules
+the `weekly-review` service at both Sunday candidates, `0 17,18 * * 0`, and its
+start command runs `python -m src.run_scheduled weekly-review` only when
+`TZ=Europe/London date +%H` is `18`. One candidate runs at 18:00 through BST and
+GMT; the other exits cleanly. The service references the API service's database,
+Anthropic, production-validation and VAPID variables, has no public domain or
+healthcheck, and uses `restartPolicyType=NEVER`.
+
+Keep the API's in-process scheduler enabled while only this one external job is
+provisioned. The weekly review's PostgreSQL advisory lock plus review/message/
+push idempotency make an APScheduler/cron overlap safe.
+
 ### Cutover — avoid double-runs
 
 Jobs are idempotent (Hive just appends a reading; morning analysis is

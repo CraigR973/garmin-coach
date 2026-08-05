@@ -6,7 +6,7 @@
 
 ## Now
 
-**2026-08-04 — Batch 185 implementation ready (the weekly review starts the conversation).** Sunday 18:00 profile-local now runs the existing idempotent weekly `ReviewService` for the ISO week ending that day, registered in both APScheduler and the external single-job runner. A PostgreSQL advisory lock closes the cron/APScheduler overlap race. The review prompt now authors one explicit `Bottom line`; the full review lands once as an assistant turn anchored to its stored analysis under controlled origin `weekly_review`, and the same bottom line — never a “review ready” announcement — is the one `_send_once` push deep-linked to `/?coach=open`. The launcher fetches the rolling thread on app load, shows a per-profile/versioned client-side unread dot for unseen coach-initiated weekly turns, opens directly from the push, and anchors Mark's reply back to the review. Monthly stays manual; an active Sunday holiday skips the weekly run. A generation failure rolls back, records one non-pushed retryable coach turn, and reuses the classified operator alert path. No migration, new endpoint, provider, auth, hosting, verdict, safety-floor, or plan/delivery change; the shared origin enum is additive. Full local gates pass: backend 767 passed / 336 expected PostgreSQL skips; Ruff/format/mypy clean across 131 source files; shared 24 tests/typecheck; web 382 tests, build/typecheck and zero-error lint (six pre-existing Fast Refresh warnings). Decision #265. **Closeout gotcha:** `/batch-start` deliberately made no production changes; promotion must provision/verify a Railway cron service with `python -m src.run_scheduled weekly-review` at Sunday 18:00 London (the in-process job is the fallback). **Next:** review `feat/batch-185-weekly-review-delivery`, then run `/phase-closeout 185` only when ready to promote.
+**2026-08-05 — Batch 185 shipped (the weekly review starts the conversation).** PR #216 / squash `368ef69` generates the ending ISO week at Sunday 18:00 Europe/London, writes the full review once as an anchored `weekly_review` assistant turn, pushes the same authored `Bottom line` once into `/?coach=open`, and makes an unseen weekly turn visible through the per-profile client-side launcher marker. Monthly stays manual; active Sunday holidays skip; failures leave one quiet retry turn plus the existing operator alert. Local gates, branch-push, PR-context and post-merge `main` CI all passed; the Vercel preview and exact-SHA Railway/Vercel production deploys passed, including DB readiness, app, protected coach-route and deployed lazy-chunk smokes. Production now has a dedicated Railway `weekly-review` cron service: because Railway cron is UTC-only, `0 17,18 * * 0` is gated by the start command to local hour 18, preserving 18:00 through BST/GMT; API APScheduler remains enabled and the PostgreSQL advisory lock makes overlap safe. No migration or new endpoint; shared origin is additive. Decisions #265-266. **Next:** Batch 186 (the week ahead, before it starts) is the next unshipped batch.
 
 ---
 
@@ -31,6 +31,10 @@
 ---
 
 ## Log
+
+**2026-08-05 — Batch 185 shipped:** PR #216 / squash `368ef69`; all local and three CI waves passed, exact-SHA Railway/Vercel production smokes passed, and the DST-safe Railway `weekly-review` cron service is built and scheduled. The ending review now arrives as one visible, replyable coach turn with one conclusion-bearing push. Decisions #265-266; Batch 186 is next.
+
+---
 
 **2026-08-04 — Batch 185 implementation ready:** the weekly review now runs Sunday 18:00 local, arrives once as an anchored assistant turn with one conclusion-bearing push, opens the coach directly, and exposes an unseen turn through a migration-free per-profile marker. Monthly remains manual, holiday-away Sundays skip, and failures produce one quiet retry turn plus the existing operator alert. Full backend/shared/web gates pass; Decision #265; branch not promoted.
 
