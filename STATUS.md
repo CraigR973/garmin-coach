@@ -6,7 +6,7 @@
 
 ## Now
 
-**2026-08-05 — Batch 187 implementation ready (the coach speaks when something changes).** `feat/batch-187-state-change-coach` adds `StateChangeCoachService`, which notices transitions in already-computed chronic action, experiment outcome, and weekly-mix risk state, ranks chronic > experiment > mix, and writes at most one quiet assistant turn per profile-local seven-day window into the rolling coach thread with controlled origin `state_change`. Kickoff decisions: derive previous state from existing analysis packets rather than adding a migration; drop suppressed lower-ranked transitions rather than queueing them; do not add a new push type. Batch 182's chronic qualification/plan-suppression carries through, experiment messages never auto-conclude, weekly-mix messages are heads-up only, and every audit declares `verdictImpact="none"` / `planMutation="none"`. Backend-only; no migration/shared-schema/new-endpoint/frontend/provider/auth/hosting/verdict/plan-delivery change. Full local backend gate passed (770 / 339 expected skips; Ruff clean; mypy clean across 133 source files). Decision #268. **Next:** review branch/CI, then close out only when explicitly requested.
+**2026-08-05 — Batch 187 shipped (the coach speaks when something changes).** PR #218 / squash `a777da1` adds migration-free state-change coach turns: `StateChangeCoachService` notices transitions in already-computed chronic action, experiment outcome, and weekly-mix risk state, ranks chronic > experiment > mix, and writes at most one quiet assistant turn per profile-local seven-day window into the rolling coach thread with controlled origin `state_change`. Kickoff decisions stand: derive previous state from existing analysis packets rather than adding a migration; drop suppressed lower-ranked transitions rather than queueing them; do not add a new push type. Batch 182's chronic qualification/plan-suppression carries through, experiment messages never auto-conclude, weekly-mix messages are heads-up only, and every audit declares `verdictImpact="none"` / `planMutation="none"`. Backend-only; no migration/shared-schema/new-endpoint/frontend/provider/auth/hosting/verdict/plan-delivery change. Full local backend gate passed (770 / 339 expected skips; Ruff format/check clean; mypy clean across 133 source files). Branch, PR-context, and post-merge `main` CI all passed seven jobs; production Railway direct and Vercel same-origin health served the exact SHA, DB readiness was `ok`, web `/` returned 200, and protected coach-route smokes returned 401 direct/proxied. Decision #268. **Next:** no unshipped batch row remains in `docs/phase-batches.md`.
 
 ---
 
@@ -31,6 +31,10 @@
 ---
 
 ## Log
+
+**2026-08-05 — Batch 187 shipped:** PR #218 / squash `a777da1`; branch, PR-context and post-merge `main` CI passed, exact-SHA Railway/Vercel production health and protected coach-route smokes passed. State-change coach turns now land in the existing conversation rail under the seven-day budget with no new push type. Decision #268; no unshipped batch row remains.
+
+---
 
 **2026-08-05 — Batch 187 implementation ready:** `feat/batch-187-state-change-coach` delivers migration-free state-change coach turns through the existing conversation rail, with a seven-day budget, chronic > experiment > mix ranking, dropped suppressed transitions, no new push type, and no verdict/plan mutation. Full local backend gate passed (770 / 339 expected skips; Ruff/mypy clean). Decision #268; branch not promoted.
 
