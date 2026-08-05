@@ -37,7 +37,8 @@ ANALYSIS_TYPE_ANALYSIS_PUSH = "analysis_push"
 ANALYSIS_TYPE_GOOD_MORNING = "good_morning_nudge"
 ANALYSIS_TYPE_WORKOUT_CHECKIN = "workout_checkin_nudge"
 ANALYSIS_TYPE_ADMIN_ALERT = "admin_alert"
-PROMPT_VERSION = "notification-rules:v2"
+ANALYSIS_TYPE_WEEKLY_REVIEW_PUSH = "weekly_review_push"
+PROMPT_VERSION = "notification-rules:v3"
 
 EVENING_NUDGE_TIME = time(20, 0)
 EVENING_NUDGE_WINDOW_MIN = 20
@@ -222,30 +223,66 @@ def build_brief_ready_plan(analysis: Analysis, subject_date: date) -> Notificati
     )
 
 
-def build_admin_generation_alert_plan(reason: str, subject_date: date) -> NotificationPlan:
+def build_weekly_review_plan(
+    review: Analysis,
+    *,
+    conclusion: str,
+    subject_date: date,
+) -> NotificationPlan:
+    """One conclusion-bearing push for a delivered weekly review (Batch 185)."""
+    return NotificationPlan(
+        analysis_type=ANALYSIS_TYPE_WEEKLY_REVIEW_PUSH,
+        tag=f"weekly-review-{review.subject_date.isoformat()}",
+        title="Your week with CheckMark",
+        body=conclusion,
+        severity="info",
+        data={
+            "url": "/?coach=open",
+            "kind": "weekly_review",
+            "analysisId": str(review.id),
+        },
+        context={
+            "subjectDate": subject_date.isoformat(),
+            "periodStart": review.subject_date.isoformat(),
+            "reviewAnalysisId": str(review.id),
+            "conclusion": conclusion,
+            "rule": "weekly_review",
+        },
+    )
+
+
+def build_admin_generation_alert_plan(
+    reason: str,
+    subject_date: date,
+    *,
+    artifact: str = "brief",
+) -> NotificationPlan:
     """Batch 141: an operator alert that generation is failing.
 
     ``billing`` gets a specific "top up credits" body (the 2026-07-21 outage);
     any other reason gets a generic "check the logs". One tag per day so the
     operator is told once, not on every failed poll/check-in.
     """
+    label = "Weekly review" if artifact == "weekly_review" else "Brief"
     if reason == "billing":
         body = (
-            "Brief generation is failing — the Anthropic credit balance is too low. "
+            f"{label} generation is failing — the Anthropic credit balance is too low. "
             "Top up at console.anthropic.com to restore briefs."
         )
     else:
-        body = f"Brief generation failed ({reason}). Check the API logs."
+        body = f"{label} generation failed ({reason}). Check the API logs."
+    tag_scope = "" if artifact == "brief" else f"-{artifact.replace('_', '-')}"
     return NotificationPlan(
         analysis_type=ANALYSIS_TYPE_ADMIN_ALERT,
-        tag=f"admin-generation-alert-{subject_date.isoformat()}",
+        tag=f"admin-generation-alert{tag_scope}-{subject_date.isoformat()}",
         title="⚠️ Coach generation failing",
         body=body,
         severity="warning",
-        data={"url": "/", "kind": "admin_alert", "reason": reason},
+        data={"url": "/", "kind": "admin_alert", "reason": reason, "artifact": artifact},
         context={
             "subjectDate": subject_date.isoformat(),
             "reason": reason,
+            "artifact": artifact,
             "rule": "admin_generation_alert",
         },
     )
@@ -613,11 +650,36 @@ class NudgeAlertService:
             now_utc=now_utc or datetime.now(UTC),
         )
 
+    async def push_weekly_review(
+        self,
+        profile: Profile,
+        review: Analysis,
+        *,
+        conclusion: str,
+        subject_date: date,
+        now_utc: datetime | None = None,
+        commit: bool = True,
+    ) -> bool:
+        """Push one substantive weekly conclusion, deduped by ISO week."""
+        plan = build_weekly_review_plan(
+            review,
+            conclusion=conclusion,
+            subject_date=subject_date,
+        )
+        return await self._send_once(
+            profile,
+            plan,
+            subject_date=subject_date,
+            commit=commit,
+            now_utc=now_utc or datetime.now(UTC),
+        )
+
     async def notify_admin_generation_failure(
         self,
         *,
         reason: str,
         subject_date: date,
+        artifact: str = "brief",
         now_utc: datetime | None = None,
         commit: bool = True,
     ) -> bool:
@@ -636,6 +698,7 @@ class NudgeAlertService:
             "brief_generation_admin_alert",
             reason=reason,
             subject_date=subject_date.isoformat(),
+            artifact=artifact,
         )
         raw_admin_id = settings.admin_alert_user_id.strip()
         if not raw_admin_id:
@@ -651,7 +714,7 @@ class NudgeAlertService:
                 return False
             return await self._send_once(
                 admin,
-                build_admin_generation_alert_plan(reason, subject_date),
+                build_admin_generation_alert_plan(reason, subject_date, artifact=artifact),
                 subject_date=subject_date,
                 commit=commit,
                 now_utc=now_utc or datetime.now(UTC),

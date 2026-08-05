@@ -24,7 +24,7 @@ export function Layout() {
       {/* Batch 179.4: the coach is reachable from every page, including the
           ones with no analysis row of their own (Sleep, the breathwork/
           strength/walking briefs). */}
-      <CoachLauncher timeZone={player?.timezone} />
+      <CoachLauncher userId={player?.id} timeZone={player?.timezone} />
       <TabBar />
     </div>
   );

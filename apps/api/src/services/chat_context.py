@@ -125,6 +125,7 @@ ORIGIN_KINDS: dict[str, str] = {
     "workout": "a workout's detail sheet",
     "trends": "his trends page",
     "reviews": "his weekly and monthly reviews",
+    "weekly_review": "the weekly review the coach sent him",
     "environment": "his bedroom climate page",
     "breathwork": "his breathwork brief",
     "strength": "his strength brief",

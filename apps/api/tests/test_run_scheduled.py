@@ -17,6 +17,7 @@ def test_jobs_cover_expected_names() -> None:
         "morning-sync",
         "activity-poll",
         "autopush",
+        "weekly-review",
         "evening-nudge",
         "evening-alerts",
         "fan-control",
@@ -32,6 +33,7 @@ def test_jobs_map_to_the_same_scheduler_coroutines() -> None:
     assert run_scheduled.JOBS["morning-sync"] is scheduler.run_morning_weather_sync
     assert run_scheduled.JOBS["activity-poll"] is scheduler.run_garmin_activity_poll
     assert run_scheduled.JOBS["backup"] is scheduler.run_scheduled_backup
+    assert run_scheduled.JOBS["weekly-review"] is scheduler.run_weekly_review_delivery
 
 
 @pytest.mark.asyncio

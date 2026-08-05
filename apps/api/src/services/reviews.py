@@ -30,6 +30,7 @@ the existing ``analyses`` table.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from collections.abc import Mapping, Sequence
@@ -37,7 +38,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Protocol, cast
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
@@ -63,7 +64,7 @@ from src.services.strength_brief import StrengthBriefResult, StrengthBriefServic
 from src.services.training_week import TrainingWeekService
 from src.services.workload_budget import workload_slot
 
-PROMPT_VERSION = "reviews-v5-2026-08-02"
+PROMPT_VERSION = "reviews-v6-2026-08-04"
 PACKET_VERSION = 2
 
 PERIOD_WEEKLY = "weekly"
@@ -89,7 +90,11 @@ app recorded, not as independently verified truth about Mark. If Mark says his \
 own device shows a different observed value, acknowledge the discrepancy, use \
 his device reading as the better evidence, and treat it as a data-quality \
 problem. This applies to observed data only: never let a correction change a \
-deterministic verdict, safety floor, or propose/confirm decision. Write concise \
+deterministic verdict, safety floor, or propose/confirm decision. Start with one \
+short sentence in the exact form **Bottom line:** <the single \
+most important conclusion of this period>. This is the conclusion Mark will \
+receive proactively, so it must say what changed or mattered; never announce \
+that a review is ready. Then write \
 markdown with four bolded sections — \
 **Trends**, **Wins**, **Concerns**, and **Recommendations** — each a short bullet \
 list grounded in the packet's numbers. Never mention left/right power balance. \
@@ -144,6 +149,14 @@ def resolve_period_window(period: str, as_of: date) -> tuple[date, date]:
             next_month = start.replace(month=start.month + 1)
         return start, next_month - timedelta(days=1)
     raise ValueError(f"Unknown review period: {period!r}")
+
+
+def _review_generation_lock_key(user_id: uuid.UUID, period: str, period_start: date) -> int:
+    """Stable PostgreSQL advisory-lock key for one review artifact."""
+    digest = hashlib.sha256(
+        f"review:{user_id}:{period}:{period_start.isoformat()}".encode()
+    ).digest()
+    return int.from_bytes(digest[:8], byteorder="big", signed=True)
 
 
 # ---------------------------------------------------------------------------
@@ -537,9 +550,32 @@ def build_review_user_prompt(context_packet: Mapping[str, Any]) -> str:
     period = context_packet.get("period", "weekly")
     return (
         f"Write the {period} CheckMark review from this deterministic rollup packet.\n\n"
+        "Lead with the required **Bottom line:** conclusion, then the four review sections.\n\n"
         "Rollup packet JSON:\n"
         f"{json.dumps(context_packet, ensure_ascii=True, sort_keys=True, default=str)}"
     )
+
+
+def review_bottom_line(output_markdown: str) -> str:
+    """Extract the review's proactive one-line conclusion.
+
+    Current reviews are prompted to start with ``**Bottom line:**``. The bullet
+    fallback keeps a stored review deliverable if the provider omits that label;
+    it still uses review-authored substance and can never degrade to a generic
+    "review ready" announcement.
+    """
+    lines = [line.strip() for line in output_markdown.splitlines() if line.strip()]
+    for line in lines:
+        normalized = line.replace("**", "")
+        label, separator, value = normalized.partition(":")
+        if separator and label.strip().casefold() == "bottom line" and value.strip():
+            return value.strip()
+
+    for line in lines:
+        if line.startswith(("- ", "* ")) and line[2:].strip():
+            return line[2:].strip()
+
+    raise ReviewError("The weekly review did not include a usable conclusion.")
 
 
 # ---------------------------------------------------------------------------
@@ -638,6 +674,18 @@ class ReviewService:
         commit: bool = True,
     ) -> ReviewRunResult:
         """Generate the narrative and store it. Idempotent per period (#71)."""
+        end_anchor = as_of or date.today()
+        period_start, _ = resolve_period_window(period, end_anchor)
+        # The external cron and in-process scheduler may overlap during cutover.
+        # Serialize one user/period artifact before checking for an existing row,
+        # so both paths cannot pay for and store the same review concurrently.
+        await self.session.scalar(
+            select(
+                func.pg_advisory_xact_lock(
+                    _review_generation_lock_key(player.id, period, period_start)
+                )
+            )
+        )
         preview = await self.preview(player, period, as_of=as_of)
         if (
             not force

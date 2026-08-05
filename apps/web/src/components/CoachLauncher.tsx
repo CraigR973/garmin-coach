@@ -27,27 +27,78 @@ import { cn } from '@/lib/utils';
  */
 
 const ROUTES_WITHOUT_LAUNCHER = ['/access', '/activate', '/offline'];
+const LAST_SEEN_ASSISTANT_KEY_VERSION = 'v1';
 
-export function CoachLauncher({ timeZone }: { timeZone?: string }) {
-  const { pathname } = useLocation();
+function lastSeenAssistantKey(userId: string): string {
+  return `coach:last-seen-assistant:${LAST_SEEN_ASSISTANT_KEY_VERSION}:${userId}`;
+}
+
+function readLastSeenAssistant(userId: string | undefined): string | null {
+  if (!userId || typeof window === 'undefined') return null;
+  return window.localStorage.getItem(lastSeenAssistantKey(userId));
+}
+
+function latestAssistant(messages: BriefMessage[]): BriefMessage | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'assistant') return messages[index] ?? null;
+  }
+  return null;
+}
+
+export function CoachLauncher({ userId, timeZone }: { userId?: string; timeZone?: string }) {
+  const { pathname, search } = useLocation();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [lastSeenAssistantId, setLastSeenAssistantId] = useState<string | null>(() =>
+    readLastSeenAssistant(userId),
+  );
   const origin = originForPath(pathname);
+  const launcherHidden = ROUTES_WITHOUT_LAUNCHER.some((route) => pathname.startsWith(route));
+  const deepLinkedOpen = new URLSearchParams(search).get('coach') === 'open';
 
   // Close on navigation — same behaviour as the More sheet in the tab bar.
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    setLastSeenAssistantId(readLastSeenAssistant(userId));
+  }, [userId]);
+
+  useEffect(() => {
+    if (deepLinkedOpen) setOpen(true);
+  }, [deepLinkedOpen]);
+
   const threadQuery = useQuery({
     queryKey: ['coach-thread'],
     queryFn: () => apiFetch<{ data: BriefMessage[] }>('/api/v1/coach/messages'),
-    enabled: open,
+    enabled: Boolean(userId) && !launcherHidden,
   });
+
+  const messages = threadQuery.data?.data ?? [];
+  const newestAssistant = latestAssistant(messages);
+  const hasUnreadAssistant = Boolean(
+    newestAssistant?.originKind === 'weekly_review' && newestAssistant.id !== lastSeenAssistantId,
+  );
+
+  useEffect(() => {
+    if (!open || !userId || !newestAssistant) return;
+    const key = lastSeenAssistantKey(userId);
+    window.localStorage.setItem(key, newestAssistant.id);
+    setLastSeenAssistantId(newestAssistant.id);
+  }, [newestAssistant, open, userId]);
 
   const askMutation = useMutation({
     mutationFn: async (question: string) => {
-      const payload = coachMessageInputSchema.parse({ question, originKind: origin });
+      const replyingToWeeklyReview =
+        newestAssistant?.originKind === 'weekly_review' && newestAssistant.analysisId
+          ? newestAssistant
+          : null;
+      const payload = coachMessageInputSchema.parse({
+        question,
+        analysisId: replyingToWeeklyReview?.analysisId ?? undefined,
+        originKind: replyingToWeeklyReview ? 'weekly_review' : origin,
+      });
       return apiFetch<{ data: BriefMessageTurn }>('/api/v1/coach/messages', {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -61,16 +112,18 @@ export function CoachLauncher({ timeZone }: { timeZone?: string }) {
       toast.error(error instanceof Error ? error.message : 'Could not send that question'),
   });
 
-  if (ROUTES_WITHOUT_LAUNCHER.some((route) => pathname.startsWith(route))) return null;
+  if (launcherHidden) return null;
 
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label={ORIGIN_PROMPTS[origin]}
+        aria-label={
+          hasUnreadAssistant ? `${ORIGIN_PROMPTS[origin]} — new coach message` : ORIGIN_PROMPTS[origin]
+        }
         className={cn(
-          'fixed right-4 z-tabbar tap-target',
+          'fixed right-4 z-tabbar tap-target relative',
           'bottom-[calc(60px+env(safe-area-inset-bottom)+1rem)] md:bottom-6',
           'inline-flex items-center justify-center h-12 w-12 rounded-full',
           'bg-primary text-white shadow-sheet press-down',
@@ -78,11 +131,17 @@ export function CoachLauncher({ timeZone }: { timeZone?: string }) {
         )}
       >
         <MessageCircle className="h-5 w-5" aria-hidden />
+        {hasUnreadAssistant ? (
+          <span
+            className="absolute right-0 top-0 h-3 w-3 rounded-full border-2 border-white bg-danger"
+            aria-hidden
+          />
+        ) : null}
       </button>
 
       <Sheet open={open} onClose={() => setOpen(false)} title="Your coach">
         <CoachConversation
-          messages={threadQuery.data?.data ?? []}
+          messages={messages}
           timeZone={timeZone}
           heading={ORIGIN_PROMPTS[origin]}
           placeholder="Ask anything — your plan, your sleep, how a session went…"

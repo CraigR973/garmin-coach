@@ -40,6 +40,7 @@ from src.services.reviews import (
     ReviewThermalNight,
     compute_review_rollup,
     resolve_period_window,
+    review_bottom_line,
     rollup_packet,
 )
 from src.services.reviews import (
@@ -82,6 +83,24 @@ def test_resolve_monthly_window_handles_december_rollover() -> None:
 def test_resolve_unknown_period_raises() -> None:
     with pytest.raises(ValueError, match="period"):
         resolve_period_window("daily", AS_OF)
+
+
+def test_review_bottom_line_prefers_the_review_authored_conclusion() -> None:
+    markdown = """**Bottom line:** Recovery held steady while training load rose.
+
+**Trends**
+- Sleep was stable.
+"""
+
+    assert review_bottom_line(markdown) == "Recovery held steady while training load rose."
+
+
+def test_review_bottom_line_falls_back_to_substance_not_an_announcement() -> None:
+    markdown = """**Trends**
+- HRV rose from 41 to 46 ms across seven nights.
+"""
+
+    assert review_bottom_line(markdown) == "HRV rose from 41 to 46 ms across seven nights."
 
 
 # ---------------------------------------------------------------------------
@@ -384,7 +403,9 @@ async def test_preview_assembles_rollup_and_never_writes(db_conn: AsyncConnectio
             "do not describe this as strength training stopped"
             in preview.packet["strengthBrief"]["zeroInterpretation"]
         )
-        assert REVIEW_PROMPT_VERSION.startswith("reviews-v5")
+        assert REVIEW_PROMPT_VERSION.startswith("reviews-v6")
+        assert "**Bottom line:**" in REVIEW_SYSTEM_PROMPT
+        assert "never announce" in REVIEW_SYSTEM_PROMPT
         assert "usual routine only" in REVIEW_SYSTEM_PROMPT
         assert "trainingWeekSoFar" in REVIEW_SYSTEM_PROMPT
         assert "merely planned session as executed" in REVIEW_SYSTEM_PROMPT

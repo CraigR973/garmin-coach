@@ -12,6 +12,7 @@ Current jobs:
   - garmin_activity_poll: polls Garmin hourly and nudges for a post-session check-in
   - post_workout_backstop: at 20:30 local, generates any same-day unread sessions
   - workout_autopush: pushes approved workout proposals due today
+  - weekly_review_delivery: Sunday 18:00 local, writes the week into the coach thread
   - evening_sleep_nudge: sends a quiet, projection-backed 20:00 sleep push
   - evening_monitoring_alerts: checks thermal and source freshness before bed
   - fan_control: every ~15 min within the overnight window, reconciles the Dreo
@@ -46,6 +47,7 @@ from src.database import AsyncSessionLocal
 from src.models.coaching import Activity, Analysis, FanStateReading, TemperatureReading
 from src.models.notification import ActionType, ActorType, AuditLog
 from src.models.profile import Profile
+from src.services.anthropic_text import AnthropicApiError
 from src.services.backup import create_backup
 from src.services.dreo_fan import (
     DreoCredentials,
@@ -97,6 +99,7 @@ from src.services.wake_detection import (
     WakeDecision,
     is_morning_ready,
 )
+from src.services.weekly_review_delivery import WeeklyReviewDeliveryService
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -210,6 +213,88 @@ async def run_evening_sleep_nudge() -> None:
         log.info("evening sleep nudge complete", profiles=len(profiles), nudges=nudges_recorded)
     except Exception:
         log.exception("evening sleep nudge failed")
+
+
+async def run_weekly_review_delivery() -> None:
+    """Generate and deliver the ISO week ending this Sunday at 18:00 local."""
+    try:
+        async with AsyncSessionLocal() as session:
+            profiles = await _active_profiles(session)
+            if not profiles:
+                log.info("weekly review delivery skipped", reason="no_active_profiles")
+                return
+
+            holiday_service = HolidayPauseService(session)
+            service = WeeklyReviewDeliveryService(session)
+            generated = 0
+            messages = 0
+            pushes = 0
+            skipped_holiday = 0
+            failed = 0
+            for profile in profiles:
+                subject_date = _profile_today(profile)
+                if (
+                    await holiday_service.get_active_window_for_date(profile, subject_date)
+                    is not None
+                ):
+                    skipped_holiday += 1
+                    log.info(
+                        "weekly review delivery skipped",
+                        reason="holiday_away",
+                        profile_id=str(profile.id),
+                        subject_date=subject_date.isoformat(),
+                    )
+                    continue
+                try:
+                    result = await service.run(
+                        profile,
+                        as_of=subject_date,
+                        commit=True,
+                    )
+                    generated += int(result.generated)
+                    messages += int(result.message_created)
+                    pushes += int(result.push_recorded)
+                except Exception as exc:
+                    failed += 1
+                    await session.rollback()
+                    reason = exc.reason if isinstance(exc, AnthropicApiError) else "other"
+                    log.exception(
+                        "weekly review delivery failed",
+                        profile_id=str(profile.id),
+                        subject_date=subject_date.isoformat(),
+                        reason=reason,
+                    )
+                    try:
+                        await service.record_failure(
+                            profile,
+                            subject_date=subject_date,
+                            commit=False,
+                        )
+                        await NudgeAlertService(session).notify_admin_generation_failure(
+                            reason=reason,
+                            subject_date=subject_date,
+                            artifact="weekly_review",
+                            commit=False,
+                        )
+                        await session.commit()
+                    except Exception:
+                        await session.rollback()
+                        log.exception(
+                            "recording weekly review failure state failed",
+                            profile_id=str(profile.id),
+                            subject_date=subject_date.isoformat(),
+                        )
+        log.info(
+            "weekly review delivery complete",
+            profiles=len(profiles),
+            generated=generated,
+            messages=messages,
+            pushes=pushes,
+            skipped_holiday=skipped_holiday,
+            failed=failed,
+        )
+    except Exception:
+        log.exception("weekly review delivery failed")
 
 
 async def run_evening_monitoring_alerts() -> None:
@@ -1317,6 +1402,18 @@ def create_scheduler() -> AsyncIOScheduler:
         minute=0,
         timezone=settings.weather_timezone,
         id="workout_autopush",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        run_weekly_review_delivery,
+        trigger="cron",
+        day_of_week="sun",
+        hour=18,
+        minute=0,
+        timezone=settings.weather_timezone,
+        id="weekly_review_delivery",
         replace_existing=True,
         coalesce=True,
         max_instances=1,

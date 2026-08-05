@@ -21,7 +21,7 @@ function renderLauncher(route = '/', timeZone = 'Europe/London') {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[route]}>
-        <CoachLauncher timeZone={timeZone} />
+        <CoachLauncher userId="00000000-0000-4000-8000-000000000185" timeZone={timeZone} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -39,6 +39,7 @@ describe('originForPath', () => {
 
 describe('CoachLauncher', () => {
   beforeEach(() => {
+    localStorage.clear();
     apiFetchMock.mockReset();
     apiFetchMock.mockResolvedValue({ data: [] });
   });
@@ -71,6 +72,69 @@ describe('CoachLauncher', () => {
       expect(JSON.parse(post?.[1].body as string)).toEqual({
         question: 'Why was my deep sleep short?',
         originKind: 'sleep',
+      });
+    });
+  });
+
+  it('shows an unread marker for a coach-initiated weekly review until opened', async () => {
+    const user = userEvent.setup();
+    apiFetchMock.mockResolvedValue({
+      data: [
+        {
+          id: '00000000-0000-4000-8000-000000000001',
+          analysisId: '00000000-0000-4000-8000-000000000002',
+          originKind: 'weekly_review',
+          originDate: '2026-08-02',
+          role: 'assistant',
+          content: '**Bottom line:** Recovery held steady while load rose.',
+          proposedPlannedWorkoutId: null,
+          createdAtUtc: '2026-08-02T17:00:00Z',
+        },
+      ],
+    });
+
+    renderLauncher('/');
+
+    const unreadLauncher = await screen.findByLabelText(/new coach message/i);
+    await user.click(unreadLauncher);
+
+    expect(await screen.findByText(/Recovery held steady while load rose/)).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByLabelText('Ask about today')).toBeTruthy();
+    });
+    expect(
+      localStorage.getItem(
+        'coach:last-seen-assistant:v1:00000000-0000-4000-8000-000000000185',
+      ),
+    ).toBe('00000000-0000-4000-8000-000000000001');
+  });
+
+  it('opens from the weekly push deep-link and anchors the reply to the review', async () => {
+    const user = userEvent.setup();
+    const reviewMessage = {
+      id: '00000000-0000-4000-8000-000000000011',
+      analysisId: '00000000-0000-4000-8000-000000000012',
+      originKind: 'weekly_review',
+      originDate: '2026-08-02',
+      role: 'assistant',
+      content: '**Bottom line:** Sleep consistency was the week\'s biggest win.',
+      proposedPlannedWorkoutId: null,
+      createdAtUtc: '2026-08-02T17:00:00Z',
+    };
+    apiFetchMock.mockResolvedValue({ data: [reviewMessage] });
+
+    renderLauncher('/?coach=open');
+
+    const textarea = await screen.findByLabelText('Ask your coach a question');
+    await user.type(textarea, 'What should I protect next week?');
+    await user.click(screen.getByRole('button', { name: /^ask$/i }));
+
+    await waitFor(() => {
+      const post = apiFetchMock.mock.calls.find((call) => call[1]?.method === 'POST');
+      expect(JSON.parse(post?.[1].body as string)).toEqual({
+        question: 'What should I protect next week?',
+        analysisId: '00000000-0000-4000-8000-000000000012',
+        originKind: 'weekly_review',
       });
     });
   });
