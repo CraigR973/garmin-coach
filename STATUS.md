@@ -6,7 +6,7 @@
 
 ## Now
 
-**2026-08-05 — Batch 186 shipped (the week ahead joins the Sunday review).** PR #217 / squash `ccaed51` adds a deterministic `weekAhead` packet to weekly reviews for the coming Monday-Sunday week: forward `TrainingWeekService.build_window`, active `PlanBlock` context, week-derived mix targets, quality sessions, the hardest planned session, and the previous night that protects it. The kickoff decision stands: fold this into Batch 185's existing Sunday weekly-review coach message, not a new analysis type or second push; monthly remains retrospective with `weekAhead: null`. Review prompt v7 is explanatory-only and says recovery/taper/consolidation weeks are deliberate structure (`target=0` quality buckets are not shortfalls). Backend-only; no migration/shared-schema/new-endpoint/frontend/provider/auth/hosting/scheduler/push/verdict/plan-delivery change. Local backend gates passed; branch, PR-context, and post-merge `main` CI all passed seven jobs; production Railway direct and Vercel same-origin health served the exact SHA, DB readiness was `ok`, web `/` returned 200, and protected weekly-review route smokes returned 401 direct/proxied. Decision #267. **Next:** Batch 187 (the coach speaks when something changes) is the next unshipped batch.
+**2026-08-05 — Batch 187 implementation ready (the coach speaks when something changes).** `feat/batch-187-state-change-coach` adds `StateChangeCoachService`, which notices transitions in already-computed chronic action, experiment outcome, and weekly-mix risk state, ranks chronic > experiment > mix, and writes at most one quiet assistant turn per profile-local seven-day window into the rolling coach thread with controlled origin `state_change`. Kickoff decisions: derive previous state from existing analysis packets rather than adding a migration; drop suppressed lower-ranked transitions rather than queueing them; do not add a new push type. Batch 182's chronic qualification/plan-suppression carries through, experiment messages never auto-conclude, weekly-mix messages are heads-up only, and every audit declares `verdictImpact="none"` / `planMutation="none"`. Backend-only; no migration/shared-schema/new-endpoint/frontend/provider/auth/hosting/verdict/plan-delivery change. Full local backend gate passed (770 / 339 expected skips; Ruff clean; mypy clean across 133 source files). Decision #268. **Next:** review branch/CI, then close out only when explicitly requested.
 
 ---
 
@@ -31,6 +31,10 @@
 ---
 
 ## Log
+
+**2026-08-05 — Batch 187 implementation ready:** `feat/batch-187-state-change-coach` delivers migration-free state-change coach turns through the existing conversation rail, with a seven-day budget, chronic > experiment > mix ranking, dropped suppressed transitions, no new push type, and no verdict/plan mutation. Full local backend gate passed (770 / 339 expected skips; Ruff/mypy clean). Decision #268; branch not promoted.
+
+---
 
 **2026-08-05 — Batch 186 shipped:** PR #217 / squash `ccaed51`; branch, PR-context and post-merge `main` CI passed, exact-SHA Railway/Vercel production health and protected weekly-review route smokes passed. The Sunday review now carries the forward week-ahead packet without a second push. Decision #267; Batch 187 is next.
 

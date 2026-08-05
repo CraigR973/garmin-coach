@@ -20,6 +20,7 @@ Jobs:
     activity-poll   poll Garmin for new activities + post-workout analysis
     autopush        push approved workout proposals due soon
     weekly-review   generate the ending week's review and deliver it to coach chat
+    state-change    notice one meaningful state transition and deliver it to coach chat
     evening-nudge   send the evening sleep-protocol nudge
     evening-alerts  bedtime thermal + source-freshness alerts
     backup          database backup
@@ -39,6 +40,7 @@ from src.scheduler import (
     run_hive_temperature_poll,
     run_morning_weather_sync,
     run_scheduled_backup,
+    run_state_change_coach,
     run_wake_check,
     run_weekly_review_delivery,
     run_workout_autopush,
@@ -51,6 +53,7 @@ JOBS: dict[str, Callable[[], Awaitable[None]]] = {
     "activity-poll": run_garmin_activity_poll,
     "autopush": run_workout_autopush,
     "weekly-review": run_weekly_review_delivery,
+    "state-change": run_state_change_coach,
     "evening-nudge": run_evening_sleep_nudge,
     "evening-alerts": run_evening_monitoring_alerts,
     "fan-control": run_fan_control,
