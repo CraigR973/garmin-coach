@@ -127,11 +127,7 @@ async def test_transition_writes_one_replyable_assistant_turn(
             )
         )
         messages = (
-            (
-                await session.execute(
-                    select(BriefMessage).where(BriefMessage.user_id == user_id)
-                )
-            )
+            (await session.execute(select(BriefMessage).where(BriefMessage.user_id == user_id)))
             .scalars()
             .all()
         )
