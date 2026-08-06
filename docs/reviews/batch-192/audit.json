@@ -1,0 +1,2360 @@
+{
+  "generatedAt": "2026-08-06T16:55:26.394Z",
+  "viewport": "390x844",
+  "results": [
+    {
+      "theme": "dark",
+      "name": "home",
+      "route": "/",
+      "file": "01-dark-home.png",
+      "ok": true,
+      "contentMs": 9890,
+      "settleMs": 10804,
+      "busyAtCapture": 0,
+      "pageHeight": 2300,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [
+          {
+            "path": "div.relative.flex.items-center > div.min-w-0.flex-1 > div.mt-3.flex.flex-wrap > a.text-sm.font-medium.text-primary",
+            "text": "Change",
+            "w": 48.7,
+            "h": 20
+          }
+        ],
+        "contrast": [],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 21,
+          "h1": 0
+        },
+        "bodyTextLen": 823,
+        "bodyTextHead": "CHECKMARK\nMark\n\nTHURSDAY, AUGUST 6\n\nGood to go\n\nGood afternoon, Mark. You're good to go this afternoon.\n\nHOW YOU FEEL TODAY\n\nYou said: Good · slept well\n\nChange\n\nGreen verdict\n\nYour morning brief is ready\n\nRead it\n\nCycle day\n\nThis week's mix\n\nVO2 1/1\nSweet Spot 0/1\nZone 2 1/3\n\nSweet Spot Light (1 × 20 min @ 89%)\n\nSweet spot · 48 min · 100% FTP intervals\n\nCompleted\n\nHow did it feel?\n\nLogged\nRPE\nLegs\nFeel\nNotes or a question\nOutcome\nDid it as planned\nChanged it\nSkipped it\nActual minutes\nRead my workout\nView analysis\nCycle\nWeights\nFlexibility\nView week\nMorning check-in\nSkip whole day\nI did something else\n\nMORE DETAIL\n\nLast night's sleep\n7h 48m asleep · GOOD · REM in your 65–90 min range\nTonight\nProtect tonight after a hard session and a warm bedroom\nBedroom\nIndoor 21.1°C · fan on manual\nHome\nWeek\nSleep\nClimate\nMore",
+        "launcher": {
+          "ariaLabel": "Ask about today",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/daily-loop",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "name": "check-in",
+      "route": "/check-in",
+      "file": "02-dark-check-in.png",
+      "ok": true,
+      "contentMs": 7451,
+      "settleMs": 8357,
+      "busyAtCapture": 0,
+      "pageHeight": 844,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [
+          {
+            "path": "div > div.space-y-5 > div.mb-5 > a.inline-flex.items-center.gap-1",
+            "text": "HOME",
+            "w": 58.4,
+            "h": 16
+          },
+          {
+            "path": "div.rounded-lg.border.border-border > div.p-5.pt-0.space-y-4 > div.space-y-2 > input.w-full.accent-primary",
+            "text": "0 to 10 feel score",
+            "w": 316,
+            "h": 16
+          }
+        ],
+        "contrast": [],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 16,
+          "h1": 1
+        },
+        "bodyTextLen": 325,
+        "bodyTextHead": "CHECKMARK\nMark\nHOME\nCheck in\nHow are you feeling?\n\nA few taps — your read feeds every analysis.\n\nHow you feel today\n\n8/10\n\nGood\n\nFeel score\nRough\nMeh\nOK\nGood\nGreat\nAnything to flag?\nSlept well\nLow energy\nNiggle\nMore\nIn your own words, blood pressure, and yesterday's supplements & food\nView brief\nHome\nWeek\nSleep\nClimate\nMore",
+        "launcher": {
+          "ariaLabel": "Ask about your check-in",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/daily-loop",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "name": "brief",
+      "route": "/brief",
+      "file": "03-dark-brief.png",
+      "ok": true,
+      "stillBusyAfterMs": 25000,
+      "contentMs": 34183,
+      "settleMs": 35084,
+      "busyAtCapture": 0,
+      "pageHeight": 5569,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [
+          {
+            "path": "div > div.space-y-5 > div.mb-5 > a.inline-flex.items-center.gap-1",
+            "text": "HOME",
+            "w": 58.4,
+            "h": 16
+          }
+        ],
+        "contrast": [],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 10,
+          "h1": 2
+        },
+        "bodyTextLen": 6768,
+        "bodyTextHead": "CHECKMARK\nMark\nHOME\n\nTHURSDAY, AUGUST 6\n\nMorning brief\nCheck in\nLast night's metrics\nMetric\tLast night\tStatus\nAge-adjusted sleep score\t\n89\n\t\n72–84.3\n4.8 above\nAverage respiration\t\n11\n\t\n11–12\nin range\nAverage Pulse Ox\t\n97%\n\t\n96–97%\nin range\nBody Battery charge\t\n68\n\t\n59–71\nin range\n7-day average HRV\t\n45\n\t\n45–49\nin range\n15 above for your age\n\nTraining readiness\t\n80\n\t\n28–61.5\n18.5 above\nResting heart rate\t\n44\n\t\n43–45\nin range\n27 below for your age\n\nSleep score\t\n89\n\t\n64.8–80\n9 above\n\nHRV & SpO₂ baselines use readings from after the strap was re-fitted (11 Jun); earlier nights are excluded.\n\n“vs your age” compares you with the general-population average for the typical 50–59 year-old — a rough guide, not medical advice.\n\nCoach read\n\nGenerated 8/6/2026, 9:31:27 AM\n\nListen\nStop\nCheckMark · Thursday 6 August 2026\nSleep Summary\n\nBed at 00:29, wake at 08:28 — 7 h 48 min asleep (468 min), 7 h 59 min in bed (479 min), with just 11 min recorded awake. Garmin scores it 89 (raw and age-adjusted), which sits well above your 84-day median of 73.5 and your upper quartile of 80. You said you felt Good, and the objective picture agrees entirely.\n\nSleep architecture vs your 50–59 age band:\n\nDeep 20.5% — above the healthy 12–20% band for your age; strong restorative signal\nLight 63.7% — just above the healthy 48–62% band; not clinically concerning, simply crowding REM a little\nREM 13.6% — below the ",
+        "launcher": {
+          "ariaLabel": "Ask about this morning's brief",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/daily-loop",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/briefs/e87799bc-1d23-4e06-b6b8-27b1487ad2ab/messages",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "name": "sleep",
+      "route": "/sleep",
+      "file": "04-dark-sleep.png",
+      "ok": true,
+      "contentMs": 12425,
+      "settleMs": 13327,
+      "busyAtCapture": 0,
+      "pageHeight": 3344,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [],
+        "contrast": [],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 1,
+          "buttons": 12,
+          "h1": 1
+        },
+        "bodyTextLen": 2490,
+        "bodyTextHead": "CHECKMARK\nMark\n\nTHURSDAY, AUGUST 6\n\nSleep\nLast night\nTonight\nSleep calendar\n\nPick a date to review that night's sleep and room history. Tonight's look-ahead stays on the Tonight tab.\n\nSelected: Thu 6 Aug\n\nShow calendar\nLast night's sleep\n\nHow last night compares to your own normal and your age group.\n\nMetric\tLast night\tStatus\nAge-adjusted sleep score\t\n89\n\t\n72–84.3\n4.8 above\nAverage respiration\t\n11\n\t\n11–12\nin range\nAverage Pulse Ox\t\n97%\n\t\n96–97%\nin range\nBody Battery charge\t\n68\n\t\n59–71\nin range\n7-day average HRV\t\n45\n\t\n45–49\nin range\n15 above for your age\n\nTraining readiness\t\n80\n\t\n28–61.5\n18.5 above\nResting heart rate\t\n44\n\t\n43–45\nin range\n27 below for your age\n\nSleep score\t\n89\n\t\n64.8–80\n9 above\n\nHRV & SpO₂ baselines use readings from after the strap was re-fitted (11 Jun); earlier nights are excluded.\n\n“vs your age” compares you with the general-population average for the typical 50–59 year-old — a rough guide, not medical advice.\n\nChronic sleep patterns to work on\n\n28/21 nights · 4 weeks\n\nPROTECT\n\nProtect REM consistency\n\nREM has repeatedly missed its age norm; training load is the strongest measured lever to check first.\n\n24 of 28 measured nights missed healthy 50–59 range 15–23%.\n\nLatest value: 13.6.\n\nTreat high-load or late-training evenings as protect nights: shorten the admin tail and start wind-down earlier.\nKeep hard or late rides off the evening before a priority night —",
+        "launcher": {
+          "ariaLabel": "Ask about your sleep",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/sleep/verdicts?from=2026-07-27&to=2026-09-06",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/daily-loop",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/bedroom/overnight?date=2026-08-05",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "name": "environment",
+      "route": "/environment",
+      "file": "05-dark-environment.png",
+      "ok": true,
+      "contentMs": 7483,
+      "settleMs": 8384,
+      "busyAtCapture": 0,
+      "pageHeight": 1643,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [
+          {
+            "path": "div.p-5.pt-0 > div.space-y-4 > div.flex.items-center.justify-between > button.relative.inline-flex.h-7",
+            "text": "Overnight fan autopilot",
+            "w": 48,
+            "h": 28
+          }
+        ],
+        "contrast": [],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 20,
+          "h1": 1
+        },
+        "bodyTextLen": 1009,
+        "bodyTextHead": "CHECKMARK\nMark\n\nTHURSDAY, AUGUST 6\n\nClimate\nBedroom climate\n\nThe live room read and fan controls for the bedroom.\n\nIndoor now\n\n21.1°C\n\nThermostat\n\n9.0°C\n\nOvernight low\n\n11.9°C\n\nWind\n\n16 mph\n\nOvernight autopilot\n\nOff — the fan holds your manual setting.\n\nManual control\n\nBedroom fan\n\nManual control\n\nMode normal · Fixed\n\nTurn off\nLow\nMedium\nHigh\n\nOther fan (000s)\n\nManual · on at speed 8\n\nMode turbo · Fixed\n\nTurn off\nLow\nMedium\nHigh\n\nOther fan (000s)\n\nManual control\n\nMode normal · Fixed\n\nTurn off\nLow\nMedium\nHigh\n\nUsing a manual control turns the overnight autopilot off.\n\nAuto mode\n\nThe overnight autopilot follows the room temperature and winds down in the morning.\n\nManual controls always work. Using one turns the overnight autopilot off until you switch it back on.\nLast night\n\nThe retrospective overnight room and fan chart lives with Sleep, not the live Climate controls.\n\nReview last night in Sleep\n\nOpen Sleep for the retrospective overnight room, fan, and sleep chart.\n\nHome\nWeek\nSleep\nClimate\nMore",
+        "launcher": {
+          "ariaLabel": "Ask about your bedroom",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/daily-loop",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "name": "week-ahead",
+      "route": "/delivery",
+      "file": "06-dark-week-ahead.png",
+      "ok": true,
+      "contentMs": 7678,
+      "settleMs": 8593,
+      "busyAtCapture": 0,
+      "pageHeight": 2696,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [],
+        "contrast": [],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 24,
+          "h1": 1
+        },
+        "bodyTextLen": 1302,
+        "bodyTextHead": "CHECKMARK\nMark\nWeek\n\nThis week at a glance: what’s on each day, what’s done, and what’s still to do.\n\nThis week\nEdit week\n\nThis week's mix\n\nVO2 1/1\nSweet Spot 0/1\nZone 2 1/3\nThis week\n6 sessions\n4 done\n2 to do\n\nMon, Aug 3\n\nWeights\n\nDumbbells (full-body)\n\nMaintenance · 22 min\n\nDone\n\nTue, Aug 4\n\nCycle\n\nVO₂ Light (3 × 2 min @ 115%)\n\nVO₂ · 41 min\n\nDone\n+ Flexibility · 16 min\n\nWed, Aug 5\n\nCycle\n\nZ2\n\nEndurance · 60 min\n\nDone\n+ Flexibility · 16 min\n\nThu, Aug 6\n\nToday\nCycle\n\nSweet Spot Light (1 × 20 min @ 89%)\n\nSweet spot · 48 min\n\nDone\n\nFri, Aug 7\n\nRest\n\nRest day\n\nSat, Aug 8\n\nCycle\n\nEasy Z2 (No Sprints)\n\nEndurance · 45 min\n\nTo do\n\nSun, Aug 9\n\nCycle\n\nEasy Z2\n\nEndurance · 90 min\n\nTo do\nComing up\n\nMon, Aug 10\n\nWeights\n\nDumbbells (full-body)\n\nMaintenance · 22 min\n\nTo do\n\nTue, Aug 11\n\nCycle\n\nVO₂ (6 × 2 min @ 120%)\n\nVO₂ · 51 min\n\nTo do\n\nWed, Aug 12\n\nCycle\n\nZ2\n\nEndurance · 75 min\n\nTo do\n\nThu, Aug 13\n\nCycle\n\nSweet Spot (2 × 30 min @ 89%)\n\nSweet spot · 91 min\n\nTo do\n\nFri, Aug 14\n\nRest\n\nRest day\n\nSat, Aug 15\n\nCycle + Weights\n\nZ2 + Neuromuscular\n\nEndurance · 58 min\n\nTo do\n\nBodyweight\n\nMaintenance · 15 min\n\nTo do\n\nSun, Aug 16\n\nCycle\n\nLong Z2\n\nEndurance · 120 min\n\nTo do\n\nAdmin tools stay one layer down.\n\nOpen Edit week for move, add, skip, reset, and restructure controls.\n\nHome\nWeek\nSleep\nClimate\nMore",
+        "launcher": {
+          "ariaLabel": "Ask about your week",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/plan-actions/schedule?start_date=2026-08-03&days=14",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/daily-loop",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "name": "holiday",
+      "route": "/holiday",
+      "file": "07-dark-holiday.png",
+      "ok": true,
+      "contentMs": 3461,
+      "settleMs": 4364,
+      "busyAtCapture": 0,
+      "pageHeight": 844,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [],
+        "contrast": [],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 8,
+          "h1": 1
+        },
+        "bodyTextLen": 303,
+        "bodyTextHead": "CHECKMARK\nMark\nHoliday\nGoing on holiday?\n\nSet your dates and the coach pauses your training — your sessions become rest days. When you're back, it picks your plan up in the right place automatically.\n\nHoliday active\n\nSun, Jul 12, 2026 → Thu, Jul 16, 2026\n\nActive\nResume plan\nHome\nWeek\nSleep\nClimate\nMore",
+        "launcher": {
+          "ariaLabel": "Ask your coach anything",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/holiday",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "name": "builder",
+      "route": "/builder",
+      "file": "08-dark-builder.png",
+      "ok": true,
+      "contentMs": 4858,
+      "settleMs": 5761,
+      "busyAtCapture": 0,
+      "pageHeight": 844,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [
+          {
+            "path": "div.p-5.pt-0.space-y-4 > div.grid.gap-4.sm:grid-cols-2 > div.space-y-2 > input#start-date",
+            "text": "",
+            "w": 316,
+            "h": 36
+          },
+          {
+            "path": "div.p-5.pt-0.space-y-4 > div.grid.gap-4.sm:grid-cols-2 > div.space-y-2 > input#ftp-watts",
+            "text": "",
+            "w": 316,
+            "h": 36
+          }
+        ],
+        "contrast": [],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 8,
+          "h1": 1
+        },
+        "bodyTextLen": 457,
+        "bodyTextHead": "CHECKMARK\nMark\nPlan builder\nMould it, then lock it\n\nThe coach generates a 13-week 2121 block (2 build / 1 recovery, taper, consolidation). Refine any day, then lock it — locked workouts feed your daily plan and deliver to Zwift on approval.\n\nGenerate a new block\n\nDefaults to next Monday and the last-block FTP proposal when enough history exists. Override if you want.\n\nStart date (optional)\nFTP watts (optional)\nGenerate block\nHome\nWeek\nSleep\nClimate\nMore",
+        "launcher": {
+          "ariaLabel": "Ask your coach anything",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/block-generator",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "name": "reviews",
+      "route": "/reviews",
+      "file": "09-dark-reviews.png",
+      "ok": true,
+      "contentMs": 6259,
+      "settleMs": 7163,
+      "busyAtCapture": 0,
+      "pageHeight": 1424,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [],
+        "contrast": [],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 10,
+          "h1": 1
+        },
+        "bodyTextLen": 714,
+        "bodyTextHead": "CHECKMARK\nMark\nReviews\nWeekly\nMonthly\nThis week\n\nAug 3 – Aug 9 · 7 days at a glance. Coverage is partial: 4/7 sleep nights and 4/7 recovery days.\n\nSleep\nImproving\nNights\n4\nCoverage\n4/7\nAvg score\n83.8\nTrend basis\n81 → 86.5 (+5.5)\nRecovery\nSteady\nDays\n4\nCoverage\n4/7\nAvg HRV\n46.2 ms\nReadiness trend\n72 → 72.5 (+0.5)\nTraining load\nActivities\n11\nTotal load\n289.01\nTotal time\n284 min\nPlan source\nplanned workouts present\nVerdicts\n4G · 0A · 0R\nStrength & signals\nSteady\nSessions (4w)\n4\nPer week (4w)\n1\nSource\ntracked strength activity present\nFitness trend\nrising\n\nFrequency holding at ~1.0/wk over 28 days.\n\nWritten review\n\nNo review has been generated for this period yet.\n\nGenerate review\nHome\nWeek\nSleep\nClimate\nMore",
+        "launcher": {
+          "ariaLabel": "Ask about your review",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/reviews/weekly",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "name": "trends",
+      "route": "/trends",
+      "file": "10-dark-trends.png",
+      "ok": true,
+      "contentMs": 10800,
+      "settleMs": 11704,
+      "busyAtCapture": 0,
+      "pageHeight": 2160,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [],
+        "contrast": [],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 1,
+          "buttons": 10,
+          "h1": 1
+        },
+        "bodyTextLen": 1494,
+        "bodyTextHead": "CHECKMARK\nMark\nTrends\nBy month\nBy season\nWalking base\n\nKeep deliberate walking credited in the long-range view instead of inside today's workout card.\n\nWalking base\n\n28 walks · 40.8 km · 597 min in 4 weeks\n\ndecreasing\n\nRecent 2-week rate (5.5/wk) down from prior 2-week rate (8.5/wk).\n\nThis 4-week base sits alongside your broader trends.\n\nStrength trend\n\nA standing read on resistance work over time, alongside the per-session strength reads.\n\nStrength sessions\n\n4 sessions · 74 min · 1.0/wk in 4 weeks\n\nincreasing\n\nRecent 2-week rate (1.5/wk) up from prior 2-week rate (0.5/wk).\n\nFrequency and duration over the last 4 weeks, with the direction of travel.\n\nSleep & readiness over time\n\nYour averages for each month.\n\nReadinessSleep\nApril 2026\nMay 2026\nJune 2026\nAugust 2026\n0\n20\n40\n60\n80\nAugust 2026 vs August 2025\n\nHow this period compares with the same time last year.\n\nSleep score\n69.55 → 78.17\n+8.62 +12.4%\nSleep duration (min)\n412.13 → 435.83\n+23.7 +5.8%\nTraining readiness\n54.77 → 61\n+6.23 +11.4%\nResting HR (bpm)\n44.77 → 44.33\n-0.44 -1.0%\nRecent months\nMarch 2026\n31d\nSleep 76.55 · Readiness 58.13 · RHR 45\nApril 2026\n30d\nSleep 76.3 · Readiness 46.97 · RHR 43.13\nMay 2026\n31d\nSleep 74.26 · Readiness 36.74 · RHR 43.97\nJune 2026\n30d\nSleep 70.23 · Readiness 42.73 · RHR 44.6\nJuly 2026\n31d\nSleep 71.97 · Readiness 55.29 · RHR 44.19\nAugust 2026\n6d\nSleep 78.17 · Readiness 61 · RHR 44.33\nWritten ",
+        "launcher": {
+          "ariaLabel": "Ask about your trends",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/trends/narrative?bucket=month",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/daily-loop",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "name": "experiments",
+      "route": "/experiments",
+      "file": "11-dark-experiments.png",
+      "ok": true,
+      "contentMs": 3671,
+      "settleMs": 4578,
+      "busyAtCapture": 0,
+      "pageHeight": 844,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [],
+        "contrast": [],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 10,
+          "h1": 1
+        },
+        "bodyTextLen": 508,
+        "bodyTextHead": "CHECKMARK\nMark\nWhat we're testing\nCollagen reintroduction\nactive\n\nReintroducing collagen disrupts sleep; only retry after 7 consecutive 74+ (age-adjusted) nights.\n\nEvaluate evidence\nRecovery-week sleep disruption\nactive\n\nRecovery weeks (lower training load) coincide with worse sleep/recovery rather than better.\n\nEvaluate evidence\n04:00 waking pattern\nactive\n\nWaking around 04:00 is driven by an identifiable trigger (thermal, alcohol, late snack, or stress).\n\nEvaluate evidence\nHome\nWeek\nSleep\nClimate\nMore",
+        "launcher": {
+          "ariaLabel": "Ask your coach anything",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/experiments",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "name": "handover",
+      "route": "/handover",
+      "file": "12-dark-handover.png",
+      "ok": true,
+      "contentMs": 8396,
+      "settleMs": 9298,
+      "busyAtCapture": 0,
+      "pageHeight": 1106,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [],
+        "contrast": [],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 10,
+          "h1": 4
+        },
+        "bodyTextLen": 4361,
+        "bodyTextHead": "CHECKMARK\nMark\nHandover\nFull briefing for a new AI chat\n\nEverything your coach knows about you — profile, plan, baselines, reviews and what you're testing — in one document. Always up to date, ready to paste into a new AI chat.\n\nDownload\nWrite summary\nThe document\nView raw text\n\nExactly what “Download” saves.\n\nCheckMark — Handover Document\n\nAuto-generated retained-state briefing for Mark — 2026-08-06T16:53:02Z.\n\nThis document is the living context the coach holds, exported so it can brief another AI without rewriting it by hand.\n\nAthlete profile\nName: Mark\nAge: 57\nFTP (W): 280\nVO2 max: 54\nResting HR (bpm): 45\nFitness age: 48\nHRV band (ms): 43–57\nBlood pressure: 108/68\nData-quality rules (the AI MUST obey)\nIgnore left/right power balance. — Single-sided meter doubles one leg and makes balance unusable.\nTreat SpO2 and HRV as reliable only from 2026-06-11 onward. — Strap-tightening on 11 Jun fixed the noisy overnight readings.\nExclude wrist-HR strength sessions from recovery decisions. — Strength HR from the wrist is too noisy for recovery interpretation.\nIgnore the constant Duration column in the historical spreadsheet. — The export column is known-bad and should never drive analysis.\nAge-adjustment\nSleep-score delta: +4\nAge-appropriate REM (min): 65–90\nGarmin sleep scoring is calibrated around younger athletes.\nUse the adjusted sleep score in the morning verdict.\nSleep protocol ",
+        "launcher": {
+          "ariaLabel": "Ask your coach anything",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/handover",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "name": "coach-state",
+      "route": "/coach-state",
+      "file": "13-dark-coach-state.png",
+      "ok": true,
+      "contentMs": 5379,
+      "settleMs": 6284,
+      "busyAtCapture": 0,
+      "pageHeight": 3926,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [],
+        "contrast": [],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 9,
+          "h1": 1
+        },
+        "bodyTextLen": 3386,
+        "bodyTextHead": "CHECKMARK\nMark\n\nWHAT YOUR COACH KNOWS ABOUT YOU\n\nCoach memory\nOpen editor\n\nThis is the retained context your coach uses to interpret your sleep, your training, and the rules it should follow when it talks to you.\n\nGenerated 8/6/2026, 5:53:11 PM\n9 active memory sections\n118 active planned workouts\nLearned from conversations\n\nThe coach proposes standing facts and preferences from your chats and notes. Nothing is remembered until you accept the evidence-bound wording, and learned memory can never change the verdict rules.\n\nLook for new memories\n\nNo memory proposals are waiting for review.\n\nProfile facts\n\nThe fixed background your coach keeps in mind every day.\n\nName: Mark\n\nAge: 57\n\nFTP: 280 W\n\nVO2max: 54\n\nTypical HRV band: 43-57 ms\n\nResting heart rate: 45 bpm\n\nUsual blood pressure: 108-68\n\nFitness age: 48\n\nSleep protocol\n\nThe routine and room targets the coach treats as your default.\n\nPre-cool the room to 17°C.\n\nSeal the room by 22:00.\n\nTreat 19.5-20°C as the thermal disruption band.\n\nDo coherence breathing at 20:00.\n\nAim to be in bed by 23:15.\n\nFinish any snack by 21:30.\n\nData-quality rules\n\nWhat the coach should ignore or down-weight before drawing conclusions.\n\nIgnore left/right power balance.\n\nSingle-sided meter doubles one leg and makes balance unusable.\n\nTreat SpO2 and HRV as reliable only from 2026-06-11 onward.\n\nStrap-tightening on 11 Jun fixed the noisy overnight readings",
+        "launcher": {
+          "ariaLabel": "Ask your coach anything",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/coach-memory/learning",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/coach-memory",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "name": "settings",
+      "route": "/settings",
+      "file": "14-dark-settings.png",
+      "ok": true,
+      "contentMs": 8431,
+      "settleMs": 9333,
+      "busyAtCapture": 0,
+      "pageHeight": 844,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [
+          {
+            "path": "div.space-y-8.max-w-lg > section.space-y-3 > div.flex.items-start.gap-3 > button.relative.inline-flex.h-7",
+            "text": "Enable hosted read-aloud voice",
+            "w": 48,
+            "h": 28
+          }
+        ],
+        "contrast": [],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 12,
+          "h1": 1
+        },
+        "bodyTextLen": 354,
+        "bodyTextHead": "CHECKMARK\nMark\nSettings\nAPPEARANCE\nLight\nDark\nSystem\nNOTIFICATIONS\nEnabling…\nVOICE\n\nNatural hosted voice\n\nReads the brief aloud in a more natural voice, generated on our own server (no third party). Takes a little longer to start than the default; off by default, the brief reads aloud using your device's own voice instead.\n\nHome\nWeek\nSleep\nClimate\nMore",
+        "launcher": {
+          "ariaLabel": "Ask your coach anything",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/daily-loop",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "name": "offline",
+      "route": "/offline",
+      "file": "15-dark-offline.png",
+      "ok": true,
+      "contentMs": 2151,
+      "settleMs": 3052,
+      "busyAtCapture": 0,
+      "pageHeight": 844,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [],
+        "contrast": [],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 7,
+          "h1": 1
+        },
+        "bodyTextLen": 139,
+        "bodyTextHead": "CHECKMARK\nMark\n📡\nYou're offline\n\nNo internet connection detected. Check your connection and try again.\n\nRetry\nHome\nWeek\nSleep\nClimate\nMore",
+        "launcher": null
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": []
+    },
+    {
+      "theme": "light",
+      "name": "home",
+      "route": "/",
+      "file": "16-light-home.png",
+      "ok": true,
+      "contentMs": 9294,
+      "settleMs": 10195,
+      "busyAtCapture": 0,
+      "pageHeight": 2300,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [
+          {
+            "path": "div.relative.flex.items-center > div.min-w-0.flex-1 > div.mt-3.flex.flex-wrap > a.text-sm.font-medium.text-primary",
+            "text": "Change",
+            "w": 48.7,
+            "h": 20
+          }
+        ],
+        "contrast": [
+          {
+            "path": "div.space-y-4 > div.rounded-xl.border.border-border > div.flex.flex-wrap.gap-2 > span.inline-flex.items-center.gap-1",
+            "text": "VO2",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 12,
+            "weight": 500
+          },
+          {
+            "path": "div.space-y-3 > div.rounded-xl.border.border-border > div.flex.flex-wrap.items-center > div.inline-flex.items-center.rounded-full",
+            "text": "Logged",
+            "color": "rgb(107, 114, 128)",
+            "bg": "rgb(241, 243, 245)",
+            "ratio": 4.35,
+            "need": 4.5,
+            "fontPx": 12,
+            "weight": 600
+          },
+          {
+            "path": "ul.flex.items-stretch.justify-around > li.contents > a.relative.flex-1.flex > span.text-[10px].font-medium.tracking-tight",
+            "text": "Home",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(247, 248, 250)",
+            "ratio": 3.55,
+            "need": 4.5,
+            "fontPx": 10,
+            "weight": 500
+          }
+        ],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 21,
+          "h1": 0
+        },
+        "bodyTextLen": 823,
+        "bodyTextHead": "CHECKMARK\nMark\n\nTHURSDAY, AUGUST 6\n\nGood to go\n\nGood afternoon, Mark. You're good to go this afternoon.\n\nHOW YOU FEEL TODAY\n\nYou said: Good · slept well\n\nChange\n\nGreen verdict\n\nYour morning brief is ready\n\nRead it\n\nCycle day\n\nThis week's mix\n\nVO2 1/1\nSweet Spot 0/1\nZone 2 1/3\n\nSweet Spot Light (1 × 20 min @ 89%)\n\nSweet spot · 48 min · 100% FTP intervals\n\nCompleted\n\nHow did it feel?\n\nLogged\nRPE\nLegs\nFeel\nNotes or a question\nOutcome\nDid it as planned\nChanged it\nSkipped it\nActual minutes\nRead my workout\nView analysis\nCycle\nWeights\nFlexibility\nView week\nMorning check-in\nSkip whole day\nI did something else\n\nMORE DETAIL\n\nLast night's sleep\n7h 48m asleep · GOOD · REM in your 65–90 min range\nTonight\nProtect tonight after a hard session and a warm bedroom\nBedroom\nIndoor 21.1°C · fan on manual\nHome\nWeek\nSleep\nClimate\nMore",
+        "launcher": {
+          "ariaLabel": "Ask about today",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/daily-loop",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "check-in",
+      "route": "/check-in",
+      "file": "17-light-check-in.png",
+      "ok": true,
+      "contentMs": 9104,
+      "settleMs": 10008,
+      "busyAtCapture": 0,
+      "pageHeight": 844,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [
+          {
+            "path": "div > div.space-y-5 > div.mb-5 > a.inline-flex.items-center.gap-1",
+            "text": "HOME",
+            "w": 58.4,
+            "h": 16
+          },
+          {
+            "path": "div.rounded-lg.border.border-border > div.p-5.pt-0.space-y-4 > div.space-y-2 > input.w-full.accent-primary",
+            "text": "0 to 10 feel score",
+            "w": 316,
+            "h": 16
+          }
+        ],
+        "contrast": [],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 16,
+          "h1": 1
+        },
+        "bodyTextLen": 325,
+        "bodyTextHead": "CHECKMARK\nMark\nHOME\nCheck in\nHow are you feeling?\n\nA few taps — your read feeds every analysis.\n\nHow you feel today\n\n8/10\n\nGood\n\nFeel score\nRough\nMeh\nOK\nGood\nGreat\nAnything to flag?\nSlept well\nLow energy\nNiggle\nMore\nIn your own words, blood pressure, and yesterday's supplements & food\nView brief\nHome\nWeek\nSleep\nClimate\nMore",
+        "launcher": {
+          "ariaLabel": "Ask about your check-in",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/daily-loop",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "brief",
+      "route": "/brief",
+      "file": "18-light-brief.png",
+      "ok": true,
+      "contentMs": 10030,
+      "settleMs": 10934,
+      "busyAtCapture": 0,
+      "pageHeight": 5569,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [
+          {
+            "path": "div > div.space-y-5 > div.mb-5 > a.inline-flex.items-center.gap-1",
+            "text": "HOME",
+            "w": 58.4,
+            "h": 16
+          }
+        ],
+        "contrast": [
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.font-semibold.tabular-nums.text-success",
+            "text": "89",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 600
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.inline-flex.items-center",
+            "text": "4.8 above",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.font-semibold.tabular-nums.text-success",
+            "text": "11",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 600
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.inline-flex.items-center",
+            "text": "in range",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.font-semibold.tabular-nums.text-success",
+            "text": "97%",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 600
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.inline-flex.items-center",
+            "text": "in range",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.font-semibold.tabular-nums.text-success",
+            "text": "68",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 600
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.inline-flex.items-center",
+            "text": "in range",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.font-semibold.tabular-nums.text-success",
+            "text": "45",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 600
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.inline-flex.items-center",
+            "text": "in range",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.text-sm.font-medium",
+            "text": "15 above",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.font-semibold.tabular-nums.text-success",
+            "text": "80",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 600
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.inline-flex.items-center",
+            "text": "18.5 above",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.font-semibold.tabular-nums.text-success",
+            "text": "44",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 600
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.inline-flex.items-center",
+            "text": "in range",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.text-sm.font-medium",
+            "text": "27 below",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.font-semibold.tabular-nums.text-success",
+            "text": "89",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 600
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.inline-flex.items-center",
+            "text": "9 above",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 500
+          }
+        ],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 10,
+          "h1": 2
+        },
+        "bodyTextLen": 6768,
+        "bodyTextHead": "CHECKMARK\nMark\nHOME\n\nTHURSDAY, AUGUST 6\n\nMorning brief\nCheck in\nLast night's metrics\nMetric\tLast night\tStatus\nAge-adjusted sleep score\t\n89\n\t\n72–84.3\n4.8 above\nAverage respiration\t\n11\n\t\n11–12\nin range\nAverage Pulse Ox\t\n97%\n\t\n96–97%\nin range\nBody Battery charge\t\n68\n\t\n59–71\nin range\n7-day average HRV\t\n45\n\t\n45–49\nin range\n15 above for your age\n\nTraining readiness\t\n80\n\t\n28–61.5\n18.5 above\nResting heart rate\t\n44\n\t\n43–45\nin range\n27 below for your age\n\nSleep score\t\n89\n\t\n64.8–80\n9 above\n\nHRV & SpO₂ baselines use readings from after the strap was re-fitted (11 Jun); earlier nights are excluded.\n\n“vs your age” compares you with the general-population average for the typical 50–59 year-old — a rough guide, not medical advice.\n\nCoach read\n\nGenerated 8/6/2026, 9:31:27 AM\n\nListen\nStop\nCheckMark · Thursday 6 August 2026\nSleep Summary\n\nBed at 00:29, wake at 08:28 — 7 h 48 min asleep (468 min), 7 h 59 min in bed (479 min), with just 11 min recorded awake. Garmin scores it 89 (raw and age-adjusted), which sits well above your 84-day median of 73.5 and your upper quartile of 80. You said you felt Good, and the objective picture agrees entirely.\n\nSleep architecture vs your 50–59 age band:\n\nDeep 20.5% — above the healthy 12–20% band for your age; strong restorative signal\nLight 63.7% — just above the healthy 48–62% band; not clinically concerning, simply crowding REM a little\nREM 13.6% — below the ",
+        "launcher": {
+          "ariaLabel": "Ask about this morning's brief",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/daily-loop",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/briefs/e87799bc-1d23-4e06-b6b8-27b1487ad2ab/messages",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "sleep",
+      "route": "/sleep",
+      "file": "19-light-sleep.png",
+      "ok": true,
+      "contentMs": 9077,
+      "settleMs": 9981,
+      "busyAtCapture": 0,
+      "pageHeight": 3344,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [],
+        "contrast": [
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.font-semibold.tabular-nums.text-success",
+            "text": "89",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 600
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.inline-flex.items-center",
+            "text": "4.8 above",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.font-semibold.tabular-nums.text-success",
+            "text": "11",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 600
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.inline-flex.items-center",
+            "text": "in range",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.font-semibold.tabular-nums.text-success",
+            "text": "97%",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 600
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.inline-flex.items-center",
+            "text": "in range",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.font-semibold.tabular-nums.text-success",
+            "text": "68",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 600
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.inline-flex.items-center",
+            "text": "in range",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.font-semibold.tabular-nums.text-success",
+            "text": "45",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 600
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.inline-flex.items-center",
+            "text": "in range",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.text-sm.font-medium",
+            "text": "15 above",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.font-semibold.tabular-nums.text-success",
+            "text": "80",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 600
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.inline-flex.items-center",
+            "text": "18.5 above",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.font-semibold.tabular-nums.text-success",
+            "text": "44",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 600
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.inline-flex.items-center",
+            "text": "in range",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.text-sm.font-medium",
+            "text": "27 below",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.font-semibold.tabular-nums.text-success",
+            "text": "89",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 600
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.inline-flex.items-center",
+            "text": "9 above",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.inline-flex.items-center",
+            "text": "Healthy for your age",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 11,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.inline-flex.items-center",
+            "text": "Above the healthy range for your age",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 11,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.inline-flex.items-center",
+            "text": "Below the healthy range for your age",
+            "color": "rgb(217, 119, 6)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.19,
+            "need": 4.5,
+            "fontPx": 11,
+            "weight": 500
+          },
+          {
+            "path": "tbody > tr.border-t.border-border > td.px-2.py-2.text-right > div.mt-0.5.inline-flex.items-center",
+            "text": "Healthy for your age",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 11,
+            "weight": 500
+          },
+          {
+            "path": "ul.flex.items-stretch.justify-around > li.contents > a.relative.flex-1.flex > span.text-[10px].font-medium.tracking-tight",
+            "text": "Sleep",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(247, 248, 250)",
+            "ratio": 3.55,
+            "need": 4.5,
+            "fontPx": 10,
+            "weight": 500
+          }
+        ],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 1,
+          "buttons": 12,
+          "h1": 1
+        },
+        "bodyTextLen": 2490,
+        "bodyTextHead": "CHECKMARK\nMark\n\nTHURSDAY, AUGUST 6\n\nSleep\nLast night\nTonight\nSleep calendar\n\nPick a date to review that night's sleep and room history. Tonight's look-ahead stays on the Tonight tab.\n\nSelected: Thu 6 Aug\n\nShow calendar\nLast night's sleep\n\nHow last night compares to your own normal and your age group.\n\nMetric\tLast night\tStatus\nAge-adjusted sleep score\t\n89\n\t\n72–84.3\n4.8 above\nAverage respiration\t\n11\n\t\n11–12\nin range\nAverage Pulse Ox\t\n97%\n\t\n96–97%\nin range\nBody Battery charge\t\n68\n\t\n59–71\nin range\n7-day average HRV\t\n45\n\t\n45–49\nin range\n15 above for your age\n\nTraining readiness\t\n80\n\t\n28–61.5\n18.5 above\nResting heart rate\t\n44\n\t\n43–45\nin range\n27 below for your age\n\nSleep score\t\n89\n\t\n64.8–80\n9 above\n\nHRV & SpO₂ baselines use readings from after the strap was re-fitted (11 Jun); earlier nights are excluded.\n\n“vs your age” compares you with the general-population average for the typical 50–59 year-old — a rough guide, not medical advice.\n\nChronic sleep patterns to work on\n\n28/21 nights · 4 weeks\n\nPROTECT\n\nProtect REM consistency\n\nREM has repeatedly missed its age norm; training load is the strongest measured lever to check first.\n\n24 of 28 measured nights missed healthy 50–59 range 15–23%.\n\nLatest value: 13.6.\n\nTreat high-load or late-training evenings as protect nights: shorten the admin tail and start wind-down earlier.\nKeep hard or late rides off the evening before a priority night —",
+        "launcher": {
+          "ariaLabel": "Ask about your sleep",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/sleep/verdicts?from=2026-07-27&to=2026-09-06",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/daily-loop",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/bedroom/overnight?date=2026-08-05",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "environment",
+      "route": "/environment",
+      "file": "20-light-environment.png",
+      "ok": true,
+      "contentMs": 7302,
+      "settleMs": 8203,
+      "busyAtCapture": 0,
+      "pageHeight": 1643,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [
+          {
+            "path": "div.p-5.pt-0 > div.space-y-4 > div.flex.items-center.justify-between > button.relative.inline-flex.h-7",
+            "text": "Overnight fan autopilot",
+            "w": 48,
+            "h": 28
+          }
+        ],
+        "contrast": [
+          {
+            "path": "ul.flex.items-stretch.justify-around > li.contents > a.relative.flex-1.flex > span.text-[10px].font-medium.tracking-tight",
+            "text": "Climate",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(247, 248, 250)",
+            "ratio": 3.55,
+            "need": 4.5,
+            "fontPx": 10,
+            "weight": 500
+          }
+        ],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 20,
+          "h1": 1
+        },
+        "bodyTextLen": 1009,
+        "bodyTextHead": "CHECKMARK\nMark\n\nTHURSDAY, AUGUST 6\n\nClimate\nBedroom climate\n\nThe live room read and fan controls for the bedroom.\n\nIndoor now\n\n21.1°C\n\nThermostat\n\n9.0°C\n\nOvernight low\n\n11.9°C\n\nWind\n\n16 mph\n\nOvernight autopilot\n\nOff — the fan holds your manual setting.\n\nManual control\n\nBedroom fan\n\nManual control\n\nMode normal · Fixed\n\nTurn off\nLow\nMedium\nHigh\n\nOther fan (000s)\n\nManual · on at speed 8\n\nMode turbo · Fixed\n\nTurn off\nLow\nMedium\nHigh\n\nOther fan (000s)\n\nManual control\n\nMode normal · Fixed\n\nTurn off\nLow\nMedium\nHigh\n\nUsing a manual control turns the overnight autopilot off.\n\nAuto mode\n\nThe overnight autopilot follows the room temperature and winds down in the morning.\n\nManual controls always work. Using one turns the overnight autopilot off until you switch it back on.\nLast night\n\nThe retrospective overnight room and fan chart lives with Sleep, not the live Climate controls.\n\nReview last night in Sleep\n\nOpen Sleep for the retrospective overnight room, fan, and sleep chart.\n\nHome\nWeek\nSleep\nClimate\nMore",
+        "launcher": {
+          "ariaLabel": "Ask about your bedroom",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/daily-loop",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "week-ahead",
+      "route": "/delivery",
+      "file": "21-light-week-ahead.png",
+      "ok": true,
+      "contentMs": 7564,
+      "settleMs": 8465,
+      "busyAtCapture": 0,
+      "pageHeight": 2696,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [],
+        "contrast": [
+          {
+            "path": "div.space-y-5 > div.rounded-xl.border.border-border > div.flex.flex-wrap.gap-2 > span.inline-flex.items-center.gap-1",
+            "text": "VO2",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 12,
+            "weight": 500
+          },
+          {
+            "path": "div.rounded-lg.border.border-border > div.flex.flex-col.p-5 > div.flex.flex-wrap.items-center > div.inline-flex.items-center.rounded-full",
+            "text": "6 sessions",
+            "color": "rgb(107, 114, 128)",
+            "bg": "rgb(241, 243, 245)",
+            "ratio": 4.35,
+            "need": 4.5,
+            "fontPx": 12,
+            "weight": 600
+          },
+          {
+            "path": "div.rounded-xl.border.border-border > div.mt-3.flex.flex-wrap > button.tap-target.inline-flex.items-center > span.inline-flex.items-center.rounded-full",
+            "text": "+",
+            "color": "rgb(107, 114, 128)",
+            "bg": "rgb(241, 243, 245)",
+            "ratio": 4.35,
+            "need": 4.5,
+            "fontPx": 12,
+            "weight": 600
+          },
+          {
+            "path": "div.rounded-xl.border.border-border > div.mt-3.flex.flex-wrap > button.tap-target.inline-flex.items-center > span.inline-flex.items-center.rounded-full",
+            "text": "+",
+            "color": "rgb(107, 114, 128)",
+            "bg": "rgb(241, 243, 245)",
+            "ratio": 4.35,
+            "need": 4.5,
+            "fontPx": 12,
+            "weight": 600
+          },
+          {
+            "path": "div.p-5.pt-0.space-y-3 > div.rounded-xl.border.border-border > div.flex.flex-wrap.items-center > div.inline-flex.items-center.rounded-full",
+            "text": "Rest",
+            "color": "rgb(107, 114, 128)",
+            "bg": "rgb(241, 243, 245)",
+            "ratio": 4.35,
+            "need": 4.5,
+            "fontPx": 12,
+            "weight": 600
+          },
+          {
+            "path": "div.rounded-xl.border.border-border > div.mt-3.space-y-2 > button.flex.w-full.items-start > div.inline-flex.items-center.rounded-full",
+            "text": "To do",
+            "color": "rgb(107, 114, 128)",
+            "bg": "rgb(241, 243, 245)",
+            "ratio": 4.35,
+            "need": 4.5,
+            "fontPx": 12,
+            "weight": 600
+          },
+          {
+            "path": "div.rounded-xl.border.border-border > div.mt-3.space-y-2 > button.flex.w-full.items-start > div.inline-flex.items-center.rounded-full",
+            "text": "To do",
+            "color": "rgb(107, 114, 128)",
+            "bg": "rgb(241, 243, 245)",
+            "ratio": 4.35,
+            "need": 4.5,
+            "fontPx": 12,
+            "weight": 600
+          },
+          {
+            "path": "div.rounded-xl.border.border-border > div.mt-3.space-y-1.5 > button.flex.w-full.items-start > div.inline-flex.items-center.rounded-full",
+            "text": "To do",
+            "color": "rgb(107, 114, 128)",
+            "bg": "rgb(241, 243, 245)",
+            "ratio": 4.35,
+            "need": 4.5,
+            "fontPx": 12,
+            "weight": 600
+          },
+          {
+            "path": "div.rounded-xl.border.border-border > div.mt-3.space-y-1.5 > button.flex.w-full.items-start > div.inline-flex.items-center.rounded-full",
+            "text": "To do",
+            "color": "rgb(107, 114, 128)",
+            "bg": "rgb(241, 243, 245)",
+            "ratio": 4.35,
+            "need": 4.5,
+            "fontPx": 12,
+            "weight": 600
+          },
+          {
+            "path": "div.rounded-xl.border.border-border > div.mt-3.space-y-1.5 > button.flex.w-full.items-start > div.inline-flex.items-center.rounded-full",
+            "text": "To do",
+            "color": "rgb(107, 114, 128)",
+            "bg": "rgb(241, 243, 245)",
+            "ratio": 4.35,
+            "need": 4.5,
+            "fontPx": 12,
+            "weight": 600
+          },
+          {
+            "path": "div.rounded-xl.border.border-border > div.mt-3.space-y-1.5 > button.flex.w-full.items-start > div.inline-flex.items-center.rounded-full",
+            "text": "To do",
+            "color": "rgb(107, 114, 128)",
+            "bg": "rgb(241, 243, 245)",
+            "ratio": 4.35,
+            "need": 4.5,
+            "fontPx": 12,
+            "weight": 600
+          },
+          {
+            "path": "div.p-5.pt-0.space-y-3 > div.rounded-xl.border.border-border > div.flex.flex-wrap.items-center > div.inline-flex.items-center.rounded-full",
+            "text": "Rest",
+            "color": "rgb(107, 114, 128)",
+            "bg": "rgb(241, 243, 245)",
+            "ratio": 4.35,
+            "need": 4.5,
+            "fontPx": 12,
+            "weight": 600
+          },
+          {
+            "path": "div.rounded-xl.border.border-border > div.mt-3.space-y-1.5 > button.flex.w-full.items-start > div.inline-flex.items-center.rounded-full",
+            "text": "To do",
+            "color": "rgb(107, 114, 128)",
+            "bg": "rgb(241, 243, 245)",
+            "ratio": 4.35,
+            "need": 4.5,
+            "fontPx": 12,
+            "weight": 600
+          },
+          {
+            "path": "div.rounded-xl.border.border-border > div.mt-3.space-y-1.5 > button.flex.w-full.items-start > div.inline-flex.items-center.rounded-full",
+            "text": "To do",
+            "color": "rgb(107, 114, 128)",
+            "bg": "rgb(241, 243, 245)",
+            "ratio": 4.35,
+            "need": 4.5,
+            "fontPx": 12,
+            "weight": 600
+          },
+          {
+            "path": "div.rounded-xl.border.border-border > div.mt-3.space-y-1.5 > button.flex.w-full.items-start > div.inline-flex.items-center.rounded-full",
+            "text": "To do",
+            "color": "rgb(107, 114, 128)",
+            "bg": "rgb(241, 243, 245)",
+            "ratio": 4.35,
+            "need": 4.5,
+            "fontPx": 12,
+            "weight": 600
+          },
+          {
+            "path": "ul.flex.items-stretch.justify-around > li.contents > a.relative.flex-1.flex > span.text-[10px].font-medium.tracking-tight",
+            "text": "Week",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(247, 248, 250)",
+            "ratio": 3.55,
+            "need": 4.5,
+            "fontPx": 10,
+            "weight": 500
+          }
+        ],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 24,
+          "h1": 1
+        },
+        "bodyTextLen": 1302,
+        "bodyTextHead": "CHECKMARK\nMark\nWeek\n\nThis week at a glance: what’s on each day, what’s done, and what’s still to do.\n\nThis week\nEdit week\n\nThis week's mix\n\nVO2 1/1\nSweet Spot 0/1\nZone 2 1/3\nThis week\n6 sessions\n4 done\n2 to do\n\nMon, Aug 3\n\nWeights\n\nDumbbells (full-body)\n\nMaintenance · 22 min\n\nDone\n\nTue, Aug 4\n\nCycle\n\nVO₂ Light (3 × 2 min @ 115%)\n\nVO₂ · 41 min\n\nDone\n+ Flexibility · 16 min\n\nWed, Aug 5\n\nCycle\n\nZ2\n\nEndurance · 60 min\n\nDone\n+ Flexibility · 16 min\n\nThu, Aug 6\n\nToday\nCycle\n\nSweet Spot Light (1 × 20 min @ 89%)\n\nSweet spot · 48 min\n\nDone\n\nFri, Aug 7\n\nRest\n\nRest day\n\nSat, Aug 8\n\nCycle\n\nEasy Z2 (No Sprints)\n\nEndurance · 45 min\n\nTo do\n\nSun, Aug 9\n\nCycle\n\nEasy Z2\n\nEndurance · 90 min\n\nTo do\nComing up\n\nMon, Aug 10\n\nWeights\n\nDumbbells (full-body)\n\nMaintenance · 22 min\n\nTo do\n\nTue, Aug 11\n\nCycle\n\nVO₂ (6 × 2 min @ 120%)\n\nVO₂ · 51 min\n\nTo do\n\nWed, Aug 12\n\nCycle\n\nZ2\n\nEndurance · 75 min\n\nTo do\n\nThu, Aug 13\n\nCycle\n\nSweet Spot (2 × 30 min @ 89%)\n\nSweet spot · 91 min\n\nTo do\n\nFri, Aug 14\n\nRest\n\nRest day\n\nSat, Aug 15\n\nCycle + Weights\n\nZ2 + Neuromuscular\n\nEndurance · 58 min\n\nTo do\n\nBodyweight\n\nMaintenance · 15 min\n\nTo do\n\nSun, Aug 16\n\nCycle\n\nLong Z2\n\nEndurance · 120 min\n\nTo do\n\nAdmin tools stay one layer down.\n\nOpen Edit week for move, add, skip, reset, and restructure controls.\n\nHome\nWeek\nSleep\nClimate\nMore",
+        "launcher": {
+          "ariaLabel": "Ask about your week",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/plan-actions/schedule?start_date=2026-08-03&days=14",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/daily-loop",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "holiday",
+      "route": "/holiday",
+      "file": "22-light-holiday.png",
+      "ok": true,
+      "contentMs": 2715,
+      "settleMs": 3617,
+      "busyAtCapture": 0,
+      "pageHeight": 844,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [],
+        "contrast": [
+          {
+            "path": "ul.flex.items-stretch.justify-around > li.contents > button.relative.flex-1.flex > span.text-[10px].font-medium.tracking-tight",
+            "text": "More",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(247, 248, 250)",
+            "ratio": 3.55,
+            "need": 4.5,
+            "fontPx": 10,
+            "weight": 500
+          }
+        ],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 8,
+          "h1": 1
+        },
+        "bodyTextLen": 303,
+        "bodyTextHead": "CHECKMARK\nMark\nHoliday\nGoing on holiday?\n\nSet your dates and the coach pauses your training — your sessions become rest days. When you're back, it picks your plan up in the right place automatically.\n\nHoliday active\n\nSun, Jul 12, 2026 → Thu, Jul 16, 2026\n\nActive\nResume plan\nHome\nWeek\nSleep\nClimate\nMore",
+        "launcher": {
+          "ariaLabel": "Ask your coach anything",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/holiday",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "builder",
+      "route": "/builder",
+      "file": "23-light-builder.png",
+      "ok": true,
+      "contentMs": 3041,
+      "settleMs": 3945,
+      "busyAtCapture": 0,
+      "pageHeight": 844,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [
+          {
+            "path": "div.p-5.pt-0.space-y-4 > div.grid.gap-4.sm:grid-cols-2 > div.space-y-2 > input#start-date",
+            "text": "",
+            "w": 316,
+            "h": 36
+          },
+          {
+            "path": "div.p-5.pt-0.space-y-4 > div.grid.gap-4.sm:grid-cols-2 > div.space-y-2 > input#ftp-watts",
+            "text": "",
+            "w": 316,
+            "h": 36
+          }
+        ],
+        "contrast": [
+          {
+            "path": "ul.flex.items-stretch.justify-around > li.contents > button.relative.flex-1.flex > span.text-[10px].font-medium.tracking-tight",
+            "text": "More",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(247, 248, 250)",
+            "ratio": 3.55,
+            "need": 4.5,
+            "fontPx": 10,
+            "weight": 500
+          }
+        ],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 8,
+          "h1": 1
+        },
+        "bodyTextLen": 457,
+        "bodyTextHead": "CHECKMARK\nMark\nPlan builder\nMould it, then lock it\n\nThe coach generates a 13-week 2121 block (2 build / 1 recovery, taper, consolidation). Refine any day, then lock it — locked workouts feed your daily plan and deliver to Zwift on approval.\n\nGenerate a new block\n\nDefaults to next Monday and the last-block FTP proposal when enough history exists. Override if you want.\n\nStart date (optional)\nFTP watts (optional)\nGenerate block\nHome\nWeek\nSleep\nClimate\nMore",
+        "launcher": {
+          "ariaLabel": "Ask your coach anything",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/block-generator",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "reviews",
+      "route": "/reviews",
+      "file": "24-light-reviews.png",
+      "ok": true,
+      "contentMs": 6168,
+      "settleMs": 7069,
+      "busyAtCapture": 0,
+      "pageHeight": 1424,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [],
+        "contrast": [
+          {
+            "path": "ul.flex.items-stretch.justify-around > li.contents > button.relative.flex-1.flex > span.text-[10px].font-medium.tracking-tight",
+            "text": "More",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(247, 248, 250)",
+            "ratio": 3.55,
+            "need": 4.5,
+            "fontPx": 10,
+            "weight": 500
+          }
+        ],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 10,
+          "h1": 1
+        },
+        "bodyTextLen": 714,
+        "bodyTextHead": "CHECKMARK\nMark\nReviews\nWeekly\nMonthly\nThis week\n\nAug 3 – Aug 9 · 7 days at a glance. Coverage is partial: 4/7 sleep nights and 4/7 recovery days.\n\nSleep\nImproving\nNights\n4\nCoverage\n4/7\nAvg score\n83.8\nTrend basis\n81 → 86.5 (+5.5)\nRecovery\nSteady\nDays\n4\nCoverage\n4/7\nAvg HRV\n46.2 ms\nReadiness trend\n72 → 72.5 (+0.5)\nTraining load\nActivities\n11\nTotal load\n289.01\nTotal time\n284 min\nPlan source\nplanned workouts present\nVerdicts\n4G · 0A · 0R\nStrength & signals\nSteady\nSessions (4w)\n4\nPer week (4w)\n1\nSource\ntracked strength activity present\nFitness trend\nrising\n\nFrequency holding at ~1.0/wk over 28 days.\n\nWritten review\n\nNo review has been generated for this period yet.\n\nGenerate review\nHome\nWeek\nSleep\nClimate\nMore",
+        "launcher": {
+          "ariaLabel": "Ask about your review",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/reviews/weekly",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "trends",
+      "route": "/trends",
+      "file": "25-light-trends.png",
+      "ok": true,
+      "contentMs": 8286,
+      "settleMs": 9202,
+      "busyAtCapture": 0,
+      "pageHeight": 2160,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [],
+        "contrast": [
+          {
+            "path": "div.p-5.pt-0 > div.rounded-xl.border.border-border > div.flex.flex-wrap.items-start > div.inline-flex.items-center.rounded-full",
+            "text": "decreasing",
+            "color": "rgb(107, 114, 128)",
+            "bg": "rgb(241, 243, 245)",
+            "ratio": 4.35,
+            "need": 4.5,
+            "fontPx": 12,
+            "weight": 600
+          },
+          {
+            "path": "div.p-5.pt-0 > div.rounded-xl.border.border-border > div.flex.flex-wrap.items-start > div.inline-flex.items-center.rounded-full",
+            "text": "increasing",
+            "color": "rgb(107, 114, 128)",
+            "bg": "rgb(241, 243, 245)",
+            "ratio": 4.35,
+            "need": 4.5,
+            "fontPx": 12,
+            "weight": 600
+          },
+          {
+            "path": "div.recharts-legend-wrapper > ul.recharts-default-legend > li.recharts-legend-item.legend-item-0 > span.recharts-legend-item-text",
+            "text": "Readiness",
+            "color": "rgb(167, 124, 42)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.78,
+            "need": 4.5,
+            "fontPx": 12,
+            "weight": 400
+          },
+          {
+            "path": "div.recharts-legend-wrapper > ul.recharts-default-legend > li.recharts-legend-item.legend-item-1 > span.recharts-legend-item-text",
+            "text": "Sleep",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(255, 255, 255)",
+            "ratio": 3.77,
+            "need": 4.5,
+            "fontPx": 12,
+            "weight": 400
+          },
+          {
+            "path": "ul.flex.items-stretch.justify-around > li.contents > button.relative.flex-1.flex > span.text-[10px].font-medium.tracking-tight",
+            "text": "More",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(247, 248, 250)",
+            "ratio": 3.55,
+            "need": 4.5,
+            "fontPx": 10,
+            "weight": 500
+          }
+        ],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 1,
+          "buttons": 10,
+          "h1": 1
+        },
+        "bodyTextLen": 1494,
+        "bodyTextHead": "CHECKMARK\nMark\nTrends\nBy month\nBy season\nWalking base\n\nKeep deliberate walking credited in the long-range view instead of inside today's workout card.\n\nWalking base\n\n28 walks · 40.8 km · 597 min in 4 weeks\n\ndecreasing\n\nRecent 2-week rate (5.5/wk) down from prior 2-week rate (8.5/wk).\n\nThis 4-week base sits alongside your broader trends.\n\nStrength trend\n\nA standing read on resistance work over time, alongside the per-session strength reads.\n\nStrength sessions\n\n4 sessions · 74 min · 1.0/wk in 4 weeks\n\nincreasing\n\nRecent 2-week rate (1.5/wk) up from prior 2-week rate (0.5/wk).\n\nFrequency and duration over the last 4 weeks, with the direction of travel.\n\nSleep & readiness over time\n\nYour averages for each month.\n\nReadinessSleep\nApril 2026\nMay 2026\nJune 2026\nAugust 2026\n0\n20\n40\n60\n80\nAugust 2026 vs August 2025\n\nHow this period compares with the same time last year.\n\nSleep score\n69.55 → 78.17\n+8.62 +12.4%\nSleep duration (min)\n412.13 → 435.83\n+23.7 +5.8%\nTraining readiness\n54.77 → 61\n+6.23 +11.4%\nResting HR (bpm)\n44.77 → 44.33\n-0.44 -1.0%\nRecent months\nMarch 2026\n31d\nSleep 76.55 · Readiness 58.13 · RHR 45\nApril 2026\n30d\nSleep 76.3 · Readiness 46.97 · RHR 43.13\nMay 2026\n31d\nSleep 74.26 · Readiness 36.74 · RHR 43.97\nJune 2026\n30d\nSleep 70.23 · Readiness 42.73 · RHR 44.6\nJuly 2026\n31d\nSleep 71.97 · Readiness 55.29 · RHR 44.19\nAugust 2026\n6d\nSleep 78.17 · Readiness 61 · RHR 44.33\nWritten ",
+        "launcher": {
+          "ariaLabel": "Ask about your trends",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/trends/narrative?bucket=month",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/daily-loop",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "experiments",
+      "route": "/experiments",
+      "file": "26-light-experiments.png",
+      "ok": true,
+      "contentMs": 4661,
+      "settleMs": 5563,
+      "busyAtCapture": 0,
+      "pageHeight": 844,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [],
+        "contrast": [
+          {
+            "path": "ul.flex.items-stretch.justify-around > li.contents > button.relative.flex-1.flex > span.text-[10px].font-medium.tracking-tight",
+            "text": "More",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(247, 248, 250)",
+            "ratio": 3.55,
+            "need": 4.5,
+            "fontPx": 10,
+            "weight": 500
+          }
+        ],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 10,
+          "h1": 1
+        },
+        "bodyTextLen": 508,
+        "bodyTextHead": "CHECKMARK\nMark\nWhat we're testing\nCollagen reintroduction\nactive\n\nReintroducing collagen disrupts sleep; only retry after 7 consecutive 74+ (age-adjusted) nights.\n\nEvaluate evidence\nRecovery-week sleep disruption\nactive\n\nRecovery weeks (lower training load) coincide with worse sleep/recovery rather than better.\n\nEvaluate evidence\n04:00 waking pattern\nactive\n\nWaking around 04:00 is driven by an identifiable trigger (thermal, alcohol, late snack, or stress).\n\nEvaluate evidence\nHome\nWeek\nSleep\nClimate\nMore",
+        "launcher": {
+          "ariaLabel": "Ask your coach anything",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/experiments",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "handover",
+      "route": "/handover",
+      "file": "27-light-handover.png",
+      "ok": true,
+      "contentMs": 5917,
+      "settleMs": 6820,
+      "busyAtCapture": 0,
+      "pageHeight": 844,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [],
+        "contrast": [
+          {
+            "path": "ul.flex.items-stretch.justify-around > li.contents > button.relative.flex-1.flex > span.text-[10px].font-medium.tracking-tight",
+            "text": "More",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(247, 248, 250)",
+            "ratio": 3.55,
+            "need": 4.5,
+            "fontPx": 10,
+            "weight": 500
+          }
+        ],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 7,
+          "h1": 1
+        },
+        "bodyTextLen": 77,
+        "bodyTextHead": "CHECKMARK\nMark\nHandover\nAssembling the handover…\nHome\nWeek\nSleep\nClimate\nMore",
+        "launcher": {
+          "ariaLabel": "Ask your coach anything",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "coach-state",
+      "route": "/coach-state",
+      "file": "28-light-coach-state.png",
+      "ok": true,
+      "contentMs": 4040,
+      "settleMs": 4953,
+      "busyAtCapture": 0,
+      "pageHeight": 3926,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [],
+        "contrast": [
+          {
+            "path": "ul.flex.items-stretch.justify-around > li.contents > button.relative.flex-1.flex > span.text-[10px].font-medium.tracking-tight",
+            "text": "More",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(247, 248, 250)",
+            "ratio": 3.55,
+            "need": 4.5,
+            "fontPx": 10,
+            "weight": 500
+          }
+        ],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 9,
+          "h1": 1
+        },
+        "bodyTextLen": 3386,
+        "bodyTextHead": "CHECKMARK\nMark\n\nWHAT YOUR COACH KNOWS ABOUT YOU\n\nCoach memory\nOpen editor\n\nThis is the retained context your coach uses to interpret your sleep, your training, and the rules it should follow when it talks to you.\n\nGenerated 8/6/2026, 5:55:11 PM\n9 active memory sections\n118 active planned workouts\nLearned from conversations\n\nThe coach proposes standing facts and preferences from your chats and notes. Nothing is remembered until you accept the evidence-bound wording, and learned memory can never change the verdict rules.\n\nLook for new memories\n\nNo memory proposals are waiting for review.\n\nProfile facts\n\nThe fixed background your coach keeps in mind every day.\n\nName: Mark\n\nAge: 57\n\nFTP: 280 W\n\nVO2max: 54\n\nTypical HRV band: 43-57 ms\n\nResting heart rate: 45 bpm\n\nUsual blood pressure: 108-68\n\nFitness age: 48\n\nSleep protocol\n\nThe routine and room targets the coach treats as your default.\n\nPre-cool the room to 17°C.\n\nSeal the room by 22:00.\n\nTreat 19.5-20°C as the thermal disruption band.\n\nDo coherence breathing at 20:00.\n\nAim to be in bed by 23:15.\n\nFinish any snack by 21:30.\n\nData-quality rules\n\nWhat the coach should ignore or down-weight before drawing conclusions.\n\nIgnore left/right power balance.\n\nSingle-sided meter doubles one leg and makes balance unusable.\n\nTreat SpO2 and HRV as reliable only from 2026-06-11 onward.\n\nStrap-tightening on 11 Jun fixed the noisy overnight readings",
+        "launcher": {
+          "ariaLabel": "Ask your coach anything",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach-memory/learning",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        },
+        {
+          "url": "/api/v1/coach-memory",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "settings",
+      "route": "/settings",
+      "file": "29-light-settings.png",
+      "ok": true,
+      "contentMs": 4392,
+      "settleMs": 5294,
+      "busyAtCapture": 0,
+      "pageHeight": 844,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [
+          {
+            "path": "div.space-y-8.max-w-lg > section.space-y-3 > div.flex.items-start.gap-3 > button.relative.inline-flex.h-7",
+            "text": "Enable hosted read-aloud voice",
+            "w": 48,
+            "h": 28
+          }
+        ],
+        "contrast": [
+          {
+            "path": "div.space-y-8.max-w-lg > section.space-y-3 > div.flex.gap-2 > button.flex-1.flex.flex-col",
+            "text": "Light",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(247, 248, 250)",
+            "ratio": 3.55,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 400
+          },
+          {
+            "path": "section.space-y-3 > div.space-y-2 > button.w-full.flex.items-center > span.text-sm.font-sans",
+            "text": "Enabling…",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(247, 248, 250)",
+            "ratio": 3.55,
+            "need": 4.5,
+            "fontPx": 14,
+            "weight": 400
+          },
+          {
+            "path": "ul.flex.items-stretch.justify-around > li.contents > button.relative.flex-1.flex > span.text-[10px].font-medium.tracking-tight",
+            "text": "More",
+            "color": "rgb(5, 150, 105)",
+            "bg": "rgb(247, 248, 250)",
+            "ratio": 3.55,
+            "need": 4.5,
+            "fontPx": 10,
+            "weight": 500
+          }
+        ],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 12,
+          "h1": 1
+        },
+        "bodyTextLen": 354,
+        "bodyTextHead": "CHECKMARK\nMark\nSettings\nAPPEARANCE\nLight\nDark\nSystem\nNOTIFICATIONS\nEnabling…\nVOICE\n\nNatural hosted voice\n\nReads the brief aloud in a more natural voice, generated on our own server (no third party). Takes a little longer to start than the default; off by default, the brief reads aloud using your device's own voice instead.\n\nHome\nWeek\nSleep\nClimate\nMore",
+        "launcher": {
+          "ariaLabel": "Ask your coach anything",
+          "w": 48,
+          "h": 48,
+          "dot": false
+        }
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": [
+        {
+          "url": "/api/v1/coach/messages",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "name": "offline",
+      "route": "/offline",
+      "file": "30-light-offline.png",
+      "ok": true,
+      "contentMs": 4683,
+      "settleMs": 5586,
+      "busyAtCapture": 0,
+      "pageHeight": 844,
+      "audit": {
+        "title": "CheckMark",
+        "overflow": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "offenders": []
+        },
+        "touchTargets": [],
+        "contrast": [],
+        "counts": {
+          "skeletons": 0,
+          "spinners": 0,
+          "buttons": 7,
+          "h1": 1
+        },
+        "bodyTextLen": 139,
+        "bodyTextHead": "CHECKMARK\nMark\n📡\nYou're offline\n\nNo internet connection detected. Check your connection and try again.\n\nRetry\nHome\nWeek\nSleep\nClimate\nMore",
+        "launcher": null
+      },
+      "fullPage": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "failed": [],
+      "apiCalls": []
+    }
+  ]
+}
