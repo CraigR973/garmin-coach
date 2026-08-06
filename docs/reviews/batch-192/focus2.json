@@ -1,0 +1,57 @@
+{
+  "generatedAt": "2026-08-06T17:03:19.848Z",
+  "focus2": [
+    {
+      "id": "F09",
+      "theme": "dark",
+      "file": "F09-dark-launcher-at-page-bottom.png",
+      "launcher": {
+        "position": "relative",
+        "left": "-16px",
+        "x": -16,
+        "y": 2176,
+        "inViewport": false,
+        "docH": 2300,
+        "vpH": 844,
+        "clippedLeftPx": 16
+      }
+    },
+    {
+      "id": "F09",
+      "theme": "light",
+      "file": "F09-light-launcher-at-page-bottom.png",
+      "launcher": {
+        "position": "relative",
+        "left": "-16px",
+        "x": -16,
+        "y": 2176,
+        "inViewport": false,
+        "docH": 2300,
+        "vpH": 844,
+        "clippedLeftPx": 16
+      }
+    },
+    {
+      "id": "F10",
+      "file": "F10-dark-week-completed-read.png",
+      "opened": {
+        "found": true,
+        "text": "Dumbbells (full-body)\n\nMaintenance · 22 min\n\nDone"
+      },
+      "sheet": {
+        "open": true,
+        "text": "Dumbbells (full-body)\n\nMaintenance\n\nCompleted\nPlanned duration\n22 min\nIntensity\nDumbbell circuit\nSource\nCoach-planned\n\nHow it went\n\nAdvisory\nCheckMark – Strength Session Review\n\nMonday 3 August 2026 · Dumbbell Workout\n\n✅ Session Acknowledged\n\n20-minute full-body dumbbell circuit completed — essentially on the planned 22-minute target. Good work getting it done.\n\n📊 Frequency & Consistency\nWindow\tSessions\tRate\nLast 4 weeks\t4\t1.0 / week\nLast 12 weeks\t17\t1.42 / week\nTrend\t↑ Increasing\tRecent 2-week rate up to 1.5/wk from 0.5/wk prior\n\nThe recent uptick is a positive signal — after a stretch where strength work was sparse, the last two weeks show a meaningful step-up in consistency. Maintaining ",
+        "hasChat": false,
+        "busy": 0
+      }
+    },
+    {
+      "id": "F11",
+      "file": "F11-dark-brief-inline-chat.png",
+      "inline": {
+        "found": false,
+        "heading": "Ask about this read\nAsk"
+      }
+    }
+  ]
+}

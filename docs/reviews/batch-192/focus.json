@@ -1,0 +1,276 @@
+{
+  "generatedAt": "2026-08-06T16:57:41.123Z",
+  "focus": [
+    {
+      "id": "F01",
+      "theme": "dark",
+      "file": "F01-dark-coach-thread-opens-at-oldest.png",
+      "launcher": {
+        "found": true,
+        "ariaLabel": "Ask about today",
+        "dot": false,
+        "w": 48,
+        "h": 48,
+        "x": -16,
+        "y": 2176
+      },
+      "thread": {
+        "ok": true,
+        "found": true,
+        "messages": 60,
+        "separators": 11,
+        "scrollTop": 0,
+        "scrollHeight": 28380,
+        "clientHeight": 388,
+        "pxBelowFold": 27992,
+        "firstText": "I am now thinking 2 x 15 min sweet spot intervals may be a better \"bridge\" vs originally s",
+        "firstDay": "Thursday, 23 July 2026",
+        "lastText": "Given today was a textbook execution, here's what it actually delivered:\n\nWhat this specif"
+      }
+    },
+    {
+      "id": "F01",
+      "theme": "light",
+      "file": "F01-light-coach-thread-opens-at-oldest.png",
+      "launcher": {
+        "found": true,
+        "ariaLabel": "Ask about today",
+        "dot": false,
+        "w": 48,
+        "h": 48,
+        "x": -16,
+        "y": 2176
+      },
+      "thread": {
+        "ok": true,
+        "found": true,
+        "messages": 60,
+        "separators": 11,
+        "scrollTop": 0,
+        "scrollHeight": 28380,
+        "clientHeight": 388,
+        "pxBelowFold": 27992,
+        "firstText": "I am now thinking 2 x 15 min sweet spot intervals may be a better \"bridge\" vs originally s",
+        "firstDay": "Thursday, 23 July 2026",
+        "lastText": "Given today was a textbook execution, here's what it actually delivered:\n\nWhat this specif"
+      }
+    },
+    {
+      "id": "F02",
+      "timings": [
+        {
+          "route": "/",
+          "firstContentMs": 8567,
+          "api": [
+            {
+              "url": "/api/v1/coach/messages",
+              "status": 200,
+              "ms": -1786035386184
+            },
+            {
+              "url": "/api/v1/daily-loop",
+              "status": 200,
+              "ms": -1786035386178
+            }
+          ]
+        },
+        {
+          "route": "/brief",
+          "firstContentMs": 6305,
+          "api": [
+            {
+              "url": "/api/v1/coach/messages",
+              "status": 200,
+              "ms": -1786035392126
+            },
+            {
+              "url": "/api/v1/daily-loop",
+              "status": 200,
+              "ms": -1786035392122
+            }
+          ]
+        },
+        {
+          "route": "/delivery",
+          "firstContentMs": 2097,
+          "api": [
+            {
+              "url": "/api/v1/coach/messages",
+              "status": 200,
+              "ms": -1786035398727
+            },
+            {
+              "url": "/api/v1/plan-actions/schedule?start_date=2026-08-03&days=14",
+              "status": 200,
+              "ms": -1786035398723
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F03",
+      "originKind": "weekly_review",
+      "launcher": {
+        "found": true,
+        "ariaLabel": "Ask about today — new coach message",
+        "dot": true,
+        "w": 48,
+        "h": 48,
+        "x": -16,
+        "y": 2176
+      },
+      "dotPresent": true,
+      "files": [
+        "F03-dark-launcher-weekly_review.png",
+        "F04-dark-sheet-weekly_review.png"
+      ],
+      "thread": {
+        "ok": true,
+        "found": true,
+        "messages": 7,
+        "separators": 3,
+        "scrollTop": 0,
+        "scrollHeight": 3652,
+        "clientHeight": 388,
+        "pxBelowFold": 3264,
+        "firstText": "I am adding progression to dumbbells having started at 2 x 2.5kg, moving to 4.5kg with pla",
+        "firstDay": "Monday, 3 August 2026",
+        "lastText": "Your week, reviewed. You held 4 of 5 planned sessions and your Z2 share climbed to 71%. Th"
+      }
+    },
+    {
+      "id": "F03",
+      "originKind": "state_change",
+      "launcher": {
+        "found": true,
+        "ariaLabel": "Ask about today",
+        "dot": false,
+        "w": 48,
+        "h": 48,
+        "x": -16,
+        "y": 2176
+      },
+      "dotPresent": false,
+      "files": [
+        "F03-dark-launcher-state_change.png",
+        "F04-dark-sheet-state_change.png"
+      ],
+      "thread": {
+        "ok": true,
+        "found": true,
+        "messages": 7,
+        "separators": 3,
+        "scrollTop": 0,
+        "scrollHeight": 3652,
+        "clientHeight": 388,
+        "pxBelowFold": 3264,
+        "firstText": "I am adding progression to dumbbells having started at 2 x 2.5kg, moving to 4.5kg with pla",
+        "firstDay": "Monday, 3 August 2026",
+        "lastText": "Something changed: your chronic-load pattern cleared this morning, so the deload I flagged"
+      }
+    },
+    {
+      "id": "F05",
+      "file": "F05-dark-coach-thread-503.png",
+      "sheetText": "Your coach\nAsk about today\n\nNothing here yet. Ask whatever's on your mind.\n\nAsk"
+    },
+    {
+      "id": "F06",
+      "file": "F06-dark-coach-pending.png",
+      "pending": {
+        "textareaDisabled": true,
+        "textareaValue": "",
+        "submitDisabled": true,
+        "busyCount": 0,
+        "sheetTail": "tainable threshold ceiling can sit\n\nThe often underappreciated point is that Z2 does most of this at very low recovery cost — which is why it can be stacked frequently through a training week without accumulating the fatigue that harder sessions do.\n\n13:32\nAsk"
+      }
+    },
+    {
+      "id": "F07",
+      "file": "F07-dark-more-menu.png",
+      "items": [
+        {
+          "text": "",
+          "href": null,
+          "h": 44,
+          "w": 44
+        },
+        {
+          "text": "Reviews\nWeekly & monthly summaries",
+          "href": "/reviews",
+          "h": 62,
+          "w": 350
+        },
+        {
+          "text": "Trends\nLong-range charts and history",
+          "href": "/trends",
+          "h": 62,
+          "w": 350
+        },
+        {
+          "text": "Holiday\nPause your plan while away",
+          "href": "/holiday",
+          "h": 62,
+          "w": 350
+        },
+        {
+          "text": "New training block\nGenerate a new 13-wee",
+          "href": "/builder",
+          "h": 62,
+          "w": 350
+        },
+        {
+          "text": "Experiments\nWhat we're testing",
+          "href": "/experiments",
+          "h": 62,
+          "w": 350
+        },
+        {
+          "text": "Coach memory\nWhat your coach remembers",
+          "href": "/coach-state",
+          "h": 62,
+          "w": 350
+        },
+        {
+          "text": "Handover\nFull briefing for a new AI chat",
+          "href": "/handover",
+          "h": 62,
+          "w": 350
+        },
+        {
+          "text": "Settings",
+          "href": "/settings",
+          "h": 46,
+          "w": 350
+        }
+      ]
+    },
+    {
+      "id": "F08",
+      "file": "F08-dark-desktop-coach.png",
+      "launcher": {
+        "found": true,
+        "ariaLabel": "Ask about today",
+        "dot": false,
+        "w": 48,
+        "h": 48,
+        "x": -16,
+        "y": 1852
+      },
+      "thread": {
+        "ok": true,
+        "found": true,
+        "messages": 60,
+        "separators": 11,
+        "scrollTop": 0,
+        "scrollHeight": 12320,
+        "clientHeight": 414,
+        "pxBelowFold": 11906,
+        "firstText": "I am now thinking 2 x 15 min sweet spot intervals may be a better \"bridge\" vs originally s",
+        "firstDay": "Thursday, 23 July 2026",
+        "lastText": "Given today was a textbook execution, here's what it actually delivered:\n\nWhat this specif"
+      }
+    }
+  ]
+}
