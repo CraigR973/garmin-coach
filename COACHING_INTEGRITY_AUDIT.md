@@ -1,17 +1,87 @@
 # Coaching-Integrity Audit — Garmin Coach
 
-**Original audit:** 2026-07-10 · **This refresh:** 2026-07-26 (Batch 155) ·
+**Original audit:** 2026-07-10 · **Refreshes:** 2026-07-26 (Batch 155),
+2026-08-06 (Batch 191) ·
 **Auditor lens:** exercise physiologist + cycling coach ·
-**Scope of refresh:** re-run the 2026-07-10 lenses against current code, audit the
-four new coaching-brain surfaces shipped since (Batches 148 / 150 / 151 / 152), and
-re-grade against real `coach`-schema reads for 2026-07-10 → 2026-07-26.
 **Status:** internal / candid — this document names the exact input-manipulation
-vectors. Not for Mark. (A Mark-safe scorecard is at
-`docs/reviews/BATCH_155_MARK_SCORECARD.md`.)
+vectors. Not for Mark. (Mark-safe scorecards:
+`docs/reviews/BATCH_155_MARK_SCORECARD.md`,
+`docs/reviews/BATCH_191_MARK_SCORECARD.md`.)
+
+**This file is the running framework and the 2026-07-10 baseline.** Each refresh
+adds a summary block here; the full report for a refresh lives in `docs/reviews/`.
+
+---
+
+## 2026-08-06 Refresh (Batch 191)
+
+**Full report:** `docs/reviews/BATCH_191_COACHING_INTEGRITY_REFRESH.md`
+(8 findings, `CI191-01…08`, 2 High / 5 Medium / 1 Low).
+
+**Grade: B+ (held) — for entirely different reasons.** Three of the four chronic
+gaps are closed, and closed *in the wild*: **F2** closed (the Batch 167 load cap
+fired for real on 07-29 at ACWR 1.61 / 1502 min recovery, Green → Amber), **F4**
+closed (the Batch 170 stacking rule fired on 07-31, Amber → Red on a night whose
+sleep score was 76), **F3** closed (the credit ceiling holds a credited 74 at
+Amber unless HRV, RHR, readiness and the check-in all corroborate). **F1** is
+anchored and the anchor is load-bearing on **12 of 12** mornings — Mark's own
+84-day readiness median is **50** (Q1 28, Q3 61), so `readinessEffectiveFloor` was
+the absolute 60 on every morning rather than his personal centre (50.0–53.5).
+**F5** closed for the exception paths (absence is neutral, never positive
+evidence). **F8 stays RESOLVED** — no narrative softening on any non-Green
+morning. **F9 / R155-C / R155-D shipped** — learned context capped at 12 items /
+365 days, corrections at 5 / 45 days, and `ANTI_SYCOPHANCY_RULE` is now in the
+chat's floors.
+
+**The new gap (CI191-01, High) inverts a property the original audit credited.**
+The audit's second pillar was that the one gate-relevant input Mark can edit "can
+only ever *harden* the light, never soften it." Still true of the daily light;
+**no longer true of the structural rail.** Batch 182's Red qualification lets a
+matching phrase in Mark's own check-in text remove a Red from the chronic cluster
+— unconditionally, uncapped, undecaying, with no requirement that the physiology
+agree. Observed live: 08-01 → 08-04 the packet carried
+`chronicAction.triggered=true, redMorningCount=2` and a seven-day deload whose
+first four sessions Mark approved and pushed; on 08-05, the first morning after
+Batch 182 deployed, both Reds became `explained_by_check_in`
+(07-31 `training_load`, 08-01 `alcohol`), `redMorningCount` fell 2 → 0 and the
+escalation switched off. 08-01's resting HR was 48 against its own ceiling of 45 —
+only the word removed it. The `training_load` tag is the sharpest edge: it excuses
+a Red *because* Mark named cumulative load, which is the signature the deload path
+exists to catch.
+
+**The second High (CI191-02) is structural.** `daily_metrics` holds one mutable
+row per day, overwritten by the evening sync (`recorded_at_utc` 19:00–21:30 on 12
+of 14 days), while the verdict was computed at wake. The packet's readiness
+exceeds the surviving row on 11 of 18 mornings and its recovery clock is lower on
+12 of 18 — directionally, not randomly. 07-30: packet `MODERATE`/64 with 943 min;
+the row now reads `POOR`/**19** with **3233** min. Everything retrospective — the
+Red qualification's `recovery_time_min`, the 84-day baselines the floors key off,
+the trend alarm, the chronic misses — reads the evening value. Stored verdicts are
+mutable too (07-05: `Amber@07:23 → Green@22:03`) and `_recent_verdicts` counts the
+latest.
+
+**The spoken layer has not undermined the deterministic one — largely because it
+has barely spoken.** `state_change_coach`: **0** turns ever. Scheduled
+`weekly_review`: newest row 2026-06-29 (Batch 185's first Sunday is 08-09). 41
+user chat turns, **0** sycophancy attempts. The one exchange touching a
+deterministic ceiling (07-29) quoted the app's own canonical figure but framed the
+cap as "not a sign your body is struggling" — and nothing in the chat's floors
+forbids that, because **none of the five deterministic protections shipped since
+Batch 155 is in `coach_policy.FLOORS`** (CI191-04).
+
+**Verdict distribution:** 48% → 71% → **75%** Green across the three audit
+windows. On this window's evidence that is physiology improving, not the gate
+loosening — but it is the number to watch.
+
+**Closing CI191-01 and CI191-02 is what now moves this to A−.**
 
 ---
 
 ## 2026-07-26 Refresh (Batch 155)
+
+**Scope:** re-ran the 2026-07-10 lenses against the code as it then stood, audited
+the four coaching-brain surfaces shipped since (Batches 148 / 150 / 151 / 152), and
+re-graded against real `coach`-schema reads for 2026-07-10 → 2026-07-26.
 
 ### Refresh bottom line
 
