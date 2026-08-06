@@ -111,7 +111,7 @@ review-local placeholders; they do not allocate ledger batch numbers.
 | Busy affordance still present at capture | **0 of 30** |
 | Light-mode AA text failures | **75 nodes across 13 of 15 routes** |
 | Dark-mode AA text failures | **0 across all 15 routes** |
-| Cold time-to-content, median / worst | **6.9 s / 34.2 s** (`/brief`, dark) |
+| Cold time-to-content, median / worst | **7.4 s / 34.2 s** (`/brief`, dark) |
 
 ## Ranked findings
 
@@ -428,7 +428,7 @@ brief. These are the two highest-frequency touch targets in the app.
 
 - `GET /api/v1/daily-loop` measured directly against production: **5.4 s,
   275,530 bytes**. By comparison `/api/v1/coach-memory` is 1.2 s / 113 KB.
-- Cold time-to-content across 30 captures: median **6.9 s**, worst **34.2 s**
+- Cold time-to-content across 30 captures: median **7.4 s**, worst **34.2 s**
   (`/brief`, dark — the only capture that did not settle inside the 25 s budget;
   the same route in light settled in 10.0 s, so the outlier is variance in that
   one request, not a stuck state).
