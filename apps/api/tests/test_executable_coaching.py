@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from src.models.coaching import (
@@ -22,6 +22,7 @@ from src.models.profile import Profile, UserRole
 from src.services.executable_coaching import (
     AUDIT_TYPE_DELIVERED,
     AUDIT_TYPE_MOVED,
+    AUDIT_TYPE_PROPOSAL_EXPIRED,
     AUDIT_TYPE_PROPOSED,
     AUDIT_TYPE_PUSH_BLOCKED,
     AUDIT_TYPE_PUSHED,
@@ -671,6 +672,125 @@ async def test_chronic_deload_ignores_inactive_or_rearrange_signal(
 
         assert created == []
         assert (await session.execute(select(WorkoutDeliveryProposal))).scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_cleared_chronic_action_expires_only_undecided_future_offers(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    subject = date(2026, 8, 5)
+    await _seed_profile(db_conn, user_id)
+
+    def chronic_proposal(
+        *,
+        workout_date: date,
+        status: str = "proposed",
+        origin: str = "chronic_deload",
+        event_id: str | None = None,
+    ) -> WorkoutDeliveryProposal:
+        proposal = _proposal(
+            user_id,
+            workout_date=workout_date,
+            status=status,
+            approved=status != "proposed",
+        )
+        proposal.structured_workout_ir = {
+            "origin": origin,
+            "adjustment": {
+                "changed": True,
+                "reason": "sustained_recovery_strain",
+            },
+        }
+        proposal.intervals_event_id = event_id
+        if status == "pushed":
+            proposal.pushed_at_utc = datetime(2026, 8, 2, 8, 0)
+        return proposal
+
+    expires_today = chronic_proposal(workout_date=subject)
+    expires_future = chronic_proposal(workout_date=subject + timedelta(days=3))
+    acute_offer = chronic_proposal(
+        workout_date=subject + timedelta(days=1), origin="red_substitution"
+    )
+    approved = chronic_proposal(workout_date=subject + timedelta(days=2), status="approved")
+    pushed = chronic_proposal(
+        workout_date=subject + timedelta(days=3),
+        status="pushed",
+        event_id="evt_stays",
+    )
+    past = chronic_proposal(workout_date=subject - timedelta(days=1))
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add_all([expires_today, expires_future, acute_offer, approved, pushed, past])
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        analysis = Analysis(
+            user_id=user_id,
+            analysis_type="morning",
+            subject_date=subject,
+            generated_at_utc=datetime(2026, 8, 5, 7, 0),
+            prompt_version="morning-analysis-v28-test",
+            verdict="Green",
+            context_packet={
+                "verdict": {
+                    "status": "Green",
+                    "chronicAction": {
+                        "triggered": False,
+                        "kind": "deload_proposal",
+                        "verdictImpact": "none",
+                    },
+                }
+            },
+            output_markdown="The chronic action has cleared.",
+            raw_response={},
+        )
+        service = ExecutableCoachingService(session)
+
+        created = await service.propose_chronic_deload(user, subject, analysis=analysis)
+
+        assert created == []
+        expected_statuses = {
+            expires_today.id: STATUS_DELETED,
+            expires_future.id: STATUS_DELETED,
+            acute_offer.id: "proposed",
+            approved.id: "approved",
+            pushed.id: STATUS_PUSHED,
+            past.id: "proposed",
+        }
+        for proposal_id, expected_status in expected_statuses.items():
+            proposal = await session.get(WorkoutDeliveryProposal, proposal_id)
+            assert proposal is not None and proposal.status == expected_status
+        refreshed_pushed = await session.get(WorkoutDeliveryProposal, pushed.id)
+        assert refreshed_pushed is not None
+        assert refreshed_pushed.intervals_event_id == "evt_stays"
+
+        audits = (
+            (
+                await session.execute(
+                    select(Analysis).where(Analysis.analysis_type == AUDIT_TYPE_PROPOSAL_EXPIRED)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert {audit.context_packet["proposalId"] for audit in audits} == {
+            str(expires_today.id),
+            str(expires_future.id),
+        }
+        assert all(audit.context_packet["reason"] == "chronic_action_cleared" for audit in audits)
+        assert all(audit.context_packet["status"] == STATUS_DELETED for audit in audits)
+
+        again = await service.propose_chronic_deload(user, subject, analysis=analysis)
+        assert again == []
+        audit_count = await session.scalar(
+            select(func.count(Analysis.id)).where(
+                Analysis.analysis_type == AUDIT_TYPE_PROPOSAL_EXPIRED
+            )
+        )
+        assert audit_count == 2
 
 
 def _proposal(

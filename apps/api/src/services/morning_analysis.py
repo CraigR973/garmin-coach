@@ -133,7 +133,7 @@ from src.services.workout_delivery import build_structured_workout_ir
 # Batch 182: Red mornings are qualified by same-day physiology/check-in context,
 # short clusters can only rearrange the week, and a planned recovery-class block
 # suppresses a redundant deload.
-PROMPT_VERSION = "morning-analysis-v27-2026-08-04"
+PROMPT_VERSION = "morning-analysis-v28-2026-08-15"
 ANALYSIS_TYPE = "morning"
 # Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
 # signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
@@ -196,9 +196,12 @@ subjective check-ins are neutral only: never describe absent data as proof that
 recovery is clean.
 verdict.chronicAction is a deterministic structural-action signal, not a colour
 rule. Its redMorningQualifications state which Red mornings count and which were
-excluded because the persisted check-in named an acute cause or heavy recovery
-debt sat beside intact HRV/RHR. When kind is `rearrange_proposal`, explain the
-offered hard-for-easy swap and never call it a deload. When kind is
+excluded. A training-load or deliberate-rest check-in is endogenous evidence and
+always counts; an acute alcohol/illness/travel explanation is bounded by the
+packet's age/cap fields and cannot override strained HRV or resting HR. Heavy
+recovery debt excludes a Red only when HRV/RHR are intact. Explain the recorded
+qualification without arguing it down. When kind is `rearrange_proposal`, explain
+the offered hard-for-easy swap and never call it a deload. When kind is
 `deload_proposal`, state that the listed sustained marker evidence — not merely a
 pair of Reds — caused the seven-day proposal. When suppressedByPlan is true,
 state that the scheduled recovery/taper/consolidation block already handles the

@@ -60,6 +60,7 @@ from src.services.workout_categories import category_for_workout_type
 from src.services.workout_completion import WORKOUT_STATUS_COMPLETED
 from src.services.workout_delivery import (
     STATUS_APPROVED,
+    STATUS_DELETED,
     STATUS_FAILED,
     STATUS_PROPOSED,
     STATUS_PUSHED,
@@ -78,6 +79,7 @@ PROMPT_VERSION = "executable-coaching:v1"
 AUDIT_TYPE_PROPOSED = "workout_proposed"
 AUDIT_TYPE_PUSHED = "workout_pushed"
 AUDIT_TYPE_PUSH_BLOCKED = "workout_push_blocked"
+AUDIT_TYPE_PROPOSAL_EXPIRED = "workout_proposal_expired"
 # Batch 29 push-on-plan-set + Today-card action audit types (analyses rows).
 AUDIT_TYPE_DELIVERED = "workout_delivered"
 AUDIT_TYPE_REPLACED = "workout_replaced"
@@ -268,16 +270,31 @@ class ExecutableCoachingService:
         analysis verdict. Existing pending or acted-on coach adjustments win, so
         an acute Amber/Red regeneration is never overwritten. Audit tags make the
         pass idempotent while an ignored proposal remains visible on its workout.
+        When the current packet withdraws or replaces the deload signal, pending
+        chronic-origin offers expire with an audit row. Approved/failed/pushed
+        sessions are decisions already made and are never retracted here.
         """
 
         packet = analysis.context_packet if isinstance(analysis.context_packet, dict) else {}
         verdict_packet = packet.get("verdict")
         action = verdict_packet.get("chronicAction") if isinstance(verdict_packet, dict) else None
-        if (
-            not isinstance(action, dict)
-            or action.get("triggered") is not True
-            or action.get("kind") != "deload_proposal"
-        ):
+        if not isinstance(action, dict):
+            return []
+
+        active_deload = action.get("triggered") is True and action.get("kind") == "deload_proposal"
+        if not active_deload:
+            reason = (
+                "chronic_action_cleared"
+                if action.get("triggered") is not True
+                else "chronic_action_changed"
+            )
+            await self._expire_pending_chronic_deloads(
+                player,
+                subject_date=subject_date,
+                reason=reason,
+            )
+            if commit:
+                await self.session.commit()
             return []
 
         end_date = subject_date + timedelta(days=CHRONIC_DELOAD_WINDOW_DAYS - 1)
@@ -333,6 +350,81 @@ class ExecutableCoachingService:
         if commit:
             await self.session.commit()
         return created
+
+    async def _expire_pending_chronic_deloads(
+        self,
+        player: Profile,
+        *,
+        subject_date: date,
+        reason: str,
+    ) -> list[WorkoutDeliveryProposal]:
+        """Expire future undecided offers whose chronic evidence no longer holds.
+
+        ``status='proposed'`` and no event id is the durable definition of an
+        undecided offer. Any approved, failed, or pushed proposal stays untouched,
+        as does an inconsistent row that already points at a cloud event.
+        """
+
+        pending = (
+            (
+                await self.session.execute(
+                    select(WorkoutDeliveryProposal)
+                    .where(
+                        WorkoutDeliveryProposal.user_id == player.id,
+                        WorkoutDeliveryProposal.status == STATUS_PROPOSED,
+                        WorkoutDeliveryProposal.workout_date >= subject_date,
+                    )
+                    .order_by(WorkoutDeliveryProposal.workout_date.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        expired: list[WorkoutDeliveryProposal] = []
+        for proposal in pending:
+            ir = (
+                proposal.structured_workout_ir
+                if isinstance(proposal.structured_workout_ir, dict)
+                else {}
+            )
+            if ir.get("origin") != "chronic_deload" or proposal.intervals_event_id is not None:
+                continue
+            tag = _chronic_deload_expired_tag(proposal)
+            if await self._already_recorded(
+                player.id,
+                AUDIT_TYPE_PROPOSAL_EXPIRED,
+                tag,
+                proposal.workout_date,
+            ):
+                continue
+            proposal.status = STATUS_DELETED
+            proposal.last_error = None
+            self._record_delivery_audit(
+                player,
+                proposal,
+                analysis_type=AUDIT_TYPE_PROPOSAL_EXPIRED,
+                tag=tag,
+                subject_date=proposal.workout_date,
+                verdict=None,
+                reason=reason,
+                summary=(
+                    f"Expired undecided chronic-deload proposal for "
+                    f"{proposal.workout_date.isoformat()}: the current morning packet "
+                    "no longer supports that deload."
+                ),
+            )
+            expired.append(proposal)
+
+        if expired:
+            await self.session.flush()
+            log.info(
+                "expired chronic deload proposals",
+                profile_id=str(player.id),
+                subject_date=subject_date.isoformat(),
+                reason=reason,
+                proposal_count=len(expired),
+            )
+        return expired
 
     async def regenerate_after_morning_checkin(
         self,
@@ -1368,12 +1460,29 @@ class ExecutableCoachingService:
         subject_date: date,
         verdict: str | None,
         summary: str,
+        reason: str | None = None,
     ) -> None:
         ir = (
             proposal.structured_workout_ir
             if isinstance(proposal.structured_workout_ir, dict)
             else {}
         )
+        context_packet = {
+            "tag": tag,
+            "proposalId": str(proposal.id),
+            "plannedWorkoutId": (
+                str(proposal.planned_workout_id) if proposal.planned_workout_id else None
+            ),
+            "plannedWorkoutVersion": proposal.planned_workout_version,
+            "workoutDate": proposal.workout_date.isoformat(),
+            "status": proposal.status,
+            "provider": proposal.provider,
+            "origin": ir.get("origin"),
+            "adjustment": ir.get("adjustment"),
+            "intervalsEventId": proposal.intervals_event_id,
+        }
+        if reason is not None:
+            context_packet["reason"] = reason
         self.session.add(
             Analysis(
                 user_id=player.id,
@@ -1384,20 +1493,7 @@ class ExecutableCoachingService:
                 prompt_version=PROMPT_VERSION,
                 model_name=None,
                 verdict=verdict,
-                context_packet={
-                    "tag": tag,
-                    "proposalId": str(proposal.id),
-                    "plannedWorkoutId": (
-                        str(proposal.planned_workout_id) if proposal.planned_workout_id else None
-                    ),
-                    "plannedWorkoutVersion": proposal.planned_workout_version,
-                    "workoutDate": proposal.workout_date.isoformat(),
-                    "status": proposal.status,
-                    "provider": proposal.provider,
-                    "origin": ir.get("origin"),
-                    "adjustment": ir.get("adjustment"),
-                    "intervalsEventId": proposal.intervals_event_id,
-                },
+                context_packet=context_packet,
                 output_markdown=summary,
                 raw_response={},
             )
@@ -1589,6 +1685,10 @@ def _regen_tag(workout: PlannedWorkout, verdict: str) -> str:
 
 def _chronic_deload_tag(workout: PlannedWorkout) -> str:
     return f"chronic-deload:{workout.id}:v{workout.version}"
+
+
+def _chronic_deload_expired_tag(proposal: WorkoutDeliveryProposal) -> str:
+    return f"chronic-deload-expired:{proposal.id}"
 
 
 def _push_tag(proposal: WorkoutDeliveryProposal) -> str:

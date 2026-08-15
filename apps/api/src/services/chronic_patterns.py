@@ -47,9 +47,14 @@ CHRONIC_ACTION_RED_WINDOW_DAYS = 7
 CHRONIC_ACTION_RED_THRESHOLD = 2
 CHRONIC_DELOAD_WINDOW_DAYS = 7
 RECOVERY_DEBT_EXPLAINED_MIN = 24 * 60
+ACUTE_RED_EXCLUSION_LIMIT = 1
+ACUTE_RED_EXCLUSION_MAX_AGE_DAYS = 2
 
 _PLANNED_RECOVERY_BLOCK_TYPES = frozenset({"recovery", "taper", "consolidation"})
 _HEALTHY_HRV_STATES = frozenset({"balanced", "stable", "optimal", "normal"})
+
+_ACUTE_EXOGENOUS_CHECK_IN_CAUSES = frozenset({"alcohol", "illness", "travel"})
+_ENDOGENOUS_TRAINING_CHECK_IN_CAUSES = frozenset({"deliberate_rest", "training_load"})
 
 _CHECK_IN_CAUSE_PATTERNS: dict[str, tuple[str, ...]] = {
     "alcohol": (
@@ -180,6 +185,7 @@ class RedMorningQualification:
 
     def to_packet(self) -> dict[str, Any]:
         evidence = self.evidence
+        check_in_reasons = evidence.check_in_reasons if evidence else ()
         return {
             "date": self.calendar_date.isoformat(),
             "countsTowardCluster": self.counts_toward_cluster,
@@ -194,7 +200,15 @@ class RedMorningQualification:
                 "restingHeartRateBpm": (evidence.resting_heart_rate_bpm if evidence else None),
                 "restingHrCeilingBpm": (evidence.resting_hr_ceiling_bpm if evidence else None),
             },
-            "checkInReasons": list(evidence.check_in_reasons) if evidence else [],
+            "checkInReasons": list(check_in_reasons),
+            "acuteExogenousReasons": [
+                reason for reason in check_in_reasons if reason in _ACUTE_EXOGENOUS_CHECK_IN_CAUSES
+            ],
+            "endogenousTrainingReasons": [
+                reason
+                for reason in check_in_reasons
+                if reason in _ENDOGENOUS_TRAINING_CHECK_IN_CAUSES
+            ],
         }
 
 
@@ -256,6 +270,8 @@ class ChronicActionSignal:
             "redMorningObservedCount": self.red_morning_observed_count,
             "redMorningThreshold": CHRONIC_ACTION_RED_THRESHOLD,
             "redMorningWindowDays": CHRONIC_ACTION_RED_WINDOW_DAYS,
+            "acuteRedExclusionLimit": ACUTE_RED_EXCLUSION_LIMIT,
+            "acuteRedExclusionMaxAgeDays": ACUTE_RED_EXCLUSION_MAX_AGE_DAYS,
             "redMorningQualifications": [
                 item.to_packet() for item in self.red_morning_qualifications
             ],
@@ -1051,7 +1067,22 @@ def _chronic_action_signal(
         for day, verdict in sorted(latest_by_date.items())
         if (verdict or "").strip().lower() == "red"
     ]
-    qualifications = tuple(_qualify_red_morning(day, evidence_by_date.get(day)) for day in red_days)
+    # Acute check-in explanations are a bounded exception, never a permanent
+    # veto. Work newest-first so the one available exclusion belongs to the most
+    # recent still-live explanation; return the evidence in chronological order.
+    acute_exclusions_remaining = ACUTE_RED_EXCLUSION_LIMIT
+    qualifications_by_date: dict[date, RedMorningQualification] = {}
+    for day in reversed(red_days):
+        qualification = _qualify_red_morning(
+            day,
+            evidence_by_date.get(day),
+            as_of=as_of,
+            allow_acute_exclusion=acute_exclusions_remaining > 0,
+        )
+        qualifications_by_date[day] = qualification
+        if qualification.classification == "explained_by_acute_check_in":
+            acute_exclusions_remaining -= 1
+    qualifications = tuple(qualifications_by_date[day] for day in red_days)
     red_count = sum(1 for item in qualifications if item.counts_toward_cluster)
 
     trigger_sources: list[str] = []
@@ -1099,7 +1130,11 @@ def _chronic_action_signal(
 
 
 def _qualify_red_morning(
-    calendar_date: date, evidence: RedDayEvidence | None
+    calendar_date: date,
+    evidence: RedDayEvidence | None,
+    *,
+    as_of: date,
+    allow_acute_exclusion: bool,
 ) -> RedMorningQualification:
     if evidence is None:
         return RedMorningQualification(
@@ -1110,16 +1145,71 @@ def _qualify_red_morning(
             evidence=None,
         )
 
-    if evidence.check_in_reasons:
+    acute_reasons = tuple(
+        reason for reason in evidence.check_in_reasons if reason in _ACUTE_EXOGENOUS_CHECK_IN_CAUSES
+    )
+    endogenous_reasons = tuple(
+        reason
+        for reason in evidence.check_in_reasons
+        if reason in _ENDOGENOUS_TRAINING_CHECK_IN_CAUSES
+    )
+
+    hrv_status = str(evidence.hrv_status or "").strip().lower()
+    hrv_crashed = evidence.hrv_ms is not None and (
+        (evidence.hrv_floor_ms is not None and float(evidence.hrv_ms) < evidence.hrv_floor_ms)
+        or hrv_status in {"unbalanced", "low", "poor"}
+    )
+    resting_hr_crashed = (
+        evidence.resting_heart_rate_bpm is not None
+        and evidence.resting_hr_ceiling_bpm is not None
+        and float(evidence.resting_heart_rate_bpm) > evidence.resting_hr_ceiling_bpm
+    )
+
+    # Training load and deliberate recovery are the structural rail's signal,
+    # not an acute excuse for suppressing it. If both acute and endogenous tags
+    # are present, the endogenous signal wins.
+    if endogenous_reasons:
+        return RedMorningQualification(
+            calendar_date=calendar_date,
+            counts_toward_cluster=True,
+            classification="endogenous_training_signal",
+            explanation_sources=("morning_check_in", "endogenous_training_signal"),
+            evidence=evidence,
+        )
+
+    if acute_reasons:
+        if hrv_crashed or resting_hr_crashed:
+            return RedMorningQualification(
+                calendar_date=calendar_date,
+                counts_toward_cluster=True,
+                classification="acute_cause_with_systemic_strain",
+                explanation_sources=("morning_check_in", "strained_physiology"),
+                evidence=evidence,
+            )
+        if (as_of - calendar_date).days > ACUTE_RED_EXCLUSION_MAX_AGE_DAYS:
+            return RedMorningQualification(
+                calendar_date=calendar_date,
+                counts_toward_cluster=True,
+                classification="acute_check_in_expired",
+                explanation_sources=("morning_check_in", "exclusion_expired"),
+                evidence=evidence,
+            )
+        if not allow_acute_exclusion:
+            return RedMorningQualification(
+                calendar_date=calendar_date,
+                counts_toward_cluster=True,
+                classification="acute_exclusion_cap_reached",
+                explanation_sources=("morning_check_in", "exclusion_cap"),
+                evidence=evidence,
+            )
         return RedMorningQualification(
             calendar_date=calendar_date,
             counts_toward_cluster=False,
-            classification="explained_by_check_in",
+            classification="explained_by_acute_check_in",
             explanation_sources=("morning_check_in",),
             evidence=evidence,
         )
 
-    hrv_status = str(evidence.hrv_status or "").strip().lower()
     hrv_not_below_floor = evidence.hrv_ms is not None and (
         evidence.hrv_floor_ms is None or float(evidence.hrv_ms) >= evidence.hrv_floor_ms
     )
@@ -1142,15 +1232,6 @@ def _qualify_red_morning(
             evidence=evidence,
         )
 
-    hrv_crashed = evidence.hrv_ms is not None and (
-        (evidence.hrv_floor_ms is not None and float(evidence.hrv_ms) < evidence.hrv_floor_ms)
-        or hrv_status in {"unbalanced", "low", "poor"}
-    )
-    resting_hr_crashed = (
-        evidence.resting_heart_rate_bpm is not None
-        and evidence.resting_hr_ceiling_bpm is not None
-        and float(evidence.resting_heart_rate_bpm) > evidence.resting_hr_ceiling_bpm
-    )
     classification = (
         "systemic_markers_strained" if hrv_crashed or resting_hr_crashed else "unexplained_red"
     )
