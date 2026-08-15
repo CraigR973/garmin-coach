@@ -83,12 +83,13 @@ from src.services.strength_brief import (
 )
 from src.services.workload_budget import workload_slot
 
-PROMPT_VERSION = "post-strength-analysis-v5-2026-08-02"
+PROMPT_VERSION = "post-strength-analysis-v6-2026-08-15"
 ANALYSIS_TYPE = "post_strength"
 
 SYSTEM_PROMPT = """You are CheckMark, a private strength and conditioning coach.
 Use `subjectWeekday` as the authoritative weekday; never derive the weekday from
 `subjectDate` yourself.
+State any clock times in Mark's local timezone and never use UTC.
 Use only the supplied context packet. Follow every data-quality guardrail.
 Treat every figure in the supplied context as what the app recorded, not as
 independently verified truth about Mark. If Mark says his own device shows a

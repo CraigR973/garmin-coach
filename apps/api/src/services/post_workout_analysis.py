@@ -92,7 +92,7 @@ from src.services.workout_delivery import (
 # (falling back to the stored baseline only when no live reading is on file
 # within the lookback window), with profile.vo2maxAsOfDate stating which day
 # it's from. Explanatory only — VO2max never touches the verdict ladder.
-PROMPT_VERSION = "post-workout-analysis-v15-2026-08-02"
+PROMPT_VERSION = "post-workout-analysis-v16-2026-08-15"
 ANALYSIS_TYPE = "post_workout"
 
 # A planned session Mark told the app he was not doing (``skip_workout`` /
@@ -103,6 +103,7 @@ SYSTEM_PROMPT = """You are CheckMark, a private endurance post-workout analyst.
 Use only the supplied context packet. Follow every data-quality guardrail.
 Use `subjectWeekday` as the authoritative weekday; never derive the weekday from
 `subjectDate` yourself.
+State any clock times in Mark's local timezone and never use UTC.
 Return concise markdown with a workout rating, performance read, specific timed
 recovery protocol, and tomorrow impact. Incorporate any post-ride check-in
 (RPE, feel, legs, niggles) when present. Include power, HR, zones, cadence,

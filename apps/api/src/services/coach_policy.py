@@ -24,6 +24,16 @@ in a batch whose whole subject is the conversation surface. So:
   if a floor a read already states is later dropped or reworded away from the
   canonical sentence.
 
+The audit boundary is deliberate. ``brief_chat`` calls the model but composes
+every floor below directly, so it is checked by composition rather than by
+recognising paraphrases. ``conversation_learning`` also calls the model, but its
+output is non-user-facing, schema-bounded, deterministically filtered, and held
+for explicit confirmation before it can enter memory. The deterministic speech
+in ``state_change_coach`` and ``nudge_alerts`` does not call a model at all: those
+modules render fixed templates and are covered by their own output tests, not by
+a prompt audit. Keeping those dispositions beside the registry stops a grep for
+version constants being mistaken for a list of unaudited prompts.
+
 Nothing here can move the deterministic Green/Amber/Red ladder. These are
 constraints on what the coach may *say*; the verdict is computed elsewhere and
 the model never owns it.
@@ -75,28 +85,67 @@ class Floor:
     key: str
     sentence: str
     pattern: re.Pattern[str]
+    negative_control: str
+
+
+_CLAUSE = r"[^.;:]{0,240}"
+
+
+def _same_clause_pattern(*requirements: str) -> re.Pattern[str]:
+    """Require all semantic fragments inside one clause.
+
+    Topic adjacency is not a rule: ``Red`` and ``VO2`` appearing near each
+    other says nothing about whether VO2 is prohibited. Each requirement is a
+    regex fragment and all of them must occur before the next clause boundary.
+    """
+
+    assertions = "".join(rf"(?={_CLAUSE}{requirement})" for requirement in requirements)
+    return re.compile(assertions + _CLAUSE, re.IGNORECASE)
 
 
 FLOORS: tuple[Floor, ...] = (
     Floor(
         key="never_vo2_on_red",
         sentence="never recommend VO2 on a Red day",
-        pattern=re.compile(r"vo2[^.]{0,60}red|red[^.]{0,60}vo2", re.IGNORECASE | re.DOTALL),
+        pattern=_same_clause_pattern(
+            r"\bvo2\b",
+            r"\bred\b",
+            r"\b(?:never|do not|don't|must not|cannot|can't)\s+"
+            r"(?:recommend|keep|prescribe|allow|retain)\b",
+        ),
+        negative_control="On a Red day, VO2 intervals are absolutely fine.",
     ),
     Floor(
         key="no_power_balance",
         sentence="never reference left/right power balance",
-        pattern=re.compile(r"left/right power balance", re.IGNORECASE),
+        pattern=_same_clause_pattern(
+            r"\bleft/right power balance\b",
+            r"\b(?:never|do not|don't|must not|cannot|can't)\s+"
+            r"(?:mention|reference|use|discuss)\b",
+        ),
+        negative_control="Use left/right power balance to judge the session.",
     ),
     Floor(
         key="local_clock_times",
         sentence="state any clock times in Mark's local timezone (never UTC)",
-        pattern=re.compile(r"local time|local timezone|never utc", re.IGNORECASE),
+        pattern=re.compile(
+            r"(?=[^.]{0,220}\blocal (?:clock )?time(?:zone)?\b)"
+            r"(?=[^.]{0,220}\b(?:never|do not|don't|must not)\b[^.]{0,60}\butc\b)"
+            r"[^.]{0,220}",
+            re.IGNORECASE,
+        ),
+        negative_control="State clock times in UTC rather than Mark's local time.",
     ),
     Floor(
         key="no_skipped_as_live",
         sentence="never narrate a skipped or holiday workout as if it were live training",
-        pattern=re.compile(r"skipped", re.IGNORECASE),
+        pattern=_same_clause_pattern(
+            r"\b(?:skipped|holiday)\b",
+            r"\b(?:live training|executed|completed)\b",
+            r"\b(?:never|do not|don't|must not|cannot|can't)\s+"
+            r"(?:narrate|credit|treat|describe|call)\b",
+        ),
+        negative_control="Narrate a skipped workout as completed live training.",
     ),
     Floor(
         key="recorded_data_honesty",
@@ -111,23 +160,114 @@ FLOORS: tuple[Floor, ...] = (
             r"what the app recorded.*own device.*better evidence.*deterministic",
             re.IGNORECASE | re.DOTALL,
         ),
+        negative_control=(
+            "Treat every app figure as independently verified truth even when Mark's own "
+            "device shows a different value."
+        ),
+    ),
+    Floor(
+        key="training_load_cap",
+        sentence=(
+            "explain verdict.trainingLoadCap when it applies and never soften or argue "
+            "down its deterministic ceiling"
+        ),
+        pattern=_same_clause_pattern(
+            r"\btrainingLoadCap\b",
+            r"\bnever\b[^.;:]{0,60}\b(?:soften|argue)\b",
+        ),
+        negative_control=(
+            "verdict.trainingLoadCap is conservative, so argue down its deterministic ceiling."
+        ),
+    ),
+    Floor(
+        key="sleep_credit_ceiling",
+        sentence=(
+            "explain verdict.sleepCreditCeiling when it applies and never soften or argue "
+            "down its deterministic ceiling"
+        ),
+        pattern=_same_clause_pattern(
+            r"\bsleepCreditCeiling\b",
+            r"\bnever\b[^.;:]{0,60}\b(?:soften|argue)\b",
+        ),
+        negative_control=("verdict.sleepCreditCeiling is only guidance and may be argued down."),
+    ),
+    Floor(
+        key="cumulative_escalation",
+        sentence=(
+            "explain verdict.cumulativeEscalation when it applies and never soften or argue "
+            "down its deterministic escalation"
+        ),
+        pattern=_same_clause_pattern(
+            r"\bcumulativeEscalation\b",
+            r"\bnever\b[^.;:]{0,60}\b(?:soften|argue)\b",
+        ),
+        negative_control=("verdict.cumulativeEscalation can be softened when the session matters."),
+    ),
+    Floor(
+        key="readiness_baseline_trend",
+        sentence=(
+            "explain verdict.readinessBaselineTrend when it triggers and never hide, soften, "
+            "or argue down its deterministic warning"
+        ),
+        pattern=_same_clause_pattern(
+            r"\breadinessBaselineTrend\b",
+            r"\bnever\b[^.;:]{0,60}\b(?:hide|soften|argue)\b",
+        ),
+        negative_control=(
+            "verdict.readinessBaselineTrend may be hidden when the recent trend looks temporary."
+        ),
+    ),
+    Floor(
+        key="chronic_action",
+        sentence=(
+            "explain verdict.chronicAction's recorded deterministic qualification and never "
+            "soften or argue it down"
+        ),
+        pattern=_same_clause_pattern(
+            r"\bchronicAction\b",
+            r"\bnever\b[^.;:]{0,60}\b(?:soften|argue)\b",
+        ),
+        negative_control=(
+            "verdict.chronicAction is optional context that the coach may argue down."
+        ),
     ),
 )
 
-#: Floors each user-facing CheckMark prompt is audited for. A surface is only
-#: listed against the floors it owns — the audit exists to catch a floor being
-#: dropped, not to force a walk read to talk about VO2 prescriptions.
+#: Anthropic-calling modules intentionally outside the read-prompt recogniser.
+#: The discovery test requires every other caller to appear in
+#: :data:`READ_PROMPT_FLOORS`, so adding a caller cannot silently skip the audit.
+PROMPT_FLOOR_AUDIT_EXEMPTIONS: dict[str, str] = {
+    # User-facing, but its prompt is composed directly from every Floor sentence.
+    "brief_chat": "composes the registry directly",
+    # Extracts held-for-confirmation memory; it never writes user-facing coaching.
+    "conversation_learning": "non-user-facing, filtered, confirm-before-apply extraction",
+}
+
+
+#: Floors each user-facing CheckMark prompt module is audited for. A surface is
+#: only listed against the floors it owns — the audit catches a stated floor
+#: being dropped without forcing a walk read to discuss VO2 prescriptions.
 READ_PROMPT_FLOORS: dict[str, tuple[str, ...]] = {
-    "morning": (
+    "morning_analysis": (
         "never_vo2_on_red",
         "no_power_balance",
+        "local_clock_times",
         "no_skipped_as_live",
         "recorded_data_honesty",
+        "training_load_cap",
+        "sleep_credit_ceiling",
+        "cumulative_escalation",
+        "readiness_baseline_trend",
+        "chronic_action",
     ),
-    "post_workout": ("no_power_balance", "recorded_data_honesty"),
-    "post_strength": ("recorded_data_honesty",),
-    "post_flexibility": ("recorded_data_honesty",),
-    "post_walk": ("recorded_data_honesty",),
+    "post_workout_analysis": (
+        "no_power_balance",
+        "local_clock_times",
+        "recorded_data_honesty",
+    ),
+    "post_strength_analysis": ("local_clock_times", "recorded_data_honesty"),
+    "post_flexibility_analysis": ("local_clock_times", "recorded_data_honesty"),
+    "post_walk_analysis": ("local_clock_times", "recorded_data_honesty"),
     "reviews": ("recorded_data_honesty",),
     "trends": ("recorded_data_honesty",),
     "handover": ("recorded_data_honesty",),

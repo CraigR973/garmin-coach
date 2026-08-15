@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, async_sessionmaker
 
-from src.models.coaching import Analysis, BriefMessage
+from src.models.coaching import Analysis, BriefMessage, PlannedWorkout
 from src.models.profile import Profile, UserRole
 from src.services.state_change_coach import (
     ANALYSIS_TYPE_STATE_CHANGE,
@@ -23,6 +23,10 @@ from src.services.state_change_coach import (
     _chronic_snapshot,
     choose_ranked_candidate,
     transition_candidate,
+)
+from tests.coaching_mutation_assertions import (
+    assert_no_coaching_mutation,
+    coaching_mutation_snapshot,
 )
 
 TODAY = date(2026, 8, 5)
@@ -171,11 +175,28 @@ async def test_transition_writes_one_replyable_assistant_turn(
             is_active=True,
         )
         session.add(player)
+        await session.flush()
+        session.add(
+            PlannedWorkout(
+                user_id=user_id,
+                workout_date=TODAY,
+                version=1,
+                title="Endurance ride",
+                workout_type="bike_endurance",
+                status="planned",
+                is_active=True,
+                planned_duration_min=60,
+                structured_workout={},
+                source="test",
+            )
+        )
         await session.commit()
+        before = await coaching_mutation_snapshot(session, user_id)
 
         service = FakeStateChangeCoachService(session, [candidate])
         first = await service.run(player, as_of=TODAY, now_utc=sent_at)
         second = await service.run(player, as_of=TODAY, now_utc=sent_at)
+        await assert_no_coaching_mutation(session, user_id, before)
 
         analysis_count = await session.scalar(
             select(func.count())
@@ -201,8 +222,6 @@ async def test_transition_writes_one_replyable_assistant_turn(
     assert first.analysis.context_packet["stateKey"] == "weekly_mix:vo2"
     assert first.analysis.context_packet["budgetSpend"] == "initial"
     assert first.analysis.context_packet["preemptedAnalysisId"] is None
-    assert first.analysis.context_packet["verdictImpact"] == "none"
-    assert first.analysis.context_packet["planMutation"] == "none"
     assert second.message_created is False
     assert second.reason == "budget_spent"
     assert analysis_count == 1

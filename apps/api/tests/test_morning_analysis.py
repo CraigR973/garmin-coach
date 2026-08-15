@@ -1274,7 +1274,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v28")
+    assert PROMPT_VERSION.startswith("morning-analysis-v29")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
@@ -1300,7 +1300,8 @@ def test_prompt_grounds_week_history_in_execution_not_nominal_schedule() -> None
 
 def test_prompt_treats_the_training_load_cap_as_deterministic() -> None:
     assert ">=1.5 triggers the deterministic high-load cap" in SYSTEM_PROMPT
-    assert "verdict.trainingLoadCap already records and" in SYSTEM_PROMPT
+    assert "When verdict.trainingLoadCap applies" in SYSTEM_PROMPT
+    assert "never soften or argue it down" in SYSTEM_PROMPT
     assert "model-controlled override" in SYSTEM_PROMPT
 
 
@@ -1312,8 +1313,10 @@ def test_prompt_keeps_batch_170_verdict_rules_deterministic() -> None:
 
 
 def test_prompt_treats_readiness_baseline_decline_as_warning_only() -> None:
-    assert "readinessBaselineTrend is a deterministic warning-only alarm" in SYSTEM_PROMPT
-    assert "It does not set the colour itself" in SYSTEM_PROMPT
+    assert "When verdict.readinessBaselineTrend triggers" in SYSTEM_PROMPT
+    assert "never hide, soften" in SYSTEM_PROMPT
+    assert "It does not set the" in SYSTEM_PROMPT
+    assert "colour itself" in SYSTEM_PROMPT
     assert "readinessEffectiveFloor" in SYSTEM_PROMPT
 
 

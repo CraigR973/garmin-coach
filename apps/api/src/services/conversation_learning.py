@@ -48,6 +48,7 @@ SOURCE_WINDOW_DAYS = 30
 MAX_SOURCES = 60
 MAX_CANDIDATES = 12
 MAX_STATEMENT_LENGTH = 500
+PROMPT_VERSION = "conversation-learning-v1-2026-08-15"
 
 KIND_FACT = "fact"
 KIND_PREFERENCE = "preference"
@@ -417,13 +418,18 @@ def _chat_source_date(message: BriefMessage, analysis: Analysis | None) -> date:
     return message.created_utc.date()
 
 
-def _fingerprint(candidate: ExtractedCandidate) -> str:
+def _fingerprint(
+    candidate: ExtractedCandidate,
+    *,
+    prompt_version: str = PROMPT_VERSION,
+) -> str:
     evidence_ids = sorted({evidence.source_id for evidence in candidate.evidence})
     payload = json.dumps(
         {
             "kind": candidate.kind,
             "statement": _normalise(candidate.statement),
             "evidence_ids": evidence_ids,
+            "prompt_version": prompt_version,
         },
         sort_keys=True,
     )
@@ -654,6 +660,7 @@ class ConversationLearningService:
                         "sourceDate": source.source_date.isoformat(),
                         "analysisId": str(source.analysis_id) if source.analysis_id else None,
                         "analysisType": source.analysis_type,
+                        "promptVersion": PROMPT_VERSION,
                         "quote": evidence.quote.strip(),
                     }
                 )

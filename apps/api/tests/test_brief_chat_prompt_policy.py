@@ -6,8 +6,11 @@ the contract that decides what Mark actually reads is checked on every local
 run, not only in CI.
 """
 
+import ast
 import uuid
 from datetime import date
+from importlib import import_module
+from pathlib import Path
 
 from src.services.brief_chat import (
     INTERNAL_VOCABULARY,
@@ -23,18 +26,17 @@ from src.services.brief_chat import (
 from src.services.chat_context import (
     APP_STATE_KEY,
     ORIGIN_KINDS,
+    TRENDS_MEANING,
     CoachOrigin,
+    _state_meaning,
     normalize_origin_kind,
 )
-from src.services.coach_policy import FLOORS, READ_PROMPT_FLOORS, missing_floors
-from src.services.handover import HANDOVER_SYSTEM_PROMPT
-from src.services.morning_analysis import SYSTEM_PROMPT as MORNING_PROMPT
-from src.services.post_flexibility_analysis import SYSTEM_PROMPT as FLEXIBILITY_PROMPT
-from src.services.post_strength_analysis import SYSTEM_PROMPT as STRENGTH_PROMPT
-from src.services.post_walk_analysis import SYSTEM_PROMPT as WALK_PROMPT
-from src.services.post_workout_analysis import SYSTEM_PROMPT as POST_WORKOUT_PROMPT
-from src.services.reviews import SYSTEM_PROMPT as REVIEWS_PROMPT
-from src.services.trends import TREND_SYSTEM_PROMPT
+from src.services.coach_policy import (
+    FLOORS,
+    PROMPT_FLOOR_AUDIT_EXEMPTIONS,
+    READ_PROMPT_FLOORS,
+    missing_floors,
+)
 
 #: The prompt is a wrapped literal, so a phrase can straddle a newline. Assert
 #: against whitespace-normalized text (the Batch 175 CI lesson).
@@ -45,6 +47,42 @@ WORKOUT_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
 
 def _flat(text: str) -> str:
     return " ".join(text.split())
+
+
+def _called_name(node: ast.Call) -> str | None:
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return None
+
+
+def _anthropic_calling_modules() -> set[str]:
+    """Discover prompt surfaces from their model-boundary calls, not a list."""
+
+    services_dir = Path(__file__).parents[1] / "src" / "services"
+    model_boundaries = {"generate_anthropic_text", "AnthropicReviewClient"}
+    discovered: set[str] = set()
+    for path in services_dir.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        if any(
+            _called_name(node) in model_boundaries
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+        ):
+            discovered.add(".".join(path.relative_to(services_dir).with_suffix("").parts))
+    return discovered
+
+
+def _system_prompt(module_name: str) -> str:
+    module = import_module(f"src.services.{module_name}")
+    candidates = [
+        value
+        for attribute in ("SYSTEM_PROMPT", "TREND_SYSTEM_PROMPT", "HANDOVER_SYSTEM_PROMPT")
+        if isinstance((value := getattr(module, attribute, None)), str)
+    ]
+    assert len(candidates) == 1, f"{module_name} must expose exactly one audited prompt"
+    return candidates[0]
 
 
 class _FakeAnalysis:
@@ -65,7 +103,7 @@ class _Date:
 
 def test_brief_chat_prompt_allows_labelled_general_science_lane() -> None:
     """Batch 175's lane survives Batch 179's rewrite of the surface."""
-    assert PROMPT_VERSION == "coach-chat-v7-2026-08-02"
+    assert PROMPT_VERSION == "coach-chat-v8-2026-08-15"
     assert "never invent his" in FLAT_PROMPT
     assert "You may answer general, non-personalized endurance-training science" in FLAT_PROMPT
     assert 'Label those answers with "General principle:"' in FLAT_PROMPT
@@ -173,21 +211,29 @@ def test_every_user_facing_read_prompt_states_the_floors_it_owns() -> None:
     — but a floor silently disappearing from any CheckMark output now fails here
     instead of reaching Mark.
     """
-    prompts = {
-        "morning": MORNING_PROMPT,
-        "post_workout": POST_WORKOUT_PROMPT,
-        "post_strength": STRENGTH_PROMPT,
-        "post_flexibility": FLEXIBILITY_PROMPT,
-        "post_walk": WALK_PROMPT,
-        "reviews": REVIEWS_PROMPT,
-        "trends": TREND_SYSTEM_PROMPT,
-        "handover": HANDOVER_SYSTEM_PROMPT,
-    }
-    assert prompts.keys() == READ_PROMPT_FLOORS.keys()
-    for name, prompt in prompts.items():
-        assert missing_floors(prompt, READ_PROMPT_FLOORS[name]) == ()
-    # And the audit is capable of failing.
-    assert missing_floors("nothing relevant here", ("never_vo2_on_red",)) == ("never_vo2_on_red",)
+    discovered = _anthropic_calling_modules()
+    assert discovered == set(READ_PROMPT_FLOORS) | set(PROMPT_FLOOR_AUDIT_EXEMPTIONS)
+    for module_name, owned_floors in READ_PROMPT_FLOORS.items():
+        assert missing_floors(_system_prompt(module_name), owned_floors) == ()
+
+
+def test_every_floor_rejects_an_inverted_negative_control() -> None:
+    """199.1/199.5: nearby nouns cannot make an inverted rule pass."""
+
+    for floor in FLOORS:
+        assert missing_floors(floor.sentence, (floor.key,)) == ()
+        assert missing_floors(floor.negative_control, (floor.key,)) == (floor.key,)
+
+
+def test_app_state_describes_records_without_claiming_independent_truth() -> None:
+    anchored = _state_meaning(anchored=True)
+    combined = f"{anchored} {TRENDS_MEANING}".casefold()
+
+    assert "app's latest record" in combined
+    assert "measured and stored by the app" in combined
+    assert "current truth" not in combined
+    assert "is evidence" not in combined
+    assert "independent proof" in combined
 
 
 def test_observed_data_corrections_do_not_soften_coaching_judgement() -> None:

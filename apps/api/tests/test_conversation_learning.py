@@ -21,10 +21,12 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile, UserRole
 from src.services.conversation_learning import (
+    PROMPT_VERSION,
     ConversationLearningClient,
     ConversationLearningService,
     ExtractionEnvelope,
     LearningSource,
+    _fingerprint,
     filter_candidates,
     parse_extraction_output,
 )
@@ -53,6 +55,26 @@ def _source(source_id: str, text: str) -> LearningSource:
         source_date=date(2026, 7, 24),
         text=text,
         occurred_at_utc=datetime(2026, 7, 24, 12, 0),
+    )
+
+
+def test_learning_fingerprint_is_prompt_versioned() -> None:
+    candidate = ExtractionEnvelope.model_validate(
+        {
+            "candidates": [
+                {
+                    "kind": "terminology",
+                    "statement": "Mark calls his blue bike the winter bike.",
+                    "destination": "learned_context",
+                    "evidence": [{"source_id": "chat:bike", "quote": "the winter bike"}],
+                }
+            ]
+        }
+    ).candidates[0]
+
+    assert _fingerprint(candidate, prompt_version="learning-v1") != _fingerprint(
+        candidate,
+        prompt_version="learning-v2",
     )
 
 
@@ -258,6 +280,7 @@ async def test_distillation_reads_all_user_sources_but_does_not_silently_write_k
 
     assert len(created) == 1
     assert created[0].status == "pending"
+    assert {item["promptVersion"] for item in created[0].evidence_json} == {PROMPT_VERSION}
     assert {source.source_type for source in client.sources} == {
         "chat",
         "checkin_note",
