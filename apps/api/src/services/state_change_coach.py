@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal, cast
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import Analysis, BriefMessage, Experiment
@@ -18,6 +19,7 @@ from src.services.experiment_evaluation import (
     RECOMMEND_REFUTED,
     RECOMMEND_SUPPORTED,
     ExperimentEvaluationService,
+    evaluation_packet,
 )
 from src.services.experiment_tracker import STATUS_ACTIVE
 
@@ -91,6 +93,12 @@ def choose_ranked_candidate(
 
 def _utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _state_change_lock_key(user_id: uuid.UUID, as_of: date) -> int:
+    """Stable PostgreSQL advisory-lock key for one state-change artifact."""
+    digest = hashlib.sha256(f"state-change:{user_id}:{as_of.isoformat()}".encode()).digest()
+    return int.from_bytes(digest[:8], byteorder="big", signed=True)
 
 
 def _aware_utc(moment: datetime | None) -> datetime:
@@ -230,6 +238,12 @@ class StateChangeCoachService:
         commit: bool = True,
     ) -> StateChangeResult:
         sent_at = _aware_utc(now_utc)
+        # The external cron and in-process scheduler may overlap. Serialize the
+        # whole read-budget-candidate-write sequence before looking at state, so
+        # a double-fire cannot buy two unsolicited turns for the same user/date.
+        await self.session.scalar(
+            select(func.pg_advisory_xact_lock(_state_change_lock_key(player.id, as_of)))
+        )
         candidates = await self._candidates(player, as_of=as_of)
         chosen = choose_ranked_candidate(candidates)
         if chosen is None:
@@ -252,22 +266,6 @@ class StateChangeCoachService:
                 analysis=None,
                 message_created=False,
                 reason="budget_spent",
-                candidates_seen=len(candidates),
-            )
-
-        existing = await self._existing_analysis(
-            player,
-            as_of=as_of,
-            state_key=chosen.snapshot.state_key,
-            state_value=chosen.snapshot.state_value,
-        )
-        if existing is not None:
-            message = await self._message_for_analysis(player, existing)
-            return StateChangeResult(
-                message=message,
-                analysis=existing,
-                message_created=False,
-                reason="already_delivered",
                 candidates_seen=len(candidates),
             )
 
@@ -393,17 +391,8 @@ class StateChangeCoachService:
             if previous is not None and isinstance(previous.context_packet, dict):
                 previous_snapshot = _experiment_snapshot(experiment, previous.context_packet)
                 previous_value = previous_snapshot.state_value if previous_snapshot else None
-            _result, analysis = await service.run(
-                player,
-                experiment.id,
-                as_of=as_of,
-                commit=False,
-            )
-            snapshot = (
-                _experiment_snapshot(experiment, analysis.context_packet)
-                if isinstance(analysis.context_packet, dict)
-                else None
-            )
+            result = await service.evaluate(player, experiment, as_of=as_of)
+            snapshot = _experiment_snapshot(experiment, evaluation_packet(experiment, result))
             candidate = transition_candidate(snapshot, previous_value)
             if candidate is not None:
                 candidates.append(candidate)
@@ -451,27 +440,21 @@ class StateChangeCoachService:
         experiment_id: Any,
         before: date,
     ) -> Analysis | None:
-        rows = (
-            (
-                await self.session.execute(
-                    select(Analysis)
-                    .where(
-                        Analysis.user_id == player.id,
-                        Analysis.analysis_type == AUDIT_TYPE_EVALUATION,
-                        Analysis.subject_date < before,
-                    )
-                    .order_by(desc(Analysis.subject_date), desc(Analysis.generated_at_utc))
-                )
-            )
-            .scalars()
-            .all()
-        )
         target = str(experiment_id)
-        for row in rows:
-            packet = row.context_packet
-            if isinstance(packet, dict) and packet.get("experimentId") == target:
-                return row
-        return None
+        return cast(
+            Analysis | None,
+            await self.session.scalar(
+                select(Analysis)
+                .where(
+                    Analysis.user_id == player.id,
+                    Analysis.analysis_type == AUDIT_TYPE_EVALUATION,
+                    Analysis.subject_date < before,
+                    Analysis.context_packet.op("->>")("experimentId") == target,
+                )
+                .order_by(desc(Analysis.subject_date), desc(Analysis.generated_at_utc))
+                .limit(1)
+            ),
+        )
 
     async def _budget_decision(
         self,
@@ -519,53 +502,4 @@ class StateChangeCoachService:
             allowed=True,
             spend_type="preemption",
             preempted_analysis_id=previous.id,
-        )
-
-    async def _existing_analysis(
-        self,
-        player: Profile,
-        *,
-        as_of: date,
-        state_key: str,
-        state_value: str,
-    ) -> Analysis | None:
-        rows = (
-            (
-                await self.session.execute(
-                    select(Analysis)
-                    .where(
-                        Analysis.user_id == player.id,
-                        Analysis.analysis_type == ANALYSIS_TYPE_STATE_CHANGE,
-                        Analysis.subject_date == as_of,
-                    )
-                    .order_by(desc(Analysis.generated_at_utc))
-                )
-            )
-            .scalars()
-            .all()
-        )
-        for row in rows:
-            packet = row.context_packet
-            if (
-                isinstance(packet, dict)
-                and packet.get("stateKey") == state_key
-                and packet.get("stateValue") == state_value
-            ):
-                return row
-        return None
-
-    async def _message_for_analysis(
-        self, player: Profile, analysis: Analysis
-    ) -> BriefMessage | None:
-        return cast(
-            BriefMessage | None,
-            await self.session.scalar(
-                select(BriefMessage)
-                .where(
-                    BriefMessage.user_id == player.id,
-                    BriefMessage.analysis_id == analysis.id,
-                    BriefMessage.role == ROLE_ASSISTANT,
-                )
-                .limit(1)
-            ),
         )
