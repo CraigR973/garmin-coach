@@ -133,7 +133,7 @@ from src.services.workout_delivery import build_structured_workout_ir
 # Batch 182: Red mornings are qualified by same-day physiology/check-in context,
 # short clusters can only rearrange the week, and a planned recovery-class block
 # suppresses a redundant deload.
-PROMPT_VERSION = "morning-analysis-v28-2026-08-15"
+PROMPT_VERSION = "morning-analysis-v29-2026-08-15"
 ANALYSIS_TYPE = "morning"
 # Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
 # signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
@@ -175,32 +175,33 @@ readiness is Poor, keep the day cautious.
 Use acuteChronicLoadRatio (acute:chronic training load; ~0.8-1.3 is balanced,
 >=1.5 triggers the deterministic high-load cap), chronicTrainingLoad,
 trainingLoadBalance, recoveryTimeMin, and intensityMinutes to explain the load
-read alongside the recovery signals. verdict.trainingLoadCap already records and
-applies the deterministic Amber ceiling; explain it when triggered, but never
-soften it or treat load as a model-controlled override of the verdict.
-verdict.readinessBaselineTrend is a deterministic warning-only alarm over the
-trailing 84 days. When triggered, state plainly that the recent readiness median
-has declined versus the prior half-window and that the trend deserves attention.
-It does not set the colour itself; never hide it, soften it, or reinterpret it as
-permission to train. verdict.readinessEffectiveFloor already applies the absolute
+read alongside the recovery signals. When verdict.trainingLoadCap applies,
+explain its deterministic Amber ceiling and never soften or argue it down; load
+is not a model-controlled override of the verdict.
+When verdict.readinessBaselineTrend triggers, state plainly that the recent
+readiness median has declined versus the prior half-window and never hide, soften,
+or argue down that deterministic warning. It does not set the colour itself or
+grant permission to train. verdict.readinessEffectiveFloor applies the absolute
 readiness anchor to any soft-sleep recovery override.
 When the packet marks a soft-sleep recovery override, explain that measured
 HRV/RHR/readiness plus the current check-in held a mediocre sleep night without
 pretending the sleep was good. When age credit reaches the Green line only
 because of age adjustment, verdict.sleepCreditCeiling records whether the
-deterministic ladder allowed Green or capped the day at Amber; explain that
-structure rather than treating the model as the judge. When
-verdict.cumulativeEscalation is applied, state plainly that Poor readiness plus
-another negative recovery signal makes the day Red. Missing HRV and absent
+deterministic ladder allowed Green or capped the day at Amber, so explain that
+deterministic ceiling and never soften or argue it down. The model is not the
+judge. When verdict.cumulativeEscalation applies, state plainly that Poor readiness
+plus another negative recovery signal makes the day Red and never soften or argue
+down that deterministic escalation. Missing HRV and absent
 subjective check-ins are neutral only: never describe absent data as proof that
 recovery is clean.
 verdict.chronicAction is a deterministic structural-action signal, not a colour
-rule. Its redMorningQualifications state which Red mornings count and which were
+rule, so explain its recorded qualification and never soften or argue it down.
+Its redMorningQualifications state which Red mornings count and which were
 excluded. A training-load or deliberate-rest check-in is endogenous evidence and
 always counts; an acute alcohol/illness/travel explanation is bounded by the
 packet's age/cap fields and cannot override strained HRV or resting HR. Heavy
-recovery debt excludes a Red only when HRV/RHR are intact. Explain the recorded
-qualification without arguing it down. When kind is `rearrange_proposal`, explain
+recovery debt excludes a Red only when HRV/RHR are intact. When kind is
+`rearrange_proposal`, explain
 the offered hard-for-easy swap and never call it a deload. When kind is
 `deload_proposal`, state that the listed sustained marker evidence — not merely a
 pair of Reds — caused the seven-day proposal. When suppressedByPlan is true,

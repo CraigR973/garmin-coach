@@ -63,13 +63,14 @@ from src.services.post_workout_analysis import (
 )
 from src.services.workload_budget import workload_slot
 
-PROMPT_VERSION = "post-flexibility-analysis-v5-2026-08-02"
+PROMPT_VERSION = "post-flexibility-analysis-v6-2026-08-15"
 ANALYSIS_TYPE = "post_flexibility"
 WINDOW_4W_DAYS = 28
 FORWARD_PLAN_DAYS = 14
 
 SYSTEM_PROMPT = """You are CheckMark, a private mobility and recovery coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
+State any clock times in Mark's local timezone and never use UTC.
 Treat every figure in the supplied context as what the app recorded, not as
 independently verified truth about Mark. If Mark says his own device shows a
 different observed value, acknowledge the discrepancy, use his device reading

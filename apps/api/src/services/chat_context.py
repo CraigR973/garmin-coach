@@ -102,6 +102,13 @@ SLEEP_HISTORY_NIGHTS = 14
 REVIEW_CONCLUSION_MAX_CHARS = 900
 SINCE_READ_EVENT_LIMIT = 10
 
+TRENDS_MEANING = (
+    "Deterministic per-window means/medians over the metric history the Trends tab "
+    "renders. These are series measured and stored by the app; a direction stated "
+    "here is the app's recorded trend, not independent proof of what Mark's body or "
+    "own device showed."
+)
+
 #: Read types that hold a conversation today; a newer one of the same type
 #: supersedes the read being discussed.
 _READ_TYPES = ("morning", "post_workout", "post_walk", "post_strength", "post_flexibility")
@@ -368,11 +375,7 @@ class ChatContextService:
         )
         return {
             "bucket": TREND_BUCKET,
-            "meaning": (
-                "Deterministic per-window means/medians over the metric history the "
-                "Trends tab renders. Real measured series — a direction stated here is "
-                "evidence, not a guess."
-            ),
+            "meaning": TRENDS_MEANING,
             "recentWindows": [window_json(window) for window in windows[-TREND_WINDOW_COUNT:]],
             "windowsAvailable": len(windows),
             "yearOnYear": year_on_year_json(comparison),
@@ -649,8 +652,9 @@ def _state_meaning(*, anchored: bool) -> str:
     base = "State of the app right now, assembled when this question was asked. "
     if anchored:
         return base + (
-            "The read alongside it is the frozen record of what that read was written "
-            "from; where the two differ, this block is the current truth."
+            "The read alongside it is the app's frozen earlier record; where the two "
+            "differ, this block is the app's latest record. Neither is independent "
+            "proof of what Mark's body or own device showed."
         )
     return base + (
         "There is no earlier read behind this question, so this block is everything "

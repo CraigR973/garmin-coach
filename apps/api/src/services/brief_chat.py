@@ -107,7 +107,7 @@ MAX_HISTORY_TURNS_IN_PROMPT = 10
 THREAD_PAGE_LIMIT = 60
 QUESTION_MAX_LENGTH = 1000
 
-PROMPT_VERSION = "coach-chat-v7-2026-08-02"
+PROMPT_VERSION = "coach-chat-v8-2026-08-15"
 
 SYSTEM_PROMPT = f"""You are CheckMark, Mark's coach, talking with him.
 
