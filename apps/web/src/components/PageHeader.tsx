@@ -22,7 +22,7 @@ interface PageHeaderProps {
 }
 
 const backChipClass =
-  'inline-flex items-center gap-1 mb-3 text-xs font-mono uppercase tracking-[0.2em] text-text-muted hover:text-text-primary press-down rounded-md focus-visible:outline-none focus-visible:shadow-glow';
+  'tap-target -ml-2 inline-flex items-center gap-1 mb-3 px-2 text-xs font-mono uppercase tracking-[0.2em] text-text-muted hover:text-text-primary press-down rounded-md focus-visible:outline-none focus-visible:shadow-glow';
 
 export function PageHeader({ title, eyebrow, showBack, back, action, className, wrapTitle }: PageHeaderProps) {
   const navigate = useNavigate();

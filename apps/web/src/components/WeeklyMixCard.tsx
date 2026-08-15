@@ -39,9 +39,9 @@ export function WeeklyMixCard({
               className={cn(
                 'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium',
                 bucket.atRisk
-                  ? 'border-warning/40 bg-warning/10 text-warning'
+                  ? 'border-warning/40 bg-warning/10 text-warning-text'
                   : met
-                    ? 'border-success/30 bg-success/10 text-success'
+                    ? 'border-success/30 bg-success/10 text-success-text'
                     : 'border-border text-text-secondary',
               )}
             >

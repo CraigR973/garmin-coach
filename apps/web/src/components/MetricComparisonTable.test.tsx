@@ -110,7 +110,7 @@ describe('MetricComparisonTable', () => {
 
     const row = rowFor('Resting HR');
     const value = within(row).getByText('48'); // last night anchor value
-    expect(value.className).toContain('text-success'); // 48 sits inside the 46–53 band
+    expect(value.className).toContain('text-success-text'); // 48 sits inside the 46–53 band
     expect(within(row).getByText('46–53')).toBeTruthy(); // personal-baseline range
     expect(within(row).getByText('in range')).toBeTruthy(); // restored explicit status
     expect(within(row).getByText(/23 below for your age/)).toBeTruthy(); // vs the age-group average
@@ -121,7 +121,7 @@ describe('MetricComparisonTable', () => {
 
     const row = rowFor('Sleep score');
     const value = within(row).getByText('60');
-    expect(value.className).toContain('text-warning'); // 60 sits below the 70–82 band
+    expect(value.className).toContain('text-warning-text'); // 60 sits below the 70–82 band
     expect(within(row).getByText('70–82')).toBeTruthy();
     expect(within(row).getByText(/10 below/)).toBeTruthy();
     expect(within(row).queryByText(/for your age/)).toBeNull(); // no age norm for sleep score, no empty-dash clutter
@@ -149,9 +149,9 @@ describe('MetricComparisonTable', () => {
 
     const row = rowFor('Resting HR');
     const value = within(row).getByText('44');
-    expect(value.className).toContain('text-success');
+    expect(value.className).toContain('text-success-text');
     const status = within(row).getByText(/2 below/);
-    expect(status.className).toContain('text-success');
+    expect(status.className).toContain('text-success-text');
   });
 
   it('keeps readiness green when it lands above the personal baseline (higher-is-better)', () => {
@@ -170,9 +170,9 @@ describe('MetricComparisonTable', () => {
     render(<MetricComparisonTable rows={rows} ageComparison={{ rows: [] }} />);
 
     const row = rowFor('Readiness');
-    expect(within(row).getByText('88').className).toContain('text-success');
+    expect(within(row).getByText('88').className).toContain('text-success-text');
     const status = within(row).getByText(/10 above/);
-    expect(status.className).toContain('text-success');
+    expect(status.className).toContain('text-success-text');
   });
 
   it('flags overnight respiration amber when it rises above the baseline, green when it falls below', () => {
@@ -181,16 +181,16 @@ describe('MetricComparisonTable', () => {
       { metricKey: 'average_respiration', label: 'Respiration', currentValue: 16, baselineMedian: 12, lowerQuartile: 11, upperQuartile: 13 },
     ];
     const { unmount } = render(<MetricComparisonTable rows={high} ageComparison={{ rows: [] }} />);
-    expect(within(rowFor('Respiration')).getByText('16').className).toContain('text-warning');
-    expect(within(rowFor('Respiration')).getByText(/3 above/).className).toContain('text-warning');
+    expect(within(rowFor('Respiration')).getByText('16').className).toContain('text-warning-text');
+    expect(within(rowFor('Respiration')).getByText(/3 above/).className).toContain('text-warning-text');
     unmount();
 
     const low: MetricBaselineRow[] = [
       { metricKey: 'average_respiration', label: 'Respiration', currentValue: 9, baselineMedian: 12, lowerQuartile: 11, upperQuartile: 13 },
     ];
     render(<MetricComparisonTable rows={low} ageComparison={{ rows: [] }} />);
-    expect(within(rowFor('Respiration')).getByText('9').className).toContain('text-success');
-    expect(within(rowFor('Respiration')).getByText(/2 below/).className).toContain('text-success');
+    expect(within(rowFor('Respiration')).getByText('9').className).toContain('text-success-text');
+    expect(within(rowFor('Respiration')).getByText(/2 below/).className).toContain('text-success-text');
   });
 
   it('surfaces the HRV/SpO₂ reliability footnote when nights were excluded', () => {

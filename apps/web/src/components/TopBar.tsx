@@ -19,7 +19,7 @@ const navLinkClass = (isActive: boolean) =>
   cn(
     'px-3 py-1.5 rounded-sm text-sm font-medium font-sans tracking-tight transition-colors press-down',
     'focus-visible:outline-none focus-visible:shadow-glow',
-    isActive ? 'bg-primary/15 text-primary' : 'text-text-secondary hover:text-text-primary hover:bg-surface-elevated',
+    isActive ? 'bg-primary/15 text-primary-text' : 'text-text-secondary hover:text-text-primary hover:bg-surface-elevated',
   );
 
 export function TopBar() {

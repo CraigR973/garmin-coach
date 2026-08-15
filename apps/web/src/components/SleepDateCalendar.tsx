@@ -195,7 +195,7 @@ export function SleepDateCalendar({
                       selected
                         ? verdict
                           ? VERDICT_SELECTED_STYLES[verdict]
-                          : 'border-primary bg-primary text-primary-foreground shadow-sm'
+                          : 'border-primary bg-primary text-on-primary shadow-sm'
                         : verdict
                           ? VERDICT_STYLES[verdict]
                           : 'border-border bg-bg text-text-primary hover:border-primary/40 hover:bg-surface-elevated',
@@ -209,7 +209,7 @@ export function SleepDateCalendar({
                     <div className="mt-1 flex items-center gap-1 text-[10px]">
                       <span
                         className={cn(
-                          selected && !verdict ? 'text-primary-foreground/80' : 'text-text-muted',
+                          selected && !verdict ? 'text-on-primary/80' : 'text-text-muted',
                           selected && verdict ? 'text-current/75' : '',
                         )}
                       >

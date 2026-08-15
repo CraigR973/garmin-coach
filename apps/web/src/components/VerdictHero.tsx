@@ -26,7 +26,7 @@ const STYLES: Record<Verdict, VerdictStyle> = {
     container: 'border-success/35 bg-success/10 shadow-md',
     ring: 'from-success via-steele-mid to-success',
     glow: 'bg-success/20',
-    tone: 'text-success',
+    tone: 'text-success-text',
     eyebrow: 'Green verdict',
     label: verdictCopy.green.label,
     line: verdictCopy.green.line,
@@ -36,7 +36,7 @@ const STYLES: Record<Verdict, VerdictStyle> = {
     container: 'border-warning/35 bg-warning/10 shadow-md',
     ring: 'from-warning via-steele-mid to-success',
     glow: 'bg-warning/20',
-    tone: 'text-warning',
+    tone: 'text-warning-text',
     eyebrow: 'Amber verdict',
     label: verdictCopy.amber.label,
     line: verdictCopy.amber.line,
@@ -46,7 +46,7 @@ const STYLES: Record<Verdict, VerdictStyle> = {
     container: 'border-error/35 bg-error/10 shadow-md',
     ring: 'from-error via-warning to-steele-mid',
     glow: 'bg-error/20',
-    tone: 'text-error',
+    tone: 'text-error-text',
     eyebrow: 'Red verdict',
     label: verdictCopy.red.label,
     line: verdictCopy.red.line,
@@ -127,7 +127,7 @@ export function VerdictHero({ verdict, dateLabel, line, recap = null }: VerdictH
               {recap.ctaLabel && recap.ctaTo ? (
                 <Link
                   to={recap.ctaTo}
-                  className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+                  className="text-sm font-medium text-primary-text underline-offset-4 hover:underline"
                 >
                   {recap.ctaLabel}
                 </Link>
