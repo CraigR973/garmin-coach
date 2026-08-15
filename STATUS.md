@@ -6,7 +6,7 @@
 
 ## Now
 
-**2026-08-15 — Batch 196 implementation ready (backup actually restored).** `feat/batch-196-backup-restore` closes DS190-03 without a migration: `python -m src.run_scheduled backup-drill` now restores the newest `coach_*.dump` into `BACKUP_RESTORE_DATABASE_URL`, refuses to target the production DB, runs `pg_restore --clean --if-exists --no-owner`, and asserts restored coach table count, Alembic version, profile rows, analysis rows and the deliberate zero-row `activity_timeseries` exclusion. Backup and restore-drill failures emit structured `operator backup alert` logs outside the end-user push/profile model and return failed `JobResult`s, so Batch 195's external runner exits 1 and records `job_runs` evidence where possible. Runbooks now schedule the drill weekly after the daily backup and define encrypted off-site copies plus RPO/RTO (24h while the Railway volume survives, 7d for platform-loss once weekly off-site cadence starts, 4h RTO after a target/env exists). Local backend gates passed: 794 / 341 expected skips; Ruff clean; mypy clean across 135 source files. Decision #278; branch not promoted. **Next:** push/PR review, then explicit `/phase-closeout 196`.
+**2026-08-15 — Batch 196 shipped (backup actually restored).** PR #229 / squash `b78a4f2` closes DS190-03 without a migration: `python -m src.run_scheduled backup-drill` now restores the newest `coach_*.dump` into `BACKUP_RESTORE_DATABASE_URL`, refuses to target the production DB, runs `pg_restore --clean --if-exists --no-owner`, and asserts restored coach table count, Alembic version, profile rows, analysis rows and the deliberate zero-row `activity_timeseries` exclusion. Backup and restore-drill failures emit structured `operator backup alert` logs outside the end-user push/profile model and return failed `JobResult`s, so Batch 195's external runner exits 1 and records `job_runs` evidence where possible. Runbooks now schedule the drill weekly after the daily backup and define encrypted off-site copies plus RPO/RTO (24h while the Railway volume survives, 7d for platform-loss once weekly off-site cadence starts, 4h RTO after a target/env exists). Local backend gates passed (794 / 341 expected skips; Ruff clean; mypy clean), branch and PR-context CI passed all seven jobs, post-merge `main` CI passed all seven jobs, and the production freshness workflow passed for `b78a4f2`. Production Railway direct and Vercel-proxied health served the exact SHA, readiness reported `db: ok`, web `/` returned 200, and protected daily-loop returned 401 direct/proxied. Decision #278. **Next:** Batch 197 — unprompted speech agrees with the brief.
 
 ---
 
@@ -63,6 +63,10 @@
 ---
 
 ## Log
+
+**2026-08-15 — Batch 196 shipped:** PR #229 / squash `b78a4f2`. The external `backup-drill` job, disposable restore invariants, structured operator backup alerts, and runbooked encrypted off-site cadence/RPO/RTO are live. No migration. Local backend gates passed (794 / 341 expected skips; Ruff/mypy clean); branch, PR-context and post-merge `main` CI passed all seven jobs; the production freshness workflow passed; production exact-SHA health, readiness, web and protected-route smokes passed. Decision #278. **Next:** Batch 197.
+
+---
 
 **2026-08-15 — Batch 196 implementation ready:** `feat/batch-196-backup-restore` adds the external `backup-drill` job, disposable restore invariants, structured operator backup alerts, and runbooked encrypted off-site cadence/RPO/RTO. No migration. Local backend gates passed: 794 / 341 expected skips; Ruff clean; mypy clean. Decision #278. Branch not promoted.
 
