@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal, cast
@@ -12,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.coaching import Analysis, BriefMessage, Experiment
 from src.models.profile import Profile
 from src.services.brief_chat import ROLE_ASSISTANT
-from src.services.chronic_patterns import ChronicPatternSuggestionService
 from src.services.experiment_evaluation import (
     AUDIT_TYPE_EVALUATION,
     RECOMMEND_REFUTED,
@@ -20,11 +20,9 @@ from src.services.experiment_evaluation import (
     ExperimentEvaluationService,
 )
 from src.services.experiment_tracker import STATUS_ACTIVE
-from src.services.insights import OUTCOME_SLEEP_SCORE, InsightsService
-from src.services.weekly_mix import WeeklyMixService
 
 ANALYSIS_TYPE_STATE_CHANGE = "state_change_coach"
-PROMPT_VERSION = "state-change-coach:v1-2026-08-05"
+PROMPT_VERSION = "state-change-coach:v2-2026-08-15"
 ORIGIN_KIND_STATE_CHANGE = "state_change"
 BUDGET_WINDOW_DAYS = 7
 
@@ -60,6 +58,13 @@ class StateChangeResult:
     message_created: bool
     reason: str
     candidates_seen: int = 0
+
+
+@dataclass(frozen=True)
+class BudgetDecision:
+    allowed: bool
+    spend_type: Literal["initial", "preemption"] | None = None
+    preempted_analysis_id: uuid.UUID | None = None
 
 
 def transition_candidate(
@@ -225,14 +230,6 @@ class StateChangeCoachService:
         commit: bool = True,
     ) -> StateChangeResult:
         sent_at = _aware_utc(now_utc)
-        if await self._budget_spent(player, as_of=as_of):
-            return StateChangeResult(
-                message=None,
-                analysis=None,
-                message_created=False,
-                reason="budget_spent",
-            )
-
         candidates = await self._candidates(player, as_of=as_of)
         chosen = choose_ranked_candidate(candidates)
         if chosen is None:
@@ -243,6 +240,18 @@ class StateChangeCoachService:
                 analysis=None,
                 message_created=False,
                 reason="no_transition",
+                candidates_seen=len(candidates),
+            )
+
+        budget = await self._budget_decision(player, as_of=as_of, candidate=chosen)
+        if not budget.allowed:
+            if commit:
+                await self.session.commit()
+            return StateChangeResult(
+                message=None,
+                analysis=None,
+                message_created=False,
+                reason="budget_spent",
                 candidates_seen=len(candidates),
             )
 
@@ -271,6 +280,12 @@ class StateChangeCoachService:
             "title": chosen.snapshot.title,
             "evidence": chosen.snapshot.evidence,
             "budgetWindowDays": BUDGET_WINDOW_DAYS,
+            "budgetSpend": budget.spend_type,
+            "preemptedAnalysisId": (
+                str(budget.preempted_analysis_id)
+                if budget.preempted_analysis_id is not None
+                else None
+            ),
             "delivery": "coach_thread",
             "verdictImpact": "none",
             "planMutation": "none",
@@ -314,54 +329,43 @@ class StateChangeCoachService:
         )
 
     async def _candidates(self, player: Profile, *, as_of: date) -> list[StateChangeCandidate]:
+        current_morning = await self._morning_for_date(player, subject_date=as_of)
         previous_morning = await self._previous_morning(player, as_of=as_of)
-        previous_packet = (
-            previous_morning.context_packet
-            if previous_morning is not None and isinstance(previous_morning.context_packet, dict)
-            else {}
-        )
         candidates: list[StateChangeCandidate] = []
 
-        chronic = await self._current_chronic(player, as_of=as_of)
-        previous_chronic = _chronic_snapshot_from_packet(previous_packet)
-        candidate = transition_candidate(
-            chronic,
-            previous_chronic.state_value if previous_chronic is not None else None,
-        )
-        if candidate is not None:
-            candidates.append(candidate)
+        # Morning-backed transitions are known only when both sides of the
+        # comparison exist. The stored packets are exactly what Mark was shown;
+        # recomputing here can disagree with the brief, while treating a missing
+        # packet as an empty state invents a change after a holiday or failed read.
+        if (
+            current_morning is not None
+            and isinstance(current_morning.context_packet, dict)
+            and previous_morning is not None
+            and isinstance(previous_morning.context_packet, dict)
+        ):
+            current_packet = current_morning.context_packet
+            previous_packet = previous_morning.context_packet
 
-        previous_mix = {
-            snapshot.state_key: snapshot.state_value
-            for snapshot in _weekly_mix_snapshots_from_packet(previous_packet)
-        }
-        for snapshot in await self._current_weekly_mix(player, as_of=as_of):
-            candidate = transition_candidate(snapshot, previous_mix.get(snapshot.state_key))
+            chronic = _chronic_snapshot_from_packet(current_packet)
+            previous_chronic = _chronic_snapshot_from_packet(previous_packet)
+            candidate = transition_candidate(
+                chronic,
+                previous_chronic.state_value if previous_chronic is not None else None,
+            )
             if candidate is not None:
                 candidates.append(candidate)
 
+            previous_mix = {
+                snapshot.state_key: snapshot.state_value
+                for snapshot in _weekly_mix_snapshots_from_packet(previous_packet)
+            }
+            for snapshot in _weekly_mix_snapshots_from_packet(current_packet):
+                candidate = transition_candidate(snapshot, previous_mix.get(snapshot.state_key))
+                if candidate is not None:
+                    candidates.append(candidate)
+
         candidates.extend(await self._experiment_candidates(player, as_of=as_of))
         return candidates
-
-    async def _current_chronic(self, player: Profile, *, as_of: date) -> StateSnapshot | None:
-        drivers = await InsightsService(self.session).cached_drivers(player, as_of=as_of)
-        result = await ChronicPatternSuggestionService(self.session).suggestions(
-            player,
-            as_of=as_of,
-            sleep_drivers=drivers.outcomes.get(OUTCOME_SLEEP_SCORE, []),
-        )
-        return _chronic_snapshot(result.action_signal.to_packet())
-
-    async def _current_weekly_mix(self, player: Profile, *, as_of: date) -> list[StateSnapshot]:
-        if as_of.weekday() >= 6:
-            return []
-        mix = await WeeklyMixService(self.session).summarize_for_verdict(
-            player,
-            as_of,
-            verdict_status="Green",
-            swap=None,
-        )
-        return _weekly_mix_snapshots(mix.to_packet())
 
     async def _experiment_candidates(
         self, player: Profile, *, as_of: date
@@ -404,6 +408,26 @@ class StateChangeCoachService:
             if candidate is not None:
                 candidates.append(candidate)
         return candidates
+
+    async def _morning_for_date(
+        self,
+        player: Profile,
+        *,
+        subject_date: date,
+    ) -> Analysis | None:
+        return cast(
+            Analysis | None,
+            await self.session.scalar(
+                select(Analysis)
+                .where(
+                    Analysis.user_id == player.id,
+                    Analysis.analysis_type == "morning",
+                    Analysis.subject_date == subject_date,
+                )
+                .order_by(desc(Analysis.generated_at_utc))
+                .limit(1)
+            ),
+        )
 
     async def _previous_morning(self, player: Profile, *, as_of: date) -> Analysis | None:
         return cast(
@@ -449,19 +473,53 @@ class StateChangeCoachService:
                 return row
         return None
 
-    async def _budget_spent(self, player: Profile, *, as_of: date) -> bool:
+    async def _budget_decision(
+        self,
+        player: Profile,
+        *,
+        as_of: date,
+        candidate: StateChangeCandidate,
+    ) -> BudgetDecision:
         start = as_of - timedelta(days=BUDGET_WINDOW_DAYS - 1)
-        row = await self.session.scalar(
-            select(Analysis.id)
-            .where(
-                Analysis.user_id == player.id,
-                Analysis.analysis_type == ANALYSIS_TYPE_STATE_CHANGE,
-                Analysis.subject_date >= start,
-                Analysis.subject_date <= as_of,
+        rows = list(
+            (
+                await self.session.execute(
+                    select(Analysis)
+                    .where(
+                        Analysis.user_id == player.id,
+                        Analysis.analysis_type == ANALYSIS_TYPE_STATE_CHANGE,
+                        Analysis.subject_date >= start,
+                        Analysis.subject_date <= as_of,
+                    )
+                    .order_by(Analysis.subject_date, Analysis.generated_at_utc)
+                )
             )
-            .limit(1)
+            .scalars()
+            .all()
         )
-        return row is not None
+        if not rows:
+            return BudgetDecision(allowed=True, spend_type="initial")
+
+        # A window may contain the initial spend and one explicit pre-emption.
+        # Multiple legacy/concurrent rows are treated as fully spent rather than
+        # using ambiguity to send another unsolicited turn.
+        if len(rows) > 1:
+            return BudgetDecision(allowed=False)
+
+        previous = rows[0]
+        packet = previous.context_packet
+        if not isinstance(packet, dict) or packet.get("budgetSpend") == "preemption":
+            return BudgetDecision(allowed=False)
+        previous_kind = packet.get("transitionKind")
+        if previous_kind not in _RANK:
+            return BudgetDecision(allowed=False)
+        if _RANK[candidate.snapshot.kind] >= _RANK[cast(TransitionKind, previous_kind)]:
+            return BudgetDecision(allowed=False)
+        return BudgetDecision(
+            allowed=True,
+            spend_type="preemption",
+            preempted_analysis_id=previous.id,
+        )
 
     async def _existing_analysis(
         self,

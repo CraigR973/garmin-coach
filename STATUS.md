@@ -6,7 +6,7 @@
 
 ## Now
 
-**2026-08-15 — Batch 196 shipped (backup actually restored).** PR #229 / squash `b78a4f2` closes DS190-03 without a migration: `python -m src.run_scheduled backup-drill` now restores the newest `coach_*.dump` into `BACKUP_RESTORE_DATABASE_URL`, refuses to target the production DB, runs `pg_restore --clean --if-exists --no-owner`, and asserts restored coach table count, Alembic version, profile rows, analysis rows and the deliberate zero-row `activity_timeseries` exclusion. Backup and restore-drill failures emit structured `operator backup alert` logs outside the end-user push/profile model and return failed `JobResult`s, so Batch 195's external runner exits 1 and records `job_runs` evidence where possible. Runbooks now schedule the drill weekly after the daily backup and define encrypted off-site copies plus RPO/RTO (24h while the Railway volume survives, 7d for platform-loss once weekly off-site cadence starts, 4h RTO after a target/env exists). Local backend gates passed (794 / 341 expected skips; Ruff clean; mypy clean), branch and PR-context CI passed all seven jobs, post-merge `main` CI passed all seven jobs, and the production freshness workflow passed for `b78a4f2`. Production Railway direct and Vercel-proxied health served the exact SHA, readiness reported `db: ok`, web `/` returned 200, and protected daily-loop returned 401 direct/proxied. Decision #278. **Next:** Batch 197 — unprompted speech agrees with the brief.
+**2026-08-15 — Batch 197 implementation ready (unprompted speech agrees with the brief).** `fix/batch-197-unprompted-speech` closes CC188-01/02/08/10/20, CR189-09, and CI191-07's rail half without a migration. Morning-backed state changes now compare today's stored brief packet with the latest prior stored packet; there is no chronic/insight/weekly-mix recomputation, and a missing comparison side is unknown rather than a change. The seven-day global speech budget ranks chronic action > experiment outcome > weekly mix and permits one recorded strictly higher-ranked pre-emption. The scheduler skips active holidays before candidate generation. Five new PostgreSQL cases exercise the unstubbed stored-packet path and ranked budget; the scheduler holiday regression is hermetic. Local backend gates passed: 795 / 346 expected PostgreSQL skips; Ruff/format clean; mypy clean across 135 source files. Branch CI run `31880197784` passed all seven jobs, including 1,141 PostgreSQL-backed tests and the Alembic round trip. Decision #279; branch pushed and not promoted. **Next:** review, then explicit `/phase-closeout 197`.
 
 ---
 
@@ -63,6 +63,10 @@
 ---
 
 ## Log
+
+**2026-08-15 — Batch 197 implementation ready:** `fix/batch-197-unprompted-speech` makes the stored morning brief authoritative for chronic/weekly-mix transitions, treats missing comparison state as unknown, applies a one-pre-emption ranked seven-day budget, and skips active holidays before detection. No migration or verdict/plan change. Local backend gates passed: 795 / 346 expected PostgreSQL skips; Ruff/format/mypy clean. Branch CI passed all seven jobs (1,141 PostgreSQL-backed tests). Decision #279. Branch pushed, not promoted.
+
+---
 
 **2026-08-15 — Batch 196 shipped:** PR #229 / squash `b78a4f2`. The external `backup-drill` job, disposable restore invariants, structured operator backup alerts, and runbooked encrypted off-site cadence/RPO/RTO are live. No migration. Local backend gates passed (794 / 341 expected skips; Ruff/mypy clean); branch, PR-context and post-merge `main` CI passed all seven jobs; the production freshness workflow passed; production exact-SHA health, readiness, web and protected-route smokes passed. Decision #278. **Next:** Batch 197.
 

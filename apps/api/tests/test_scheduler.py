@@ -34,6 +34,7 @@ from src.scheduler import (
     run_morning_weather_sync,
     run_post_workout_backstop,
     run_scheduled_backup,
+    run_state_change_coach,
     run_tracked_job,
     run_wake_check,
     run_weekly_review_delivery,
@@ -375,6 +376,40 @@ async def test_weekly_review_failure_rolls_back_and_uses_admin_alert_path() -> N
         commit=False,
     )
     session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_state_change_coach_skips_holiday_before_candidate_generation() -> None:
+    profile = _profile()
+    subject_date = date(2026, 8, 5)
+    session = AsyncMock()
+
+    class _Ctx:
+        async def __aenter__(self) -> AsyncMock:
+            return session
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+    holiday = MagicMock()
+    holiday.get_active_window_for_date = AsyncMock(return_value=MagicMock())
+    coach = MagicMock()
+    coach.run = AsyncMock()
+
+    with (
+        patch("src.scheduler.AsyncSessionLocal", return_value=_Ctx()),
+        patch("src.scheduler._active_profiles", AsyncMock(return_value=[profile])),
+        patch("src.scheduler._profile_today", return_value=subject_date),
+        patch("src.scheduler.HolidayPauseService", return_value=holiday),
+        patch("src.scheduler.StateChangeCoachService", return_value=coach),
+    ):
+        result = await run_state_change_coach()
+
+    holiday.get_active_window_for_date.assert_awaited_once_with(profile, subject_date)
+    coach.run.assert_not_awaited()
+    assert result.status == JobStatus.skipped
+    assert result.reason == "holiday_away"
+    assert result.counters["skipped_holiday"] == 1
 
 
 # ---------------------------------------------------------------------------
