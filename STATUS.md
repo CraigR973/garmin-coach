@@ -6,7 +6,7 @@
 
 ## Now
 
-**2026-08-15 — Batch 197 implementation ready (unprompted speech agrees with the brief).** `fix/batch-197-unprompted-speech` closes CC188-01/02/08/10/20, CR189-09, and CI191-07's rail half without a migration. Morning-backed state changes now compare today's stored brief packet with the latest prior stored packet; there is no chronic/insight/weekly-mix recomputation, and a missing comparison side is unknown rather than a change. The seven-day global speech budget ranks chronic action > experiment outcome > weekly mix and permits one recorded strictly higher-ranked pre-emption. The scheduler skips active holidays before candidate generation. Five new PostgreSQL cases exercise the unstubbed stored-packet path and ranked budget; the scheduler holiday regression is hermetic. Local backend gates passed: 795 / 346 expected PostgreSQL skips; Ruff/format clean; mypy clean across 135 source files. Decision #279; branch not promoted. **Next:** push/branch CI and review, then explicit `/phase-closeout 197`.
+**2026-08-15 — Batch 197 implementation ready (unprompted speech agrees with the brief).** `fix/batch-197-unprompted-speech` closes CC188-01/02/08/10/20, CR189-09, and CI191-07's rail half without a migration. Morning-backed state changes now compare today's stored brief packet with the latest prior stored packet; there is no chronic/insight/weekly-mix recomputation, and a missing comparison side is unknown rather than a change. The seven-day global speech budget ranks chronic action > experiment outcome > weekly mix and permits one recorded strictly higher-ranked pre-emption. The scheduler skips active holidays before candidate generation. Five new PostgreSQL cases exercise the unstubbed stored-packet path and ranked budget; the scheduler holiday regression is hermetic. Local backend gates passed: 795 / 346 expected PostgreSQL skips; Ruff/format clean; mypy clean across 135 source files. Branch CI run `31880197784` passed all seven jobs, including 1,141 PostgreSQL-backed tests and the Alembic round trip. Decision #279; branch pushed and not promoted. **Next:** review, then explicit `/phase-closeout 197`.
 
 ---
 
@@ -64,7 +64,7 @@
 
 ## Log
 
-**2026-08-15 — Batch 197 implementation ready:** `fix/batch-197-unprompted-speech` makes the stored morning brief authoritative for chronic/weekly-mix transitions, treats missing comparison state as unknown, applies a one-pre-emption ranked seven-day budget, and skips active holidays before detection. No migration or verdict/plan change. Local backend gates passed: 795 / 346 expected PostgreSQL skips; Ruff/format/mypy clean. Decision #279. Branch not promoted.
+**2026-08-15 — Batch 197 implementation ready:** `fix/batch-197-unprompted-speech` makes the stored morning brief authoritative for chronic/weekly-mix transitions, treats missing comparison state as unknown, applies a one-pre-emption ranked seven-day budget, and skips active holidays before detection. No migration or verdict/plan change. Local backend gates passed: 795 / 346 expected PostgreSQL skips; Ruff/format/mypy clean. Branch CI passed all seven jobs (1,141 PostgreSQL-backed tests). Decision #279. Branch pushed, not promoted.
 
 ---
 
