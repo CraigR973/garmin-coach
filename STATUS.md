@@ -6,7 +6,7 @@
 
 ## Now
 
-**2026-08-15 — Batch 197 implementation ready (unprompted speech agrees with the brief).** `fix/batch-197-unprompted-speech` closes CC188-01/02/08/10/20, CR189-09, and CI191-07's rail half without a migration. Morning-backed state changes now compare today's stored brief packet with the latest prior stored packet; there is no chronic/insight/weekly-mix recomputation, and a missing comparison side is unknown rather than a change. The seven-day global speech budget ranks chronic action > experiment outcome > weekly mix and permits one recorded strictly higher-ranked pre-emption. The scheduler skips active holidays before candidate generation. Five new PostgreSQL cases exercise the unstubbed stored-packet path and ranked budget; the scheduler holiday regression is hermetic. Local backend gates passed: 795 / 346 expected PostgreSQL skips; Ruff/format clean; mypy clean across 135 source files. Branch CI run `31880197784` passed all seven jobs, including 1,141 PostgreSQL-backed tests and the Alembic round trip. Decision #279; branch pushed and not promoted. **Next:** review, then explicit `/phase-closeout 197`.
+**2026-08-15 — Batch 197 shipped (unprompted speech agrees with the brief).** PR #230 / squash `972c5be` closes CC188-01/02/08/10/20, CR189-09, and CI191-07's rail half without a migration. Morning-backed state changes now compare today's stored brief packet with the latest prior stored packet; there is no chronic/insight/weekly-mix recomputation, and a missing comparison side is unknown rather than a change. The seven-day global speech budget ranks chronic action > experiment outcome > weekly mix and permits one recorded strictly higher-ranked pre-emption. The scheduler skips active holidays before candidate generation. Five new PostgreSQL cases exercise the unstubbed stored-packet path and ranked budget; the scheduler holiday regression is hermetic. Local backend gates passed: 795 / 346 expected PostgreSQL skips; Ruff/format clean; mypy clean across 135 source files. Branch, PR-context and post-merge `main` CI passed all seven jobs; the production freshness workflow passed. Railway direct and Vercel same-origin health served exact SHA `972c5be`; web `/` returned 200, protected coach reads returned 401 direct/proxied, and a read-only deployed-container probe confirmed prompt v2, stored-morning comparison, ranked pre-emption, removed recomputation helpers and holiday-before-generation. Decision #279. **Next:** Batch 198 — make the unprompted writer safe to run twice.
 
 ---
 
@@ -63,6 +63,10 @@
 ---
 
 ## Log
+
+**2026-08-15 — Batch 197 shipped:** PR #230 / squash `972c5be`. Stored morning packets now drive chronic-action and weekly-mix transitions, absent prior state is unknown, the seven-day budget admits one recorded strictly higher-ranked pre-emption, and active holidays skip before candidate generation. No migration or verdict/plan change. Local backend gates passed (795 / 346 expected PostgreSQL skips; Ruff/format/mypy clean); branch, PR-context and post-merge `main` CI passed all seven jobs; the production freshness workflow passed; exact-SHA Railway/Vercel health, web, protected-route and deployed-policy smokes passed. Decision #279. **Next:** Batch 198.
+
+---
 
 **2026-08-15 — Batch 197 implementation ready:** `fix/batch-197-unprompted-speech` makes the stored morning brief authoritative for chronic/weekly-mix transitions, treats missing comparison state as unknown, applies a one-pre-emption ranked seven-day budget, and skips active holidays before detection. No migration or verdict/plan change. Local backend gates passed: 795 / 346 expected PostgreSQL skips; Ruff/format/mypy clean. Branch CI passed all seven jobs (1,141 PostgreSQL-backed tests). Decision #279. Branch pushed, not promoted.
 
