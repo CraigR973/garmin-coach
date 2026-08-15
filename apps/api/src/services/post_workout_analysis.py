@@ -52,6 +52,7 @@ from src.services.post_activity_state import (
     mark_post_activity_generation,
     prepare_post_activity_generation,
 )
+from src.services.prompt_metadata import prompt_system_hash
 from src.services.ride_intervals import (
     power_zone,
     segment_ride_intervals,
@@ -497,7 +498,7 @@ class PostWorkoutAnalysisService:
             "recoveryDecision": recovery_decision,
             "prompt": {
                 "version": PROMPT_VERSION,
-                "system": SYSTEM_PROMPT,
+                "systemHash": prompt_system_hash(SYSTEM_PROMPT),
                 "outputRules": [
                     "include_workout_rating",
                     "incorporate_post_ride_check_in_when_present",

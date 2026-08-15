@@ -7,9 +7,10 @@ was asked from is a context seed rather than a fence.
 
 Kickoff decisions carried forward:
 
-* **Batch 119.3** — turns are rows in ``brief_messages``; a plan change is only
-  ever *offered*, chosen by a deterministic keyword check on **Mark's own
-  question** (never the model's answer), and applied through the existing
+* **Batch 119.3 / 202.3** — turns are rows in ``brief_messages``; a plan change
+  is only ever *offered* when Mark's own question carries adjustment intent, a
+  live workout exists, and the model's answer explicitly marks that it made the
+  offer. Application still flows through the existing
   ``POST /api/v1/workout-delivery/planned-workouts/{id}/proposals`` endpoint, so
   the propose→approve→push gate (Decision #29) is untouched.
 * **Batch 178** — context is assembled when the question is asked, not frozen at
@@ -74,6 +75,7 @@ from src.services.coach_policy import (
     floors_sentence,
     internal_vocabulary_hits,
 )
+from src.services.prompt_metadata import prompt_system_hash
 from src.services.workload_budget import workload_slot
 
 __all__ = [
@@ -82,6 +84,7 @@ __all__ = [
     "MAX_USER_TURNS_PER_DAY",
     "NO_PLUMBING_RULE",
     "PROMPT_VERSION",
+    "PROPOSAL_MARKER",
     "QUESTION_MAX_LENGTH",
     "SYSTEM_PROMPT",
     "THREAD_PAGE_LIMIT",
@@ -108,6 +111,7 @@ THREAD_PAGE_LIMIT = 60
 QUESTION_MAX_LENGTH = 1000
 
 PROMPT_VERSION = "coach-chat-v8-2026-08-15"
+PROPOSAL_MARKER = "[[PROPOSE_WORKOUT_ADJUSTMENT]]"
 
 SYSTEM_PROMPT = f"""You are CheckMark, Mark's coach, talking with him.
 
@@ -204,8 +208,9 @@ class AnthropicBriefChatClient:
         return result.output_markdown
 
 
-# Deterministic intent check on Mark's own words — never the model's answer —
-# so a proposal is only ever offered when he actually asked for one.
+# Deterministic intent check on Mark's own words. Batch 202 adds a second key:
+# the model must also mark that its answer actually offered a proposal before
+# the service attaches the planned-workout id.
 _ADJUSTMENT_KEYWORDS = (
     "ease",
     "easier",
@@ -275,7 +280,9 @@ def _capability_instruction(adjustable_workout_id: uuid.UUID | None) -> str:
         return (
             "Capability right now: today's plan holds a live workout that can still be "
             "adjusted. You cannot change it yourself, but if Mark asks for an adjustment, "
-            "you may say the app can propose one for him to confirm."
+            "you may say the app can propose one for him to confirm. If and only if "
+            f"your answer actually makes that offer, include {PROPOSAL_MARKER} once "
+            "at the very end of the answer. The app removes that marker before Mark sees it."
         )
     return (
         "Capability right now: there is no live workout to adjust today - it is rest, "
@@ -418,11 +425,16 @@ class BriefChatService:
                 user_prompt=cleaned,
                 prior_messages=prior_messages,
             )
+        answer_for_mark, model_offered_proposal = _strip_proposal_marker(answer)
 
-        # Batch 179.3: one deterministic question — is there a live workout to
-        # adjust today — replacing the read-type proxy and the frozen-packet
-        # lookup. The model still triggers nothing.
-        proposed_id = context.adjustable_workout_id if _wants_adjustment(cleaned) else None
+        # Batch 179.3 asks whether there is a live workout to adjust today.
+        # Batch 202.3 adds the answer marker so a keyword like "harder" cannot
+        # attach an affordance when the coach refused or answered something else.
+        proposed_id = (
+            context.adjustable_workout_id
+            if _wants_adjustment(cleaned) and model_offered_proposal
+            else None
+        )
 
         user_message = BriefMessage(
             user_id=player.id,
@@ -439,7 +451,7 @@ class BriefChatService:
             origin_kind=resolved_origin_kind,
             origin_date=origin_date,
             role=ROLE_ASSISTANT,
-            content=answer,
+            content=answer_for_mark,
             proposed_planned_workout_id=proposed_id,
             created_utc=now,
         )
@@ -499,4 +511,29 @@ def _build_system_prompt(
 
 
 def _packet_json(context_packet: dict[str, Any]) -> str:
-    return json.dumps(context_packet, ensure_ascii=True, sort_keys=True, default=str)
+    return json.dumps(
+        _packet_without_stored_system_prompt(context_packet),
+        ensure_ascii=True,
+        sort_keys=True,
+        default=str,
+    )
+
+
+def _strip_proposal_marker(answer: str) -> tuple[str, bool]:
+    if PROPOSAL_MARKER not in answer:
+        return answer, False
+    return answer.replace(PROPOSAL_MARKER, "").strip(), True
+
+
+def _packet_without_stored_system_prompt(value: Any) -> Any:
+    if isinstance(value, dict):
+        cleaned: dict[str, Any] = {}
+        for key, item in value.items():
+            if key == "system" and isinstance(item, str):
+                cleaned["systemHash"] = prompt_system_hash(item)
+                continue
+            cleaned[key] = _packet_without_stored_system_prompt(item)
+        return cleaned
+    if isinstance(value, list):
+        return [_packet_without_stored_system_prompt(item) for item in value]
+    return value

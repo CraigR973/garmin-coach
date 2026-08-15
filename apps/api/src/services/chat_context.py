@@ -55,8 +55,9 @@ propose/confirm rail (Decision #29).
 from __future__ import annotations
 
 import json
+import logging
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
@@ -68,6 +69,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.coaching import Activity, Analysis, ManualEntry, PlannedWorkout, Sleep
 from src.models.profile import Profile
 from src.services.analysis_currentness import manual_entry_input_version
+from src.services.body_metrics import resolve_effective_vo2max, resolve_effective_weight_kg
 from src.services.holiday_pause import HolidayPauseService, holiday_windows_covering_date
 from src.services.reviews import ANALYSIS_TYPE_MONTHLY, ANALYSIS_TYPE_WEEKLY
 from src.services.training_week import ACTION_AUDIT_TYPES, TrainingWeekService
@@ -101,6 +103,9 @@ RECENT_ACTIVITY_LIMIT = 10
 SLEEP_HISTORY_NIGHTS = 14
 REVIEW_CONCLUSION_MAX_CHARS = 900
 SINCE_READ_EVENT_LIMIT = 10
+TRUNCATED_SUFFIX = "..."
+
+logger = logging.getLogger(__name__)
 
 TRENDS_MEANING = (
     "Deterministic per-window means/medians over the metric history the Trends tab "
@@ -230,6 +235,12 @@ class ChatContextService:
         reviews = await self._latest_reviews(player.id)
         activities = await self._recent_activities(player.id, local_today, player.timezone)
         sleep_nights = await self._sleep_history(player.id, local_today)
+        weight_kg, weight_as_of_date = await resolve_effective_weight_kg(
+            self.session, player.id, local_today
+        )
+        vo2max, vo2max_as_of_date = await resolve_effective_vo2max(
+            self.session, player.id, local_today
+        )
 
         state: dict[str, Any] = {
             "version": APP_STATE_VERSION,
@@ -248,13 +259,30 @@ class ChatContextService:
             "today": {
                 "localDate": local_today.isoformat(),
                 "plannedWorkouts": [_planned_workout_state(row) for row in today_workouts],
+                "bodyMetrics": {
+                    "weightKg": weight_kg,
+                    "weightAsOfDate": (
+                        weight_as_of_date.isoformat() if weight_as_of_date is not None else None
+                    ),
+                    "weightOnFile": weight_kg is not None,
+                    "vo2max": vo2max,
+                    "vo2maxAsOfDate": (
+                        vo2max_as_of_date.isoformat() if vo2max_as_of_date is not None else None
+                    ),
+                    "vo2maxOnFile": vo2max is not None,
+                    "meaning": (
+                        "Effective Garmin body metrics resolved at ask-time using the "
+                        "same carry-forward windows as generated reads. As-of dates "
+                        "state the source day; missing means no current reading is on file."
+                    ),
+                },
             },
             "weekAhead": week_ahead,
             "trends": trends,
             "latestReviews": reviews,
             "recentActivities": activities,
             "sleepHistory": sleep_nights,
-            "omittedForLength": [],
+            "omittedForLength": _field_truncations(latest_reviews=reviews, plan_changes=[]),
         }
         if analysis is not None:
             state["readSubjectDate"] = subject_date.isoformat()
@@ -263,6 +291,10 @@ class ChatContextService:
                 analysis,
                 subject_workouts=subject_workouts,
                 read_generated_at=analysis.generated_at_utc,
+            )
+            state["omittedForLength"] = _field_truncations(
+                latest_reviews=reviews,
+                plan_changes=state["sinceThisRead"]["planChangesSinceRead"],
             )
         _apply_char_budget(state)
         return ChatContext(app_state=state, adjustable_workout_id=adjustable_workout_id)
@@ -318,7 +350,7 @@ class ChatContextService:
         ride completed after the morning brief simply was not in that brief's
         packet, so the chat over it could not see the ride at all.
         """
-        activities = await self._activities_since(player.id, read_generated_at)
+        activities = await self._activities_ingested_since(player.id, read_generated_at)
         check_ins = await self._check_ins_since(player.id, read_generated_at)
         plan_changes = await self._plan_changes_since(player.id, read_generated_at)
         newer_reads = await self._newer_reads(player.id, analysis)
@@ -332,12 +364,17 @@ class ChatContextService:
             live_check_in_version is not None
             and live_check_in_version not in packet_check_in_versions
         )
-        closed_since = [
+        current_closed_subject_workouts = [
             {
                 "plannedWorkoutId": str(row.id),
                 "title": row.title,
                 "workoutType": row.workout_type,
                 "status": row.status,
+                "meaning": (
+                    "Current status of a planned workout on the read's subject date. "
+                    "This app state has no workout status-change timestamp, so this "
+                    "field is not evidence that the status changed after the read."
+                ),
             }
             for row in subject_workouts
             if row.status in _CLOSED_WORKOUT_STATUSES
@@ -348,17 +385,16 @@ class ChatContextService:
             or bool(plan_changes)
             or bool(newer_reads)
             or check_in_newer_than_read
-            or bool(closed_since)
         )
         return {
             "readGeneratedAtUtc": _dt(read_generated_at),
             "readReflectsLatestCheckIn": not check_in_newer_than_read,
             "anythingChangedSinceRead": events,
-            "activitiesCompletedSinceRead": activities,
+            "activitiesIngestedSinceRead": activities,
             "checkInsSinceRead": check_ins,
             "planChangesSinceRead": plan_changes,
             "newerReadsSinceRead": newer_reads,
-            "subjectDateWorkoutsClosedSinceRead": closed_since,
+            "subjectDateClosedWorkoutsCurrent": current_closed_subject_workouts,
         }
 
     async def _trends(self, player: Profile, as_of: date) -> dict[str, Any]:
@@ -476,7 +512,7 @@ class ChatContextService:
         )
         return list(rows)
 
-    async def _activities_since(
+    async def _activities_ingested_since(
         self,
         user_id: uuid.UUID,
         since_utc: datetime,
@@ -485,8 +521,8 @@ class ChatContextService:
             (
                 await self.session.execute(
                     select(Activity)
-                    .where(Activity.user_id == user_id, Activity.start_utc >= since_utc)
-                    .order_by(desc(Activity.start_utc))
+                    .where(Activity.user_id == user_id, Activity.created_at > since_utc)
+                    .order_by(desc(Activity.created_at))
                     .limit(SINCE_READ_EVENT_LIMIT)
                 )
             )
@@ -499,6 +535,7 @@ class ChatContextService:
                 "title": row.activity_name,
                 "activityType": row.activity_type,
                 "startUtc": _dt(row.start_utc),
+                "ingestedAtUtc": _dt(row.created_at),
                 "durationMin": _minutes(row.duration_sec),
                 "avgPowerWatts": row.avg_power_watts,
                 "normalizedPowerWatts": row.normalized_power_watts,
@@ -626,7 +663,7 @@ def _apply_char_budget(state: dict[str, Any]) -> None:
     An omission that looked like an absence would recreate exactly the failure
     this batch removes, so every drop is recorded in ``omittedForLength``.
     """
-    omitted: list[str] = []
+    omitted: list[str] = list(state.get("omittedForLength", []))
     for section in _DROP_ORDER:
         if app_state_length(state) <= APP_STATE_CHAR_BUDGET:
             break
@@ -645,6 +682,24 @@ def _apply_char_budget(state: dict[str, Any]) -> None:
             "Trimmed to fit the prompt, not absent from the app. If a question needs "
             "one of these, say it is not in front of you here rather than that it does "
             "not exist."
+        )
+    if app_state_length(state) > APP_STATE_CHAR_BUDGET:
+        state["charBudget"] = {
+            "budgetChars": APP_STATE_CHAR_BUDGET,
+            "actualChars": app_state_length(state),
+            "status": "best_effort_over_budget",
+            "meaning": (
+                "The app-state block is still over its target after all safe trims. "
+                "Treat the budget as best-effort and trust named omissions over absence."
+            ),
+        }
+        logger.warning(
+            "chat app-state exceeded char budget after trims",
+            extra={
+                "budget_chars": APP_STATE_CHAR_BUDGET,
+                "actual_chars": app_state_length(state),
+                "omitted_for_length": omitted,
+            },
         )
 
 
@@ -741,7 +796,24 @@ def _truncate(value: str | None, limit: int) -> str | None:
         return None
     if len(value) <= limit:
         return value
-    return value[:limit].rstrip() + "..."
+    return value[:limit].rstrip() + TRUNCATED_SUFFIX
+
+
+def _field_truncations(
+    *,
+    latest_reviews: Sequence[Mapping[str, Any]],
+    plan_changes: Sequence[Mapping[str, Any]],
+) -> list[str]:
+    omitted: list[str] = []
+    if any(_is_truncated(row.get("conclusions")) for row in latest_reviews):
+        omitted.append("latestReviews.conclusions(truncated)")
+    if any(_is_truncated(row.get("summary")) for row in plan_changes):
+        omitted.append("sinceThisRead.planChangesSinceRead.summary(truncated)")
+    return omitted
+
+
+def _is_truncated(value: Any) -> bool:
+    return isinstance(value, str) and value.endswith(TRUNCATED_SUFFIX)
 
 
 def _minutes(seconds: float | int | None) -> int | None:

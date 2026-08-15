@@ -62,6 +62,7 @@ from src.services.post_workout_analysis import (
     _series_stats,
     _utcnow,
 )
+from src.services.prompt_metadata import prompt_system_hash
 from src.services.workload_budget import workload_slot
 
 PROMPT_VERSION = "post-walk-analysis-v6-2026-08-15"
@@ -321,7 +322,7 @@ class PostWalkAnalysisService:
             },
             "prompt": {
                 "version": PROMPT_VERSION,
-                "system": SYSTEM_PROMPT,
+                "systemHash": prompt_system_hash(SYSTEM_PROMPT),
                 "outputRules": [
                     "read_easy_aerobic_or_active_recovery_value",
                     "use_hr_and_pace_not_power",

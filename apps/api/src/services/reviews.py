@@ -59,6 +59,7 @@ from src.services.anthropic_text import generate_anthropic_text
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
 from src.services.insights import EarlyWarningResult, FtpDriftResult, InsightsService
 from src.services.personal_baselines import baseline_band_packet, serialize_training_schedule
+from src.services.prompt_metadata import prompt_system_hash
 from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
 from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
 from src.services.training_week import TrainingWeekService
@@ -1138,7 +1139,7 @@ def _build_packet(
         "dataQualityGuardrails": guardrails,
         "prompt": {
             "version": PROMPT_VERSION,
-            "system": SYSTEM_PROMPT,
+            "systemHash": prompt_system_hash(SYSTEM_PROMPT),
             "outputRules": [
                 "four_sections_trends_wins_concerns_recommendations",
                 "ground_every_claim_in_packet_numbers",

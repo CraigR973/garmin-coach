@@ -43,6 +43,7 @@ from src.services.anthropic_text import AnthropicApiError
 from src.services.brief_chat import (
     MAX_USER_TURNS_PER_DAY,
     NO_PLUMBING_RULE,
+    PROPOSAL_MARKER,
     BriefChatClient,
     BriefChatService,
     internal_vocabulary_hits,
@@ -279,11 +280,10 @@ async def test_yesterdays_turns_do_not_count_against_today(db_conn: AsyncConnect
 
 
 @pytest.mark.asyncio
-async def test_ask_only_offers_a_proposal_on_a_deterministic_keyword_match(
+async def test_ask_only_offers_a_proposal_on_keyword_and_model_marker(
     db_conn: AsyncConnection,
 ) -> None:
-    """The model's answer never decides whether to attach a proposal — Mark's
-    own question does, and only when there's a deliverable ride today."""
+    """A proposal needs Mark's intent, a live ride, and the answer's marker."""
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     async with session_factory() as session:
         user = await _make_profile(session)
@@ -301,7 +301,7 @@ async def test_ask_only_offers_a_proposal_on_a_deterministic_keyword_match(
         }
         analysis = await _make_analysis(session, user.id, context_packet=packet)
         service = BriefChatService(session)
-        client = FakeBriefChatClient("Sure, want me to ease it?")
+        client = FakeBriefChatClient(f"Sure, I can offer that. {PROPOSAL_MARKER}")
 
         neutral = await service.ask(user, analysis.id, question="How did I sleep?", client=client)
         wants_ease = await service.ask(
@@ -310,6 +310,27 @@ async def test_ask_only_offers_a_proposal_on_a_deterministic_keyword_match(
 
     assert neutral.assistant_message.proposed_planned_workout_id is None
     assert wants_ease.assistant_message.proposed_planned_workout_id == workout.id
+    assert PROPOSAL_MARKER not in wants_ease.assistant_message.content
+
+
+@pytest.mark.asyncio
+async def test_keyword_without_model_offer_does_not_attach_a_proposal(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        await _make_planned_workout(session, user.id)
+        analysis = await _make_analysis(session, user.id)
+
+        turn = await BriefChatService(session).ask(
+            user,
+            analysis.id,
+            question="Can you make today's ride harder?",
+            client=FakeBriefChatClient("No - today's read says to keep it controlled."),
+        )
+
+    assert turn.assistant_message.proposed_planned_workout_id is None
 
 
 @pytest.mark.asyncio
@@ -444,7 +465,9 @@ async def test_plan_change_request_still_uses_propose_confirm_and_red_floor(
             ],
         }
         analysis = await _make_analysis(session, user.id, context_packet=packet)
-        client = FakeBriefChatClient("The app can propose an easier version for you to confirm.")
+        client = FakeBriefChatClient(
+            f"The app can propose an easier version for you to confirm. {PROPOSAL_MARKER}"
+        )
 
         turn = await BriefChatService(session).ask(
             user,
@@ -559,7 +582,7 @@ async def test_propose_affordance_follows_the_plan_not_the_read_type(
             user,
             analysis.id,
             question="Can you ease today's ride?",
-            client=FakeBriefChatClient("The app can propose an easier version."),
+            client=FakeBriefChatClient(f"The app can propose an easier version. {PROPOSAL_MARKER}"),
         )
 
     assert turn.assistant_message.proposed_planned_workout_id == live_ride.id
@@ -693,7 +716,7 @@ async def test_ask_sees_an_activity_completed_after_the_read_was_written(
 
     prompt = _flat(client.calls[0]["system_prompt"])
     assert "Evening sweet spot" in prompt
-    assert "activitiesCompletedSinceRead" in prompt
+    assert "activitiesIngestedSinceRead" in prompt
 
 
 @pytest.mark.asyncio
@@ -814,6 +837,39 @@ async def test_ask_never_hands_the_model_the_apps_internal_vocabulary(
     instructions = system_prompt.split("What you wrote in that read:")[0]
     assert internal_vocabulary_hits(instructions.replace(NO_PLUMBING_RULE, "")) == ()
     assert NO_PLUMBING_RULE in _flat(system_prompt)
+
+
+@pytest.mark.asyncio
+async def test_ask_sanitizes_legacy_stored_prompt_system_from_read_packet(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        analysis = await _make_analysis(
+            session,
+            user.id,
+            context_packet={
+                "prompt": {
+                    "version": "legacy",
+                    "system": "SECRET OLD SYSTEM PROMPT",
+                    "outputRules": ["x"],
+                }
+            },
+        )
+        client = FakeBriefChatClient("I can answer from the current record.")
+
+        await BriefChatService(session).ask(
+            user,
+            analysis.id,
+            question="What did the read use?",
+            client=client,
+        )
+
+    prompt = str(client.calls[0]["system_prompt"])
+    assert "SECRET OLD SYSTEM PROMPT" not in prompt
+    assert '"systemHash"' in prompt
+    assert '"version": "legacy"' in prompt
 
 
 # ---------------------------------------------------------------------------
