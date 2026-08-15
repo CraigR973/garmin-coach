@@ -309,6 +309,7 @@ async def _run_real_morning_transition(
             is_active=True,
         )
         session.add(player)
+        await session.commit()
         if previous_triggered is not None:
             session.add(
                 _morning_analysis(
