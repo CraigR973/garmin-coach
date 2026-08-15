@@ -17,7 +17,7 @@ vi.mock('sonner', () => ({
 }));
 
 function renderLauncher(route = '/', timeZone = 'Europe/London') {
-  const queryClient = new QueryClient();
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[route]}>
@@ -204,5 +204,129 @@ describe('CoachLauncher', () => {
   it('stays out of the way on the pre-auth routes', () => {
     renderLauncher('/access');
     expect(screen.queryByLabelText(/ask/i)).toBeNull();
+  });
+
+  it('shows an unread marker for a coach-initiated state-change turn, not only a weekly review', async () => {
+    // UX192-04 / CR189-01: the predicate used to hard-code `weekly_review`, so
+    // Batch 187's state-change coach could write a turn that lit nothing.
+    apiFetchMock.mockResolvedValue({
+      data: [
+        {
+          id: '00000000-0000-4000-8000-000000000021',
+          analysisId: null,
+          originKind: 'state_change',
+          originDate: '2026-08-06',
+          role: 'assistant',
+          content: 'Your chronic deload escalation has cleared.',
+          proposedPlannedWorkoutId: null,
+          createdAtUtc: '2026-08-06T07:00:00Z',
+        },
+      ],
+    });
+
+    renderLauncher('/');
+
+    expect(await screen.findByLabelText(/new coach message/i)).toBeTruthy();
+  });
+
+  it('presents loading, error-with-retry, and empty states distinctly', async () => {
+    apiFetchMock.mockRejectedValue(new Error('network down'));
+    renderLauncher('/');
+
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText('Ask about today'));
+
+    expect(
+      await screen.findByText(/could not load your conversation/i),
+    ).toBeTruthy();
+    const retryButton = screen.getByRole('button', { name: /try again/i });
+
+    apiFetchMock.mockResolvedValue({ data: [] });
+    await user.click(retryButton);
+
+    expect(await screen.findByText(/nothing here yet/i)).toBeTruthy();
+  });
+
+  it('shows the question immediately and a thinking indicator while the reply is pending', async () => {
+    const user = userEvent.setup();
+    let resolvePost: (value: unknown) => void = () => {};
+    apiFetchMock.mockImplementation((_path: string, options?: { method?: string }) => {
+      if (options?.method === 'POST') {
+        return new Promise((resolve) => {
+          resolvePost = resolve;
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+
+    renderLauncher('/');
+    await user.click(screen.getByLabelText('Ask about today'));
+
+    const textarea = await screen.findByLabelText('Ask your coach a question');
+    await user.type(textarea, 'How is my week looking?');
+    await user.click(screen.getByRole('button', { name: /^ask$/i }));
+
+    expect(await screen.findByText('How is my week looking?')).toBeTruthy();
+    expect(screen.getByLabelText('Your coach is thinking')).toBeTruthy();
+
+    resolvePost({
+      data: {
+        userMessage: {
+          id: 'u1',
+          analysisId: null,
+          originKind: 'home',
+          role: 'user',
+          content: 'How is my week looking?',
+          proposedPlannedWorkoutId: null,
+          createdAtUtc: '2026-08-06T07:00:00Z',
+        },
+        assistantMessage: {
+          id: 'a1',
+          analysisId: null,
+          originKind: 'home',
+          role: 'assistant',
+          content: 'On track.',
+          proposedPlannedWorkoutId: null,
+          createdAtUtc: '2026-08-06T07:00:05Z',
+        },
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText('Your coach is thinking')).toBeNull();
+    });
+  });
+
+  it('scrolls the thread pane to the newest turn on open, not scrollTop 0', async () => {
+    // UX192-02: jsdom does no real layout, so `scrollHeight` is stubbed on the
+    // prototype before mount — the assertion is that the effect actively sets
+    // `scrollTop` to whatever the pane reports, not that jsdom computed a
+    // real 28,380px pane.
+    const scrollHeightSpy = vi
+      .spyOn(Element.prototype, 'scrollHeight', 'get')
+      .mockReturnValue(28_380);
+    apiFetchMock.mockResolvedValue({
+      data: [
+        {
+          id: 'm1',
+          analysisId: null,
+          originKind: 'home',
+          role: 'assistant',
+          content: 'Old turn',
+          proposedPlannedWorkoutId: null,
+          createdAtUtc: '2026-07-01T07:00:00Z',
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    renderLauncher('/');
+    await user.click(screen.getByLabelText('Ask about today'));
+
+    const pane = await screen.findByRole('list', { name: 'Coach conversation' });
+    await waitFor(() => {
+      expect(pane.scrollTop).toBe(28_380);
+    });
+
+    scrollHeightSpy.mockRestore();
   });
 });

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   activityTimeSeriesSchema,
   ageComparisonRowSchema,
+  coachOriginKindSchema,
   coachingStateEnvelopeSchema,
   conversationLearningEnvelopeSchema,
   conversationLearningReviewInputSchema,
@@ -17,6 +18,7 @@ import {
   manualEntryInputSchema,
   manualEntrySchema,
   plannedWorkoutOverrideInputSchema,
+  PROACTIVE_COACH_ORIGIN_KINDS,
   profileSchema,
   rideIntervalSchema,
   restructureEnvelopeSchema,
@@ -882,5 +884,20 @@ describe('v1 shared schemas', () => {
       errors: [],
     });
     expect(ready.data.read?.analysisType).toBe('post_strength');
+  });
+
+  it('accepts the state-change origin the coach itself writes (Batch 193.4)', () => {
+    // Mirrors the backend's `chat_context.ORIGIN_KINDS`, which already had
+    // this fifteenth kind — the client-side enum was one behind it, so a
+    // `state_change` turn parsed as an unrecognised origin.
+    expect(coachOriginKindSchema.parse('state_change')).toBe('state_change');
+  });
+
+  it('lists every origin kind the launcher lights its unread dot for as a valid origin (Batch 193.4)', () => {
+    for (const kind of PROACTIVE_COACH_ORIGIN_KINDS) {
+      expect(coachOriginKindSchema.safeParse(kind).success).toBe(true);
+    }
+    expect(PROACTIVE_COACH_ORIGIN_KINDS).toContain('weekly_review');
+    expect(PROACTIVE_COACH_ORIGIN_KINDS).toContain('state_change');
   });
 });

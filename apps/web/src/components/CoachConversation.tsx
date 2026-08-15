@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { MessageCircle, Send } from 'lucide-react';
 import { toast } from 'sonner';
@@ -7,6 +7,11 @@ import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Markdown } from '@/components/Markdown';
+
+/** Three distinct presentations for the thread fetch — Batch 193.3 / UX192-03:
+ * a failed fetch previously fell through the same "nothing here" copy an
+ * empty-but-healthy thread uses, so 82 real messages read as deleted. */
+export type CoachConversationStatus = 'loading' | 'error' | 'ready';
 
 /**
  * The conversation itself — messages, composer, and the confirm-before-apply
@@ -43,6 +48,10 @@ export interface CoachConversationProps {
   /** Accessible name for the composer — each surface says what it is asking about. */
   inputLabel: string;
   emptyHint?: string;
+  /** Defaults to `'ready'` — the inline per-read chat has no separate fetch to fail against. */
+  status?: CoachConversationStatus;
+  /** Shown next to the error copy when `status === 'error'`. */
+  onRetry?: () => void;
   pending: boolean;
   onAsk: (question: string) => void;
   /** Rendered in a scrolling pane when the thread can grow unbounded. */
@@ -56,12 +65,24 @@ export function CoachConversation({
   placeholder,
   inputLabel,
   emptyHint,
+  status = 'ready',
+  onRetry,
   pending,
   onAsk,
   scrollMessages = false,
 }: CoachConversationProps) {
   const queryClient = useQueryClient();
   const [question, setQuestion] = useState('');
+  // The turn Mark just sent, shown immediately rather than waiting for the
+  // round trip and thread-invalidation to bring it back (Batch 193.5 /
+  // UX192-06) — cleared as soon as `pending` drops, whether that is success
+  // (the real turns replace it) or failure (the toast covers it).
+  const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLOListElement>(null);
+
+  useEffect(() => {
+    if (!pending) setPendingQuestion(null);
+  }, [pending]);
   const dateKeyFormatter = useMemo(
     () =>
       new Intl.DateTimeFormat('en-GB', {
@@ -96,13 +117,28 @@ export function CoachConversation({
   // Typing in the composer updates local state on every keystroke. Keep the
   // timezone work out of that hot path, especially for the unbounded rolling
   // thread in the app-wide launcher.
-  const presentedMessages = useMemo(() => {
+  const sourceMessages = useMemo(() => {
     // The query surfaces already fail closed to an empty history while loading.
     // Retain that boundary if a stale/malformed cached payload reaches this
     // presentation component; it must not take down the rest of a read page.
     if (!Array.isArray(messages)) return [];
+    if (!pendingQuestion) return messages;
+    const optimisticTurn: BriefMessage = {
+      id: 'optimistic-pending-turn',
+      analysisId: null,
+      originKind: null,
+      originDate: null,
+      role: 'user',
+      content: pendingQuestion,
+      proposedPlannedWorkoutId: null,
+      createdAtUtc: new Date().toISOString(),
+    };
+    return [...messages, optimisticTurn];
+  }, [messages, pendingQuestion]);
+
+  const presentedMessages = useMemo(() => {
     let previousDayKey: string | null = null;
-    return messages.map((message) => {
+    return sourceMessages.map((message) => {
       const sentAt = new Date(message.createdAtUtc);
       const dayKey = localDateKey(dateKeyFormatter, sentAt);
       const presentation = {
@@ -115,7 +151,19 @@ export function CoachConversation({
       previousDayKey = dayKey;
       return presentation;
     });
-  }, [dateKeyFormatter, dateLabelFormatter, messages, timeFormatter]);
+  }, [dateKeyFormatter, dateLabelFormatter, sourceMessages, timeFormatter]);
+
+  // Scroll the newest turn into view on open and after every reply (Batch
+  // 193.2 / UX192-02) — the pane previously opened at `scrollTop: 0`, so the
+  // one place a proactive message lands was also the one place never on
+  // screen. Only the unbounded rolling thread scrolls internally; the inline
+  // per-read chat is short enough to live in the page's own scroll.
+  useEffect(() => {
+    if (!scrollMessages) return;
+    const node = scrollRef.current;
+    if (!node) return;
+    node.scrollTop = node.scrollHeight;
+  }, [scrollMessages, presentedMessages.length, pending]);
 
   const proposeMutation = useMutation({
     mutationFn: (plannedWorkoutId: string) =>
@@ -137,6 +185,7 @@ export function CoachConversation({
     event.preventDefault();
     const trimmed = question.trim();
     if (!trimmed || pending) return;
+    setPendingQuestion(trimmed);
     onAsk(trimmed);
     setQuestion('');
   }
@@ -148,8 +197,24 @@ export function CoachConversation({
         {heading}
       </div>
 
-      {messages.length > 0 ? (
+      {status === 'loading' ? (
+        <p className="text-sm text-text-muted" role="status">
+          Loading your conversation…
+        </p>
+      ) : status === 'error' ? (
+        <div className="space-y-2" role="alert">
+          <p className="text-sm text-error-text">
+            Could not load your conversation. Your past messages are still there.
+          </p>
+          {onRetry ? (
+            <Button type="button" size="sm" variant="subtle" onClick={onRetry}>
+              Try again
+            </Button>
+          ) : null}
+        </div>
+      ) : presentedMessages.length > 0 ? (
         <ol
+          ref={scrollRef}
           className={
             scrollMessages
               ? 'space-y-3 max-h-[46vh] overflow-y-auto pr-1'
@@ -213,10 +278,25 @@ export function CoachConversation({
               </Fragment>
             );
           })}
+          {pending ? (
+            <li
+              aria-live="polite"
+              aria-label="Your coach is thinking"
+              className="max-w-[85%] rounded-2xl bg-surface px-3 py-2 text-sm"
+            >
+              <span className="inline-flex items-center gap-1" aria-hidden>
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted [animation-delay:-0.3s]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted [animation-delay:-0.15s]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted" />
+              </span>
+            </li>
+          ) : null}
         </ol>
       ) : emptyHint ? (
         <p className="text-sm text-text-muted">{emptyHint}</p>
-      ) : null}
+      ) : (
+        <p className="text-sm text-text-muted">Nothing here yet. Ask whatever&apos;s on your mind.</p>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-2">
         <Textarea

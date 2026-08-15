@@ -5,6 +5,7 @@ import { MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   coachMessageInputSchema,
+  PROACTIVE_COACH_ORIGIN_KINDS,
   type BriefMessage,
   type BriefMessageTurn,
 } from '@coach/shared';
@@ -78,7 +79,9 @@ export function CoachLauncher({ userId, timeZone }: { userId?: string; timeZone?
   const messages = threadQuery.data?.data ?? [];
   const newestAssistant = latestAssistant(messages);
   const hasUnreadAssistant = Boolean(
-    newestAssistant?.originKind === 'weekly_review' && newestAssistant.id !== lastSeenAssistantId,
+    newestAssistant &&
+      (PROACTIVE_COACH_ORIGIN_KINDS as readonly string[]).includes(newestAssistant.originKind ?? '') &&
+      newestAssistant.id !== lastSeenAssistantId,
   );
 
   useEffect(() => {
@@ -123,7 +126,7 @@ export function CoachLauncher({ userId, timeZone }: { userId?: string; timeZone?
           hasUnreadAssistant ? `${ORIGIN_PROMPTS[origin]} — new coach message` : ORIGIN_PROMPTS[origin]
         }
         className={cn(
-          'fixed right-4 z-tabbar tap-target relative',
+          'fixed right-4 z-tabbar tap-target',
           'bottom-[calc(60px+env(safe-area-inset-bottom)+1rem)] md:bottom-6',
           'inline-flex items-center justify-center h-12 w-12 rounded-full',
           'bg-primary text-white shadow-sheet press-down',
@@ -146,11 +149,8 @@ export function CoachLauncher({ userId, timeZone }: { userId?: string; timeZone?
           heading={ORIGIN_PROMPTS[origin]}
           placeholder="Ask anything — your plan, your sleep, how a session went…"
           inputLabel="Ask your coach a question"
-          emptyHint={
-            threadQuery.isLoading
-              ? 'Loading your conversation…'
-              : "Nothing here yet. Ask whatever's on your mind."
-          }
+          status={threadQuery.isLoading ? 'loading' : threadQuery.isError ? 'error' : 'ready'}
+          onRetry={() => threadQuery.refetch()}
           pending={askMutation.isPending}
           onAsk={(question) => askMutation.mutate(question)}
           scrollMessages
