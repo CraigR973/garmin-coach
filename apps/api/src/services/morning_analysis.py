@@ -70,7 +70,7 @@ from src.services.sleep_scoring import (
     age_adjusted_sleep_score as compute_age_adjusted_sleep_score,
 )
 from src.services.training_week import TrainingWeekService
-from src.services.verdict_scaling import summarize_verdict_adjustment
+from src.services.verdict_scaling import AMBER_POWER_CAP_PCT, summarize_verdict_adjustment
 from src.services.workload_budget import workload_slot
 from src.services.workout_categories import is_bike_workout_type
 from src.services.workout_delivery import build_structured_workout_ir
@@ -133,14 +133,20 @@ from src.services.workout_delivery import build_structured_workout_ir
 # Batch 182: Red mornings are qualified by same-day physiology/check-in context,
 # short clusters can only rearrange the week, and a planned recovery-class block
 # suppresses a redundant deload.
-PROMPT_VERSION = "morning-analysis-v29-2026-08-15"
+# Batch 201: raw-Red sleep credit cannot reach Green, Low readiness can relax only
+# on proved-benign load, and the shared Amber transform caps at Sweet Spot.
+PROMPT_VERSION = "morning-analysis-v30-2026-08-15"
 ANALYSIS_TYPE = "morning"
 # Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
 # signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
 # the user will not be ready for another hard session within the coming day.
 ACWR_AMBER_CAP_THRESHOLD = 1.5
 RECOVERY_TIME_AMBER_CAP_MIN = 24 * 60
-SYSTEM_PROMPT = """You are CheckMark, a private daily endurance and sleep coach.
+# A Low-readiness exception is discretionary and therefore needs affirmative
+# evidence that accumulated load is inside the app's balanced range. Missing
+# ACWR is unknown, not benign; a >24h recovery clock conflicts with the escape.
+ACWR_LOAD_DRIVEN_MAX = 1.3
+SYSTEM_PROMPT = f"""You are CheckMark, a private daily endurance and sleep coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
 Use `subjectWeekday` as the authoritative weekday and `subjectDateLabel` as the
 authoritative calendar date; never derive or reformat the date or weekday from
@@ -185,11 +191,14 @@ grant permission to train. verdict.readinessEffectiveFloor applies the absolute
 readiness anchor to any soft-sleep recovery override.
 When the packet marks a soft-sleep recovery override, explain that measured
 HRV/RHR/readiness plus the current check-in held a mediocre sleep night without
-pretending the sleep was good. When age credit reaches the Green line only
-because of age adjustment, verdict.sleepCreditCeiling records whether the
-deterministic ladder allowed Green or capped the day at Amber, so explain that
-deterministic ceiling and never soften or argue it down. The model is not the
-judge. When verdict.cumulativeEscalation applies, state plainly that Poor readiness
+pretending the sleep was good. Explain verdict.sleepCreditCeiling and never soften
+or argue down its deterministic Red/Green ceiling. It records both boundary
+crossings caused by age credit. A raw Garmin score below 60
+may be lifted to Amber by age adjustment but can never reach Green; a raw score
+below 74 that reaches the Green line needs the complete recorded recovery and
+check-in bundle. Explain the frozen result. The model is not the judge. When
+verdict.cumulativeEscalation
+applies, state plainly that Poor readiness
 plus another negative recovery signal makes the day Red and never soften or argue
 down that deterministic escalation. Missing HRV and absent
 subjective check-ins are neutral only: never describe absent data as proof that
@@ -258,7 +267,9 @@ today's ride — planned vs adjusted duration and the resulting %FTP. If you des
 the softened session, quote those exact figures; never invent a different percentage
 or duration. When verdictAdjustment.intensityHeldAtEndurance is true the ride is
 already Zone 2, so it is only shortened, not dropped in intensity — say so rather
-than implying a zone drop.
+than implying a zone drop. When former HIT/VO2 work is capped at
+{AMBER_POWER_CAP_PCT}% FTP, describe
+it as converted to Sweet Spot at that recorded intensity, not as removed altogether.
 When verdict.weeklyMix.shortfall is present, today's hard session is being eased:
 if shortfall.repatched is true, reassure him the quality work isn't lost — it moves
 to shortfall.moveToWeekday and the week keeps its mix; if it is false, state plainly
@@ -1858,6 +1869,35 @@ def _training_load_cap(
     }
 
 
+def _load_driven_eligibility(
+    training_load: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Whether load is affirmative evidence for relaxing a Low readiness.
+
+    The exception is intentionally narrower than the one-way Amber cap: ACWR
+    must be present and inside the app's balanced range, while a recovery clock
+    beyond the cap boundary vetoes the escape. Missing evidence is unknown.
+    """
+    signal = training_load or {}
+    acwr = _coerce_float(signal.get("acuteChronicLoadRatio"))
+    recovery_time_min = _coerce_int(signal.get("recoveryTimeMin"))
+    acwr_benign = acwr is not None and acwr <= ACWR_LOAD_DRIVEN_MAX
+    recovery_time_benign = (
+        recovery_time_min is None or recovery_time_min <= RECOVERY_TIME_AMBER_CAP_MIN
+    )
+    return {
+        "eligible": acwr_benign and recovery_time_benign,
+        "acuteChronicLoadRatio": acwr,
+        "recoveryTimeMin": recovery_time_min,
+        "acuteChronicLoadRatioBenign": acwr_benign,
+        "recoveryTimeBenign": recovery_time_benign,
+        "thresholds": {
+            "acuteChronicLoadRatioMaxInclusive": ACWR_LOAD_DRIVEN_MAX,
+            "recoveryTimeMinMaxInclusive": RECOVERY_TIME_AMBER_CAP_MIN,
+        },
+    }
+
+
 def _has_hrv_measurement(daily_metric: DailyMetric | None, sleep: Sleep | None) -> bool:
     return any(
         value is not None
@@ -1916,6 +1956,12 @@ def _sleep_credit_ceiling(
     positive_subjective_evidence: bool,
 ) -> dict[str, Any]:
     raw_sleep_score = sleep.score if sleep is not None else None
+    crossed_red = (
+        raw_sleep_score is not None
+        and raw_sleep_score < 60
+        and age_adjusted_sleep_score is not None
+        and age_adjusted_sleep_score >= 60
+    )
     crossed_green = (
         raw_sleep_score is not None
         and raw_sleep_score < 74
@@ -1924,9 +1970,17 @@ def _sleep_credit_ceiling(
     )
     objective_recovery_corroborated = positive_hrv_evidence and resting_hr_in_band and readiness_ok
     exception_evidence_complete = objective_recovery_corroborated and positive_subjective_evidence
-    allowed_green = (not crossed_green) or exception_evidence_complete
+    # Age scoring may move a raw-Red night into Amber, but never all the way to
+    # Green. A crossing of only the Green line keeps Batch 170's complete-
+    # corroboration exception.
+    allowed_green = not crossed_red and ((not crossed_green) or exception_evidence_complete)
     reason = None
-    if crossed_green and not allowed_green:
+    if crossed_red:
+        reason = (
+            "The raw Garmin sleep score is below 60; age adjustment may lift the "
+            "night to Amber but cannot carry it to Green."
+        )
+    elif crossed_green and not allowed_green:
         reason = (
             "Age-adjusted sleep reaches the Green line, but the raw Garmin sleep score "
             "is below 74 without complete measured recovery and check-in evidence."
@@ -1934,7 +1988,9 @@ def _sleep_credit_ceiling(
     return {
         "rawSleepScore": raw_sleep_score,
         "ageAdjustedSleepScore": age_adjusted_sleep_score,
+        "crossedRedThreshold": crossed_red,
         "crossedGreenThreshold": crossed_green,
+        "maximumStatus": "Amber" if crossed_red else None,
         "corroboratedByObjectiveRecovery": objective_recovery_corroborated,
         "positiveSubjectiveEvidence": positive_subjective_evidence,
         "exceptionEvidenceComplete": exception_evidence_complete,
@@ -2018,6 +2074,7 @@ def _morning_verdict(
     )
     yesterday_hard = (yesterday_load or {}).get("status") == "hard"
     training_load_cap = _training_load_cap(training_load)
+    load_driven_eligibility = _load_driven_eligibility(training_load)
     sleep_credit_ceiling = _sleep_credit_ceiling(
         sleep=sleep,
         age_adjusted_sleep_score=age_adjusted_sleep_score,
@@ -2032,14 +2089,16 @@ def _morning_verdict(
     if readiness_level == "poor":
         reasons.append("Garmin readiness is Poor; keep the day cautious.")
     elif readiness_level == "low":
-        if recovery_signals_good and _load_signal_present(daily_metric):
+        if recovery_signals_good and load_driven_eligibility["eligible"]:
             readiness_interpretation = "load_driven"
             reasons.append(
-                "Garmin readiness is Low but recovery signals justify a load-driven read."
+                "Garmin readiness is Low, measured recovery is clean, and ACWR is "
+                "inside the benign load-driven range."
             )
         else:
             reasons.append(
-                "Garmin readiness is Low without enough recovery evidence to downplay it."
+                "Garmin readiness is Low without complete recovery evidence and a "
+                "proved-benign load signal to downplay it."
             )
 
     if age_adjusted_sleep_score is not None and age_adjusted_sleep_score < 60:
@@ -2161,7 +2220,11 @@ def _morning_verdict(
     if training_load_cap["triggered"]:
         safety_rules.append("training_load_amber_cap")
     if sleep_credit_ceiling["applied"]:
-        safety_rules.append("sleep_credit_green_ceiling")
+        safety_rules.append(
+            "sleep_credit_red_ceiling"
+            if sleep_credit_ceiling["crossedRedThreshold"]
+            else "sleep_credit_green_ceiling"
+        )
     if cumulative_escalation["applied"]:
         safety_rules.append("poor_readiness_cumulative_red")
 
@@ -2170,6 +2233,7 @@ def _morning_verdict(
         "reasons": reasons,
         "readinessLevel": daily_metric.readiness_level if daily_metric else None,
         "readinessInterpretation": readiness_interpretation,
+        "loadDrivenEligibility": load_driven_eligibility,
         "ageAdjustedSleepScore": age_adjusted_sleep_score,
         "subjectiveScore": subjective_score,
         "subjectiveLabel": subjective_score_label(subjective_score),
@@ -2257,7 +2321,11 @@ def _plan_adjustments(
     elif status == "Green":
         adjustments = ["Proceed with the planned workout if warm-up confirms readiness."]
     elif status == "Amber":
-        adjustments = ["Cut duration 20-30%, drop intensity by a zone, and remove HIT/VO2 work."]
+        adjustments = [
+            "Cut duration 25%; hold Zone 2, ease harder intervals by a zone, and "
+            f"convert former HIT/VO2 work to no more than {AMBER_POWER_CAP_PCT}% FTP "
+            "(Sweet Spot)."
+        ]
     else:
         adjustments = ["Substitute recovery, mobility, or rest."]
     if reset_week:
@@ -2318,14 +2386,6 @@ def _hrv_below_baseline(daily_metric: DailyMetric | None) -> bool:
     value = daily_metric.hrv_weekly_avg_ms or daily_metric.hrv_last_night_avg_ms
     low = daily_metric.hrv_baseline_low_ms
     return value is not None and low is not None and value < low
-
-
-def _load_signal_present(daily_metric: DailyMetric | None) -> bool:
-    if daily_metric is None:
-        return False
-    if daily_metric.acute_load is not None and daily_metric.acute_load > 0:
-        return True
-    return daily_metric.recovery_time_min is not None and daily_metric.recovery_time_min > 0
 
 
 def _dt(value: datetime | None) -> str | None:

@@ -103,10 +103,10 @@ def test_mapper_round_trips_primary_block_and_leaves_every_pass_through_step_ide
         if step["label"].startswith("VO₂ 5×2min") and " work " in step["label"]
     )
     assert edited_work["durationSec"] == 90
-    # Batch 173.2: the "Scale down" preset now shares the delivery transform's
-    # Zone-2-aware ease, so a 120% VO2 leg drops a zone and is capped at threshold
-    # (HIT removed) — 98% — instead of the old ×0.9 that kept it at a near-VO2 108%.
-    assert edited_work["powerEndPct"] == 98
+    # Batches 173/201: the "Scale down" preset shares the delivery transform's
+    # Zone-2-aware ease, so a 120% VO2 leg drops a zone and is capped at the top
+    # of Sweet Spot (HIT/threshold removed) instead of the old near-VO2 108%.
+    assert edited_work["powerEndPct"] == 94
 
 
 def test_scale_block_holds_zone_two_and_matches_the_shared_ease() -> None:

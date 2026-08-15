@@ -26,6 +26,7 @@ from src.models.profile import Profile, UserRole
 from src.services.holiday_pause import HolidayPauseService, HolidayWindow
 from src.services.morning_analysis import (
     ACWR_AMBER_CAP_THRESHOLD,
+    ACWR_LOAD_DRIVEN_MAX,
     PROMPT_VERSION,
     RECOVERY_TIME_AMBER_CAP_MIN,
     SYSTEM_PROMPT,
@@ -56,6 +57,7 @@ from src.services.personal_baselines import (
     SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR,
     readiness_baseline_trend,
 )
+from src.services.verdict_scaling import AMBER_POWER_CAP_PCT
 
 
 @dataclass
@@ -1274,7 +1276,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v29")
+    assert PROMPT_VERSION.startswith("morning-analysis-v30")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
@@ -1307,6 +1309,7 @@ def test_prompt_treats_the_training_load_cap_as_deterministic() -> None:
 
 def test_prompt_keeps_batch_170_verdict_rules_deterministic() -> None:
     assert "verdict.sleepCreditCeiling" in SYSTEM_PROMPT
+    assert "raw Garmin score below 60" in SYSTEM_PROMPT
     assert "verdict.cumulativeEscalation" in SYSTEM_PROMPT
     assert "Missing HRV and absent" in SYSTEM_PROMPT
     assert "never describe absent data as proof" in SYSTEM_PROMPT
@@ -1868,7 +1871,9 @@ def test_sleep_credit_crossing_requires_complete_exception_evidence() -> None:
     assert no_corroboration["sleepCreditCeiling"] == {
         "rawSleepScore": 62,
         "ageAdjustedSleepScore": 74,
+        "crossedRedThreshold": False,
         "crossedGreenThreshold": True,
+        "maximumStatus": None,
         "corroboratedByObjectiveRecovery": False,
         "positiveSubjectiveEvidence": True,
         "exceptionEvidenceComplete": False,
@@ -1885,19 +1890,28 @@ def test_sleep_credit_crossing_requires_complete_exception_evidence() -> None:
     assert corroborated["sleepCreditCeiling"]["applied"] is False
 
 
-def test_sleep_credit_can_still_lift_within_the_amber_band() -> None:
+def test_sleep_credit_can_lift_a_raw_red_night_only_to_amber() -> None:
     user_id = uuid.uuid4()
     verdict = _morning_verdict(
-        daily_metric=None,
+        daily_metric=_batch_170_metric(user_id),
         sleep=_batch_170_sleep(user_id, score=53),
         age_adjusted_sleep_score=65,
-        manual_entries=[],
+        manual_entries=[_positive_morning_checkin(user_id)],
         planned_workouts=[],
+        baselines={
+            "resting_heart_rate_bpm": _rhr_baseline(user_id),
+            "readiness_score": _readiness_baseline(user_id),
+        },
     )
 
     assert verdict["status"] == "Amber"
+    assert verdict["sleepCreditCeiling"]["crossedRedThreshold"] is True
     assert verdict["sleepCreditCeiling"]["crossedGreenThreshold"] is False
-    assert verdict["sleepCreditCeiling"]["applied"] is False
+    assert verdict["sleepCreditCeiling"]["maximumStatus"] == "Amber"
+    assert verdict["sleepCreditCeiling"]["exceptionEvidenceComplete"] is True
+    assert verdict["sleepCreditCeiling"]["allowedGreen"] is False
+    assert verdict["sleepCreditCeiling"]["applied"] is True
+    assert "sleep_credit_red_ceiling" in verdict["safetyRulesApplied"]
 
 
 @pytest.mark.parametrize(
@@ -2542,13 +2556,12 @@ def test_training_load_thresholds_cap_only_above_the_set_boundaries(
     )
 
 
-def test_july_24_load_driven_shape_is_capped_at_amber() -> None:
-    """Hold Batch 170 evidence positive so the Batch 167 load cap stays isolated."""
+def test_low_readiness_load_driven_escape_requires_proved_benign_load() -> None:
     daily_metric = DailyMetric(
         user_id=uuid.uuid4(),
         calendar_date=date(2026, 7, 24),
         readiness_level="Low",
-        recovery_time_min=2880,
+        recovery_time_min=600,
         hrv_weekly_avg_ms=50,
         hrv_baseline_low_ms=43,
         hrv_status="Balanced",
@@ -2563,22 +2576,47 @@ def test_july_24_load_driven_shape_is_capped_at_amber() -> None:
         "yesterday_load": {"status": "hard"},
     }
 
-    before_cap = _morning_verdict(**kwargs)
-    after_cap = _morning_verdict(
+    benign = _morning_verdict(
         **kwargs,
         training_load={
-            "acuteChronicLoadRatio": None,
+            "acuteChronicLoadRatio": ACWR_LOAD_DRIVEN_MAX,
             "recoveryTimeMin": daily_metric.recovery_time_min,
         },
     )
+    ambiguous = _morning_verdict(
+        **kwargs,
+        training_load={
+            "acuteChronicLoadRatio": None,
+            "recoveryTimeMin": RECOVERY_TIME_AMBER_CAP_MIN,
+        },
+    )
+    elevated = _morning_verdict(
+        **kwargs,
+        training_load={
+            "acuteChronicLoadRatio": ACWR_LOAD_DRIVEN_MAX + 0.01,
+            "recoveryTimeMin": daily_metric.recovery_time_min,
+        },
+    )
+    capped = _morning_verdict(
+        **kwargs,
+        training_load={
+            "acuteChronicLoadRatio": ACWR_LOAD_DRIVEN_MAX,
+            "recoveryTimeMin": RECOVERY_TIME_AMBER_CAP_MIN + 1,
+        },
+    )
 
-    assert before_cap["status"] == "Green"
-    assert before_cap["readinessInterpretation"] == "load_driven"
-    assert after_cap["status"] == "Amber"
-    assert after_cap["readinessInterpretation"] == "load_driven"
-    assert after_cap["trainingLoadCap"]["applied"] is True
-    assert after_cap["trainingLoadCap"]["sources"] == ["recovery_time"]
-    assert "training_load_amber_cap" in after_cap["safetyRulesApplied"]
+    assert benign["status"] == "Green"
+    assert benign["readinessInterpretation"] == "load_driven"
+    assert benign["loadDrivenEligibility"]["eligible"] is True
+    for verdict in (ambiguous, elevated, capped):
+        assert verdict["status"] == "Amber"
+        assert verdict["readinessInterpretation"] is None
+        assert verdict["loadDrivenEligibility"]["eligible"] is False
+    assert ambiguous["trainingLoadCap"]["triggered"] is False
+    assert elevated["trainingLoadCap"]["triggered"] is False
+    assert capped["trainingLoadCap"]["applied"] is False
+    assert capped["trainingLoadCap"]["sources"] == ["recovery_time"]
+    assert "training_load_amber_cap" in capped["safetyRulesApplied"]
 
 
 @pytest.mark.parametrize(
@@ -2782,6 +2820,123 @@ def test_verdict_adjustment_packet_eases_hard_ride_and_removes_hit() -> None:
     detail = _eased_ride_detail("Amber", packet)
     assert "no HIT/VO2" in detail
     assert f"{packet['adjustedWorkPowerPct']}% FTP" in detail
+
+
+def _batch_201_outcome(case: str) -> tuple[str, int | None]:
+    user_id = uuid.uuid4()
+    baselines = {
+        "resting_heart_rate_bpm": _rhr_baseline(user_id),
+        "readiness_score": _readiness_baseline(user_id),
+    }
+    if case == "credited_raw_red":
+        verdict = _morning_verdict(
+            daily_metric=_batch_170_metric(user_id),
+            sleep=_batch_170_sleep(user_id, score=53),
+            age_adjusted_sleep_score=65,
+            manual_entries=[_positive_morning_checkin(user_id)],
+            planned_workouts=[],
+            baselines=baselines,
+        )
+        return verdict["status"], None
+    if case in {"unproved_load", "benign_load"}:
+        metric = _batch_170_metric(user_id, readiness_level="Low")
+        verdict = _morning_verdict(
+            daily_metric=metric,
+            sleep=None,
+            age_adjusted_sleep_score=80,
+            manual_entries=[_positive_morning_checkin(user_id)],
+            planned_workouts=[],
+            training_load={
+                "acuteChronicLoadRatio": (
+                    ACWR_LOAD_DRIVEN_MAX + 0.01 if case == "unproved_load" else ACWR_LOAD_DRIVEN_MAX
+                ),
+                "recoveryTimeMin": 600,
+            },
+        )
+        return verdict["status"], None
+    if case == "amber_vo2_transform":
+        ride = _bike_workout(
+            workout_type="bike_vo2",
+            intensity_target="115% FTP",
+            structured_workout={
+                "format": "bike",
+                "steps": [{"label": "VO2", "minutes": 40, "target": "115% FTP"}],
+            },
+        )
+        packet = _verdict_adjustment_packet("Amber", [ride])
+        assert packet is not None
+        return "Amber", packet["adjustedWorkPowerPct"]
+    if case == "corroborated_green_crossing":
+        verdict = _morning_verdict(
+            daily_metric=_batch_170_metric(user_id),
+            sleep=_batch_170_sleep(user_id, score=62),
+            age_adjusted_sleep_score=74,
+            manual_entries=[_positive_morning_checkin(user_id)],
+            planned_workouts=[],
+            baselines=baselines,
+        )
+        return verdict["status"], None
+    if case == "acute_red":
+        verdict = _morning_verdict(
+            daily_metric=None,
+            sleep=None,
+            age_adjusted_sleep_score=58,
+            manual_entries=[],
+            planned_workouts=[],
+        )
+        return verdict["status"], None
+    raise AssertionError(f"Unknown Batch 201 audit case: {case}")
+
+
+@pytest.mark.parametrize(
+    ("case", "previous_status", "previous_power", "expected_status", "expected_power"),
+    [
+        ("credited_raw_red", "Green", None, "Amber", None),
+        ("unproved_load", "Green", None, "Amber", None),
+        ("amber_vo2_transform", "Amber", 98, "Amber", AMBER_POWER_CAP_PCT),
+        ("corroborated_green_crossing", "Green", None, "Green", None),
+        ("benign_load", "Green", None, "Green", None),
+        ("acute_red", "Red", None, "Red", None),
+    ],
+)
+def test_batch_201_combined_matrix_only_hardens_each_outcome(
+    case: str,
+    previous_status: str,
+    previous_power: int | None,
+    expected_status: str,
+    expected_power: int | None,
+) -> None:
+    status, adjusted_power = _batch_201_outcome(case)
+    caution_rank = {"Green": 0, "Amber": 1, "Red": 2}
+
+    assert status == expected_status
+    assert caution_rank[status] >= caution_rank[previous_status]
+    assert adjusted_power == expected_power
+    if previous_power is not None:
+        assert adjusted_power is not None
+        assert adjusted_power <= previous_power
+
+
+def test_amber_plan_wording_matches_the_shared_sweet_spot_transform() -> None:
+    ride = _bike_workout(
+        workout_type="bike_vo2",
+        intensity_target="115% FTP",
+        structured_workout=_HARD_VO2_STRUCTURED,
+    )
+    verdict = _morning_verdict(
+        daily_metric=None,
+        sleep=None,
+        age_adjusted_sleep_score=70,
+        manual_entries=[],
+        planned_workouts=[ride],
+    )
+
+    guidance = " ".join(verdict["planAdjustments"])
+    assert verdict["status"] == "Amber"
+    assert "25%" in guidance
+    assert f"{AMBER_POWER_CAP_PCT}% FTP" in guidance
+    assert "Sweet Spot" in guidance
+    assert "remove HIT/VO2" not in guidance
 
 
 def test_verdict_adjustment_packet_is_none_when_not_cautious() -> None:
