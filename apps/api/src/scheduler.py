@@ -51,7 +51,7 @@ from src.models.coaching import Activity, Analysis, FanStateReading, Temperature
 from src.models.notification import ActionType, ActorType, AuditLog
 from src.models.profile import Profile
 from src.services.anthropic_text import AnthropicApiError
-from src.services.backup import create_backup
+from src.services.backup import create_backup, restore_latest_backup
 from src.services.dreo_fan import (
     DreoCredentials,
     DreoCredentialsError,
@@ -118,6 +118,7 @@ async def run_scheduled_backup() -> JobResult:
     except Exception as exc:
         reason = str(exc)
         log.exception("scheduled backup failed")
+        _log_backup_operator_alert("backup_failed", reason)
         audit_rows = 0
         try:
             async with AsyncSessionLocal() as session:
@@ -136,6 +137,39 @@ async def run_scheduled_backup() -> JobResult:
         except Exception:
             log.exception("recording scheduled backup failure audit failed")
         return JobResult.failed("backup_failed", backups=0, audit_rows=audit_rows)
+
+
+async def run_backup_restore_drill() -> JobResult:
+    """Restore the latest backup into a disposable database and check invariants."""
+
+    try:
+        result = await restore_latest_backup(
+            settings.backup_dir,
+            settings.database_url,
+            settings.backup_restore_database_url,
+        )
+        return JobResult.succeeded(
+            restored_tables=result.restored_tables,
+            profiles=result.profile_rows,
+            analyses=result.analysis_rows,
+            excluded_activity_timeseries_rows=result.excluded_activity_timeseries_rows,
+        )
+    except Exception as exc:
+        reason = str(exc)
+        log.exception("backup restore drill failed")
+        _log_backup_operator_alert("backup_restore_drill_failed", reason)
+        return JobResult.failed("backup_restore_drill_failed")
+
+
+def _log_backup_operator_alert(kind: str, reason: str) -> None:
+    """Structured log hook for provider/external monitors, outside user pushes."""
+
+    log.error(
+        "operator backup alert",
+        kind=kind,
+        reason=reason,
+        alert_route="provider_log_or_external_monitor",
+    )
 
 
 async def run_connection_warmup() -> None:

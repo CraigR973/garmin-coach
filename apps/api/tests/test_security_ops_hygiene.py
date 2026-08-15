@@ -121,6 +121,88 @@ async def test_create_backup_removes_failed_partial(
     assert list(tmp_path.glob("coach_*.dump")) == []
 
 
+@pytest.mark.asyncio
+async def test_restore_latest_backup_uses_latest_archive_and_validates_invariants(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    old = tmp_path / "coach_20260801_030000.dump"
+    new = tmp_path / "coach_20260802_030000.dump"
+    old.write_text("old\n", encoding="utf-8")
+    new.write_text("new\n", encoding="utf-8")
+    os.utime(old, (1, 1))
+    os.utime(new, (2, 2))
+
+    calls: list[tuple[Any, ...]] = []
+
+    async def fake_subprocess_exec(*args: Any, **kwargs: Any) -> _FakeProc:
+        calls.append(args)
+        assert kwargs["env"]["PGPASSWORD"] == "restore-secret"
+        return _FakeProc(returncode=0)
+
+    async def fake_validate(
+        restore_database_url: str,
+        filename: str,
+    ) -> backup.BackupRestoreResult:
+        assert restore_database_url == "postgresql+asyncpg://restore:restore-secret@db/drill"
+        assert filename == new.name
+        return backup.BackupRestoreResult(
+            filename=filename,
+            restored_tables=31,
+            alembic_version="027",
+            profile_rows=1,
+            analysis_rows=20,
+            excluded_activity_timeseries_rows=0,
+        )
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_subprocess_exec)
+    monkeypatch.setattr(backup, "_validate_restored_backup", fake_validate)
+
+    result = await backup.restore_latest_backup(
+        str(tmp_path),
+        "postgresql+asyncpg://prod:prod-secret@db/garmin",
+        "postgresql+asyncpg://restore:restore-secret@db/drill",
+    )
+
+    assert result.filename == new.name
+    argv = calls[0]
+    assert argv[:5] == ("pg_restore", "--clean", "--if-exists", "--no-owner", "--dbname")
+    assert "restore-secret" not in argv
+    assert str(new) in argv
+
+
+@pytest.mark.asyncio
+async def test_restore_latest_backup_refuses_source_database(tmp_path: Path) -> None:
+    archive = tmp_path / "coach_20260802_030000.dump"
+    archive.write_text("dump\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="refused to target the source"):
+        await backup.restore_latest_backup(
+            str(tmp_path),
+            "postgresql+asyncpg://prod:secret@db/garmin",
+            "postgresql+asyncpg://prod:other-secret@db/garmin",
+        )
+
+
+@pytest.mark.asyncio
+async def test_restore_latest_backup_surfaces_pg_restore_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive = tmp_path / "coach_20260802_030000.dump"
+    archive.write_text("dump\n", encoding="utf-8")
+
+    async def fake_subprocess_exec(*args: Any, **kwargs: Any) -> _FakeProc:
+        return _FakeProc(returncode=1, stderr=b"bad archive")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_subprocess_exec)
+
+    with pytest.raises(RuntimeError, match="bad archive"):
+        await backup.restore_latest_backup(
+            str(tmp_path),
+            "postgresql+asyncpg://prod:secret@db/garmin",
+            "postgresql+asyncpg://restore:secret@db/drill",
+        )
+
+
 def test_rls_posture_evaluator_fails_simulated_regressions() -> None:
     check_rls = _load_script("check_rls_posture.py")
 

@@ -87,6 +87,9 @@ class Settings(BaseSettings):
 
     # Backup
     backup_dir: str = "/tmp/garmin_coach_backups"
+    # Optional disposable database used only by the backup restore drill. It must
+    # not point at production: the drill runs pg_restore --clean into it.
+    backup_restore_database_url: str = ""
 
     # Background scheduler (APScheduler) — disable in tests / one-off scripts.
     scheduler_enabled: bool = True

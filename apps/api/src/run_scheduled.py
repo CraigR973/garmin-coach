@@ -24,6 +24,7 @@ Jobs:
     evening-nudge   send the evening sleep-protocol nudge
     evening-alerts  bedtime thermal + source-freshness alerts
     backup          database backup
+    backup-drill    restore latest backup into a disposable DB and check invariants
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ import argparse
 import asyncio
 
 from src.scheduler import (
+    run_backup_restore_drill,
     run_evening_monitoring_alerts,
     run_evening_sleep_nudge,
     run_fan_control,
@@ -58,6 +60,7 @@ JOBS: dict[str, JobOperation] = {
     "evening-alerts": run_evening_monitoring_alerts,
     "fan-control": run_fan_control,
     "backup": run_scheduled_backup,
+    "backup-drill": run_backup_restore_drill,
 }
 
 
