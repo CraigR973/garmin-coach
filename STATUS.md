@@ -6,7 +6,7 @@
 
 ## Now
 
-**2026-08-15 — Batch 201 implementation ready (verdict-ladder residuals).** `fix/batch-201-verdict-ladder-residuals` closes CI191-05/06 and CI191-07's load half without a migration. Age credit can lift a raw-Red sleep night only to Amber; Low readiness is `load_driven` only with positive sleep/HRV/check-in evidence, observed ACWR ≤1.30 and no >24h recovery conflict; and the one shared Amber adjustment now caps former HIT/VO2 at 94% FTP Sweet Spot rather than 98% threshold while preserving the 75% duration cut and Zone-2 hold. Morning prompt v30 explains the frozen fields and the generic plan copy matches the transform. The combined Batch-170-style matrix proves every changed colour/power outcome is equally or more cautious and preserves the corroborated-Green, benign-load and acute-Red controls. Full local backend gate passed (805 / 347 expected PostgreSQL skips; Ruff/format/mypy clean across 135 source files). Decision #282; branch ready for review, not promoted. **Next:** review and explicitly close out Batch 201.
+**2026-08-15 — Batch 201 shipped (verdict-ladder residuals).** PR #234 / squash `c6e5f21` closes CI191-05/06 and CI191-07's load half without a migration. Age credit can lift a raw-Red sleep night only to Amber; Low readiness is `load_driven` only with positive sleep/HRV/check-in evidence, observed ACWR ≤1.30 and no >24h recovery conflict; and the shared Amber adjustment caps former HIT/VO2 at 94% FTP Sweet Spot while preserving the 75% duration cut and Zone-2 hold. Morning prompt v30 and deterministic packet/action copy match the transform, and the combined matrix proves every changed colour/power outcome is equally or more cautious. The first branch CI exposed one stale PostgreSQL-only expected string (`13` vs the intentional `14`-point 108→94 drop); Craig approved the focused correction, after which branch-push, PR-context and post-merge `main` CI passed all seven jobs, including 1,152 PostgreSQL-backed tests, and the Vercel preview was Ready. Production freshness passed on exact SHA `c6e5f21280d82078da112b594a6e7b6ec243217f`; Railway direct and Vercel same-origin health matched, web `/` returned 200, and protected daily-loop returned 401. A read-only probe in the deployed Railway container proved raw 59→adjusted 80 remains Amber even with complete corroboration, ACWR 1.30 / 24h is eligible while missing ACWR and 24h+1m are not, and Amber maps 108→94 while holding Zone 2 at 67. Decision #282. **Next:** Batch 202 — chat context tells the truth about itself.
 
 ---
 
@@ -63,6 +63,10 @@
 ---
 
 ## Log
+
+**2026-08-15 — Batch 201 shipped:** PR #234 / squash `c6e5f21`. Raw-Red age credit is capped at Amber, the Low-readiness load-driven escape requires positive recovery evidence plus observed ACWR ≤1.30 and no >24h recovery conflict, and the shared Amber workout cap is 94% FTP with the 75% duration cut and Zone-2 hold preserved. One stale PostgreSQL-only expectation was corrected with Craig's approval after the first branch run; final branch, PR and `main` CI passed all seven jobs, Vercel preview and production freshness passed, exact-SHA health/web/auth smokes passed, and a read-only live-container probe proved the three shipped boundaries. No migration; Decision #282. **Next:** Batch 202.
+
+---
 
 **2026-08-15 — Batch 201 implementation ready:** `fix/batch-201-verdict-ladder-residuals` makes raw-Red sleep credit Amber-only, requires observed ACWR ≤1.30 plus no >24h recovery conflict for the Low-readiness `load_driven` exception, and hardens the shared Amber workout ceiling from 98% threshold to 94% Sweet Spot across delivery, editor, packet/action copy and prompt wording. A combined only-harden matrix covers the three residuals and preserved controls. Full local backend gate passed (805 / 347 expected PostgreSQL skips; Ruff/format/mypy clean across 135 source files). No migration; Decision #282; branch not promoted.
 
