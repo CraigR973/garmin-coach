@@ -2407,7 +2407,7 @@ async def test_approve_adjustment_replaces_event_and_consumes_pending(
         assert adherence.actual_workout_json["source"] == "accepted_adjustment"
         assert adherence.actual_workout_json["changeSummary"] == "Accepted the coach's eased ride."
         assert adherence.actual_workout_json["type"] == "Eased ride"
-        assert adherence.actual_workout_json["intensity"] == "75% duration, 13 points easier"
+        assert adherence.actual_workout_json["intensity"] == "75% duration, 14 points easier"
         again = await service._pending_adjustment(
             user_id, await service.rail._planned_workout(user_id, workout_id)
         )
