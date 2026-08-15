@@ -101,6 +101,22 @@ Supabase:
 
 ## GitHub Auto-Deploy Verification
 
+After `CI` succeeds for a `main` merge, the `Production deploy freshness`
+workflow polls both the direct Railway health URL and Vercel's same-origin
+`/api/v1/health` for that exact merge SHA. It retries for at most 15 minutes;
+timeout, network failure, `sha=unknown`, or a stale SHA fails the workflow and
+emits a GitHub error annotation. That failing workflow is the independent alert
+for the dropped-webhook incident class; it does not run inside the API scheduler.
+
+The same bounded check can be run manually without credentials:
+
+```bash
+python3 scripts/monitor_deploy_freshness.py \
+  --expected-sha "$(git rev-parse HEAD)" \
+  --endpoint railway=https://api-production-e2bc7.up.railway.app/api/v1/health \
+  --endpoint vercel=https://garmin-coach-one.vercel.app/api/v1/health
+```
+
 Railway:
 
 ```bash
