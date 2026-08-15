@@ -376,13 +376,27 @@ async def run_state_change_coach() -> JobResult:
                 log.info("state-change coach skipped", reason="no_active_profiles")
                 return JobResult.skipped("no_active_profiles", profiles=0)
 
+            holiday_service = HolidayPauseService(session)
             service = StateChangeCoachService(session)
             delivered = 0
             skipped_budget = 0
             skipped_no_transition = 0
+            skipped_holiday = 0
             failed = 0
             for profile in profiles:
                 subject_date = _profile_today(profile)
+                if (
+                    await holiday_service.get_active_window_for_date(profile, subject_date)
+                    is not None
+                ):
+                    skipped_holiday += 1
+                    log.info(
+                        "state-change coach skipped",
+                        reason="holiday_away",
+                        profile_id=str(profile.id),
+                        subject_date=subject_date.isoformat(),
+                    )
+                    continue
                 try:
                     result = await service.run(profile, as_of=subject_date, commit=True)
                     delivered += int(result.message_created)
@@ -402,6 +416,7 @@ async def run_state_change_coach() -> JobResult:
             delivered=delivered,
             skipped_budget=skipped_budget,
             skipped_no_transition=skipped_no_transition,
+            skipped_holiday=skipped_holiday,
             failed=failed,
         )
         counters = {
@@ -409,10 +424,13 @@ async def run_state_change_coach() -> JobResult:
             "delivered": delivered,
             "skipped_budget": skipped_budget,
             "skipped_no_transition": skipped_no_transition,
+            "skipped_holiday": skipped_holiday,
             "failed": failed,
         }
         if failed:
             return JobResult.degraded("profile_failures", **counters)
+        if skipped_holiday == len(profiles):
+            return JobResult.skipped("holiday_away", **counters)
         return JobResult.succeeded(**counters)
     except Exception:
         log.exception("state-change coach failed")
