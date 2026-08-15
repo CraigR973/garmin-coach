@@ -37,6 +37,7 @@ export const ORIGIN_PROMPTS: Record<CoachOriginKind, string> = {
   trends: 'Ask about your trends',
   reviews: 'Ask about your review',
   weekly_review: 'Reply to your weekly review',
+  state_change: 'Ask about what changed',
   environment: 'Ask about your bedroom',
   breathwork: 'Ask about your breathwork',
   strength: 'Ask about your strength work',

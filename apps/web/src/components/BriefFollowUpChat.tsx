@@ -54,6 +54,9 @@ export function BriefFollowUpChat({ analysisId, timeZone }: BriefFollowUpChatPro
       heading="Ask about this read"
       placeholder="Ask a follow-up — why, what if, should I…"
       inputLabel="Ask a follow-up question"
+      emptyHint="Nothing asked about this read yet."
+      status={historyQuery.isLoading ? 'loading' : historyQuery.isError ? 'error' : 'ready'}
+      onRetry={() => historyQuery.refetch()}
       pending={askMutation.isPending}
       onAsk={(question) => askMutation.mutate(question)}
     />

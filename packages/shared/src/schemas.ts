@@ -818,12 +818,23 @@ export const coachOriginKindSchema = z.enum([
   'trends',
   'reviews',
   'weekly_review',
+  'state_change',
   'environment',
   'breathwork',
   'strength',
   'walking',
   'check_in',
 ]);
+
+// Origin kinds the coach itself writes rather than Mark asking from a surface
+// (Batch 187's weekly review, Batch 193's state-change turn) — these are the
+// ones the launcher's unread dot should light for, widened from a single
+// hard-coded kind (Batch 193.4, UX192-04/CR189-01) so the set stays a single
+// list backend and frontend both read instead of an inline equality check.
+export const PROACTIVE_COACH_ORIGIN_KINDS = [
+  'weekly_review',
+  'state_change',
+] as const satisfies readonly z.infer<typeof coachOriginKindSchema>[];
 
 export const briefMessageSchema = z.object({
   id: z.string().uuid(),

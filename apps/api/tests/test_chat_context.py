@@ -31,6 +31,7 @@ from src.models.coaching import (
 from src.models.profile import Profile, UserRole
 from src.services.chat_context import (
     APP_STATE_CHAR_BUDGET,
+    ORIGIN_KINDS,
     ChatContextService,
     CoachOrigin,
     _apply_char_budget,
@@ -600,3 +601,38 @@ async def test_an_unanchored_question_gets_the_state_without_a_read(
     assert [night["score"] for night in state["sleepHistory"]] == [78]
     assert "weekAhead" in state
     assert "trends" in state
+
+
+# ---------------------------------------------------------------------------
+# Client/backend origin-kind parity (Batch 193.4 / UX192-04 / CR189-01)
+# ---------------------------------------------------------------------------
+
+#: Mirrors `coachOriginKindSchema` in `packages/shared/src/schemas.ts`. There is
+#: no shared runtime between the two languages to check this automatically, so
+#: this list is deliberately duplicated rather than imported: it must be kept
+#: in sync by hand, and this test is what fails the moment it drifts — a
+#: backend kind the client cannot render a prompt/unread state for, or a client
+#: kind the backend cannot describe to the model.
+KNOWN_CLIENT_ORIGIN_KINDS = frozenset(
+    {
+        "general",
+        "home",
+        "morning_brief",
+        "sleep",
+        "week",
+        "workout",
+        "trends",
+        "reviews",
+        "weekly_review",
+        "state_change",
+        "environment",
+        "breathwork",
+        "strength",
+        "walking",
+        "check_in",
+    }
+)
+
+
+def test_origin_kinds_match_the_client_schema() -> None:
+    assert set(ORIGIN_KINDS) == KNOWN_CLIENT_ORIGIN_KINDS
