@@ -1009,7 +1009,9 @@ async def test_context_packet_falls_back_to_whole_ride_without_plan(
             ("2026-01-07", "Long Z2", 120),
             ("2026-01-08", "Strength maintenance", 30),
         ]
-        assert "upcomingWorkouts` is the ground truth" in packet["prompt"]["system"]
+        assert "system" not in packet["prompt"]
+        assert isinstance(packet["prompt"]["systemHash"], str)
+        assert len(packet["prompt"]["systemHash"]) == 64
         assert (
             "ground_tomorrow_impact_in_upcoming_workouts_before_weekly_rhythm"
             in packet["prompt"]["outputRules"]

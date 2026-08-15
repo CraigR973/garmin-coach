@@ -111,9 +111,31 @@ def test_char_budget_names_everything_it_dropped_so_a_trim_is_not_an_absence() -
     assert "not in front of you" in meaning
 
 
+def test_char_budget_preserves_named_field_truncations() -> None:
+    state = _state(
+        latestReviews=[{"conclusions": "x..."}],
+        sinceThisRead={
+            "anythingChangedSinceRead": True,
+            "planChangesSinceRead": [{"summary": "changed..."}],
+        },
+        omittedForLength=[
+            "latestReviews.conclusions(truncated)",
+            "sinceThisRead.planChangesSinceRead.summary(truncated)",
+        ],
+    )
+
+    _apply_char_budget(state)
+
+    assert state["omittedForLength"] == [
+        "latestReviews.conclusions(truncated)",
+        "sinceThisRead.planChangesSinceRead.summary(truncated)",
+    ]
+    assert "Trimmed to fit the prompt" in state["omittedForLengthMeaning"]
+
+
 def test_char_budget_never_drops_the_week_or_the_since_read_delta() -> None:
     week = {"window": {"kind": "week_ahead_from_today"}, "days": _filler(7, _EIGHTH)}
-    since = {"anythingChangedSinceRead": True, "activitiesCompletedSinceRead": _filler(5, _EIGHTH)}
+    since = {"anythingChangedSinceRead": True, "activitiesIngestedSinceRead": _filler(5, _EIGHTH)}
     state = _state(
         weekAhead=week,
         sinceThisRead=since,
@@ -284,11 +306,45 @@ async def test_activity_completed_after_the_read_is_visible_to_that_reads_chat(
 
     since = context.app_state["sinceThisRead"]
     assert since["anythingChangedSinceRead"] is True
-    assert [row["title"] for row in since["activitiesCompletedSinceRead"]] == [
+    assert [row["title"] for row in since["activitiesIngestedSinceRead"]] == [
         "Sweet spot intervals"
     ]
-    assert since["activitiesCompletedSinceRead"][0]["normalizedPowerWatts"] == 205
+    assert since["activitiesIngestedSinceRead"][0]["normalizedPowerWatts"] == 205
+    assert since["activitiesIngestedSinceRead"][0]["ingestedAtUtc"] is not None
     assert since["readGeneratedAtUtc"] == "2026-07-30T06:30:00Z"
+
+
+@pytest.mark.asyncio
+async def test_activity_delta_uses_ingest_time_not_activity_start_time(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        analysis = await _make_read(session, user.id)
+        session.add(
+            Activity(
+                id=uuid.uuid4(),
+                user_id=user.id,
+                garmin_activity_id=987654322,
+                activity_name="Late-synced morning ride",
+                activity_type="indoor_cycling",
+                start_utc=datetime(2026, 7, 30, 5, 45),
+                created_at=datetime(2026, 7, 30, 7, 5),
+                duration_sec=2700,
+                raw_summary={},
+            )
+        )
+        await session.commit()
+
+        context = await ChatContextService(session).build(user, analysis, asked_at_utc=ASKED_AT)
+
+    since = context.app_state["sinceThisRead"]
+    assert [row["title"] for row in since["activitiesIngestedSinceRead"]] == [
+        "Late-synced morning ride"
+    ]
+    assert since["activitiesIngestedSinceRead"][0]["startUtc"] == "2026-07-30T05:45:00Z"
+    assert since["activitiesIngestedSinceRead"][0]["ingestedAtUtc"] == "2026-07-30T07:05:00Z"
 
 
 @pytest.mark.asyncio
@@ -478,8 +534,9 @@ async def test_adjustable_workout_is_resolved_from_live_plan_rows(
     # The completed ride is not adjustable, and the open row is strength, not a
     # deliverable bike session — so there is nothing to propose against.
     assert context.adjustable_workout_id is None
-    closed = context.app_state["sinceThisRead"]["subjectDateWorkoutsClosedSinceRead"]
+    closed = context.app_state["sinceThisRead"]["subjectDateClosedWorkoutsCurrent"]
     assert [row["title"] for row in closed] == ["Sweet spot"]
+    assert "not evidence that the status changed after the read" in closed[0]["meaning"]
     # Listed in plan order, so a split day reads cycle-then-strength.
     today_titles = [row["title"] for row in context.app_state["today"]["plannedWorkouts"]]
     assert today_titles == ["Sweet spot", "Core"]
@@ -511,6 +568,42 @@ async def test_adjustable_workout_is_todays_live_deliverable_ride(
         context = await ChatContextService(session).build(user, analysis, asked_at_utc=ASKED_AT)
 
     assert context.adjustable_workout_id == ride.id
+
+
+@pytest.mark.asyncio
+async def test_today_body_metrics_use_effective_weight_and_vo2max(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        session.add_all(
+            [
+                DailyMetric(
+                    id=uuid.uuid4(),
+                    user_id=user.id,
+                    calendar_date=TODAY - timedelta(days=2),
+                    weight_kg=78.4,
+                    raw_payload={},
+                ),
+                DailyMetric(
+                    id=uuid.uuid4(),
+                    user_id=user.id,
+                    calendar_date=TODAY - timedelta(days=12),
+                    vo2max=55.0,
+                    raw_payload={},
+                ),
+            ]
+        )
+        await session.commit()
+
+        context = await ChatContextService(session).build(user, None, asked_at_utc=ASKED_AT)
+
+    body_metrics = context.app_state["today"]["bodyMetrics"]
+    assert body_metrics["weightKg"] == 78.4
+    assert body_metrics["weightAsOfDate"] == (TODAY - timedelta(days=2)).isoformat()
+    assert body_metrics["vo2max"] == 55.0
+    assert body_metrics["vo2maxAsOfDate"] == (TODAY - timedelta(days=12)).isoformat()
 
 
 @pytest.mark.asyncio

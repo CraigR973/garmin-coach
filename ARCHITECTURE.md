@@ -280,6 +280,19 @@ omission can never read as an absence. Deterministic pre-assembly, not tool-use:
 the shared Anthropic text boundary has no tool support and the app's builders are
 already cheap and unit-tested. Explanatory only — it cannot move Green/Amber/Red
 or any floor, and plan changes stay on the propose/confirm rail (#29).
+Batch 202 (DECISIONS #283) tightens that context contract: generated read packets
+store `prompt.version` plus a SHA-256 `prompt.systemHash`, never the full
+system prompt body, and anchored chat sanitizes legacy packets the same way
+before serializing them. The "since this read" activity delta is keyed to app
+ingest time (`Activity.created_at`) while still showing the activity start time;
+closed subject-date workouts are labelled as current status, not as a timestamped
+change, because `planned_workouts` has no status-change timestamp. Field-level
+truncations are named in `omittedForLength`, the character budget is explicitly
+best-effort if safe trims cannot fit, and today's ask-time context carries the
+effective Garmin weight and VO2max with as-of dates. A workout proposal link in
+chat now requires all three gates: Mark's question contains adjustment intent,
+today's plan has a live adjustable bike workout, and the model answer includes
+the service-stripped proposal marker.
 
 **One coach conversation (Batch 179, PR #208 / squash `94f10b8`, DECISIONS #259).** Until this batch the
 schema asserted that a conversation cannot exist without a document —

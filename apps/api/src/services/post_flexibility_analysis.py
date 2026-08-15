@@ -61,6 +61,7 @@ from src.services.post_workout_analysis import (
     _planned_workout_packet,
     _utcnow,
 )
+from src.services.prompt_metadata import prompt_system_hash
 from src.services.workload_budget import workload_slot
 
 PROMPT_VERSION = "post-flexibility-analysis-v6-2026-08-15"
@@ -409,7 +410,7 @@ class PostFlexibilityAnalysisService:
             },
             "prompt": {
                 "version": PROMPT_VERSION,
-                "system": SYSTEM_PROMPT,
+                "systemHash": prompt_system_hash(SYSTEM_PROMPT),
                 "outputRules": [
                     "acknowledge_mobility_session",
                     "read_consistency_and_streak",

@@ -74,6 +74,7 @@ from src.services.post_workout_analysis import (
     _planned_workout_packet,
     _utcnow,
 )
+from src.services.prompt_metadata import prompt_system_hash
 from src.services.strength_brief import (
     WINDOW_12W_DAYS,
     StrengthBriefResult,
@@ -310,7 +311,7 @@ class PostStrengthAnalysisService:
             },
             "prompt": {
                 "version": PROMPT_VERSION,
-                "system": SYSTEM_PROMPT,
+                "systemHash": prompt_system_hash(SYSTEM_PROMPT),
                 "outputRules": [
                     "acknowledge_strength_session",
                     "read_frequency_and_trend",

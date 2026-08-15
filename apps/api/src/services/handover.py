@@ -64,6 +64,7 @@ from src.services.analysis_currentness import (
 )
 from src.services.experiment_evaluation import ExperimentEvaluationService
 from src.services.experiment_tracker import ExperimentTrackerService
+from src.services.prompt_metadata import prompt_system_hash
 from src.services.reviews import (
     ANALYSIS_TYPE_MONTHLY,
     ANALYSIS_TYPE_WEEKLY,
@@ -263,7 +264,7 @@ def build_handover_packet(
         "strengthBrief": dict(strength),
         "prompt": {
             "version": PROMPT_VERSION,
-            "system": HANDOVER_SYSTEM_PROMPT,
+            "systemHash": prompt_system_hash(HANDOVER_SYSTEM_PROMPT),
             "outputRules": [
                 "reproduce_retained_state_faithfully",
                 "carry_every_data_quality_rule",

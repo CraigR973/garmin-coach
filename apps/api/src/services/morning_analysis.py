@@ -31,7 +31,7 @@ from src.models.profile import Profile
 from src.services.age_norms import build_age_comparison
 from src.services.anthropic_text import generate_anthropic_text
 from src.services.bedroom_overnight import night_window
-from src.services.body_metrics import resolve_effective_vo2max
+from src.services.body_metrics import resolve_effective_vo2max, resolve_effective_weight_kg
 from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
 from src.services.chronic_patterns import (
     CHRONIC_DELOAD_WINDOW_DAYS,
@@ -66,6 +66,7 @@ from src.services.personal_baselines import (
     serialize_training_schedule,
 )
 from src.services.post_walk_analysis import active_recovery_walk_context
+from src.services.prompt_metadata import prompt_system_hash
 from src.services.sleep_scoring import (
     age_adjusted_sleep_score as compute_age_adjusted_sleep_score,
 )
@@ -411,6 +412,9 @@ class MorningAnalysisService:
         effective_vo2max, vo2max_as_of_date = await resolve_effective_vo2max(
             self.session, player.id, subject_date
         )
+        weight_kg, weight_as_of_date = await resolve_effective_weight_kg(
+            self.session, player.id, subject_date
+        )
 
         age_adjusted_sleep_score = _age_adjusted_sleep_score(sleep, knowledge_base)
         # Persist the recomputed score back to the row so the column-reading
@@ -567,7 +571,14 @@ class MorningAnalysisService:
             "subjectWeekday": subject_date.strftime("%A"),
             "subjectDateLabel": _date_label(subject_date),
             "generatedAtUtc": _utcnow().isoformat() + "Z",
-            "profile": _profile_packet(player, knowledge_base, effective_vo2max, vo2max_as_of_date),
+            "profile": _profile_packet(
+                player,
+                knowledge_base,
+                effective_vo2max,
+                vo2max_as_of_date,
+                weight_kg,
+                weight_as_of_date,
+            ),
             "knowledgeBase": {
                 "sections": [_knowledge_base_packet(row) for row in kb_rows],
                 "dataQualityGuardrails": _data_quality_guardrails(knowledge_base),
@@ -610,7 +621,7 @@ class MorningAnalysisService:
             "verdict": verdict,
             "prompt": {
                 "version": PROMPT_VERSION,
-                "system": SYSTEM_PROMPT,
+                "systemHash": prompt_system_hash(SYSTEM_PROMPT),
                 "outputRules": [
                     rule
                     for rule in [
@@ -1005,6 +1016,8 @@ def _profile_packet(
     knowledge_base: Mapping[str, Any],
     effective_vo2max: float | None,
     vo2max_as_of_date: date | None,
+    weight_kg: float | None,
+    weight_as_of_date: date | None,
 ) -> dict[str, Any]:
     # Batch 177 (#257): overlay the live daily VO2max onto the static KB profile
     # number so the packet carries the real current value, not a hardcoded one.
@@ -1020,6 +1033,9 @@ def _profile_packet(
         "longitude": player.longitude,
         "athleteProfile": athlete_profile,
         "vo2maxAsOfDate": vo2max_as_of_date.isoformat() if vo2max_as_of_date else None,
+        "weightKg": weight_kg,
+        "weightAsOfDate": weight_as_of_date.isoformat() if weight_as_of_date else None,
+        "weightOnFile": weight_kg is not None,
     }
 
 

@@ -1097,6 +1097,42 @@ async def test_morning_packet_overlays_live_vo2max_onto_athlete_profile(
 
 
 @pytest.mark.asyncio
+async def test_morning_packet_carries_effective_weight_with_as_of_date(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 202: morning/chat can answer body-metric questions from app data."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 1, 5)
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Morning Weight Packet",
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+        session.add(
+            DailyMetric(
+                user_id=user_id,
+                calendar_date=date(2026, 1, 3),
+                weight_kg=78.4,
+                raw_payload={},
+            )
+        )
+        await session.commit()
+
+        packet = await MorningAnalysisService(session).assemble_context_packet(player, subject_date)
+
+    assert packet["profile"]["weightKg"] == 78.4
+    assert packet["profile"]["weightAsOfDate"] == "2026-01-03"
+    assert packet["profile"]["weightOnFile"] is True
+
+
+@pytest.mark.asyncio
 async def test_morning_packet_falls_back_to_static_vo2max_with_no_reading_on_file(
     db_conn: AsyncConnection,
 ) -> None:
