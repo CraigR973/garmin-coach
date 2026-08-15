@@ -7,7 +7,7 @@ type ChronicSuggestions = NonNullable<DailyLoopData['chronicSuggestions']>;
 type Suggestion = ChronicSuggestions['items'][number];
 
 const toneClass: Record<Suggestion['tone'], string> = {
-  watch: 'border-warning/40 bg-warning/10 text-warning',
+  watch: 'border-warning/40 bg-warning/10 text-warning-text',
   protect: 'border-destructive/40 bg-destructive/10 text-destructive',
 };
 

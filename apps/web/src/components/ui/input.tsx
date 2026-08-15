@@ -24,7 +24,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         type={type}
         className={cn(
           controlFieldClassName,
-          'flex h-11 px-4 py-2 text-base sm:text-sm',
+          'flex min-h-11 px-4 py-2 text-base sm:text-sm',
           className,
         )}
         ref={ref}

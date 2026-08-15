@@ -5,8 +5,8 @@ import type { AgeComparisonRow } from '@/components/MetricComparisonTable';
 type Tone = 'good' | 'warn' | 'neutral';
 
 const toneText: Record<Tone, string> = {
-  good: 'text-success',
-  warn: 'text-warning',
+  good: 'text-success-text',
+  warn: 'text-warning-text',
   neutral: 'text-text-muted',
 };
 

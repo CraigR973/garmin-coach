@@ -92,7 +92,7 @@ export function OfflineNotice({ description }: { description: string }) {
   return (
     <div
       role="status"
-      className="flex items-center gap-2 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning"
+      className="flex items-center gap-2 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning-text"
     >
       <CloudOff className="h-4 w-4 shrink-0" aria-hidden />
       {description}
@@ -116,7 +116,7 @@ export function StaleDataNotice({
   return (
     <div
       role="status"
-      className="flex items-center gap-2 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning"
+      className="flex items-center gap-2 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning-text"
     >
       <RefreshCw
         className={cn('h-4 w-4 shrink-0', isRefreshing && 'animate-spin')}
@@ -128,7 +128,7 @@ export function StaleDataNotice({
         size="sm"
         onClick={onRefresh}
         disabled={isRefreshing}
-        className="h-auto shrink-0 px-2 py-1 font-medium text-warning hover:bg-warning/20 hover:text-warning"
+        className="min-h-11 shrink-0 px-2 py-1 font-medium text-warning-text hover:bg-warning/20 hover:text-warning-text"
       >
         {isRefreshing ? 'Refreshing…' : 'Refresh'}
       </Button>

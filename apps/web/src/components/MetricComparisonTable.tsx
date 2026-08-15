@@ -101,8 +101,8 @@ const AGE_TO_BASELINE_KEY: Record<string, string> = {
 };
 
 const toneText: Record<Tone, string> = {
-  good: 'text-success',
-  warn: 'text-warning',
+  good: 'text-success-text',
+  warn: 'text-warning-text',
   neutral: 'text-text-muted',
 };
 

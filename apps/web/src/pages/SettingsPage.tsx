@@ -34,7 +34,7 @@ function ThemeSection() {
             className={cn(
               'flex-1 flex flex-col items-center gap-1.5 py-3 rounded-lg border text-sm font-sans transition-colors press-down',
               mode === value
-                ? 'border-primary bg-primary/10 text-primary'
+                ? 'border-primary bg-primary/10 text-primary-text'
                 : 'border-border bg-surface text-text-secondary hover:border-primary/50',
             )}
           >
@@ -85,14 +85,14 @@ function NotificationsSection() {
             type="button"
             onClick={() => void subscribe()}
             disabled={isLoading}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-primary bg-primary/5 text-primary hover:bg-primary/10 press-down"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-primary bg-primary/5 text-primary-text hover:bg-primary/10 press-down"
           >
             <Bell className="h-4 w-4" aria-hidden />
             <span className="text-sm font-sans">{isLoading ? 'Enabling…' : 'Enable push notifications'}</span>
           </button>
         ) : (
           <div className="space-y-2">
-            <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-success/30 bg-success/5 text-success">
+            <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-success/30 bg-success/5 text-success-text">
               <Bell className="h-4 w-4" aria-hidden />
               <span className="text-sm font-sans">Push notifications enabled</span>
             </div>

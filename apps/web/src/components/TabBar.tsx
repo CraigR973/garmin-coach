@@ -70,7 +70,7 @@ export function TabBar() {
                   <span
                     className={cn(
                       'text-[10px] font-medium tracking-tight font-sans',
-                      isCurrent ? 'text-primary' : 'text-text-muted',
+                      isCurrent ? 'text-primary-text' : 'text-text-muted',
                     )}
                   >
                     {label}
@@ -103,7 +103,7 @@ export function TabBar() {
               <span
                 className={cn(
                   'text-[10px] font-medium tracking-tight font-sans',
-                  moreActive ? 'text-primary' : 'text-text-muted',
+                  moreActive ? 'text-primary-text' : 'text-text-muted',
                 )}
               >
                 More

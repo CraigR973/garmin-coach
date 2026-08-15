@@ -918,7 +918,7 @@ function NextActionStrip({
       )}
     >
       <div className="min-w-0">
-        <p className={cn('font-mono text-xs uppercase tracking-[0.25em]', isWarning ? 'text-warning' : 'text-accent')}>
+        <p className={cn('font-mono text-xs uppercase tracking-[0.25em]', isWarning ? 'text-warning-text' : 'text-accent-text')}>
           Next
         </p>
         <p className="mt-1 text-base font-semibold text-text-primary">{action.label}</p>
@@ -1004,7 +1004,7 @@ function SwapSuggestionCard({
 }) {
   return (
     <div className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-3 text-sm">
-      <p className="mb-1 flex items-center gap-1.5 font-medium text-warning">
+      <p className="mb-1 flex items-center gap-1.5 font-medium text-warning-text">
         <ArrowLeftRight className="h-4 w-4" aria-hidden />
         Rearrange the week
       </p>
@@ -1587,7 +1587,7 @@ function WorkoutRow({
 
         {hasPendingChange && planAdjustments.length > 0 && (
           <div className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-3 text-sm">
-            <p className="mb-1 font-medium text-warning">Coach&apos;s suggested change</p>
+            <p className="mb-1 font-medium text-warning-text">Coach&apos;s suggested change</p>
             <ul className="ml-4 list-disc space-y-1 text-text-primary marker:text-warning">
               {planAdjustments.map((item) => (
                 <li key={item}>{item}</li>
@@ -1741,7 +1741,7 @@ function RideIntervalTable({ intervals }: { intervals: RideIntervalRow[] }) {
                     <span className="flex flex-wrap items-center gap-1.5">
                       {badge ? <Badge variant={badge.variant}>{badge.label}</Badge> : null}
                       {interval.fade ? (
-                        <span className="text-xs text-warning">fading</span>
+                        <span className="text-xs text-warning-text">fading</span>
                       ) : (
                         <span className="text-xs text-text-muted">steady</span>
                       )}

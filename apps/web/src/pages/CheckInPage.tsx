@@ -354,7 +354,7 @@ export function CheckInPage() {
             </div>
             <input
               aria-label="0 to 10 feel score"
-              className="w-full accent-primary"
+              className="range-hit-target w-full accent-primary"
               max={10}
               min={0}
               step={1}

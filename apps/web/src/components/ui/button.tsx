@@ -21,7 +21,7 @@ const buttonVariants = cva(
         ghost: 'bg-transparent text-text-secondary hover:bg-surface-elevated hover:text-text-primary',
         subtle: 'bg-surface-elevated text-text-primary hover:bg-surface-overlay',
         destructive: 'bg-error text-white hover:bg-error/90 font-semibold',
-        link: 'text-primary underline-offset-4 hover:underline px-0 h-auto',
+        link: 'text-primary-text underline-offset-4 hover:underline px-0 min-h-11',
       },
       size: {
         default: 'h-11 px-5 py-2',

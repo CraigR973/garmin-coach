@@ -176,7 +176,7 @@
        slate that clears WCAG AA on the light surfaces (Batch 52). */
     --text-primary: #14181F;
     --text-secondary: #4B5563;
-    --text-muted: #6B7280;
+    --text-muted: #5F6875;
     --text-inverse: #FFFFFF;
 
     /* On-brand text — same dark value as dark mode; light primary/accent
@@ -370,6 +370,20 @@
   .tap-target {
     min-height: 44px;
     min-width: 44px;
+  }
+
+  .range-hit-target {
+    min-height: 44px;
+  }
+
+  .range-hit-target::-webkit-slider-thumb {
+    min-height: 28px;
+    min-width: 28px;
+  }
+
+  .range-hit-target::-moz-range-thumb {
+    min-height: 28px;
+    min-width: 28px;
   }
 
   /* Safe-area padding helpers */
