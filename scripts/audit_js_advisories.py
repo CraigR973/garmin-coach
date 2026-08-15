@@ -37,6 +37,15 @@ REVIEWED_ADVISORIES: dict[str, ReviewedAdvisory] = {
             "this Vite client-only declarative-mode app."
         ),
     ),
+    "GHSA-2v37-7h3g-55p8": ReviewedAdvisory(
+        severity="high",
+        reason=(
+            "nanoid infinite-loop-on-size-zero, only reachable via postcss's "
+            "internal ID generation (build-time only, never user input, never "
+            "called with size=0). Pulled in transitively by tailwindcss/vite/"
+            "autoprefixer dev tooling, not shipped to the browser bundle."
+        ),
+    ),
 }
 
 FAIL_SEVERITIES = {"high", "critical"}
