@@ -47,6 +47,7 @@ Run each job from an external scheduler via the single-job runner:
 | `evening-nudge` | 20:00 London         | `0 20 * * *`  ⚠        |
 | `evening-alerts`| 19–22 London, /15    | `*/15 19-22 * * *`  ⚠  |
 | `fan-control`   | every 15 min         | `*/15 * * * *`         |
+| `backup-drill`  | weekly after backup  | `0 4 * * 0`            |
 
 ⚠ **DST:** Railway/most cron runs in UTC and does not track Europe/London
 BST↔GMT. The interval jobs (`hive-poll`, `activity-poll`, `backup`) are
@@ -109,3 +110,29 @@ The runner exits 0 only for `succeeded`/`skipped`. Any `degraded` or `failed`
 outcome exits 1 after attempting to persist the run row, so Railway/GitHub cron
 can alert directly from process state. If even the run-row write fails, the
 runner also exits 1 (`reason=job_run_persistence_failed`).
+
+### Backup restore drill
+
+`backup-drill` is external-runner only: do not register it inside the always-on
+API scheduler unless `BACKUP_RESTORE_DATABASE_URL` is configured and points at a
+throwaway database. The job restores the newest `coach_*.dump` archive with
+`pg_restore --clean --if-exists --no-owner`, then asserts the restored database
+has the `coach` schema, at least 20 restored coach tables, an Alembic version,
+at least one profile row, at least one analysis row, and zero
+`coach.activity_timeseries` rows because that table is intentionally
+definition-only in the dump.
+
+Required env:
+
+- `BACKUP_DIR`: the mounted Railway backup volume path, currently `/data/backups`.
+- `BACKUP_RESTORE_DATABASE_URL`: an asyncpg PostgreSQL URL for a disposable
+  database. It must not be the production `DATABASE_URL`; the job refuses the
+  same host/user/database target even if the password differs.
+
+Schedule it after the daily 03:00 UTC backup, for example Sunday 04:00 UTC. A
+restore failure or invariant failure returns a failed `JobResult`, records a
+failed `job_runs` row where possible, exits 1 under `python -m src.run_scheduled
+backup-drill`, and emits the structured log line `operator backup alert` with
+`kind=backup_restore_drill_failed`. Wire the Railway/GitHub/provider monitor to
+that non-zero exit or structured log; this alert is deliberately outside the
+end-user profile/push model.

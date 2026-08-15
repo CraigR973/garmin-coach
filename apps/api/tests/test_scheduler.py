@@ -25,6 +25,7 @@ from src.scheduler import (
     _retry_sync,
     _sync_garmin_daily,
     create_scheduler,
+    run_backup_restore_drill,
     run_evening_monitoring_alerts,
     run_evening_sleep_nudge,
     run_fan_control,
@@ -79,6 +80,8 @@ async def test_run_scheduled_backup_failure_writes_audit() -> None:
         async def __aexit__(self, *a: object) -> None:
             return None
 
+    logger = MagicMock()
+
     with (
         patch(
             "src.scheduler.create_backup",
@@ -86,8 +89,9 @@ async def test_run_scheduled_backup_failure_writes_audit() -> None:
             side_effect=RuntimeError("pg_dump not found"),
         ),
         patch("src.scheduler.AsyncSessionLocal", return_value=_Ctx()),
+        patch("src.scheduler.log", logger),
     ):
-        await run_scheduled_backup()
+        result = await run_scheduled_backup()
 
     added = [call.args[0] for call in session.add.call_args_list]
     audit_rows = [a for a in added if isinstance(a, AuditLog)]
@@ -97,6 +101,13 @@ async def test_run_scheduled_backup_failure_writes_audit() -> None:
     assert row.actor_type == ActorType.system
     assert "pg_dump not found" in row.changes["error"]
     session.commit.assert_awaited_once()
+    assert result.status == JobStatus.failed
+    logger.error.assert_called_once_with(
+        "operator backup alert",
+        kind="backup_failed",
+        reason="pg_dump not found",
+        alert_route="provider_log_or_external_monitor",
+    )
 
 
 @pytest.mark.asyncio
@@ -113,6 +124,56 @@ async def test_run_scheduled_backup_success_does_not_raise() -> None:
     ):
         await run_scheduled_backup()
     # No exception raised = pass
+
+
+@pytest.mark.asyncio
+async def test_run_backup_restore_drill_records_success_counters() -> None:
+    restore_result = MagicMock()
+    restore_result.restored_tables = 31
+    restore_result.profile_rows = 1
+    restore_result.analysis_rows = 20
+    restore_result.excluded_activity_timeseries_rows = 0
+
+    with patch(
+        "src.scheduler.restore_latest_backup",
+        new_callable=AsyncMock,
+        return_value=restore_result,
+    ) as restore:
+        result = await run_backup_restore_drill()
+
+    assert result.status == JobStatus.succeeded
+    assert result.counters == {
+        "restored_tables": 31,
+        "profiles": 1,
+        "analyses": 20,
+        "excluded_activity_timeseries_rows": 0,
+    }
+    restore.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_run_backup_restore_drill_alerts_on_simulated_failure() -> None:
+    logger = MagicMock()
+
+    with (
+        patch(
+            "src.scheduler.restore_latest_backup",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("invariant failed"),
+        ),
+        patch("src.scheduler.log", logger),
+    ):
+        result = await run_backup_restore_drill()
+
+    assert result.status == JobStatus.failed
+    assert result.reason == "backup_restore_drill_failed"
+    assert result.exit_code == 1
+    logger.error.assert_called_once_with(
+        "operator backup alert",
+        kind="backup_restore_drill_failed",
+        reason="invariant failed",
+        alert_route="provider_log_or_external_monitor",
+    )
 
 
 @pytest.mark.asyncio

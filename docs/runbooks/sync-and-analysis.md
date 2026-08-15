@@ -205,32 +205,47 @@ pg_restore --clean --if-exists --no-owner --dbname "$DATABASE_URL" coach_2026080
   Before this, `BACKUP_DIR` defaulted to the container's ephemeral `/tmp` and every archive was
   lost on the next deploy. A verified run writes ~7.4 MB.
 
-  Pull an off-site copy whenever you want one — this is the deliberate answer to "the volume is
-  on the same platform as the app", and needs no upload code, bucket or third party holding
-  health data:
+  **Off-site cadence / RPO / RTO:** once a week after the Sunday restore drill
+  passes, download the newest archive from the Railway volume and store it in an
+  encrypted off-site location that is not Railway or Supabase. Keep at least the
+  latest four weekly copies. This gives a stated backup RPO of **24 hours for
+  data still on the Railway volume** and **7 days for a platform-loss event that
+  takes Railway with it**; the practical RTO target is **4 hours** once a
+  PostgreSQL target and app env are available.
+
+  Pull the archive from the volume:
 
   ```bash
   railway volume files --volume api-volume list /
   railway volume files --volume api-volume download /coach_20260804_030000.dump ~/somewhere/
   ```
 
-  Treat a downloaded archive as sensitive health data: it holds every analysis, check-in, plan
-  and chat message. Don't leave copies in temp directories or shared folders.
-- `pg_dump` failure writes an `AuditLog` row with `action_type=backup_failed` and emits a
-  structured `error` log `scheduled backup failed`. **Nothing pages on either**, which is how
-  five consecutive failures went unnoticed from 2026-07-29. Note `settings.admin_alert_user_id`
-  does *not* cover this: that push is wired only to brief-generation failure (Batch 141), and
-  by design it targets a separate operator profile that does not exist in production — the
-  app `admin` role belongs to the primary user, and an ops alert must never land on his phone.
-  Seeding an operator profile is not a config-only change either, because the scheduler's job
-  loops iterate *every* active profile and would try to run Garmin syncs and brief generation
-  for it. Until that is designed, check `backup_failed` rows after any base-image or
-  dependency change:
+  Encrypt before it leaves the operator machine or lands in long-term storage,
+  for example with age:
 
-  ```sql
-  select "timestamp", changes from coach.audit_log
-  where action_type = 'backup_failed' order by "timestamp" desc limit 5;
+  ```bash
+  age -r "$BACKUP_AGE_RECIPIENT" \
+    -o ~/secure-backups/checkmark/coach_20260804_030000.dump.age \
+    ~/somewhere/coach_20260804_030000.dump
   ```
+
+  Treat a downloaded archive as sensitive health data: it holds every analysis,
+  check-in, plan and chat message. Do not leave plaintext copies in temp
+  directories or shared folders.
+- `pg_dump` failure writes an `AuditLog` row with `action_type=backup_failed`,
+  emits `scheduled backup failed`, emits the structured `operator backup alert`
+  log with `kind=backup_failed`, records a failed `job_runs` row where possible,
+  and exits 1 under the external runner. Wire Railway/GitHub/provider monitoring
+  to that non-zero exit or structured log. `settings.admin_alert_user_id` still
+  does not cover backup alerts: that push is for brief-generation failure, and an
+  ops alert must never land on Mark's phone.
+- `python -m src.run_scheduled backup-drill` performs the weekly disposable
+  restore proof. It restores the newest archive into `BACKUP_RESTORE_DATABASE_URL`
+  with `pg_restore --clean --if-exists --no-owner`, then asserts the restored
+  schema/table count, Alembic version, profile rows, analysis rows, and the
+  deliberate zero-row `activity_timeseries` exclusion. Any restore or invariant
+  failure logs `operator backup alert` with `kind=backup_restore_drill_failed`
+  and exits 1.
 - Supabase point-in-time restore is a **paid-plan** feature; on the free plan these dumps
   are the only backup that exists.
 

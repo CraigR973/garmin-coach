@@ -31,6 +31,10 @@ def test_scheduled_window_uses_the_jobs_cadence_bucket() -> None:
     assert review_start == datetime(2026, 8, 9, 23, 0)  # Monday 00:00 BST
     assert review_end == datetime(2026, 8, 16, 23, 0)
 
+    drill_start, drill_end = scheduled_window("backup-drill", started)
+    assert drill_start == datetime(2026, 8, 15, 10, 0)
+    assert drill_end == datetime(2026, 8, 15, 11, 0)
+
 
 @pytest.mark.asyncio
 async def test_tracked_job_persists_typed_result_in_independent_session() -> None:

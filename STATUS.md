@@ -6,7 +6,7 @@
 
 ## Now
 
-**2026-08-15 — Batch 195 shipped (jobs that fail say so).** PR #228 / squash `2b47745` closes CR189-02/20 and DS190-02/04: poisoned morning write steps recover the shared `AsyncSession` before the verdict; every real APScheduler/external invocation has a typed succeeded/skipped/degraded/failed result; migration `027` persists operator-only `job_runs` evidence independently; degraded/failed external jobs exit 1; and the post-`main`-CI freshness workflow alerts when Railway or Vercel does not serve the exact merge SHA. Branch, PR-context, and post-merge `main` CI passed all seven jobs. The freshness workflow passed on its first live run for `2b47745`; Railway direct and Vercel-proxied health both served that SHA, readiness reported `db: ok`, web `/` returned 200, and protected daily-loop reads returned 401 direct and proxied. A read-only production database smoke confirmed Alembic `027`, `coach.job_runs` present with RLS enabled and zero authenticated policies, plus two already-recorded successful scheduler runs. No scheduler/hosting cutover occurred: `SCHEDULER_ENABLED` remains on and the 20:30 post-workout backstop remains in-process-only. Decision #277. **Next:** Batch 196 — prove the only backup is recoverable and its failures alert. The always-on-vs-full-externalisation call remains Craig-gated and must precede any scheduler cutover.
+**2026-08-15 — Batch 196 implementation ready (backup actually restored).** `feat/batch-196-backup-restore` closes DS190-03 without a migration: `python -m src.run_scheduled backup-drill` now restores the newest `coach_*.dump` into `BACKUP_RESTORE_DATABASE_URL`, refuses to target the production DB, runs `pg_restore --clean --if-exists --no-owner`, and asserts restored coach table count, Alembic version, profile rows, analysis rows and the deliberate zero-row `activity_timeseries` exclusion. Backup and restore-drill failures emit structured `operator backup alert` logs outside the end-user push/profile model and return failed `JobResult`s, so Batch 195's external runner exits 1 and records `job_runs` evidence where possible. Runbooks now schedule the drill weekly after the daily backup and define encrypted off-site copies plus RPO/RTO (24h while the Railway volume survives, 7d for platform-loss once weekly off-site cadence starts, 4h RTO after a target/env exists). Local backend gates passed: 794 / 341 expected skips; Ruff clean; mypy clean across 135 source files. Decision #278; branch not promoted. **Next:** push/PR review, then explicit `/phase-closeout 196`.
 
 ---
 
@@ -63,6 +63,10 @@
 ---
 
 ## Log
+
+**2026-08-15 — Batch 196 implementation ready:** `feat/batch-196-backup-restore` adds the external `backup-drill` job, disposable restore invariants, structured operator backup alerts, and runbooked encrypted off-site cadence/RPO/RTO. No migration. Local backend gates passed: 794 / 341 expected skips; Ruff clean; mypy clean. Decision #278. Branch not promoted.
+
+---
 
 **2026-08-15 — Batch 195 shipped:** PR #228 / squash `2b47745`. Poisoned morning sessions recover before the verdict; typed job outcomes persist independently in migration `027` `job_runs`; degraded/failed external jobs exit 1; and the exact-SHA production monitor is live. Branch, PR-context and post-merge `main` CI passed all seven jobs; the new freshness workflow itself passed against Railway and Vercel on `2b47745`. Production readiness/web/auth smokes passed, and read-only DB verification found migration `027`, RLS-on/zero-client-policy `job_runs`, and two successful scheduler records. No scheduler cutover or hosting change — that decision remains Craig-gated. Decision #277. **Next:** Batch 196.
 
