@@ -10,7 +10,9 @@ Zone 2, which is why Mark hand-reset the editor's 60% back to 67% on 2026-07-29.
 This module is the single rule they all now share:
 
   * cut duration to :data:`AMBER_DURATION_SCALE` (a 25% cut, inside the 20-30% band);
-  * remove HIT — cap working intensity at :data:`AMBER_POWER_CAP_PCT` (threshold);
+  * remove HIT — cap working intensity at :data:`AMBER_POWER_CAP_PCT` (the top
+    of the app's Sweet Spot range, rather than leaving former VO2 work at
+    threshold);
   * drop hard intervals one zone (:data:`ZONE_DROP_PCT`) **but never below the
     Zone-2 floor** (:data:`ENDURANCE_CEILING_PCT`); a step already at or below that
     ceiling is endurance already, so its intensity is *held* and only the duration
@@ -36,7 +38,7 @@ AMBER_DURATION_SCALE = 0.75  # 25% cut keeps inside the 20-30% Amber band
 RED_DURATION_SCALE = 0.5
 ZONE_DROP_PCT = 13  # one training zone is ~13 percentage points of FTP
 HIT_FLOOR_PCT = 106  # VO2/anaerobic work begins around 106% FTP
-AMBER_POWER_CAP_PCT = 98  # Amber removes HIT: cap at threshold
+AMBER_POWER_CAP_PCT = 94  # Amber removes HIT: cap at the top of Sweet Spot
 RECOVERY_CAP_PCT = 60  # Red easy-spin ceiling — guarantees no VO2
 MIN_POWER_PCT = 45
 # Top of Zone 2 (endurance). At or below this a working interval is already easy,
@@ -85,7 +87,8 @@ def ease_amber_power_pct(power_pct: int) -> int:
       a Zone-2 ride is not dropped into recovery; only its duration is cut. This
       is what Mark's 67% ride should stay at.
     * **Harder** (tempo/sweet-spot/threshold/VO2): drop one zone, but never below
-      the Zone-2 ceiling, and cap at threshold so no HIT/VO2 survives.
+      the Zone-2 ceiling, and cap at the top of Sweet Spot so no HIT/VO2 or
+      threshold work survives.
 
     Deterministic and pure, so the delivery transform, the editor preset, and the
     narrative all quote the same number for a given planned intensity.

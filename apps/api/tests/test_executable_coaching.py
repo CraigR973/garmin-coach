@@ -37,6 +37,7 @@ from src.services.garmin_sync import GarminScheduledWorkout
 from src.services.interval_workout_editor import EditableIntervalBlock, IntervalLeg
 from src.services.morning_analysis import MorningAnalysisResult
 from src.services.verdict_scaling import (
+    AMBER_POWER_CAP_PCT,
     ENDURANCE_CEILING_PCT,
     HIT_FLOOR_PCT,
     RECOVERY_CAP_PCT,
@@ -128,8 +129,9 @@ def test_amber_cuts_duration_drops_a_zone_and_removes_hit() -> None:
     assert base_total * 0.70 <= adjusted["totalDurationSec"] <= base_total * 0.80
     # No HIT/VO2 survives — every step is at or below threshold.
     assert _max_power(adjusted) < HIT_FLOOR_PCT
-    # The 108% work intervals dropped a zone and were capped at threshold (98).
+    # The 108% work intervals dropped a zone and were capped at Sweet Spot (94).
     assert _max_power(adjusted) < _max_power(base)
+    assert _max_power(adjusted) == AMBER_POWER_CAP_PCT
     assert adjusted["origin"] == "amber_regeneration"
     assert adjusted["adjustment"]["verdict"] == "Amber"
     assert adjusted["adjustment"]["removedHit"] is True
@@ -248,7 +250,7 @@ def test_ease_amber_power_is_zone_aware() -> None:
     assert ease_amber_power_pct(67) == 67  # endurance held
     assert ease_amber_power_pct(76) == ENDURANCE_CEILING_PCT  # a drop never lands below Z2
     assert ease_amber_power_pct(91) == 78  # sweet spot drops a zone
-    assert ease_amber_power_pct(108) == 95  # VO2 dropped and capped below the HIT floor
+    assert ease_amber_power_pct(108) == AMBER_POWER_CAP_PCT
     assert ease_amber_power_pct(108) < HIT_FLOOR_PCT
 
 
