@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+import pytest
+
 from src.services.chronic_patterns import (
     BaselineBand,
     RecoveryDay,
@@ -345,7 +347,7 @@ def test_training_debt_with_intact_markers_is_excluded_but_crashed_red_counts() 
     ]
 
 
-def test_check_in_cause_excludes_red_even_when_systemic_markers_are_strained() -> None:
+def test_acute_check_in_cannot_override_systemic_markers() -> None:
     as_of = date(2026, 8, 1)
     result = build_chronic_pattern_suggestions(
         sleeps=_nights(as_of, rem_pct=0.22),
@@ -371,9 +373,194 @@ def test_check_in_cause_excludes_red_even_when_systemic_markers_are_strained() -
     )
 
     qualification = result.action_signal.red_morning_qualifications[0]
-    assert qualification.classification == "explained_by_check_in"
+    assert qualification.classification == "acute_cause_with_systemic_strain"
+    assert qualification.counts_toward_cluster is True
+    assert result.action_signal.red_morning_count == 1
+
+
+def test_endogenous_training_note_counts_even_with_intact_markers_and_debt() -> None:
+    as_of = date(2026, 8, 1)
+    result = build_chronic_pattern_suggestions(
+        sleeps=_nights(as_of, rem_pct=0.22),
+        recovery_days=[],
+        baselines={},
+        sleep_drivers=[],
+        age=57,
+        sex="male",
+        sleep_protocol={},
+        as_of=as_of,
+        recent_verdicts=[VerdictDay(calendar_date=as_of, verdict="Red")],
+        red_day_evidence={
+            as_of: RedDayEvidence(
+                calendar_date=as_of,
+                recovery_time_min=2286,
+                hrv_ms=52,
+                hrv_status="Balanced",
+                hrv_floor_ms=44,
+                resting_heart_rate_bpm=43,
+                resting_hr_ceiling_bpm=45,
+                check_in_reasons=("training_load",),
+            )
+        },
+    )
+
+    qualification = result.action_signal.red_morning_qualifications[0]
+    assert qualification.classification == "endogenous_training_signal"
+    assert qualification.counts_toward_cluster is True
+    packet = qualification.to_packet()
+    assert packet["acuteExogenousReasons"] == []
+    assert packet["endogenousTrainingReasons"] == ["training_load"]
+
+
+def test_one_recent_acute_red_can_still_be_excluded_when_markers_are_intact() -> None:
+    as_of = date(2026, 8, 1)
+    result = build_chronic_pattern_suggestions(
+        sleeps=_nights(as_of, rem_pct=0.22),
+        recovery_days=[],
+        baselines={},
+        sleep_drivers=[],
+        age=57,
+        sex="male",
+        sleep_protocol={},
+        as_of=as_of,
+        recent_verdicts=[VerdictDay(calendar_date=as_of, verdict="Red")],
+        red_day_evidence={
+            as_of: RedDayEvidence(
+                calendar_date=as_of,
+                hrv_ms=50,
+                hrv_status="Balanced",
+                hrv_floor_ms=44,
+                resting_heart_rate_bpm=44,
+                resting_hr_ceiling_bpm=45,
+                check_in_reasons=("alcohol",),
+            )
+        },
+    )
+
+    qualification = result.action_signal.red_morning_qualifications[0]
+    assert qualification.classification == "explained_by_acute_check_in"
     assert qualification.counts_toward_cluster is False
-    assert result.action_signal.red_morning_count == 0
+    packet = result.action_signal.to_packet()
+    assert packet["acuteRedExclusionLimit"] == 1
+    assert packet["acuteRedExclusionMaxAgeDays"] == 2
+
+
+def test_acute_exclusion_is_capped_so_habitual_notes_cannot_silence_cluster() -> None:
+    as_of = date(2026, 8, 3)
+    red_days = [as_of - timedelta(days=offset) for offset in (2, 1, 0)]
+    evidence = {
+        day: RedDayEvidence(
+            calendar_date=day,
+            hrv_ms=50,
+            hrv_status="Balanced",
+            hrv_floor_ms=44,
+            resting_heart_rate_bpm=44,
+            resting_hr_ceiling_bpm=45,
+            check_in_reasons=("alcohol",),
+        )
+        for day in red_days
+    }
+    result = build_chronic_pattern_suggestions(
+        sleeps=_nights(as_of, rem_pct=0.22),
+        recovery_days=[],
+        baselines={},
+        sleep_drivers=[],
+        age=57,
+        sex="male",
+        sleep_protocol={},
+        as_of=as_of,
+        recent_verdicts=[VerdictDay(calendar_date=day, verdict="Red") for day in red_days],
+        red_day_evidence=evidence,
+    )
+
+    action = result.action_signal
+    assert action.red_morning_count == 2
+    assert action.triggered is True
+    assert [item.classification for item in action.red_morning_qualifications] == [
+        "acute_exclusion_cap_reached",
+        "acute_exclusion_cap_reached",
+        "explained_by_acute_check_in",
+    ]
+
+
+def test_acute_exclusion_decays_before_the_red_window_closes() -> None:
+    as_of = date(2026, 8, 6)
+    red_days = [as_of - timedelta(days=4), as_of - timedelta(days=3)]
+    result = build_chronic_pattern_suggestions(
+        sleeps=_nights(as_of, rem_pct=0.22),
+        recovery_days=[],
+        baselines={},
+        sleep_drivers=[],
+        age=57,
+        sex="male",
+        sleep_protocol={},
+        as_of=as_of,
+        recent_verdicts=[VerdictDay(calendar_date=day, verdict="Red") for day in red_days],
+        red_day_evidence={
+            day: RedDayEvidence(
+                calendar_date=day,
+                hrv_ms=50,
+                hrv_status="Balanced",
+                hrv_floor_ms=44,
+                resting_heart_rate_bpm=44,
+                resting_hr_ceiling_bpm=45,
+                check_in_reasons=("travel",),
+            )
+            for day in red_days
+        },
+    )
+
+    action = result.action_signal
+    assert action.red_morning_count == 2
+    assert action.triggered is True
+    assert all(
+        item.classification == "acute_check_in_expired"
+        for item in action.red_morning_qualifications
+    )
+
+
+@pytest.mark.parametrize(
+    ("reasons", "expected_counts"),
+    [
+        ((), True),
+        (("training_load",), True),
+        (("deliberate_rest",), True),
+        (("alcohol",), False),
+        (("illness",), False),
+        (("travel",), False),
+    ],
+)
+def test_check_in_qualification_only_hardens_batch_182_behavior(
+    reasons: tuple[str, ...], expected_counts: bool
+) -> None:
+    """A tag that Batch 182 counted still counts; former blanket exclusions may harden."""
+    as_of = date(2026, 8, 1)
+    result = build_chronic_pattern_suggestions(
+        sleeps=_nights(as_of, rem_pct=0.22),
+        recovery_days=[],
+        baselines={},
+        sleep_drivers=[],
+        age=57,
+        sex="male",
+        sleep_protocol={},
+        as_of=as_of,
+        recent_verdicts=[VerdictDay(calendar_date=as_of, verdict="Red")],
+        red_day_evidence={
+            as_of: RedDayEvidence(
+                calendar_date=as_of,
+                hrv_ms=50,
+                hrv_status="Balanced",
+                hrv_floor_ms=44,
+                resting_heart_rate_bpm=44,
+                resting_hr_ceiling_bpm=45,
+                check_in_reasons=reasons,
+            )
+        },
+    )
+
+    qualification = result.action_signal.red_morning_qualifications[0]
+    assert qualification.counts_toward_cluster is expected_counts
+    assert result.action_signal.to_packet()["verdictImpact"] == "none"
 
 
 def test_sustained_marker_deload_is_suppressed_by_scheduled_recovery_block() -> None:

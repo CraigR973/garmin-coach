@@ -521,7 +521,7 @@ async def test_morning_packet_turns_two_unexplained_reds_into_swap_action(
 
 
 @pytest.mark.asyncio
-async def test_morning_packet_excludes_marks_two_explained_reds(
+async def test_morning_packet_real_0731_0801_reds_now_both_count(
     db_conn: AsyncConnection,
 ) -> None:
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
@@ -614,11 +614,12 @@ async def test_morning_packet_excludes_marks_two_explained_reds(
 
     action = packet["verdict"]["chronicAction"]
     assert action["redMorningObservedCount"] == 2
-    assert action["redMorningCount"] == 0
-    assert action["triggered"] is False
+    assert action["redMorningCount"] == 2
+    assert action["triggered"] is True
+    assert action["kind"] == "rearrange_proposal"
     assert [item["classification"] for item in action["redMorningQualifications"]] == [
-        "explained_by_check_in",
-        "explained_by_check_in",
+        "endogenous_training_signal",
+        "acute_cause_with_systemic_strain",
     ]
     assert {item["reason"] for item in action["recordedTrainingContext"]} >= {
         "training_load",
@@ -1273,7 +1274,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v27")
+    assert PROMPT_VERSION.startswith("morning-analysis-v28")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
