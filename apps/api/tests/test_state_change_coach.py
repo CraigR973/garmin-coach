@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
+from sqlalchemy import delete, func, select, text
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, async_sessionmaker
 
 from src.models.coaching import Analysis, BriefMessage
 from src.models.profile import Profile, UserRole
 from src.services.state_change_coach import (
     ANALYSIS_TYPE_STATE_CHANGE,
     ORIGIN_KIND_STATE_CHANGE,
+    BudgetDecision,
     StateChangeCandidate,
     StateChangeCoachService,
     StateChangeResult,
@@ -119,6 +121,34 @@ class FakeStateChangeCoachService(StateChangeCoachService):
         return self._fake_candidates
 
 
+class SlowBudgetStateChangeCoachService(FakeStateChangeCoachService):
+    def __init__(
+        self,
+        session: AsyncSession,
+        candidates: list[StateChangeCandidate],
+        *,
+        entered_budget: asyncio.Event,
+    ) -> None:
+        super().__init__(session, candidates)
+        self._entered_budget = entered_budget
+
+    async def _budget_decision(  # type: ignore[override]
+        self,
+        player: Profile,
+        *,
+        as_of: date,
+        candidate: StateChangeCandidate,
+    ) -> BudgetDecision:
+        decision = await super()._budget_decision(
+            player,
+            as_of=as_of,
+            candidate=candidate,
+        )
+        self._entered_budget.set()
+        await asyncio.sleep(0.2)
+        return decision
+
+
 @pytest.mark.asyncio
 async def test_transition_writes_one_replyable_assistant_turn(
     db_conn: AsyncConnection,
@@ -177,6 +207,84 @@ async def test_transition_writes_one_replyable_assistant_turn(
     assert second.reason == "budget_spent"
     assert analysis_count == 1
     assert len(messages) == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_transition_writes_once_across_two_sessions(
+    db_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    sent_at = datetime(2026, 8, 5, 10, 45, tzinfo=UTC)
+    candidate = StateChangeCandidate(
+        snapshot=_snapshot("weekly_mix", key="weekly_mix:vo2", value="at_risk"),
+        previous_value=None,
+    )
+
+    async with session_factory() as session:
+        await session.execute(text("SET search_path TO coach, public"))
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Concurrent State Change Test",
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.commit()
+
+    entered_budget = asyncio.Event()
+
+    async def _run(*, slow: bool) -> StateChangeResult:
+        async with session_factory() as session:
+            await session.execute(text("SET search_path TO coach, public"))
+            player = await session.get(Profile, user_id)
+            assert player is not None
+            service: StateChangeCoachService
+            if slow:
+                service = SlowBudgetStateChangeCoachService(
+                    session,
+                    [candidate],
+                    entered_budget=entered_budget,
+                )
+            else:
+                service = FakeStateChangeCoachService(session, [candidate])
+            return await service.run(player, as_of=TODAY, now_utc=sent_at)
+
+    try:
+        first_task = asyncio.create_task(_run(slow=True))
+        await asyncio.wait_for(entered_budget.wait(), timeout=2)
+        second_result = await _run(slow=False)
+        first_result = await first_task
+
+        async with session_factory() as session:
+            await session.execute(text("SET search_path TO coach, public"))
+            analysis_count = await session.scalar(
+                select(func.count())
+                .select_from(Analysis)
+                .where(
+                    Analysis.user_id == user_id,
+                    Analysis.analysis_type == ANALYSIS_TYPE_STATE_CHANGE,
+                )
+            )
+            message_count = await session.scalar(
+                select(func.count())
+                .select_from(BriefMessage)
+                .where(BriefMessage.user_id == user_id)
+            )
+    finally:
+        async with session_factory() as session:
+            await session.execute(text("SET search_path TO coach, public"))
+            await session.execute(delete(BriefMessage).where(BriefMessage.user_id == user_id))
+            await session.execute(delete(Analysis).where(Analysis.user_id == user_id))
+            await session.execute(delete(Profile).where(Profile.id == user_id))
+            await session.commit()
+
+    results = sorted([first_result.reason, second_result.reason])
+    assert results == ["budget_spent", "delivered"]
+    assert analysis_count == 1
+    assert message_count == 1
 
 
 @pytest.mark.asyncio
