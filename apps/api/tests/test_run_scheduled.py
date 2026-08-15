@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from src import run_scheduled
+from src.services.job_runs import JobResult
 
 
 def test_jobs_cover_expected_names() -> None:
@@ -41,17 +42,33 @@ def test_jobs_map_to_the_same_scheduler_coroutines() -> None:
 @pytest.mark.asyncio
 async def test_run_awaits_selected_job() -> None:
     fake = AsyncMock()
-    with patch.dict(run_scheduled.JOBS, {"hive-poll": fake}):
-        await run_scheduled._run("hive-poll")
-    fake.assert_awaited_once()
+    tracked = AsyncMock(return_value=JobResult.succeeded(readings=1))
+    with (
+        patch.dict(run_scheduled.JOBS, {"hive-poll": fake}),
+        patch("src.run_scheduled.run_tracked_job", tracked),
+    ):
+        result = await run_scheduled._run("hive-poll")
+    tracked.assert_awaited_once_with("hive-poll", fake)
+    assert result.exit_code == 0
 
 
 def test_main_runs_named_job(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake = AsyncMock()
     monkeypatch.setattr(sys, "argv", ["run_scheduled", "backup"])
-    with patch.dict(run_scheduled.JOBS, {"backup": fake}):
+    run = AsyncMock(return_value=JobResult.succeeded(backups=1))
+    with patch("src.run_scheduled._run", run):
         run_scheduled.main()
-    fake.assert_awaited_once()
+    run.assert_awaited_once_with("backup")
+
+
+def test_main_exits_nonzero_when_job_reports_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["run_scheduled", "backup"])
+    run = AsyncMock(return_value=JobResult.failed("backup_failed"))
+    with (
+        patch("src.run_scheduled._run", run),
+        pytest.raises(SystemExit) as exc_info,
+    ):
+        run_scheduled.main()
+    assert exc_info.value.code == 1
 
 
 def test_main_rejects_unknown_job(monkeypatch: pytest.MonkeyPatch) -> None:

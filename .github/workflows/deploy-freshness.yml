@@ -1,0 +1,30 @@
+name: Production deploy freshness
+
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-production-sha:
+    name: Railway + Vercel serve merged SHA
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 17
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Poll both production health paths
+        run: >-
+          python scripts/monitor_deploy_freshness.py
+          --expected-sha "${{ github.event.workflow_run.head_sha }}"
+          --endpoint railway=https://api-production-e2bc7.up.railway.app/api/v1/health
+          --endpoint vercel=https://garmin-coach-one.vercel.app/api/v1/health
+          --timeout-seconds 900
+          --interval-seconds 15
+          --request-timeout-seconds 10

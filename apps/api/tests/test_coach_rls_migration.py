@@ -44,6 +44,7 @@ RLS_MIGRATION_FILES: tuple[str, ...] = (
     "021_conversation_learning_proposals.py",
     "022_post_activity_generation_status.py",
     "024_generation_requests.py",
+    "027_job_runs.py",
 )
 
 

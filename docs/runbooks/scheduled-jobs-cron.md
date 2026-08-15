@@ -7,7 +7,7 @@ All scheduled work runs in-process via APScheduler inside the **web container**
 container runs continuously. In prod it does not: for days the Hive 15-minute
 poll produced only *manual* readings, because the container is (re)started /
 idle-cycled often enough that a plain interval rarely reaches its first fire,
-and wall-clock jobs (06:30 morning sync, evening nudges) only fire if the
+and wall-clock jobs (11:00 morning backstop, evening nudges) only fire if the
 container happens to be awake at that minute.
 
 Diagnosis (2026-06-24): **two compounding causes.** (1) `pyhiveapi` was missing
@@ -39,11 +39,14 @@ Run each job from an external scheduler via the single-job runner:
 | `hive-poll`     | every 15 min         | `*/15 * * * *`         |
 | `activity-poll` | hourly               | `0 * * * *`            |
 | `backup`        | 03:00 UTC            | `0 3 * * *`            |
-| `morning-sync`  | 06:30 Europe/London  | `30 6 * * *`  ⚠ DST    |
+| `wake-check`    | every 15 min         | `*/15 * * * *`         |
+| `morning-sync`  | 11:00 Europe/London  | `0 11 * * *`  ⚠ DST    |
 | `autopush`      | 07/13/19 London      | `0 7,13,19 * * *`  ⚠   |
 | `weekly-review` | Sunday 18:00 London  | `0 18 * * 0`  ⚠       |
+| `state-change`  | 11:45 London         | `45 11 * * *`  ⚠       |
 | `evening-nudge` | 20:00 London         | `0 20 * * *`  ⚠        |
 | `evening-alerts`| 19–22 London, /15    | `*/15 19-22 * * *`  ⚠  |
+| `fan-control`   | every 15 min         | `*/15 * * * *`         |
 
 ⚠ **DST:** Railway/most cron runs in UTC and does not track Europe/London
 BST↔GMT. The interval jobs (`hive-poll`, `activity-poll`, `backup`) are
@@ -85,13 +88,24 @@ Keep the API's in-process scheduler enabled while only this one external job is
 provisioned. The weekly review's PostgreSQL advisory lock plus review/message/
 push idempotency make an APScheduler/cron overlap safe.
 
+Every real APScheduler invocation and every external-runner invocation now
+records one operator-only `coach.job_runs` row with its cadence window,
+start/finish timestamps, `succeeded` / `skipped` / `degraded` / `failed` status,
+stable reason and integer counters. The run row uses a separate transaction, so
+rolling back the job's own failed work cannot erase its failure evidence.
+
 ### Cutover — avoid double-runs
 
 Jobs are idempotent (Hive just appends a reading; morning analysis is
 idempotent-per-day; activity/daily upsert), so cron + APScheduler can overlap
-briefly with no harm. Once cron is verified, set `SCHEDULER_ENABLED=false` on the
-`api` service so the in-process scheduler stops and jobs run only via cron.
+briefly with no harm. **Do not set `SCHEDULER_ENABLED=false` yet.** Disabling the
+in-process scheduler remains the Decision-gated Batch 195.4 hosting call: Craig
+must choose always-on API versus full externalisation, and every external job
+must first have a proved successful run. The 20:30 `post_workout_backstop` is
+still in-process-only and is deliberately not exposed as a new external service
+by Batch 195.
 
-The runner exits 0 even when a job fails internally (the job functions log and
-swallow their own errors, matching the in-process scheduler). Watch the logs, not
-the exit code, for job health.
+The runner exits 0 only for `succeeded`/`skipped`. Any `degraded` or `failed`
+outcome exits 1 after attempting to persist the run row, so Railway/GitHub cron
+can alert directly from process state. If even the run-row write fails, the
+runner also exits 1 (`reason=job_run_persistence_failed`).

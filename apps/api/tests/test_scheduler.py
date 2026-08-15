@@ -6,19 +6,21 @@ import uuid
 from collections.abc import Callable
 from contextlib import ExitStack, contextmanager
 from datetime import date, datetime, timedelta
+from functools import partial
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from src.models.coaching import Analysis, FanStateReading
 from src.models.notification import ActionType, ActorType, AuditLog
 from src.models.profile import Profile, UserRole
 from src.scheduler import (
+    MorningInputResult,
     _retry_async,
     _retry_sync,
     _sync_garmin_daily,
@@ -31,12 +33,14 @@ from src.scheduler import (
     run_morning_weather_sync,
     run_post_workout_backstop,
     run_scheduled_backup,
+    run_tracked_job,
     run_wake_check,
     run_weekly_review_delivery,
     run_workout_autopush,
 )
 from src.services.anthropic_text import AnthropicApiError
 from src.services.dreo_fan import DreoFanError, DreoFanState
+from src.services.job_runs import JobResult, JobStatus
 from src.services.wake_detection import (
     BACKSTOP,
     WAKE_CHECK_ANALYSIS_TYPE,
@@ -464,6 +468,11 @@ def test_create_scheduler_registers_environment_jobs() -> None:
         assert state_change_job.coalesce is True
         assert state_change_job.max_instances == 1
         assert monitoring_job.max_instances == 1
+        for job in jobs:
+            if job.id == "connection_warmup":
+                continue
+            assert isinstance(job.func, partial)
+            assert job.func.func is run_tracked_job
     finally:
         if scheduler.running:
             scheduler.shutdown(wait=False)
@@ -493,9 +502,10 @@ async def test_sync_garmin_daily_syncs_metrics_and_sleep() -> None:
         patch("src.scheduler.GarminSyncService", return_value=sync_service),
         patch("src.scheduler._profile_today", return_value=today),
     ):
-        daily, sleep = await _sync_garmin_daily(session, profiles, client=client)
+        daily, sleep, failures = await _sync_garmin_daily(session, profiles, client=client)
 
     assert (daily, sleep) == (8, 8)
+    assert failures == 0
     assert client.fetch_daily_payloads.call_count == 8
     assert sync_service.sync_daily.await_count == 8
     expected_dates = [today - timedelta(days=offset) for offset in range(4)]
@@ -506,9 +516,10 @@ async def test_sync_garmin_daily_syncs_metrics_and_sleep() -> None:
         assert [call.args[:2] for call in profile_calls] == [
             (profile.id, subject_date) for subject_date in expected_dates
         ]
-    # commit is the caller's responsibility — the helper only syncs with commit=False
+    # Each date is committed independently after the service stages it.
     for call in sync_service.sync_daily.await_args_list:
         assert call.kwargs["commit"] is False
+    assert session.commit.await_count == 8
 
 
 @pytest.mark.asyncio
@@ -533,11 +544,48 @@ async def test_sync_garmin_daily_isolates_profile_failure() -> None:
         patch("src.scheduler.GarminSyncService", return_value=sync_service),
         patch("src.scheduler._profile_today", return_value=date(2026, 8, 2)),
     ):
-        daily, sleep = await _sync_garmin_daily(session, [bad, good], client=client)
+        daily, sleep, failures = await _sync_garmin_daily(session, [bad, good], client=client)
 
     # The failing profile contributes nothing; the healthy one still syncs.
     assert (daily, sleep) == (4, 4)
+    assert failures == 4
+    assert session.rollback.await_count == 4
     assert sync_service.sync_daily.await_count == 8
+
+
+@pytest.mark.asyncio
+async def test_poisoned_garmin_step_recovers_session_for_verdict(
+    db_conn: AsyncConnection,
+) -> None:
+    """A real PostgreSQL transaction abort is rolled back before downstream work."""
+
+    profile = _profile()
+    client = MagicMock()
+    client.fetch_daily_payloads = MagicMock(return_value="payloads")
+    calls = 0
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        sync_service = MagicMock()
+
+        async def sync_daily(*_args: object, **_kwargs: object) -> MagicMock:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                await session.execute(text("SELECT 1 / 0"))
+            await session.execute(text("SELECT 1"))
+            return MagicMock(daily_metrics_synced=1, sleep_synced=1)
+
+        sync_service.sync_daily = AsyncMock(side_effect=sync_daily)
+        with (
+            patch("src.scheduler.GarminSyncService", return_value=sync_service),
+            patch("src.scheduler._profile_today", return_value=date(2026, 8, 15)),
+        ):
+            daily, sleep, failures = await _sync_garmin_daily(session, [profile], client=client)
+
+        assert (daily, sleep, failures) == (3, 3, 1)
+        # This is the transaction state the morning-analysis query inherits.
+        # Without the caught-step rollback it raises PendingRollbackError.
+        assert await session.scalar(text("SELECT 1")) == 1
 
 
 @pytest.mark.asyncio
@@ -546,7 +594,7 @@ async def test_sync_garmin_daily_no_profiles_skips_client() -> None:
     session = AsyncMock()
     with patch("src.scheduler.GarminConnectClient") as client_cls:
         result = await _sync_garmin_daily(session, [])
-    assert result == (0, 0)
+    assert result == (0, 0, 0)
     client_cls.assert_not_called()
 
 
@@ -575,9 +623,11 @@ async def test_morning_weather_sync_runs_daily_sync_before_analysis() -> None:
     meteo_client = MagicMock()
     meteo_client.fetch_daily_payload = AsyncMock(return_value="weather")
 
-    async def fake_daily_sync(_session: object, _profiles: object, **_k: object) -> tuple[int, int]:
+    async def fake_daily_sync(
+        _session: object, _profiles: object, **_k: object
+    ) -> tuple[int, int, int]:
         calls.append("garmin_daily")
-        return (1, 1)
+        return (1, 1, 0)
 
     analysis_service = MagicMock()
 
@@ -613,6 +663,46 @@ async def test_morning_weather_sync_runs_daily_sync_before_analysis() -> None:
     assert coaching_service.propose_chronic_deload.await_count == 1
 
 
+@pytest.mark.asyncio
+async def test_poisoned_input_step_does_not_cost_verdict() -> None:
+    """Batch 195: a degraded sync still reaches morning-analysis generation."""
+
+    profile = _profile()
+    session = AsyncMock()
+    analysis = MagicMock()
+    analysis_service = MagicMock()
+    analysis_service.generate_and_store = AsyncMock(
+        return_value=MagicMock(generated=True, analysis=analysis)
+    )
+    coaching_service = MagicMock()
+    coaching_service.regenerate_for_verdict = AsyncMock(return_value=[])
+    coaching_service.propose_chronic_deload = AsyncMock(return_value=[])
+    nudge_service = MagicMock()
+    nudge_service.push_brief_ready = AsyncMock(return_value=False)
+    insights_service = MagicMock()
+    insights_service.record_drivers = AsyncMock(return_value=MagicMock(record_count=0))
+
+    with (
+        patch("src.scheduler.AsyncSessionLocal", return_value=_morning_sync_ctx(session)),
+        patch("src.scheduler._active_profiles", AsyncMock(return_value=[profile])),
+        patch(
+            "src.scheduler._sync_morning_inputs",
+            AsyncMock(return_value=MorningInputResult(failures=1)),
+        ),
+        patch("src.scheduler.MorningAnalysisService", return_value=analysis_service),
+        patch("src.scheduler.ExecutableCoachingService", return_value=coaching_service),
+        patch("src.scheduler.NudgeAlertService", return_value=nudge_service),
+        patch("src.scheduler.InsightsService", return_value=insights_service),
+        patch("src.scheduler.pregenerate_brief_audio", AsyncMock()),
+    ):
+        result = await run_morning_weather_sync()
+
+    analysis_service.generate_and_store.assert_awaited_once_with(profile, ANY)
+    assert result.status == JobStatus.degraded
+    assert result.counters["analyses_generated"] == 1
+    assert result.counters["failed"] == 1
+
+
 def _morning_sync_ctx(session: AsyncMock) -> object:
     class _Ctx:
         async def __aenter__(self) -> AsyncMock:
@@ -634,9 +724,9 @@ async def test_run_morning_sync_syncs_then_nudges() -> None:
     session = AsyncMock()
     session.commit = AsyncMock()
 
-    async def fake_sync(_session: object, _profiles: object) -> tuple[int, int, int]:
+    async def fake_sync(_session: object, _profiles: object) -> MorningInputResult:
         calls.append("sync")
-        return (1, 1, 1)
+        return MorningInputResult(weather_days=1, daily_metrics=1, sleep=1)
 
     morning = MagicMock()
     morning.latest_analysis = AsyncMock(return_value=None)  # no brief yet → nudge
@@ -670,7 +760,7 @@ async def test_run_morning_sync_skips_nudge_when_brief_exists() -> None:
     session = AsyncMock()
     session.commit = AsyncMock()
 
-    fake_sync = AsyncMock(return_value=(1, 1, 1))
+    fake_sync = AsyncMock(return_value=MorningInputResult(weather_days=1, daily_metrics=1, sleep=1))
     morning = MagicMock()
     morning.latest_analysis = AsyncMock(return_value=MagicMock())  # brief already there
     nudge_service = MagicMock()
@@ -934,7 +1024,7 @@ def _wake_patches(
     record = AsyncMock()
     last_seen = AsyncMock(return_value=None)
     is_ready = MagicMock(return_value=decision or WakeDecision("wait", None, "awaiting_stability"))
-    morning_sync = AsyncMock()
+    morning_sync = AsyncMock(return_value=JobResult.succeeded())
 
     with ExitStack() as stack:
         enter = stack.enter_context
@@ -1126,7 +1216,7 @@ async def test_wake_check_persists_then_fires(db_conn: AsyncConnection) -> None:
     user_id = uuid.uuid4()
     await _seed_profile(db_conn, user_id)
     client = _FakeGarmin(_sleep_payload())
-    morning_sync = AsyncMock()
+    morning_sync = AsyncMock(return_value=JobResult.succeeded())
     now = {"value": _local(8, 5)}  # 07:05 UTC → not yet settled
 
     with (
@@ -1158,7 +1248,7 @@ async def test_wake_check_backstop_fires_on_unfinalized(db_conn: AsyncConnection
     user_id = uuid.uuid4()
     await _seed_profile(db_conn, user_id)
     client = _FakeGarmin({})  # no dailySleepDTO → unfinalized
-    morning_sync = AsyncMock()
+    morning_sync = AsyncMock(return_value=JobResult.succeeded())
 
     with (
         patch("src.scheduler.AsyncSessionLocal", new=_bind(db_conn)),
@@ -1200,7 +1290,7 @@ async def test_wake_check_short_circuits_with_existing_morning_row(
         await session.commit()
 
     client = _FakeGarmin(None, raise_on_fetch=True)
-    morning_sync = AsyncMock()
+    morning_sync = AsyncMock(return_value=JobResult.succeeded())
     with (
         patch("src.scheduler.AsyncSessionLocal", new=_bind(db_conn)),
         patch("src.scheduler.GarminConnectClient", return_value=client),

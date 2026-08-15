@@ -41,6 +41,21 @@ Spikes live in `~/garmin-spike/` (outside this repo). Raw sample JSON in `~/garm
 
 **Sync jobs (APScheduler):** Hive temp poll every ~15 min; **wake-triggered morning run** — a `wake_check` poll every ~15 min within Mark's morning window (03:30–11:30 Europe/London) does a light sleep-only Garmin poll and, once his Garmin `sleepEnd` is *stable* (back-to-sleep guard), fires the Garmin+weather **sync + a "good morning" nudge** (`run_morning_sync`); **generating the brief itself is triggered by his check-in** (the primary trigger — Batch 85), with the 11:00 backstop generating for a morning he never engages (DECISIONS #87/#158/#217 — moved later from 09:30 in Batch 138 so a genuine lie-in isn't force-read on stale data; replaces the old fixed 06:30 cron); the hourly activity poll syncs rides/strength/flexibility/walks and nudges **"How did it feel?" without running an LLM**, the activity check-in generates the correct read inline, and a 20:30 local backstop generates any same-day unread sessions before tomorrow's morning packet (Batch 87, DECISIONS #160); **overnight bedroom fan-control loop** every ~15 min reconciles the Dreo air-circulator to the live indoor temp within 21:30–08:30 when the autopilot is on (DECISIONS #96-97). NB Training Readiness is time-of-day live → morning analysis must read **after he wakes** (the whole point of the wake trigger). `recoveryTime` is in MINUTES.
 
+Batch 195 makes those invocations observable without changing their hosting
+owner. Each APScheduler fire and external `run_scheduled` fire crosses one typed
+`succeeded` / `skipped` / `degraded` / `failed` result boundary and persists an
+operator-only `job_runs` row in a separate transaction (cadence window,
+timestamps, stable reason, integer counters); degraded/failed external runs exit
+non-zero. Morning weather/Garmin dates commit at isolated recovery boundaries,
+and every caught write-capable downstream step rolls its `AsyncSession` back
+before continuing, so a poisoned historical row cannot suppress verdict
+generation. A separate post-`main` GitHub workflow polls Railway-direct and
+Vercel-proxied health for the expected merge SHA for at most 15 minutes and
+fails loudly on staleness. The in-process scheduler remains enabled: choosing an
+always-on API versus externalising every workload is the explicit hosting-cost
+gate in Batch 195.4, and no cutover occurs until every external job has proved a
+successful run (DECISIONS #277).
+
 ### Workout delivery — OUTPUT (validated 19 Jun 26)
 
 Push direction only — *not* a data source (ingestion stays direct-from-Garmin). The app emits a structured workout → POST to his **intervals.icu** calendar (free API; athlete `i618709`) → intervals.icu's approved Zwift Training-Connections integration delivers it into Zwift's Custom Workouts automatically. **Power + timing proven exact** end-to-end. intervals.icu is a **delivery rail, NOT the system-of-record** (our DB owns the plan). Deterministic **`.ZWO` export** is the no-dependency fallback. Since Batch 29, the as-planned baseline is pushed when the plan is set; human approval gates only the morning sleep/recovery adjustment. **Outdoor** rides instead deliver directly to **Garmin Connect** (Batch 78, #151): the app builds Garmin's own structured-workout JSON from the same IR and uploads + schedules it on the existing garth session, so Garmin is a workout-*write* output for outdoor rides while ingestion stays read-only. Cadence nuance: Zwift overrides cadence on repeated-interval blocks with defaults (100/90) — emit cadence-critical reps as individual steps (confirm on PC). Spike: `~/garmin-spike/intervals_spike.py`.
@@ -346,6 +361,11 @@ query, index, or migration work.
   packets; acceptance copies the reviewed statement into a new active version
   of `knowledge_base.section='learned_context'`
 - `brief_generation_status` (per-`(user, subject_date)` morning-brief generation state — `generating`/`ready`/`failed` + a classified `reason` such as `billing`; migration `020`, Batch 141) surfaced on the daily-loop envelope so a failed generation resolves to a retryable error instead of an endless "Writing your brief" spinner, and a billing-classed failure alerts the operator (DECISIONS #220). Batch 144: a `generating` row orphaned past `settings.brief_generation_stale_after_minutes` (default 12 min) reads as `failed`/`stale` at envelope-serialization time — a read-time derivation off `updated_at`, no writer/migration/scheduler — with a mirrored 12-min client max-wait cap, so a stuck/orphaned generation can never spin forever (DECISIONS #223)
+- `job_runs` (migration `027`, Batch 195): operator-only invocation evidence
+  carrying the cadence window, start/finish, succeeded/skipped/degraded/failed
+  status, stable reason and integer counters. It has RLS but no authenticated
+  policy, and its independent transaction survives rollback of the job it
+  records.
 - `post_activity_generation_status` (migration `022`, Batch 159): one
   RLS-enabled row per `(user, activity)`, optionally linked to the completed
   planned workout, carrying subject date, supported post-session analysis type,

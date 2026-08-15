@@ -31,7 +31,9 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import Awaitable, Callable, Iterable
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from functools import partial
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -81,6 +83,7 @@ from src.services.garmin_sync import (
 )
 from src.services.holiday_pause import HolidayPauseService
 from src.services.insights import InsightsService
+from src.services.job_runs import JobResult, run_tracked_job
 from src.services.morning_analysis import MorningAnalysisService
 from src.services.nudge_alerts import NudgeAlertService
 from src.services.post_flexibility_analysis import PostFlexibilityAnalysisService
@@ -106,26 +109,33 @@ from src.services.weekly_review_delivery import WeeklyReviewDeliveryService
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 
-async def run_scheduled_backup() -> None:
+async def run_scheduled_backup() -> JobResult:
     """Daily backup job — runs at 03:00 UTC."""
     try:
         info = await create_backup(settings.backup_dir, settings.database_url)
         log.info("scheduled backup complete", filename=info.filename, size_bytes=info.size_bytes)
+        return JobResult.succeeded(backups=1, size_bytes=info.size_bytes)
     except Exception as exc:
         reason = str(exc)
         log.exception("scheduled backup failed")
-        async with AsyncSessionLocal() as session:
-            session.add(
-                AuditLog(
-                    actor_id=None,
-                    actor_type=ActorType.system,
-                    action_type=ActionType.backup_failed,
-                    target_table="",
-                    target_id=None,
-                    changes={"error": reason},
+        audit_rows = 0
+        try:
+            async with AsyncSessionLocal() as session:
+                session.add(
+                    AuditLog(
+                        actor_id=None,
+                        actor_type=ActorType.system,
+                        action_type=ActionType.backup_failed,
+                        target_table="",
+                        target_id=None,
+                        changes={"error": reason},
+                    )
                 )
-            )
-            await session.commit()
+                await session.commit()
+                audit_rows = 1
+        except Exception:
+            log.exception("recording scheduled backup failure audit failed")
+        return JobResult.failed("backup_failed", backups=0, audit_rows=audit_rows)
 
 
 async def run_connection_warmup() -> None:
@@ -144,7 +154,7 @@ async def run_connection_warmup() -> None:
         log.exception("connection warmup failed")
 
 
-async def run_hive_temperature_poll() -> None:
+async def run_hive_temperature_poll() -> JobResult:
     """Poll Hive indoor temperature for active Hive-linked profiles."""
     try:
         async with AsyncSessionLocal() as session:
@@ -163,7 +173,7 @@ async def run_hive_temperature_poll() -> None:
             )
             if not profiles:
                 log.info("hive temperature poll skipped", reason="no_hive_profiles")
-                return
+                return JobResult.skipped("no_hive_profiles", profiles=0, readings=0)
 
             client = HiveClient()
             payloads = await _retry_sync(client.fetch_payloads)
@@ -180,28 +190,32 @@ async def run_hive_temperature_poll() -> None:
                 synced += result.temperature_readings_synced
             await session.commit()
         log.info("hive temperature poll complete", profiles=len(profiles), readings=synced)
+        return JobResult.succeeded(profiles=len(profiles), readings=synced)
     except Exception:
         log.exception("hive temperature poll failed")
+        return JobResult.failed("hive_poll_failed")
 
 
-async def run_evening_sleep_nudge() -> None:
+async def run_evening_sleep_nudge() -> JobResult:
     """Send useful projected sleep guidance in each active profile's timezone."""
     try:
         async with AsyncSessionLocal() as session:
             profiles = await _active_profiles(session)
             if not profiles:
                 log.info("evening sleep nudge skipped", reason="no_active_profiles")
-                return
+                return JobResult.skipped("no_active_profiles", profiles=0, nudges=0)
 
             service = NudgeAlertService(session)
             holiday_service = HolidayPauseService(session)
             nudges_recorded = 0
+            skipped_holiday = 0
             for profile in profiles:
                 subject_date = _profile_today(profile)
                 if (
                     await holiday_service.get_overnight_away_window_for_date(profile, subject_date)
                     is not None
                 ):
+                    skipped_holiday += 1
                     log.info(
                         "evening sleep nudge skipped",
                         reason="holiday_away",
@@ -213,18 +227,24 @@ async def run_evening_sleep_nudge() -> None:
                     nudges_recorded += 1
             await session.commit()
         log.info("evening sleep nudge complete", profiles=len(profiles), nudges=nudges_recorded)
+        return JobResult.succeeded(
+            profiles=len(profiles),
+            nudges=nudges_recorded,
+            skipped_holiday=skipped_holiday,
+        )
     except Exception:
         log.exception("evening sleep nudge failed")
+        return JobResult.failed("evening_nudge_failed")
 
 
-async def run_weekly_review_delivery() -> None:
+async def run_weekly_review_delivery() -> JobResult:
     """Generate and deliver the ISO week ending this Sunday at 18:00 local."""
     try:
         async with AsyncSessionLocal() as session:
             profiles = await _active_profiles(session)
             if not profiles:
                 log.info("weekly review delivery skipped", reason="no_active_profiles")
-                return
+                return JobResult.skipped("no_active_profiles", profiles=0)
 
             holiday_service = HolidayPauseService(session)
             service = WeeklyReviewDeliveryService(session)
@@ -295,18 +315,32 @@ async def run_weekly_review_delivery() -> None:
             skipped_holiday=skipped_holiday,
             failed=failed,
         )
+        counters = {
+            "profiles": len(profiles),
+            "generated": generated,
+            "messages": messages,
+            "pushes": pushes,
+            "skipped_holiday": skipped_holiday,
+            "failed": failed,
+        }
+        if failed:
+            return JobResult.degraded("profile_failures", **counters)
+        if skipped_holiday == len(profiles):
+            return JobResult.skipped("holiday_away", **counters)
+        return JobResult.succeeded(**counters)
     except Exception:
         log.exception("weekly review delivery failed")
+        return JobResult.failed("weekly_review_failed")
 
 
-async def run_state_change_coach() -> None:
+async def run_state_change_coach() -> JobResult:
     """Deliver at most one meaningful state-change coach turn per profile/week."""
     try:
         async with AsyncSessionLocal() as session:
             profiles = await _active_profiles(session)
             if not profiles:
                 log.info("state-change coach skipped", reason="no_active_profiles")
-                return
+                return JobResult.skipped("no_active_profiles", profiles=0)
 
             service = StateChangeCoachService(session)
             delivered = 0
@@ -336,18 +370,29 @@ async def run_state_change_coach() -> None:
             skipped_no_transition=skipped_no_transition,
             failed=failed,
         )
+        counters = {
+            "profiles": len(profiles),
+            "delivered": delivered,
+            "skipped_budget": skipped_budget,
+            "skipped_no_transition": skipped_no_transition,
+            "failed": failed,
+        }
+        if failed:
+            return JobResult.degraded("profile_failures", **counters)
+        return JobResult.succeeded(**counters)
     except Exception:
         log.exception("state-change coach failed")
+        return JobResult.failed("state_change_failed")
 
 
-async def run_evening_monitoring_alerts() -> None:
+async def run_evening_monitoring_alerts() -> JobResult:
     """Check bedtime thermal state and source freshness for active profiles."""
     try:
         async with AsyncSessionLocal() as session:
             profiles = await _active_profiles(session)
             if not profiles:
                 log.info("evening monitoring alerts skipped", reason="no_active_profiles")
-                return
+                return JobResult.skipped("no_active_profiles", profiles=0, alerts=0)
 
             service = NudgeAlertService(session)
             holiday_service = HolidayPauseService(session)
@@ -376,8 +421,10 @@ async def run_evening_monitoring_alerts() -> None:
             profiles=len(profiles),
             alerts=alerts_recorded,
         )
+        return JobResult.succeeded(profiles=len(profiles), alerts=alerts_recorded)
     except Exception:
         log.exception("evening monitoring alerts failed")
+        return JobResult.failed("evening_alerts_failed")
 
 
 async def _sync_garmin_daily(
@@ -385,21 +432,22 @@ async def _sync_garmin_daily(
     profiles: list[Profile],
     *,
     client: GarminConnectClient | None = None,
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
     """Sync today plus the last three closed Garmin days (429-safe).
 
-    Returns ``(daily_metrics_synced, sleep_synced)``. The fetch is wrapped in an
+    Returns ``(daily_metrics_synced, sleep_synced, failures)``. The fetch is wrapped in an
     exponential-backoff retry so a transient Garmin 429 is survived. Each date
     is isolated, so one failed historical fetch cannot block today's inputs or
-    another date's self-heal. The caller commits.
+    another date's self-heal. Each successful date commits independently.
     """
     if not profiles:
-        return (0, 0)
+        return (0, 0, 0)
 
     client = client or GarminConnectClient()
     sync_service = GarminSyncService(session)
     daily_synced = 0
     sleep_synced = 0
+    failures = 0
     for profile in profiles:
         today = _profile_today(profile)
         # Today keeps the morning verdict current. D-1..D-3 overwrite the
@@ -417,52 +465,122 @@ async def _sync_garmin_daily(
                     payloads,
                     commit=False,
                 )
-                daily_synced += result.daily_metrics_synced
-                sleep_synced += result.sleep_synced
+                # One date is one recovery boundary. Committing here means a
+                # later bad historical row cannot roll today's good inputs back.
+                if await _commit_morning_step(
+                    session,
+                    step="garmin_daily",
+                    profile_id=profile.id,
+                    subject_date=subject_date,
+                ):
+                    daily_synced += result.daily_metrics_synced
+                    sleep_synced += result.sleep_synced
+                else:
+                    failures += 1
             except Exception:
+                failures += 1
+                await session.rollback()
                 log.exception(
                     "garmin daily sync failed",
                     profile_id=str(profile.id),
                     subject_date=subject_date.isoformat(),
                 )
-    return (daily_synced, sleep_synced)
+    return (daily_synced, sleep_synced, failures)
+
+
+@dataclass(frozen=True, slots=True)
+class MorningInputResult:
+    weather_days: int = 0
+    daily_metrics: int = 0
+    sleep: int = 0
+    failures: int = 0
+
+
+async def _commit_morning_step(
+    session: AsyncSession,
+    *,
+    step: str,
+    profile_id: uuid.UUID | None = None,
+    subject_date: date | None = None,
+) -> bool:
+    """Commit one morning input boundary, restoring the Session on failure."""
+
+    try:
+        await session.commit()
+        return True
+    except Exception:
+        await session.rollback()
+        log.exception(
+            "morning input commit failed",
+            step=step,
+            profile_id=str(profile_id) if profile_id is not None else None,
+            subject_date=subject_date.isoformat() if subject_date is not None else None,
+        )
+        return False
 
 
 async def _sync_morning_inputs(
     session: AsyncSession, profiles: list[Profile]
-) -> tuple[int, int, int]:
+) -> MorningInputResult:
     """Pull weather + current/finalized Garmin daily data for the given profiles.
 
-    Returns ``(weather_days, daily_metrics, sleep)``. Weather syncs first, then the
+    Returns committed counts plus isolated failure count. Weather syncs first, then the
     Garmin daily sync, so the morning verdict reads today's real readiness + sleep
-    instead of empty inputs (Batch 18). The caller commits any final work; this
-    helper commits the two sync phases as it goes.
+    instead of empty inputs (Batch 18). This helper commits each recoverable step
+    and returns the number that degraded without raising past verdict generation.
     """
     service = EnvironmentSyncService(session)
     weather_days = 0
+    failures = 0
     client = OpenMeteoClient()
     for profile in profiles:
-        request = WeatherRequest(
-            latitude=profile.latitude or settings.weather_latitude,
-            longitude=profile.longitude or settings.weather_longitude,
-            timezone=profile.timezone or settings.weather_timezone,
-        )
-        payload = await _retry_async(lambda: client.fetch_daily_payload(request))
-        result = await service.sync_weather_daily(
-            profile.id,
-            payload,
-            timezone=request.timezone,
-            commit=False,
-        )
-        weather_days += result.weather_days_synced
-    await session.commit()
+        try:
+            request = WeatherRequest(
+                latitude=profile.latitude or settings.weather_latitude,
+                longitude=profile.longitude or settings.weather_longitude,
+                timezone=profile.timezone or settings.weather_timezone,
+            )
+            payload = await _retry_async(lambda: client.fetch_daily_payload(request))
+            result = await service.sync_weather_daily(
+                profile.id,
+                payload,
+                timezone=request.timezone,
+                commit=False,
+            )
+            if await _commit_morning_step(
+                session,
+                step="weather",
+                profile_id=profile.id,
+                subject_date=_profile_today(profile),
+            ):
+                weather_days += result.weather_days_synced
+            else:
+                failures += 1
+        except Exception:
+            failures += 1
+            await session.rollback()
+            log.exception(
+                "morning weather input failed",
+                profile_id=str(profile.id),
+            )
 
-    daily_metrics_synced, sleep_synced = await _sync_garmin_daily(session, profiles)
-    await session.commit()
-    return weather_days, daily_metrics_synced, sleep_synced
+    daily_metrics_synced, sleep_synced, garmin_failures = await _sync_garmin_daily(
+        session, profiles
+    )
+    failures += garmin_failures
+    # Keep a guarded phase boundary even though successful dates commit
+    # independently; this catches a driver-level failure before analysis begins.
+    if not await _commit_morning_step(session, step="garmin_phase"):
+        failures += 1
+    return MorningInputResult(
+        weather_days=weather_days,
+        daily_metrics=daily_metrics_synced,
+        sleep=sleep_synced,
+        failures=failures,
+    )
 
 
-async def run_morning_sync() -> None:
+async def run_morning_sync() -> JobResult:
     """Wake-triggered morning **sync + nudge** (Batch 85).
 
     Pulls all external inputs (weather + today's Garmin daily metrics/sleep; Hive
@@ -479,14 +597,13 @@ async def run_morning_sync() -> None:
             profiles = await _active_profiles(session)
             if not profiles:
                 log.info("morning sync skipped", reason="no_active_profiles")
-                return
-            weather_days, daily_metrics_synced, sleep_synced = await _sync_morning_inputs(
-                session, profiles
-            )
+                return JobResult.skipped("no_active_profiles", profiles=0)
+            inputs = await _sync_morning_inputs(session, profiles)
 
             morning = MorningAnalysisService(session)
             nudge_service = NudgeAlertService(session)
             nudges_sent = 0
+            failures = inputs.failures
             for profile in profiles:
                 subject_date = _profile_today(profile)
                 # No point inviting a check-in once today's read is already done
@@ -498,26 +615,47 @@ async def run_morning_sync() -> None:
                         profile, subject_date=subject_date, commit=False
                     ):
                         nudges_sent += 1
+                    if not await _commit_morning_step(
+                        session,
+                        step="good_morning_nudge",
+                        profile_id=profile.id,
+                        subject_date=subject_date,
+                    ):
+                        failures += 1
                 except Exception:
+                    failures += 1
+                    await session.rollback()
                     log.exception(
                         "good morning nudge failed",
                         profile_id=str(profile.id),
                         subject_date=subject_date.isoformat(),
                     )
-            await session.commit()
         log.info(
             "morning sync complete",
             profiles=len(profiles),
-            days=weather_days,
-            daily_metrics=daily_metrics_synced,
-            sleep=sleep_synced,
+            days=inputs.weather_days,
+            daily_metrics=inputs.daily_metrics,
+            sleep=inputs.sleep,
             nudges_sent=nudges_sent,
+            failed=failures,
         )
+        counters = {
+            "profiles": len(profiles),
+            "days": inputs.weather_days,
+            "daily_metrics": inputs.daily_metrics,
+            "sleep": inputs.sleep,
+            "nudges_sent": nudges_sent,
+            "failed": failures,
+        }
+        if failures:
+            return JobResult.degraded("step_failures", **counters)
+        return JobResult.succeeded(**counters)
     except Exception:
         log.exception("morning sync failed")
+        return JobResult.failed("morning_sync_failed")
 
 
-async def run_morning_weather_sync() -> None:
+async def run_morning_weather_sync() -> JobResult:
     """Full morning pipeline: sync inputs, then generate + push the verdict.
 
     This is the **11:00 backstop** (and the external-cron ``morning-sync`` entry) —
@@ -532,11 +670,13 @@ async def run_morning_weather_sync() -> None:
     try:
         async with AsyncSessionLocal() as session:
             profiles = await _active_profiles(session)
-            synced, daily_metrics_synced, sleep_synced = await _sync_morning_inputs(
-                session, profiles
-            )
+            if not profiles:
+                log.info("morning weather sync skipped", reason="no_active_profiles")
+                return JobResult.skipped("no_active_profiles", profiles=0)
+            inputs = await _sync_morning_inputs(session, profiles)
             analyses_generated = 0
             analyses_existing = 0
+            failures = inputs.failures
 
             analysis_service = MorningAnalysisService(session)
             coaching_service = ExecutableCoachingService(session)
@@ -558,6 +698,8 @@ async def run_morning_weather_sync() -> None:
                     else:
                         analyses_existing += 1
                 except Exception:
+                    failures += 1
+                    await session.rollback()
                     log.exception(
                         "morning analysis failed",
                         profile_id=str(profile.id),
@@ -577,6 +719,8 @@ async def run_morning_weather_sync() -> None:
                         ):
                             brief_ready_pushes += 1
                     except Exception:
+                        failures += 1
+                        await session.rollback()
                         log.exception(
                             "morning brief-ready push failed",
                             profile_id=str(profile.id),
@@ -594,6 +738,8 @@ async def run_morning_weather_sync() -> None:
                     )
                     proposals_regenerated += len(proposals)
                 except Exception:
+                    failures += 1
+                    await session.rollback()
                     log.exception(
                         "amber regeneration failed",
                         profile_id=str(profile.id),
@@ -607,6 +753,8 @@ async def run_morning_weather_sync() -> None:
                     )
                     chronic_deload_proposals += len(deloads)
                 except Exception:
+                    failures += 1
+                    await session.rollback()
                     log.exception(
                         "chronic deload proposal failed",
                         profile_id=str(profile.id),
@@ -624,6 +772,8 @@ async def run_morning_weather_sync() -> None:
                     if report.record_count >= 1:
                         drivers_cached += 1
                 except Exception:
+                    failures += 1
+                    await session.rollback()
                     log.exception(
                         "drivers precompute failed",
                         profile_id=str(profile.id),
@@ -632,21 +782,39 @@ async def run_morning_weather_sync() -> None:
         log.info(
             "morning weather sync complete",
             profiles=len(profiles),
-            days=synced,
-            daily_metrics=daily_metrics_synced,
-            sleep=sleep_synced,
+            days=inputs.weather_days,
+            daily_metrics=inputs.daily_metrics,
+            sleep=inputs.sleep,
             analyses_generated=analyses_generated,
             analyses_existing=analyses_existing,
             proposals_regenerated=proposals_regenerated,
             chronic_deload_proposals=chronic_deload_proposals,
             brief_ready_pushes=brief_ready_pushes,
             drivers_cached=drivers_cached,
+            failed=failures,
         )
+        counters = {
+            "profiles": len(profiles),
+            "days": inputs.weather_days,
+            "daily_metrics": inputs.daily_metrics,
+            "sleep": inputs.sleep,
+            "analyses_generated": analyses_generated,
+            "analyses_existing": analyses_existing,
+            "proposals_regenerated": proposals_regenerated,
+            "chronic_deload_proposals": chronic_deload_proposals,
+            "brief_ready_pushes": brief_ready_pushes,
+            "drivers_cached": drivers_cached,
+            "failed": failures,
+        }
+        if failures:
+            return JobResult.degraded("step_failures", **counters)
+        return JobResult.succeeded(**counters)
     except Exception:
         log.exception("morning weather sync failed")
+        return JobResult.failed("morning_pipeline_failed")
 
 
-async def run_wake_check() -> None:
+async def run_wake_check() -> JobResult:
     """Poll Garmin sleep and fire the morning verdict once Mark has actually woken.
 
     Replaces the fixed 06:30 cron. Per active profile, within the morning window
@@ -661,11 +829,12 @@ async def run_wake_check() -> None:
     """
     try:
         any_ready = False
+        failures = 0
         async with AsyncSessionLocal() as session:
             profiles = await _active_profiles(session)
             if not profiles:
                 log.info("wake check skipped", reason="no_active_profiles")
-                return
+                return JobResult.skipped("no_active_profiles", profiles=0)
 
             morning = MorningAnalysisService(session)
             client: GarminConnectClient | None = None
@@ -691,6 +860,7 @@ async def run_wake_check() -> None:
                         backoff=2.0,
                     )
                 except Exception:
+                    failures += 1
                     log.exception("wake check sleep fetch failed", profile_id=str(profile.id))
                     continue
 
@@ -706,6 +876,14 @@ async def run_wake_check() -> None:
                     settle_min=SETTLE_MIN,
                 )
                 await _record_wake_check(session, profile.id, today, decision)
+                if not await _commit_morning_step(
+                    session,
+                    step="wake_check",
+                    profile_id=profile.id,
+                    subject_date=today,
+                ):
+                    failures += 1
+                    continue
                 if decision.action == "fire":
                     fired += 1
                     any_ready = True
@@ -713,24 +891,37 @@ async def run_wake_check() -> None:
                     napped += 1
                 else:
                     waiting += 1
-            await session.commit()
         log.info(
             "wake check complete",
             profiles=len(profiles),
             fired=fired,
             waiting=waiting,
             napped=napped,
+            failed=failures,
         )
         # Once wake is stable, sync all inputs and fire the "good morning" nudge —
         # generation itself waits for his check-in (Batch 85). Runs on its own
         # session after the last-seen state is committed; idempotent per profile.
         if any_ready:
-            await run_morning_sync()
+            morning_result = await run_morning_sync()
+            if morning_result.exit_code:
+                failures += 1
+        counters = {
+            "profiles": len(profiles),
+            "fired": fired,
+            "waiting": waiting,
+            "napped": napped,
+            "failed": failures,
+        }
+        if failures:
+            return JobResult.degraded("step_failures", **counters)
+        return JobResult.succeeded(**counters)
     except Exception:
         log.exception("wake check failed")
+        return JobResult.failed("wake_check_failed")
 
 
-async def run_garmin_activity_poll() -> None:
+async def run_garmin_activity_poll() -> JobResult:
     """Poll Garmin for activities, then invite check-ins without running an LLM."""
     try:
         async with AsyncSessionLocal() as session:
@@ -748,7 +939,7 @@ async def run_garmin_activity_poll() -> None:
             )
             if not profiles:
                 log.info("garmin activity poll skipped", reason="no_active_profiles")
-                return
+                return JobResult.skipped("no_active_profiles", profiles=0)
 
             client = GarminConnectClient()
             sync_service = GarminSyncService(session)
@@ -807,8 +998,15 @@ async def run_garmin_activity_poll() -> None:
             timeseries_samples=timeseries_synced,
             checkin_nudges=checkin_nudges,
         )
+        return JobResult.succeeded(
+            profiles=len(profiles),
+            activities=activities_synced,
+            timeseries_samples=timeseries_synced,
+            checkin_nudges=checkin_nudges,
+        )
     except Exception:
         log.exception("garmin activity poll failed")
+        return JobResult.failed("activity_poll_failed")
 
 
 async def _push_pending_checkins(
@@ -856,7 +1054,7 @@ async def _push_new_analyses(
     results: Iterable[Any],
     *,
     kind: str,
-) -> int:
+) -> tuple[int, int]:
     """Push one notification per newly generated post-workout analysis (Batch 45).
 
     Each push is wrapped so a failure never blocks the activity poll; the
@@ -865,6 +1063,7 @@ async def _push_new_analyses(
     e.g. regenerated on a newer check-in / prompt bump) never re-pushes.
     """
     pushed = 0
+    failures = 0
     for item in results:
         if not item.generated:
             continue
@@ -874,15 +1073,18 @@ async def _push_new_analyses(
             ):
                 pushed += 1
         except Exception:
+            failures += 1
+            await nudge_service.session.rollback()
             log.exception(
                 "post-workout push failed",
                 profile_id=str(profile.id),
                 kind=kind,
             )
-    return pushed
+            break
+    return pushed, failures
 
 
-async def run_post_workout_backstop() -> None:
+async def run_post_workout_backstop() -> JobResult:
     """Generate still-unread same-day sessions before tomorrow's morning packet."""
 
     try:
@@ -900,6 +1102,7 @@ async def run_post_workout_backstop() -> None:
             )
             generated = 0
             pushes = 0
+            failures = 0
             for profile in profiles:
                 local_midnight = datetime.combine(
                     _profile_today(profile), datetime.min.time(), tzinfo=ZoneInfo(profile.timezone)
@@ -923,28 +1126,46 @@ async def run_post_workout_backstop() -> None:
                 for kind, reader in readers:
                     try:
                         results = await reader(profile, since=since, commit=False)
-                        generated += sum(1 for item in results if item.generated)
-                        pushes += await _push_new_analyses(
+                        generated_now = sum(1 for item in results if item.generated)
+                        pushed_now, push_failures = await _push_new_analyses(
                             NudgeAlertService(session), profile, results, kind=kind
                         )
+                        if push_failures:
+                            failures += push_failures
+                            continue
+                        await session.commit()
+                        generated += generated_now
+                        pushes += pushed_now
                     except Exception:
+                        failures += 1
+                        await session.rollback()
                         log.exception(
                             "post-workout backstop reader failed",
                             profile_id=str(profile.id),
                             kind=kind,
                         )
-            await session.commit()
         log.info(
             "post-workout backstop complete",
             profiles=len(profiles),
             analyses_generated=generated,
             analysis_pushes=pushes,
+            failed=failures,
         )
+        counters = {
+            "profiles": len(profiles),
+            "analyses_generated": generated,
+            "analysis_pushes": pushes,
+            "failed": failures,
+        }
+        if failures:
+            return JobResult.degraded("step_failures", **counters)
+        return JobResult.succeeded(**counters)
     except Exception:
         log.exception("post-workout backstop failed")
+        return JobResult.failed("post_workout_backstop_failed")
 
 
-async def run_workout_autopush() -> None:
+async def run_workout_autopush() -> JobResult:
     """Push approved-but-unpushed workout proposals due today.
 
     Only proposals the user already approved are eligible (Decision #29), so this
@@ -957,22 +1178,30 @@ async def run_workout_autopush() -> None:
             profiles = await _active_profiles(session)
             if not profiles:
                 log.info("workout autopush skipped", reason="no_active_profiles")
-                return
+                return JobResult.skipped("no_active_profiles", profiles=0)
 
             service = ExecutableCoachingService(session)
             pushed = 0
+            failed = 0
             for profile in profiles:
                 try:
                     results = await service.auto_push_due(profile)
                     pushed += len(results)
                 except Exception:
+                    failed += 1
+                    await session.rollback()
                     log.exception(
                         "workout autopush failed for profile",
                         profile_id=str(profile.id),
                     )
-        log.info("workout autopush complete", profiles=len(profiles), pushed=pushed)
+        log.info("workout autopush complete", profiles=len(profiles), pushed=pushed, failed=failed)
+        counters = {"profiles": len(profiles), "pushed": pushed, "failed": failed}
+        if failed:
+            return JobResult.degraded("profile_failures", **counters)
+        return JobResult.succeeded(**counters)
     except Exception:
         log.exception("workout autopush failed")
+        return JobResult.failed("autopush_failed")
 
 
 async def _active_profiles(session: AsyncSession) -> list[Profile]:
@@ -1158,7 +1387,7 @@ async def _latest_temperature(
     return result.scalars().first()
 
 
-async def run_fan_control() -> None:
+async def run_fan_control() -> JobResult:
     """Overnight airflow autopilot: reconcile the Dreo fan to the live bedroom temp.
 
     Within the overnight window (``services/fan_control.loop_phase``) it maps the
@@ -1178,18 +1407,18 @@ async def run_fan_control() -> None:
     try:
         if not _fan_control_configured():
             log.info("fan control skipped", reason="no_dreo_credentials")
-            return
+            return JobResult.skipped("no_dreo_credentials")
         async with AsyncSessionLocal() as session:
             profiles = await _active_profiles(session)
             if not profiles:
                 log.info("fan control skipped", reason="no_active_profiles")
-                return
+                return JobResult.skipped("no_active_profiles", profiles=0)
             profile = profiles[0]
             now_local = _profile_now(profile)
             phase = loop_phase(now_local.time())
             if phase == "idle":
                 # Daytime: a true no-op — no cloud call, and not charted.
-                return
+                return JobResult.skipped("outside_overnight_window", profiles=1)
             subject_date = now_local.date()
             if (
                 await HolidayPauseService(session).get_overnight_away_window_for_date(
@@ -1205,7 +1434,7 @@ async def run_fan_control() -> None:
                     profile_id=str(profile.id),
                     subject_date=subject_date.isoformat(),
                 )
-                return
+                return JobResult.skipped("holiday_away", profiles=1)
             captured_at = _floor_to_interval(datetime.now(UTC).replace(tzinfo=None))
             profile_id = profile.id
             if not profile.fan_auto_enabled:
@@ -1227,7 +1456,7 @@ async def run_fan_control() -> None:
                     ),
                 )
                 await session.commit()
-                return
+                return JobResult.succeeded(profiles=1, ticks=1, commands=0)
             reading = await _latest_temperature(session, profile_id)
             temperature_c = _fresh_temperature_c(reading, now_local)
         # Cloud I/O happens outside the DB session.
@@ -1239,8 +1468,18 @@ async def run_fan_control() -> None:
                 session, profile_id, captured_at, phase, auto_enabled=True, result=result
             )
             await session.commit()
+        counters = {
+            "profiles": 1,
+            "ticks": 1,
+            "commands": int(result.action == "apply"),
+            "unreachable": int(result.action == "unreachable"),
+        }
+        if result.action == "unreachable":
+            return JobResult.degraded("fan_unreachable", **counters)
+        return JobResult.succeeded(**counters)
     except Exception:
         log.exception("fan control failed")
+        return JobResult.failed("fan_control_failed")
 
 
 async def _apply_fan_control(phase: Phase, temperature_c: float | None) -> FanControlResult:
@@ -1363,7 +1602,7 @@ def create_scheduler() -> AsyncIOScheduler:
         next_run_time=datetime.now(UTC) + timedelta(seconds=30),
     )
     scheduler.add_job(
-        run_scheduled_backup,
+        partial(run_tracked_job, "backup", run_scheduled_backup),
         trigger="cron",
         hour=3,
         minute=0,
@@ -1373,7 +1612,7 @@ def create_scheduler() -> AsyncIOScheduler:
         max_instances=1,
     )
     scheduler.add_job(
-        run_hive_temperature_poll,
+        partial(run_tracked_job, "hive-poll", run_hive_temperature_poll),
         trigger="interval",
         minutes=15,
         id="hive_temperature_poll",
@@ -1388,7 +1627,7 @@ def create_scheduler() -> AsyncIOScheduler:
         next_run_time=datetime.now(UTC) + timedelta(minutes=2),
     )
     scheduler.add_job(
-        run_wake_check,
+        partial(run_tracked_job, "wake-check", run_wake_check),
         trigger="interval",
         minutes=15,
         id="wake_check",
@@ -1407,7 +1646,7 @@ def create_scheduler() -> AsyncIOScheduler:
         # isn't force-read on stale data; keep in step with wake_detection.BACKSTOP).
         # run_morning_weather_sync is idempotent per profile, so this no-ops if the
         # wake trigger already fired. In-process APScheduler handles BST/GMT.
-        run_morning_weather_sync,
+        partial(run_tracked_job, "morning-sync", run_morning_weather_sync),
         trigger="cron",
         hour=11,
         minute=0,
@@ -1418,7 +1657,7 @@ def create_scheduler() -> AsyncIOScheduler:
         max_instances=1,
     )
     scheduler.add_job(
-        run_garmin_activity_poll,
+        partial(run_tracked_job, "activity-poll", run_garmin_activity_poll),
         trigger="interval",
         hours=1,
         id="garmin_activity_poll",
@@ -1428,7 +1667,7 @@ def create_scheduler() -> AsyncIOScheduler:
         next_run_time=datetime.now(UTC) + timedelta(minutes=5),
     )
     scheduler.add_job(
-        run_post_workout_backstop,
+        partial(run_tracked_job, "post-workout-backstop", run_post_workout_backstop),
         trigger="cron",
         hour=20,
         minute=30,
@@ -1439,7 +1678,7 @@ def create_scheduler() -> AsyncIOScheduler:
         max_instances=1,
     )
     scheduler.add_job(
-        run_workout_autopush,
+        partial(run_tracked_job, "autopush", run_workout_autopush),
         trigger="cron",
         hour="7,13,19",
         minute=0,
@@ -1450,7 +1689,7 @@ def create_scheduler() -> AsyncIOScheduler:
         max_instances=1,
     )
     scheduler.add_job(
-        run_weekly_review_delivery,
+        partial(run_tracked_job, "weekly-review", run_weekly_review_delivery),
         trigger="cron",
         day_of_week="sun",
         hour=18,
@@ -1462,7 +1701,7 @@ def create_scheduler() -> AsyncIOScheduler:
         max_instances=1,
     )
     scheduler.add_job(
-        run_state_change_coach,
+        partial(run_tracked_job, "state-change", run_state_change_coach),
         trigger="cron",
         hour=11,
         minute=45,
@@ -1473,7 +1712,7 @@ def create_scheduler() -> AsyncIOScheduler:
         max_instances=1,
     )
     scheduler.add_job(
-        run_evening_sleep_nudge,
+        partial(run_tracked_job, "evening-nudge", run_evening_sleep_nudge),
         trigger="cron",
         hour=20,
         minute=0,
@@ -1484,7 +1723,7 @@ def create_scheduler() -> AsyncIOScheduler:
         max_instances=1,
     )
     scheduler.add_job(
-        run_evening_monitoring_alerts,
+        partial(run_tracked_job, "evening-alerts", run_evening_monitoring_alerts),
         trigger="cron",
         hour="19-22",
         minute="0,15,30,45",
@@ -1495,7 +1734,7 @@ def create_scheduler() -> AsyncIOScheduler:
         max_instances=1,
     )
     scheduler.add_job(
-        run_fan_control,
+        partial(run_tracked_job, "fan-control", run_fan_control),
         trigger="interval",
         minutes=INTERVAL_MIN,
         id="fan_control",

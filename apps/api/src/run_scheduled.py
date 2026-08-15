@@ -6,9 +6,9 @@ APScheduler cannot be relied on — e.g. the web container is not continuously
 running, so wall-clock and interval jobs do not fire reliably (see
 ``docs/runbooks/scheduled-jobs-cron.md``).
 
-Each job name maps to the same coroutine the in-process scheduler runs, so
-behaviour is identical; the job functions log and swallow their own errors, so
-this exits 0 even on an internal failure (failures are visible in the logs).
+Each job name maps to the same coroutine the in-process scheduler runs. The
+shared typed result is persisted to ``job_runs``; degraded/failed runs exit 1 so
+the external scheduler can alert from process state as well as logs.
 
 Usage:
     python -m src.run_scheduled <job>
@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from collections.abc import Awaitable, Callable
 
 from src.scheduler import (
     run_evening_monitoring_alerts,
@@ -45,8 +44,9 @@ from src.scheduler import (
     run_weekly_review_delivery,
     run_workout_autopush,
 )
+from src.services.job_runs import JobOperation, JobResult, run_tracked_job
 
-JOBS: dict[str, Callable[[], Awaitable[None]]] = {
+JOBS: dict[str, JobOperation] = {
     "hive-poll": run_hive_temperature_poll,
     "wake-check": run_wake_check,
     "morning-sync": run_morning_weather_sync,
@@ -67,13 +67,15 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-async def _run(job: str) -> None:
-    await JOBS[job]()
+async def _run(job: str) -> JobResult:
+    return await run_tracked_job(job, JOBS[job])
 
 
 def main() -> None:
     args = _build_parser().parse_args()
-    asyncio.run(_run(args.job))
+    result = asyncio.run(_run(args.job))
+    if result.exit_code:
+        raise SystemExit(result.exit_code)
 
 
 if __name__ == "__main__":
