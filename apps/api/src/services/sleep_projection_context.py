@@ -17,6 +17,7 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile
+from src.services.activity_dates import activity_local_date as _activity_local_date
 from src.services.environment_freshness import is_hive_temperature_fresh
 from src.services.insights import OUTCOME_SLEEP_SCORE, DriversReport, InsightsService
 from src.services.sleep_projection import (
@@ -197,14 +198,6 @@ class SleepProjectionContextService:
             .scalars()
             .first()
         )
-
-
-def _activity_local_date(activity: Activity, timezone_name: str) -> date:
-    try:
-        timezone = ZoneInfo(timezone_name)
-    except ZoneInfoNotFoundError:
-        timezone = ZoneInfo("UTC")
-    return activity.start_utc.replace(tzinfo=UTC).astimezone(timezone).date()
 
 
 def _activity_training_signals(

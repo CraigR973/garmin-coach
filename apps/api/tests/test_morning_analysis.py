@@ -1270,6 +1270,71 @@ def test_red_verdict_never_keeps_vo2() -> None:
     assert any("Replace VO2" in item for item in verdict["planAdjustments"])
 
 
+def test_red_verdict_detects_vo2_from_buildable_ir_before_type_name() -> None:
+    daily_metric = DailyMetric(
+        user_id=uuid.uuid4(),
+        calendar_date=date(2026, 1, 2),
+        hrv_weekly_avg_ms=38,
+        hrv_baseline_low_ms=43,
+        hrv_status="Unbalanced",
+        raw_payload={},
+    )
+    workout = PlannedWorkout(
+        user_id=daily_metric.user_id,
+        workout_date=date(2026, 1, 2),
+        version=1,
+        title="Manual hard override",
+        workout_type="bike_custom",
+        structured_workout={
+            "format": "bike",
+            "steps": [
+                {"label": "Warm-up", "minutes": 10, "target": "easy spin"},
+                {"label": "Hard work", "minutes": 8, "target": "108% FTP"},
+                {"label": "Cool-down", "minutes": 10, "target": "easy spin"},
+            ],
+        },
+    )
+
+    verdict = _morning_verdict(
+        daily_metric=daily_metric,
+        sleep=None,
+        age_adjusted_sleep_score=58,
+        manual_entries=[],
+        planned_workouts=[workout],
+    )
+
+    assert verdict["status"] == "Red"
+    assert verdict["hasVo2WorkoutToday"] is True
+    assert "red_never_vo2" in verdict["safetyRulesApplied"]
+    assert any("Replace VO2" in item for item in verdict["planAdjustments"])
+
+
+def test_red_safety_rules_do_not_claim_vo2_when_no_vo2_workout_exists() -> None:
+    verdict = _morning_verdict(
+        daily_metric=None,
+        sleep=None,
+        age_adjusted_sleep_score=58,
+        manual_entries=[],
+        planned_workouts=[
+            PlannedWorkout(
+                user_id=uuid.uuid4(),
+                workout_date=date(2026, 1, 2),
+                version=1,
+                title="Endurance",
+                workout_type="bike_endurance",
+                structured_workout={
+                    "format": "bike",
+                    "steps": [{"label": "Endurance", "minutes": 45, "target": "67% FTP"}],
+                },
+            )
+        ],
+    )
+
+    assert verdict["status"] == "Red"
+    assert verdict["hasVo2WorkoutToday"] is False
+    assert "red_never_vo2" not in verdict["safetyRulesApplied"]
+
+
 def test_cheery_checkin_never_upgrades_a_red() -> None:
     """Batch 85: subjective is downgrade-only — a top check-in score never lifts a
     Red (poor overnight sleep/recovery) to Green when the brief regenerates on his

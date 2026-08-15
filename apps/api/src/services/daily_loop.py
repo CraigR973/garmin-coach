@@ -26,6 +26,7 @@ from src.models.coaching import (
     WorkoutDeliveryProposal,
 )
 from src.models.profile import Profile
+from src.services.activity_dates import activity_local_date as _activity_local_date
 from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
 from src.services.daily_loop_state import LoopState, describe_loop_state, is_evening
 from src.services.feedback import FeedbackService
@@ -60,14 +61,6 @@ def _local_now(timezone_name: str) -> datetime:
     except ZoneInfoNotFoundError:
         timezone = ZoneInfo("UTC")
     return datetime.now(timezone)
-
-
-def _activity_local_date(activity: Activity, timezone_name: str) -> date:
-    try:
-        timezone = ZoneInfo(timezone_name)
-    except ZoneInfoNotFoundError:
-        timezone = ZoneInfo("UTC")
-    return activity.start_utc.replace(tzinfo=UTC).astimezone(timezone).date()
 
 
 @dataclass

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
@@ -823,6 +824,18 @@ class NudgeAlertService:
         commit: bool,
         now_utc: datetime,
     ) -> bool:
+        await self.session.scalar(
+            select(
+                func.pg_advisory_xact_lock(
+                    _notification_dedupe_lock_key(
+                        profile.id,
+                        plan.analysis_type,
+                        plan.tag,
+                        subject_date,
+                    )
+                )
+            )
+        )
         if await self._already_recorded(profile.id, plan.analysis_type, plan.tag, subject_date):
             return False
 
@@ -1010,3 +1023,15 @@ def _iso_or_none(value: datetime | None) -> str | None:
 
 def _as_utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def _notification_dedupe_lock_key(
+    user_id: uuid.UUID,
+    analysis_type: str,
+    tag: str,
+    subject_date: date,
+) -> int:
+    digest = hashlib.sha256(
+        f"notification:{user_id}:{analysis_type}:{subject_date.isoformat()}:{tag}".encode()
+    ).digest()
+    return int.from_bytes(digest[:8], byteorder="big", signed=True)

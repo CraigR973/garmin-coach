@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
+from sqlalchemy import func, select, text
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, async_sessionmaker
 
 from src.models.coaching import Activity, Analysis, FanStateReading, TemperatureReading
 from src.models.profile import Profile, UserRole
@@ -602,6 +603,91 @@ async def test_brief_ready_pushes_exactly_once(db_conn: AsyncConnection) -> None
             )
         )
         assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_brief_ready_push_is_serialized_across_two_sessions(
+    db_engine: AsyncEngine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    analysis_id = uuid.uuid4()
+    subject_date = date(2026, 7, 3)
+    started = asyncio.Event()
+    release = asyncio.Event()
+    send_calls = 0
+
+    async def _send_once_blocking(**_: object) -> int:
+        nonlocal send_calls
+        send_calls += 1
+        started.set()
+        await release.wait()
+        return 1
+
+    monkeypatch.setattr("src.services.nudge_alerts.send_notification", _send_once_blocking)
+
+    async with session_factory() as session:
+        await session.execute(text("SET search_path TO coach, public"))
+        profile = Profile(
+            id=user_id,
+            display_name="Concurrent Brief Push",
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(profile)
+        session.add(
+            Analysis(
+                id=analysis_id,
+                user_id=user_id,
+                activity_id=None,
+                analysis_type="morning_analysis",
+                subject_date=subject_date,
+                generated_at_utc=datetime(2026, 7, 3, 7, 0),
+                prompt_version="test",
+                verdict="Amber",
+                context_packet={"verdict": {"reasons": ["Sleep was soft."]}},
+                output_markdown="**Verdict:** Amber",
+                raw_response={},
+            )
+        )
+        await session.commit()
+
+    async def _run() -> bool:
+        async with session_factory() as session:
+            await session.execute(text("SET search_path TO coach, public"))
+            profile = await session.get(Profile, user_id)
+            analysis = await session.get(Analysis, analysis_id)
+            assert profile is not None
+            assert analysis is not None
+            return await NudgeAlertService(session).push_brief_ready(
+                profile,
+                analysis,
+                subject_date=subject_date,
+            )
+
+    first_task = asyncio.create_task(_run())
+    await asyncio.wait_for(started.wait(), timeout=5)
+    second_task = asyncio.create_task(_run())
+    await asyncio.sleep(0.05)
+    assert send_calls == 1
+    release.set()
+    first, second = await asyncio.gather(first_task, second_task)
+
+    assert sorted((first, second)) == [False, True]
+    assert send_calls == 1
+    async with session_factory() as session:
+        await session.execute(text("SET search_path TO coach, public"))
+        count = await session.scalar(
+            select(func.count())
+            .select_from(Analysis)
+            .where(
+                Analysis.user_id == user_id,
+                Analysis.analysis_type == ANALYSIS_TYPE_BRIEF_READY,
+            )
+        )
+    assert count == 1
 
 
 @pytest.mark.asyncio

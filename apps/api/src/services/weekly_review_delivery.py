@@ -81,7 +81,6 @@ class WeeklyReviewDeliveryService:
                     BriefMessage.role == ROLE_ASSISTANT,
                     BriefMessage.origin_kind == ORIGIN_KIND_WEEKLY_REVIEW,
                     BriefMessage.origin_date == subject_date,
-                    BriefMessage.content == WEEKLY_REVIEW_FAILURE_MESSAGE,
                 )
                 .limit(1)
             ),
@@ -122,6 +121,7 @@ class WeeklyReviewDeliveryService:
         )
         review = review_result.review
         conclusion = review_bottom_line(review.output_markdown)
+        origin_date = review_result.preview.period_end
 
         message = cast(
             BriefMessage | None,
@@ -129,9 +129,9 @@ class WeeklyReviewDeliveryService:
                 select(BriefMessage)
                 .where(
                     BriefMessage.user_id == player.id,
-                    BriefMessage.analysis_id == review.id,
                     BriefMessage.role == ROLE_ASSISTANT,
                     BriefMessage.origin_kind == ORIGIN_KIND_WEEKLY_REVIEW,
+                    BriefMessage.origin_date == origin_date,
                 )
                 .limit(1)
             ),
@@ -143,19 +143,22 @@ class WeeklyReviewDeliveryService:
                 user_id=player.id,
                 analysis_id=review.id,
                 origin_kind=ORIGIN_KIND_WEEKLY_REVIEW,
-                origin_date=review_result.preview.period_end,
+                origin_date=origin_date,
                 role=ROLE_ASSISTANT,
                 content=review.output_markdown,
                 created_utc=sent_at.replace(tzinfo=None),
             )
             self.session.add(message)
             await self.session.flush()
+        elif message.analysis_id != review.id or message.content != review.output_markdown:
+            message.analysis_id = review.id
+            message.content = review.output_markdown
 
         push_recorded = await NudgeAlertService(self.session).push_weekly_review(
             player,
             review,
             conclusion=conclusion,
-            subject_date=review_result.preview.period_end,
+            subject_date=origin_date,
             now_utc=_aware_utc(now_utc),
             commit=False,
         )

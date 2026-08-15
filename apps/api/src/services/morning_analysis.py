@@ -38,7 +38,14 @@ from src.services.chronic_patterns import (
     ChronicPatternSuggestionService,
 )
 from src.services.coaching_state import CoachingStateService
-from src.services.daily_metric_coverage import coverage_packet, daily_aggregate_coverage
+from src.services.daily_metric_coverage import (
+    complete_body_battery_charged,
+    complete_body_battery_drained,
+    complete_body_battery_end,
+    complete_stress_avg,
+    coverage_packet,
+    daily_aggregate_coverage,
+)
 from src.services.feedback import FeedbackService
 from src.services.generation_requests import (
     claim_generation_request,
@@ -71,7 +78,11 @@ from src.services.sleep_scoring import (
     age_adjusted_sleep_score as compute_age_adjusted_sleep_score,
 )
 from src.services.training_week import TrainingWeekService
-from src.services.verdict_scaling import AMBER_POWER_CAP_PCT, summarize_verdict_adjustment
+from src.services.verdict_scaling import (
+    AMBER_POWER_CAP_PCT,
+    ir_has_vo2,
+    summarize_verdict_adjustment,
+)
 from src.services.workload_budget import workload_slot
 from src.services.workout_categories import is_bike_workout_type
 from src.services.workout_delivery import build_structured_workout_ir
@@ -1358,7 +1369,9 @@ def _metrics_vs_baselines(
             daily_metric.resting_heart_rate_bpm if daily_metric else None,
             sleep.resting_heart_rate_bpm if sleep else None,
         ),
-        "body_battery_charge": daily_metric.body_battery_charged if daily_metric else None,
+        "body_battery_charge": (
+            complete_body_battery_charged(daily_metric) if daily_metric is not None else None
+        ),
         "average_spo2_pct": sleep.average_spo2_pct if sleep else None,
         "average_respiration": sleep.average_respiration if sleep else None,
         "hrv_7_day_avg_ms": daily_metric.hrv_weekly_avg_ms if daily_metric else None,
@@ -1716,19 +1729,13 @@ def _yesterday_load_packet(
             daily_metric.calendar_date.isoformat() if daily_metric is not None else None
         ),
         "allDayStressAvg": (
-            daily_metric.stress_avg
-            if daily_metric is not None and coverage is not None and coverage.stress.complete
-            else None
+            complete_stress_avg(daily_metric) if daily_metric is not None else None
         ),
         "bodyBatteryDrained": (
-            daily_metric.body_battery_drained
-            if daily_metric is not None and coverage is not None and coverage.body_battery.complete
-            else None
+            complete_body_battery_drained(daily_metric) if daily_metric is not None else None
         ),
         "bodyBatteryEnd": (
-            daily_metric.body_battery_end
-            if daily_metric is not None and coverage is not None and coverage.body_battery.complete
-            else None
+            complete_body_battery_end(daily_metric) if daily_metric is not None else None
         ),
         "coverage": (
             coverage_packet(coverage)
@@ -2059,7 +2066,7 @@ def _morning_verdict(
     rest_day = rest_day or {}
     is_rest_day = bool(rest_day.get("isRestDay"))
     has_vo2 = not is_rest_day and any(
-        "vo2" in workout.workout_type.lower()
+        _workout_has_vo2_intensity(workout)
         for workout in planned_workouts
         if workout.status not in {"completed", "skipped"}
     )
@@ -2232,7 +2239,7 @@ def _morning_verdict(
             _breathwork_recommendation(breathwork_brief, age_adjusted_sleep_score)
         )
 
-    safety_rules = ["red_never_vo2"] if status == "Red" else []
+    safety_rules = ["red_never_vo2"] if status == "Red" and has_vo2 else []
     if training_load_cap["triggered"]:
         safety_rules.append("training_load_amber_cap")
     if sleep_credit_ceiling["applied"]:
@@ -2292,6 +2299,13 @@ def should_recommend_breathwork(signal: Mapping[str, Any]) -> bool:
         or hrv_status in {"unbalanced", "low", "poor"}
         or hrv_below_baseline
     )
+
+
+def _workout_has_vo2_intensity(workout: PlannedWorkout) -> bool:
+    try:
+        return ir_has_vo2(build_structured_workout_ir(workout))
+    except HTTPException:
+        return "vo2" in (workout.workout_type or "").lower()
 
 
 def _breathwork_recommendation(

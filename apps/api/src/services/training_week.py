@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import Activity, Analysis, PlannedWorkout
 from src.models.profile import Profile
+from src.services.activity_dates import activity_local_date as _activity_local_date
 
 ACTION_AUDIT_TYPES = frozenset(
     {
@@ -460,10 +461,6 @@ def _moved_target_date(
         return date.fromisoformat(raw_date)
     except ValueError:
         return None
-
-
-def _activity_local_date(activity: Activity, timezone_name: str) -> date:
-    return activity.start_utc.replace(tzinfo=UTC).astimezone(_timezone(timezone_name)).date()
 
 
 def _timezone(timezone_name: str) -> ZoneInfo:
