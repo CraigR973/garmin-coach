@@ -6,7 +6,7 @@ import { Bike, Dumbbell, Wind } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Sheet } from '@/components/ui/sheet';
-import { BriefFollowUpChat } from '@/components/BriefFollowUpChat';
+import { useRegisterCoachAnchor } from '@/contexts/CoachAnchorContext';
 import { DetailRow } from '@/components/DetailRow';
 import { FeedbackControl } from '@/components/FeedbackControl';
 import { Markdown } from '@/components/Markdown';
@@ -47,12 +47,10 @@ function iconFor(workoutType: string) {
 export function WorkoutDetailSheet({
   open,
   workout,
-  timeZone,
   onClose,
 }: {
   open: boolean;
   workout: PlanWorkout | null;
-  timeZone?: string;
   onClose: () => void;
 }) {
   const structure = useMemo(() => {
@@ -104,7 +102,7 @@ export function WorkoutDetailSheet({
         {isBike && delivery === 'outdoor' ? <DeliveryLine delivery={workout.outdoorDelivery ?? null} /> : null}
 
         {open && workout.status === 'completed' ? (
-          <CompletedWorkoutRead plannedWorkoutId={workout.id} timeZone={timeZone} />
+          <CompletedWorkoutRead plannedWorkoutId={workout.id} />
         ) : null}
 
         {structure ? (
@@ -154,13 +152,7 @@ function DeliveryLine({ delivery }: { delivery: PlanWorkout['outdoorDelivery'] |
  * session is as rich as reading it the day of. The read is retrieved, never
  * regenerated; an absent read (still generating, or none) shows an honest line.
  */
-function CompletedWorkoutRead({
-  plannedWorkoutId,
-  timeZone,
-}: {
-  plannedWorkoutId: string;
-  timeZone?: string;
-}) {
+function CompletedWorkoutRead({ plannedWorkoutId }: { plannedWorkoutId: string }) {
   const query = useQuery({
     queryKey: ['workout-read', plannedWorkoutId],
     queryFn: async () => {
@@ -171,6 +163,13 @@ function CompletedWorkoutRead({
     },
     refetchInterval: (result) => (result.state.data?.state === 'generating' ? 3_000 : false),
   });
+
+  // Batch 207: the sheet no longer carries its own chat; it anchors the
+  // app-wide coach to this session's read while it is open. Above the early
+  // returns below, so the hook count is stable across loading/ready renders.
+  useRegisterCoachAnchor(
+    query.data?.state === 'ready' ? query.data.read?.analysisId : undefined,
+  );
 
   const heading = <p className="text-sm font-medium text-text-primary">How it went</p>;
   const note = (message: string) => (
@@ -236,7 +235,6 @@ function CompletedWorkoutRead({
         <Markdown>{read.outputMarkdown}</Markdown>
       </div>
       <FeedbackControl analysisId={read.analysisId} kind="summary" feedback={read.feedback ?? null} />
-      <BriefFollowUpChat analysisId={read.analysisId} timeZone={timeZone} />
     </div>
   );
 }

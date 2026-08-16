@@ -52,7 +52,6 @@ import { GoodMorningCta } from '@/components/GoodMorningCta';
 import { BriefGeneratingCta } from '@/components/BriefGeneratingCta';
 import { BriefFailedCta } from '@/components/BriefFailedCta';
 import { FeedbackControl } from '@/components/FeedbackControl';
-import { BriefFollowUpChat } from '@/components/BriefFollowUpChat';
 import { SleepSnapshotBody } from '@/components/SleepSnapshotBody';
 import { SleepPrepBody } from '@/components/SleepPrepBody';
 import { BedroomBody } from '@/components/BedroomBody';
@@ -63,6 +62,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { isBikeWorkout, useDailyPhase } from '@/hooks/useDailyPhase';
 import { fetchDailyLoop, useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useRegisterCoachAnchor } from '@/contexts/CoachAnchorContext';
 import { apiFetch } from '@/lib/api';
 import { postWorkoutReadFailure } from '@/lib/postWorkoutRead';
 import { bedroomLiveSummary } from '@/lib/bedroom';
@@ -662,7 +662,6 @@ export function DashboardPage() {
       body: (
         <DayPlanBody
           workouts={todaysWorkouts}
-          timeZone={daily.timezone}
           planAdjustments={analysis?.planAdjustments ?? []}
           swapSuggestion={analysis?.swapSuggestion ?? null}
           weeklyMix={analysis?.weeklyMix ?? null}
@@ -1035,7 +1034,6 @@ function SwapSuggestionCard({
  *  (Batch 36 unified card, Batch 37 collapse). */
 function DayPlanBody({
   workouts,
-  timeZone,
   planAdjustments,
   swapSuggestion,
   weeklyMix,
@@ -1051,7 +1049,6 @@ function DayPlanBody({
   checkInHandlers,
 }: {
   workouts: TodayWorkout[];
-  timeZone?: string;
   planAdjustments: string[];
   swapSuggestion: SwapSuggestionData;
   weeklyMix: WeeklyMixData;
@@ -1105,7 +1102,6 @@ function DayPlanBody({
             >
               <WorkoutRow
                 workout={workout}
-                timeZone={timeZone}
                 planAdjustments={planAdjustments}
                 subjectDate={subjectDate}
                 analysis={completedRides.get(workout.id)}
@@ -1448,7 +1444,6 @@ function WorkoutRowActions({
  *  expand independently and their controls never cross-wire (Batch 36). */
 function WorkoutRow({
   workout,
-  timeZone,
   planAdjustments = [],
   subjectDate,
   analysis,
@@ -1462,7 +1457,6 @@ function WorkoutRow({
   onSwap,
 }: {
   workout: TodayWorkout;
-  timeZone?: string;
   planAdjustments?: string[];
   subjectDate: string;
   analysis?: RideAnalysis;
@@ -1544,7 +1538,6 @@ function WorkoutRow({
           <CompletedRideRead
             analysis={analysis}
             workout={workout}
-            timeZone={timeZone}
             completedRideLog={completedRideLog}
           />
         ) : null}
@@ -1822,15 +1815,16 @@ function RideCheckIn({
 function CompletedRideRead({
   analysis,
   workout,
-  timeZone,
   completedRideLog,
 }: {
   analysis: RideAnalysis;
   workout: TodayWorkout;
-  timeZone?: string;
   completedRideLog: CompletedRideLogHandlers;
 }) {
   const [showRead, setShowRead] = useState(false);
+  // Anchor the app-wide coach to this read, but only while it is open —
+  // a collapsed analysis is not what Mark is looking at (Batch 207).
+  useRegisterCoachAnchor(showRead ? analysis.id : null);
   return (
     <div className="space-y-3">
       {analysis.tomorrowImpact ? (
@@ -1862,9 +1856,6 @@ function CompletedRideRead({
           <div className="mt-3 space-y-4">
             <Markdown>{analysis.outputMarkdown}</Markdown>
             <RideIntervalTable intervals={analysis.intervals ?? []} />
-            <div className="rounded-xl border border-dashed border-border bg-bg/60 px-4 py-3">
-              <BriefFollowUpChat analysisId={analysis.id} timeZone={timeZone} />
-            </div>
             <FeedbackControl analysisId={analysis.id} kind="summary" feedback={analysis.feedback ?? null} />
           </div>
         ) : null}

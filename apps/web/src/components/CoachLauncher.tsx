@@ -9,6 +9,7 @@ import {
   type BriefMessage,
   type BriefMessageTurn,
 } from '@coach/shared';
+import { useCoachAnchor } from '@/contexts/CoachAnchorContext';
 import { apiFetch } from '@/lib/api';
 import { Sheet } from '@/components/ui/sheet';
 import { CoachConversation } from '@/components/CoachConversation';
@@ -76,6 +77,7 @@ export function CoachLauncher({ userId, timeZone }: { userId?: string; timeZone?
     enabled: Boolean(userId) && !launcherHidden,
   });
 
+  const anchoredAnalysisId = useCoachAnchor();
   const messages = threadQuery.data?.data ?? [];
   const newestAssistant = latestAssistant(messages);
   const hasUnreadAssistant = Boolean(
@@ -97,9 +99,16 @@ export function CoachLauncher({ userId, timeZone }: { userId?: string; timeZone?
         newestAssistant?.originKind === 'weekly_review' && newestAssistant.analysisId
           ? newestAssistant
           : null;
+      // Batch 207: the inline per-read chats are gone, so this is the only box.
+      // It still anchors to whatever read the screen is showing, so asking
+      // "why?" while looking at a brief reaches the coach with that brief
+      // attached — the useful half of the old anchoring, without the second
+      // affordance that made a question vanish from the read it was about.
+      // Replying to a weekly review still wins, because that reply is
+      // explicitly to a message rather than to the page behind it.
       const payload = coachMessageInputSchema.parse({
         question,
-        analysisId: replyingToWeeklyReview?.analysisId ?? undefined,
+        analysisId: replyingToWeeklyReview?.analysisId ?? anchoredAnalysisId ?? undefined,
         originKind: replyingToWeeklyReview ? 'weekly_review' : origin,
       });
       return apiFetch<{ data: BriefMessageTurn }>('/api/v1/coach/messages', {

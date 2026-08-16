@@ -1291,8 +1291,13 @@ describe('DashboardPage', () => {
     expect(screen.queryByText(/refuel within 20 minutes/i)).toBeNull();
     await user.click(screen.getByRole('button', { name: /view analysis/i }));
     expect(await screen.findByText(/refuel within 20 minutes/i)).toBeTruthy();
-    expect(await screen.findByText('Ask about this read')).toBeTruthy();
-    expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/briefs/66666666-6666-4666-8666-666666666666/messages');
+    // Batch 207: expanding the read no longer mounts a second chat box or
+    // fetches that read's own message list — there is one coach, and the
+    // launcher anchors to this read while it is open.
+    expect(screen.queryByText('Ask about this read')).toBeNull();
+    expect(apiFetchMock).not.toHaveBeenCalledWith(
+      '/api/v1/briefs/66666666-6666-4666-8666-666666666666/messages',
+    );
 
     // The matched ride folds into the row → no standalone After-your-ride section.
     expect(screen.queryByText('After your ride')).toBeNull();

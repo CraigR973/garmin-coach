@@ -576,7 +576,6 @@ export function WeekAheadPage() {
       <WorkoutDetailSheet
         open={detailWorkout !== null}
         workout={detailWorkout}
-        timeZone={player?.timezone}
         onClose={() => setDetailWorkout(null)}
       />
 

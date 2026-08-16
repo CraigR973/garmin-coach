@@ -4,6 +4,7 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import { queryClient, persistOptions } from './lib/queryClient';
 import { installResumeRefetch } from './lib/resumeRefetch';
 import { AuthProvider } from './contexts/AuthContext';
+import { CoachAnchorProvider } from './contexts/CoachAnchorContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -86,11 +87,12 @@ export function App() {
           <PushNavigationController />
           <ScrollToTop />
           <AuthProvider>
-            <UpdateBanner />
-            <InstallPromptController />
-            <NotificationsPromptController />
-            <AppToaster />
-            <ErrorBoundary>
+            <CoachAnchorProvider>
+              <UpdateBanner />
+              <InstallPromptController />
+              <NotificationsPromptController />
+              <AppToaster />
+              <ErrorBoundary>
               <Suspense fallback={<RouteFallback />}>
                 <Routes>
                   {/* Public routes */}
@@ -123,7 +125,8 @@ export function App() {
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </Suspense>
-            </ErrorBoundary>
+              </ErrorBoundary>
+            </CoachAnchorProvider>
           </AuthProvider>
         </BrowserRouter>
       </PersistQueryClientProvider>

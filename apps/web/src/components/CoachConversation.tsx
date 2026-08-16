@@ -17,9 +17,9 @@ export type CoachConversationStatus = 'loading' | 'error' | 'ready';
  * The conversation itself — messages, composer, and the confirm-before-apply
  * propose button (Batch 179.4).
  *
- * Extracted from `BriefFollowUpChat` so the inline chat on a read and the
- * app-wide coach sheet are literally the same conversation UI over the same
- * thread; only the view differs (one read's turns vs the rolling thread).
+ * Originally extracted so the inline per-read chat and the app-wide sheet could
+ * share one transcript. Batch 207 retired the inline views entirely — there is
+ * one coach and one thread now — so this renders the launcher's sheet alone.
  *
  * A `proposedPlannedWorkoutId` on an assistant turn is decided server-side by a
  * deterministic check on Mark's own question plus today's real plan state — the

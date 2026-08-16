@@ -5,6 +5,11 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { CoachLauncher } from './CoachLauncher';
 import { originForPath } from '@/lib/coachOrigin';
+import {
+  CoachAnchorProvider,
+  useCoachAnchor,
+  useRegisterCoachAnchor,
+} from '@/contexts/CoachAnchorContext';
 
 const apiFetchMock = vi.fn();
 
@@ -328,5 +333,116 @@ describe('CoachLauncher', () => {
     });
 
     scrollHeightSpy.mockRestore();
+  });
+});
+
+// --- Batch 207: one coach everywhere ----------------------------------------
+
+function renderAnchoredLauncher(analysisId: string | null, route = '/brief') {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+  function Screen() {
+    useRegisterCoachAnchor(analysisId);
+    return <CoachLauncher userId="00000000-0000-4000-8000-000000000185" timeZone="Europe/London" />;
+  }
+
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[route]}>
+        <CoachAnchorProvider>
+          <Screen />
+        </CoachAnchorProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+describe('CoachLauncher anchoring (Batch 207 / UX192-07)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue({ data: [] });
+  });
+
+  it('attaches the read the screen is showing to a question asked from the launcher', async () => {
+    // The defect this closes: a launcher question asked while standing on the
+    // brief used to be stored with analysis_id = NULL, so it could never appear
+    // against the read it was obviously about.
+    const user = userEvent.setup();
+    renderAnchoredLauncher('11111111-1111-4111-8111-111111111111');
+
+    await user.click(screen.getByRole('button', { name: /ask about this morning's brief/i }));
+    await user.type(screen.getByLabelText(/ask your coach a question/i), 'why so easy?');
+    await user.click(screen.getByRole('button', { name: /ask/i }));
+
+    await waitFor(() => {
+      const post = apiFetchMock.mock.calls.find(
+        ([url, init]) => url === '/api/v1/coach/messages' && init?.method === 'POST',
+      );
+      expect(post).toBeTruthy();
+      expect(JSON.parse(post![1].body)).toMatchObject({
+        question: 'why so easy?',
+        analysisId: '11111111-1111-4111-8111-111111111111',
+        originKind: 'morning_brief',
+      });
+    });
+  });
+
+  it('sends no anchor from a screen that is not showing a read', async () => {
+    const user = userEvent.setup();
+    renderAnchoredLauncher(null, '/settings');
+
+    await user.click(screen.getByRole('button', { name: /ask your coach anything/i }));
+    await user.type(screen.getByLabelText(/ask your coach a question/i), 'how do I export?');
+    await user.click(screen.getByRole('button', { name: /ask/i }));
+
+    await waitFor(() => {
+      const post = apiFetchMock.mock.calls.find(
+        ([url, init]) => url === '/api/v1/coach/messages' && init?.method === 'POST',
+      );
+      expect(post).toBeTruthy();
+      const body = JSON.parse(post![1].body);
+      expect(body.analysisId).toBeUndefined();
+      expect(body.originKind).toBe('general');
+    });
+  });
+});
+
+describe('useRegisterCoachAnchor', () => {
+  it('only clears the anchor if it still owns it', () => {
+    // A sheet closing over a page must not wipe the anchor the page underneath
+    // has already re-registered.
+    const seen: Array<string | null> = [];
+
+    function Probe() {
+      seen.push(useCoachAnchor());
+      return null;
+    }
+    function Page() {
+      useRegisterCoachAnchor('page-read');
+      return null;
+    }
+    function Sheet() {
+      useRegisterCoachAnchor('sheet-read');
+      return null;
+    }
+
+    const { rerender } = render(
+      <CoachAnchorProvider>
+        <Page />
+        <Sheet />
+        <Probe />
+      </CoachAnchorProvider>,
+    );
+    expect(seen.at(-1)).toBe('sheet-read');
+
+    // Close the sheet; the page's anchor must survive rather than going null.
+    rerender(
+      <CoachAnchorProvider>
+        <Page />
+        <Probe />
+      </CoachAnchorProvider>,
+    );
+    expect(seen.at(-1)).toBe('page-read');
   });
 });
