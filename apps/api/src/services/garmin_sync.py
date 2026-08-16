@@ -15,7 +15,13 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
-from src.models.coaching import Activity, ActivityTimeSeries, DailyMetric, Sleep
+from src.models.coaching import (
+    DAILY_METRIC_PHASES,
+    Activity,
+    ActivityTimeSeries,
+    DailyMetric,
+    Sleep,
+)
 
 JsonDict = dict[str, Any]
 JsonList = list[Any]
@@ -321,8 +327,20 @@ class GarminSyncService:
         calendar_date: date,
         payloads: GarminDailyPayloads,
         *,
+        phase: str,
         commit: bool = True,
     ) -> GarminSyncResult:
+        """Persist one Garmin observation of ``calendar_date``.
+
+        ``phase`` is required rather than defaulted (Batch 205 / CI191-02): a
+        wake sync and a closed-day re-sync fetch the same date and Garmin
+        returns a different training-readiness reading each time. Before phase
+        existed the second write overwrote the first, so the record the verdict
+        was computed from did not survive the day. Callers must say which
+        observation they are recording.
+        """
+        if phase not in DAILY_METRIC_PHASES:
+            raise ValueError(f"unknown daily-metric phase: {phase!r}")
         metric_fields = parse_daily_metric_fields(calendar_date, payloads)
         sleep_fields = parse_sleep_fields(payloads.sleep)
         daily_count = 0
@@ -333,11 +351,12 @@ class GarminSyncService:
                 select(DailyMetric).where(
                     DailyMetric.user_id == user_id,
                     DailyMetric.calendar_date == calendar_date,
+                    DailyMetric.phase == phase,
                 )
             )
             metric = metric_result.scalar_one_or_none()
             if metric is None:
-                metric = DailyMetric(user_id=user_id, calendar_date=calendar_date)
+                metric = DailyMetric(user_id=user_id, calendar_date=calendar_date, phase=phase)
                 self.session.add(metric)
             _apply_fields(metric, metric_fields)
             daily_count = 1

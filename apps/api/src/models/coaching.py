@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Float,
@@ -25,10 +26,34 @@ def _feedback_utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
+#: The wake observation the morning verdict is computed from.
+DAILY_METRIC_PHASE_MORNING = "morning"
+#: The closed-day observation Garmin settles on once the local day has ended.
+DAILY_METRIC_PHASE_SETTLED = "settled"
+DAILY_METRIC_PHASES: tuple[str, ...] = (
+    DAILY_METRIC_PHASE_MORNING,
+    DAILY_METRIC_PHASE_SETTLED,
+)
+
+
 class DailyMetric(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
+    """One Garmin observation of a day, keyed by *when* it was observed.
+
+    Batch 205 / CI191-02: this used to be one mutable row per day. The verdict is
+    computed at wake, but the next morning's ``D-1..D-3`` re-sync re-fetches each
+    closed day and Garmin returns its *final* training readiness, so the row that
+    survived was the end-of-day one and every retrospective consumer read it.
+    Phase keeps the two apart. Read through ``services.daily_metric_phase`` so a
+    consumer states which observation it means instead of taking whichever row
+    the query happened to return.
+    """
+
     __tablename__ = "daily_metrics"
     __table_args__ = (
-        UniqueConstraint("user_id", "calendar_date", name="uq_daily_metrics_user_date"),
+        UniqueConstraint(
+            "user_id", "calendar_date", "phase", name="uq_daily_metrics_user_date_phase"
+        ),
+        CheckConstraint("phase IN ('morning', 'settled')", name="ck_daily_metrics_phase"),
         Index("ix_daily_metrics_user_date", "user_id", "calendar_date"),
     )
 
@@ -36,6 +61,13 @@ class DailyMetric(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
         UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
     )
     calendar_date: Mapped[date] = mapped_column(Date, nullable=False)
+    # Defaults to the closed-day meaning because that is what every pre-Batch-205
+    # row was. The one writer that must be deliberate — the wake sync — takes
+    # phase as a required keyword argument, so this default cannot silently
+    # reintroduce the overwrite.
+    phase: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=DAILY_METRIC_PHASE_SETTLED
+    )
     recorded_at_utc: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=False), nullable=True
     )

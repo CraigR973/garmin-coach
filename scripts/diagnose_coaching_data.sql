@@ -30,7 +30,9 @@ ORDER BY created_at;
 --    at diagnosis: a full contiguous year, so "last year" is NOT a data gap.)
 -- ===========================================================================
 WITH me AS (SELECT id FROM coach.profiles ORDER BY created_at LIMIT 1)
-SELECT 'daily_metrics' AS source, count(*) AS rows,
+-- Batch 205: daily_metrics holds up to two rows per date (the 'morning' wake
+-- observation and the 'settled' closed-day one). Count days, not rows.
+SELECT 'daily_metrics' AS source, count(DISTINCT calendar_date) AS rows,
        min(calendar_date) AS first_day, max(calendar_date) AS last_day,
        (max(calendar_date) - min(calendar_date) + 1) AS span_days
 FROM coach.daily_metrics WHERE user_id = (SELECT id FROM me)
@@ -52,11 +54,12 @@ FROM coach.weather_daily WHERE user_id = (SELECT id FROM me);
 -- ===========================================================================
 WITH me AS (SELECT id FROM coach.profiles ORDER BY created_at LIMIT 1)
 SELECT to_char(date_trunc('month', calendar_date), 'YYYY-MM') AS month,
+       phase,
        count(*) AS metric_days,
        count(*) FILTER (WHERE readiness_score IS NOT NULL) AS readiness_days,
        count(*) FILTER (WHERE hrv_last_night_avg_ms IS NOT NULL) AS hrv_days
 FROM coach.daily_metrics WHERE user_id = (SELECT id FROM me)
-GROUP BY 1 ORDER BY 1;
+GROUP BY 1, 2 ORDER BY 1, 2;
 
 -- ===========================================================================
 -- 3. Activity type mix, last 12 weeks  →  B2 "strength training has stopped"
@@ -128,6 +131,11 @@ SELECT DISTINCT ON (subject_date)
        context_packet->'verdict'->>'restingHeartRateWithinBaseline' AS rhr_in_band
 FROM coach.analyses
 WHERE user_id = (SELECT id FROM me) AND analysis_type = 'morning'
+-- NB this shows the *newest* stored read per date, which is deliberately not
+-- the rule the app counts since Batch 205: `services/delivered_verdict.py`
+-- pins each date to the last read generated inside the local wake window, so an
+-- evening regeneration cannot rewrite the colour Mark was shown. Expect this
+-- block and the app to disagree on a date that was regenerated late.
 ORDER BY subject_date DESC, generated_at_utc DESC
 LIMIT 21;
 
@@ -157,4 +165,8 @@ SELECT count(*) AS n, min(readiness_score) AS min,
 FROM coach.daily_metrics
 WHERE user_id = (SELECT id FROM me)
   AND readiness_score IS NOT NULL
+  -- Batch 205 / CI191-02: this is the personal centre the readiness floor keys
+  -- off, and it is compared against a *morning* reading. Mixing in the settled
+  -- rows reproduces exactly the apples-to-oranges bias the batch removed.
+  AND phase = 'morning'
   AND calendar_date >= (now()::date - 84);

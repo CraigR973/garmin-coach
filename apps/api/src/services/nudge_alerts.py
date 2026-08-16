@@ -975,6 +975,10 @@ class NudgeAlertService:
         now_utc: datetime,
     ) -> FreshnessSnapshot:
         local_current = local_now(timezone_name, now_utc)
+        # Deliberately phase-agnostic (Batch 205): this asks "has Garmin data
+        # arrived recently", so it wants the newest observation of the newest
+        # day whichever phase wrote it. Ordering by updated_at keeps that true
+        # once a closed day carries both a morning and a settled row.
         latest_metric = (
             (
                 await self.session.execute(

@@ -50,7 +50,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
 from src.database import AsyncSessionLocal
-from src.models.coaching import Activity, Analysis, FanStateReading, TemperatureReading
+from src.models.coaching import (
+    DAILY_METRIC_PHASE_MORNING,
+    DAILY_METRIC_PHASE_SETTLED,
+    Activity,
+    Analysis,
+    FanStateReading,
+    TemperatureReading,
+)
 from src.models.notification import ActionType, ActorType, AuditLog
 from src.models.operations import JobRun
 from src.models.profile import Profile
@@ -574,6 +581,12 @@ async def _sync_garmin_daily(
     exponential-backoff retry so a transient Garmin 429 is survived. Each date
     is isolated, so one failed historical fetch cannot block today's inputs or
     another date's self-heal. Each successful date commits independently.
+
+    This loop is where CI191-02 came from: Garmin returns a closed day's *final*
+    training readiness, so the D-1..D-3 pass used to overwrite the wake snapshot
+    the verdict had already been computed from. Batch 205 keeps both — today
+    writes the ``morning`` row, the closed days write ``settled`` — so the
+    re-sync still self-heals a missed morning without rewriting history.
     """
     if not profiles:
         return (0, 0, 0)
@@ -585,10 +598,9 @@ async def _sync_garmin_daily(
     failures = 0
     for profile in profiles:
         today = _profile_today(profile)
-        # Today keeps the morning verdict current. D-1..D-3 overwrite the
-        # waking snapshots once those local days have closed and self-heal up to
-        # two missed mornings without adding an evening scheduler path.
-        for subject_date in (today - timedelta(days=offset) for offset in range(4)):
+        for offset in range(4):
+            subject_date = today - timedelta(days=offset)
+            phase = DAILY_METRIC_PHASE_MORNING if offset == 0 else DAILY_METRIC_PHASE_SETTLED
             try:
                 payloads: GarminDailyPayloads = await _retry_sync(
                     lambda: client.fetch_daily_payloads(subject_date),
@@ -598,6 +610,7 @@ async def _sync_garmin_daily(
                     profile.id,
                     subject_date,
                     payloads,
+                    phase=phase,
                     commit=False,
                 )
                 # One date is one recovery boundary. Committing here means a

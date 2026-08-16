@@ -54,6 +54,11 @@ from src.services.bedroom_overnight import (
 )
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
 from src.services.daily_metric_coverage import complete_stress_avg
+from src.services.daily_metric_phase import (
+    index_day_aggregates_by_date,
+    index_morning_by_date,
+    prefer_morning,
+)
 
 # v2 excludes incomplete local-day stress aggregates. Cached v1 driver packets
 # must not survive the Batch 180 history repair as if they were still current.
@@ -669,7 +674,7 @@ class InsightsService:
     ) -> EarlyWarningResult:
         end = as_of or date.today()
         start = end - timedelta(days=window_days - 1)
-        metrics = (
+        metrics = prefer_morning(
             (
                 await self.session.execute(
                     select(DailyMetric).where(
@@ -732,7 +737,7 @@ class InsightsService:
     async def _driver_records(
         self, player: Profile, *, start: date, end: date
     ) -> list[dict[str, float | None]]:
-        metrics = (
+        metric_rows = (
             (
                 await self.session.execute(
                     select(DailyMetric).where(
@@ -785,7 +790,10 @@ class InsightsService:
             .scalars()
             .all()
         )
-        metric_by_date = {m.calendar_date: m for m in metrics}
+        # Batch 205: recovery readings come from the wake row, the local-day
+        # stress average from the settled one.
+        metric_by_date = index_morning_by_date(metric_rows)
+        aggregate_by_date = index_day_aggregates_by_date(metric_rows)
         sleep_by_date = {s.calendar_date: s for s in sleeps}
         weather_by_date = {w.calendar_date: w for w in weather}
         bedroom_by_date = await bedroom_driver_values_by_date(
@@ -799,6 +807,7 @@ class InsightsService:
         records: list[dict[str, float | None]] = []
         for day in sorted(set(metric_by_date) | set(sleep_by_date)):
             metric = metric_by_date.get(day)
+            day_aggregate = aggregate_by_date.get(day)
             sleep = sleep_by_date.get(day)
             weather_row = weather_by_date.get(day)
             bedroom = bedroom_by_date.get(day)
@@ -822,7 +831,11 @@ class InsightsService:
                     "bedroom_fan_ran_minutes": bedroom.fan_ran_minutes if bedroom else None,
                     "bedroom_peak_fan_speed": bedroom.peak_fan_speed if bedroom else None,
                     "prev_day_training_load": prev_load,
-                    "daytime_stress_avg": complete_stress_avg(metric) if metric else None,
+                    # Batch 205: a finished day's stress average, so the
+                    # settled row rather than the wake row's partial window.
+                    "daytime_stress_avg": complete_stress_avg(day_aggregate)
+                    if day_aggregate
+                    else None,
                     "resting_heart_rate_bpm": float(metric.resting_heart_rate_bpm)
                     if metric and metric.resting_heart_rate_bpm is not None
                     else None,

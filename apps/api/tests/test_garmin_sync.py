@@ -9,6 +9,12 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 
+from src.models.coaching import (
+    DAILY_METRIC_PHASE_MORNING as MORNING,
+)
+from src.models.coaching import (
+    DAILY_METRIC_PHASE_SETTLED as SETTLED,
+)
 from src.models.coaching import Activity, ActivityTimeSeries, DailyMetric, Sleep
 from src.models.profile import Profile, UserRole
 from src.services.garmin_sync import (
@@ -277,9 +283,13 @@ async def test_garmin_sync_upserts_without_duplicate_rows(db_conn: AsyncConnecti
         await session.flush()
 
         service = GarminSyncService(session)
-        await service.sync_daily(user_id, date(2026, 6, 18), daily_payloads(), commit=False)
+        await service.sync_daily(
+            user_id, date(2026, 6, 18), daily_payloads(), phase=MORNING, commit=False
+        )
         await service.sync_activities(user_id, activity_payloads, commit=False)
-        await service.sync_daily(user_id, date(2026, 6, 18), daily_payloads(), commit=False)
+        await service.sync_daily(
+            user_id, date(2026, 6, 18), daily_payloads(), phase=MORNING, commit=False
+        )
         await service.sync_activities(user_id, activity_payloads, commit=False)
 
         metrics = (
@@ -314,10 +324,17 @@ async def test_garmin_sync_upserts_without_duplicate_rows(db_conn: AsyncConnecti
 
 
 @pytest.mark.asyncio
-async def test_completed_july_31_resync_overwrites_morning_snapshot(
+async def test_completed_july_31_resync_settles_beside_the_wake_snapshot(
     db_conn: AsyncConnection,
 ) -> None:
-    """Batch 180 regression: 12/1/92 becomes the finished 28/70/16 in place."""
+    """Batch 180 + 205 together: the finished day lands beside the wake row.
+
+    Batch 180 repaired a partial local-day aggregate by letting the closed-day
+    re-sync overwrite the morning snapshot in place. Batch 205 keeps that repair
+    — the settled row still carries the finished 28/70/16 — while the wake row
+    it used to destroy survives with 12/1/92, because the verdict was computed
+    from that one.
+    """
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     user_id = uuid.uuid4()
     subject_date = date(2026, 7, 31)
@@ -356,8 +373,8 @@ async def test_completed_july_31_resync_overwrites_morning_snapshot(
         )
         await session.flush()
         service = GarminSyncService(session)
-        await service.sync_daily(user_id, subject_date, partial, commit=False)
-        await service.sync_daily(user_id, subject_date, completed, commit=False)
+        await service.sync_daily(user_id, subject_date, partial, phase=MORNING, commit=False)
+        await service.sync_daily(user_id, subject_date, completed, phase=SETTLED, commit=False)
 
         rows = (
             (
@@ -372,10 +389,19 @@ async def test_completed_july_31_resync_overwrites_morning_snapshot(
             .all()
         )
 
-    assert len(rows) == 1
-    assert rows[0].stress_avg == 28
-    assert rows[0].body_battery_drained == 70
-    assert rows[0].body_battery_end == 16
+    by_phase = {row.phase: row for row in rows}
+    assert set(by_phase) == {MORNING, SETTLED}
+
+    settled = by_phase[SETTLED]
+    assert settled.stress_avg == 28
+    assert settled.body_battery_drained == 70
+    assert settled.body_battery_end == 16
+
+    # The wake snapshot is no longer collateral damage of the repair.
+    morning = by_phase[MORNING]
+    assert morning.stress_avg == 12
+    assert morning.body_battery_drained == 1
+    assert morning.body_battery_end == 92
 
 
 @pytest.mark.asyncio

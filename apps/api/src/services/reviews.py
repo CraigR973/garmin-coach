@@ -58,6 +58,11 @@ from src.models.profile import Profile
 from src.services.anthropic_text import generate_anthropic_text
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
 from src.services.daily_metric_coverage import complete_body_battery_charged
+from src.services.daily_metric_phase import (
+    index_day_aggregates_by_date,
+    index_morning_by_date,
+)
+from src.services.delivered_verdict import delivered_verdicts
 from src.services.insights import EarlyWarningResult, FtpDriftResult, InsightsService
 from src.services.personal_baselines import baseline_band_packet, serialize_training_schedule
 from src.services.prompt_metadata import prompt_system_hash
@@ -770,14 +775,20 @@ class ReviewService:
     ) -> ReviewRollup:
         metrics = await self._daily_metrics(player.id, period_start, period_end)
         sleeps = await self._sleeps(player.id, period_start, period_end)
-        verdicts = await self._verdicts(player.id, period_start, period_end)
+        verdicts = await self._verdicts(
+            player.id, period_start, period_end, timezone_name=player.timezone
+        )
         activities = await self._activities(player.id, period_start, period_end)
         adherence_rows = await self._adherence(player.id, period_start, period_end)
         planned_count = await self._planned_count(player.id, period_start, period_end)
         weather = await self._weather(player.id, period_start, period_end)
         temps = await self._temperature_peaks(player.id, period_start, period_end, player.timezone)
 
-        metric_by_date = {m.calendar_date: m for m in metrics}
+        # Batch 205: a review describes the days as Mark was told them, so the
+        # recovery readings are the wake rows; Body Battery charge below is a
+        # finished local-day total and comes from the settled row instead.
+        metric_by_date = index_morning_by_date(metrics)
+        aggregate_by_date = index_day_aggregates_by_date(metrics)
         sleep_by_date = {s.calendar_date: s for s in sleeps}
         all_days = sorted(set(metric_by_date) | set(sleep_by_date) | set(verdicts))
         profile_age, profile_sex = await self._profile_age_sex(player.id)
@@ -812,9 +823,11 @@ class ReviewService:
                 resting_hr_bpm=(
                     metric_by_date[day].resting_heart_rate_bpm if day in metric_by_date else None
                 ),
+                # Batch 205: the finished local-day total, not the wake row's
+                # partial running figure (which the coverage gate blanks).
                 body_battery_charged=(
-                    complete_body_battery_charged(metric_by_date[day])
-                    if day in metric_by_date
+                    complete_body_battery_charged(aggregate_by_date[day])
+                    if day in aggregate_by_date
                     else None
                 ),
                 verdict=verdicts.get(day),
@@ -858,6 +871,7 @@ class ReviewService:
         )
 
     async def _daily_metrics(self, user_id: uuid.UUID, start: date, end: date) -> list[DailyMetric]:
+        """Every observation in the window; the caller splits them by phase."""
         rows = (
             (
                 await self.session.execute(
@@ -889,7 +903,9 @@ class ReviewService:
         )
         return list(rows)
 
-    async def _verdicts(self, user_id: uuid.UUID, start: date, end: date) -> dict[date, str | None]:
+    async def _verdicts(
+        self, user_id: uuid.UUID, start: date, end: date, *, timezone_name: str
+    ) -> dict[date, str | None]:
         rows = (
             (
                 await self.session.execute(
@@ -906,8 +922,10 @@ class ReviewService:
             .scalars()
             .all()
         )
-        # Later rows overwrite earlier ones → the freshest verdict per day wins.
-        return {row.subject_date: row.verdict for row in rows}
+        # Batch 205: the freshest row no longer wins. A review recounts the
+        # colours Mark was given that period, so an evening regeneration cannot
+        # change what the period is reported to have contained.
+        return delivered_verdicts(rows, timezone_name=timezone_name)
 
     async def _activities(self, user_id: uuid.UUID, start: date, end: date) -> list[Activity]:
         start_dt = datetime(start.year, start.month, start.day)

@@ -34,6 +34,8 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile
 from src.services.age_norms import build_age_comparison
+from src.services.daily_metric_phase import prefer_morning
+from src.services.delivered_verdict import delivered_verdicts
 from src.services.insights import DriverCorrelation
 from src.services.rem_interventions import RemRotation, select_rem_interventions
 from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
@@ -537,7 +539,13 @@ class ChronicPatternSuggestionService:
             .scalars()
             .all()
         )
-        metric_rows = (
+        # Morning, not settled (Batch 205 / CI191-02). These rows become the
+        # RecoveryDay/RedDayEvidence series behind the Red-morning cluster and
+        # its expected-training-debt exclusion. Tested against the settled
+        # clock, that exclusion ran backwards: the harder Mark trained, the more
+        # that day's training inflated the debt, and the likelier his Red was
+        # excused as expected.
+        metric_rows = prefer_morning(
             (
                 await self.session.execute(
                     select(DailyMetric)
@@ -557,7 +565,9 @@ class ChronicPatternSuggestionService:
         sex = _profile_sex(profile_section)
         baseline_bands = await self._baselines(player.id)
         manual_rows = await self._manual_entries(player.id, start=start, end=as_of)
-        recent_verdicts = await self._recent_verdicts(player.id, as_of=as_of)
+        recent_verdicts = await self._recent_verdicts(
+            player.id, as_of=as_of, timezone_name=player.timezone
+        )
         if current_verdict is not None:
             recent_verdicts = [row for row in recent_verdicts if row.calendar_date != as_of] + [
                 VerdictDay(calendar_date=as_of, verdict=current_verdict)
@@ -723,7 +733,15 @@ class ChronicPatternSuggestionService:
             for key, row in selected.items()
         }
 
-    async def _recent_verdicts(self, user_id: uuid.UUID, *, as_of: date) -> list[VerdictDay]:
+    async def _recent_verdicts(
+        self, user_id: uuid.UUID, *, as_of: date, timezone_name: str
+    ) -> list[VerdictDay]:
+        """The colours Mark was actually shown, not whichever row is newest.
+
+        CI191-02 consequence 3: an evening regeneration could rewrite the colour
+        this Red cluster counts. ``delivered_verdicts`` pins each date to its
+        morning read.
+        """
         start = as_of - timedelta(days=CHRONIC_ACTION_RED_WINDOW_DAYS - 1)
         rows = (
             (
@@ -745,13 +763,8 @@ class ChronicPatternSuggestionService:
             .scalars()
             .all()
         )
-        latest_by_date: dict[date, str | None] = {}
-        for row in rows:
-            latest_by_date[row.subject_date] = row.verdict
-        return [
-            VerdictDay(calendar_date=day, verdict=latest_by_date[day])
-            for day in sorted(latest_by_date)
-        ]
+        by_date = delivered_verdicts(rows, timezone_name=timezone_name)
+        return [VerdictDay(calendar_date=day, verdict=by_date[day]) for day in sorted(by_date)]
 
 
 def _profile_age(profile_section: Mapping[str, Any]) -> int | None:

@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.coaching import Activity, Analysis, ManualEntry, PlanBlock, PlannedWorkout
 from src.models.profile import Profile
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
+from src.services.delivered_verdict import delivered_verdicts
 from src.services.insights import InsightsService
 
 ANALYSIS_TYPE_POST_WORKOUT = "post_workout"
@@ -342,7 +343,9 @@ class BlockProgressionService:
         adherence = await self._adherence(user.id, block_start, block_end)
         activities = await self._activities(user.id, block_start, block_end)
         packet_rows = await self._post_workout_packets(user.id, block_start, block_end)
-        morning_verdicts = await self._morning_verdicts(user.id, block_start, block_end)
+        morning_verdicts = await self._morning_verdicts(
+            user.id, block_start, block_end, timezone_name=user.timezone
+        )
         trend, counts = verdict_trend(morning_verdicts)
         ftp_drift = await InsightsService(self.session).ftp_drift(user, as_of=block_end)
 
@@ -477,7 +480,7 @@ class BlockProgressionService:
         return [dict(row.context_packet or {}) for row in rows]
 
     async def _morning_verdicts(
-        self, user_id: uuid.UUID, start: date, end: date
+        self, user_id: uuid.UUID, start: date, end: date, *, timezone_name: str
     ) -> list[str | None]:
         rows = (
             (
@@ -495,7 +498,6 @@ class BlockProgressionService:
             .scalars()
             .all()
         )
-        latest_by_date: dict[date, str | None] = {}
-        for row in rows:
-            latest_by_date[row.subject_date] = row.verdict
-        return [latest_by_date[day] for day in sorted(latest_by_date)]
+        # Batch 205: a block's verdict trend counts the reads Mark was given.
+        by_date = delivered_verdicts(rows, timezone_name=timezone_name)
+        return [by_date[day] for day in sorted(by_date)]
