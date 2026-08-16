@@ -24,6 +24,7 @@ from src.models.coaching import (
     PlannedWorkout,
 )
 from src.models.profile import Profile
+from src.services.activity_dates import activity_local_date as _activity_local_date
 from src.services.analysis_currentness import (
     analysis_matches_prompt_and_input,
     manual_entry_input_version,
@@ -52,7 +53,6 @@ from src.services.post_activity_state import (
 from src.services.post_workout_analysis import (
     ClaudeGenerationResult,
     PostWorkoutAnalysisError,
-    _activity_local_date,
     _activity_packet,
     _analysis_rules,
     _data_quality_guardrails,

@@ -25,6 +25,7 @@ from src.models.coaching import (
     WorkoutDeliveryProposal,
 )
 from src.models.profile import Profile
+from src.services.activity_dates import activity_local_date as _activity_local_date
 from src.services.analysis_currentness import (
     analysis_matches_prompt_and_input,
     manual_entry_input_version,
@@ -938,19 +939,6 @@ def is_ride_activity(activity: Activity) -> bool:
 
 
 _is_ride = is_ride_activity
-
-
-def _activity_local_date(activity: Activity, timezone_name: str) -> date:
-    try:
-        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
-        try:
-            timezone = ZoneInfo(timezone_name)
-        except ZoneInfoNotFoundError:
-            timezone = ZoneInfo("UTC")
-        return activity.start_utc.replace(tzinfo=UTC).astimezone(timezone).date()
-    except Exception:
-        return activity.start_utc.date()
 
 
 def _data_quality_guardrails(knowledge_base: Mapping[str, Any]) -> list[dict[str, Any]]:

@@ -104,6 +104,34 @@ def coverage_packet(coverage: DailyAggregateCoverage) -> dict[str, str | None]:
     }
 
 
+def complete_stress_avg(row: Any) -> float | None:
+    """Return stress only when the stored row covers the complete local day."""
+    coverage = daily_aggregate_coverage(row.calendar_date, row.raw_payload)
+    value = getattr(row, "stress_avg", None)
+    return float(value) if value is not None and coverage.stress.complete else None
+
+
+def complete_body_battery_charged(row: Any) -> int | None:
+    """Return Body Battery charge only for complete local-day aggregates."""
+    coverage = daily_aggregate_coverage(row.calendar_date, row.raw_payload)
+    value = getattr(row, "body_battery_charged", None)
+    return int(value) if value is not None and coverage.body_battery.complete else None
+
+
+def complete_body_battery_drained(row: Any) -> int | None:
+    """Return Body Battery drain only for complete local-day aggregates."""
+    coverage = daily_aggregate_coverage(row.calendar_date, row.raw_payload)
+    value = getattr(row, "body_battery_drained", None)
+    return int(value) if value is not None and coverage.body_battery.complete else None
+
+
+def complete_body_battery_end(row: Any) -> int | None:
+    """Return Body Battery end only for complete local-day aggregates."""
+    coverage = daily_aggregate_coverage(row.calendar_date, row.raw_payload)
+    value = getattr(row, "body_battery_end", None)
+    return int(value) if value is not None and coverage.body_battery.complete else None
+
+
 def _source_coverage(
     calendar_date: date,
     payload: Mapping[str, Any],

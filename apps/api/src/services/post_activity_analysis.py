@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import Activity
 from src.models.profile import Profile
+from src.services.activity_dates import activity_local_date as _activity_local_date
 from src.services.post_activity_state import (
     PostActivityKind,
     mark_post_activity_generation,
@@ -22,11 +23,7 @@ from src.services.post_flexibility_analysis import (
 )
 from src.services.post_strength_analysis import PostStrengthAnalysisService
 from src.services.post_walk_analysis import PostWalkAnalysisService, is_deliberate_walk
-from src.services.post_workout_analysis import (
-    PostWorkoutAnalysisService,
-    _activity_local_date,
-    is_ride_activity,
-)
+from src.services.post_workout_analysis import PostWorkoutAnalysisService, is_ride_activity
 from src.services.strength_brief import is_strength_activity
 
 

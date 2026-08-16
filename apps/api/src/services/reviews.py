@@ -57,6 +57,7 @@ from src.models.coaching import (
 from src.models.profile import Profile
 from src.services.anthropic_text import generate_anthropic_text
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
+from src.services.daily_metric_coverage import complete_body_battery_charged
 from src.services.insights import EarlyWarningResult, FtpDriftResult, InsightsService
 from src.services.personal_baselines import baseline_band_packet, serialize_training_schedule
 from src.services.prompt_metadata import prompt_system_hash
@@ -812,7 +813,9 @@ class ReviewService:
                     metric_by_date[day].resting_heart_rate_bpm if day in metric_by_date else None
                 ),
                 body_battery_charged=(
-                    metric_by_date[day].body_battery_charged if day in metric_by_date else None
+                    complete_body_battery_charged(metric_by_date[day])
+                    if day in metric_by_date
+                    else None
                 ),
                 verdict=verdicts.get(day),
             )

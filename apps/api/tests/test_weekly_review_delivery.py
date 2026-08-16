@@ -130,6 +130,79 @@ async def test_delivery_is_idempotent_across_review_message_and_push(
 
 
 @pytest.mark.asyncio
+async def test_delivery_dedupes_review_turn_by_week_when_prompt_bumps(
+    db_conn: AsyncConnection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    old_review_id = uuid.uuid4()
+    async with factory() as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Weekly Review Prompt Bump",
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+        session.add(
+            Analysis(
+                id=old_review_id,
+                user_id=user_id,
+                activity_id=None,
+                analysis_type=ANALYSIS_TYPE_WEEKLY,
+                subject_date=WEEK_START,
+                generated_at_utc=datetime(2026, 8, 2, 16, 0),
+                prompt_version="reviews-old",
+                verdict="advisory",
+                context_packet={"period": "weekly"},
+                output_markdown="Old review.",
+                raw_response={},
+            )
+        )
+        session.add(
+            BriefMessage(
+                user_id=user_id,
+                analysis_id=old_review_id,
+                origin_kind=ORIGIN_KIND_WEEKLY_REVIEW,
+                origin_date=SUNDAY,
+                role="assistant",
+                content="Old review.",
+                created_utc=datetime(2026, 8, 2, 16, 1),
+            )
+        )
+        await session.commit()
+
+    send = AsyncMock(return_value=1)
+    monkeypatch.setattr("src.services.nudge_alerts.send_notification", send)
+
+    async with factory() as session:
+        player = await session.get(Profile, user_id)
+        assert player is not None
+        result = await WeeklyReviewDeliveryService(session).run(
+            player,
+            as_of=SUNDAY,
+            client=FakeReviewClient(),
+            now_utc=datetime(2026, 8, 2, 17, 0, tzinfo=UTC),
+        )
+        messages = (
+            (await session.execute(select(BriefMessage).where(BriefMessage.user_id == user_id)))
+            .scalars()
+            .all()
+        )
+
+    assert result.generated is True
+    assert result.message_created is False
+    assert len(messages) == 1
+    assert messages[0].analysis_id == result.review.id
+    assert messages[0].analysis_id != old_review_id
+    assert messages[0].content.startswith("**Bottom line:** Recovery held steady")
+
+
+@pytest.mark.asyncio
 async def test_failure_turn_is_retryable_unpushed_and_idempotent(
     db_conn: AsyncConnection,
 ) -> None:
@@ -164,4 +237,50 @@ async def test_failure_turn_is_retryable_unpushed_and_idempotent(
     assert first.analysis_id is None
     assert first.content == WEEKLY_REVIEW_FAILURE_MESSAGE
     assert "/reviews" in first.content
+    assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_failure_turn_dedupes_even_if_copy_changes(
+    db_conn: AsyncConnection,
+) -> None:
+    factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    async with factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Weekly Review Failure Copy",
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+        session.add(
+            BriefMessage(
+                user_id=user_id,
+                analysis_id=None,
+                origin_kind=ORIGIN_KIND_WEEKLY_REVIEW,
+                origin_date=SUNDAY,
+                role="assistant",
+                content="Older failure copy.",
+                created_utc=datetime(2026, 8, 2, 18, 0),
+            )
+        )
+        await session.commit()
+
+        _, created = await WeeklyReviewDeliveryService(session).record_failure(
+            player,
+            subject_date=SUNDAY,
+        )
+        count = await session.scalar(
+            select(func.count())
+            .select_from(BriefMessage)
+            .where(
+                BriefMessage.user_id == user_id,
+                BriefMessage.origin_kind == ORIGIN_KIND_WEEKLY_REVIEW,
+            )
+        )
+
+    assert created is False
     assert count == 1

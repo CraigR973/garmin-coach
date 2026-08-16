@@ -53,7 +53,7 @@ from src.services.bedroom_overnight import (
     summarize_overnight,
 )
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
-from src.services.daily_metric_coverage import daily_aggregate_coverage
+from src.services.daily_metric_coverage import complete_stress_avg
 
 # v2 excludes incomplete local-day stress aggregates. Cached v1 driver packets
 # must not survive the Batch 180 history repair as if they were still current.
@@ -799,11 +799,6 @@ class InsightsService:
         records: list[dict[str, float | None]] = []
         for day in sorted(set(metric_by_date) | set(sleep_by_date)):
             metric = metric_by_date.get(day)
-            aggregate_coverage = (
-                daily_aggregate_coverage(metric.calendar_date, metric.raw_payload)
-                if metric is not None
-                else None
-            )
             sleep = sleep_by_date.get(day)
             weather_row = weather_by_date.get(day)
             bedroom = bedroom_by_date.get(day)
@@ -827,12 +822,7 @@ class InsightsService:
                     "bedroom_fan_ran_minutes": bedroom.fan_ran_minutes if bedroom else None,
                     "bedroom_peak_fan_speed": bedroom.peak_fan_speed if bedroom else None,
                     "prev_day_training_load": prev_load,
-                    "daytime_stress_avg": float(metric.stress_avg)
-                    if metric
-                    and metric.stress_avg is not None
-                    and aggregate_coverage is not None
-                    and aggregate_coverage.stress.complete
-                    else None,
+                    "daytime_stress_avg": complete_stress_avg(metric) if metric else None,
                     "resting_heart_rate_bpm": float(metric.resting_heart_rate_bpm)
                     if metric and metric.resting_heart_rate_bpm is not None
                     else None,

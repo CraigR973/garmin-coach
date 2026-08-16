@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import DailyMetric, KnowledgeBase, MetricBaseline, Sleep
 from src.models.profile import Profile
+from src.services.daily_metric_coverage import complete_body_battery_charged
 from src.services.sleep_history import BaselineSample, compute_metric_baselines
 from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
 
@@ -90,7 +91,9 @@ def sample_values(
         "age_adjusted_sleep_score": age_adjusted_score,
         "readiness_score": metric.readiness_score if metric else None,
         "resting_heart_rate_bpm": resting_heart_rate,
-        "body_battery_charge": metric.body_battery_charged if metric else None,
+        "body_battery_charge": (
+            complete_body_battery_charged(metric) if metric is not None else None
+        ),
         "average_spo2_pct": sleep.average_spo2_pct if sleep else None,
         "average_respiration": sleep.average_respiration if sleep else None,
         "hrv_7_day_avg_ms": metric.hrv_weekly_avg_ms if metric else None,

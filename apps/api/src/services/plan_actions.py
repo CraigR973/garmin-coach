@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import Activity, ManualEntry, PlanBlock, PlannedWorkout
 from src.models.profile import Profile
+from src.services.activity_dates import activity_local_date as _local_activity_date
+from src.services.activity_dates import timezone_or_utc
 from src.services.coaching_state import BLOCK_SEQUENCE
 from src.services.executable_coaching import (
     WORKOUT_STATUS_SKIPPED,
@@ -47,10 +49,7 @@ def _utcnow() -> datetime:
 
 
 def _timezone_or_utc(timezone_name: str | None) -> ZoneInfo:
-    try:
-        return ZoneInfo(timezone_name or "UTC")
-    except ZoneInfoNotFoundError:
-        return ZoneInfo("UTC")
+    return timezone_or_utc(timezone_name)
 
 
 def _local_date_bounds_utc(
@@ -63,11 +62,6 @@ def _local_date_bounds_utc(
         start_local.astimezone(UTC).replace(tzinfo=None),
         end_local.astimezone(UTC).replace(tzinfo=None),
     )
-
-
-def _local_activity_date(activity: Activity, timezone_name: str | None) -> date:
-    tz = _timezone_or_utc(timezone_name)
-    return activity.start_utc.replace(tzinfo=UTC).astimezone(tz).date()
 
 
 DONE_ADHERENCE_STATUSES = {"completed", "modified", "done", "did_something_else"}

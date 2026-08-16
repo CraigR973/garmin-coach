@@ -1,6 +1,10 @@
 from datetime import date
 
-from src.services.daily_metric_coverage import daily_aggregate_coverage
+from src.services.daily_metric_coverage import (
+    complete_body_battery_charged,
+    complete_stress_avg,
+    daily_aggregate_coverage,
+)
 
 
 def _raw(end_local: str) -> dict[str, object]:
@@ -85,3 +89,26 @@ def test_stats_fallback_uses_wellness_window() -> None:
     )
 
     assert coverage.status == "complete"
+
+
+class _MetricRow:
+    calendar_date = date(2026, 7, 31)
+    stress_avg = 28
+    body_battery_charged = 70
+
+    def __init__(self, raw_payload: dict[str, object]) -> None:
+        self.raw_payload = raw_payload
+
+
+def test_complete_value_helpers_drop_partial_aggregates() -> None:
+    row = _MetricRow(_raw("2026-07-31T08:44:00.0"))
+
+    assert complete_stress_avg(row) is None
+    assert complete_body_battery_charged(row) is None
+
+
+def test_complete_value_helpers_keep_closed_day_aggregates() -> None:
+    row = _MetricRow(_raw("2026-08-01T00:00:00.0"))
+
+    assert complete_stress_avg(row) == 28.0
+    assert complete_body_battery_charged(row) == 70

@@ -189,6 +189,13 @@ def _seed_day(session: object, user_id: uuid.UUID, day: date) -> None:
             resting_heart_rate_bpm=44 + (day.day % 4),
             body_battery_charged=50 + (day.day % 5),
             hrv_weekly_avg_ms=42 + (day.day % 6),
+            raw_payload={
+                "body_battery": {
+                    "charged": 50 + (day.day % 5),
+                    "startTimestampLocal": f"{day.isoformat()}T00:00:00.0",
+                    "endTimestampLocal": f"{(day + timedelta(days=1)).isoformat()}T00:00:00.0",
+                }
+            },
         )
     )
 
