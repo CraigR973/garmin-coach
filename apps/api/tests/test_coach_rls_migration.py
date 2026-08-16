@@ -9,7 +9,11 @@ left 18 tables flagged by the Supabase advisor after Batches 002-014.
 
 The check is pure (no DB): each RLS migration exposes its own ``RLS_TABLES``
 constant, and we assert 001's set plus every later migration's set equals the
-coach model tables registered on ``Base.metadata``.
+coach model tables registered on ``Base.metadata``. CR189-11 (Batch 204) added
+a second pure check that runs each migration's real ``upgrade()`` against a
+recording mock and asserts the SQL it would send actually enables RLS for
+every table it claims to — the ``RLS_TABLES`` constant alone does not prove
+that.
 """
 
 from __future__ import annotations
@@ -17,6 +21,9 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 from types import ModuleType
+from unittest.mock import MagicMock
+
+import pytest
 
 from src.models import Base
 
@@ -84,3 +91,42 @@ def test_every_coach_model_table_is_under_rls() -> None:
         "model_tables_missing_rls": sorted(model_tables - covered),
         "rls_table_is_not_a_model": sorted(covered - model_tables),
     }
+
+
+def test_every_rls_migration_actually_emits_its_enable_statement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CR189-11: the tests above assert a Python constant, never the migration SQL.
+
+    A migration could declare a table in ``RLS_TABLES`` and omit the
+    ``ALTER TABLE ... ENABLE ROW LEVEL SECURITY`` statement and every test
+    above would stay green. This runs each migration's real ``upgrade()``
+    with ``op`` replaced by a recording mock (the same technique as
+    ``test_auth_cutover_migration.py``) and asserts the captured SQL actually
+    contains the ENABLE statement for every one of its own ``RLS_TABLES``.
+
+    A live ``pg_class.relrowsecurity`` check was considered instead (and is
+    the deployed-state verification ``scripts/check_rls_posture.py`` already
+    does against a real Supabase-shaped database via
+    ``RLS_POSTURE_DATABASE_URL``). It does not work as a unit test here: every
+    RLS migration wraps its ``ALTER TABLE`` in a guard that only fires when an
+    ``auth`` schema exists, deliberately no-op on CI's plain
+    ``postgres:16`` service so the migration-check and unit-test jobs stay
+    green without Supabase's schema — so ``relrowsecurity`` would read
+    ``false`` for every table there regardless of whether the statement is
+    present, which is not the gap this test exists to catch.
+    """
+
+    for filename in RLS_MIGRATION_FILES:
+        migration = _load_migration(filename)
+        executed: list[str] = []
+        mock_op = MagicMock()
+        mock_op.execute.side_effect = lambda sql: executed.append(str(sql))
+        monkeypatch.setattr(migration, "op", mock_op)
+
+        migration.upgrade()
+
+        combined_sql = " ".join(" ".join(sql.split()) for sql in executed)
+        for table in migration.RLS_TABLES:
+            expected = f"ALTER TABLE coach.{table} ENABLE ROW LEVEL SECURITY"
+            assert expected in combined_sql, (filename, table, combined_sql)

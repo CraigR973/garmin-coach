@@ -49,6 +49,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any, Protocol
 
+import structlog
 from fastapi import HTTPException, status
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -291,33 +292,53 @@ def _capability_instruction(adjustable_workout_id: uuid.UUID | None) -> str:
     )
 
 
+log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
+
+
 class BriefChatService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
     async def _owned_analysis(self, player: Profile, analysis_id: uuid.UUID) -> Analysis:
+        """404 for both an absent and a foreign anchor (DS190-08).
+
+        An authenticated second user who obtains or guesses a UUID must not be
+        able to distinguish "does not exist" from "exists but is not yours" —
+        UUIDv4 entropy makes exploiting that split unlikely, but the split
+        itself was avoidable disclosure. The distinction is kept only in the
+        structured log, for operator diagnosis.
+        """
         analysis = await self.session.scalar(select(Analysis).where(Analysis.id == analysis_id))
         if analysis is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Read not found")
         if analysis.user_id != player.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only chat about your own read",
+            log.info(
+                "brief chat anchor belongs to another user",
+                analysis_id=str(analysis_id),
+                requesting_user_id=str(player.id),
             )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Read not found")
         return analysis
 
     async def history(self, player: Profile, analysis_id: uuid.UUID) -> list[BriefMessage]:
         """The turns asked from one read.
 
         Kept exactly as it was so the inline chat on a read still shows that
-        read's own exchange rather than the whole conversation.
+        read's own exchange rather than the whole conversation. ``user_id`` is
+        filtered redundantly alongside ``analysis_id`` (DS190-09): normal
+        writes always set both from the same ownership check, so no current
+        HTTP path can produce a mismatched row, but a future writer or repair
+        script should not be able to make one visible here.
         """
         await self._owned_analysis(player, analysis_id)
         rows = (
             (
                 await self.session.execute(
                     select(BriefMessage)
-                    .where(BriefMessage.analysis_id == analysis_id)
+                    .where(
+                        BriefMessage.analysis_id == analysis_id,
+                        BriefMessage.user_id == player.id,
+                    )
                     .order_by(*_message_ordering())
                 )
             )

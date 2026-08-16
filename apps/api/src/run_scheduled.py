@@ -25,6 +25,7 @@ Jobs:
     evening-alerts  bedtime thermal + source-freshness alerts
     backup          database backup
     backup-drill    restore latest backup into a disposable DB and check invariants
+    egress-budget   flush the response-byte counter and stage a Supabase egress alert
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ import asyncio
 
 from src.scheduler import (
     run_backup_restore_drill,
+    run_egress_budget_check,
     run_evening_monitoring_alerts,
     run_evening_sleep_nudge,
     run_fan_control,
@@ -61,6 +63,7 @@ JOBS: dict[str, JobOperation] = {
     "fan-control": run_fan_control,
     "backup": run_scheduled_backup,
     "backup-drill": run_backup_restore_drill,
+    "egress-budget": run_egress_budget_check,
 }
 
 

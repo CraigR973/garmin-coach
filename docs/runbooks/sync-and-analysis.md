@@ -190,6 +190,20 @@ Restore with `pg_restore`, not `psql` — the archive is not plain SQL:
 pg_restore --clean --if-exists --no-owner --dbname "$DATABASE_URL" coach_20260803_030000.dump
 ```
 
+**If you ever need to run a manual dump by hand** (ad hoc diagnosis, a
+one-off copy before a risky change), use the same scoped form the service
+uses — never a bare `pg_dump "$DATABASE_URL"`. An unscoped dump against this
+project pulls in a co-tenant app's schema and the 300 MB
+`coach.activity_timeseries` table, which is exactly what spent the org's
+5.5 GB egress quota in 36 nights (DECISIONS #262, 2026-08-04 incident):
+
+```bash
+pg_dump --format=custom --schema=coach \
+  --exclude-table-data=coach.activity_timeseries \
+  --file coach_manual_$(date -u +%Y%m%d_%H%M%S).dump \
+  "$DATABASE_URL"
+```
+
 **Notes:**
 
 - `coach.activity_timeseries` rows are deliberately excluded (`--exclude-table-data`);
@@ -248,6 +262,30 @@ pg_restore --clean --if-exists --no-owner --dbname "$DATABASE_URL" coach_2026080
   and exits 1.
 - Supabase point-in-time restore is a **paid-plan** feature; on the free plan these dumps
   are the only backup that exists.
+
+## Egress budget monitor (proxy, not the provider meter)
+
+Supabase has no public Management API for egress bytes — only the account
+dashboard shows the org-wide meter. `services/egress_budget.py` is therefore a
+**leading-indicator proxy**: `EgressBudgetMiddleware` sums `Content-Length` on
+every API response into a UTC-day-scoped in-memory counter
+(`response_byte_counter`), and the `egress-budget` job (every 15 min,
+`run_egress_budget_check` in `scheduler.py`) drains it, adds today's backup
+archive size (the one *exact* known contributor), and compares the running
+total against the shared **5.5 GB** org cap already blown once (DECISIONS
+#262, 2026-08-04). Staged thresholds: 50% warning, 85% critical.
+
+- Each run's delta is persisted as a `job_runs` counter (`job_name=egress-budget`)
+  so a container restart between flushes only loses that one delta, not the
+  day's running total.
+- An alert only logs (`operator egress alert`, `kind=egress_budget_<stage>`,
+  same `provider_log_or_external_monitor` route as backup alerts) when the
+  day's highest stage *increases* — a sustained overage does not spam a new
+  alert every 15 minutes, but the job keeps reporting `degraded` (exit 1 under
+  the external runner) for as long as the day stays over the warning stage.
+- Treat a stage crossing as "go check the Supabase dashboard," not as proof
+  the org is over — this counts bytes served, not bytes read from Postgres,
+  and undercounts across a container restart between flushes.
 
 ## Dependency gotcha — `cryptography` on an Intel Mac
 
