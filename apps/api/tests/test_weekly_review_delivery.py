@@ -147,6 +147,7 @@ async def test_delivery_dedupes_review_turn_by_week_when_prompt_bumps(
                 is_active=True,
             )
         )
+        await session.flush()
         session.add(
             Analysis(
                 id=old_review_id,
@@ -254,6 +255,7 @@ async def test_failure_turn_dedupes_even_if_copy_changes(
             is_active=True,
         )
         session.add(player)
+        await session.flush()
         session.add(
             BriefMessage(
                 user_id=user_id,

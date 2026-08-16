@@ -637,6 +637,7 @@ async def test_brief_ready_push_is_serialized_across_two_sessions(
             is_active=True,
         )
         session.add(profile)
+        await session.flush()
         session.add(
             Analysis(
                 id=analysis_id,
