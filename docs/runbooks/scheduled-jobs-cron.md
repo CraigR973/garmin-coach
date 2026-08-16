@@ -48,6 +48,7 @@ Run each job from an external scheduler via the single-job runner:
 | `evening-alerts`| 19–22 London, /15    | `*/15 19-22 * * *`  ⚠  |
 | `fan-control`   | every 15 min         | `*/15 * * * *`         |
 | `backup-drill`  | weekly after backup  | `0 4 * * 0`            |
+| `egress-budget` | every 15 min         | `*/15 * * * *`         |
 
 ⚠ **DST:** Railway/most cron runs in UTC and does not track Europe/London
 BST↔GMT. The interval jobs (`hive-poll`, `activity-poll`, `backup`) are

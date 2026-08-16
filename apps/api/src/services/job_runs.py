@@ -64,6 +64,7 @@ _WINDOW_MINUTES: dict[str, int] = {
     "fan-control": 15,
     "activity-poll": 60,
     "autopush": 360,
+    "egress-budget": 15,
 }
 
 _LOCAL_DAILY_JOBS = {

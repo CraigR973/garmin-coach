@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable
 from contextlib import ExitStack, contextmanager
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from functools import partial
 from types import SimpleNamespace
 from typing import Any
@@ -26,6 +26,7 @@ from src.scheduler import (
     _sync_garmin_daily,
     create_scheduler,
     run_backup_restore_drill,
+    run_egress_budget_check,
     run_evening_monitoring_alerts,
     run_evening_sleep_nudge,
     run_fan_control,
@@ -175,6 +176,124 @@ async def test_run_backup_restore_drill_alerts_on_simulated_failure() -> None:
         reason="invariant failed",
         alert_route="provider_log_or_external_monitor",
     )
+
+
+# ---------------------------------------------------------------------------
+# run_egress_budget_check
+# ---------------------------------------------------------------------------
+
+
+class _JobRunCountersExecuteResult:
+    def __init__(self, counters: list[dict[str, int]]) -> None:
+        self._counters = counters
+
+    def scalars(self) -> _JobRunCountersExecuteResult:
+        return self
+
+    def all(self) -> list[dict[str, int]]:
+        return self._counters
+
+
+def _session_ctx(session: AsyncMock) -> Any:
+    class _Ctx:
+        async def __aenter__(self) -> AsyncMock:
+            return session
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+    return _Ctx()
+
+
+@pytest.mark.asyncio
+async def test_run_egress_budget_check_ok_stage_does_not_alert() -> None:
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=_JobRunCountersExecuteResult([]))
+    logger = MagicMock()
+
+    with (
+        patch("src.scheduler.response_byte_counter") as counter,
+        patch("src.scheduler.latest_backup", return_value=None),
+        patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
+        patch("src.scheduler.log", logger),
+    ):
+        counter.drain.return_value = 1000
+        result = await run_egress_budget_check()
+
+    assert result.status == JobStatus.succeeded
+    assert result.counters["total_bytes_today"] == 1000
+    assert result.counters["alert_stage_ordinal"] == 0
+    logger.error.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_egress_budget_check_alerts_once_on_new_stage() -> None:
+    from src.services.egress_budget import BUDGET_BYTES
+
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=_JobRunCountersExecuteResult([]))
+    logger = MagicMock()
+
+    with (
+        patch("src.scheduler.response_byte_counter") as counter,
+        patch("src.scheduler.latest_backup", return_value=None),
+        patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
+        patch("src.scheduler.log", logger),
+    ):
+        counter.drain.return_value = int(BUDGET_BYTES * 0.6)
+        result = await run_egress_budget_check()
+
+    assert result.status == JobStatus.degraded
+    assert result.reason == "egress_budget_warning"
+    logger.error.assert_called_once_with(
+        "operator egress alert",
+        kind="egress_budget_warning",
+        total_bytes_today=int(BUDGET_BYTES * 0.6),
+        budget_bytes=BUDGET_BYTES,
+        alert_route="provider_log_or_external_monitor",
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_egress_budget_check_does_not_repeat_alert_for_same_stage() -> None:
+    from src.services.egress_budget import BUDGET_BYTES
+
+    session = AsyncMock()
+    prior_counters = [{"response_bytes_delta": 0, "alert_stage_ordinal": 1}]
+    session.execute = AsyncMock(return_value=_JobRunCountersExecuteResult(prior_counters))
+    logger = MagicMock()
+
+    with (
+        patch("src.scheduler.response_byte_counter") as counter,
+        patch("src.scheduler.latest_backup", return_value=None),
+        patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
+        patch("src.scheduler.log", logger),
+    ):
+        counter.drain.return_value = int(BUDGET_BYTES * 0.6)
+        result = await run_egress_budget_check()
+
+    assert result.status == JobStatus.degraded
+    logger.error.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_egress_budget_check_includes_todays_backup_size() -> None:
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=_JobRunCountersExecuteResult([]))
+    backup_info = MagicMock()
+    backup_info.size_bytes = 5_000_000
+    backup_info.created_at = datetime.now(UTC)
+
+    with (
+        patch("src.scheduler.response_byte_counter") as counter,
+        patch("src.scheduler.latest_backup", return_value=backup_info),
+        patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
+    ):
+        counter.drain.return_value = 0
+        result = await run_egress_budget_check()
+
+    assert result.counters["backup_bytes_today"] == 5_000_000
+    assert result.counters["total_bytes_today"] == 5_000_000
 
 
 @pytest.mark.asyncio
@@ -509,6 +628,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
             "evening_sleep_nudge",
             "evening_monitoring_alerts",
             "fan_control",
+            "egress_budget",
         }
 
         hive_job = scheduler.get_job("hive_temperature_poll")

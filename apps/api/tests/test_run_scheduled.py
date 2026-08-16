@@ -25,6 +25,7 @@ def test_jobs_cover_expected_names() -> None:
         "fan-control",
         "backup",
         "backup-drill",
+        "egress-budget",
     }
 
 
@@ -37,6 +38,7 @@ def test_jobs_map_to_the_same_scheduler_coroutines() -> None:
     assert run_scheduled.JOBS["activity-poll"] is scheduler.run_garmin_activity_poll
     assert run_scheduled.JOBS["backup"] is scheduler.run_scheduled_backup
     assert run_scheduled.JOBS["backup-drill"] is scheduler.run_backup_restore_drill
+    assert run_scheduled.JOBS["egress-budget"] is scheduler.run_egress_budget_check
     assert run_scheduled.JOBS["weekly-review"] is scheduler.run_weekly_review_delivery
     assert run_scheduled.JOBS["state-change"] is scheduler.run_state_change_coach
 

@@ -897,7 +897,7 @@ async def test_post_message_unknown_analysis_is_404(db_conn: AsyncConnection) ->
 
 
 @pytest.mark.asyncio
-async def test_post_message_on_another_users_brief_is_403(db_conn: AsyncConnection) -> None:
+async def test_post_message_on_another_users_brief_is_404(db_conn: AsyncConnection) -> None:
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     async with session_factory() as session:
         owner = await _make_profile(session, "Owner")
@@ -914,7 +914,7 @@ async def test_post_message_on_another_users_brief_is_403(db_conn: AsyncConnecti
     finally:
         app.dependency_overrides.clear()
 
-    assert response.status_code == 403, response.text
+    assert response.status_code == 404, response.text
     async with session_factory() as session:
         count = await session.scalar(select(func.count()).select_from(BriefMessage))
         assert count == 0

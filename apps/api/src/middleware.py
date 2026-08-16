@@ -6,6 +6,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from src.config import Environment, settings
+from src.services.egress_budget import response_byte_counter
 
 
 class CorrelationIdMiddleware(BaseHTTPMiddleware):
@@ -18,6 +19,26 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
         structlog.contextvars.bind_contextvars(correlation_id=correlation_id)
         response: Response = await call_next(request)
         response.headers["X-Correlation-ID"] = correlation_id
+        return response
+
+
+class EgressBudgetMiddleware(BaseHTTPMiddleware):
+    """Feed served response bytes into the egress-budget proxy (Batch 204, DS190-07).
+
+    Uses ``Content-Length`` only — every response this API returns is a
+    buffered JSON body with that header set, so a missing header (which
+    would under-count a streaming response, of which this API has none)
+    is intentionally skipped rather than guessed at.
+    """
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        response: Response = await call_next(request)
+        content_length = response.headers.get("content-length")
+        if content_length is not None:
+            try:
+                response_byte_counter.add(int(content_length))
+            except ValueError:
+                pass
         return response
 
 

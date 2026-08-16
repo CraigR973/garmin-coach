@@ -455,7 +455,10 @@ class ConversationLearningService:
         chat_rows = (
             await self.session.execute(
                 select(BriefMessage, Analysis)
-                .outerjoin(Analysis, BriefMessage.analysis_id == Analysis.id)
+                .outerjoin(
+                    Analysis,
+                    (BriefMessage.analysis_id == Analysis.id) & (Analysis.user_id == user_id),
+                )
                 .where(
                     BriefMessage.user_id == user_id,
                     BriefMessage.role == "user",

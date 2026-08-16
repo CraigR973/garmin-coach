@@ -18,6 +18,9 @@ Current jobs:
   - evening_monitoring_alerts: checks thermal and source freshness before bed
   - fan_control: every ~15 min within the overnight window, reconciles the Dreo
     bedroom fan to the live indoor temperature (Batch 27.2)
+  - egress_budget: every ~15 min, flushes the response-byte counter and stages
+    an operator alert against the shared Supabase egress cap (Batch 204,
+    DS190-07) — a leading-indicator proxy, not the real provider meter
 
 The morning splits at its sync → generate seam (Batch 85, DECISIONS #158): the wake
 job runs run_morning_sync (pull all inputs + "good morning" nudge, no LLM), the
@@ -49,15 +52,26 @@ from src.config import settings
 from src.database import AsyncSessionLocal
 from src.models.coaching import Activity, Analysis, FanStateReading, TemperatureReading
 from src.models.notification import ActionType, ActorType, AuditLog
+from src.models.operations import JobRun
 from src.models.profile import Profile
 from src.services.anthropic_text import AnthropicApiError
-from src.services.backup import create_backup, restore_latest_backup
+from src.services.backup import create_backup, latest_backup, restore_latest_backup
 from src.services.dreo_fan import (
     DreoCredentials,
     DreoCredentialsError,
     DreoFanClient,
     DreoFanError,
 )
+from src.services.egress_budget import (
+    BUDGET_BYTES as EGRESS_BUDGET_BYTES,
+)
+from src.services.egress_budget import (
+    STAGE_ORDINAL as EGRESS_STAGE_ORDINAL,
+)
+from src.services.egress_budget import (
+    evaluate_stage as evaluate_egress_stage,
+)
+from src.services.egress_budget import response_byte_counter
 from src.services.environment_freshness import is_hive_temperature_fresh
 from src.services.environment_sync import (
     EnvironmentSyncService,
@@ -168,6 +182,75 @@ def _log_backup_operator_alert(kind: str, reason: str) -> None:
         "operator backup alert",
         kind=kind,
         reason=reason,
+        alert_route="provider_log_or_external_monitor",
+    )
+
+
+async def run_egress_budget_check() -> JobResult:
+    """Flush the in-memory response-byte counter and stage an alert (DS190-07).
+
+    Runs every 15 min alongside the other interval jobs. Each run persists its
+    own delta as a ``job_runs`` counter (the durable record — see
+    ``services/egress_budget.py`` for why the in-memory counter alone is not),
+    sums today's prior deltas plus today's backup archive size, and only logs
+    an operator alert when the day's highest staged threshold increases, so a
+    sustained overage does not spam an alert every 15 minutes.
+    """
+
+    delta = response_byte_counter.drain()
+    now = datetime.now(UTC)
+    day_start = datetime(now.year, now.month, now.day)
+
+    backup_bytes_today = 0
+    latest = latest_backup(settings.backup_dir)
+    if latest is not None and latest.created_at.astimezone(UTC).date() == now.date():
+        backup_bytes_today = latest.size_bytes
+
+    async with AsyncSessionLocal() as session:
+        prior_counters = (
+            (
+                await session.execute(
+                    select(JobRun.counters).where(
+                        JobRun.job_name == "egress-budget",
+                        JobRun.started_at_utc >= day_start,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    prior_bytes = sum(int(row.get("response_bytes_delta", 0)) for row in prior_counters)
+    prior_max_ordinal = max(
+        (int(row.get("alert_stage_ordinal", 0)) for row in prior_counters), default=0
+    )
+
+    total_today = prior_bytes + delta + backup_bytes_today
+    stage = evaluate_egress_stage(total_today)
+    ordinal = EGRESS_STAGE_ORDINAL[stage]
+
+    if ordinal > prior_max_ordinal:
+        _log_egress_operator_alert(stage, total_today)
+
+    counters = {
+        "response_bytes_delta": delta,
+        "backup_bytes_today": backup_bytes_today,
+        "total_bytes_today": total_today,
+        "alert_stage_ordinal": ordinal,
+    }
+    if stage == "ok":
+        return JobResult.succeeded(**counters)
+    return JobResult.degraded(f"egress_budget_{stage}", **counters)
+
+
+def _log_egress_operator_alert(stage: str, total_bytes_today: int) -> None:
+    """Structured log hook, outside user pushes — same route as backup alerts."""
+
+    log.error(
+        "operator egress alert",
+        kind=f"egress_budget_{stage}",
+        total_bytes_today=total_bytes_today,
+        budget_bytes=EGRESS_BUDGET_BYTES,
         alert_route="provider_log_or_external_monitor",
     )
 
@@ -1797,5 +1880,15 @@ def create_scheduler() -> AsyncIOScheduler:
         # fan within ~4 min instead of waiting a full interval (mirrors the other
         # interval jobs). A cheap no-op outside the overnight window.
         next_run_time=datetime.now(UTC) + timedelta(minutes=4),
+    )
+    scheduler.add_job(
+        partial(run_tracked_job, "egress-budget", run_egress_budget_check),
+        trigger="interval",
+        minutes=15,
+        id="egress_budget",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        next_run_time=datetime.now(UTC) + timedelta(minutes=6),
     )
     return scheduler

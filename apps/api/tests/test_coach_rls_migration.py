@@ -18,6 +18,10 @@ import importlib.util
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncConnection
+
 from src.models import Base
 
 # The five coach tables migration 001 already placed under RLS.
@@ -84,3 +88,39 @@ def test_every_coach_model_table_is_under_rls() -> None:
         "model_tables_missing_rls": sorted(model_tables - covered),
         "rls_table_is_not_a_model": sorted(covered - model_tables),
     }
+
+
+@pytest.mark.asyncio
+async def test_every_coach_model_table_actually_has_rls_enabled(
+    db_conn: AsyncConnection,
+) -> None:
+    """CR189-11: the tests above assert a Python constant, never the live database.
+
+    A migration can declare a table in ``RLS_TABLES`` and omit the
+    ``ALTER TABLE ... ENABLE ROW LEVEL SECURITY`` statement and every test
+    above stays green. This one runs against a real ``alembic upgrade head``
+    (CI provisions Postgres and migrates before the test suite runs) and
+    checks ``pg_class.relrowsecurity`` directly, so a forgotten ENABLE
+    statement fails here even though the constant-only checks would not
+    catch it.
+    """
+
+    model_tables = set(Base.metadata.tables.keys()) - NON_MODEL_TABLES
+    rows = await db_conn.execute(
+        text(
+            """
+            SELECT c.relname, c.relrowsecurity
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'coach'
+              AND c.relkind = 'r'
+            """
+        )
+    )
+    live_rls = {row.relname: row.relrowsecurity for row in rows}
+
+    missing_from_db = model_tables - live_rls.keys()
+    assert not missing_from_db, f"tables not found in live database: {sorted(missing_from_db)}"
+
+    without_rls = sorted(name for name, enabled in live_rls.items() if not enabled)
+    assert not without_rls, f"coach tables with relrowsecurity=false: {without_rls}"

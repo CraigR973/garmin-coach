@@ -14,7 +14,11 @@ from slowapi.errors import RateLimitExceeded
 
 from src.config import Environment, docs_urls, settings
 from src.logging_config import configure_logging
-from src.middleware import CorrelationIdMiddleware, SecurityHeadersMiddleware
+from src.middleware import (
+    CorrelationIdMiddleware,
+    EgressBudgetMiddleware,
+    SecurityHeadersMiddleware,
+)
 from src.rate_limit import limiter
 from src.routers import (
     auth,
@@ -111,6 +115,7 @@ app.add_middleware(
 )
 app.add_middleware(CorrelationIdMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(EgressBudgetMiddleware)
 
 app.include_router(health.router)
 app.include_router(auth.router)
