@@ -51,7 +51,7 @@ device tokens provisioned by single-use activation links.
 ## Commands (once the api venv + web deps exist)
 - Backend test: `PYTHONPATH=apps/api apps/api/.venv/bin/python -m pytest -c apps/api/pyproject.toml` (the explicit config keeps `asyncio_mode=auto` when invoked from the repo root).
 - Backend lint/type: `PYTHONPATH=apps/api apps/api/.venv/bin/python -m ruff check apps/api/src apps/api/tests` and `PYTHONPATH=apps/api apps/api/.venv/bin/python -m mypy apps/api/src` (use absolute paths in the sandbox).
-- Frontend: `pnpm --dir apps/web test|build|lint`.
+- Frontend: `pnpm --dir apps/web test|build|lint` — but the **unit-test gate is `pnpm -r test`** (run from the repo root, Node 20), which is what CI runs. `--dir apps/web` skips `packages/shared` entirely, so a shared-schema test can pass locally by never running (Batch 206).
 
 ## Session handoff protocol (both tools)
 At the **end** of a work session: (1) update `STATUS.md` — overwrite the "Now"

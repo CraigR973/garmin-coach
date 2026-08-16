@@ -120,7 +120,6 @@ const baseSnapshot: DailyLoopEnvelope = {
       bodyBatteryEnd: 79,
       weightKg: 78.4,
       vo2max: 54,
-      rawPayload: {},
     },
     sleep: {
       id: '44444444-4444-4444-8444-444444444444',
@@ -147,7 +146,6 @@ const baseSnapshot: DailyLoopEnvelope = {
       restlessMomentsCount: 3,
       bodyBatteryChange: 55,
       factorsJson: {},
-      rawPayload: {},
     },
     manualEntry: null,
     postWorkoutAnalyses: [],

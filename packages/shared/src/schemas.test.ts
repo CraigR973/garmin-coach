@@ -108,6 +108,34 @@ describe('v1 shared schemas', () => {
     expect(() => manualEntryInputSchema.parse({ subjectiveScore: 11 })).toThrow();
   });
 
+  it('drops the raw Garmin blob rather than handing it to the browser', () => {
+    // Batch 206 / UX192-09: rawPayload shipped the whole stored Garmin response
+    // in every daily-loop payload (~14 kB daily metric, ~22 kB sleep in
+    // production) and no component ever read it. zod strips unknown keys
+    // silently, so a server that regressed and started sending it again would
+    // produce no error anywhere — this asserts the parsed object stays clean.
+    const metric = dailyMetricSchema.parse({
+      id: rowId,
+      userId,
+      calendarDate: '2026-06-18',
+      readinessScore: 82,
+      rawPayload: { source: 'training_readiness.json' },
+    }) as Record<string, unknown>;
+    const sleep = sleepSchema.parse({
+      id: rowId,
+      userId,
+      calendarDate: '2026-06-18',
+      score: 70,
+      rawPayload: { dailySleepDTO: {} },
+    }) as Record<string, unknown>;
+
+    expect('rawPayload' in metric).toBe(false);
+    expect('rawPayload' in sleep).toBe(false);
+    // The readings beside it still arrive.
+    expect(metric.readinessScore).toBe(82);
+    expect(sleep.score).toBe(70);
+  });
+
   it('keeps Garmin readiness recovery time in minutes', () => {
     const parsed = dailyMetricSchema.parse({
       id: rowId,
@@ -117,7 +145,6 @@ describe('v1 shared schemas', () => {
       readinessScore: 82,
       readinessLevel: 'HIGH',
       recoveryTimeMin: 540,
-      rawPayload: { source: 'training_readiness.json' },
     });
 
     expect(parsed.recoveryTimeMin).toBe(540);
@@ -392,7 +419,6 @@ describe('v1 shared schemas', () => {
       ageAdjustedScore: 74,
       remSleepSec: 3780,
       factorsJson: {},
-      rawPayload: {},
     });
 
     expect(parsed.score).toBe(70);

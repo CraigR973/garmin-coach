@@ -39,7 +39,6 @@ export const dailyMetricSchema = z.object({
   bodyBatteryEnd: z.number().int().nullable().optional(),
   weightKg: z.number().nullable().optional(),
   vo2max: z.number().nullable().optional(),
-  rawPayload: jsonObjectSchema.default({}),
 });
 
 export const sleepSchema = z.object({
@@ -67,7 +66,6 @@ export const sleepSchema = z.object({
   restlessMomentsCount: z.number().int().nullable().optional(),
   bodyBatteryChange: z.number().int().nullable().optional(),
   factorsJson: jsonObjectSchema.default({}),
-  rawPayload: jsonObjectSchema.default({}),
 });
 
 export const activitySchema = z.object({

@@ -1241,3 +1241,41 @@ async def test_post_activity_analyses_keep_latest_per_activity(
     assert len(workout) == 1
     assert workout[0].context_packet["postRideCheckIn"]["rpe"] == 4
     assert "RPE 4" in workout[0].output_markdown
+
+
+# --- Batch 206 / UX192-09 ---------------------------------------------------
+
+
+def test_daily_loop_does_not_ship_the_raw_garmin_blobs() -> None:
+    """The daily loop stops sending what the browser never opens.
+
+    ``DailyMetricOut`` and ``SleepOut`` used to carry ``rawPayload`` — the whole
+    stored Garmin response, measured in production at roughly 14 kB and 22 kB per
+    row before JSON expansion — into every ``/api/v1/daily-loop`` response, on the
+    slowest path in the app. Nothing in ``apps/web/src`` ever read it: the shared
+    zod schema validated it and no component touched it.
+
+    The columns themselves are untouched and still feed the server-side readers
+    (``routers/bedroom.py`` ``extract_hypnogram``, ``morning_analysis``'s
+    ``_training_and_activity_fields`` / ``_extract_fitness_age``, and
+    ``daily_metric_coverage``), which read the row directly. This guards only the
+    wire format, because the failure it prevents is silent: re-adding the field
+    costs nothing locally and shows up as a slower cold load on Mark's phone.
+    """
+    assert "rawPayload" not in daily_loop_router.DailyMetricOut.model_fields
+    assert "rawPayload" not in daily_loop_router.SleepOut.model_fields
+
+
+def test_daily_loop_still_serves_the_fields_the_app_reads() -> None:
+    """A negative guard is only safe beside a positive one.
+
+    Removing a field from a response model cannot be proved correct by its own
+    absence, so pin the neighbouring readings that Home and the sleep page do
+    render.
+    """
+    metric_fields = daily_loop_router.DailyMetricOut.model_fields
+    sleep_fields = daily_loop_router.SleepOut.model_fields
+    for field in ("readinessScore", "recoveryTimeMin", "hrvLastNightAvgMs", "vo2max"):
+        assert field in metric_fields, field
+    for field in ("score", "ageAdjustedScore", "remSleepSec", "factorsJson"):
+        assert field in sleep_fields, field

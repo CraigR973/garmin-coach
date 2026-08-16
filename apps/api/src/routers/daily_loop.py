@@ -410,7 +410,6 @@ class DailyMetricOut(BaseModel):
     bodyBatteryEnd: int | None
     weightKg: float | None
     vo2max: float | None
-    rawPayload: dict[str, Any]
 
 
 class SleepOut(BaseModel):
@@ -438,7 +437,6 @@ class SleepOut(BaseModel):
     restlessMomentsCount: int | None
     bodyBatteryChange: int | None
     factorsJson: dict[str, Any]
-    rawPayload: dict[str, Any]
 
 
 class DeliveryStateOut(BaseModel):
@@ -962,7 +960,6 @@ def _serialize_daily_metric(metric: DailyMetric | None) -> DailyMetricOut | None
         bodyBatteryEnd=metric.body_battery_end,
         weightKg=metric.weight_kg,
         vo2max=metric.vo2max,
-        rawPayload=metric.raw_payload,
     )
 
 
@@ -994,7 +991,6 @@ def _serialize_sleep(sleep: Sleep | None) -> SleepOut | None:
         restlessMomentsCount=sleep.restless_moments_count,
         bodyBatteryChange=sleep.body_battery_change,
         factorsJson=sleep.factors_json,
-        rawPayload=sleep.raw_payload,
     )
 
 
