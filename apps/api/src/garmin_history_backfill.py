@@ -42,7 +42,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database import AsyncSessionLocal
-from src.models.coaching import DailyMetric
+from src.models.coaching import DAILY_METRIC_PHASE_SETTLED, DailyMetric
 from src.models.profile import Profile
 from src.services.daily_metric_coverage import daily_aggregate_coverage
 from src.services.garmin_sync import (
@@ -140,9 +140,19 @@ async def _retry(operation: Callable[[], Any]) -> Any:
 
 
 async def _has_daily_metric(session: AsyncSession, user_id: Any, day: date) -> bool:
+    """Whether this importer's own row exists — settled, the phase it writes.
+
+    Batch 205: a phase-blind check would treat a day that only has a wake row
+    as already imported and skip the settled history this backfill exists to
+    fetch.
+    """
     result = await session.execute(
         select(DailyMetric.id)
-        .where(DailyMetric.user_id == user_id, DailyMetric.calendar_date == day)
+        .where(
+            DailyMetric.user_id == user_id,
+            DailyMetric.calendar_date == day,
+            DailyMetric.phase == DAILY_METRIC_PHASE_SETTLED,
+        )
         .limit(1)
     )
     return result.first() is not None
@@ -201,7 +211,15 @@ async def run_backfill(
                     f"aggregates={coverage.status}  (dry-run)"
                 )
             else:
-                result = await sync_service.sync_daily(profile.id, day, payloads, commit=True)
+                # Importing history: every day fetched here has already closed,
+                # so Garmin is returning its settled reading, not a wake one.
+                result = await sync_service.sync_daily(
+                    profile.id,
+                    day,
+                    payloads,
+                    phase=DAILY_METRIC_PHASE_SETTLED,
+                    commit=True,
+                )
                 summary.daily_metrics_synced += result.daily_metrics_synced
                 summary.sleep_synced += result.sleep_synced
                 summary.days_synced += 1

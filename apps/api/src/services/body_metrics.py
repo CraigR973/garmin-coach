@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import DailyMetric
+from src.services.daily_metric_phase import morning_first_order
 
 DEFAULT_WEIGHT_LOOKBACK_DAYS = 7
 # VO2max is recomputed far less often than a weigh-in (Garmin derives it from
@@ -49,7 +50,10 @@ async def resolve_effective_weight_kg(
                     DailyMetric.calendar_date <= as_of_date,
                     DailyMetric.weight_kg.is_not(None),
                 )
-                .order_by(DailyMetric.calendar_date.desc())
+                # Batch 205: a date can carry both a wake and a closed-day row,
+                # so break the tie deliberately instead of letting the planner
+                # pick. The wake row is where a weigh-in actually lands.
+                .order_by(DailyMetric.calendar_date.desc(), morning_first_order())
                 .limit(1)
             )
         )
@@ -87,7 +91,10 @@ async def resolve_effective_vo2max(
                     DailyMetric.calendar_date <= as_of_date,
                     DailyMetric.vo2max.is_not(None),
                 )
-                .order_by(DailyMetric.calendar_date.desc())
+                # Batch 205: a date can carry both a wake and a closed-day row,
+                # so break the tie deliberately instead of letting the planner
+                # pick. The wake row is where a weigh-in actually lands.
+                .order_by(DailyMetric.calendar_date.desc(), morning_first_order())
                 .limit(1)
             )
         )

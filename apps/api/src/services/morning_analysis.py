@@ -46,6 +46,11 @@ from src.services.daily_metric_coverage import (
     coverage_packet,
     daily_aggregate_coverage,
 )
+from src.services.daily_metric_phase import (
+    morning_first_order,
+    prefer_morning,
+    settled_first_order,
+)
 from src.services.feedback import FeedbackService
 from src.services.generation_requests import (
     claim_generation_request,
@@ -784,13 +789,17 @@ class MorningAnalysisService:
         return list(rows)
 
     async def _daily_metric(self, user_id: uuid.UUID, subject_date: date) -> DailyMetric | None:
+        """The wake observation — this packet *is* the morning read (Batch 205)."""
         return cast(
             DailyMetric | None,
             await self.session.scalar(
-                select(DailyMetric).where(
+                select(DailyMetric)
+                .where(
                     DailyMetric.user_id == user_id,
                     DailyMetric.calendar_date == subject_date,
                 )
+                .order_by(morning_first_order())
+                .limit(1)
             ),
         )
 
@@ -899,13 +908,20 @@ class MorningAnalysisService:
             .scalars()
             .all()
         )
+        # Deliberately settled, not morning (Batch 205): this packet answers
+        # "what did yesterday cost", which is a whole-day question. Yesterday's
+        # wake reading predates yesterday's session entirely, so it is the one
+        # place the closed-day observation is the honest input.
         daily_metric = cast(
             DailyMetric | None,
             await self.session.scalar(
-                select(DailyMetric).where(
+                select(DailyMetric)
+                .where(
                     DailyMetric.user_id == user_id,
                     DailyMetric.calendar_date == yesterday,
                 )
+                .order_by(settled_first_order())
+                .limit(1)
             ),
         )
         if not activities:
@@ -963,7 +979,11 @@ class MorningAnalysisService:
             .scalars()
             .all()
         )
-        return [(row.calendar_date, row.readiness_score) for row in rows]
+        # CI191-02 consequence 2: this history is compared against a morning
+        # reading, so it has to be built from morning readings. Built from the
+        # settled rows it was an apples-to-oranges comparison biased toward a
+        # lower floor.
+        return [(row.calendar_date, row.readiness_score) for row in prefer_morning(rows)]
 
     async def _weather(self, user_id: uuid.UUID, subject_date: date) -> WeatherDaily | None:
         return cast(

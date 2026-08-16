@@ -55,6 +55,7 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile
+from src.services.daily_metric_phase import index_morning_by_date
 from src.services.personal_baselines import baseline_band_packet
 from src.services.reviews import (
     AnthropicReviewClient,
@@ -750,7 +751,9 @@ class TrendsService:
         weather = await self._rows(WeatherDaily, player.id, start, end)
         indoor = await self._indoor_peaks(player.id, start, end, player.timezone)
 
-        metric_by_date = {m.calendar_date: m for m in metrics}
+        # Morning rows (Batch 205): a trend line Mark reads back must be the
+        # series his briefs were built from, not the end-of-day one.
+        metric_by_date = index_morning_by_date(metrics)
         sleep_by_date = {s.calendar_date: s for s in sleeps}
         weather_by_date = {w.calendar_date: w for w in weather}
         all_days = set(metric_by_date) | set(sleep_by_date) | set(weather_by_date) | set(indoor)

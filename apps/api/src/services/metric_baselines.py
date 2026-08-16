@@ -30,6 +30,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.coaching import DailyMetric, KnowledgeBase, MetricBaseline, Sleep
 from src.models.profile import Profile
 from src.services.daily_metric_coverage import complete_body_battery_charged
+from src.services.daily_metric_phase import (
+    index_day_aggregates_by_date,
+    index_morning_by_date,
+)
 from src.services.sleep_history import BaselineSample, compute_metric_baselines
 from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
 
@@ -73,6 +77,7 @@ def sample_values(
     *,
     age: int | None = None,
     sex: str | None = None,
+    day_aggregates: DailyMetric | None = None,
 ) -> Mapping[str, float | int | None]:
     """One day's baseline inputs keyed by ``metric_key``.
 
@@ -91,8 +96,15 @@ def sample_values(
         "age_adjusted_sleep_score": age_adjusted_score,
         "readiness_score": metric.readiness_score if metric else None,
         "resting_heart_rate_bpm": resting_heart_rate,
+        # Batch 205: `metric` is the wake row, but Body Battery charge is a
+        # finished local-day total. `day_aggregates` carries the settled row for
+        # the same date; without it the coverage gate would blank this metric on
+        # every historical day. Defaults to `metric` so a caller with one row
+        # keeps the old behaviour.
         "body_battery_charge": (
-            complete_body_battery_charged(metric) if metric is not None else None
+            complete_body_battery_charged(day_aggregates if day_aggregates is not None else metric)
+            if (day_aggregates is not None or metric is not None)
+            else None
         ),
         "average_spo2_pct": sleep.average_spo2_pct if sleep else None,
         "average_respiration": sleep.average_respiration if sleep else None,
@@ -179,7 +191,12 @@ class MetricBaselineBackfillService:
             .all()
         )
         sleep_by_date = {row.calendar_date: row for row in sleep_rows}
-        metric_by_date = {row.calendar_date: row for row in metric_rows}
+        # CI191-02 consequence 2: these 84-day quartiles are the personal
+        # baselines the readiness floor keys off, and they are compared against a
+        # morning reading. A plain `{row.calendar_date: row}` here would now pick
+        # whichever phase the query happened to return last.
+        metric_by_date = index_morning_by_date(metric_rows)
+        aggregate_by_date = index_day_aggregates_by_date(metric_rows)
         all_dates = sorted(set(sleep_by_date) | set(metric_by_date))
         if not all_dates:
             return []
@@ -198,6 +215,7 @@ class MetricBaselineBackfillService:
                     metric_by_date.get(day),
                     age=age,
                     sex=sex,
+                    day_aggregates=aggregate_by_date.get(day),
                 ),
             )
             for day in all_dates

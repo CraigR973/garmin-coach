@@ -14,7 +14,7 @@ from openpyxl import load_workbook
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.coaching import DailyMetric, MetricBaseline, Sleep
+from src.models.coaching import DAILY_METRIC_PHASE_SETTLED, DailyMetric, MetricBaseline, Sleep
 from src.models.profile import Profile
 
 SLEEP_HISTORY_SOURCE = "sleep_history_xlsx"
@@ -300,7 +300,11 @@ class SleepHistoryImportService:
             if metric is None:
                 daily_created += 1
                 if not dry_run:
-                    metric = DailyMetric(user_id=profile.id, calendar_date=row.calendar_date)
+                    metric = DailyMetric(
+                        user_id=profile.id,
+                        calendar_date=row.calendar_date,
+                        phase=DAILY_METRIC_PHASE_SETTLED,
+                    )
                     self.session.add(metric)
                     existing_metrics[row.calendar_date] = metric
                     _apply_fields(metric, row.to_daily_metric_fields())
@@ -351,8 +355,17 @@ class SleepHistoryImportService:
     async def _load_existing_metrics(
         self, user_id: Any, rows: list[SleepHistoryRow]
     ) -> dict[date, DailyMetric]:
+        """Settled rows only — this importer writes closed-day history.
+
+        Batch 205: an unfiltered lookup would now return either phase, and
+        applying an export's day-level figures on top of a wake row would
+        destroy the very observation the verdict was computed from.
+        """
         statement = _date_window_select(
-            select(DailyMetric), DailyMetric.user_id == user_id, DailyMetric.calendar_date, rows
+            select(DailyMetric).where(DailyMetric.phase == DAILY_METRIC_PHASE_SETTLED),
+            DailyMetric.user_id == user_id,
+            DailyMetric.calendar_date,
+            rows,
         )
         result = await self.session.execute(statement)
         return {row.calendar_date: row for row in result.scalars().all()}

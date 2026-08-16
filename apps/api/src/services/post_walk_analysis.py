@@ -36,6 +36,7 @@ from src.services.bulk_post_activity_lookups import (
     latest_checkins_by_activity,
 )
 from src.services.coaching_state import CoachingStateService
+from src.services.daily_metric_phase import morning_first_order
 from src.services.generation_requests import (
     claim_generation_request,
     manual_entry_generation_version,
@@ -535,13 +536,17 @@ class PostWalkAnalysisService:
         return list(rows)
 
     async def _daily_metric(self, user_id: uuid.UUID, subject_date: date) -> DailyMetric | None:
+        """The wake observation, matching that morning's read (Batch 205)."""
         return cast(
             DailyMetric | None,
             await self.session.scalar(
-                select(DailyMetric).where(
+                select(DailyMetric)
+                .where(
                     DailyMetric.user_id == user_id,
                     DailyMetric.calendar_date == subject_date,
                 )
+                .order_by(morning_first_order())
+                .limit(1)
             ),
         )
 

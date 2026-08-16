@@ -29,6 +29,7 @@ from src.models.profile import Profile
 from src.services.activity_dates import activity_local_date as _activity_local_date
 from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
 from src.services.daily_loop_state import LoopState, describe_loop_state, is_evening
+from src.services.daily_metric_phase import morning_first_order
 from src.services.feedback import FeedbackService
 from src.services.holiday_pause import HolidayPauseService, HolidayWindow
 from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
@@ -356,13 +357,22 @@ class DailyLoopService:
         )
 
     async def _daily_metric(self, user_id: uuid.UUID, subject_date: date) -> DailyMetric | None:
+        """The wake observation (Batch 205).
+
+        This snapshot backs the figures Mark reads beside that date's verdict,
+        so it has to be the reading the verdict was computed from — including
+        when he pages back to an earlier day.
+        """
         return (
             (
                 await self.session.execute(
-                    select(DailyMetric).where(
+                    select(DailyMetric)
+                    .where(
                         DailyMetric.user_id == user_id,
                         DailyMetric.calendar_date == subject_date,
                     )
+                    .order_by(morning_first_order())
+                    .limit(1)
                 )
             )
             .scalars()

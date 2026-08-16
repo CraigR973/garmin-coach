@@ -39,6 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.coaching import Analysis, DailyMetric, PlanBlock, PlannedWorkout
 from src.models.profile import Profile
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
+from src.services.daily_metric_phase import morning_first_order
 from src.services.vo2_progression import build_vo2_structured_workout, select_vo2_protocol
 from src.services.workout_delivery import (
     IntervalsEventClient,
@@ -478,7 +479,11 @@ class WeeklyRestructureService:
         self.rail = WorkoutDeliveryService(session, intervals_client=intervals_client)
 
     async def assess_recovery_signal(self, player: Profile, *, as_of: date) -> RecoverySignal:
-        """Derive a fatigue signal from readiness, HRV, and the verdict trend."""
+        """Derive a fatigue signal from readiness, HRV, and the verdict trend.
+
+        Batch 205: readiness and HRV here mean the wake readings, matching the
+        verdict trend they are weighed beside.
+        """
         metric = (
             await self.session.execute(
                 select(DailyMetric)
@@ -486,7 +491,7 @@ class WeeklyRestructureService:
                     DailyMetric.user_id == player.id,
                     DailyMetric.calendar_date <= as_of,
                 )
-                .order_by(DailyMetric.calendar_date.desc())
+                .order_by(DailyMetric.calendar_date.desc(), morning_first_order())
                 .limit(1)
             )
         ).scalar_one_or_none()
