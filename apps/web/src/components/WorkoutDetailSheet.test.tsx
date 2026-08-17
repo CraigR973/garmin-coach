@@ -133,9 +133,11 @@ describe('WorkoutDetailSheet completed read (Batch 152)', () => {
     expect(await screen.findByText(/held every work interval/)).toBeTruthy();
     expect(screen.getByText('maintain')).toBeTruthy();
 
-    // Reuses Home's read stack — rate/correct and the follow-up chat.
+    // Reuses Home's read stack for rate/correct. Batch 207 removed the inline
+    // follow-up chat: there is one coach, reached from the launcher, and this
+    // sheet anchors it to the session's read rather than hosting a second box.
     expect(screen.getByText('Was this right?')).toBeTruthy();
-    expect(screen.getByText('Ask about this read')).toBeTruthy();
+    expect(screen.queryByText('Ask about this read')).toBeNull();
 
     // The planned structure stays available as reference.
     expect(screen.getByText('Session structure')).toBeTruthy();
@@ -147,7 +149,6 @@ describe('WorkoutDetailSheet completed read (Batch 152)', () => {
     expect(await screen.findByText(/No read yet/)).toBeTruthy();
     // No read means no interactive stack to key to an analysis.
     expect(screen.queryByText('Was this right?')).toBeNull();
-    expect(screen.queryByText('Ask about this read')).toBeNull();
   });
 
   it('shows an honest in-flight state while the session read is generating', async () => {

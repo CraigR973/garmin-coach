@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import { Activity, BedDouble, ClipboardCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { BriefFollowUpChat } from '@/components/BriefFollowUpChat';
 import { BriefListenControls } from '@/components/BriefListenControls';
+import { useRegisterCoachAnchor } from '@/contexts/CoachAnchorContext';
 import { Markdown } from '@/components/Markdown';
 import { MetricComparisonTable } from '@/components/MetricComparisonTable';
 import { PageHeader } from '@/components/PageHeader';
@@ -26,6 +26,13 @@ export function MorningBriefPage() {
       markBriefReviewed(loaded.subjectDate);
     }
   }, [query.data]);
+
+  // Batch 207: no inline chat on this page any more — the app-wide coach
+  // anchors to this read instead, so a question asked from the launcher while
+  // standing on the brief still arrives attached to it. Registered above the
+  // loading/error early returns so the hook count never changes between
+  // renders.
+  useRegisterCoachAnchor(query.data?.data.morningAnalysis?.id);
 
   if (query.isLoading) {
     return (
@@ -101,11 +108,6 @@ export function MorningBriefPage() {
             </CardHeader>
             <CardContent>
               <Markdown>{analysis.outputMarkdown}</Markdown>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <BriefFollowUpChat analysisId={analysis.id} timeZone={data.timezone} />
             </CardContent>
           </Card>
         </>
