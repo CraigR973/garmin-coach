@@ -1,15 +1,72 @@
 # Coaching-Integrity Audit — Garmin Coach
 
 **Original audit:** 2026-07-10 · **Refreshes:** 2026-07-26 (Batch 155),
-2026-08-06 (Batch 191) ·
+2026-08-06 (Batch 191), 2026-08-17 (Batch 211) ·
 **Auditor lens:** exercise physiologist + cycling coach ·
 **Status:** internal / candid — this document names the exact input-manipulation
 vectors. Not for Mark. (Mark-safe scorecards:
 `docs/reviews/BATCH_155_MARK_SCORECARD.md`,
-`docs/reviews/BATCH_191_MARK_SCORECARD.md`.)
+`docs/reviews/BATCH_191_MARK_SCORECARD.md`,
+`docs/reviews/BATCH_211_MARK_SCORECARD.md`.)
 
 **This file is the running framework and the 2026-07-10 baseline.** Each refresh
 adds a summary block here; the full report for a refresh lives in `docs/reviews/`.
+
+---
+
+## 2026-08-17 Refresh (Batch 211)
+
+**Full report:** `docs/reviews/BATCH_211_COACHING_INTEGRITY_REFRESH.md`
+(1 new finding, `CI211-01`, Low).
+
+**Grade: A− (up from B+).** Both of Batch 191's Highs are closed, and this is the
+first refresh where the grade moved.
+
+**CI191-02 is closed and *observed*.** Batch 205 keyed `daily_metrics` on
+`(user_id, calendar_date, phase)`. Exactly one wake sync has run since it shipped
+— 2026-08-17 — and it wrote today's `morning` row and re-synced the closed days
+into `settled` rows without touching a single wake row. The case worth keeping is
+**08-15**: Mark was told **69 / MODERATE with a 1-minute clock**; the settled row
+for that same day reads **26 / LOW with 2,849 minutes**. Under the old schema
+every retrospective consumer would by now be reading the second number for a
+morning the coaching called moderate.
+
+**CI191-01 is closed and *proved*, not yet observed.** Batch 194 bounded the
+check-in exclusion four ways and all four are independently demonstrable by
+driving the real `_qualify_red_morning`: physiology may contradict the excuse,
+`training_load`/`deliberate_rest` never excuse at all, the exclusion expires after
+a few days, and it is capped at one. The decisive probe replays the **actual**
+2026-08-07 Red — `alcohol`, HRV 43 against a floor of 45, resting HR 47 against a
+ceiling of 45 — which the old rule excused and the current rule counts
+(`acute_cause_with_systemic_strain`). It has not fired on a live morning because
+Mark has had no Red since 2026-08-08, which predates the fix. **That reservation
+is the only thing between A− and A.**
+
+**CI191-08 closed:** all five deterministic protections (`trainingLoadCap`,
+`sleepCreditCeiling`, `cumulativeEscalation`, `readinessBaselineTrend`,
+`chronicAction`) are now in `coach_policy.FLOORS`, which carries 10 floors each
+with a recognizer *and* a failing negative control.
+
+**The spoken layer has started speaking** — `state_change` turns 0 → 1, newest
+weekly review 2026-06-29 → 2026-08-16, user turns 41 → 92 — so Batch 191's
+mitigating "it has barely spoken" no longer applies. It is speaking into a
+materially better-guarded prompt surface.
+
+**Verdict distribution reversed, as intended:** 48% → 71% → 75% → **59% Green**
+(32 reads / 30 days: 19 Green, 5 Amber, 8 Red). Every mechanism added in 194/199/
+201 only ever hardens.
+
+**New finding CI211-01 (Low):** sixteen `workout_delivery_proposals` sit at
+`proposed` and **every one is for a workout date already past** (27 Jun → 13 Aug),
+none ever pushed. No expiry path exists. Hygiene rather than a live defect — the
+daily loop looks proposals up by `planned_workout_id`, so they cannot surface
+against a current session — but it is the same shape as CI191-03, which Batch
+194.3 fixed only for the withdrawal path.
+
+**Observation window — the caveat that matters.** Batch 194 shipped 08-15 (two
+mornings) and Batch 205 shipped 08-16 (**one** morning). Batch 191 had twelve.
+Every claim in the full report is labelled *observed*, *proved* or *implemented*
+accordingly, and a wider-window re-run is the first item carried forward.
 
 ---
 
