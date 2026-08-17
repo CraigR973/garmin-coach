@@ -340,7 +340,6 @@ const historicalSnapshot: DailyLoopEnvelope = {
       restlessMomentsCount: 8,
       bodyBatteryChange: 62,
       factorsJson: {},
-      rawPayload: {},
     },
     chronicSuggestions: undefined,
   },
