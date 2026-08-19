@@ -1225,9 +1225,20 @@ class ExecutableCoachingService:
 
         source_content = self._content_snapshot(workout)
         target_content = self._content_snapshot(target_workout) if target_workout else None
-        workout.is_active = False
-        if target_workout is not None:
-            target_workout.is_active = False
+        # Batch 213: `_active_workout_on` deliberately excludes a skipped row when
+        # picking a swap partner (there's nothing to swap with), but that must not
+        # leave the skipped row as a second active row once its date gets a
+        # reslotted replacement. Deactivate every same-category active occupant on
+        # both dates — not just the ones chosen as swap partners — so a stale
+        # skipped row can never survive a swap through this date again.
+        for stale in await self._active_occupants_on(
+            player.id, source_date, category=source_category
+        ):
+            stale.is_active = False
+        for stale in await self._active_occupants_on(
+            player.id, target_date, category=source_category
+        ):
+            stale.is_active = False
         await self.session.flush()
 
         new_source = await self._reslot(player, source_content, target_date)
@@ -1328,6 +1339,37 @@ class ExecutableCoachingService:
                 return proposal
         return None
 
+    async def _active_occupants_on(
+        self, user_id: uuid.UUID, workout_date: date, *, category: str | None = None
+    ) -> list[PlannedWorkout]:
+        """Every ``is_active`` row on a date, highest version first — including a
+        ``skipped`` one (Batch 213).
+
+        This is the superset :meth:`_active_workout_on` filters down when picking
+        a swap partner. Use this one when the question is "what must be
+        deactivated here", not "what can I swap with" — those are different
+        questions, and conflating them is what let a skipped row survive a swap
+        onto its date as a second active row.
+        """
+        candidates = (
+            (
+                await self.session.execute(
+                    select(PlannedWorkout)
+                    .where(
+                        PlannedWorkout.user_id == user_id,
+                        PlannedWorkout.workout_date == workout_date,
+                        PlannedWorkout.is_active.is_(True),
+                    )
+                    .order_by(PlannedWorkout.version.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if category is None:
+            return list(candidates)
+        return [w for w in candidates if category_for_workout_type(w.workout_type) == category]
+
     async def _active_workout_on(
         self, user_id: uuid.UUID, workout_date: date, *, category: str | None = None
     ) -> PlannedWorkout | None:
@@ -1338,24 +1380,8 @@ class ExecutableCoachingService:
         Bodyweight) resolves to the same-category session rather than an arbitrary
         ``.limit(1)`` pick. With no category it keeps the prior behaviour.
         """
-        candidates = (
-            (
-                await self.session.execute(
-                    select(PlannedWorkout)
-                    .where(
-                        PlannedWorkout.user_id == user_id,
-                        PlannedWorkout.workout_date == workout_date,
-                        PlannedWorkout.is_active.is_(True),
-                        PlannedWorkout.status != WORKOUT_STATUS_SKIPPED,
-                    )
-                    .order_by(PlannedWorkout.version.desc())
-                )
-            )
-            .scalars()
-            .all()
-        )
-        for workout in candidates:
-            if category is None or category_for_workout_type(workout.workout_type) == category:
+        for workout in await self._active_occupants_on(user_id, workout_date, category=category):
+            if workout.status != WORKOUT_STATUS_SKIPPED:
                 return workout
         return None
 

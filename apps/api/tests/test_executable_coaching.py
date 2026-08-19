@@ -2667,6 +2667,54 @@ async def test_swap_moves_into_empty_day_and_stays_idempotent(db_conn: AsyncConn
 
 
 @pytest.mark.asyncio
+async def test_swap_onto_a_skipped_day_deactivates_the_ghost(db_conn: AsyncConnection) -> None:
+    """Batch 213, the exact 08-11 production shape: ``_active_workout_on``
+    treats a skipped occupant as "no swap partner" (nothing to swap with), but
+    that must not leave the skipped row as a second active row once its date
+    gets a reslotted replacement — the ghost `weekly_mix` was double-counting."""
+    user_id = uuid.uuid4()
+    ghost_id, source_id = uuid.uuid4(), uuid.uuid4()
+    mon, wed = date(2026, 8, 10), date(2026, 8, 12)
+    await _seed_bike(db_conn, user_id, source_id, workout_date=mon)
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            PlannedWorkout(
+                id=ghost_id,
+                user_id=user_id,
+                workout_date=wed,
+                version=1,
+                title="VO2 Max 30/30",
+                workout_type="bike_vo2",
+                status="skipped",
+                is_active=True,
+                planned_duration_min=60,
+                intensity_target="105-110% FTP",
+                structured_workout=VO2_STRUCTURED,
+                source="test",
+            )
+        )
+        await session.commit()
+
+    fake = _FakeIntervalsClient()
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session, intervals_client=fake)
+        await service.reconcile_deliveries(user, start_date=mon, end_date=mon)
+
+        new_source = await service.swap_day(user, planned_workout_id=source_id, target_date=wed)
+        assert new_source.workout_date == wed
+
+        # Exactly one active row remains on the target date — the skipped ghost
+        # is gone, not sitting beside the new session.
+        active_on_wed = await _active_all_on(session, user_id, wed)
+        assert [w.id for w in active_on_wed] == [new_source.id]
+        ghost = await session.get(PlannedWorkout, ghost_id)
+        assert ghost is not None and ghost.is_active is False
+
+
+@pytest.mark.asyncio
 async def test_swap_swaps_two_occupied_days(db_conn: AsyncConnection) -> None:
     user_id = uuid.uuid4()
     a_id, b_id = uuid.uuid4(), uuid.uuid4()
