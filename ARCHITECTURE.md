@@ -230,6 +230,18 @@ Assembles a context packet (KB + DB data + rolling trend + plan) and calls Claud
   whole-ride average, which is relabelled context; warm-up/recovery/cool-down power is described,
   never graded, and a `fade`/HR-drift signal grounds "held power / no fade" claims. A free/outdoor
   ride with no planned IR falls back to the whole-ride + zone-histogram read (Batch 44, DECISIONS #114).
+  Batch 214 / DECISIONS #292 makes that segmentation survive a mid-ride pause and stops it grading
+  what it cannot locate: the trace is sliced on Garmin's pause-excluding `sumMovingDuration` when the
+  column is present and monotonic (the planned windows are timer time, so a 110 s pause used to shift
+  every later window by its whole length — invisible on a steady block, fatal on a 12 s sprint), and a
+  lap's `duration`/`elapsedDuration` preference follows the chosen clock. A work step at or below 30 s
+  is neuromuscular and grades on **peak** power rather than window mean — `maxPowerWatts`/`peakPctFtp`
+  are new — searched either side of its nominal window by the step's own duration when the boundaries
+  were not observed, and never graded "over". Any work interval recording below an adjacent recovery
+  is a segmentation failure rather than a performance result: the grade is withheld with a
+  `gradeWithheldReason`, counted as `execution.ungradedCount`, and the prompt is forbidden from
+  offering any trainer/ERG/pacing/fatigue explanation for it. `detect_ride_deviation` will not flag
+  "every work interval in one direction" while any grade is withheld.
   Since Batch 87 / DECISIONS #160 this is **check-in-first for all four supported activity
   types** (ride / strength / flexibility / deliberate walk): sync nudges without generating,
   the generic activity-linked check-in dispatches to the correct reader and returns the new read
