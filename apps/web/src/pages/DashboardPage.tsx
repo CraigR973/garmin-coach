@@ -1679,11 +1679,37 @@ function WorkoutRow({
  *  analysis. */
 type RideIntervalRow = DailyLoopData['postWorkoutAnalyses'][number]['intervals'][number];
 
-function intervalAdherenceBadge(adherence: RideIntervalRow['adherence']) {
+function intervalAdherenceBadge(interval: RideIntervalRow) {
+  // Batch 214: a withheld grade is the app admitting it could not place the window on
+  // the effort. Rendering nothing would read as "no result"; it has to say so.
+  if (interval.gradeWithheldReason) {
+    return { variant: 'muted' as const, label: 'Not measured' };
+  }
+  const { adherence } = interval;
   if (adherence === 'on') return { variant: 'success' as const, label: 'On target' };
   if (adherence === 'over') return { variant: 'warning' as const, label: 'Over' };
   if (adherence === 'under') return { variant: 'warning' as const, label: 'Under' };
   return null;
+}
+
+function intervalLength(durationSec: number): string {
+  // A 12-second sprint is not "0 min".
+  return durationSec < 60 ? `${Math.round(durationSec)} s` : `${Math.round(durationSec / 60)} min`;
+}
+
+// The number the grade was actually made on: a short effort's peak, or the held mean.
+function intervalHeld(interval: RideIntervalRow): string {
+  if (interval.gradeWithheldReason) return '—';
+  const graded = interval.gradedPctFtp ?? interval.pctFtp;
+  if (graded == null) return '—';
+  const peakGraded = interval.peakPctFtp != null && interval.gradedPctFtp === interval.peakPctFtp;
+  if (peakGraded) {
+    const watts = interval.maxPowerWatts != null ? ` · ${Math.round(interval.maxPowerWatts)} W` : '';
+    return `${Math.round(graded)}% peak${watts}`;
+  }
+  const watts =
+    interval.normalizedPowerWatts != null ? ` · ${Math.round(interval.normalizedPowerWatts)} W` : '';
+  return `${Math.round(graded)}%${watts}`;
 }
 
 function intervalTarget(interval: RideIntervalRow): string {
@@ -1717,23 +1743,22 @@ function RideIntervalTable({ intervals }: { intervals: RideIntervalRow[] }) {
           </thead>
           <tbody>
             {work.map((interval) => {
-              const badge = intervalAdherenceBadge(interval.adherence);
+              const badge = intervalAdherenceBadge(interval);
               return (
                 <tr key={interval.index} className="border-t border-border">
                   <td className="px-3 py-2 text-text-primary">
-                    {Math.round(interval.durationSec / 60)} min {interval.label}
+                    {intervalLength(interval.durationSec)} {interval.label}
                   </td>
                   <td className="px-3 py-2 text-text-secondary">{intervalTarget(interval)}</td>
-                  <td className="px-3 py-2 text-text-secondary">
-                    {interval.pctFtp != null ? `${Math.round(interval.pctFtp)}%` : '—'}
-                    {interval.normalizedPowerWatts != null
-                      ? ` · ${Math.round(interval.normalizedPowerWatts)} W`
-                      : ''}
-                  </td>
+                  <td className="px-3 py-2 text-text-secondary">{intervalHeld(interval)}</td>
                   <td className="px-3 py-2">
                     <span className="flex flex-wrap items-center gap-1.5">
                       {badge ? <Badge variant={badge.variant}>{badge.label}</Badge> : null}
-                      {interval.fade ? (
+                      {interval.gradeWithheldReason ? (
+                        <span className="text-xs text-text-muted">
+                          the app could not place this window on the effort
+                        </span>
+                      ) : interval.fade ? (
                         <span className="text-xs text-warning-text">fading</span>
                       ) : (
                         <span className="text-xs text-text-muted">steady</span>

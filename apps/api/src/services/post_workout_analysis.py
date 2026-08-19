@@ -94,7 +94,7 @@ from src.services.workout_delivery import (
 # (falling back to the stored baseline only when no live reading is on file
 # within the lookback window), with profile.vo2maxAsOfDate stating which day
 # it's from. Explanatory only — VO2max never touches the verdict ladder.
-PROMPT_VERSION = "post-workout-analysis-v16-2026-08-15"
+PROMPT_VERSION = "post-workout-analysis-v17-2026-08-19"
 ANALYSIS_TYPE = "post_workout"
 
 # A planned session Mark told the app he was not doing (``skip_workout`` /
@@ -131,6 +131,16 @@ the work target. Ground any "held power / no fade / faded" claim in each work
 interval's `fade` and `hrDriftPct`, not on impression. When no planned intervals
 are supplied (a free or outdoor ride), read the whole-ride effort and power-zone
 distribution instead.
+
+A short, sharp effort is prescribed as a PEAK, not a held average: when an interval
+carries a `gradeBasis` saying it was graded on peak power, read `maxPowerWatts` /
+`peakPctFtp` as what he produced and never present the window mean of a sprint as
+under-performance. When `execution.ungradedCount` is above zero, one or more work
+intervals carry `gradeWithheldReason` — the app could not place the window on the
+effort. Say plainly that the app could not measure those efforts, and do NOT supply
+a reason he fell short: no trainer, ERG, pacing or fatigue mechanism, no inference
+from the numbers that were recorded, and no counting them as under-performance in
+the rating or anywhere else. An unmeasured effort is our failure, not his.
 
 When `profile.athleteProfile.indoorTrainerMode` shows Mark rides in ERG (his
 standing indoor setup), treat the prescribed %FTP as delivered: on an ERG-locked
@@ -509,6 +519,8 @@ class PostWorkoutAnalysisService:
                     "ground_tomorrow_impact_in_upcoming_workouts_before_weekly_rhythm",
                     "grade_execution_on_work_intervals_vs_ftp_targets",
                     "whole_ride_average_power_is_context_not_under_performance",
+                    "read_short_efforts_on_peak_power_not_window_mean",
+                    "say_unmeasured_when_a_grade_is_withheld_and_never_explain_it_away",
                     "trust_erg_delivered_power_when_athlete_rides_erg",
                     "never_suggest_switching_erg_off",
                     "single_honest_note_when_erg_ridden_on_erg_off_surge_protocol",
@@ -1274,6 +1286,10 @@ def detect_ride_deviation(
     on_target = int(execution.get("onTargetCount") or 0)
     over = int(execution.get("overCount") or 0)
     under = int(execution.get("underCount") or 0)
+    # Batch 214: a withheld grade is missing evidence, not evidence of a lighter ride.
+    # "Every work interval off in the same direction" can only be claimed when every
+    # work interval was actually graded.
+    ungraded = int(execution.get("ungradedCount") or 0)
 
     diverged = False
     kind = "on_plan"
@@ -1290,7 +1306,7 @@ def detect_ride_deviation(
         reason = (
             f"Skipped the planned {skipped_workout.title} and rode a self-chosen session instead."
         )
-    elif source in ("planned_workout", "delivered_proposal") and has_gradable_plan:
+    elif source in ("planned_workout", "delivered_proposal") and has_gradable_plan and not ungraded:
         # A real attempt lands at least one work interval on target; every work
         # interval off in the SAME direction is a different session, not a fade.
         if on_target == 0 and over == 0 and under > 0:
@@ -1329,6 +1345,7 @@ def detect_ride_deviation(
             "onTargetCount": on_target,
             "overCount": over,
             "underCount": under,
+            "ungradedCount": ungraded,
         },
     }
 

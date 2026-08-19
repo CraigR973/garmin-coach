@@ -12,6 +12,25 @@ the executed trace on the IR's interval boundaries, grade only the *work*
 intervals against their targets, and describe (never grade) warm-up/recovery/
 cool-down power.
 
+Batch 214 (Mark, 2026-08-13) fixes three ways this could still hand the model a
+false grade, in the order they bite:
+
+1. **The clock.** A pause stops the workout but not the ride. Garmin's
+   ``sumElapsedDuration`` counts paused seconds; the IR's planned windows are
+   timer time. Segmenting on elapsed time therefore shifts every window after a
+   pause by its whole length — 110 s on the 08-13 ride, on which 31 of Mark's
+   last 57 rides carry a pause over 30 s. Segment on the pause-excluding clock
+   whenever the trace carries one.
+2. **The statistic.** A neuromuscular sprint is prescribed as a *peak*, not a
+   held average: a 12 s window's mean is dragged down by its own acceleration
+   ramp. Short work efforts grade on peak power, and never "over" — exceeding a
+   sprint target is not a failure.
+3. **The evidence.** Planned-clock boundaries carry an uncertainty that can rival
+   a short effort's whole duration, so a short effort's peak is searched in a
+   neighbourhood of its nominal window; and any work interval that records below
+   an adjacent recovery is a segmentation failure rather than a performance
+   result, so its grade is withheld and said to be withheld.
+
 See docs/designs/interval-resolved-ride-analysis.md.
 """
 
@@ -47,6 +66,15 @@ TRACE_ALIGNMENT_MIN_IMPROVEMENT_PCT_FTP = 1.0
 TRACE_ALIGNMENT_WARP_PENALTY = 4.0
 TRACE_ALIGNMENT_MAX_POINT_ERROR_PCT_FTP = 30.0
 
+# A work effort at or below this length is neuromuscular: the prescription means
+# "peak at or near target", and a window mean over it is dominated by the effort's
+# own acceleration ramp rather than by what the athlete produced.
+PEAK_GRADED_MAX_DURATION_SEC = 30
+# On boundaries we did not observe, a short effort's peak is searched either side of
+# its nominal window by its own duration — self-scaling, and clamped below so it can
+# never reach into a neighbouring work step.
+PEAK_SEARCH_SLACK_MULTIPLE = 1.0
+
 # The whole-ride average, once intervals exist, is context only — never the verdict.
 WHOLE_RIDE_CONTEXT_NOTE = (
     "Whole-ride average power is context only. On a structured session it sits "
@@ -55,11 +83,22 @@ WHOLE_RIDE_CONTEXT_NOTE = (
     "under-performance — grade execution on the work intervals below."
 )
 
+# An ungraded interval is a gap in what we measured, not a gap in what he did.
+UNGRADED_INTERVAL_NOTE = (
+    "One or more work intervals recorded below an adjacent recovery valley, which "
+    "means the window did not sit on the effort — a measurement failure on our side, "
+    "not a performance result. Their grade has been withheld deliberately. Say the "
+    "app could not measure those efforts, and do not offer a reason he fell short: no "
+    "trainer, ERG, pacing or fatigue explanation, and no counting them as "
+    "under-performance anywhere in the read."
+)
+
 
 class TraceSample(Protocol):
     """The per-second trace fields segmentation reads (a subset of ActivityTimeSeries)."""
 
     elapsed_sec: float | None
+    moving_duration_sec: float | None
     sample_index: int
     power_watts: float | None
     heart_rate_bpm: float | None
@@ -107,18 +146,28 @@ def segment_ride_intervals(
         return []
 
     roles = classify_roles(steps)
-    timed = sorted(((_sample_time(s), s) for s in timeseries), key=lambda pair: pair[0])
+    clock_source, paused_sec = _segmentation_clock(timeseries)
+    timed = sorted(
+        ((_sample_time(s, clock_source), s) for s in timeseries), key=lambda pair: pair[0]
+    )
     windows, boundary_source = _segmentation_windows(
         timed,
         steps,
         ftp_watts,
         actual_laps=actual_laps,
+        clock_source=clock_source,
     )
 
     intervals: list[dict[str, Any]] = []
     for index, (step, role, (t_start, t_end)) in enumerate(zip(steps, roles, windows, strict=True)):
         duration = t_end - t_start
         window = [sample for time, sample in timed if t_start <= time < t_end]
+        grade_start, grade_end = _grading_bounds(index, roles, windows, boundary_source)
+        grading_window = (
+            window
+            if (grade_start, grade_end) == (t_start, t_end)
+            else [sample for time, sample in timed if grade_start <= time < grade_end]
+        )
         intervals.append(
             _build_interval(
                 index,
@@ -128,9 +177,75 @@ def segment_ride_intervals(
                 window,
                 ftp_watts,
                 boundary_source=boundary_source,
+                clock_source=clock_source,
+                paused_sec=paused_sec,
+                grading_window=grading_window,
+                grading_slack_sec=t_start - grade_start,
             )
         )
+    _withhold_inconsistent_grades(intervals)
     return intervals
+
+
+def _segmentation_clock(timeseries: Sequence[TraceSample]) -> tuple[str, int]:
+    """Choose the clock the planned windows are actually measured in, and the pause.
+
+    The IR's cumulative step durations are *timer* time, so a trace that carries
+    Garmin's pause-excluding ``sumMovingDuration`` must be segmented on it: on the
+    elapsed clock every window after a pause is shifted by the pause's whole length,
+    which is invisible on a steady block and catastrophic on a short effort. Falls
+    back to elapsed time — the pre-Batch-214 behaviour — unless the moving clock is
+    present and coherent on the whole trace, so a partial or legacy import is never
+    segmented on a half-populated column.
+    """
+    pairs: list[tuple[float, float]] = []
+    for sample in timeseries:
+        value = getattr(sample, "moving_duration_sec", None)
+        if value is None:
+            return "elapsed_sec", 0
+        pairs.append((_sample_time(sample), float(value)))
+
+    pairs.sort(key=lambda pair: pair[0])
+    moving = [value for _elapsed, value in pairs]
+    if moving[-1] <= 0 or any(later < earlier for earlier, later in zip(moving, moving[1:])):
+        return "elapsed_sec", 0
+
+    elapsed_span = pairs[-1][0] - pairs[0][0]
+    return "moving_duration_sec", max(0, int(round(elapsed_span - (moving[-1] - moving[0]))))
+
+
+def _grading_bounds(
+    index: int,
+    roles: Sequence[str],
+    windows: Sequence[tuple[float, float]],
+    boundary_source: str,
+) -> tuple[float, float]:
+    """Where to look for a short effort's peak when the boundaries are not observed.
+
+    A planned-clock boundary can be out by as much as a sprint is long, so grading a
+    12 s effort strictly inside its nominal 12 s asks a question the boundaries cannot
+    answer. Search either side by the step's own duration, clamped to the midpoint of
+    each neighbouring recovery so a sprint can never be graded on its neighbour's peak.
+    Observed lap boundaries need none of this and get their exact window.
+    """
+    start, end = windows[index]
+    duration = end - start
+    if (
+        boundary_source == "actual_laps"
+        or roles[index] != "work"
+        or duration <= 0
+        or duration > PEAK_GRADED_MAX_DURATION_SEC
+    ):
+        return start, end
+
+    slack = duration * PEAK_SEARCH_SLACK_MULTIPLE
+    if index > 0:
+        previous_start, previous_end = windows[index - 1]
+        slack = min(slack, max(0.0, (previous_end - previous_start) / 2))
+    if index + 1 < len(windows):
+        next_start, next_end = windows[index + 1]
+        slack = min(slack, max(0.0, (next_end - next_start) / 2))
+    return start - slack, end + slack
 
 
 def classify_roles(steps: Sequence[Mapping[str, Any]]) -> list[str]:
@@ -176,6 +291,8 @@ def summarize_execution(
     boundary_source = (
         str(intervals[0].get("boundarySource") or "planned_durations") if has_plan else "none"
     )
+    clock_source = str(intervals[0].get("clockSource") or "elapsed_sec") if has_plan else "none"
+    paused_sec = int(intervals[0].get("pausedSec") or 0) if has_plan else 0
 
     if not work:
         summary = (
@@ -194,23 +311,28 @@ def summarize_execution(
         }
         if has_plan:
             result["wholeRideContextNote"] = WHOLE_RIDE_CONTEXT_NOTE
+            result["clockSource"] = clock_source
+            result["pausedSec"] = paused_sec
         return result
 
     on = sum(1 for item in work if item.get("adherence") == "on")
     over = sum(1 for item in work if item.get("adherence") == "over")
     under = sum(1 for item in work if item.get("adherence") == "under")
+    withheld = [item for item in work if item.get("gradeWithheldReason")]
     faded = sum(1 for item in work if item.get("fade") is True)
 
     summary = (
-        f"{len(work)} work interval(s): {on} on target, {over} over, {under} under; "
-        f"{f'fade in {faded} block(s)' if faded else 'no fade'}."
+        f"{len(work)} work interval(s): {on} on target, {over} over, {under} under"
+        + (f", {len(withheld)} ungraded" if withheld else "")
+        + f"; {f'fade in {faded} block(s)' if faded else 'no fade'}."
     )
-    return {
+    result = {
         "hasPlan": True,
         "workIntervalCount": len(work),
         "onTargetCount": on,
         "overCount": over,
         "underCount": under,
+        "ungradedCount": len(withheld),
         "fadedCount": faded,
         "workIntervals": [_work_interval_phrase(item) for item in work],
         "summary": summary,
@@ -218,7 +340,12 @@ def summarize_execution(
         "wholeRideContextNote": WHOLE_RIDE_CONTEXT_NOTE,
         "boundarySource": boundary_source,
         "boundarySourceNote": _boundary_source_note(boundary_source),
+        "clockSource": clock_source,
+        "pausedSec": paused_sec,
     }
+    if withheld:
+        result["ungradedNote"] = UNGRADED_INTERVAL_NOTE
+    return result
 
 
 def _build_interval(
@@ -230,6 +357,10 @@ def _build_interval(
     ftp_watts: int | None,
     *,
     boundary_source: str,
+    clock_source: str,
+    paused_sec: int,
+    grading_window: Sequence[TraceSample],
+    grading_slack_sec: float,
 ) -> dict[str, Any]:
     powers = [float(s.power_watts) for s in window if s.power_watts is not None]
     hrs = [float(s.heart_rate_bpm) for s in window if s.heart_rate_bpm is not None]
@@ -241,16 +372,31 @@ def _build_interval(
     target_high = max(_int(step, "powerStartPct"), _int(step, "powerEndPct"))
     is_work = role == "work"
 
+    # A short effort is prescribed as a peak, so it is graded on the highest power it
+    # reached — searched a little wider than its nominal window when the boundaries
+    # were not observed. Everything longer keeps the held-average grade it always had.
+    peak_graded = is_work and 0 < duration_sec <= PEAK_GRADED_MAX_DURATION_SEC
+    peak_powers = [float(s.power_watts) for s in grading_window if s.power_watts is not None]
+    max_power = round(max(peak_powers), 1) if peak_powers else None
+    peak_pct_ftp = (
+        round(max_power / ftp_watts * 100, 1) if max_power is not None and ftp_watts else None
+    )
+    graded_pct_ftp = peak_pct_ftp if peak_graded else pct_ftp
+
     return {
         "index": index,
         "label": str(step.get("label") or f"Step {index + 1}"),
         "role": role,
         "boundarySource": boundary_source,
+        "clockSource": clock_source,
+        "pausedSec": paused_sec,
         "durationSec": int(round(duration_sec)),
         "sampleCount": len(window),
         "avgPowerWatts": avg_power,
+        "maxPowerWatts": max_power,
         "normalizedPowerWatts": _normalized_power(powers),
         "pctFtp": pct_ftp,
+        "peakPctFtp": peak_pct_ftp,
         "powerZone": power_zone(avg_power, ftp_watts),
         "avgHeartRateBpm": round(sum(hrs) / len(hrs), 1) if hrs else None,
         "maxHeartRateBpm": round(max(hrs), 1) if hrs else None,
@@ -259,10 +405,61 @@ def _build_interval(
         "targetPctFtpHigh": target_high,
         "cadenceTargetRpm": _int(step, "cadenceRpm") if step.get("cadenceRpm") else None,
         # Graded only for work intervals; described (None grade) for everything else.
-        "adherence": _adherence(pct_ftp, target_low, target_high) if is_work else None,
+        "adherence": (
+            _adherence(graded_pct_ftp, target_low, target_high, peak_graded=peak_graded)
+            if is_work
+            else None
+        ),
+        "gradedPctFtp": graded_pct_ftp if is_work else None,
+        "gradeBasis": (
+            _grade_basis(peak_graded, duration_sec, grading_slack_sec) if is_work else None
+        ),
+        "gradeWithheldReason": None,
         "fade": _fade(window, duration_sec) if is_work else None,
         "hrDriftPct": _hr_drift_pct(window, duration_sec) if is_work else None,
     }
+
+
+def _grade_basis(peak_graded: bool, duration_sec: float, slack_sec: float) -> str:
+    if not peak_graded:
+        return "Held average power across the interval."
+    if slack_sec <= 0:
+        return (
+            f"Peak power in this {int(round(duration_sec))} s effort — a sprint "
+            "target is a peak, not an average."
+        )
+    return (
+        f"Peak power in this {int(round(duration_sec))} s effort, searched "
+        f"±{int(round(slack_sec))} s around boundaries we did not observe — a sprint "
+        "target is a peak, not an average."
+    )
+
+
+def _withhold_inconsistent_grades(intervals: list[dict[str, Any]]) -> None:
+    """Withhold any work grade that contradicts its own neighbours.
+
+    A work interval recording *below* an adjacent recovery valley is not a
+    performance result — nobody rests harder than they sprint — it is a sign the
+    window is not sitting on the effort. On Mark's 08-13 ride this fired on all six
+    sprints before the clock was fixed and on none of them after, which is the
+    property that makes it a detector rather than a blanket suppressor. The grade is
+    removed and the reason recorded, so the read says it could not measure rather
+    than inventing a reason the athlete fell short.
+    """
+    for index, interval in enumerate(intervals):
+        graded = interval.get("gradedPctFtp")
+        if interval.get("role") != "work" or interval.get("adherence") is None or graded is None:
+            continue
+        neighbours = [
+            value
+            for offset in (-1, 1)
+            if 0 <= index + offset < len(intervals)
+            and intervals[index + offset].get("role") == "recovery"
+            and (value := intervals[index + offset].get("pctFtp")) is not None
+        ]
+        if neighbours and graded < max(neighbours):
+            interval["adherence"] = None
+            interval["gradeWithheldReason"] = "recorded_below_adjacent_recovery"
 
 
 def _segmentation_windows(
@@ -271,10 +468,11 @@ def _segmentation_windows(
     ftp_watts: int | None,
     *,
     actual_laps: Sequence[Mapping[str, Any]] | None,
+    clock_source: str = "elapsed_sec",
 ) -> tuple[list[tuple[float, float]], str]:
     planned = _planned_windows(steps)
 
-    lap_windows = _actual_lap_windows(actual_laps, steps, timed, ftp_watts)
+    lap_windows = _actual_lap_windows(actual_laps, steps, timed, ftp_watts, clock_source)
     if lap_windows is not None:
         return lap_windows, "actual_laps"
 
@@ -300,16 +498,28 @@ def _actual_lap_windows(
     steps: Sequence[Mapping[str, Any]],
     timed: Sequence[tuple[float, TraceSample]],
     ftp_watts: int | None,
+    clock_source: str = "elapsed_sec",
 ) -> list[tuple[float, float]] | None:
-    """Return cumulative Garmin-lap windows only when they are credible workout steps."""
+    """Return cumulative Garmin-lap windows only when they are credible workout steps.
+
+    A lap carries both clocks, so the one read here must be the one the samples are
+    laid out on (Batch 214): pairing a lap's wall-clock ``elapsedDuration`` with a
+    pause-excluding sample clock would reintroduce the very drift that clock exists
+    to remove.
+    """
     if not actual_laps or len(actual_laps) != len(steps):
         return None
 
+    preference = (
+        ("duration", "elapsedDuration")
+        if clock_source == "moving_duration_sec"
+        else ("elapsedDuration", "duration")
+    )
     durations: list[float] = []
     for lap in actual_laps:
-        raw = lap.get("elapsedDuration")
+        raw = lap.get(preference[0])
         if not isinstance(raw, int | float) or raw <= 0:
-            raw = lap.get("duration")
+            raw = lap.get(preference[1])
         if not isinstance(raw, int | float) or raw <= 0:
             return None
         durations.append(float(raw))
@@ -524,7 +734,8 @@ def _boundary_source_note(source: str) -> str:
         ),
         "planned_durations": (
             "No reliable executed boundaries were available; intervals use the "
-            "planned-duration clock."
+            "planned-duration clock, so a boundary can be out by several seconds — "
+            "treat a short effort's placement as approximate."
         ),
         "none": "No planned interval structure was available.",
     }[source]
@@ -554,12 +765,25 @@ def _normalized_power(powers: Sequence[float]) -> float | None:
     return round(float(fourth_power_mean**0.25), 1)
 
 
-def _adherence(pct_ftp: float | None, target_low: int, target_high: int) -> str | None:
-    """Grade a work interval's held %FTP against its own target band (with slack)."""
+def _adherence(
+    pct_ftp: float | None,
+    target_low: int,
+    target_high: int,
+    *,
+    peak_graded: bool = False,
+) -> str | None:
+    """Grade a work interval's %FTP against its own target band (with slack).
+
+    A peak-graded short effort has no "over": beating a sprint target is the point of
+    a sprint, not a pacing error, and the only honest question is whether the effort
+    reached what it was set.
+    """
     if pct_ftp is None:
         return None
     if pct_ftp < target_low - ADHERENCE_TOLERANCE_PCT:
         return "under"
+    if peak_graded:
+        return "on"
     if pct_ftp > target_high + ADHERENCE_TOLERANCE_PCT:
         return "over"
     return "on"
@@ -598,17 +822,28 @@ def _first_last_third(
 
 
 def _work_interval_phrase(interval: Mapping[str, Any]) -> str:
-    minutes = round(int(interval["durationSec"]) / 60)
+    duration_sec = int(interval["durationSec"])
+    length = f"{duration_sec} s" if duration_sec < 60 else f"{round(duration_sec / 60)} min"
     target = _target_phrase(interval["targetPctFtpLow"], interval["targetPctFtpHigh"])
     pct_ftp = interval.get("pctFtp")
     held = f"{pct_ftp}% FTP" if pct_ftp is not None else "n/a"
     np_watts = interval.get("normalizedPowerWatts")
     np_phrase = f" ({int(np_watts)} W NP)" if np_watts else ""
-    adherence = interval.get("adherence") or "ungraded"
+    peak_watts = interval.get("maxPowerWatts")
+    peak_pct = interval.get("peakPctFtp")
+    peak_phrase = (
+        f", peak {int(peak_watts)} W ({peak_pct}% FTP)"
+        if peak_watts is not None and peak_pct is not None
+        else ""
+    )
+    withheld = interval.get("gradeWithheldReason")
+    adherence = (
+        f"grade withheld ({withheld})" if withheld else (interval.get("adherence") or "ungraded")
+    )
     fade = "fade" if interval.get("fade") else "no fade"
     return (
-        f"{minutes} min {interval['label']}: target {target}, "
-        f"held {held}{np_phrase}, {adherence}, {fade}"
+        f"{length} {interval['label']}: target {target}, "
+        f"held {held}{np_phrase}{peak_phrase}, {adherence}, {fade}"
     )
 
 
@@ -616,10 +851,13 @@ def _target_phrase(low: int, high: int) -> str:
     return f"{low}% FTP" if low == high else f"{low}–{high}% FTP"
 
 
-def _sample_time(sample: TraceSample) -> float:
-    """Elapsed seconds for a sample, falling back to its index at ~1 Hz."""
-    if sample.elapsed_sec is not None:
-        return float(sample.elapsed_sec)
+def _sample_time(sample: TraceSample, clock_source: str = "elapsed_sec") -> float:
+    """Seconds for a sample on the chosen clock, falling back to its index at ~1 Hz."""
+    value = getattr(sample, clock_source, None)
+    if value is None and clock_source != "elapsed_sec":
+        value = sample.elapsed_sec
+    if value is not None:
+        return float(value)
     return float(sample.sample_index)
 
 

@@ -981,8 +981,10 @@ export const rideIntervalSchema = z.object({
   role: z.string(),
   durationSec: z.number(),
   avgPowerWatts: z.number().nullable().optional(),
+  maxPowerWatts: z.number().nullable().optional(),
   normalizedPowerWatts: z.number().nullable().optional(),
   pctFtp: z.number().nullable().optional(),
+  peakPctFtp: z.number().nullable().optional(),
   powerZone: z.string().nullable().optional(),
   avgHeartRateBpm: z.number().nullable().optional(),
   maxHeartRateBpm: z.number().nullable().optional(),
@@ -991,6 +993,13 @@ export const rideIntervalSchema = z.object({
   targetPctFtpHigh: z.number().nullable().optional(),
   cadenceTargetRpm: z.number().nullable().optional(),
   adherence: z.enum(['on', 'over', 'under']).nullable().optional(),
+  // Batch 214: a short effort is graded on its peak, not its window mean, and a grade
+  // is withheld outright when the window provably did not sit on the effort. Both
+  // must reach the screen or the table shows a sprint "on target" beside a mean that
+  // looks like a miss, or shows nothing at all where it should say it could not tell.
+  gradedPctFtp: z.number().nullable().optional(),
+  gradeBasis: z.string().nullable().optional(),
+  gradeWithheldReason: z.string().nullable().optional(),
   fade: z.boolean().nullable().optional(),
   hrDriftPct: z.number().nullable().optional(),
 });

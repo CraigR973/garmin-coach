@@ -1215,6 +1215,63 @@ describe('DashboardPage', () => {
     expect(screen.queryByText('10 min Warm-up')).toBeNull();
   });
 
+  it('reads a sprint on its peak, in seconds, and never as a miss (Batch 214)', async () => {
+    const snapshot = postRideWithIntervalsSnapshot();
+    snapshot.data.postWorkoutAnalyses[0].intervals = [
+      {
+        index: 0,
+        label: 'Neuromuscular sprint 1/6',
+        role: 'work',
+        durationSec: 12,
+        pctFtp: 91,
+        peakPctFtp: 183.9,
+        gradedPctFtp: 183.9,
+        maxPowerWatts: 515,
+        normalizedPowerWatts: 254,
+        targetPctFtpLow: 185,
+        targetPctFtpHigh: 185,
+        adherence: 'on',
+        fade: false,
+      },
+    ];
+    renderPage(snapshot);
+
+    await screen.findByText('Interval execution');
+    // A 12-second sprint is not "0 min", and the number shown is the one it was
+    // graded on — not the window mean, which would read as a miss against 185%.
+    expect(screen.getByText('12 s Neuromuscular sprint 1/6')).toBeTruthy();
+    expect(screen.getByText('184% peak · 515 W')).toBeTruthy();
+    expect(screen.getByText('On target')).toBeTruthy();
+    expect(screen.queryByText('91%')).toBeNull();
+  });
+
+  it('says a withheld grade was not measured rather than showing nothing (Batch 214)', async () => {
+    const snapshot = postRideWithIntervalsSnapshot();
+    snapshot.data.postWorkoutAnalyses[0].intervals = [
+      {
+        index: 0,
+        label: 'Neuromuscular sprint 1/6',
+        role: 'work',
+        durationSec: 12,
+        pctFtp: 54.5,
+        gradedPctFtp: 54.5,
+        targetPctFtpLow: 185,
+        targetPctFtpHigh: 185,
+        adherence: null,
+        gradeWithheldReason: 'recorded_below_adjacent_recovery',
+        fade: false,
+      },
+    ];
+    renderPage(snapshot);
+
+    await screen.findByText('Interval execution');
+    expect(screen.getByText('Not measured')).toBeTruthy();
+    expect(screen.getByText('the app could not place this window on the effort')).toBeTruthy();
+    // The unusable number is not shown at all, and it is never called a miss.
+    expect(screen.queryByText('55%')).toBeNull();
+    expect(screen.queryByText('Under')).toBeNull();
+  });
+
   it('renders no interval table for a ride without planned structure', async () => {
     renderPage(postRideSnapshot());
 

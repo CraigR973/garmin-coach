@@ -72,6 +72,37 @@ describe('v1 shared schemas', () => {
     expect(() =>
       rideIntervalSchema.parse({ index: 0, label: 'x', role: 'work', durationSec: 10, adherence: 'bogus' }),
     ).toThrow();
+
+    // Batch 214: zod strips unknown keys, so a sprint's peak and a withheld grade
+    // reach the screen only if they are declared here. Without them the table would
+    // show a sprint's window mean beside a 185% target, or silently show nothing at
+    // all where it should say the app could not measure the effort.
+    const sprint = rideIntervalSchema.parse({
+      index: 11,
+      label: 'Neuromuscular sprint 1/6',
+      role: 'work',
+      durationSec: 12,
+      pctFtp: 91,
+      peakPctFtp: 183.9,
+      gradedPctFtp: 183.9,
+      maxPowerWatts: 515,
+      adherence: 'on',
+      gradeBasis: 'Peak power in this 12 s effort',
+      gradeWithheldReason: null,
+    });
+    expect(sprint.maxPowerWatts).toBe(515);
+    expect(sprint.gradedPctFtp).toBe(183.9);
+    expect(sprint.gradeBasis).toContain('Peak power');
+
+    const withheld = rideIntervalSchema.parse({
+      index: 11,
+      label: 'Neuromuscular sprint 1/6',
+      role: 'work',
+      durationSec: 12,
+      adherence: null,
+      gradeWithheldReason: 'recorded_below_adjacent_recovery',
+    });
+    expect(withheld.gradeWithheldReason).toBe('recorded_below_adjacent_recovery');
   });
 
   it('accepts the seeded private profile shape', () => {
