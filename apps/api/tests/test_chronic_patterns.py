@@ -734,6 +734,21 @@ def test_matched_phrase_is_carried_so_a_tag_can_explain_itself() -> None:
     assert classify_check_in_causes(None, "Woke up with a streaming cold.") == ("illness",)
 
 
+def test_idle_chronic_action_is_not_narrated() -> None:
+    """Batch 212: the prompt told the model to explain chronicAction and state its
+    human-approval/verdictImpact fields, so it produced exactly that on a morning
+    where nothing was triggered. Pinned to the version bump that carries it."""
+    from src.services.morning_analysis import PROMPT_VERSION, SYSTEM_PROMPT
+
+    assert PROMPT_VERSION.startswith("morning-analysis-v31")
+    assert "chronicAction.triggered is false" in SYSTEM_PROMPT
+    assert "internal bookkeeping with nothing to" in SYSTEM_PROMPT
+    # The never-soften rule must survive the gate, not be replaced by it.
+    assert "never soften or argue it down" in SYSTEM_PROMPT
+    # Provenance is offered to the model, so a queried tag can be quoted back.
+    assert "matchedText" in SYSTEM_PROMPT
+
+
 def test_check_in_context_packet_carries_its_basis() -> None:
     """A check-in tag is explainable; a plan-derived one has no prose to quote."""
     from_check_in = RecordedTrainingContext(
