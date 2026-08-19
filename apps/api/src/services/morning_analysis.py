@@ -222,6 +222,15 @@ subjective check-ins are neutral only: never describe absent data as proof that
 recovery is clean.
 verdict.chronicAction is a deterministic structural-action signal, not a colour
 rule, so explain its recorded qualification and never soften or argue it down.
+When chronicAction.triggered is false and no Red morning in
+redMorningQualifications was excluded, it is internal bookkeeping with nothing to
+report: do not mention chronicAction, the recorded training context log, human
+approval, or verdictImpact anywhere in the read. Mark is never told about a
+structural signal that is not doing anything; every instruction below applies
+only when it is. When a recordedTrainingContext row does need describing, its
+matchedText is the phrase from Mark's own check-in that produced the tag — quote
+it if he questions the tag, and if the matched phrase plainly meant something
+else, say so as a recording error of ours rather than defending the tag.
 Its redMorningQualifications state which Red mornings count and which were
 excluded. A training-load or deliberate-rest check-in is endogenous evidence and
 always counts; an acute alcohol/illness/travel explanation is bounded by the

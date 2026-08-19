@@ -627,6 +627,15 @@ async def test_morning_packet_real_0731_0801_reds_now_both_count(
         "training_load",
         "alcohol",
     }
+    # Batch 212: every check-in-derived row quotes the phrase that produced it, so
+    # a tag Mark queries can be explained (or recognised as wrong) from the packet.
+    check_in_rows = [
+        item for item in action["recordedTrainingContext"] if item["source"] == "morning_check_in"
+    ]
+    assert check_in_rows, "expected at least one check-in-derived context row"
+    for item in check_in_rows:
+        assert item["matchedText"], f"{item['reason']} row carries no matched phrase"
+        assert item["basis"] == "phrase matched in the check-in note"
 
 
 @pytest.mark.asyncio
