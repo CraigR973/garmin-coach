@@ -22,6 +22,12 @@ Generate the prompt for the next unshipped batch.
    - required first reads
    - test commands relevant to the batch
    - gotchas from `STATUS.md`
+   - **an explicit instruction to re-verify the row's factual claims against
+     current code and deployed state before building** — `file:line`
+     references, measurements, counts, and "reuse X, which already does Y"
+     pointers all decay between authoring and build, and a spec that names the
+     wrong pattern will be followed faithfully into a broken result (see
+     `batch-start.md` step 4)
    - instruction to avoid `/closeout` until explicitly requested
 5. Include any known previous-session notes from `STATUS.md` that affect the
    batch.
