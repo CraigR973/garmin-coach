@@ -141,6 +141,110 @@ def test_easing_todays_hard_session_reads_that_bucket_at_risk() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Batch 213 — the reducer counts sessions, not rows
+# ---------------------------------------------------------------------------
+
+
+def test_the_real_08_11_chain_yields_target_1_done_1() -> None:
+    """The exact production shape: v1 skipped (a stale ghost that leaked through
+    with ``is_active=True`` — the data-integrity bug this batch also closes), v2
+    superseded, v3 the completed ride. Fed to the reducer as duplicate rows for
+    one date, because the reducer must not depend on the database already being
+    clean."""
+    sessions = [
+        MixSession(
+            workout_date=TUE, workout_type="bike_vo2", completed=False, skipped=True, version=1
+        ),
+        MixSession(
+            workout_date=TUE, workout_type="bike_vo2", completed=False, skipped=False, version=2
+        ),
+        MixSession(
+            workout_date=TUE, workout_type="bike_vo2", completed=True, skipped=False, version=3
+        ),
+    ]
+    mix = summarize_weekly_mix(sessions, subject_date=WED)
+    vo2 = mix.bucket(MIX_VO2)
+    assert vo2 is not None
+    assert (vo2.target, vo2.done) == (1, 1)
+
+
+def test_a_lone_never_superseded_skip_contributes_no_target() -> None:
+    # A skipped session with nothing replacing it is not a plan commitment — the
+    # week's VO2 target drops to 0 rather than reading "1 of 1, missed".
+    sessions = [
+        MixSession(workout_date=TUE, workout_type="bike_vo2", completed=False, skipped=True),
+    ]
+    mix = summarize_weekly_mix(sessions, subject_date=WED)
+    vo2 = mix.bucket(MIX_VO2)
+    assert vo2 is not None
+    assert (vo2.target, vo2.done, vo2.at_risk) == (0, 0, False)
+
+
+def test_duplicate_active_rows_per_bucket_still_dedupe_to_one_session_each() -> None:
+    # A pure-reducer stress case: every bucket corrupted with a duplicate row on
+    # the same date, none of them skipped — the highest version must still win
+    # and target must still read the session count, not the row count.
+    sessions = [
+        MixSession(workout_date=TUE, workout_type="bike_vo2", completed=False, version=1),
+        MixSession(workout_date=TUE, workout_type="bike_vo2", completed=True, version=2),
+        MixSession(workout_date=WED, workout_type="bike_sweet_spot", completed=False, version=1),
+        MixSession(workout_date=WED, workout_type="bike_sweet_spot", completed=False, version=2),
+        MixSession(workout_date=THU, workout_type="bike_endurance", completed=False, version=1),
+        MixSession(workout_date=THU, workout_type="bike_endurance", completed=True, version=2),
+    ]
+    mix = summarize_weekly_mix(sessions, subject_date=MON)
+    vo2 = mix.bucket(MIX_VO2)
+    ss = mix.bucket(MIX_SWEET_SPOT)
+    z2 = mix.bucket(MIX_Z2)
+    assert vo2 is not None and (vo2.target, vo2.done) == (1, 1)
+    assert ss is not None and (ss.target, ss.done) == (1, 0)
+    assert z2 is not None and (z2.target, z2.done) == (1, 1)
+
+
+@pytest.mark.asyncio
+async def test_service_dedupes_a_skip_then_reinstate_chain_end_to_end(
+    db_conn: AsyncConnection,
+) -> None:
+    """The 08-11 skip-then-reinstate lifecycle through ``WeeklyMixService``: a
+    stale skipped v1 leaked through with ``is_active=True`` (the data-integrity
+    bug this batch also closes at the source in ``swap_day``), and the
+    accounting must not double-count it regardless."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    player = _profile()
+    async with session_factory() as session:
+        session.add(player)
+        await session.flush()
+        session.add_all(
+            [
+                _planned(player.id, TUE, "bike_vo2", status="skipped"),
+                PlannedWorkout(
+                    user_id=player.id,
+                    workout_date=TUE,
+                    version=2,
+                    title="bike_vo2",
+                    workout_type="bike_vo2",
+                    status="completed",
+                    is_active=True,
+                    planned_duration_min=60,
+                    intensity_target="test",
+                    structured_workout={"format": "bike"},
+                    source="test",
+                ),
+                _planned(player.id, WED, "bike_sweet_spot", status="planned"),
+                _planned(player.id, THU, "bike_endurance", status="planned"),
+            ]
+        )
+        await session.commit()
+
+        mix = await WeeklyMixService(session).summarize_for_verdict(
+            player, THU, verdict_status="Green", swap=None
+        )
+
+    vo2 = mix.bucket(MIX_VO2)
+    assert vo2 is not None and (vo2.target, vo2.done) == (1, 1)
+
+
+# ---------------------------------------------------------------------------
 # eased-bucket detection
 # ---------------------------------------------------------------------------
 

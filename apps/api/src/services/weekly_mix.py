@@ -53,6 +53,11 @@ from src.services.weekly_restructure import (
 )
 from src.services.workout_completion import WORKOUT_STATUS_COMPLETED
 
+# Not imported from a shared module — every service that needs it defines its own
+# (executable_coaching.py, daily_loop.py, post_workout_analysis.py); matching that
+# convention rather than introducing a new shared-constants import here.
+WORKOUT_STATUS_SKIPPED = "skipped"
+
 # The three tracked mix buckets. Quality (hard) work is VO2 and Sweet-Spot; the
 # rest of the week is aerobic Zone-2 volume. Threshold rides — quality, absent
 # from Mark's current plan — count with Sweet-Spot; tempo/recovery count as Z2.
@@ -91,11 +96,19 @@ def mix_bucket(workout_type: str) -> str | None:
 
 @dataclass(frozen=True)
 class MixSession:
-    """A single bike session positioned in the week, with its completion state."""
+    """A single bike session positioned in the week, with its completion state.
+
+    ``version`` and ``skipped`` exist so the reducer can collapse a version chain
+    on its own (Batch 213): the database is expected to hold exactly one active
+    row per ``workout_date``, but a supersede bug can leave more than one, and the
+    reducer must be robust to that rather than trust it silently.
+    """
 
     workout_date: date
     workout_type: str
     completed: bool
+    skipped: bool = False
+    version: int = 1
 
     @property
     def bucket(self) -> str | None:
@@ -180,6 +193,29 @@ class WeeklyMix:
         }
 
 
+def _dedupe_by_date(sessions: Sequence[MixSession]) -> list[MixSession]:
+    """One session per ``workout_date`` (Batch 213).
+
+    A version chain is scoped to a single date (confirmed: every re-slot/edit
+    path computes its next version from ``MAX(version) WHERE workout_date =
+    ...``), so two rows sharing a date are always the same slot's history, never
+    two distinct sessions. The highest version wins — but only among the
+    non-``skipped`` rows: a skipped session was never delivered, so it is not a
+    plan commitment and must not count toward ``target`` even when it is the
+    only row left for that date (a lone, never-superseded skip).
+    """
+    by_date: dict[date, list[MixSession]] = {}
+    for session in sessions:
+        by_date.setdefault(session.workout_date, []).append(session)
+    deduped: list[MixSession] = []
+    for day_sessions in by_date.values():
+        live = [s for s in day_sessions if not s.skipped]
+        if not live:
+            continue
+        deduped.append(max(live, key=lambda s: s.version))
+    return deduped
+
+
 def summarize_weekly_mix(
     sessions: Sequence[MixSession],
     *,
@@ -196,9 +232,14 @@ def summarize_weekly_mix(
     by today's verdict. A bucket is ``at_risk`` when what's still owed
     (``due = target - done``) exceeds what's still scheduled.
 
+    Sessions are deduped to one per date before counting (:func:`_dedupe_by_date`)
+    so a stray duplicate/superseded row — the data-integrity bug this accounting
+    must not depend on being already fixed — cannot inflate ``target``.
+
     Pure: no database, no clock. ``eased_bucket`` is the only channel through
     which the verdict's easing of today's hard session enters the accounting.
     """
+    sessions = _dedupe_by_date(sessions)
     week_start = subject_date - timedelta(days=subject_date.weekday())
     buckets: list[MixBucketStatus] = []
     for name in MIX_BUCKETS:
@@ -304,6 +345,8 @@ class WeeklyMixService:
                 workout_date=w.workout_date,
                 workout_type=w.workout_type,
                 completed=w.status == WORKOUT_STATUS_COMPLETED,
+                skipped=w.status == WORKOUT_STATUS_SKIPPED,
+                version=w.version,
             )
             for w in workouts
             if w.workout_type.startswith("bike_")
