@@ -58,21 +58,42 @@ _HEALTHY_HRV_STATES = frozenset({"balanced", "stable", "optimal", "normal"})
 _ACUTE_EXOGENOUS_CHECK_IN_CAUSES = frozenset({"alcohol", "illness", "travel"})
 _ENDOGENOUS_TRAINING_CHECK_IN_CAUSES = frozenset({"deliberate_rest", "training_load"})
 
+# Batch 212: these patterns read Mark's own prose, so an over-broad one does not
+# merely mis-label — an acute tag can excuse a Red morning from the chronic
+# cluster (``_ACUTE_EXOGENOUS_CHECK_IN_CAUSES`` above, applied at
+# ``_qualify_red_morning``). Two families carried an over-match:
+#
+#   * **illness/cold.** ``\b(?:head|chest\s+)?cold\b`` made the whole qualifier
+#     optional, so the bare word matched. Mark writes about his bedroom nightly,
+#     and on 2026-08-14 ("*felt cold from drafts*") and 2026-08-15 ("*too cold*")
+#     both notes classified as ``illness``. The same expression was also broken in
+#     the direction it intended: only ``chest`` carried ``\s+``, so "head cold"
+#     never matched that branch and reached the tag through the bare word instead.
+#     A cold is now only a cold when the phrasing says so.
+#   * **alcohol/drinking.** ``\bdrank\b``/``\bdrinking\b`` match "drinking plenty
+#     of water" — hydration is the single most likely neighbouring subject in a
+#     recovery note. Both now decline an explicit non-alcoholic object.
+#
+# The other three families are multi-word and specific ("rest day", "jet lag",
+# "back-to-back"); they were audited at the same time and left unchanged.
+# Every pattern here needs a negative control in the test-suite.
 _CHECK_IN_CAUSE_PATTERNS: dict[str, tuple[str, ...]] = {
     "alcohol": (
         r"\bhangover\b",
         r"\balcohol\b",
-        r"\bdrank\b",
-        r"\bdrinking\b",
+        r"\bdr(?:ank|inking)\b(?!\s+(?:a\s+)?(?:lots?\s+of\s+|plenty\s+of\s+|more\s+)?"
+        r"(?:water|fluids?|tea|coffee|juice|squash|milk|electrolytes?))",
         r"\b\d+(?:\.\d+)?\s*(?:uk\s+)?units?\b",
     ),
     "illness": (
         r"\bunwell\b",
         r"\bill(?:ness)?\b",
-        r"\bsick\b",
+        r"\bsick\b(?!\s+of\b)",
         r"\bflu\b",
         r"\binfection\b",
-        r"\b(?:head|chest\s+)?cold\b",
+        # A qualifier is required: "head cold" is illness, "felt cold" is weather.
+        r"\b(?:head|chest|streaming|stinking|heavy)\s+cold\b",
+        r"\b(?:got|have|had|caught|catching|coming\s+down\s+with)\s+a\s+cold\b",
     ),
     "travel": (
         r"\bholiday\b",
@@ -232,18 +253,34 @@ class ScheduledRecoveryBlock:
 
 @dataclass(frozen=True)
 class RecordedTrainingContext:
+    """A recorded explanation for a stretch of days, and — for a check-in tag —
+    the words that produced it.
+
+    ``matched_text`` is Batch 212's provenance: when Mark asked what "illness
+    context" meant on 2026-08-14 the coach could not tell him, because the reason
+    the tag existed (one word in his own note) was nowhere in the packet. Carrying
+    the matched phrase means a tag can always be explained, and a wrong one can be
+    recognised as wrong rather than merely denied. ``None`` for a
+    ``holiday_plan`` row, which comes from the plan rather than from prose.
+    """
+
     start_date: date
     end_date: date
     reason: str
     source: Literal["holiday_plan", "morning_check_in"]
+    matched_text: str | None = None
 
     def to_packet(self) -> dict[str, Any]:
-        return {
+        packet: dict[str, Any] = {
             "startDate": self.start_date.isoformat(),
             "endDate": self.end_date.isoformat(),
             "reason": self.reason,
             "source": self.source,
         }
+        if self.source == "morning_check_in":
+            packet["matchedText"] = self.matched_text
+            packet["basis"] = "phrase matched in the check-in note"
+        return packet
 
 
 @dataclass(frozen=True)
@@ -807,6 +844,30 @@ def _recovery_day(row: DailyMetric) -> RecoveryDay:
     )
 
 
+def classify_check_in_cause_matches(
+    feel: str | None, notes: str | None
+) -> tuple[tuple[str, str], ...]:
+    """``(cause, matched phrase)`` pairs for Mark's free-text explanation.
+
+    The single source of truth for check-in classification;
+    :func:`classify_check_in_causes` is the cause-only view of the same walk. The
+    matched phrase is what makes a tag explainable downstream (Batch 212) — the
+    engine keeps consuming bare causes exactly as before.
+    """
+
+    text = " ".join(part.strip() for part in (feel, notes) if part and part.strip()).lower()
+    if not text:
+        return ()
+    found: list[tuple[str, str]] = []
+    for cause, patterns in _CHECK_IN_CAUSE_PATTERNS.items():
+        for pattern in patterns:
+            matched = _first_non_negated_match(text, pattern)
+            if matched is not None:
+                found.append((cause, matched))
+                break
+    return tuple(found)
+
+
 def classify_check_in_causes(feel: str | None, notes: str | None) -> tuple[str, ...]:
     """Turn Mark's persisted free-text explanation into narrow acute-cause tags.
 
@@ -817,25 +878,23 @@ def classify_check_in_causes(feel: str | None, notes: str | None) -> tuple[str, 
     alcohol" as an explanation.
     """
 
-    text = " ".join(part.strip() for part in (feel, notes) if part and part.strip()).lower()
-    if not text:
-        return ()
-    found: list[str] = []
-    for cause, patterns in _CHECK_IN_CAUSE_PATTERNS.items():
-        if any(_non_negated_match(text, pattern) for pattern in patterns):
-            found.append(cause)
-    return tuple(found)
+    return tuple(cause for cause, _ in classify_check_in_cause_matches(feel, notes))
 
 
-def _non_negated_match(text: str, pattern: str) -> bool:
+def _first_non_negated_match(text: str, pattern: str) -> str | None:
+    """The first occurrence of ``pattern`` not preceded by a negation, or ``None``."""
     for match in re.finditer(pattern, text):
         prefix = text[max(0, match.start() - 18) : match.start()]
         if not re.search(
             r"(?:\bno|\bnot|\bwithout|\bdidn['’]?t)(?:\s+\w+){0,2}\s+$",
             prefix,
         ):
-            return True
-    return False
+            return match.group(0)
+    return None
+
+
+def _non_negated_match(text: str, pattern: str) -> bool:
+    return _first_non_negated_match(text, pattern) is not None
 
 
 def _check_in_training_context(
@@ -844,7 +903,7 @@ def _check_in_training_context(
     recorded: list[RecordedTrainingContext] = []
     seen: set[tuple[date, str]] = set()
     for row in manual_rows:
-        for cause in classify_check_in_causes(row.feel, row.notes):
+        for cause, matched in classify_check_in_cause_matches(row.feel, row.notes):
             key = (row.entry_date, cause)
             if key in seen:
                 continue
@@ -855,6 +914,7 @@ def _check_in_training_context(
                     end_date=row.entry_date,
                     reason=cause,
                     source="morning_check_in",
+                    matched_text=matched,
                 )
             )
     return recorded

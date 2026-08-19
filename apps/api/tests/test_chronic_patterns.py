@@ -6,12 +6,14 @@ import pytest
 
 from src.services.chronic_patterns import (
     BaselineBand,
+    RecordedTrainingContext,
     RecoveryDay,
     RedDayEvidence,
     ScheduledRecoveryBlock,
     SleepNight,
     VerdictDay,
     build_chronic_pattern_suggestions,
+    classify_check_in_cause_matches,
     classify_check_in_causes,
 )
 from src.services.insights import DriverCorrelation
@@ -651,3 +653,119 @@ def test_check_in_cause_classifier_captures_marks_words_and_respects_negation() 
         "Presumably due to a harder day's training yesterday and cumulative 3 day training load.",
     ) == ("training_load",)
     assert classify_check_in_causes(None, "No alcohol and not feeling ill.") == ()
+
+
+# --- Batch 212: the classifier reads prose, so over-match is a coaching defect ---
+
+# Mark's own words, copied verbatim from `coach.manual_entries` for the two
+# mornings that produced the phantom "illness context" he queried on 2026-08-14.
+# Both are about his bedroom. Neither may ever tag illness again.
+MARK_2026_08_14_NOTE = (
+    "Tried sleeping with just single sheet rather than quilt which made big "
+    "difference and experiment worked with very good sleep up until 05:45. Only "
+    "downside was weather changed and with windows open and just sheet meant more "
+    "awake from this time as felt cold from drafts."
+)
+MARK_2026_08_15_NOTE = (
+    "Did good job cooling room to 17° but tried experiment of sleeping just with "
+    "thin quilt cover instead of quilt again. Also kept one window on each side of "
+    "room open 10cm with blind out from windowsill. This backfired as too cold and "
+    "at 02:50 had to change to quilt. Not sure if due to temp or draught as wind "
+    "was at angle cold air coming more directly into room."
+)
+
+
+@pytest.mark.parametrize(
+    ("feel", "notes"),
+    [
+        ("Feel good this morning", MARK_2026_08_14_NOTE),
+        ("Overall good sleep in circumstances in notes.", MARK_2026_08_15_NOTE),
+    ],
+)
+def test_a_cold_bedroom_is_never_an_illness(feel: str, notes: str) -> None:
+    """The regression Mark actually hit: both notes classified as `illness`."""
+    assert classify_check_in_causes(feel, notes) == ()
+
+
+@pytest.mark.parametrize(
+    "notes",
+    [
+        "Woke up with a head cold.",
+        "Streaming cold all day, throat is raw.",
+        "Think I've caught a cold from the grandkids.",
+        "Feeling properly unwell today.",
+        "Off with a chest infection.",
+        "Man flu, apparently.",
+        "Was sick twice in the night.",
+    ],
+)
+def test_genuine_illness_phrasings_still_tag(notes: str) -> None:
+    assert classify_check_in_causes(None, notes) == ("illness",)
+
+
+@pytest.mark.parametrize(
+    ("cause", "notes"),
+    [
+        # One negative control per cause family — the neighbouring subject most
+        # likely to appear in a real recovery note for each.
+        ("illness", "Room was cold so slept badly, and the wind was cold too."),
+        ("illness", "Bit sick of this weather to be honest."),
+        ("alcohol", "Been drinking plenty of water and lots of squash all day."),
+        ("alcohol", "Drank a lot of water before bed."),
+        ("travel", "Slept in my own bed as usual, no travel this week."),
+        ("deliberate_rest", "Busy day but no rest at all."),
+        ("training_load", "Easy spin, nothing hard about it."),
+    ],
+)
+def test_cause_family_negative_controls(cause: str, notes: str) -> None:
+    assert cause not in classify_check_in_causes(None, notes)
+
+
+def test_alcohol_still_tags_when_the_drink_is_alcoholic() -> None:
+    """The hydration guard must not blunt the real signal."""
+    assert classify_check_in_causes(None, "Was drinking wine with dinner.") == ("alcohol",)
+    assert classify_check_in_causes(None, "Drank a couple of beers.") == ("alcohol",)
+
+
+def test_matched_phrase_is_carried_so_a_tag_can_explain_itself() -> None:
+    """Provenance: the coach could not say *why* the illness tag existed."""
+    matches = classify_check_in_cause_matches(None, "Woke up with a streaming cold.")
+    assert matches == (("illness", "streaming cold"),)
+    assert classify_check_in_causes(None, "Woke up with a streaming cold.") == ("illness",)
+
+
+def test_idle_chronic_action_is_not_narrated() -> None:
+    """Batch 212: the prompt told the model to explain chronicAction and state its
+    human-approval/verdictImpact fields, so it produced exactly that on a morning
+    where nothing was triggered. Pinned to the version bump that carries it."""
+    from src.services.morning_analysis import PROMPT_VERSION, SYSTEM_PROMPT
+
+    assert PROMPT_VERSION.startswith("morning-analysis-v31")
+    assert "chronicAction.triggered is false" in SYSTEM_PROMPT
+    assert "internal bookkeeping with nothing to" in SYSTEM_PROMPT
+    # The never-soften rule must survive the gate, not be replaced by it.
+    assert "never soften or argue it down" in SYSTEM_PROMPT
+    # Provenance is offered to the model, so a queried tag can be quoted back.
+    assert "matchedText" in SYSTEM_PROMPT
+
+
+def test_check_in_context_packet_carries_its_basis() -> None:
+    """A check-in tag is explainable; a plan-derived one has no prose to quote."""
+    from_check_in = RecordedTrainingContext(
+        start_date=date(2026, 8, 14),
+        end_date=date(2026, 8, 14),
+        reason="illness",
+        source="morning_check_in",
+        matched_text="streaming cold",
+    ).to_packet()
+    assert from_check_in["matchedText"] == "streaming cold"
+    assert from_check_in["basis"] == "phrase matched in the check-in note"
+
+    from_plan = RecordedTrainingContext(
+        start_date=date(2026, 8, 14),
+        end_date=date(2026, 8, 20),
+        reason="holiday",
+        source="holiday_plan",
+    ).to_packet()
+    assert "matchedText" not in from_plan
+    assert "basis" not in from_plan
