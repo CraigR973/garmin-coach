@@ -152,7 +152,7 @@ from src.services.workout_delivery import build_structured_workout_ir
 # suppresses a redundant deload.
 # Batch 201: raw-Red sleep credit cannot reach Green, Low readiness can relax only
 # on proved-benign load, and the shared Amber transform caps at Sweet Spot.
-PROMPT_VERSION = "morning-analysis-v31-2026-08-18"
+PROMPT_VERSION = "morning-analysis-v31-2026-08-19"
 ANALYSIS_TYPE = "morning"
 # Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
 # signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
