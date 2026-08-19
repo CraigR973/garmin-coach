@@ -1126,6 +1126,7 @@ def _grade(
     on: int = 0,
     over: int = 0,
     under: int = 1,
+    ungraded: int = 0,
 ) -> dict[str, Any]:
     """Mirror ``summarize_execution``'s shape for the deterministic detector."""
     return {
@@ -1134,6 +1135,7 @@ def _grade(
         "onTargetCount": on,
         "overCount": over,
         "underCount": under,
+        "ungradedCount": ungraded,
         "summary": f"{work} work interval(s): {on} on target, {over} over, {under} under.",
         "wholeRideAvgPowerWatts": 150,
     }
@@ -1321,6 +1323,42 @@ def test_detect_deviation_ungradable_plan_is_not_a_false_positive() -> None:
 
     assert result["diverged"] is False
     assert result["kind"] == "on_plan"
+
+
+def test_detect_deviation_never_fires_while_a_grade_is_withheld() -> None:
+    """Batch 214: a withheld grade is missing evidence, not evidence of a lighter ride.
+
+    "Every work interval off in the same direction" can only be claimed when every
+    work interval was graded — otherwise a segmentation failure on two of six sprints
+    would be reported to Mark as a session he chose to ride easier.
+    """
+    planned = _bike_workout()
+    grading = RideGradingTarget(
+        ir={"name": "VO2 builder"}, source="planned_workout", planned_workout=planned, proposal=None
+    )
+    result = detect_ride_deviation(
+        grading_target=grading,
+        execution=_grade(work=6, on=0, over=0, under=4, ungraded=2),
+        planned_workouts=[planned],
+        workout_adherence=None,
+        activity=_ride(),
+        morning_verdict=_morning("Green"),
+    )
+
+    assert result["diverged"] is False
+    assert result["kind"] == "on_plan"
+    assert result["signals"]["ungradedCount"] == 2
+
+    # With nothing withheld the same shape is still a genuine deviation.
+    graded = detect_ride_deviation(
+        grading_target=grading,
+        execution=_grade(work=6, on=0, over=0, under=6, ungraded=0),
+        planned_workouts=[planned],
+        workout_adherence=None,
+        activity=_ride(),
+        morning_verdict=_morning("Green"),
+    )
+    assert graded["kind"] == "easier_than_planned"
 
 
 @pytest.mark.asyncio
