@@ -37,15 +37,20 @@ from src.services.garmin_sync import GarminScheduledWorkout
 from src.services.interval_workout_editor import EditableIntervalBlock, IntervalLeg
 from src.services.morning_analysis import MorningAnalysisResult
 from src.services.verdict_scaling import (
+    AMBER_DURATION_SCALE,
     AMBER_POWER_CAP_PCT,
     ENDURANCE_CEILING_PCT,
     HIT_FLOOR_PCT,
     RECOVERY_CAP_PCT,
+    RED_DURATION_SCALE,
+    RED_ENDURANCE_DURATION_SCALE,
     adjust_ir_for_chronic_deload,
     adjust_ir_for_verdict,
     blocks_red_vo2,
+    companion_session_present,
     ease_amber_power_pct,
     ir_has_vo2,
+    ir_is_endurance,
     summarize_verdict_adjustment,
 )
 from src.services.workout_categories import category_for_workout_type
@@ -91,6 +96,34 @@ ENDURANCE_STRUCTURED = {
         {"label": "Cool-down", "minutes": 10, "target": "easy spin"},
     ],
 }
+# Batch 215: Mark's real 2026-08-08 session, transcribed from the production
+# planned_workouts v1 row. It expands to exactly the IR the stored proposals hold —
+# 300 s warm-up 50→65, 2100 s at 62%, 300 s cool-down 60→45, 2700 s total.
+MARK_0808_STRUCTURED = {
+    "format": "bike",
+    "steps": [
+        {"ramp": [50, 65], "label": "Warm-up ramp 50→65%", "minutes": 5},
+        {"label": "Easy Z2 60–65%", "target": "60–65%", "minutes": 35},
+        {"ramp": [60, 45], "label": "Cool-down ramp", "minutes": 5},
+    ],
+    "summary": "5 min ramp → 35 min @60–65% (midpoint 62%) → 5 min ramp",
+}
+# A Zone-2 ride carrying a sprint set — the shape of the 2026-08-01 Red, which the
+# recovery substitution was right to gut. Its hardest working step is 185% FTP.
+ENDURANCE_WITH_SPRINTS_STRUCTURED = {
+    "format": "bike",
+    "steps": [
+        {"ramp": [50, 65], "label": "Warm-up ramp 50→65%", "minutes": 5},
+        {"label": "Easy Z2 60–65%", "target": "60–65%", "minutes": 35},
+        {
+            "label": "Neuromuscular sprints",
+            "repeats": 6,
+            "pattern": "12s on / 3 min easy",
+            "target": "185% FTP",
+        },
+        {"ramp": [60, 45], "label": "Cool-down ramp", "minutes": 5},
+    ],
+}
 
 
 def _planned_workout(structured: dict, *, version: int = 1) -> PlannedWorkout:
@@ -112,6 +145,16 @@ def _planned_workout(structured: dict, *, version: int = 1) -> PlannedWorkout:
 
 def _max_power(ir: dict) -> int:
     return max(int(step["powerEndPct"]) for step in ir["steps"])
+
+
+def _max_work_power(ir: dict) -> int:
+    """The hardest *working* interval — what the packet reports and Red splits on.
+
+    Distinct from :func:`_max_power`, which includes warm-up/cool-down ramps: on
+    Mark's 2026-08-08 ride the warm-up ends at 65% while the work sits at 62%.
+    """
+    work = [s for s in ir["steps"] if str(s.get("phase") or "interval") == "interval"]
+    return max(int(step["powerEndPct"]) for step in work or ir["steps"])
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +327,184 @@ def test_summarize_verdict_adjustment_red_and_green() -> None:
     # Green (or no verdict) is explanatory-absent — never a guessed number.
     assert summarize_verdict_adjustment(base, "Green") is None
     assert summarize_verdict_adjustment({"steps": []}, "Amber") is None
+
+
+# ---------------------------------------------------------------------------
+# Batch 215 — Red protects recovery without deleting the sleep benefit
+# ---------------------------------------------------------------------------
+
+
+def test_red_holds_an_already_endurance_ride_instead_of_gutting_it() -> None:
+    """Batch 215 (Decision #293), pinned on Mark's real 2026-08-08 session.
+
+    Pre-fix, Red halved the ride and capped it at 60% FTP: production's stored
+    ``red_substitution`` proposal is 1350 s at 60%, and the brief quoted "22 minutes
+    at 60% FTP". His objection was physiological — sustained easy work builds sleep
+    pressure — and it is the easy ride Red had no reason to delete.
+    """
+    base = build_structured_workout_ir(_planned_workout(MARK_0808_STRUCTURED), ftp_watts=280)
+    assert base["totalDurationSec"] == 2700  # the stored proposal's own total
+    assert _max_work_power(base) == 62  # already Zone 2
+
+    adjusted = adjust_ir_for_verdict(base, "Red")
+
+    # Intensity is held inside Zone 2 rather than dropped to the recovery cap.
+    assert _max_work_power(adjusted) == 62
+    assert _max_work_power(adjusted) > RECOVERY_CAP_PCT
+    # A light cut, not a halving: 45 min becomes 38, not the pre-fix 22.
+    assert adjusted["totalDurationSec"] == round(2700 * RED_ENDURANCE_DURATION_SCALE)
+    assert adjusted["totalDurationSec"] > round(2700 * RED_DURATION_SCALE)
+    assert adjusted["origin"] == "red_endurance_hold"
+    assert adjusted["name"].startswith("Red-adjusted: ")
+    assert adjusted["adjustment"]["enduranceHold"] is True
+    assert adjusted["adjustment"]["powerCapPct"] == ENDURANCE_CEILING_PCT
+    # The safety rail is untouched — there was no hard work here to remove.
+    assert adjusted["adjustment"]["removedHit"] is False
+    assert blocks_red_vo2("Red", adjusted) is False
+
+
+def test_red_still_substitutes_recovery_for_anything_harder_than_zone_two() -> None:
+    """215.4: intensity-aware *duration* is the change, not a relaxation of what may
+    be pushed on a Red day. A ride carrying sprints is not 'already endurance'."""
+    for structured in (VO2_STRUCTURED, SWEET_SPOT_STRUCTURED, ENDURANCE_WITH_SPRINTS_STRUCTURED):
+        base = build_structured_workout_ir(_planned_workout(structured), ftp_watts=280)
+        assert ir_is_endurance(base) is False
+
+        adjusted = adjust_ir_for_verdict(base, "Red")
+
+        assert adjusted["origin"] == "red_substitution"
+        assert adjusted["name"].startswith("Recovery substitution: ")
+        assert _max_power(adjusted) <= RECOVERY_CAP_PCT  # every step, not just the work
+        assert all(int(s["powerStartPct"]) <= RECOVERY_CAP_PCT for s in adjusted["steps"])
+        assert adjusted["adjustment"]["durationScalePct"] == round(RED_DURATION_SCALE * 100)
+        assert adjusted["totalDurationSec"] <= base["totalDurationSec"] * 0.55
+        assert adjusted["adjustment"]["enduranceHold"] is False
+
+
+def test_red_vo2_on_a_mostly_easy_ride_is_still_blocked_at_the_push_gate() -> None:
+    """The 2026-08-01 shape: a Zone-2 ride with a 185% sprint set. The endurance
+    allowance must not become a route for VO2 onto a Red day."""
+    base = build_structured_workout_ir(
+        _planned_workout(ENDURANCE_WITH_SPRINTS_STRUCTURED), ftp_watts=280
+    )
+    assert ir_has_vo2(base) is True
+    assert blocks_red_vo2("Red", base) is True
+
+    adjusted = adjust_ir_for_verdict(base, "Red")
+
+    assert ir_has_vo2(adjusted) is False
+    assert blocks_red_vo2("Red", adjusted) is False
+
+
+def test_a_companion_session_withdraws_reds_endurance_allowance() -> None:
+    """215.5, and the coach's own caveat to Mark: with a bodyweight session alongside
+    a 45-minute Zone 2, the day's total is what matters. The deeper cut returns, and
+    it reproduces the pre-fix output value-for-value."""
+    base = build_structured_workout_ir(_planned_workout(MARK_0808_STRUCTURED), ftp_watts=280)
+
+    adjusted = adjust_ir_for_verdict(base, "Red", companion_session=True)
+
+    assert adjusted["origin"] == "red_substitution"
+    assert adjusted["totalDurationSec"] == 1350  # the stored 2026-08-08 proposal
+    assert _max_work_power(adjusted) == RECOVERY_CAP_PCT
+    assert adjusted["adjustment"]["companionSession"] is True
+
+
+def test_companion_session_present_ignores_sessions_that_carry_no_load() -> None:
+    assert companion_session_present([]) is False
+    assert companion_session_present(["skipped"]) is False
+    assert companion_session_present(["skipped", "removed", "cancelled"]) is False
+    assert companion_session_present(["planned"]) is True
+    assert companion_session_present(["completed"]) is True
+    assert companion_session_present([None]) is True  # unknown counts, conservatively
+    assert companion_session_present(["skipped", "planned"]) is True
+
+
+def test_the_brief_and_the_delivered_ride_quote_one_number() -> None:
+    """215.6 / 215.3: ``summarize_verdict_adjustment`` is what the morning read
+    quotes and ``adjust_ir_for_verdict`` is what gets delivered. They must agree on
+    every branch, including the two new Red ones."""
+    cases = [
+        (MARK_0808_STRUCTURED, "Red", False),
+        (MARK_0808_STRUCTURED, "Red", True),
+        (MARK_0808_STRUCTURED, "Amber", False),
+        (ENDURANCE_STRUCTURED, "Red", False),
+        (VO2_STRUCTURED, "Red", False),
+        (SWEET_SPOT_STRUCTURED, "Amber", False),
+    ]
+    for structured, verdict, companion in cases:
+        base = build_structured_workout_ir(_planned_workout(structured), ftp_watts=280)
+        summary = summarize_verdict_adjustment(base, verdict, companion_session=companion)
+        adjusted = adjust_ir_for_verdict(base, verdict, companion_session=companion)
+        assert summary is not None
+        assert summary["adjustedDurationMin"] == round(adjusted["totalDurationSec"] / 60)
+        assert summary["adjustedWorkPowerPct"] == _max_work_power(adjusted)
+        assert summary["durationScalePct"] == adjusted["adjustment"]["durationScalePct"]
+        if verdict == "Red":
+            assert summary["companionSession"] is companion
+        else:
+            assert "companionSession" not in summary
+        # The held-at-endurance flag reads the outcome, not the verdict's name.
+        assert summary["intensityHeldAtEndurance"] is (
+            summary["adjustedWorkPowerPct"] == summary["plannedWorkPowerPct"]
+            and summary["plannedWorkPowerPct"] <= ENDURANCE_CEILING_PCT
+        )
+
+
+def test_red_endurance_reports_intensity_held_where_it_previously_could_not() -> None:
+    """The packet flag was hardcoded to Amber, so on 2026-08-08 it read False while
+    the ride was already Zone 2 — the read had no way to say the intensity survived,
+    because it had not."""
+    base = build_structured_workout_ir(_planned_workout(MARK_0808_STRUCTURED), ftp_watts=280)
+
+    summary = summarize_verdict_adjustment(base, "Red")
+
+    assert summary is not None
+    assert summary["plannedWorkPowerPct"] == 62
+    assert summary["adjustedWorkPowerPct"] == 62
+    assert summary["intensityHeldAtEndurance"] is True
+    assert summary["adjustedDurationMin"] == 38
+    assert summary["classificationImpact"] == "none"  # explanatory only, still
+
+
+def test_ir_is_endurance_reads_the_hardest_working_step() -> None:
+    def ir(*powers: int) -> dict:
+        return {
+            "steps": [
+                {"phase": "interval", "durationSec": 600, "powerStartPct": p, "powerEndPct": p}
+                for p in powers
+            ]
+        }
+
+    assert ir_is_endurance(ir(62)) is True
+    assert ir_is_endurance(ir(ENDURANCE_CEILING_PCT)) is True
+    assert ir_is_endurance(ir(ENDURANCE_CEILING_PCT + 1)) is False
+    # Mostly easy is not easy: one hard step disqualifies the whole ride.
+    assert ir_is_endurance(ir(62, 62, 62, 108)) is False
+    # A warm-up above the ceiling never makes an easy ride look hard, and an empty
+    # or malformed IR falls back to the conservative recovery substitution.
+    assert ir_is_endurance({"steps": []}) is False
+    assert ir_is_endurance(None) is False
+
+
+def test_amber_is_unchanged_by_the_red_rework() -> None:
+    """A regression guard: 173.2's Amber behaviour must be bit-identical."""
+    for structured in (ENDURANCE_STRUCTURED, VO2_STRUCTURED, SWEET_SPOT_STRUCTURED):
+        base = build_structured_workout_ir(_planned_workout(structured), ftp_watts=280)
+        adjusted = adjust_ir_for_verdict(base, "Amber")
+        assert adjusted["origin"] == "amber_regeneration"
+        # Per-step rounding means the total is not exactly total × scale, so assert
+        # the documented 20-30% band the existing Amber tests use.
+        assert (
+            base["totalDurationSec"] * 0.70
+            <= adjusted["totalDurationSec"]
+            <= base["totalDurationSec"] * 0.80
+        )
+        assert adjusted["adjustment"]["durationScalePct"] == round(AMBER_DURATION_SCALE * 100)
+        assert _max_power(adjusted) == ease_amber_power_pct(_max_power(base))
+        assert "companionSession" not in adjusted["adjustment"]
+        # The combined-load gate is a Red rule only — Amber is bit-identical.
+        assert adjust_ir_for_verdict(base, "Amber", companion_session=True) == adjusted
 
 
 # ---------------------------------------------------------------------------
@@ -1198,6 +1419,168 @@ async def test_regenerate_for_verdict_creates_red_substitution(db_conn: AsyncCon
         assert len(audits) == 1
         assert audits[0].context_packet["tag"] == f"red-regen:{workout_id}:v1"
         assert audits[0].verdict == "Red"
+
+
+@pytest.mark.asyncio
+async def test_regenerate_for_verdict_holds_zone_two_on_a_red_morning(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 215 end to end on the delivery rail: Mark's 2026-08-08 ride is proposed
+    as a shortened Zone 2, not the 22-minute recovery spin he declined."""
+    user_id = uuid.uuid4()
+    workout_id = uuid.uuid4()
+    subject = date(2026, 8, 8)
+    await _seed_profile(db_conn, user_id)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            PlannedWorkout(
+                id=workout_id,
+                user_id=user_id,
+                workout_date=subject,
+                version=1,
+                title="Easy Z2 (No Sprints)",
+                workout_type="bike_endurance",
+                status="planned",
+                is_active=True,
+                planned_duration_min=45,
+                intensity_target="Zone 2 ~65–72% FTP",
+                structured_workout=MARK_0808_STRUCTURED,
+                source="plan_no2_import",
+            )
+        )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+
+        created = await ExecutableCoachingService(session).regenerate_for_verdict(
+            user, subject, analysis=_morning_analysis(user_id, subject, "Red")
+        )
+
+        assert len(created) == 1
+        ir = created[0].structured_workout_ir
+        assert created[0].status == "proposed"  # still never auto-approved
+        assert ir["origin"] == "red_endurance_hold"
+        assert ir["totalDurationSec"] == 2295  # 38 min, against the pre-fix 1350
+        assert _max_work_power(ir) == 62
+        assert ir["adjustment"]["companionSession"] is False
+
+
+@pytest.mark.asyncio
+async def test_regenerate_for_verdict_reverts_to_substitution_when_the_day_is_shared(
+    db_conn: AsyncConnection,
+) -> None:
+    """215.5: on 2026-08-08 Mark also did a 15-minute strength session. With a
+    companion session on the day, the combined load decides and Red cuts deeper."""
+    user_id = uuid.uuid4()
+    workout_id = uuid.uuid4()
+    subject = date(2026, 8, 8)
+    await _seed_profile(db_conn, user_id)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            PlannedWorkout(
+                id=workout_id,
+                user_id=user_id,
+                workout_date=subject,
+                version=1,
+                title="Easy Z2 (No Sprints)",
+                workout_type="bike_endurance",
+                status="planned",
+                is_active=True,
+                planned_duration_min=45,
+                intensity_target="Zone 2 ~65–72% FTP",
+                structured_workout=MARK_0808_STRUCTURED,
+                source="plan_no2_import",
+            )
+        )
+        session.add(
+            PlannedWorkout(
+                id=uuid.uuid4(),
+                user_id=user_id,
+                workout_date=subject,
+                version=2,
+                title="Recovery Morning Routine",
+                workout_type="strength_maintenance",
+                status="planned",
+                is_active=True,
+                planned_duration_min=15,
+                intensity_target="Bodyweight circuit",
+                structured_workout={},
+                source="plan_no2_import",
+            )
+        )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+
+        created = await ExecutableCoachingService(session).regenerate_for_verdict(
+            user, subject, analysis=_morning_analysis(user_id, subject, "Red")
+        )
+
+        # Only the bike session is deliverable; the strength row is the companion.
+        assert len(created) == 1
+        ir = created[0].structured_workout_ir
+        assert ir["origin"] == "red_substitution"
+        assert ir["totalDurationSec"] == 1350
+        assert ir["adjustment"]["companionSession"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_skipped_companion_does_not_withdraw_the_endurance_allowance(
+    db_conn: AsyncConnection,
+) -> None:
+    """A session he skipped was never load. It must not silently halve his ride."""
+    user_id = uuid.uuid4()
+    subject = date(2026, 8, 8)
+    await _seed_profile(db_conn, user_id)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            PlannedWorkout(
+                id=uuid.uuid4(),
+                user_id=user_id,
+                workout_date=subject,
+                version=1,
+                title="Easy Z2 (No Sprints)",
+                workout_type="bike_endurance",
+                status="planned",
+                is_active=True,
+                planned_duration_min=45,
+                intensity_target="Zone 2 ~65–72% FTP",
+                structured_workout=MARK_0808_STRUCTURED,
+                source="plan_no2_import",
+            )
+        )
+        session.add(
+            PlannedWorkout(
+                id=uuid.uuid4(),
+                user_id=user_id,
+                workout_date=subject,
+                version=2,
+                title="Recovery Morning Routine",
+                workout_type="strength_maintenance",
+                status=WORKOUT_STATUS_SKIPPED,
+                is_active=True,
+                planned_duration_min=15,
+                intensity_target="Bodyweight circuit",
+                structured_workout={},
+                source="plan_no2_import",
+            )
+        )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+
+        created = await ExecutableCoachingService(session).regenerate_for_verdict(
+            user, subject, analysis=_morning_analysis(user_id, subject, "Red")
+        )
+
+        assert len(created) == 1
+        assert created[0].structured_workout_ir["origin"] == "red_endurance_hold"
 
 
 # ---------------------------------------------------------------------------

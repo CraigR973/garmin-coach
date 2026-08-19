@@ -55,6 +55,7 @@ from src.services.verdict_scaling import (
     adjust_ir_for_chronic_deload,
     adjust_ir_for_verdict,
     blocks_red_vo2,
+    companion_session_present,
 )
 from src.services.workout_categories import category_for_workout_type
 from src.services.workout_completion import WORKOUT_STATUS_COMPLETED
@@ -236,7 +237,11 @@ class ExecutableCoachingService:
                 base_ir = build_structured_workout_ir(workout, ftp_watts=ftp_watts)
             except HTTPException:
                 continue  # malformed/non-deliverable workout — skip safely
-            adjusted = adjust_ir_for_verdict(base_ir, verdict)
+            adjusted = adjust_ir_for_verdict(
+                base_ir,
+                verdict,
+                companion_session=await self._companion_session(player.id, workout),
+            )
             proposal = await self.rail.propose_from_ir(
                 player=player, workout=workout, ir=adjusted, commit=False
             )
@@ -571,7 +576,11 @@ class ExecutableCoachingService:
         if override_requested or proposal is None:
             ftp_watts = await self.rail._ftp_watts(player.id)
             base_ir = build_structured_workout_ir(workout, ftp_watts=ftp_watts)
-            ir = adjust_ir_for_verdict(base_ir, verdict)
+            ir = adjust_ir_for_verdict(
+                base_ir,
+                verdict,
+                companion_session=await self._companion_session(player.id, workout),
+            )
             if override_requested:
                 ir = apply_manual_override_to_ir(
                     ir,
@@ -1535,10 +1544,10 @@ class ExecutableCoachingService:
             return _normalize_verdict(verdict.get("status"))
         return None
 
-    async def _deliverable_bike_workouts(
+    async def _active_workouts_on(
         self, user_id: uuid.UUID, subject_date: date
     ) -> list[PlannedWorkout]:
-        workouts = (
+        return list(
             (
                 await self.session.execute(
                     select(PlannedWorkout)
@@ -1553,12 +1562,26 @@ class ExecutableCoachingService:
             .scalars()
             .all()
         )
+
+    async def _deliverable_bike_workouts(
+        self, user_id: uuid.UUID, subject_date: date
+    ) -> list[PlannedWorkout]:
         return [
             workout
-            for workout in workouts
+            for workout in await self._active_workouts_on(user_id, subject_date)
             if isinstance(workout.structured_workout, dict)
             and workout.structured_workout.get("format") == "bike"
         ]
+
+    async def _companion_session(self, user_id: uuid.UUID, workout: PlannedWorkout) -> bool:
+        """Does the day already hold another session whose load counts (Batch 215.5)?
+
+        The coach's own caveat to Mark: with a bodyweight session alongside a
+        45-minute Zone 2, the *total* is what matters. When one is scheduled, Red
+        withdraws its endurance allowance and reverts to the recovery substitution.
+        """
+        others = await self._active_workouts_on(user_id, workout.workout_date)
+        return companion_session_present(other.status for other in others if other.id != workout.id)
 
     async def _approved_unpushed(
         self, user_id: uuid.UUID, window_end: date
@@ -1746,6 +1769,8 @@ def _accepted_adjustment_type(ir: dict[str, Any]) -> str:
     origin = str(ir.get("origin") or "").strip().lower()
     if origin == "red_substitution":
         return "Recovery substitution"
+    if origin == "red_endurance_hold":
+        return "Shortened Zone 2"
     if origin == "amber_regeneration":
         return "Eased ride"
     if origin == "manual_override":

@@ -885,6 +885,65 @@ describe('v1 shared schemas', () => {
     expect(parsed.data.current.rest.cadenceRpm).toBe(70);
     expect(parsed.data.presets.zoneTwo.repeat).toBe(1);
     expect(parsed.data.presets.zoneTwo.rest.durationSec).toBe(0);
+    // Green morning: no verdict adjustment is offered, and that must parse.
+    expect(parsed.data.presets.todaysAdjustment).toBeUndefined();
+    expect(parsed.data.adjustmentVerdict ?? null).toBeNull();
+  });
+
+  it('keeps the verdict adjustment the editor pre-fills with (Batch 215)', () => {
+    // Undeclared keys are stripped before the screen sees them, so the preset the
+    // editor defaults to on an Amber/Red morning has to be in the schema.
+    const parsed = intervalEditorEnvelopeSchema.parse({
+      data: {
+        plannedWorkoutId: rowId,
+        current: {
+          repeat: 1,
+          work: { durationSec: 2100, powerPct: 62, cadenceRpm: 85 },
+          rest: { durationSec: 0, powerPct: 55 },
+        },
+        changeTo: {
+          repeat: 1,
+          work: { durationSec: 1695, powerPct: 62, cadenceRpm: 85 },
+          rest: { durationSec: 0, powerPct: 55 },
+        },
+        presets: {
+          keep: {
+            repeat: 1,
+            work: { durationSec: 2100, powerPct: 62, cadenceRpm: 85 },
+            rest: { durationSec: 0, powerPct: 55 },
+          },
+          scale: {
+            repeat: 1,
+            work: { durationSec: 1575, powerPct: 62, cadenceRpm: 85 },
+            rest: { durationSec: 0, powerPct: 55 },
+          },
+          sweetSpot: {
+            repeat: 3,
+            work: { durationSec: 600, powerPct: 90, cadenceRpm: 85 },
+            rest: { durationSec: 300, powerPct: 55, cadenceRpm: 75 },
+          },
+          zoneTwo: {
+            repeat: 1,
+            work: { durationSec: 2700, powerPct: 65, cadenceRpm: 85 },
+            rest: { durationSec: 0, powerPct: 55 },
+          },
+          todaysAdjustment: {
+            repeat: 1,
+            work: { durationSec: 1695, powerPct: 62, cadenceRpm: 85 },
+            rest: { durationSec: 0, powerPct: 55 },
+          },
+        },
+        fixedSteps: [{ index: 0, label: 'Warm-up ramp', role: 'warmup' }],
+        adjustmentVerdict: 'Red',
+      },
+      meta: { generatedAtUtc: '2026-08-19T07:17:00Z' },
+      errors: [],
+    });
+
+    expect(parsed.data.presets.todaysAdjustment?.work.durationSec).toBe(1695);
+    // It is a different block from the generic "Scale down" — the 2026-08-08 split.
+    expect(parsed.data.presets.scale.work.durationSec).toBe(1575);
+    expect(parsed.data.adjustmentVerdict).toBe('Red');
   });
 
   it('accepts kind-scoped reason tags on feedback input (Batch 118)', () => {

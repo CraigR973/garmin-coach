@@ -17,11 +17,18 @@ import { cn } from '@/lib/utils';
 type PresetKey = keyof IntervalEditorEnvelope['data']['presets'];
 
 const PRESET_LABELS: Record<PresetKey, string> = {
+  todaysAdjustment: 'Today’s adjustment',
   keep: 'Keep current',
   scale: 'Scale down',
   sweetSpot: 'Sweet Spot',
   zoneTwo: 'Z2',
 };
+
+// Batch 215: on an Amber/Red morning the editor opens on the app's own adjustment,
+// so the one-tap number matches the one the brief quoted. Absent on Green.
+function defaultPreset(editor: IntervalEditorEnvelope['data']): PresetKey {
+  return editor.presets.todaysAdjustment ? 'todaysAdjustment' : 'scale';
+}
 
 function cloneBlock(block: IntervalWorkoutBlock): IntervalWorkoutBlock {
   return {
@@ -93,7 +100,9 @@ function IntervalWorkoutEditorForm({
   onApproved: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [selectedPreset, setSelectedPreset] = useState<PresetKey | null>('scale');
+  const [selectedPreset, setSelectedPreset] = useState<PresetKey | null>(() =>
+    defaultPreset(editor),
+  );
   const [changeTo, setChangeTo] = useState<IntervalWorkoutBlock>(() =>
     cloneBlock(editor.changeTo),
   );
@@ -122,8 +131,10 @@ function IntervalWorkoutEditorForm({
   });
 
   const applyPreset = (preset: PresetKey) => {
+    const block = editor.presets[preset];
+    if (!block) return;
     setSelectedPreset(preset);
-    setChangeTo(cloneBlock(editor.presets[preset]));
+    setChangeTo(cloneBlock(block));
   };
   const updateLeg = (
     leg: 'work' | 'rest',
@@ -154,22 +165,32 @@ function IntervalWorkoutEditorForm({
         <p className="mt-1 text-xs text-text-secondary">
           Warm-up, cool-down and primer steps stay fixed. Choose a suggestion, then fine-tune it.
         </p>
+        {editor.adjustmentVerdict ? (
+          <p className="mt-1 text-xs text-text-secondary">
+            Pre-filled with today’s {editor.adjustmentVerdict} adjustment — the same change your
+            morning read quoted.
+          </p>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap gap-2" aria-label="Workout type suggestions">
-        {(Object.keys(PRESET_LABELS) as PresetKey[]).map((preset) => (
-          <Button
-            key={preset}
-            type="button"
-            size="sm"
-            variant={selectedPreset === preset ? 'default' : 'outline'}
-            aria-pressed={selectedPreset === preset}
-            onClick={() => applyPreset(preset)}
-          >
-            {selectedPreset === preset ? <Check className="mr-1.5 h-3.5 w-3.5" aria-hidden /> : null}
-            {PRESET_LABELS[preset]}
-          </Button>
-        ))}
+        {(Object.keys(PRESET_LABELS) as PresetKey[])
+          .filter((preset) => editor.presets[preset])
+          .map((preset) => (
+            <Button
+              key={preset}
+              type="button"
+              size="sm"
+              variant={selectedPreset === preset ? 'default' : 'outline'}
+              aria-pressed={selectedPreset === preset}
+              onClick={() => applyPreset(preset)}
+            >
+              {selectedPreset === preset ? (
+                <Check className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+              ) : null}
+              {PRESET_LABELS[preset]}
+            </Button>
+          ))}
       </div>
 
       <div aria-label="Interval settings" className="space-y-2 sm:space-y-1">

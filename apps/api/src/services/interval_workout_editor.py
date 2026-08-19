@@ -8,7 +8,12 @@ from typing import Any
 
 from fastapi import HTTPException, status
 
-from src.services.verdict_scaling import AMBER_DURATION_SCALE, ease_amber_power_pct
+from src.services.verdict_scaling import (
+    AMBER_DURATION_SCALE,
+    ease_amber_power_pct,
+    verdict_duration_scale,
+    verdict_power_pct,
+)
 from src.services.workout_delivery import _expand_step
 
 MIN_REPEATS = 1
@@ -53,17 +58,28 @@ class IntervalEditorSnapshot:
     sweet_spot: EditableIntervalBlock
     zone_two: EditableIntervalBlock
     fixed_steps: tuple[FixedWorkoutStep, ...]
+    #: Batch 215: today's Amber/Red adjustment, landing on the *same total duration*
+    #: the brief quotes. ``None`` on a Green or unknown morning.
+    todays_adjustment: EditableIntervalBlock | None = None
 
 
 def interval_editor_snapshot(
     structured: dict[str, Any] | None,
     intensity_target: str | None,
+    *,
+    verdict: str | None = None,
+    companion_session: bool = False,
 ) -> IntervalEditorSnapshot:
     """Map one planned workout source to Mark's Current/Change-to table.
 
     V1 edits the primary block only. Current plans contain one interval block;
     warm-up, cool-down, and primer steps remain read-only context and are copied
     without alteration when the edit is applied.
+
+    Batch 215: the editor used to open pre-filled with :func:`scale_block` — the
+    *Amber* preset — on every morning including a Red one, so on 2026-08-08 the
+    brief said 22 minutes and the one-tap editor offered 37. When today's verdict is
+    Amber or Red the pre-filled block is now that verdict's own adjustment instead.
     """
     structured = structured or {}
     raw_steps = structured.get("steps")
@@ -103,7 +119,101 @@ def interval_editor_snapshot(
         sweet_spot=sweet_spot_block(current),
         zone_two=zone_two_block(current),
         fixed_steps=fixed_steps,
+        todays_adjustment=verdict_adjusted_block(
+            current,
+            structured,
+            intensity_target,
+            verdict=verdict,
+            companion_session=companion_session,
+        ),
     )
+
+
+def verdict_adjusted_block(
+    block: EditableIntervalBlock,
+    structured: dict[str, Any],
+    intensity_target: str | None,
+    *,
+    verdict: str | None,
+    companion_session: bool = False,
+) -> EditableIntervalBlock | None:
+    """Today's verdict adjustment, expressed as an editable block.
+
+    The editor can only change the primary block — warm-up, cool-down and primer
+    steps are read-only — so scaling the block alone lands on a *different total*
+    from :func:`adjust_ir_for_verdict`, which scales every step. On 2026-08-08 that
+    gap was the whole defect: a 45-minute ride became 37 rather than the 22 the
+    brief quoted, because the fixed 5+5 ramps absorbed none of the cut.
+
+    So the block absorbs the whole reduction instead: the target *total* is the
+    transform's, the fixed steps keep their durations, and what remains goes to the
+    block. Both paths then quote one number. Returns ``None`` on Green, an unknown
+    verdict, or a workout whose fixed steps already exceed the adjusted total.
+    """
+    try:
+        expanded = _expand_step_list(structured, intensity_target)
+    except HTTPException:
+        return None
+    base_ir = {"steps": expanded}
+    scale = verdict_duration_scale(base_ir, verdict, companion_session=companion_session)
+    if scale is None:
+        return None
+
+    total_sec = sum(int(step.get("durationSec", 0)) for step in expanded)
+    block_sec = block.repeat * (block.work.duration_sec + block.rest.duration_sec)
+    fixed_sec = total_sec - block_sec
+    target_block_sec = round(total_sec * scale) - fixed_sec
+    if block_sec <= 0 or target_block_sec < MIN_WORK_DURATION_SEC * block.repeat:
+        return None
+
+    block_scale = target_block_sec / block_sec
+    work_sec = max(MIN_WORK_DURATION_SEC, round(block.work.duration_sec * block_scale))
+    rest_sec = round(block.rest.duration_sec * block_scale)
+    return EditableIntervalBlock(
+        repeat=block.repeat,
+        work=IntervalLeg(
+            duration_sec=min(work_sec, MAX_WORK_DURATION_SEC),
+            power_pct=max(
+                MIN_POWER_PCT,
+                verdict_power_pct(
+                    block.work.power_pct,
+                    base_ir,
+                    verdict,
+                    companion_session=companion_session,
+                ),
+            ),
+            cadence_rpm=block.work.cadence_rpm,
+        ),
+        rest=IntervalLeg(
+            duration_sec=min(rest_sec, MAX_REST_DURATION_SEC),
+            power_pct=max(
+                MIN_POWER_PCT,
+                verdict_power_pct(
+                    block.rest.power_pct,
+                    base_ir,
+                    verdict,
+                    companion_session=companion_session,
+                ),
+            ),
+            cadence_rpm=block.rest.cadence_rpm,
+        ),
+    )
+
+
+def _expand_step_list(
+    structured: dict[str, Any], intensity_target: str | None
+) -> list[dict[str, Any]]:
+    raw_steps = structured.get("steps")
+    if not isinstance(raw_steps, list):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="This session has no editable bike interval block",
+        )
+    expanded: list[dict[str, Any]] = []
+    for raw in raw_steps:
+        if isinstance(raw, dict):
+            expanded.extend(_expand_step(raw, intensity_target))
+    return expanded
 
 
 def apply_interval_block(

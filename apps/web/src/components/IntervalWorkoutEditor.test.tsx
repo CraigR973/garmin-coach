@@ -113,4 +113,54 @@ describe('IntervalWorkoutEditor', () => {
       expect(JSON.parse(call![1].body).block.rest.durationSec).toBe(15);
     });
   });
+
+  // Batch 215: on 2026-08-08 the brief told Mark to cut to 22 minutes and this
+  // editor opened pre-filled at 37, because the default preset was always the
+  // Amber "Scale down". The verdict's own adjustment is now the default.
+  const redEnvelope = {
+    ...editorEnvelope,
+    data: {
+      ...editorEnvelope.data,
+      adjustmentVerdict: 'Red',
+      changeTo: {
+        repeat: 1,
+        work: { durationSec: 1695, powerPct: 62, cadenceRpm: 85 },
+        rest: { durationSec: 0, powerPct: 55, cadenceRpm: null },
+      },
+      presets: {
+        ...editorEnvelope.data.presets,
+        todaysAdjustment: {
+          repeat: 1,
+          work: { durationSec: 1695, powerPct: 62, cadenceRpm: 85 },
+          rest: { durationSec: 0, powerPct: 55, cadenceRpm: null },
+        },
+      },
+    },
+  };
+
+  it("defaults to today's adjustment and names the verdict it came from", async () => {
+    apiFetchMock.mockResolvedValue(redEnvelope);
+    const { container } = renderEditor();
+
+    const todays = await screen.findByRole('button', { name: /today’s adjustment/i });
+    expect(todays.getAttribute('aria-pressed')).toBe('true');
+    expect(
+      screen.getByRole('button', { name: /scale down/i }).getAttribute('aria-pressed'),
+    ).toBe('false');
+    expect(container.textContent).toContain('Red adjustment');
+    // Pre-filled with the transform's block, not the generic Amber scale-down.
+    expect((screen.getByLabelText('Change to work minutes') as HTMLInputElement).value).toBe('28');
+    expect(
+      (screen.getByLabelText('Change to work percent FTP') as HTMLInputElement).value,
+    ).toBe('62');
+  });
+
+  it('falls back to Scale down when the morning made no adjustment', async () => {
+    const { container } = renderEditor();
+
+    const scale = await screen.findByRole('button', { name: /scale down/i });
+    expect(scale.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.queryByRole('button', { name: /today’s adjustment/i })).toBeNull();
+    expect(container.textContent).not.toContain('adjustment — the same change');
+  });
 });
