@@ -87,6 +87,7 @@ BASELINE_SPECS: tuple[BaselineMetricSpec, ...] = (
     BaselineMetricSpec("readiness_score", "Training readiness"),
     BaselineMetricSpec("resting_heart_rate_bpm", "Resting heart rate"),
     BaselineMetricSpec("body_battery_charge", "Body Battery charge"),
+    BaselineMetricSpec("body_battery_drain", "Body Battery drain"),
     BaselineMetricSpec(
         "average_spo2_pct",
         "Average Pulse Ox",

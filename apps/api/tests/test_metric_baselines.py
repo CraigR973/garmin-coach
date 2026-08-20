@@ -51,6 +51,14 @@ def _sample(row: _Row) -> BaselineSample:
     )
 
 
+def _sample_with_drain(row: _Row, drain: int) -> BaselineSample:
+    sample = _sample(row)
+    return BaselineSample(
+        calendar_date=sample.calendar_date,
+        values={**sample.values, "body_battery_drain": drain},
+    )
+
+
 # --- pure core -------------------------------------------------------------
 
 
@@ -98,6 +106,58 @@ def test_compute_metric_baselines_skips_all_none_metric() -> None:
     keys = {b["metric_key"] for b in compute_metric_baselines(samples, source=DB_HISTORY_SOURCE)}
     assert "sleep_score" in keys
     assert "body_battery_charge" not in keys
+
+
+def test_compute_metric_baselines_includes_body_battery_drain() -> None:
+    samples = [
+        _sample_with_drain((date(2026, 6, 11), 70, 44, 55, 96.0, 11.0, 45), 60),
+        _sample_with_drain((date(2026, 6, 12), 80, 42, 57, 98.0, 10.0, 47), 68),
+    ]
+    baselines = {
+        b["metric_key"]: b for b in compute_metric_baselines(samples, source=DB_HISTORY_SOURCE)
+    }
+    assert baselines["body_battery_drain"]["metric_label"] == "Body Battery drain"
+    assert baselines["body_battery_drain"]["mean_value"] == pytest.approx(64.0)
+    assert baselines["body_battery_drain"]["sample_count"] == 2
+
+
+def test_sample_values_sources_body_battery_drain_from_day_aggregates() -> None:
+    """Batch 216: drain is the sibling of charge — same settled-row requirement,
+    same fallback-to-metric behaviour when no settled row exists yet."""
+    user_id = uuid.uuid4()
+    day = date(2026, 8, 19)
+    morning_metric = DailyMetric(
+        user_id=user_id,
+        calendar_date=day,
+        body_battery_drained=31,
+        raw_payload={
+            "body_battery": {
+                "drained": 31,
+                "startTimestampLocal": f"{day.isoformat()}T00:00:00.0",
+                "endTimestampLocal": f"{day.isoformat()}T09:10:00.0",  # incomplete window
+            }
+        },
+    )
+    settled_metric = DailyMetric(
+        user_id=user_id,
+        calendar_date=day,
+        body_battery_drained=64,
+        raw_payload={
+            "body_battery": {
+                "drained": 64,
+                "startTimestampLocal": f"{day.isoformat()}T00:00:00.0",
+                "endTimestampLocal": f"{(day + timedelta(days=1)).isoformat()}T00:00:00.0",
+            }
+        },
+    )
+
+    assert sample_values(None, morning_metric)["body_battery_drain"] is None
+    assert (
+        sample_values(None, morning_metric, day_aggregates=settled_metric)["body_battery_drain"]
+        == 64
+    )
+    # No settled row yet -> falls back to the metric passed in, same as charge.
+    assert sample_values(None, settled_metric)["body_battery_drain"] == 64
 
 
 def test_sample_values_recomputes_age_adjusted_sleep_when_profile_context_exists() -> None:
@@ -151,6 +211,131 @@ def test_metrics_vs_baselines_surfaces_computed_baselines() -> None:
     assert table["average_spo2_pct"]["reliabilityStartDate"] == SPO2_HRV_RELIABLE_FROM.isoformat()
 
 
+def _battery_baseline(user_id: uuid.UUID, metric_key: str, metric_label: str) -> MetricBaseline:
+    return MetricBaseline(
+        user_id=user_id,
+        metric_key=metric_key,
+        metric_label=metric_label,
+        source="test",
+        sample_count=109,
+        excluded_sample_count=0,
+        mean_value=63.8,
+        median_value=64,
+        lower_quartile_value=54,
+        upper_quartile_value=74,
+        raw_payload={},
+    )
+
+
+def test_metrics_vs_baselines_body_battery_reads_settled_row_not_morning_row() -> None:
+    """Batch 216 regression, pinning Mark's 2026-08-19 report: the "Metrics vs
+    Baselines" table takes a single ``daily_metric`` — post-Batch-205 the
+    *morning-phase* row — and Body Battery charge/drain are running local-day
+    totals a wake row can never complete, so they must be sourced from the
+    settled row (via the ``day_aggregates`` parameter) once one exists.
+    Recovery reads (readiness/RHR/HRV) must stay on the morning row regardless
+    — that split is Batch 205's whole point and must not be undone.
+    """
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 8, 19)
+    morning_row = DailyMetric(
+        user_id=user_id,
+        calendar_date=subject_date,
+        phase="morning",
+        readiness_score=68,
+        resting_heart_rate_bpm=45,
+        hrv_weekly_avg_ms=44,
+        body_battery_charged=52,
+        body_battery_drained=31,
+        raw_payload={
+            "body_battery": {
+                "charged": 52,
+                "drained": 31,
+                "startTimestampLocal": f"{subject_date.isoformat()}T00:00:00.0",
+                "endTimestampLocal": f"{subject_date.isoformat()}T09:10:00.0",
+            }
+        },
+    )
+    settled_row = DailyMetric(
+        user_id=user_id,
+        calendar_date=subject_date,
+        phase="settled",
+        readiness_score=61,  # a later re-sync value; must never surface here
+        resting_heart_rate_bpm=47,
+        hrv_weekly_avg_ms=41,
+        body_battery_charged=80,
+        body_battery_drained=64,
+        raw_payload={
+            "body_battery": {
+                "charged": 80,
+                "drained": 64,
+                "startTimestampLocal": f"{subject_date.isoformat()}T00:00:00.0",
+                "endTimestampLocal": (
+                    f"{(subject_date + timedelta(days=1)).isoformat()}T00:00:00.0"
+                ),
+            }
+        },
+    )
+    baselines = [
+        _battery_baseline(user_id, "body_battery_charge", "Body Battery charge"),
+        _battery_baseline(user_id, "body_battery_drain", "Body Battery drain"),
+    ]
+
+    # Before the wake job's next sync lands a settled row, the morning row's
+    # partial total is correctly withheld rather than shown as complete.
+    no_settled_yet = {
+        row["metricKey"]: row for row in _metrics_vs_baselines(morning_row, None, baselines, None)
+    }
+    assert no_settled_yet["body_battery_charge"]["currentValue"] is None
+    assert no_settled_yet["body_battery_drain"]["currentValue"] is None
+
+    # Once the settled row exists, both figures render from it — the fix.
+    rows = {
+        row["metricKey"]: row
+        for row in _metrics_vs_baselines(
+            morning_row, None, baselines, None, day_aggregates=settled_row
+        )
+    }
+    assert rows["body_battery_charge"]["currentValue"] == 80
+    assert rows["body_battery_drain"]["currentValue"] == 64
+
+
+def test_metrics_vs_baselines_recovery_reads_stay_on_morning_row_with_settled_row_present() -> None:
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 8, 19)
+    morning_row = DailyMetric(
+        user_id=user_id,
+        calendar_date=subject_date,
+        phase="morning",
+        readiness_score=68,
+        resting_heart_rate_bpm=45,
+        hrv_weekly_avg_ms=44,
+    )
+    settled_row = DailyMetric(
+        user_id=user_id,
+        calendar_date=subject_date,
+        phase="settled",
+        readiness_score=61,
+        resting_heart_rate_bpm=47,
+        hrv_weekly_avg_ms=41,
+    )
+    baselines = [
+        _battery_baseline(user_id, "readiness_score", "Training readiness"),
+        _battery_baseline(user_id, "resting_heart_rate_bpm", "Resting heart rate"),
+        _battery_baseline(user_id, "hrv_7_day_avg_ms", "7-day average HRV"),
+    ]
+
+    rows = {
+        row["metricKey"]: row
+        for row in _metrics_vs_baselines(
+            morning_row, None, baselines, None, day_aggregates=settled_row
+        )
+    }
+    assert rows["readiness_score"]["currentValue"] == 68
+    assert rows["resting_heart_rate_bpm"]["currentValue"] == 45
+    assert rows["hrv_7_day_avg_ms"]["currentValue"] == 44
+
+
 # --- DB-backed backfill service -------------------------------------------
 
 
@@ -185,13 +370,16 @@ def _seed_day(session: object, user_id: uuid.UUID, day: date) -> None:
         DailyMetric(
             user_id=user_id,
             calendar_date=day,
+            phase="settled",
             readiness_score=70 + (day.day % 8),
             resting_heart_rate_bpm=44 + (day.day % 4),
             body_battery_charged=50 + (day.day % 5),
+            body_battery_drained=60 + (day.day % 9),
             hrv_weekly_avg_ms=42 + (day.day % 6),
             raw_payload={
                 "body_battery": {
                     "charged": 50 + (day.day % 5),
+                    "drained": 60 + (day.day % 9),
                     "startTimestampLocal": f"{day.isoformat()}T00:00:00.0",
                     "endTimestampLocal": f"{(day + timedelta(days=1)).isoformat()}T00:00:00.0",
                 }
@@ -206,6 +394,7 @@ _ALL_METRIC_KEYS = {
     "readiness_score",
     "resting_heart_rate_bpm",
     "body_battery_charge",
+    "body_battery_drain",
     "average_spo2_pct",
     "average_respiration",
     "hrv_7_day_avg_ms",

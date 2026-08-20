@@ -1107,6 +1107,99 @@ async def test_morning_packet_overlays_live_vo2max_onto_athlete_profile(
 
 
 @pytest.mark.asyncio
+async def test_morning_packet_body_battery_reads_settled_row_not_morning_row(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 216 regression, pinning Mark's 2026-08-19 report: the Body Battery
+    charge row rendered with its baseline but a blank value because the packet
+    read the morning wake row, which can never hold a complete local-day total.
+    A settled row synced later in the day must be picked up instead — recovery
+    reads (readiness/RHR/HRV) must stay on the morning row throughout."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 8, 19)
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Morning Body Battery Packet",
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+        session.add(
+            DailyMetric(
+                user_id=user_id,
+                calendar_date=subject_date,
+                phase="morning",
+                readiness_score=68,
+                body_battery_charged=52,
+                body_battery_drained=31,
+                raw_payload={
+                    "body_battery": {
+                        "charged": 52,
+                        "drained": 31,
+                        "startTimestampLocal": f"{subject_date.isoformat()}T00:00:00.0",
+                        "endTimestampLocal": f"{subject_date.isoformat()}T09:10:00.0",
+                    }
+                },
+            )
+        )
+        session.add(
+            DailyMetric(
+                user_id=user_id,
+                calendar_date=subject_date,
+                phase="settled",
+                readiness_score=61,  # a later re-sync value; must never surface here
+                body_battery_charged=80,
+                body_battery_drained=64,
+                raw_payload={
+                    "body_battery": {
+                        "charged": 80,
+                        "drained": 64,
+                        "startTimestampLocal": f"{subject_date.isoformat()}T00:00:00.0",
+                        "endTimestampLocal": (
+                            f"{(subject_date + timedelta(days=1)).isoformat()}T00:00:00.0"
+                        ),
+                    }
+                },
+            )
+        )
+        session.add_all(
+            MetricBaseline(
+                user_id=user_id,
+                metric_key=key,
+                metric_label=label,
+                source="test",
+                window_start_date=date(2026, 5, 1),
+                window_end_date=date(2026, 8, 18),
+                sample_count=109,
+                excluded_sample_count=0,
+                mean_value=63.8,
+                median_value=64,
+                lower_quartile_value=54,
+                upper_quartile_value=74,
+                raw_payload={},
+            )
+            for key, label in [
+                ("body_battery_charge", "Body Battery charge"),
+                ("body_battery_drain", "Body Battery drain"),
+                ("readiness_score", "Training readiness"),
+            ]
+        )
+        await session.commit()
+
+        packet = await MorningAnalysisService(session).assemble_context_packet(player, subject_date)
+
+    table = {row["metricKey"]: row for row in packet["metricsVsBaselines"]}
+    assert table["body_battery_charge"]["currentValue"] == 80
+    assert table["body_battery_drain"]["currentValue"] == 64
+    assert table["readiness_score"]["currentValue"] == 68
+
+
+@pytest.mark.asyncio
 async def test_morning_packet_carries_effective_weight_with_as_of_date(
     db_conn: AsyncConnection,
 ) -> None:

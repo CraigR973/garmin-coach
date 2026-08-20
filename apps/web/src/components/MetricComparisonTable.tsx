@@ -69,12 +69,16 @@ export interface AgeComparison {
 }
 
 // Direction of "better" per metric key. This list must cover every key the
-// backend emits as a baseline row (services/metric_baselines.py::_current_metric_values):
+// backend emits as a baseline row (services/metric_baselines.py::sample_values):
 // sleep_score, age_adjusted_sleep_score, readiness_score, resting_heart_rate_bpm,
-// body_battery_charge, average_spo2_pct, average_respiration, hrv_7_day_avg_ms.
-// A key missing here reads as "no direction", so an out-of-band value in the *good*
-// direction (e.g. readiness above your normal) would render as a ⚠ warning — the bug
-// this covers. Keep in sync when a new baseline metric is added.
+// body_battery_charge, body_battery_drain, average_spo2_pct, average_respiration,
+// hrv_7_day_avg_ms. A key missing here reads as "no direction", so an out-of-band
+// value in the *good* direction (e.g. readiness above your normal) would render
+// as a ⚠ warning — the bug this covers. Keep in sync when a new baseline metric
+// is added — `body_battery_drain` (Batch 216) is the one deliberate exception:
+// it has no health-desirable direction (a heavier or lighter day than normal is
+// just notable, not good or bad), so it stays out of both sets and always reads
+// as a plain deviation rather than a false "good"/"bad" call.
 const HIGHER_IS_BETTER = new Set([
   'sleep_score',
   'age_adjusted_sleep_score',

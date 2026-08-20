@@ -418,6 +418,7 @@ class MorningAnalysisService:
         kb_rows = await self._active_knowledge_base(player.id)
         knowledge_base = {row.section: row.content for row in kb_rows}
         daily_metric = await self._daily_metric(player.id, subject_date)
+        day_aggregate_metric = await self._day_aggregate_metric(player.id, subject_date)
         sleep = await self._sleep(player.id, subject_date)
         manual_entries = await self._manual_entries(player.id, subject_date)
         recent_corrections = await FeedbackService(self.session).recent_corrections(player.id)
@@ -475,6 +476,7 @@ class MorningAnalysisService:
             sleep,
             baselines,
             age_adjusted_sleep_score,
+            day_aggregates=day_aggregate_metric,
         )
         age_comparison = _age_comparison(daily_metric, sleep, knowledge_base)
         thermal_review = _thermal_review(
@@ -824,6 +826,29 @@ class MorningAnalysisService:
                     DailyMetric.calendar_date == subject_date,
                 )
                 .order_by(morning_first_order())
+                .limit(1)
+            ),
+        )
+
+    async def _day_aggregate_metric(
+        self, user_id: uuid.UUID, subject_date: date
+    ) -> DailyMetric | None:
+        """The settled observation for ``subject_date``, if one exists yet.
+
+        Batch 216: Body Battery charge/drain and stress are running local-day
+        totals, not point-in-time readings — a morning wake row can never carry
+        a complete one (``daily_metric_coverage``). Mirrors the ``day_aggregates``
+        parameter ``sample_values`` already uses for the same reason.
+        """
+        return cast(
+            DailyMetric | None,
+            await self.session.scalar(
+                select(DailyMetric)
+                .where(
+                    DailyMetric.user_id == user_id,
+                    DailyMetric.calendar_date == subject_date,
+                )
+                .order_by(settled_first_order())
                 .limit(1)
             ),
         )
@@ -1405,7 +1430,15 @@ def _metrics_vs_baselines(
     sleep: Sleep | None,
     baselines: Sequence[MetricBaseline],
     age_adjusted_sleep_score: int | None,
+    day_aggregates: DailyMetric | None = None,
 ) -> list[dict[str, Any]]:
+    # Batch 216: recovery reads (readiness, RHR, HRV) stay on the morning row —
+    # that split is Batch 205's whole point. Body Battery charge/drain are
+    # running local-day totals and need the settled row's completed window
+    # (`daily_metric_coverage`), which `daily_metric` alone can never satisfy on
+    # a live morning. Falls back to `daily_metric` when no settled row exists
+    # yet, matching `metric_baselines.sample_values`.
+    battery_source = day_aggregates if day_aggregates is not None else daily_metric
     current_values = {
         "sleep_score": sleep.score if sleep else None,
         "age_adjusted_sleep_score": age_adjusted_sleep_score,
@@ -1415,7 +1448,10 @@ def _metrics_vs_baselines(
             sleep.resting_heart_rate_bpm if sleep else None,
         ),
         "body_battery_charge": (
-            complete_body_battery_charged(daily_metric) if daily_metric is not None else None
+            complete_body_battery_charged(battery_source) if battery_source is not None else None
+        ),
+        "body_battery_drain": (
+            complete_body_battery_drained(battery_source) if battery_source is not None else None
         ),
         "average_spo2_pct": sleep.average_spo2_pct if sleep else None,
         "average_respiration": sleep.average_respiration if sleep else None,
