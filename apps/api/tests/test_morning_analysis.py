@@ -38,6 +38,7 @@ from src.services.morning_analysis import (
     _eased_ride_detail,
     _manual_entry_packet,
     _morning_verdict,
+    _plan_adjustments,
     _rest_day_context,
     _sleep_packet,
     _thermal_action,
@@ -1386,7 +1387,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v31")
+    assert PROMPT_VERSION.startswith("morning-analysis-v32")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
@@ -2930,6 +2931,122 @@ def test_verdict_adjustment_packet_eases_hard_ride_and_removes_hit() -> None:
     detail = _eased_ride_detail("Amber", packet)
     assert "no HIT/VO2" in detail
     assert f"{packet['adjustedWorkPowerPct']}% FTP" in detail
+
+
+_MARK_0808_STRUCTURED = {
+    "format": "bike",
+    "steps": [
+        {"ramp": [50, 65], "label": "Warm-up ramp 50→65%", "minutes": 5},
+        {"label": "Easy Z2 60–65%", "target": "60–65%", "minutes": 35},
+        {"ramp": [60, 45], "label": "Cool-down ramp", "minutes": 5},
+    ],
+}
+
+
+def _mark_0808_ride() -> PlannedWorkout:
+    return _bike_workout(
+        workout_date=date(2026, 8, 8),
+        title="Easy Z2 (No Sprints)",
+        workout_type="bike_endurance",
+        status="planned",
+        intensity_target="Zone 2 ~65–72% FTP",
+        structured_workout=_MARK_0808_STRUCTURED,
+    )
+
+
+def test_red_packet_holds_zone_two_and_the_copy_stops_substituting_it() -> None:
+    """Batch 215, pinned on the read Mark actually got. The stored 2026-08-08 packet
+    reads ``adjustedDurationMin: 22, adjustedWorkPowerPct: 60,
+    intensityHeldAtEndurance: false`` and the brief said "cut to 22 minutes at 60%
+    FTP". His objection was that the easy ride is what helps him sleep."""
+    ride = _mark_0808_ride()
+
+    packet = _verdict_adjustment_packet("Red", [ride])
+
+    assert packet is not None
+    assert packet["plannedDurationMin"] == 45
+    assert packet["plannedWorkPowerPct"] == 62
+    assert packet["adjustedWorkPowerPct"] == 62  # held, not dropped to 60
+    assert packet["adjustedDurationMin"] == 38  # a light cut, not the pre-fix 22
+    assert packet["intensityHeldAtEndurance"] is True
+    assert packet["companionSession"] is False
+    assert packet["classificationImpact"] == "none"  # still explanatory only
+
+    detail = _eased_ride_detail("Red", packet)
+    assert "Zone 2" in detail
+    assert "38 min" in detail
+    # The copy must no longer tell him to swap an already-easy ride for rest.
+    assert "Substitute" not in detail
+    assert "mobility, or rest" not in detail
+
+
+def test_red_packet_still_substitutes_recovery_for_a_hard_ride() -> None:
+    """215.4: the safety rail is untouched — a VO2 ride on Red is still replaced,
+    and the copy still says so."""
+    ride = _bike_workout(
+        workout_type="bike_vo2",
+        intensity_target="105-110% FTP",
+        structured_workout=_HARD_VO2_STRUCTURED,
+    )
+
+    packet = _verdict_adjustment_packet("Red", [ride])
+
+    assert packet is not None
+    assert packet["intensityHeldAtEndurance"] is False
+    assert packet["adjustedWorkPowerPct"] <= 60
+    assert packet["durationScalePct"] == 50
+
+    detail = _eased_ride_detail("Red", packet)
+    assert "Substitute recovery" in detail
+
+
+def test_a_companion_session_reaches_the_packet_from_the_days_plan() -> None:
+    """215.5 through the packet path: the day's other sessions are resolved from the
+    planned workouts already in hand, so the brief quotes the same gated figure the
+    delivery rail applies. A skipped companion is not load."""
+    ride = _mark_0808_ride()
+    strength = _bike_workout(
+        workout_date=date(2026, 8, 8),
+        title="Recovery Morning Routine",
+        workout_type="strength_maintenance",
+        status="planned",
+        structured_workout={},
+    )
+
+    shared = _verdict_adjustment_packet("Red", [ride, strength])
+    assert shared is not None
+    assert shared["companionSession"] is True
+    assert shared["adjustedDurationMin"] == 22
+    assert shared["adjustedWorkPowerPct"] == 60
+    assert shared["intensityHeldAtEndurance"] is False
+
+    strength.status = "skipped"
+    alone = _verdict_adjustment_packet("Red", [ride, strength])
+    assert alone is not None
+    assert alone["companionSession"] is False
+    assert alone["adjustedDurationMin"] == 38
+
+
+def test_red_plan_adjustment_instruction_follows_the_transform() -> None:
+    """The instruction handed to the model must not assert a substitution that did
+    not happen — that is the same class of false deterministic fact Batch 214 found
+    the model will rationalise rather than contradict."""
+    endurance = _plan_adjustments("Red", [_mark_0808_ride()])
+    assert any("Hold Zone 2" in line for line in endurance)
+    assert any("sleep pressure" in line for line in endurance)
+    assert not any("Substitute recovery" in line for line in endurance)
+
+    hard = _plan_adjustments(
+        "Red",
+        [
+            _bike_workout(
+                workout_type="bike_vo2",
+                intensity_target="105-110% FTP",
+                structured_workout=_HARD_VO2_STRUCTURED,
+            )
+        ],
+    )
+    assert hard == ["Substitute recovery, mobility, or rest."]
 
 
 def _batch_201_outcome(case: str) -> tuple[str, int | None]:

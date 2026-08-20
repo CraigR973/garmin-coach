@@ -9,7 +9,11 @@ from src.services.interval_workout_editor import (
     interval_editor_snapshot,
     scale_block,
 )
-from src.services.verdict_scaling import ease_amber_power_pct
+from src.services.verdict_scaling import (
+    RECOVERY_CAP_PCT,
+    adjust_ir_for_verdict,
+    ease_amber_power_pct,
+)
 from src.services.workout_delivery import (
     build_zwo_xml,
     expand_structured_steps,
@@ -145,6 +149,120 @@ def test_sweet_spot_and_zone_two_presets_are_deterministic() -> None:
     assert snapshot.zone_two.work.duration_sec == 2700
     assert snapshot.zone_two.work.power_pct == 65
     assert snapshot.zone_two.rest.duration_sec == 0
+
+
+def _mark_0808_source() -> dict:
+    """Mark's real 2026-08-08 session as production stored it (planned_workouts v2's
+    source shape, whose primary block came from the v1 plan row's 35 min @60-65%)."""
+    return {
+        "format": "bike",
+        "summary": "5 min ramp → 35 min @60–65% (midpoint 62%) → 5 min ramp",
+        "steps": [
+            {"ramp": [50, 65], "label": "Warm-up ramp 50→65%", "minutes": 5},
+            {
+                "label": "Easy Z2 60–65%",
+                "block": {
+                    "repeat": 1,
+                    "work": {"durationSec": 2100, "powerPct": 62},
+                    "rest": {"durationSec": 0, "powerPct": 55},
+                },
+            },
+            {"ramp": [60, 45], "label": "Cool-down ramp", "minutes": 5},
+        ],
+    }
+
+
+def _snapshot_total_sec(block: EditableIntervalBlock, fixed_sec: int) -> int:
+    return fixed_sec + block.repeat * (block.work.duration_sec + block.rest.duration_sec)
+
+
+def test_editor_no_longer_pre_fills_the_amber_cut_on_a_red_morning() -> None:
+    """Batch 215.3, pinned on the real case. On 2026-08-08 the brief said "cut to 22
+    minutes at 60% FTP" while the editor opened pre-filled at 37 minutes — because
+    ``changeTo`` was :func:`scale_block`, the *Amber* preset, on every morning. Mark
+    approved what the app offered him. It now offers today's own adjustment."""
+    source = _mark_0808_source()
+
+    red = interval_editor_snapshot(source, "62% FTP intervals", verdict="Red")
+
+    # The generic preset is unchanged and still available — it is just not the default.
+    assert red.scaled.work.duration_sec == 1575  # the 37-minute number Mark got
+    assert _snapshot_total_sec(red.scaled, 600) == 2175
+    # Today's adjustment is a different, and now the pre-filled, block.
+    assert red.todays_adjustment is not None
+    assert red.todays_adjustment.work.duration_sec != red.scaled.work.duration_sec
+
+
+def test_todays_adjustment_lands_on_the_transforms_own_total() -> None:
+    """The fixed 5+5 ramps are read-only, so scaling the block alone diluted a 50%
+    cut to 19%. The block absorbs the whole reduction instead, so the editor and
+    ``adjust_ir_for_verdict`` agree on the total the brief quotes."""
+    source = _mark_0808_source()
+    fixed_sec = 600  # the two 5-minute ramps
+    base_ir = {"steps": expand_structured_steps(source, "62% FTP intervals")}
+    assert sum(int(s["durationSec"]) for s in base_ir["steps"]) == 2700
+
+    for verdict, companion in (("Amber", False), ("Red", False), ("Red", True)):
+        snapshot = interval_editor_snapshot(
+            source, "62% FTP intervals", verdict=verdict, companion_session=companion
+        )
+        transformed = adjust_ir_for_verdict(base_ir, verdict, companion_session=companion)
+        assert snapshot.todays_adjustment is not None
+        assert (
+            _snapshot_total_sec(snapshot.todays_adjustment, fixed_sec)
+            == (transformed["totalDurationSec"])
+        )
+
+
+def test_todays_adjustment_holds_zone_two_on_red_and_caps_it_when_load_is_shared() -> None:
+    source = _mark_0808_source()
+
+    held = interval_editor_snapshot(source, "62% FTP intervals", verdict="Red")
+    assert held.todays_adjustment is not None
+    assert held.todays_adjustment.work.power_pct == 62  # Zone 2 held, not dropped to 60
+    assert _snapshot_total_sec(held.todays_adjustment, 600) == 2295  # 38 min, not 22
+
+    shared = interval_editor_snapshot(
+        source, "62% FTP intervals", verdict="Red", companion_session=True
+    )
+    assert shared.todays_adjustment is not None
+    assert shared.todays_adjustment.work.power_pct == RECOVERY_CAP_PCT
+    assert _snapshot_total_sec(shared.todays_adjustment, 600) == 1350  # the old 22 min
+
+
+def test_a_green_morning_offers_no_todays_adjustment() -> None:
+    """Nothing is pre-filled from a verdict that made no change — the editor falls
+    back to the generic preset exactly as it did before."""
+    source = _mark_0808_source()
+
+    for verdict in (None, "Green", "nonsense"):
+        snapshot = interval_editor_snapshot(source, "62% FTP intervals", verdict=verdict)
+        assert snapshot.todays_adjustment is None
+        assert snapshot.scaled == scale_block(snapshot.current)
+
+
+def test_todays_adjustment_declines_rather_than_emit_an_impossible_block() -> None:
+    """When the read-only warm-up/cool-down already exceed the adjusted total there
+    is no honest block to offer, so the editor offers none instead of a floor."""
+    source = {
+        "format": "bike",
+        "steps": [
+            {"label": "Warm-up", "minutes": 20, "target": "55%"},
+            {
+                "label": "Short set",
+                "block": {
+                    "repeat": 1,
+                    "work": {"durationSec": 120, "powerPct": 62},
+                    "rest": {"durationSec": 0, "powerPct": 55},
+                },
+            },
+            {"label": "Cool-down", "minutes": 20, "target": "55%"},
+        ],
+    }
+
+    snapshot = interval_editor_snapshot(source, "62%", verdict="Red", companion_session=True)
+
+    assert snapshot.todays_adjustment is None
 
 
 def test_legacy_pattern_expansion_is_unchanged() -> None:

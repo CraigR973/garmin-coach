@@ -164,6 +164,9 @@ class IntervalEditorData(BaseModel):
     changeTo: IntervalBlockOut
     presets: dict[str, IntervalBlockOut]
     fixedSteps: list[FixedWorkoutStepOut]
+    # Batch 215: the verdict the pre-filled ``changeTo`` reflects, so the screen can
+    # say which morning it belongs to rather than offering an unexplained number.
+    adjustmentVerdict: str | None = None
 
 
 class IntervalEditorEnvelope(BaseModel):
@@ -341,21 +344,30 @@ def _interval_block_out(block: EditableIntervalBlock) -> IntervalBlockOut:
 def _interval_editor_data(
     planned_workout_id: uuid.UUID,
     snapshot: IntervalEditorSnapshot,
+    verdict: str | None = None,
 ) -> IntervalEditorData:
+    # Batch 215: on an Amber/Red morning the editor opens on the app's own
+    # adjustment, so its one-tap number is the number the brief quoted. The generic
+    # "Scale down" preset stays available and unchanged.
+    todays = snapshot.todays_adjustment
+    presets = {
+        "keep": _interval_block_out(snapshot.current),
+        "scale": _interval_block_out(snapshot.scaled),
+        "sweetSpot": _interval_block_out(snapshot.sweet_spot),
+        "zoneTwo": _interval_block_out(snapshot.zone_two),
+    }
+    if todays is not None:
+        presets["todaysAdjustment"] = _interval_block_out(todays)
     return IntervalEditorData(
         plannedWorkoutId=str(planned_workout_id),
         current=_interval_block_out(snapshot.current),
-        changeTo=_interval_block_out(snapshot.scaled),
-        presets={
-            "keep": _interval_block_out(snapshot.current),
-            "scale": _interval_block_out(snapshot.scaled),
-            "sweetSpot": _interval_block_out(snapshot.sweet_spot),
-            "zoneTwo": _interval_block_out(snapshot.zone_two),
-        },
+        changeTo=_interval_block_out(todays if todays is not None else snapshot.scaled),
+        presets=presets,
         fixedSteps=[
             FixedWorkoutStepOut(index=step.index, label=step.label, role=step.role)
             for step in snapshot.fixed_steps
         ],
+        adjustmentVerdict=verdict if todays is not None else None,
     )
 
 
@@ -415,9 +427,18 @@ async def get_interval_editor(
     db: AsyncSession = Depends(get_db),
 ) -> IntervalEditorEnvelope:
     workout = await WorkoutDeliveryService(db)._planned_workout(player.id, planned_workout_id)
-    snapshot = interval_editor_snapshot(workout.structured_workout, workout.intensity_target)
+    # Batch 215: the editor's pre-filled change follows the workout's own morning
+    # verdict and the day's combined load, resolved here where both are reachable.
+    coaching = ExecutableCoachingService(db)
+    verdict = await coaching._morning_verdict_for(player.id, workout.workout_date)
+    snapshot = interval_editor_snapshot(
+        workout.structured_workout,
+        workout.intensity_target,
+        verdict=verdict,
+        companion_session=await coaching._companion_session(player.id, workout),
+    )
     return IntervalEditorEnvelope(
-        data=_interval_editor_data(workout.id, snapshot),
+        data=_interval_editor_data(workout.id, snapshot, verdict),
         meta=ApiMeta(generatedAtUtc=_generated_at()),
         errors=[],
     )

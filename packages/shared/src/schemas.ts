@@ -417,6 +417,9 @@ export const intervalEditorEnvelopeSchema = z.object({
       scale: intervalWorkoutBlockSchema,
       sweetSpot: intervalWorkoutBlockSchema,
       zoneTwo: intervalWorkoutBlockSchema,
+      // Batch 215: today's Amber/Red adjustment, absent on a Green morning. Must be
+      // declared or zod strips it before the editor ever sees it (Batch 214).
+      todaysAdjustment: intervalWorkoutBlockSchema.optional(),
     }),
     fixedSteps: z.array(
       z.object({
@@ -425,6 +428,7 @@ export const intervalEditorEnvelopeSchema = z.object({
         role: z.string().min(1),
       }),
     ),
+    adjustmentVerdict: z.string().nullable().optional(),
   }),
   meta: apiMetaSchema,
   errors: z.array(apiErrorSchema),

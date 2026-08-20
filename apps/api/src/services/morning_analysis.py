@@ -85,6 +85,7 @@ from src.services.sleep_scoring import (
 from src.services.training_week import TrainingWeekService
 from src.services.verdict_scaling import (
     AMBER_POWER_CAP_PCT,
+    companion_session_present,
     ir_has_vo2,
     summarize_verdict_adjustment,
 )
@@ -152,7 +153,14 @@ from src.services.workout_delivery import build_structured_workout_ir
 # suppresses a redundant deload.
 # Batch 201: raw-Red sleep credit cannot reach Green, Low readiness can relax only
 # on proved-benign load, and the shared Amber transform caps at Sweet Spot.
-PROMPT_VERSION = "morning-analysis-v31-2026-08-19"
+# Batch 215: a Red morning no longer means one thing — an already-Zone-2 ride holds
+# its intensity and takes a light duration cut, so verdict.verdictAdjustment and the
+# plan-adjustment instruction can now describe a shortened Zone 2 rather than a
+# recovery substitution. The bump is load-bearing, not a label: the regeneration
+# identity is (user, date, checkInVersion, promptVersion) and does *not* hash the
+# packet, so without it an already-generated pre-fix brief would be served as
+# current on the day this ships.
+PROMPT_VERSION = "morning-analysis-v32-2026-08-19"
 ANALYSIS_TYPE = "morning"
 # Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
 # signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
@@ -293,7 +301,15 @@ today's ride — planned vs adjusted duration and the resulting %FTP. If you des
 the softened session, quote those exact figures; never invent a different percentage
 or duration. When verdictAdjustment.intensityHeldAtEndurance is true the ride is
 already Zone 2, so it is only shortened, not dropped in intensity — say so rather
-than implying a zone drop. When former HIT/VO2 work is capped at
+than implying a zone drop. This is now reachable on Red as well as Amber: when it is
+true on a Red morning the day is a shortened Zone 2, not a recovery substitution, so
+do not describe the session as substituted, replaced or dropped to recovery, and do
+not tell him to swap it for rest. Sustained easy work builds sleep pressure without
+the arousal harder work produces, which is why Red keeps it; the hard work is still
+gone. When verdictAdjustment.companionSession is true the day already holds another
+session, so the combined load is what the adjustment is protecting — say that rather
+than presenting the deeper cut as being about the ride alone. When former HIT/VO2
+work is capped at
 {AMBER_POWER_CAP_PCT}% FTP, describe
 it as converted to Sweet Spot at that recorded intensity, not as removed altogether.
 When verdict.weeklyMix.shortfall is present, today's hard session is being eased:
@@ -1602,6 +1618,10 @@ def _verdict_adjustment_packet(
     quote the app's own duration/%FTP figures. Explanatory only — returns ``None``
     on Green, a rest/no-ride day, or a malformed ride, and never influences the
     verdict or the numbers.
+
+    Batch 215.5: the day's other sessions are resolved here, from the planned
+    workouts already in hand, so the figure the brief quotes carries the same
+    combined-load gate the delivery rail applies.
     """
     if status not in {"Amber", "Red"}:
         return None
@@ -1612,25 +1632,36 @@ def _verdict_adjustment_packet(
         base_ir = build_structured_workout_ir(ride)
     except HTTPException:
         return None
-    summary = summarize_verdict_adjustment(base_ir, status)
+    companion = companion_session_present(
+        workout.status for workout in planned_workouts if workout.id != ride.id
+    )
+    summary = summarize_verdict_adjustment(base_ir, status, companion_session=companion)
     if summary is None:
         return None
     return {**summary, "plannedWorkoutId": str(ride.id)}
 
 
 def _eased_ride_detail(status: str, adjustment: Mapping[str, Any] | None = None) -> str:
-    if status == "Red":
-        return "Substitute recovery, mobility, or rest — no intervals."
     if isinstance(adjustment, Mapping):
         adjusted_min = adjustment.get("adjustedDurationMin")
         adjusted_power = adjustment.get("adjustedWorkPowerPct")
         if isinstance(adjusted_min, int) and isinstance(adjusted_power, int):
             if adjustment.get("intensityHeldAtEndurance"):
+                # Batch 215: on Red this is now reachable too — an already-Zone-2
+                # ride keeps its intensity, so the copy must stop calling it a
+                # recovery substitution.
                 return (
                     f"Hold Zone 2 (~{adjusted_power}% FTP) but cut to {adjusted_min} min "
                     "— shorter, not harder."
                 )
+            if status == "Red":
+                return (
+                    f"Substitute recovery — no intervals, ~{adjusted_power}% FTP "
+                    f"for {adjusted_min} min."
+                )
             return f"Ease to ~{adjusted_power}% FTP and cut to {adjusted_min} min — no HIT/VO2."
+    if status == "Red":
+        return "Substitute recovery, mobility, or rest — no intervals."
     return "Cut duration 20-30%, ease hard intervals a zone, hold Zone 2, no HIT/VO2."
 
 
@@ -2386,7 +2417,18 @@ def _plan_adjustments(
             "(Sweet Spot)."
         ]
     else:
-        adjustments = ["Substitute recovery, mobility, or rest."]
+        # Batch 215: Red no longer means one thing. An already-Zone-2 ride keeps its
+        # intensity and takes a light duration cut, so the instruction has to follow
+        # the transform rather than assert a substitution that did not happen.
+        adjustment = _verdict_adjustment_packet(status, planned_workouts)
+        if isinstance(adjustment, Mapping) and adjustment.get("intensityHeldAtEndurance"):
+            adjustments = [
+                f"Hold Zone 2 (~{adjustment.get('adjustedWorkPowerPct')}% FTP) and cut to "
+                f"{adjustment.get('adjustedDurationMin')} min; no intervals and no HIT/VO2. "
+                "Sustained easy work builds sleep pressure — keep it, do not delete it."
+            ]
+        else:
+            adjustments = ["Substitute recovery, mobility, or rest."]
     if reset_week:
         adjustments.insert(
             0,
