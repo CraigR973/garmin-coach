@@ -29,7 +29,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import DailyMetric, KnowledgeBase, MetricBaseline, Sleep
 from src.models.profile import Profile
-from src.services.daily_metric_coverage import complete_body_battery_charged
+from src.services.daily_metric_coverage import (
+    complete_body_battery_charged,
+    complete_body_battery_drained,
+)
 from src.services.daily_metric_phase import (
     index_day_aggregates_by_date,
     index_morning_by_date,
@@ -103,6 +106,13 @@ def sample_values(
         # keeps the old behaviour.
         "body_battery_charge": (
             complete_body_battery_charged(day_aggregates if day_aggregates is not None else metric)
+            if (day_aggregates is not None or metric is not None)
+            else None
+        ),
+        # Batch 216: same settled-row requirement as charge — drain is the other
+        # half of the same running local-day total.
+        "body_battery_drain": (
+            complete_body_battery_drained(day_aggregates if day_aggregates is not None else metric)
             if (day_aggregates is not None or metric is not None)
             else None
         ),
