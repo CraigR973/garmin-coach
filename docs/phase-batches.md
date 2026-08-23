@@ -2335,6 +2335,95 @@ makes the loop real → 220 reasons over it.
 |---|---|---|---|---|---|
 | Batch 221 — The experiment loop closes: what was tried, and did it work | 🔴 High | Planned | 221.1 **Record observations.** The tracker has a full lifecycle (`active`/`paused`/`concluded`, `supported`/`refuted`/`inconclusive`) and `observations_json`, and writes nothing into it. Give each standing hypothesis a deterministic per-night observation write so evidence accumulates instead of the experiment sitting `active` forever.<br>221.2 **Surface the evaluation.** `experiments` is not in the morning packet, so 21 completed evaluations are invisible to the read. Carry the current state and latest result, and let the sleep narrative use it. The brief must stop asking Mark to notice a pattern the app already evaluates — it either reports the finding or says plainly it does not have enough nights yet.<br>221.3 **Make the REM levers measurable — the half Mark actually asked for.** `select_rem_interventions` rotates 12 levers weekly with no record of which was issued, whether it was applied, or what followed. Record the issued lever per week, and pair it with the REM and awake-time outcomes Batch 219.5 wires, so "what to try and whether it's working" becomes answerable. Weekly rotation over a 12-lever library is a slow read at n=1: **state the confidence honestly rather than manufacturing a verdict**, and prefer "not enough nights yet" over a number.<br>221.4 **Close the promise loop in the copy.** "Worth tracking" must mean it *is* tracked; if it is not yet measurable, the read says what would make it measurable. No instruction to Mark to observe something derivable from the hypnogram.<br>221.5 Tests: an observation write per standing hypothesis; the packet carries experiment state and a fixture where the coach must report a finding rather than defer to Mark; a lever-issued record round-trips; an insufficient-evidence fixture must yield "inconclusive" and never a fabricated direction. | Mark can see which REM lever he was given, what happened after it, and whether it is working — and the app stops asking him to do the noticing. | Observations accumulate against all three standing hypotheses; evaluation state reaches the morning packet; issued levers are recorded and joinable to REM/awake outcomes; an underpowered comparison reports inconclusive rather than inventing a direction. **Depends on 219.5** for the REM and awake-time outcomes; **feeds 220**, whose findings route into the same `experiments` rail (220.7). |
 
+### 2026-08-20 — The check-in beat the sync: Batch 222
+
+Craig reported that Thursday 20 August "*is saying there is no overnight data*". It was, and
+**the packet was honest** — at generation time `coach.sleep` and `coach.daily_metrics` held
+**no row at all** for 2026-08-20. The model narrated a real absence. The failure is entirely
+upstream, and it is a race that then locked itself in.
+
+**Reconstructed to the second from the `wake_check` audit row, `job_runs` counters,
+`generation_requests` and `manual_entries` — not inferred:**
+
+| UTC | Event |
+|---|---|
+| 07:12:15 | Mark's sleep session ends (08:12 local) |
+| 07:19:41 | `wake_check` first sees `sleepEnd=07:12:15` — 7m26s old against `SETTLE_MIN = 20` — and correctly returns `wait` / `awaiting_stability` |
+| **07:26:55** | **Mark saves his morning check-in** |
+| 07:27:47 | Brief generated on a packet with no overnight rows |
+| 07:34:39 | The poll that would have fired (stable **and** settled at 22m24s) instead skips: `waiting: 1` → `waiting: 0 / fired: 0` |
+
+He missed a correct read by about seven minutes, and the brief he got then cancelled the sync
+that would have corrected it. Garmin had the night all along: bed 00:23 → wake 08:12, 7h04m
+asleep, score 78, HRV 44.
+
+**Three defects stacked, and the second is the serious one:**
+
+* **The check-in generates with no freshness gate.** `upsert_manual_entry`
+  (`daily_loop.py:1436-1441`) schedules `_generate_brief_after_checkin` on any same-day
+  check-in without checking whether the day's inputs have synced — and that path reads stored
+  rows only; it never syncs.
+* **An empty read disables the day's sync.** `run_wake_check` short-circuits at
+  `scheduler.py:1000` on `latest_analysis(...) is not None`, conflating *the day has been
+  read* with *the day has been synced*. A brief that read nothing therefore cancels the very
+  sync that would have filled it, for the rest of the day.
+* **The backstop re-syncs but never re-reads.** `run_morning_weather_sync` calls
+  `_sync_morning_inputs` unconditionally, so the 11:00 local backstop *would* have landed the
+  data — but `generate_and_store` (`morning_analysis.py:740-748`) returns the existing
+  analysis whenever `prompt_version` matches, and `morning_generation_identity` hashes the
+  check-in and the prompt version and **nothing about whether the packet had any data**. Left
+  alone, the day ends with correct numbers on the dashboard beside a brief insisting there are
+  none.
+
+**Blast radius measured, not assumed: 2026-08-20 is the only date in 60 days with a morning
+brief and no sleep row.** Every other morning the wake job won the race, which is why this has
+survived unnoticed since Batch 85 split the morning at its sync → generate seam.
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 222 — A brief is never generated on a day the app has not synced | 🔴 High | Planned | 222.1 **What Mark saw (2026-08-20).** The brief opened "*No sleep data recorded for last night*" and told him Garmin "hasn't returned a sleep record" — while Garmin had recorded a complete night. Verified: the packet's `sleep` and `dailyMetrics` keys were both `null`, so the model reported an absence faithfully. **Do not treat this as a prompt or model problem.**<br>222.2 **Close the freshness gap at the check-in.** `upsert_manual_entry` (`daily_loop.py:1436-1441`) schedules generation with no gate on whether today's inputs exist, and `_generate_brief_after_checkin` → `regenerate_after_morning_checkin` reads stored rows only. Decide between the two honest remedies and take one: **sync-then-generate** (the input sync is idempotent, so the check-in can pull the day before reading it) or **hold** — refuse to generate and leave the client on the "Syncing your overnight data" stage the check-in page already owns (`CheckInPage.tsx:121`). Silently reading an empty day is the one option that must stop.<br>222.3 **Stop an empty read from cancelling the day's sync — the defect with the widest consequence.** `run_wake_check` (`scheduler.py:1000`) skips a profile once `latest_analysis(...)` is non-null, which conflates *read* with *synced*. Gate it on the day's inputs actually being present, so a brief generated early can never be the thing that prevents the data arriving. **Guard against the opposite failure in the same phase:** the short-circuit exists to stop the job polling all day, so the replacement must still terminate once the day is genuinely synced.<br>222.4 **Decide, explicitly, whether a materially-more-complete packet is grounds to re-read.** Today it is not: the generation identity hashes the check-in and the prompt version only, so the 11:00 backstop re-syncs and then serves the stale read. If the answer is yes, the identity must be able to express packet completeness; if no, then 222.2/222.3 must guarantee the empty read never happens, because nothing downstream will repair it. **This is the batch's one real design call — resolve it at `/batch-start`, not mid-build.**<br>222.5 **The copy makes a promise nothing checks.** Home's morning rung 0 offers "Say good morning" whenever `morningAnalysis == null` (`homeActions.ts:147`), and `GoodMorningCta` states as fact "*your overnight data's already in*" (`GoodMorningCta.tsx:41`) — true only because the wake job usually wins the race. Batch 85's own comment records the assumption. Either verify the claim before making it, or let the check-in path make it true.<br>222.6 Tests: a check-in on a day with no synced sleep/metrics must not produce a no-data brief, under whichever remedy 222.2 chooses; `run_wake_check` must still fire when today's analysis exists but the day's inputs do not, **and** must still stop polling once they do; a wake-detector regression reproducing the real 07:12:15 / 07:19:41 / 07:26:55 ordering that fails on the pre-fix path; the Home rung and hero asserted against a synced-vs-unsynced day. | The app never tells Mark his night was not recorded when Garmin recorded it — and a brief generated early can never be the thing that stops the data arriving. | A check-in landing before wake-detection either waits for the sync or triggers it, and never yields a no-data read; wake-detection is not cancelled by an analysis that read nothing, and still terminates once the day is synced; the 07:26:55 ordering is pinned as a regression. **Production was repaired on the day (Craig's call, 2026-08-20).** `run_scheduled morning-sync` landed the Garmin day (08-20 `morning` metrics + sleep, and 08-19's missing `settled` row), the pinned generation identity was released, and `regenerate_after_morning_checkin` re-read on the real packet: new analysis `34be38d4…` at 08:58:04Z (bed 00:23 → wake 08:12, score 78 / age-adjusted 82, readiness 73), with the empty-packet row `d03b45f2…` **retained as history** and a `morning_brief_repair` audit row recording before/after, reason and method. **This departs from Batches 212/214/215, which each declined a production repair** on the principle that a stored analysis records what the coach actually said — the distinction is deliberate: those recorded a wrong *judgement* on real data, whereas this recorded an *absence of data that was never real*. **Two gotchas from the repair.** (1) `run_scheduled morning-sync` run locally via `railway run` **hung after committing the per-date syncs**, leaving an orphaned backend idle-in-transaction holding a granted advisory lock — which would have blocked the app's own generation path, not just the repair. Check `pg_locks` for `locktype='advisory'` after any killed `railway run`, and terminate the backend. In-container it completes in ~20 s. (2) `force=True` on `generate_and_store` is **not** sufficient to re-read: it skips the `latest_analysis` check but not the `claim_generation_request` identity check, so a genuine regeneration also needs the completed `generation_requests` row released. |
+
+### 2026-08-20 — Found during Batch 215 closeout: Batch 223
+
+Batch 215 needed a test helper that reads the *working* interval rather than the hottest
+step, because Mark's 2026-08-08 ride warms up to 65% and works at 62% — so an assertion
+about "the working intensity" was silently checking the warm-up ramp. Chasing that back
+into source found the same shape doing real work, and a trap sitting on top of it.
+
+`structured_workout_builder.py:133` computes `max_power` over **every expanded step**, then
+hands it to `_workout_type_for_power` (`:275`) and `_intensity_target_for_power` (`:287`).
+A warm-up ramp is therefore allowed to name the session. Measured against production — all
+86 active structured bike workouts, driven through the real expander and the real
+classifier — **30 have a warm-up or cool-down hotter than their working step, and on 14 of
+those it changes the classified type**: `bike_endurance` → `bike_tempo`, off nothing more
+than a standard 80% warm-up ramp on a 67% Zone-2 ride.
+
+**It is latent, not live, and that distinction is the whole priority argument.** Every one
+of those 30 rows came from `plan_no2_import` (25), `interval_editor` (3), `holiday_pause`
+(1) or `today_card_swap` (1), all of which carry the type through from the plan. The
+classifier only runs on the freeform custom-workout path, which writes
+`source="plan_action_add"` (`plan_actions.py:753`) — a value that appears **nowhere** in the
+divergent set. Nothing is mislabelled today. The next freeform Zone-2 ride would be.
+
+**The trap is the more valuable half of this row, and it would have been shipped as the
+fix.** Nine live rows are stored `bike_endurance` while containing **185% FTP** work, and
+they are *correct*: they are the `Z2 + Neuromuscular` sessions. The data separates cleanly
+on duration, not power — every `bike_vo2` row's hot steps run **30–180 s at 108–130%**,
+while every sprint row is **6 × 12 s at 185%**. A power-only classifier cannot tell a
+12-second neuromuscular sprint from a four-minute VO2 interval, so "just classify on the
+working step" would flip all nine into `bike_vo2` and feed the weekly mix a phantom VO2
+session — **Batch 213's complaint, inverted**, on the same nine Saturdays Mark rides.
+
+Safety is unaffected either way and must not be cited as a reason to hurry: `blocks_red_vo2`
+reads the IR, and Batch 203 already moved morning Red/VO2 detection onto a buildable IR with
+the type name only as fallback. What rides on `workout_type` is *accounting* —
+`weekly_mix.mix_bucket` (`:89`) maps it to a bucket, and `categorize`/`category_for_workout_type`
+scope swaps and week views.
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 223 — A session is named by the work it asks for, not by its warm-up | 🟢 Mid | Planned | 223.1 **The defect, measured rather than reported.** `build_custom_bike_workout` takes `max_power` across every expanded step (`structured_workout_builder.py:133`) and classifies on it. Of 86 active structured bike workouts in production, 30 carry a warm-up/cool-down hotter than their working step and 14 would be retyped `bike_endurance` → `bike_tempo` by an 80% warm-up ramp alone.<br>223.2 **Confirm the blast radius before widening the fix.** All 30 divergent rows come from plan/editor paths that carry the type through; `source="plan_action_add"`, the only caller of the classifier, appears in none of them. Re-verify that at build time — if a freeform row has since been created, this stops being latent and the row's priority changes.<br>223.3 **Classify on the working steps** — the `phase == "interval"` subset, matching `verdict_scaling._primary_work_step`, which already gets this right and is the model to copy. Warm-up and cool-down describe how the session is entered and left, not what it asks of him.<br>223.4 **Do not stop there, or this row ships a worse bug than it fixes.** Nine live rows are `bike_endurance` with 185% FTP work and they are correct — `Z2 + Neuromuscular`. Working-step power alone retypes all nine to `bike_vo2`. **The classifier must be duration-aware:** production separates the two classes without ambiguity — VO2 hot steps run 30–180 s at 108–130%, neuromuscular sprints run 6 × 12 s at 185% — so a short supra-threshold burst inside an otherwise easy ride is a primer, not the session's purpose. Pick the threshold from that gap and say why in the code.<br>223.5 **Say what is *not* in scope.** `blocks_red_vo2` and the Batch 203 morning VO2 detection read the IR, so no safety property depends on this; the consumer that does is accounting — `weekly_mix.mix_bucket` (`:89`) and the category-scoped swap/week views. No backfill of the 86 existing rows: their stored types are already right, and rewriting them would be a change with no defect behind it.<br>223.6 **The parallel finding, recorded so it is not re-derived.** The test helper `_max_power` in `test_executable_coaching.py` reads every step; `_max_work_power` was added in Batch 215 for assertions about working intensity. Measured across every fixture and every transform, the two diverge only on the 2026-08-08 fixture — so no pre-existing assertion was wrong, and this phase is a naming/guard cleanup rather than a bug fix.<br>223.7 Tests: the nine `Z2 + Neuromuscular` rows as a committed fixture that must stay `bike_endurance`; a Zone-2 ride with an 80% warm-up ramp must not classify as tempo; a real VO2 shape (5 × 2 min @ 120%) must still classify `bike_vo2`; a duration boundary case either side of the chosen threshold. | A session is named by the work it asks for, so the weekly mix counts what Mark actually rode rather than what his warm-up touched. | A Zone-2 ride with a hot warm-up classifies as endurance; a genuine VO2 session still classifies as VO2; the nine neuromuscular Saturdays stay endurance and never become a phantom VO2 session in the weekly mix; no existing row is rewritten. **Priority: low, and honestly so** — this is latent on a path Mark has not used, and the reason to write it down now is 223.4, which is not recoverable from the code. |
+
 ### Future enhancements — recorded, not scheduled
 
 Authored here so the reasoning survives, each with the trigger that would make it due. **None
