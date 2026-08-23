@@ -37,6 +37,7 @@ from src.services.chronic_patterns import (
     CHRONIC_DELOAD_WINDOW_DAYS,
     ChronicPatternSuggestionService,
 )
+from src.services.coach_policy import source_basis
 from src.services.coaching_state import CoachingStateService
 from src.services.daily_metric_coverage import (
     complete_body_battery_charged,
@@ -160,7 +161,7 @@ from src.services.workout_delivery import build_structured_workout_ir
 # identity is (user, date, checkInVersion, promptVersion) and does *not* hash the
 # packet, so without it an already-generated pre-fix brief would be served as
 # current on the day this ships.
-PROMPT_VERSION = "morning-analysis-v32-2026-08-19"
+PROMPT_VERSION = "morning-analysis-v33-2026-08-23"
 ANALYSIS_TYPE = "morning"
 # Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
 # signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
@@ -335,6 +336,17 @@ is from that date rather than implying it was measured today. Only remark on a
 change if you are comparing against a figure explicitly given elsewhere in this
 same packet — never invent a trend from memory or from a single reading alone.
 This is explanatory context only and never moves the Green/Amber/Red verdict.
+When Mark questions where a figure came from, answer from the basis the app
+states and never invent a mechanism for how the app reached it - quote that basis
+in his own terms, and where a figure carries none, say plainly that the app does
+not record how that number was reached rather than offering a sensor, setting or
+calculation that merely sounds right. Do not carry such a guess forward into a
+later answer. verdict.weeklyMix.buckets[].basis says how that bucket's target and
+completed count were reached: the target is a count of the sessions his own plan
+carries this week, never a standing weekly quota, so quote it if he challenges the
+number instead of conceding it is probably wrong. A plannedWorkouts[].basis and a
+knowledgeBase.sections[].basis each say how that item came to exist; where one is
+absent the app does not record it, and that is the honest answer.
 The app renders a short "Today" action list above your read (the eased ride to
 approve, any week swap, and sleep/thermal nudges), assembled separately from your
 prose. Write the read as the reasoning and the "why" behind those actions — do not
@@ -1121,12 +1133,25 @@ def _profile_packet(
 
 
 def _knowledge_base_packet(row: KnowledgeBase) -> dict[str, Any]:
-    return {
+    """One stored section, with a basis Mark can be told (Batch 217).
+
+    ``source`` stays for the app's own consumers, but it is an internal token
+    and the coach is forbidden from repeating it. On 2026-08-20 Mark asked what
+    the basis of his 23:15 bedtime target was; this row already carried
+    ``batch_5_seed`` and the coach answered that it would be speculating. The
+    ``basis`` key is that same fact in words it is allowed to say. It is omitted
+    rather than guessed when the token is unrecognised.
+    """
+    packet: dict[str, Any] = {
         "section": row.section,
         "version": row.version,
         "source": row.source,
         "content": row.content,
     }
+    basis = source_basis(row.source)
+    if basis is not None:
+        packet["basis"] = basis
+    return packet
 
 
 def _data_quality_guardrails(knowledge_base: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -1305,7 +1330,7 @@ def _manual_entry_packet(row: ManualEntry) -> dict[str, Any]:
 
 
 def _planned_workout_packet(row: PlannedWorkout) -> dict[str, Any]:
-    return {
+    packet: dict[str, Any] = {
         "id": str(row.id),
         "planBlockId": str(row.plan_block_id) if row.plan_block_id else None,
         "workoutDate": row.workout_date.isoformat(),
@@ -1318,6 +1343,14 @@ def _planned_workout_packet(row: PlannedWorkout) -> dict[str, Any]:
         "structuredWorkout": row.structured_workout,
         "source": row.source,
     }
+    # Batch 217: how this session came to be on the calendar, in words rather
+    # than in the app's own vocabulary. Omitted when the token is unrecognised —
+    # ``source`` is not always a code constant (an imported plan supplies its
+    # own), and silence is safer than a guess.
+    basis = source_basis(row.source)
+    if basis is not None:
+        packet["basis"] = basis
+    return packet
 
 
 def _rest_day_context(

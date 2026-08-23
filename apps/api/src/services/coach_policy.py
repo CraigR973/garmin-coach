@@ -42,7 +42,9 @@ the model never owns it.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 # Batch 178.1: the words the app uses about itself. The pre-178 prompt said
 # "packet" eight times and told the model to say when the packet could not
@@ -231,6 +233,32 @@ FLOORS: tuple[Floor, ...] = (
             "verdict.chronicAction is optional context that the coach may argue down."
         ),
     ),
+    # Batch 217. The other floors constrain what the coach says about *Mark*.
+    # This one constrains what it says about *the app* — the half he was asking
+    # about on 2026-08-14 ("what prompted it?") and 2026-08-20 ("what was the
+    # basis?"), and the half nothing covered. Owned by the morning and
+    # post-workout reads, which are the two surfaces carrying derived
+    # deterministic facts with a basis; a walk read prescribes nothing and
+    # derives nothing, so it is not listed against this floor for the same
+    # reason it is not listed against never_vo2_on_red.
+    Floor(
+        key="no_invented_derivation",
+        sentence=(
+            "never invent a mechanism for how the app reached a figure - quote the basis "
+            "when one is stated, and say plainly that the app does not record it when one "
+            "is not"
+        ),
+        pattern=_same_clause_pattern(
+            r"\b(?:basis\b|how the app (?:reached|arrived at)|how (?:that|a) (?:number|figure) "
+            r"was reached)",
+            r"\b(?:never|do not|don't|must not|cannot|can't)\b[^.;:]{0,90}"
+            r"\b(?:invent|guess|speculate|make up|offer a plausible)\b",
+        ),
+        negative_control=(
+            "When the basis is missing, offer a plausible mechanism for how the app "
+            "reached the figure."
+        ),
+    ),
 )
 
 #: Anthropic-calling modules intentionally outside the read-prompt recogniser.
@@ -259,11 +287,13 @@ READ_PROMPT_FLOORS: dict[str, tuple[str, ...]] = {
         "cumulative_escalation",
         "readiness_baseline_trend",
         "chronic_action",
+        "no_invented_derivation",
     ),
     "post_workout_analysis": (
         "no_power_balance",
         "local_clock_times",
         "recorded_data_honesty",
+        "no_invented_derivation",
     ),
     "post_strength_analysis": ("local_clock_times", "recorded_data_honesty"),
     "post_flexibility_analysis": ("local_clock_times", "recorded_data_honesty"),
@@ -339,4 +369,213 @@ ANTI_SYCOPHANCY_RULE = (
     "around a hard recovery signal, hold the line kindly and keep the deterministic "
     "verdict intact. Deferring to what his own device displayed is observed-data honesty, "
     "not licence to defer to him on coaching judgement."
+)
+
+
+# ---------------------------------------------------------------------------
+# Batch 217 — a derived fact says how it was reached, in words Mark can read.
+# ---------------------------------------------------------------------------
+#
+# Four places in the app already do this and none of them knew about the others:
+# ``training_week``'s ``grounding`` block, Batch 212's ``basis`` on a check-in
+# cause tag, Batch 214's ``gradeBasis`` on an interval, and
+# ``chat_context._state_meaning``. All four are plain sentences, which is the
+# property that matters and the one a registry can enforce. What follows names
+# the convention rather than inventing a fifth copy of it.
+#
+# The failure this closes is not "the reason is missing" — twice it was present
+# and unusable. On 2026-08-20 Mark asked what the basis of his 23:15 bedtime
+# target was; the packet held ``source: "batch_5_seed"`` and the coach said it
+# would be speculating, because :data:`NO_PLUMBING_RULE` correctly forbids
+# repeating an internal token to him. A basis expressed as an enum occupies the
+# slot without being usable, so it is invisible to a search for missing
+# provenance. Hence: a basis is a sentence or it is nothing.
+
+
+#: Internal provenance tokens translated into something Mark can read.
+#:
+#: Deliberately exact-match with no fallback pattern: an unknown token yields
+#: ``None`` and the packet omits the key, because echoing an untranslated enum
+#: is the defect. ``plan_no2_import`` is not a code constant — it arrives from
+#: the imported plan's own JSON (``plan_import.py``) — so a future plan can
+#: introduce a name this map has never seen, and silence is the safe answer.
+INTERNAL_SOURCE_BASIS: dict[str, str] = {
+    # Planned sessions.
+    "plan_import": "imported from your training plan",
+    "plan_no2_import": "imported from your training plan",
+    "plan_action_add": "added as a one-off session from the Week page",
+    "today_card_swap": "moved to this day from the app's Today card",
+    "weekly_restructure": "moved when the week was rearranged",
+    "interval_editor": "edited in the app's interval editor",
+    "reset_week": "eased to a recovery week",
+    "holiday_pause": "marked skipped because it falls inside a holiday window",
+    "holiday_resume": "rebuilt when the holiday window ended",
+    "block_generator_lock": "written when a generated training block was locked in",
+    "batch_5_seed": "set up when the app was first configured",
+    # Stored knowledge-base sections.
+    "batch_56_seed": "filled in later, when the app found this section empty",
+    "batch_152_erg_setup": "updated when your indoor ERG setup was recorded",
+    "holiday_manager": "recorded when a holiday was entered",
+    "block_generator": "written by the app's training-block generator",
+    "conversation_learning_confirmed": "added from something you confirmed with the coach",
+    "manual_edit": "edited by hand in the app",
+}
+
+
+#: Provenance tokens deliberately left untranslated, with the reason. The
+#: discovery test requires every ``source=`` literal written against a
+#: ``PlannedWorkout`` or ``KnowledgeBase`` to appear in one of these two maps,
+#: so adding a new write path cannot silently reintroduce an unquotable token.
+INTERNAL_SOURCE_BASIS_EXEMPTIONS: dict[str, str] = {
+    # ``coaching_state`` accepts a caller-supplied source on the admin PUT, so
+    # the value is not a code constant. Its default, "manual_edit", is
+    # translated above; anything else an operator types is theirs, not ours to
+    # paraphrase.
+}
+
+
+def source_basis(source: str | None) -> str | None:
+    """A readable sentence for an internal provenance token, or ``None``.
+
+    ``None`` means *say nothing* rather than *say the token*. The caller omits
+    the key entirely, so the coach falls through to the honesty rule in
+    :data:`NO_INVENTED_DERIVATION_RULE` instead of quoting plumbing at Mark.
+    """
+    if source is None:
+        return None
+    return INTERNAL_SOURCE_BASIS.get(source.strip())
+
+
+def _resolve(value: Any, path: str) -> list[Any]:
+    """Every object at ``path`` in a packet.
+
+    A segment of ``[]`` walks into a list. ``"verdict.weeklyMix.buckets[]"``
+    yields each bucket. Missing segments yield nothing rather than raising, so
+    the registry describes a packet shape without assuming every read carries
+    every section.
+    """
+    current: list[Any] = [value]
+    for segment in path.split("."):
+        following: list[Any] = []
+        if segment == "[]":
+            for item in current:
+                if isinstance(item, Sequence) and not isinstance(item, str | bytes):
+                    following.extend(item)
+            current = following
+            continue
+        for item in current:
+            if isinstance(item, Mapping) and item.get(segment) is not None:
+                following.append(item[segment])
+        current = following
+    return current
+
+
+@dataclass(frozen=True)
+class DerivedFact:
+    """One packet fact that must say how the app reached it.
+
+    ``path`` locates the objects that carry the annotation; ``basis_field`` is
+    the key holding the sentence. ``negative_control`` is the same shape with
+    the basis stripped, so the drift test proves the check can fail — the
+    lesson :class:`Floor` already encodes for the safety rules.
+    """
+
+    key: str
+    path: str
+    basis_field: str
+    describes: str
+    negative_control: dict[str, Any]
+
+
+#: The facts a packet must be able to explain. Scoped at Batch 217's
+#: ``/batch-start`` to the two genuine gaps: the weekly-mix accounting Mark
+#: challenged on 2026-08-15, and the internal source tokens that were present
+#: but unquotable. Batch 212's check-in tags and Batch 214's interval grades
+#: are deliberately absent — they already carry a readable basis, and
+#: annotating them twice is the boiling-the-ocean this batch was told to avoid.
+#: Batch 215's ``verdictAdjustment`` is likewise absent: it carries ``origin``,
+#: ``basisName`` and ``basisTotalDurationSec``, which the morning prompt
+#: already quotes.
+DERIVED_FACTS: tuple[DerivedFact, ...] = (
+    DerivedFact(
+        key="weekly_mix_bucket",
+        path="verdict.weeklyMix.buckets.[]",
+        basis_field="basis",
+        describes="how a bucket's weekly target and completion count were reached",
+        negative_control={
+            "verdict": {"weeklyMix": {"buckets": [{"bucket": "vo2", "target": 2, "done": 1}]}}
+        },
+    ),
+    DerivedFact(
+        key="knowledge_base_section",
+        path="knowledgeBase.sections.[]",
+        basis_field="basis",
+        describes="where a stored protocol or profile section came from",
+        negative_control={
+            "knowledgeBase": {"sections": [{"section": "sleep_protocol", "source": "batch_5_seed"}]}
+        },
+    ),
+    DerivedFact(
+        key="planned_workout",
+        path="plannedWorkouts.[]",
+        basis_field="basis",
+        describes="how today's planned session came to be on the calendar",
+        negative_control={"plannedWorkouts": [{"title": "Z2", "source": "today_card_swap"}]},
+    ),
+    DerivedFact(
+        key="training_week_planned_workout",
+        path="trainingWeekSoFar.days.[].planned.[]",
+        basis_field="basis",
+        describes="how each of this week's sessions came to be on the calendar",
+        negative_control={
+            "trainingWeekSoFar": {
+                "days": [{"planned": [{"title": "Z2", "source": "plan_no2_import"}]}]
+            }
+        },
+    ),
+)
+
+
+def facts_missing_basis(packet: Mapping[str, Any]) -> tuple[str, ...]:
+    """Registry keys whose facts are present in ``packet`` but unexplained.
+
+    A fact absent from the packet is not a failure — a rest-day read carries no
+    planned workout. A fact *present* without a readable basis is, which is the
+    exact state the 2026-08-15 weekly-mix answer was written from.
+
+    A basis that is an internal token counts as missing. That is the whole
+    point: ``source: "batch_5_seed"`` looked like provenance and could not be
+    said out loud.
+    """
+    missing: list[str] = []
+    for fact in DERIVED_FACTS:
+        for item in _resolve(packet, fact.path):
+            if not isinstance(item, Mapping):
+                continue
+            basis = item.get(fact.basis_field)
+            if not isinstance(basis, str) or not basis.strip():
+                missing.append(fact.key)
+                break
+            if basis.strip() in INTERNAL_SOURCE_BASIS:
+                missing.append(fact.key)
+                break
+    return tuple(missing)
+
+
+# Batch 217: the rule the transcripts asked for. On 2026-08-14, challenged on
+# an illness tag it could not explain, the coach invented a mechanism —
+# "Garmin's health snapshot flags skin temperature deviations ... the app may
+# have picked that up" — asserted it twice, endorsed Mark's own wrong guess,
+# and carried the invention into an unrelated answer the next day. Batch 214
+# recorded the same failure on an ERG rationalisation. GROUNDING_RULE forbids
+# inventing Mark's metrics, plan, history, readiness or prescription; nothing
+# forbade inventing the app's own reasoning, which is the half he was asking
+# about both times.
+NO_INVENTED_DERIVATION_RULE = (
+    "When Mark asks how the app arrived at a figure, answer only from a basis the app "
+    "actually states. Quote it in his words when it is there. When it is not there, say "
+    "plainly that the app does not record how that number was reached - never offer a "
+    "plausible mechanism, sensor, or calculation as though it were the app's, and never "
+    "carry a guess from an earlier answer forward as established. A figure you cannot "
+    "account for is still the app's to answer for, not his to justify."
 )

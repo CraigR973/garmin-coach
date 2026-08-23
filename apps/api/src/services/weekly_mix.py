@@ -117,7 +117,16 @@ class MixSession:
 
 @dataclass(frozen=True)
 class MixBucketStatus:
-    """Per-bucket accounting for one week."""
+    """Per-bucket accounting for one week.
+
+    ``basis`` is Batch 217: one readable sentence saying how ``target`` and
+    ``done`` were reached. On 2026-08-15 Mark challenged this exact figure —
+    *"Not sure where you're getting this from 'VO2 has 1 of a 2-session target
+    done' - There is only ever 1 vo2 session in my weekly mix"* — and the coach
+    could only say the app had recorded a 2 and that the 2 looked wrong. It
+    could not say that ``target`` is a count of his own week's sessions rather
+    than a standing quota, which is the whole of what he was asking.
+    """
 
     bucket: str
     label: str
@@ -126,6 +135,7 @@ class MixBucketStatus:
     due: int
     remaining_planned: int
     at_risk: bool
+    basis: str
 
     def to_packet(self) -> dict[str, Any]:
         return {
@@ -136,6 +146,7 @@ class MixBucketStatus:
             "due": self.due,
             "remainingPlanned": self.remaining_planned,
             "atRisk": self.at_risk,
+            "basis": self.basis,
         }
 
 
@@ -193,8 +204,10 @@ class WeeklyMix:
         }
 
 
-def _dedupe_by_date(sessions: Sequence[MixSession]) -> list[MixSession]:
-    """One session per ``workout_date`` (Batch 213).
+def _dedupe_by_date(
+    sessions: Sequence[MixSession],
+) -> tuple[list[MixSession], list[MixSession]]:
+    """One session per ``workout_date`` (Batch 213), plus what was dropped.
 
     A version chain is scoped to a single date (confirmed: every re-slot/edit
     path computes its next version from ``MAX(version) WHERE workout_date =
@@ -203,17 +216,71 @@ def _dedupe_by_date(sessions: Sequence[MixSession]) -> list[MixSession]:
     non-``skipped`` rows: a skipped session was never delivered, so it is not a
     plan commitment and must not count toward ``target`` even when it is the
     only row left for that date (a lone, never-superseded skip).
+
+    Batch 217 returns the skipped-only dates as well. Dropping them is correct
+    and invisible: Mark sees a skipped session on the Week page and a target
+    that does not count it, with nothing joining the two. That silent
+    subtraction is the same shape as the 2026-08-11 chain he challenged, so the
+    basis sentence names it rather than leaving him to infer it.
     """
     by_date: dict[date, list[MixSession]] = {}
     for session in sessions:
         by_date.setdefault(session.workout_date, []).append(session)
     deduped: list[MixSession] = []
+    skipped_only: list[MixSession] = []
     for day_sessions in by_date.values():
         live = [s for s in day_sessions if not s.skipped]
         if not live:
+            skipped_only.append(max(day_sessions, key=lambda s: s.version))
             continue
         deduped.append(max(live, key=lambda s: s.version))
-    return deduped
+    return deduped, skipped_only
+
+
+def _day_label(value: date) -> str:
+    return f"{value:%a} {value.day} {value:%b}"
+
+
+def _bucket_basis(
+    *,
+    label: str,
+    target: int,
+    done: int,
+    due: int,
+    remaining: int,
+    at_risk: bool,
+    skipped_dates: Sequence[date],
+    week_start: date,
+) -> str:
+    """One readable sentence for how a bucket's numbers were reached (Batch 217).
+
+    Deliberately a sentence and not a set of fields. The coach is forbidden from
+    repeating the app's internal names to Mark, so a basis that cannot be read
+    out loud is a basis that does not exist — the lesson from the 2026-08-20
+    ``batch_5_seed`` answer.
+    """
+    window = f"{_day_label(week_start)} to {_day_label(week_start + timedelta(days=6))}"
+    if target == 0:
+        base = (
+            f"Your plan carries no {label} session in the week of {window}, "
+            "so there is no target to fall short of."
+        )
+    else:
+        sessions = "session" if target == 1 else "sessions"
+        base = (
+            f"Counted from your own plan for the week of {window}: {target} {label} "
+            f"{sessions} scheduled, {done} completed. The target is your own week's "
+            "count, not a standing weekly quota."
+        )
+    if skipped_dates:
+        days = ", ".join(_day_label(day) for day in sorted(skipped_dates))
+        base += (
+            f" A {label} session you skipped ({days}) is not counted, "
+            "because a skipped session was never a commitment."
+        )
+    if at_risk:
+        base += f" {due} still owed with {remaining} left scheduled, so the bucket reads short."
+    return base
 
 
 def summarize_weekly_mix(
@@ -236,14 +303,19 @@ def summarize_weekly_mix(
     so a stray duplicate/superseded row — the data-integrity bug this accounting
     must not depend on being already fixed — cannot inflate ``target``.
 
+    Each bucket also carries a ``basis`` (Batch 217): the same counting, said in
+    a sentence, so the number can be defended when Mark asks where it came from
+    instead of being conceded as probably wrong.
+
     Pure: no database, no clock. ``eased_bucket`` is the only channel through
     which the verdict's easing of today's hard session enters the accounting.
     """
-    sessions = _dedupe_by_date(sessions)
+    sessions, skipped_only = _dedupe_by_date(sessions)
     week_start = subject_date - timedelta(days=subject_date.weekday())
     buckets: list[MixBucketStatus] = []
     for name in MIX_BUCKETS:
         in_bucket = [s for s in sessions if s.bucket == name]
+        skipped_dates = [s.workout_date for s in skipped_only if s.bucket == name]
         target = len(in_bucket)
         done = sum(1 for s in in_bucket if s.completed)
         remaining = 0
@@ -259,15 +331,27 @@ def summarize_weekly_mix(
                 continue
             remaining += 1
         due = max(target - done, 0)
+        at_risk = due > remaining
+        label = bucket_label(name)
         buckets.append(
             MixBucketStatus(
                 bucket=name,
-                label=bucket_label(name),
+                label=label,
                 target=target,
                 done=done,
                 due=due,
                 remaining_planned=remaining,
-                at_risk=due > remaining,
+                at_risk=at_risk,
+                basis=_bucket_basis(
+                    label=label,
+                    target=target,
+                    done=done,
+                    due=due,
+                    remaining=remaining,
+                    at_risk=at_risk,
+                    skipped_dates=skipped_dates,
+                    week_start=week_start,
+                ),
             )
         )
     return WeeklyMix(week_start=week_start, subject_date=subject_date, buckets=buckets)

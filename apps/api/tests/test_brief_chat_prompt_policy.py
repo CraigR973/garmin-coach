@@ -103,7 +103,7 @@ class _Date:
 
 def test_brief_chat_prompt_allows_labelled_general_science_lane() -> None:
     """Batch 175's lane survives Batch 179's rewrite of the surface."""
-    assert PROMPT_VERSION == "coach-chat-v8-2026-08-15"
+    assert PROMPT_VERSION == "coach-chat-v9-2026-08-23"
     assert "never invent his" in FLAT_PROMPT
     assert "You may answer general, non-personalized endurance-training science" in FLAT_PROMPT
     assert 'Label those answers with "General principle:"' in FLAT_PROMPT

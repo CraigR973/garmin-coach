@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 
 from src.models.coaching import PlannedWorkout
 from src.models.profile import Profile, UserRole
+from src.services.coach_policy import internal_vocabulary_hits
 from src.services.weekly_mix import (
     MIX_SWEET_SPOT,
     MIX_VO2,
@@ -415,3 +416,94 @@ async def test_service_green_morning_reports_mix_without_a_shortfall(
     vo2 = mix.bucket(MIX_VO2)
     assert vo2 is not None and vo2.done == 1 and vo2.due == 0
     assert mix.plan_adjustments() == []
+
+
+# ---------------------------------------------------------------------------
+# Batch 217 — the numbers say how they were reached
+# ---------------------------------------------------------------------------
+
+
+def test_every_bucket_carries_a_basis_naming_the_plan_derived_count() -> None:
+    """Mark's 2026-08-15 question, answerable from the accounting itself.
+
+    He challenged "VO2 has 1 of a 2-session target done" and the coach could
+    only say the app had recorded a 2 and that the 2 looked wrong. The number
+    was defensible — it is a count of the sessions his own plan carries that
+    week — and nothing in the accounting said so.
+    """
+    mix = summarize_weekly_mix(_plan_week(completed={TUE}), subject_date=WED)
+    for bucket in mix.buckets:
+        assert bucket.basis, f"{bucket.bucket} has no basis"
+        assert internal_vocabulary_hits(bucket.basis) == ()
+        assert bucket.to_packet()["basis"] == bucket.basis
+
+    vo2 = mix.bucket(MIX_VO2)
+    assert vo2 is not None
+    # The two facts he actually needed: it is his own week's count, and it is
+    # not a standing quota.
+    assert "your own plan" in vo2.basis
+    assert "not a standing weekly quota" in vo2.basis
+    assert "1 VO2 session scheduled, 1 completed" in vo2.basis
+    # The window is stated, because "this week" is exactly what was ambiguous.
+    assert "Mon 22 Jun to Sun 28 Jun" in vo2.basis
+
+
+def test_a_zero_target_says_there_is_nothing_to_fall_short_of() -> None:
+    """A recovery week reads target 0, which without a basis looks like a bug."""
+    sessions = [_session(THU, "bike_endurance")]
+    mix = summarize_weekly_mix(sessions, subject_date=WED)
+    vo2 = mix.bucket(MIX_VO2)
+    assert vo2 is not None
+    assert vo2.target == 0
+    assert "carries no VO2 session" in vo2.basis
+    assert "no target to fall short of" in vo2.basis
+
+
+def test_a_silently_dropped_skip_is_named_in_the_basis() -> None:
+    """The subtraction Mark can see on the Week page but not in the number.
+
+    A lone skipped session is correctly excluded from ``target`` (Batch 213),
+    which means he sees a session on his calendar and a target that does not
+    count it. Unexplained, that is the same shape as the 08-11 chain he
+    challenged.
+    """
+    sessions = [
+        MixSession(workout_date=TUE, workout_type="bike_vo2", completed=False, skipped=True),
+        _session(THU, "bike_endurance"),
+    ]
+    mix = summarize_weekly_mix(sessions, subject_date=WED)
+    vo2 = mix.bucket(MIX_VO2)
+    assert vo2 is not None
+    assert vo2.target == 0
+    assert "you skipped (Tue 23 Jun)" in vo2.basis
+    assert "never a commitment" in vo2.basis
+
+
+def test_a_superseded_skip_is_not_reported_as_dropped() -> None:
+    """The real 08-11 chain: the skip was replaced, so nothing was subtracted.
+
+    Naming a skip that a later version already superseded would tell him a
+    session was excluded when it was counted — a false explanation, which is
+    the failure this batch exists to stop.
+    """
+    sessions = [
+        MixSession(
+            workout_date=TUE, workout_type="bike_vo2", completed=False, skipped=True, version=1
+        ),
+        MixSession(
+            workout_date=TUE, workout_type="bike_vo2", completed=True, skipped=False, version=3
+        ),
+    ]
+    mix = summarize_weekly_mix(sessions, subject_date=WED)
+    vo2 = mix.bucket(MIX_VO2)
+    assert vo2 is not None
+    assert (vo2.target, vo2.done) == (1, 1)
+    assert "you skipped" not in vo2.basis
+
+
+def test_an_at_risk_bucket_says_what_is_owed_against_what_is_left() -> None:
+    mix = summarize_weekly_mix(_plan_week(), subject_date=SUN)
+    vo2 = mix.bucket(MIX_VO2)
+    assert vo2 is not None
+    assert vo2.at_risk is True
+    assert "1 still owed with 0 left scheduled" in vo2.basis

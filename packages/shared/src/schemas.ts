@@ -916,6 +916,9 @@ export type SwapSuggestion = z.infer<typeof swapSuggestionSchema>;
 // Zone-2×3, derived from the plan) reported as done/due/at-risk, plus — when a
 // cautious morning eases today's hard session — whether it is re-patched to a
 // later day this week or explicitly not made up.
+// Batch 217: `basis` is one readable sentence saying how `target` and `done`
+// were reached. Optional because a stored pre-217 read carries none, and an old
+// brief must keep rendering rather than failing to parse.
 export const weeklyMixBucketSchema = z.object({
   bucket: z.string(),
   label: z.string(),
@@ -924,6 +927,7 @@ export const weeklyMixBucketSchema = z.object({
   due: z.number(),
   remainingPlanned: z.number().optional(),
   atRisk: z.boolean(),
+  basis: z.string().optional(),
 });
 export type WeeklyMixBucket = z.infer<typeof weeklyMixBucketSchema>;
 
