@@ -32,6 +32,23 @@ Start an implementation batch from `docs/phase-batches.md`.
    - Batch 206 was graded Low on an assumption about payload size that
      measurement inverted — the deferred item turned out to be 96% of the
      endpoint.
+   - Batch 217 named four facts to annotate; two had already been annotated by
+     the very batches the row said to follow, and the convention it asked us to
+     establish already existed four times in the codebase. **When a row says
+     "land after X", check what X actually shipped before building — a
+     sequencing note can change what the batch should build, not merely when.**
+
+   **Two sources worth checking, both cheap and both routinely decisive:**
+   - **`coach.brief_messages` holds Mark's verbatim challenges.** A targeted
+     query ("where are you getting", "what prompted", "not sure why", "basis")
+     returns what he actually disputed, in his words, alongside what the coach
+     answered. Batch 217's real defect — a basis that is present but unquotable
+     — was only visible there: the coach said it would be speculating while
+     looking straight at the answer. A report relayed second-hand loses that.
+   - **`coach.analyses.context_packet` is the exact input a read was written
+     from.** Running a proposed check over the real stored packet from the day
+     being fixed is the strongest before/after evidence available without
+     deploying anything.
 5. Sync from remote without changing production:
    - Fetch `origin`.
    - Start from the current reviewed base branch unless the user specified a

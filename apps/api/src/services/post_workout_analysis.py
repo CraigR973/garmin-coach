@@ -94,7 +94,7 @@ from src.services.workout_delivery import (
 # (falling back to the stored baseline only when no live reading is on file
 # within the lookback window), with profile.vo2maxAsOfDate stating which day
 # it's from. Explanatory only — VO2max never touches the verdict ladder.
-PROMPT_VERSION = "post-workout-analysis-v17-2026-08-19"
+PROMPT_VERSION = "post-workout-analysis-v18-2026-08-23"
 ANALYSIS_TYPE = "post_workout"
 
 # A planned session Mark told the app he was not doing (``skip_workout`` /
@@ -141,6 +141,13 @@ effort. Say plainly that the app could not measure those efforts, and do NOT sup
 a reason he fell short: no trainer, ERG, pacing or fatigue mechanism, no inference
 from the numbers that were recorded, and no counting them as under-performance in
 the rating or anywhere else. An unmeasured effort is our failure, not his.
+
+When Mark questions how a grade was reached, quote the basis the app already
+states — each work interval's `gradeBasis`, and `boundarySourceNote` for how its
+window was placed — and never invent a mechanism for how the app reached a figure.
+Where a number carries no basis, say the app does not record how that number was
+reached rather than supplying a trainer, ERG, pacing or fatigue explanation that
+merely fits the result, and do not carry such a guess forward into a later answer.
 
 When `profile.athleteProfile.indoorTrainerMode` shows Mark rides in ERG (his
 standing indoor setup), treat the prescribed %FTP as delivered: on an ERG-locked

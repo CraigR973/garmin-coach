@@ -60,4 +60,25 @@ describe('WeeklyMixCard', () => {
     const { container } = render(<WeeklyMixCard mix={{ ...baseMix, buckets: [] }} />);
     expect(container.firstChild).toBeNull();
   });
+
+  // Batch 217: on 2026-08-15 Mark asked where "VO2 has 1 of a 2-session target
+  // done" came from. The chip alone cannot say; the disclosure can.
+  it('folds each bucket basis behind a disclosure', () => {
+    const mix: WeeklyMix = {
+      ...baseMix,
+      buckets: baseMix.buckets.map((bucket) => ({
+        ...bucket,
+        basis: `Counted from your own plan: ${bucket.target} ${bucket.label}.`,
+      })),
+    };
+    render(<WeeklyMixCard mix={mix} />);
+    expect(screen.getByText(/Where these numbers come from/i)).not.toBeNull();
+    expect(screen.getByText(/Counted from your own plan: 1 VO2\./)).not.toBeNull();
+    expect(screen.getByText(/Counted from your own plan: 3 Zone 2\./)).not.toBeNull();
+  });
+
+  it('hides the disclosure entirely on a stored read that predates the basis', () => {
+    render(<WeeklyMixCard mix={baseMix} />);
+    expect(screen.queryByText(/Where these numbers come from/i)).toBeNull();
+  });
 });

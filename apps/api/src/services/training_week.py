@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.coaching import Activity, Analysis, PlannedWorkout
 from src.models.profile import Profile
 from src.services.activity_dates import activity_local_date as _activity_local_date
+from src.services.coach_policy import source_basis
 
 ACTION_AUDIT_TYPES = frozenset(
     {
@@ -395,7 +396,7 @@ def _day_status(packet: Mapping[str, Any], *, is_before_subject_date: bool) -> s
 
 
 def _planned_workout_packet(row: PlannedWorkout) -> dict[str, Any]:
-    return {
+    packet: dict[str, Any] = {
         "id": str(row.id),
         "workoutDate": row.workout_date.isoformat(),
         "version": row.version,
@@ -406,6 +407,12 @@ def _planned_workout_packet(row: PlannedWorkout) -> dict[str, Any]:
         "intensityTarget": row.intensity_target,
         "source": row.source,
     }
+    # Batch 217, same reasoning as the morning read's copy: ``source`` is an
+    # internal token the coach may not repeat, so the sentence travels with it.
+    basis = source_basis(row.source)
+    if basis is not None:
+        packet["basis"] = basis
+    return packet
 
 
 def _activity_packet(

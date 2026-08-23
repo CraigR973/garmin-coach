@@ -6,7 +6,13 @@ import { cn } from '@/lib/utils';
  *  as done/target chips — at-risk buckets flagged amber, met buckets green. When
  *  a cautious morning eases today's hard session, the eased bucket shows where it
  *  re-patches to (e.g. "→ Sat"); `showShortfall` additionally renders the coach's
- *  full note (used on the Plan page, where the verdict text isn't shown). */
+ *  full note (used on the Plan page, where the verdict text isn't shown).
+ *
+ *  Batch 217 adds the disclosure. On 2026-08-15 Mark asked where "VO2 has 1 of a
+ *  2-session target done" came from, and the chip alone could not tell him: the
+ *  target is a count of the sessions his own plan carries that week, not a
+ *  standing quota. Each bucket now carries that sentence, folded away so the chip
+ *  row stays scannable and the answer is one tap rather than a conversation. */
 export function WeeklyMixCard({
   mix,
   showShortfall = false,
@@ -19,6 +25,11 @@ export function WeeklyMixCard({
   const buckets = mix.buckets ?? [];
   if (buckets.length === 0) return null;
   const shortfall = mix.shortfall ?? null;
+  // A pre-217 stored read carries no basis; the disclosure disappears rather
+  // than rendering an empty shell.
+  const bases = buckets.flatMap((bucket) =>
+    bucket.basis ? [{ bucket: bucket.bucket, basis: bucket.basis }] : [],
+  );
 
   return (
     <div className={cn('rounded-xl border border-border bg-surface px-3 py-3 text-sm', className)}>
@@ -51,6 +62,18 @@ export function WeeklyMixCard({
           );
         })}
       </div>
+      {bases.length > 0 ? (
+        <details className="group mt-2">
+          <summary className="cursor-pointer text-xs font-medium text-text-muted transition hover:text-text-secondary">
+            Where these numbers come from
+          </summary>
+          <ul className="mt-2 space-y-1.5 border-l border-border pl-3 text-xs text-text-secondary">
+            {bases.map(({ bucket, basis }) => (
+              <li key={bucket}>{basis}</li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
       {showShortfall && shortfall ? (
         <p className="mt-2 text-xs text-text-secondary">{shortfall.message}</p>
       ) : null}

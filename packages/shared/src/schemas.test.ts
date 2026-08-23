@@ -26,6 +26,7 @@ import {
   swapSuggestionSchema,
   todayActionSchema,
   weatherDailySchema,
+  weeklyMixBucketSchema,
   weeklyMixSchema,
   workoutReadEnvelopeSchema,
 } from './schemas';
@@ -776,6 +777,35 @@ describe('v1 shared schemas', () => {
       outputMarkdown: '**Verdict:** Green',
     });
     expect(withoutMix.weeklyMix ?? null).toBeNull();
+  });
+
+  it('carries a bucket basis and stays optional for a pre-217 stored read (Batch 217)', () => {
+    const explained = weeklyMixBucketSchema.parse({
+      bucket: 'vo2',
+      label: 'VO2',
+      target: 1,
+      done: 1,
+      due: 0,
+      remainingPlanned: 0,
+      atRisk: false,
+      basis:
+        'Counted from your own plan for the week of Mon 10 Aug to Sun 16 Aug: 1 VO2 session ' +
+        "scheduled, 1 completed. The target is your own week's count, not a standing weekly quota.",
+    });
+    expect(explained.basis).toContain('not a standing weekly quota');
+
+    // A read stored before this shipped carries no basis and must still parse —
+    // the Week view hides the disclosure rather than failing to render.
+    const older = weeklyMixBucketSchema.parse({
+      bucket: 'vo2',
+      label: 'VO2',
+      target: 2,
+      done: 1,
+      due: 1,
+      remainingPlanned: 0,
+      atRisk: true,
+    });
+    expect(older.basis ?? null).toBeNull();
   });
 
   it('parses the Today action block and defaults it to empty (Batch 86)', () => {
