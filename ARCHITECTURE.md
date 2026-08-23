@@ -331,6 +331,36 @@ and anti-sycophancy live in one `services/coach_policy.py` registry the
 conversation composes from, and the deterministic read prompts are audited
 against it rather than rewritten. Decision #29 and Red-never-VO2 are untouched.
 
+**Derived facts carry their basis (Batch 217, PR #247 / squash `ba41918`).**
+A fact in the packet now says *how the app reached it*, in a sentence Mark can be
+told. The failure was not a missing reason: on 2026-08-20 he asked what the basis
+of his 23:15 bedtime target was and the packet **held** the answer — the stored
+section's `source`, `batch_5_seed` — while the coach said it would be speculating,
+because `NO_PLUMBING_RULE` forbids repeating an internal token to him. A basis
+expressed as an enum occupies the slot without being usable, so it is invisible to
+a search for missing provenance. `INTERNAL_SOURCE_BASIS` translates a provenance
+token to a sentence and `source_basis` returns `None` — omitting the key — for a
+value it does not recognise, because `source` is not always a code constant (an
+imported plan supplies its own). A `DERIVED_FACTS` registry beside `FLOORS` names
+the covered facts, and `facts_missing_basis` treats an internal token in a `basis`
+field as missing rather than present. The convention itself pre-existed in four
+places (`trainingWeekSoFar.grounding`, Batch 212's `matchedText`/`basis`, Batch
+214's `gradeBasis`/`boundarySourceNote`, `chat_context._state_meaning`); Batch 217
+names it rather than adding a fifth copy, and applies it to the two facts still
+bare — the weekly-mix accounting and the internal `source` tokens. Each
+`weeklyMix` bucket carries a sentence naming the week window, the plan-derived
+count, that the target is his own week's count rather than a standing quota, and
+any skipped session silently excluded from it; `WeeklyMixCard` folds the same
+sentences behind a "Where these numbers come from" disclosure. The eleventh floor,
+`no_invented_derivation`, closes the other half: where no basis exists the model
+invented one — a fabricated Garmin skin-temperature mechanism on 2026-08-14,
+repeated the next day as established — and `GROUNDING_RULE` covered inventing
+Mark's data but never the app's own reasoning. It is owned by the morning and
+post-workout reads, the two surfaces carrying derived deterministic facts, and
+composed into the conversation from the registry. Prompts → morning v33,
+post-workout v18, chat v9. No migration; the shared schema gains one optional
+`basis` string so a pre-217 stored read still parses.
+
 **Conversation dates (Batch 183, PR #214 / squash `7d1d479`).** The shared
 `CoachConversation` renderer inserts a local-date separator whenever the ordered
 thread crosses a calendar-day boundary and shows a 24-hour local time on every
