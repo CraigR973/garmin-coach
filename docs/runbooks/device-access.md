@@ -17,6 +17,16 @@ The link expires after 30 minutes and can be exchanged once. Opening it on the
 target device stores a one-year device token locally. Minting a new link revokes
 any older unused activation link, but does not sign out working devices.
 
+### Set up the operator-alert device
+
+Billing and provider incidents use a separate empty operator profile, never
+Mark's profile. Create that private profile through the production admin path,
+mint its activation link with the same CLI, activate Craig's device, and enable
+notifications so an active web-push subscription exists. Only then set the API
+service's `ADMIN_ALERT_USER_ID` to the operator profile UUID. Batch 220's paid
+longitudinal submitter enforces all three conditions (different profile, active
+profile, active subscription) and skips without spending when any is missing.
+
 ## Sign out this device
 
 The app's **Log out** action calls `POST /api/v1/auth/revoke` with the current

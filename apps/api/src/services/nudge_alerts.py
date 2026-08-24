@@ -264,7 +264,12 @@ def build_admin_generation_alert_plan(
     any other reason gets a generic "check the logs". One tag per day so the
     operator is told once, not on every failed poll/check-in.
     """
-    label = "Weekly review" if artifact == "weekly_review" else "Brief"
+    labels = {
+        "brief": "Brief",
+        "weekly_review": "Weekly review",
+        "longitudinal_analysis": "Longitudinal analysis",
+    }
+    label = labels.get(artifact, "Coach analysis")
     if reason == "billing":
         body = (
             f"{label} generation is failing — the Anthropic credit balance is too low. "
