@@ -13,13 +13,22 @@ import pytest
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from src.models.coaching import Activity, Analysis, GenerationRequest, ManualEntry
+from src.models.coaching import (
+    DAILY_METRIC_PHASE_MORNING,
+    Activity,
+    Analysis,
+    DailyMetric,
+    GenerationRequest,
+    ManualEntry,
+    Sleep,
+)
 from src.models.profile import Profile, UserRole
 from src.services.generation_requests import claim_generation_request
 from src.services.morning_analysis import (
     ClaudeGenerationResult,
     MorningAnalysisService,
 )
+from src.services.morning_inputs import morning_input_presence
 from src.services.post_workout_analysis import PostWorkoutAnalysisService
 
 
@@ -40,6 +49,24 @@ class BlockingGenerationClient:
         await self.release.wait()
         return ClaudeGenerationResult(
             output_markdown="Generated once.",
+            raw_response={"id": f"call-{self.calls}"},
+            model_name="test-model",
+        )
+
+
+@dataclass
+class CountingGenerationClient:
+    calls: int = 0
+
+    async def generate(
+        self,
+        *,
+        context_packet: dict[str, Any],
+        user_prompt: str,
+    ) -> ClaudeGenerationResult:
+        self.calls += 1
+        return ClaudeGenerationResult(
+            output_markdown=f"Generated {self.calls}.",
             raw_response={"id": f"call-{self.calls}"},
             model_name="test-model",
         )
@@ -170,6 +197,119 @@ async def test_identical_morning_generation_calls_once_but_changed_input_adds_hi
             )
             assert analysis_count == 2
             assert request_count == 2
+    finally:
+        await _delete_profile(session_factory, user_id)
+
+
+@pytest.mark.asyncio
+async def test_more_complete_morning_inputs_generate_new_historical_read(
+    db_engine: AsyncEngine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The backstop must not alias a completed packet onto an earlier empty read."""
+    session_factory = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 8, 20)
+    client = CountingGenerationClient()
+
+    async def packet(
+        self: MorningAnalysisService,
+        player: Profile,
+        requested_date: date,
+    ) -> dict[str, Any]:
+        inputs = await morning_input_presence(
+            self.session,
+            user_id=player.id,
+            subject_date=requested_date,
+        )
+        return {
+            "packetType": "morning_analysis",
+            "subjectDate": requested_date.isoformat(),
+            "dailyMetrics": {} if inputs.daily_metrics else None,
+            "sleep": {} if inputs.sleep else None,
+            "verdict": {"status": "Green"},
+        }
+
+    monkeypatch.setattr(MorningAnalysisService, "assemble_context_packet", packet)
+
+    async with session_factory() as session:
+        await _set_search_path(session)
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Completeness Identity",
+                role=UserRole.player,
+                timezone="UTC",
+                is_active=True,
+            )
+        )
+        await session.commit()
+
+    async def run(*, force: bool) -> Any:
+        async with session_factory() as session:
+            await _set_search_path(session)
+            player = await session.get(Profile, user_id)
+            assert player is not None
+            return await MorningAnalysisService(session).generate_and_store(
+                player,
+                subject_date,
+                client=client,
+                force=force,
+            )
+
+    try:
+        empty = await run(force=True)
+        assert empty.generated is True
+        assert empty.analysis.context_packet["inputCompletenessVersion"] == (
+            "daily_metrics:0|sleep:0"
+        )
+
+        async with session_factory() as session:
+            await _set_search_path(session)
+            session.add_all(
+                [
+                    DailyMetric(
+                        user_id=user_id,
+                        calendar_date=subject_date,
+                        phase=DAILY_METRIC_PHASE_MORNING,
+                        raw_payload={},
+                    ),
+                    Sleep(
+                        user_id=user_id,
+                        calendar_date=subject_date,
+                        duration_sec=7 * 3600,
+                        raw_payload={},
+                    ),
+                ]
+            )
+            await session.commit()
+
+        complete = await run(force=False)
+        identical = await run(force=False)
+
+        assert complete.generated is True
+        assert complete.analysis.id != empty.analysis.id
+        assert complete.analysis.context_packet["inputCompletenessVersion"] == (
+            "daily_metrics:1|sleep:1"
+        )
+        assert identical.generated is False
+        assert identical.analysis.id == complete.analysis.id
+        assert client.calls == 2
+
+        async with session_factory() as session:
+            await _set_search_path(session)
+            analysis_count = await session.scalar(
+                select(func.count())
+                .select_from(Analysis)
+                .where(Analysis.user_id == user_id, Analysis.analysis_type == "morning")
+            )
+            request_count = await session.scalar(
+                select(func.count())
+                .select_from(GenerationRequest)
+                .where(GenerationRequest.user_id == user_id)
+            )
+        assert analysis_count == 2
+        assert request_count == 2
     finally:
         await _delete_profile(session_factory, user_id)
 

@@ -16,7 +16,13 @@ import pytest
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
-from src.models.coaching import Analysis, FanStateReading
+from src.models.coaching import (
+    DAILY_METRIC_PHASE_MORNING,
+    Analysis,
+    DailyMetric,
+    FanStateReading,
+    Sleep,
+)
 from src.models.notification import ActionType, ActorType, AuditLog
 from src.models.profile import Profile, UserRole
 from src.scheduler import (
@@ -44,6 +50,7 @@ from src.scheduler import (
 from src.services.anthropic_text import AnthropicApiError
 from src.services.dreo_fan import DreoFanError, DreoFanState
 from src.services.job_runs import JobResult, JobStatus
+from src.services.morning_inputs import MorningInputPresence
 from src.services.wake_detection import (
     BACKSTOP,
     WAKE_CHECK_ANALYSIS_TYPE,
@@ -868,6 +875,10 @@ async def test_morning_weather_sync_runs_daily_sync_before_analysis() -> None:
         patch("src.scheduler.OpenMeteoClient", return_value=meteo_client),
         patch("src.scheduler.EnvironmentSyncService", return_value=weather_service),
         patch("src.scheduler._sync_garmin_daily", side_effect=fake_daily_sync),
+        patch(
+            "src.scheduler.morning_input_presence",
+            AsyncMock(return_value=MorningInputPresence(daily_metrics=True, sleep=True)),
+        ),
         patch("src.scheduler.MorningAnalysisService", return_value=analysis_service),
         patch("src.scheduler.ExecutableCoachingService", return_value=coaching_service),
         patch("src.scheduler.NudgeAlertService", return_value=nudge_service),
@@ -885,7 +896,7 @@ async def test_morning_weather_sync_runs_daily_sync_before_analysis() -> None:
 
 @pytest.mark.asyncio
 async def test_poisoned_input_step_does_not_cost_verdict() -> None:
-    """Batch 195: a degraded sync still reaches morning-analysis generation."""
+    """A degraded sibling step still reaches generation when wake inputs exist."""
 
     profile = _profile()
     session = AsyncMock()
@@ -909,6 +920,10 @@ async def test_poisoned_input_step_does_not_cost_verdict() -> None:
             "src.scheduler._sync_morning_inputs",
             AsyncMock(return_value=MorningInputResult(failures=1)),
         ),
+        patch(
+            "src.scheduler.morning_input_presence",
+            AsyncMock(return_value=MorningInputPresence(daily_metrics=True, sleep=True)),
+        ),
         patch("src.scheduler.MorningAnalysisService", return_value=analysis_service),
         patch("src.scheduler.ExecutableCoachingService", return_value=coaching_service),
         patch("src.scheduler.NudgeAlertService", return_value=nudge_service),
@@ -921,6 +936,37 @@ async def test_poisoned_input_step_does_not_cost_verdict() -> None:
     assert result.status == JobStatus.degraded
     assert result.counters["analyses_generated"] == 1
     assert result.counters["failed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_morning_backstop_holds_instead_of_generating_unsynced_read() -> None:
+    profile = _profile()
+    session = AsyncMock()
+    analysis_service = MagicMock()
+    analysis_service.generate_and_store = AsyncMock()
+
+    with (
+        patch("src.scheduler.AsyncSessionLocal", return_value=_morning_sync_ctx(session)),
+        patch("src.scheduler._active_profiles", AsyncMock(return_value=[profile])),
+        patch(
+            "src.scheduler._sync_morning_inputs",
+            AsyncMock(return_value=MorningInputResult()),
+        ),
+        patch(
+            "src.scheduler.morning_input_presence",
+            AsyncMock(return_value=MorningInputPresence(daily_metrics=False, sleep=False)),
+        ),
+        patch("src.scheduler.MorningAnalysisService", return_value=analysis_service),
+        patch("src.scheduler.ExecutableCoachingService", return_value=MagicMock()),
+        patch("src.scheduler.NudgeAlertService", return_value=MagicMock()),
+        patch("src.scheduler.InsightsService", return_value=MagicMock()),
+    ):
+        result = await run_morning_weather_sync()
+
+    analysis_service.generate_and_store.assert_not_awaited()
+    assert result.status == JobStatus.degraded
+    assert result.counters["inputs_not_ready"] == 1
+    assert result.counters["analyses_generated"] == 0
 
 
 def _morning_sync_ctx(session: AsyncMock) -> object:
@@ -1219,7 +1265,7 @@ def _wake_patches(
     *,
     profiles: list[MagicMock],
     now: datetime,
-    latest_analysis: object | None = None,
+    inputs: MorningInputPresence | None = None,
     decision: WakeDecision | None = None,
     client: _FakeGarmin | None = None,
 ):
@@ -1238,9 +1284,10 @@ def _wake_patches(
         async def __aexit__(self, *a: object) -> None:
             return None
 
-    morning = MagicMock()
-    morning.latest_analysis = AsyncMock(return_value=latest_analysis)
     fake_client = client if client is not None else _FakeGarmin({})
+    input_presence = AsyncMock(
+        return_value=inputs or MorningInputPresence(daily_metrics=False, sleep=False)
+    )
     record = AsyncMock()
     last_seen = AsyncMock(return_value=None)
     is_ready = MagicMock(return_value=decision or WakeDecision("wait", None, "awaiting_stability"))
@@ -1250,7 +1297,7 @@ def _wake_patches(
         enter = stack.enter_context
         enter(patch("src.scheduler.AsyncSessionLocal", return_value=_Ctx()))
         enter(patch("src.scheduler._active_profiles", AsyncMock(return_value=profiles)))
-        enter(patch("src.scheduler.MorningAnalysisService", return_value=morning))
+        enter(patch("src.scheduler.morning_input_presence", input_presence))
         enter(patch("src.scheduler._profile_now", lambda profile: now))
         enter(patch("src.scheduler.GarminConnectClient", return_value=fake_client))
         enter(patch("src.scheduler._last_seen_sleep_end", last_seen))
@@ -1259,7 +1306,7 @@ def _wake_patches(
         enter(patch("src.scheduler.run_morning_sync", morning_sync))
         yield SimpleNamespace(
             session=session,
-            morning=morning,
+            input_presence=input_presence,
             client=fake_client,
             record=record,
             last_seen=last_seen,
@@ -1299,12 +1346,12 @@ async def test_wake_check_waits_without_triggering_morning_sync() -> None:
 
 
 @pytest.mark.asyncio
-async def test_wake_check_short_circuits_when_analysis_exists() -> None:
-    """Today's verdict already exists → no Garmin call, no decision, no re-fire."""
+async def test_wake_check_short_circuits_when_inputs_are_present() -> None:
+    """Today's synced daily/sleep rows stop polling without consulting an analysis."""
     with _wake_patches(
         profiles=[_profile()],
         now=_local(8, 25),
-        latest_analysis=MagicMock(),
+        inputs=MorningInputPresence(daily_metrics=True, sleep=True),
         client=_FakeGarmin(None, raise_on_fetch=True),
     ) as m:
         await run_wake_check()
@@ -1316,8 +1363,38 @@ async def test_wake_check_short_circuits_when_analysis_exists() -> None:
 
 
 @pytest.mark.asyncio
+async def test_wake_check_keeps_polling_for_lagging_sleep_before_backstop() -> None:
+    decision = WakeDecision("fire", _SLEEP_END, "stable_wake")
+    with _wake_patches(
+        profiles=[_profile()],
+        now=_local(8, 25),
+        inputs=MorningInputPresence(daily_metrics=True, sleep=False),
+        decision=decision,
+    ) as m:
+        await run_wake_check()
+
+    assert m.client.calls == 1
+    m.morning_sync.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_wake_check_accepts_synced_no_sleep_day_after_backstop() -> None:
+    with _wake_patches(
+        profiles=[_profile()],
+        now=_local(11, 5),
+        inputs=MorningInputPresence(daily_metrics=True, sleep=False),
+        client=_FakeGarmin(None, raise_on_fetch=True),
+    ) as m:
+        await run_wake_check()
+
+    assert m.client.calls == 0
+    m.record.assert_not_awaited()
+    m.morning_sync.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_wake_check_outside_window_skips_poll() -> None:
-    """Before the morning window: not even a cheap morning-analysis lookup."""
+    """Before the morning window: not even a cheap input-presence lookup."""
     with _wake_patches(
         profiles=[_profile()],
         now=_local(2, 0),
@@ -1325,7 +1402,7 @@ async def test_wake_check_outside_window_skips_poll() -> None:
     ) as m:
         await run_wake_check()
 
-    m.morning.latest_analysis.assert_not_awaited()
+    m.input_presence.assert_not_awaited()
     assert m.client.calls == 0
     m.morning_sync.assert_not_awaited()
 
@@ -1487,25 +1564,78 @@ async def test_wake_check_backstop_fires_on_unfinalized(db_conn: AsyncConnection
 
 
 @pytest.mark.asyncio
-async def test_wake_check_short_circuits_with_existing_morning_row(
+async def test_wake_check_existing_empty_read_cannot_cancel_later_sync(
     db_conn: AsyncConnection,
 ) -> None:
-    """A real morning analysis row for today stops the poll cold — no Garmin call."""
+    """Pin the real 07:19 poll → 07:26 empty read → 07:34 fire ordering."""
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    client = _FakeGarmin(_sleep_payload(sleep_end="2026-06-24T07:12:15"))
+    morning_sync = AsyncMock(return_value=JobResult.succeeded())
+    now = {
+        "value": datetime(2026, 6, 24, 8, 19, 41, tzinfo=LONDON),
+    }
+
+    with (
+        patch("src.scheduler.AsyncSessionLocal", new=_bind(db_conn)),
+        patch("src.scheduler.GarminConnectClient", return_value=client),
+        patch("src.scheduler._profile_now", lambda profile: now["value"]),
+        patch("src.scheduler.run_morning_sync", morning_sync),
+    ):
+        await run_wake_check()  # 07:19:41 UTC: first sighting, wait and persist.
+
+        # 07:26:55 UTC: the pre-fix check-in path wrote an empty morning read.
+        # It is history, not proof that Garmin inputs have synced.
+        async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+            session.add(
+                Analysis(
+                    user_id=user_id,
+                    analysis_type="morning",
+                    subject_date=date(2026, 6, 24),
+                    generated_at_utc=datetime(2026, 6, 24, 7, 27, 47),
+                    prompt_version="morning-empty",
+                    verdict="Green",
+                    context_packet={"sleep": None, "dailyMetrics": None},
+                    output_markdown="No overnight data.",
+                    raw_response={},
+                )
+            )
+            await session.commit()
+
+        now["value"] = datetime(2026, 6, 24, 8, 34, 39, tzinfo=LONDON)
+        await run_wake_check()  # stable and settled: must still fire the sync.
+
+    row = await _wake_check_row(db_conn, user_id)
+    assert row is not None
+    assert row.verdict == "fire"
+    assert row.context_packet["reason"] == "stable_wake"
+    assert client.calls == 2
+    morning_sync.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_wake_check_short_circuits_with_synced_inputs(
+    db_conn: AsyncConnection,
+) -> None:
+    """Real current-day morning metrics + sleep stop the poll cold."""
     user_id = uuid.uuid4()
     await _seed_profile(db_conn, user_id)
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
-        session.add(
-            Analysis(
-                user_id=user_id,
-                analysis_type="morning",
-                subject_date=datetime(2026, 6, 24).date(),
-                generated_at_utc=datetime(2026, 6, 24, 8, 0),
-                prompt_version="morning-x",
-                verdict="Green",
-                context_packet={},
-                output_markdown="x",
-                raw_response={},
-            )
+        session.add_all(
+            [
+                DailyMetric(
+                    user_id=user_id,
+                    calendar_date=date(2026, 6, 24),
+                    phase=DAILY_METRIC_PHASE_MORNING,
+                    raw_payload={},
+                ),
+                Sleep(
+                    user_id=user_id,
+                    calendar_date=date(2026, 6, 24),
+                    duration_sec=7 * 3600,
+                    raw_payload={},
+                ),
+            ]
         )
         await session.commit()
 

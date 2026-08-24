@@ -77,7 +77,7 @@ import {
 } from '@/lib/dailyFlow';
 import { greetingForNow, personalStatusLine, verdictLabel } from '@/lib/copy';
 import { dayStateForWorkouts, workoutTypeLabel, type DayCategory } from '@/lib/workoutCategories';
-import { actionSection, nextAction, type NextAction } from '@/lib/homeActions';
+import { actionSection, nextAction, overnightDataReady, type NextAction } from '@/lib/homeActions';
 import { hasReviewedSleep } from '@/lib/sleepReview';
 import { hasReviewedBrief } from '@/lib/briefReview';
 import { hasSeenWalkRead, markWalkReadSeen } from '@/lib/walkRead';
@@ -787,7 +787,10 @@ export function DashboardPage() {
       ) : daily.manualEntry != null ? (
         <BriefGeneratingCta dateLabel={friendlyDate(daily.subjectDate)} />
       ) : (
-        <GoodMorningCta dateLabel={friendlyDate(daily.subjectDate)} />
+        <GoodMorningCta
+          dateLabel={friendlyDate(daily.subjectDate)}
+          overnightDataReady={overnightDataReady(daily)}
+        />
       )}
 
       {/* Batch 96: an unviewed brief outranks every action card, including the

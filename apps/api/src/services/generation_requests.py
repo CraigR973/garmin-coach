@@ -23,6 +23,7 @@ STATUS_FAILED = "failed"
 
 GENERATION_IDENTITY_KEY = "generationIdentity"
 INPUT_VERSION_KEY = "inputVersion"
+INPUT_COMPLETENESS_VERSION_KEY = "inputCompletenessVersion"
 
 # Anthropic calls time out after 60 seconds. Three minutes leaves room for packet
 # assembly/DB work while still allowing a crashed worker to be reclaimed quickly.
@@ -43,6 +44,7 @@ def morning_generation_identity(
     user_id: uuid.UUID,
     subject_date: date,
     input_version: str | None,
+    input_completeness_version: str,
     prompt_version: str,
 ) -> str:
     return _identity(
@@ -51,6 +53,7 @@ def morning_generation_identity(
             "userId": str(user_id),
             "subjectDate": subject_date.isoformat(),
             "inputVersion": input_version,
+            "inputCompletenessVersion": input_completeness_version,
             "promptVersion": prompt_version,
         }
     )
@@ -140,9 +143,12 @@ def stamp_generation_identity(
     *,
     request_identity: str,
     input_version: str | None,
+    input_completeness_version: str | None = None,
 ) -> None:
     packet[GENERATION_IDENTITY_KEY] = request_identity
     packet[INPUT_VERSION_KEY] = input_version
+    if input_completeness_version is not None:
+        packet[INPUT_COMPLETENESS_VERSION_KEY] = input_completeness_version
 
 
 def _advisory_key(lease_scope: str) -> int:

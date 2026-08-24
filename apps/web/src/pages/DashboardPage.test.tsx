@@ -501,7 +501,19 @@ describe('DashboardPage', () => {
     expect(await screen.findByRole('region', { name: 'Say good morning' })).toBeTruthy();
     const cta = screen.getByRole('link', { name: /get today's brief/i });
     expect(cta.getAttribute('href')).toBe('/check-in');
+    expect(screen.getByText(/your overnight data's already in/i)).toBeTruthy();
     expect(screen.queryByText('Good to go')).toBeNull();
+  });
+
+  it('promises to sync instead of claiming unsynced overnight data is already in', async () => {
+    const noInputs = JSON.parse(JSON.stringify(baseSnapshot)) as DailyLoopEnvelope;
+    noInputs.data.morningAnalysis = null;
+    noInputs.data.dailyMetrics = null;
+    noInputs.data.sleep = null;
+    renderPage(noInputs);
+
+    expect(await screen.findByText(/sync your overnight data before i read your day/i)).toBeTruthy();
+    expect(screen.queryByText(/your overnight data's already in/i)).toBeNull();
   });
 
   it('shows a "writing your brief" state, not the check-in CTA, once he has checked in but the brief is still pending (Batch 114)', async () => {

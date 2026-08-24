@@ -70,6 +70,10 @@ from src.services.learned_context import (
     LEARNED_CONTEXT_PROMPT_GUARDRAIL,
     learned_context_packet,
 )
+from src.services.morning_inputs import (
+    morning_input_presence,
+    morning_packet_input_presence,
+)
 from src.services.personal_baselines import (
     SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR,
     baseline_band_packet,
@@ -777,6 +781,11 @@ class MorningAnalysisService:
         commit: bool = True,
     ) -> MorningAnalysisResult:
         manual_entries = await self._manual_entries(player.id, subject_date)
+        input_presence = await morning_input_presence(
+            self.session,
+            user_id=player.id,
+            subject_date=subject_date,
+        )
         input_version = manual_entry_generation_version(
             manual_entries[0] if manual_entries else None
         )
@@ -784,6 +793,7 @@ class MorningAnalysisService:
             user_id=player.id,
             subject_date=subject_date,
             input_version=input_version,
+            input_completeness_version=input_presence.version,
             prompt_version=PROMPT_VERSION,
         )
         async with claim_generation_request(
@@ -795,11 +805,22 @@ class MorningAnalysisService:
         ) as claim:
             if claim.existing_analysis is not None:
                 packet = claim.existing_analysis.context_packet
-                if (
+                exact_generation = (
                     claim.existing_analysis.prompt_version == PROMPT_VERSION
                     and isinstance(packet, dict)
                     and packet.get("generationIdentity") == request_identity
-                ):
+                )
+                # A non-forced scheduler read may deliberately alias a current
+                # analysis into the new completeness-aware request identity. Its
+                # packet keeps the identity it was actually generated under, so
+                # accept that alias only while its proven presence still matches.
+                compatible_existing = (
+                    not force
+                    and claim.existing_analysis.prompt_version == PROMPT_VERSION
+                    and isinstance(packet, dict)
+                    and morning_packet_input_presence(packet) == input_presence
+                )
+                if exact_generation or compatible_existing:
                     return MorningAnalysisResult(
                         analysis=claim.existing_analysis,
                         generated=False,
@@ -808,7 +829,13 @@ class MorningAnalysisService:
 
             if not force:
                 existing = await self.latest_analysis(player.id, subject_date)
-                if existing is not None and existing.prompt_version == PROMPT_VERSION:
+                existing_packet = existing.context_packet if existing is not None else None
+                if (
+                    existing is not None
+                    and existing.prompt_version == PROMPT_VERSION
+                    and isinstance(existing_packet, dict)
+                    and morning_packet_input_presence(existing_packet) == input_presence
+                ):
                     claim.mark_completed(existing)
                     if commit:
                         await self.session.commit()
@@ -821,6 +848,7 @@ class MorningAnalysisService:
                 context_packet,
                 request_identity=request_identity,
                 input_version=input_version,
+                input_completeness_version=input_presence.version,
             )
             user_prompt = build_morning_user_prompt(context_packet)
             analysis_client = client or AnthropicMorningAnalysisClient()

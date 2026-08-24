@@ -6,11 +6,17 @@ import { cn } from '@/lib/utils';
 
 /**
  * Batch 85: the Home hero slot before today's brief has been generated. The morning
- * now waits for Mark to "say good morning" — his overnight data is already synced by
- * the wake job, and checking in generates the brief on the spot. This replaces the
- * old auto-pending VerdictHero state, because the verdict no longer lands on its own.
+ * now waits for Mark to "say good morning" and checking in generates the brief
+ * off-request. Batch 222 makes the sync state explicit: the wake job usually has
+ * the inputs ready, but the copy must not claim that when the payload proves otherwise.
  */
-export function GoodMorningCta({ dateLabel }: { dateLabel?: string }) {
+export function GoodMorningCta({
+  dateLabel,
+  overnightDataReady,
+}: {
+  dateLabel?: string;
+  overnightDataReady: boolean;
+}) {
   return (
     <section
       className={cn(
@@ -38,7 +44,9 @@ export function GoodMorningCta({ dateLabel }: { dateLabel?: string }) {
             <span>Say good morning</span>
           </p>
           <p className="mt-0.5 text-sm text-text-secondary">
-            Check in and I&apos;ll read your day — your overnight data&apos;s already in.
+            {overnightDataReady
+              ? "Check in and I'll read your day — your overnight data's already in."
+              : "Check in and I'll sync your overnight data before I read your day."}
           </p>
           <Button asChild size="sm" className="mt-3">
             <Link to="/check-in">Get today&apos;s brief</Link>

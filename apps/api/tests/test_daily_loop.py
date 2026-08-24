@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import date, datetime
+from datetime import date, datetime, time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -16,6 +16,7 @@ from src.main import app
 from src.models.coaching import (
     Activity,
     Analysis,
+    BriefGenerationStatus,
     DailyMetric,
     KnowledgeBase,
     ManualEntry,
@@ -739,6 +740,143 @@ async def test_manual_entry_returns_immediately_and_queues_brief_generation(
     assert response.status_code == 200, response.text
     assert response.json()["data"]["morningAnalysis"] is None
     queued.assert_awaited_once_with(user_id, subject_date)
+
+
+@pytest.mark.asyncio
+async def test_checkin_background_syncs_before_generating(
+    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 8, 20)
+    events: list[str] = []
+
+    async with session_factory() as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Sync Before Read",
+                role=UserRole.player,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.commit()
+
+    async def sync_inputs(session: AsyncSession, profiles: list[Profile]) -> None:
+        events.append("sync")
+        assert [profile.id for profile in profiles] == [user_id]
+        session.add_all(
+            [
+                DailyMetric(
+                    user_id=user_id,
+                    calendar_date=subject_date,
+                    phase="morning",
+                    raw_payload={},
+                ),
+                Sleep(
+                    user_id=user_id,
+                    calendar_date=subject_date,
+                    duration_sec=7 * 3600,
+                    raw_payload={},
+                ),
+            ]
+        )
+        await session.commit()
+
+    generated_analysis = MagicMock()
+
+    async def generate(*args: object, **kwargs: object) -> MagicMock:
+        events.append("generate")
+        return generated_analysis
+
+    async def notify(*args: object, **kwargs: object) -> bool:
+        events.append("notify")
+        # Patched on the class, so the bound instance and profile precede the
+        # generated analysis in ``args``.
+        assert args[2] is generated_analysis
+        return True
+
+    monkeypatch.setattr(daily_loop_router, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(daily_loop_router, "_local_time", lambda timezone_name: time(8, 0))
+    monkeypatch.setattr("src.scheduler._sync_morning_inputs", sync_inputs)
+    monkeypatch.setattr(
+        ExecutableCoachingService,
+        "regenerate_after_morning_checkin",
+        generate,
+    )
+    monkeypatch.setattr(
+        "src.routers.daily_loop.NudgeAlertService.push_brief_ready",
+        notify,
+    )
+
+    await daily_loop_router._generate_brief_after_checkin(user_id, subject_date)
+
+    assert events == ["sync", "generate", "notify"]
+    async with session_factory() as session:
+        status = await session.scalar(
+            select(BriefGenerationStatus).where(
+                BriefGenerationStatus.user_id == user_id,
+                BriefGenerationStatus.subject_date == subject_date,
+            )
+        )
+    assert status is not None
+    assert status.status == "ready"
+
+
+@pytest.mark.asyncio
+async def test_checkin_background_never_generates_when_sync_lands_no_inputs(
+    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 8, 20)
+
+    async with session_factory() as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="No Empty Read",
+                role=UserRole.player,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.commit()
+
+    sync_inputs = AsyncMock(return_value=None)
+    generate = AsyncMock()
+    notify = AsyncMock(return_value=True)
+    mark_failed = AsyncMock(return_value=MagicMock())
+    monkeypatch.setattr(daily_loop_router, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(daily_loop_router, "_local_time", lambda timezone_name: time(8, 0))
+    monkeypatch.setattr("src.scheduler._sync_morning_inputs", sync_inputs)
+    monkeypatch.setattr(
+        ExecutableCoachingService,
+        "regenerate_after_morning_checkin",
+        generate,
+    )
+    monkeypatch.setattr(
+        "src.routers.daily_loop.NudgeAlertService.push_brief_ready",
+        notify,
+    )
+    monkeypatch.setattr(
+        daily_loop_router.BriefGenerationStatusService,
+        "mark_failed",
+        mark_failed,
+    )
+
+    await daily_loop_router._generate_brief_after_checkin(user_id, subject_date)
+
+    sync_inputs.assert_awaited_once()
+    generate.assert_not_awaited()
+    notify.assert_not_awaited()
+    mark_failed.assert_awaited_once_with(
+        user_id,
+        subject_date,
+        reason="inputs",
+        commit=True,
+    )
 
 
 @pytest.mark.asyncio
