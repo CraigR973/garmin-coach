@@ -30,7 +30,9 @@ from src.services.insights import (
     AUDIT_TYPE_EARLY_WARNING,
     AUDIT_TYPE_FTP_DRIFT,
     DRIVER_KEYS,
+    OUTCOME_OVERNIGHT_AWAKE_MIN,
     OUTCOME_RECOVERY_HRV,
+    OUTCOME_REM_SLEEP_MIN,
     OUTCOME_SLEEP_SCORE,
     DriverCorrelation,
     DriversReport,
@@ -372,7 +374,14 @@ async def test_service_drivers_builds_records_and_correlates(
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
         for i in range(10):
             session.add(
-                Sleep(user_id=user_id, calendar_date=_day(i), score=80 - i, avg_sleep_stress=20.0)
+                Sleep(
+                    user_id=user_id,
+                    calendar_date=_day(i),
+                    score=80 - i,
+                    rem_sleep_sec=(60 + i) * 60,
+                    awake_sleep_sec=(20 + i) * 60,
+                    avg_sleep_stress=20.0,
+                )
             )
             session.add(
                 DailyMetric(
@@ -391,6 +400,17 @@ async def test_service_drivers_builds_records_and_correlates(
                     latitude=55.6,
                     longitude=-4.5,
                     overnight_low_c=float(i),  # rises as sleep score falls
+                    overnight_relative_humidity_mean_pct=float(70 + i),
+                )
+            )
+            session.add(
+                TemperatureReading(
+                    user_id=user_id,
+                    captured_at_utc=datetime.combine(
+                        _day(i) - timedelta(days=1), datetime.min.time()
+                    )
+                    + timedelta(hours=21),
+                    temperature_c=17.0 + i / 10,
                 )
             )
         await session.commit()
@@ -407,6 +427,16 @@ async def test_service_drivers_builds_records_and_correlates(
         assert top.driver == "overnight_low_c"
         assert top.direction == "negative"
         assert set(DRIVER_KEYS)  # sanity: keys exist
+        assert report.outcomes[OUTCOME_REM_SLEEP_MIN]
+        assert report.outcomes[OUTCOME_OVERNIGHT_AWAKE_MIN]
+        assert {driver.driver for driver in report.outcomes[OUTCOME_REM_SLEEP_MIN]}.issuperset(
+            {
+                "overnight_relative_humidity_mean_pct",
+                "bedroom_mean_temp_c",
+                "bedroom_min_temp_c",
+                "bedroom_max_temp_c",
+            }
+        )
 
 
 @pytest.mark.asyncio
@@ -457,8 +487,14 @@ async def test_service_driver_records_include_bedroom_rollups(
         {
             OUTCOME_SLEEP_SCORE: 70.0,
             "recovery_hrv_ms": None,
+            OUTCOME_REM_SLEEP_MIN: None,
+            OUTCOME_OVERNIGHT_AWAKE_MIN: None,
             "overnight_low_c": None,
             "overnight_wind_max_mph": None,
+            "overnight_relative_humidity_mean_pct": None,
+            "bedroom_mean_temp_c": 19.95,
+            "bedroom_min_temp_c": 19.7,
+            "bedroom_max_temp_c": 20.2,
             "bedroom_warning_minutes": 30.0,
             "bedroom_critical_minutes": 15.0,
             "bedroom_fan_ran_minutes": 15.0,
@@ -492,6 +528,9 @@ async def test_service_driver_records_keep_missing_bedroom_data_none(
     assert records[0]["bedroom_critical_minutes"] is None
     assert records[0]["bedroom_fan_ran_minutes"] is None
     assert records[0]["bedroom_peak_fan_speed"] is None
+    assert records[0]["bedroom_mean_temp_c"] is None
+    assert records[0]["bedroom_min_temp_c"] is None
+    assert records[0]["bedroom_max_temp_c"] is None
 
 
 @pytest.mark.asyncio

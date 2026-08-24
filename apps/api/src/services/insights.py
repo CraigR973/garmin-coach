@@ -89,10 +89,16 @@ MIN_CORRELATION_SAMPLES = 8
 
 OUTCOME_SLEEP_SCORE = "sleep_score"
 OUTCOME_RECOVERY_HRV = "recovery_hrv_ms"
+OUTCOME_REM_SLEEP_MIN = "rem_sleep_min"
+OUTCOME_OVERNIGHT_AWAKE_MIN = "overnight_awake_min"
 
 DRIVER_KEYS = (
     "overnight_low_c",
     "overnight_wind_max_mph",
+    "overnight_relative_humidity_mean_pct",
+    "bedroom_mean_temp_c",
+    "bedroom_min_temp_c",
+    "bedroom_max_temp_c",
     "bedroom_warning_minutes",
     "bedroom_critical_minutes",
     "bedroom_fan_ran_minutes",
@@ -104,6 +110,9 @@ DRIVER_KEYS = (
 )
 
 BEDROOM_DRIVER_KEYS = (
+    "bedroom_mean_temp_c",
+    "bedroom_min_temp_c",
+    "bedroom_max_temp_c",
     "bedroom_warning_minutes",
     "bedroom_critical_minutes",
     "bedroom_fan_ran_minutes",
@@ -127,7 +136,8 @@ _BEDROOM_DRIVER_THRESHOLDS = {
 _OUTCOME_SENTENCE_LABELS = {
     OUTCOME_SLEEP_SCORE: ("sleep score", "points", True),
     OUTCOME_RECOVERY_HRV: ("recovery HRV", "ms", True),
-    "overnight_awake_min": ("overnight awake time", "min", False),
+    OUTCOME_REM_SLEEP_MIN: ("REM sleep", "min", True),
+    OUTCOME_OVERNIGHT_AWAKE_MIN: ("overnight awake time", "min", False),
 }
 
 
@@ -412,6 +422,9 @@ class DriverCorrelation:
 @dataclass(frozen=True)
 class BedroomDriverValues:
     wake_date: date
+    mean_temp_c: float | None
+    min_temp_c: float | None
+    max_temp_c: float | None
     warning_minutes: float | None
     critical_minutes: float | None
     fan_ran_minutes: float | None
@@ -517,8 +530,14 @@ async def bedroom_driver_values_by_date(
         fan_values = fan_by_wake_date.get(wake_date, [])
         temp_summary = summarize_overnight(temp_values, []) if temp_values else None
         fan_summary = summarize_overnight([], fan_values) if fan_values else None
+        measured_temps = [float(value) for value in temp_values if value is not None]
         values[wake_date] = BedroomDriverValues(
             wake_date=wake_date,
+            mean_temp_c=(
+                round(sum(measured_temps) / len(measured_temps), 2) if measured_temps else None
+            ),
+            min_temp_c=temp_summary.min_temp_c if temp_summary else None,
+            max_temp_c=temp_summary.max_temp_c if temp_summary else None,
             warning_minutes=float(temp_summary.warning_minutes) if temp_summary else None,
             critical_minutes=float(temp_summary.critical_minutes) if temp_summary else None,
             fan_ran_minutes=float(fan_summary.fan_ran_minutes) if fan_summary else None,
@@ -820,12 +839,26 @@ class InsightsService:
                     OUTCOME_RECOVERY_HRV: float(metric.hrv_last_night_avg_ms)
                     if metric and metric.hrv_last_night_avg_ms is not None
                     else None,
+                    OUTCOME_REM_SLEEP_MIN: sleep.rem_sleep_sec / 60.0
+                    if sleep and sleep.rem_sleep_sec is not None
+                    else None,
+                    OUTCOME_OVERNIGHT_AWAKE_MIN: sleep.awake_sleep_sec / 60.0
+                    if sleep and sleep.awake_sleep_sec is not None
+                    else None,
                     "overnight_low_c": float(weather_row.overnight_low_c)
                     if weather_row and weather_row.overnight_low_c is not None
                     else None,
                     "overnight_wind_max_mph": float(weather_row.overnight_wind_max_mph)
                     if weather_row and weather_row.overnight_wind_max_mph is not None
                     else None,
+                    "overnight_relative_humidity_mean_pct": float(
+                        weather_row.overnight_relative_humidity_mean_pct
+                    )
+                    if weather_row and weather_row.overnight_relative_humidity_mean_pct is not None
+                    else None,
+                    "bedroom_mean_temp_c": bedroom.mean_temp_c if bedroom else None,
+                    "bedroom_min_temp_c": bedroom.min_temp_c if bedroom else None,
+                    "bedroom_max_temp_c": bedroom.max_temp_c if bedroom else None,
                     "bedroom_warning_minutes": bedroom.warning_minutes if bedroom else None,
                     "bedroom_critical_minutes": bedroom.critical_minutes if bedroom else None,
                     "bedroom_fan_ran_minutes": bedroom.fan_ran_minutes if bedroom else None,
@@ -862,6 +895,14 @@ class InsightsService:
             ),
             OUTCOME_RECOVERY_HRV: compute_drivers(
                 records, outcome_key=OUTCOME_RECOVERY_HRV, driver_keys=DRIVER_KEYS
+            ),
+            OUTCOME_REM_SLEEP_MIN: compute_drivers(
+                records, outcome_key=OUTCOME_REM_SLEEP_MIN, driver_keys=DRIVER_KEYS
+            ),
+            OUTCOME_OVERNIGHT_AWAKE_MIN: compute_drivers(
+                records,
+                outcome_key=OUTCOME_OVERNIGHT_AWAKE_MIN,
+                driver_keys=DRIVER_KEYS,
             ),
         }
         return DriversReport(

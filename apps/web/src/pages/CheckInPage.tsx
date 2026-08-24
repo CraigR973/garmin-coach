@@ -9,7 +9,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ErrorState } from '@/components/EmptyState';
-import { Input } from '@/components/ui/input';
+import { controlFieldClassName, Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
@@ -66,11 +66,29 @@ type ManualFormState = {
   feel: string;
   supplements: string;
   food: string;
+  beddingWeight: string;
+  windowCount: string;
+  windowApertureCm: string;
+  blindPosition: string;
+  preCoolStartLocal: string;
   notes: string;
 };
 
 function emptyManualForm(): ManualFormState {
-  return { bpSystolic: '', bpDiastolic: '', subjectiveScore: '', feel: '', supplements: '', food: '', notes: '' };
+  return {
+    bpSystolic: '',
+    bpDiastolic: '',
+    subjectiveScore: '',
+    feel: '',
+    supplements: '',
+    food: '',
+    beddingWeight: '',
+    windowCount: '',
+    windowApertureCm: '',
+    blindPosition: '',
+    preCoolStartLocal: '',
+    notes: '',
+  };
 }
 
 function textSummary(value: unknown): string {
@@ -165,6 +183,7 @@ export function CheckInPage() {
     if (dirtyRef.current) return;
 
     const manualEntry = data.manualEntry;
+    const sleepSetup = manualEntry?.sleepSetupJson ?? {};
     setManualForm({
       bpSystolic: manualEntry?.bpSystolic ? String(manualEntry.bpSystolic) : '',
       bpDiastolic: manualEntry?.bpDiastolic ? String(manualEntry.bpDiastolic) : '',
@@ -172,6 +191,12 @@ export function CheckInPage() {
       feel: manualEntry?.feel ?? '',
       supplements: textSummary(manualEntry?.supplementsJson),
       food: textSummary(manualEntry?.foodJson),
+      beddingWeight: sleepSetup.beddingWeight ?? '',
+      windowCount: sleepSetup.windowCount != null ? String(sleepSetup.windowCount) : '',
+      windowApertureCm:
+        sleepSetup.windowApertureCm != null ? String(sleepSetup.windowApertureCm) : '',
+      blindPosition: sleepSetup.blindPosition ?? '',
+      preCoolStartLocal: sleepSetup.preCoolStartLocal ?? '',
       notes: manualEntry?.notes ?? '',
     });
   }, [query.data]);
@@ -241,6 +266,13 @@ export function CheckInPage() {
         feel: manualForm.feel || null,
         supplementsJson: objectSummary(manualForm.supplements),
         foodJson: objectSummary(manualForm.food),
+        sleepSetupJson: {
+          beddingWeight: manualForm.beddingWeight || null,
+          windowCount: parseOptionalNumber(manualForm.windowCount),
+          windowApertureCm: parseOptionalNumber(manualForm.windowApertureCm),
+          blindPosition: manualForm.blindPosition || null,
+          preCoolStartLocal: manualForm.preCoolStartLocal || null,
+        },
         notes: manualForm.notes || null,
       });
       const response = await apiFetch<unknown>(`/api/v1/daily-loop/${data.subjectDate}/manual-entry`, {
@@ -403,6 +435,92 @@ export function CheckInPage() {
           </div>
         </CardContent>
       </Card>
+
+      <CollapsibleSection
+        title="Last night's setup"
+        summary="Bedding, windows, blind and when pre-cooling started"
+      >
+        <div className="space-y-5">
+          <p className="text-sm text-text-secondary">
+            Record what was actually in place overnight so temperature and draught effects can be separated over time.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="bedding-weight">Bedding</Label>
+              <select
+                id="bedding-weight"
+                className={`${controlFieldClassName} min-h-11 px-4 py-2 text-base sm:text-sm`}
+                value={manualForm.beddingWeight || 'not_recorded'}
+                onChange={(event) =>
+                  setManual(
+                    'beddingWeight',
+                    event.target.value === 'not_recorded' ? '' : event.target.value,
+                  )
+                }
+              >
+                <option value="not_recorded">Not recorded</option>
+                <option value="quilt">Quilt</option>
+                <option value="thin_cover">Thin cover</option>
+                <option value="sheet">Sheet</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pre-cool-start">Pre-cool started</Label>
+              <Input
+                id="pre-cool-start"
+                type="time"
+                value={manualForm.preCoolStartLocal}
+                onChange={(event) => setManual('preCoolStartLocal', event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="window-count">Windows open</Label>
+              <Input
+                id="window-count"
+                inputMode="numeric"
+                min={0}
+                max={8}
+                type="number"
+                value={manualForm.windowCount}
+                onChange={(event) => setManual('windowCount', event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="window-aperture">Opening per window (cm)</Label>
+              <Input
+                id="window-aperture"
+                inputMode="decimal"
+                min={0}
+                max={100}
+                step="0.5"
+                type="number"
+                value={manualForm.windowApertureCm}
+                onChange={(event) => setManual('windowApertureCm', event.target.value)}
+              />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="blind-position">Blind position</Label>
+              <select
+                id="blind-position"
+                className={`${controlFieldClassName} min-h-11 px-4 py-2 text-base sm:text-sm`}
+                value={manualForm.blindPosition || 'not_recorded'}
+                onChange={(event) =>
+                  setManual(
+                    'blindPosition',
+                    event.target.value === 'not_recorded' ? '' : event.target.value,
+                  )
+                }
+              >
+                <option value="not_recorded">Not recorded</option>
+                <option value="closed">Closed</option>
+                <option value="at_windowsill">At the windowsill</option>
+                <option value="away_from_windowsill">Pulled away from the windowsill</option>
+                <option value="open">Open</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </CollapsibleSection>
 
       {/* Batch 63: BP, supplements/food, and per-workout adherence move behind
           "More" — reachable, never required, so the default path stays a few

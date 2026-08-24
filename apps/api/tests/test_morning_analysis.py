@@ -282,6 +282,13 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
                     feel="good",
                     supplements_json={},
                     food_json={},
+                    sleep_setup_json={
+                        "beddingWeight": "thin_cover",
+                        "windowCount": 2,
+                        "windowApertureCm": 10,
+                        "blindPosition": "away_from_windowsill",
+                        "preCoolStartLocal": "18:30",
+                    },
                 ),
                 PlannedWorkout(
                     user_id=user_id,
@@ -320,6 +327,8 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
                     overnight_low_c=4.2,
                     overnight_wind_max_mph=18.0,
                     overnight_wind_gust_mph=34.0,
+                    overnight_wind_direction_deg=225.0,
+                    overnight_relative_humidity_mean_pct=82.0,
                     raw_payload={},
                 ),
                 TemperatureReading(
@@ -360,6 +369,15 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
         # Authoritative header date and the check-in spoken as Mark's word.
         assert packet["subjectDateLabel"] == "Thursday 1 January 2026"
         assert packet["manualEntries"][0]["subjectiveLabel"] == "OK"
+        assert packet["manualEntries"][0]["sleepSetup"] == {
+            "beddingWeight": "thin_cover",
+            "windowCount": 2,
+            "windowApertureCm": 10,
+            "blindPosition": "away_from_windowsill",
+            "preCoolStartLocal": "18:30",
+        }
+        assert packet["environment"]["weather"]["overnightWindDirectionDeg"] == 225.0
+        assert packet["environment"]["weather"]["overnightRelativeHumidityMeanPct"] == 82.0
         assert packet["verdict"]["subjectiveLabel"] == "OK"
         assert packet["verdict"]["status"] == "Amber"
         assert packet["verdict"]["readinessInterpretation"] is None

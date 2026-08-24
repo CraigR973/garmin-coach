@@ -1325,6 +1325,7 @@ def _manual_entry_packet(row: ManualEntry) -> dict[str, Any]:
         "feel": row.feel,
         "supplements": row.supplements_json,
         "food": row.food_json,
+        "sleepSetup": row.sleep_setup_json,
         "notes": row.notes,
     }
 
@@ -1402,6 +1403,8 @@ def _weather_packet(row: WeatherDaily | None) -> dict[str, Any] | None:
         "overnightLowC": row.overnight_low_c,
         "overnightWindMaxMph": row.overnight_wind_max_mph,
         "overnightWindGustMph": row.overnight_wind_gust_mph,
+        "overnightWindDirectionDeg": row.overnight_wind_direction_deg,
+        "overnightRelativeHumidityMeanPct": row.overnight_relative_humidity_mean_pct,
         "precipitationMm": row.precipitation_mm,
         "sunriseUtc": _dt(row.sunrise_utc),
         "sunsetUtc": _dt(row.sunset_utc),

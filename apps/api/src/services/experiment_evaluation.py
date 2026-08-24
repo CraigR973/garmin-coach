@@ -541,6 +541,9 @@ class ExperimentEvaluationService:
                     "sleep_stress_avg": float(sleep.avg_sleep_stress)
                     if sleep.avg_sleep_stress is not None
                     else None,
+                    "bedroom_mean_temp_c": bedroom.mean_temp_c if bedroom else None,
+                    "bedroom_min_temp_c": bedroom.min_temp_c if bedroom else None,
+                    "bedroom_max_temp_c": bedroom.max_temp_c if bedroom else None,
                     "bedroom_warning_minutes": bedroom.warning_minutes if bedroom else None,
                     "bedroom_critical_minutes": bedroom.critical_minutes if bedroom else None,
                     "bedroom_fan_ran_minutes": bedroom.fan_ran_minutes if bedroom else None,

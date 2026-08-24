@@ -145,12 +145,29 @@ export const weatherDailySchema = z.object({
   overnightLowC: z.number().nullable().optional(),
   overnightWindMaxMph: z.number().nullable().optional(),
   overnightWindGustMph: z.number().nullable().optional(),
+  overnightWindDirectionDeg: z.number().min(0).max(360).nullable().optional(),
+  overnightRelativeHumidityMeanPct: z.number().min(0).max(100).nullable().optional(),
   windMaxMph: z.number().nullable().optional(),
   windGustMph: z.number().nullable().optional(),
   precipitationMm: z.number().nullable().optional(),
   sunriseUtc: isoDateTimeSchema.nullable().optional(),
   sunsetUtc: isoDateTimeSchema.nullable().optional(),
   rawPayload: jsonObjectSchema.default({}),
+});
+
+export const sleepSetupSchema = z.object({
+  beddingWeight: z.enum(['quilt', 'thin_cover', 'sheet']).nullable().optional(),
+  windowCount: z.number().int().min(0).max(8).nullable().optional(),
+  windowApertureCm: z.number().min(0).max(100).nullable().optional(),
+  blindPosition: z
+    .enum(['closed', 'at_windowsill', 'away_from_windowsill', 'open'])
+    .nullable()
+    .optional(),
+  preCoolStartLocal: z
+    .string()
+    .regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/)
+    .nullable()
+    .optional(),
 });
 
 export const manualEntrySchema = z.object({
@@ -170,6 +187,7 @@ export const manualEntrySchema = z.object({
   actualWorkoutJson: jsonObjectSchema.default({}),
   supplementsJson: jsonObjectSchema.default({}),
   foodJson: jsonObjectSchema.default({}),
+  sleepSetupJson: sleepSetupSchema.optional(),
   notes: z.string().nullable().optional(),
 });
 
@@ -181,6 +199,7 @@ export const manualEntryInputSchema = z.object({
   feel: z.string().max(80).nullable().optional(),
   supplementsJson: jsonObjectSchema.default({}),
   foodJson: jsonObjectSchema.default({}),
+  sleepSetupJson: sleepSetupSchema.optional(),
   notes: z.string().nullable().optional(),
 });
 
@@ -1127,6 +1146,8 @@ export const dailyLoopThermalStateSchema = z.object({
   overnightLowC: z.number().nullable().optional(),
   overnightWindMaxMph: z.number().nullable().optional(),
   overnightWindGustMph: z.number().nullable().optional(),
+  overnightWindDirectionDeg: z.number().min(0).max(360).nullable().optional(),
+  overnightRelativeHumidityMeanPct: z.number().min(0).max(100).nullable().optional(),
   thermalReview: jsonObjectSchema.default({}),
   fans: z.array(dailyLoopFanSchema).default([]),
 });
