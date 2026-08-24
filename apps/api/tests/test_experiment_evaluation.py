@@ -29,10 +29,12 @@ from src.services.experiment_evaluation import (
     STATUS_OK,
     ExperimentEvaluationService,
     LabeledNight,
+    RemInterventionNight,
     SleepNight,
     evaluate_correlation,
     evaluate_gate_streak,
     evaluate_group_compare,
+    evaluate_rem_interventions,
 )
 from src.services.experiment_tracker import ExperimentTrackerService
 
@@ -184,6 +186,82 @@ def test_group_compare_insufficient_group_skips() -> None:
     result = evaluate_group_compare(nights, min_per_group=4)
     assert result.status == STATUS_INSUFFICIENT
     assert result.recommendation is None
+
+
+# ---------------------------------------------------------------------------
+# Pure: REM intervention applied-vs-not-applied comparison (Batch 221)
+# ---------------------------------------------------------------------------
+
+
+def _rem_night(
+    index: int,
+    *,
+    response: str,
+    rem_pct: float | None,
+    awake_min: float | None,
+) -> RemInterventionNight:
+    return RemInterventionNight(
+        day=D0 + timedelta(days=index),
+        intervention_id="consistent_wake",
+        response=response,
+        rem_sleep_pct=rem_pct,
+        awake_min=awake_min,
+    )
+
+
+def test_rem_intervention_unknown_and_missing_outcomes_do_not_become_comparisons() -> None:
+    nights = [
+        _rem_night(0, response="applied", rem_pct=24, awake_min=30),
+        _rem_night(1, response="not_applied", rem_pct=20, awake_min=40),
+        _rem_night(2, response="unknown", rem_pct=10, awake_min=90),
+        _rem_night(3, response="not_applied", rem_pct=None, awake_min=40),
+    ]
+
+    result = evaluate_rem_interventions(nights, min_per_response=2)
+
+    assert result.status == STATUS_OK
+    assert result.recommendation == RECOMMEND_INCONCLUSIVE
+    assert result.sample_count == 2
+    assert result.evidence["confidence"] == "low"
+    assert "Unknown application is excluded" in result.reasons[1]
+
+
+def test_rem_intervention_directional_improvement_is_conservative_and_descriptive() -> None:
+    nights = [
+        *[
+            _rem_night(index, response="applied", rem_pct=24 + index / 10, awake_min=30)
+            for index in range(3)
+        ],
+        *[
+            _rem_night(index + 3, response="not_applied", rem_pct=20, awake_min=42)
+            for index in range(3)
+        ],
+    ]
+
+    result = evaluate_rem_interventions(nights)
+
+    assert result.recommendation == RECOMMEND_SUPPORTED
+    assert result.evidence["interventionId"] == "consistent_wake"
+    assert result.evidence["remPctDelta"] >= 2
+    assert result.evidence["awakeMinDelta"] <= -10
+    assert result.evidence["confidence"] == "low"
+    assert "observational comparison" in result.reasons[1]
+
+
+def test_rem_intervention_mixed_outcomes_remain_inconclusive() -> None:
+    nights = [
+        *[_rem_night(index, response="applied", rem_pct=24, awake_min=55) for index in range(3)],
+        *[
+            _rem_night(index + 3, response="not_applied", rem_pct=20, awake_min=35)
+            for index in range(3)
+        ],
+    ]
+
+    result = evaluate_rem_interventions(nights)
+
+    assert result.recommendation == RECOMMEND_INCONCLUSIVE
+    assert result.evidence["remPctDelta"] == 4
+    assert result.evidence["awakeMinDelta"] == 20
 
 
 # ---------------------------------------------------------------------------

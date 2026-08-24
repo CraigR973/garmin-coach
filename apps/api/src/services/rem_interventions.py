@@ -40,12 +40,15 @@ class RemRotation:
     period_label: str
     shown: int
     total: int
+    intervention_ids: tuple[str, ...] = ()
+    actions: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "periodLabel": self.period_label,
             "shown": self.shown,
             "total": self.total,
+            "interventionIds": list(self.intervention_ids),
         }
 
 
@@ -203,7 +206,13 @@ def select_rem_interventions(
     total = len(library)
     if total == 0:
         _, monday = _week_period(as_of)
-        return [], RemRotation(period_label=_period_label(monday), shown=0, total=0)
+        return [], RemRotation(
+            period_label=_period_label(monday),
+            shown=0,
+            total=0,
+            intervention_ids=(),
+            actions=(),
+        )
     window = max(1, min(window, total))
     period, monday = _week_period(as_of)
     start = (period * window) % total
@@ -219,7 +228,18 @@ def select_rem_interventions(
 
     params = _params(protocol)
     actions = [render(item, params) for item in chosen]
-    return actions, RemRotation(period_label=_period_label(monday), shown=len(actions), total=total)
+    return actions, RemRotation(
+        period_label=_period_label(monday),
+        shown=len(actions),
+        total=total,
+        intervention_ids=tuple(item.id for item in chosen),
+        actions=tuple(actions),
+    )
+
+
+def intervention_by_id(intervention_id: str) -> RemIntervention | None:
+    """Return one stable library item without exposing the ordered tuple as a map."""
+    return next((item for item in REM_LIBRARY if item.id == intervention_id), None)
 
 
 def _period_label(monday: date) -> str:

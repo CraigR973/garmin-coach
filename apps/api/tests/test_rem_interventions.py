@@ -27,6 +27,15 @@ def test_rotation_is_stable_within_a_calendar_week() -> None:
     assert select_rem_interventions(as_of=monday) == select_rem_interventions(as_of=sunday)
 
 
+def test_rotation_carries_stable_ids_for_the_exact_rendered_actions() -> None:
+    actions, rotation = select_rem_interventions(as_of=_MONDAY)
+
+    assert len(rotation.intervention_ids) == len(actions) == rotation.shown
+    assert len(set(rotation.intervention_ids)) == rotation.shown
+    assert list(rotation.actions) == actions
+    assert rotation.to_dict()["interventionIds"] == list(rotation.intervention_ids)
+
+
 def test_rotation_walks_whole_library_before_repeating() -> None:
     weeks = len(REM_LIBRARY) // REM_ROTATION_WINDOW
     shown: list[tuple[str, ...]] = []

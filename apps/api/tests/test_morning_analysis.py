@@ -383,6 +383,16 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
         assert packet["verdict"]["readinessInterpretation"] is None
         assert packet["verdict"]["readinessBaselineTrend"]["status"] == "insufficient_data"
         assert packet["verdict"]["hasVo2WorkoutToday"] is True
+        assert len(packet["experimentLoop"]["experiments"]) == 4
+        assert packet["experimentLoop"]["rules"] == {
+            "autoConclude": False,
+            "unknownApplicationMeansNotApplied": False,
+            "derivableSleepOutcomesNeedUserObservation": False,
+        }
+        assert all(
+            item["conclusion"] == "human_gated_terminal"
+            for item in packet["experimentLoop"]["experiments"]
+        )
         assert packet["trainingWeekSoFar"]["window"] == {
             "kind": "calendar_week_to_date",
             "startDate": "2025-12-29",
@@ -1498,11 +1508,14 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v33")
+    assert PROMPT_VERSION.startswith("morning-analysis-v34")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
     assert "status is\nskipped" in SYSTEM_PROMPT
+    assert "experimentLoop.experiments" in SYSTEM_PROMPT
+    assert "never ask Mark to notice" in SYSTEM_PROMPT
+    assert 'Unknown application is unknown, never "not applied"' in SYSTEM_PROMPT
 
     packet = {
         "manualEntries": [

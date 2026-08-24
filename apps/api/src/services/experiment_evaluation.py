@@ -52,6 +52,7 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile
+from src.services.experiment_tracker import SLUG_REM_INTERVENTION
 from src.services.insights import (
     BEDROOM_DRIVER_KEYS,
     _mean,
@@ -77,6 +78,7 @@ STATUS_NO_EVALUATOR = "no_evaluator"
 KIND_GATE = "gate"
 KIND_CORRELATION = "correlation"
 KIND_GROUP_COMPARE = "group_compare"
+KIND_INTERVENTION_COMPARE = "intervention_compare"
 KIND_NONE = "none"
 
 # Standing-hypothesis slugs (from the Batch 17 tracker).
@@ -105,6 +107,11 @@ EARLY_WAKING_UNMEASURED = ("alcohol", "late_snack")
 GROUP_LOOKBACK_DAYS = 120
 GROUP_MIN_PER_GROUP = 4
 GROUP_THRESHOLD = 3.0  # age-adjusted sleep points = a meaningful gap
+
+# --- applied-vs-not-applied REM protocol -------------------------------------
+REM_MIN_PER_RESPONSE = 3
+REM_PCT_DIRECTION_THRESHOLD = 2.0
+REM_AWAKE_DIRECTION_THRESHOLD_MIN = 10.0
 
 
 def _utcnow() -> datetime:
@@ -342,6 +349,187 @@ class LabeledNight:
     group: str  # "recovery" | "build"
 
 
+@dataclass(frozen=True)
+class RemInterventionNight:
+    day: date
+    intervention_id: str
+    response: str  # applied | not_applied; unknown is excluded before evaluation
+    rem_sleep_pct: float | None
+    awake_min: float | None
+
+
+def evaluate_rem_interventions(
+    nights: Sequence[RemInterventionNight],
+    *,
+    slug: str | None = SLUG_REM_INTERVENTION,
+    min_per_response: int = REM_MIN_PER_RESPONSE,
+) -> EvaluationResult:
+    """Describe confirmed application outcomes without promoting one night to a claim."""
+    eligible = [
+        night
+        for night in nights
+        if night.response in {"applied", "not_applied"}
+        and night.rem_sleep_pct is not None
+        and night.awake_min is not None
+    ]
+    by_intervention: dict[str, dict[str, list[RemInterventionNight]]] = {}
+    for night in eligible:
+        by_intervention.setdefault(
+            night.intervention_id,
+            {"applied": [], "not_applied": []},
+        )[night.response].append(night)
+
+    summaries: list[dict[str, Any]] = []
+    qualified: list[tuple[int, str, list[RemInterventionNight], list[RemInterventionNight]]] = []
+    for intervention_id, groups in sorted(by_intervention.items()):
+        applied = [
+            row
+            for row in groups["applied"]
+            if row.rem_sleep_pct is not None and row.awake_min is not None
+        ]
+        not_applied = [
+            row
+            for row in groups["not_applied"]
+            if row.rem_sleep_pct is not None and row.awake_min is not None
+        ]
+        summary: dict[str, Any] = {
+            "interventionId": intervention_id,
+            "appliedNights": len(applied),
+            "notAppliedNights": len(not_applied),
+            "appliedNeeded": max(0, min_per_response - len(applied)),
+            "notAppliedNeeded": max(0, min_per_response - len(not_applied)),
+        }
+        if applied and not_applied:
+            applied_rem = _mean(
+                [row.rem_sleep_pct for row in applied if row.rem_sleep_pct is not None]
+            )
+            comparison_rem = _mean(
+                [row.rem_sleep_pct for row in not_applied if row.rem_sleep_pct is not None]
+            )
+            applied_awake = _mean([row.awake_min for row in applied if row.awake_min is not None])
+            comparison_awake = _mean(
+                [row.awake_min for row in not_applied if row.awake_min is not None]
+            )
+            summary.update(
+                {
+                    "appliedRemPctMean": round(applied_rem, 2),
+                    "notAppliedRemPctMean": round(comparison_rem, 2),
+                    "remPctDelta": round(applied_rem - comparison_rem, 2),
+                    "appliedAwakeMinMean": round(applied_awake, 2),
+                    "notAppliedAwakeMinMean": round(comparison_awake, 2),
+                    "awakeMinDelta": round(applied_awake - comparison_awake, 2),
+                }
+            )
+        summaries.append(summary)
+        if len(applied) >= min_per_response and len(not_applied) >= min_per_response:
+            qualified.append(
+                (len(applied) + len(not_applied), intervention_id, applied, not_applied)
+            )
+
+    observed_dates = sorted({row.day for row in eligible})
+    if not qualified:
+        if summaries:
+            closest = sorted(
+                summaries,
+                key=lambda item: (
+                    item["appliedNeeded"] + item["notAppliedNeeded"],
+                    item["interventionId"],
+                ),
+            )[0]
+            coverage = (
+                f"{closest['interventionId']} still needs "
+                f"{closest['appliedNeeded']} applied and "
+                f"{closest['notAppliedNeeded']} not-applied measured nights."
+            )
+        else:
+            coverage = "No issued lever has both a response and measured REM/awake outcomes yet."
+        return EvaluationResult(
+            slug=slug,
+            kind=KIND_INTERVENTION_COMPARE,
+            status=STATUS_OK,
+            recommendation=RECOMMEND_INCONCLUSIVE,
+            sample_count=len(eligible),
+            window_start=observed_dates[0] if observed_dates else None,
+            window_end=observed_dates[-1] if observed_dates else None,
+            evidence={
+                "minimumPerResponse": min_per_response,
+                "interventions": summaries,
+                "confidence": "low",
+            },
+            reasons=[
+                f"Not enough confirmed comparison nights yet. {coverage}",
+                "Unknown application is excluded, never treated as not applied.",
+            ],
+        )
+
+    _, intervention_id, applied, not_applied = sorted(
+        qualified,
+        key=lambda item: (-item[0], item[1]),
+    )[0]
+    applied_rem = _mean([row.rem_sleep_pct for row in applied if row.rem_sleep_pct is not None])
+    comparison_rem = _mean(
+        [row.rem_sleep_pct for row in not_applied if row.rem_sleep_pct is not None]
+    )
+    applied_awake = _mean([row.awake_min for row in applied if row.awake_min is not None])
+    comparison_awake = _mean([row.awake_min for row in not_applied if row.awake_min is not None])
+    rem_delta = applied_rem - comparison_rem
+    awake_delta = applied_awake - comparison_awake
+    improves = (rem_delta >= REM_PCT_DIRECTION_THRESHOLD and awake_delta <= 0) or (
+        awake_delta <= -REM_AWAKE_DIRECTION_THRESHOLD_MIN and rem_delta >= 0
+    )
+    worsens = (rem_delta <= -REM_PCT_DIRECTION_THRESHOLD and awake_delta >= 0) or (
+        awake_delta >= REM_AWAKE_DIRECTION_THRESHOLD_MIN and rem_delta <= 0
+    )
+    recommendation = (
+        RECOMMEND_SUPPORTED
+        if improves
+        else RECOMMEND_REFUTED
+        if worsens
+        else RECOMMEND_INCONCLUSIVE
+    )
+    direction = (
+        "directionally better"
+        if recommendation == RECOMMEND_SUPPORTED
+        else "directionally worse"
+        if recommendation == RECOMMEND_REFUTED
+        else "mixed or too small to call"
+    )
+    return EvaluationResult(
+        slug=slug,
+        kind=KIND_INTERVENTION_COMPARE,
+        status=STATUS_OK,
+        recommendation=recommendation,
+        sample_count=len(applied) + len(not_applied),
+        window_start=observed_dates[0] if observed_dates else None,
+        window_end=observed_dates[-1] if observed_dates else None,
+        evidence={
+            "minimumPerResponse": min_per_response,
+            "interventionId": intervention_id,
+            "appliedNights": len(applied),
+            "notAppliedNights": len(not_applied),
+            "appliedRemPctMean": round(applied_rem, 2),
+            "notAppliedRemPctMean": round(comparison_rem, 2),
+            "remPctDelta": round(rem_delta, 2),
+            "appliedAwakeMinMean": round(applied_awake, 2),
+            "notAppliedAwakeMinMean": round(comparison_awake, 2),
+            "awakeMinDelta": round(awake_delta, 2),
+            "confidence": "low",
+            "observationalConfounds": [
+                "weekly rotation",
+                "self-reported application",
+                "training load",
+                "bedroom setup",
+            ],
+            "interventions": summaries,
+        },
+        reasons=[
+            f"{intervention_id} is {direction}: REM {rem_delta:+.1f} percentage points and "
+            f"awake time {awake_delta:+.1f} minutes on applied nights.",
+            "This is an observational comparison under a weekly rotation, not a causal result.",
+        ],
+    )
+
+
 def evaluate_group_compare(
     nights: Sequence[LabeledNight],
     *,
@@ -483,6 +671,8 @@ class ExperimentEvaluationService:
             return await self._evaluate_early_waking(player, end=end)
         if slug == SLUG_RECOVERY_WEEK:
             return await self._evaluate_recovery_week(player, end=end)
+        if slug == SLUG_REM_INTERVENTION:
+            return self._evaluate_rem_intervention(experiment, criteria)
         if criteria.get("candidateDrivers"):
             # Generic user-created correlation experiment.
             return await self._evaluate_early_waking(player, end=end, slug=slug)
@@ -583,6 +773,58 @@ class ExperimentEvaluationService:
                 LabeledNight(day=sleep.calendar_date, value=_age_adjusted(sleep), group=group)
             )
         return evaluate_group_compare(nights)
+
+    def _evaluate_rem_intervention(
+        self,
+        experiment: Experiment,
+        criteria: dict[str, Any],
+    ) -> EvaluationResult:
+        observations = (
+            experiment.observations_json if isinstance(experiment.observations_json, dict) else {}
+        )
+        entries = observations.get("entries")
+        nights: list[RemInterventionNight] = []
+        if isinstance(entries, list):
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                metrics = entry.get("metrics")
+                if (
+                    not isinstance(metrics, dict)
+                    or metrics.get("source") != "rem_intervention_night"
+                ):
+                    continue
+                raw_date = entry.get("date")
+                responses = metrics.get("responses")
+                if not isinstance(raw_date, str) or not isinstance(responses, list):
+                    continue
+                try:
+                    observation_date = date.fromisoformat(raw_date)
+                except ValueError:
+                    continue
+                rem_sleep_pct = _as_optional_float(metrics.get("remSleepPct"))
+                awake_min = _as_optional_float(metrics.get("awakeMin"))
+                for response in responses:
+                    if not isinstance(response, dict):
+                        continue
+                    intervention_id = response.get("interventionId")
+                    response_status = response.get("status")
+                    if not isinstance(intervention_id, str) or response_status not in {
+                        "applied",
+                        "not_applied",
+                    }:
+                        continue
+                    nights.append(
+                        RemInterventionNight(
+                            day=observation_date,
+                            intervention_id=intervention_id,
+                            response=response_status,
+                            rem_sleep_pct=rem_sleep_pct,
+                            awake_min=awake_min,
+                        )
+                    )
+        minimum = _as_int(criteria.get("minimumPerResponse"), REM_MIN_PER_RESPONSE)
+        return evaluate_rem_interventions(nights, min_per_response=minimum)
 
     async def _sleep_rows(self, player: Profile, *, start: date, end: date) -> list[Sleep]:
         return list(
@@ -703,6 +945,12 @@ def _as_float(value: Any, default: float) -> float:
     if isinstance(value, (int, float)):
         return float(value)
     return default
+
+
+def _as_optional_float(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
 
 
 def _age_adjusted(row: Sleep) -> float | None:

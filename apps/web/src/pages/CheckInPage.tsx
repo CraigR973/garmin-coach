@@ -71,6 +71,7 @@ type ManualFormState = {
   windowApertureCm: string;
   blindPosition: string;
   preCoolStartLocal: string;
+  remInterventionResponses: Record<string, 'applied' | 'not_applied' | 'unknown'>;
   notes: string;
 };
 
@@ -87,6 +88,7 @@ function emptyManualForm(): ManualFormState {
     windowApertureCm: '',
     blindPosition: '',
     preCoolStartLocal: '',
+    remInterventionResponses: {},
     notes: '',
   };
 }
@@ -184,6 +186,7 @@ export function CheckInPage() {
 
     const manualEntry = data.manualEntry;
     const sleepSetup = manualEntry?.sleepSetupJson ?? {};
+    const remCheckIn = data.remInterventionCheckIn;
     setManualForm({
       bpSystolic: manualEntry?.bpSystolic ? String(manualEntry.bpSystolic) : '',
       bpDiastolic: manualEntry?.bpDiastolic ? String(manualEntry.bpDiastolic) : '',
@@ -197,6 +200,9 @@ export function CheckInPage() {
         sleepSetup.windowApertureCm != null ? String(sleepSetup.windowApertureCm) : '',
       blindPosition: sleepSetup.blindPosition ?? '',
       preCoolStartLocal: sleepSetup.preCoolStartLocal ?? '',
+      remInterventionResponses: Object.fromEntries(
+        (remCheckIn?.interventions ?? []).map((item) => [item.id, item.status]),
+      ),
       notes: manualEntry?.notes ?? '',
     });
   }, [query.data]);
@@ -273,6 +279,15 @@ export function CheckInPage() {
           blindPosition: manualForm.blindPosition || null,
           preCoolStartLocal: manualForm.preCoolStartLocal || null,
         },
+        remInterventionFeedbackJson: data.remInterventionCheckIn
+          ? {
+              periodLabel: data.remInterventionCheckIn.periodLabel,
+              responses: data.remInterventionCheckIn.interventions.map((item) => ({
+                interventionId: item.id,
+                status: manualForm.remInterventionResponses[item.id] ?? 'unknown',
+              })),
+            }
+          : undefined,
         notes: manualForm.notes || null,
       });
       const response = await apiFetch<unknown>(`/api/v1/daily-loop/${data.subjectDate}/manual-entry`, {
@@ -325,6 +340,20 @@ export function CheckInPage() {
     setManualForm((current) => ({
       ...current,
       [chip.field]: toggleToken(current[chip.field], chip.token),
+    }));
+  }
+
+  function setRemInterventionResponse(
+    interventionId: string,
+    status: 'applied' | 'not_applied' | 'unknown',
+  ) {
+    dirtyRef.current = true;
+    setManualForm((current) => ({
+      ...current,
+      remInterventionResponses: {
+        ...current.remInterventionResponses,
+        [interventionId]: status,
+      },
     }));
   }
 
@@ -435,6 +464,55 @@ export function CheckInPage() {
           </div>
         </CardContent>
       </Card>
+
+      {data?.remInterventionCheckIn ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Last night's REM focus</CardTitle>
+            <CardDescription>
+              Your watch already supplies REM and awake time. Just record whether you tried each
+              issued action.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {data.remInterventionCheckIn.interventions.map((intervention) => {
+              const response =
+                manualForm.remInterventionResponses[intervention.id] ?? 'unknown';
+              return (
+                <div
+                  key={intervention.id}
+                  className="space-y-3 rounded-xl border border-border bg-surface-elevated p-3"
+                >
+                  <p className="text-sm text-text-primary">{intervention.action}</p>
+                  <div className="flex flex-wrap gap-2" aria-label={`${intervention.id} response`}>
+                    {(
+                      [
+                        ['applied', 'Tried it'],
+                        ['not_applied', "Didn't try it"],
+                        ['unknown', 'Not sure'],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <Button
+                        key={value}
+                        type="button"
+                        size="sm"
+                        variant={response === value ? 'default' : 'outline'}
+                        aria-pressed={response === value}
+                        onClick={() => setRemInterventionResponse(intervention.id, value)}
+                      >
+                        {label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            <p className="text-xs text-text-muted">
+              Unknown stays unknown — it is never counted as “didn't try”.
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <CollapsibleSection
         title="Last night's setup"

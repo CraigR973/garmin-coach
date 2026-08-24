@@ -45,6 +45,7 @@ from src.services.dreo_fan import (
 )
 from src.services.environment_freshness import is_hive_temperature_fresh
 from src.services.executable_coaching import ExecutableCoachingService
+from src.services.experiment_loop import ExperimentLoopService, rotation_from_assignment
 from src.services.fan_control import describe_fan_intent
 from src.services.insights import OUTCOME_SLEEP_SCORE
 from src.services.morning_analysis import MorningAnalysisService
@@ -257,6 +258,18 @@ class SleepSetupBody(BaseModel):
     )
 
 
+class RemInterventionResponseBody(BaseModel):
+    interventionId: str = Field(min_length=1, max_length=80)
+    status: Literal["applied", "not_applied", "unknown"]
+
+
+class RemInterventionFeedbackBody(BaseModel):
+    """Mark's response for the assignment that covered the night just ended."""
+
+    periodLabel: str = Field(pattern=r"^\d{4}-W\d{2}$")
+    responses: list[RemInterventionResponseBody] = Field(default_factory=list, max_length=2)
+
+
 class ManualEntryBody(BaseModel):
     bpSystolic: int | None = None
     bpDiastolic: int | None = None
@@ -268,6 +281,9 @@ class ManualEntryBody(BaseModel):
     # ``None`` means an older client omitted the new field; preserve any stored
     # setup in that case. An explicit empty object from the current client clears it.
     sleepSetupJson: SleepSetupBody | None = None
+    # Same compatibility rule as sleep setup: omission preserves a response saved
+    # by a newer client, while an explicit object replaces this wake-date answer.
+    remInterventionFeedbackJson: RemInterventionFeedbackBody | None = None
     notes: str | None = None
 
 
@@ -304,6 +320,7 @@ class ManualEntryOut(BaseModel):
     supplementsJson: dict[str, Any]
     foodJson: dict[str, Any]
     sleepSetupJson: dict[str, Any]
+    remInterventionFeedbackJson: dict[str, Any] | None
     notes: str | None
 
 
@@ -528,6 +545,13 @@ class ChronicSuggestionDriverOut(BaseModel):
     summary: str | None = None
 
 
+class ChronicSuggestionRotationOut(BaseModel):
+    periodLabel: str
+    shown: int
+    total: int
+    interventionIds: list[str] = Field(default_factory=list)
+
+
 class ChronicSuggestionItemOut(BaseModel):
     id: str
     metricKey: str
@@ -539,6 +563,7 @@ class ChronicSuggestionItemOut(BaseModel):
     evidence: list[str]
     actions: list[str]
     driver: ChronicSuggestionDriverOut | None = None
+    rotation: ChronicSuggestionRotationOut | None = None
 
 
 class ChronicSuggestionWindowOut(BaseModel):
@@ -668,6 +693,21 @@ class BriefGenerationStatusOut(BaseModel):
     reason: str | None
 
 
+class RemInterventionCheckInItemOut(BaseModel):
+    id: str
+    action: str
+    status: Literal["applied", "not_applied", "unknown"]
+
+
+class RemInterventionCheckInOut(BaseModel):
+    assignmentId: str
+    periodLabel: str
+    windowStart: str
+    windowEnd: str
+    wakeDate: str
+    interventions: list[RemInterventionCheckInItemOut]
+
+
 class DailyLoopData(BaseModel):
     subjectDate: str
     timezone: str
@@ -688,6 +728,7 @@ class DailyLoopData(BaseModel):
     thermalState: ThermalStateOut
     sleepProjection: SleepProjectionOut
     chronicSuggestions: ChronicSuggestionsOut
+    remInterventionCheckIn: RemInterventionCheckInOut | None
     dataQualityWarnings: list[DataQualityWarningOut]
     strengthBrief: StrengthBriefOut
     walkingBrief: WalkingBriefOut
@@ -721,6 +762,7 @@ def _serialize_manual_entry(entry: ManualEntry | None) -> ManualEntryOut | None:
         supplementsJson=entry.supplements_json,
         foodJson=entry.food_json,
         sleepSetupJson=entry.sleep_setup_json,
+        remInterventionFeedbackJson=(entry.rem_intervention_feedback_json or None),
         notes=entry.notes,
     )
 
@@ -1287,11 +1329,49 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
     )
     sleep_projection = projection_build.projection
     drivers_report = projection_build.drivers_report
+    experiment_loop = ExperimentLoopService(db)
+    current_assignment = await experiment_loop.current_assignment(
+        player.id,
+        as_of=snapshot.subject_date,
+    )
     chronic_suggestions = await ChronicPatternSuggestionService(db).suggestions(
         player,
         as_of=snapshot.subject_date,
         sleep_drivers=drivers_report.outcomes.get(OUTCOME_SLEEP_SCORE, []),
         sleep_protocol=snapshot.sleep_protocol,
+        rem_rotation=rotation_from_assignment(current_assignment),
+    )
+    # Showing a current-week REM action is the act of issuing it. Persist that
+    # exact rendered selection before returning the card; historical reads must
+    # never manufacture an assignment that Mark was not actually shown then.
+    if current_assignment is None and snapshot.subject_date == _local_today(player.timezone):
+        selected_rotation = next(
+            (
+                item.rotation
+                for item in chronic_suggestions.items
+                if item.metric_key == "rem_sleep_pct" and item.rotation is not None
+            ),
+            None,
+        )
+        if selected_rotation is not None:
+            current_assignment = await experiment_loop.ensure_assignment(
+                player,
+                as_of=snapshot.subject_date,
+                actions=list(selected_rotation.actions),
+                rotation=selected_rotation,
+                commit=True,
+            )
+            chronic_suggestions = await ChronicPatternSuggestionService(db).suggestions(
+                player,
+                as_of=snapshot.subject_date,
+                sleep_drivers=drivers_report.outcomes.get(OUTCOME_SLEEP_SCORE, []),
+                sleep_protocol=snapshot.sleep_protocol,
+                rem_rotation=rotation_from_assignment(current_assignment),
+            )
+    rem_check_in = await experiment_loop.rem_check_in_packet(
+        player,
+        wake_date=snapshot.subject_date,
+        manual_entry=snapshot.manual_entry,
     )
     return DailyLoopEnvelope(
         data=DailyLoopData(
@@ -1393,6 +1473,9 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
             ),
             sleepProjection=_serialize_sleep_projection(sleep_projection),
             chronicSuggestions=ChronicSuggestionsOut(**chronic_suggestions.to_dict()),
+            remInterventionCheckIn=(
+                RemInterventionCheckInOut(**rem_check_in) if rem_check_in is not None else None
+            ),
             dataQualityWarnings=[
                 DataQualityWarningOut(
                     id=warning["id"],
@@ -1458,6 +1541,11 @@ async def upsert_manual_entry(
         sleep_setup_json=(
             body.sleepSetupJson.model_dump(exclude_none=True)
             if body.sleepSetupJson is not None
+            else None
+        ),
+        rem_intervention_feedback_json=(
+            body.remInterventionFeedbackJson.model_dump()
+            if body.remInterventionFeedbackJson is not None
             else None
         ),
         notes=body.notes,

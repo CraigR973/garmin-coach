@@ -236,6 +236,7 @@ class DailyLoopService:
         supplements_json: dict[str, object],
         food_json: dict[str, object],
         sleep_setup_json: dict[str, object] | None,
+        rem_intervention_feedback_json: dict[str, object] | None,
         notes: str | None,
     ) -> ManualEntry:
         entry = await self._manual_entry(player.id, subject_date)
@@ -257,6 +258,8 @@ class DailyLoopService:
         entry.food_json = food_json
         if sleep_setup_json is not None:
             entry.sleep_setup_json = sleep_setup_json
+        if rem_intervention_feedback_json is not None:
+            entry.rem_intervention_feedback_json = rem_intervention_feedback_json
         entry.notes = notes
         await self.session.commit()
         await self.session.refresh(entry)

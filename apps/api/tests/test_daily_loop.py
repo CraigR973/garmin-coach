@@ -547,6 +547,29 @@ async def test_manual_entry_and_adherence_upserts_persist(db_conn: AsyncConnecti
                 structured_workout={},
             )
         )
+        session.add(
+            Analysis(
+                user_id=user_id,
+                activity_id=None,
+                analysis_type="rem_intervention_assignment",
+                subject_date=date(2026, 6, 15),
+                generated_at_utc=datetime(2026, 6, 15, 6, 30),
+                prompt_version="experiment-loop:test",
+                model_name=None,
+                verdict=None,
+                context_packet={
+                    "periodLabel": "2026-W24",
+                    "windowStart": "2026-06-15",
+                    "windowEnd": "2026-06-21",
+                    "interventions": [
+                        {"id": "consistent_wake", "action": "Keep the normal wake time."},
+                        {"id": "wind_down", "action": "Start wind-down earlier."},
+                    ],
+                },
+                output_markdown="REM assignment",
+                raw_response={},
+            )
+        )
         await session.commit()
 
     app.dependency_overrides[get_current_user] = lambda: player
@@ -569,6 +592,19 @@ async def test_manual_entry_and_adherence_upserts_persist(db_conn: AsyncConnecti
                         "windowApertureCm": 10,
                         "blindPosition": "away_from_windowsill",
                         "preCoolStartLocal": "18:30",
+                    },
+                    "remInterventionFeedbackJson": {
+                        "periodLabel": "2026-W24",
+                        "responses": [
+                            {
+                                "interventionId": "consistent_wake",
+                                "status": "applied",
+                            },
+                            {
+                                "interventionId": "wind_down",
+                                "status": "unknown",
+                            },
+                        ],
                     },
                     "notes": "Slept better than expected.",
                 },
@@ -639,6 +675,27 @@ async def test_manual_entry_and_adherence_upserts_persist(db_conn: AsyncConnecti
     assert legacy_response.json()["data"]["manualEntry"]["sleepSetupJson"] == (
         manual_entry.sleep_setup_json
     )
+    assert manual_entry.rem_intervention_feedback_json == {
+        "periodLabel": "2026-W24",
+        "responses": [
+            {"interventionId": "consistent_wake", "status": "applied"},
+            {"interventionId": "wind_down", "status": "unknown"},
+        ],
+    }
+    assert (
+        manual_response.json()["data"]["manualEntry"]["remInterventionFeedbackJson"]
+        == manual_entry.rem_intervention_feedback_json
+    )
+    assert (
+        legacy_response.json()["data"]["manualEntry"]["remInterventionFeedbackJson"]
+        == manual_entry.rem_intervention_feedback_json
+    )
+    rem_check_in = manual_response.json()["data"]["remInterventionCheckIn"]
+    assert rem_check_in["periodLabel"] == "2026-W24"
+    assert [item["status"] for item in rem_check_in["interventions"]] == [
+        "applied",
+        "unknown",
+    ]
     assert adherence_entry.planned_workout_id == workout_id
     assert adherence_entry.planned_workout_version == 3
     assert adherence_entry.adherence_status == "modified"

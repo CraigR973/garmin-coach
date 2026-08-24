@@ -258,7 +258,26 @@ describe('v1 shared schemas', () => {
                 sampleCount: 18,
                 summary: 'Higher load nights averaged 5 points lower sleep score.',
               },
-              rotation: { periodLabel: '2026-W28', shown: 2, total: 12 },
+              rotation: {
+                periodLabel: '2026-W28',
+                shown: 2,
+                total: 12,
+                interventionIds: ['consistent_wake', 'wind_down'],
+              },
+            },
+          ],
+        },
+        remInterventionCheckIn: {
+          assignmentId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          periodLabel: '2026-W27',
+          windowStart: '2026-06-29',
+          windowEnd: '2026-07-05',
+          wakeDate: '2026-07-02',
+          interventions: [
+            {
+              id: 'consistent_wake',
+              action: 'Keep the normal wake time.',
+              status: 'unknown',
             },
           ],
         },
@@ -324,6 +343,11 @@ describe('v1 shared schemas', () => {
     expect(parsed.data.sleepProjection?.tone).toBe('protect');
     expect(parsed.data.chronicSuggestions?.items[0]?.driver?.label).toBe('training load');
     expect(parsed.data.chronicSuggestions?.items[0]?.rotation?.total).toBe(12);
+    expect(parsed.data.chronicSuggestions?.items[0]?.rotation?.interventionIds).toEqual([
+      'consistent_wake',
+      'wind_down',
+    ]);
+    expect(parsed.data.remInterventionCheckIn?.interventions[0]?.status).toBe('unknown');
     expect(parsed.data.loopState?.dayPhase).toBe('wind_down');
     expect(parsed.data.loopState?.atBlockBoundary).toBe(true);
     expect(parsed.data.holiday.isActive).toBe(false);
