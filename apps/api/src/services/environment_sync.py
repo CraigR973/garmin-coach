@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -99,6 +100,8 @@ class WeatherNightStats:
     low_c: float | None = None
     wind_max_mph: float | None = None
     wind_gust_mph: float | None = None
+    wind_direction_deg: float | None = None
+    relative_humidity_mean_pct: float | None = None
     sample_count: int = 0
 
 
@@ -234,6 +237,8 @@ class OpenMeteoClient:
                     "temperature_2m",
                     "wind_speed_10m",
                     "wind_gusts_10m",
+                    "wind_direction_10m",
+                    "relative_humidity_2m",
                 )
             ),
         }
@@ -411,6 +416,8 @@ def parse_open_meteo_daily_fields(
                 "overnight_low_c": night.low_c,
                 "overnight_wind_max_mph": night.wind_max_mph,
                 "overnight_wind_gust_mph": night.wind_gust_mph,
+                "overnight_wind_direction_deg": night.wind_direction_deg,
+                "overnight_relative_humidity_mean_pct": night.relative_humidity_mean_pct,
                 "wind_max_mph": _to_float(_nth(daily.get("wind_speed_10m_max"), index)),
                 "wind_gust_mph": _to_float(_nth(daily.get("wind_gusts_10m_max"), index)),
                 "precipitation_mm": _to_float(_nth(daily.get("precipitation_sum"), index)),
@@ -422,6 +429,8 @@ def parse_open_meteo_daily_fields(
                         "low_c": night.low_c,
                         "wind_max_mph": night.wind_max_mph,
                         "wind_gust_mph": night.wind_gust_mph,
+                        "wind_direction_deg": night.wind_direction_deg,
+                        "relative_humidity_mean_pct": night.relative_humidity_mean_pct,
                         "sample_count": night.sample_count,
                     },
                 },
@@ -503,7 +512,20 @@ def _overnight_stats_by_date(
     temps = _as_list(hourly.get("temperature_2m"))
     winds = _as_list(hourly.get("wind_speed_10m"))
     gusts = _as_list(hourly.get("wind_gusts_10m"))
-    samples_by_date: dict[date, list[tuple[float | None, float | None, float | None]]] = {}
+    directions = _as_list(hourly.get("wind_direction_10m"))
+    humidity = _as_list(hourly.get("relative_humidity_2m"))
+    samples_by_date: dict[
+        date,
+        list[
+            tuple[
+                float | None,
+                float | None,
+                float | None,
+                float | None,
+                float | None,
+            ]
+        ],
+    ] = {}
 
     for index, value in enumerate(times):
         local_dt = _parse_local_datetime(value, tz, keep_tz=True)
@@ -517,14 +539,25 @@ def _overnight_stats_by_date(
                 _to_float(_nth(temps, index)),
                 _to_float(_nth(winds, index)),
                 _to_float(_nth(gusts, index)),
+                _to_float(_nth(directions, index)),
+                _to_float(_nth(humidity, index)),
             )
         )
 
     return {
         sample_date: WeatherNightStats(
-            low_c=_min_not_none(temp for temp, _, _ in samples),
-            wind_max_mph=_max_not_none(wind for _, wind, _ in samples),
-            wind_gust_mph=_max_not_none(gust for _, _, gust in samples),
+            low_c=_min_not_none(temp for temp, _, _, _, _ in samples),
+            wind_max_mph=_max_not_none(wind for _, wind, _, _, _ in samples),
+            wind_gust_mph=_max_not_none(gust for _, _, gust, _, _ in samples),
+            # Direction is circular: 350° + 10° means north, not south. A
+            # vector mean preserves that geometry and returns ``None`` when
+            # opposing samples cancel and no prevailing direction exists.
+            wind_direction_deg=_circular_mean_degrees(
+                direction for _, _, _, direction, _ in samples
+            ),
+            relative_humidity_mean_pct=_mean_not_none(
+                humidity_pct for _, _, _, _, humidity_pct in samples
+            ),
             sample_count=len(samples),
         )
         for sample_date, samples in samples_by_date.items()
@@ -625,6 +658,22 @@ def _min_not_none(values: Any) -> float | None:
 def _max_not_none(values: Any) -> float | None:
     numeric = [value for value in values if value is not None]
     return max(numeric) if numeric else None
+
+
+def _mean_not_none(values: Any) -> float | None:
+    numeric = [float(value) for value in values if value is not None]
+    return round(sum(numeric) / len(numeric), 1) if numeric else None
+
+
+def _circular_mean_degrees(values: Any) -> float | None:
+    numeric = [float(value) % 360.0 for value in values if value is not None]
+    if not numeric:
+        return None
+    x = sum(math.cos(math.radians(value)) for value in numeric)
+    y = sum(math.sin(math.radians(value)) for value in numeric)
+    if math.hypot(x, y) < 1e-9:
+        return None
+    return round(math.degrees(math.atan2(y, x)) % 360.0, 1)
 
 
 def _to_float(value: Any) -> float | None:

@@ -4,7 +4,7 @@ import asyncio
 import uuid
 from datetime import UTC, date, datetime, time, timedelta
 from time import perf_counter
-from typing import Any
+from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
@@ -244,6 +244,19 @@ class ApiMeta(BaseModel):
     generatedAtUtc: str
 
 
+class SleepSetupBody(BaseModel):
+    """Structured controls used for the night ending on the entry date."""
+
+    beddingWeight: Literal["quilt", "thin_cover", "sheet"] | None = None
+    windowCount: int | None = Field(default=None, ge=0, le=8)
+    windowApertureCm: float | None = Field(default=None, ge=0, le=100)
+    blindPosition: Literal["closed", "at_windowsill", "away_from_windowsill", "open"] | None = None
+    preCoolStartLocal: str | None = Field(
+        default=None,
+        pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$",
+    )
+
+
 class ManualEntryBody(BaseModel):
     bpSystolic: int | None = None
     bpDiastolic: int | None = None
@@ -252,6 +265,9 @@ class ManualEntryBody(BaseModel):
     feel: str | None = None
     supplementsJson: dict[str, Any] = Field(default_factory=dict)
     foodJson: dict[str, Any] = Field(default_factory=dict)
+    # ``None`` means an older client omitted the new field; preserve any stored
+    # setup in that case. An explicit empty object from the current client clears it.
+    sleepSetupJson: SleepSetupBody | None = None
     notes: str | None = None
 
 
@@ -287,6 +303,7 @@ class ManualEntryOut(BaseModel):
     actualWorkoutJson: dict[str, Any]
     supplementsJson: dict[str, Any]
     foodJson: dict[str, Any]
+    sleepSetupJson: dict[str, Any]
     notes: str | None
 
 
@@ -487,6 +504,8 @@ class ThermalStateOut(BaseModel):
     overnightLowC: float | None
     overnightWindMaxMph: float | None
     overnightWindGustMph: float | None
+    overnightWindDirectionDeg: float | None
+    overnightRelativeHumidityMeanPct: float | None
     thermalReview: dict[str, Any]
     fans: list[FanStateOut]
 
@@ -701,6 +720,7 @@ def _serialize_manual_entry(entry: ManualEntry | None) -> ManualEntryOut | None:
         actualWorkoutJson=entry.actual_workout_json,
         supplementsJson=entry.supplements_json,
         foodJson=entry.food_json,
+        sleepSetupJson=entry.sleep_setup_json,
         notes=entry.notes,
     )
 
@@ -1360,6 +1380,14 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
                 overnightWindGustMph=(
                     snapshot.weather.overnight_wind_gust_mph if snapshot.weather else None
                 ),
+                overnightWindDirectionDeg=(
+                    snapshot.weather.overnight_wind_direction_deg if snapshot.weather else None
+                ),
+                overnightRelativeHumidityMeanPct=(
+                    snapshot.weather.overnight_relative_humidity_mean_pct
+                    if snapshot.weather
+                    else None
+                ),
                 thermalReview=thermal_review,
                 fans=fan_states,
             ),
@@ -1427,6 +1455,11 @@ async def upsert_manual_entry(
         feel=body.feel,
         supplements_json=body.supplementsJson,
         food_json=body.foodJson,
+        sleep_setup_json=(
+            body.sleepSetupJson.model_dump(exclude_none=True)
+            if body.sleepSetupJson is not None
+            else None
+        ),
         notes=body.notes,
     )
     # Batch 97: keep the check-in as the primary generate trigger, but move the

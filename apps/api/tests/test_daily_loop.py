@@ -563,7 +563,27 @@ async def test_manual_entry_and_adherence_upserts_persist(db_conn: AsyncConnecti
                     "feel": "steady",
                     "supplementsJson": {"summary": "magnesium"},
                     "foodJson": {"summary": "oats"},
+                    "sleepSetupJson": {
+                        "beddingWeight": "thin_cover",
+                        "windowCount": 2,
+                        "windowApertureCm": 10,
+                        "blindPosition": "away_from_windowsill",
+                        "preCoolStartLocal": "18:30",
+                    },
                     "notes": "Slept better than expected.",
+                },
+            )
+            legacy_response = await client.put(
+                f"/api/v1/daily-loop/{subject_date.isoformat()}/manual-entry",
+                json={
+                    "bpSystolic": 108,
+                    "bpDiastolic": 68,
+                    "subjectiveScore": 7,
+                    "rpe": 4,
+                    "feel": "steady",
+                    "supplementsJson": {"summary": "magnesium"},
+                    "foodJson": {"summary": "oats"},
+                    "notes": "Saved by an older client.",
                 },
             )
             adherence_response = await client.put(
@@ -584,6 +604,7 @@ async def test_manual_entry_and_adherence_upserts_persist(db_conn: AsyncConnecti
         app.dependency_overrides.clear()
 
     assert manual_response.status_code == 200, manual_response.text
+    assert legacy_response.status_code == 200, legacy_response.text
     assert adherence_response.status_code == 200, adherence_response.text
 
     async with session_factory() as session:
@@ -605,6 +626,19 @@ async def test_manual_entry_and_adherence_upserts_persist(db_conn: AsyncConnecti
 
     assert manual_entry.subjective_score == 7
     assert manual_entry.food_json["summary"] == "oats"
+    assert manual_entry.sleep_setup_json == {
+        "beddingWeight": "thin_cover",
+        "windowCount": 2,
+        "windowApertureCm": 10.0,
+        "blindPosition": "away_from_windowsill",
+        "preCoolStartLocal": "18:30",
+    }
+    assert manual_response.json()["data"]["manualEntry"]["sleepSetupJson"] == (
+        manual_entry.sleep_setup_json
+    )
+    assert legacy_response.json()["data"]["manualEntry"]["sleepSetupJson"] == (
+        manual_entry.sleep_setup_json
+    )
     assert adherence_entry.planned_workout_id == workout_id
     assert adherence_entry.planned_workout_version == 3
     assert adherence_entry.adherence_status == "modified"

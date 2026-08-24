@@ -68,6 +68,8 @@ def open_meteo_payload() -> dict[str, object]:
             "temperature_2m": [11.8, 10.2, 8.4, 9.1, 15.0, 12.9, 9.6, 10.4],
             "wind_speed_10m": [7.1, 8.0, 5.5, 6.2, 10.0, 9.2, 12.5, 11.1],
             "wind_gusts_10m": [14.0, 15.5, 11.4, 12.2, 20.0, 18.0, 24.8, 22.2],
+            "wind_direction_10m": [350, 10, 20, 0, 90, 220, 230, 240],
+            "relative_humidity_2m": [80, 82, 85, 81, 65, 75, 78, 81],
         },
     }
 
@@ -270,6 +272,8 @@ def test_parse_open_meteo_daily_fields_captures_daily_and_overnight_weather() ->
     assert first["overnight_low_c"] == pytest.approx(8.4)
     assert first["overnight_wind_max_mph"] == pytest.approx(8.0)
     assert first["overnight_wind_gust_mph"] == pytest.approx(15.5)
+    assert first["overnight_wind_direction_deg"] == pytest.approx(5.0, abs=0.1)
+    assert first["overnight_relative_humidity_mean_pct"] == pytest.approx(82.0)
     assert first["wind_max_mph"] == pytest.approx(14.2)
     assert first["wind_gust_mph"] == pytest.approx(24.1)
     assert first["sunrise_utc"] == datetime(2026, 6, 18, 3, 31)
@@ -278,6 +282,8 @@ def test_parse_open_meteo_daily_fields_captures_daily_and_overnight_weather() ->
     second = rows[1]
     assert second["overnight_low_c"] == pytest.approx(9.6)
     assert second["overnight_wind_max_mph"] == pytest.approx(12.5)
+    assert second["overnight_wind_direction_deg"] == pytest.approx(230.0)
+    assert second["overnight_relative_humidity_mean_pct"] == pytest.approx(78.0)
     assert second["raw_payload"]["overnight"]["sample_count"] == 3
 
 
@@ -328,3 +334,5 @@ async def test_environment_sync_upserts_without_duplicate_rows(
     assert temps[0].temperature_c == pytest.approx(18.66)
     assert len(weather) == 2
     assert weather[0].overnight_wind_gust_mph is not None
+    assert weather[0].overnight_wind_direction_deg is not None
+    assert weather[0].overnight_relative_humidity_mean_pct is not None

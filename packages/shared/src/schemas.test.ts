@@ -527,12 +527,43 @@ describe('v1 shared schemas', () => {
       overnightLowC: 8.4,
       overnightWindMaxMph: 8,
       overnightWindGustMph: 15.5,
+      overnightWindDirectionDeg: 5,
+      overnightRelativeHumidityMeanPct: 82,
       windMaxMph: 14.2,
       windGustMph: 24.1,
       rawPayload: {},
     });
 
     expect(parsed.overnightWindGustMph).toBe(15.5);
+    expect(parsed.overnightWindDirectionDeg).toBe(5);
+    expect(parsed.overnightRelativeHumidityMeanPct).toBe(82);
+  });
+
+  it('round-trips the structured setup used for the night ending on a check-in date', () => {
+    const parsed = manualEntrySchema.parse({
+      id: rowId,
+      userId,
+      entryDate: '2026-08-15',
+      entryAtUtc: '2026-08-15T07:00:00Z',
+      actualWorkoutJson: {},
+      supplementsJson: {},
+      foodJson: {},
+      sleepSetupJson: {
+        beddingWeight: 'thin_cover',
+        windowCount: 2,
+        windowApertureCm: 10,
+        blindPosition: 'away_from_windowsill',
+        preCoolStartLocal: '18:30',
+      },
+    });
+
+    expect(parsed.sleepSetupJson).toEqual({
+      beddingWeight: 'thin_cover',
+      windowCount: 2,
+      windowApertureCm: 10,
+      blindPosition: 'away_from_windowsill',
+      preCoolStartLocal: '18:30',
+    });
   });
 
   it('parses the coaching-state envelope used by the internal editor', () => {

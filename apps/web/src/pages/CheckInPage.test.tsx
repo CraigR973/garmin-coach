@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -102,6 +102,50 @@ describe('CheckInPage', () => {
       ([path, opts]) => path === '/api/v1/daily-loop/2026-06-20/manual-entry' && opts?.method === 'PUT',
     ) as [string, { body: string }];
     expect(JSON.parse(options.body)).toMatchObject({ subjectiveScore: 8, feel: 'slept well' });
+  });
+
+  it("captures last night's bedding, windows, blind and pre-cool setup", async () => {
+    apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
+      if (options?.method === 'PUT') return Promise.resolve(snapshot);
+      if (path === '/api/v1/daily-loop') return Promise.resolve(snapshot);
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    const queryClient = new QueryClient();
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CheckInPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByRole('button', { name: 'Good' });
+    await user.click(screen.getByRole('button', { name: /last night's setup/i }));
+    await user.selectOptions(screen.getByLabelText('Bedding'), 'thin_cover');
+    fireEvent.change(screen.getByLabelText('Pre-cool started'), { target: { value: '18:30' } });
+    await user.type(screen.getByLabelText('Windows open'), '2');
+    await user.type(screen.getByLabelText('Opening per window (cm)'), '10');
+    await user.selectOptions(screen.getByLabelText('Blind position'), 'away_from_windowsill');
+    await user.click(screen.getByRole('button', { name: /get today's brief/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/daily-loop/2026-06-20/manual-entry',
+        expect.objectContaining({ method: 'PUT' }),
+      );
+    });
+    const [, options] = apiFetchMock.mock.calls.find(
+      ([path, opts]) => path === '/api/v1/daily-loop/2026-06-20/manual-entry' && opts?.method === 'PUT',
+    ) as [string, { body: string }];
+    expect(JSON.parse(options.body).sleepSetupJson).toEqual({
+      beddingWeight: 'thin_cover',
+      windowCount: 2,
+      windowApertureCm: 10,
+      blindPosition: 'away_from_windowsill',
+      preCoolStartLocal: '18:30',
+    });
   });
 
   it('keeps his typed check-in when a background refetch lands mid-edit, and saves it (Batch 139)', async () => {

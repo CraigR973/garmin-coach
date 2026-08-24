@@ -286,6 +286,8 @@ class WeatherDaily(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     overnight_low_c: Mapped[float | None] = mapped_column(Float, nullable=True)
     overnight_wind_max_mph: Mapped[float | None] = mapped_column(Float, nullable=True)
     overnight_wind_gust_mph: Mapped[float | None] = mapped_column(Float, nullable=True)
+    overnight_wind_direction_deg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    overnight_relative_humidity_mean_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     wind_max_mph: Mapped[float | None] = mapped_column(Float, nullable=True)
     wind_gust_mph: Mapped[float | None] = mapped_column(Float, nullable=True)
     precipitation_mm: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -359,6 +361,10 @@ class ManualEntry(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     actual_workout_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     supplements_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     food_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    # Batch 219: structured levers for the night ending on ``entry_date``. Keep
+    # these together because they describe one sleep setup and will evolve as a
+    # unit when the longitudinal analyst learns which controls are measurable.
+    sleep_setup_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 

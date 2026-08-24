@@ -87,6 +87,8 @@ def test_weather_daily_columns_cover_overnight_wind() -> None:
     assert "overnight_low_c" in columns
     assert "overnight_wind_max_mph" in columns
     assert "overnight_wind_gust_mph" in columns
+    assert "overnight_wind_direction_deg" in columns
+    assert "overnight_relative_humidity_mean_pct" in columns
     assert "wind_max_mph" in columns
 
 
@@ -105,3 +107,4 @@ def test_manual_entry_can_link_post_ride_checkin_to_activity() -> None:
     columns = ManualEntry.__table__.columns.keys()
 
     assert "activity_id" in columns
+    assert "sleep_setup_json" in columns
