@@ -170,6 +170,16 @@ export const sleepSetupSchema = z.object({
     .optional(),
 });
 
+export const remInterventionResponseSchema = z.object({
+  interventionId: z.string().min(1).max(80),
+  status: z.enum(['applied', 'not_applied', 'unknown']),
+});
+
+export const remInterventionFeedbackSchema = z.object({
+  periodLabel: z.string().regex(/^\d{4}-W\d{2}$/),
+  responses: z.array(remInterventionResponseSchema).max(2).default([]),
+});
+
 export const manualEntrySchema = z.object({
   id: z.string().uuid(),
   userId: z.string().uuid(),
@@ -188,6 +198,7 @@ export const manualEntrySchema = z.object({
   supplementsJson: jsonObjectSchema.default({}),
   foodJson: jsonObjectSchema.default({}),
   sleepSetupJson: sleepSetupSchema.optional(),
+  remInterventionFeedbackJson: remInterventionFeedbackSchema.nullable().optional(),
   notes: z.string().nullable().optional(),
 });
 
@@ -200,6 +211,7 @@ export const manualEntryInputSchema = z.object({
   supplementsJson: jsonObjectSchema.default({}),
   foodJson: jsonObjectSchema.default({}),
   sleepSetupJson: sleepSetupSchema.optional(),
+  remInterventionFeedbackJson: remInterventionFeedbackSchema.optional(),
   notes: z.string().nullable().optional(),
 });
 
@@ -706,6 +718,7 @@ export const chronicSuggestionRotationSchema = z.object({
   periodLabel: z.string().min(1),
   shown: z.number().int(),
   total: z.number().int(),
+  interventionIds: z.array(z.string().min(1)).default([]),
 });
 
 export const chronicSuggestionItemSchema = z.object({
@@ -734,6 +747,21 @@ export const chronicSuggestionsSchema = z.object({
     nightsRequired: z.number().int(),
   }),
   items: z.array(chronicSuggestionItemSchema).default([]),
+});
+
+export const remInterventionCheckInSchema = z.object({
+  assignmentId: z.string().uuid(),
+  periodLabel: z.string().regex(/^\d{4}-W\d{2}$/),
+  windowStart: isoDateSchema,
+  windowEnd: isoDateSchema,
+  wakeDate: isoDateSchema,
+  interventions: z.array(
+    z.object({
+      id: z.string().min(1),
+      action: z.string().min(1),
+      status: z.enum(['applied', 'not_applied', 'unknown']),
+    }),
+  ),
 });
 
 // --- Rate & correct any summary (Batch 64, Decision #137) ---
@@ -1319,6 +1347,7 @@ export const dailyLoopSchema = z.object({
   thermalState: dailyLoopThermalStateSchema,
   sleepProjection: sleepProjectionSchema.optional(),
   chronicSuggestions: chronicSuggestionsSchema.optional(),
+  remInterventionCheckIn: remInterventionCheckInSchema.nullable().optional(),
   dataQualityWarnings: z.array(dailyLoopWarningSchema),
   strengthBrief: z
     .object({

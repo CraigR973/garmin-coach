@@ -466,6 +466,7 @@ def build_chronic_pattern_suggestions(
     red_day_evidence: Mapping[date, RedDayEvidence] | None = None,
     scheduled_recovery_blocks: Sequence[ScheduledRecoveryBlock] = (),
     recorded_training_context: Sequence[RecordedTrainingContext] = (),
+    rem_rotation: RemRotation | None = None,
 ) -> ChronicSuggestionResult:
     """Detect repeated below-norm/baseline misses and map them to actions."""
     start = as_of - timedelta(days=window_days - 1)
@@ -520,6 +521,7 @@ def build_chronic_pattern_suggestions(
             driver=_driver_for_flag(flag, drivers),
             protocol=sleep_protocol,
             as_of=as_of,
+            rem_rotation=rem_rotation,
         )
         for index, flag in enumerate(chronic[:3])
     ]
@@ -559,6 +561,7 @@ class ChronicPatternSuggestionService:
         sleep_drivers: Sequence[DriverCorrelation],
         sleep_protocol: Mapping[str, Any] | None = None,
         current_verdict: str | None = None,
+        rem_rotation: RemRotation | None = None,
     ) -> ChronicSuggestionResult:
         start = as_of - timedelta(days=WINDOW_DAYS - 1)
         sleep_rows = (
@@ -632,6 +635,7 @@ class ChronicPatternSuggestionService:
                 end=as_of,
                 manual_rows=manual_rows,
             ),
+            rem_rotation=rem_rotation,
         )
 
     async def _manual_entries(
@@ -1369,6 +1373,7 @@ def _suggestion(
     driver: SuggestionDriver | None,
     protocol: Mapping[str, Any] | None,
     as_of: date,
+    rem_rotation: RemRotation | None,
 ) -> ChronicSuggestion:
     tone: SuggestionTone = "protect" if flag.miss_ratio >= 0.7 else "watch"
     evidence = [(f"{flag.misses} of {flag.samples} measured nights missed {flag.comparator}.")]
@@ -1376,7 +1381,13 @@ def _suggestion(
         evidence.append(f"Latest value: {_format_value(flag.latest_value)}.")
     if driver and driver.summary:
         evidence.append(driver.summary)
-    actions, rotation = _actions_for(flag.metric_key, driver, protocol, as_of)
+    actions, rotation = _actions_for(
+        flag.metric_key,
+        driver,
+        protocol,
+        as_of,
+        rem_rotation=rem_rotation,
+    )
     title = _title_for(flag)
     return ChronicSuggestion(
         id=f"chronic-{flag.metric_key}",
@@ -1426,6 +1437,8 @@ def _actions_for(
     driver: SuggestionDriver | None,
     protocol: Mapping[str, Any] | None,
     as_of: date,
+    *,
+    rem_rotation: RemRotation | None = None,
 ) -> tuple[list[str], RemRotation | None]:
     bedtime = _protocol_value(protocol, "bedtime", "23:15")
     seal = _protocol_value(protocol, "sealTargetTime", "22:00")
@@ -1455,11 +1468,15 @@ def _actions_for(
     if metric_key == "rem_sleep_pct":
         # Batch 72: a persistent REM miss gets a broader, rotating library handed
         # out one or two at a time — not the same static pair every week.
-        rem_actions, rotation = select_rem_interventions(
-            as_of=as_of,
-            protocol=protocol,
-            driver_key=driver.driver if driver else None,
-        )
+        if rem_rotation is not None:
+            rem_actions = list(rem_rotation.actions)
+            rotation = rem_rotation
+        else:
+            rem_actions, rotation = select_rem_interventions(
+                as_of=as_of,
+                protocol=protocol,
+                driver_key=driver.driver if driver else None,
+            )
         actions.extend(rem_actions)
     elif metric_key == "deep_sleep_pct":
         actions.append(

@@ -365,6 +365,12 @@ class ManualEntry(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     # these together because they describe one sleep setup and will evolve as a
     # unit when the longitudinal analyst learns which controls are measurable.
     sleep_setup_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    # Batch 221: explicit application responses for the REM actions that covered
+    # the night ending on ``entry_date``.  This is separate from bedroom setup:
+    # the rotating library also contains routine, light, food and training levers.
+    rem_intervention_feedback_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 

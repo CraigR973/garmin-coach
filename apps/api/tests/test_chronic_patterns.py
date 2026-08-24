@@ -119,6 +119,36 @@ def test_chronic_rem_suggestion_rotates_week_to_week() -> None:
     )
 
 
+def test_chronic_rem_suggestion_reuses_the_exact_persisted_assignment() -> None:
+    issued_on = date(2026, 7, 6)
+    issued = build_chronic_pattern_suggestions(
+        sleeps=_nights(issued_on, rem_pct=0.13),
+        recovery_days=[],
+        baselines={},
+        sleep_drivers=[],
+        age=57,
+        sex="male",
+        sleep_protocol={},
+        as_of=issued_on,
+    ).items[0]
+    assert issued.rotation is not None
+
+    replay = build_chronic_pattern_suggestions(
+        sleeps=_nights(issued_on + timedelta(days=7), rem_pct=0.13),
+        recovery_days=[],
+        baselines={},
+        sleep_drivers=[],
+        age=57,
+        sex="male",
+        sleep_protocol={},
+        as_of=issued_on + timedelta(days=7),
+        rem_rotation=issued.rotation,
+    ).items[0]
+
+    assert replay.rotation == issued.rotation
+    assert replay.actions == list(issued.rotation.actions)
+
+
 def test_non_rem_suggestion_carries_no_rotation() -> None:
     as_of = date(2026, 7, 6)
     recovery_days = [
@@ -740,7 +770,7 @@ def test_idle_chronic_action_is_not_narrated() -> None:
     where nothing was triggered. Pinned to the version bump that carries it."""
     from src.services.morning_analysis import PROMPT_VERSION, SYSTEM_PROMPT
 
-    assert PROMPT_VERSION.startswith("morning-analysis-v33")
+    assert PROMPT_VERSION.startswith("morning-analysis-v34")
     assert "chronicAction.triggered is false" in SYSTEM_PROMPT
     assert "internal bookkeeping with nothing to" in SYSTEM_PROMPT
     # The never-soften rule must survive the gate, not be replaced by it.

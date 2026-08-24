@@ -4,12 +4,14 @@ Manages Mark's active hypotheses as first-class, lifecycle-tracked records in th
 existing ``experiments`` table, with every change audited in ``analyses`` — no
 migration needed (both tables exist from Batch 1).
 
-The three standing hypotheses from the knowledge base (ARCHITECTURE §3) seed
-automatically on first read:
+The three standing hypotheses from the knowledge base (ARCHITECTURE §3), plus
+the measured REM-intervention protocol added by Batch 221, seed automatically
+on first read:
 
   * **collagen** — don't reintroduce before 7 consecutive 74+ nights.
   * **recovery_week_disruption** — recovery weeks disrupt sleep.
   * **early_waking_0400** — the 04:00 waking pattern.
+  * **rem_intervention_rotation** — issued REM levers, application and outcome.
 
 Lifecycle: ``active`` ⇄ ``paused`` → ``concluded`` (terminal). Concluding records
 an outcome (``supported`` / ``refuted`` / ``inconclusive``). Status changes and
@@ -43,6 +45,8 @@ OUTCOME_SUPPORTED = "supported"
 OUTCOME_REFUTED = "refuted"
 OUTCOME_INCONCLUSIVE = "inconclusive"
 VALID_OUTCOMES = frozenset({OUTCOME_SUPPORTED, OUTCOME_REFUTED, OUTCOME_INCONCLUSIVE})
+
+SLUG_REM_INTERVENTION = "rem_intervention_rotation"
 
 # Allowed status transitions. ``concluded`` is terminal.
 ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
@@ -96,6 +100,20 @@ DEFAULT_EXPERIMENTS: tuple[DefaultExperiment, ...] = (
         success_criteria={
             "track": "wake_time",
             "candidateDrivers": ["overnight_temp", "alcohol", "late_snack", "stress"],
+        },
+    ),
+    DefaultExperiment(
+        slug=SLUG_REM_INTERVENTION,
+        title="REM intervention rotation",
+        hypothesis=(
+            "One or more issued REM levers measurably improve REM share without "
+            "increasing overnight awake time when Mark confirms applying them."
+        ),
+        success_criteria={
+            "compare": "applied_vs_not_applied",
+            "outcomes": ["rem_sleep_pct", "overnight_awake_min"],
+            "minimumPerResponse": 3,
+            "note": "Application is explicit check-in evidence; unknown never means not applied.",
         },
     ),
 )
@@ -270,7 +288,8 @@ class ExperimentTrackerService:
                 detail="Cannot add observations to a concluded experiment.",
             )
         observations = dict(experiment.observations_json or {})
-        entries = list(observations.get("entries", []))
+        raw_entries = observations.get("entries")
+        entries = list(raw_entries) if isinstance(raw_entries, list) else []
         entry = {
             "date": (on_date or date.today()).isoformat(),
             "note": note,
@@ -286,6 +305,68 @@ class ExperimentTrackerService:
             await self.session.refresh(experiment)
         return experiment
 
+    async def upsert_observation(
+        self,
+        player: Profile,
+        experiment_id: uuid.UUID,
+        *,
+        observation_key: str,
+        note: str,
+        on_date: date,
+        metrics: dict[str, Any],
+        commit: bool = True,
+    ) -> Experiment:
+        """Create or replace one source-owned observation idempotently.
+
+        Batch 220's longitudinal entries and any human observations are left
+        untouched: only an entry carrying this exact ``observationKey`` can be
+        replaced.  Reassignment of the JSON object keeps SQLAlchemy's JSONB
+        mutation tracking honest.
+        """
+        experiment = await self._get_owned(player, experiment_id)
+        if experiment.status == STATUS_CONCLUDED:
+            return experiment
+        observations = dict(experiment.observations_json or {})
+        raw_entries = observations.get("entries")
+        entries = list(raw_entries) if isinstance(raw_entries, list) else []
+        entry = {
+            "date": on_date.isoformat(),
+            "note": note,
+            "metrics": {"observationKey": observation_key, **metrics},
+        }
+        existing_index = next(
+            (
+                index
+                for index, current in enumerate(entries)
+                if isinstance(current, dict)
+                and isinstance(current.get("metrics"), dict)
+                and current["metrics"].get("observationKey") == observation_key
+            ),
+            None,
+        )
+        if existing_index is not None and entries[existing_index] == entry:
+            return experiment
+        action = "observation_create"
+        if existing_index is None:
+            entries.append(entry)
+        else:
+            entries[existing_index] = entry
+            action = "observation_update"
+        observations["entries"] = entries
+        experiment.observations_json = observations
+        self._record_audit(
+            player,
+            experiment,
+            action,
+            f"Nightly observation: {note}",
+            entry,
+            subject_date=on_date,
+        )
+        if commit:
+            await self.session.commit()
+            await self.session.refresh(experiment)
+        return experiment
+
     def _record_audit(
         self,
         player: Profile,
@@ -293,13 +374,15 @@ class ExperimentTrackerService:
         action: str,
         summary: str,
         detail: dict[str, Any],
+        *,
+        subject_date: date | None = None,
     ) -> None:
         self.session.add(
             Analysis(
                 user_id=player.id,
                 activity_id=None,
                 analysis_type=AUDIT_TYPE_EXPERIMENT,
-                subject_date=date.today(),
+                subject_date=subject_date or date.today(),
                 generated_at_utc=_utcnow(),
                 prompt_version=PROMPT_VERSION,
                 model_name=None,

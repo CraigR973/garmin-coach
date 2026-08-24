@@ -202,7 +202,12 @@ const snapshot: DailyLoopEnvelope = {
             sampleCount: 18,
             summary: 'Higher load nights averaged 5 points lower sleep score.',
           },
-          rotation: { periodLabel: '2026-W28', shown: 2, total: 12 },
+          rotation: {
+            periodLabel: '2026-W28',
+            shown: 2,
+            total: 12,
+            interventionIds: ['consistent_wake', 'wind_down'],
+          },
         },
       ],
     },

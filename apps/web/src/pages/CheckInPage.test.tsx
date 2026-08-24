@@ -148,6 +148,73 @@ describe('CheckInPage', () => {
     });
   });
 
+  it("records only application for last night's assigned REM actions and keeps unknown distinct", async () => {
+    const withRemCheckIn = {
+      ...snapshot,
+      data: {
+        ...snapshot.data,
+        remInterventionCheckIn: {
+          assignmentId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          periodLabel: '2026-W24',
+          windowStart: '2026-06-15',
+          windowEnd: '2026-06-21',
+          wakeDate: '2026-06-20',
+          interventions: [
+            {
+              id: 'consistent_wake',
+              action: 'Keep the normal wake time.',
+              status: 'unknown',
+            },
+            {
+              id: 'wind_down',
+              action: 'Start the wind-down 30 minutes earlier.',
+              status: 'applied',
+            },
+          ],
+        },
+      },
+    };
+    apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
+      if (options?.method === 'PUT') return Promise.resolve(withRemCheckIn);
+      if (path === '/api/v1/daily-loop') return Promise.resolve(withRemCheckIn);
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    const queryClient = new QueryClient();
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CheckInPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Last night's REM focus")).toBeTruthy();
+    expect(screen.getByText(/watch already supplies REM and awake time/i)).toBeTruthy();
+    expect(screen.getByText(/Unknown stays unknown/i)).toBeTruthy();
+    const firstResponse = screen.getByLabelText('consistent_wake response');
+    await user.click(firstResponse.querySelector('button:nth-child(2)') as HTMLButtonElement);
+    await user.click(screen.getByRole('button', { name: /get today's brief/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/daily-loop/2026-06-20/manual-entry',
+        expect.objectContaining({ method: 'PUT' }),
+      );
+    });
+    const [, options] = apiFetchMock.mock.calls.find(
+      ([path, opts]) => path === '/api/v1/daily-loop/2026-06-20/manual-entry' && opts?.method === 'PUT',
+    ) as [string, { body: string }];
+    expect(JSON.parse(options.body).remInterventionFeedbackJson).toEqual({
+      periodLabel: '2026-W24',
+      responses: [
+        { interventionId: 'consistent_wake', status: 'not_applied' },
+        { interventionId: 'wind_down', status: 'applied' },
+      ],
+    });
+  });
+
   it('keeps his typed check-in when a background refetch lands mid-edit, and saves it (Batch 139)', async () => {
     // A fresh server response always differs from the cached one (at minimum a new
     // meta.generatedAtUtc), so React Query's structural sharing yields a *new*

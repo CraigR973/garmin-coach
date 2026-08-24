@@ -213,6 +213,81 @@ async def test_add_observation_appends_and_rejects_when_concluded(
 
 
 @pytest.mark.asyncio
+async def test_source_keyed_observation_is_idempotent_and_preserves_other_evidence(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExperimentTrackerService(session)
+        experiment = await service.create_experiment(
+            user, title="Evidence ownership", hypothesis="Nightly evidence remains distinct."
+        )
+        await service.add_observation(
+            user,
+            experiment.id,
+            note="Mark's own note",
+            on_date=date(2026, 8, 23),
+            metrics={"source": "human"},
+        )
+
+        await service.upsert_observation(
+            user,
+            experiment.id,
+            observation_key="nightly:test:2026-08-24",
+            note="Derived score 77.",
+            on_date=date(2026, 8, 24),
+            metrics={"source": "nightly", "score": 77},
+        )
+        # Exact replay creates neither another entry nor another audit.
+        await service.upsert_observation(
+            user,
+            experiment.id,
+            observation_key="nightly:test:2026-08-24",
+            note="Derived score 77.",
+            on_date=date(2026, 8, 24),
+            metrics={"source": "nightly", "score": 77},
+        )
+        # A corrected derived value replaces only the source-owned entry.
+        updated = await service.upsert_observation(
+            user,
+            experiment.id,
+            observation_key="nightly:test:2026-08-24",
+            note="Derived score 78.",
+            on_date=date(2026, 8, 24),
+            metrics={"source": "nightly", "score": 78},
+        )
+
+        entries = updated.observations_json["entries"]
+        assert len(entries) == 2
+        assert entries[0]["note"] == "Mark's own note"
+        nightly = next(
+            entry
+            for entry in entries
+            if entry["metrics"].get("observationKey") == "nightly:test:2026-08-24"
+        )
+        assert nightly["metrics"]["score"] == 78
+
+        audits = list(
+            (
+                await session.execute(
+                    select(Analysis).where(
+                        Analysis.user_id == user_id,
+                        Analysis.analysis_type == AUDIT_TYPE_EXPERIMENT,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        actions = [row.context_packet["action"] for row in audits]
+        assert actions.count("observation_create") == 1
+        assert actions.count("observation_update") == 1
+
+
+@pytest.mark.asyncio
 async def test_cross_user_experiment_is_not_found(db_conn: AsyncConnection) -> None:
     owner_id = uuid.uuid4()
     other_id = uuid.uuid4()

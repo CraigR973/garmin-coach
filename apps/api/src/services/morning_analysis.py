@@ -52,6 +52,7 @@ from src.services.daily_metric_phase import (
     prefer_morning,
     settled_first_order,
 )
+from src.services.experiment_loop import ExperimentLoopService, rotation_from_assignment
 from src.services.feedback import FeedbackService
 from src.services.generation_requests import (
     claim_generation_request,
@@ -64,6 +65,7 @@ from src.services.holiday_pause import (
     HolidayWindow,
     holiday_windows_covering_date,
 )
+from src.services.insights import OUTCOME_SLEEP_SCORE, InsightsService
 from src.services.learned_context import (
     LEARNED_CONTEXT_PROMPT_GUARDRAIL,
     learned_context_packet,
@@ -161,7 +163,7 @@ from src.services.workout_delivery import build_structured_workout_ir
 # identity is (user, date, checkInVersion, promptVersion) and does *not* hash the
 # packet, so without it an already-generated pre-fix brief would be served as
 # current on the day this ships.
-PROMPT_VERSION = "morning-analysis-v33-2026-08-23"
+PROMPT_VERSION = "morning-analysis-v34-2026-08-24"
 ANALYSIS_TYPE = "morning"
 # Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
 # signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
@@ -276,6 +278,16 @@ window covers the closed local day. If wholeDayCost.coverage is incomplete or
 unknown, do not infer, reconstruct, or describe the missing figures as finished-
 day totals. Use the exercise fields to explain any eased ride after a hard prior
 session.
+experimentLoop.experiments carries the app's current deterministic evaluation of
+each active experiment. Report a supported or refuted result when relevant; for
+an inconclusive or insufficient result, state the first supplied reason and the
+coverage still needed rather than inventing a direction. Never auto-conclude an
+experiment: every conclusion is human-gated. The app already derives REM minutes,
+REM percentage and awake minutes from the hypnogram and records them in nightly
+observations, so never ask Mark to notice, remember or manually track whether those
+sleep outcomes occurred. The only evidence the app cannot derive is whether he
+actually applied an issued REM intervention; it is acceptable to ask him to record
+that in the check-in. Unknown application is unknown, never "not applied".
 When restDay.isRestDay is true, frame today's verdict as a rest day. Do not
 recommend, soften, rearrange, or relitigate a planned workout whose status is
 skipped, and do not narrate a session inside the holiday window as a live
@@ -516,6 +528,19 @@ class MorningAnalysisService:
             breathwork_brief=breathwork_brief,
             rest_day=rest_day,
         )
+        # Batch 221: persist the exact REM library selection before it is shown,
+        # then reuse that immutable weekly assignment on every surface. The
+        # current cached driver report is the same evidence Daily Loop uses.
+        experiment_loop = ExperimentLoopService(self.session)
+        current_rem_assignment = await experiment_loop.current_assignment(
+            player.id,
+            as_of=subject_date,
+        )
+        rem_rotation = rotation_from_assignment(current_rem_assignment)
+        drivers_report = await InsightsService(self.session).cached_drivers(
+            player,
+            as_of=subject_date,
+        )
         # Batch 171: keep the chronic card's existing advisory copy, but derive a
         # separate deterministic structural-action signal from protected
         # recovery-marker misses or a qualified Red-morning cluster. The current
@@ -523,9 +548,37 @@ class MorningAnalysisService:
         chronic_result = await ChronicPatternSuggestionService(self.session).suggestions(
             player,
             as_of=subject_date,
-            sleep_drivers=[],
+            sleep_drivers=drivers_report.outcomes.get(OUTCOME_SLEEP_SCORE, []),
             sleep_protocol=knowledge_base.get("sleep_protocol", {}),
             current_verdict=str(verdict.get("status") or ""),
+            rem_rotation=rem_rotation,
+        )
+        local_today = datetime.now(ZoneInfo(player.timezone)).date()
+        if current_rem_assignment is None and subject_date == local_today:
+            selected_rotation = next(
+                (
+                    item.rotation
+                    for item in chronic_result.items
+                    if item.metric_key == "rem_sleep_pct" and item.rotation is not None
+                ),
+                None,
+            )
+            if selected_rotation is not None:
+                current_rem_assignment = await experiment_loop.ensure_assignment(
+                    player,
+                    as_of=subject_date,
+                    actions=list(selected_rotation.actions),
+                    rotation=selected_rotation,
+                    commit=False,
+                )
+        await experiment_loop.record_nightly_observations(
+            player,
+            subject_date=subject_date,
+            commit=False,
+        )
+        experiment_loop_packet = await experiment_loop.packet(
+            player,
+            subject_date=subject_date,
         )
         verdict["chronicAction"] = chronic_result.action_signal.to_packet()
         # Batch 66 (#139): on a cautious morning with a hard session scheduled,
@@ -669,6 +722,8 @@ class MorningAnalysisService:
             "yesterdayLoad": yesterday_load,
             "metricsVsBaselines": metrics_table,
             "ageComparison": age_comparison,
+            "chronicSuggestions": chronic_result.to_dict(),
+            "experimentLoop": experiment_loop_packet,
             "environment": {
                 "thermalReview": thermal_review_for_output,
                 "weather": _weather_packet(weather),

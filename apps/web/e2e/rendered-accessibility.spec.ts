@@ -255,6 +255,25 @@ const dailyLoopEnvelope = {
       prepActions: ['Start wind-down early'],
       protocol: {},
     },
+    remInterventionCheckIn: {
+      assignmentId: '77777777-7777-4777-8777-777777777777',
+      periodLabel: '2026-W33',
+      windowStart: '2026-08-10',
+      windowEnd: '2026-08-16',
+      wakeDate: '2026-08-15',
+      interventions: [
+        {
+          id: 'consistent_wake',
+          action: 'Keep the normal wake time.',
+          status: 'unknown',
+        },
+        {
+          id: 'wind_down',
+          action: 'Start the wind-down 30 minutes earlier.',
+          status: 'applied',
+        },
+      ],
+    },
     dataQualityWarnings: [],
     walkingBrief: {
       asOfDate: '2026-08-15',
@@ -366,6 +385,24 @@ test('primary daily-path controls meet the rendered 44px hit-area floor', async 
   }
 
   expect(failures).toEqual([]);
+});
+
+test('check-in renders only the issued REM actions with explicit application states', async ({
+  page,
+}) => {
+  await page.goto('/check-in');
+
+  await expect(page.getByText("Last night's REM focus")).toBeVisible();
+  await expect(page.getByText('Keep the normal wake time.')).toBeVisible();
+  await expect(page.getByText('Start the wind-down 30 minutes earlier.')).toBeVisible();
+  await expect(page.getByText(/watch already supplies REM and awake time/i)).toBeVisible();
+  await expect(page.getByText(/Unknown stays unknown/i)).toBeVisible();
+  await expect(
+    page.getByLabel('consistent_wake response').getByRole('button', { name: 'Not sure' }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(
+    page.getByLabel('wind_down response').getByRole('button', { name: 'Tried it' }),
+  ).toHaveAttribute('aria-pressed', 'true');
 });
 
 function contrastFailures() {
