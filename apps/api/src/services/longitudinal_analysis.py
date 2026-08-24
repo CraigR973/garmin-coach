@@ -1076,8 +1076,8 @@ class LongitudinalAnalysisService:
         current = await provider.retrieve(batch_id)
         raw["providerBatch"] = current
         raw["lastPolledAtUtc"] = _utcnow().isoformat() + "Z"
-        analysis.raw_response = raw
         if current.get("processing_status") != "ended":
+            analysis.raw_response = raw
             return None
         provider_rows = await provider.results(batch_id)
         parsed, provider_result = parse_batch_result(provider_rows, custom_id=custom_id)
