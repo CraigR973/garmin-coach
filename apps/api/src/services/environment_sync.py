@@ -673,7 +673,10 @@ def _circular_mean_degrees(values: Any) -> float | None:
     y = sum(math.sin(math.radians(value)) for value in numeric)
     if math.hypot(x, y) < 1e-9:
         return None
-    return round(math.degrees(math.atan2(y, x)) % 360.0, 1)
+    rounded = round(math.degrees(math.atan2(y, x)) % 360.0, 1)
+    # Rounding a value infinitesimally below north can produce 360.0 even
+    # though the modulo above is in [0, 360). Keep one canonical north value.
+    return 0.0 if rounded == 360.0 else rounded
 
 
 def _to_float(value: Any) -> float | None:

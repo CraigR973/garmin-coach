@@ -287,6 +287,21 @@ def test_parse_open_meteo_daily_fields_captures_daily_and_overnight_weather() ->
     assert second["raw_payload"]["overnight"]["sample_count"] == 3
 
 
+def test_overnight_wind_direction_normalizes_rounded_north_to_zero() -> None:
+    rows = parse_open_meteo_daily_fields(
+        {
+            "daily": {"time": ["2026-06-18"]},
+            "hourly": {
+                "time": ["2026-06-17T22:00", "2026-06-18T01:00"],
+                "wind_direction_10m": [350, 10],
+            },
+        },
+        timezone="Europe/London",
+    )
+
+    assert rows[0]["overnight_wind_direction_deg"] == 0.0
+
+
 @pytest.mark.asyncio
 async def test_environment_sync_upserts_without_duplicate_rows(
     db_conn: AsyncConnection,
