@@ -195,6 +195,12 @@ async def run_longitudinal_analysis() -> JobResult:
         if not profiles:
             return JobResult.skipped("no_active_profiles")
         for player in profiles:
+            # Rollback expires ORM attributes even though the session factory
+            # uses expire_on_commit=False. Snapshot the scalar context before
+            # the try block so failure logging/alerting never performs implicit
+            # async IO outside greenlet_spawn.
+            player_id = player.id
+            subject_date = datetime.now(ZoneInfo(player.timezone or "UTC")).date()
             counters["profiles"] += 1
             service = LongitudinalAnalysisService(session)
             try:
@@ -204,7 +210,7 @@ async def run_longitudinal_analysis() -> JobResult:
                 counters["findings_routed"] += collected.findings_routed
                 submitted = await service.submit_monthly(
                     player,
-                    as_of_date=datetime.now(ZoneInfo(player.timezone or "UTC")).date(),
+                    as_of_date=subject_date,
                 )
                 counters["submitted"] += int(submitted.submitted)
             except BillingAlertNotReady as exc:
@@ -212,7 +218,7 @@ async def run_longitudinal_analysis() -> JobResult:
                 skipped_alert_gate += 1
                 log.warning(
                     "longitudinal analysis submission gated",
-                    user_id=str(player.id),
+                    user_id=str(player_id),
                     reason=exc.reason,
                 )
             except AnthropicApiError as exc:
@@ -220,13 +226,13 @@ async def run_longitudinal_analysis() -> JobResult:
                 failures += 1
                 await NudgeAlertService(session).notify_admin_generation_failure(
                     reason=exc.reason,
-                    subject_date=datetime.now(ZoneInfo(player.timezone or "UTC")).date(),
+                    subject_date=subject_date,
                     artifact="longitudinal_analysis",
                 )
             except Exception:
                 await session.rollback()
                 failures += 1
-                log.exception("longitudinal analysis failed", user_id=str(player.id))
+                log.exception("longitudinal analysis failed", user_id=str(player_id))
 
     if failures:
         return JobResult.degraded(

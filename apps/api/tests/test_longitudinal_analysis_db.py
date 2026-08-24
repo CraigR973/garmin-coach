@@ -9,12 +9,14 @@ from typing import Any
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker
 
+from src import scheduler
 from src.config import settings
 from src.models.coaching import Analysis, Experiment, Sleep
 from src.models.notification import PushSubscription
 from src.models.profile import Profile, UserRole
+from src.services.job_runs import JobStatus
 from src.services.longitudinal_analysis import (
     LongitudinalAnalysisService,
     LongitudinalFindings,
@@ -309,3 +311,27 @@ async def test_transient_collection_failure_keeps_analysis_pending(
         await session.refresh(submitted.analysis)
         assert submitted.analysis.verdict == "pending"
         assert submitted.analysis.raw_response["collectionError"]["reason"] == ("collection_failed")
+
+
+@pytest.mark.asyncio
+async def test_scheduler_alert_gate_returns_skipped_after_rollback(
+    db_conn: AsyncConnection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "admin_alert_user_id", "")
+    factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    monkeypatch.setattr(scheduler, "AsyncSessionLocal", factory)
+
+    async with factory() as session:
+        await _seed_profiles(
+            session,
+            player_id=uuid.uuid4(),
+            operator_id=uuid.uuid4(),
+        )
+
+    result = await scheduler.run_longitudinal_analysis()
+
+    assert result.status == JobStatus.skipped
+    assert result.reason == "admin_billing_alert_not_ready"
+    assert result.counters["profiles"] == 1
+    assert result.counters["alert_gated"] == 1
