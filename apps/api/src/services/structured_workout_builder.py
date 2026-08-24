@@ -19,6 +19,22 @@ ABS_MIN_POWER_PCT = 1
 ABS_MAX_POWER_PCT = 300
 MAX_TOTAL_DURATION_MIN = 480
 
+# Batch 223: production separates neuromuscular primers from genuine VO2 work
+# cleanly by duration. All nine Z2 + Neuromuscular sessions use 12-second efforts;
+# the shortest VO2 work is 30 seconds. Twenty seconds is a conservative round
+# boundary inside that observed gap, leaving 8 seconds above the sprint shape and
+# 10 seconds below the shortest VO2 shape. The current
+# freeform editor only authors integer-minute legs, but keeping the pure expanded-
+# step classifier duration-aware prevents a future seconds-capable editor from
+# turning sprint primers into phantom VO2 sessions in the weekly mix.
+SHORT_PRIMER_MAX_DURATION_SEC = 20
+VO2_CLASSIFICATION_MIN_PCT = 105
+
+# A ride made only of short primers and easy recoveries still asks for more than a
+# recovery spin. This is the first value in the existing endurance classification
+# band (``<=55`` is recovery in ``_workout_type_for_power``).
+ENDURANCE_CLASSIFICATION_FLOOR_PCT = 56
+
 DeliveryTarget = Literal["indoor", "outdoor"]
 SegmentKind = Literal["ramp", "steady", "interval"]
 
@@ -79,6 +95,14 @@ class BuiltCustomBikeWorkout:
     delivery: DeliveryTarget
 
 
+@dataclass(frozen=True)
+class BikeWorkoutClassification:
+    """Purpose-led type and honest human-readable peak for expanded bike steps."""
+
+    workout_type: str
+    intensity_target: str
+
+
 def build_freeform_bike_workout(
     spec: FreeformBikeWorkoutSpec,
     *,
@@ -130,18 +154,60 @@ def build_freeform_bike_workout(
             f"Total workout duration {total_duration_min} min exceeds the "
             f"{MAX_TOTAL_DURATION_MIN} min limit."
         )
-    max_power = max(max(int(step["powerStartPct"]), int(step["powerEndPct"])) for step in expanded)
+    classification = classify_bike_workout_steps(expanded)
     structured["totalDurationMin"] = total_duration_min
 
     built = BuiltCustomBikeWorkout(
         title=title,
-        workout_type=_workout_type_for_power(max_power),
+        workout_type=classification.workout_type,
         planned_duration_min=total_duration_min,
-        intensity_target=_intensity_target_for_power(max_power),
+        intensity_target=classification.intensity_target,
         structured_workout=structured,
         delivery=spec.delivery,
     )
     return built, warnings
+
+
+def classify_bike_workout_steps(
+    expanded_steps: list[dict[str, Any]],
+) -> BikeWorkoutClassification:
+    """Classify a ride by sustained working demand, never its entry/exit ramp.
+
+    ``expand_structured_steps`` labels warm-up and cool-down explicitly. We mirror
+    ``verdict_scaling._primary_work_step`` by preferring ``phase="interval"`` and
+    falling back to every step only for legacy/malformed phase-less inputs.
+
+    Supra-threshold work up to :data:`SHORT_PRIMER_MAX_DURATION_SEC` is a
+    neuromuscular primer rather than the session's aerobic purpose. It is excluded
+    from the type calculation but retained in ``intensity_target`` so the summary
+    never hides an effort the ride really contains. Safety is deliberately
+    separate: Red/VO2 gates continue to inspect every IR step.
+    """
+
+    if not expanded_steps:
+        raise ValueError("Cannot classify a bike workout with no expanded steps")
+
+    working = [
+        step for step in expanded_steps if str(step.get("phase") or "interval") == "interval"
+    ]
+    pool = working or expanded_steps
+    primers = [step for step in pool if _is_short_primer(step)]
+    sustained = [step for step in pool if not _is_short_primer(step)]
+
+    if sustained:
+        purpose_power = max(_expanded_step_power(step) for step in sustained)
+    else:
+        purpose_power = ENDURANCE_CLASSIFICATION_FLOOR_PCT
+    if primers:
+        purpose_power = max(purpose_power, ENDURANCE_CLASSIFICATION_FLOOR_PCT)
+
+    workout_type = _workout_type_for_power(purpose_power)
+    primer_peak = max((_expanded_step_power(step) for step in primers), default=0)
+    if primer_peak > purpose_power:
+        target = f"{_workout_type_label(workout_type)} with short efforts up to {primer_peak}% FTP"
+    else:
+        target = _intensity_target_for_power(purpose_power)
+    return BikeWorkoutClassification(workout_type=workout_type, intensity_target=target)
 
 
 def is_indoor_bike_workout(structured: dict[str, Any] | None) -> bool:
@@ -272,6 +338,17 @@ def _required_power(value: int | None, label: str) -> int:
     return value
 
 
+def _expanded_step_power(step: dict[str, Any]) -> int:
+    return max(int(step["powerStartPct"]), int(step["powerEndPct"]))
+
+
+def _is_short_primer(step: dict[str, Any]) -> bool:
+    return (
+        _expanded_step_power(step) >= VO2_CLASSIFICATION_MIN_PCT
+        and int(step["durationSec"]) <= SHORT_PRIMER_MAX_DURATION_SEC
+    )
+
+
 def _workout_type_for_power(max_power: int) -> str:
     if max_power >= 105:
         return "bike_vo2"
@@ -282,6 +359,16 @@ def _workout_type_for_power(max_power: int) -> str:
     if max_power <= 55:
         return "bike_recovery"
     return "bike_endurance"
+
+
+def _workout_type_label(workout_type: str) -> str:
+    return {
+        "bike_vo2": "VO2",
+        "bike_sweet_spot": "Sweet Spot",
+        "bike_tempo": "Tempo",
+        "bike_recovery": "Recovery",
+        "bike_endurance": "Endurance",
+    }[workout_type]
 
 
 def _intensity_target_for_power(max_power: int) -> str:

@@ -143,18 +143,49 @@ def _planned_workout(structured: dict, *, version: int = 1) -> PlannedWorkout:
     )
 
 
-def _max_power(ir: dict) -> int:
+def _max_any_step_power(ir: dict) -> int:
     return max(int(step["powerEndPct"]) for step in ir["steps"])
 
 
 def _max_work_power(ir: dict) -> int:
     """The hardest *working* interval — what the packet reports and Red splits on.
 
-    Distinct from :func:`_max_power`, which includes warm-up/cool-down ramps: on
+    Distinct from :func:`_max_any_step_power`, which includes warm-up/cool-down ramps: on
     Mark's 2026-08-08 ride the warm-up ends at 65% while the work sits at 62%.
     """
     work = [s for s in ir["steps"] if str(s.get("phase") or "interval") == "interval"]
     return max(int(step["powerEndPct"]) for step in work or ir["steps"])
+
+
+def test_any_step_and_work_power_diverge_only_on_the_known_0808_shape() -> None:
+    """Batch 223.6: preserve the audit that justified the explicit helper names."""
+
+    fixtures = {
+        "vo2": VO2_STRUCTURED,
+        "sweet_spot": SWEET_SPOT_STRUCTURED,
+        "endurance": ENDURANCE_STRUCTURED,
+        "mark_0808": MARK_0808_STRUCTURED,
+        "endurance_with_sprints": ENDURANCE_WITH_SPRINTS_STRUCTURED,
+    }
+    divergences: list[tuple[str, str, int, int]] = []
+    for fixture_name, structured in fixtures.items():
+        base = build_structured_workout_ir(_planned_workout(structured), ftp_watts=280)
+        variants = {
+            "base": base,
+            "amber": adjust_ir_for_verdict(base, "Amber"),
+            "red": adjust_ir_for_verdict(base, "Red"),
+        }
+        for variant_name, ir in variants.items():
+            any_step = _max_any_step_power(ir)
+            work = _max_work_power(ir)
+            if any_step != work:
+                divergences.append((fixture_name, variant_name, any_step, work))
+
+    assert divergences == [
+        ("mark_0808", "base", 65, 62),
+        ("mark_0808", "amber", 65, 62),
+        ("mark_0808", "red", 65, 62),
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -171,10 +202,10 @@ def test_amber_cuts_duration_drops_a_zone_and_removes_hit() -> None:
     # Cut duration 20-30% (we scale to 75%, comfortably inside the band).
     assert base_total * 0.70 <= adjusted["totalDurationSec"] <= base_total * 0.80
     # No HIT/VO2 survives — every step is at or below threshold.
-    assert _max_power(adjusted) < HIT_FLOOR_PCT
+    assert _max_any_step_power(adjusted) < HIT_FLOOR_PCT
     # The 108% work intervals dropped a zone and were capped at Sweet Spot (94).
-    assert _max_power(adjusted) < _max_power(base)
-    assert _max_power(adjusted) == AMBER_POWER_CAP_PCT
+    assert _max_any_step_power(adjusted) < _max_any_step_power(base)
+    assert _max_any_step_power(adjusted) == AMBER_POWER_CAP_PCT
     assert adjusted["origin"] == "amber_regeneration"
     assert adjusted["adjustment"]["verdict"] == "Amber"
     assert adjusted["adjustment"]["removedHit"] is True
@@ -184,12 +215,12 @@ def test_amber_cuts_duration_drops_a_zone_and_removes_hit() -> None:
 def test_amber_drops_sweet_spot_by_a_zone() -> None:
     base = build_structured_workout_ir(_planned_workout(SWEET_SPOT_STRUCTURED), ftp_watts=280)
     # Sweet-spot work sits at ~91% FTP.
-    assert _max_power(base) == 91
+    assert _max_any_step_power(base) == 91
 
     adjusted = adjust_ir_for_verdict(base, "Amber")
 
     # 91% drops a zone (~13 points) to tempo, and there was no HIT to remove.
-    assert _max_power(adjusted) == 78
+    assert _max_any_step_power(adjusted) == 78
     assert adjusted["adjustment"]["removedHit"] is False
 
 
@@ -208,8 +239,8 @@ def test_red_never_emits_vo2() -> None:
     adjusted = adjust_ir_for_verdict(base, "Red")
 
     # The hard guarantee: a Red substitution can never be a VO2 push.
-    assert _max_power(adjusted) <= RECOVERY_CAP_PCT
-    assert _max_power(adjusted) < HIT_FLOOR_PCT
+    assert _max_any_step_power(adjusted) <= RECOVERY_CAP_PCT
+    assert _max_any_step_power(adjusted) < HIT_FLOOR_PCT
     assert all(int(step["powerStartPct"]) <= RECOVERY_CAP_PCT for step in adjusted["steps"])
     assert adjusted["origin"] == "red_substitution"
     assert adjusted["name"].startswith("Recovery substitution: ")
@@ -247,7 +278,7 @@ def test_chronic_deload_uses_lighter_transform_without_setting_verdict() -> None
         <= adjusted["totalDurationSec"]
         <= (base["totalDurationSec"] * 0.80)
     )
-    assert _max_power(adjusted) < HIT_FLOOR_PCT
+    assert _max_any_step_power(adjusted) < HIT_FLOOR_PCT
     assert adjusted["adjustment"]["changed"] is True
     assert adjusted["adjustment"]["verdict"] is None
     assert adjusted["adjustment"]["chronicAction"]["verdictImpact"] == "none"
@@ -264,7 +295,7 @@ def test_manual_override_scales_duration_and_intensity() -> None:
     assert adjusted["origin"] == "manual_override"
     assert adjusted["name"].startswith("Manual override: ")
     assert adjusted["totalDurationSec"] == round(base["totalDurationSec"] * 0.8)
-    assert _max_power(adjusted) < _max_power(base)
+    assert _max_any_step_power(adjusted) < _max_any_step_power(base)
     assert adjusted["adjustment"]["manualOverride"] == {
         "durationScalePct": 80,
         "intensityScalePct": 90,
@@ -277,11 +308,11 @@ def test_amber_holds_zone_two_ride_and_cuts_duration_only() -> None:
     and is only shortened — never dropped below the Zone-2 floor (the old 54%/60%)."""
     base = build_structured_workout_ir(_planned_workout(ENDURANCE_STRUCTURED), ftp_watts=280)
     base_total = base["totalDurationSec"]
-    assert _max_power(base) == 67
+    assert _max_any_step_power(base) == 67
 
     adjusted = adjust_ir_for_verdict(base, "Amber")
 
-    assert _max_power(adjusted) == 67  # held at Zone 2, not 54 (−13) or 60 (×0.9)
+    assert _max_any_step_power(adjusted) == 67  # held at Zone 2, not 54 (−13) or 60 (×0.9)
     assert base_total * 0.70 <= adjusted["totalDurationSec"] <= base_total * 0.80
     assert adjusted["adjustment"]["zoneDropPct"] == 0  # honest: no drop was applied
     assert adjusted["adjustment"]["removedHit"] is False
@@ -309,7 +340,7 @@ def test_summarize_verdict_adjustment_matches_the_transform_everywhere() -> None
         summary = summarize_verdict_adjustment(base, "Amber")
         adjusted = adjust_ir_for_verdict(base, "Amber")
         assert summary is not None
-        assert summary["adjustedWorkPowerPct"] == _max_power(adjusted)
+        assert summary["adjustedWorkPowerPct"] == _max_any_step_power(adjusted)
         assert summary["adjustedWorkPowerPct"] == ease_amber_power_pct(
             summary["plannedWorkPowerPct"]
         )
@@ -374,7 +405,7 @@ def test_red_still_substitutes_recovery_for_anything_harder_than_zone_two() -> N
 
         assert adjusted["origin"] == "red_substitution"
         assert adjusted["name"].startswith("Recovery substitution: ")
-        assert _max_power(adjusted) <= RECOVERY_CAP_PCT  # every step, not just the work
+        assert _max_any_step_power(adjusted) <= RECOVERY_CAP_PCT  # every step, not just the work
         assert all(int(s["powerStartPct"]) <= RECOVERY_CAP_PCT for s in adjusted["steps"])
         assert adjusted["adjustment"]["durationScalePct"] == round(RED_DURATION_SCALE * 100)
         assert adjusted["totalDurationSec"] <= base["totalDurationSec"] * 0.55
@@ -501,7 +532,7 @@ def test_amber_is_unchanged_by_the_red_rework() -> None:
             <= base["totalDurationSec"] * 0.80
         )
         assert adjusted["adjustment"]["durationScalePct"] == round(AMBER_DURATION_SCALE * 100)
-        assert _max_power(adjusted) == ease_amber_power_pct(_max_power(base))
+        assert _max_any_step_power(adjusted) == ease_amber_power_pct(_max_any_step_power(base))
         assert "companionSession" not in adjusted["adjustment"]
         # The combined-load gate is a Red rule only — Amber is bit-identical.
         assert adjust_ir_for_verdict(base, "Amber", companion_session=True) == adjusted
@@ -1405,7 +1436,7 @@ async def test_regenerate_for_verdict_creates_red_substitution(db_conn: AsyncCon
         proposal = created[0]
         assert proposal.status == "proposed"  # never auto-approved
         assert proposal.structured_workout_ir["origin"] == "red_substitution"
-        assert _max_power(proposal.structured_workout_ir) <= RECOVERY_CAP_PCT
+        assert _max_any_step_power(proposal.structured_workout_ir) <= RECOVERY_CAP_PCT
 
         audits = (
             (
