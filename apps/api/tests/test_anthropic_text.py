@@ -121,6 +121,44 @@ async def test_generate_anthropic_text_uses_shared_max_token_ceiling(
     assert _DummyAsyncClient.last_request_json["max_tokens"] == 4096
 
 
+@pytest.mark.asyncio
+async def test_generate_anthropic_text_accepts_system_blocks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _DummyAsyncClient)
+    _DummyAsyncClient.response_payload = {
+        "model": "claude-test",
+        "stop_reason": "end_turn",
+        "content": [{"type": "text", "text": "complete"}],
+        "usage": {
+            "input_tokens": 1200,
+            "output_tokens": 12,
+            "cache_creation_input_tokens": 1100,
+            "cache_read_input_tokens": 0,
+        },
+    }
+    system_blocks = [
+        {
+            "type": "text",
+            "text": "stable prefix",
+            "cache_control": {"type": "ephemeral"},
+        },
+        {"type": "text", "text": "fresh state"},
+    ]
+
+    await generate_anthropic_text(
+        api_key="test-key",
+        model_name="claude-test",
+        max_tokens=4096,
+        system_prompt=system_blocks,
+        user_prompt="prompt",
+        error_cls=MorningAnalysisError,
+    )
+
+    assert _DummyAsyncClient.last_request_json is not None
+    assert _DummyAsyncClient.last_request_json["system"] == system_blocks
+
+
 # Batch 141: an Anthropic non-2xx must be classified so a caller can act on the
 # failure class — the 2026-07-21 freeze was a 400 whose *message* (not status)
 # named the credit balance.

@@ -57,7 +57,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import settings
 from src.models.coaching import Analysis, BriefMessage
 from src.models.profile import Profile
-from src.services.anthropic_text import generate_anthropic_text
+from src.services.anthropic_text import (
+    AnthropicSystemPrompt,
+    AnthropicSystemTextBlock,
+    generate_anthropic_text,
+)
 from src.services.chat_context import (
     ChatContextService,
     CoachOrigin,
@@ -176,7 +180,7 @@ class BriefChatClient(Protocol):
     async def generate(
         self,
         *,
-        system_prompt: str,
+        system_prompt: AnthropicSystemPrompt,
         user_prompt: str,
         prior_messages: list[dict[str, str]],
     ) -> str: ...
@@ -191,7 +195,7 @@ class AnthropicBriefChatClient:
     async def generate(
         self,
         *,
-        system_prompt: str,
+        system_prompt: AnthropicSystemPrompt,
         user_prompt: str,
         prior_messages: list[dict[str, str]],
     ) -> str:
@@ -432,7 +436,7 @@ class BriefChatService:
         context = await ChatContextService(self.session).build(
             player, analysis, asked_at_utc=now, origin=origin
         )
-        system_prompt = _build_system_prompt(
+        system_prompt = _build_cached_system_prompt(
             analysis=analysis,
             origin=origin,
             local_today=local_today,
@@ -515,6 +519,49 @@ def _build_system_prompt(
     app_state: dict[str, Any],
     adjustable_workout_id: uuid.UUID | None,
 ) -> str:
+    return "\n\n".join(
+        (
+            _build_system_prompt_prefix(
+                analysis=analysis,
+                origin=origin,
+                local_today=local_today,
+                adjustable_workout_id=adjustable_workout_id,
+            ),
+            _app_state_system_text(app_state),
+        )
+    )
+
+
+def _build_cached_system_prompt(
+    *,
+    analysis: Analysis | None,
+    origin: CoachOrigin,
+    local_today: date,
+    app_state: dict[str, Any],
+    adjustable_workout_id: uuid.UUID | None,
+) -> list[AnthropicSystemTextBlock]:
+    return [
+        {
+            "type": "text",
+            "text": _build_system_prompt_prefix(
+                analysis=analysis,
+                origin=origin,
+                local_today=local_today,
+                adjustable_workout_id=adjustable_workout_id,
+            ),
+            "cache_control": {"type": "ephemeral"},
+        },
+        {"type": "text", "text": _app_state_system_text(app_state)},
+    ]
+
+
+def _build_system_prompt_prefix(
+    *,
+    analysis: Analysis | None,
+    origin: CoachOrigin,
+    local_today: date,
+    adjustable_workout_id: uuid.UUID | None,
+) -> str:
     parts = [SYSTEM_PROMPT]
     if analysis is not None:
         parts.append(_read_description(analysis))
@@ -527,8 +574,11 @@ def _build_system_prompt(
             "Mark's information behind that read, as it stood when you wrote it:\n"
             f"{_packet_json(analysis.context_packet)}"
         )
-    parts.append(f"Where things stand right now:\n{app_state_json(app_state)}")
     return "\n\n".join(parts)
+
+
+def _app_state_system_text(app_state: dict[str, Any]) -> str:
+    return f"Where things stand right now:\n{app_state_json(app_state)}"
 
 
 def _packet_json(context_packet: dict[str, Any]) -> str:
