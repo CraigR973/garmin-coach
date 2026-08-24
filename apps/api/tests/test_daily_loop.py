@@ -792,7 +792,9 @@ async def test_checkin_background_syncs_before_generating(
 
     async def notify(*args: object, **kwargs: object) -> bool:
         events.append("notify")
-        assert args[1] is generated_analysis
+        # Patched on the class, so the bound instance and profile precede the
+        # generated analysis in ``args``.
+        assert args[2] is generated_analysis
         return True
 
     monkeypatch.setattr(daily_loop_router, "AsyncSessionLocal", session_factory)
@@ -845,6 +847,7 @@ async def test_checkin_background_never_generates_when_sync_lands_no_inputs(
     sync_inputs = AsyncMock(return_value=None)
     generate = AsyncMock()
     notify = AsyncMock(return_value=True)
+    mark_failed = AsyncMock(return_value=MagicMock())
     monkeypatch.setattr(daily_loop_router, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(daily_loop_router, "_local_time", lambda timezone_name: time(8, 0))
     monkeypatch.setattr("src.scheduler._sync_morning_inputs", sync_inputs)
@@ -857,30 +860,23 @@ async def test_checkin_background_never_generates_when_sync_lands_no_inputs(
         "src.routers.daily_loop.NudgeAlertService.push_brief_ready",
         notify,
     )
+    monkeypatch.setattr(
+        daily_loop_router.BriefGenerationStatusService,
+        "mark_failed",
+        mark_failed,
+    )
 
     await daily_loop_router._generate_brief_after_checkin(user_id, subject_date)
 
     sync_inputs.assert_awaited_once()
     generate.assert_not_awaited()
     notify.assert_not_awaited()
-    async with session_factory() as session:
-        status = await session.scalar(
-            select(BriefGenerationStatus).where(
-                BriefGenerationStatus.user_id == user_id,
-                BriefGenerationStatus.subject_date == subject_date,
-            )
-        )
-        empty_read = await session.scalar(
-            select(Analysis).where(
-                Analysis.user_id == user_id,
-                Analysis.analysis_type == "morning",
-                Analysis.subject_date == subject_date,
-            )
-        )
-    assert status is not None
-    assert status.status == "failed"
-    assert status.reason == "inputs"
-    assert empty_read is None
+    mark_failed.assert_awaited_once_with(
+        user_id,
+        subject_date,
+        reason="inputs",
+        commit=True,
+    )
 
 
 @pytest.mark.asyncio
