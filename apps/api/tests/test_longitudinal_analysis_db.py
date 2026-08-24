@@ -128,6 +128,9 @@ async def _seed_profiles(
         is_active=True,
     )
     session.add_all([player, operator])
+    # These models do not expose ORM relationships, so make the FK ordering
+    # explicit instead of relying on unit-of-work table sorting.
+    await session.flush()
     session.add(
         PushSubscription(
             user_id=operator_id,
