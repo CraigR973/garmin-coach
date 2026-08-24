@@ -14,6 +14,8 @@ type DataOverrides = Partial<{
   manualEntry: unknown;
   sleepProjection: { tone: string } | null;
   morningAnalysis: unknown;
+  dailyMetrics: unknown;
+  sleep: unknown;
   holiday: {
     isActive: boolean;
     awayTonight?: boolean;
@@ -33,6 +35,8 @@ function makeData(overrides: DataOverrides = {}): DailyLoopData {
     manualEntry: { id: 'entry-1' },
     sleepProjection: null,
     morningAnalysis: null,
+    dailyMetrics: null,
+    sleep: null,
     hostedTtsConsent: false,
     holiday: { isActive: false, awayTonight: false, activeWindow: null },
     ...overrides,
@@ -201,14 +205,24 @@ describe('nextAction morning order (sleep → eased ride; check-in optional)', (
     expect(action.sectionKey).toBeUndefined();
   });
 
-  it('leads with saying good morning before today\'s brief exists (Batch 95)', () => {
+  it('leads with syncing when neither overnight input exists', () => {
     // morningAnalysis null = no brief yet. Before Batch 95 this fell through to
     // "all-set", contradicting the GoodMorningCta hero shown in the same state.
     const action = nextAction(makeData({ manualEntry: null }), { ...morning, hasReviewedSleep: false });
     expect(action.key).toBe('say-good-morning');
-    expect(action.label).toBe('Say good morning');
+    expect(action.label).toBe('Sync overnight data');
     expect(action.to).toBe('/check-in');
     expect(action.sectionKey).toBeUndefined();
+  });
+
+  it('says good morning only when both overnight inputs are present', () => {
+    const action = nextAction(
+      makeData({ manualEntry: null, dailyMetrics: {}, sleep: {} }),
+      { ...morning, hasReviewedSleep: false },
+    );
+
+    expect(action.key).toBe('say-good-morning');
+    expect(action.label).toBe('Say good morning');
   });
 
   it('does not lead with saying good morning outside the morning phase', () => {

@@ -305,7 +305,7 @@ const bedroomEnvelope = {
   errors: [],
 };
 
-async function seedApp(page: Page) {
+async function seedApp(page: Page, dailyLoop: unknown = dailyLoopEnvelope) {
   await page.addInitScript(() => {
     localStorage.setItem('coach_device_token', 'test-device-token');
     localStorage.setItem(
@@ -322,7 +322,7 @@ async function seedApp(page: Page) {
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === '/api/v1/daily-loop') {
-      await route.fulfill({ json: dailyLoopEnvelope });
+      await route.fulfill({ json: dailyLoop });
       return;
     }
     if (url.pathname === '/api/v1/coach/messages' || /\/api\/v1\/briefs\/.+\/messages/.test(url.pathname)) {
@@ -403,6 +403,33 @@ test('check-in renders only the issued REM actions with explicit application sta
   await expect(
     page.getByLabel('wind_down response').getByRole('button', { name: 'Tried it' }),
   ).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('unsynced Home and Sleep promise a sync instead of claiming the data is already in', async ({
+  page,
+}) => {
+  const unsyncedEnvelope = {
+    ...dailyLoopEnvelope,
+    data: {
+      ...dailyLoopEnvelope.data,
+      morningAnalysis: null,
+      briefGeneration: null,
+      dailyMetrics: null,
+      sleep: null,
+      manualEntry: null,
+    },
+  };
+  await page.unroute('**/api/v1/**');
+  await seedApp(page, unsyncedEnvelope);
+
+  for (const route of ['/', '/sleep']) {
+    await page.goto(route);
+    await expect(page.getByRole('region', { name: 'Say good morning' })).toBeVisible();
+    await expect(
+      page.getByText(/sync your overnight data before I read your day/i),
+    ).toBeVisible();
+    await expect(page.getByText(/your overnight data's already in/i)).toHaveCount(0);
+  }
 });
 
 function contrastFailures() {

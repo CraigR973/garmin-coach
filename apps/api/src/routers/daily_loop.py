@@ -49,6 +49,7 @@ from src.services.experiment_loop import ExperimentLoopService, rotation_from_as
 from src.services.fan_control import describe_fan_intent
 from src.services.insights import OUTCOME_SLEEP_SCORE
 from src.services.morning_analysis import MorningAnalysisService
+from src.services.morning_inputs import morning_input_presence
 from src.services.nudge_alerts import NudgeAlertService
 from src.services.post_activity_analysis import (
     generate_post_activity_read,
@@ -60,6 +61,7 @@ from src.services.sleep_projection import SleepProjectionResult
 from src.services.sleep_projection_context import SleepProjectionContextService
 from src.services.strength_brief import StrengthBriefResult
 from src.services.tts_pregenerate import pregenerate_brief_audio
+from src.services.wake_detection import BACKSTOP
 from src.services.walking_brief import WalkingBriefResult
 from src.services.workout_categories import (
     DAY_CATEGORY_CYCLE,
@@ -167,8 +169,12 @@ def _read_fans(
 log = structlog.get_logger(__name__)
 
 
+class MorningInputsNotReady(RuntimeError):
+    """A successful model read cannot start from an unsynced wake date."""
+
+
 async def _generate_brief_after_checkin(user_id: uuid.UUID, subject_date: date) -> None:
-    """Batch 97: finish today's brief off the request path, then notify."""
+    """Sync, then finish today's brief off the request path and notify."""
 
     async with AsyncSessionLocal() as session:
         player = await session.get(Profile, user_id)
@@ -181,6 +187,22 @@ async def _generate_brief_after_checkin(user_id: uuid.UUID, subject_date: date) 
             return
 
         try:
+            # Batch 222: the waiting card already opens on "Syncing your
+            # overnight data". Make that stage real. The wake job usually won
+            # this idempotent race already; when it did not, the check-in now
+            # closes the gap instead of reading an empty day.
+            from src.scheduler import _sync_morning_inputs
+
+            await _sync_morning_inputs(session, [player])
+            inputs = await morning_input_presence(
+                session,
+                user_id=user_id,
+                subject_date=subject_date,
+            )
+            allow_missing_sleep = _local_time(player.timezone) >= BACKSTOP
+            if not inputs.ready_for_read(allow_missing_sleep=allow_missing_sleep):
+                raise MorningInputsNotReady
+
             analysis = await ExecutableCoachingService(session).regenerate_after_morning_checkin(
                 player,
                 subject_date,
@@ -211,7 +233,13 @@ async def _generate_brief_after_checkin(user_id: uuid.UUID, subject_date: date) 
             # instead of an endless "Writing your brief", and alert the operator on
             # a billing/credit outage (the 2026-07-21 freeze). Best-effort — a
             # failure to record the failure must not re-raise out of a background task.
-            reason = exc.reason if isinstance(exc, AnthropicApiError) else "other"
+            reason = (
+                exc.reason
+                if isinstance(exc, AnthropicApiError)
+                else "inputs"
+                if isinstance(exc, MorningInputsNotReady)
+                else "other"
+            )
             try:
                 await BriefGenerationStatusService(session).mark_failed(
                     user_id, subject_date, reason=reason, commit=True

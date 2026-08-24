@@ -38,6 +38,12 @@ export interface NextAction {
   tone: ActionTone;
 }
 
+/** The two rows a normal overnight read owns. A partial payload must never be
+ * described as "already in"; the check-in background task will sync it first. */
+export function overnightDataReady(data: DailyLoopData): boolean {
+  return data.dailyMetrics != null && data.sleep != null;
+}
+
 /** True when a bike session today was eased by the coach and still awaits a
  *  decision. Mirrors `WorkoutRow`'s `hasPendingChange` minus the client-only
  *  `ignored` dismiss (which isn't on the payload — Ignore is a per-view dismiss,
@@ -145,7 +151,12 @@ export function nextAction(
 ): NextAction {
   if (isMorning) {
     if (data.morningAnalysis == null) {
-      return { key: 'say-good-morning', label: 'Say good morning', to: '/check-in', tone: 'default' };
+      return {
+        key: 'say-good-morning',
+        label: overnightDataReady(data) ? 'Say good morning' : 'Sync overnight data',
+        to: '/check-in',
+        tone: 'default',
+      };
     }
     if (!hasReviewedSleep) {
       return { key: 'review-sleep', label: "Review last night's sleep", to: '/sleep', tone: 'default' };

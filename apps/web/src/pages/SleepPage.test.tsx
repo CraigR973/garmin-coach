@@ -421,6 +421,7 @@ describe('SleepPage', () => {
     renderWithSnapshot(gated);
 
     expect(await screen.findByRole('region', { name: 'Say good morning' })).toBeTruthy();
+    expect(screen.getByText(/sync your overnight data before i read your day/i)).toBeTruthy();
     expect(screen.getByText('Sleep calendar')).toBeTruthy();
     expect(screen.getByRole('button', { name: /show calendar/i })).toBeTruthy();
     expect(screen.queryByRole('tab', { name: 'Last night' })).toBeNull();

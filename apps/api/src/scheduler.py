@@ -112,6 +112,7 @@ from src.services.longitudinal_analysis import (
     LongitudinalAnalysisService,
 )
 from src.services.morning_analysis import MorningAnalysisService
+from src.services.morning_inputs import morning_input_presence
 from src.services.nudge_alerts import NudgeAlertService
 from src.services.post_flexibility_analysis import PostFlexibilityAnalysisService
 from src.services.post_strength_analysis import PostStrengthAnalysisService
@@ -924,8 +925,26 @@ async def run_morning_weather_sync() -> JobResult:
             chronic_deload_proposals = 0
             brief_ready_pushes = 0
             drivers_cached = 0
+            inputs_not_ready = 0
             for profile in profiles:
                 subject_date = _profile_today(profile)
+                input_presence = await morning_input_presence(
+                    session,
+                    user_id=profile.id,
+                    subject_date=subject_date,
+                )
+                # The 11:00 backstop may honestly read a successful Garmin pull
+                # with no sleep session (watch not worn), but it must never turn
+                # a failed/no pull into a confident no-data brief.
+                if not input_presence.ready_for_read(allow_missing_sleep=True):
+                    failures += 1
+                    inputs_not_ready += 1
+                    log.warning(
+                        "morning analysis held for unsynced inputs",
+                        profile_id=str(profile.id),
+                        subject_date=subject_date.isoformat(),
+                    )
+                    continue
                 try:
                     analysis_result = await analysis_service.generate_and_store(
                         profile,
@@ -1029,6 +1048,7 @@ async def run_morning_weather_sync() -> JobResult:
             chronic_deload_proposals=chronic_deload_proposals,
             brief_ready_pushes=brief_ready_pushes,
             drivers_cached=drivers_cached,
+            inputs_not_ready=inputs_not_ready,
             failed=failures,
         )
         counters = {
@@ -1042,6 +1062,7 @@ async def run_morning_weather_sync() -> JobResult:
             "chronic_deload_proposals": chronic_deload_proposals,
             "brief_ready_pushes": brief_ready_pushes,
             "drivers_cached": drivers_cached,
+            "inputs_not_ready": inputs_not_ready,
             "failed": failures,
         }
         if failures:
@@ -1053,17 +1074,17 @@ async def run_morning_weather_sync() -> JobResult:
 
 
 async def run_wake_check() -> JobResult:
-    """Poll Garmin sleep and fire the morning verdict once Mark has actually woken.
+    """Poll Garmin sleep and fire the morning sync once Mark has actually woken.
 
     Replaces the fixed 06:30 cron. Per active profile, within the morning window
-    (Europe/London local), it: (1) short-circuits if today's morning analysis
-    already exists; (2) does a light sleep-only Garmin poll; (3) applies the
+    (Europe/London local), it: (1) short-circuits once today's Garmin inputs
+    prove synced; (2) does a light sleep-only Garmin poll; (3) applies the
     back-to-sleep stability guard against the previously persisted ``sleepEnd``
     (services/wake_detection.is_morning_ready); (4) persists the current
     ``sleepEnd`` as a ``wake_check`` audit row for the next poll's comparison. If
-    any profile is ready (stable wake, or the ~11:00 backstop) it runs the
-    unchanged run_morning_weather_sync once — which is idempotent per profile, so
-    re-firing on later polls is harmless.
+    any profile is ready (stable wake, or the ~11:00 backstop) it runs
+    ``run_morning_sync`` once — which is idempotent per profile, so re-firing on
+    later polls is harmless.
     """
     try:
         any_ready = False
@@ -1074,7 +1095,6 @@ async def run_wake_check() -> JobResult:
                 log.info("wake check skipped", reason="no_active_profiles")
                 return JobResult.skipped("no_active_profiles", profiles=0)
 
-            morning = MorningAnalysisService(session)
             client: GarminConnectClient | None = None
             fired = 0
             waiting = 0
@@ -1085,9 +1105,18 @@ async def run_wake_check() -> JobResult:
                 if not (WINDOW_START <= now_local.time() <= WINDOW_END):
                     continue
                 today = now_local.date()
-                # Short-circuit once today's morning verdict exists (cheap DB read,
-                # no Garmin call) — this stops polling for the rest of the day.
-                if await morning.latest_analysis(profile.id, today) is not None:
+                # An analysis is not a sync marker: the 2026-08-20 check-in made
+                # an empty read and that old condition cancelled the sync which
+                # would have repaired it. A morning DailyMetric proves a full
+                # Garmin pull completed. Before the backstop, require Sleep too
+                # so a lagging real night keeps polling; afterward, daily-without-
+                # sleep is an honest watch-not-worn/no-session result.
+                inputs = await morning_input_presence(
+                    session,
+                    user_id=profile.id,
+                    subject_date=today,
+                )
+                if inputs.ready_for_read(allow_missing_sleep=now_local.time() >= BACKSTOP):
                     continue
                 if client is None:
                     client = GarminConnectClient()

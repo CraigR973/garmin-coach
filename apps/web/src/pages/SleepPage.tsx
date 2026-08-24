@@ -25,6 +25,7 @@ import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
 import { useSleepCalendarVerdicts } from '@/hooks/useSleepCalendarVerdicts';
 import { markSleepReviewed } from '@/lib/sleepReview';
 import { friendlyDate } from '@/lib/dailyFlow';
+import { overnightDataReady } from '@/lib/homeActions';
 import { verdictBadgeVariant, verdictLabel } from '@/lib/copy';
 import type { AgeComparison, MetricBaselineRow } from '@/components/MetricComparisonTable';
 
@@ -140,7 +141,12 @@ export function SleepPage() {
     <div className="space-y-5">
       <PageHeader title="Sleep" eyebrow={friendlyDate(data.subjectDate)} />
 
-      {!hasTodaySleepAccess ? <GoodMorningCta dateLabel={friendlyDate(data.subjectDate)} /> : null}
+      {!hasTodaySleepAccess ? (
+        <GoodMorningCta
+          dateLabel={friendlyDate(data.subjectDate)}
+          overnightDataReady={overnightDataReady(data)}
+        />
+      ) : null}
 
       {hasTodaySleepAccess ? <Tabs items={VIEW_ITEMS} value={view} onChange={setView} variant="segmented" /> : null}
 
