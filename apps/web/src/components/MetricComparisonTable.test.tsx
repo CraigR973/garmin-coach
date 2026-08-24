@@ -198,6 +198,41 @@ describe('MetricComparisonTable', () => {
     expect(screen.getByText(/strap was re-fitted/i)).toBeTruthy();
   });
 
+  it('shows the morning charge basis and explains drain without a false full-day comparison', () => {
+    const rows: MetricBaselineRow[] = [
+      {
+        metricKey: 'body_battery_charge',
+        label: 'Body Battery charge',
+        currentValue: 69,
+        baselineMedian: 68,
+        lowerQuartile: 59.5,
+        upperQuartile: 72,
+        basis: "Garmin's overnight charge accumulated from midnight to this morning's sync.",
+      },
+      {
+        metricKey: 'body_battery_drain',
+        label: 'Body Battery drain',
+        currentValue: null,
+        baselineMedian: 67,
+        lowerQuartile: 57.5,
+        upperQuartile: 75,
+        unavailableReason:
+          'This drain is still a part-day value at the morning sync; compare it with your full-day baseline after the day closes.',
+      },
+    ];
+
+    render(<MetricComparisonTable rows={rows} ageComparison={{ rows: [] }} />);
+
+    const charge = rowFor('Body Battery charge');
+    expect(within(charge).getByText('69')).toBeTruthy();
+    expect(within(charge).getByText(/overnight charge accumulated from midnight/i)).toBeTruthy();
+
+    const drain = rowFor('Body Battery drain');
+    expect(within(drain).getByText('—')).toBeTruthy();
+    expect(within(drain).getByText(/still a part-day value/i)).toBeTruthy();
+    expect(within(drain).queryByText('57.5–75')).toBeNull();
+  });
+
   it('renders a fallback when there is no history yet', () => {
     render(<MetricComparisonTable rows={[]} ageComparison={{ rows: [] }} />);
     expect(screen.getByText(/fills in as more nights sync/i)).toBeTruthy();

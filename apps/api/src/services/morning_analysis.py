@@ -16,6 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
 from src.models.coaching import (
+    DAILY_METRIC_PHASE_MORNING,
+    DAILY_METRIC_PHASE_SETTLED,
     Activity,
     Analysis,
     DailyMetric,
@@ -46,6 +48,7 @@ from src.services.daily_metric_coverage import (
     complete_stress_avg,
     coverage_packet,
     daily_aggregate_coverage,
+    morning_body_battery_charged,
 )
 from src.services.daily_metric_phase import (
     morning_first_order,
@@ -942,8 +945,8 @@ class MorningAnalysisService:
                 .where(
                     DailyMetric.user_id == user_id,
                     DailyMetric.calendar_date == subject_date,
+                    DailyMetric.phase == DAILY_METRIC_PHASE_SETTLED,
                 )
-                .order_by(settled_first_order())
                 .limit(1)
             ),
         )
@@ -1551,13 +1554,29 @@ def _metrics_vs_baselines(
     age_adjusted_sleep_score: int | None,
     day_aggregates: DailyMetric | None = None,
 ) -> list[dict[str, Any]]:
-    # Batch 216: recovery reads (readiness, RHR, HRV) stay on the morning row —
-    # that split is Batch 205's whole point. Body Battery charge/drain are
-    # running local-day totals and need the settled row's completed window
-    # (`daily_metric_coverage`), which `daily_metric` alone can never satisfy on
-    # a live morning. Falls back to `daily_metric` when no settled row exists
-    # yet, matching `metric_baselines.sample_values`.
-    battery_source = day_aggregates if day_aggregates is not None else daily_metric
+    # Batch 216/224: recovery reads (readiness, RHR, HRV) stay on the morning
+    # row. Closed-day Body Battery charge/drain still come from the settled row.
+    # Before that row exists, the partial morning window has one deliberately
+    # asymmetric meaning: charge is the overnight recharge accumulated since
+    # midnight, while drain is a part-day total that must not be compared with
+    # a full-day baseline.
+    settled_battery_source = (
+        day_aggregates
+        if day_aggregates is not None and day_aggregates.phase == DAILY_METRIC_PHASE_SETTLED
+        else None
+    )
+    morning_battery_source = (
+        daily_metric
+        if settled_battery_source is None
+        and daily_metric is not None
+        and daily_metric.phase == DAILY_METRIC_PHASE_MORNING
+        else None
+    )
+    morning_charge = (
+        morning_body_battery_charged(morning_battery_source)
+        if morning_battery_source is not None
+        else None
+    )
     current_values = {
         "sleep_score": sleep.score if sleep else None,
         "age_adjusted_sleep_score": age_adjusted_sleep_score,
@@ -1567,10 +1586,14 @@ def _metrics_vs_baselines(
             sleep.resting_heart_rate_bpm if sleep else None,
         ),
         "body_battery_charge": (
-            complete_body_battery_charged(battery_source) if battery_source is not None else None
+            complete_body_battery_charged(settled_battery_source)
+            if settled_battery_source is not None
+            else morning_charge
         ),
         "body_battery_drain": (
-            complete_body_battery_drained(battery_source) if battery_source is not None else None
+            complete_body_battery_drained(settled_battery_source)
+            if settled_battery_source is not None
+            else None
         ),
         "average_spo2_pct": sleep.average_spo2_pct if sleep else None,
         "average_respiration": sleep.average_respiration if sleep else None,
@@ -1583,25 +1606,41 @@ def _metrics_vs_baselines(
         delta = (
             None if current is None or center is None else round(float(current) - float(center), 2)
         )
-        rows.append(
-            {
-                "metricKey": baseline.metric_key,
-                "label": baseline.metric_label,
-                "currentValue": current,
-                "baselineMedian": baseline.median_value,
-                "baselineMean": baseline.mean_value,
-                "deltaVsBaseline": delta,
-                "lowerQuartile": baseline.lower_quartile_value,
-                "upperQuartile": baseline.upper_quartile_value,
-                "sampleCount": baseline.sample_count,
-                "excludedSampleCount": baseline.excluded_sample_count,
-                "reliabilityStartDate": (
-                    baseline.reliability_start_date.isoformat()
-                    if baseline.reliability_start_date
-                    else None
-                ),
-            }
-        )
+        row = {
+            "metricKey": baseline.metric_key,
+            "label": baseline.metric_label,
+            "currentValue": current,
+            "baselineMedian": baseline.median_value,
+            "baselineMean": baseline.mean_value,
+            "deltaVsBaseline": delta,
+            "lowerQuartile": baseline.lower_quartile_value,
+            "upperQuartile": baseline.upper_quartile_value,
+            "sampleCount": baseline.sample_count,
+            "excludedSampleCount": baseline.excluded_sample_count,
+            "reliabilityStartDate": (
+                baseline.reliability_start_date.isoformat()
+                if baseline.reliability_start_date
+                else None
+            ),
+        }
+        if morning_battery_source is not None:
+            if baseline.metric_key == "body_battery_charge":
+                if morning_charge is not None:
+                    row["basis"] = (
+                        "Garmin's overnight charge accumulated from midnight to this morning's "
+                        "sync."
+                    )
+                else:
+                    row["unavailableReason"] = (
+                        "Garmin did not provide a usable overnight charge window for this "
+                        "morning's sync."
+                    )
+            elif baseline.metric_key == "body_battery_drain":
+                row["unavailableReason"] = (
+                    "This drain is still a part-day value at the morning sync; compare it with "
+                    "your full-day baseline after the day closes."
+                )
+        rows.append(row)
     return rows
 
 

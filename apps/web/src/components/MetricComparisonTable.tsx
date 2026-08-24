@@ -40,6 +40,8 @@ export interface MetricBaselineRow {
   sampleCount?: number;
   excludedSampleCount?: number;
   reliabilityStartDate?: string | null;
+  basis?: string;
+  unavailableReason?: string;
 }
 
 export interface AgeComparisonRow {
@@ -274,7 +276,14 @@ export function MetricComparisonTable({
               const primaryStatus = diff ?? age;
               return (
                 <tr key={row.key} className="border-t border-border">
-                  <td className="px-2 py-2 text-text-primary sm:px-3">{row.label}</td>
+                  <td className="px-2 py-2 text-text-primary sm:px-3">
+                    <div>{row.label}</div>
+                    {row.baseline?.basis && (
+                      <div className="mt-0.5 text-xs leading-snug text-text-muted">
+                        {row.baseline.basis}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-2 py-2 text-right font-semibold tabular-nums sm:px-3">
                     <div
                       className={cn(
@@ -286,27 +295,35 @@ export function MetricComparisonTable({
                     </div>
                   </td>
                   <td className="px-2 py-2 text-right align-top sm:px-3">
-                    {range && range !== '—' && (
-                      <div className="font-medium tabular-nums text-text-secondary">{range}</div>
-                    )}
-                    {!range || range === '—' ? (
-                      <div className="font-medium tabular-nums text-text-secondary">—</div>
-                    ) : null}
-                    {primaryStatus && (
-                      <div
-                        className={cn(
-                          'mt-0.5 inline-flex items-center justify-end gap-1 text-sm font-medium',
-                          toneText[primaryStatus.tone],
+                    {row.baseline?.unavailableReason ? (
+                      <div className="max-w-72 text-xs leading-snug text-text-muted">
+                        {row.baseline.unavailableReason}
+                      </div>
+                    ) : (
+                      <>
+                        {range && range !== '—' && (
+                          <div className="font-medium tabular-nums text-text-secondary">{range}</div>
                         )}
-                      >
-                        <ToneIcon tone={primaryStatus.tone} className="h-3 w-3" />
-                        {diff ? primaryStatus.text : `${primaryStatus.text} for your age`}
-                      </div>
-                    )}
-                    {diff && age && (
-                      <div className={cn('mt-0.5 text-sm font-medium', toneText[age.tone])}>
-                        {age.text} for your age
-                      </div>
+                        {!range || range === '—' ? (
+                          <div className="font-medium tabular-nums text-text-secondary">—</div>
+                        ) : null}
+                        {primaryStatus && (
+                          <div
+                            className={cn(
+                              'mt-0.5 inline-flex items-center justify-end gap-1 text-sm font-medium',
+                              toneText[primaryStatus.tone],
+                            )}
+                          >
+                            <ToneIcon tone={primaryStatus.tone} className="h-3 w-3" />
+                            {diff ? primaryStatus.text : `${primaryStatus.text} for your age`}
+                          </div>
+                        )}
+                        {diff && age && (
+                          <div className={cn('mt-0.5 text-sm font-medium', toneText[age.tone])}>
+                            {age.text} for your age
+                          </div>
+                        )}
+                      </>
                     )}
                   </td>
                 </tr>

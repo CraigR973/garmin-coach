@@ -51,6 +51,27 @@ const dailyLoopEnvelope = {
           upperQuartile: 53,
           sampleCount: 28,
         },
+        {
+          metricKey: 'body_battery_charge',
+          label: 'Body Battery charge',
+          currentValue: 69,
+          baselineMedian: 68,
+          lowerQuartile: 59.5,
+          upperQuartile: 72,
+          sampleCount: 83,
+          basis: "Garmin's overnight charge accumulated from midnight to this morning's sync.",
+        },
+        {
+          metricKey: 'body_battery_drain',
+          label: 'Body Battery drain',
+          currentValue: null,
+          baselineMedian: 67,
+          lowerQuartile: 57.5,
+          upperQuartile: 75,
+          sampleCount: 83,
+          unavailableReason:
+            'This drain is still a part-day value at the morning sync; compare it with your full-day baseline after the day closes.',
+        },
       ],
       ageComparison: {
         age: 57,
@@ -430,6 +451,35 @@ test('unsynced Home and Sleep promise a sync instead of claiming the data is alr
     ).toBeVisible();
     await expect(page.getByText(/your overnight data's already in/i)).toHaveCount(0);
   }
+});
+
+test('live morning Body Battery is honest at mobile and desktop widths', async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 1280, height: 900 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto('/sleep');
+
+    const charge = page.getByRole('row').filter({ hasText: 'Body Battery charge' });
+    await expect(charge).toContainText('69');
+    await expect(charge).toContainText('overnight charge accumulated from midnight');
+
+    const drain = page.getByRole('row').filter({ hasText: 'Body Battery drain' });
+    await expect(drain).toContainText('—');
+    await expect(drain).toContainText('still a part-day value');
+    await expect(drain).not.toContainText('57.5–75');
+
+    await expect(page.locator('.vite-error-overlay')).toHaveCount(0);
+    await expect(page.locator('body')).not.toHaveText('');
+  }
+
+  expect(consoleErrors).toEqual([]);
 });
 
 function contrastFailures() {

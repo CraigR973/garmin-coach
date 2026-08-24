@@ -17,6 +17,7 @@ import {
   knowledgeBaseUpdateInputSchema,
   manualEntryInputSchema,
   manualEntrySchema,
+  metricBaselineRowSchema,
   plannedWorkoutOverrideInputSchema,
   PROACTIVE_COACH_ORIGIN_KINDS,
   profileSchema,
@@ -35,6 +36,24 @@ const userId = '11111111-1111-4111-8111-111111111111';
 const rowId = '22222222-2222-4222-8222-222222222222';
 
 describe('v1 shared schemas', () => {
+  it('keeps morning metric basis and unavailable reasons through parsing', () => {
+    const charge = metricBaselineRowSchema.parse({
+      metricKey: 'body_battery_charge',
+      label: 'Body Battery charge',
+      currentValue: 69,
+      basis: "Garmin's overnight charge accumulated from midnight to this morning's sync.",
+    });
+    const drain = metricBaselineRowSchema.parse({
+      metricKey: 'body_battery_drain',
+      label: 'Body Battery drain',
+      currentValue: null,
+      unavailableReason: 'This drain is still a part-day value at the morning sync.',
+    });
+
+    expect(charge.basis).toContain('overnight charge');
+    expect(drain.unavailableReason).toContain('part-day');
+  });
+
   it('parses interval-resolved ride execution and defaults intervals/execution', () => {
     const parsed = dailyLoopPostWorkoutAnalysisSchema.parse({
       id: rowId,
