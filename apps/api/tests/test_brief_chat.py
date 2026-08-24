@@ -39,7 +39,7 @@ from src.models.coaching import (
     PlannedWorkout,
 )
 from src.models.profile import Profile, UserRole
-from src.services.anthropic_text import AnthropicApiError
+from src.services.anthropic_text import AnthropicApiError, AnthropicSystemPrompt
 from src.services.brief_chat import (
     MAX_USER_TURNS_PER_DAY,
     NO_PLUMBING_RULE,
@@ -58,7 +58,7 @@ class FakeBriefChatClient(BriefChatClient):
     async def generate(
         self,
         *,
-        system_prompt: str,
+        system_prompt: AnthropicSystemPrompt,
         user_prompt: str,
         prior_messages: list[dict[str, str]],
     ) -> str:
@@ -72,13 +72,27 @@ class FakeBriefChatClient(BriefChatClient):
         return self.answer
 
 
+def _system_prompt_text(system_prompt: object) -> str:
+    if isinstance(system_prompt, str):
+        return system_prompt
+    if isinstance(system_prompt, list):
+        parts: list[str] = []
+        for block in system_prompt:
+            if isinstance(block, dict):
+                text = block.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "\n\n".join(parts)
+    return str(system_prompt)
+
+
 def _flat(text: object) -> str:
     """Whitespace-normalized prompt text.
 
     The system prompt is a wrapped literal, so a phrase can straddle a newline
     (the Batch 175 CI lesson). Assert against normalized text.
     """
-    return " ".join(str(text).split())
+    return " ".join(_system_prompt_text(text).split())
 
 
 def _db_override(session_factory: async_sessionmaker[AsyncSession]):
@@ -833,7 +847,7 @@ async def test_ask_never_hands_the_model_the_apps_internal_vocabulary(
 
     # The not-known path reads as a coach's sentence, not a schema complaint.
     assert internal_vocabulary_hits(turn.assistant_message.content) == ()
-    system_prompt = str(client.calls[0]["system_prompt"])
+    system_prompt = _system_prompt_text(client.calls[0]["system_prompt"])
     instructions = system_prompt.split("What you wrote in that read:")[0]
     assert internal_vocabulary_hits(instructions.replace(NO_PLUMBING_RULE, "")) == ()
     assert NO_PLUMBING_RULE in _flat(system_prompt)
@@ -866,7 +880,7 @@ async def test_ask_sanitizes_legacy_stored_prompt_system_from_read_packet(
             client=client,
         )
 
-    prompt = str(client.calls[0]["system_prompt"])
+    prompt = _system_prompt_text(client.calls[0]["system_prompt"])
     assert "SECRET OLD SYSTEM PROMPT" not in prompt
     assert '"systemHash"' in prompt
     assert '"version": "legacy"' in prompt
