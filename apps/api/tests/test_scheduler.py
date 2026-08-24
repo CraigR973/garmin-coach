@@ -625,6 +625,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
             "workout_autopush",
             "weekly_review_delivery",
             "state_change_coach",
+            "longitudinal_analysis",
             "evening_sleep_nudge",
             "evening_monitoring_alerts",
             "fan_control",
@@ -640,6 +641,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
         nudge_job = scheduler.get_job("evening_sleep_nudge")
         weekly_review_job = scheduler.get_job("weekly_review_delivery")
         state_change_job = scheduler.get_job("state_change_coach")
+        longitudinal_job = scheduler.get_job("longitudinal_analysis")
         monitoring_job = scheduler.get_job("evening_monitoring_alerts")
         assert hive_job is not None
         assert wake_job is not None
@@ -650,6 +652,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
         assert nudge_job is not None
         assert weekly_review_job is not None
         assert state_change_job is not None
+        assert longitudinal_job is not None
         assert monitoring_job is not None
         assert str(hive_job.trigger) == "interval[0:15:00]"
         # The fixed 06:30 morning cron was replaced by a 15-min wake-check poll
@@ -663,6 +666,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
         assert "hour='20', minute='0'" in str(nudge_job.trigger)
         assert "day_of_week='sun', hour='18', minute='0'" in str(weekly_review_job.trigger)
         assert "hour='11', minute='45'" in str(state_change_job.trigger)
+        assert "hour='12', minute='15'" in str(longitudinal_job.trigger)
         assert "hour='19-22', minute='0,15,30,45'" in str(monitoring_job.trigger)
         assert hive_job.coalesce is True
         assert wake_job.coalesce is True

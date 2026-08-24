@@ -73,7 +73,12 @@ def classify_anthropic_error(
     """
     message = (error_message or "").lower()
     etype = (error_type or "").lower()
-    if "credit balance" in message or "plans & billing" in message or "billing" in message:
+    if (
+        etype == "billing_error"
+        or "credit balance" in message
+        or "plans & billing" in message
+        or "billing" in message
+    ):
         return "billing"
     if status_code == 429 or etype == "rate_limit_error":
         return "rate_limit"
@@ -138,7 +143,7 @@ def _log_usage(raw: dict[str, Any], *, model_name: str) -> None:
     )
 
 
-def _error_from_http_status(exc: httpx.HTTPStatusError) -> AnthropicApiError:
+def anthropic_error_from_http_status(exc: httpx.HTTPStatusError) -> AnthropicApiError:
     """Parse + log an Anthropic non-2xx into a classified error (Batch 141).
 
     ``httpx``'s ``raise_for_status`` discards the response body, so the *reason*
@@ -219,7 +224,7 @@ async def generate_anthropic_text(
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            raise _error_from_http_status(exc) from exc
+            raise anthropic_error_from_http_status(exc) from exc
         raw = response.json()
 
     if not isinstance(raw, dict):

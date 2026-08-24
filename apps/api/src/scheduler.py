@@ -14,6 +14,7 @@ Current jobs:
   - workout_autopush: pushes approved workout proposals due today
   - weekly_review_delivery: Sunday 18:00 local, writes the week into the coach thread
   - state_change_coach: late morning local, writes one meaningful transition into the coach thread
+  - longitudinal_analysis: daily collector plus idempotent monthly whole-history submission
   - evening_sleep_nudge: sends a quiet, projection-backed 20:00 sleep push
   - evening_monitoring_alerts: checks thermal and source freshness before bed
   - fan_control: every ~15 min within the overnight window, reconciles the Dreo
@@ -56,6 +57,7 @@ from src.models.coaching import (
     Activity,
     Analysis,
     FanStateReading,
+    Sleep,
     TemperatureReading,
 )
 from src.models.notification import ActionType, ActorType, AuditLog
@@ -105,6 +107,10 @@ from src.services.garmin_sync import (
 from src.services.holiday_pause import HolidayPauseService
 from src.services.insights import InsightsService
 from src.services.job_runs import JobResult, run_tracked_job
+from src.services.longitudinal_analysis import (
+    BillingAlertNotReady,
+    LongitudinalAnalysisService,
+)
 from src.services.morning_analysis import MorningAnalysisService
 from src.services.nudge_alerts import NudgeAlertService
 from src.services.post_flexibility_analysis import PostFlexibilityAnalysisService
@@ -158,6 +164,84 @@ async def run_scheduled_backup() -> JobResult:
         except Exception:
             log.exception("recording scheduled backup failure audit failed")
         return JobResult.failed("backup_failed", backups=0, audit_rows=audit_rows)
+
+
+async def run_longitudinal_analysis() -> JobResult:
+    """Collect completed batches, then submit at most one run per user/month."""
+
+    counters = {
+        "profiles": 0,
+        "submitted": 0,
+        "pending": 0,
+        "completed": 0,
+        "findings_routed": 0,
+    }
+    skipped_alert_gate = 0
+    failures = 0
+    async with AsyncSessionLocal() as session:
+        profiles = list(
+            (
+                await session.execute(
+                    select(Profile).where(
+                        Profile.is_active.is_(True),
+                        Profile.deleted_at.is_(None),
+                        select(Sleep.id).where(Sleep.user_id == Profile.id).exists(),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not profiles:
+            return JobResult.skipped("no_active_profiles")
+        for player in profiles:
+            counters["profiles"] += 1
+            service = LongitudinalAnalysisService(session)
+            try:
+                collected = await service.collect_pending(player)
+                counters["pending"] += collected.pending
+                counters["completed"] += collected.completed
+                counters["findings_routed"] += collected.findings_routed
+                submitted = await service.submit_monthly(
+                    player,
+                    as_of_date=datetime.now(ZoneInfo(player.timezone or "UTC")).date(),
+                )
+                counters["submitted"] += int(submitted.submitted)
+            except BillingAlertNotReady as exc:
+                await session.rollback()
+                skipped_alert_gate += 1
+                log.warning(
+                    "longitudinal analysis submission gated",
+                    user_id=str(player.id),
+                    reason=exc.reason,
+                )
+            except AnthropicApiError as exc:
+                await session.rollback()
+                failures += 1
+                await NudgeAlertService(session).notify_admin_generation_failure(
+                    reason=exc.reason,
+                    subject_date=datetime.now(ZoneInfo(player.timezone or "UTC")).date(),
+                    artifact="longitudinal_analysis",
+                )
+            except Exception:
+                await session.rollback()
+                failures += 1
+                log.exception("longitudinal analysis failed", user_id=str(player.id))
+
+    if failures:
+        return JobResult.degraded(
+            "longitudinal_analysis_failed",
+            **counters,
+            failures=failures,
+            alert_gated=skipped_alert_gate,
+        )
+    if skipped_alert_gate == counters["profiles"]:
+        return JobResult.skipped(
+            "admin_billing_alert_not_ready",
+            **counters,
+            alert_gated=skipped_alert_gate,
+        )
+    return JobResult.succeeded(**counters, alert_gated=skipped_alert_gate)
 
 
 async def run_backup_restore_drill() -> JobResult:
@@ -1855,6 +1939,20 @@ def create_scheduler() -> AsyncIOScheduler:
         minute=45,
         timezone=settings.weather_timezone,
         id="state_change_coach",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        # Batch 220: polling an existing Message Batch is no-spend; the submitter
+        # itself is monthly-idempotent and refuses to spend until the operator
+        # billing alert has an active push recipient.
+        partial(run_tracked_job, "longitudinal-analysis", run_longitudinal_analysis),
+        trigger="cron",
+        hour=12,
+        minute=15,
+        timezone=settings.weather_timezone,
+        id="longitudinal_analysis",
         replace_existing=True,
         coalesce=True,
         max_instances=1,

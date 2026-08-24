@@ -71,6 +71,7 @@ _LOCAL_DAILY_JOBS = {
     "morning-sync",
     "post-workout-backstop",
     "state-change",
+    "longitudinal-analysis",
     "evening-nudge",
 }
 _LONDON = ZoneInfo("Europe/London")

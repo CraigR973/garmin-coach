@@ -74,6 +74,24 @@ def post_activity_generation_identity(
     )
 
 
+def longitudinal_generation_identity(
+    *,
+    user_id: uuid.UUID,
+    period_key: str,
+    prompt_version: str,
+) -> str:
+    """Stable paid-request identity for one user's monthly analyst run."""
+
+    return _identity(
+        {
+            "kind": "longitudinal",
+            "userId": str(user_id),
+            "periodKey": period_key,
+            "promptVersion": prompt_version,
+        }
+    )
+
+
 def manual_entry_generation_version(entry: ManualEntry | None) -> str | None:
     """Hash substantive check-in input while excluding write timestamps."""
 

@@ -44,6 +44,7 @@ Run each job from an external scheduler via the single-job runner:
 | `autopush`      | 07/13/19 London      | `0 7,13,19 * * *`  ⚠   |
 | `weekly-review` | Sunday 18:00 London  | `0 18 * * 0`  ⚠       |
 | `state-change`  | 11:45 London         | `45 11 * * *`  ⚠       |
+| `longitudinal-analysis` | daily collector; monthly submit | `15 12 * * *`  ⚠ |
 | `evening-nudge` | 20:00 London         | `0 20 * * *`  ⚠        |
 | `evening-alerts`| 19–22 London, /15    | `*/15 19-22 * * *`  ⚠  |
 | `fan-control`   | every 15 min         | `*/15 * * * *`         |
@@ -111,6 +112,28 @@ The runner exits 0 only for `succeeded`/`skipped`. Any `degraded` or `failed`
 outcome exits 1 after attempting to persist the run row, so Railway/GitHub cron
 can alert directly from process state. If even the run-row write fails, the
 runner also exits 1 (`reason=job_run_persistence_failed`).
+
+### Longitudinal analyst billing-alert gate
+
+`longitudinal-analysis` polls an already-submitted Anthropic Message Batch on
+each invocation and submits at most one paid request per sleep-bearing profile
+per calendar month. Empty operator-only profiles are excluded. The submit path
+fails closed before token counting or batch creation
+unless `ADMIN_ALERT_USER_ID` resolves to an active profile with an active web-
+push subscription. It also rejects the subject profile itself as the recipient:
+Mark must never receive operator/billing incidents.
+
+The 2026-08-24 preflight over Mark's 427-night history measured the final
+columnar prompt at 115,541 bytes and 55,477 input tokens. At the current Sonnet
+4.6 Batch rates that is $0.083 of input; with the configured 4,096-token output
+cap, one request cannot exceed roughly $0.114 before any provider-side rounding.
+
+Provision the operator as a separate private profile, mint its activation link
+with `python -m src.activate --profile <operator-name>`, activate the intended
+device, and enable notifications. Confirm an active `push_subscriptions` row,
+then set `ADMIN_ALERT_USER_ID` to that profile UUID on the `api` service. A job
+run before this is ready exits cleanly as `skipped` with
+`admin_billing_alert_not_ready`; it cannot incur Claude spend.
 
 ### Backup restore drill
 
