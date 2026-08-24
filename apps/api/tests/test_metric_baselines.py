@@ -281,13 +281,21 @@ def test_metrics_vs_baselines_body_battery_reads_settled_row_not_morning_row() -
         _battery_baseline(user_id, "body_battery_drain", "Body Battery drain"),
     ]
 
-    # Before the wake job's next sync lands a settled row, the morning row's
-    # partial total is correctly withheld rather than shown as complete.
+    # Before a settled row exists, charge is the valid overnight portion at the
+    # morning sync; drain is still accumulating through the day and remains
+    # withheld with a human-readable reason.
     no_settled_yet = {
         row["metricKey"]: row for row in _metrics_vs_baselines(morning_row, None, baselines, None)
     }
-    assert no_settled_yet["body_battery_charge"]["currentValue"] is None
+    assert no_settled_yet["body_battery_charge"]["currentValue"] == 52
+    assert no_settled_yet["body_battery_charge"]["basis"] == (
+        "Garmin's overnight charge accumulated from midnight to this morning's sync."
+    )
     assert no_settled_yet["body_battery_drain"]["currentValue"] is None
+    assert no_settled_yet["body_battery_drain"]["unavailableReason"] == (
+        "This drain is still a part-day value at the morning sync; compare it with your "
+        "full-day baseline after the day closes."
+    )
 
     # Once the settled row exists, both figures render from it — the fix.
     rows = {
@@ -298,6 +306,19 @@ def test_metrics_vs_baselines_body_battery_reads_settled_row_not_morning_row() -
     }
     assert rows["body_battery_charge"]["currentValue"] == 80
     assert rows["body_battery_drain"]["currentValue"] == 64
+    assert "basis" not in rows["body_battery_charge"]
+    assert "unavailableReason" not in rows["body_battery_drain"]
+
+    # Unknown coverage also fails closed, but the live packet explains the
+    # absent charge instead of leaving another unexplained blank.
+    morning_row.raw_payload = {}
+    unknown_coverage = {
+        row["metricKey"]: row for row in _metrics_vs_baselines(morning_row, None, baselines, None)
+    }
+    assert unknown_coverage["body_battery_charge"]["currentValue"] is None
+    assert unknown_coverage["body_battery_charge"]["unavailableReason"] == (
+        "Garmin did not provide a usable overnight charge window for this morning's sync."
+    )
 
 
 def test_metrics_vs_baselines_recovery_reads_stay_on_morning_row_with_settled_row_present() -> None:

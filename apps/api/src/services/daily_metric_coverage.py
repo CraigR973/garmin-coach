@@ -118,6 +118,21 @@ def complete_body_battery_charged(row: Any) -> int | None:
     return int(value) if value is not None and coverage.body_battery.complete else None
 
 
+def morning_body_battery_charged(row: Any) -> int | None:
+    """Return charge only for a genuine partial local-day morning window.
+
+    Garmin's charge at the wake sync is the overnight recharge accumulated
+    since local midnight.  It is useful before the day closes, unlike drain,
+    but an unknown or already-complete source window cannot prove that meaning
+    and therefore fails closed.
+    """
+    coverage = daily_aggregate_coverage(row.calendar_date, row.raw_payload)
+    value = getattr(row, "body_battery_charged", None)
+    return (
+        int(value) if value is not None and coverage.body_battery.status == "incomplete" else None
+    )
+
+
 def complete_body_battery_drained(row: Any) -> int | None:
     """Return Body Battery drain only for complete local-day aggregates."""
     coverage = daily_aggregate_coverage(row.calendar_date, row.raw_payload)

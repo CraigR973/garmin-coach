@@ -672,6 +672,8 @@ export const metricBaselineRowSchema = z.object({
   sampleCount: z.number().int().optional(),
   excludedSampleCount: z.number().int().optional(),
   reliabilityStartDate: z.string().nullable().optional(),
+  basis: z.string().min(1).optional(),
+  unavailableReason: z.string().min(1).optional(),
 });
 
 export const ageComparisonRowSchema = z.object({

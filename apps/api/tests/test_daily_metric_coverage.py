@@ -4,6 +4,7 @@ from src.services.daily_metric_coverage import (
     complete_body_battery_charged,
     complete_stress_avg,
     daily_aggregate_coverage,
+    morning_body_battery_charged,
 )
 
 
@@ -112,3 +113,13 @@ def test_complete_value_helpers_keep_closed_day_aggregates() -> None:
 
     assert complete_stress_avg(row) == 28.0
     assert complete_body_battery_charged(row) == 70
+
+
+def test_morning_charge_keeps_only_a_real_partial_window() -> None:
+    partial = _MetricRow(_raw("2026-07-31T08:44:00.0"))
+    complete = _MetricRow(_raw("2026-08-01T00:00:00.0"))
+    unknown = _MetricRow({})
+
+    assert morning_body_battery_charged(partial) == 70
+    assert morning_body_battery_charged(complete) is None
+    assert morning_body_battery_charged(unknown) is None
