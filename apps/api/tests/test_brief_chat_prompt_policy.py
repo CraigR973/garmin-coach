@@ -17,6 +17,7 @@ from src.services.brief_chat import (
     NO_PLUMBING_RULE,
     PROMPT_VERSION,
     SYSTEM_PROMPT,
+    _build_cached_system_prompt,
     _build_system_prompt,
     _capability_instruction,
     _origin_description,
@@ -86,11 +87,16 @@ def _system_prompt(module_name: str) -> str:
 
 
 class _FakeAnalysis:
-    def __init__(self, analysis_type: str, subject_date: str = "2026-07-30") -> None:
+    def __init__(
+        self,
+        analysis_type: str,
+        subject_date: str = "2026-07-30",
+        context_packet: dict[str, object] | None = None,
+    ) -> None:
         self.analysis_type = analysis_type
         self.subject_date = _Date(subject_date)
         self.output_markdown = "a read"
-        self.context_packet: dict[str, object] = {}
+        self.context_packet: dict[str, object] = context_packet or {}
 
 
 class _Date:
@@ -202,6 +208,53 @@ def test_every_floor_holds_from_every_entry_point() -> None:
             )
             == ()
         )
+
+
+def test_chat_system_prompt_marks_only_the_stable_prefix_as_cacheable() -> None:
+    blocks = _build_cached_system_prompt(
+        analysis=_FakeAnalysis("morning", context_packet={"verdict": {"status": "Amber"}}),  # type: ignore[arg-type]
+        origin=CoachOrigin(kind="morning_brief"),
+        local_today=date(2026, 7, 31),
+        app_state={"today": {"bodyMetrics": []}},
+        adjustable_workout_id=WORKOUT_ID,
+    )
+
+    assert blocks == [
+        {
+            "type": "text",
+            "text": blocks[0]["text"],
+            "cache_control": {"type": "ephemeral"},
+        },
+        {"type": "text", "text": blocks[1]["text"]},
+    ]
+    assert "Mark's information behind that read" in blocks[0]["text"]
+    assert "Where things stand right now" not in blocks[0]["text"]
+    assert "Where things stand right now" in blocks[1]["text"]
+
+
+def test_chat_system_prompt_serialises_packets_deterministically() -> None:
+    first = _build_cached_system_prompt(
+        analysis=_FakeAnalysis(  # type: ignore[arg-type]
+            "morning",
+            context_packet={"verdict": {"status": "Amber"}, "sleep": {"score": 72}},
+        ),
+        origin=CoachOrigin(kind="morning_brief"),
+        local_today=date(2026, 7, 31),
+        app_state={"today": {"bodyMetrics": []}, "trends": {"hrv": [52]}},
+        adjustable_workout_id=WORKOUT_ID,
+    )
+    second = _build_cached_system_prompt(
+        analysis=_FakeAnalysis(  # type: ignore[arg-type]
+            "morning",
+            context_packet={"sleep": {"score": 72}, "verdict": {"status": "Amber"}},
+        ),
+        origin=CoachOrigin(kind="morning_brief"),
+        local_today=date(2026, 7, 31),
+        app_state={"trends": {"hrv": [52]}, "today": {"bodyMetrics": []}},
+        adjustable_workout_id=WORKOUT_ID,
+    )
+
+    assert first == second
 
 
 def test_every_user_facing_read_prompt_states_the_floors_it_owns() -> None:

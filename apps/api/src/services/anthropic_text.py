@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 import httpx
 import structlog
@@ -12,6 +12,19 @@ log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
+
+
+class AnthropicCacheControl(TypedDict):
+    type: Literal["ephemeral"]
+
+
+class AnthropicSystemTextBlock(TypedDict, total=False):
+    type: Literal["text"]
+    text: str
+    cache_control: AnthropicCacheControl
+
+
+AnthropicSystemPrompt = str | list[AnthropicSystemTextBlock]
 
 
 @dataclass(frozen=True)
@@ -106,6 +119,25 @@ def anthropic_user_message(reason: str) -> str:
     return "The coach couldn't answer just now. Please try again in a moment."
 
 
+def _usage_int(usage: dict[str, Any], key: str) -> int | None:
+    value = usage.get(key)
+    return value if isinstance(value, int) else None
+
+
+def _log_usage(raw: dict[str, Any], *, model_name: str) -> None:
+    usage = raw.get("usage")
+    if not isinstance(usage, dict):
+        return
+    log.info(
+        "anthropic_usage",
+        model_name=model_name,
+        input_tokens=_usage_int(usage, "input_tokens"),
+        output_tokens=_usage_int(usage, "output_tokens"),
+        cache_creation_input_tokens=_usage_int(usage, "cache_creation_input_tokens"),
+        cache_read_input_tokens=_usage_int(usage, "cache_read_input_tokens"),
+    )
+
+
 def _error_from_http_status(exc: httpx.HTTPStatusError) -> AnthropicApiError:
     """Parse + log an Anthropic non-2xx into a classified error (Batch 141).
 
@@ -152,14 +184,16 @@ async def generate_anthropic_text(
     api_key: str,
     model_name: str,
     max_tokens: int,
-    system_prompt: str,
+    system_prompt: AnthropicSystemPrompt,
     user_prompt: str,
     error_cls: type[Exception],
     prior_messages: list[dict[str, str]] | None = None,
 ) -> AnthropicTextResult:
     """``prior_messages`` (optional) carries earlier user/assistant turns before
     ``user_prompt`` for a multi-turn conversation (Batch 119's brief follow-up
-    chat); single-turn callers omit it and behave exactly as before.
+    chat); single-turn callers omit it and behave exactly as before. ``system_prompt``
+    may be the original string form or an Anthropic system-block list when a caller
+    needs a cache breakpoint.
 
     A non-2xx from Anthropic raises :class:`AnthropicApiError` (with a classified
     ``reason``); a well-formed response that is unusable (max_tokens, no text, not a
@@ -208,8 +242,10 @@ async def generate_anthropic_text(
         raise error_cls("Claude response did not contain text output.")
 
     model = raw.get("model")
+    resolved_model = model if isinstance(model, str) else model_name
+    _log_usage(raw, model_name=resolved_model)
     return AnthropicTextResult(
         output_markdown=output,
         raw_response=raw,
-        model_name=model if isinstance(model, str) else model_name,
+        model_name=resolved_model,
     )
