@@ -2531,3 +2531,82 @@ of these is blocked; all are deliberately deferred on value-per-batch at a 1–2
 * **Response compression.** Noted by Batch 206 and still true: there is no `GZipMiddleware`
   anywhere in the API and nothing in `vercel.json`, so every response is served
   uncompressed. A cross-cutting win, unrelated to this wave. **Trigger:** its own batch.
+
+## Post-roadmap — 2026-08-25 — Mark feedback 2026-08-21/24: the trend series reads a row that cannot hold the metric (Batches 225–227)
+
+Craig relayed three points of Mark's feedback (2026-08-21 and 2026-08-24, sent before Batches
+222–224 shipped but reconciled here against current `main` and against live production). One
+is already fixed, one is a false statement the app is still making every time Mark opens
+Trends, and one is a flag that has been firing six nights in seven without ever being wrong or
+right.
+
+**Every claim below was verified against production, not transcribed from the reports.** The
+decisive evidence in each case is a number the app itself stored:
+
+* **Mark's own diagnostic on the VO2 max gap was correct, and it points straight at the
+  cause.** He wrote: "*oddly app always notes vo2 in post workout feedback so it is getting it
+  but here it thinks it isn't.*" Both halves are true and they read different rows.
+  `trends.py:756` collapses history with `index_morning_by_date`, while post-workout and chat
+  call `resolve_effective_vo2max` (`body_metrics.py:69`), which scans a lookback window for the
+  most recent non-null value regardless of phase. **VO2 max is a post-activity measurement:
+  Garmin recomputes it after the ride, so it can never be on a wake row.** Production, by month
+  and phase — July: 13 settled rows carry a reading, **0 of 30 morning rows do**; August: 13
+  settled, **0 of 26 morning**. March–May survive only because no morning row exists yet to
+  mask them, which is exactly why the report's spring numbers are right and its summer numbers
+  are empty.
+* **The failure is not a gap, it is an inversion.** True monthly means, settled-preferred:
+  53.77 → 53.15 → 52.53 → 53.59 → **55.04 → 55.25**. Mark's VO2 max has risen roughly 2.7
+  points off the May trough to the highest values in the window. The stored `seasonal_trend`
+  packet behind his screenshot (generated 2026-08-21 09:37 UTC) holds `sampleCount: 0` and
+  `currentMean: null` for both summer months and `status: insufficient_history` on the
+  year-on-year row, so the model reported its packet faithfully. **The app told him a genuine
+  training gain was a decline, and then told him twice that no conclusion could be drawn.**
+  This is the false-fact failure Batch 214 named as worse than a missing one, and it is the
+  third consumer-side casualty of the Batch 205 row split after Body Battery charge (216) and
+  drain (224).
+* **Point 2 is already fixed and was fixed after he wrote.** His 08-21 screenshot shows both
+  Body Battery rows blank; PR #256 (`711055a`, Batch 224) landed 08-24. Verified live: the
+  08-24 packet holds `currentValue: null` for both, and the **08-25 packet holds charge 65
+  against median 68, delta −3**, with the basis line naming it as the overnight figure. Drain
+  is still blank *by design* and now carries a visible `unavailableReason`. **His second
+  sentence is the part that survives** — "*Does include figures in comments but no reference to
+  vs median or trends*" — and it is measurably true: today's packet carries
+  `yesterdayLoad.wholeDayCost.bodyBatteryDrained: 66` with `coverage: complete`, and his drain
+  baseline is median 67, IQR 57.5–75. The figure and the baseline that explains it sit in the
+  same packet, one join apart, and nothing joins them.
+* **The REM flag has no personal reference because none exists to have.** REM is absent from
+  `BASELINE_SPECS` (`sleep_history.py:84`) and from the trends `METRICS` registry
+  (`trends.py:117`); the morning packet carries last night's `remSleepMin` and no history at
+  all. The coach is asked to comment on a number it has no distribution for, against an age
+  band of 15–23% (`age_norms.py:160`) — and across **428 nights Mark's median REM is 10.0%**
+  (IQR 7.1–12.9), with **85% of nights below the band floor.** So "low REM" fires roughly six
+  nights in seven and carries no information either way. Last night is the cost of that stated
+  plainly: 74 min was far above his own p75, an unusually strong night, and the app had no way
+  to tell him.
+
+**Sequencing: 225 → 226 → 227.** 225 is the only one making Mark a false statement today. 226
+is the smallest. 227 is the one he has now raised repeatedly and the only one that changes what
+the coach can say about a metric it has been nagging him about for months.
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 225 — VO2 max is read from the row that can hold it | 🔴 High | Planned | 225.1 **Reproduce the false statement before changing anything.** Confirm against the stored `seasonal_trend` packet that `vo2max` carries `sampleCount: 0` for 2026-07 and 2026-08 and `status: insufficient_history` year-on-year, and against `coach.daily_metrics` that the same months hold 13 settled readings each and zero morning ones. The bug is a masked value, not a missing one — a morning row exists for every date from July, and `_collapse` prefers it.<br>225.2 **Fix it as a field-level phase exception, which is the pattern the module already documents.** `daily_metric_phase.py:79` (`index_day_aggregates_by_date`) exists precisely because some fields mean something only on the settled row; VO2 max is the same shape for the opposite reason — it is written after the day's activity, so a wake row can never carry it. Resolve `vo2max` per date from the settled row, falling back to morning, while every recovery read on the same date (`readiness_score`, `resting_heart_rate_bpm`, `hrv_*`) stays on the morning row unchanged. Do **not** lift the morning preference wholesale: that is what Batch 205 exists to enforce.<br>225.3 **Fix all three consumers, not just the one Mark reported.** (a) `trends.py:756` — the monthly/seasonal series and the year-on-year window. (b) `morning_analysis.py:1685` — `_age_comparison` reads `daily_metric.vo2max` from the morning row, so `ageComparison` has silently carried **no `vo2max` key at all** since July; verified absent from the 2026-08-25 packet, whose keys are `age`, `rows`, `ageBand`, `sleepRows`, `fitnessAge`, `fitnessAgeTone`, `fitnessAgeDelta`. `fitnessAge` survives only because `_extract_fitness_age` reads `raw_payload` without a date filter. (c) `morning_analysis.py:1342` — `dailyMetrics.vo2max`, also `null` today.<br>225.4 **Encode the non-cause so a later session does not "fix" it.** `garmin_sync.py:822` stores `vo2max` only when Garmin's `calendarDate` matches the sync date. That is why even healthy months carry 13–18 readings rather than 30, and it is **correct** — Garmin recomputes VO2 max only after a qualifying activity. Do not widen it into a carry-forward at ingest; if the series should read as continuous, that is a presentation decision for the trends reducer, made explicitly and stated in the packet.<br>225.5 **Regenerate what Mark already read.** The 08-21 seasonal trend is stored and wrong. Re-run it after the fix so the next open shows the real series, and confirm the regenerated packet reports non-zero July/August sample counts and a rising summer mean.<br>225.6 Tests: a two-phase fixture where the settled row holds `vo2max` and the morning row holds `None`, asserting the trend window counts the reading and the recovery fields still come from the morning row; an `ageComparison` case asserting a `vo2max` row appears; a regression pinning that a date with only a morning row does not drop out of the window. | The trend series reports the VO2 max Mark's watch actually recorded, so the app stops describing a 2.7-point summer gain as a decline it cannot draw conclusions about. | July and August report their true sample counts and means on a regenerated trends read; `ageComparison` carries a `vo2max` row again; every Batch 205 morning-row assertion survives unchanged; no change to what `garmin_sync` stores. |
+| Batch 226 — The closed day's Body Battery drain meets the baseline that describes it | 🟢 Mid | Planned | 226.1 **Start from what 224 settled, and do not reopen it.** Morning drain stays withheld with its visible reason: it is a part-day total and the baseline is a full-day figure. That decision is correct and this batch must not weaken it.<br>226.2 **Name the real gap: the closed-day drain is never compared to anything, on any surface.** `MetricComparisonTable` renders only from a stored morning packet (`DashboardPage`, `SleepPage`, `MorningBriefPage`), and at generation time the settled row for that date does not exist yet — so the drain row's baseline is structurally unreachable there. Meanwhile `_yesterday_load_packet` (`morning_analysis.py:1971`) already carries **yesterday's finished** figure: today's packet holds `bodyBatteryDrained: 66` with `coverage: complete`, beside a stored baseline of median 67, IQR 57.5–75. This is exactly what Mark reported — the number reaches the prose, the comparison never does.<br>226.3 **Attach the baseline to the whole-day-cost packet.** Give `yesterdayLoad.wholeDayCost` the same baseline shape the metrics table already uses (median, quartiles, delta, sample count) for the fields it holds, so the coach can write "*yesterday drained 66, dead on your median of 67*" instead of a bare figure. Reuse the stored `metric_baselines` rows rather than recomputing.<br>226.4 **Include `allDayStressAvg` in the same pass, and be honest about what is missing.** Batch 224.4 established that `stress_avg` has no metrics-vs-baselines row at all; if no stored baseline exists for it, say so in the packet rather than emitting a number with no reference — the same rule this wave applies to REM.<br>226.5 **Say it once, not twice.** The prompt must not produce both a bare figure and a compared figure for the same metric; the compared form replaces it.<br>226.6 Tests: a fixture asserting a complete-coverage yesterday drain emits its baseline and delta; a fixture asserting an incomplete or absent yesterday row emits neither a comparison nor a bare number; a regression pinning that the morning metrics-table drain row is untouched. | When the app tells Mark what yesterday cost him, it says whether that was normal for him. | Yesterday's drain appears with its median, quartiles and delta wherever the figure appears; a metric with no stored baseline is stated as such rather than compared; Batch 224's morning withhold is byte-for-byte unchanged. |
+| Batch 227 — REM is judged against Mark before it is judged against a population | 🔴 High | Planned | 227.1 **Measure the flag before redesigning it.** Over 428 nights Mark's median REM is 10.0% of measured sleep (IQR 7.1–12.9) against a 50–59 band of 15–23%; **85% of his nights fall below the floor.** A flag that fires six nights in seven is not a signal, and this is the third feedback wave to raise it (08-19, 08-21, and again here). Establish the same figures at build time rather than trusting these.<br>227.2 **Give REM a personal baseline.** Add it to `BASELINE_SPECS` (`sleep_history.py:84`) so it acquires the median/quartile/sample-count treatment every other tracked metric already has, and to the trends `METRICS` registry (`trends.py:117`) so it gains a month-over-month series. Both registries are ordered tuples consumed generically; the backfill in `metric_baselines.py` already reads sleep-stage fields, so confirm whether a backfill run is needed or whether the nightly path fills it forward.<br>227.3 **Resolve the denominator split — the same night currently has two REM percentages.** `experiment_loop.py:511` divides by `duration_sec` (**16.41%** on 2026-08-25); `age_norms.py:511` divides by measured stages including awake (**15.55%** the same night). One of those is above the 15% band floor and one is below it, in the same packet, for the same sleep. Pick one definition, state it where the number is surfaced, and make both call sites use it.<br>227.4 **Change what the flag is allowed to say.** The trends prompt already requires readiness, HRV and resting HR to be read against `personalBaselines` before alarming language; REM was simply never in that set. With a baseline present, a night must be described relative to Mark first — *"74 min, well above your own 51-min median"* — and only then, if useful, against the age band, with the band's distance from his own norm stated honestly rather than implied to be a target he is failing.<br>227.5 **Do not duplicate Batch 221.** 221 measures whether an issued *intervention* moved REM, and its four experiments are live and recording (verified: each carries observations and an evaluation in the 08-25 packet). This batch supplies the distribution 221 has no access to; the two should join, not overlap.<br>227.6 Tests: a baseline-computation case over a REM-bearing sleep history; a packet case asserting REM carries median/quartiles; a case asserting the two call sites now agree on one percentage for one night; a prompt-contract case asserting the personal comparison precedes the age band. | Mark's REM is described against his own 428-night record, so "low" means low for him and an unusually good night can finally be recognised as one. | REM carries a personal baseline and a trend series; one REM percentage per night across all call sites; the age band is context rather than the sole verdict; Batch 221's experiment evidence is unaffected. |
+
+### Recorded, not scheduled
+
+* **A second profile can silently ingest the first user's Garmin data.** On 2026-08-24 19:22 a
+  `Craig` profile (role `player`) appeared in production. Craig confirmed he did not create it;
+  it was hard-deleted on 2026-08-25 (146 rows across 11 tables; backup at
+  `~/craig-profile-backup-2026-08-25.json`). It had two activated devices, an imported
+  58-workout plan, and generated its own morning brief — a second paid Claude call per day.
+  **Nothing in the codebase can create a profile except `seeds.py`, which hardcodes
+  `MARK_DISPLAY_NAME`;** `activate.py` raises "Active profile not found" rather than creating
+  one, and no router or script constructs `Profile(...)`. So the row can only have come from
+  direct SQL. The durable finding is the one underneath it: its `garmin_user_profile_pk` was
+  `null`, yet it ingested Mark's Garmin history byte-for-byte, because sync keys off the single
+  global tokenstore rather than the profile's own Garmin identity. **Trigger:** any real second
+  user, which the product brief explicitly allows ("1–2 private users") — or a second profile
+  reappearing without explanation, which would mean the creation path is not what this note
+  says it is.
