@@ -170,7 +170,7 @@ from src.services.workout_delivery import build_structured_workout_ir
 # identity is (user, date, checkInVersion, promptVersion) and does *not* hash the
 # packet, so without it an already-generated pre-fix brief would be served as
 # current on the day this ships.
-PROMPT_VERSION = "morning-analysis-v34-2026-08-24"
+PROMPT_VERSION = "morning-analysis-v35-2026-08-25"
 ANALYSIS_TYPE = "morning"
 # Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
 # signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
@@ -354,6 +354,9 @@ State it as his current VO2max; if vo2maxAsOfDate is not today, say the reading
 is from that date rather than implying it was measured today. Only remark on a
 change if you are comparing against a figure explicitly given elsewhere in this
 same packet — never invent a trend from memory or from a single reading alone.
+dailyMetrics.vo2max and the ageComparison VO2 max row carry that same reading and
+the same rule: dailyMetrics.vo2maxAsOfDate states the day it was measured, so
+treat all three as one figure rather than as separate readings to compare.
 This is explanatory context only and never moves the Green/Amber/Red verdict.
 When Mark questions where a figure came from, answer from the basis the app
 states and never invent a mechanism for how the app reached it - quote that basis
@@ -509,7 +512,9 @@ class MorningAnalysisService:
             age_adjusted_sleep_score,
             day_aggregates=day_aggregate_metric,
         )
-        age_comparison = _age_comparison(daily_metric, sleep, knowledge_base)
+        age_comparison = _age_comparison(
+            daily_metric, sleep, knowledge_base, vo2max=effective_vo2max
+        )
         thermal_review = _thermal_review(
             temperature_rows,
             weather,
@@ -521,7 +526,9 @@ class MorningAnalysisService:
         # the pre-cool action should surface. Outside a holiday window (including
         # an all-skipped rest day, which still happens at home) the review stands.
         thermal_review_for_output = None if rest_day["insideHolidayWindow"] else thermal_review
-        daily_metric_packet = _daily_metric_packet(daily_metric)
+        daily_metric_packet = _daily_metric_packet(
+            daily_metric, vo2max=effective_vo2max, vo2max_as_of_date=vo2max_as_of_date
+        )
         verdict = _morning_verdict(
             daily_metric=daily_metric,
             sleep=sleep,
@@ -1316,9 +1323,18 @@ def _training_and_activity_fields(raw_payload: Mapping[str, Any]) -> dict[str, A
     }
 
 
-def _daily_metric_packet(row: DailyMetric | None) -> dict[str, Any] | None:
+def _daily_metric_packet(
+    row: DailyMetric | None,
+    *,
+    vo2max: float | None = None,
+    vo2max_as_of_date: date | None = None,
+) -> dict[str, Any] | None:
     if row is None:
         return None
+    resolved_vo2max = row.vo2max
+    resolved_vo2max_as_of = row.calendar_date if row.vo2max is not None else None
+    if resolved_vo2max is None and vo2max is not None:
+        resolved_vo2max, resolved_vo2max_as_of = vo2max, vo2max_as_of_date
     packet = {
         "calendarDate": row.calendar_date.isoformat(),
         "recordedAtUtc": _dt(row.recorded_at_utc),
@@ -1339,7 +1355,15 @@ def _daily_metric_packet(row: DailyMetric | None) -> dict[str, Any] | None:
         "bodyBatteryDrained": row.body_battery_drained,
         "bodyBatteryEnd": row.body_battery_end,
         "weightKg": row.weight_kg,
-        "vo2max": row.vo2max,
+        # Batch 225: this row is the wake observation, and Garmin writes VO2 max
+        # only after the day's activity — so its own column is null on every
+        # morning brief, which is what left `dailyMetrics.vo2max` null from July
+        # onward. Prefer the row's own reading where it has one (true of this
+        # date by construction); otherwise carry the resolved live value and say
+        # which day it was measured, the convention `athleteProfile` already
+        # uses (Batch 177). Never present a carried figure without its date.
+        "vo2max": resolved_vo2max,
+        "vo2maxAsOfDate": resolved_vo2max_as_of.isoformat() if resolved_vo2max_as_of else None,
     }
     packet.update(_training_and_activity_fields(row.raw_payload or {}))
     return packet
@@ -1664,8 +1688,19 @@ def _age_comparison(
     daily_metric: DailyMetric | None,
     sleep: Sleep | None,
     knowledge_base: Mapping[str, Any],
+    *,
+    vo2max: float | None = None,
 ) -> dict[str, Any]:
-    """Build the "vs the average for your age" packet (services/age_norms.py)."""
+    """Build the "vs the average for your age" packet (services/age_norms.py).
+
+    Batch 225: ``vo2max`` is passed in rather than read off ``daily_metric``.
+    The wake row never carries one (Garmin writes it after the day's activity),
+    so reading the column dropped the VO2 max row out of ``ageComparison``
+    entirely from July onward — silently, because ``build_age_comparison``
+    drops a row for any metric it is given as ``None``. The frontend has had a
+    dedicated code path for that row the whole time (``MetricComparisonTable``
+    calls it out by name); it was simply never given anything to render.
+    """
     profile = knowledge_base.get("profile", {})
     profile = profile if isinstance(profile, Mapping) else {}
     age = profile.get("age")
@@ -1682,7 +1717,7 @@ def _age_comparison(
     return build_age_comparison(
         age=int(age) if isinstance(age, int | float) else None,
         sex=sex if isinstance(sex, str) else None,
-        vo2max=daily_metric.vo2max if daily_metric else None,
+        vo2max=_first_not_none(vo2max, daily_metric.vo2max if daily_metric else None),
         resting_heart_rate_bpm=resting_hr,
         hrv_overnight_ms=hrv,
         fitness_age=_extract_fitness_age(daily_metric.raw_payload if daily_metric else None),

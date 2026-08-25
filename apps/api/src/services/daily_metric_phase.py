@@ -24,6 +24,14 @@ Which phase a consumer wants is a real decision, recorded at each call site:
 Both directions fall back to the other phase when the preferred one is missing,
 so a date with no stored morning read still contributes its settled row rather
 than dropping out of a window entirely.
+
+Two **field-level** exceptions sit on top of that, and neither is a change of
+mind about which row a consumer means. ``index_day_aggregates_by_date`` (Batch
+216) takes running local-day totals off the settled row because the wake row
+holds a real but partial figure; ``index_post_activity_by_date`` (Batch 225)
+takes ``vo2max`` off it because the wake row holds *nothing* — Garmin writes the
+number after the day's activity. Both are named so the reason survives at the
+call site; neither moves the recovery reads on the same date.
 """
 
 from collections.abc import Iterable
@@ -38,7 +46,9 @@ from src.models.coaching import (
 )
 
 __all__ = [
+    "index_day_aggregates_by_date",
     "index_morning_by_date",
+    "index_post_activity_by_date",
     "index_settled_by_date",
     "morning_first_order",
     "prefer_morning",
@@ -87,6 +97,28 @@ def index_day_aggregates_by_date(rows: Iterable[DailyMetric]) -> dict[date, Dail
     blank every historical day's value; taking them off the settled row is what
     those columns mean. Recovery readings on the same date still come from
     ``index_morning_by_date``.
+    """
+    return index_settled_by_date(rows)
+
+
+def index_post_activity_by_date(rows: Iterable[DailyMetric]) -> dict[date, DailyMetric]:
+    """``{calendar_date: the row that can hold a post-activity reading}``.
+
+    The mirror image of :func:`index_day_aggregates_by_date`, and a field-level
+    exception for the opposite reason. VO2 max is not a running local-day total
+    the wake row holds a *partial* copy of — Garmin recomputes it only after a
+    qualifying activity, so on a two-phase date the wake row is structurally
+    empty and the settled row is the only one that ever carries the number.
+    Preferring morning here does not return a worse value, it returns ``None``:
+    in production July holds 13 settled readings against **none** across its 30
+    morning rows, and August 12 against 25 (measured 2026-08-25).
+
+    The fallback to the morning row is load-bearing rather than defensive
+    padding. Exactly one morning row has ever carried a ``vo2max`` — 2026-06-21,
+    the first date two-phase writes existed — and a settled-only lookup would
+    drop that reading and that date's whole sample. Recovery readings on the
+    same date still come from :func:`index_morning_by_date` (Batch 205); this
+    exception is for ``vo2max`` alone.
     """
     return index_settled_by_date(rows)
 

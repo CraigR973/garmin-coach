@@ -11,6 +11,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 
 from src.models.coaching import (
+    DAILY_METRIC_PHASE_MORNING,
+    DAILY_METRIC_PHASE_SETTLED,
     Activity,
     Analysis,
     DailyMetric,
@@ -33,6 +35,7 @@ from src.services.morning_analysis import (
     ClaudeGenerationResult,
     MorningAnalysisError,
     MorningAnalysisService,
+    _age_comparison,
     _daily_metric_packet,
     _date_label,
     _eased_ride_detail,
@@ -1586,7 +1589,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v34")
+    assert PROMPT_VERSION.startswith("morning-analysis-v35")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
@@ -3458,3 +3461,97 @@ def test_thermal_action_ignores_a_cool_room() -> None:
     assert _thermal_action({"flags": ["wind_disruption_watch"]}) is None
     assert _thermal_action({"flags": []}) is None
     assert _thermal_action({}) is None
+
+
+# ---------------------------------------------------------------------------
+# Batch 225 — VO2 max reaches the two morning-brief consumers
+# ---------------------------------------------------------------------------
+
+_AGE_57_KB = {"profile": {"age": 57, "sex": "male"}}
+
+
+def test_age_comparison_carries_a_vo2max_row_from_the_resolved_reading() -> None:
+    """The silent half of the defect: ``ageComparison`` has carried no ``vo2max``
+    key at all since July, because ``build_age_comparison`` drops a row for any
+    metric handed to it as ``None`` and the wake row's column is always null."""
+    morning_row = DailyMetric(
+        user_id=uuid.uuid4(),
+        calendar_date=date(2026, 8, 25),
+        phase=DAILY_METRIC_PHASE_MORNING,
+        resting_heart_rate_bpm=45,
+        hrv_weekly_avg_ms=51,
+        vo2max=None,
+    )
+
+    packet = _age_comparison(morning_row, None, _AGE_57_KB, vo2max=55.5)
+
+    row = next(r for r in packet["rows"] if r["metricKey"] == "vo2max")
+    assert row["value"] == pytest.approx(55.5)
+    assert row["ageBand"] == "50–59"
+
+
+def test_age_comparison_without_a_resolved_reading_is_unchanged() -> None:
+    """No reading inside the 90-day window is still an honestly absent row, not
+    a zero — the pre-Batch-225 behaviour for a genuinely empty history."""
+    morning_row = DailyMetric(
+        user_id=uuid.uuid4(),
+        calendar_date=date(2026, 8, 25),
+        phase=DAILY_METRIC_PHASE_MORNING,
+        resting_heart_rate_bpm=45,
+        vo2max=None,
+    )
+
+    packet = _age_comparison(morning_row, None, _AGE_57_KB, vo2max=None)
+
+    assert [r["metricKey"] for r in packet["rows"]] == ["resting_heart_rate_bpm"]
+
+
+def test_daily_metric_packet_carries_the_resolved_vo2max_with_its_date() -> None:
+    """A carried-forward figure is never presented without the day it was
+    measured — the convention ``athleteProfile.vo2maxAsOfDate`` already uses."""
+    row = DailyMetric(
+        user_id=uuid.uuid4(),
+        calendar_date=date(2026, 8, 25),
+        phase=DAILY_METRIC_PHASE_MORNING,
+        vo2max=None,
+    )
+
+    packet = _daily_metric_packet(row, vo2max=55.5, vo2max_as_of_date=date(2026, 8, 22))
+
+    assert packet is not None
+    assert packet["vo2max"] == pytest.approx(55.5)
+    assert packet["vo2maxAsOfDate"] == "2026-08-22"
+
+
+def test_daily_metric_packet_prefers_the_rows_own_vo2max() -> None:
+    """A settled row read back historically holds the reading for *its* date, so
+    the carried value must not overwrite it."""
+    row = DailyMetric(
+        user_id=uuid.uuid4(),
+        calendar_date=date(2026, 8, 22),
+        phase=DAILY_METRIC_PHASE_SETTLED,
+        vo2max=55.5,
+    )
+
+    packet = _daily_metric_packet(row, vo2max=48.0, vo2max_as_of_date=date(2026, 5, 1))
+
+    assert packet is not None
+    assert packet["vo2max"] == pytest.approx(55.5)
+    assert packet["vo2maxAsOfDate"] == "2026-08-22"
+
+
+def test_daily_metric_packet_states_no_vo2max_rather_than_a_bare_null() -> None:
+    """No row value and nothing resolvable — both fields null together, so the
+    packet never carries a date for a reading it does not have."""
+    row = DailyMetric(
+        user_id=uuid.uuid4(),
+        calendar_date=date(2026, 8, 25),
+        phase=DAILY_METRIC_PHASE_MORNING,
+        vo2max=None,
+    )
+
+    packet = _daily_metric_packet(row)
+
+    assert packet is not None
+    assert packet["vo2max"] is None
+    assert packet["vo2maxAsOfDate"] is None

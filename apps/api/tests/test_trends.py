@@ -17,7 +17,13 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
-from src.models.coaching import Analysis, DailyMetric, Sleep
+from src.models.coaching import (
+    DAILY_METRIC_PHASE_MORNING,
+    DAILY_METRIC_PHASE_SETTLED,
+    Analysis,
+    DailyMetric,
+    Sleep,
+)
 from src.models.profile import Profile, UserRole
 from src.services.reviews import ClaudeReviewResult
 from src.services.trends import (
@@ -330,3 +336,102 @@ async def test_narrative_run_reports_insufficient_history_without_calling_model(
             .where(Analysis.analysis_type == ANALYSIS_TYPE_SEASONAL)
         )
         assert count == 0
+
+
+# ---------------------------------------------------------------------------
+# Batch 225 — VO2 max is read from the row that can hold it
+# ---------------------------------------------------------------------------
+
+
+async def _seed_two_phase_july(db_conn: AsyncConnection, user_id: uuid.UUID) -> None:
+    """Six July days shaped like production since two-phase writes began.
+
+    Each date carries a wake row whose ``vo2max`` is null — Garmin has not yet
+    recomputed it — and a settled row that holds the reading. Readiness differs
+    between the two so a test can prove which row each field came from.
+    """
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        for i in range(6):
+            day = date(2026, 7, 1 + i)
+            session.add(
+                DailyMetric(
+                    user_id=user_id,
+                    calendar_date=day,
+                    phase=DAILY_METRIC_PHASE_MORNING,
+                    readiness_score=70,
+                    resting_heart_rate_bpm=44,
+                    vo2max=None,
+                )
+            )
+            session.add(
+                DailyMetric(
+                    user_id=user_id,
+                    calendar_date=day,
+                    phase=DAILY_METRIC_PHASE_SETTLED,
+                    readiness_score=30,
+                    resting_heart_rate_bpm=51,
+                    vo2max=55.0,
+                )
+            )
+            session.add(Sleep(user_id=user_id, calendar_date=day, score=72, duration_sec=27000))
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_trend_window_counts_the_settled_vo2max_reading(
+    db_conn: AsyncConnection,
+) -> None:
+    """The reported defect: July and August read ``sampleCount: 0`` while the
+    settled rows held 13 and 12 readings. Recovery fields must stay on the wake
+    row on the very same date (Batch 205)."""
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    await _seed_two_phase_july(db_conn, user_id)
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        profile = await session.get(Profile, user_id)
+        assert profile is not None
+        windows = await TrendsService(session).windows(
+            profile, bucket=BUCKET_MONTH, as_of=date(2026, 7, 31)
+        )
+
+    july = next(w for w in windows if w.key == "2026-07")
+    vo2max = july.metrics["vo2max"]
+    assert vo2max.sample_count == 6
+    assert vo2max.mean == pytest.approx(55.0)
+    # The split is the whole point: readiness and resting HR stay on the wake row.
+    assert july.metrics["readiness_score"].mean == pytest.approx(70.0)
+    assert july.metrics["resting_hr_bpm"].mean == pytest.approx(44.0)
+
+
+@pytest.mark.asyncio
+async def test_trend_window_keeps_a_morning_only_date(db_conn: AsyncConnection) -> None:
+    """2026-06-21 shape: a date whose only row is the wake one, holding the
+    reading. Preferring the settled row must fall back rather than drop it."""
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        for i in range(6):
+            day = date(2026, 7, 1 + i)
+            session.add(
+                DailyMetric(
+                    user_id=user_id,
+                    calendar_date=day,
+                    phase=DAILY_METRIC_PHASE_MORNING,
+                    readiness_score=66,
+                    vo2max=53.5,
+                )
+            )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        profile = await session.get(Profile, user_id)
+        assert profile is not None
+        windows = await TrendsService(session).windows(
+            profile, bucket=BUCKET_MONTH, as_of=date(2026, 7, 31)
+        )
+
+    july = next(w for w in windows if w.key == "2026-07")
+    assert july.sample_days == 6
+    assert july.metrics["vo2max"].sample_count == 6
+    assert july.metrics["vo2max"].mean == pytest.approx(53.5)

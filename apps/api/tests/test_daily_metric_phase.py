@@ -32,6 +32,7 @@ from src.models.profile import Profile, UserRole
 from src.services.daily_metric_phase import (
     index_day_aggregates_by_date,
     index_morning_by_date,
+    index_post_activity_by_date,
     prefer_morning,
     prefer_settled,
 )
@@ -497,3 +498,60 @@ def test_recorded_at_is_the_readings_own_garmin_timestamp() -> None:
     )
 
     assert fields["recorded_at_utc"] == datetime(2026, 7, 30, 20, 41)
+
+
+# --- Batch 225: the post-activity field-level exception ---------------------
+
+
+def _vo2_row(day: date, phase: str, *, readiness: int, vo2max: float | None) -> DailyMetric:
+    return DailyMetric(
+        user_id=uuid.uuid4(),
+        calendar_date=day,
+        phase=phase,
+        readiness_score=readiness,
+        vo2max=vo2max,
+    )
+
+
+def test_post_activity_index_takes_vo2max_off_the_settled_row() -> None:
+    """The July/August case: 13 settled readings, none across 30 morning rows.
+
+    Garmin recomputes VO2 max after a qualifying activity, so the wake row is
+    not holding a *worse* number — it is holding ``None``, and the collapse that
+    prefers it reported ``sampleCount: 0`` for the whole summer.
+    """
+    rows = [
+        _vo2_row(DAY, MORNING, readiness=64, vo2max=None),
+        _vo2_row(DAY, SETTLED, readiness=19, vo2max=55.2),
+    ]
+
+    assert index_post_activity_by_date(rows)[DAY].vo2max == 55.2
+    # The same date's recovery reads are untouched — Batch 205 still holds.
+    assert index_morning_by_date(rows)[DAY].readiness_score == 64
+    assert index_morning_by_date(rows)[DAY].vo2max is None
+
+
+def test_post_activity_index_keeps_a_morning_only_date_in_the_window() -> None:
+    """2026-06-21 — the first two-phase date, and the only morning row that has
+    ever carried a ``vo2max``. A settled-only lookup would drop both the reading
+    and the date's whole sample."""
+    first_two_phase_day = date(2026, 6, 21)
+    rows = [_vo2_row(first_two_phase_day, MORNING, readiness=58, vo2max=53.5)]
+
+    indexed = index_post_activity_by_date(rows)
+
+    assert set(indexed) == {first_two_phase_day}
+    assert indexed[first_two_phase_day].vo2max == 53.5
+
+
+def test_post_activity_and_morning_indexes_cover_the_same_dates() -> None:
+    """The trends reducer looks both up per date, so a date present in one and
+    absent from the other would silently drop out of a window."""
+    other = DAY + timedelta(days=1)
+    rows = [
+        _vo2_row(DAY, MORNING, readiness=64, vo2max=None),
+        _vo2_row(DAY, SETTLED, readiness=19, vo2max=55.2),
+        _vo2_row(other, SETTLED, readiness=61, vo2max=None),
+    ]
+
+    assert set(index_post_activity_by_date(rows)) == set(index_morning_by_date(rows))
