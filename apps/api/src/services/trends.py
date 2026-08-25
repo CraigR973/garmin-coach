@@ -55,7 +55,10 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile
-from src.services.daily_metric_phase import index_morning_by_date
+from src.services.daily_metric_phase import (
+    index_morning_by_date,
+    index_post_activity_by_date,
+)
 from src.services.personal_baselines import baseline_band_packet
 from src.services.reviews import (
     AnthropicReviewClient,
@@ -84,9 +87,14 @@ DEFAULT_MONTH_WINDOWS = 12
 DEFAULT_SEASON_WINDOWS = 8
 
 ANALYSIS_TYPE_SEASONAL = "seasonal_trend"
+# Batch 225 bumps both buckets: the packet contract changed underneath an
+# unchanged system prompt. Every stored window since two-phase writes began
+# carries `vo2max.sampleCount: 0` and a year-on-year `insufficient_history`
+# that were artefacts of reading the wake row, so the old narratives must stop
+# being served rather than be left to age out.
 PROMPT_VERSION_BY_BUCKET = {
-    BUCKET_MONTH: "trends-month-v4-2026-08-02",
-    BUCKET_SEASON: "trends-season-v4-2026-08-02",
+    BUCKET_MONTH: "trends-month-v5-2026-08-25",
+    BUCKET_SEASON: "trends-season-v5-2026-08-25",
 }
 
 # Indoor reading at/after this local hour belongs to the *next* morning's night.
@@ -754,6 +762,13 @@ class TrendsService:
         # Morning rows (Batch 205): a trend line Mark reads back must be the
         # series his briefs were built from, not the end-of-day one.
         metric_by_date = index_morning_by_date(metrics)
+        # Batch 225: VO2 max is the one field on this row Garmin writes *after*
+        # the day's activity, so the wake row cannot carry it and the collapse
+        # above was reporting `sampleCount: 0` for every month since two-phase
+        # writes began — a 2.7-point summer gain read back to Mark as a decline
+        # it had no data for. Its own index, so every recovery read on the same
+        # date stays on the morning row.
+        vo2max_by_date = index_post_activity_by_date(metrics)
         sleep_by_date = {s.calendar_date: s for s in sleeps}
         weather_by_date = {w.calendar_date: w for w in weather}
         all_days = set(metric_by_date) | set(sleep_by_date) | set(weather_by_date) | set(indoor)
@@ -761,6 +776,7 @@ class TrendsService:
         samples: list[TrendSample] = []
         for day in sorted(all_days):
             metric = metric_by_date.get(day)
+            vo2max_row = vo2max_by_date.get(day)
             sleep = sleep_by_date.get(day)
             weather_row = weather_by_date.get(day)
             samples.append(
@@ -771,7 +787,7 @@ class TrendsService:
                     hrv_ms=_as_float(metric.hrv_last_night_avg_ms) if metric else None,
                     readiness_score=metric.readiness_score if metric else None,
                     resting_hr_bpm=metric.resting_heart_rate_bpm if metric else None,
-                    vo2max=_as_float(metric.vo2max) if metric else None,
+                    vo2max=_as_float(vo2max_row.vo2max) if vo2max_row else None,
                     avg_spo2_pct=_as_float(sleep.average_spo2_pct) if sleep else None,
                     indoor_peak_c=indoor.get(day),
                     overnight_low_c=_as_float(weather_row.overnight_low_c) if weather_row else None,
