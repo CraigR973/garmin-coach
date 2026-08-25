@@ -40,6 +40,7 @@ from src.services.morning_analysis import (
     _date_label,
     _eased_ride_detail,
     _manual_entry_packet,
+    _metrics_vs_baselines,
     _morning_verdict,
     _plan_adjustments,
     _rest_day_context,
@@ -1589,7 +1590,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v35")
+    assert PROMPT_VERSION.startswith("morning-analysis-v36")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
@@ -2587,6 +2588,9 @@ def test_yesterday_load_packet_carries_hard_session_and_analysis_summary() -> No
             "asOfLocal": None,
         },
         "classificationImpact": "none",
+        # Batch 226: no finished-day figure to compare, so no empty comparison
+        # either — a figure with no value is omitted rather than annotated.
+        "baselines": {},
     }
 
 
@@ -2628,6 +2632,7 @@ async def test_yesterday_load_includes_whole_day_cost_without_exercise(
             user_id,
             subject_date,
             "Europe/London",
+            [_drain_baseline()],
         )
 
     assert packet["activityCount"] == 0
@@ -2646,8 +2651,37 @@ async def test_yesterday_load_includes_whole_day_cost_without_exercise(
             "asOfLocal": "2026-07-29T00:00:00",
         },
         "classificationImpact": "none",
+        # Batch 226: the finished day's cost now arrives with the distribution
+        # that describes it, wired all the way from the stored baseline rows.
+        "baselines": {
+            "bodyBatteryDrained": {
+                "metricKey": "body_battery_drain",
+                "label": "Body Battery drain",
+                "baselineMedian": 67.0,
+                "baselineMean": 64.58,
+                "deltaVsBaseline": 11.0,
+                "lowerQuartile": 57.5,
+                "upperQuartile": 75.0,
+                "sampleCount": 83,
+            },
+            "allDayStressAvg": {
+                "metricKey": "stress_avg",
+                "unavailableReason": (
+                    "The app has not computed a personal baseline for this figure, so there is "
+                    "nothing to compare it against."
+                ),
+            },
+            "bodyBatteryEnd": {
+                "metricKey": "body_battery_end",
+                "unavailableReason": (
+                    "The app has not computed a personal baseline for this figure, so there is "
+                    "nothing to compare it against."
+                ),
+            },
+        },
     }
     assert "`yesterdayLoad.wholeDayCost` independently" in SYSTEM_PROMPT
+    assert "the compared\nform replaces it" in SYSTEM_PROMPT
 
 
 def test_yesterday_load_omits_partial_day_aggregates() -> None:
@@ -3555,3 +3589,120 @@ def test_daily_metric_packet_states_no_vo2max_rather_than_a_bare_null() -> None:
     assert packet is not None
     assert packet["vo2max"] is None
     assert packet["vo2maxAsOfDate"] is None
+
+
+# ---------------------------------------------------------------------------
+# Batch 226 — the closed day's cost meets the baseline that describes it
+# ---------------------------------------------------------------------------
+
+
+def _closed_day_row(*, drained: int, stress: float, end: int) -> DailyMetric:
+    """A settled row whose Garmin source window covers the whole local day."""
+    return DailyMetric(
+        user_id=uuid.uuid4(),
+        calendar_date=date(2026, 8, 24),
+        phase=DAILY_METRIC_PHASE_SETTLED,
+        body_battery_drained=drained,
+        body_battery_end=end,
+        stress_avg=stress,
+        raw_payload=_daily_aggregate_raw(date(2026, 8, 24), "2026-08-25T00:00:00.0"),
+    )
+
+
+def _drain_baseline() -> MetricBaseline:
+    """Mark's live baseline as stored on 2026-08-25 (n=83 over 84 nights)."""
+    return MetricBaseline(
+        user_id=uuid.uuid4(),
+        metric_key="body_battery_drain",
+        metric_label="Body Battery drain",
+        source="db_history",
+        window_start_date=date(2026, 5, 29),
+        window_end_date=date(2026, 8, 20),
+        sample_count=83,
+        excluded_sample_count=0,
+        mean_value=64.58,
+        median_value=67.0,
+        lower_quartile_value=57.5,
+        upper_quartile_value=75.0,
+    )
+
+
+def test_complete_yesterday_drain_carries_its_baseline_and_delta() -> None:
+    """Mark's report: the figure reaches the read, the comparison never does.
+
+    The 2026-08-25 packet held `bodyBatteryDrained: 66` beside a stored median of
+    67 and nothing joined them.
+    """
+    packet = _yesterday_load_packet(
+        [], [], _closed_day_row(drained=66, stress=24.0, end=35), [_drain_baseline()]
+    )["wholeDayCost"]
+
+    assert packet["bodyBatteryDrained"] == 66
+    drain = packet["baselines"]["bodyBatteryDrained"]
+    assert drain["baselineMedian"] == 67.0
+    assert drain["deltaVsBaseline"] == pytest.approx(-1.0)
+    assert drain["lowerQuartile"] == 57.5
+    assert drain["upperQuartile"] == 75.0
+    assert drain["sampleCount"] == 83
+    assert "unavailableReason" not in drain
+
+
+def test_a_figure_with_no_stored_baseline_says_so_rather_than_comparing() -> None:
+    """226.4: production holds no `stress_avg` baseline at all, so all-day stress
+    must state the absence instead of arriving as an unanchored number."""
+    packet = _yesterday_load_packet(
+        [], [], _closed_day_row(drained=66, stress=24.0, end=35), [_drain_baseline()]
+    )["wholeDayCost"]
+
+    stress = packet["baselines"]["allDayStressAvg"]
+    assert stress["metricKey"] == "stress_avg"
+    assert "has not computed a personal baseline" in stress["unavailableReason"]
+    assert "baselineMedian" not in stress
+    # The same rule covers the third figure, which also has no baseline.
+    assert "unavailableReason" in packet["baselines"]["bodyBatteryEnd"]
+
+
+def test_an_incomplete_yesterday_emits_neither_a_number_nor_a_comparison() -> None:
+    """A part-day Garmin window already gates the value to None upstream; the
+    comparison must not appear on its own."""
+    partial = DailyMetric(
+        user_id=uuid.uuid4(),
+        calendar_date=date(2026, 8, 24),
+        phase=DAILY_METRIC_PHASE_SETTLED,
+        body_battery_drained=10,
+        body_battery_end=90,
+        stress_avg=14.0,
+        raw_payload=_daily_aggregate_raw(date(2026, 8, 24), "2026-08-24T08:44:00.0"),
+    )
+
+    packet = _yesterday_load_packet([], [], partial, [_drain_baseline()])["wholeDayCost"]
+
+    assert packet["bodyBatteryDrained"] is None
+    assert packet["baselines"] == {}
+
+
+def test_absent_yesterday_row_emits_no_comparison() -> None:
+    packet = _yesterday_load_packet([], [], None, [_drain_baseline()])["wholeDayCost"]
+
+    assert packet["baselines"] == {}
+    assert packet["coverage"]["status"] == "unknown"
+
+
+def test_morning_metrics_table_drain_row_is_untouched_by_batch_226() -> None:
+    """226.1: Batch 224's withhold must survive byte-for-byte. A morning-window
+    drain is still never compared against the full-day baseline."""
+    morning_row = DailyMetric(
+        user_id=uuid.uuid4(),
+        calendar_date=date(2026, 8, 25),
+        phase=DAILY_METRIC_PHASE_MORNING,
+        body_battery_drained=10,
+        raw_payload=_daily_aggregate_raw(date(2026, 8, 25), "2026-08-25T07:53:00.0"),
+    )
+
+    rows = _metrics_vs_baselines(morning_row, None, [_drain_baseline()], None, day_aggregates=None)
+
+    drain = next(r for r in rows if r["metricKey"] == "body_battery_drain")
+    assert drain["currentValue"] is None
+    assert "still a part-day value" in drain["unavailableReason"]
+    assert drain["lowerQuartile"] == 57.5
+    assert drain["upperQuartile"] == 75.0

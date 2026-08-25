@@ -170,7 +170,7 @@ from src.services.workout_delivery import build_structured_workout_ir
 # identity is (user, date, checkInVersion, promptVersion) and does *not* hash the
 # packet, so without it an already-generated pre-fix brief would be served as
 # current on the day this ships.
-PROMPT_VERSION = "morning-analysis-v35-2026-08-25"
+PROMPT_VERSION = "morning-analysis-v36-2026-08-25"
 ANALYSIS_TYPE = "morning"
 # Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
 # signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
@@ -284,7 +284,14 @@ Green/Amber/Red verdict. Each figure is populated only when its Garmin source
 window covers the closed local day. If wholeDayCost.coverage is incomplete or
 unknown, do not infer, reconstruct, or describe the missing figures as finished-
 day totals. Use the exercise fields to explain any eased ride after a hard prior
-session.
+session. wholeDayCost.baselines holds Mark's own distribution for those figures,
+keyed by the same field names. Where an entry carries baselineMedian, state the
+figure together with that median and deltaVsBaseline — "yesterday drained 66,
+dead on your 67 median" — and never also state the same figure bare: the compared
+form replaces it, it is not an addition to it. Where an entry carries
+unavailableReason instead, say plainly that the app has no personal baseline for
+that figure rather than describing it as normal, high, or low. A figure with no
+entry at all has no value this morning and must not be discussed.
 experimentLoop.experiments carries the app's current deterministic evaluation of
 each active experiment. Report a supported or refuted result when relevant; for
 an inconclusive or insufficient result, state the first supplied reason and the
@@ -478,7 +485,12 @@ class MorningAnalysisService:
             await self._readiness_history(player.id, subject_date),
             as_of=subject_date,
         )
-        yesterday_load = await self._yesterday_load(player.id, subject_date, player.timezone)
+        # Batch 226: the stored baselines are already loaded above, and this is the
+        # one packet holding a *finished* day's cost — so it is the only place the
+        # comparison Mark asked for can honestly be made.
+        yesterday_load = await self._yesterday_load(
+            player.id, subject_date, player.timezone, baselines
+        )
         weather = await self._weather(player.id, subject_date)
         temperature_rows = await self._overnight_temperature_rows(
             player.id,
@@ -1032,6 +1044,7 @@ class MorningAnalysisService:
         user_id: uuid.UUID,
         subject_date: date,
         timezone_name: str,
+        baselines: Sequence[MetricBaseline] = (),
     ) -> dict[str, Any]:
         yesterday = subject_date - timedelta(days=1)
         try:
@@ -1080,7 +1093,7 @@ class MorningAnalysisService:
             ),
         )
         if not activities:
-            return _yesterday_load_packet([], [], daily_metric)
+            return _yesterday_load_packet([], [], daily_metric, baselines)
 
         activity_ids = [activity.id for activity in activities]
         analyses = list(
@@ -1097,7 +1110,7 @@ class MorningAnalysisService:
             .scalars()
             .all()
         )
-        return _yesterday_load_packet(activities, analyses, daily_metric)
+        return _yesterday_load_packet(activities, analyses, daily_metric, baselines)
 
     async def _metric_baselines(self, user_id: uuid.UUID) -> list[MetricBaseline]:
         rows = (
@@ -1571,6 +1584,28 @@ def _age_adjusted_sleep_score(
     )
 
 
+def _baseline_comparison(baseline: MetricBaseline, current: float | int | None) -> dict[str, Any]:
+    """The median/quartile/delta frame behind every "is this normal for him?" read.
+
+    Batch 226: the metrics table and the closed-day whole-day-cost packet ask the
+    same question of the same stored rows, so they share one definition of what a
+    comparison *is* rather than each rounding its own delta. ``median`` is the
+    centre wherever one exists — a skewed 84-night window makes the mean the
+    weaker anchor — and falls back to it only when no median was computed.
+    """
+    center = _first_not_none(baseline.median_value, baseline.mean_value)
+    return {
+        "baselineMedian": baseline.median_value,
+        "baselineMean": baseline.mean_value,
+        "deltaVsBaseline": (
+            None if current is None or center is None else round(float(current) - float(center), 2)
+        ),
+        "lowerQuartile": baseline.lower_quartile_value,
+        "upperQuartile": baseline.upper_quartile_value,
+        "sampleCount": baseline.sample_count,
+    }
+
+
 def _metrics_vs_baselines(
     daily_metric: DailyMetric | None,
     sleep: Sleep | None,
@@ -1626,20 +1661,11 @@ def _metrics_vs_baselines(
     rows: list[dict[str, Any]] = []
     for baseline in baselines:
         current = current_values.get(baseline.metric_key)
-        center = _first_not_none(baseline.median_value, baseline.mean_value)
-        delta = (
-            None if current is None or center is None else round(float(current) - float(center), 2)
-        )
         row = {
             "metricKey": baseline.metric_key,
             "label": baseline.metric_label,
             "currentValue": current,
-            "baselineMedian": baseline.median_value,
-            "baselineMean": baseline.mean_value,
-            "deltaVsBaseline": delta,
-            "lowerQuartile": baseline.lower_quartile_value,
-            "upperQuartile": baseline.upper_quartile_value,
-            "sampleCount": baseline.sample_count,
+            **_baseline_comparison(baseline, current),
             "excludedSampleCount": baseline.excluded_sample_count,
             "reliabilityStartDate": (
                 baseline.reliability_start_date.isoformat()
@@ -2003,20 +2029,72 @@ def build_today_actions(
     return actions[:max_actions]
 
 
+# Batch 226: the whole-day-cost figures, mapped to the stored baseline that
+# describes each one. Drain is the only one of the three Mark has a personal
+# distribution for; stress and end-of-day level are named here anyway so the
+# packet can say *why* they are uncompared instead of leaving a bare number to
+# be read as normal or abnormal at the model's discretion.
+_WHOLE_DAY_COST_BASELINE_KEYS: tuple[tuple[str, str], ...] = (
+    ("bodyBatteryDrained", "body_battery_drain"),
+    ("allDayStressAvg", "stress_avg"),
+    ("bodyBatteryEnd", "body_battery_end"),
+)
+
+
+def _whole_day_cost_baselines(
+    values: Mapping[str, float | int | None],
+    baselines: Sequence[MetricBaseline],
+) -> dict[str, dict[str, Any]]:
+    """Join each finished-day figure to the stored baseline that describes it.
+
+    Batch 226 closes the gap Mark reported: the figure reaches the read while the
+    comparison never does. The metrics table cannot supply it — it renders from a
+    packet built at wake, when the subject date's settled row does not exist yet,
+    so its drain row is structurally uncomparable (Batch 224). This packet is the
+    one place a *finished* day's cost is already known.
+
+    A figure with no value is omitted entirely rather than carrying an empty
+    comparison: an incomplete or unknown Garmin window already gates the value to
+    ``None`` upstream, and a comparison of nothing is worse than silence. A figure
+    with a value but no stored baseline says so, so the read can state the absence
+    rather than implying the number is unremarkable.
+    """
+    by_key = {baseline.metric_key: baseline for baseline in baselines}
+    out: dict[str, dict[str, Any]] = {}
+    for packet_key, metric_key in _WHOLE_DAY_COST_BASELINE_KEYS:
+        current = values.get(packet_key)
+        if current is None:
+            continue
+        baseline = by_key.get(metric_key)
+        if baseline is None:
+            out[packet_key] = {
+                "metricKey": metric_key,
+                "unavailableReason": (
+                    "The app has not computed a personal baseline for this figure, so there is "
+                    "nothing to compare it against."
+                ),
+            }
+            continue
+        out[packet_key] = {
+            "metricKey": metric_key,
+            "label": baseline.metric_label,
+            **_baseline_comparison(baseline, current),
+        }
+    return out
+
+
 def _yesterday_load_packet(
     activities: Sequence[Activity],
     analyses: Sequence[Analysis],
     daily_metric: DailyMetric | None = None,
+    baselines: Sequence[MetricBaseline] = (),
 ) -> dict[str, Any]:
     coverage = (
         daily_aggregate_coverage(daily_metric.calendar_date, daily_metric.raw_payload)
         if daily_metric is not None
         else None
     )
-    whole_day_cost = {
-        "calendarDate": (
-            daily_metric.calendar_date.isoformat() if daily_metric is not None else None
-        ),
+    cost_values: dict[str, float | int | None] = {
         "allDayStressAvg": (
             complete_stress_avg(daily_metric) if daily_metric is not None else None
         ),
@@ -2026,6 +2104,14 @@ def _yesterday_load_packet(
         "bodyBatteryEnd": (
             complete_body_battery_end(daily_metric) if daily_metric is not None else None
         ),
+    }
+    whole_day_cost: dict[str, Any] = {
+        "calendarDate": (
+            daily_metric.calendar_date.isoformat() if daily_metric is not None else None
+        ),
+        "allDayStressAvg": cost_values["allDayStressAvg"],
+        "bodyBatteryDrained": cost_values["bodyBatteryDrained"],
+        "bodyBatteryEnd": cost_values["bodyBatteryEnd"],
         "coverage": (
             coverage_packet(coverage)
             if coverage is not None
@@ -2038,6 +2124,7 @@ def _yesterday_load_packet(
         ),
         "classificationImpact": "none",
     }
+    whole_day_cost["baselines"] = _whole_day_cost_baselines(cost_values, baselines)
     if not activities:
         return {
             "activityCount": 0,
