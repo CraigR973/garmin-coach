@@ -2610,3 +2610,64 @@ the coach can say about a metric it has been nagging him about for months.
   user, which the product brief explicitly allows ("1–2 private users") — or a second profile
   reappearing without explanation, which would mean the creation path is not what this note
   says it is.
+
+## Post-roadmap — 2026-08-26 — Found during Batch 227 closeout: the baselines nothing refreshes (Batch 228)
+
+Batch 227 needed a `metric_baselines` backfill to land its new REM row, and running it surfaced
+a defect larger than the missing row: **nothing in the system ever refreshes a personal
+baseline.** `MetricBaselineBackfillService.rebuild` is called from exactly one place —
+`src/metric_baselines_backfill.py`, a manual admin runner — and from nothing in the scheduler.
+
+**Measured, not assumed.** `metric_baselines.created_at` records every refresh that has ever
+happened, because each one only occurred when a human ran the script to add a *new* metric:
+**2026-06-24** (seven rows), **2026-07-05** (`readiness_score`), **2026-08-20**
+(`body_battery_drain`), **2026-08-26** (`rem_sleep_pct`, the Batch 227 closeout). The gaps are
+11 days, **46 days**, and 6 days. Every refresh Mark has ever received was a side effect of
+someone building something else. `job_runs` holds 14 distinct job names and not one of them
+touches baselines.
+
+**The cost is not hypothetical, and it lands on a safety gate.** The 2026-08-26 refresh moved
+his readiness median **59.0 → 61.0**, and `effective_readiness_floor` is
+`max(personal_center, 60)` (`personal_baselines.py:33`). So the floor moved **60.0 → 61.0**:
+the stale baseline had been holding the soft-sleep Green gate **one point more permissive than
+his own history warranted**. DECISIONS #249 exists to stop a *sinking* median making that rule
+more permissive; nobody considered the inverse, where a *rising* median simply never arrives.
+Three of nine medians moved on five days of new data (`age_adjusted_sleep_score` 79.5 → 81.0,
+`readiness_score` 59.0 → 61.0, `sleep_score` 75.0 → 76.0), so the drift rate is real rather
+than a rounding artefact.
+
+**And the column that should have exposed this is lying.** `UpdatedAtMixin`
+(`models/base.py`) declares `updated_at` with `server_default=func.now()` and **no
+`onupdate`**, and no migration adds a trigger — so it never advances on UPDATE. Today's
+backfill rewrote all nine rows (their `window_end_date` now reads 2026-08-25) while
+`body_battery_drain.updated_at` still reads 2026-08-20 and seven others still read 2026-06-24.
+The mixin is used by roughly eighteen tables, so `updated_at` is a duplicate of `created_at`
+across most of the schema. That is why the rot was invisible: the one field anyone would query
+to find it cannot answer.
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 228 — A baseline nothing refreshes is one that slowly stops describing him | 🟢 Mid | Planned | 228.1 **Re-measure the rot before automating it away.** Confirm from `metric_baselines.created_at` that refreshes have only ever happened on 2026-06-24, 2026-07-05, 2026-08-20 and 2026-08-26, each a human running the admin script for another reason, longest gap **46 days**; and that `job_runs` still holds no baseline job. Confirm the cost on the gate rather than in the abstract: readiness median 59.0 → 61.0 moved `effective_readiness_floor` 60.0 → 61.0 (`personal_baselines.py:33`, `max(center, 60)`). If the drift has since changed, quote the new figures — the argument is the drift, not these particular numbers.<br>228.2 **Settle `updated_at` before relying on it.** `UpdatedAtMixin` has no `onupdate` and no DB trigger, so it never advances; proof is above. Decide deliberately: fix the mixin (it touches ~18 tables, needs a migration for existing rows to stay honest, and is wider than this batch — if so, split it out and say so) **or** leave it and derive freshness from `window_end_date`, which is already correct and honest. **Do not write a staleness check against `updated_at` until this is answered**, or the check will read every row as permanently fresh.<br>228.3 **Add the job in the shape every other job already uses.** `run_metric_baseline_refresh` in `scheduler.py` returning `JobResult`, iterating active profiles exactly as `run_longitudinal_analysis` does (`Profile.is_active`, `deleted_at is None`), calling `MetricBaselineBackfillService.rebuild(profile)` — already idempotent and it commits itself. **Register it in three places or it is only two-thirds wired:** `scheduler.add_job(partial(run_tracked_job, "<name>", …))`, the `JOBS` map in `run_scheduled.py`, and `job_runs._LOCAL_DAILY_JOBS`. Omitting the third is silent — `scheduled_window` falls back to `_WINDOW_MINUTES.get(name, 60)`, giving a daily job a 60-minute cadence bucket and a meaningless run history.<br>228.4 **Pick the slot for a reason and write the reason down.** 03:30 Europe/London sits after `daily_backup` (03:00 UTC) and before the wake window opens, so it never races the morning read. It also removes a self-reference for free: at 03:30 the newest `sleep` row is yesterday's, so tonight's night is not inside the 84-night distribution tonight is measured against. Today's manual runs *do* include it (`window_end_date` = the subject date). Confirm that change is wanted and state it, rather than letting the schedule decide it silently.<br>228.5 **A job that silently stops is this same bug wearing a different hat.** Emit `profiles`/`created`/`updated`/`unchanged` counters, and return `JobResult.skipped` on no active profiles rather than succeeding emptily. Then decide whether `run_evening_monitoring_alerts` — which already checks source freshness — should also flag a baseline whose `window_end_date` trails the newest `sleep` row by more than N days. Pick N from the measured drift, not from taste, and note that the in-process scheduler's own reliability is the subject of `docs/runbooks/scheduled-jobs-cron.md`.<br>228.6 **Say what the in-process scheduler cannot promise.** APScheduler runs inside the web container and wall-clock jobs only fire while it is awake; the runbook's durable path is a Railway cron service running `python -m src.run_scheduled <job>`. Add the new job to the runbook's cadence table with its UTC/DST caveat, and state which path is actually configured in production — otherwise this ships as a job that exists in code and never runs, which is indistinguishable from the defect it fixes.<br>228.7 Tests: an active profile is rebuilt and its counters reported; no active profiles returns `skipped`; a **registry test** asserting the job name appears in both `run_scheduled.JOBS` and `_LOCAL_DAILY_JOBS`, which is the omission 228.3 exists to prevent; a second run on the same data reports `unchanged` rather than rewriting; and, if 228.4 changes the window end, a case pinning that the subject night is excluded. | Mark's personal baselines describe the athlete he is this week rather than the one he was up to seven weeks ago, and the readiness floor that gates a soft-sleep Green moves with him instead of waiting for someone to remember. | Baselines refresh without a human; the job is registered in all three places and its cadence bucket is daily, pinned by a test; a run reports per-profile counters and skips honestly when there are no profiles; a same-day re-run is a no-op; and the `updated_at` question is answered in writing either way rather than left for the next session to rediscover. |
+
+### Recorded, not scheduled (2026-08-26)
+
+* **`updated_at` is a duplicate of `created_at` across most of the schema.** `UpdatedAtMixin`
+  has no `onupdate` and no migration adds a trigger, so roughly eighteen tables carry a column
+  that looks like a freshness signal and is not one. Batch 228.2 only has to decide whether to
+  *rely* on it; fixing it properly is a schema-wide change with a migration for existing rows
+  and its own blast-radius audit — every query, packet field or admin view that reads
+  `updated_at` is currently reading a creation date. **Trigger:** the first time anything needs
+  to know when a row actually changed. Batch 228 is that moment for `metric_baselines`, which
+  is why it is named there and scoped out here.
+* **The age-norm stage bands may be anchored to the wrong denominator.** Batch 61 defined the
+  healthy Deep/Light/REM/Awake ranges as percentages of *measured sleep including awake* and
+  calibrated all four bands to it, but the bands step from Ohayon et al. 2004, whose stage
+  percentages are conventionally expressed as a percentage of *total sleep time* (wake
+  excluded). Measured on Mark's 428 nights the two differ by a mean of **0.73 points**, so
+  every stage percentage sits slightly below its own band. Batch 227 deliberately preserved
+  Batch 61's choice rather than reversing a settled decision inside a REM batch. **Trigger:**
+  Mark's answer to the question sent 2026-08-26 asking what his own Garmin displays — if
+  Garmin's stage percentages match total sleep time, the band and the app disagree with the
+  device he reads every morning, and that is a Batch 61 decision to reopen with a new entry in
+  `DECISIONS.md`, not a silent edit.
+
