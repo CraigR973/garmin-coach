@@ -17,6 +17,7 @@ def test_jobs_cover_expected_names() -> None:
         "wake-check",
         "morning-sync",
         "activity-poll",
+        "baseline-refresh",
         "autopush",
         "weekly-review",
         "state-change",
@@ -43,6 +44,7 @@ def test_jobs_map_to_the_same_scheduler_coroutines() -> None:
     assert run_scheduled.JOBS["weekly-review"] is scheduler.run_weekly_review_delivery
     assert run_scheduled.JOBS["state-change"] is scheduler.run_state_change_coach
     assert run_scheduled.JOBS["longitudinal-analysis"] is scheduler.run_longitudinal_analysis
+    assert run_scheduled.JOBS["baseline-refresh"] is scheduler.run_metric_baseline_refresh
 
 
 @pytest.mark.asyncio

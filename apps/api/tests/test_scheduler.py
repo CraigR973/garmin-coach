@@ -355,6 +355,11 @@ def _evening_environment_patches(*, active_window: object | None):
     subject_date = date(2026, 7, 12)
     session = AsyncMock()
     session.commit = AsyncMock()
+    # Batch 228: the evening job now also runs an operator-only baseline
+    # freshness read on its own session. Answer it with "no sleep history", so
+    # these thermal/nudge tests exercise the wiring without asserting on it.
+    session.execute = AsyncMock(return_value=MagicMock(one=MagicMock(return_value=(None, None))))
+    session.scalar = AsyncMock(return_value=None)
 
     class _Ctx:
         async def __aenter__(self) -> AsyncMock:
@@ -624,6 +629,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
         assert job_ids == {
             "connection_warmup",
             "daily_backup",
+            "metric_baseline_refresh",
             "hive_temperature_poll",
             "wake_check",
             "morning_backstop",

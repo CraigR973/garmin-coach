@@ -2,6 +2,9 @@
 
 Current jobs:
   - daily_backup: runs at 03:00 UTC
+  - metric_baseline_refresh: at 02:30 Europe/London, recomputes every active
+    profile's personal metric baselines from stored history (Batch 228) — before
+    it existed nothing refreshed them at all, and they drifted up to 46 days
   - hive_temperature_poll: polls Hive indoor temperature every 15 minutes
   - wake_check: every ~15 min within Mark's morning window, does a light
     sleep-only Garmin poll and fires run_morning_sync once his wake is stable
@@ -45,7 +48,7 @@ import structlog
 from apscheduler.schedulers.asyncio import (  # type: ignore[import-untyped,unused-ignore]
     AsyncIOScheduler,
 )
-from sqlalchemy import desc, select, text
+from sqlalchemy import desc, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,6 +60,7 @@ from src.models.coaching import (
     Activity,
     Analysis,
     FanStateReading,
+    MetricBaseline,
     Sleep,
     TemperatureReading,
 )
@@ -110,6 +114,12 @@ from src.services.job_runs import JobResult, run_tracked_job
 from src.services.longitudinal_analysis import (
     BillingAlertNotReady,
     LongitudinalAnalysisService,
+)
+from src.services.metric_baselines import (
+    BASELINE_STALENESS_LIMIT_DAYS,
+    DB_HISTORY_SOURCE,
+    MetricBaselineBackfillService,
+    unincorporated_nights,
 )
 from src.services.morning_analysis import MorningAnalysisService
 from src.services.morning_inputs import morning_input_presence
@@ -251,6 +261,66 @@ async def run_longitudinal_analysis() -> JobResult:
     return JobResult.succeeded(**counters, alert_gated=skipped_alert_gate)
 
 
+async def run_metric_baseline_refresh() -> JobResult:
+    """Recompute every active profile's ``metric_baselines`` from stored history.
+
+    Batch 228 / Decision #306. Before this job, ``MetricBaselineBackfillService
+    .rebuild`` was reachable only from ``src/metric_baselines_backfill``, a manual
+    admin runner — so a personal baseline was refreshed only when a human happened
+    to add a *new* metric. ``metric_baselines.created_at`` records every refresh
+    that has ever occurred: 2026-06-24, 2026-07-05, 2026-08-20, 2026-08-26, a
+    longest gap of 46 days. That is not cosmetic: the 2026-08-26 run moved Mark's
+    readiness median 59.0 → 61.0, and ``effective_readiness_floor`` is
+    ``max(personal_center, 60)`` (``services/personal_baselines.py``), so the
+    soft-sleep Green gate had been sitting a point more permissive than his own
+    history warranted. DECISIONS #249 guards a *sinking* median making that rule
+    permissive; nobody had considered a *rising* one that simply never arrives.
+
+    ``rebuild`` is idempotent and commits itself, so a same-day re-run reports
+    ``unchanged`` rather than rewriting. Failures are isolated per profile: an
+    earlier profile's committed rebuild survives a later one's rollback.
+    """
+
+    counters = {"profiles": 0, "created": 0, "updated": 0, "unchanged": 0}
+    failures = 0
+    async with AsyncSessionLocal() as session:
+        profiles = await _active_profiles(session)
+        if not profiles:
+            log.info("metric baseline refresh skipped", reason="no_active_profiles")
+            return JobResult.skipped("no_active_profiles", **counters)
+
+        service = MetricBaselineBackfillService(session)
+        for profile in profiles:
+            # Snapshot before the try block: a rollback expires ORM attributes,
+            # so failure logging must not trigger implicit async IO.
+            profile_id = profile.id
+            counters["profiles"] += 1
+            try:
+                result = await service.rebuild(profile)
+            except Exception:
+                await session.rollback()
+                failures += 1
+                log.exception("metric baseline refresh failed", profile_id=str(profile_id))
+                continue
+            counters["created"] += result.baselines_created
+            counters["updated"] += result.baselines_updated
+            counters["unchanged"] += result.baselines_unchanged
+            log.info(
+                "metric baselines refreshed",
+                profile_id=str(profile_id),
+                window_start=result.window_start.isoformat() if result.window_start else None,
+                window_end=result.window_end.isoformat() if result.window_end else None,
+                samples_considered=result.samples_considered,
+                created=result.baselines_created,
+                updated=result.baselines_updated,
+                unchanged=result.baselines_unchanged,
+            )
+
+    if failures:
+        return JobResult.degraded("metric_baseline_refresh_failed", **counters, failures=failures)
+    return JobResult.succeeded(**counters)
+
+
 async def run_backup_restore_drill() -> JobResult:
     """Restore the latest backup into a disposable database and check invariants."""
 
@@ -281,6 +351,25 @@ def _log_backup_operator_alert(kind: str, reason: str) -> None:
         kind=kind,
         reason=reason,
         alert_route="provider_log_or_external_monitor",
+    )
+
+
+def _log_operator_alert(kind: str, reason: str, **fields: Any) -> None:
+    """Operator-only alert for a condition the *user* cannot act on.
+
+    Same route as ``_log_backup_operator_alert`` (which keeps its own event name
+    because the runbook names it), for conditions that must never reach Mark's
+    phone. The user-facing stale-source pushes in ``nudge_alerts`` are the other
+    half of this split: those tell him to put his watch on, this tells Craig a
+    background job has stopped.
+    """
+
+    log.error(
+        "operator alert",
+        kind=kind,
+        reason=reason,
+        alert_route="provider_log_or_external_monitor",
+        **fields,
     )
 
 
@@ -649,15 +738,79 @@ async def run_evening_monitoring_alerts() -> JobResult:
                     include_thermal=not holiday_away,
                 )
             await session.commit()
+        # Batch 228: a nightly job that silently stops is the same defect this
+        # batch fixes, wearing a different hat — and nothing writes a `job_runs`
+        # row for a run that never happened, so the detector has to live in a job
+        # that *is* still running. This one fires sixteen times a day and already
+        # owns "is a source stale?". Its own session, deliberately: a read that
+        # fails here must not abort the transaction the thermal alerts were
+        # written in.
+        stale_baselines = await _check_metric_baseline_freshness(profiles)
         log.info(
             "evening monitoring alerts complete",
             profiles=len(profiles),
             alerts=alerts_recorded,
+            stale_baselines=stale_baselines,
         )
-        return JobResult.succeeded(profiles=len(profiles), alerts=alerts_recorded)
+        return JobResult.succeeded(
+            profiles=len(profiles),
+            alerts=alerts_recorded,
+            stale_baselines=stale_baselines,
+        )
     except Exception:
         log.exception("evening monitoring alerts failed")
         return JobResult.failed("evening_alerts_failed")
+
+
+async def _check_metric_baseline_freshness(profiles: Iterable[Profile]) -> int:
+    """Alert the **operator** when a profile's baselines have stopped tracking it.
+
+    Deliberately not one of the ``evaluate_stale_sources`` pushes: every one of
+    those tells Mark to do something he can do (put the watch on, check Hive). A
+    baseline that has stopped refreshing is Craig's to fix, and a push about it
+    would be noise on the one surface reserved for actionable inputs.
+
+    Best-effort — it can never fail the evening alerts that already ran.
+    """
+
+    alerted = 0
+    try:
+        async with AsyncSessionLocal() as session:
+            for profile in profiles:
+                oldest_sleep, newest_sleep = (
+                    await session.execute(
+                        select(
+                            func.min(Sleep.calendar_date),
+                            func.max(Sleep.calendar_date),
+                        ).where(Sleep.user_id == profile.id)
+                    )
+                ).one()
+                window_end = await session.scalar(
+                    select(func.min(MetricBaseline.window_end_date)).where(
+                        MetricBaseline.user_id == profile.id,
+                        MetricBaseline.source == DB_HISTORY_SOURCE,
+                    )
+                )
+                lag = unincorporated_nights(
+                    newest_sleep_date=newest_sleep,
+                    oldest_sleep_date=oldest_sleep,
+                    baseline_window_end=window_end,
+                )
+                if lag is None or lag < BASELINE_STALENESS_LIMIT_DAYS:
+                    continue
+                alerted += 1
+                _log_operator_alert(
+                    "metric_baselines_stale",
+                    "no_baseline_rows" if window_end is None else "baseline_window_behind_history",
+                    profile_id=str(profile.id),
+                    unincorporated_nights=lag,
+                    limit_days=BASELINE_STALENESS_LIMIT_DAYS,
+                    baseline_window_end=window_end.isoformat() if window_end else None,
+                    newest_sleep_date=newest_sleep.isoformat() if newest_sleep else None,
+                )
+    except Exception:
+        log.exception("metric baseline freshness check failed")
+    return alerted
 
 
 async def _sync_garmin_daily(
@@ -1874,6 +2027,29 @@ def create_scheduler() -> AsyncIOScheduler:
         hour=3,
         minute=0,
         id="daily_backup",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        # Batch 228 / Decision #306. 02:30 Europe/London is chosen, not inherited:
+        #  - it is a full hour before `wake_detection.WINDOW_START` (03:30) opens
+        #    the morning window, and 75 min before Mark's earliest observed wake
+        #    (03:45), so it can never race the read it feeds;
+        #  - the newest `sleep` row at that hour is always yesterday's, because
+        #    tonight's is written by the wake sync — so the night being judged is
+        #    never inside the 84-night distribution it is judged against;
+        #  - it is 01:30 UTC under BST and 02:30 UTC under GMT, so it lands before
+        #    the 03:00 *UTC* `daily_backup` in both, and the nightly dump carries
+        #    the freshened rows rather than yesterday's.
+        # In-process APScheduler handles BST/GMT; a fixed-UTC external cron would
+        # not (see docs/runbooks/scheduled-jobs-cron.md).
+        partial(run_tracked_job, "baseline-refresh", run_metric_baseline_refresh),
+        trigger="cron",
+        hour=2,
+        minute=30,
+        timezone=settings.weather_timezone,
+        id="metric_baseline_refresh",
         replace_existing=True,
         coalesce=True,
         max_instances=1,

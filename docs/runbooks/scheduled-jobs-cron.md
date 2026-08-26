@@ -39,6 +39,7 @@ Run each job from an external scheduler via the single-job runner:
 | `hive-poll`     | every 15 min         | `*/15 * * * *`         |
 | `activity-poll` | hourly               | `0 * * * *`            |
 | `backup`        | 03:00 UTC            | `0 3 * * *`            |
+| `baseline-refresh` | 02:30 Europe/London | `30 1,2 * * *`  ⚠ see below |
 | `wake-check`    | every 15 min         | `*/15 * * * *`         |
 | `morning-sync`  | 11:00 Europe/London  | `0 11 * * *`  ⚠ DST    |
 | `autopush`      | 07/13/19 London      | `0 7,13,19 * * *`  ⚠   |
@@ -62,6 +63,65 @@ under a fixed UTC cron. Options, best first:
    interval jobs / resilience.
 2. Accept ±1h drift on the wall-clock jobs under a fixed UTC cron.
 3. Run them more frequently and gate inside the job on the London-local time.
+
+#### `baseline-refresh` and its 02:30 slot (Batch 228)
+
+The slot is load-bearing rather than arbitrary, and ±1h of DST drift breaks it —
+so if this ever moves to external cron it must take option 3, the same
+London-hour guard the `weekly-review` service already uses (`30 1,2 * * *`, and
+run only when `TZ=Europe/London date +%H%M` is `0230`). Three reasons, all
+measured:
+
+- **It must precede the morning read it feeds.** `wake_detection.WINDOW_START`
+  is 03:30 Europe/London and Mark's earliest observed wake is 03:45, so 02:30
+  leaves a full hour. A fixed `30 2 * * *` UTC cron lands at 03:30 London under
+  BST — exactly `WINDOW_START`.
+- **It must not put tonight inside its own distribution.** `rebuild` ends its
+  84-night window at the newest stored night, and the `sleep` row for the night
+  in progress is written by the wake sync hours later (observed 07:33–08:27), so
+  a 02:30 run always ends at yesterday. A run after wake would judge a night
+  against a baseline containing it. The ad-hoc admin runs did whichever the
+  operator's clock happened to give: the 2026-08-20 12:30 UTC run included that
+  morning, the 2026-08-26 06:13 UTC one did not.
+- **It should precede the backup.** 02:30 London is 01:30 UTC under BST and
+  02:30 UTC under GMT, so it lands before the 03:00 **UTC** `daily_backup` in
+  both and the nightly dump carries the freshened rows. (`daily_backup` has no
+  `timezone=`, and the scheduler is constructed with `timezone="UTC"`.)
+
+The job is registered in three places and all three must agree on the name
+`baseline-refresh`: `create_scheduler`'s `partial(run_tracked_job, ...)`, the
+`JOBS` map in `run_scheduled.py`, and `_LOCAL_DAILY_JOBS` in
+`services/job_runs.py`. Omitting the third is silent — `scheduled_window` falls
+back to a 60-minute bucket and the run history stops meaning "did tonight's run
+happen?". `tests/test_metric_baseline_refresh.py` pins all three.
+
+### What is actually configured in production (verified 2026-08-26)
+
+`railway status --json` on the `garmin-coach` production environment returns
+exactly two services:
+
+| service | cron schedule | start command | what runs |
+|---|---|---|---|
+| `api` | *none* | *none* (Dockerfile web entrypoint) | every job, via in-process APScheduler |
+| `weekly-review` | `0 17,18 * * 0` | London-hour-guarded `python -m src.run_scheduled weekly-review` | that one job, durably |
+
+So **`weekly-review` is the only job with a durable external path.** Everything
+else — `baseline-refresh` included — fires only while the `api` container is
+awake, which is the reliability caveat this whole runbook exists for. The API
+service runs one replica with `restartPolicyType=ON_FAILURE` and no App
+Sleeping, and `coach.job_runs` shows the in-process scheduler firing on time
+(`backup` at exactly 03:00:00 UTC on each of the last eleven days, ~96
+`wake-check` invocations a day), so in practice it holds — but it is a practice,
+not a guarantee.
+
+**How to tell the difference without guessing:** every real invocation writes a
+`coach.job_runs` row, so a night with no `baseline-refresh` row is a night the
+job did not run. `run_evening_monitoring_alerts` also carries an operator-only
+detector for the same failure (Batch 228): it logs `operator alert` with
+`kind=metric_baselines_stale` once a profile's baselines trail its stored sleep
+history by `BASELINE_STALENESS_LIMIT_DAYS` nights or more. That is deliberately
+*not* one of the `evaluate_stale_sources` web pushes — those tell Mark to put his
+watch on, and a background job that has stopped is not his to fix.
 
 ### Railway Cron setup
 

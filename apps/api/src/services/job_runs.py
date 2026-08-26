@@ -73,6 +73,11 @@ _LOCAL_DAILY_JOBS = {
     "state-change",
     "longitudinal-analysis",
     "evening-nudge",
+    # Batch 228: registering the job without this line is the silent two-thirds
+    # wiring — `scheduled_window` would fall through to `_WINDOW_MINUTES.get(name,
+    # 60)` and file a once-a-night job into hourly buckets, so its run history
+    # would answer the wrong question.
+    "baseline-refresh",
 }
 _LONDON = ZoneInfo("Europe/London")
 
