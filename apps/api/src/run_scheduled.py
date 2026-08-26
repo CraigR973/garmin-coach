@@ -18,6 +18,7 @@ Jobs:
     wake-check      poll Garmin sleep; fire the morning verdict once wake is stable
     morning-sync    weather + Garmin daily sync + morning analysis (wake backstop)
     activity-poll   poll Garmin for new activities + post-workout analysis
+    baseline-refresh  recompute every active profile's metric baselines
     autopush        push approved workout proposals due soon
     weekly-review   generate the ending week's review and deliver it to coach chat
     longitudinal-analysis  collect/submit the monthly whole-history analyst run
@@ -43,6 +44,7 @@ from src.scheduler import (
     run_garmin_activity_poll,
     run_hive_temperature_poll,
     run_longitudinal_analysis,
+    run_metric_baseline_refresh,
     run_morning_weather_sync,
     run_scheduled_backup,
     run_state_change_coach,
@@ -57,6 +59,7 @@ JOBS: dict[str, JobOperation] = {
     "wake-check": run_wake_check,
     "morning-sync": run_morning_weather_sync,
     "activity-poll": run_garmin_activity_poll,
+    "baseline-refresh": run_metric_baseline_refresh,
     "autopush": run_workout_autopush,
     "weekly-review": run_weekly_review_delivery,
     "longitudinal-analysis": run_longitudinal_analysis,

@@ -44,6 +44,46 @@ from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
 DB_HISTORY_SOURCE = "db_history"
 DEFAULT_WINDOW_DAYS = 84
 
+# Batch 228: the nightly refresh runs at 02:30 Europe/London, before the wake sync
+# writes tonight's `sleep` row, so a healthy steady state is exactly **one**
+# unincorporated night — the night currently being slept, which is deliberately not
+# inside the distribution it will be judged against a few hours later. Each missed
+# run adds one. The limit is 4 rather than a round number because the only drift
+# ever measured needed five: the 2026-08-26 refresh moved the window end from
+# 2026-08-20 to 2026-08-25 and shifted three of nine medians, including the
+# readiness median that anchors `personal_baselines.effective_readiness_floor`
+# (59.0 → 61.0, moving the floor 60.0 → 61.0). Alerting at 4 tolerates two
+# consecutive blips and still fires a day before the harm that was observed.
+BASELINE_STALENESS_LIMIT_DAYS = 4
+
+
+def unincorporated_nights(
+    *,
+    newest_sleep_date: date | None,
+    oldest_sleep_date: date | None,
+    baseline_window_end: date | None,
+) -> int | None:
+    """Nights of stored sleep history the persisted baselines do not cover.
+
+    ``None`` when the profile has no sleep history at all — nothing can be stale
+    against no data. With no baseline rows the whole history is uncovered, which
+    keeps a brand-new profile honest without a special case: one night of history
+    and no baselines is a lag of 1, not a missing job.
+
+    Deliberately derived from ``window_end_date`` and **not** ``updated_at``:
+    ``UpdatedAtMixin`` declares ``updated_at`` with ``server_default`` and no
+    ``onupdate``, and no migration adds a trigger, so it never advances on UPDATE.
+    A staleness check keyed on it would read every row as permanently fresh.
+    """
+
+    if newest_sleep_date is None:
+        return None
+    if baseline_window_end is None:
+        if oldest_sleep_date is None:
+            return None
+        return (newest_sleep_date - oldest_sleep_date).days + 1
+    return max((newest_sleep_date - baseline_window_end).days, 0)
+
 
 @dataclass(frozen=True)
 class MetricBaselineBackfillResult:
