@@ -55,6 +55,7 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile
+from src.services.age_norms import rem_sleep_pct_for_row
 from src.services.daily_metric_phase import (
     index_morning_by_date,
     index_post_activity_by_date,
@@ -93,8 +94,8 @@ ANALYSIS_TYPE_SEASONAL = "seasonal_trend"
 # that were artefacts of reading the wake row, so the old narratives must stop
 # being served rather than be left to age out.
 PROMPT_VERSION_BY_BUCKET = {
-    BUCKET_MONTH: "trends-month-v5-2026-08-25",
-    BUCKET_SEASON: "trends-season-v5-2026-08-25",
+    BUCKET_MONTH: "trends-month-v6-2026-08-25",
+    BUCKET_SEASON: "trends-season-v6-2026-08-25",
 }
 
 # Indoor reading at/after this local hour belongs to the *next* morning's night.
@@ -115,8 +116,12 @@ bolded sections — **Year-on-year**, **Seasonal patterns**, and \
 Never mention left/right power balance. Treat SpO2 and HRV before the reliability \
 cutoff as excluded. When sample counts are low or a prior-year window is missing, \
 say "insufficient history" plainly rather than inventing a trend. Interpret \
-readiness, HRV, and resting HR against personalBaselines before using alarming \
-language. Every year-on-year claim must cite the currentMean -> priorMean or \
+readiness, HRV, resting HR, and REM against personalBaselines before using \
+alarming language. REM in particular is never to be judged by the age band \
+alone: state the night against Mark's own median and quartiles first, and only \
+then, if it adds something, against the band — saying plainly how far the band \
+sits from his own norm rather than implying it is a target he is failing. \
+Every year-on-year claim must cite the currentMean -> priorMean or \
 priorMean -> currentMean numbers plus both sample counts; every seasonal claim \
 must cite the window labels and sampleDays or metric sampleCount. If a metric \
 has status insufficient_history, describe the data gap instead of a change."""
@@ -125,6 +130,9 @@ has status insufficient_history, describe the data gap instead of a change."""
 METRICS: tuple[tuple[str, str], ...] = (
     ("sleep_score", "Sleep score"),
     ("sleep_duration_min", "Sleep duration (min)"),
+    # Batch 227: REM had no month-over-month series either, so an unusually good
+    # night had nothing to be unusual against.
+    ("rem_sleep_pct", "REM (% of measured sleep)"),
     ("hrv_ms", "Overnight HRV (ms)"),
     ("readiness_score", "Training readiness"),
     ("resting_hr_bpm", "Resting HR (bpm)"),
@@ -219,6 +227,7 @@ class TrendSample:
     day: date
     sleep_score: int | None = None
     sleep_duration_min: int | None = None
+    rem_sleep_pct: float | None = None
     hrv_ms: float | None = None
     readiness_score: int | None = None
     resting_hr_bpm: int | None = None
@@ -784,6 +793,7 @@ class TrendsService:
                     day=day,
                     sleep_score=sleep.score if sleep else None,
                     sleep_duration_min=_minutes(sleep.duration_sec) if sleep else None,
+                    rem_sleep_pct=rem_sleep_pct_for_row(sleep),
                     hrv_ms=_as_float(metric.hrv_last_night_avg_ms) if metric else None,
                     readiness_score=metric.readiness_score if metric else None,
                     resting_hr_bpm=metric.resting_heart_rate_bpm if metric else None,

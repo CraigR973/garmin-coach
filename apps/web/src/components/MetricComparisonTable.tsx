@@ -88,6 +88,10 @@ const HIGHER_IS_BETTER = new Set([
   'hrv_7_day_avg_ms',
   'body_battery_charge',
   'average_spo2_pct',
+  // Batch 227: REM now has a personal baseline, so a night above his own upper
+  // quartile reads green here even though it may still sit below the population
+  // age band — which is the whole point of giving it one.
+  'rem_sleep_pct',
 ]);
 // Resting HR and overnight respiration both read as concerns when they rise above
 // the personal baseline (elevated respiration can signal stress/illness/poor recovery);
@@ -96,11 +100,15 @@ const LOWER_IS_BETTER = new Set(['resting_heart_rate_bpm', 'average_respiration'
 
 const BASELINE_UNIT: Record<string, string> = {
   average_spo2_pct: '%',
+  rem_sleep_pct: '%',
 };
 
 // Which baseline metric an age-norm row lines up against. Resting HR shares a
 // key; the age HRV norm is overnight RMSSD, which we sit against the 7-day HRV
 // baseline. VO₂max has no nightly baseline, so it appends as an age-only row.
+// REM is deliberately absent: its age row lives in `sleepRows` and renders in
+// `SleepStageAgeTable` on the Sleep page, so joining it here would show the same
+// night twice (Batch 227).
 const AGE_TO_BASELINE_KEY: Record<string, string> = {
   resting_heart_rate_bpm: 'resting_heart_rate_bpm',
   hrv_overnight_ms: 'hrv_7_day_avg_ms',

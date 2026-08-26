@@ -344,6 +344,67 @@ def _sleep_stage_pct(stage_sec: int | None, total_sec: int | None) -> float | No
     return (stage_sec / total_sec) * 100.0
 
 
+# Batch 227: the one definition of "how much of the night was REM". Two call
+# sites had drifted apart — `age_norms` divided by measured sleep, the nightly
+# experiment observation by `Sleep.duration_sec` — and the same night therefore
+# carried 15.55% and 16.41%, one below the 50–59 band floor and one above it.
+#
+# `duration_sec` is provably total sleep time: across Mark's 428 stored nights
+# it equals deep+light+REM exactly on 245 and to within a mean of 11.5 seconds
+# overall, and it is never equal to deep+light+REM+awake. So the real choice was
+# between total sleep time and measured sleep including awake, a systematic ~0.9
+# point difference at his median — not two arbitrary conventions.
+#
+# **Measured sleep wins because the bands were calibrated against it.** Batch 61
+# defined the healthy ranges above as percentages of Deep/Light/REM/Awake and
+# anchored all four stage bands to that denominator; switching to total sleep
+# time here would silently move the deep, light and awake flags too. A personal
+# baseline computed on one denominator and read against a band on the other
+# would reintroduce exactly the mismatch this function exists to remove, so
+# every consumer — the age table, the personal baseline, the trend series and
+# the nightly observation — takes the number from here.
+REM_PCT_BASIS = "REM as a percentage of measured sleep (deep + light + REM + awake)"
+
+
+def measured_sleep_sec(
+    deep_sleep_sec: int | None,
+    light_sleep_sec: int | None,
+    rem_sleep_sec: int | None,
+    awake_sleep_sec: int | None,
+) -> int:
+    """Total measured sleep in seconds — the stage-percentage denominator."""
+    return sum(
+        stage
+        for stage in (deep_sleep_sec, light_sleep_sec, rem_sleep_sec, awake_sleep_sec)
+        if stage is not None
+    )
+
+
+def rem_sleep_pct(
+    deep_sleep_sec: int | None,
+    light_sleep_sec: int | None,
+    rem_sleep_sec: int | None,
+    awake_sleep_sec: int | None,
+) -> float | None:
+    """REM as a percentage of measured sleep — see :data:`REM_PCT_BASIS`."""
+    return _sleep_stage_pct(
+        rem_sleep_sec,
+        measured_sleep_sec(deep_sleep_sec, light_sleep_sec, rem_sleep_sec, awake_sleep_sec),
+    )
+
+
+def rem_sleep_pct_for_row(row: Any) -> float | None:
+    """:func:`rem_sleep_pct` for anything carrying the four stage columns."""
+    if row is None:
+        return None
+    return rem_sleep_pct(
+        getattr(row, "deep_sleep_sec", None),
+        getattr(row, "light_sleep_sec", None),
+        getattr(row, "rem_sleep_sec", None),
+        getattr(row, "awake_sleep_sec", None),
+    )
+
+
 def _sleep_band(metric_key: str, band_label: str, resolved_sex: Sex) -> tuple[float, float] | None:
     per_sex = _SLEEP_BANDS.get(metric_key)
     if per_sex is None:
@@ -508,20 +569,16 @@ def build_age_comparison(
             "hrv_overnight_ms": hrv_overnight_ms,
         },
     )
-    measured_sleep_sec = sum(
-        stage
-        for stage in (deep_sleep_sec, light_sleep_sec, rem_sleep_sec, awake_sleep_sec)
-        if stage is not None
-    )
+    measured = measured_sleep_sec(deep_sleep_sec, light_sleep_sec, rem_sleep_sec, awake_sleep_sec)
     sleep_rows = _build_rows(
         band=band,
         resolved_sex=resolved_sex,
         candidates={
             "sleep_duration_hours": (duration_sec / 3600.0) if duration_sec is not None else None,
-            "deep_sleep_pct": _sleep_stage_pct(deep_sleep_sec, measured_sleep_sec),
-            "light_sleep_pct": _sleep_stage_pct(light_sleep_sec, measured_sleep_sec),
-            "rem_sleep_pct": _sleep_stage_pct(rem_sleep_sec, measured_sleep_sec),
-            "awake_sleep_pct": _sleep_stage_pct(awake_sleep_sec, measured_sleep_sec),
+            "deep_sleep_pct": _sleep_stage_pct(deep_sleep_sec, measured),
+            "light_sleep_pct": _sleep_stage_pct(light_sleep_sec, measured),
+            "rem_sleep_pct": _sleep_stage_pct(rem_sleep_sec, measured),
+            "awake_sleep_pct": _sleep_stage_pct(awake_sleep_sec, measured),
             "restless_moments_count": float(restless_moments_count)
             if restless_moments_count is not None
             else None,
