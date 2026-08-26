@@ -2663,15 +2663,78 @@ Postgres `now()`, which is transaction-start time.
   to know when a row actually changed. Batch 228 was that moment for `metric_baselines`, and it
   answered the narrow question by *not* relying on the column: `unincorporated_nights` keys on
   `window_end_date`, which is already correct and honest. The schema-wide fix is still open.
-* **The age-norm stage bands may be anchored to the wrong denominator.** Batch 61 defined the
-  healthy Deep/Light/REM/Awake ranges as percentages of *measured sleep including awake* and
-  calibrated all four bands to it, but the bands step from Ohayon et al. 2004, whose stage
-  percentages are conventionally expressed as a percentage of *total sleep time* (wake
-  excluded). Measured on Mark's 428 nights the two differ by a mean of **0.73 points**, so
-  every stage percentage sits slightly below its own band. Batch 227 deliberately preserved
-  Batch 61's choice rather than reversing a settled decision inside a REM batch. **Trigger:**
-  Mark's answer to the question sent 2026-08-26 asking what his own Garmin displays — if
-  Garmin's stage percentages match total sleep time, the band and the app disagree with the
-  device he reads every morning, and that is a Batch 61 decision to reopen with a new entry in
-  `DECISIONS.md`, not a silent edit.
+* **~~The age-norm stage bands may be anchored to the wrong denominator.~~ Answered
+  2026-08-26 — became Batch 229 below.** Mark's screenshots settled the denominator half
+  (Garmin's displayed Duration excludes awake) but measurement then showed a naive swap makes
+  three of four stage flags *worse*, so the band question stays closed and only the labelling
+  half moves. See the section dated 2026-08-26 (Batch 229).
+
+## Post-roadmap — 2026-08-26 — Mark's answer: the percentage he cannot reproduce (Batch 229)
+
+Mark answered the sleep-stage question the same morning, with two screenshots of Garmin's own
+Sleep screen for the night of **2026-08-26**. They settle the question, expose a gap in Batch
+227's own delivery, and — usefully — kill the change that looked obvious.
+
+**What the screenshots show.** Score 79 "Fair", Duration **7h 33m**, and the stage rows
+Deep **1h 49m** (Excellent), Light **4h 56m** (Fair), REM **48m** (**Poor**), Awake/Restlessness
+**35m** with 47 restless moments (Fair). Garmin's own headline for the night: *"Not enough REM —
+you slept long enough, but your amount of REM sleep was low."*
+
+**Garmin does not display stage percentages on that screen at all** — only durations and quality
+words — so the question as asked could not be answered literally. The durations answer it anyway:
+`1h49m + 4h56m + 48m = 7h33m`, **exactly** the displayed Duration, while adding the 35m awake
+gives 8h08m and matches nothing. **Garmin's own total excludes awake — it is total sleep time.**
+The stored `sleep` row matches the screenshots byte-for-byte on every field (score, qualifier,
+all four stages, restless count, stress), so there is no data-quality gap to chase.
+
+**The consequence is live and quotable.** The v37 brief generated for that night reads:
+
+> **REM** came in at 48 minutes, which is **9.8% of sleep** — just below your own median of 9.9%
+> … Garmin flags it against a younger-adult target (21–31%), but within the 50–59 age band the
+> healthy range is 15–23%, so it sits below that too — though 21 of your last 28 nights have done
+> the same. The chronic pattern is the real story here, not this individual night.
+
+Batch 227's design works: his own distribution leads, the band is context, and the read does not
+normalise the pattern away. But **"9.8% of sleep" is a figure Mark cannot reproduce from the
+screen he reads.** 48m against his displayed 7h33m divides to **10.6%**; the app's 9.8% divides
+by measured sleep, which includes 35 minutes of being awake — so the word "sleep" is doing work
+the denominator does not support.
+
+**This is a gap in Batch 227's own delivery, not a new discovery.** 227.3 required "pick one
+definition, **state it where the number is surfaced**, and make both call sites use it." The
+first and third shipped. The second did not: `REM_PCT_BASIS` exists in `age_norms.py` but is
+referenced only by a code comment and two test assertions and **reaches no packet**, so the model
+was handed a bare percentage and supplied its own noun. Worse, the test that was supposed to
+cover this — `test_the_denominator_is_named_where_the_number_is_surfaced` — asserts only the
+constant's own wording, so its name claims more than it checks.
+
+**And the obvious fix is wrong.** Swapping the denominator to Garmin's Duration was measured
+across 429 nights before being proposed, and it degrades three of the four stage flags, because
+the Batch 61 bands and the measured-sleep denominator are a matched pair:
+
+| stage | median (measured) | median (TST) | in-band now | in-band after | verdicts flipped |
+|---|---|---|---|---|---|
+| Deep  | 15.92% | 17.26% | 211/429 | 214/429 | 51 (11.9%) |
+| Light | 65.71% | 71.05% | **130/429** | **65/429** | 77 (17.9%) |
+| REM   |  9.98% | 10.86% |  62/429 |  74/429 | 14 (3.3%) |
+| Awake |  6.52% |  6.97% | 380/429 | 361/429 | 19 (4.4%) |
+
+Light's in-band nights **halve**. On Mark's 2026-08-26 night specifically, Light flips from
+"healthy for your age" (60.66%) to above the range (65.34%) on the denominator change alone.
+Batch 227 was right to leave Batch 61 alone, and this row does the same.
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 229 — A percentage says which total it is a percentage of | 🟢 Mid | Planned | 229.1 **Finish the half of 227.3 that did not ship, and say that is what this is.** `REM_PCT_BASIS` reaches no packet; the model was given a bare number and wrote "9.8% of sleep" about a denominator containing 35 minutes of wakefulness. Rename or strengthen `test_the_denominator_is_named_where_the_number_is_surfaced`, which currently asserts only the constant's wording — the name overclaims and that is how the gap survived review.<br>229.2 **Re-confirm the two facts this rests on before building.** Garmin's displayed Duration excludes awake (Mark's 2026-08-26 screenshot: 1h49m + 4h56m + 48m = 7h33m exactly, and `duration_sec == deep+light+rem` on 245 of 428 stored nights, mean gap 11.5s). And the stored row still matches his screen field-for-field. If either has drifted, stop and re-measure — the whole row depends on the app and the watch describing the same night.<br>229.3 **Lead with the figure that needs no denominator.** 48 minutes reconciles with his screen exactly; the percentage never will while the totals differ. Make minutes the primary REM figure in the prose contract, with the percentage secondary **and carrying its basis** — Batch 217's convention, which already exists for exactly this ("a derived fact says how it was reached, in words Mark can read"). Emit `REM_PCT_BASIS` (or a shorter user-facing form of it) beside the number in the packet rather than leaving the noun to the model.<br>229.4 **Do not swap the denominator, and record why so it is not re-proposed.** The measured table above: Light's in-band nights halve from 130/429 to 65/429 and 77 verdicts flip; Deep flips 51. The Batch 61 bands were calibrated against measured sleep and are a matched pair with it. **This row changes labelling only.**<br>229.5 **State the condition under which the bands *could* move.** Only as a deliberate Batch 61 reopening that rebases the bands and the denominator **together**, with a new `DECISIONS.md` entry, and with awake handled separately — "awake as a percentage of total sleep time" is not a meaningful quantity, so a single global denominator cannot serve all four stages. Not this batch; written down so the next session inherits the reasoning rather than the conclusion.<br>229.6 **Consider whether the same gap exists elsewhere.** REM is the metric that got a basis constant and never surfaced it; check whether any other derived percentage or ratio in the morning packet reaches the prose without one, and fix or list them. Do not expand the batch to fix all of them — list what you find.<br>229.7 Tests: a packet case asserting the REM basis string is present beside the percentage; a prompt-contract case asserting minutes lead and the percentage carries its basis; a regression pinning the measured-sleep denominator (so 229.4 cannot be undone by accident); and a renamed/strengthened version of the 227 test that actually checks a packet rather than a constant. | Every REM figure Mark reads either matches his watch exactly or says plainly which total it is a share of, so he never has to work out why the app's percentage and his screen disagree. | The REM percentage never appears without its basis; minutes lead the read; the measured-sleep denominator is unchanged and pinned by a regression; and the 227 test no longer claims to check something it does not. **Priority note, honestly:** the number is not wrong, only unlabelled, and the prose already gives him the 48 minutes that do reconcile — so this is a credibility fix on a surface he has twice proved he audits, not a correctness one. |
+
+### Recorded, not scheduled (2026-08-26, second pass)
+
+* **Garmin and the app agree that this night's REM was low, by different routes — and Mark has
+  now seen both.** Garmin's own screen says "Not enough REM … Poor" against its younger-adult
+  target; the app says 9.8%, a near-median night *for him*, still below the 50–59 band, with
+  **21 of his last 28 nights** the same. Batch 227's framing holds up under exactly the case that
+  would embarrass it — it names the chronic pattern as the real story rather than explaining it
+  away — but the two systems will keep producing differently-worded verdicts on the same night,
+  and that is worth watching rather than fixing. **Trigger:** Mark asking why the app and his
+  watch disagree about a night, which is the same question that produced Batches 225 and 229.
 
