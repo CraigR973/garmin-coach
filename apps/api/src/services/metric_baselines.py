@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import DailyMetric, KnowledgeBase, MetricBaseline, Sleep
 from src.models.profile import Profile
+from src.services.age_norms import rem_sleep_pct_for_row
 from src.services.daily_metric_coverage import (
     complete_body_battery_charged,
     complete_body_battery_drained,
@@ -119,6 +120,12 @@ def sample_values(
         "average_spo2_pct": sleep.average_spo2_pct if sleep else None,
         "average_respiration": sleep.average_respiration if sleep else None,
         "hrv_7_day_avg_ms": metric.hrv_weekly_avg_ms if metric else None,
+        # Batch 227: REM had no personal distribution at all, so a 50–59 age band
+        # of 15–23% was the only frame available for a man whose own median is
+        # 10.0% — a flag that fired on 85% of 428 nights and could therefore be
+        # neither right nor wrong. Same denominator as the band it is read
+        # against (`age_norms.REM_PCT_BASIS`).
+        "rem_sleep_pct": rem_sleep_pct_for_row(sleep),
     }
 
 

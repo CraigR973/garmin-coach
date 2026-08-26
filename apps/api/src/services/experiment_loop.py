@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import Analysis, Experiment, ManualEntry, PlanBlock, Sleep, WeatherDaily
 from src.models.profile import Profile
+from src.services.age_norms import rem_sleep_pct_for_row
 from src.services.experiment_evaluation import (
     ExperimentEvaluationService,
     evaluation_packet,
@@ -508,11 +509,11 @@ class ExperimentLoopService:
         )
         rem_min = sleep.rem_sleep_sec / 60 if sleep.rem_sleep_sec is not None else None
         awake_min = sleep.awake_sleep_sec / 60 if sleep.awake_sleep_sec is not None else None
-        rem_pct = (
-            sleep.rem_sleep_sec / sleep.duration_sec * 100
-            if sleep.rem_sleep_sec is not None and sleep.duration_sec and sleep.duration_sec > 0
-            else None
-        )
+        # Batch 227: was `rem_sleep_sec / duration_sec`, which made the same
+        # night read 16.41% here and 15.55% in the age table — one above the
+        # 50–59 band floor and one below it. One definition now, shared with the
+        # age comparison and the personal baseline it is read against.
+        rem_pct = rem_sleep_pct_for_row(sleep)
         common: dict[str, Any] = {
             "source": SOURCE_NIGHTLY,
             "wakeDate": day.isoformat(),

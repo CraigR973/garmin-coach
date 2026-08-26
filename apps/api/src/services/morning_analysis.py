@@ -30,7 +30,7 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile
-from src.services.age_norms import build_age_comparison
+from src.services.age_norms import build_age_comparison, rem_sleep_pct_for_row
 from src.services.anthropic_text import generate_anthropic_text
 from src.services.bedroom_overnight import night_window
 from src.services.body_metrics import resolve_effective_vo2max, resolve_effective_weight_kg
@@ -170,7 +170,7 @@ from src.services.workout_delivery import build_structured_workout_ir
 # identity is (user, date, checkInVersion, promptVersion) and does *not* hash the
 # packet, so without it an already-generated pre-fix brief would be served as
 # current on the day this ships.
-PROMPT_VERSION = "morning-analysis-v36-2026-08-25"
+PROMPT_VERSION = "morning-analysis-v37-2026-08-25"
 ANALYSIS_TYPE = "morning"
 # Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
 # signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
@@ -265,7 +265,16 @@ or set today's Green/Amber/Red result.
 stage in ageComparison.sleepRows sits inside its healthy age band, describe it as
 healthy for the user's age rather than repeating Garmin's young-adult flag (e.g.
 "REM 16% is within the healthy 50-59 range; Garmin only flags it against a younger
-target"). knowledgeBase.trainingSchedule describes the user's usual routine only;
+target"). REM has one further rule, because the age band alone has never been able
+to tell Mark anything: read it against metricsVsBaselines.rem_sleep_pct — his own
+median and quartiles over his stored nights — BEFORE the age band, and lead with
+that comparison ("74 minutes, well above your own median"). Only then, and only if
+it adds something, mention the band, saying plainly how far it sits from his own
+norm rather than implying it is a target he is failing. A night above his own upper
+quartile is a good night and must be described as one even when it is below the
+band floor. Both figures are percentages of measured sleep, so never present them
+as two different measurements of the same night.
+knowledgeBase.trainingSchedule describes the user's usual routine only;
 never use it as evidence that a session happened this week or assign a completed
 session to one of its nominal weekdays. Ground every claim about what was planned,
 changed, completed, skipped, or accumulated this calendar week strictly in
@@ -1657,6 +1666,9 @@ def _metrics_vs_baselines(
         "average_spo2_pct": sleep.average_spo2_pct if sleep else None,
         "average_respiration": sleep.average_respiration if sleep else None,
         "hrv_7_day_avg_ms": daily_metric.hrv_weekly_avg_ms if daily_metric else None,
+        # Batch 227: mirrors `metric_baselines.sample_values` exactly, so the
+        # live value and the stored quartiles are the same measurement.
+        "rem_sleep_pct": rem_sleep_pct_for_row(sleep),
     }
     rows: list[dict[str, Any]] = []
     for baseline in baselines:
