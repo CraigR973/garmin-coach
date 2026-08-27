@@ -237,4 +237,98 @@ describe('MetricComparisonTable', () => {
     render(<MetricComparisonTable rows={[]} ageComparison={{ rows: [] }} />);
     expect(screen.getByText(/fills in as more nights sync/i)).toBeTruthy();
   });
+
+  // --- Batch 230.6: the tolerance stops claiming membership of a printed range
+  //
+  // Mark's 2026-08-26 table: HRV current 50, printed range 45–49, centre 47, so
+  // tol = max(47 × 0.03, 0.5) = 1.41 and the real bound is 50.41. The row read
+  // "in range" — a claim he could disprove by looking at it. The next morning
+  // HRV 51 against the same printed range read "2 above". Same range, one point
+  // apart, opposite verdicts, with the boundary between them invisible.
+  describe('the near-miss band (Batch 230)', () => {
+    const hrv = (currentValue: number): MetricBaselineRow[] => [
+      {
+        metricKey: 'hrv_7_day_avg_ms',
+        label: 'HRV (7-day)',
+        currentValue,
+        baselineMedian: 47,
+        lowerQuartile: 45,
+        upperQuartile: 49,
+      },
+    ];
+
+    it('still reads "in range" strictly inside the printed range', () => {
+      render(<MetricComparisonTable rows={hrv(49)} ageComparison={{ rows: [] }} />);
+      const row = rowFor('HRV (7-day)');
+      expect(within(row).getByText('45–49')).toBeTruthy();
+      expect(within(row).getByText('in range')).toBeTruthy();
+    });
+
+    it('names the near-miss instead of claiming a range the value is outside', () => {
+      render(<MetricComparisonTable rows={hrv(50)} ageComparison={{ rows: [] }} />);
+      const row = rowFor('HRV (7-day)');
+      // The printed range is still his quartile range — the subtraction he can do.
+      expect(within(row).getByText('45–49')).toBeTruthy();
+      expect(within(row).queryByText('in range')).toBeNull();
+      expect(within(row).getByText('just above, still typical')).toBeTruthy();
+      // Not a deviation, so the number stays green.
+      expect(within(row).getByText('50').className).toContain('text-success-text');
+    });
+
+    it('names a near-miss below the range too', () => {
+      render(<MetricComparisonTable rows={hrv(44)} ageComparison={{ rows: [] }} />);
+      const row = rowFor('HRV (7-day)');
+      expect(within(row).getByText('just below, still typical')).toBeTruthy();
+    });
+
+    it('measures the deviation from the printed quartile, not the hidden bound', () => {
+      // 51 is past 49 + 1.41, so it is a real deviation — and "2 above" is
+      // 51 − 49, which reconciles against the range on the same line. Measuring
+      // from the tolerance bound instead would print 0.6 and reconcile with
+      // nothing the table shows.
+      render(<MetricComparisonTable rows={hrv(51)} ageComparison={{ rows: [] }} />);
+      const row = rowFor('HRV (7-day)');
+      expect(within(row).getByText('2 above')).toBeTruthy();
+    });
+  });
+
+  // --- Batch 230.1: the population frame reaches every surface
+  //
+  // REM's age row lives in `ageComparison.sleepRows` and renders in
+  // `SleepStageAgeTable`, which is on `/sleep` only — so on the brief and on Home
+  // REM was the one age-normed metric shown with no band at all: "✓ in range",
+  // full stop, on a night 5 points under the 15–23% floor.
+  it('states REM against its age band as well as his own range (Batch 230)', () => {
+    const rem: MetricBaselineRow[] = [
+      {
+        metricKey: 'rem_sleep_pct',
+        label: 'REM sleep',
+        currentValue: 9.8,
+        baselineMedian: 9.9,
+        lowerQuartile: 7.5,
+        upperQuartile: 13.1,
+        basis: '% of measured sleep — deep + light + REM + awake',
+        ageFrame: {
+          ageBand: '50–59',
+          bandLow: 15,
+          bandHigh: 23,
+          unit: '%',
+          tone: 'warn',
+          descriptor: 'Below the healthy range for your age',
+        },
+      },
+    ];
+    render(<MetricComparisonTable rows={rem} ageComparison={{ rows: [] }} />);
+
+    const row = rowFor('REM sleep');
+    // Normal for him...
+    expect(within(row).getByText('7.5–13.1%')).toBeTruthy();
+    expect(within(row).getByText('in range')).toBeTruthy();
+    // ...and below the band, on the same row, with the band's own numbers.
+    expect(within(row).getByText(/Below the healthy range for your age \(15–23%\)/)).toBeTruthy();
+    // And which total the percentage is a percentage of.
+    expect(within(row).getByText(/% of measured sleep/)).toBeTruthy();
+    // The age footnote appears for a frame that never came through `rows`.
+    expect(screen.getByText(/general-population average for/i)).toBeTruthy();
+  });
 });

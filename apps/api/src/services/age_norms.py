@@ -282,6 +282,9 @@ class AgeComparison:
             "fitnessAgeTone": self.fitness_age_tone,
             "rows": [row.to_dict() for row in self.rows],
             "sleepRows": [row.to_dict() for row in self.sleep_rows],
+            # Batch 230: every sleepRows percentage shares one denominator, so the
+            # note travels with the group rather than being repeated per row.
+            "sleepStagePctBasis": SLEEP_STAGE_PCT_BASIS_NOTE,
         }
 
 
@@ -365,6 +368,64 @@ def _sleep_stage_pct(stage_sec: int | None, total_sec: int | None) -> float | No
 # the nightly observation — takes the number from here.
 REM_PCT_BASIS = "REM as a percentage of measured sleep (deep + light + REM + awake)"
 
+# Batch 230: the basis above was defined by Batch 227 and then reached no packet,
+# so the model was handed a bare float and wrote "9.8% of sleep" about a total
+# containing 35 minutes of wakefulness — a figure Mark cannot reproduce from his
+# own watch (48 min against a displayed 7h33m is 10.6%, not 9.8%). The gap was
+# never REM's alone: Deep, Light and Awake print on adjacent lines of the same
+# table under the identical denominator and say so just as little. So the basis
+# is stated once for the stage group, in two lengths — a compact one for a table
+# sub-line, and a sentence for the prose contract and the stage table's footnote.
+SLEEP_STAGE_PCT_BASIS = "% of measured sleep — deep + light + REM + awake"
+SLEEP_STAGE_PCT_BASIS_NOTE = (
+    "Stage percentages are shares of measured sleep — deep + light + REM + awake — so "
+    "they include time awake in bed. Garmin's displayed Duration excludes it, so its "
+    "minutes and these percentages do not divide into each other."
+)
+
+# Batch 230: the one REM framing rule, embedded verbatim by BOTH the morning
+# prompt and the trends prompt. It exists as a single constant because the defect
+# it fixes is a *cross-surface* one: on 2026-08-26 the morning brief correctly
+# called REM a chronic pattern with 21 of 28 nights below the band while the
+# trends narrative, the same day and from the same data, concluded "not a
+# deficit", "not a structural concern", "No concern here." Two prompts carrying
+# their own wording of one rule will always be one edit away from disagreeing
+# again, so a test pins both to this string rather than to two paraphrases.
+#
+# It deliberately holds only what must be identical on every surface — how the
+# two frames combine and what may not be concluded. Anything that is true of a
+# single night but meaningless for a monthly mean (minutes, a specific basis
+# string) belongs to the surface that has it, not here.
+#
+# The Garmin clause is not defensive padding. The 2026-08-27 brief wrote "The
+# Garmin flag (it targets a younger-adult band of 15–23%)" — the app's OWN
+# Ohayon 50–59 band, mislabelled as Garmin's in order to dismiss it, while
+# Garmin's actual young-adult target of 21–31% sat in the same packet.
+REM_FRAMING_RULE = """\
+REM is read against Mark's own stored median and quartiles FIRST, and that \
+comparison leads; a value above his own upper quartile is good and must be \
+described as good even when it sits below the age band. Cite the stored personal \
+baseline itself as the anchor, never the highest or lowest month of whatever \
+window is on screen. Then ALWAYS give the age band too, with its numbers: a value \
+can be normal for him and below the band at once, and the read must say both \
+rather than choosing whichever is kinder. Never conclude "no concern", "not a \
+deficit" or "not a structural concern" about a value below the band — say plainly \
+that it is normal for him AND below the band, and name the chronic pattern where \
+one exists. The 50-59 band is the app's own age-adjusted reference (Ohayon et al. \
+2004); Garmin's young-adult target is a separate, higher range, so never \
+attribute the app's band to Garmin or call it Garmin's flag."""
+
+# Morning-only, because a monthly mean has no minutes to lead with. 48 minutes is
+# the one REM figure that reconciles exactly with what Mark's watch shows him; the
+# percentage never will while the two totals differ by time awake in bed.
+SLEEP_STAGE_MINUTES_RULE = """\
+Give a sleep stage minutes-first — the minutes reconcile exactly with Mark's own \
+watch — then the percentage, and in the same breath say which total that \
+percentage is of: "48 minutes, 9.8% of measured sleep (deep + light + REM + \
+awake)". Never state a stage percentage bare, and never divide a stage's minutes \
+by Garmin's displayed Duration: that total excludes time awake in bed and these \
+percentages include it, so the two do not divide into each other."""
+
 
 def measured_sleep_sec(
     deep_sleep_sec: int | None,
@@ -410,6 +471,15 @@ def _sleep_band(metric_key: str, band_label: str, resolved_sex: Sex) -> tuple[fl
     if per_sex is None:
         return None
     return per_sex[resolved_sex].get(band_label)
+
+
+def age_band_label(age: int) -> str:
+    """Public name of the age band a value is judged in (e.g. ``"50–59"``).
+
+    Batch 230: the trends packet quotes the band the morning read quotes, so both
+    surfaces name it identically rather than each formatting its own.
+    """
+    return _band_label(age)
 
 
 def sleep_stage_band(

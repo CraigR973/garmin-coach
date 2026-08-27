@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   activityTimeSeriesSchema,
   ageComparisonRowSchema,
+  ageComparisonSchema,
   coachOriginKindSchema,
   coachingStateEnvelopeSchema,
   conversationLearningEnvelopeSchema,
@@ -52,6 +53,48 @@ describe('v1 shared schemas', () => {
 
     expect(charge.basis).toContain('overnight charge');
     expect(drain.unavailableReason).toContain('part-day');
+  });
+
+  it('carries REM\u2019s age frame and the stage denominator, and still parses a pre-230 read', () => {
+    // Batch 230: REM is the one metric with a personal frame whose age row does
+    // not come through `ageComparison.rows`, so the band travels on the baseline
+    // row itself. Without it the brief showed "\u2713 in range" and no band at all.
+    const rem = metricBaselineRowSchema.parse({
+      metricKey: 'rem_sleep_pct',
+      label: 'REM sleep',
+      currentValue: 9.84,
+      basis: '% of measured sleep \u2014 deep + light + REM + awake',
+      ageFrame: {
+        ageBand: '50\u201359',
+        bandLow: 15,
+        bandHigh: 23,
+        unit: '%',
+        tone: 'warn',
+        descriptor: 'Below the healthy range for your age',
+      },
+    });
+    expect(rem.ageFrame?.bandLow).toBe(15);
+    expect(rem.ageFrame?.descriptor).toContain('Below the healthy range');
+    expect(rem.basis).toContain('measured sleep');
+
+    const comparison = ageComparisonSchema.parse({
+      age: 57,
+      ageBand: '50\u201359',
+      rows: [],
+      sleepRows: [],
+      sleepStagePctBasis: 'Stage percentages are shares of measured sleep.',
+    });
+    expect(comparison.sleepStagePctBasis).toContain('measured sleep');
+
+    // Every analysis stored before this shipped must still parse \u2014 both fields
+    // are absent on those, and a stored morning read is replayed, not regenerated.
+    const older = metricBaselineRowSchema.parse({
+      metricKey: 'rem_sleep_pct',
+      label: 'REM sleep',
+      currentValue: 9.84,
+    });
+    expect(older.ageFrame).toBeUndefined();
+    expect(ageComparisonSchema.parse({ rows: [], sleepRows: [] }).sleepStagePctBasis).toBeUndefined();
   });
 
   it('parses interval-resolved ride execution and defaults intervals/execution', () => {

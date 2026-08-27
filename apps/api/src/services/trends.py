@@ -55,7 +55,13 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile
-from src.services.age_norms import rem_sleep_pct_for_row
+from src.services.age_norms import (
+    REM_FRAMING_RULE,
+    SLEEP_STAGE_PCT_BASIS_NOTE,
+    age_band_label,
+    rem_sleep_pct_for_row,
+    sleep_stage_band,
+)
 from src.services.daily_metric_phase import (
     index_morning_by_date,
     index_post_activity_by_date,
@@ -94,14 +100,14 @@ ANALYSIS_TYPE_SEASONAL = "seasonal_trend"
 # that were artefacts of reading the wake row, so the old narratives must stop
 # being served rather than be left to age out.
 PROMPT_VERSION_BY_BUCKET = {
-    BUCKET_MONTH: "trends-month-v6-2026-08-25",
-    BUCKET_SEASON: "trends-season-v6-2026-08-25",
+    BUCKET_MONTH: "trends-month-v7-2026-08-27",
+    BUCKET_SEASON: "trends-season-v7-2026-08-27",
 }
 
 # Indoor reading at/after this local hour belongs to the *next* morning's night.
 _EVENING_HOUR = 18
 
-TREND_SYSTEM_PROMPT = """You are CheckMark, a private endurance and sleep \
+TREND_SYSTEM_PROMPT = f"""You are CheckMark, a private endurance and sleep \
 coach writing a long-horizon trend summary.
 Use only the supplied deterministic trend packet. Compare this period against the \
 same period last year and across seasons. Treat every figure in the supplied \
@@ -117,10 +123,11 @@ Never mention left/right power balance. Treat SpO2 and HRV before the reliabilit
 cutoff as excluded. When sample counts are low or a prior-year window is missing, \
 say "insufficient history" plainly rather than inventing a trend. Interpret \
 readiness, HRV, resting HR, and REM against personalBaselines before using \
-alarming language. REM in particular is never to be judged by the age band \
-alone: state the night against Mark's own median and quartiles first, and only \
-then, if it adds something, against the band — saying plainly how far the band \
-sits from his own norm rather than implying it is a target he is failing. \
+alarming language. {REM_FRAMING_RULE} \
+REM's band numbers are in remAgeBand, and remAgeBand.basis says which total \
+every REM percentage in this packet is a share of — quote it whenever you give \
+one. If remAgeBand is absent, say the band is unavailable rather than recalling \
+one. \
 Every year-on-year claim must cite the currentMean -> priorMean or \
 priorMean -> currentMean numbers plus both sample counts; every seasonal claim \
 must cite the window labels and sampleDays or metric sampleCount. If a metric \
@@ -628,6 +635,7 @@ class TrendsService:
             windows=windows,
             guardrails=guardrails,
             baselines=baselines,
+            rem_age_band=await self._rem_age_band(player.id),
         )
         latest = await self.latest_narrative(player.id, bucket, subject_date)
         return NarrativePreview(
@@ -871,6 +879,36 @@ class TrendsService:
                 return [rule for rule in rules if isinstance(rule, dict)]
         return []
 
+    async def _rem_age_band(self, user_id: uuid.UUID) -> dict[str, Any] | None:
+        """The healthy REM range for this user's age band, or ``None`` if unknown.
+
+        Same source as the morning read's age comparison — ``age_norms`` keyed on
+        the stored profile age — so the band the trends narrative quotes and the
+        band the brief quotes are one number, not two.
+        """
+        section = await self.session.scalar(
+            select(KnowledgeBase).where(
+                KnowledgeBase.user_id == user_id,
+                KnowledgeBase.section == "profile",
+                KnowledgeBase.is_active.is_(True),
+            )
+        )
+        content = section.content if section and isinstance(section.content, dict) else {}
+        age = content.get("age")
+        if not isinstance(age, int | float):
+            return None
+        band = sleep_stage_band("rem_sleep_pct", int(age), content.get("sex"))
+        if band is None:
+            return None
+        return {
+            "metricKey": "rem_sleep_pct",
+            "ageBand": age_band_label(int(age)),
+            "bandLow": band[0],
+            "bandHigh": band[1],
+            "unit": "%",
+            "basis": SLEEP_STAGE_PCT_BASIS_NOTE,
+        }
+
     async def _metric_baselines(self, user_id: uuid.UUID) -> list[MetricBaseline]:
         rows = (
             (
@@ -899,6 +937,7 @@ def _build_packet(
     windows: Sequence[TrendWindow],
     guardrails: list[dict[str, Any]],
     baselines: Sequence[MetricBaseline] = (),
+    rem_age_band: dict[str, Any] | None = None,
     recent_window_count: int = 6,
 ) -> dict[str, Any]:
     return {
@@ -913,10 +952,27 @@ def _build_packet(
         },
         "yearOnYear": year_on_year_json(comparison),
         "recentWindows": [window_json(w) for w in list(windows)[-recent_window_count:]],
+        # Batch 230: `rem_sleep_pct` was missing from this set while the prompt
+        # told the model to interpret REM against personalBaselines, so the v6
+        # August narrative cited "median 12.55% in March" — simply the highest
+        # month in the displayed window — as Mark's baseline. The same narrative
+        # quoted readiness, RHR and HRV correctly, because those three were here.
+        # The anchor was not a tone failure; the model had nothing else to cite.
         "personalBaselines": baseline_band_packet(
             baselines,
-            keys={"readiness_score", "hrv_7_day_avg_ms", "resting_heart_rate_bpm"},
+            keys={
+                "readiness_score",
+                "hrv_7_day_avg_ms",
+                "resting_heart_rate_bpm",
+                "rem_sleep_pct",
+            },
         ),
+        # Batch 230: the prompt requires REM to be stated against the age band as
+        # well as his own baseline, so the band travels in the packet. Without it
+        # this would repeat the very defect 230.2 fixed — an instruction pointing
+        # at a number the packet does not contain, which is how "median 12.55% in
+        # March" got invented in the first place.
+        "remAgeBand": rem_age_band,
         "dataQualityGuardrails": guardrails,
         "prompt": {
             "version": PROMPT_VERSION_BY_BUCKET[bucket],

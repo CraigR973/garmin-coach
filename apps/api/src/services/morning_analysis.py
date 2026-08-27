@@ -30,7 +30,13 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile
-from src.services.age_norms import build_age_comparison, rem_sleep_pct_for_row
+from src.services.age_norms import (
+    REM_FRAMING_RULE,
+    SLEEP_STAGE_MINUTES_RULE,
+    SLEEP_STAGE_PCT_BASIS,
+    build_age_comparison,
+    rem_sleep_pct_for_row,
+)
 from src.services.anthropic_text import generate_anthropic_text
 from src.services.bedroom_overnight import night_window
 from src.services.body_metrics import resolve_effective_vo2max, resolve_effective_weight_kg
@@ -170,7 +176,7 @@ from src.services.workout_delivery import build_structured_workout_ir
 # identity is (user, date, checkInVersion, promptVersion) and does *not* hash the
 # packet, so without it an already-generated pre-fix brief would be served as
 # current on the day this ships.
-PROMPT_VERSION = "morning-analysis-v37-2026-08-25"
+PROMPT_VERSION = "morning-analysis-v38-2026-08-27"
 ANALYSIS_TYPE = "morning"
 # Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
 # signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
@@ -264,16 +270,15 @@ human-approved and has verdictImpact `none`: never claim it changed, softened,
 or set today's Green/Amber/Red result.
 stage in ageComparison.sleepRows sits inside its healthy age band, describe it as
 healthy for the user's age rather than repeating Garmin's young-adult flag (e.g.
-"REM 16% is within the healthy 50-59 range; Garmin only flags it against a younger
-target"). REM has one further rule, because the age band alone has never been able
-to tell Mark anything: read it against metricsVsBaselines.rem_sleep_pct — his own
-median and quartiles over his stored nights — BEFORE the age band, and lead with
-that comparison ("74 minutes, well above your own median"). Only then, and only if
-it adds something, mention the band, saying plainly how far it sits from his own
-norm rather than implying it is a target he is failing. A night above his own upper
-quartile is a good night and must be described as one even when it is below the
-band floor. Both figures are percentages of measured sleep, so never present them
-as two different measurements of the same night.
+"Deep 17% is within the healthy 50-59 range; Garmin only flags it against a younger
+target"). Every sleepRows percentage is a share of the same denominator, stated in
+ageComparison.sleepStagePctBasis: quote that basis whenever you give a stage
+percentage.
+{SLEEP_STAGE_MINUTES_RULE}
+{REM_FRAMING_RULE}
+Read REM against metricsVsBaselines.rem_sleep_pct, whose own basis field says
+which total it is a percentage of, and whose ageFrame carries the band; the two
+frames describe one night, so never present them as two measurements of it.
 knowledgeBase.trainingSchedule describes the user's usual routine only;
 never use it as evidence that a session happened this week or assign a completed
 session to one of its nominal weekdays. Ground every claim about what was planned,
@@ -526,15 +531,21 @@ class MorningAnalysisService:
             and sleep.age_adjusted_score != age_adjusted_sleep_score
         ):
             sleep.age_adjusted_score = age_adjusted_sleep_score
+        age_comparison = _age_comparison(
+            daily_metric, sleep, knowledge_base, vo2max=effective_vo2max
+        )
+        # Batch 230: the age comparison is computed first now because the metrics
+        # table needs REM's population frame, and `yesterday_load` (already built
+        # above) supplies the closed-day drain the table used to withhold. Both
+        # are reads of values these callers have; nothing new is queried.
         metrics_table = _metrics_vs_baselines(
             daily_metric,
             sleep,
             baselines,
             age_adjusted_sleep_score,
             day_aggregates=day_aggregate_metric,
-        )
-        age_comparison = _age_comparison(
-            daily_metric, sleep, knowledge_base, vo2max=effective_vo2max
+            age_comparison=age_comparison,
+            closed_day_cost=yesterday_load.get("wholeDayCost"),
         )
         thermal_review = _thermal_review(
             temperature_rows,
@@ -1615,12 +1626,58 @@ def _baseline_comparison(baseline: MetricBaseline, current: float | int | None) 
     }
 
 
+def _rem_age_frame(age_comparison: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """REM's population frame, taken from the row the stage table already renders.
+
+    Batch 230 restores the age frame the metrics table lost. Batch 227 left REM
+    out of ``AGE_TO_BASELINE_KEY`` on purpose — its age row lives in ``sleepRows``
+    and renders in ``SleepStageAgeTable`` — but that table appears only on
+    ``/sleep``, so on the morning brief and on Home REM was the one age-normed
+    metric shown with no population frame at all: "✓ in range" and nothing else,
+    on the metric Mark has now raised in three separate feedback waves.
+
+    It reads the *same computed row* rather than re-deriving a band, so the two
+    tables cannot drift about one night. On ``/sleep``, where both render, this
+    repeats the band once — the accepted trade, because the frame's job is to stop
+    the personal comparison reading as the whole story, and that job exists on
+    every surface.
+    """
+    if age_comparison is None:
+        return None
+    sleep_rows = age_comparison.get("sleepRows")
+    if not isinstance(sleep_rows, list):
+        return None
+    row = next(
+        (
+            entry
+            for entry in sleep_rows
+            if isinstance(entry, Mapping) and entry.get("metricKey") == "rem_sleep_pct"
+        ),
+        None,
+    )
+    if row is None:
+        return None
+    band_low, band_high = row.get("bandLow"), row.get("bandHigh")
+    if band_low is None or band_high is None:
+        return None
+    return {
+        "ageBand": row.get("ageBand"),
+        "bandLow": band_low,
+        "bandHigh": band_high,
+        "unit": row.get("unit", ""),
+        "tone": row.get("tone"),
+        "descriptor": row.get("descriptor"),
+    }
+
+
 def _metrics_vs_baselines(
     daily_metric: DailyMetric | None,
     sleep: Sleep | None,
     baselines: Sequence[MetricBaseline],
     age_adjusted_sleep_score: int | None,
     day_aggregates: DailyMetric | None = None,
+    age_comparison: Mapping[str, Any] | None = None,
+    closed_day_cost: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     # Batch 216/224: recovery reads (readiness, RHR, HRV) stay on the morning
     # row. Closed-day Body Battery charge/drain still come from the settled row.
@@ -1645,6 +1702,20 @@ def _metrics_vs_baselines(
         if morning_battery_source is not None
         else None
     )
+    # Batch 230: Mark's ask. The drain row rendered an em dash plus a two-line
+    # "wait until the day closes" note — the tallest row in a table headed "Last
+    # night's metrics", carrying no value, and describing *today*. Batch 226.2's
+    # constraint is real (the subject date's settled row does not exist at wake,
+    # so today's drain is structurally uncomparable) but it applies only to
+    # today: yesterday's settled row does exist, and `_yesterday_load_packet` has
+    # already computed its drain. Reusing that value rather than re-deriving one
+    # is what stops the table and the prose quoting different numbers for one day.
+    closed_day_drain = (
+        closed_day_cost.get("bodyBatteryDrained") if closed_day_cost is not None else None
+    )
+    closed_day_date = _parse_iso_date(
+        closed_day_cost.get("calendarDate") if closed_day_cost is not None else None
+    )
     current_values = {
         "sleep_score": sleep.score if sleep else None,
         "age_adjusted_sleep_score": age_adjusted_sleep_score,
@@ -1661,7 +1732,7 @@ def _metrics_vs_baselines(
         "body_battery_drain": (
             complete_body_battery_drained(settled_battery_source)
             if settled_battery_source is not None
-            else None
+            else closed_day_drain
         ),
         "average_spo2_pct": sleep.average_spo2_pct if sleep else None,
         "average_respiration": sleep.average_respiration if sleep else None,
@@ -1685,25 +1756,56 @@ def _metrics_vs_baselines(
                 else None
             ),
         }
-        if morning_battery_source is not None:
-            if baseline.metric_key == "body_battery_charge":
-                if morning_charge is not None:
-                    row["basis"] = (
-                        "Garmin's overnight charge accumulated from midnight to this morning's "
-                        "sync."
-                    )
-                else:
-                    row["unavailableReason"] = (
-                        "Garmin did not provide a usable overnight charge window for this "
-                        "morning's sync."
-                    )
-            elif baseline.metric_key == "body_battery_drain":
+        if baseline.metric_key == "rem_sleep_pct":
+            # Batch 230: the denominator, in words, beside the number it divides
+            # by — Batch 217's convention, and the half of 227.3 that never
+            # shipped. The percentage is a share of measured sleep including time
+            # awake, which is why it will never equal what Mark's own watch shows.
+            row["basis"] = SLEEP_STAGE_PCT_BASIS
+            age_frame = _rem_age_frame(age_comparison)
+            if age_frame is not None:
+                row["ageFrame"] = age_frame
+        if morning_battery_source is not None and baseline.metric_key == "body_battery_charge":
+            if morning_charge is not None:
+                row["basis"] = (
+                    "Garmin's overnight charge accumulated from midnight to this morning's sync."
+                )
+            else:
+                row["unavailableReason"] = (
+                    "Garmin did not provide a usable overnight charge window for this "
+                    "morning's sync."
+                )
+        if baseline.metric_key == "body_battery_drain" and settled_battery_source is None:
+            if closed_day_drain is not None:
+                row["basis"] = (
+                    "Your last finished day"
+                    + (f" ({_friendly_day(closed_day_date)})" if closed_day_date else "")
+                    + " — drain is a whole-day figure, so it is shown once the day has closed."
+                )
+            elif morning_battery_source is not None:
+                # Batch 224's withhold, unchanged, for the case it was written
+                # for: no closed day to fall back to, so the only drain available
+                # is a part-day total that must not meet a full-day baseline.
                 row["unavailableReason"] = (
                     "This drain is still a part-day value at the morning sync; compare it with "
                     "your full-day baseline after the day closes."
                 )
         rows.append(row)
     return rows
+
+
+def _parse_iso_date(value: Any) -> date | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _friendly_day(value: date) -> str:
+    """``2026-08-26`` as ``26 Aug`` — no leading zero, no platform-specific format."""
+    return f"{value.day} {value.strftime('%b')}"
 
 
 def _extract_fitness_age(raw_payload: Mapping[str, Any] | None) -> int | None:
