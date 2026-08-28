@@ -27,9 +27,14 @@ function fmtRange(low: number | null | undefined, high: number | null | undefine
 export function SleepStageAgeTable({
   rows,
   ageBand,
+  stagePctBasis,
 }: {
   rows: AgeComparisonRow[];
   ageBand?: string | null;
+  /** Batch 230: which total these percentages are shares of. Mark's watch shows
+   *  stage minutes against a Duration that excludes time awake, so without this
+   *  none of the four percentages divides into anything on his screen. */
+  stagePctBasis?: string | null;
 }) {
   if (rows.length === 0) {
     return (
@@ -111,6 +116,8 @@ export function SleepStageAgeTable({
           </div>
         </details>
       )}
+
+      {stagePctBasis && <p className="text-[11px] text-text-muted">{stagePctBasis}</p>}
 
       <p className="text-[11px] text-text-muted">
         Healthy ranges use age-adjusted sleep-stage norms (Ohayon et al., 2004) for{' '}

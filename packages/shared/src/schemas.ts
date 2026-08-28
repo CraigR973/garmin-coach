@@ -674,6 +674,21 @@ export const metricBaselineRowSchema = z.object({
   reliabilityStartDate: z.string().nullable().optional(),
   basis: z.string().min(1).optional(),
   unavailableReason: z.string().min(1).optional(),
+  // Batch 230: the population frame for a metric that also has a personal one.
+  // Only REM carries it today — its age row lives in `ageComparison.sleepRows`
+  // and renders in `SleepStageAgeTable`, which exists only on `/sleep`, so on the
+  // brief and on Home the row read "✓ in range" with no band at all. Optional so
+  // every analysis stored before this shipped still parses.
+  ageFrame: z
+    .object({
+      ageBand: z.string().min(1),
+      bandLow: z.number(),
+      bandHigh: z.number(),
+      unit: z.string().default(''),
+      tone: z.enum(['good', 'warn', 'neutral']),
+      descriptor: z.string().min(1),
+    })
+    .optional(),
 });
 
 export const ageComparisonRowSchema = z.object({
@@ -704,6 +719,9 @@ export const ageComparisonSchema = z.object({
   fitnessAgeTone: z.enum(['good', 'warn', 'neutral']).nullable().optional(),
   rows: z.array(ageComparisonRowSchema).default([]),
   sleepRows: z.array(ageComparisonRowSchema).default([]),
+  // Batch 230: the one denominator every sleepRows percentage shares, in words.
+  // Optional — a pre-230 stored analysis has no such field.
+  sleepStagePctBasis: z.string().min(1).optional(),
 });
 
 export const chronicSuggestionDriverSchema = z.object({

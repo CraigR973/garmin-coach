@@ -22,6 +22,8 @@ from src.models.coaching import (
     DAILY_METRIC_PHASE_SETTLED,
     Analysis,
     DailyMetric,
+    KnowledgeBase,
+    MetricBaseline,
     Sleep,
 )
 from src.models.profile import Profile, UserRole
@@ -272,6 +274,83 @@ async def test_seasonal_and_yoy_preview_never_write(db_conn: AsyncConnection) ->
 
         after = await session.scalar(select(func.count()).select_from(Analysis))
         assert after == before  # GET previews never write (#71)
+
+
+@pytest.mark.asyncio
+async def test_trends_packet_carries_rems_own_baseline_and_band(db_conn: AsyncConnection) -> None:
+    """Batch 230.2. The prompt told the model to read REM against
+    ``personalBaselines`` and the packet's key set excluded it, so the v6 August
+    narrative cited "median 12.55% in March" — the highest month of the displayed
+    window — as Mark's baseline, while quoting readiness, RHR and HRV correctly
+    because those three were present. The band travels too, so the rule that REM
+    must be stated against it is not itself pointing at an absent number."""
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    await _seed_two_julys(db_conn, user_id)
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            KnowledgeBase(
+                user_id=user_id,
+                section="profile",
+                version=1,
+                is_active=True,
+                content={"age": 57},
+            )
+        )
+        session.add(
+            MetricBaseline(
+                user_id=user_id,
+                metric_key="rem_sleep_pct",
+                metric_label="REM sleep",
+                source="db_history",
+                window_start_date=date(2026, 6, 4),
+                window_end_date=date(2026, 8, 26),
+                sample_count=84,
+                excluded_sample_count=0,
+                mean_value=10.05,
+                median_value=9.908234126984127,
+                lower_quartile_value=7.5041490814023,
+                upper_quartile_value=13.11771939725243,
+            )
+        )
+        await session.commit()
+
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        preview = await TrendsService(session).narrative_preview(
+            user, bucket=BUCKET_MONTH, as_of=AS_OF
+        )
+
+    rem = preview.packet["personalBaselines"]["rem_sleep_pct"]
+    assert rem["median"] == 9.908234126984127
+    assert rem["sampleCount"] == 84
+    # The band is read from the same age_norms source the morning read uses, so
+    # the two surfaces cannot quote different healthy ranges for one metric.
+    band = preview.packet["remAgeBand"]
+    assert band["metricKey"] == "rem_sleep_pct"
+    assert band["ageBand"] == "50\u201359"
+    assert (band["bandLow"], band["bandHigh"], band["unit"]) == (15, 23, "%")
+    assert "measured sleep" in band["basis"]
+
+
+@pytest.mark.asyncio
+async def test_trends_packet_says_the_band_is_unknown_without_a_profile_age(
+    db_conn: AsyncConnection,
+) -> None:
+    """No age, no band — and the prompt is told to say so rather than recall one."""
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    await _seed_two_julys(db_conn, user_id)
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        preview = await TrendsService(session).narrative_preview(
+            user, bucket=BUCKET_MONTH, as_of=AS_OF
+        )
+
+    assert preview.packet["remAgeBand"] is None
 
 
 @pytest.mark.asyncio

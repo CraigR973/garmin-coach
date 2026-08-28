@@ -17,6 +17,7 @@ import pytest
 
 from src.models.coaching import Sleep
 from src.services.age_norms import (
+    REM_FRAMING_RULE,
     REM_PCT_BASIS,
     build_age_comparison,
     rem_sleep_pct,
@@ -123,7 +124,16 @@ def test_the_split_can_flip_the_band_verdict_on_the_nights_that_do_straddle() ->
     assert sample_values(straddling, None)["rem_sleep_pct"] == by_measured_sleep
 
 
-def test_the_denominator_is_named_where_the_number_is_surfaced() -> None:
+def test_the_denominator_constant_still_says_measured_sleep() -> None:
+    """Renamed by Batch 230. This only ever checked the constant's own wording,
+    while its old name — ``test_the_denominator_is_named_where_the_number_is
+    _surfaced`` — promised it checked the packet. It did not, ``REM_PCT_BASIS``
+    reached no packet at all, and the model wrote "9.8% of sleep" about a total
+    containing 35 minutes of wakefulness with this test passing throughout. The
+    packet-level claim now lives in
+    ``test_batch230_reconcilable_figures.test_the_denominator_is_named_in_a_packet
+    _not_only_in_a_constant``; this keeps only the claim it can actually make.
+    """
     assert "measured sleep" in REM_PCT_BASIS
     assert "awake" in REM_PCT_BASIS.lower()
 
@@ -182,20 +192,17 @@ def test_rem_gets_a_month_over_month_series() -> None:
 
 def test_morning_prompt_puts_his_own_baseline_before_the_age_band() -> None:
     assert "metricsVsBaselines.rem_sleep_pct" in MORNING_SYSTEM_PROMPT
-    personal = MORNING_SYSTEM_PROMPT.index("metricsVsBaselines.rem_sleep_pct")
-    band_rule = MORNING_SYSTEM_PROMPT.index("Only then, and only if", personal)
-    assert personal < band_rule
-    assert "BEFORE the age band" in MORNING_SYSTEM_PROMPT
+    # Batch 230 moved the wording into the shared rule; the ordering claim is the
+    # part that has to survive, so it is asserted against the rule's own text.
+    assert "own stored median and quartiles FIRST" in REM_FRAMING_RULE
     # An unusually good night must be recognisable as one.
-    assert "above his own upper" in MORNING_SYSTEM_PROMPT
-    assert "is a good night" in MORNING_SYSTEM_PROMPT
-    # And the band must not be dressed up as a target he is failing.
-    assert "rather than implying it is a target he is failing" in MORNING_SYSTEM_PROMPT
+    assert "above his own upper quartile is good" in REM_FRAMING_RULE
+    assert "described as good even when it sits below the age band" in REM_FRAMING_RULE
 
 
 def test_trends_prompt_reads_rem_against_personal_baselines_first() -> None:
     assert "REM against personalBaselines" in TREND_SYSTEM_PROMPT
-    assert "never to be judged by the age band" in TREND_SYSTEM_PROMPT
+    assert REM_FRAMING_RULE in TREND_SYSTEM_PROMPT
 
 
 def test_a_below_band_night_can_still_be_above_his_own_upper_quartile() -> None:

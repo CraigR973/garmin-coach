@@ -42,6 +42,18 @@ export interface MetricBaselineRow {
   reliabilityStartDate?: string | null;
   basis?: string;
   unavailableReason?: string;
+  /** Batch 230: the population frame for a metric that also has a personal one
+   *  (REM today), so a night that is normal for him and below the band reads as
+   *  both rather than as neither. Server-computed from the same age row the
+   *  Sleep page's stage table renders, so the two cannot disagree. */
+  ageFrame?: {
+    ageBand: string;
+    bandLow: number;
+    bandHigh: number;
+    unit?: string;
+    tone: Tone;
+    descriptor: string;
+  };
 }
 
 export interface AgeComparisonRow {
@@ -68,6 +80,10 @@ export interface AgeComparison {
   fitnessAgeTone?: Tone | null;
   rows: AgeComparisonRow[];
   sleepRows?: AgeComparisonRow[];
+  /** Batch 230: the one denominator every `sleepRows` percentage is a share of,
+   *  in words. Stated where the numbers are, so a stage % that will not divide
+   *  into Garmin's displayed Duration says why. */
+  sleepStagePctBasis?: string;
 }
 
 // Direction of "better" per metric key. This list must cover every key the
@@ -106,9 +122,11 @@ const BASELINE_UNIT: Record<string, string> = {
 // Which baseline metric an age-norm row lines up against. Resting HR shares a
 // key; the age HRV norm is overnight RMSSD, which we sit against the 7-day HRV
 // baseline. VO₂max has no nightly baseline, so it appends as an age-only row.
-// REM is deliberately absent: its age row lives in `sleepRows` and renders in
-// `SleepStageAgeTable` on the Sleep page, so joining it here would show the same
-// night twice (Batch 227).
+// REM stays absent here, but not for Batch 227's reason: this map joins
+// `ageComparison.rows`, and REM's age row lives in `sleepRows`. Batch 230 gives
+// it the band through the server-computed `ageFrame` on its baseline row
+// instead, so the frame reaches every surface rather than only `/sleep`, where
+// `SleepStageAgeTable` happens to render.
 const AGE_TO_BASELINE_KEY: Record<string, string> = {
   resting_heart_rate_bpm: 'resting_heart_rate_bpm',
   hrv_overnight_ms: 'hrv_7_day_avg_ms',
@@ -147,9 +165,25 @@ interface Diff {
   text: string;
 }
 
-// "vs your own normal" as a difference: in-band reads "in range"; outside the
-// trailing-quartile band reads "<n> above/below", tinted by whether that
-// direction is good for the metric.
+// "vs your own normal" as a difference: inside the printed quartile range reads
+// "in range"; just outside it but inside the tolerance reads a *named* near-miss;
+// beyond that reads "<n> above/below", tinted by whether that direction is good
+// for the metric.
+//
+// Batch 230 — why the near-miss has its own words. The tolerance is defensible:
+// quartiles over 76–84 nights are noisy and a hard edge would report 0.1 outside
+// as a deviation. But it was invisible, so the table printed 45–49, printed 50,
+// and said "in range" — a claim Mark could disprove with one subtraction, and it
+// happened twice on consecutive days (HRV 50 read "in range" on 26 Aug, HRV 51
+// read "2 above" on the 27th). Two options were rejected. Printing the widened
+// range (45–50.4) makes "in range" true but stops the printed range being his
+// quartile range, changing the meaning of a figure on every row. Measuring the
+// magnitude from the tolerance bound rather than the quartile makes the reading
+// continuous from zero, but the number then reconciles against nothing the table
+// shows — trading a visible contradiction for an invisible one. So: the printed
+// range stays the quartile range, the magnitude keeps measuring from it (5 above
+// is still 76−71, and Mark can check it), and the only thing that changes is that
+// the tolerance zone stops claiming membership of a range it sits outside.
 function baselineDiff(row: MetricBaselineRow): Diff | null {
   const current = row.currentValue;
   const center = row.baselineMedian ?? row.baselineMean;
@@ -159,8 +193,14 @@ function baselineDiff(row: MetricBaselineRow): Diff | null {
   const upper = row.upperQuartile ?? center;
   const tol = Math.max(Math.abs(center) * 0.03, 0.5);
 
-  if (current >= lower - tol && current <= upper + tol) {
+  if (current >= lower && current <= upper) {
     return { tone: 'good', text: 'in range' };
+  }
+  if (current >= lower - tol && current <= upper + tol) {
+    return {
+      tone: 'good',
+      text: `just ${current > upper ? 'above' : 'below'}, still typical`,
+    };
   }
   const above = current > upper + tol;
   const magnitude = above ? current - upper : lower - current;
@@ -250,7 +290,7 @@ export function MetricComparisonTable({
   const reliabilityNote = baselineRows.some(
     (r) => (r.excludedSampleCount ?? 0) > 0 && r.reliabilityStartDate,
   );
-  const hasAge = rows.some((r) => r.age != null);
+  const hasAge = rows.some((r) => r.age != null || r.baseline?.ageFrame != null);
 
   return (
     <div className="space-y-3">
@@ -281,6 +321,7 @@ export function MetricComparisonTable({
               // metrics have no age norm — so it folds into a per-row descriptor
               // that only renders when this metric actually has one.
               const age = row.age ? ageDiff(row.age) : null;
+              const ageFrame = row.baseline?.ageFrame ?? null;
               const primaryStatus = diff ?? age;
               return (
                 <tr key={row.key} className="border-t border-border">
@@ -329,6 +370,23 @@ export function MetricComparisonTable({
                         {diff && age && (
                           <div className={cn('mt-0.5 text-sm font-medium', toneText[age.tone])}>
                             {age.text} for your age
+                          </div>
+                        )}
+                        {/* Batch 230: the population frame for a row whose age
+                            comparison does not come through `ageComparison.rows`
+                            (REM). Rendered with the band's own numbers, so "in
+                            range" above it can only mean the personal range. */}
+                        {ageFrame && (
+                          <div
+                            className={cn(
+                              'mt-0.5 inline-flex items-center justify-end gap-1 text-sm font-medium',
+                              toneText[ageFrame.tone],
+                            )}
+                          >
+                            <ToneIcon tone={ageFrame.tone} className="h-3 w-3" />
+                            {ageFrame.descriptor} ({fmt(ageFrame.bandLow)}–
+                            {fmt(ageFrame.bandHigh)}
+                            {ageFrame.unit ?? ''})
                           </div>
                         )}
                       </>

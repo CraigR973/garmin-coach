@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { SleepStageAgeTable } from '@/components/SleepStageAgeTable';
 
@@ -90,6 +90,23 @@ describe('SleepStageAgeTable', () => {
 
   it('cites the age-norm source in the footnote', () => {
     render(<SleepStageAgeTable rows={rows} ageBand="50–59" />);
+    expect(screen.getByText(/Ohayon et al\., 2004/)).toBeTruthy();
+  });
+
+  it('says which total the stage percentages are shares of (Batch 230)', () => {
+    // Mark's watch shows stage minutes against a Duration that excludes time
+    // awake; these percentages include it. Without the note none of the four
+    // divides into anything on his screen \u2014 48 min of a shown 7h33m is 10.6%,
+    // and the app says 9.8%.
+    const basis =
+      'Stage percentages are shares of measured sleep \u2014 deep + light + REM + awake \u2014 so they include time awake in bed.';
+    render(<SleepStageAgeTable rows={rows} ageBand="50\u201359" stagePctBasis={basis} />);
+    expect(screen.getByText(/shares of measured sleep/i)).toBeTruthy();
+
+    // Absent on a stored pre-230 read, and the table still renders.
+    cleanup();
+    render(<SleepStageAgeTable rows={rows} ageBand="50\u201359" />);
+    expect(screen.queryByText(/shares of measured sleep/i)).toBeNull();
     expect(screen.getByText(/Ohayon et al\., 2004/)).toBeTruthy();
   });
 

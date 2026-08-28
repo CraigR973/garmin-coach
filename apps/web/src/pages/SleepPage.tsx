@@ -217,7 +217,11 @@ export function SleepPage() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <SleepStageAgeTable rows={historyAgeComparison?.sleepRows ?? []} ageBand={historyAgeComparison?.ageBand} />
+                    <SleepStageAgeTable
+                      rows={historyAgeComparison?.sleepRows ?? []}
+                      ageBand={historyAgeComparison?.ageBand}
+                      stagePctBasis={historyAgeComparison?.sleepStagePctBasis}
+                    />
                   </CardContent>
                 </Card>
               ) : null}
