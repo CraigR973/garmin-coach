@@ -104,7 +104,11 @@ DRIVER_KEYS = (
     "bedroom_fan_ran_minutes",
     "bedroom_peak_fan_speed",
     "prev_day_training_load",
-    "daytime_stress_avg",
+    # Batch 231: renamed from ``daytime_stress_avg`` and re-aligned. Keyed on the
+    # wake date it read the stress of the day that *followed* the night, so it
+    # was correlated against an outcome that had already happened. It now takes
+    # the previous day's settled aggregate, matching ``prev_day_training_load``.
+    "prev_day_stress_avg",
     "resting_heart_rate_bpm",
     "sleep_stress_avg",
 )
@@ -756,12 +760,17 @@ class InsightsService:
     async def _driver_records(
         self, player: Profile, *, start: date, end: date
     ) -> list[dict[str, float | None]]:
+        # Batch 231: one day earlier than the window, because
+        # ``prev_day_stress_avg`` reads the settled aggregate of the day *before*
+        # each wake date. The extra row feeds that lookup only — the recovery
+        # readings below are filtered back to the window so the set of correlated
+        # days is unchanged.
         metric_rows = (
             (
                 await self.session.execute(
                     select(DailyMetric).where(
                         DailyMetric.user_id == player.id,
-                        DailyMetric.calendar_date >= start,
+                        DailyMetric.calendar_date >= start - timedelta(days=1),
                         DailyMetric.calendar_date <= end,
                     )
                 )
@@ -811,7 +820,9 @@ class InsightsService:
         )
         # Batch 205: recovery readings come from the wake row, the local-day
         # stress average from the settled one.
-        metric_by_date = index_morning_by_date(metric_rows)
+        metric_by_date = index_morning_by_date(
+            [row for row in metric_rows if row.calendar_date >= start]
+        )
         aggregate_by_date = index_day_aggregates_by_date(metric_rows)
         sleep_by_date = {s.calendar_date: s for s in sleeps}
         weather_by_date = {w.calendar_date: w for w in weather}
@@ -826,7 +837,10 @@ class InsightsService:
         records: list[dict[str, float | None]] = []
         for day in sorted(set(metric_by_date) | set(sleep_by_date)):
             metric = metric_by_date.get(day)
-            day_aggregate = aggregate_by_date.get(day)
+            # Batch 231: the night keyed on wake date ``day`` ended that morning,
+            # so the daytime stress that could have shaped it is the previous
+            # day's — the same day-1 convention ``prev_day_training_load`` uses.
+            day_aggregate = aggregate_by_date.get(day - timedelta(days=1))
             sleep = sleep_by_date.get(day)
             weather_row = weather_by_date.get(day)
             bedroom = bedroom_by_date.get(day)
@@ -866,7 +880,7 @@ class InsightsService:
                     "prev_day_training_load": prev_load,
                     # Batch 205: a finished day's stress average, so the
                     # settled row rather than the wake row's partial window.
-                    "daytime_stress_avg": complete_stress_avg(day_aggregate)
+                    "prev_day_stress_avg": complete_stress_avg(day_aggregate)
                     if day_aggregate
                     else None,
                     "resting_heart_rate_bpm": float(metric.resting_heart_rate_bpm)

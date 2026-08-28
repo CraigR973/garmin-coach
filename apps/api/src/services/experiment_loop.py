@@ -80,6 +80,11 @@ class RemAssignment:
     window_start: date
     window_end: date
     interventions: tuple[dict[str, str], ...]
+    # Batch 231: how many levers were actually available the week this was
+    # issued. Standing habits shrink the library, so ``len(REM_LIBRARY)`` would
+    # over-report a historical "2 of N" once one is suppressed — two surfaces
+    # disagreeing about one count is the defect Batch 230 exists to stop.
+    library_total: int = len(REM_LIBRARY)
 
     def to_packet(self) -> dict[str, Any]:
         return {
@@ -88,6 +93,7 @@ class RemAssignment:
             "windowStart": self.window_start.isoformat(),
             "windowEnd": self.window_end.isoformat(),
             "interventions": [dict(item) for item in self.interventions],
+            "libraryTotal": self.library_total,
         }
 
 
@@ -97,7 +103,7 @@ def rotation_from_assignment(assignment: RemAssignment | None) -> RemRotation | 
     return RemRotation(
         period_label=assignment.period_label,
         shown=len(assignment.interventions),
-        total=len(REM_LIBRARY),
+        total=assignment.library_total,
         intervention_ids=tuple(item["id"] for item in assignment.interventions),
         actions=tuple(item["action"] for item in assignment.interventions),
     )
@@ -117,6 +123,7 @@ def _assignment_from_analysis(row: Analysis) -> RemAssignment | None:
         return None
     if not isinstance(raw_interventions, list):
         return None
+    raw_total = packet.get("libraryTotal")
     interventions: list[dict[str, str]] = []
     for raw in raw_interventions:
         if not isinstance(raw, dict):
@@ -133,6 +140,8 @@ def _assignment_from_analysis(row: Analysis) -> RemAssignment | None:
             window_start=date.fromisoformat(raw_start),
             window_end=date.fromisoformat(raw_end),
             interventions=tuple(interventions),
+            # A pre-231 stored row has no libraryTotal; the library was whole then.
+            library_total=raw_total if isinstance(raw_total, int) else len(REM_LIBRARY),
         )
     except ValueError:
         return None
@@ -177,6 +186,7 @@ class ExperimentLoopService:
             "windowStart": window_start.isoformat(),
             "windowEnd": window_end.isoformat(),
             "interventions": interventions,
+            "libraryTotal": rotation.total,
             "issuedFor": "nights_starting_in_window",
             "issuedAtLocalDate": as_of.isoformat(),
             "applicationEvidence": "explicit_next_morning_check_in",

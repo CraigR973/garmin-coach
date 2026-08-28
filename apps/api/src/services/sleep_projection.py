@@ -63,7 +63,7 @@ _DRIVER_LABELS = {
     "bedroom_critical_minutes": "time above 20C",
     "bedroom_fan_ran_minutes": "fan runtime",
     "bedroom_peak_fan_speed": "fan speed",
-    "daytime_stress_avg": "daytime stress",
+    "prev_day_stress_avg": "the previous day's stress",
     "resting_heart_rate_bpm": "resting heart rate",
     "sleep_stress_avg": "sleep stress",
 }

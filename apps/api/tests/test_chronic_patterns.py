@@ -6,6 +6,7 @@ import pytest
 
 from src.services.chronic_patterns import (
     BaselineBand,
+    ChronicSuggestionResult,
     RecordedTrainingContext,
     RecoveryDay,
     RedDayEvidence,
@@ -17,6 +18,7 @@ from src.services.chronic_patterns import (
     classify_check_in_causes,
 )
 from src.services.insights import DriverCorrelation
+from src.services.rem_interventions import RemRotation
 
 
 def _nights(end: date, *, rem_pct: float, count: int = 28) -> list[SleepNight]:
@@ -45,22 +47,46 @@ def _nights(end: date, *, rem_pct: float, count: int = 28) -> list[SleepNight]:
 
 
 def test_chronic_rem_suggestion_prioritises_measured_driver() -> None:
+    """Batch 231: the REM flag reads REM's own drivers, strongest actionable first.
+
+    Before this batch the same inputs returned ``prev_day_training_load`` — the
+    weaker driver, of the wrong outcome — because the selection was hardcoded.
+    """
     as_of = date(2026, 7, 5)
-    drivers = [
-        DriverCorrelation(
-            driver="prev_day_training_load",
-            outcome="sleep_score",
-            coefficient=-0.61,
-            sample_count=18,
-            summary="Higher load nights averaged 5 points lower sleep score.",
-        )
-    ]
+    outcomes = {
+        # A strong load correlation, but against sleep score: not this flag's outcome.
+        "sleep_score": [
+            DriverCorrelation(
+                driver="prev_day_training_load",
+                outcome="sleep_score",
+                coefficient=-0.61,
+                sample_count=18,
+                summary="Higher load nights averaged 5 points lower sleep score.",
+            )
+        ],
+        "rem_sleep_min": [
+            DriverCorrelation(
+                driver="bedroom_warning_minutes",
+                outcome="rem_sleep_min",
+                coefficient=-0.24,
+                sample_count=64,
+                summary="Nights with 60+ min above 19.5C average 4.6 min lower REM sleep.",
+            ),
+            DriverCorrelation(
+                driver="prev_day_training_load",
+                outcome="rem_sleep_min",
+                coefficient=-0.08,
+                sample_count=115,
+                summary=None,
+            ),
+        ],
+    }
 
     result = build_chronic_pattern_suggestions(
         sleeps=_nights(as_of, rem_pct=0.13),
         recovery_days=[],
         baselines={},
-        sleep_drivers=drivers,
+        driver_outcomes=outcomes,
         age=57,
         sex="male",
         sleep_protocol={"bedtime": "23:15", "sealTargetTime": "22:00"},
@@ -71,8 +97,12 @@ def test_chronic_rem_suggestion_prioritises_measured_driver() -> None:
     suggestion = result.items[0]
     assert suggestion.metric_key == "rem_sleep_pct"
     assert suggestion.driver is not None
-    assert suggestion.driver.driver == "prev_day_training_load"
-    assert "high-load" in suggestion.actions[0]
+    assert suggestion.driver.driver == "bedroom_warning_minutes"
+    assert suggestion.driver.sample_count == 64
+    # The thermal driver selects the thermal lever, not a timing one.
+    assert suggestion.rotation is not None
+    assert "room_cool_late_cycles" in suggestion.rotation.intervention_ids
+    assert any("pre-cool" in action for action in suggestion.actions)
     assert suggestion.evidence[0].startswith("28 of 28 measured nights")
 
 
@@ -86,7 +116,7 @@ def test_chronic_rem_suggestion_rotates_week_to_week() -> None:
         sleeps=_nights(week_one, rem_pct=0.13),
         recovery_days=[],
         baselines={},
-        sleep_drivers=[],
+        driver_outcomes={},
         age=57,
         sex="male",
         sleep_protocol={},
@@ -96,7 +126,7 @@ def test_chronic_rem_suggestion_rotates_week_to_week() -> None:
         sleeps=_nights(week_two, rem_pct=0.13),
         recovery_days=[],
         baselines={},
-        sleep_drivers=[],
+        driver_outcomes={},
         age=57,
         sex="male",
         sleep_protocol={},
@@ -125,7 +155,7 @@ def test_chronic_rem_suggestion_reuses_the_exact_persisted_assignment() -> None:
         sleeps=_nights(issued_on, rem_pct=0.13),
         recovery_days=[],
         baselines={},
-        sleep_drivers=[],
+        driver_outcomes={},
         age=57,
         sex="male",
         sleep_protocol={},
@@ -137,7 +167,7 @@ def test_chronic_rem_suggestion_reuses_the_exact_persisted_assignment() -> None:
         sleeps=_nights(issued_on + timedelta(days=7), rem_pct=0.13),
         recovery_days=[],
         baselines={},
-        sleep_drivers=[],
+        driver_outcomes={},
         age=57,
         sex="male",
         sleep_protocol={},
@@ -175,7 +205,7 @@ def test_non_rem_suggestion_carries_no_rotation() -> None:
                 sample_count=28,
             )
         },
-        sleep_drivers=[],
+        driver_outcomes={},
         age=57,
         sex="male",
         sleep_protocol={},
@@ -201,7 +231,7 @@ def test_insufficient_history_is_explicit() -> None:
         sleeps=_nights(as_of, rem_pct=0.13, count=6),
         recovery_days=[],
         baselines={},
-        sleep_drivers=[],
+        driver_outcomes={},
         age=57,
         sex="male",
         sleep_protocol={},
@@ -240,7 +270,7 @@ def test_clear_when_misses_do_not_repeat_enough() -> None:
                 sample_count=28,
             )
         },
-        sleep_drivers=[],
+        driver_outcomes={},
         age=57,
         sex="male",
         sleep_protocol={},
@@ -277,7 +307,7 @@ def test_single_bad_recovery_day_does_not_trigger_structural_action() -> None:
                 sample_count=28,
             )
         },
-        sleep_drivers=[],
+        driver_outcomes={},
         age=57,
         sex="male",
         sleep_protocol={},
@@ -295,7 +325,7 @@ def test_two_unexplained_red_mornings_propose_rearrange_but_one_does_not() -> No
         "sleeps": _nights(as_of, rem_pct=0.22),
         "recovery_days": [],
         "baselines": {},
-        "sleep_drivers": [],
+        "driver_outcomes": {},
         "age": 57,
         "sex": "male",
         "sleep_protocol": {},
@@ -336,7 +366,7 @@ def test_training_debt_with_intact_markers_is_excluded_but_crashed_red_counts() 
         sleeps=_nights(as_of, rem_pct=0.22),
         recovery_days=[],
         baselines={},
-        sleep_drivers=[],
+        driver_outcomes={},
         age=57,
         sex="male",
         sleep_protocol={},
@@ -385,7 +415,7 @@ def test_acute_check_in_cannot_override_systemic_markers() -> None:
         sleeps=_nights(as_of, rem_pct=0.22),
         recovery_days=[],
         baselines={},
-        sleep_drivers=[],
+        driver_outcomes={},
         age=57,
         sex="male",
         sleep_protocol={},
@@ -416,7 +446,7 @@ def test_endogenous_training_note_counts_even_with_intact_markers_and_debt() -> 
         sleeps=_nights(as_of, rem_pct=0.22),
         recovery_days=[],
         baselines={},
-        sleep_drivers=[],
+        driver_outcomes={},
         age=57,
         sex="male",
         sleep_protocol={},
@@ -450,7 +480,7 @@ def test_one_recent_acute_red_can_still_be_excluded_when_markers_are_intact() ->
         sleeps=_nights(as_of, rem_pct=0.22),
         recovery_days=[],
         baselines={},
-        sleep_drivers=[],
+        driver_outcomes={},
         age=57,
         sex="male",
         sleep_protocol={},
@@ -496,7 +526,7 @@ def test_acute_exclusion_is_capped_so_habitual_notes_cannot_silence_cluster() ->
         sleeps=_nights(as_of, rem_pct=0.22),
         recovery_days=[],
         baselines={},
-        sleep_drivers=[],
+        driver_outcomes={},
         age=57,
         sex="male",
         sleep_protocol={},
@@ -522,7 +552,7 @@ def test_acute_exclusion_decays_before_the_red_window_closes() -> None:
         sleeps=_nights(as_of, rem_pct=0.22),
         recovery_days=[],
         baselines={},
-        sleep_drivers=[],
+        driver_outcomes={},
         age=57,
         sex="male",
         sleep_protocol={},
@@ -571,7 +601,7 @@ def test_check_in_qualification_only_hardens_batch_182_behavior(
         sleeps=_nights(as_of, rem_pct=0.22),
         recovery_days=[],
         baselines={},
-        sleep_drivers=[],
+        driver_outcomes={},
         age=57,
         sex="male",
         sleep_protocol={},
@@ -620,7 +650,7 @@ def test_sustained_marker_deload_is_suppressed_by_scheduled_recovery_block() -> 
                 sample_count=28,
             )
         },
-        sleep_drivers=[],
+        driver_outcomes={},
         age=57,
         sex="male",
         sleep_protocol={},
@@ -649,7 +679,7 @@ def test_red_cluster_rearrange_is_suppressed_by_scheduled_recovery_block() -> No
         sleeps=_nights(as_of, rem_pct=0.22),
         recovery_days=[],
         baselines={},
-        sleep_drivers=[],
+        driver_outcomes={},
         age=57,
         sex="male",
         sleep_protocol={},
@@ -770,7 +800,7 @@ def test_idle_chronic_action_is_not_narrated() -> None:
     where nothing was triggered. Pinned to the version bump that carries it."""
     from src.services.morning_analysis import PROMPT_VERSION, SYSTEM_PROMPT
 
-    assert PROMPT_VERSION.startswith("morning-analysis-v39")
+    assert PROMPT_VERSION.startswith("morning-analysis-v40")
     assert "chronicAction.triggered is false" in SYSTEM_PROMPT
     assert "internal bookkeeping with nothing to" in SYSTEM_PROMPT
     # The never-soften rule must survive the gate, not be replaced by it.
@@ -799,3 +829,137 @@ def test_check_in_context_packet_carries_its_basis() -> None:
     ).to_packet()
     assert "matchedText" not in from_plan
     assert "basis" not in from_plan
+
+
+# --- Batch 231: the lever follows the data ----------------------------------
+
+
+_PROD_REM_OUTCOMES_2026_08_27 = {
+    # The real stored ranking on the fourth morning the false statement fired.
+    "rem_sleep_min": [
+        DriverCorrelation("bedroom_peak_fan_speed", "rem_sleep_min", 0.3449, 10, None),
+        DriverCorrelation("sleep_stress_avg", "rem_sleep_min", -0.2597, 121, None),
+        DriverCorrelation(
+            "bedroom_warning_minutes",
+            "rem_sleep_min",
+            -0.2388,
+            64,
+            "Nights with 60+ min above 19.5C average 4.6 min lower REM sleep (64 nights measured).",
+        ),
+        DriverCorrelation("prev_day_training_load", "rem_sleep_min", -0.0783, 115, None),
+    ],
+    "sleep_score": [
+        DriverCorrelation("prev_day_training_load", "sleep_score", -0.0464, 115, None),
+    ],
+}
+
+
+def _rem_flag_result(**overrides: object) -> ChronicSuggestionResult:
+    kwargs: dict[str, object] = {
+        "sleeps": _nights(date(2026, 8, 27), rem_pct=0.10),
+        "recovery_days": [],
+        "baselines": {},
+        "driver_outcomes": _PROD_REM_OUTCOMES_2026_08_27,
+        "age": 57,
+        "sex": "male",
+        "sleep_protocol": {},
+        "as_of": date(2026, 8, 27),
+    }
+    kwargs.update(overrides)
+    return build_chronic_pattern_suggestions(**kwargs)  # type: ignore[arg-type]
+
+
+def test_the_card_never_calls_a_correlation_the_strongest_lever() -> None:
+    """The exact sentence Mark read on 2026-08-25, -26, -27 and -28.
+
+    ``prev_day_training_load`` carried -0.0464 over 115 nights in the very object
+    that called it the strongest measured lever.
+    """
+    result = _rem_flag_result()
+    suggestion = next(item for item in result.items if item.metric_key == "rem_sleep_pct")
+
+    assert "strongest measured lever" not in suggestion.summary
+    assert "training load" not in suggestion.summary
+    assert suggestion.driver is not None
+    assert suggestion.driver.driver == "bedroom_warning_minutes"
+    assert "not a proven cause" in suggestion.summary
+
+
+def test_the_named_driver_and_the_summary_describe_the_same_measurement() -> None:
+    result = _rem_flag_result()
+    suggestion = next(item for item in result.items if item.metric_key == "rem_sleep_pct")
+
+    assert suggestion.driver is not None
+    assert suggestion.driver.label in suggestion.summary
+    assert f"{suggestion.driver.sample_count} nights" in suggestion.summary
+
+
+def test_no_qualifying_driver_names_no_lever_at_all() -> None:
+    result = _rem_flag_result(
+        driver_outcomes={
+            "rem_sleep_min": [
+                DriverCorrelation("prev_day_training_load", "rem_sleep_min", -0.05, 115, None),
+            ]
+        }
+    )
+    suggestion = next(item for item in result.items if item.metric_key == "rem_sleep_pct")
+
+    assert suggestion.driver is None
+    assert "nothing measured tracks it closely enough" in suggestion.summary
+    # The rotation still runs: a weak driver removes the claim, not the advice.
+    assert suggestion.actions
+
+
+def test_a_confound_survives_the_evidence_cap() -> None:
+    """Batch 230 lost a basis to a truncation; a caveat must not go the same way."""
+    result = _rem_flag_result(
+        driver_outcomes={
+            "rem_sleep_min": [
+                DriverCorrelation(
+                    "bedroom_fan_ran_minutes",
+                    "rem_sleep_min",
+                    -0.41,
+                    55,
+                    "Nights with the fan ran average 10.1 min lower REM sleep (55 nights).",
+                ),
+            ]
+        }
+    )
+    suggestion = next(item for item in result.items if item.metric_key == "rem_sleep_pct")
+
+    assert suggestion.driver is not None
+    assert suggestion.driver.confounds
+    assert any("because the room is already warm" in line for line in suggestion.evidence)
+
+
+def test_a_recorded_habit_removes_the_lever_from_the_issued_card() -> None:
+    habits = {"habits": [{"interventionIds": ["room_cool_late_cycles"]}]}
+    result = _rem_flag_result(standing_habits=habits)
+    suggestion = next(item for item in result.items if item.metric_key == "rem_sleep_pct")
+
+    assert suggestion.rotation is not None
+    assert "room_cool_late_cycles" not in suggestion.rotation.intervention_ids
+    assert all("pre-cool to" not in action for action in suggestion.actions)
+
+
+def test_a_persisted_batch_221_assignment_is_still_returned_verbatim() -> None:
+    """Batch 221's evidence journal is untouched by the new selection.
+
+    A stored weekly assignment must keep overriding the rotation, habits and
+    driver notwithstanding — historical reads must never be rewritten.
+    """
+    pinned = RemRotation(
+        period_label="2026-W35",
+        shown=2,
+        total=12,
+        intervention_ids=("late_training_guard", "evening_light_down"),
+        actions=("Keep hard or late rides off the evening.", "Dim screens before bed."),
+    )
+    result = _rem_flag_result(
+        rem_rotation=pinned,
+        standing_habits={"habits": [{"interventionIds": ["late_training_guard"]}]},
+    )
+    suggestion = next(item for item in result.items if item.metric_key == "rem_sleep_pct")
+
+    assert suggestion.rotation == pinned
+    assert list(pinned.actions) == suggestion.actions[-2:]
