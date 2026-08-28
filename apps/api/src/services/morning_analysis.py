@@ -176,7 +176,7 @@ from src.services.workout_delivery import build_structured_workout_ir
 # identity is (user, date, checkInVersion, promptVersion) and does *not* hash the
 # packet, so without it an already-generated pre-fix brief would be served as
 # current on the day this ships.
-PROMPT_VERSION = "morning-analysis-v38-2026-08-27"
+PROMPT_VERSION = "morning-analysis-v39-2026-08-28"
 ANALYSIS_TYPE = "morning"
 # Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
 # signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
@@ -272,8 +272,10 @@ stage in ageComparison.sleepRows sits inside its healthy age band, describe it a
 healthy for the user's age rather than repeating Garmin's young-adult flag (e.g.
 "Deep 17% is within the healthy 50-59 range; Garmin only flags it against a younger
 target"). Every sleepRows percentage is a share of the same denominator, stated in
-ageComparison.sleepStagePctBasis: quote that basis whenever you give a stage
-percentage.
+ageComparison.sleepStagePctBasis: say what that total is, in your own plain words,
+whenever you give a stage percentage. Packet field names are instructions to you,
+never words for Mark — never print a field, key or path in the output and never
+cite the packet as a source; state the fact itself.
 {SLEEP_STAGE_MINUTES_RULE}
 {REM_FRAMING_RULE}
 Read REM against metricsVsBaselines.rem_sleep_pct, whose own basis field says

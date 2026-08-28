@@ -770,7 +770,7 @@ def test_idle_chronic_action_is_not_narrated() -> None:
     where nothing was triggered. Pinned to the version bump that carries it."""
     from src.services.morning_analysis import PROMPT_VERSION, SYSTEM_PROMPT
 
-    assert PROMPT_VERSION.startswith("morning-analysis-v38")
+    assert PROMPT_VERSION.startswith("morning-analysis-v39")
     assert "chronicAction.triggered is false" in SYSTEM_PROMPT
     assert "internal bookkeeping with nothing to" in SYSTEM_PROMPT
     # The never-soften rule must survive the gate, not be replaced by it.

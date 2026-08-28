@@ -248,6 +248,27 @@ def test_the_morning_and_trends_prompts_cannot_disagree_about_rem() -> None:
     assert SLEEP_STAGE_MINUTES_RULE not in TREND_SYSTEM_PROMPT
 
 
+def test_neither_prompt_lets_a_packet_field_name_reach_mark() -> None:
+    """Batch 230's own first generation leaked one. The v7 season narrative wrote
+    "shares of deep + light + REM + awake, per `remAgeBand.basis`" — twice —
+    because the instruction said to *quote* the basis and the model quoted the
+    field. The numbers were right and the sentence was still not his to read."""
+    for prompt in (MORNING_SYSTEM_PROMPT, TREND_SYSTEM_PROMPT):
+        # The morning prompt hard-wraps, so compare on collapsed whitespace.
+        flat = " ".join(prompt.split())
+        assert "Packet field names are instructions to you, never words for Mark" in flat
+        assert "never cite the packet as a source" in flat
+    # The wording that invited it is gone from both, replaced by "in your own
+    # plain words" — the qualifier Batch 226's long-standing "quote that basis in
+    # his own terms" already carried, and which has never leaked a field name.
+    morning = " ".join(MORNING_SYSTEM_PROMPT.split())
+    trends = " ".join(TREND_SYSTEM_PROMPT.split())
+    assert "quote that basis whenever you give a stage percentage" not in morning
+    assert "quote it whenever you give one" not in trends
+    assert "in your own plain words" in morning
+    assert "in your own plain words" in trends
+
+
 def test_the_trends_packet_carries_rems_own_baseline() -> None:
     """230.2. The prompt told the model to interpret REM against
     ``personalBaselines`` and the packet did not contain it, so the v6 narrative
