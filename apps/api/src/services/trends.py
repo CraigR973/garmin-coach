@@ -100,8 +100,8 @@ ANALYSIS_TYPE_SEASONAL = "seasonal_trend"
 # that were artefacts of reading the wake row, so the old narratives must stop
 # being served rather than be left to age out.
 PROMPT_VERSION_BY_BUCKET = {
-    BUCKET_MONTH: "trends-month-v7-2026-08-27",
-    BUCKET_SEASON: "trends-season-v7-2026-08-27",
+    BUCKET_MONTH: "trends-month-v8-2026-08-28",
+    BUCKET_SEASON: "trends-season-v8-2026-08-28",
 }
 
 # Indoor reading at/after this local hour belongs to the *next* morning's night.
@@ -125,9 +125,12 @@ say "insufficient history" plainly rather than inventing a trend. Interpret \
 readiness, HRV, resting HR, and REM against personalBaselines before using \
 alarming language. {REM_FRAMING_RULE} \
 REM's band numbers are in remAgeBand, and remAgeBand.basis says which total \
-every REM percentage in this packet is a share of — quote it whenever you give \
-one. If remAgeBand is absent, say the band is unavailable rather than recalling \
-one. \
+every REM percentage in this packet is a share of — state that total in your own \
+plain words whenever you give a percentage. If remAgeBand is absent, say the band \
+is unavailable rather than recalling one. \
+Packet field names are instructions to you, never words for Mark: never print a \
+field, key or path (e.g. remAgeBand.basis, personalBaselines) in the output, and \
+never cite the packet as a source — state the fact itself. \
 Every year-on-year claim must cite the currentMean -> priorMean or \
 priorMean -> currentMean numbers plus both sample counts; every seasonal claim \
 must cite the window labels and sampleDays or metric sampleCount. If a metric \
