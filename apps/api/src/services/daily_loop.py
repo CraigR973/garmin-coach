@@ -32,6 +32,7 @@ from src.services.daily_loop_state import LoopState, describe_loop_state, is_eve
 from src.services.daily_metric_phase import morning_first_order
 from src.services.feedback import FeedbackService
 from src.services.holiday_pause import HolidayPauseService, HolidayWindow
+from src.services.standing_habits import SECTION as STANDING_HABITS_SECTION
 from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
 from src.services.walking_brief import WalkingBriefResult, WalkingBriefService
 from src.services.workout_delivery import STATUS_PROPOSED, STATUS_PUSHED
@@ -100,6 +101,9 @@ class DailyLoopSnapshot:
     latest_temperature: TemperatureReading | None
     weather: WeatherDaily | None
     sleep_protocol: dict[str, Any]
+    # Batch 231: the recorded habits that stop a lever he already keeps from
+    # being issued. Read here so every surface gates on the same section.
+    standing_habits: dict[str, Any]
     data_quality_warnings: list[dict[str, str]]
     strength_brief: StrengthBriefResult
     walking_brief: WalkingBriefResult
@@ -152,6 +156,7 @@ class DailyLoopService:
         latest_temperature = await self._latest_temperature(player.id)
         weather = await self._weather(player.id, target_date)
         sleep_protocol = await self._knowledge_base_content(player.id, "sleep_protocol")
+        standing_habits = await self._knowledge_base_content(player.id, STANDING_HABITS_SECTION)
         warnings = await self._data_quality_warnings(player.id, target_date, planned_workouts)
         strength_brief = await StrengthBriefService(self.session).brief(player, as_of=target_date)
         walking_brief = await WalkingBriefService(self.session).brief(player, as_of=target_date)
@@ -213,6 +218,7 @@ class DailyLoopService:
             latest_temperature=latest_temperature,
             weather=weather,
             sleep_protocol=sleep_protocol,
+            standing_habits=standing_habits,
             data_quality_warnings=warnings,
             strength_brief=strength_brief,
             walking_brief=walking_brief,

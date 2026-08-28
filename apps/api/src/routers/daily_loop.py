@@ -47,7 +47,6 @@ from src.services.environment_freshness import is_hive_temperature_fresh
 from src.services.executable_coaching import ExecutableCoachingService
 from src.services.experiment_loop import ExperimentLoopService, rotation_from_assignment
 from src.services.fan_control import describe_fan_intent
-from src.services.insights import OUTCOME_SLEEP_SCORE
 from src.services.morning_analysis import MorningAnalysisService
 from src.services.morning_inputs import morning_input_presence
 from src.services.nudge_alerts import NudgeAlertService
@@ -1365,8 +1364,9 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
     chronic_suggestions = await ChronicPatternSuggestionService(db).suggestions(
         player,
         as_of=snapshot.subject_date,
-        sleep_drivers=drivers_report.outcomes.get(OUTCOME_SLEEP_SCORE, []),
+        driver_outcomes=drivers_report.outcomes,
         sleep_protocol=snapshot.sleep_protocol,
+        standing_habits=snapshot.standing_habits,
         rem_rotation=rotation_from_assignment(current_assignment),
     )
     # Showing a current-week REM action is the act of issuing it. Persist that
@@ -1392,8 +1392,9 @@ async def _envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> Dai
             chronic_suggestions = await ChronicPatternSuggestionService(db).suggestions(
                 player,
                 as_of=snapshot.subject_date,
-                sleep_drivers=drivers_report.outcomes.get(OUTCOME_SLEEP_SCORE, []),
+                driver_outcomes=drivers_report.outcomes,
                 sleep_protocol=snapshot.sleep_protocol,
+                standing_habits=snapshot.standing_habits,
                 rem_rotation=rotation_from_assignment(current_assignment),
             )
     rem_check_in = await experiment_loop.rem_check_in_packet(

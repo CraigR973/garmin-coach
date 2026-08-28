@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import KnowledgeBase, PlanBlock, PlannedWorkout
 from src.models.profile import Profile
+from src.services.standing_habits import standing_habits_content
 from src.services.vo2_progression import build_vo2_structured_workout, select_vo2_protocol
 
 
@@ -159,6 +160,13 @@ def _learned_context_content() -> dict[str, Any]:
     return {"items": []}
 
 
+def _standing_habits_content() -> dict[str, Any]:
+    # Batch 231: seeded empty on purpose. A habit that suppresses an issued
+    # lever is a coaching decision, so a human writes it — the seed must not
+    # invent one for a user it knows nothing about.
+    return standing_habits_content()
+
+
 def _training_plan_content(cycle_start: date) -> dict[str, Any]:
     return {
         "framework": "13-week 2121",
@@ -233,6 +241,7 @@ KB_SECTION_BUILDERS: dict[str, Any] = {
     "active_hypotheses": _active_hypotheses_content,
     "coaching_protocol": _coaching_protocol_content,
     "learned_context": _learned_context_content,
+    "standing_habits": _standing_habits_content,
 }
 
 PUBLIC_KNOWLEDGE_BASE_SECTIONS = tuple(KB_SECTION_BUILDERS)

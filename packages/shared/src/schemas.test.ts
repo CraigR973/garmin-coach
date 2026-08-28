@@ -4,6 +4,7 @@ import {
   activityTimeSeriesSchema,
   ageComparisonRowSchema,
   ageComparisonSchema,
+  chronicSuggestionDriverSchema,
   coachOriginKindSchema,
   coachingStateEnvelopeSchema,
   conversationLearningEnvelopeSchema,
@@ -923,6 +924,32 @@ describe('v1 shared schemas', () => {
       atRisk: true,
     });
     expect(older.basis ?? null).toBeNull();
+  });
+
+  it('carries what a correlation is worth, and stays optional for a pre-231 read (Batch 231)', () => {
+    const measured = chronicSuggestionDriverSchema.parse({
+      driver: 'bedroom_warning_minutes',
+      label: 'time above 19.5C',
+      coefficient: -0.2388,
+      sampleCount: 64,
+      summary: 'Nights with 60+ min above 19.5C average 4.6 min lower REM sleep.',
+      confidence: 'moderate',
+      confounds: ['The fan runs because the room is already warm.'],
+    });
+    expect(measured.confidence).toBe('moderate');
+    expect(measured.confounds).toHaveLength(1);
+
+    // A stored analysis written before this shipped carries neither field and
+    // must still render — the card simply shows no caveat line.
+    const older = chronicSuggestionDriverSchema.parse({
+      driver: 'prev_day_training_load',
+      label: 'training load',
+      coefficient: -0.0464,
+      sampleCount: 115,
+      summary: null,
+    });
+    expect(older.confidence ?? null).toBeNull();
+    expect(older.confounds ?? null).toBeNull();
   });
 
   it('parses the Today action block and defaults it to empty (Batch 86)', () => {

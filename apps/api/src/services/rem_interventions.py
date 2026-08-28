@@ -101,6 +101,9 @@ REM_LIBRARY: tuple[RemIntervention, ...] = (
         ),
         driver_affinity=frozenset(
             {
+                "bedroom_mean_temp_c",
+                "bedroom_min_temp_c",
+                "bedroom_max_temp_c",
                 "bedroom_warning_minutes",
                 "bedroom_critical_minutes",
                 "bedroom_fan_ran_minutes",
@@ -123,7 +126,7 @@ REM_LIBRARY: tuple[RemIntervention, ...] = (
             "{coherenceBreathingTime}) — REM responds to a steady routine more than to "
             "any single trick."
         ),
-        driver_affinity=frozenset({"daytime_stress_avg", "sleep_stress_avg"}),
+        driver_affinity=frozenset({"prev_day_stress_avg"}),
     ),
     RemIntervention(
         id="late_meal_timing",
@@ -138,7 +141,7 @@ REM_LIBRARY: tuple[RemIntervention, ...] = (
             "On busy days, write tomorrow's list down before bed — unresolved stress "
             "preferentially eats REM."
         ),
-        driver_affinity=frozenset({"daytime_stress_avg", "sleep_stress_avg"}),
+        driver_affinity=frozenset({"prev_day_stress_avg"}),
     ),
     RemIntervention(
         id="rem_rebound_recovery",
@@ -154,7 +157,7 @@ REM_LIBRARY: tuple[RemIntervention, ...] = (
             "Keep hard or late rides off the evening before a priority night — an "
             "activated, warm nervous system delays REM onset."
         ),
-        driver_affinity=frozenset({"prev_day_training_load", "resting_heart_rate_bpm"}),
+        driver_affinity=frozenset({"prev_day_training_load"}),
     ),
 )
 
@@ -194,6 +197,7 @@ def select_rem_interventions(
     driver_key: str | None = None,
     window: int = REM_ROTATION_WINDOW,
     library: tuple[RemIntervention, ...] = REM_LIBRARY,
+    complied_intervention_ids: frozenset[str] = frozenset(),
 ) -> tuple[list[str], RemRotation]:
     """Pick the week's focused REM set, rotated deterministically over ``library``.
 
@@ -202,7 +206,15 @@ def select_rem_interventions(
     the lever it implicates (pinned first, keeping the window size), so a thermal or
     load signal surfaces its REM intervention even if the blind rotation had not
     reached it this week.
+
+    Batch 231: ``complied_intervention_ids`` — the recorded standing habits — are
+    removed from the library *before* the rotation is computed, so a lever he
+    already keeps is never issued, never asked about, and never counted toward a
+    comparison it could not complete. ``total`` reports what is actually
+    available, so "2 of 10 levers this week" stays true on the card.
     """
+    if complied_intervention_ids:
+        library = tuple(item for item in library if item.id not in complied_intervention_ids)
     total = len(library)
     if total == 0:
         _, monday = _week_period(as_of)

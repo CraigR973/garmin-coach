@@ -74,7 +74,7 @@ from src.services.holiday_pause import (
     HolidayWindow,
     holiday_windows_covering_date,
 )
-from src.services.insights import OUTCOME_SLEEP_SCORE, InsightsService
+from src.services.insights import InsightsService
 from src.services.learned_context import (
     LEARNED_CONTEXT_PROMPT_GUARDRAIL,
     learned_context_packet,
@@ -98,6 +98,7 @@ from src.services.prompt_metadata import prompt_system_hash
 from src.services.sleep_scoring import (
     age_adjusted_sleep_score as compute_age_adjusted_sleep_score,
 )
+from src.services.standing_habits import SECTION as STANDING_HABITS_SECTION
 from src.services.training_week import TrainingWeekService
 from src.services.verdict_scaling import (
     AMBER_POWER_CAP_PCT,
@@ -176,7 +177,7 @@ from src.services.workout_delivery import build_structured_workout_ir
 # identity is (user, date, checkInVersion, promptVersion) and does *not* hash the
 # packet, so without it an already-generated pre-fix brief would be served as
 # current on the day this ships.
-PROMPT_VERSION = "morning-analysis-v39-2026-08-28"
+PROMPT_VERSION = "morning-analysis-v40-2026-08-28"
 ANALYSIS_TYPE = "morning"
 # Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
 # signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
@@ -187,6 +188,18 @@ RECOVERY_TIME_AMBER_CAP_MIN = 24 * 60
 # evidence that accumulated load is inside the app's balanced range. Missing
 # ACWR is unknown, not benign; a >24h recovery clock conflicts with the escape.
 ACWR_LOAD_DRIVEN_MAX = 1.3
+# Batch 231: the packet used to hand the model a sentence calling the twelfth
+# of thirteen drivers "the strongest measured lever". The packet no longer says
+# that, and this rule stops the model reintroducing the claim from its own
+# reading of a coefficient.
+CHRONIC_DRIVER_RULE = """chronicSuggestions.items[].driver is a correlation
+measured in the user's own history, never a demonstrated cause. Describe it with
+the strength the object actually carries and restate any confounds entry in your
+own plain words. Never call it the strongest lever, the cause, or a proven fix,
+and never name a driver the packet did not select — when driver is absent, say
+the data does not yet point at a single lever rather than nominating one
+yourself."""
+
 SYSTEM_PROMPT = f"""You are CheckMark, a private daily endurance and sleep coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
 Use `subjectWeekday` as the authoritative weekday and `subjectDateLabel` as the
@@ -278,6 +291,7 @@ never words for Mark — never print a field, key or path in the output and neve
 cite the packet as a source; state the fact itself.
 {SLEEP_STAGE_MINUTES_RULE}
 {REM_FRAMING_RULE}
+{CHRONIC_DRIVER_RULE}
 Read REM against metricsVsBaselines.rem_sleep_pct, whose own basis field says
 which total it is a percentage of, and whose ageFrame carries the band; the two
 frames describe one night, so never present them as two measurements of it.
@@ -596,8 +610,9 @@ class MorningAnalysisService:
         chronic_result = await ChronicPatternSuggestionService(self.session).suggestions(
             player,
             as_of=subject_date,
-            sleep_drivers=drivers_report.outcomes.get(OUTCOME_SLEEP_SCORE, []),
+            driver_outcomes=drivers_report.outcomes,
             sleep_protocol=knowledge_base.get("sleep_protocol", {}),
+            standing_habits=knowledge_base.get(STANDING_HABITS_SECTION, {}),
             current_verdict=str(verdict.get("status") or ""),
             rem_rotation=rem_rotation,
         )

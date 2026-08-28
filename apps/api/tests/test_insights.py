@@ -232,14 +232,14 @@ def test_compute_drivers_ranks_by_absolute_correlation() -> None:
             {
                 OUTCOME_SLEEP_SCORE: float(80 - i),  # decreasing
                 "overnight_low_c": float(i),  # perfectly negatively correlated
-                "daytime_stress_avg": float(40 + (i % 2)),  # near-flat / weak
+                "prev_day_stress_avg": float(40 + (i % 2)),  # near-flat / weak
                 "resting_heart_rate_bpm": None,  # missing → skipped
             }
         )
     drivers = compute_drivers(
         records,
         outcome_key=OUTCOME_SLEEP_SCORE,
-        driver_keys=("overnight_low_c", "daytime_stress_avg", "resting_heart_rate_bpm"),
+        driver_keys=("overnight_low_c", "prev_day_stress_avg", "resting_heart_rate_bpm"),
     )
     names = [d.driver for d in drivers]
     assert "resting_heart_rate_bpm" not in names  # too few samples
@@ -500,7 +500,7 @@ async def test_service_driver_records_include_bedroom_rollups(
             "bedroom_fan_ran_minutes": 15.0,
             "bedroom_peak_fan_speed": 5.0,
             "prev_day_training_load": None,
-            "daytime_stress_avg": None,
+            "prev_day_stress_avg": None,
             "resting_heart_rate_bpm": None,
             "sleep_stress_avg": None,
         }
@@ -537,15 +537,24 @@ async def test_service_driver_records_keep_missing_bedroom_data_none(
 async def test_service_driver_records_exclude_partial_day_stress(
     db_conn: AsyncConnection,
 ) -> None:
+    """Batch 180 exclusion, on Batch 231's alignment.
+
+    ``prev_day_stress_avg`` reads the settled aggregate of the day *before* each
+    wake date, so the night waking on 07-31 carries 07-30's complete stress and
+    the night waking on 08-01 carries nothing — 07-31's row is partial and stays
+    excluded. The first day in the window has no predecessor at all.
+    """
     user_id = uuid.uuid4()
     await _seed_profile(db_conn, user_id)
     complete_day = date(2026, 7, 30)
     partial_day = date(2026, 7, 31)
+    following_day = date(2026, 8, 1)
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
         session.add_all(
             [
                 Sleep(user_id=user_id, calendar_date=complete_day, score=70),
                 Sleep(user_id=user_id, calendar_date=partial_day, score=71),
+                Sleep(user_id=user_id, calendar_date=following_day, score=72),
                 DailyMetric(
                     user_id=user_id,
                     calendar_date=complete_day,
@@ -574,10 +583,10 @@ async def test_service_driver_records_exclude_partial_day_stress(
         records = await InsightsService(session)._driver_records(
             user,
             start=complete_day,
-            end=partial_day,
+            end=following_day,
         )
 
-    assert [record["daytime_stress_avg"] for record in records] == [28.0, None]
+    assert [record["prev_day_stress_avg"] for record in records] == [None, 28.0, None]
 
 
 @pytest.mark.asyncio

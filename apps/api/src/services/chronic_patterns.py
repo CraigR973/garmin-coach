@@ -36,14 +36,15 @@ from src.models.profile import Profile
 from src.services.age_norms import build_age_comparison
 from src.services.daily_metric_phase import prefer_morning
 from src.services.delivered_verdict import delivered_verdicts
+from src.services.driver_levers import select_lever
 from src.services.insights import DriverCorrelation
 from src.services.rem_interventions import RemRotation, select_rem_interventions
 from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
+from src.services.standing_habits import complied_intervention_ids
 
 WINDOW_DAYS = 28
 MIN_OBSERVED_NIGHTS = 21
 MIN_METRIC_SAMPLES = 10
-MIN_DRIVER_SAMPLES = 8
 CHRONIC_ACTION_MISS_RATIO = 0.7
 CHRONIC_ACTION_RED_WINDOW_DAYS = 7
 CHRONIC_ACTION_RED_THRESHOLD = 2
@@ -357,6 +358,11 @@ class SuggestionDriver:
     coefficient: float
     sample_count: int
     summary: str | None
+    # Batch 231: a correlation travels with what it is worth. ``confidence``
+    # uses Batch 220's low/moderate/high vocabulary; ``confounds`` names why it
+    # might not mean what it looks like.
+    confidence: str = "moderate"
+    confounds: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -365,6 +371,8 @@ class SuggestionDriver:
             "coefficient": self.coefficient,
             "sampleCount": self.sample_count,
             "summary": self.summary,
+            "confidence": self.confidence,
+            "confounds": list(self.confounds),
         }
 
 
@@ -427,7 +435,7 @@ _DRIVER_LABELS = {
     "bedroom_critical_minutes": "time above 20C",
     "bedroom_fan_ran_minutes": "fan runtime",
     "bedroom_peak_fan_speed": "fan speed",
-    "daytime_stress_avg": "daytime stress",
+    "prev_day_stress_avg": "the previous day's stress",
     "resting_heart_rate_bpm": "resting heart rate",
     "sleep_stress_avg": "sleep stress",
 }
@@ -456,11 +464,12 @@ def build_chronic_pattern_suggestions(
     sleeps: Sequence[SleepNight],
     recovery_days: Sequence[RecoveryDay],
     baselines: Mapping[str, BaselineBand],
-    sleep_drivers: Sequence[DriverCorrelation],
+    driver_outcomes: Mapping[str, Sequence[DriverCorrelation]],
     age: int | None,
     sex: str | None,
     sleep_protocol: Mapping[str, Any] | None,
     as_of: date,
+    standing_habits: Mapping[str, Any] | None = None,
     window_days: int = WINDOW_DAYS,
     recent_verdicts: Sequence[VerdictDay] = (),
     red_day_evidence: Mapping[date, RedDayEvidence] | None = None,
@@ -513,15 +522,16 @@ def build_chronic_pattern_suggestions(
         recorded_training_context=recorded_training_context,
     )
 
-    drivers = _useful_drivers(sleep_drivers)
+    complied = complied_intervention_ids(standing_habits)
     suggestions = [
         _suggestion(
             flag,
             index=index,
-            driver=_driver_for_flag(flag, drivers),
+            driver=_lever_for_flag(flag, driver_outcomes),
             protocol=sleep_protocol,
             as_of=as_of,
             rem_rotation=rem_rotation,
+            complied_intervention_ids=complied,
         )
         for index, flag in enumerate(chronic[:3])
     ]
@@ -558,8 +568,9 @@ class ChronicPatternSuggestionService:
         player: Profile,
         *,
         as_of: date,
-        sleep_drivers: Sequence[DriverCorrelation],
+        driver_outcomes: Mapping[str, Sequence[DriverCorrelation]],
         sleep_protocol: Mapping[str, Any] | None = None,
+        standing_habits: Mapping[str, Any] | None = None,
         current_verdict: str | None = None,
         rem_rotation: RemRotation | None = None,
     ) -> ChronicSuggestionResult:
@@ -617,11 +628,12 @@ class ChronicPatternSuggestionService:
             sleeps=[_sleep_night(row, age=age, sex=sex) for row in sleep_rows],
             recovery_days=recovery_days,
             baselines=baseline_bands,
-            sleep_drivers=sleep_drivers,
+            driver_outcomes=driver_outcomes,
             age=age,
             sex=sex,
             sleep_protocol=sleep_protocol,
             as_of=as_of,
+            standing_habits=standing_habits,
             recent_verdicts=recent_verdicts,
             red_day_evidence=_red_day_evidence(
                 recovery_days,
@@ -1321,49 +1333,33 @@ def _qualify_red_morning(
     )
 
 
-def _useful_drivers(drivers: Sequence[DriverCorrelation]) -> list[SuggestionDriver]:
-    ranked = [
-        driver
-        for driver in drivers
-        if driver.sample_count >= MIN_DRIVER_SAMPLES and driver.coefficient < 0
-    ] or [driver for driver in drivers if driver.sample_count >= MIN_DRIVER_SAMPLES]
-    return [
-        SuggestionDriver(
-            driver=driver.driver,
-            label=_DRIVER_LABELS.get(driver.driver, driver.driver.replace("_", " ")),
-            coefficient=driver.coefficient,
-            sample_count=driver.sample_count,
-            summary=driver.summary,
-        )
-        for driver in ranked
-    ]
-
-
-def _driver_for_flag(
-    flag: PatternFlag, drivers: Sequence[SuggestionDriver]
+def _lever_for_flag(
+    flag: PatternFlag, outcomes: Mapping[str, Sequence[DriverCorrelation]]
 ) -> SuggestionDriver | None:
-    if not drivers:
+    """The strongest actionable driver of this flag's *own* outcome, or nothing.
+
+    Batch 231 replaced two defects here at once. The old ``_useful_drivers`` +
+    ``_driver_for_flag`` pair ranked drivers of *sleep score* whatever the flag
+    was, then overrode that ranking with a hardcoded preference for
+    ``prev_day_training_load`` on a REM or duration miss — which is how a
+    coefficient of -0.046, twelfth of thirteen, came to be described to Mark as
+    "the strongest measured lever" on four consecutive mornings. Every gate now
+    lives in :mod:`src.services.driver_levers`, and ``None`` is a legitimate and
+    common answer.
+    """
+    evidence = select_lever(flag.metric_key, outcomes)
+    if evidence is None:
         return None
-    if flag.metric_key in {"awake_sleep_pct", "restless_moments_count", "deep_sleep_pct"}:
-        thermal = next((driver for driver in drivers if driver.driver.startswith("bedroom_")), None)
-        if thermal:
-            return thermal
-    if flag.metric_key in {"sleep_duration_hours", "rem_sleep_pct"}:
-        load = next(
-            (driver for driver in drivers if driver.driver == "prev_day_training_load"),
-            None,
-        )
-        if load:
-            return load
-    stress = next(
-        (
-            driver
-            for driver in drivers
-            if driver.driver in {"daytime_stress_avg", "sleep_stress_avg"}
-        ),
-        None,
+    correlation = evidence.correlation
+    return SuggestionDriver(
+        driver=correlation.driver,
+        label=_DRIVER_LABELS.get(correlation.driver, correlation.driver.replace("_", " ")),
+        coefficient=correlation.coefficient,
+        sample_count=correlation.sample_count,
+        summary=correlation.summary,
+        confidence=evidence.confidence,
+        confounds=evidence.confounds,
     )
-    return stress or drivers[0]
 
 
 def _suggestion(
@@ -1374,6 +1370,7 @@ def _suggestion(
     protocol: Mapping[str, Any] | None,
     as_of: date,
     rem_rotation: RemRotation | None,
+    complied_intervention_ids: frozenset[str] = frozenset(),
 ) -> ChronicSuggestion:
     tone: SuggestionTone = "protect" if flag.miss_ratio >= 0.7 else "watch"
     evidence = [(f"{flag.misses} of {flag.samples} measured nights missed {flag.comparator}.")]
@@ -1381,12 +1378,19 @@ def _suggestion(
         evidence.append(f"Latest value: {_format_value(flag.latest_value)}.")
     if driver and driver.summary:
         evidence.append(driver.summary)
+    # Batch 231: a caveat is evidence, not decoration, and it is appended after
+    # the cap rather than competing for a slot — a confound that loses a
+    # truncation race is a confound Mark never reads.
+    evidence = evidence[:3]
+    if driver:
+        evidence.extend(driver.confounds)
     actions, rotation = _actions_for(
         flag.metric_key,
         driver,
         protocol,
         as_of,
         rem_rotation=rem_rotation,
+        complied_intervention_ids=complied_intervention_ids,
     )
     title = _title_for(flag)
     return ChronicSuggestion(
@@ -1397,7 +1401,7 @@ def _suggestion(
         summary=_summary_for(flag, driver),
         tone=tone,
         priority=index + 1,
-        evidence=evidence[:3],
+        evidence=evidence,
         actions=actions[:3],
         driver=driver,
         rotation=rotation,
@@ -1423,13 +1427,28 @@ def _title_for(flag: PatternFlag) -> str:
 
 
 def _summary_for(flag: PatternFlag, driver: SuggestionDriver | None) -> str:
+    """State what was measured, and never more than that.
+
+    Batch 231: the old wording called the chosen driver "the strongest measured
+    lever" unconditionally — a claim the packet contradicted in the same object.
+    The sentence now describes the measurement it is actually standing on: how
+    closely the driver tracks the metric, over how many nights, and that it is an
+    association rather than a cause. When nothing clears the bar in
+    :mod:`src.services.driver_levers`, no driver is named at all.
+    """
     basis = "age norm" if flag.source == "age_norm" else "personal baseline"
-    if driver:
+    opening = f"{flag.label} has repeatedly missed its {basis}"
+    if driver is None:
         return (
-            f"{flag.label} has repeatedly missed its {basis}; {driver.label} is the "
-            "strongest measured lever to check first."
+            f"{opening}; nothing measured tracks it closely enough to name a single "
+            "lever, so keep the action narrow and measurable."
         )
-    return f"{flag.label} has repeatedly missed its {basis}; keep the action narrow and measurable."
+    closeness = "most closely" if driver.confidence == "high" else "most closely so far"
+    return (
+        f"{opening}; of everything measured, {driver.label} tracks it {closeness} "
+        f"({driver.sample_count} nights) — an association in your own data, not a "
+        "proven cause."
+    )
 
 
 def _actions_for(
@@ -1439,6 +1458,7 @@ def _actions_for(
     as_of: date,
     *,
     rem_rotation: RemRotation | None = None,
+    complied_intervention_ids: frozenset[str] = frozenset(),
 ) -> tuple[list[str], RemRotation | None]:
     bedtime = _protocol_value(protocol, "bedtime", "23:15")
     seal = _protocol_value(protocol, "sealTargetTime", "22:00")
@@ -1457,13 +1477,8 @@ def _actions_for(
                 "Treat high-load or late-training evenings as protect nights: shorten "
                 "the admin tail and start wind-down earlier."
             )
-        elif driver.driver in {"daytime_stress_avg", "sleep_stress_avg"}:
+        elif driver.driver == "prev_day_stress_avg":
             actions.append(f"Keep the {breathing} coherence-breathing slot non-negotiable.")
-        elif driver.driver == "resting_heart_rate_bpm":
-            actions.append(
-                "If resting HR is elevated too, keep the morning check-in honest "
-                "before approving work."
-            )
 
     if metric_key == "rem_sleep_pct":
         # Batch 72: a persistent REM miss gets a broader, rotating library handed
@@ -1476,6 +1491,7 @@ def _actions_for(
                 as_of=as_of,
                 protocol=protocol,
                 driver_key=driver.driver if driver else None,
+                complied_intervention_ids=complied_intervention_ids,
             )
         actions.extend(rem_actions)
     elif metric_key == "deep_sleep_pct":

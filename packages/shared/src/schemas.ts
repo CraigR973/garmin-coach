@@ -730,6 +730,10 @@ export const chronicSuggestionDriverSchema = z.object({
   coefficient: z.number(),
   sampleCount: z.number().int(),
   summary: z.string().nullable().optional(),
+  // Batch 231: a correlation is reported with what it is worth. Optional, so a
+  // stored pre-231 analysis still parses.
+  confidence: z.enum(['moderate', 'high']).optional(),
+  confounds: z.array(z.string().min(1)).optional(),
 });
 
 // Batch 72: a chronic REM miss surfaces a focused slice of a wider rotating
