@@ -8,10 +8,29 @@ from typing import Any, Literal, TypedDict
 import httpx
 import structlog
 
+from src.config import settings
+
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
+
+
+def _timeout() -> httpx.Timeout:
+    """Per-phase timeouts for a non-streamed Messages call.
+
+    The single ``timeout=60.0`` this replaces applied 60s to *every* phase, so the
+    read budget was really "60s for Claude to finish the whole answer" — which the
+    morning brief outgrew on 2026-08-30 (measured 75.1s). Only ``read`` needs to
+    scale with generation length; connect/write/pool stay short so a genuinely
+    unreachable API still fails fast instead of hanging for the full read budget.
+    """
+    return httpx.Timeout(
+        connect=10.0,
+        read=settings.anthropic_read_timeout_seconds,
+        write=30.0,
+        pool=10.0,
+    )
 
 
 class AnthropicCacheControl(TypedDict):
@@ -219,7 +238,7 @@ async def generate_anthropic_text(
         "anthropic-version": ANTHROPIC_VERSION,
         "content-type": "application/json",
     }
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=_timeout()) as client:
         response = await client.post(ANTHROPIC_MESSAGES_URL, headers=headers, json=payload)
         try:
             response.raise_for_status()

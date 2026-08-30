@@ -248,3 +248,83 @@ async def test_generate_anthropic_text_raises_classified_billing_on_400(
     # background task fire the admin billing alert.
     assert excinfo.value.reason == "billing"
     assert excinfo.value.status_code == 400
+
+
+class _TimeoutCapturingAsyncClient(_DummyAsyncClient):
+    """Records the ``timeout=`` the boundary constructs its client with."""
+
+    last_timeout: httpx.Timeout | None = None
+
+    def __init__(self, *args: Any, timeout: Any = None, **kwargs: Any) -> None:
+        _TimeoutCapturingAsyncClient.last_timeout = timeout
+        super().__init__(*args, **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_generate_anthropic_text_read_timeout_outlasts_a_long_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The morning brief takes minutes, so the *read* budget must be minutes.
+
+    Regression for 2026-08-30: a flat ``timeout=60.0`` applied 60s to the whole
+    response, and a brief measured at 75s (then 139s on regeneration) died on
+    ``httpx.ReadTimeout`` *after* Anthropic had already generated and billed it.
+    Every attempt that morning failed the same way, so the brief never arrived.
+    """
+    monkeypatch.setattr(
+        "src.services.anthropic_text.httpx.AsyncClient", _TimeoutCapturingAsyncClient
+    )
+    _TimeoutCapturingAsyncClient.response_payload = {
+        "model": "claude-test",
+        "stop_reason": "end_turn",
+        "content": [{"type": "text", "text": "brief"}],
+    }
+
+    await generate_anthropic_text(
+        api_key="test-key",
+        model_name="claude-test",
+        max_tokens=4096,
+        system_prompt="system",
+        user_prompt="prompt",
+        error_cls=MorningAnalysisError,
+    )
+
+    timeout = _TimeoutCapturingAsyncClient.last_timeout
+    assert isinstance(timeout, httpx.Timeout)
+    # Comfortably past the slowest observed brief, so growth in the packet does
+    # not silently re-open the failure.
+    assert timeout.read is not None and timeout.read >= 240.0
+    # Connect/write stay short: an unreachable API must fail fast rather than
+    # hang for the whole read budget.
+    assert timeout.connect is not None and timeout.connect <= 15.0
+    assert timeout.write is not None and timeout.write <= 60.0
+
+
+@pytest.mark.asyncio
+async def test_generate_anthropic_text_read_timeout_is_env_tunable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A slow spell can be ridden out from Railway without shipping a deploy."""
+    monkeypatch.setattr(
+        "src.services.anthropic_text.httpx.AsyncClient", _TimeoutCapturingAsyncClient
+    )
+    monkeypatch.setattr(
+        "src.services.anthropic_text.settings.anthropic_read_timeout_seconds", 450.0
+    )
+    _TimeoutCapturingAsyncClient.response_payload = {
+        "model": "claude-test",
+        "stop_reason": "end_turn",
+        "content": [{"type": "text", "text": "brief"}],
+    }
+
+    await generate_anthropic_text(
+        api_key="test-key",
+        model_name="claude-test",
+        max_tokens=4096,
+        system_prompt="system",
+        user_prompt="prompt",
+        error_cls=MorningAnalysisError,
+    )
+
+    timeout = _TimeoutCapturingAsyncClient.last_timeout
+    assert timeout is not None and timeout.read == 450.0
