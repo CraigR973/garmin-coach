@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker
 
 from src.auth import get_current_user
@@ -964,6 +964,11 @@ async def test_checkin_background_leaves_an_in_flight_generation_alone(
     notify.assert_not_awaited()
 
     async with session_factory() as session:
+        # The deferral path rolls back, and every session in this file shares the
+        # ``db_conn`` connection, so that rollback also discards the fixture's
+        # ``SET search_path``. Production sessions are independent and unaffected;
+        # re-establish it here so the assertion queries the right schema.
+        await session.execute(text("SET search_path TO coach, public"))
         status = await session.scalar(
             select(BriefGenerationStatus).where(
                 BriefGenerationStatus.user_id == user_id,
