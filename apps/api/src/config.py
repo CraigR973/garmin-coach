@@ -45,6 +45,15 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-4-6"
     anthropic_max_tokens: int = 4096
+    # How long to wait for a *complete* non-streamed Messages response. The morning
+    # brief is the longest generation we make: on 2026-08-30 it measured 75.1s
+    # (27.7k in / 2.8k out at ~38 output tok/s) against the previous hardcoded 60s,
+    # so every attempt that day died on ``httpx.ReadTimeout`` after Anthropic had
+    # already done — and billed — the work. The packet only grows, so the ceiling is
+    # sized off the worst case instead of today's measurement: ``anthropic_max_tokens``
+    # at a slow ~15 tok/s is ~275s. Still well under the Anthropic SDK's own 600s
+    # default. Env-tunable so a slow spell can be ridden out without a deploy.
+    anthropic_read_timeout_seconds: float = 300.0
     # Batch 141: operator profile that receives ops alerts (e.g. a billing/credit
     # generation failure). A profile UUID string; empty disables the admin *push*
     # (the structured error-log alert still fires regardless). Deliberately NOT the
