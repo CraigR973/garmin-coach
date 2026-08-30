@@ -49,6 +49,7 @@ from src.scheduler import (
 )
 from src.services.anthropic_text import AnthropicApiError
 from src.services.dreo_fan import DreoFanError, DreoFanState
+from src.services.generation_requests import GenerationRequestInProgress
 from src.services.job_runs import JobResult, JobStatus
 from src.services.morning_inputs import MorningInputPresence
 from src.services.wake_detection import (
@@ -457,6 +458,53 @@ async def test_weekly_review_delivery_uses_sunday_and_skips_holiday() -> None:
 
     holiday.get_active_window_for_date.assert_awaited_once_with(profile, sunday)
     delivery.run.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_weekly_review_defers_to_the_in_flight_holder_without_failing() -> None:
+    """Batch 232.1: losing the artifact lock is the designed outcome here.
+
+    Decision #266 runs the Railway ``weekly-review`` cron *and* this in-process
+    job on purpose, with the lock deciding which one pays. Treating the loser as
+    a failure posts a failure turn into Mark's coach thread and alerts the
+    operator about a review the winner is writing successfully.
+    """
+
+    profile = _profile()
+    sunday = date(2026, 8, 2)
+    session = AsyncMock()
+    session.rollback = AsyncMock()
+
+    class _Ctx:
+        async def __aenter__(self) -> AsyncMock:
+            return session
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+    holiday = MagicMock()
+    holiday.get_active_window_for_date = AsyncMock(return_value=None)
+    delivery = MagicMock()
+    delivery.run = AsyncMock(side_effect=GenerationRequestInProgress())
+    delivery.record_failure = AsyncMock()
+    nudge = MagicMock()
+    nudge.notify_admin_generation_failure = AsyncMock(return_value=True)
+
+    with (
+        patch("src.scheduler.AsyncSessionLocal", return_value=_Ctx()),
+        patch("src.scheduler._active_profiles", AsyncMock(return_value=[profile])),
+        patch("src.scheduler._profile_today", return_value=sunday),
+        patch("src.scheduler.HolidayPauseService", return_value=holiday),
+        patch("src.scheduler.WeeklyReviewDeliveryService", return_value=delivery),
+        patch("src.scheduler.NudgeAlertService", return_value=nudge),
+    ):
+        result = await run_weekly_review_delivery()
+
+    delivery.record_failure.assert_not_awaited()
+    nudge.notify_admin_generation_failure.assert_not_awaited()
+    session.rollback.assert_awaited_once()
+    assert result.counters["skipped_in_flight"] == 1
+    assert result.counters["failed"] == 0
 
 
 @pytest.mark.asyncio
