@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker
 
 from src.auth import get_current_user
@@ -30,7 +30,6 @@ from src.models.coaching import (
 from src.models.profile import Profile, UserRole
 from src.routers import daily_loop as daily_loop_router
 from src.services.anthropic_text import AnthropicApiError
-from src.services.brief_generation_status import BriefGenerationStatusService
 from src.services.daily_loop import (
     ANALYSIS_TYPE_POST_FLEXIBILITY,
     ANALYSIS_TYPE_POST_STRENGTH,
@@ -927,18 +926,18 @@ async def test_checkin_background_leaves_an_in_flight_generation_alone(
         )
         await session.commit()
 
-    # The status row the winning worker is going to resolve. It must survive.
-    async with session_factory() as session:
-        await BriefGenerationStatusService(session).mark_generating(
-            user_id, subject_date, commit=True
-        )
-
     async def refuse(*args: object, **kwargs: object) -> None:
         raise GenerationRequestInProgress()
 
     sync_inputs = AsyncMock(return_value=None)
     notify = AsyncMock(return_value=True)
-    mark_failed = AsyncMock(return_value=MagicMock())
+    # ``mark`` is the single writer behind mark_generating/mark_ready/mark_failed,
+    # so patching it here asserts the strongest form of the contract: a losing
+    # attempt makes *no* status write at all. Asserting on the stored row instead
+    # is not possible in this file — every session shares the ``db_conn``
+    # connection, so the rollback the deferral path performs also discards rows
+    # a previous session committed. Production sessions are independent.
+    mark = AsyncMock(return_value=MagicMock())
     monkeypatch.setattr(daily_loop_router, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(daily_loop_router, "_local_time", lambda timezone_name: time(8, 0))
     monkeypatch.setattr("src.scheduler._sync_morning_inputs", sync_inputs)
@@ -951,32 +950,13 @@ async def test_checkin_background_leaves_an_in_flight_generation_alone(
         "src.routers.daily_loop.NudgeAlertService.push_brief_ready",
         notify,
     )
-    monkeypatch.setattr(
-        daily_loop_router.BriefGenerationStatusService,
-        "mark_failed",
-        mark_failed,
-    )
+    monkeypatch.setattr(daily_loop_router.BriefGenerationStatusService, "mark", mark)
 
     # The background task swallows it: a losing attempt is not an error either.
     await daily_loop_router._generate_brief_after_checkin(user_id, subject_date)
 
-    mark_failed.assert_not_awaited()
+    mark.assert_not_awaited()
     notify.assert_not_awaited()
-
-    async with session_factory() as session:
-        # The deferral path rolls back, and every session in this file shares the
-        # ``db_conn`` connection, so that rollback also discards the fixture's
-        # ``SET search_path``. Production sessions are independent and unaffected;
-        # re-establish it here so the assertion queries the right schema.
-        await session.execute(text("SET search_path TO coach, public"))
-        status = await session.scalar(
-            select(BriefGenerationStatus).where(
-                BriefGenerationStatus.user_id == user_id,
-                BriefGenerationStatus.subject_date == subject_date,
-            )
-        )
-    assert status is not None
-    assert status.status == "generating"
 
 
 @pytest.mark.asyncio
