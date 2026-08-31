@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
@@ -23,7 +24,10 @@ from src.models.coaching import (
     Sleep,
 )
 from src.models.profile import Profile, UserRole
-from src.services.generation_requests import claim_generation_request
+from src.services.generation_requests import (
+    GenerationRequestInProgress,
+    claim_generation_request,
+)
 from src.services.morning_analysis import (
     ClaudeGenerationResult,
     MorningAnalysisService,
@@ -148,14 +152,46 @@ async def test_identical_morning_generation_calls_once_but_changed_input_adds_hi
     try:
         first_task = asyncio.create_task(_run())
         await asyncio.wait_for(client.started.wait(), timeout=5)
-        second_task = asyncio.create_task(_run())
-        await asyncio.sleep(0.05)
-        assert client.calls == 1
-        client.release.set()
-        first, second = await asyncio.gather(first_task, second_task)
 
-        assert sorted((first.generated, second.generated)) == [False, True]
-        assert first.analysis.id == second.analysis.id
+        # Batch 232.1: the loser is refused *immediately* rather than parked on
+        # the advisory lock for the length of the paid call. Before this batch it
+        # waited, and on 2026-08-30 seven such waits were killed by Postgres at
+        # the 120s statement timeout instead of ever being answered.
+        started_at = time.monotonic()
+        with pytest.raises(GenerationRequestInProgress):
+            await _run()
+        # Any finite bound proves the fix: under the blocking lock this call
+        # waits for a release that only happens further down this test, so it
+        # would never return at all. The generous ceiling is only there to keep
+        # a slow CI container from turning a real result into a flake.
+        refusal_seconds = time.monotonic() - started_at
+        assert refusal_seconds < 5.0, refusal_seconds
+        assert client.calls == 1
+
+        client.release.set()
+        first = await first_task
+
+        # What must not change: one paid call and one artifact for the scope.
+        assert first.generated is True
+        assert client.calls == 1
+
+        async with session_factory() as session:
+            await _set_search_path(session)
+            assert (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(Analysis)
+                    .where(Analysis.user_id == user_id, Analysis.analysis_type == "morning")
+                )
+                == 1
+            )
+
+        # A *sequential* retry of the identical request still reuses the stored
+        # analysis and pays nothing — refusing a concurrent caller did not turn
+        # the reuse path off.
+        reused = await _run()
+        assert reused.generated is False
+        assert reused.analysis.id == first.analysis.id
         assert client.calls == 1
 
         async with session_factory() as session:
@@ -392,14 +428,23 @@ async def test_identical_post_activity_generation_calls_once(
     try:
         first_task = asyncio.create_task(_run())
         await asyncio.wait_for(client.started.wait(), timeout=5)
-        second_task = asyncio.create_task(_run())
-        await asyncio.sleep(0.05)
-        assert client.calls == 1
-        client.release.set()
-        first, second = await asyncio.gather(first_task, second_task)
 
-        assert sorted((first.generated, second.generated)) == [False, True]
-        assert first.analysis.id == second.analysis.id
+        # Batch 232.1: same contract on the activity-scoped path — refused fast,
+        # never queued behind somebody else's Anthropic call.
+        started_at = time.monotonic()
+        with pytest.raises(GenerationRequestInProgress):
+            await _run()
+        assert time.monotonic() - started_at < 5.0
+        assert client.calls == 1
+
+        client.release.set()
+        first = await first_task
+        assert first.generated is True
+        assert client.calls == 1
+
+        reused = await _run()
+        assert reused.generated is False
+        assert reused.analysis.id == first.analysis.id
         assert client.calls == 1
 
         async with session_factory() as session:

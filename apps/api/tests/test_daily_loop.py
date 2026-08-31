@@ -38,6 +38,7 @@ from src.services.daily_loop import (
     DailyLoopService,
 )
 from src.services.executable_coaching import ExecutableCoachingService
+from src.services.generation_requests import GenerationRequestInProgress
 from src.services.holiday_pause import HolidayWindow
 from src.services.workout_delivery import IntervalsCreateResult
 
@@ -877,6 +878,85 @@ async def test_checkin_background_never_generates_when_sync_lands_no_inputs(
         reason="inputs",
         commit=True,
     )
+
+
+@pytest.mark.asyncio
+async def test_checkin_background_leaves_an_in_flight_generation_alone(
+    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Batch 232.1: "someone else is generating this" is not a failure.
+
+    This is the half of the 2026-08-30 outage Mark could actually see. Seven
+    attempts between 08:59 and 09:23 each recorded a failure and showed him a
+    retryable card, and the retry produced another one — while a worker that had
+    won the lock was generating the same brief successfully. Recording a failure
+    for a losing attempt overwrites a good outcome with a bad one.
+    """
+
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 8, 30)
+
+    async with session_factory() as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="In Flight",
+                role=UserRole.player,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+        session.add_all(
+            [
+                DailyMetric(
+                    user_id=user_id,
+                    calendar_date=subject_date,
+                    phase="morning",
+                    raw_payload={},
+                ),
+                Sleep(
+                    user_id=user_id,
+                    calendar_date=subject_date,
+                    duration_sec=7 * 3600,
+                    raw_payload={},
+                ),
+            ]
+        )
+        await session.commit()
+
+    async def refuse(*args: object, **kwargs: object) -> None:
+        raise GenerationRequestInProgress()
+
+    sync_inputs = AsyncMock(return_value=None)
+    notify = AsyncMock(return_value=True)
+    # ``mark`` is the single writer behind mark_generating/mark_ready/mark_failed,
+    # so patching it here asserts the strongest form of the contract: a losing
+    # attempt makes *no* status write at all. Asserting on the stored row instead
+    # is not possible in this file — every session shares the ``db_conn``
+    # connection, so the rollback the deferral path performs also discards rows
+    # a previous session committed. Production sessions are independent.
+    mark = AsyncMock(return_value=MagicMock())
+    monkeypatch.setattr(daily_loop_router, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(daily_loop_router, "_local_time", lambda timezone_name: time(8, 0))
+    monkeypatch.setattr("src.scheduler._sync_morning_inputs", sync_inputs)
+    monkeypatch.setattr(
+        ExecutableCoachingService,
+        "regenerate_after_morning_checkin",
+        refuse,
+    )
+    monkeypatch.setattr(
+        "src.routers.daily_loop.NudgeAlertService.push_brief_ready",
+        notify,
+    )
+    monkeypatch.setattr(daily_loop_router.BriefGenerationStatusService, "mark", mark)
+
+    # The background task swallows it: a losing attempt is not an error either.
+    await daily_loop_router._generate_brief_after_checkin(user_id, subject_date)
+
+    mark.assert_not_awaited()
+    notify.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -63,6 +63,7 @@ from src.services.daily_metric_phase import (
     index_morning_by_date,
 )
 from src.services.delivered_verdict import delivered_verdicts
+from src.services.generation_requests import GenerationRequestInProgress
 from src.services.insights import EarlyWarningResult, FtpDriftResult, InsightsService
 from src.services.personal_baselines import baseline_band_packet, serialize_training_schedule
 from src.services.prompt_metadata import prompt_system_hash
@@ -704,13 +705,24 @@ class ReviewService:
         # The external cron and in-process scheduler may overlap during cutover.
         # Serialize one user/period artifact before checking for an existing row,
         # so both paths cannot pay for and store the same review concurrently.
-        await self.session.scalar(
+        #
+        # Batch 232.1: non-blocking, for the same reason as
+        # ``claim_generation_request`` — this lock is held across the paid call
+        # below, so the loser would park a connection for the whole generation
+        # and be cancelled at the 120s ``statement_timeout`` long before the
+        # 300s read budget could return. This is the one path where the overlap
+        # is designed rather than incidental (Decision #266 runs the Railway
+        # ``weekly-review`` cron *and* the in-process scheduler on purpose), so
+        # the loser has to exit cleanly rather than wait.
+        acquired: bool | None = await self.session.scalar(
             select(
-                func.pg_advisory_xact_lock(
+                func.pg_try_advisory_xact_lock(
                     _review_generation_lock_key(player.id, period, period_start)
                 )
             )
         )
+        if not acquired:
+            raise GenerationRequestInProgress()
         preview = await self.preview(player, period, as_of=as_of)
         if (
             not force

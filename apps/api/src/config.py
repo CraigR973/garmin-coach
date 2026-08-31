@@ -15,6 +15,33 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/garmin_coach"
+    # Batch 232.3: production runs against Supabase's **session-mode** pooler
+    # (``aws-1-eu-north-1.pooler.supabase.com:5432``), which grants this tenant a
+    # hard ceiling of client connections. Supavisor refuses the one past it with
+    # ``(EMAXCONNSESSION) max clients reached in session mode - max clients are
+    # limited to pool_size: 15`` — logged eight times during the 2026-08-30
+    # morning outage, while ten backends sat queued on a single advisory lock.
+    # The API is not the only claim on that budget: the ``weekly-review`` cron
+    # container runs the same code with its own engine, every deploy runs
+    # ``alembic upgrade head`` at boot, the nightly ``pg_dump`` opens its own
+    # connection, and ``railway run`` / ``railway ssh`` maintenance sessions add
+    # more. So the app's own ceiling is the tenant limit minus a reserve for all
+    # of those, and ``db_pool_size + db_max_overflow`` must fit inside it — an
+    # invariant the validator below enforces rather than leaving to arithmetic in
+    # a comment. Measured steady state on 2026-08-30 is **2** backends, so ten is
+    # already about five times what the app uses.
+    #
+    # What the reserve is sized against, stated plainly because the arithmetic is
+    # not "every client's maximum": the API container is the only one that fans
+    # out concurrently, so it gets the pool. The cron container, Alembic and the
+    # backup all run sequential single-connection work, and the reserve covers
+    # their *observed* draw rather than the pool ceiling each would inherit from
+    # sharing this engine. If a second concurrent fan-out service is ever added,
+    # this reserve stops being enough and both numbers have to be revisited.
+    db_pool_size: int = 5
+    db_max_overflow: int = 5
+    db_pooler_client_limit: int = 15
+    db_pooler_reserved_connections: int = 5
 
     # External APIs
     supabase_url: str = ""
@@ -54,6 +81,18 @@ class Settings(BaseSettings):
     # at a slow ~15 tok/s is ~275s. Still well under the Anthropic SDK's own 600s
     # default. Env-tunable so a slow spell can be ridden out without a deploy.
     anthropic_read_timeout_seconds: float = 300.0
+    # Batch 232.2: the generation lease is *derived* from the read budget above
+    # rather than fixed, because the two must move together. The lease is the only
+    # record that says "a worker is still legitimately generating this artifact";
+    # if it expires while a compliant worker is still inside its paid call, the
+    # request row lies, and the next attempt is entitled to reclaim work that is
+    # still running. Batch 234 raised the read budget 60s → 300s and left the lease
+    # at a hardcoded 180s, so the lie became reachable. This is the margin added on
+    # top for packet assembly and the completed-state write: measured on 2026-08-30,
+    # the lock was held 70–80s for a 75.1s Anthropic call, so non-generation work
+    # inside a claim is seconds, and 120s is generous. See
+    # ``services.generation_requests.timeout_ordering``.
+    generation_lease_overhead_seconds: float = 120.0
     # Batch 141: operator profile that receives ops alerts (e.g. a billing/credit
     # generation failure). A profile UUID string; empty disables the admin *push*
     # (the structured error-log alert still fires regardless). Deliberately NOT the
@@ -120,6 +159,29 @@ class Settings(BaseSettings):
             errors.append("frontend_origin must not be empty or localhost in production")
         if errors:
             raise ValueError("Refusing to start with weak/missing secrets: " + "; ".join(errors))
+        return self
+
+    @model_validator(mode="after")
+    def _reject_pool_over_pooler_ceiling(self) -> "Settings":
+        """Batch 232.3: the app may never provision above what the pooler grants.
+
+        Unconditional rather than production-only: this is an arithmetic
+        relationship between four values in this file, so a local `.env` that
+        breaks it is a bug wherever it runs. The failure it prevents is silent
+        until load — every connection under the ceiling works, and the one past
+        it is refused by Supavisor with a FATAL the app surfaces as a generic
+        error.
+        """
+        budget = self.db_pooler_client_limit - self.db_pooler_reserved_connections
+        provisioned = self.db_pool_size + self.db_max_overflow
+        if provisioned > budget:
+            raise ValueError(
+                f"Database pool provisions {provisioned} connections "
+                f"(db_pool_size={self.db_pool_size} + db_max_overflow={self.db_max_overflow}) "
+                f"but the pooler budget is {budget} "
+                f"(db_pooler_client_limit={self.db_pooler_client_limit} − "
+                f"db_pooler_reserved_connections={self.db_pooler_reserved_connections})"
+            )
         return self
 
 

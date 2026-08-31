@@ -49,6 +49,7 @@ from src.routers import (
     workout_delivery,
 )
 from src.scheduler import create_scheduler
+from src.services.generation_requests import timeout_ordering, validate_timeout_ordering
 
 configure_logging(settings.log_level)
 
@@ -78,6 +79,13 @@ if settings.sentry_dsn_backend:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     log.info("api starting", environment=settings.environment)
+    # Batch 232.2: fail closed before serving if the paid-call, statement and
+    # lease budgets have been tuned out of order. They are set by three different
+    # batches and one of them is env-tunable, so the relationship has to be
+    # asserted somewhere that runs — not left in a comment that Batch 234 could
+    # invalidate without noticing.
+    validate_timeout_ordering()
+    log.info("generation timeout budgets ordered", ordering=timeout_ordering().describe())
     scheduler = create_scheduler()
     app.state.scheduler = scheduler
     if settings.scheduler_enabled:

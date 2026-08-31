@@ -47,6 +47,7 @@ from src.services.environment_freshness import is_hive_temperature_fresh
 from src.services.executable_coaching import ExecutableCoachingService
 from src.services.experiment_loop import ExperimentLoopService, rotation_from_assignment
 from src.services.fan_control import describe_fan_intent
+from src.services.generation_requests import GenerationRequestInProgress
 from src.services.morning_analysis import MorningAnalysisService
 from src.services.morning_inputs import morning_input_presence
 from src.services.nudge_alerts import NudgeAlertService
@@ -221,6 +222,21 @@ async def _generate_brief_after_checkin(user_id: uuid.UUID, subject_date: date) 
                 user_id, subject_date, commit=False
             )
             await session.commit()
+        except GenerationRequestInProgress:
+            # Batch 232.1: another worker already holds this artifact scope and is
+            # generating today's brief right now. That is not a failure and must
+            # not be recorded as one — the holder will write ready-or-failed, and
+            # marking failed here would replace a brief that is being written
+            # successfully with a retryable failure card. Leave the ``generating``
+            # status exactly as found; Batch 144's stale-after guard is the
+            # backstop if the holder really does die.
+            await session.rollback()
+            log.info(
+                "morning check-in background generation deferred to the in-flight holder",
+                profile_id=str(user_id),
+                subject_date=subject_date.isoformat(),
+            )
+            return
         except Exception as exc:
             await session.rollback()
             log.exception(
@@ -1677,6 +1693,14 @@ async def upsert_post_ride_checkin(
                 code="post_workout_read_failed",
                 detail=anthropic_user_message(exc.reason),
             )
+        except GenerationRequestInProgress:
+            # Batch 232.1: another worker owns this activity's read. Roll back the
+            # savepoint but leave the prepared ``generating`` status alone — the
+            # holder writes the real outcome, and recording a failure here would
+            # replace a read that is being generated with a failed one. The 409
+            # propagates so the client polls rather than treating it as an error.
+            await db.rollback()
+            raise
         except Exception:
             await db.rollback()
             await mark_prepared_post_activity_failed(

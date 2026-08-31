@@ -108,6 +108,7 @@ from src.services.garmin_sync import (
     GarminSyncService,
     parse_sleep_fields,
 )
+from src.services.generation_requests import GenerationRequestInProgress
 from src.services.holiday_pause import HolidayPauseService
 from src.services.insights import InsightsService
 from src.services.job_runs import JobResult, run_tracked_job
@@ -556,6 +557,7 @@ async def run_weekly_review_delivery() -> JobResult:
             messages = 0
             pushes = 0
             skipped_holiday = 0
+            skipped_in_flight = 0
             failed = 0
             for profile in profiles:
                 subject_date = _profile_today(profile)
@@ -580,6 +582,21 @@ async def run_weekly_review_delivery() -> JobResult:
                     generated += int(result.generated)
                     messages += int(result.message_created)
                     pushes += int(result.push_recorded)
+                except GenerationRequestInProgress:
+                    # Batch 232.1: Decision #266 runs the Railway ``weekly-review``
+                    # cron *and* this in-process job on purpose, so exactly one of
+                    # them losing the artifact lock is the designed outcome, not a
+                    # failure. Falling into the handler below would post a failure
+                    # turn into Mark's coach thread and alert the operator about a
+                    # review the other runner is writing successfully.
+                    skipped_in_flight += 1
+                    await session.rollback()
+                    log.info(
+                        "weekly review delivery deferred to the in-flight holder",
+                        profile_id=str(profile.id),
+                        subject_date=subject_date.isoformat(),
+                    )
+                    continue
                 except Exception as exc:
                     failed += 1
                     await session.rollback()
@@ -617,6 +634,7 @@ async def run_weekly_review_delivery() -> JobResult:
             messages=messages,
             pushes=pushes,
             skipped_holiday=skipped_holiday,
+            skipped_in_flight=skipped_in_flight,
             failed=failed,
         )
         counters = {
@@ -625,6 +643,7 @@ async def run_weekly_review_delivery() -> JobResult:
             "messages": messages,
             "pushes": pushes,
             "skipped_holiday": skipped_holiday,
+            "skipped_in_flight": skipped_in_flight,
             "failed": failed,
         }
         if failed:
@@ -1107,6 +1126,18 @@ async def run_morning_weather_sync() -> JobResult:
                         analyses_generated += 1
                     else:
                         analyses_existing += 1
+                except GenerationRequestInProgress:
+                    # Batch 232.1: the 11:00 backstop can collide with a check-in
+                    # Mark started moments earlier. The other worker owns the
+                    # scope and is writing today's brief, so this is not a
+                    # failure and must not be counted or logged as one.
+                    await session.rollback()
+                    log.info(
+                        "morning analysis deferred to the in-flight holder",
+                        profile_id=str(profile.id),
+                        subject_date=subject_date.isoformat(),
+                    )
+                    continue
                 except Exception:
                     failures += 1
                     await session.rollback()
