@@ -112,14 +112,33 @@ class Settings(BaseSettings):
     #
     # ``anthropic_text.py`` raises on ``stop_reason == "max_tokens"``, so getting
     # this wrong is a hard failure showing Mark the Batch 141 failure card — not
-    # degraded prose. 24576 is ~1.5× the worst observed ``high`` run (34% headroom
-    # on the verification run) and close to the largest value the derivation below
-    # can legally take: see the 600s wall.
+    # degraded prose.
+    #
+    # **This stays sized for ``high`` even though the app ships ``medium``**, and
+    # that is deliberate rather than left over. A ceiling costs nothing when it is
+    # not reached — Anthropic bills output tokens actually generated, never the
+    # cap — so the only thing a tighter number would buy is a lower runaway bound,
+    # against the cost of making ``anthropic_effort`` unsafe to change on its own.
+    # Sized for ``medium`` this would be ~12k, and flipping effort back to ``high``
+    # would then fail on the first brief. Two numbers that must move together are
+    # exactly what 233.6 and Batch 232 exist to stop, so the ceiling covers the
+    # most expensive effort the app can be set to and ``anthropic_effort`` is a
+    # genuinely independent dial. 24576 is ~1.5× the worst observed ``high`` run
+    # and ~4.7× the ``medium`` runs shipped today; it is also close to the largest
+    # value the derivation below can legally take — see the 600s wall.
     anthropic_max_tokens: int = 24576
     # Batch 233.2: the two paths that used to hardcode their own ceiling below the
     # boundary's. A 1024-token budget shared between adaptive thinking and a chat
     # reply truncates routinely, and no ``ANTHROPIC_MAX_TOKENS`` change could reach
     # it. Both are settings now so a retune moves every ceiling at once.
+    #
+    # **Unmeasured, and the one place ``anthropic_effort`` is not a free dial.**
+    # Thinking demand was only ever measured on the morning path; a chat turn has a
+    # much smaller prompt and should think proportionately less, but nobody has
+    # checked. At ``medium`` — where the *morning* prompt thinks ~4.3k — that is a
+    # comfortable fit. At ``high``, where the morning prompt thinks 14,610, 4096
+    # could plausibly truncate a chat turn into a ``max_tokens`` failure. If effort
+    # is ever raised, measure a real chat turn before assuming this ceiling holds.
     anthropic_chat_max_tokens: int = 4096
     anthropic_learning_max_tokens: int = 4096
     # Batch 233.3. ``adaptive`` lets the model decide how much to think, steered by
@@ -128,10 +147,22 @@ class Settings(BaseSettings):
     # the verdict is deterministic — ``morning_analysis.py`` reads it from
     # ``context_packet["verdict"]["status"]``, so the model narrates and never
     # decides, and a regression surfaces as worse prose rather than a wrong Red.
-    # ``high`` is Sonnet 5's own default; it is set explicitly so the value is
-    # legible here and pinned by a test rather than inherited from the provider.
+    #
+    # **``medium``, and it is a deliberate departure from Sonnet 5's own default of
+    # ``high``** — so it is set explicitly here and pinned by a test rather than
+    # inherited. Effort is the steepest cost lever in this file: measured on one
+    # real packet, ``high`` generates **3.1× the output tokens of ``medium``**
+    # (16,157 vs 5,280) and takes 2.8× as long (171.6s vs 61.1s), which puts the
+    # morning brief at ~$0.21/run against ~$0.11. That difference is
+    # **+126% vs today's Sonnet 4.6 for ``high``, but only +11% for ``medium``** —
+    # Sonnet 5's price cut very nearly absorbs the tokenizer at this setting, so
+    # ``medium`` buys adaptive thinking for roughly what the app already pays.
+    # ``high`` was not rejected on quality grounds; the prose comparison that would
+    # justify it has not been run (Batch 233.8), so paying 2.3× for an unexamined
+    # difference is the thing being declined. Raise it once that diff says it earns
+    # its keep — the ceiling above already has room, deliberately.
     anthropic_thinking_mode: str = "adaptive"
-    anthropic_effort: str = "high"
+    anthropic_effort: str = "medium"
     # How long to wait for a *complete* non-streamed Messages response. The morning
     # brief is the longest generation we make: on 2026-08-30 it measured 75.1s
     # (27.7k in / 2.8k out at ~38 output tok/s) against the previous hardcoded 60s,

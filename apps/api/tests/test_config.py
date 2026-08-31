@@ -64,9 +64,24 @@ def test_thinking_mode_and_effort_default_to_the_shipped_values() -> None:
     settings = _build_settings()
     assert settings.anthropic_model == "claude-sonnet-5"
     assert settings.anthropic_thinking_mode == "adaptive"
-    # ``high`` is Sonnet 5's own default, set explicitly so the value is legible
-    # in config rather than inherited from the provider and liable to move.
-    assert settings.anthropic_effort == "high"
+    # ``medium`` is a deliberate departure from Sonnet 5's own default of ``high``,
+    # so it is asserted rather than left to the provider. On one real packet
+    # ``high`` generates 3.1× the output tokens (16,157 vs 5,280) for a quality
+    # difference nobody has measured yet — see Batch 233.8.
+    assert settings.anthropic_effort == "medium"
+
+
+def test_the_ceiling_stays_sized_for_the_most_expensive_effort() -> None:
+    """``anthropic_effort`` must be safe to raise without a second change.
+
+    The ceiling is sized for ``high`` (16,157 measured) even though the app ships
+    ``medium`` (5,280), because a ceiling costs nothing unless it is reached and
+    two numbers that must move together are the coupling Batch 232 and 233.6
+    exist to prevent. Sized for ``medium`` at ~12k, flipping effort back to
+    ``high`` would fail on the first brief.
+    """
+    settings = _build_settings()
+    assert settings.anthropic_max_tokens > 16157
 
 
 def test_an_unknown_thinking_mode_is_rejected_at_construction() -> None:

@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
+from src.config import settings
 from src.models.coaching import ManualEntry
 from src.services.longitudinal_analysis import (
     COLUMNS,
@@ -256,7 +257,8 @@ def test_effort_merges_into_output_config_without_dropping_the_json_schema() -> 
     params, _ = build_message_params(packet, model_name="claude-test", max_tokens=2048)
 
     assert params["thinking"] == {"type": "adaptive"}
-    assert params["output_config"]["effort"] == "high"
+    # Whatever effort ships — the point of this test is the merge, not the value.
+    assert params["output_config"]["effort"] == settings.anthropic_effort
     # The half that a wholesale assignment would have destroyed:
     assert params["output_config"]["format"]["type"] == "json_schema"
     assert "findings" in params["output_config"]["format"]["schema"]["required"]
