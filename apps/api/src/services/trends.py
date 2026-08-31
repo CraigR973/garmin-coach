@@ -62,6 +62,10 @@ from src.services.age_norms import (
     rem_sleep_pct_for_row,
     sleep_stage_band,
 )
+from src.services.bulk_history_reads import (
+    temperature_series_columns,
+    without_sleep_raw_payload,
+)
 from src.services.daily_metric_phase import (
     index_morning_by_date,
     index_post_activity_by_date,
@@ -817,10 +821,16 @@ class TrendsService:
         return samples
 
     async def _rows(self, model: Any, user_id: uuid.UUID, start: date, end: date) -> list[Any]:
+        # Only ``Sleep`` carries a payload worth leaving behind; the option is
+        # per-model rather than blanket so ``daily_metrics.raw_payload``, which
+        # ``daily_metric_coverage`` still reads, keeps loading (2026-08-30 egress incident).
+        options = [without_sleep_raw_payload()] if model is Sleep else []
         rows = (
             (
                 await self.session.execute(
-                    select(model).where(
+                    select(model)
+                    .options(*options)
+                    .where(
                         model.user_id == user_id,
                         model.calendar_date >= start,
                         model.calendar_date <= end,
@@ -845,7 +855,9 @@ class TrendsService:
         rows = (
             (
                 await self.session.execute(
-                    select(TemperatureReading).where(
+                    select(TemperatureReading)
+                    .options(temperature_series_columns())
+                    .where(
                         TemperatureReading.user_id == user_id,
                         TemperatureReading.captured_at_utc >= win_start,
                         TemperatureReading.captured_at_utc <= win_end,

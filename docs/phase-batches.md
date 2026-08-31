@@ -2963,3 +2963,75 @@ session:**
   changed the wording on one surface and not the other. **Trigger:** a second metric described
   differently on two surfaces on the same day — at which point the fix is a shared derived
   statement rather than another per-metric test.
+
+---
+
+## Post-roadmap — 2026-08-31 — The Shared Pooler egress spike: a history window shipping the raw provider payload (Batch 235)
+
+**Authored retrospectively on 2026-08-31, after the investigation and the fix.** The row exists
+because the ledger should not have a production incident with no row (the Batch 234 precedent),
+and because the investigation corrected five of the premises it started from — corrections that
+changed what got built, and which are the durable part.
+
+### Corrections made before any code (2026-08-31)
+
+* **The named lead was real but second, not first.** The investigation opened on
+  `insights.bedroom_driver_values_by_date` selecting whole `TemperatureReading` rows. True, and it
+  is the single most wasteful *call* (it returns the entire 6,684-row table). But ranking
+  `pg_stat_statements` by **bytes** rather than **rows** puts `sleep` ahead of it: 374,581 rows at
+  105,550 B/row is **39.5 GB** against temperature's **17.7 GB**. Rows-per-call hid a **45×**
+  difference in row width, and a fix scoped to temperature alone would have left the larger half
+  in place. **The generalisation is the batch**: the defect is `select(Model)` over a history
+  window, not one function.
+* **`pg_column_size` understates the wire cost several-fold, and the brief's arithmetic inherited
+  it.** The opening estimate — "about 1,314 bytes average `raw_payload`, 1,488 bytes average
+  complete row" — is the **TOAST-compressed on-disk** size. JSONB is stored compressed and **sent
+  uncompressed**, so the figures that matter are `length(raw_payload::text)`: temperature
+  **2,308 B** (not 1,314) and sleep **105,550 B** (not 12,670). Measured in production 2026-08-30.
+  Every byte estimate in the original lead is low by ~1.8× for temperature and ~8.3× for sleep.
+* **`longitudinal_analysis` was listed as a live caller and is not one.** `submit_monthly` calls
+  `billing_alert_readiness` **before** `assemble_packet`, and `admin_alert_user_id` is unset in
+  production, so the job raises `BillingAlertNotReady` and assembles nothing. `job_runs` shows 6
+  runs since 2026-08-25; `pg_stat_statements` shows its full-history temperature read executed
+  **once**, at 2026-08-24 19:07 (queryid `-4623900722314734044`, 1 call / 6,114 rows) — a manual
+  run, not a daily load. It is still fixed here, because the gate is a config value that can be
+  set at any time and `assemble_nights` has **no lookback bound at all** (`start =
+  sleeps[0].calendar_date`, the whole history).
+* **A caller the brief did not name was doing the single most wasteful nightly read.**
+  `metric_baselines._load_samples` issues `select(Sleep).where(user_id)` and
+  `select(DailyMetric).where(user_id)` with **no date bound whatsoever** — 433 + 502 rows, about
+  **66 MB per run** — and Batch 228 (Decision #306) put `rebuild` on the nightly
+  `metric_baseline_refresh` job on 2026-08-27, inside this billing cycle. It was invisible to a
+  search for *range* queries because it has no range.
+* **The backup exclusion holds, but not for the stated number.** The brief excluded the nightly
+  dump on the grounds that the archive is ~9.6–10.5 MB/day. `pg_dump` compresses **client-side**,
+  so the pooler sees the uncompressed COPY stream: about **71 MB/night** (sleep ~40.7 MB,
+  daily_metrics ~15.0 MB, temperature ~7.5 MB, activities ~4.4 MB, analyses ~2.9 MB). Seven times
+  the assumed figure and still ~0.7 GB across the cycle, so the exclusion survives — but the
+  reasoning behind it did not, and the same compressed-vs-wire error is what hid the whole
+  incident.
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 235 — A history window loads the columns it reads, not the row it lives in | 🔴 High | Planned | 235.1 **What happened.** Supabase org egress reached **34.784 GB against a 5 GB cap (696%)** in the 2026-08-21–2026-09-21 cycle, org-wide restrictions on, **100% attributed to Shared Pooler Egress** on the Garmin Coach project (`pzqmswvozjnkxbqqowuj`) — 6.475 GB on 08-30 and ~10.2 GB on 08-28 alone. Neither Coupon project contributed.<br>235.2 **Why nothing saw it, which is the durable half.** Batch 204's `EgressBudgetMiddleware` sums HTTP **response** `Content-Length`; the `egress-budget` job recorded **14.804 MB** for 2026-08-30, of which 10.549 MB was the backup archive. These bytes travel the **other direction — pooler to application — and the proxy is structurally blind to them.** A leading-indicator meter that cannot see the dominant term is worse than none, because it reads green. Decision #285 called the Supabase dashboard authoritative; this is the case that proves why.<br>235.3 **The mechanism.** A bare `select(Model)` over a history window materialises whole rows, and JSONB is stored TOAST-compressed but **sent uncompressed**. So the 120-night driver-correlation read moved ~12.8 MB to compute a Pearson coefficient over a dozen typed floats, and the bedroom rollup moved the entire temperature table (~16.5 MB) to average a column of temperatures. Nothing outside `GET /bedroom/overnight`'s hypnogram reads `sleep.raw_payload`, and **nothing anywhere reads `temperature_readings.raw_payload`**.<br>235.4 **The fix: one leaf module, three loader options, applied at 15 call sites.** New `services/bulk_history_reads.py`. `without_sleep_raw_payload()` **defers** one column so callers keep real `Sleep` objects and no arithmetic moves; `temperature_series_columns()` / `fan_series_columns()` **project**, because those readers want two or three columns out of the row. All three pass `raiseload=True` — an unloaded attribute would otherwise emit a lazy SELECT that under an async session fails as `MissingGreenlet` far from the cause. Applied in `insights`, `reviews`, `trends`, `chronic_patterns`, `experiment_evaluation`, `experiment_loop`, `longitudinal_analysis`, `metric_baselines`, `chat_context`, `morning_analysis` and `routers/bedroom`.<br>235.5 **`daily_metrics.raw_payload` is deliberately excluded, and that is a decision rather than an omission.** It is ~**538 MB/day** and that figure is the one genuinely time-bounded number in the whole investigation — the post-`phase` query shapes were created 2026-08-16, so every one of their calls falls inside 14 days. It stays because `daily_metric_coverage` reads it to decide whether a stress or Body Battery aggregate covers the whole local day, and `morning_analysis` reads it **in the same session** that builds the chronic-pattern window — so SQLAlchemy's identity map would hand the deferred object to the later reader and break a live coaching path. Reducing it needs the coverage contract to change first. A test pins the column as deliberately still loaded so a later sweep cannot quietly widen into it.<br>235.6 **Attribution is evidence, not proof, and the row says so.** `pg_stat_statements` cannot be windowed to the billing cycle; what it can prove is that its counters are **complete** — `dealloc = 0` with 2,347 of 5,000 slots used since the 2026-06-22 reset. Two snapshots 68 s apart showed every statement flat except pooler auth, so the load is **bursty** (job- and open-driven), not a constant leak. The model accounts for roughly **22–32 GB of the 34.784 GB**; the mechanism is certain, the exact cycle split is not.<br>235.7 Tests: `test_bulk_history_reads.py` drives each audited hot path through a recording session that captures the real `select()` and asserts the compiled SQL does not name the payload column — so a **new call site added without the option fails here rather than in a bill** — and feeds real rows back so the rollups and peaks are computed end to end and pinned to the values the un-projected query produced. **Sabotage-verified: 13 of 15 fail when the loader options are neutered.** | The bytes the database sends stop being decided by which columns a model happens to have, and start being decided by which columns the caller reads — and the egress that is left is a number someone chose. | Backend gate green with the new tests passing and sabotage-proved; no calculation, packet, prompt version, verdict, plan, migration, shared schema or frontend file changed; `daily_metrics.raw_payload` still loads and is pinned by a test as a deliberate exclusion; production verified on the merge SHA. **Not claimed:** that this closes the egress cap — 235.5's ~538 MB/day and the ~71 MB/night dump remain, and the over-quota cycle needs an owner action in Supabase that no code change can perform. |
+
+### Recorded, not scheduled (2026-08-31)
+
+* **The egress meter cannot see the direction that caused the incident.** 235.2 is the finding;
+  the fix is not in this batch. `EgressBudgetMiddleware` would need to count bytes *received from*
+  the database — plausibly by sampling `pg_stat_statements` rows-per-statement against measured
+  row widths on the existing 15-minute job, since Supabase still exposes no public Management API
+  for egress bytes (confirmed at Batch 204, unchanged). Until then the proxy should be read as
+  "HTTP response bytes", not "egress", including in its own operator alert copy. **Trigger:** the
+  next quota event, or any second app sharing the project's quota.
+* **`daily_metrics.raw_payload`, the other 538 MB/day.** Needs `daily_aggregate_coverage` to take
+  the handful of keys it actually reads (`stress.avgStressLevel`, the two timestamp pairs,
+  `body_battery.charged`/`drained`, and whether `bodyBatteryValuesArray` is non-empty) rather than
+  the whole document, so the query can project a reduced payload server-side. The naive fix —
+  shipping a stub array to preserve a truthiness check — fabricates data into a structure other
+  code may read, and was rejected for that reason. **Trigger:** whenever the coverage contract is
+  next opened, or another quota event.
+* **`activities.raw_summary` is the same pattern one tier down** — ~4,429 B/row uncompressed
+  across 1,033,830 rows returned cumulatively (~4.9 GB). Not touched here because
+  `post_workout_analysis` genuinely reads it, so it needs the same per-call-site proof this batch
+  did for `Sleep` rather than a blanket sweep.

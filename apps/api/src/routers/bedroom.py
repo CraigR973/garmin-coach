@@ -34,6 +34,7 @@ from src.services.bedroom_overnight import (
     sleep_calendar_date,
     summarize_overnight,
 )
+from src.services.bulk_history_reads import temperature_series_columns
 
 router = APIRouter(prefix="/api/v1/bedroom", tags=["bedroom"])
 
@@ -138,6 +139,7 @@ async def get_overnight(
         (
             await db.execute(
                 select(TemperatureReading)
+                .options(temperature_series_columns())
                 .where(
                     TemperatureReading.user_id == player.id,
                     TemperatureReading.captured_at_utc >= start_utc,

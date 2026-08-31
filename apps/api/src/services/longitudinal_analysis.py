@@ -44,6 +44,7 @@ from src.services.anthropic_batch import (
     MessageBatchClient,
 )
 from src.services.anthropic_text import AnthropicApiError, classify_anthropic_error
+from src.services.bulk_history_reads import without_sleep_raw_payload
 from src.services.experiment_tracker import ExperimentTrackerService
 from src.services.generation_requests import (
     claim_generation_request,
@@ -694,6 +695,7 @@ class LongitudinalAnalysisService:
             (
                 await self.session.execute(
                     select(Sleep)
+                    .options(without_sleep_raw_payload())
                     .where(
                         Sleep.user_id == player.id,
                         Sleep.calendar_date <= as_of_date,

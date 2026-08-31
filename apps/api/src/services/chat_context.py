@@ -70,6 +70,7 @@ from src.models.coaching import Activity, Analysis, ManualEntry, PlannedWorkout,
 from src.models.profile import Profile
 from src.services.analysis_currentness import manual_entry_input_version
 from src.services.body_metrics import resolve_effective_vo2max, resolve_effective_weight_kg
+from src.services.bulk_history_reads import without_sleep_raw_payload
 from src.services.holiday_pause import HolidayPauseService, holiday_windows_covering_date
 from src.services.reviews import ANALYSIS_TYPE_MONTHLY, ANALYSIS_TYPE_WEEKLY
 from src.services.training_week import ACTION_AUDIT_TYPES, TrainingWeekService
@@ -467,6 +468,7 @@ class ChatContextService:
             (
                 await self.session.execute(
                     select(Sleep)
+                    .options(without_sleep_raw_payload())
                     .where(
                         Sleep.user_id == user_id,
                         Sleep.calendar_date <= as_of,

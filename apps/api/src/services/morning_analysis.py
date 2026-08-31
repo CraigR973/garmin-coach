@@ -41,6 +41,7 @@ from src.services.anthropic_text import generate_anthropic_text
 from src.services.bedroom_overnight import night_window
 from src.services.body_metrics import resolve_effective_vo2max, resolve_effective_weight_kg
 from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
+from src.services.bulk_history_reads import temperature_series_columns
 from src.services.chronic_patterns import (
     CHRONIC_DELOAD_WINDOW_DAYS,
     ChronicPatternSuggestionService,
@@ -1221,6 +1222,7 @@ class MorningAnalysisService:
             (
                 await self.session.execute(
                     select(TemperatureReading)
+                    .options(temperature_series_columns())
                     .where(
                         TemperatureReading.user_id == user_id,
                         TemperatureReading.captured_at_utc >= start_utc,

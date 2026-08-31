@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.coaching import DailyMetric, KnowledgeBase, MetricBaseline, Sleep
 from src.models.profile import Profile
 from src.services.age_norms import rem_sleep_pct_for_row
+from src.services.bulk_history_reads import without_sleep_raw_payload
 from src.services.daily_metric_coverage import (
     complete_body_battery_charged,
     complete_body_battery_drained,
@@ -238,7 +239,13 @@ class MetricBaselineBackfillService:
         as_of: date | None,
     ) -> list[BaselineSample]:
         sleep_rows = (
-            (await self.session.execute(select(Sleep).where(Sleep.user_id == user_id)))
+            (
+                await self.session.execute(
+                    select(Sleep)
+                    .options(without_sleep_raw_payload())
+                    .where(Sleep.user_id == user_id)
+                )
+            )
             .scalars()
             .all()
         )

@@ -52,6 +52,7 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile
+from src.services.bulk_history_reads import without_sleep_raw_payload
 from src.services.experiment_tracker import SLUG_REM_INTERVENTION
 from src.services.insights import (
     BEDROOM_DRIVER_KEYS,
@@ -831,6 +832,7 @@ class ExperimentEvaluationService:
             (
                 await self.session.execute(
                     select(Sleep)
+                    .options(without_sleep_raw_payload())
                     .where(
                         Sleep.user_id == player.id,
                         Sleep.calendar_date >= start,
