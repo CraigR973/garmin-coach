@@ -43,7 +43,12 @@ from src.services.anthropic_batch import (
     AnthropicMessageBatchClient,
     MessageBatchClient,
 )
-from src.services.anthropic_text import AnthropicApiError, classify_anthropic_error
+from src.services.anthropic_text import (
+    AnthropicApiError,
+    classify_anthropic_error,
+    configured_effort,
+    configured_thinking,
+)
 from src.services.bulk_history_reads import without_sleep_raw_payload
 from src.services.experiment_tracker import ExperimentTrackerService
 from src.services.generation_requests import (
@@ -458,16 +463,25 @@ def build_message_params(
     packet: dict[str, Any], *, model_name: str, max_tokens: int
 ) -> tuple[dict[str, Any], str]:
     prompt = json.dumps(packet, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+    # Batch 233: this is the ninth generation path and the only one that already
+    # owned an ``output_config``. ``effort`` has to be *merged* into that same
+    # dict alongside ``format`` — assigning ``output_config`` wholesale here would
+    # silently drop the json_schema and turn structured findings back into prose.
+    # It shares the ``anthropic_max_tokens`` ceiling with the other eight and, like
+    # them, raises on ``stop_reason == "max_tokens"`` (see ``_finding_from_message``),
+    # so thinking eats into the same budget the JSON finding has to fit in.
     params = {
         "model": model_name,
         "max_tokens": max_tokens,
         "system": SYSTEM_PROMPT,
         "messages": [{"role": "user", "content": prompt}],
+        "thinking": configured_thinking(),
         "output_config": {
             "format": {
                 "type": "json_schema",
                 "schema": anthropic_output_schema(),
-            }
+            },
+            "effort": configured_effort(),
         },
     }
     return params, prompt

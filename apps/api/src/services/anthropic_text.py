@@ -33,6 +33,33 @@ def _timeout() -> httpx.Timeout:
     )
 
 
+class AnthropicThinking(TypedDict):
+    """The ``thinking`` request field (Batch 233.3).
+
+    ``adaptive`` lets the model decide how much to think, steered by ``effort``.
+    ``budget_tokens`` — the pre-4.6 way to ask for extended thinking — is
+    **rejected with a 400** on this model generation and deliberately has no
+    representation here, so it cannot be reintroduced by a caller.
+    """
+
+    type: Literal["adaptive", "disabled"]
+
+
+def configured_thinking() -> AnthropicThinking:
+    """The thinking mode every analysis caller passes, resolved from settings."""
+
+    mode: Literal["adaptive", "disabled"] = (
+        "disabled" if settings.anthropic_thinking_mode == "disabled" else "adaptive"
+    )
+    return {"type": mode}
+
+
+def configured_effort() -> str:
+    """The effort level every analysis caller passes, resolved from settings."""
+
+    return settings.anthropic_effort
+
+
 class AnthropicCacheControl(TypedDict):
     type: Literal["ephemeral"]
 
@@ -148,6 +175,23 @@ def _usage_int(usage: dict[str, Any], key: str) -> int | None:
     return value if isinstance(value, int) else None
 
 
+def _thinking_tokens(usage: dict[str, Any]) -> int | None:
+    """The thinking share of ``output_tokens``, when the provider reports it.
+
+    Batch 233: ``max_tokens`` caps thinking and text together, and on Sonnet 5 at
+    ``high`` effort thinking is the overwhelming majority of the budget — a real
+    morning brief measured 16,157 output tokens of which **14,610 were thinking**
+    and only ~1,547 were the prose Mark reads. Without this field a future session
+    reading the logs sees a single large ``output_tokens`` and cannot tell whether
+    the ceiling is under pressure from a longer brief or from a deeper think, which
+    are fixed in opposite ways.
+    """
+    details = usage.get("output_tokens_details")
+    if not isinstance(details, dict):
+        return None
+    return _usage_int(details, "thinking_tokens")
+
+
 def _log_usage(raw: dict[str, Any], *, model_name: str) -> None:
     usage = raw.get("usage")
     if not isinstance(usage, dict):
@@ -157,6 +201,7 @@ def _log_usage(raw: dict[str, Any], *, model_name: str) -> None:
         model_name=model_name,
         input_tokens=_usage_int(usage, "input_tokens"),
         output_tokens=_usage_int(usage, "output_tokens"),
+        thinking_tokens=_thinking_tokens(usage),
         cache_creation_input_tokens=_usage_int(usage, "cache_creation_input_tokens"),
         cache_read_input_tokens=_usage_int(usage, "cache_read_input_tokens"),
     )
@@ -212,12 +257,20 @@ async def generate_anthropic_text(
     user_prompt: str,
     error_cls: type[Exception],
     prior_messages: list[dict[str, str]] | None = None,
+    thinking: AnthropicThinking | None = None,
+    effort: str | None = None,
 ) -> AnthropicTextResult:
     """``prior_messages`` (optional) carries earlier user/assistant turns before
     ``user_prompt`` for a multi-turn conversation (Batch 119's brief follow-up
     chat); single-turn callers omit it and behave exactly as before. ``system_prompt``
     may be the original string form or an Anthropic system-block list when a caller
     needs a cache breakpoint.
+
+    ``thinking`` and ``effort`` (Batch 233.3) are **absent from the payload unless
+    passed**, so a caller that supplies neither produces a byte-identical request to
+    the pre-233 one. That is the rollback path, and it is pinned by a test: the two
+    fields are the only wire-format difference between running this app on Sonnet 5
+    and running it as it was on Sonnet 4.6.
 
     A non-2xx from Anthropic raises :class:`AnthropicApiError` (with a classified
     ``reason``); a well-formed response that is unusable (max_tokens, no text, not a
@@ -233,6 +286,10 @@ async def generate_anthropic_text(
         "system": system_prompt,
         "messages": messages,
     }
+    if thinking is not None:
+        payload["thinking"] = thinking
+    if effort is not None:
+        payload["output_config"] = {"effort": effort}
     headers = {
         "x-api-key": api_key,
         "anthropic-version": ANTHROPIC_VERSION,
@@ -253,6 +310,11 @@ async def generate_anthropic_text(
     if stop_reason == "max_tokens":
         raise error_cls("Claude response hit max_tokens before completing.")
 
+    # Batch 233.3: with thinking on, ``content`` also carries ``thinking`` blocks.
+    # This filter already selected ``type == "text"`` and so skips them — the
+    # reasoning can never be concatenated into Mark's brief. Pinned by a test
+    # because it is the one place adaptive thinking could have leaked into user-
+    # facing prose, and it is safe by accident rather than by design.
     text_parts: list[str] = []
     content = raw.get("content", [])
     if isinstance(content, list):

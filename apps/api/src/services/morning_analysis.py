@@ -37,7 +37,11 @@ from src.services.age_norms import (
     build_age_comparison,
     rem_sleep_pct_for_row,
 )
-from src.services.anthropic_text import generate_anthropic_text
+from src.services.anthropic_text import (
+    configured_effort,
+    configured_thinking,
+    generate_anthropic_text,
+)
 from src.services.bedroom_overnight import night_window
 from src.services.body_metrics import resolve_effective_vo2max, resolve_effective_weight_kg
 from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
@@ -450,6 +454,8 @@ class AnthropicMorningAnalysisClient:
         self.api_key = api_key if api_key is not None else settings.anthropic_api_key
         self.model_name = model_name or settings.anthropic_model
         self.max_tokens = max_tokens or settings.anthropic_max_tokens
+        self.thinking = configured_thinking()
+        self.effort = configured_effort()
 
     async def generate(
         self,
@@ -463,6 +469,8 @@ class AnthropicMorningAnalysisClient:
             api_key=self.api_key,
             model_name=self.model_name,
             max_tokens=self.max_tokens,
+            thinking=self.thinking,
+            effort=self.effort,
             system_prompt=SYSTEM_PROMPT,
             user_prompt=user_prompt,
             error_cls=MorningAnalysisError,

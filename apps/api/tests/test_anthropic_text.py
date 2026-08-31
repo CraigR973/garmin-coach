@@ -5,9 +5,13 @@ from typing import Any
 import httpx
 import pytest
 
+from src.config import settings
 from src.services.anthropic_text import (
     AnthropicApiError,
+    _thinking_tokens,
     classify_anthropic_error,
+    configured_effort,
+    configured_thinking,
     generate_anthropic_text,
 )
 from src.services.morning_analysis import MorningAnalysisError
@@ -328,3 +332,197 @@ async def test_generate_anthropic_text_read_timeout_is_env_tunable(
 
     timeout = _TimeoutCapturingAsyncClient.last_timeout
     assert timeout is not None and timeout.read == 450.0
+
+
+# ---------------------------------------------------------------------------
+# Batch 233 — Sonnet 5, adaptive thinking, and the ceiling it shares with prose
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_thinking_and_effort_are_absent_unless_passed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The rollback path: a caller that passes neither sends the pre-233 request.
+
+    ``thinking`` and ``output_config`` are the *only* wire-format difference
+    between this app on Sonnet 5 and this app as it was on Sonnet 4.6. If either
+    leaks into the payload by default, reverting the model becomes a code change
+    rather than a settings change.
+    """
+    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _DummyAsyncClient)
+    _DummyAsyncClient.response_payload = {
+        "model": "claude-test",
+        "stop_reason": "end_turn",
+        "content": [{"type": "text", "text": "complete"}],
+    }
+
+    await generate_anthropic_text(
+        api_key="test-key",
+        model_name="claude-test",
+        max_tokens=4096,
+        system_prompt="system",
+        user_prompt="prompt",
+        error_cls=MorningAnalysisError,
+    )
+
+    payload = _DummyAsyncClient.last_request_json
+    assert payload is not None
+    assert set(payload) == {"model", "max_tokens", "system", "messages"}
+
+
+@pytest.mark.asyncio
+async def test_thinking_and_effort_reach_the_payload_when_passed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _DummyAsyncClient)
+    _DummyAsyncClient.response_payload = {
+        "model": "claude-test",
+        "stop_reason": "end_turn",
+        "content": [{"type": "text", "text": "complete"}],
+    }
+
+    await generate_anthropic_text(
+        api_key="test-key",
+        model_name="claude-test",
+        max_tokens=4096,
+        system_prompt="system",
+        user_prompt="prompt",
+        error_cls=MorningAnalysisError,
+        thinking={"type": "adaptive"},
+        effort="high",
+    )
+
+    payload = _DummyAsyncClient.last_request_json
+    assert payload is not None
+    assert payload["thinking"] == {"type": "adaptive"}
+    assert payload["output_config"] == {"effort": "high"}
+
+
+@pytest.mark.asyncio
+async def test_payload_never_carries_a_parameter_sonnet_5_rejects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sonnet 5 returns a 400 for sampling parameters, ``budget_tokens`` and prefill.
+
+    The boundary builds a fixed payload, so this pins the whole breaking-change
+    list in one place rather than trusting a grep that decays.
+    """
+    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _DummyAsyncClient)
+    _DummyAsyncClient.response_payload = {
+        "model": "claude-test",
+        "stop_reason": "end_turn",
+        "content": [{"type": "text", "text": "complete"}],
+    }
+
+    await generate_anthropic_text(
+        api_key="test-key",
+        model_name="claude-test",
+        max_tokens=4096,
+        system_prompt="system",
+        user_prompt="prompt",
+        error_cls=MorningAnalysisError,
+        prior_messages=[{"role": "user", "content": "earlier"}],
+        thinking={"type": "adaptive"},
+        effort="high",
+    )
+
+    payload = _DummyAsyncClient.last_request_json
+    assert payload is not None
+    for rejected in ("temperature", "top_p", "top_k", "budget_tokens"):
+        assert rejected not in payload
+    assert "budget_tokens" not in payload["thinking"]
+    # No assistant prefill: the user turn is always appended last.
+    assert payload["messages"][-1]["role"] == "user"
+
+
+@pytest.mark.asyncio
+async def test_thinking_blocks_never_reach_the_users_brief(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With thinking on, ``content`` carries a thinking block before the text.
+
+    Measured on a real morning brief, 14,610 of 16,157 output tokens were
+    thinking. The boundary must return only the prose.
+    """
+    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _DummyAsyncClient)
+    _DummyAsyncClient.response_payload = {
+        "model": "claude-test",
+        "stop_reason": "end_turn",
+        "content": [
+            {"type": "thinking", "thinking": "the user's readiness is 64, so..."},
+            {"type": "text", "text": "# Morning Read"},
+        ],
+    }
+
+    result = await generate_anthropic_text(
+        api_key="test-key",
+        model_name="claude-test",
+        max_tokens=4096,
+        system_prompt="system",
+        user_prompt="prompt",
+        error_cls=MorningAnalysisError,
+        thinking={"type": "adaptive"},
+        effort="high",
+    )
+
+    assert result.output_markdown == "# Morning Read"
+    assert "readiness is 64" not in result.output_markdown
+
+
+@pytest.mark.asyncio
+async def test_max_tokens_still_raises_rather_than_returning_partial_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Thinking shares ``max_tokens`` with the prose, so this stop must stay loud.
+
+    A truncated brief that returned quietly would read as a complete coaching
+    verdict with its conclusion missing — worse than the Batch 141 failure card.
+    """
+    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _DummyAsyncClient)
+    _DummyAsyncClient.response_payload = {
+        "model": "claude-test",
+        "stop_reason": "max_tokens",
+        "content": [
+            {"type": "thinking", "thinking": "long deliberation that ate the budget"},
+            {"type": "text", "text": "# Morning Read\n\nYour readiness is"},
+        ],
+    }
+
+    with pytest.raises(MorningAnalysisError, match="max_tokens"):
+        await generate_anthropic_text(
+            api_key="test-key",
+            model_name="claude-test",
+            max_tokens=4096,
+            system_prompt="system",
+            user_prompt="prompt",
+            error_cls=MorningAnalysisError,
+            thinking={"type": "adaptive"},
+            effort="high",
+        )
+
+
+def test_configured_thinking_and_effort_follow_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "anthropic_thinking_mode", "adaptive")
+    monkeypatch.setattr(settings, "anthropic_effort", "high")
+    assert configured_thinking() == {"type": "adaptive"}
+    assert configured_effort() == "high"
+
+    # The rollback lever: one setting restores Sonnet 4.6's behaviour.
+    monkeypatch.setattr(settings, "anthropic_thinking_mode", "disabled")
+    assert configured_thinking() == {"type": "disabled"}
+
+
+def test_thinking_tokens_are_logged_when_the_provider_reports_them() -> None:
+    """The ceiling is under pressure from thinking, not prose — the log must say so."""
+    usage = {
+        "input_tokens": 26474,
+        "output_tokens": 16157,
+        "output_tokens_details": {"thinking_tokens": 14610},
+    }
+    assert _thinking_tokens(usage) == 14610
+    # Absent on a thinking-off response, and on providers that omit the field.
+    assert _thinking_tokens({"output_tokens": 2305}) is None
+    assert _thinking_tokens({"output_tokens_details": None}) is None

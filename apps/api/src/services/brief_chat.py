@@ -60,6 +60,8 @@ from src.models.profile import Profile
 from src.services.anthropic_text import (
     AnthropicSystemPrompt,
     AnthropicSystemTextBlock,
+    configured_effort,
+    configured_thinking,
     generate_anthropic_text,
 )
 from src.services.chat_context import (
@@ -190,7 +192,9 @@ class AnthropicBriefChatClient:
     def __init__(self, *, api_key: str | None = None, model_name: str | None = None) -> None:
         self.api_key = api_key if api_key is not None else settings.anthropic_api_key
         self.model_name = model_name or settings.anthropic_model
-        self.max_tokens = 1024
+        self.max_tokens = settings.anthropic_chat_max_tokens
+        self.thinking = configured_thinking()
+        self.effort = configured_effort()
 
     async def generate(
         self,
@@ -208,6 +212,8 @@ class AnthropicBriefChatClient:
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             prior_messages=prior_messages,
+            thinking=self.thinking,
+            effort=self.effort,
             error_cls=BriefChatError,
         )
         return result.output_markdown

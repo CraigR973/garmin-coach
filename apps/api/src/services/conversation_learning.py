@@ -36,7 +36,11 @@ from src.models.coaching import (
     ManualEntry,
 )
 from src.models.profile import Profile
-from src.services.anthropic_text import generate_anthropic_text
+from src.services.anthropic_text import (
+    configured_effort,
+    configured_thinking,
+    generate_anthropic_text,
+)
 from src.services.bulk_post_activity_lookups import (
     latest_analyses_by_activity,
     latest_morning_analyses_by_date,
@@ -148,7 +152,9 @@ class AnthropicConversationLearningClient:
     def __init__(self, *, api_key: str | None = None, model_name: str | None = None) -> None:
         self.api_key = api_key if api_key is not None else settings.anthropic_api_key
         self.model_name = model_name or settings.anthropic_model
-        self.max_tokens = 1800
+        self.max_tokens = settings.anthropic_learning_max_tokens
+        self.thinking = configured_thinking()
+        self.effort = configured_effort()
 
     async def generate(
         self,
@@ -162,6 +168,8 @@ class AnthropicConversationLearningClient:
             api_key=self.api_key,
             model_name=self.model_name,
             max_tokens=self.max_tokens,
+            thinking=self.thinking,
+            effort=self.effort,
             system_prompt=SYSTEM_PROMPT,
             user_prompt=json.dumps(
                 {

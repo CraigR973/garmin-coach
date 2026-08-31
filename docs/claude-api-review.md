@@ -190,10 +190,26 @@ becomes real.
 ## 6. Two decisions worth revisiting
 
 **Model + a closing pricing window.** The app runs `claude-sonnet-4-6`; the recorded decision was
-to revisit cost ~Sept 2026, which is now. Claude Sonnet 5 is available at the *same list price*
-($3/$15 per MTok) with introductory pricing of $2/$10 **through 2026-08-31**. Separately,
+to revisit cost ~Sept 2026, which is now. ~~Claude Sonnet 5 is available at the *same list price*
+($3/$15 per MTok) with introductory pricing of $2/$10 **through 2026-08-31**.~~ Separately,
 `thinking` and `output_config.effort` are set **nowhere** in this codebase — on a current model,
 adaptive thinking at a tuned effort is the main quality lever, entirely unused.
+
+> **Corrected 2026-08-31 at `/batch-start 233`, against the live pricing page.** The struck
+> sentence was wrong, and `DECISIONS.md` #308 — which recorded a live check on 2026-08-27 — was
+> right. Sonnet 5 is **$2 / $10 per MTok as the standard price**; Anthropic's pricing page states
+> that the $2/$10 announced as introductory "is now the standard price" and that "the previously
+> scheduled increase to $3/$15 … on September 1, 2026 will not occur". Sonnet 4.6 is $3/$15, so
+> Sonnet 5 is **33% cheaper per token**. Against a tokenizer that produces ~30% more tokens for
+> the same text, the net on identical work is ~13% cheaper — *not* neutral, and not a reason to
+> swap either way. Two figures in this repo disagreed; this was the wrong one.
+>
+> **"The swap is one env var" below is also wrong, and it is the more expensive error.** Batch 233
+> measured it: production sets no `ANTHROPIC_MODEL` at all, and on Sonnet 5 omitting the `thinking`
+> field runs *adaptive at the default `high` effort*. A bare model-string change produced **9,236
+> output tokens** against the then-4,096 ceiling — `stop_reason: "max_tokens"`, which
+> `anthropic_text.py` raises on. The swap would not have degraded the brief; it would have failed
+> it by 2.3× on the first morning, as the Batch 141 failure card.
 
 Do not swap casually: these prompts are heavily tuned (the morning system prompt is ~3,950 tokens
 of instruction about not softening deterministic verdicts) and need re-validating. But the swap

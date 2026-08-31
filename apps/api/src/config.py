@@ -10,6 +10,15 @@ class Environment(StrEnum):
     production = "production"
 
 
+# Batch 233.3. The two values that reach the Anthropic payload verbatim, kept
+# here so the settings validator and the boundary's own type share one list.
+# ``adaptive`` is the only on-mode on Sonnet 5 (``budget_tokens`` is rejected
+# with a 400 on this model generation); ``disabled`` is the escape hatch back to
+# Sonnet 4.6's behaviour.
+ANTHROPIC_THINKING_MODES = frozenset({"adaptive", "disabled"})
+ANTHROPIC_EFFORT_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max"})
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -70,17 +79,87 @@ class Settings(BaseSettings):
     weather_longitude: float = -4.5249
     weather_timezone: str = "Europe/London"
     anthropic_api_key: str = ""
-    anthropic_model: str = "claude-sonnet-4-6"
-    anthropic_max_tokens: int = 4096
+    anthropic_model: str = "claude-sonnet-5"
+    # Batch 233. Sonnet 5 moves both sides of this number and neither move is
+    # optional, which is why the swap is not a one-line model change.
+    #
+    # 1. **The tokenizer.** Sonnet 5 uses the tokenizer introduced with Opus 4.7;
+    #    Sonnet 4.6 and earlier use the previous one. Anthropic documents "~30%
+    #    more tokens for the same text"; measured on this app's own brief prose
+    #    with the token-count endpoint it is **1.305–1.343×** (three real v40
+    #    days). So identical output re-prices in tokens: the 2026-08-30 brief's
+    #    3,175 output tokens become **4,248** — past the old 4096 ceiling on
+    #    prose alone, before a single thinking token.
+    # 2. **Thinking is on by default, and it is what actually fills this budget.**
+    #    Sonnet 4.6 with no ``thinking`` field ran thinking-off; on Sonnet 5 the
+    #    same omission runs *adaptive at the default ``high`` effort*. Measured
+    #    against the real 2026-08-31 packet, sending **no** thinking field still
+    #    produced **9,236 output tokens** — so a bare model-string swap would not
+    #    have degraded the brief, it would have failed it by 2.3× on the first
+    #    morning. ``max_tokens`` caps thinking and text **together**.
+    #
+    # **The prose is not the problem, and the first version of this batch had that
+    # backwards.** Sonnet 5 writes a *shorter* brief than 4.6 — 3.6–5.6k chars
+    # against 8,482 — so text lands at ~1.5k tokens, *below* what 4.6 used. The
+    # tokenizer inflates per character while the model writes fewer characters.
+    # This number is therefore a **thinking budget**, sized from measured thinking
+    # demand at ``high`` effort rather than from prose. Measured against the real
+    # 2026-08-31 packet, with the provider's own ``output_tokens_details``:
+    #
+    #     effort=high    16,157 output tokens   171.6s   14,610 thinking / ~1,547 prose
+    #     effort=medium   5,280                  61.1s   ~4.3k thinking
+    #     effort=low      1,317                  18.9s   no thinking block at all
+    #
+    # ``anthropic_text.py`` raises on ``stop_reason == "max_tokens"``, so getting
+    # this wrong is a hard failure showing Mark the Batch 141 failure card — not
+    # degraded prose. 24576 is ~1.5× the worst observed ``high`` run (34% headroom
+    # on the verification run) and close to the largest value the derivation below
+    # can legally take: see the 600s wall.
+    anthropic_max_tokens: int = 24576
+    # Batch 233.2: the two paths that used to hardcode their own ceiling below the
+    # boundary's. A 1024-token budget shared between adaptive thinking and a chat
+    # reply truncates routinely, and no ``ANTHROPIC_MAX_TOKENS`` change could reach
+    # it. Both are settings now so a retune moves every ceiling at once.
+    anthropic_chat_max_tokens: int = 4096
+    anthropic_learning_max_tokens: int = 4096
+    # Batch 233.3. ``adaptive`` lets the model decide how much to think, steered by
+    # ``anthropic_effort``; ``disabled`` restores Sonnet 4.6's behaviour byte-for-byte
+    # if a live morning ever regresses. This is a safe place to experiment because
+    # the verdict is deterministic — ``morning_analysis.py`` reads it from
+    # ``context_packet["verdict"]["status"]``, so the model narrates and never
+    # decides, and a regression surfaces as worse prose rather than a wrong Red.
+    # ``high`` is Sonnet 5's own default; it is set explicitly so the value is
+    # legible here and pinned by a test rather than inherited from the provider.
+    anthropic_thinking_mode: str = "adaptive"
+    anthropic_effort: str = "high"
     # How long to wait for a *complete* non-streamed Messages response. The morning
     # brief is the longest generation we make: on 2026-08-30 it measured 75.1s
     # (27.7k in / 2.8k out at ~38 output tok/s) against the previous hardcoded 60s,
     # so every attempt that day died on ``httpx.ReadTimeout`` after Anthropic had
     # already done — and billed — the work. The packet only grows, so the ceiling is
-    # sized off the worst case instead of today's measurement: ``anthropic_max_tokens``
-    # at a slow ~15 tok/s is ~275s. Still well under the Anthropic SDK's own 600s
-    # default. Env-tunable so a slow spell can be ridden out without a deploy.
-    anthropic_read_timeout_seconds: float = 300.0
+    # sized off the worst case instead of today's measurement. Env-tunable so a slow
+    # spell can be ridden out without a deploy.
+    #
+    # **Batch 233.6 re-derives it, and re-bases the rate it is derived from.** The
+    # old derivation was ``anthropic_max_tokens`` at ~15 tok/s — a ~2.5× pessimism
+    # over the ~38 output tok/s Sonnet 4.6 measured in Batch 234. Sonnet 5 generates
+    # far faster: the effort sweep above measured **87–99 output tok/s** across four
+    # real runs, including 15,961 tokens in 161.9s at ``high``. Holding 15 tok/s
+    # against a ceiling that now has to cover adaptive thinking would demand
+    # 1,638s and is impossible under the wall below, so the constant moves to
+    # **~45 tok/s — still a ~2× pessimism against measurement**, and the resulting
+    # budget is 3.4× the slowest generation actually observed:
+    #
+    #     24576 / 45 tok/s ≈ 546s, rounded to 550.
+    #
+    # **There is a hard wall at 600s that is not a matter of taste.** Batch 232 made
+    # the generation lease ``read + generation_lease_overhead_seconds`` and made
+    # ``validate_timeout_ordering()`` fail startup unless the lease expires before
+    # Batch 144's 720s stale-after guard. So ``read + 120 < 720`` — the API does not
+    # boot at ``read >= 600``, which caps ``anthropic_max_tokens`` near 27,000 under
+    # this derivation. That wall, not the throughput measurement, is what bounds the
+    # ceiling; raising one without the other is what the startup check exists to stop.
+    anthropic_read_timeout_seconds: float = 550.0
     # Batch 232.2: the generation lease is *derived* from the read budget above
     # rather than fixed, because the two must move together. The lease is the only
     # record that says "a worker is still legitimately generating this artifact";
@@ -182,6 +261,31 @@ class Settings(BaseSettings):
                 f"(db_pooler_client_limit={self.db_pooler_client_limit} − "
                 f"db_pooler_reserved_connections={self.db_pooler_reserved_connections})"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _reject_unknown_thinking_or_effort(self) -> "Settings":
+        """Batch 233.3: catch a bad thinking/effort value here, not on Mark's morning.
+
+        Both reach the Anthropic payload verbatim. An unrecognised value is a 400
+        from the provider on the *first* generation after a deploy, which reaches
+        Mark as the Batch 141 failure card — the exact failure mode this batch
+        exists to remove. Failing at construction turns a silent typo in a Railway
+        variable into a boot error instead.
+        """
+        errors: list[str] = []
+        if self.anthropic_thinking_mode not in ANTHROPIC_THINKING_MODES:
+            errors.append(
+                f"anthropic_thinking_mode={self.anthropic_thinking_mode!r} "
+                f"is not one of {sorted(ANTHROPIC_THINKING_MODES)}"
+            )
+        if self.anthropic_effort not in ANTHROPIC_EFFORT_LEVELS:
+            errors.append(
+                f"anthropic_effort={self.anthropic_effort!r} "
+                f"is not one of {sorted(ANTHROPIC_EFFORT_LEVELS)}"
+            )
+        if errors:
+            raise ValueError("Invalid Anthropic generation settings: " + "; ".join(errors))
         return self
 
 

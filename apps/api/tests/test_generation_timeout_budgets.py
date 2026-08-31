@@ -212,3 +212,36 @@ def test_reserved_connections_leave_room_for_the_other_clients() -> None:
 
     assert settings.db_pooler_reserved_connections > 0
     assert settings.db_pooler_reserved_connections < settings.db_pooler_client_limit
+
+
+def test_the_read_budget_stays_under_the_wall_the_stale_guard_imposes() -> None:
+    """Batch 233.6: the ceiling Batch 232 put on ``anthropic_read_timeout_seconds``.
+
+    Batch 233 raised ``anthropic_max_tokens`` 4096 → 24576 to make room for
+    Sonnet 5's adaptive thinking, and the read budget is derived from that
+    ceiling. The derivation is not free to grow: the lease is
+    ``read + generation_lease_overhead_seconds`` and must expire before Batch
+    144's stale-after guard, so ``read`` has a hard upper bound of
+    ``stale_after − overhead`` — 600s at today's 720s/120s. This asserts the
+    bound explicitly rather than leaving a future retune to discover it as a
+    boot failure in production.
+    """
+
+    wall = timedelta(minutes=settings.brief_generation_stale_after_minutes) - timedelta(
+        seconds=settings.generation_lease_overhead_seconds
+    )
+
+    assert wall == timedelta(seconds=600)
+    assert timeout_ordering().anthropic_read < wall
+
+
+def test_a_read_budget_at_the_wall_refuses_to_boot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The wall is enforced, not merely documented."""
+
+    monkeypatch.setattr(settings, "anthropic_read_timeout_seconds", 600.0)
+
+    assert not timeout_ordering().holds
+    with pytest.raises(ValueError, match="out of order"):
+        validate_timeout_ordering()
