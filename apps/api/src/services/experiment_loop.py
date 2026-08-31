@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.coaching import Analysis, Experiment, ManualEntry, PlanBlock, Sleep, WeatherDaily
 from src.models.profile import Profile
 from src.services.age_norms import rem_sleep_pct_for_row
+from src.services.bulk_history_reads import without_sleep_raw_payload
 from src.services.experiment_evaluation import (
     ExperimentEvaluationService,
     evaluation_packet,
@@ -429,7 +430,9 @@ class ExperimentLoopService:
         sleeps = list(
             (
                 await self.session.execute(
-                    select(Sleep).where(
+                    select(Sleep)
+                    .options(without_sleep_raw_payload())
+                    .where(
                         Sleep.user_id == player.id,
                         Sleep.calendar_date >= start,
                         Sleep.calendar_date <= end,

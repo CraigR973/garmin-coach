@@ -34,6 +34,7 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile
 from src.services.age_norms import build_age_comparison
+from src.services.bulk_history_reads import without_sleep_raw_payload
 from src.services.daily_metric_phase import prefer_morning
 from src.services.delivered_verdict import delivered_verdicts
 from src.services.driver_levers import select_lever
@@ -579,6 +580,7 @@ class ChronicPatternSuggestionService:
             (
                 await self.session.execute(
                     select(Sleep)
+                    .options(without_sleep_raw_payload())
                     .where(
                         Sleep.user_id == player.id,
                         Sleep.calendar_date >= start,

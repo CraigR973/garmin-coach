@@ -56,6 +56,10 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile
 from src.services.anthropic_text import generate_anthropic_text
+from src.services.bulk_history_reads import (
+    temperature_series_columns,
+    without_sleep_raw_payload,
+)
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
 from src.services.daily_metric_coverage import complete_body_battery_charged
 from src.services.daily_metric_phase import (
@@ -903,7 +907,9 @@ class ReviewService:
         rows = (
             (
                 await self.session.execute(
-                    select(Sleep).where(
+                    select(Sleep)
+                    .options(without_sleep_raw_payload())
+                    .where(
                         Sleep.user_id == user_id,
                         Sleep.calendar_date >= start,
                         Sleep.calendar_date <= end,
@@ -1023,7 +1029,9 @@ class ReviewService:
         rows = (
             (
                 await self.session.execute(
-                    select(TemperatureReading).where(
+                    select(TemperatureReading)
+                    .options(temperature_series_columns())
+                    .where(
                         TemperatureReading.user_id == user_id,
                         TemperatureReading.captured_at_utc >= win_start,
                         TemperatureReading.captured_at_utc <= win_end,

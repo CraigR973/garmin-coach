@@ -52,6 +52,11 @@ from src.services.bedroom_overnight import (
     sleep_calendar_date,
     summarize_overnight,
 )
+from src.services.bulk_history_reads import (
+    fan_series_columns,
+    temperature_series_columns,
+    without_sleep_raw_payload,
+)
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
 from src.services.daily_metric_coverage import complete_stress_avg
 from src.services.daily_metric_phase import (
@@ -489,7 +494,9 @@ async def bedroom_driver_values_by_date(
     temperatures = (
         (
             await session.execute(
-                select(TemperatureReading).where(
+                select(TemperatureReading)
+                .options(temperature_series_columns())
+                .where(
                     TemperatureReading.user_id == player.id,
                     TemperatureReading.captured_at_utc >= first_start,
                     TemperatureReading.captured_at_utc < last_end,
@@ -502,7 +509,9 @@ async def bedroom_driver_values_by_date(
     fan_states = (
         (
             await session.execute(
-                select(FanStateReading).where(
+                select(FanStateReading)
+                .options(fan_series_columns())
+                .where(
                     FanStateReading.user_id == player.id,
                     FanStateReading.captured_at_utc >= first_start,
                     FanStateReading.captured_at_utc < last_end,
@@ -713,7 +722,9 @@ class InsightsService:
         sleeps = (
             (
                 await self.session.execute(
-                    select(Sleep).where(
+                    select(Sleep)
+                    .options(without_sleep_raw_payload())
+                    .where(
                         Sleep.user_id == player.id,
                         Sleep.calendar_date >= start,
                         Sleep.calendar_date <= end,
@@ -781,7 +792,9 @@ class InsightsService:
         sleeps = (
             (
                 await self.session.execute(
-                    select(Sleep).where(
+                    select(Sleep)
+                    .options(without_sleep_raw_payload())
+                    .where(
                         Sleep.user_id == player.id,
                         Sleep.calendar_date >= start,
                         Sleep.calendar_date <= end,
