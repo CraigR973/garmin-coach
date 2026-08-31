@@ -55,7 +55,11 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile
-from src.services.anthropic_text import generate_anthropic_text
+from src.services.anthropic_text import (
+    configured_effort,
+    configured_thinking,
+    generate_anthropic_text,
+)
 from src.services.bulk_history_reads import (
     temperature_series_columns,
     without_sleep_raw_payload,
@@ -541,6 +545,8 @@ class AnthropicReviewClient:
         self.api_key = api_key if api_key is not None else settings.anthropic_api_key
         self.model_name = model_name or settings.anthropic_model
         self.max_tokens = max_tokens or settings.anthropic_max_tokens
+        self.thinking = configured_thinking()
+        self.effort = configured_effort()
         # Batches 21/23 reuse this boundary with their own system prompt.
         self.system_prompt = system_prompt or SYSTEM_PROMPT
 
@@ -556,6 +562,8 @@ class AnthropicReviewClient:
             api_key=self.api_key,
             model_name=self.model_name,
             max_tokens=self.max_tokens,
+            thinking=self.thinking,
+            effort=self.effort,
             system_prompt=self.system_prompt,
             user_prompt=user_prompt,
             error_cls=ReviewError,

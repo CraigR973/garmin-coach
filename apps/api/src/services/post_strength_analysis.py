@@ -43,7 +43,11 @@ from src.services.analysis_currentness import (
     analysis_matches_prompt_and_input,
     manual_entry_input_version,
 )
-from src.services.anthropic_text import generate_anthropic_text
+from src.services.anthropic_text import (
+    configured_effort,
+    configured_thinking,
+    generate_anthropic_text,
+)
 from src.services.bulk_post_activity_lookups import (
     generation_statuses_by_activity,
     latest_analyses_by_activity,
@@ -139,6 +143,8 @@ class AnthropicStrengthAnalysisClient:
         self.api_key = api_key if api_key is not None else settings.anthropic_api_key
         self.model_name = model_name or settings.anthropic_model
         self.max_tokens = max_tokens or settings.anthropic_max_tokens
+        self.thinking = configured_thinking()
+        self.effort = configured_effort()
 
     async def generate(
         self,
@@ -152,6 +158,8 @@ class AnthropicStrengthAnalysisClient:
             api_key=self.api_key,
             model_name=self.model_name,
             max_tokens=self.max_tokens,
+            thinking=self.thinking,
+            effort=self.effort,
             system_prompt=SYSTEM_PROMPT,
             user_prompt=user_prompt,
             error_cls=PostWorkoutAnalysisError,

@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
+from src.config import settings
 from src.models.coaching import ManualEntry
 from src.services.longitudinal_analysis import (
     COLUMNS,
@@ -237,6 +238,30 @@ def test_message_params_use_current_structured_output_shape() -> None:
     assert "findings" in schema["required"]
     assert '"columns"' in prompt
     assert '"nights"' in prompt
+
+
+def test_effort_merges_into_output_config_without_dropping_the_json_schema() -> None:
+    """Batch 233: the batch path is the ninth generation path and the only one
+    that already owned an ``output_config``.
+
+    ``effort`` has to sit *alongside* ``format`` in that dict. Assigning
+    ``output_config`` wholesale — the obvious way to add effort, and the way the
+    other eight paths do it — would silently drop the json_schema here and turn
+    structured findings back into prose that nothing downstream can parse.
+    """
+    packet = build_longitudinal_packet(
+        [_night(0, temperature=18.5, rem=60, awake=30)],
+        as_of_date=date(2026, 1, 1),
+    )
+
+    params, _ = build_message_params(packet, model_name="claude-test", max_tokens=2048)
+
+    assert params["thinking"] == {"type": "adaptive"}
+    # Whatever effort ships — the point of this test is the merge, not the value.
+    assert params["output_config"]["effort"] == settings.anthropic_effort
+    # The half that a wholesale assignment would have destroyed:
+    assert params["output_config"]["format"]["type"] == "json_schema"
+    assert "findings" in params["output_config"]["format"]["schema"]["required"]
 
 
 def test_provider_schema_strips_constraints_but_local_model_keeps_them() -> None:
