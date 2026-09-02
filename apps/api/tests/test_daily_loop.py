@@ -1588,3 +1588,86 @@ def test_daily_loop_still_serves_the_fields_the_app_reads() -> None:
         assert field in metric_fields, field
     for field in ("score", "ageAdjustedScore", "remSleepSec", "factorsJson"):
         assert field in sleep_fields, field
+
+
+@pytest.mark.asyncio
+async def test_post_ride_read_marks_failed_when_generation_raises_a_bare_error(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 242 (CR236-01): the ``except Exception`` branch rolls back, and the
+    three arguments it then hands ``mark_prepared_post_activity_failed`` were
+    expired by that rollback. Before the fix the handler raised
+    ``MissingGreenlet`` on ``player.id`` *before* recording anything, so the read
+    stayed ``generating`` for ever and Mark sat on a spinner instead of a
+    retryable state. Unlike the ``AnthropicApiError`` branch above, this one
+    re-raises by design — the recorded status is the observable outcome.
+
+    ``join_transaction_mode="create_savepoint"`` is required: the code under
+    test rolls back, and without it that discards the rows this test seeded.
+    """
+    session_factory = async_sessionmaker(
+        bind=db_conn,
+        expire_on_commit=False,
+        join_transaction_mode="create_savepoint",
+    )
+    user_id = uuid.uuid4()
+    activity_id = uuid.uuid4()
+    subject_date = date(2026, 6, 20)
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Bare Failure",
+            role=UserRole.player,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        activity = Activity(
+            id=activity_id,
+            user_id=user_id,
+            garmin_activity_id=5556,
+            activity_name="Endurance ride",
+            activity_type="indoor_cycling",
+            start_utc=datetime(2026, 6, 20, 11, 30),
+            duration_sec=3600,
+            raw_summary={},
+        )
+        session.add(player)
+        await session.flush()
+        session.add(activity)
+        await session.commit()
+
+    async def _raise_bare(*args: object, **kwargs: object) -> tuple[str, object]:
+        raise RuntimeError("the read blew up in a way nothing classified")
+
+    app.dependency_overrides[get_current_user] = lambda: player
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        with patch("src.routers.daily_loop.generate_post_activity_read", _raise_bare):
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                response = await client.put(
+                    (
+                        f"/api/v1/daily-loop/{subject_date.isoformat()}"
+                        f"/activities/{activity_id}/post-ride-check-in"
+                    ),
+                    json={"subjectiveScore": 6, "rpe": 7, "feel": "steady", "notes": None},
+                )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 500
+
+    async with session_factory() as session:
+        generation_status = await session.scalar(
+            select(PostActivityGenerationStatus).where(
+                PostActivityGenerationStatus.user_id == user_id,
+                PostActivityGenerationStatus.activity_id == activity_id,
+            )
+        )
+    # The point of the batch: the failure was *recorded* rather than lost to a
+    # MissingGreenlet raised inside the handler that should have recorded it.
+    assert generation_status is not None
+    assert generation_status.status == "failed"
+    assert generation_status.reason == "generation_error"

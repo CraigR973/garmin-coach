@@ -28,6 +28,7 @@ Jobs:
     backup          database backup
     backup-drill    restore latest backup into a disposable DB and check invariants
     egress-budget   flush the response-byte counter and stage a Supabase egress alert
+    ledger-freshness  report any job whose newest job_runs row is overdue
 """
 
 from __future__ import annotations
@@ -52,6 +53,7 @@ from src.scheduler import (
     run_weekly_review_delivery,
     run_workout_autopush,
 )
+from src.services.job_ledger_freshness import run_ledger_freshness_check
 from src.services.job_runs import JobOperation, JobResult, run_tracked_job
 
 JOBS: dict[str, JobOperation] = {
@@ -70,6 +72,10 @@ JOBS: dict[str, JobOperation] = {
     "backup": run_scheduled_backup,
     "backup-drill": run_backup_restore_drill,
     "egress-budget": run_egress_budget_check,
+    # Batch 242.5: deliberately absent from ``create_scheduler`` — a watchdog
+    # that rides the scheduler it watches goes down with it. External runner
+    # only (Railway cron or a manual ``railway run``).
+    "ledger-freshness": run_ledger_freshness_check,
 }
 
 
