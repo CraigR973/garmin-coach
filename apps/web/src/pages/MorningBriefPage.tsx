@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TodayActions } from '@/components/TodayActions';
+import { VerdictHero } from '@/components/VerdictHero';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
 import { useDailyLoopFreshness } from '@/hooks/useDailyLoopFreshness';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -97,6 +98,7 @@ export function MorningBriefPage() {
 
       {analysis ? (
         <>
+          <VerdictHero verdict={analysis.verdict} />
           <TodayActions actions={analysis.todayActions} workouts={data.plannedWorkouts} />
           <Card>
             <CardHeader>

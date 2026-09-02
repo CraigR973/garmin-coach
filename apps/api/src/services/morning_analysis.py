@@ -10,6 +10,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Protocol, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import structlog
 from fastapi import HTTPException
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -88,6 +89,11 @@ from src.services.morning_inputs import (
     morning_input_presence,
     morning_packet_input_presence,
 )
+from src.services.morning_output_contract import (
+    missing_morning_output_sections,
+    morning_output_contract_packet,
+    morning_output_contract_prompt,
+)
 from src.services.personal_baselines import (
     SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR,
     baseline_band_packet,
@@ -114,6 +120,8 @@ from src.services.verdict_scaling import (
 from src.services.workload_budget import workload_slot
 from src.services.workout_categories import is_bike_workout_type
 from src.services.workout_delivery import build_structured_workout_ir
+
+log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 # Batch 64 (#137): the packet now carries the user's most recent corrections so
 # the read can acknowledge/adjust when Mark has told it it was wrong.
@@ -182,7 +190,10 @@ from src.services.workout_delivery import build_structured_workout_ir
 # identity is (user, date, checkInVersion, promptVersion) and does *not* hash the
 # packet, so without it an already-generated pre-fix brief would be served as
 # current on the day this ships.
-PROMPT_VERSION = "morning-analysis-v40-2026-08-28"
+# Batch 244: the four-section prose list had become a deletion instruction once
+# experiments and chronic actions joined the packet. The output contract is now
+# packet-derived and structurally checked, so existing reads must regenerate.
+PROMPT_VERSION = "morning-analysis-v41-2026-09-02"
 ANALYSIS_TYPE = "morning"
 # Batch 167 (#248): load can only harden the deterministic light. ACWR at 1.50
 # signals a fast ramp; more than 24 hours left on Garmin's recovery timer means
@@ -226,8 +237,9 @@ safety floor, or propose/confirm decision.
 Refer to Mark's daily check-in by its word — verdict.subjectiveLabel /
 manualEntries[].subjectiveLabel (e.g. "you said you felt OK") — and never surface
 the raw subjectiveScore number or a "6/10"-style term for how he felt.
-Return concise markdown with a sleep summary line, a metrics-vs-baselines read,
-a thermal/environment review, and a Green/Amber/Red workout verdict for today.
+Return concise markdown that follows the packet-derived required output contract
+in the user prompt. Include every required section under its exact heading; never
+silently drop a section because the packet has grown since an earlier prompt.
 In the thermal review, indoorPeakC/indoorLowC/indoorLastC describe only the
 sleep period when sleep times are available. Treat preCoolLowC, sleepOnsetC, and
 preCoolDropC as the distinct pre-bed cool-down: when flags contains
@@ -414,9 +426,9 @@ absent the app does not record it, and that is the honest answer.
 The app renders a short "Today" action list above your read (the eased ride to
 approve, any week swap, and sleep/thermal nudges), assembled separately from your
 prose. Write the read as the reasoning and the "why" behind those actions — do not
-restate them as a duplicated checklist or an "Actions" header. Keep leading with the
-sleep summary, the metrics-vs-baselines read, the thermal review, and the verdict as
-before; reference an action in prose only where the reasoning needs it."""
+restate them as a duplicated checklist or a generic "Actions" header. Follow the
+packet-derived section order; reference a Today action in prose only where the
+reasoning needs it."""
 SYSTEM_PROMPT = "\n\n".join((SYSTEM_PROMPT, LEARNED_CONTEXT_PROMPT_GUARDRAIL))
 
 
@@ -744,7 +756,43 @@ class MorningAnalysisService:
         )
         training_schedule = serialize_training_schedule(knowledge_base)
 
-        return {
+        prompt_packet: dict[str, Any] = {
+            "version": PROMPT_VERSION,
+            "systemHash": prompt_system_hash(SYSTEM_PROMPT),
+            "outputRules": [
+                rule
+                for rule in [
+                    "bold_each_bullet_headline",
+                    "include_sleep_summary_line",
+                    "include_metrics_vs_baselines_table",
+                    "include_thermal_environment_review",
+                    "credit_observed_precool_separately_from_sleep_peak",
+                    "include_plan_aware_workout_verdict",
+                    "never_reference_left_right_power_balance",
+                    "never_recommend_vo2_on_red",
+                    "acknowledge_recent_user_corrections_when_relevant",
+                    "lead_with_week_swap_when_offered",
+                    "maintain_weekly_quality_mix_readiness_gated",
+                    "reasoning_prose_not_duplicated_action_checklist",
+                    "state_local_clock_times_never_utc",
+                    "use_authoritative_date_label_never_rederive",
+                    "refer_to_checkin_by_word_not_number",
+                    "frame_holiday_or_all_skipped_day_as_rest",
+                    "never_treat_skipped_workout_as_live_training",
+                    "ground_week_history_in_training_week_so_far",
+                    "include_yesterday_whole_day_cost_when_present",
+                    "surface_readiness_baseline_decline_warning",
+                    "qualify_reds_before_structural_action",
+                    "rearrange_short_cluster_deload_only_sustained_marker",
+                    "respect_scheduled_recovery_block",
+                    "treat_training_schedule_as_nominal_only",
+                ]
+                # Batch 113 (#186): holiday away means no bedroom thermal review.
+                if rule != "include_thermal_environment_review"
+                or not rest_day["insideHolidayWindow"]
+            ],
+        }
+        packet: dict[str, Any] = {
             "packetType": "morning_analysis",
             "packetVersion": 1,
             "subjectDate": subject_date.isoformat(),
@@ -801,43 +849,10 @@ class MorningAnalysisService:
                 "weather": _weather_packet(weather),
             },
             "verdict": verdict,
-            "prompt": {
-                "version": PROMPT_VERSION,
-                "systemHash": prompt_system_hash(SYSTEM_PROMPT),
-                "outputRules": [
-                    rule
-                    for rule in [
-                        "bold_each_bullet_headline",
-                        "include_sleep_summary_line",
-                        "include_metrics_vs_baselines_table",
-                        "include_thermal_environment_review",
-                        "credit_observed_precool_separately_from_sleep_peak",
-                        "include_plan_aware_workout_verdict",
-                        "never_reference_left_right_power_balance",
-                        "never_recommend_vo2_on_red",
-                        "acknowledge_recent_user_corrections_when_relevant",
-                        "lead_with_week_swap_when_offered",
-                        "maintain_weekly_quality_mix_readiness_gated",
-                        "reasoning_prose_not_duplicated_action_checklist",
-                        "state_local_clock_times_never_utc",
-                        "use_authoritative_date_label_never_rederive",
-                        "refer_to_checkin_by_word_not_number",
-                        "frame_holiday_or_all_skipped_day_as_rest",
-                        "never_treat_skipped_workout_as_live_training",
-                        "ground_week_history_in_training_week_so_far",
-                        "include_yesterday_whole_day_cost_when_present",
-                        "surface_readiness_baseline_decline_warning",
-                        "qualify_reds_before_structural_action",
-                        "rearrange_short_cluster_deload_only_sustained_marker",
-                        "respect_scheduled_recovery_block",
-                        "treat_training_schedule_as_nominal_only",
-                    ]
-                    # Batch 113 (#186): holiday away means no bedroom thermal review.
-                    if rule != "include_thermal_environment_review"
-                    or not rest_day["insideHolidayWindow"]
-                ],
-            },
+            "prompt": prompt_packet,
         }
+        prompt_packet["requiredOutputSections"] = morning_output_contract_packet(packet)
+        return packet
 
     async def generate_and_store(
         self,
@@ -924,6 +939,17 @@ class MorningAnalysisService:
                 generation = await analysis_client.generate(
                     context_packet=context_packet,
                     user_prompt=user_prompt,
+                )
+            missing_sections = missing_morning_output_sections(
+                context_packet, generation.output_markdown
+            )
+            if missing_sections:
+                log.warning(
+                    "morning_analysis_missing_required_sections",
+                    user_id=str(player.id),
+                    subject_date=subject_date.isoformat(),
+                    prompt_version=PROMPT_VERSION,
+                    missing_sections=list(missing_sections),
                 )
             verdict = context_packet.get("verdict", {}).get("status")
             analysis = Analysis(
@@ -1248,6 +1274,7 @@ class MorningAnalysisService:
 def build_morning_user_prompt(context_packet: Mapping[str, Any]) -> str:
     return (
         "Generate today's morning CheckMark analysis from this context packet.\n\n"
+        f"{morning_output_contract_prompt(context_packet)}\n\n"
         "Context packet JSON:\n"
         f"{json.dumps(context_packet, ensure_ascii=True, sort_keys=True, default=str)}"
     )
