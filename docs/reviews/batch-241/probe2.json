@@ -1,0 +1,952 @@
+{
+  "/check-in": {
+    "vh": 844,
+    "docH": 964,
+    "controls": [
+      {
+        "tag": "BUTTON",
+        "label": "Switch to light mode",
+        "y": 26,
+        "w": 44,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Home",
+        "y": 26,
+        "w": 115,
+        "h": 44,
+        "pos": "absolute",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Account menu (Mark)",
+        "y": 26,
+        "w": 48,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": "false"
+      },
+      {
+        "tag": "A",
+        "label": "HOME",
+        "y": 101,
+        "w": 74,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "INPUT",
+        "label": "Feel score",
+        "y": 341,
+        "w": 96,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "INPUT",
+        "label": "0 to 10 feel score",
+        "y": 393,
+        "w": 316,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Rough",
+        "y": 451,
+        "w": 60,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Meh",
+        "y": 451,
+        "w": 60,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "OK",
+        "y": 451,
+        "w": 60,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Good",
+        "y": 451,
+        "w": 60,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Great",
+        "y": 451,
+        "w": 60,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Slept well",
+        "y": 543,
+        "w": 81,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Low energy",
+        "y": 543,
+        "w": 94,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Niggle",
+        "y": 543,
+        "w": 64,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Last night's setup\nBedding, windows, blind a",
+        "y": 629,
+        "w": 356,
+        "h": 94,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": "false"
+      },
+      {
+        "tag": "BUTTON",
+        "label": "More\nIn your own words, blood pressure, and ",
+        "y": 745,
+        "w": 356,
+        "h": 94,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": "false"
+      },
+      {
+        "tag": "A",
+        "label": "View brief",
+        "y": 860,
+        "w": 102,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": false,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Ask about your check-in",
+        "y": 720,
+        "w": 48,
+        "h": 48,
+        "pos": "fixed",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Home",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Week",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Sleep",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Climate",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "More",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": "false"
+      }
+    ],
+    "headings": [
+      {
+        "t": "H1",
+        "text": "Check in",
+        "y": 157
+      },
+      {
+        "t": "H2",
+        "text": "How are you feeling?",
+        "y": 228
+      }
+    ],
+    "text": "HOME\nCheck in\nHow are you feeling?\n\nA few taps — your read feeds every analysis.\n\nHow you feel today\n\n6/10\n\nOK\n\nFeel score\nRough\nMeh\nOK\nGood\nGreat\nAnything to flag?\nSlept well\nLow energy\nNiggle\nLast night's setup\nBedding, windows, blind and when pre-cooling started\nMore\nIn your own words, blood pressure, and yesterday's supplements & food\nView brief"
+  },
+  "/delivery": {
+    "vh": 844,
+    "docH": 2202,
+    "controls": [
+      {
+        "tag": "BUTTON",
+        "label": "Switch to light mode",
+        "y": 26,
+        "w": 44,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Home",
+        "y": 26,
+        "w": 115,
+        "h": 44,
+        "pos": "absolute",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Account menu (Mark)",
+        "y": 26,
+        "w": 48,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": "false"
+      },
+      {
+        "tag": "BUTTON",
+        "label": "This week",
+        "y": 216,
+        "w": 90,
+        "h": 44,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Edit week",
+        "y": 216,
+        "w": 89,
+        "h": 44,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "View Dumbbells (full-body) details",
+        "y": 432,
+        "w": 290,
+        "h": 52,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "View VO₂ (30/30s @ 130%) details",
+        "y": 558,
+        "w": 290,
+        "h": 52,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "View Z2 details",
+        "y": 684,
+        "w": 290,
+        "h": 52,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "View Sweet Spot (3 × 20 min @ 89%) details",
+        "y": 810,
+        "w": 290,
+        "h": 52,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "View Z2 + Neuromuscular details",
+        "y": 1026,
+        "w": 290,
+        "h": 52,
+        "pos": "static",
+        "aboveFold": false,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "View Bodyweight details",
+        "y": 1086,
+        "w": 290,
+        "h": 52,
+        "pos": "static",
+        "aboveFold": false,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "View Long Z2 details",
+        "y": 1212,
+        "w": 290,
+        "h": 52,
+        "pos": "static",
+        "aboveFold": false,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Ask about your week",
+        "y": 720,
+        "w": 48,
+        "h": 48,
+        "pos": "fixed",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Home",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Week",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Sleep",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Climate",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "More",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": "false"
+      }
+    ],
+    "headings": [
+      {
+        "t": "H1",
+        "text": "Week",
+        "y": 101
+      },
+      {
+        "t": "H2",
+        "text": "This week",
+        "y": 306
+      },
+      {
+        "t": "H2",
+        "text": "Coming up",
+        "y": 1335
+      }
+    ],
+    "text": "Week\n\nThis week at a glance: what’s on each day, what’s done, and what’s still to do.\n\nThis week\nEdit week\nThis week\n7 sessions\n1 done\n6 to do\n\nMon 31 Aug\n\nWeights\n\nDumbbells (full-body)\n\nMaintenance · 22 min\n\nDone\n\nTue 1 Sept\n\nToday\nCycle\n\nVO₂ (30/30s @ 130%)\n\nVO₂ · 51 min\n\nTo do\n\nWed 2 Sept\n\nCycle\n\nZ2\n\nEndurance · 75 min\n\nTo do\n\nThu 3 Sept\n\nCycle\n\nSweet Spot (3 × 20 min @ 89%)\n\nSweet spot · 94 min\n\nTo do\n\nFri 4 Sept\n\nRest\n\nRest day\n\nSat 5 Sept\n\nCycle + Weights\n\nZ2 + Neuromuscular\n\nEndurance · 58 min\n\nTo do\n\nBodyweight\n\nMaintenance · 15 min\n\nTo do\n\nSun 6 Sept\n\nCycle\n\nLong Z2\n\nEndurance · 120 min\n\nTo do\nComing up\n\nMon 7 Sept\n\nRest\n\nRest day\n\nTue 8 Sept\n\nRest\n\nRest day\n\nWed 9 Sept\n\nRest\n\nRest day\n\nThu 10 Sept\n\nRest\n\nRest day\n\nFri 11 Sept\n\nRest\n\nRest day\n\nSat 12 Sept\n\nRest\n\nRest day\n\nSun 13 Sept\n\nRest\n\nRest day\n\nAdmin tools stay one layer down.\n\nOpen Edit week for move, add, skip, reset, and restructure controls."
+  },
+  "/trends": {
+    "vh": 844,
+    "docH": 844,
+    "controls": [
+      {
+        "tag": "BUTTON",
+        "label": "Switch to light mode",
+        "y": 26,
+        "w": 44,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Home",
+        "y": 26,
+        "w": 115,
+        "h": 44,
+        "pos": "absolute",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Account menu (Mark)",
+        "y": 26,
+        "w": 48,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": "false"
+      },
+      {
+        "tag": "BUTTON",
+        "label": "By month",
+        "y": 151,
+        "w": 97,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "By season",
+        "y": 151,
+        "w": 101,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Ask about your trends",
+        "y": 720,
+        "w": 48,
+        "h": 48,
+        "pos": "fixed",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Home",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Week",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Sleep",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Climate",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "More",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": "false"
+      }
+    ],
+    "headings": [
+      {
+        "t": "H1",
+        "text": "Trends",
+        "y": 101
+      },
+      {
+        "t": "H2",
+        "text": "Trends couldn't load",
+        "y": 236
+      }
+    ],
+    "text": "Trends\nBy month\nBy season\nTrends couldn't load\n\n[ { \"expected\": \"'month' | 'season'\", \"received\": \"undefined\", \"code\": \"invalid_type\", \"path\": [ \"data\", \"bucket\" ], \"message\": \"Required\" }, { \"code\": \"invalid_type\", \"expected\": \"string\", \"received\": \"undefined\", \"path\": [ \"data\", \"targetKey\" ], \"message\": \"Required\" }, { \"code\": \"invalid_type\", \"expected\": \"string\", \"received\": \"undefined\", \"path\": [ \"data\", \"subjectDate\" ], \"message\": \"Required\" }, { \"code\": \"invalid_type\", \"expected\": \"object\", \"received\": \"undefined\", \"path\": [ \"data\", \"yearOnYear\" ], \"message\": \"Required\" }, { \"code\": \"invalid_type\", \"expected\": \"array\", \"received\": \"undefined\", \"path\": [ \"data\", \"recentWindows\" ], \"message\": \"Required\" }, { \"code\": \"invalid_type\", \"expected\": \"string\", \"received\": \"undefined\", \"path\": [ \"data\", \"status\" ], \"message\": \"Required\" } ]"
+  },
+  "/settings": {
+    "vh": 844,
+    "docH": 844,
+    "controls": [
+      {
+        "tag": "BUTTON",
+        "label": "Switch to light mode",
+        "y": 26,
+        "w": 44,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Home",
+        "y": 26,
+        "w": 115,
+        "h": 44,
+        "pos": "absolute",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Account menu (Mark)",
+        "y": 26,
+        "w": 48,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": "false"
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Light",
+        "y": 195,
+        "w": 114,
+        "h": 68,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Dark",
+        "y": 195,
+        "w": 114,
+        "h": 68,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "System",
+        "y": 195,
+        "w": 114,
+        "h": 68,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Enabling…",
+        "y": 327,
+        "w": 358,
+        "h": 46,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Enable hosted read-aloud voice",
+        "y": 450,
+        "w": 48,
+        "h": 44,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Ask your coach anything",
+        "y": 720,
+        "w": 48,
+        "h": 48,
+        "pos": "fixed",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Home",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Week",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Sleep",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Climate",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "More",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": "false"
+      }
+    ],
+    "headings": [
+      {
+        "t": "H1",
+        "text": "Settings",
+        "y": 101
+      },
+      {
+        "t": "H2",
+        "text": "APPEARANCE",
+        "y": 163
+      },
+      {
+        "t": "H2",
+        "text": "NOTIFICATIONS",
+        "y": 295
+      },
+      {
+        "t": "H2",
+        "text": "VOICE",
+        "y": 405
+      }
+    ],
+    "text": "Settings\nAPPEARANCE\nLight\nDark\nSystem\nNOTIFICATIONS\nEnabling…\nVOICE\n\nNatural hosted voice\n\nReads the brief aloud in a more natural voice, generated on our own server (no third party). Takes a little longer to start than the default; off by default, the brief reads aloud using your device's own voice instead."
+  },
+  "/brief": {
+    "vh": 844,
+    "docH": 3809,
+    "controls": [
+      {
+        "tag": "BUTTON",
+        "label": "Switch to light mode",
+        "y": 26,
+        "w": 44,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Home",
+        "y": 26,
+        "w": 115,
+        "h": 44,
+        "pos": "absolute",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Account menu (Mark)",
+        "y": 26,
+        "w": 48,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": "false"
+      },
+      {
+        "tag": "A",
+        "label": "HOME",
+        "y": 101,
+        "w": 74,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Check in",
+        "y": 157,
+        "w": 107,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Pre-cool the bedroom tonight\n\nTarget 17.0°C ",
+        "y": 286,
+        "w": 324,
+        "h": 70,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Breathing at 20:00, snack by 21:30, seal nea",
+        "y": 364,
+        "w": 324,
+        "h": 74,
+        "pos": "static",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Listen to brief",
+        "y": 1524,
+        "w": 85,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": false,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Stop brief audio",
+        "y": 1524,
+        "w": 75,
+        "h": 44,
+        "pos": "static",
+        "aboveFold": false,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Ask about this morning's brief",
+        "y": 720,
+        "w": 48,
+        "h": 48,
+        "pos": "fixed",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Home",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Week",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Sleep",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "A",
+        "label": "Climate",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": null
+      },
+      {
+        "tag": "BUTTON",
+        "label": "More",
+        "y": 784,
+        "w": 78,
+        "h": 60,
+        "pos": "relative",
+        "aboveFold": true,
+        "expanded": "false"
+      }
+    ],
+    "headings": [
+      {
+        "t": "H1",
+        "text": "Morning brief",
+        "y": 187
+      },
+      {
+        "t": "H2",
+        "text": "Today",
+        "y": 254
+      },
+      {
+        "t": "H2",
+        "text": "Last night's metrics",
+        "y": 496
+      },
+      {
+        "t": "H2",
+        "text": "Coach read",
+        "y": 1464
+      },
+      {
+        "t": "H1",
+        "text": "Tuesday 1 September 2026 — Morning Read",
+        "y": 1588
+      },
+      {
+        "t": "H2",
+        "text": "Metrics vs. Baselines",
+        "y": 1944
+      },
+      {
+        "t": "H2",
+        "text": "Thermal / Environment Review",
+        "y": 2740
+      },
+      {
+        "t": "H2",
+        "text": "Today's Verdict: 🟢 Green",
+        "y": 3080
+      }
+    ],
+    "text": "HOME\n\nTUESDAY 1 SEPTEMBER\n\nMorning brief\nCheck in\nToday\n\nPre-cool the bedroom tonight\n\nTarget 17.0°C before bed.\n\nBreathing at 20:00, snack by 21:30, seal near 22:00, bed 23:15\n\nLast night's metrics\nMetric\tLast night\tStatus\n\nAge-adjusted sleep score\n\t\n82\n\t\n72–87\nin range\n\n7-day average HRV\n\t\n46\n\t\n45–49\nin range\n\nResting heart rate\n\t\n41\n\t\n43–45\n2 below\n30 below for your age\n\n\nTraining readiness\n\t\n72\n\t\n42.8–72.3\nin range\n\nREM sleep\n\t\n7.0%\n\t\n7.7–13.2%\n0.6 below\n\nSleep score\n\t\n78\n\t\n66–82\nin range\n\nBody Battery drain\n\t\n58\n\t\n57–75\nin range\n\nAverage respiration\n\t\n12\n\t\n11–12\nin range\n\nAverage Pulse Ox\n\t\n97%\n\t\n96–97%\nin range\n\nVO₂max\n\t\n55.1\n\t\n—\n24.1 above for your age\n\nHRV & SpO₂ baselines use readings from after the strap was re-fitted (11 Jun); earlier nights are excluded.\n\n“vs your age” compares you with the general-population average for the typical 50–59 year-old — a rough guide, not medical advice.\n\nCoach read\n\nGenerated 01/09/2026, 09:25:19\n\nListen\nStop\nTuesday 1 September 2026 — Morning Read\n\nSleep summary: You were in bed 00:11–08:14 (483 minutes), with 462 minutes of that asleep — a solid night by the clock, scored 78 raw / 82 age-adjusted.\n\nNote on your check-in: you flagged that small window gaps created drafts even though temperature seemed fine — that's a genuine data-quality gap (draft-driven disruption) our temperature sensor can't distinguish from thermal load, worth bearing in mind as separate from the numbers below.\n\nMetrics vs. Baselines\nAge-adjusted sleep score: 82, just a point under your median of 83 (your range typically runs 72–87) — squarely normal for you.\n7-day HRV: 46ms, essentially at your median of 47ms (band 44–56ms) — balanced.\nResting HR: 41 bpm, comfortably below your median of 44 bpm — strong recovery sign.\nTraining readiness: 72, well above your median of 61 (top of your usual quartile range) — a genuinely good morning.\nREM: 34 minutes, 7.0% of measured sleep (deep+light+REM+awake). Against your own stored baseline (median 10.0%, lower quartile 7.65%) this sits below even your own usual floor — not a good comparison for you personally. It's also below the healthy 50–59 band (15–23%), so both reads agree here: this is low, and it's part of a pattern — REM has repeatedly missed both your own norm and the age band across the last 28 nights, with time spent above 19.5°C in the bedroom showing the closest (moderate, correlational) association with lower REM in your data. That's not a proven cause, just the strongest lead so far.\nDeep"
+  }
+}

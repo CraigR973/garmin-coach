@@ -1,7 +1,7 @@
 # Coaching-Integrity Audit — Garmin Coach
 
 **Original audit:** 2026-07-10 · **Refreshes:** 2026-07-26 (Batch 155),
-2026-08-06 (Batch 191), 2026-08-17 (Batch 211) ·
+2026-08-06 (Batch 191), 2026-08-17 (Batch 211), 2026-09-01 (Batch 239) ·
 **Auditor lens:** exercise physiologist + cycling coach ·
 **Status:** internal / candid — this document names the exact input-manipulation
 vectors. Not for Mark. (Mark-safe scorecards:
@@ -11,6 +11,100 @@ vectors. Not for Mark. (Mark-safe scorecards:
 
 **This file is the running framework and the 2026-07-10 baseline.** Each refresh
 adds a summary block here; the full report for a refresh lives in `docs/reviews/`.
+
+---
+
+## 2026-09-01 Refresh (Batch 239)
+
+**Full report:** `docs/reviews/BATCH_239_COACHING_INTEGRITY_REFRESH.md`
+(12 findings, `CI239-01…12`, 2 High / 3 Med-High / 4 Medium / 3 Low).
+Part of the Batch 236–241 audit wave; siblings
+`BATCH_240_HEALTH_SCIENCE_REVIEW.md` (HS240-nn) and
+`BATCH_238_AI_ENGINEERING_REVIEW.md` (AI238-nn).
+
+**Grade: B+ (down from A−).** The verdict engine is the best it has ever been —
+judged on the light alone this would be an A. The grade moves because this pass
+asked the coach's question rather than the gate's question: *what is actually
+prescribed, and what actually gets ridden?*
+
+**The un-eased session is the default on the trainer, and Red-never-VO2 does not
+cover the path that puts it there (CI239-02, High).** `reconcile_deliveries`
+("push-on-plan-set", Decision #99) delivers the as-planned baseline with **no
+approval and no verdict check**, and `WorkoutDeliveryService.push` — reached by
+`POST /proposals/{id}/push` — has no gate either; `blocks_red_vo2` sits on the
+four *adjustment* paths only. **Observed 2026-07-22:** the verdict was written
+**Red at 08:41**; at **09:19** an `as_planned` proposal containing **6 × 12 s at
+185 % FTP (518 W)**, labelled *"Neuromuscular sprints @185%"*, reached `pushed`;
+the `red_substitution` proposal created at 10:00 was never pushed; the ride
+completed at 58 min with **anaerobic TE 1.8**. Same shape on Amber (2026-08-13,
+identical sprint block pushed while two `amber_regeneration` proposals sat
+unused). Across the window, **11 of 18 eased offers were never pushed** while 58
+`as_planned` deliveries were. Mark cannot argue the light down — and he does not
+need to, because the hard session is already loaded and the easy one needs a tap.
+
+**CI191-01 is now *observed*, and the observation goes against the app
+(CI239-01, High).** The first live Red since Batch 194 shipped — **2026-08-28** —
+was removed from the chronic cluster as **`expected_training_debt`**, with
+`countsTowardCluster: false`, `checkInReasons: []` and
+`recoveryTimeMin: 2590` (**43 hours**). It was excused *because* of accumulated
+recovery debt: the exact signature the deload rail exists to catch, through a
+branch carrying **none** of the four bounds Batch 194 gave the check-in
+exclusion — no cap, no expiry, no corroboration requirement. Had Mark tagged
+`training_load` the Red would have **counted**; because he tagged nothing, the
+physiological branch excused it. Batch 191 named this branch only as a
+consequence of CI191-02; Batch 205 made its input honest and left the rule.
+
+### F1–F7 re-tested
+
+| # | Finding | Status | Decisive evidence |
+|---|---|---|---|
+| **F1** | Self-recalibrating "normal" | **Partly closed** (1 of 3 rails anchored) | Readiness floor held at the absolute 60 against a drifted median of 50 (`proved`). **RHR rail unanchored**: same night, RHR 52 → **Amber** vs healthy Q3 46, **Green** vs drifted Q3 53, readiness floor held at 68.0 in both runs so the RHR baseline is the only moving input — Probe 4 reproduced on the rail that did not get an anchor (`proved`). HRV keys off Garmin's own baseline. Health-side twin: HS240-15. |
+| **F2** | Load cannot move the light | **Closed in code; near-inert live** | Cap fires at ACWR ≥ 1.50 / recovery > 1,440 min (`proved`) but is **Green→Amber only**: ACWR 3.0 **and** 72 h of recovery on an Amber day still returns Amber (`proved`). 32 August mornings: triggered 3, **applied 0**; August ACWR max **1.31** vs a 1.50 threshold (`observed`). The 2026-07-10 Probe-5 value of 1,400 min still Greens (`proved`). |
+| **F3** | One-directional sleep credit | **Closed** | Raw 62 → adj 74 without complete corroboration → **Amber** via `sleepCreditCeiling`; with the full bundle → Green (`proved`). |
+| **F4** | No cumulative escalation | **Partly closed** | POOR readiness + 4 negatives → **Red** (`proved`). The same five signals with **LOW** readiness, with **MEDIUM** + ACWR 2.0 + a 25 h clock, or with **no readiness at all** → **Amber** (`proved`). Nothing sums unless Garmin's own word is "Poor". |
+| **F5** | Inconsistent missing-data policy | **Partly closed** — absence is no longer *positive*, still cheaper than honesty | Honest check-in of 3 → **Amber**; check-in omitted → **Green**; no HRV → Green; **no sleep row, no metric row, no check-in → Green** (all `proved`). No coverage gate precedes `_morning_verdict` (CI239-11). |
+| **F6** | Chronic surveillance advisory-only | **Materially closed, in the wild** | Five `chronic_deload` proposals built **and pushed** 2026-08-02 → 08-06 (`observed`). Still cannot force: `verdictImpact: "none"`. |
+| **F7** | Corrections steer the narrative | **Partly closed** | Bounded at 5 items / 45 days (R155-C shipped). Still fed as ground truth with no truth-check. |
+| **F8** | Narrative does not soften the light | **Still RESOLVED** | 2026-08-28 Red opens *"a genuinely poor night by your own standard"* (`observed`). |
+
+### New findings
+
+| ID | Sev | Finding | Evidence |
+|---|---|---|---|
+| **CI239-01** | High | The first live Red since Batch 194 was excused as `expected_training_debt` *because* of 43 h of recovery debt — uncapped, undecaying, uncorroborated | `observed` + `implemented` |
+| **CI239-02** | High | The un-eased session is the trainer's default; `blocks_red_vo2` is absent from `push`, `create_event` and `replace_event`; 185 % FTP sprints live on a Red morning | `observed` + `implemented` |
+| **CI239-03** | Med-High | **Red prescribes a longer ride than Amber** — 0.85 vs 0.75 duration scale; same Zone-2 ride returns Amber 90 min, Red 102 min. Combined-load gate is Red-only, so Amber never sees the day's other session | `proved` |
+| **CI239-04** | Med-High | The transform shortens the **intervals themselves**: 30/15 becomes 22 s/11 s at 94 % on Amber and 15 s/8 s at 60 % on Red — 5.5 min of work in a 30-min session, a shape no coach would write. Amber is also one recipe regardless of cause | `proved` |
+| **CI239-05** | Med | The Amber plan-adjustment text is bike-only and is emitted verbatim on strength-, mobility- and walk-only days — and **Monday is a strength-only day in Mark's live plan** | `proved` + `observed` |
+| **CI239-06** | Med | **Perfect execution can never earn an FTP bump.** `over_rate ≥ 0.30` requires exceeding target by > 5 pp; 30 s VO₂ reps are peak-graded and cannot grade "over"; ERG holds sweet spot "on". Contradicts Batch 152's ERG-trust rule | `proved` + `implemented` |
+| **CI239-07** | Med | Strength is `INTENSITY_NONE` in the restructurer (so it counts as a **spacer** between two hard bike days), absent from the weekly mix, unreachable by the verdict transform, and invisible to Amber's companion gate — while being reviewed well after the fact (20 post-strength reads) | `implemented` + `proved` + `observed` |
+| **CI239-08** | Med | `plan_import` validates a Monday start and per-workout deliverability, nothing else. Mark's live plan runs **five consecutive build weeks** (W04–W08, 08-10 → 09-13) against the app's own 2:1 `BLOCK_SEQUENCE`, over the stretch where weekly volume climbs 195 → 398 min. The only place block type is read is to **suppress** the app's own deload proposal | `observed` + `implemented` |
+| **CI239-09** | Low-Med | The 13-week generator has **never produced a live plan** (no `block_generator_lock` source) and its build weeks are byte-identical — Sweet Spot 3 × 8 min @ 91 % in week 1 and week 11, long ride 150 min throughout. Its only progression is one step at week 7 (7.5 → 19.5 min of work, 2.6×), and it emits 3 bike sessions where the app's own canonical week is 5 | `observed` + `implemented` |
+| **CI239-10** | Low-Med | Two Zone-2 anchors coexist: `ENDURANCE_CEILING_PCT = 75` (210 W) binds the ease transform while the plan's Zone 2 is 67 % (188 W). "Hold Zone 2" means ~12 % more power than the rides are written to | `proved` |
+| **CI239-11** | Low | A total data blackout returns **Green**, with a sentence about sleep on a morning with no sleep row. No coverage gate before `_morning_verdict`. The coaching-side statement of HS240-01/02/03's missing rails | `proved` |
+| **CI239-12** | Low | **CI211-01 unresolved and growing**: 16 → **17** stale `proposed` proposals, all for past dates, no expiry path. Eleven of them are the eased offers CI239-02 counts | `observed` |
+
+### Also worth recording
+
+**Verdict distribution, 2026-08-01 → 09-01 (32 mornings, one read per date):**
+**23 Green / 5 Amber / 4 Red** = 72 % Green, against 59 % at the Batch 211
+window. Only **one** of those Reds (2026-08-28) post-dates Batch 194, which is
+the whole of CI239-01's live evidence. **Adherence is excellent:** 34 planned sessions 2026-07-20 → 09-01, zero
+skipped. Mark's own imported plan carries a better VO₂ progression than the app's
+generator (30/30 → 40/20 → 7 × 3 min → 40/20 extended); HS240-16 owns the
+separate question of whether 105–110 % FTP is the right intensity for either.
+
+### What would move the grade
+
+**Back to A−:** close both Highs — put `blocks_red_vo2` at the rail rather than
+at four of six callers and make the non-Green baseline reconcile deliver the
+*adjusted* IR (CI239-02); bound `expected_training_debt` as Batch 194 bounded the
+acute exclusion (CI239-01). **To A:** additionally fix the Amber/Red ordering
+(CI239-03), stop the transform shortening individual intervals (CI239-04), anchor
+the resting-HR rail (F1 / HS240-15), let a stack escalate without requiring
+Garmin's categorical "Poor" (F4) — **and then watch a Red morning on which the
+baseline delivery is blocked and the substitution is what sits on the trainer.**
+Nothing in this refresh has seen that happen.
 
 ---
 
