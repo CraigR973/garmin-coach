@@ -6,6 +6,18 @@
 
 ## Now
 
+**2026-09-02 — Batch 245 SHIPPED; Group C is 2/3 complete.** PR #275 / squash `69578b4`, Decision **#317**. The central deterministic policy now lives in `services/morning_verdict.py` with its verdict-only support boundary; `morning_analysis` remains the packet/model orchestrator and keeps compatibility re-exports for the established private import surface. The 259-line verdict body is unchanged apart from its public name, and the new module has no reverse import.
+
+**Production is current and behaviour is unchanged.** Railway direct and Vercel same-origin health serve exact SHA `69578b4eb190473750b96588ff83a2f773e5f9cd`; web `/` is 200 and unauthenticated daily-loop is 401 on both paths. The deployed container proves the old compatibility entrypoint and new public function are the same object, owned by the new module, with no reverse import. No prompt version moved, so no stored analysis was orphaned and nothing was regenerated.
+
+**Equivalence and gates:** every one of production's 80 stored morning-analysis rows across 24 prompt versions drove the real current packet assembler before and after; canonical verdict JSON had the same Merkle root (`b8a62bc8f67c459a66147e9f77fdd8c8ad0dd2bade42b50f399a3f2c3d1f7922`) with 0 differences, using rollback-only sessions and no model. Both corrected-branch PostgreSQL CI waves ran **1531 passed / 0 skipped**; all 16 checks plus both Vercel checks were green. Local backend 1,129 passed / 402 expected PostgreSQL skips; focused backend 113 passed / 16 skips; Ruff check/format and mypy clean; shared 33 and web 408 tests green; build clean; lint 0 errors / 9 existing warnings.
+
+**Next: Batch 246**, the acute-physiology rail, now unblocked on the extracted module. Re-verify the drafted thresholds and data shapes against the landed tree and production before writing code. Craig has already approved the HRV and SpO₂/respiration escalation copy. The parked local branch `wip/bulk-history-reads-2026-08-30` is intentionally untouched and safe to leave.
+
+**Gotchas:** the existing Group A operational items remain open: Sentry DSNs are unset, retention stays deliberately dry-run after Craig declined the purge, and no backup has yet been proved restorable. Batch 245 deliberately preserves private compatibility re-exports; removing them later needs an explicit import-surface audit, not opportunistic cleanup during the physiology change.
+
+## Prior current-state snapshots
+
 **2026-09-02 — Batch 244 SHIPPED; Group C is 1/3 complete.** PR #273 / squash `7fa9c18`, Decision **#316**. The morning brief's required sections now come from the packet it is explaining, a structural post-generation guard logs omissions, and `/brief` puts the deterministic verdict above Today actions, metrics and model prose. Batch 244 changed no model, effort or token ceiling.
 
 **Production is current, including the prompt-version consequence.** Railway direct and Vercel same-origin health serve exact SHA `7fa9c18f8009c3ced24a5782a587ba0a44f81b8d`; web `/` is 200 and unauthenticated daily-loop is 401 on both paths. The deployed lookup found today's only morning analysis at v40 after v41 went live, so closeout regenerated exactly that one artifact. The stored v41 read has all six required headings, all four active experiment titles, the two assigned REM actions, all four sleep-stage values and zero missing sections; daily-loop now resolves v41. The regeneration added one intentional analysis row and used unchanged production settings (`claude-sonnet-5`, 32,546 input tokens, 7,233 output tokens including 4,672 thinking tokens).
@@ -15,8 +27,6 @@
 **Next: Batch 245**, the behaviour-preserving extraction of `_morning_verdict` into its own module. Re-verify its row against the just-landed Batch 244 tree, compare every stored production packet before and after, then land it before authoring Batch 246. Craig has already approved Batch 246's HRV and SpO₂/respiration copy. The parked local branch `wip/bulk-history-reads-2026-08-30` is intentionally untouched and safe to leave.
 
 **Gotchas:** the existing Group A operational items remain open: Sentry DSNs are unset, retention stays deliberately dry-run after Craig declined the purge, and no backup has yet been proved restorable. Batch 244's structural guard is warning-only by design: a partial brief remains usable and automatic retry would spend again without proof of compliance.
-
-## Prior current-state snapshots
 
 **2026-09-02 — Batch 247 SHIPPED, and Group A is complete.** PR #272 / squash `1235417`, Decision **#315**. Group A ran 242 → 248 → 247 back to back, each through its own branch, PR, CI, squash and production verification. **Three things are open and all three are Craig's — see Gotchas.**
 
@@ -325,6 +335,8 @@
 ---
 
 ## Log
+
+**2026-09-02 — Batch 245 shipped.** PR #275 / squash `69578b4`, Decision #317. Extracted the complete deterministic verdict boundary into `services/morning_verdict.py`, retained compatibility re-exports from `morning_analysis`, and proved the 259-line body unchanged apart from its name. All 16 corrected-branch PR checks and both Vercel checks passed; both PostgreSQL waves ran 1531 passed / 0 skipped. Canonical verdict JSON from all 80 stored morning-analysis rows matched before and after with zero differences. Production serves the exact SHA; deployed ownership/import smoke, web 200 and both 401 auth boundaries pass. No prompt version moved and nothing was regenerated. Group C continues with Batch 246.
 
 **2026-09-02 — Batch 244 shipped.** PR #273 / squash `7fa9c18`, Decision #316. Replaced the frozen four-section morning prompt with a packet-derived exact-heading contract and a warning-only structural guard; moved the deterministic verdict hero above the fold on `/brief`. All 16 PR checks and both Vercel checks passed. Production serves the exact SHA, and today's v40 brief was deliberately regenerated once under v41; the real daily-loop lookup now returns all six sections with the experiment updates, both assigned REM actions and the sleep-stage detail intact. Group C continues with Batch 245.
 
