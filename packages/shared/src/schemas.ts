@@ -1035,6 +1035,29 @@ export const todayActionSchema = z.object({
 });
 export type TodayAction = z.infer<typeof todayActionSchema>;
 
+export const acutePhysiologySchema = z.object({
+  status: z.enum(['clear', 'triggered', 'insufficient_data']).optional(),
+  standingLine: z.string().min(1).optional(),
+  requiresBikeRest: z.boolean().optional(),
+  triggeredSignals: z.array(z.string()).default([]),
+  dataSufficiency: z
+    .object({
+      status: z.enum(['sufficient', 'insufficient_data']),
+      message: z.string().nullable().optional(),
+      missingRows: z.array(z.string()).default([]),
+    })
+    .optional(),
+  escalations: z
+    .array(
+      z.object({
+        kind: z.enum(['resting_heart_rate', 'overnight_hrv', 'oxygen_respiration']),
+        message: z.string().min(1),
+      }),
+    )
+    .default([]),
+});
+export type AcutePhysiology = z.infer<typeof acutePhysiologySchema>;
+
 export const dailyLoopAnalysisSchema = z.object({
   id: z.string().uuid(),
   generatedAtUtc: isoDateTimeSchema,
@@ -1051,6 +1074,7 @@ export const dailyLoopAnalysisSchema = z.object({
   swapSuggestion: swapSuggestionSchema.nullable().optional(),
   weeklyMix: weeklyMixSchema.nullable().optional(),
   todayActions: z.array(todayActionSchema).default([]),
+  acutePhysiology: acutePhysiologySchema.optional(),
   feedback: feedbackSchema.nullable().optional(),
 });
 

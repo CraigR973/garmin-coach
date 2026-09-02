@@ -8,7 +8,8 @@ supply already-loaded rows and receive a deterministic packet.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import timedelta
+from datetime import date, timedelta
+from statistics import median, pstdev
 from typing import Any
 
 from fastapi import HTTPException
@@ -21,6 +22,7 @@ from src.services.personal_baselines import (
     effective_readiness_floor,
     metric_within_baseline_band,
 )
+from src.services.sleep_history import SPO2_HRV_RELIABLE_FROM
 from src.services.verdict_scaling import (
     AMBER_POWER_CAP_PCT,
     companion_session_present,
@@ -35,6 +37,26 @@ ACWR_AMBER_CAP_THRESHOLD = 1.5
 RECOVERY_TIME_AMBER_CAP_MIN = 24 * 60
 # A Low-readiness exception needs affirmative balanced-load evidence.
 ACWR_LOAD_DRIVEN_MAX = 1.3
+
+# Batch 246: acute physiology is compared with Mark's own history, but it stays
+# conservative about sparse history and wrist Pulse Ox. Garmin explicitly calls
+# Pulse Ox an estimate rather than a medical measurement, so a noisy nadir is
+# never enough by itself to surface a medical escalation.
+ACUTE_BASELINE_WINDOW_DAYS = 84
+ACUTE_BASELINE_MIN_SAMPLES = 21
+RESTING_HR_ABSOLUTE_DELTA_BPM = 7.0
+HRV_ACUTE_DROP_STDDEVS = 1.5
+AVERAGE_SPO2_ALERT_THRESHOLD_PCT = 92.0
+SPO2_NADIR_ALERT_THRESHOLD_PCT = 88.0
+SPO2_NADIR_WINDOW_DAYS = 3
+SPO2_NADIR_MIN_NIGHTS = 2
+RESPIRATION_SUSTAINED_NIGHTS = 2
+
+MEDICAL_BOUNDARY_STANDING_LINE = (
+    "This read comes from your watch and your room sensors. It can't see how you "
+    "actually feel — if those two disagree, trust yourself."
+)
+INSUFFICIENT_DATA_MESSAGE = "Insufficient data to judge today."
 
 
 def _coerce_int(value: Any) -> int | None:
@@ -211,6 +233,404 @@ def _resting_hr_elevated(
     return resting_hr is not None and ceiling is not None and float(resting_hr) > float(ceiling)
 
 
+def _baseline_ready(row: MetricBaseline | None) -> bool:
+    return row is not None and row.sample_count >= ACUTE_BASELINE_MIN_SAMPLES
+
+
+def _number(value: float | int | None) -> str:
+    if value is None:
+        return "unavailable"
+    number = float(value)
+    return str(int(number)) if number.is_integer() else f"{number:.1f}"
+
+
+def _baseline_dates(row: MetricBaseline | None) -> tuple[str | None, str | None]:
+    if row is None:
+        return None, None
+    return row.window_start_date.isoformat(), row.window_end_date.isoformat()
+
+
+def _prior_daily_metric(
+    recent_daily_metrics: Sequence[DailyMetric],
+    *,
+    subject_date: date,
+) -> DailyMetric | None:
+    prior_date = subject_date - timedelta(days=1)
+    return next((row for row in recent_daily_metrics if row.calendar_date == prior_date), None)
+
+
+def _rhr_rail(
+    daily_metric: DailyMetric | None,
+    baseline: MetricBaseline | None,
+    recent_daily_metrics: Sequence[DailyMetric],
+) -> dict[str, Any]:
+    current = daily_metric.resting_heart_rate_bpm if daily_metric else None
+    median_value = baseline.median_value if baseline else None
+    upper_quartile = baseline.upper_quartile_value if baseline else None
+    enough_history = _baseline_ready(baseline)
+    delta = (
+        float(current) - float(median_value)
+        if current is not None and median_value is not None
+        else None
+    )
+    absolute_delta = bool(
+        enough_history and delta is not None and delta >= RESTING_HR_ABSOLUTE_DELTA_BPM
+    )
+    prior = (
+        _prior_daily_metric(recent_daily_metrics, subject_date=daily_metric.calendar_date)
+        if daily_metric is not None
+        else None
+    )
+    prior_value = prior.resting_heart_rate_bpm if prior is not None else None
+    consecutive_q3 = bool(
+        enough_history
+        and current is not None
+        and prior_value is not None
+        and upper_quartile is not None
+        and float(current) > float(upper_quartile)
+        and float(prior_value) > float(upper_quartile)
+    )
+    triggered = absolute_delta or consecutive_q3
+    trigger = "absolute_delta" if absolute_delta else "consecutive_q3" if consecutive_q3 else None
+    reason = None
+    escalation = None
+    if triggered and current is not None and median_value is not None:
+        window_start, window_end = _baseline_dates(baseline)
+        window = (
+            f"{window_start} to {window_end}"
+            if window_start is not None and window_end is not None
+            else "in your personal baseline window"
+        )
+        if absolute_delta:
+            reason = (
+                f"Resting heart rate sets an Amber ceiling: {current} bpm is "
+                f"{_number(delta)} bpm above the personal median of {_number(median_value)}."
+            )
+            opening = (
+                f"Your resting heart rate is {current} this morning against a usual "
+                f"{_number(median_value)} across {window} — a rise of {_number(delta)} bpm."
+            )
+        else:
+            reason = (
+                "Resting heart rate sets an Amber ceiling: it has been above the "
+                f"personal upper quartile of {_number(upper_quartile)} bpm for two mornings."
+            )
+            opening = (
+                f"Your resting heart rate is {current} this morning against a usual "
+                f"{_number(median_value)} across {window}, and it has been above your "
+                f"usual upper quartile of {_number(upper_quartile)} for two mornings."
+            )
+        escalation = (
+            f"{opening} In practice that usually means one of: an infection starting, "
+            "dehydration, alcohol, or simply being run down. Training hard through it "
+            "tends to make it worse. Take today off the bike, and if you feel unwell "
+            "alongside it, see your GP rather than just resting."
+        )
+    return {
+        "triggered": triggered,
+        "verdictImpact": "amber_cap",
+        "trigger": trigger,
+        "currentBpm": current,
+        "priorBpm": prior_value,
+        "baselineMedianBpm": median_value,
+        "baselineUpperQuartileBpm": upper_quartile,
+        "baselineSampleCount": baseline.sample_count if baseline else 0,
+        "baselineWindowStartDate": _baseline_dates(baseline)[0],
+        "baselineWindowEndDate": _baseline_dates(baseline)[1],
+        "deltaFromMedianBpm": round(delta, 1) if delta is not None else None,
+        "thresholds": {
+            "absoluteDeltaBpmInclusive": RESTING_HR_ABSOLUTE_DELTA_BPM,
+            "consecutiveMorningsAboveUpperQuartile": 2,
+            "minimumBaselineSamples": ACUTE_BASELINE_MIN_SAMPLES,
+        },
+        "reason": reason,
+        "escalation": escalation,
+    }
+
+
+def _hrv_rail(
+    daily_metric: DailyMetric | None,
+    recent_daily_metrics: Sequence[DailyMetric],
+) -> dict[str, Any]:
+    current = daily_metric.hrv_last_night_avg_ms if daily_metric else None
+    subject_date = daily_metric.calendar_date if daily_metric else None
+    window_start = (
+        subject_date - timedelta(days=ACUTE_BASELINE_WINDOW_DAYS)
+        if subject_date is not None
+        else None
+    )
+    observations = sorted(
+        [
+            (row.calendar_date, float(row.hrv_last_night_avg_ms))
+            for row in recent_daily_metrics
+            if row.hrv_last_night_avg_ms is not None
+            and row.calendar_date >= SPO2_HRV_RELIABLE_FROM
+            and (window_start is None or row.calendar_date >= window_start)
+            and (subject_date is None or row.calendar_date < subject_date)
+        ],
+        key=lambda observation: observation[0],
+    )
+    values = [value for _, value in observations]
+    enough_history = len(values) >= ACUTE_BASELINE_MIN_SAMPLES
+    median_value = float(median(values)) if enough_history else None
+    stddev_value = float(pstdev(values)) if enough_history else None
+    threshold = (
+        median_value - HRV_ACUTE_DROP_STDDEVS * stddev_value
+        if median_value is not None and stddev_value is not None
+        else None
+    )
+    triggered = bool(current is not None and threshold is not None and float(current) < threshold)
+    reason = None
+    escalation = None
+    if triggered and current is not None and median_value is not None:
+        history_window = (
+            f" from {observations[0][0].isoformat()} to {observations[-1][0].isoformat()}"
+            if observations
+            else ""
+        )
+        reason = (
+            f"Overnight HRV sets an Amber ceiling: {current} ms is below the acute "
+            f"personal floor of {_number(threshold)} ms."
+        )
+        escalation = (
+            f"Your overnight HRV is {current} ms this morning against a usual "
+            f"{_number(median_value)} ms{history_window} — a drop that size in a single "
+            "night is unusual "
+            "for you. It usually means one of: an infection starting, a heavy drink, a "
+            "badly broken night, or real stress carried into sleep. Training hard through "
+            "it tends to deepen it. Take today off the bike, and if you feel unwell "
+            "alongside it, see your GP rather than just resting."
+        )
+    return {
+        "triggered": triggered,
+        "verdictImpact": "amber_cap",
+        "currentMs": current,
+        "baselineMedianMs": median_value,
+        "baselineStddevMs": round(stddev_value, 2) if stddev_value is not None else None,
+        "baselineSampleCount": len(values),
+        "baselineWindowStartDate": observations[0][0].isoformat() if observations else None,
+        "baselineWindowEndDate": observations[-1][0].isoformat() if observations else None,
+        "acuteFloorMs": round(threshold, 2) if threshold is not None else None,
+        "thresholds": {
+            "stddevsBelowMedianExclusive": HRV_ACUTE_DROP_STDDEVS,
+            "windowDays": ACUTE_BASELINE_WINDOW_DAYS,
+            "minimumBaselineSamples": ACUTE_BASELINE_MIN_SAMPLES,
+            "reliabilityStartDate": SPO2_HRV_RELIABLE_FROM.isoformat(),
+        },
+        "reason": reason,
+        "escalation": escalation,
+    }
+
+
+def _oxygen_respiration_rail(
+    sleep: Sleep | None,
+    baselines: Mapping[str, MetricBaseline],
+    recent_sleeps: Sequence[Sleep],
+) -> dict[str, Any]:
+    average_spo2 = sleep.average_spo2_pct if sleep else None
+    nadir_spo2 = sleep.lowest_spo2_pct if sleep else None
+    respiration = sleep.average_respiration if sleep else None
+    spo2_baseline = baselines.get("average_spo2_pct")
+    respiration_baseline = baselines.get("average_respiration")
+    respiration_q3 = respiration_baseline.upper_quartile_value if respiration_baseline else None
+    average_low = bool(
+        average_spo2 is not None and float(average_spo2) < AVERAGE_SPO2_ALERT_THRESHOLD_PCT
+    )
+
+    subject_date = sleep.calendar_date if sleep else None
+    window_start = (
+        subject_date - timedelta(days=SPO2_NADIR_WINDOW_DAYS - 1)
+        if subject_date is not None
+        else None
+    )
+    window_rows = [
+        row
+        for row in [*recent_sleeps, *([sleep] if sleep is not None else [])]
+        if row.calendar_date >= SPO2_HRV_RELIABLE_FROM
+        and (window_start is None or row.calendar_date >= window_start)
+        and (subject_date is None or row.calendar_date <= subject_date)
+    ]
+    # One row per calendar date is guaranteed by the table, but sorting makes the
+    # rolling evidence and rendered window deterministic for direct unit callers.
+    window_rows.sort(key=lambda row: row.calendar_date)
+    nadir_nights = [
+        row
+        for row in window_rows
+        if row.lowest_spo2_pct is not None
+        and float(row.lowest_spo2_pct) < SPO2_NADIR_ALERT_THRESHOLD_PCT
+    ]
+    nadir_cluster = len(nadir_nights) >= SPO2_NADIR_MIN_NIGHTS
+    prior_sleep = (
+        next(
+            (
+                row
+                for row in recent_sleeps
+                if subject_date is not None
+                and row.calendar_date == subject_date - timedelta(days=1)
+            ),
+            None,
+        )
+        if sleep is not None
+        else None
+    )
+    prior_respiration = prior_sleep.average_respiration if prior_sleep else None
+    respiration_sustained = bool(
+        _baseline_ready(respiration_baseline)
+        and respiration_q3 is not None
+        and respiration is not None
+        and prior_respiration is not None
+        and float(respiration) > float(respiration_q3)
+        and float(prior_respiration) > float(respiration_q3)
+    )
+    corroborated_cluster = nadir_cluster and respiration_sustained
+    triggered = average_low or corroborated_cluster
+    trigger = (
+        "low_average_spo2"
+        if average_low
+        else "nadir_cluster_with_respiration"
+        if triggered
+        else None
+    )
+    escalation = None
+    reason = None
+    if triggered:
+        spo2_median = spo2_baseline.median_value if spo2_baseline else None
+        respiration_median = respiration_baseline.median_value if respiration_baseline else None
+        spo2_window_start, spo2_window_end = _baseline_dates(spo2_baseline)
+        respiration_window_start, respiration_window_end = _baseline_dates(respiration_baseline)
+        spo2_window = (
+            f" from {spo2_window_start} to {spo2_window_end}"
+            if spo2_window_start is not None and spo2_window_end is not None
+            else ""
+        )
+        respiration_window = (
+            f" from {respiration_window_start} to {respiration_window_end}"
+            if respiration_window_start is not None and respiration_window_end is not None
+            else ""
+        )
+        if average_low:
+            opening = (
+                "Your watch estimated overnight oxygen saturation at an average of "
+                f"{_number(average_spo2)}% last night against a usual "
+                f"{_number(spo2_median)}%{spo2_window}, and your breathing rate was "
+                f"{_number(respiration)} against a usual {_number(respiration_median)}"
+                f"{respiration_window}."
+            )
+            reason = (
+                "Overnight oxygen surveillance triggered: average wrist SpO₂ "
+                f"{_number(average_spo2)}% is below {AVERAGE_SPO2_ALERT_THRESHOLD_PCT:.0f}%."
+            )
+        else:
+            opening = (
+                f"Your watch recorded an oxygen nadir of {_number(nadir_spo2)}% last night, "
+                f"below {SPO2_NADIR_ALERT_THRESHOLD_PCT:.0f}% on {len(nadir_nights)} of the "
+                f"last {SPO2_NADIR_WINDOW_DAYS} nights. Its usual overnight average is "
+                f"{_number(spo2_median)}%{spo2_window}, and your breathing rate has stayed "
+                f"above its usual upper quartile of {_number(respiration_q3)}"
+                f"{respiration_window} for two nights."
+            )
+            reason = (
+                "Overnight oxygen/respiration surveillance triggered: repeated low wrist "
+                "SpO₂ nadirs are corroborated by sustained elevated respiration."
+            )
+        escalation = (
+            f"{opening} Sustained low overnight oxygen has causes worth checking properly — "
+            "a chest infection, or disrupted breathing during sleep. This one isn't "
+            "something training or rest changes. Mention this to your GP if it happens again."
+        )
+    return {
+        "triggered": triggered,
+        "verdictImpact": "surveillance_only",
+        "trigger": trigger,
+        "averageSpo2Pct": average_spo2,
+        "lowestSpo2Pct": nadir_spo2,
+        "averageRespiration": respiration,
+        "priorAverageRespiration": prior_respiration,
+        "spo2BaselineMedianPct": spo2_baseline.median_value if spo2_baseline else None,
+        "spo2BaselineSampleCount": spo2_baseline.sample_count if spo2_baseline else 0,
+        "spo2BaselineWindowStartDate": _baseline_dates(spo2_baseline)[0],
+        "spo2BaselineWindowEndDate": _baseline_dates(spo2_baseline)[1],
+        "respirationBaselineMedian": (
+            respiration_baseline.median_value if respiration_baseline else None
+        ),
+        "respirationBaselineUpperQuartile": respiration_q3,
+        "respirationBaselineSampleCount": (
+            respiration_baseline.sample_count if respiration_baseline else 0
+        ),
+        "respirationBaselineWindowStartDate": _baseline_dates(respiration_baseline)[0],
+        "respirationBaselineWindowEndDate": _baseline_dates(respiration_baseline)[1],
+        "nadirNightsInWindow": len(nadir_nights),
+        "respirationSustained": respiration_sustained,
+        "thresholds": {
+            "averageSpo2PctExclusive": AVERAGE_SPO2_ALERT_THRESHOLD_PCT,
+            "nadirSpo2PctExclusive": SPO2_NADIR_ALERT_THRESHOLD_PCT,
+            "nadirWindowDays": SPO2_NADIR_WINDOW_DAYS,
+            "nadirMinimumNights": SPO2_NADIR_MIN_NIGHTS,
+            "respirationConsecutiveNightsAboveUpperQuartile": RESPIRATION_SUSTAINED_NIGHTS,
+            "minimumBaselineSamples": ACUTE_BASELINE_MIN_SAMPLES,
+            "reliabilityStartDate": SPO2_HRV_RELIABLE_FROM.isoformat(),
+        },
+        "reason": reason,
+        "escalation": escalation,
+    }
+
+
+def _acute_physiology_rail(
+    *,
+    daily_metric: DailyMetric | None,
+    sleep: Sleep | None,
+    baselines: Mapping[str, MetricBaseline],
+    recent_daily_metrics: Sequence[DailyMetric],
+    recent_sleeps: Sequence[Sleep],
+) -> dict[str, Any]:
+    rhr = _rhr_rail(
+        daily_metric,
+        baselines.get("resting_heart_rate_bpm"),
+        recent_daily_metrics,
+    )
+    hrv = _hrv_rail(daily_metric, recent_daily_metrics)
+    oxygen_respiration = _oxygen_respiration_rail(sleep, baselines, recent_sleeps)
+    missing_rows = [
+        name for name, row in (("daily_metric", daily_metric), ("sleep", sleep)) if row is None
+    ]
+    data_sufficiency = {
+        "status": "insufficient_data" if missing_rows else "sufficient",
+        "message": INSUFFICIENT_DATA_MESSAGE if missing_rows else None,
+        "missingRows": missing_rows,
+    }
+    triggered_signals = [
+        name
+        for name, signal in (
+            ("resting_heart_rate", rhr),
+            ("overnight_hrv", hrv),
+            ("oxygen_respiration", oxygen_respiration),
+        )
+        if signal["triggered"]
+    ]
+    escalations = [
+        {"kind": name, "message": signal["escalation"]}
+        for name, signal in (
+            ("resting_heart_rate", rhr),
+            ("overnight_hrv", hrv),
+            ("oxygen_respiration", oxygen_respiration),
+        )
+        if signal["triggered"] and isinstance(signal["escalation"], str)
+    ]
+    return {
+        "status": (
+            "triggered" if triggered_signals else "insufficient_data" if missing_rows else "clear"
+        ),
+        "standingLine": MEDICAL_BOUNDARY_STANDING_LINE,
+        "dataSufficiency": data_sufficiency,
+        "triggeredSignals": triggered_signals,
+        "requiresBikeRest": bool(rhr["triggered"] or hrv["triggered"]),
+        "restingHeartRate": rhr,
+        "overnightHrv": hrv,
+        "oxygenRespiration": oxygen_respiration,
+        "escalations": escalations,
+    }
+
+
 def _sleep_credit_ceiling(
     *,
     sleep: Sleep | None,
@@ -278,6 +698,9 @@ def morning_verdict(
     readiness_baseline_trend: Mapping[str, Any] | None = None,
     breathwork_brief: BreathworkBriefResult | None = None,
     rest_day: Mapping[str, Any] | None = None,
+    recent_daily_metrics: Sequence[DailyMetric] = (),
+    recent_sleeps: Sequence[Sleep] = (),
+    enforce_data_sufficiency: bool = False,
 ) -> dict[str, Any]:
     subjective_score = _latest_subjective_score(manual_entries)
     hrv_status = _lower(daily_metric.hrv_status if daily_metric else None) or _lower(
@@ -286,12 +709,21 @@ def morning_verdict(
     hrv_low = _hrv_below_baseline(daily_metric)
     readiness_level = _lower(daily_metric.readiness_level if daily_metric else None)
     baselines = baselines or {}
+    acute_physiology = _acute_physiology_rail(
+        daily_metric=daily_metric,
+        sleep=sleep,
+        baselines=baselines,
+        recent_daily_metrics=recent_daily_metrics,
+        recent_sleeps=recent_sleeps,
+    )
     resting_hr_baseline = baselines.get("resting_heart_rate_bpm")
     resting_hr_in_band = metric_within_baseline_band(
         daily_metric.resting_heart_rate_bpm if daily_metric else None,
         resting_hr_baseline,
         lower_is_better=True,
     )
+    # Preserve the existing Poor-readiness corroboration rule independently of
+    # the stricter, history-qualified acute rail introduced in Batch 246.
     resting_hr_elevated = _resting_hr_elevated(daily_metric, resting_hr_baseline)
     readiness_center = baseline_center(baselines.get("readiness_score"))
     readiness_floor = effective_readiness_floor(readiness_center)
@@ -447,6 +879,37 @@ def morning_verdict(
         if isinstance(reason, str):
             reasons.append(reason)
 
+    acute_status_before_cap = status
+    for signal_key in ("restingHeartRate", "overnightHrv", "oxygenRespiration"):
+        signal_reason = acute_physiology[signal_key].get("reason")
+        if isinstance(signal_reason, str):
+            reasons.append(signal_reason)
+    acute_verdict_cap_triggered = bool(
+        acute_physiology["restingHeartRate"]["triggered"]
+        or acute_physiology["overnightHrv"]["triggered"]
+    )
+    if status == "Green" and acute_verdict_cap_triggered:
+        status = "Amber"
+    status_after_acute_cap = status
+    data_sufficiency = acute_physiology["dataSufficiency"]
+    if enforce_data_sufficiency and data_sufficiency["status"] == "insufficient_data":
+        if status == "Green":
+            status = "Amber"
+        reasons.append(INSUFFICIENT_DATA_MESSAGE)
+    acute_physiology["statusBeforeCap"] = acute_status_before_cap
+    acute_physiology["statusAfterCap"] = status
+    acute_physiology["verdictCapApplied"] = (
+        acute_status_before_cap == "Green"
+        and status_after_acute_cap == "Amber"
+        and acute_verdict_cap_triggered
+    )
+    acute_physiology["missingDataFloorApplied"] = (
+        enforce_data_sufficiency
+        and status_after_acute_cap == "Green"
+        and status == "Amber"
+        and data_sufficiency["status"] == "insufficient_data"
+    )
+
     status_before_load_cap = status
     if training_load_cap["triggered"]:
         if status == "Green":
@@ -458,11 +921,16 @@ def morning_verdict(
     if readiness_trend.get("triggered") and isinstance(baseline_trend_reason, str):
         reasons.append(baseline_trend_reason)
 
-    plan_adjustments = _plan_adjustments(
-        status,
-        planned_workouts,
-        is_rest_day=is_rest_day,
-    )
+    if acute_physiology["requiresBikeRest"] and not is_rest_day:
+        plan_adjustments = [
+            "Take today off the bike; do not substitute an eased ride for the acute signal."
+        ]
+    else:
+        plan_adjustments = _plan_adjustments(
+            status,
+            planned_workouts,
+            is_rest_day=is_rest_day,
+        )
     if status != "Green" and yesterday_hard and not is_rest_day:
         plan_adjustments.append(
             "Treat yesterday's hard session as extra context for easing today's work."
@@ -492,6 +960,14 @@ def morning_verdict(
         )
     if cumulative_escalation["applied"]:
         safety_rules.append("poor_readiness_cumulative_red")
+    if acute_physiology["restingHeartRate"]["triggered"]:
+        safety_rules.append("acute_resting_heart_rate_amber_cap")
+    if acute_physiology["overnightHrv"]["triggered"]:
+        safety_rules.append("acute_overnight_hrv_amber_cap")
+    if acute_physiology["oxygenRespiration"]["triggered"]:
+        safety_rules.append("oxygen_respiration_surveillance")
+    if enforce_data_sufficiency and data_sufficiency["status"] == "insufficient_data":
+        safety_rules.append("missing_data_amber_floor")
 
     return {
         "status": status,
@@ -515,6 +991,7 @@ def morning_verdict(
         "softSleepRecoveryOverride": soft_sleep_override,
         "sleepCreditCeiling": sleep_credit_ceiling,
         "cumulativeEscalation": cumulative_escalation,
+        "acutePhysiology": acute_physiology,
         "yesterdayLoadStatus": (yesterday_load or {}).get("status"),
         "trainingLoadCap": training_load_cap,
         "dayType": "rest" if is_rest_day else "training",

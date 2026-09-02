@@ -40,6 +40,7 @@ from src.services.daily_loop import (
 from src.services.executable_coaching import ExecutableCoachingService
 from src.services.generation_requests import GenerationRequestInProgress
 from src.services.holiday_pause import HolidayWindow
+from src.services.morning_verdict import MEDICAL_BOUNDARY_STANDING_LINE
 from src.services.workout_delivery import IntervalsCreateResult
 
 _BIKE_STRUCTURED = {
@@ -336,6 +337,10 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
     payload = response.json()
     assert payload["data"]["subjectDate"] == "2026-06-20"
     assert payload["data"]["morningAnalysis"]["verdict"] == "green"
+    assert (
+        payload["data"]["morningAnalysis"]["acutePhysiology"]["standingLine"]
+        == MEDICAL_BOUNDARY_STANDING_LINE
+    )
     baselines = payload["data"]["morningAnalysis"]["metricsVsBaselines"]
     assert baselines[0]["metricKey"] == "hrv_7_day_avg_ms"
     assert baselines[0]["currentValue"] == 51

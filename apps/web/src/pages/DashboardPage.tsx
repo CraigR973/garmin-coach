@@ -28,6 +28,7 @@ import {
   quickAddOptionsEnvelopeSchema,
 } from '@coach/shared';
 import { toast } from 'sonner';
+import { AcutePhysiologyNotice } from '@/components/AcutePhysiologyNotice';
 import type { AgeComparison, MetricBaselineRow } from '@/components/MetricComparisonTable';
 import { QuickAddSheet } from '@/components/QuickAddSheet';
 import { IntervalWorkoutEditor } from '@/components/IntervalWorkoutEditor';
@@ -484,6 +485,10 @@ export function DashboardPage() {
   const awayTonight = holiday.awayTonight ?? false;
   const holidayEndDate = holiday.activeWindow?.endDate ?? null;
   const analysis = daily.morningAnalysis;
+  const dataSufficiencyLine =
+    analysis?.acutePhysiology?.dataSufficiency?.status === 'insufficient_data'
+      ? (analysis.acutePhysiology.dataSufficiency.message ?? undefined)
+      : undefined;
   const ageComparison = (analysis?.ageComparison ?? null) as AgeComparison | null;
   const metricsVsBaselines = (analysis?.metricsVsBaselines ?? []) as MetricBaselineRow[];
   const chronicSuggestions = daily.chronicSuggestions ?? null;
@@ -760,12 +765,22 @@ export function DashboardPage() {
         <VerdictHero
           verdict={analysis.verdict}
           dateLabel={friendlyDate(daily.subjectDate)}
-          line={personalStatusLine(
-            analysis.verdict,
-            player?.displayName,
-            undefined,
-            dayState.isRest || holiday.isActive,
-          )}
+          label={
+            analysis.acutePhysiology?.requiresBikeRest === true
+              ? 'Take today off the bike'
+              : undefined
+          }
+          line={
+            dataSufficiencyLine ??
+            (analysis.acutePhysiology?.requiresBikeRest === true
+              ? 'An acute recovery signal rules out riding today.'
+              : personalStatusLine(
+                  analysis.verdict,
+                  player?.displayName,
+                  undefined,
+                  dayState.isRest || holiday.isActive,
+                ))
+          }
           recap={morningFeelRecap(daily.manualEntry ?? null)}
         />
       ) : (
@@ -774,6 +789,8 @@ export function DashboardPage() {
         // always right about these states; the other page had none of them.
         <BriefPendingCta daily={daily} />
       )}
+
+      {analysis ? <AcutePhysiologyNotice boundary={analysis.acutePhysiology} /> : null}
 
       {/* Batch 96: an unviewed brief outranks every action card, including the
           thermal/plan nudges inside TodayActions. */}

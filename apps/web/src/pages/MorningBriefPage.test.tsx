@@ -166,6 +166,75 @@ describe('morning brief page', () => {
     expect(verdict.compareDocumentPosition(coachRead)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
+  it('renders the deterministic acute escalation and standing medical boundary (Batch 246)', async () => {
+    const withAcuteBoundary = structuredClone(snapshot);
+    withAcuteBoundary.data.morningAnalysis!.acutePhysiology = {
+      status: 'triggered',
+      standingLine:
+        "This read comes from your watch and your room sensors. It can't see how you actually feel — if those two disagree, trust yourself.",
+      requiresBikeRest: true,
+      triggeredSignals: ['resting_heart_rate'],
+      dataSufficiency: { status: 'sufficient', message: null, missingRows: [] },
+      escalations: [
+        {
+          kind: 'resting_heart_rate',
+          message:
+            'Your resting heart rate is 51 this morning against a usual 44. Take today off the bike.',
+        },
+      ],
+    };
+    apiFetchMock.mockImplementation(() => Promise.resolve(withAcuteBoundary));
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <MorningBriefPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('Take today off the bike')).toBeTruthy();
+    expect(screen.getByText('An acute recovery signal rules out riding today.')).toBeTruthy();
+    const alert = screen.getByRole('alert');
+    expect(within(alert).getByText('Why this needs rest')).toBeTruthy();
+    expect(within(alert).getByText(/resting heart rate is 51/i)).toBeTruthy();
+    expect(
+      screen.getByText(
+        "This read comes from your watch and your room sensors. It can't see how you actually feel — if those two disagree, trust yourself.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it('shows the exact insufficient-data line instead of a Green interpretation (Batch 246)', async () => {
+    const withBlackout = structuredClone(snapshot);
+    withBlackout.data.morningAnalysis!.verdict = 'amber';
+    withBlackout.data.morningAnalysis!.acutePhysiology = {
+      status: 'insufficient_data',
+      standingLine:
+        "This read comes from your watch and your room sensors. It can't see how you actually feel — if those two disagree, trust yourself.",
+      requiresBikeRest: false,
+      triggeredSignals: [],
+      dataSufficiency: {
+        status: 'insufficient_data',
+        message: 'Insufficient data to judge today.',
+        missingRows: ['daily_metric', 'sleep'],
+      },
+      escalations: [],
+    };
+    apiFetchMock.mockImplementation(() => Promise.resolve(withBlackout));
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <MorningBriefPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('Insufficient data to judge today.')).toBeTruthy();
+    expect(screen.queryByText(/ready to train/i)).toBeNull();
+  });
+
   it("surfaces the metrics-vs-baselines snapshot table (Batch 130)", async () => {
     renderWithQuery(<MorningBriefPage />);
     expect(await screen.findByText("Last night's metrics")).toBeTruthy();

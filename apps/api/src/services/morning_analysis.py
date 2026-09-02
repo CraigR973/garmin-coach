@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import structlog
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from src.config import settings
 from src.models.coaching import (
@@ -200,7 +201,10 @@ log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 # Batch 244: the four-section prose list had become a deletion instruction once
 # experiments and chronic actions joined the packet. The output contract is now
 # packet-derived and structurally checked, so existing reads must regenerate.
-PROMPT_VERSION = "morning-analysis-v41-2026-09-02"
+# Batch 246: the stored deterministic verdict now carries an acute-physiology
+# rail and missing-data floor. Generation identity does not hash the packet, so
+# the version must move or today's pre-rail verdict remains current.
+PROMPT_VERSION = "morning-analysis-v42-2026-09-02"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -272,6 +276,14 @@ plus another negative recovery signal makes the day Red and never soften or argu
 down that deterministic escalation. Missing HRV and absent
 subjective check-ins are neutral only: never describe absent data as proof that
 recovery is clean.
+verdict.acutePhysiology is deterministic and authoritative. Never soften or
+argue down an RHR/HRV Amber cap, the missing-data floor, or an oxygen/respiration
+surveillance escalation. When requiresBikeRest is true, do not recommend an
+eased ride, a substitute ride, or training through the signal. The app renders
+acutePhysiology.standingLine and acutePhysiology.escalations outside your prose,
+so do not repeat or paraphrase either; explain only the measured evidence when
+it belongs in a required section, and never diagnose a condition from wearable
+data.
 verdict.chronicAction is a deterministic structural-action signal, not a colour
 rule, so explain its recorded qualification and never soften or argue it down.
 When chronicAction.triggered is false and no Red morning in
@@ -534,6 +546,9 @@ class MorningAnalysisService:
             await self._readiness_history(player.id, subject_date),
             as_of=subject_date,
         )
+        recent_daily_metrics, recent_sleeps = await self._acute_physiology_history(
+            player.id, subject_date
+        )
         # Batch 226: the stored baselines are already loaded above, and this is the
         # one packet holding a *finished* day's cost — so it is the only place the
         # comparison Mark asked for can honestly be made.
@@ -608,6 +623,9 @@ class MorningAnalysisService:
             readiness_baseline_trend=readiness_trend,
             breathwork_brief=breathwork_brief,
             rest_day=rest_day,
+            recent_daily_metrics=recent_daily_metrics,
+            recent_sleeps=recent_sleeps,
+            enforce_data_sufficiency=True,
         )
         # Batch 221: persist the exact REM library selection before it is shown,
         # then reuse that immutable weekly assignment on every surface. The
@@ -742,13 +760,21 @@ class MorningAnalysisService:
         # same transform the delivery rail and editor use) so the narrative and
         # brief-chat quote the app's own figures instead of guessing. Explanatory
         # only — it cannot set the verdict or the numbers.
+        acute_physiology = verdict.get("acutePhysiology")
+        requires_bike_rest = bool(
+            isinstance(acute_physiology, Mapping)
+            and acute_physiology.get("requiresBikeRest") is True
+        )
+        actionable_workouts = (
+            [] if rest_day["isRestDay"] or requires_bike_rest else planned_workouts
+        )
         verdict["verdictAdjustment"] = _verdict_adjustment_packet(
             str(verdict.get("status") or ""),
-            [] if rest_day["isRestDay"] else planned_workouts,
+            actionable_workouts,
         )
         verdict["todayActions"] = build_today_actions(
             verdict=verdict,
-            planned_workouts=[] if rest_day["isRestDay"] else planned_workouts,
+            planned_workouts=actionable_workouts,
             thermal_review=thermal_review_for_output or {},
             recommend_breathwork=recommend_breathwork,
         )
@@ -784,6 +810,7 @@ class MorningAnalysisService:
                     "rearrange_short_cluster_deload_only_sustained_marker",
                     "respect_scheduled_recovery_block",
                     "treat_training_schedule_as_nominal_only",
+                    "respect_deterministic_acute_physiology_rail",
                 ]
                 # Batch 113 (#186): holiday away means no bedroom thermal review.
                 if rule != "include_thermal_environment_review"
@@ -1206,6 +1233,14 @@ class MorningAnalysisService:
             (
                 await self.session.execute(
                     select(DailyMetric)
+                    .options(
+                        load_only(
+                            DailyMetric.calendar_date,
+                            DailyMetric.phase,
+                            DailyMetric.readiness_score,
+                            raiseload=True,
+                        )
+                    )
                     .where(
                         DailyMetric.user_id == user_id,
                         DailyMetric.calendar_date >= window_start,
@@ -1222,6 +1257,71 @@ class MorningAnalysisService:
         # settled rows it was an apples-to-oranges comparison biased toward a
         # lower floor.
         return [(row.calendar_date, row.readiness_score) for row in prefer_morning(rows)]
+
+    async def _acute_physiology_history(
+        self,
+        user_id: uuid.UUID,
+        subject_date: date,
+    ) -> tuple[list[DailyMetric], list[Sleep]]:
+        """Projected trailing evidence for the DB-free Batch 246 policy.
+
+        The current day is excluded so a reading cannot dilute the distribution
+        used to judge itself. Eighty-four prior calendar days also covers the
+        exact previous-day and 3-night continuity checks. ``raiseload`` makes an
+        accidental future read of either model's large JSON payload fail here
+        rather than silently restore a Batch 235-class pooler transfer.
+        """
+
+        window_start = subject_date - timedelta(days=84)
+        daily_metrics = list(
+            (
+                await self.session.execute(
+                    select(DailyMetric)
+                    .options(
+                        load_only(
+                            DailyMetric.calendar_date,
+                            DailyMetric.hrv_last_night_avg_ms,
+                            DailyMetric.resting_heart_rate_bpm,
+                            raiseload=True,
+                        )
+                    )
+                    .where(
+                        DailyMetric.user_id == user_id,
+                        DailyMetric.phase == DAILY_METRIC_PHASE_MORNING,
+                        DailyMetric.calendar_date >= window_start,
+                        DailyMetric.calendar_date < subject_date,
+                    )
+                    .order_by(DailyMetric.calendar_date.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        sleeps = list(
+            (
+                await self.session.execute(
+                    select(Sleep)
+                    .options(
+                        load_only(
+                            Sleep.calendar_date,
+                            Sleep.average_respiration,
+                            Sleep.average_spo2_pct,
+                            Sleep.lowest_spo2_pct,
+                            raiseload=True,
+                        )
+                    )
+                    .where(
+                        Sleep.user_id == user_id,
+                        Sleep.calendar_date >= window_start,
+                        Sleep.calendar_date < subject_date,
+                    )
+                    .order_by(Sleep.calendar_date.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return daily_metrics, sleeps
 
     async def _weather(self, user_id: uuid.UUID, subject_date: date) -> WeatherDaily | None:
         return cast(

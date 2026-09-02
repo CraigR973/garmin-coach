@@ -41,6 +41,13 @@ describe('VerdictHero', () => {
     expect(screen.getByText('Sleep held steady despite the late finish.')).toBeTruthy();
   });
 
+  it('allows a stronger deterministic headline to replace the generic label', () => {
+    render(<VerdictHero verdict="amber" label="Take today off the bike" />);
+
+    expect(screen.getByText('Take today off the bike')).toBeTruthy();
+    expect(screen.queryByText('Take it easier')).toBeNull();
+  });
+
   it('renders an optional feel recap inside the hero', () => {
     render(
       <MemoryRouter>

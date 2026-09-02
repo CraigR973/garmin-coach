@@ -491,6 +491,35 @@ describe('DashboardPage', () => {
     expect(screen.queryByText('Tomorrow')).toBeNull();
   });
 
+  it('surfaces the deterministic acute rest instruction on Home (Batch 246)', async () => {
+    const withAcuteBoundary = buildSnapshot((snapshot) => {
+      snapshot.data.morningAnalysis!.verdict = 'amber';
+      snapshot.data.morningAnalysis!.acutePhysiology = {
+        status: 'triggered',
+        standingLine:
+          "This read comes from your watch and your room sensors. It can't see how you actually feel — if those two disagree, trust yourself.",
+        requiresBikeRest: true,
+        triggeredSignals: ['overnight_hrv'],
+        dataSufficiency: { status: 'sufficient', message: null, missingRows: [] },
+        escalations: [
+          {
+            kind: 'overnight_hrv',
+            message:
+              'Your overnight HRV is 28 ms this morning against a usual 47 ms. Take today off the bike.',
+          },
+        ],
+      };
+    });
+
+    renderPage(withAcuteBoundary);
+
+    expect(await screen.findByText('Take today off the bike')).toBeTruthy();
+    expect(screen.getByText('An acute recovery signal rules out riding today.')).toBeTruthy();
+    const alert = screen.getByRole('alert');
+    expect(within(alert).getByText('Why this needs rest')).toBeTruthy();
+    expect(within(alert).getByText(/overnight HRV is 28 ms/i)).toBeTruthy();
+  });
+
   it('invites a check-in with the "say good morning" CTA when no brief exists yet (Batch 85)', async () => {
     const noBrief = JSON.parse(JSON.stringify(baseSnapshot)) as DailyLoopEnvelope;
     noBrief.data.morningAnalysis = null;
