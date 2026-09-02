@@ -249,6 +249,15 @@ class Settings(BaseSettings):
     # not point at production: the drill runs pg_restore --clean into it.
     backup_restore_database_url: str = ""
 
+    # Batch 247.2. `activity_timeseries` retention deletes per-second samples for
+    # activities older than 90 days — measured 466,449 rows on 2026-09-02 — from a
+    # table **excluded from every backup by design**, so there is no undo. The job
+    # ships registered and **dry-run**: it measures and logs what it would remove
+    # on every pass, and deletes nothing until this is deliberately set true. The
+    # first execution is a decision with a row count attached, not something a
+    # deploy performs on its own.
+    activity_timeseries_retention_enabled: bool = False
+
     # Background scheduler (APScheduler) — disable in tests / one-off scripts.
     scheduler_enabled: bool = True
 

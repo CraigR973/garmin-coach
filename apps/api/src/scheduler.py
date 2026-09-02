@@ -67,6 +67,10 @@ from src.models.coaching import (
 from src.models.notification import ActionType, ActorType, AuditLog
 from src.models.operations import JobRun
 from src.models.profile import Profile
+from src.services.activity_timeseries_retention import (
+    RETENTION_DAYS,
+    purge_expired_timeseries,
+)
 from src.services.anthropic_text import AnthropicApiError
 from src.services.backup import create_backup, latest_backup, restore_latest_backup
 from src.services.dreo_fan import (
@@ -82,9 +86,13 @@ from src.services.egress_budget import (
     STAGE_ORDINAL as EGRESS_STAGE_ORDINAL,
 )
 from src.services.egress_budget import (
+    STORAGE_BUDGET_BYTES,
+    evaluate_storage_stage,
+    response_byte_counter,
+)
+from src.services.egress_budget import (
     evaluate_stage as evaluate_egress_stage,
 )
-from src.services.egress_budget import response_byte_counter
 from src.services.environment_freshness import is_hive_temperature_fresh
 from src.services.environment_sync import (
     EnvironmentSyncService,
@@ -323,8 +331,54 @@ async def run_metric_baseline_refresh() -> JobResult:
     return JobResult.succeeded(**counters)
 
 
+async def run_activity_timeseries_retention() -> JobResult:
+    """Bound the table that is 82% of the database (Batch 247.2 / DS237-02).
+
+    **Dry-run until ``activity_timeseries_retention_enabled`` is set.** The table
+    is excluded from every backup, so a purge is irreversible; running it once is
+    a decision with a row count attached rather than a side effect of a deploy.
+    Until then this still earns its place, because it turns "somebody should
+    measure this" into a counter in ``job_runs`` on every pass.
+    """
+
+    enabled = settings.activity_timeseries_retention_enabled
+    async with AsyncSessionLocal() as session:
+        result = await purge_expired_timeseries(session, dry_run=not enabled)
+
+    counters = {
+        "retention_days": RETENTION_DAYS,
+        "expired_rows": result.expired_rows,
+        "expired_activities": result.expired_activities,
+        "deleted_rows": result.deleted_rows,
+    }
+    if result.dry_run:
+        return JobResult.skipped("dry_run", **counters)
+    return JobResult.succeeded(**counters)
+
+
 async def run_backup_restore_drill() -> JobResult:
-    """Restore the latest backup into a disposable database and check invariants."""
+    """Restore the latest backup into a disposable database and check invariants.
+
+    Batch 247 (DS237-04) registers this weekly. Batch 196 built the machinery and
+    it had **never once been pointed at a real archive** — zero ``job_runs`` rows
+    in the entire history of the table — so everything about the backup was right
+    except the part that matters: ``pg_restore --list`` proves an archive can be
+    *parsed*, never that it can be *restored*.
+    """
+
+    if not settings.backup_restore_database_url:
+        # Not a failure: an unconfigured drill has not failed, it has not run, and
+        # reporting it as failed every week would be a standing false alarm that
+        # teaches the operator to ignore this job. But it must not read as
+        # healthy either — "configured but inert" is the exact shape DS237-01
+        # found everywhere, so say plainly what is still unproved.
+        log.warning(
+            "backup restore drill is not configured",
+            reason="backup_restore_database_url_unset",
+            consequence="no backup has ever been proved restorable",
+            alert_route="sentry",
+        )
+        return JobResult.skipped("not_configured")
 
     try:
         result = await restore_latest_backup(
@@ -376,19 +430,44 @@ def _log_operator_alert(kind: str, reason: str, **fields: Any) -> None:
 
 
 async def run_egress_budget_check() -> JobResult:
-    """Flush the in-memory response-byte counter and stage an alert (DS190-07).
+    """Flush the response-byte counter, meter storage, and stage both alerts.
 
     Runs every 15 min alongside the other interval jobs. Each run persists its
     own delta as a ``job_runs`` counter (the durable record — see
     ``services/egress_budget.py`` for why the in-memory counter alone is not),
-    sums today's prior deltas plus today's backup archive size, and only logs
-    an operator alert when the day's highest staged threshold increases, so a
-    sustained overage does not spam an alert every 15 minutes.
+    and only logs an operator alert when a day's highest staged threshold
+    increases, so a sustained overage does not spam every 15 minutes.
+
+    **Batch 247 makes three corrections and adds one instrument.**
+
+    DS237-03 Defect C: the egress budget is the org-wide **monthly** cap and a
+    single day's total was being compared against it. Warning fired at 2.75 GB in
+    one day, while a steady 200 MB/day — 6 GB/month, over the cap — scored 0.036
+    and read ``ok`` for ever. Month-to-date is what the cap is about, so
+    month-to-date is what is now compared.
+
+    DS237-03 Defect A: this counter sums **HTTP response bytes**, which travel
+    application → client. The bytes that bill travel pooler → application, a
+    direction this proxy cannot see at all — which is why it recorded 16,312,169
+    bytes and stage ``ok`` on the day Supabase attributed 6.475 GB to this
+    project, a ~397x understatement by the one instrument built to prevent it.
+    Teaching it to count the other direction is a real change to the database
+    layer and is not attempted here; instead the counters and the alert now say
+    ``http_response_bytes``, which is all this can honestly claim.
+
+    DS237-02: ``pg_database_size`` joins the counters with its own staged
+    threshold. The database is at ~90% of a 500 MB cap, growing ~1.85 MB/day, and
+    was watched by nothing — in an app that has already filled its disk once
+    (DECISIONS #93). This job already runs every 15 minutes, already opens a
+    session, already writes counters and already dedupes alerts, so measuring it
+    here also builds the time series to project from, instead of the two anchors a
+    month apart that the audit had to reason from.
     """
 
     delta = response_byte_counter.drain()
     now = datetime.now(UTC)
     day_start = datetime(now.year, now.month, now.day)
+    month_start = datetime(now.year, now.month, 1)
 
     backup_bytes_today = 0
     latest = latest_backup(settings.backup_dir)
@@ -396,7 +475,19 @@ async def run_egress_budget_check() -> JobResult:
         backup_bytes_today = latest.size_bytes
 
     async with AsyncSessionLocal() as session:
-        prior_counters = (
+        month_counters = (
+            (
+                await session.execute(
+                    select(JobRun.counters).where(
+                        JobRun.job_name == "egress-budget",
+                        JobRun.started_at_utc >= month_start,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        today_counters = (
             (
                 await session.execute(
                     select(JobRun.counters).where(
@@ -408,39 +499,96 @@ async def run_egress_budget_check() -> JobResult:
             .scalars()
             .all()
         )
+        database_bytes = int(
+            await session.scalar(select(func.pg_database_size(func.current_database()))) or 0
+        )
 
-    prior_bytes = sum(int(row.get("response_bytes_delta", 0)) for row in prior_counters)
+    def _sum_bytes(rows: Iterable[Any]) -> int:
+        # The key was renamed in Batch 247; rows written before it carry the old
+        # one, and a month-to-date sum spans the rename on the day it ships.
+        return sum(
+            int(row.get("http_response_bytes_delta", row.get("response_bytes_delta", 0)))
+            for row in rows
+        )
+
+    prior_today = _sum_bytes(today_counters)
+    prior_month = _sum_bytes(month_counters)
     prior_max_ordinal = max(
-        (int(row.get("alert_stage_ordinal", 0)) for row in prior_counters), default=0
+        (int(row.get("alert_stage_ordinal", 0)) for row in today_counters), default=0
+    )
+    prior_max_storage_ordinal = max(
+        (int(row.get("storage_stage_ordinal", 0)) for row in today_counters), default=0
     )
 
-    total_today = prior_bytes + delta + backup_bytes_today
-    stage = evaluate_egress_stage(total_today)
+    total_today = prior_today + delta + backup_bytes_today
+    total_month = prior_month + delta + backup_bytes_today
+    stage = evaluate_egress_stage(total_month)
     ordinal = EGRESS_STAGE_ORDINAL[stage]
+    storage_stage = evaluate_storage_stage(database_bytes)
+    storage_ordinal = EGRESS_STAGE_ORDINAL[storage_stage]
 
     if ordinal > prior_max_ordinal:
-        _log_egress_operator_alert(stage, total_today)
+        _log_egress_operator_alert(stage, total_month)
+    if storage_ordinal > prior_max_storage_ordinal:
+        _log_storage_operator_alert(storage_stage, database_bytes)
 
     counters = {
-        "response_bytes_delta": delta,
+        "http_response_bytes_delta": delta,
         "backup_bytes_today": backup_bytes_today,
-        "total_bytes_today": total_today,
+        "http_response_bytes_today": total_today,
+        "http_response_bytes_month": total_month,
         "alert_stage_ordinal": ordinal,
+        "database_bytes": database_bytes,
+        "storage_stage_ordinal": storage_ordinal,
     }
-    if stage == "ok":
+    if stage == "ok" and storage_stage == "ok":
         return JobResult.succeeded(**counters)
-    return JobResult.degraded(f"egress_budget_{stage}", **counters)
+    worst = stage if ordinal >= storage_ordinal else f"storage_{storage_stage}"
+    return JobResult.degraded(f"egress_budget_{worst}", **counters)
 
 
-def _log_egress_operator_alert(stage: str, total_bytes_today: int) -> None:
-    """Structured log hook, outside user pushes — same route as backup alerts."""
+def _log_storage_operator_alert(stage: str, database_bytes: int) -> None:
+    """Batch 247 (DS237-02). Same route as the egress and backup alerts.
+
+    ``log.error`` is the delivery mechanism, because that is the level
+    ``SENTRY_DSN_BACKEND`` captures — the same reasoning as Batch 242.5's ledger
+    check.
+    """
+
+    log.error(
+        "operator storage alert",
+        kind=f"database_storage_{stage}",
+        database_bytes=database_bytes,
+        budget_bytes=STORAGE_BUDGET_BYTES,
+        used_fraction=round(database_bytes / STORAGE_BUDGET_BYTES, 4),
+        # The trap, carried on the alert itself rather than left in a runbook:
+        # near a full disk, VACUUM FULL / CLUSTER / CTAS all need the new copy's
+        # size free and cannot run. Only dump / truncate / reload works then.
+        remediation="delete_then_plain_vacuum; a full disk needs dump/truncate/reload",
+        alert_route="sentry",
+    )
+
+
+def _log_egress_operator_alert(stage: str, total_bytes_month: int) -> None:
+    """Structured log hook, outside user pushes — same route as backup alerts.
+
+    Batch 247 (DS237-03) corrects what this claims. The field is named for what
+    it counts — HTTP response bytes, application → client — because the bytes
+    that bill travel pooler → application and this proxy cannot see them. On
+    2026-08-30 it read 16,312,169 bytes and stage ``ok`` while Supabase
+    attributed 6.475 GB to the project. An instrument that overstates its own
+    scope is worse than one that admits it, because the green reading was taken
+    as evidence.
+    """
 
     log.error(
         "operator egress alert",
         kind=f"egress_budget_{stage}",
-        total_bytes_today=total_bytes_today,
+        http_response_bytes_month=total_bytes_month,
         budget_bytes=EGRESS_BUDGET_BYTES,
-        alert_route="provider_log_or_external_monitor",
+        measures="http_response_bytes (application->client); the billed direction "
+        "is pooler->application and is not visible to this proxy",
+        alert_route="sentry",
     )
 
 
@@ -2285,6 +2433,31 @@ def create_scheduler() -> AsyncIOScheduler:
         # fan within ~4 min instead of waiting a full interval (mirrors the other
         # interval jobs). A cheap no-op outside the overnight window.
         next_run_time=datetime.now(UTC) + timedelta(minutes=4),
+    )
+    # Batch 247.2: daily at 03:40 UTC, after the backup has been taken so a purge
+    # can never race the archive that does not contain this table anyway. Dry-run
+    # until deliberately enabled.
+    scheduler.add_job(
+        partial(run_tracked_job, "timeseries-retention", run_activity_timeseries_retention),
+        "cron",
+        hour=3,
+        minute=40,
+        id="timeseries_retention",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    # Batch 247.3 (DS237-04): weekly, an hour after the 03:00 UTC backup, so a
+    # regression in the archive surfaces within seven days rather than at the
+    # moment of need. Skips honestly until BACKUP_RESTORE_DATABASE_URL is set.
+    scheduler.add_job(
+        partial(run_tracked_job, "backup-drill", run_backup_restore_drill),
+        "cron",
+        day_of_week="sun",
+        hour=4,
+        minute=0,
+        id="backup_drill",
+        replace_existing=True,
+        misfire_grace_time=3600,
     )
     scheduler.add_job(
         partial(run_tracked_job, "egress-budget", run_egress_budget_check),

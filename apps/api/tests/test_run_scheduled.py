@@ -31,6 +31,9 @@ def test_jobs_cover_expected_names() -> None:
         # Batch 242.5 — external runner only, never on the in-process scheduler.
         # See test_job_ledger_freshness for the test that pins that separation.
         "ledger-freshness",
+        # Batch 247.2 — dry-run until deliberately enabled; the purge is
+        # irreversible because the table is excluded from every backup.
+        "timeseries-retention",
     }
 
 

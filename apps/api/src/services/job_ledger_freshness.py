@@ -64,6 +64,15 @@ MAX_AGE: dict[str, timedelta] = {
     "autopush": timedelta(days=1),
     # Weekly, Sunday 18:00 local.
     "weekly-review": timedelta(days=9),
+    # Batch 247.3 registered this weekly (Sunday 04:00 UTC). It skips honestly
+    # until BACKUP_RESTORE_DATABASE_URL is set, and a skip is still a run — so
+    # this catches the drill *stopping*, not the drill being unconfigured, which
+    # its own log.warning says on every pass.
+    "backup-drill": timedelta(days=9),
+    # Batch 247.2, daily at 03:40 UTC. Watched from the first deploy even while
+    # it only measures — a retention job that silently stopped is how a bounded
+    # table becomes an unbounded one again.
+    "timeseries-retention": timedelta(days=2),
 }
 
 

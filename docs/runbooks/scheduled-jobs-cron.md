@@ -52,6 +52,22 @@ Run each job from an external scheduler via the single-job runner:
 | `backup-drill`  | weekly after backup  | `0 4 * * 0`            |
 | `egress-budget` | every 15 min         | `*/15 * * * *`         |
 | `ledger-freshness` | hourly            | `20 * * * *`  ⭑ see below |
+| `timeseries-retention` | daily 03:40 UTC | `40 3 * * *`  ⚑ see below |
+
+⚑ **`timeseries-retention` ships dry-run and stays that way until somebody
+decides otherwise (Batch 247.2).** It deletes per-second samples for activities
+older than 90 days — **466,449 rows measured on 2026-09-02** — from
+`activity_timeseries`, which is **excluded from every backup by design**, so
+there is no undo. With `ACTIVITY_TIMESERIES_RETENTION_ENABLED` unset it measures
+and logs what it *would* remove on every pass and deletes nothing, which is
+still worth running: it turns "somebody should watch this" into a counter in
+`job_runs`. Two things to know before enabling it. The window is keyed on the
+**activity's** start time, not the sample's timestamp, so an activity spanning
+the cutoff goes whole rather than half. And a `DELETE` returns space to the
+free-space map without shrinking the files — `pg_database_size` will barely
+move. Actually reclaiming it needs `VACUUM FULL`, `pg_repack` or
+dump/truncate/reload, and `VACUUM FULL` needs the live data's size free before
+it starts, which is precisely how 2026-06-28 went wrong (DECISIONS #93).
 
 ⭑ **`ledger-freshness` is external-only, on purpose (Batch 242.5).** It is the
 one job in this table that is **not** registered on the in-process APScheduler,

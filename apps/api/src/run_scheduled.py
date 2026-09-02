@@ -29,6 +29,7 @@ Jobs:
     backup-drill    restore latest backup into a disposable DB and check invariants
     egress-budget   flush the response-byte counter and stage a Supabase egress alert
     ledger-freshness  report any job whose newest job_runs row is overdue
+    timeseries-retention  purge per-second samples older than the window (dry-run by default)
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ import argparse
 import asyncio
 
 from src.scheduler import (
+    run_activity_timeseries_retention,
     run_backup_restore_drill,
     run_egress_budget_check,
     run_evening_monitoring_alerts,
@@ -72,6 +74,7 @@ JOBS: dict[str, JobOperation] = {
     "backup": run_scheduled_backup,
     "backup-drill": run_backup_restore_drill,
     "egress-budget": run_egress_budget_check,
+    "timeseries-retention": run_activity_timeseries_retention,
     # Batch 242.5: deliberately absent from ``create_scheduler`` — a watchdog
     # that rides the scheduler it watches goes down with it. External runner
     # only (Railway cron or a manual ``railway run``).
