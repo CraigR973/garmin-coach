@@ -55,7 +55,6 @@ def test_every_externally_runnable_recurring_job_has_a_tolerance() -> None:
     watched = set(MAX_AGE)
     runnable = set(JOBS) - {
         "ledger-freshness",  # the watchdog does not watch itself
-        "backup-drill",  # not recurring yet — DS237-04 / Batch 247.3 registers it
     }
     assert runnable <= watched, f"unwatched jobs: {sorted(runnable - watched)}"
 

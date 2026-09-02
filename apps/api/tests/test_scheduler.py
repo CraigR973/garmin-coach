@@ -17,6 +17,7 @@ from sqlalchemy import func, inspect, select, text
 from sqlalchemy.exc import MissingGreenlet
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
+from src.config import settings
 from src.models.coaching import (
     DAILY_METRIC_PHASE_MORNING,
     Analysis,
@@ -33,6 +34,7 @@ from src.scheduler import (
     _retry_sync,
     _sync_garmin_daily,
     create_scheduler,
+    run_activity_timeseries_retention,
     run_backup_restore_drill,
     run_egress_budget_check,
     run_evening_monitoring_alerts,
@@ -147,11 +149,14 @@ async def test_run_backup_restore_drill_records_success_counters() -> None:
     restore_result.analysis_rows = 20
     restore_result.excluded_activity_timeseries_rows = 0
 
-    with patch(
-        "src.scheduler.restore_latest_backup",
-        new_callable=AsyncMock,
-        return_value=restore_result,
-    ) as restore:
+    with (
+        patch.object(settings, "backup_restore_database_url", "postgresql://drill/db"),
+        patch(
+            "src.scheduler.restore_latest_backup",
+            new_callable=AsyncMock,
+            return_value=restore_result,
+        ) as restore,
+    ):
         result = await run_backup_restore_drill()
 
     assert result.status == JobStatus.succeeded
@@ -169,6 +174,7 @@ async def test_run_backup_restore_drill_alerts_on_simulated_failure() -> None:
     logger = MagicMock()
 
     with (
+        patch.object(settings, "backup_restore_database_url", "postgresql://drill/db"),
         patch(
             "src.scheduler.restore_latest_backup",
             new_callable=AsyncMock,
@@ -205,6 +211,21 @@ class _JobRunCountersExecuteResult:
         return self._counters
 
 
+def _egress_session(
+    counters: list[dict[str, int]] | None = None, *, database_bytes: int = 0
+) -> AsyncMock:
+    """A session double for ``run_egress_budget_check``.
+
+    Batch 247: the job now issues two counter reads (month-to-date and today) and
+    one ``pg_database_size`` scalar, so a single canned ``execute`` result is no
+    longer enough.
+    """
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=_JobRunCountersExecuteResult(counters or []))
+    session.scalar = AsyncMock(return_value=database_bytes)
+    return session
+
+
 def _session_ctx(session: AsyncMock) -> Any:
     class _Ctx:
         async def __aenter__(self) -> AsyncMock:
@@ -218,8 +239,7 @@ def _session_ctx(session: AsyncMock) -> Any:
 
 @pytest.mark.asyncio
 async def test_run_egress_budget_check_ok_stage_does_not_alert() -> None:
-    session = AsyncMock()
-    session.execute = AsyncMock(return_value=_JobRunCountersExecuteResult([]))
+    session = _egress_session(database_bytes=100_000_000)
     logger = MagicMock()
 
     with (
@@ -232,8 +252,13 @@ async def test_run_egress_budget_check_ok_stage_does_not_alert() -> None:
         result = await run_egress_budget_check()
 
     assert result.status == JobStatus.succeeded
-    assert result.counters["total_bytes_today"] == 1000
+    # Batch 247 (DS237-03 Defect A): named for what it counts. The bytes that
+    # bill travel pooler -> application and this proxy cannot see them.
+    assert result.counters["http_response_bytes_today"] == 1000
+    assert result.counters["http_response_bytes_month"] == 1000
     assert result.counters["alert_stage_ordinal"] == 0
+    assert result.counters["database_bytes"] == 100_000_000
+    assert result.counters["storage_stage_ordinal"] == 0
     logger.error.assert_not_called()
 
 
@@ -241,8 +266,7 @@ async def test_run_egress_budget_check_ok_stage_does_not_alert() -> None:
 async def test_run_egress_budget_check_alerts_once_on_new_stage() -> None:
     from src.services.egress_budget import BUDGET_BYTES
 
-    session = AsyncMock()
-    session.execute = AsyncMock(return_value=_JobRunCountersExecuteResult([]))
+    session = _egress_session(database_bytes=100_000_000)
     logger = MagicMock()
 
     with (
@@ -259,9 +283,11 @@ async def test_run_egress_budget_check_alerts_once_on_new_stage() -> None:
     logger.error.assert_called_once_with(
         "operator egress alert",
         kind="egress_budget_warning",
-        total_bytes_today=int(BUDGET_BYTES * 0.6),
+        http_response_bytes_month=int(BUDGET_BYTES * 0.6),
         budget_bytes=BUDGET_BYTES,
-        alert_route="provider_log_or_external_monitor",
+        measures="http_response_bytes (application->client); the billed direction "
+        "is pooler->application and is not visible to this proxy",
+        alert_route="sentry",
     )
 
 
@@ -269,9 +295,10 @@ async def test_run_egress_budget_check_alerts_once_on_new_stage() -> None:
 async def test_run_egress_budget_check_does_not_repeat_alert_for_same_stage() -> None:
     from src.services.egress_budget import BUDGET_BYTES
 
-    session = AsyncMock()
+    # The old key name on purpose: a month-to-date sum spans the Batch 247 rename
+    # on the day it ships, so the reader must still understand rows written before it.
     prior_counters = [{"response_bytes_delta": 0, "alert_stage_ordinal": 1}]
-    session.execute = AsyncMock(return_value=_JobRunCountersExecuteResult(prior_counters))
+    session = _egress_session(prior_counters, database_bytes=100_000_000)
     logger = MagicMock()
 
     with (
@@ -289,8 +316,7 @@ async def test_run_egress_budget_check_does_not_repeat_alert_for_same_stage() ->
 
 @pytest.mark.asyncio
 async def test_run_egress_budget_check_includes_todays_backup_size() -> None:
-    session = AsyncMock()
-    session.execute = AsyncMock(return_value=_JobRunCountersExecuteResult([]))
+    session = _egress_session(database_bytes=100_000_000)
     backup_info = MagicMock()
     backup_info.size_bytes = 5_000_000
     backup_info.created_at = datetime.now(UTC)
@@ -304,7 +330,7 @@ async def test_run_egress_budget_check_includes_todays_backup_size() -> None:
         result = await run_egress_budget_check()
 
     assert result.counters["backup_bytes_today"] == 5_000_000
-    assert result.counters["total_bytes_today"] == 5_000_000
+    assert result.counters["http_response_bytes_today"] == 5_000_000
 
 
 @pytest.mark.asyncio
@@ -680,6 +706,11 @@ def test_create_scheduler_registers_environment_jobs() -> None:
         assert job_ids == {
             "connection_warmup",
             "daily_backup",
+            # Batch 247.3 (DS237-04): Batch 196 built the drill and it had never
+            # once been pointed at a real archive — zero job_runs rows ever.
+            "backup_drill",
+            # Batch 247.2 — registered from the first deploy, dry-run by default.
+            "timeseries_retention",
             "metric_baseline_refresh",
             "hive_temperature_poll",
             "wake_check",
@@ -2176,3 +2207,175 @@ async def test_profile_loop_survives_a_sibling_iteration_rollback(
     assert result.status is not JobStatus.failed
     assert result.counters["failed"] == 1
     assert result.counters["generated"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Batch 247 — the runway: storage measured, and the meter says what it measures
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_storage_threshold_alerts_when_the_database_crosses_it() -> None:
+    """DS237-02: the database was at ~90% of a 500 MB cap, watched by nothing.
+
+    Egress got a meter after its incident. Storage had *also* already caused one
+    — DECISIONS #93 records the 2026-06-28 backfill filling the physical disk,
+    at which point `VACUUM FULL` could not run because there was no room to
+    write the compacted copy — and got nothing.
+    """
+    from src.services.egress_budget import STORAGE_BUDGET_BYTES
+
+    session = _egress_session(database_bytes=int(STORAGE_BUDGET_BYTES * 0.91))
+    logger = MagicMock()
+
+    with (
+        patch("src.scheduler.response_byte_counter") as counter,
+        patch("src.scheduler.latest_backup", return_value=None),
+        patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
+        patch("src.scheduler.log", logger),
+    ):
+        counter.drain.return_value = 0
+        result = await run_egress_budget_check()
+
+    assert result.status == JobStatus.degraded
+    assert result.reason == "egress_budget_storage_critical"
+    assert result.counters["storage_stage_ordinal"] == 2
+    logger.error.assert_called_once()
+    kwargs = logger.error.call_args.kwargs
+    assert kwargs["kind"] == "database_storage_critical"
+    # The trap travels with the alert rather than living in a runbook: near a
+    # full disk, VACUUM FULL / CLUSTER / CTAS all need the new copy's size free.
+    assert "dump/truncate/reload" in kwargs["remediation"]
+
+
+@pytest.mark.asyncio
+async def test_a_storage_alert_is_not_repeated_within_the_day() -> None:
+    from src.services.egress_budget import STORAGE_BUDGET_BYTES
+
+    session = _egress_session(
+        [{"response_bytes_delta": 0, "storage_stage_ordinal": 2}],
+        database_bytes=int(STORAGE_BUDGET_BYTES * 0.91),
+    )
+    logger = MagicMock()
+
+    with (
+        patch("src.scheduler.response_byte_counter") as counter,
+        patch("src.scheduler.latest_backup", return_value=None),
+        patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
+        patch("src.scheduler.log", logger),
+    ):
+        counter.drain.return_value = 0
+        result = await run_egress_budget_check()
+
+    assert result.status == JobStatus.degraded
+    logger.error.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_steady_daily_rate_over_the_monthly_cap_no_longer_reads_ok() -> None:
+    """DS237-03 Defect C: a daily total was compared against a monthly cap.
+
+    Warning fired at 2.75 GB *in a single day*, while a steady 200 MB/day — 6 GB
+    a month, over the cap — scored 0.036 and read `ok` for ever. Month-to-date is
+    what the cap is about, so month-to-date is what is compared.
+    """
+    from src.services.egress_budget import BUDGET_BYTES
+
+    daily = 200_000_000
+    # Fifteen prior days at 200 MB is 3 GB — over half the monthly cap, and under
+    # a fiftieth of it on any single day.
+    prior = [{"http_response_bytes_delta": daily} for _ in range(15)]
+    session = _egress_session(prior, database_bytes=100_000_000)
+
+    with (
+        patch("src.scheduler.response_byte_counter") as counter,
+        patch("src.scheduler.latest_backup", return_value=None),
+        patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
+    ):
+        counter.drain.return_value = 0
+        result = await run_egress_budget_check()
+
+    assert result.counters["http_response_bytes_month"] == 15 * daily
+    assert result.counters["http_response_bytes_month"] > BUDGET_BYTES * 0.5
+    assert result.status == JobStatus.degraded
+    assert result.reason == "egress_budget_warning"
+
+
+@pytest.mark.asyncio
+async def test_the_drill_skips_honestly_when_it_is_not_configured() -> None:
+    """DS237-04: registered weekly, but `BACKUP_RESTORE_DATABASE_URL` is unset.
+
+    Failing every week would be a standing false alarm that teaches the operator
+    to ignore this job. But it must not read as healthy either — "configured but
+    inert" is the exact shape DS237-01 found everywhere — so it skips and says
+    plainly, every pass, that no backup has ever been proved restorable.
+    """
+    logger = MagicMock()
+    restore = AsyncMock()
+
+    with (
+        patch.object(settings, "backup_restore_database_url", ""),
+        patch("src.scheduler.restore_latest_backup", restore),
+        patch("src.scheduler.log", logger),
+    ):
+        result = await run_backup_restore_drill()
+
+    assert result.status is JobStatus.skipped
+    assert result.reason == "not_configured"
+    # A skip must not exit non-zero — that is what makes it a false alarm.
+    assert result.exit_code == 0
+    restore.assert_not_awaited()
+    logger.warning.assert_called_once()
+    assert "restorable" in logger.warning.call_args.kwargs["consequence"]
+
+
+@pytest.mark.asyncio
+async def test_retention_ships_registered_and_dry_run() -> None:
+    """Batch 247.2: the job runs from the first deploy and deletes nothing.
+
+    This is the shape the group's hard stop requires — build it, test it, watch
+    it report against production, and make the first real execution an explicit
+    decision with a row count attached rather than a side effect of a deploy.
+    """
+    session = AsyncMock()
+    scheduler = create_scheduler()
+    assert scheduler.get_job("timeseries_retention") is not None
+    assert settings.activity_timeseries_retention_enabled is False
+
+    purge = AsyncMock(
+        return_value=SimpleNamespace(
+            expired_rows=466_449, expired_activities=552, deleted_rows=0, dry_run=True
+        )
+    )
+    with (
+        patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
+        patch("src.scheduler.purge_expired_timeseries", purge),
+    ):
+        result = await run_activity_timeseries_retention()
+
+    assert result.status is JobStatus.skipped
+    assert result.reason == "dry_run"
+    assert result.counters["expired_rows"] == 466_449
+    assert result.counters["deleted_rows"] == 0
+    # The default must reach the service, not merely exist in config.
+    assert purge.await_args.kwargs["dry_run"] is True
+
+
+@pytest.mark.asyncio
+async def test_retention_deletes_only_when_deliberately_enabled() -> None:
+    session = AsyncMock()
+    purge = AsyncMock(
+        return_value=SimpleNamespace(
+            expired_rows=466_449, expired_activities=552, deleted_rows=466_449, dry_run=False
+        )
+    )
+    with (
+        patch.object(settings, "activity_timeseries_retention_enabled", True),
+        patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
+        patch("src.scheduler.purge_expired_timeseries", purge),
+    ):
+        result = await run_activity_timeseries_retention()
+
+    assert result.status is JobStatus.succeeded
+    assert result.counters["deleted_rows"] == 466_449
+    assert purge.await_args.kwargs["dry_run"] is False

@@ -22,6 +22,14 @@ from datetime import UTC, date, datetime
 
 BUDGET_BYTES = 5_500_000_000
 
+# Batch 247 (DS237-02): the *other* Supabase free-plan cap, and the one this app
+# has already hit the hard version of. DECISIONS #93 records the 2026-06-28
+# backfill overshooting to ~625 MB and filling the physical disk, at which point
+# ``VACUUM FULL`` could not run because there was no room to write the compacted
+# copy. Egress got a meter after its incident; storage — which had already caused
+# one — got nothing until now.
+STORAGE_BUDGET_BYTES = 500_000_000
+
 STAGE_ORDINAL: dict[str, int] = {"ok": 0, "warning": 1, "critical": 2}
 
 
@@ -37,14 +45,43 @@ _STAGES: tuple[_Stage, ...] = (
     _Stage("warning", 0.5),
 )
 
+# Storage crosses its thresholds far more slowly than egress and cannot be
+# recovered by waiting for a billing cycle, so it warns earlier and leaves more
+# room to act. At the measured ~1.85 MB/day, 75% is roughly a fortnight of notice
+# and 90% is roughly four days — and the escape from a *full* disk is a
+# dump/truncate/reload, not a flag.
+_STORAGE_STAGES: tuple[_Stage, ...] = (
+    _Stage("critical", 0.90),
+    _Stage("warning", 0.75),
+)
 
-def evaluate_stage(bytes_used_today: int, budget_bytes: int = BUDGET_BYTES) -> str:
-    """Return the highest staged threshold ``bytes_used_today`` has crossed."""
+
+def evaluate_stage(bytes_used: int, budget_bytes: int = BUDGET_BYTES) -> str:
+    """Return the highest staged threshold ``bytes_used`` has crossed.
+
+    Batch 247 (DS237-03, Defect C) renamed the parameter, because the old name
+    said ``bytes_used_today`` and the budget it is measured against is the
+    org-wide **monthly** cap. Warning therefore fired at 2.75 GB *in a single
+    day*, while a steady 200 MB/day — 6 GB/month, over the cap — scored 0.036 and
+    read ``ok`` for ever. The caller now passes month-to-date.
+    """
 
     if budget_bytes <= 0:
         raise ValueError("budget_bytes must be positive")
-    fraction = max(bytes_used_today, 0) / budget_bytes
+    fraction = max(bytes_used, 0) / budget_bytes
     for stage in _STAGES:
+        if fraction >= stage.threshold:
+            return stage.name
+    return "ok"
+
+
+def evaluate_storage_stage(bytes_used: int, budget_bytes: int = STORAGE_BUDGET_BYTES) -> str:
+    """Return the highest storage threshold ``pg_database_size`` has crossed."""
+
+    if budget_bytes <= 0:
+        raise ValueError("budget_bytes must be positive")
+    fraction = max(bytes_used, 0) / budget_bytes
+    for stage in _STORAGE_STAGES:
         if fraction >= stage.threshold:
             return stage.name
     return "ok"
