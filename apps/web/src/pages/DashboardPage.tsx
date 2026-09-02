@@ -48,9 +48,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { VerdictHero } from '@/components/VerdictHero';
-import { GoodMorningCta } from '@/components/GoodMorningCta';
-import { BriefGeneratingCta } from '@/components/BriefGeneratingCta';
-import { BriefFailedCta } from '@/components/BriefFailedCta';
+import { BriefPendingCta } from '@/components/BriefPendingCta';
 import { FeedbackControl } from '@/components/FeedbackControl';
 import { SleepSnapshotBody } from '@/components/SleepSnapshotBody';
 import { SleepPrepBody } from '@/components/SleepPrepBody';
@@ -60,7 +58,8 @@ import { WeeklyMixCard } from '@/components/WeeklyMixCard';
 import { TodayActions } from '@/components/TodayActions';
 import { useAuth } from '@/contexts/AuthContext';
 import { isBikeWorkout, useDailyPhase } from '@/hooks/useDailyPhase';
-import { fetchDailyLoop, useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
+import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
+import { useDailyLoopFreshness } from '@/hooks/useDailyLoopFreshness';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useRegisterCoachAnchor } from '@/contexts/CoachAnchorContext';
 import { apiFetch } from '@/lib/api';
@@ -71,13 +70,12 @@ import {
   formatDateTime,
   friendlyDate,
   hm,
-  localTodayIso,
   nextDays,
   remContext,
 } from '@/lib/dailyFlow';
 import { greetingForNow, personalStatusLine, verdictLabel } from '@/lib/copy';
 import { dayStateForWorkouts, workoutTypeLabel, type DayCategory } from '@/lib/workoutCategories';
-import { actionSection, nextAction, overnightDataReady, type NextAction } from '@/lib/homeActions';
+import { actionSection, nextAction, type NextAction } from '@/lib/homeActions';
 import { hasReviewedSleep } from '@/lib/sleepReview';
 import { hasReviewedBrief } from '@/lib/briefReview';
 import { hasSeenWalkRead, markWalkReadSeen } from '@/lib/walkRead';
@@ -258,22 +256,13 @@ export function DashboardPage() {
   // served brief is for a day other than local-today (derived from the profile
   // timezone, matching the backend, not the browser's UTC date) and let the user
   // force a genuinely fresh, cache-bypassing refetch.
-  const isStale =
-    isOnline &&
-    data != null &&
-    data.subjectDate !== localTodayIso(player?.timezone);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const refreshDailyLoop = async () => {
-    setIsRefreshing(true);
-    try {
-      await queryClient.fetchQuery({
-        queryKey: ['daily-loop', 'today'],
-        queryFn: () => fetchDailyLoop(undefined, { forceFresh: true }),
-      });
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
+  // Batch 248 (UX241-11): lifted into a shared hook so `/brief` — the page the
+  // brief-ready push actually opens — inherits it instead of going without.
+  const {
+    isStale,
+    isRefreshing,
+    refresh: refreshDailyLoop,
+  } = useDailyLoopFreshness(data, { isOnline });
   const [quickAddTarget, setQuickAddTarget] = useState<{
     date: string;
     category: Exclude<DayCategory, 'rest'>;
@@ -779,18 +768,11 @@ export function DashboardPage() {
           )}
           recap={morningFeelRecap(daily.manualEntry ?? null)}
         />
-      ) : daily.briefGeneration?.status === 'failed' ? (
-        // Batch 141: a failed generation is a retryable error here too, not an
-        // endless "Writing your brief" — outranks the generating state (a failure
-        // always has a check-in behind it).
-        <BriefFailedCta dateLabel={friendlyDate(daily.subjectDate)} />
-      ) : daily.manualEntry != null ? (
-        <BriefGeneratingCta dateLabel={friendlyDate(daily.subjectDate)} />
       ) : (
-        <GoodMorningCta
-          dateLabel={friendlyDate(daily.subjectDate)}
-          overnightDataReady={overnightDataReady(daily)}
-        />
+        // Batch 248 (UX241-02): the three-way choice moved into one shared
+        // component, so `/brief` renders exactly what Home renders. Home was
+        // always right about these states; the other page had none of them.
+        <BriefPendingCta daily={daily} />
       )}
 
       {/* Batch 96: an unviewed brief outranks every action card, including the

@@ -1674,3 +1674,105 @@ async def test_post_ride_read_marks_failed_when_generation_raises_a_bare_error(
     assert generation_status is not None
     assert generation_status.status == "failed"
     assert generation_status.reason == "generation_error"
+
+
+async def _seed_brief_profile(
+    session_factory: async_sessionmaker[AsyncSession], user_id: uuid.UUID, name: str
+) -> None:
+    async with session_factory() as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name=name,
+                role=UserRole.player,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_checkin_background_alerts_on_any_anthropic_reason_not_just_billing(
+    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Batch 248 (AI238-03).
+
+    The scheduler's two paths have always alerted on any `AnthropicApiError`;
+    the morning brief — the path Mark uses every day — gated on
+    `reason == "billing"`. So the 2026-08-30 read timeouts, a spend cap, a 429,
+    a 529 and an auth failure each produced a failure card for him and silence
+    for the operator.
+    """
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 8, 30)
+    await _seed_brief_profile(session_factory, user_id, "Timeout Alerts")
+
+    alert = AsyncMock(return_value=True)
+    monkeypatch.setattr(daily_loop_router, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(daily_loop_router, "_local_time", lambda timezone_name: time(8, 0))
+    monkeypatch.setattr("src.scheduler._sync_morning_inputs", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        daily_loop_router,
+        "morning_input_presence",
+        AsyncMock(return_value=MagicMock(ready_for_read=lambda **_kw: True)),
+    )
+    monkeypatch.setattr(
+        ExecutableCoachingService,
+        "regenerate_after_morning_checkin",
+        AsyncMock(side_effect=AnthropicApiError("timed out", reason="timeout", status_code=0)),
+    )
+    monkeypatch.setattr(
+        daily_loop_router.BriefGenerationStatusService,
+        "mark_failed",
+        AsyncMock(return_value=MagicMock()),
+    )
+    monkeypatch.setattr(
+        "src.routers.daily_loop.NudgeAlertService.notify_admin_generation_failure",
+        alert,
+    )
+
+    await daily_loop_router._generate_brief_after_checkin(user_id, subject_date)
+
+    alert.assert_awaited_once()
+    assert alert.await_args.kwargs["reason"] == "timeout"
+
+
+@pytest.mark.asyncio
+async def test_checkin_background_does_not_alert_when_his_watch_has_not_synced(
+    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`inputs` is excluded from the widened alert on purpose.
+
+    That is Mark's watch not having synced — a user-state condition rather than a
+    fault, already visible to him on the screen. Alerting on it would make the
+    operator signal Batch 248 exists to create into noise on its first morning.
+    """
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    subject_date = date(2026, 8, 20)
+    await _seed_brief_profile(session_factory, user_id, "No Alert For Inputs")
+
+    alert = AsyncMock(return_value=True)
+    monkeypatch.setattr(daily_loop_router, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(daily_loop_router, "_local_time", lambda timezone_name: time(8, 0))
+    monkeypatch.setattr("src.scheduler._sync_morning_inputs", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        ExecutableCoachingService,
+        "regenerate_after_morning_checkin",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        daily_loop_router.BriefGenerationStatusService,
+        "mark_failed",
+        AsyncMock(return_value=MagicMock()),
+    )
+    monkeypatch.setattr(
+        "src.routers.daily_loop.NudgeAlertService.notify_admin_generation_failure",
+        alert,
+    )
+
+    await daily_loop_router._generate_brief_after_checkin(user_id, subject_date)
+
+    alert.assert_not_awaited()

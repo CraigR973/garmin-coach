@@ -9,12 +9,18 @@ from src.config import settings
 from src.services.anthropic_text import (
     AnthropicApiError,
     _thinking_tokens,
+    anthropic_http_status,
     classify_anthropic_error,
     configured_effort,
     configured_thinking,
     generate_anthropic_text,
 )
 from src.services.morning_analysis import MorningAnalysisError
+
+
+async def _no_sleep(_seconds: float) -> None:
+    """Retry backoff is real time; the tests must not spend it."""
+    return None
 
 
 class _DummyResponse:
@@ -526,3 +532,273 @@ def test_thinking_tokens_are_logged_when_the_provider_reports_them() -> None:
     # Absent on a thinking-off response, and on providers that omit the field.
     assert _thinking_tokens({"output_tokens": 2305}) is None
     assert _thinking_tokens({"output_tokens_details": None}) is None
+
+
+# ---------------------------------------------------------------------------
+# Batch 248 — AI238-04: transport failures were classified by nothing and
+# retried by nothing. Both production outages replayed as tests.
+# ---------------------------------------------------------------------------
+
+
+class _ScriptedAsyncClient:
+    """Plays a scripted sequence of outcomes, one per attempt.
+
+    Each item is either an exception to raise or a payload to return, so a test
+    can express "529, then success" without stubbing the whole transport.
+    """
+
+    script: list[Any] = []
+    attempts: int = 0
+    read_timeouts: list[float] = []
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        timeout = kwargs.get("timeout")
+        if timeout is not None:
+            _ScriptedAsyncClient.read_timeouts.append(timeout.read)
+
+    async def __aenter__(self) -> _ScriptedAsyncClient:
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        return None
+
+    async def post(self, url: str, *, headers: dict[str, str], json: dict[str, Any]) -> Any:
+        index = _ScriptedAsyncClient.attempts
+        _ScriptedAsyncClient.attempts += 1
+        outcome = _ScriptedAsyncClient.script[index]
+        if isinstance(outcome, Exception):
+            raise outcome
+        return _DummyResponse(outcome)
+
+    @classmethod
+    def load(cls, *outcomes: Any) -> None:
+        cls.script = list(outcomes)
+        cls.attempts = 0
+        cls.read_timeouts = []
+
+
+def _ok_payload() -> dict[str, Any]:
+    return {
+        "content": [{"type": "text", "text": "the read"}],
+        "model": "claude-test",
+        "stop_reason": "end_turn",
+    }
+
+
+def _status_error(status_code: int, *, etype: str, message: str) -> httpx.HTTPStatusError:
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    response = httpx.Response(
+        status_code,
+        json={"error": {"type": etype, "message": message}},
+        request=request,
+    )
+    return httpx.HTTPStatusError("boom", request=request, response=response)
+
+
+class _RaisingResponse:
+    def __init__(self, error: httpx.HTTPStatusError) -> None:
+        self._error = error
+
+    def raise_for_status(self) -> None:
+        raise self._error
+
+    def json(self) -> Any:  # pragma: no cover - never reached
+        return {}
+
+
+async def _generate() -> Any:
+    return await generate_anthropic_text(
+        api_key="test-key",
+        model_name="claude-test",
+        max_tokens=4096,
+        system_prompt="system",
+        user_prompt="prompt",
+        error_cls=MorningAnalysisError,
+    )
+
+
+@pytest.mark.asyncio
+async def test_read_timeout_becomes_a_classified_timeout_not_an_escape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The 2026-08-30 outage, replayed.
+
+    Seven `httpx.ReadTimeout`s between 08:59 and 09:23, every one uncaught: it
+    escaped `generate_anthropic_text` entirely, classified as nothing, reached
+    Mark as a bare 500 the web client could not parse and the operator as
+    silence. `main.py` registers one exception handler and it is not this one.
+    """
+    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _ScriptedAsyncClient)
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    _ScriptedAsyncClient.load(
+        httpx.ReadTimeout("timed out", request=request),
+        httpx.ReadTimeout("timed out", request=request),
+        httpx.ReadTimeout("timed out", request=request),
+    )
+
+    with pytest.raises(AnthropicApiError) as caught:
+        await _generate()
+
+    assert caught.value.reason == "timeout"
+    # No response ever arrived, so there is no upstream status to report.
+    assert caught.value.status_code == 0
+
+
+@pytest.mark.asyncio
+async def test_a_connection_failure_is_transport_not_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`timeout` means "we may already have been billed for an answer we hung up
+    on" (Batch 234's finding); `transport` means the request never landed. The
+    two deserve different reason slugs even though both are `RequestError`s."""
+    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _ScriptedAsyncClient)
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    _ScriptedAsyncClient.load(
+        httpx.ConnectError("refused", request=request),
+        httpx.ConnectError("refused", request=request),
+        httpx.ConnectError("refused", request=request),
+    )
+
+    with pytest.raises(AnthropicApiError) as caught:
+        await _generate()
+
+    assert caught.value.reason == "transport"
+
+
+@pytest.mark.asyncio
+async def test_an_overloaded_response_is_retried_and_can_succeed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A single 529 at 06:40 used to cost the whole morning until the 11:00
+    backstop, because nothing anywhere in the app retried anything."""
+    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _ScriptedAsyncClient)
+    monkeypatch.setattr("src.services.anthropic_text.asyncio.sleep", _no_sleep)
+
+    async def _post(self: Any, url: str, *, headers: Any, json: Any) -> Any:
+        index = _ScriptedAsyncClient.attempts
+        _ScriptedAsyncClient.attempts += 1
+        outcome = _ScriptedAsyncClient.script[index]
+        if isinstance(outcome, httpx.HTTPStatusError):
+            return _RaisingResponse(outcome)
+        return _DummyResponse(outcome)
+
+    monkeypatch.setattr(_ScriptedAsyncClient, "post", _post)
+    _ScriptedAsyncClient.load(
+        _status_error(529, etype="overloaded_error", message="Overloaded"),
+        _ok_payload(),
+    )
+
+    result = await _generate()
+
+    assert result.output_markdown == "the read"
+    assert _ScriptedAsyncClient.attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_billing_is_never_auto_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A credit outage does not clear in eight seconds. Retrying it turns one
+    failure into three identical log lines while Mark waits three times as long
+    for the same answer."""
+    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _ScriptedAsyncClient)
+    monkeypatch.setattr("src.services.anthropic_text.asyncio.sleep", _no_sleep)
+
+    async def _post(self: Any, url: str, *, headers: Any, json: Any) -> Any:
+        _ScriptedAsyncClient.attempts += 1
+        return _RaisingResponse(
+            _status_error(
+                400,
+                etype="invalid_request_error",
+                message="Your credit balance is too low to access the Anthropic API.",
+            )
+        )
+
+    monkeypatch.setattr(_ScriptedAsyncClient, "post", _post)
+    _ScriptedAsyncClient.load(None)
+
+    with pytest.raises(AnthropicApiError) as caught:
+        await _generate()
+
+    assert caught.value.reason == "billing"
+    assert _ScriptedAsyncClient.attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_a_retry_is_refused_when_the_call_budget_is_gone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The retry budget is the whole call, not each attempt.
+
+    Batch 234 derived the read budget, Batch 232 derived the generation lease
+    from it, and `validate_timeout_ordering()` refuses to boot unless the lease
+    outlives the paid call. Three attempts each given the full read budget would
+    be 3x550s against a 670s lease — a retry outliving its own lease and handing
+    the artifact scope to another worker mid-flight.
+    """
+    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _ScriptedAsyncClient)
+    monkeypatch.setattr("src.services.anthropic_text.asyncio.sleep", _no_sleep)
+    # A budget too small to fit a second attempt.
+    monkeypatch.setattr(settings, "anthropic_read_timeout_seconds", 5.0)
+
+    async def _post(self: Any, url: str, *, headers: Any, json: Any) -> Any:
+        _ScriptedAsyncClient.attempts += 1
+        return _RaisingResponse(_status_error(529, etype="overloaded_error", message="Overloaded"))
+
+    monkeypatch.setattr(_ScriptedAsyncClient, "post", _post)
+    _ScriptedAsyncClient.load(None)
+
+    with pytest.raises(AnthropicApiError) as caught:
+        await _generate()
+
+    assert caught.value.reason == "overloaded"
+    # Retryable, but there was no budget left to retry inside.
+    assert _ScriptedAsyncClient.attempts == 1
+
+
+def test_the_spend_cap_wording_classifies_as_billing() -> None:
+    """The 2026-08-31 outage, replayed — and it is not the 2026-07-21 one.
+
+    A configured spend cap arrives as HTTP 400 `invalid_request_error` reading
+    "You have reached your specified API usage limits". None of "billing",
+    "credit balance" or "plans & billing" appears in it, so it classified as
+    `invalid_request`: generic copy for Mark, no alert for the operator. It was
+    proved live when Batch 233's own verification tripped the cap.
+    """
+    assert (
+        classify_anthropic_error(
+            400,
+            error_type="invalid_request_error",
+            error_message="You have reached your specified API usage limits.",
+        )
+        == "billing"
+    )
+
+
+def test_the_original_credit_wording_still_classifies_as_billing() -> None:
+    assert (
+        classify_anthropic_error(
+            400,
+            error_type="invalid_request_error",
+            error_message="Your credit balance is too low to access the Anthropic API.",
+        )
+        == "billing"
+    )
+
+
+def test_an_ordinary_bad_request_is_still_not_billing() -> None:
+    """The widened match must not swallow every 400."""
+    assert (
+        classify_anthropic_error(
+            400,
+            error_type="invalid_request_error",
+            error_message="messages: at least one message is required",
+        )
+        == "invalid_request"
+    )
+
+
+def test_a_timeout_advises_a_retry_rather_than_claiming_upstream_broke() -> None:
+    """503 says "try again shortly", 502 says "upstream broke". Seven timeouts
+    on 2026-08-30 said the second about the first."""
+    assert anthropic_http_status("timeout") == 503
+    assert anthropic_http_status("server_error") == 503
+    assert anthropic_http_status("auth") == 502

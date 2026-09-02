@@ -21,6 +21,7 @@ import uuid
 from datetime import date, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,8 +42,10 @@ from src.services.anthropic_text import (
     anthropic_http_status,
     anthropic_user_message,
 )
-from src.services.brief_chat import QUESTION_MAX_LENGTH, BriefChatService
+from src.services.brief_chat import QUESTION_MAX_LENGTH, BriefChatError, BriefChatService
 from src.services.nudge_alerts import NudgeAlertService
+
+log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/coach", tags=["coach-chat"])
 
@@ -99,13 +102,28 @@ async def ask_coach(
     except AnthropicApiError as exc:
         # Same handling as the per-read surface (Batch 143): this LLM call runs
         # in-request, so an outage would otherwise surface as an unparseable 500.
-        if exc.reason == "billing":
-            await NudgeAlertService(db).notify_admin_generation_failure(
-                reason=exc.reason, subject_date=_local_today(player.timezone), commit=True
-            )
+        # Batch 248 (AI238-03): alert on every reason, matching the scheduler.
+        await NudgeAlertService(db).notify_admin_generation_failure(
+            reason=exc.reason, subject_date=_local_today(player.timezone), commit=True
+        )
         raise HTTPException(
             status_code=anthropic_http_status(exc.reason),
             detail=anthropic_user_message(exc.reason),
+        ) from exc
+    except BriefChatError as exc:
+        # Batch 248 (AI238-11): ``BriefChatError`` is the *other* way this call
+        # fails — a missing API key, or a response the boundary could not parse
+        # into text — and nothing caught it. It escaped to a bare 500 whose
+        # plain-text body the web client cannot parse, which is exactly the
+        # regression Batch 143 closed for ``AnthropicApiError`` and left open
+        # here. Same shape of answer: a real JSON body, and the operator told.
+        log.exception("brief chat failed", profile_id=str(player.id))
+        await NudgeAlertService(db).notify_admin_generation_failure(
+            reason="chat_error", subject_date=_local_today(player.timezone), commit=True
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=anthropic_user_message("chat_error"),
         ) from exc
     return BriefMessageTurnEnvelope(
         data=BriefMessageTurnData(

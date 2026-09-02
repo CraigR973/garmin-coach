@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { Activity, BedDouble, ClipboardCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { BriefListenControls } from '@/components/BriefListenControls';
+import { BriefPendingCta } from '@/components/BriefPendingCta';
+import { StaleDataNotice } from '@/components/EmptyState';
 import { useRegisterCoachAnchor } from '@/contexts/CoachAnchorContext';
 import { Markdown } from '@/components/Markdown';
 import { MetricComparisonTable } from '@/components/MetricComparisonTable';
@@ -11,11 +13,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { TodayActions } from '@/components/TodayActions';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
+import { useDailyLoopFreshness } from '@/hooks/useDailyLoopFreshness';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { markBriefReviewed } from '@/lib/briefReview';
 import { formatDateTime, friendlyDate } from '@/lib/dailyFlow';
 
 export function MorningBriefPage() {
   const query = useDailyLoop();
+  // Batch 248 (UX241-11): the stale-payload banner Batch 138 built for Home now
+  // reaches the page the brief-ready push actually opens. Hooks run before the
+  // loading/error early returns so the hook count never changes between renders.
+  const isOnline = useOnlineStatus();
+  const freshness = useDailyLoopFreshness(query.data?.data, { isOnline });
 
   // Opening the brief completes Home's Batch 96 unviewed-brief CTA (per-day
   // client flag) — gated on a present morning read so a pre-sync visit doesn't
@@ -78,6 +87,14 @@ export function MorningBriefPage() {
         }
       />
 
+      {freshness.isStale && (
+        <StaleDataNotice
+          description={`Showing ${friendlyDate(data.subjectDate)}'s brief — refresh for today's.`}
+          onRefresh={freshness.refresh}
+          isRefreshing={freshness.isRefreshing}
+        />
+      )}
+
       {analysis ? (
         <>
           <TodayActions actions={analysis.todayActions} workouts={data.plannedWorkouts} />
@@ -112,14 +129,11 @@ export function MorningBriefPage() {
           </Card>
         </>
       ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>No morning brief yet</CardTitle>
-            <CardDescription>
-              The coach read appears here once today&apos;s morning analysis has run.
-            </CardDescription>
-          </CardHeader>
-        </Card>
+        // Batch 248 (UX241-02): this was one "No morning brief yet" card for all
+        // three pre-brief states — failed, generating and not-checked-in rendered
+        // byte-identically on the page the brief-ready push opens. The same
+        // component Home uses now decides, so the two cannot drift apart again.
+        <BriefPendingCta daily={data} />
       )}
     </div>
   );
