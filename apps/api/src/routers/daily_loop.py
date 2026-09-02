@@ -260,7 +260,15 @@ async def _generate_brief_after_checkin(user_id: uuid.UUID, subject_date: date) 
                 await BriefGenerationStatusService(session).mark_failed(
                     user_id, subject_date, reason=reason, commit=True
                 )
-                if reason == "billing":
+                # Batch 248 (AI238-03): every reason, not just ``billing``. The
+                # scheduler's two paths have always alerted on any
+                # ``AnthropicApiError``; the two paths Mark uses every day gated on
+                # one reason, so a spend cap, a read timeout, a 429, a 529 and an
+                # auth failure each produced a failure card for him and silence for
+                # the operator. ``inputs`` is excluded on purpose — that is his
+                # watch not having synced, a user-state condition rather than a
+                # fault, and it is already visible to him on the screen.
+                if reason != "inputs":
                     await NudgeAlertService(session).notify_admin_generation_failure(
                         reason=reason, subject_date=subject_date, commit=True
                     )
@@ -1686,10 +1694,10 @@ async def upsert_post_ride_checkin(
                 reason=exc.reason,
                 commit=True,
             )
-            if exc.reason == "billing":
-                await NudgeAlertService(db).notify_admin_generation_failure(
-                    reason=exc.reason, subject_date=subject_date, commit=True
-                )
+            # Batch 248 (AI238-03): alert on every reason, matching the scheduler.
+            await NudgeAlertService(db).notify_admin_generation_failure(
+                reason=exc.reason, subject_date=subject_date, commit=True
+            )
             read_error = ApiError(
                 code="post_workout_read_failed",
                 detail=anthropic_user_message(exc.reason),

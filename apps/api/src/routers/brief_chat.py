@@ -19,6 +19,7 @@ import uuid
 from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,8 +33,10 @@ from src.services.anthropic_text import (
     anthropic_http_status,
     anthropic_user_message,
 )
-from src.services.brief_chat import BriefChatService
+from src.services.brief_chat import BriefChatError, BriefChatService
 from src.services.nudge_alerts import NudgeAlertService
+
+log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/briefs", tags=["brief-chat"])
 
@@ -141,13 +144,30 @@ async def ask_brief_followup(
         # Return an honest, retryable JSON error instead (no half-written turn is
         # persisted — the model call precedes every DB write in ``ask``), and route
         # a billing outage through the same admin alert as the morning brief (141).
-        if exc.reason == "billing":
-            await NudgeAlertService(db).notify_admin_generation_failure(
-                reason=exc.reason, subject_date=_local_today(player.timezone), commit=True
-            )
+        # Batch 248 (AI238-03): alert on every reason. A chat turn that fails
+        # on a spend cap, a timeout or a 429 is as operator-visible as one that
+        # fails on an empty credit balance — and until this, only the last was.
+        await NudgeAlertService(db).notify_admin_generation_failure(
+            reason=exc.reason, subject_date=_local_today(player.timezone), commit=True
+        )
         raise HTTPException(
             status_code=anthropic_http_status(exc.reason),
             detail=anthropic_user_message(exc.reason),
+        ) from exc
+    except BriefChatError as exc:
+        # Batch 248 (AI238-11): ``BriefChatError`` is the *other* way this call
+        # fails — a missing API key, or a response the boundary could not parse
+        # into text — and nothing caught it. It escaped to a bare 500 whose
+        # plain-text body the web client cannot parse, which is exactly the
+        # regression Batch 143 closed for ``AnthropicApiError`` and left open
+        # here. Same shape of answer: a real JSON body, and the operator told.
+        log.exception("brief chat failed", profile_id=str(player.id))
+        await NudgeAlertService(db).notify_admin_generation_failure(
+            reason="chat_error", subject_date=_local_today(player.timezone), commit=True
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=anthropic_user_message("chat_error"),
         ) from exc
     return BriefMessageTurnEnvelope(
         data=BriefMessageTurnData(

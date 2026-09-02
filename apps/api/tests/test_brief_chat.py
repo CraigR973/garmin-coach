@@ -39,12 +39,14 @@ from src.models.coaching import (
     PlannedWorkout,
 )
 from src.models.profile import Profile, UserRole
-from src.services.anthropic_text import AnthropicApiError, AnthropicSystemPrompt
+from src.services.anthropic_text import AnthropicApiError
 from src.services.brief_chat import (
     MAX_USER_TURNS_PER_DAY,
     NO_PLUMBING_RULE,
     PROPOSAL_MARKER,
+    AnthropicSystemPrompt,
     BriefChatClient,
+    BriefChatError,
     BriefChatService,
     internal_vocabulary_hits,
 )
@@ -1159,3 +1161,103 @@ async def test_coach_thread_is_user_scoped_and_spans_origins(db_conn: AsyncConne
     ]
     # The per-read view is unchanged: this read's own exchange only.
     assert [row["content"] for row in per_read.json()["data"]] == ["Why is today Green?", "A1"]
+
+
+@pytest.mark.asyncio
+async def test_post_message_alerts_on_a_non_billing_reason_too(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 248 (AI238-03): the daily paths gated the alert on `billing` alone.
+
+    The scheduler's two paths have always alerted on any `AnthropicApiError`.
+    The two paths Mark uses every day did not, so a spend cap, a read timeout, a
+    429, a 529 and an auth failure each produced a failure card for him and
+    silence for the operator. This is a timeout — the 2026-08-30 shape.
+    """
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        analysis = await _make_analysis(session, user.id)
+
+    async def _raise_timeout(*args: object, **kwargs: object) -> str:
+        raise AnthropicApiError("timed out", reason="timeout", status_code=0)
+
+    alert = AsyncMock(return_value=True)
+
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        with (
+            patch("src.services.brief_chat.AnthropicBriefChatClient.generate", _raise_timeout),
+            patch(
+                "src.routers.brief_chat.NudgeAlertService.notify_admin_generation_failure",
+                alert,
+            ),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                response = await client.post(
+                    f"/api/v1/briefs/{analysis.id}/messages",
+                    json={"question": "Why is today Green?"},
+                )
+    finally:
+        app.dependency_overrides.clear()
+
+    # Batch 248 also moved `timeout` into the retryable set, so this advises a
+    # retry rather than claiming upstream broke.
+    assert response.status_code == 503, response.text
+    alert.assert_awaited_once()
+    assert alert.await_args.kwargs["reason"] == "timeout"
+
+
+@pytest.mark.asyncio
+async def test_post_message_brief_chat_error_returns_json_not_a_bare_500(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 248 (AI238-11): `BriefChatError` was caught by nothing.
+
+    It is the *other* way this call fails — a missing API key, or a response the
+    boundary could not parse into text — and it escaped to a bare 500 whose
+    plain-text body the web client cannot parse. That is exactly the regression
+    Batch 143 closed for `AnthropicApiError` and left open here.
+    """
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        analysis = await _make_analysis(session, user.id)
+
+    async def _raise_chat_error(*args: object, **kwargs: object) -> str:
+        raise BriefChatError("Claude response did not contain text output.")
+
+    alert = AsyncMock(return_value=True)
+
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        with (
+            patch("src.services.brief_chat.AnthropicBriefChatClient.generate", _raise_chat_error),
+            patch(
+                "src.routers.brief_chat.NudgeAlertService.notify_admin_generation_failure",
+                alert,
+            ),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                response = await client.post(
+                    f"/api/v1/briefs/{analysis.id}/messages",
+                    json={"question": "Why is today Green?"},
+                )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 502, response.text
+    # A real JSON body, which is the whole point.
+    assert "detail" in response.json()
+    alert.assert_awaited_once()
+    assert alert.await_args.kwargs["reason"] == "chat_error"
+    # Still no half-written turn.
+    async with session_factory() as session:
+        count = await session.scalar(select(func.count()).select_from(BriefMessage))
+        assert count == 0

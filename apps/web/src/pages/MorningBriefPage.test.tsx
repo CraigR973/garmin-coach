@@ -239,4 +239,119 @@ describe('morning brief page', () => {
 
     document.documentElement.lang = 'en';
   });
+  // -------------------------------------------------------------------------
+  // Batch 248 (UX241-02): /brief is where the "brief is ready" push lands, and
+  // it rendered `failed`, `generating` and `not-checked-in` byte-identically —
+  // one "No morning brief yet" card for all three. The three captures taken
+  // during the audit had the same md5. On a morning when generation failed Mark
+  // was told, on the app's most important page, to wait for something that was
+  // never coming, with no retry and no hint anything had gone wrong.
+  // -------------------------------------------------------------------------
+
+  // Must satisfy the shared Zod schema — `fetchDailyLoop` parses the response,
+  // so a hand-waved fixture fails to render before any assertion is reached.
+  const checkedIn: DailyLoopEnvelope['data']['manualEntry'] = {
+    id: '33333333-3333-4333-8333-333333333333',
+    userId: '44444444-4444-4444-8444-444444444444',
+    entryDate: '2026-06-20',
+    entryAtUtc: '2026-06-20T06:30:00Z',
+    actualWorkoutJson: {},
+    supplementsJson: {},
+    foodJson: {},
+  };
+
+  function withoutBrief(overrides: Partial<DailyLoopEnvelope['data']>): DailyLoopEnvelope {
+    return {
+      ...snapshot,
+      data: { ...snapshot.data, morningAnalysis: null, ...overrides },
+    };
+  }
+
+  it('offers a retry when today\'s generation failed (Batch 248 / UX241-02)', async () => {
+    apiFetchMock.mockImplementation(() =>
+      Promise.resolve(
+        withoutBrief({
+          briefGeneration: { status: 'failed', reason: 'timeout' },
+          // A failed or in-flight generation always has a check-in behind it.
+          manualEntry: checkedIn,
+        }),
+      ),
+    );
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <MorningBriefPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText(/couldn.t finish your brief/i)).toBeTruthy();
+    // The retry is the point — a failure with no way out is what Batch 141 ended
+    // on Home and left standing here.
+    const retry = screen.getByRole('link', { name: /try again/i });
+    expect(retry.getAttribute('href')).toBe('/check-in');
+    expect(screen.queryByText(/no morning brief yet/i)).toBeNull();
+  });
+
+  it('shows the writing-your-brief state while generation is in flight', async () => {
+    apiFetchMock.mockImplementation(() =>
+      Promise.resolve(
+        withoutBrief({
+          briefGeneration: { status: 'generating', reason: null },
+          // A failed or in-flight generation always has a check-in behind it.
+          manualEntry: checkedIn,
+        }),
+      ),
+    );
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <MorningBriefPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText(/writing your brief/i)).toBeTruthy();
+    expect(screen.queryByText(/couldn.t finish your brief/i)).toBeNull();
+  });
+
+  it('invites a check-in when he has not said good morning yet', async () => {
+    apiFetchMock.mockImplementation(() =>
+      Promise.resolve(withoutBrief({ briefGeneration: null, manualEntry: null })),
+    );
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <MorningBriefPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText(/say good morning/i)).toBeTruthy();
+    expect(screen.queryByText(/writing your brief/i)).toBeNull();
+  });
+
+  it('warns and offers a refresh when the payload is an earlier day (Batch 248 / UX241-11)', async () => {
+    // The persisted query cache and the service worker's NetworkFirst fallback
+    // can both paint yesterday's brief on a cold open. Home has warned about
+    // this since Batch 138; /brief did not, so the only signal was a date in
+    // small caps at the top of the page.
+    apiFetchMock.mockImplementation(() => Promise.resolve(snapshot));
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <MorningBriefPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    // The fixture's subjectDate is 2026-06-20, which is never local-today.
+    const notice = await screen.findByText(/refresh for today/i);
+    expect(notice).toBeTruthy();
+    expect(screen.getByRole('button', { name: /refresh/i })).toBeTruthy();
+  });
 });

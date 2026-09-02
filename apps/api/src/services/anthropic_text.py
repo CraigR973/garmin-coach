@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
 from dataclasses import dataclass
 from typing import Any, Literal, TypedDict
 
@@ -16,7 +18,7 @@ ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
 
 
-def _timeout() -> httpx.Timeout:
+def _timeout(*, read: float | None = None) -> httpx.Timeout:
     """Per-phase timeouts for a non-streamed Messages call.
 
     The single ``timeout=60.0`` this replaces applied 60s to *every* phase, so the
@@ -27,7 +29,10 @@ def _timeout() -> httpx.Timeout:
     """
     return httpx.Timeout(
         connect=10.0,
-        read=settings.anthropic_read_timeout_seconds,
+        # Batch 248: a retry shares one budget with its predecessors, so an
+        # attempt gets what is left rather than the whole thing. ``None`` keeps
+        # the pre-248 behaviour for every direct caller and every test.
+        read=settings.anthropic_read_timeout_seconds if read is None else max(read, 1.0),
         write=30.0,
         pool=10.0,
     )
@@ -124,6 +129,13 @@ def classify_anthropic_error(
         or "credit balance" in message
         or "plans & billing" in message
         or "billing" in message
+        # Batch 248 (AI238-03): a *configured spend cap* is the same outage under a
+        # sentence Batch 141 never saw — HTTP 400 ``invalid_request_error`` reading
+        # "You have reached your specified API usage limits", with no "billing" or
+        # "credit balance" anywhere in it. It classified as ``invalid_request``, so
+        # Mark got generic copy and the operator got nothing. Proved live on
+        # 2026-08-31 when verification itself tripped the cap (Batch 233 gotcha 1).
+        or "usage limit" in message
     ):
         return "billing"
     if status_code == 429 or etype == "rate_limit_error":
@@ -145,7 +157,39 @@ def classify_anthropic_error(
 # advice (credit outage, provider rate-limit/overload) vs a harder upstream fault.
 # Drives the HTTP status a day-time caller returns when a synchronous Anthropic
 # call fails (Batch 143): 503 says "try again shortly", 502 says "upstream broke".
-_RETRYABLE_ANTHROPIC_REASONS = frozenset({"billing", "rate_limit", "overloaded"})
+#
+# Batch 248 (AI238-04) adds ``timeout`` and ``server_error``. Both are transient by
+# definition and both were landing on 502 — "upstream broke" — for the seven
+# ``httpx.ReadTimeout``s of the 2026-08-30 outage, which is the wrong advice about
+# the wrong thing.
+_RETRYABLE_ANTHROPIC_REASONS = frozenset(
+    {"billing", "rate_limit", "overloaded", "timeout", "server_error"}
+)
+
+# The subset worth *automatically* re-attempting inside one call. ``billing`` is
+# excluded deliberately: a credit outage does not clear in eight seconds, and
+# retrying it three times turns one failure into three identical ones in the log
+# while Mark waits three times as long for the same answer.
+_AUTO_RETRY_REASONS = frozenset({"rate_limit", "overloaded", "server_error", "timeout"})
+
+# Three attempts, ~1s then ~2s apart.
+#
+# **The retry budget is the whole call, not each attempt**, and that is the load-
+# bearing part. Batch 234 derived ``anthropic_read_timeout_seconds`` from
+# ``anthropic_max_tokens``; Batch 232 derived the generation lease from *that*
+# (read + 120s) and made ``validate_timeout_ordering()`` refuse to boot unless the
+# lease expires before Batch 144's 720s stale-after guard. Three attempts each
+# given the full read budget would be 3x550s = 1650s against a 670s lease — a
+# retry outliving its own lease, handing the artifact scope to another worker
+# mid-flight, which is precisely the class of defect Batch 232 exists to remove.
+#
+# So a deadline is set once and each attempt gets what is left of it. A fast 529
+# leaves nearly the whole budget for the real attempt; a read timeout that burns
+# the budget gets no retry, correctly, because there is no time left to have one.
+_MAX_ANTHROPIC_ATTEMPTS = 3
+_RETRY_BACKOFF_SECONDS = 1.0
+# Below this there is no point starting another attempt — connect alone is 10s.
+_MIN_ATTEMPT_SECONDS = 15.0
 
 
 def anthropic_http_status(reason: str) -> int:
@@ -248,6 +292,120 @@ def anthropic_error_from_http_status(exc: httpx.HTTPStatusError) -> AnthropicApi
     )
 
 
+def anthropic_error_from_transport(exc: httpx.RequestError) -> AnthropicApiError:
+    """Classify a transport failure that never became an HTTP response (Batch 248).
+
+    AI238-04, and the oldest AI-layer defect in the repo. A single `client.post`
+    guarded only by `except httpx.HTTPStatusError` lets every `httpx` transport
+    exception escape uncaught: `main.py` registers one exception handler and it is
+    not this, so a timeout reached the *user* as a bare 500 with a plain-text body
+    the web client cannot parse — the exact regression Batch 143 closed for the
+    HTTP-status path — and reached the *operator* as nothing at all.
+
+    On 2026-08-30 that was seven `httpx.ReadTimeout`s between 08:59 and 09:23,
+    every one classified `other`, every one a retryable failure card that failed
+    again on retry. Batch 234 raised the read budget so the immediate cause is
+    gone; this closes the illegibility, which is what made the outage impossible
+    to read *while it was happening*.
+
+    A timeout is not the same event as a connection refusal, and the reason slug
+    keeps them apart: `timeout` is "we may already have been billed for an answer
+    we hung up on" (Batch 234's finding), `transport` is "the request never
+    landed".
+    """
+    reason = "timeout" if isinstance(exc, httpx.TimeoutException) else "transport"
+    log.error(
+        "anthropic_transport_error",
+        reason=reason,
+        exception_type=type(exc).__name__,
+        # `str(exc)` on an httpx transport error is the failure mode, never the
+        # payload — the API key travels in a header and is not echoed here.
+        detail=str(exc),
+    )
+    return AnthropicApiError(
+        f"Anthropic request failed at the transport: {type(exc).__name__}.",
+        reason=reason,
+        # No response arrived, so there is no upstream status to report. 0 says
+        # "never got one" rather than inventing a plausible-looking 5xx.
+        status_code=0,
+    )
+
+
+async def _post_with_retry(
+    *,
+    headers: dict[str, str],
+    payload: dict[str, Any],
+    model_name: str,
+) -> Any:
+    """POST to Anthropic, re-attempting only the reasons a retry can actually fix.
+
+    Batch 248 (AI238-04). Before this there was no retry anywhere in the app:
+    ``_RETRYABLE_ANTHROPIC_REASONS`` only chose which sentence Mark saw, so a
+    single 529 at 06:40 cost the whole morning until the 11:00 backstop.
+
+    One change to one function covers all nine ``generate_anthropic_text``
+    callers. See ``_MAX_ANTHROPIC_ATTEMPTS`` for why the budget is the call
+    rather than the attempt.
+    """
+
+    budget = settings.anthropic_read_timeout_seconds
+    deadline = time.monotonic() + budget
+    last: AnthropicApiError | None = None
+
+    for attempt in range(1, _MAX_ANTHROPIC_ATTEMPTS + 1):
+        # The first attempt gets the budget itself, so the common path is exactly
+        # what Batch 234 derived and nothing about it changed. Only a retry pays
+        # for its predecessors out of the same budget.
+        remaining = None if attempt == 1 else deadline - time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=_timeout(read=remaining)) as client:
+                response = await client.post(ANTHROPIC_MESSAGES_URL, headers=headers, json=payload)
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    raise anthropic_error_from_http_status(exc) from exc
+                return response.json()
+        except httpx.RequestError as exc:
+            error = anthropic_error_from_transport(exc)
+        except AnthropicApiError as exc:
+            error = exc
+        last = error
+
+        if error.reason not in _AUTO_RETRY_REASONS or attempt == _MAX_ANTHROPIC_ATTEMPTS:
+            raise error
+        delay = _RETRY_BACKOFF_SECONDS * (2 ** (attempt - 1))
+        if deadline - time.monotonic() - delay < _MIN_ATTEMPT_SECONDS:
+            log.warning(
+                "anthropic_call_not_retried",
+                model_name=model_name,
+                reason=error.reason,
+                attempt=attempt,
+                cause="budget_exhausted",
+                budget_seconds=budget,
+            )
+            raise error
+        log.warning(
+            "anthropic_call_retrying",
+            model_name=model_name,
+            reason=error.reason,
+            attempt=attempt,
+            max_attempts=_MAX_ANTHROPIC_ATTEMPTS,
+            delay_seconds=delay,
+            remaining_seconds=round(deadline - time.monotonic(), 1),
+        )
+        await asyncio.sleep(delay)
+
+    # Unreachable: the loop either returns or raises on its final attempt. Kept so
+    # the contract is total rather than relying on the reader to prove it.
+    raise (
+        last
+        if last is not None
+        else AnthropicApiError(
+            "Anthropic call failed with no recorded error.", reason="other", status_code=0
+        )
+    )
+
+
 async def generate_anthropic_text(
     *,
     api_key: str,
@@ -295,13 +453,7 @@ async def generate_anthropic_text(
         "anthropic-version": ANTHROPIC_VERSION,
         "content-type": "application/json",
     }
-    async with httpx.AsyncClient(timeout=_timeout()) as client:
-        response = await client.post(ANTHROPIC_MESSAGES_URL, headers=headers, json=payload)
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            raise anthropic_error_from_http_status(exc) from exc
-        raw = response.json()
+    raw = await _post_with_retry(headers=headers, payload=payload, model_name=model_name)
 
     if not isinstance(raw, dict):
         raise error_cls("Claude response was not a JSON object.")
