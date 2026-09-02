@@ -1644,8 +1644,11 @@ async def test_post_ride_read_marks_failed_when_generation_raises_a_bare_error(
     app.dependency_overrides[get_db] = _db_override(session_factory)
     try:
         with patch("src.routers.daily_loop.generate_post_activity_read", _raise_bare):
+            # The handler re-raises by design, so the transport must render the
+            # 500 rather than hand the exception back to the test.
             async with AsyncClient(
-                transport=ASGITransport(app=app), base_url="http://test"
+                transport=ASGITransport(app=app, raise_app_exceptions=False),
+                base_url="http://test",
             ) as client:
                 response = await client.put(
                     (
