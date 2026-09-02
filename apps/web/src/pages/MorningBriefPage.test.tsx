@@ -155,6 +155,17 @@ describe('morning brief page', () => {
     expect(screen.getByRole('button', { name: /listen to brief/i })).toBeTruthy();
   });
 
+  it('puts the deterministic verdict before the supporting brief detail (Batch 244)', async () => {
+    renderWithQuery(<MorningBriefPage />);
+
+    const verdict = await screen.findByRole('region', { name: /today.s verdict/i });
+    const metrics = screen.getByText("Last night's metrics");
+    const coachRead = screen.getByText('Coach read');
+
+    expect(verdict.compareDocumentPosition(metrics)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(verdict.compareDocumentPosition(coachRead)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
   it("surfaces the metrics-vs-baselines snapshot table (Batch 130)", async () => {
     renderWithQuery(<MorningBriefPage />);
     expect(await screen.findByText("Last night's metrics")).toBeTruthy();

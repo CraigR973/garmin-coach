@@ -5,6 +5,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
+from unittest.mock import Mock
 
 import pytest
 from sqlalchemy import func, select
@@ -25,6 +26,7 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile, UserRole
+from src.services import morning_analysis as morning_analysis_module
 from src.services.holiday_pause import HolidayPauseService, HolidayWindow
 from src.services.morning_analysis import (
     ACWR_AMBER_CAP_THRESHOLD,
@@ -227,7 +229,10 @@ def test_subjective_score_boundary_stays_at_five() -> None:
 @pytest.mark.asyncio
 async def test_generate_and_store_morning_analysis_packet_and_output(
     db_conn: AsyncConnection,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    log_mock = Mock()
+    monkeypatch.setattr(morning_analysis_module, "log", log_mock)
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     user_id = uuid.uuid4()
     subject_date = date(2026, 1, 1)
@@ -358,6 +363,14 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
 
         packet = result.analysis.context_packet
         assert packet["prompt"]["version"] == PROMPT_VERSION
+        assert [section["id"] for section in packet["prompt"]["requiredOutputSections"]] == [
+            "sleep_and_recovery",
+            "metrics_vs_baselines",
+            "thermal_environment",
+            "experiment_update",
+            "todays_verdict",
+        ]
+        assert "`## Experiment update`" in fake_client.last_prompt
         assert packet["sleep"]["ageAdjustedScore"] == 71
         # Batch 91: local wall-clock bed/wake alongside the *Utc fields. Jan 1 is
         # GMT so the local clock equals the UTC clock (proves the wiring; the BST
@@ -422,6 +435,19 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
         assert stored.model_name == "claude-test"
         assert stored.verdict == "Amber"
         assert stored.output_markdown.startswith("**Sleep summary:**")
+        log_mock.warning.assert_called_once_with(
+            "morning_analysis_missing_required_sections",
+            user_id=str(user_id),
+            subject_date="2026-01-01",
+            prompt_version=PROMPT_VERSION,
+            missing_sections=[
+                "sleep_and_recovery",
+                "metrics_vs_baselines",
+                "thermal_environment",
+                "experiment_update",
+                "todays_verdict",
+            ],
+        )
 
         second = await service.generate_and_store(player, subject_date, client=fake_client)
         assert second.generated is False
@@ -1590,7 +1616,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v40")
+    assert PROMPT_VERSION.startswith("morning-analysis-v41")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
