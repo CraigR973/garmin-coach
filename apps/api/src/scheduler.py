@@ -129,6 +129,7 @@ from src.services.post_flexibility_analysis import PostFlexibilityAnalysisServic
 from src.services.post_strength_analysis import PostStrengthAnalysisService
 from src.services.post_walk_analysis import PostWalkAnalysisService
 from src.services.post_workout_analysis import PostWorkoutAnalysisService
+from src.services.session_recovery import restore_after_rollback as _restore_after_rollback
 from src.services.state_change_coach import StateChangeCoachService
 from src.services.tts_pregenerate import pregenerate_brief_audio
 from src.services.wake_detection import (
@@ -560,6 +561,13 @@ async def run_weekly_review_delivery() -> JobResult:
             skipped_in_flight = 0
             failed = 0
             for profile in profiles:
+                # Batch 242 (CR236-01): an earlier iteration's rollback expired
+                # this instance, so reload before the first attribute read.
+                await _restore_after_rollback(session, profile)
+                # Snapshot the scalars before anything can fail, so every
+                # handler below logs from a local instead of from an instance a
+                # rollback has since expired. See _restore_after_rollback.
+                profile_id = profile.id
                 subject_date = _profile_today(profile)
                 if (
                     await holiday_service.get_active_window_for_date(profile, subject_date)
@@ -569,7 +577,7 @@ async def run_weekly_review_delivery() -> JobResult:
                     log.info(
                         "weekly review delivery skipped",
                         reason="holiday_away",
-                        profile_id=str(profile.id),
+                        profile_id=str(profile_id),
                         subject_date=subject_date.isoformat(),
                     )
                     continue
@@ -593,7 +601,7 @@ async def run_weekly_review_delivery() -> JobResult:
                     await session.rollback()
                     log.info(
                         "weekly review delivery deferred to the in-flight holder",
-                        profile_id=str(profile.id),
+                        profile_id=str(profile_id),
                         subject_date=subject_date.isoformat(),
                     )
                     continue
@@ -603,10 +611,14 @@ async def run_weekly_review_delivery() -> JobResult:
                     reason = exc.reason if isinstance(exc, AnthropicApiError) else "other"
                     log.exception(
                         "weekly review delivery failed",
-                        profile_id=str(profile.id),
+                        profile_id=str(profile_id),
                         subject_date=subject_date.isoformat(),
                         reason=reason,
                     )
+                    # record_failure and the operator alert both take the live
+                    # instance, so it has to be usable again before they run —
+                    # this is the path CR236-01 stopped reaching at all.
+                    await _restore_after_rollback(session, profile)
                     try:
                         await service.record_failure(
                             profile,
@@ -624,7 +636,7 @@ async def run_weekly_review_delivery() -> JobResult:
                         await session.rollback()
                         log.exception(
                             "recording weekly review failure state failed",
-                            profile_id=str(profile.id),
+                            profile_id=str(profile_id),
                             subject_date=subject_date.isoformat(),
                         )
         log.info(
@@ -673,6 +685,8 @@ async def run_state_change_coach() -> JobResult:
             skipped_holiday = 0
             failed = 0
             for profile in profiles:
+                await _restore_after_rollback(session, profile)
+                profile_id = profile.id
                 subject_date = _profile_today(profile)
                 if (
                     await holiday_service.get_active_window_for_date(profile, subject_date)
@@ -682,7 +696,7 @@ async def run_state_change_coach() -> JobResult:
                     log.info(
                         "state-change coach skipped",
                         reason="holiday_away",
-                        profile_id=str(profile.id),
+                        profile_id=str(profile_id),
                         subject_date=subject_date.isoformat(),
                     )
                     continue
@@ -696,7 +710,7 @@ async def run_state_change_coach() -> JobResult:
                     await session.rollback()
                     log.exception(
                         "state-change coach failed",
-                        profile_id=str(profile.id),
+                        profile_id=str(profile_id),
                         subject_date=subject_date.isoformat(),
                     )
         log.info(
@@ -860,6 +874,12 @@ async def _sync_garmin_daily(
     sleep_synced = 0
     failures = 0
     for profile in profiles:
+        await _restore_after_rollback(session, profile)
+        # Batch 242 (CR236-01): hoisted before the *date* loop, not just before
+        # the try. Each date is its own recovery boundary, so date N's rollback
+        # would otherwise expire the instance that date N+1 reads inside its
+        # own try — and the resulting MissingGreenlet escapes the handler.
+        profile_id = profile.id
         today = _profile_today(profile)
         for offset in range(4):
             subject_date = today - timedelta(days=offset)
@@ -870,7 +890,7 @@ async def _sync_garmin_daily(
                     backoff=2.0,
                 )
                 result = await sync_service.sync_daily(
-                    profile.id,
+                    profile_id,
                     subject_date,
                     payloads,
                     phase=phase,
@@ -881,7 +901,7 @@ async def _sync_garmin_daily(
                 if await _commit_morning_step(
                     session,
                     step="garmin_daily",
-                    profile_id=profile.id,
+                    profile_id=profile_id,
                     subject_date=subject_date,
                 ):
                     daily_synced += result.daily_metrics_synced
@@ -893,7 +913,7 @@ async def _sync_garmin_daily(
                 await session.rollback()
                 log.exception(
                     "garmin daily sync failed",
-                    profile_id=str(profile.id),
+                    profile_id=str(profile_id),
                     subject_date=subject_date.isoformat(),
                 )
     return (daily_synced, sleep_synced, failures)
@@ -945,6 +965,9 @@ async def _sync_morning_inputs(
     failures = 0
     client = OpenMeteoClient()
     for profile in profiles:
+        await _restore_after_rollback(session, profile)
+        profile_id = profile.id
+        subject_date = _profile_today(profile)
         try:
             request = WeatherRequest(
                 latitude=profile.latitude or settings.weather_latitude,
@@ -953,7 +976,7 @@ async def _sync_morning_inputs(
             )
             payload = await _retry_async(lambda: client.fetch_daily_payload(request))
             result = await service.sync_weather_daily(
-                profile.id,
+                profile_id,
                 payload,
                 timezone=request.timezone,
                 commit=False,
@@ -961,8 +984,8 @@ async def _sync_morning_inputs(
             if await _commit_morning_step(
                 session,
                 step="weather",
-                profile_id=profile.id,
-                subject_date=_profile_today(profile),
+                profile_id=profile_id,
+                subject_date=subject_date,
             ):
                 weather_days += result.weather_days_synced
             else:
@@ -972,7 +995,7 @@ async def _sync_morning_inputs(
             await session.rollback()
             log.exception(
                 "morning weather input failed",
-                profile_id=str(profile.id),
+                profile_id=str(profile_id),
             )
 
     daily_metrics_synced, sleep_synced, garmin_failures = await _sync_garmin_daily(
@@ -1016,10 +1039,14 @@ async def run_morning_sync() -> JobResult:
             nudges_sent = 0
             failures = inputs.failures
             for profile in profiles:
+                # _sync_morning_inputs above rolls back on a failed weather or
+                # Garmin step, so this loop's first read is already at risk.
+                await _restore_after_rollback(session, profile)
+                profile_id = profile.id
                 subject_date = _profile_today(profile)
                 # No point inviting a check-in once today's read is already done
                 # (he checked in, or the backstop generated it) — cheap DB read.
-                if await morning.latest_analysis(profile.id, subject_date) is not None:
+                if await morning.latest_analysis(profile_id, subject_date) is not None:
                     continue
                 try:
                     if await nudge_service.push_good_morning(
@@ -1029,7 +1056,7 @@ async def run_morning_sync() -> JobResult:
                     if not await _commit_morning_step(
                         session,
                         step="good_morning_nudge",
-                        profile_id=profile.id,
+                        profile_id=profile_id,
                         subject_date=subject_date,
                     ):
                         failures += 1
@@ -1038,7 +1065,7 @@ async def run_morning_sync() -> JobResult:
                     await session.rollback()
                     log.exception(
                         "good morning nudge failed",
-                        profile_id=str(profile.id),
+                        profile_id=str(profile_id),
                         subject_date=subject_date.isoformat(),
                     )
         log.info(
@@ -1099,10 +1126,14 @@ async def run_morning_weather_sync() -> JobResult:
             drivers_cached = 0
             inputs_not_ready = 0
             for profile in profiles:
+                # _sync_morning_inputs and _sync_garmin_daily both roll back on
+                # a failed step, so this instance can already be expired here.
+                await _restore_after_rollback(session, profile)
+                profile_id = profile.id
                 subject_date = _profile_today(profile)
                 input_presence = await morning_input_presence(
                     session,
-                    user_id=profile.id,
+                    user_id=profile_id,
                     subject_date=subject_date,
                 )
                 # The 11:00 backstop may honestly read a successful Garmin pull
@@ -1113,7 +1144,7 @@ async def run_morning_weather_sync() -> JobResult:
                     inputs_not_ready += 1
                     log.warning(
                         "morning analysis held for unsynced inputs",
-                        profile_id=str(profile.id),
+                        profile_id=str(profile_id),
                         subject_date=subject_date.isoformat(),
                     )
                     continue
@@ -1134,7 +1165,7 @@ async def run_morning_weather_sync() -> JobResult:
                     await session.rollback()
                     log.info(
                         "morning analysis deferred to the in-flight holder",
-                        profile_id=str(profile.id),
+                        profile_id=str(profile_id),
                         subject_date=subject_date.isoformat(),
                     )
                     continue
@@ -1143,7 +1174,7 @@ async def run_morning_weather_sync() -> JobResult:
                     await session.rollback()
                     log.exception(
                         "morning analysis failed",
-                        profile_id=str(profile.id),
+                        profile_id=str(profile_id),
                         subject_date=subject_date.isoformat(),
                     )
                     continue
@@ -1164,9 +1195,16 @@ async def run_morning_weather_sync() -> JobResult:
                         await session.rollback()
                         log.exception(
                             "morning brief-ready push failed",
-                            profile_id=str(profile.id),
+                            profile_id=str(profile_id),
                             subject_date=subject_date.isoformat(),
                         )
+                        # CR236-01's worst intra-iteration case: everything below
+                        # this handler — the audio warm, the Amber regeneration,
+                        # the deload proposal, the driver precompute — takes
+                        # these two instances, and each was reported under its
+                        # own misleading failure message. One push failure
+                        # produced four.
+                        await _restore_after_rollback(session, profile, analysis_result.analysis)
                     # Warms the hosted-voice cache (Batch 116 follow-up) so a
                     # consenting user's first "Listen" tap is often already
                     # synthesized. Best-effort — never raises.
@@ -1183,9 +1221,10 @@ async def run_morning_weather_sync() -> JobResult:
                     await session.rollback()
                     log.exception(
                         "amber regeneration failed",
-                        profile_id=str(profile.id),
+                        profile_id=str(profile_id),
                         subject_date=subject_date.isoformat(),
                     )
+                    await _restore_after_rollback(session, profile, analysis_result.analysis)
                 try:
                     deloads = await coaching_service.propose_chronic_deload(
                         profile,
@@ -1198,9 +1237,10 @@ async def run_morning_weather_sync() -> JobResult:
                     await session.rollback()
                     log.exception(
                         "chronic deload proposal failed",
-                        profile_id=str(profile.id),
+                        profile_id=str(profile_id),
                         subject_date=subject_date.isoformat(),
                     )
+                    await _restore_after_rollback(session, profile)
                 # Batch 62.2: precompute the 120-day driver correlation once here so
                 # GET /api/v1/daily-loop reads it back instead of recomputing on
                 # every open. Wrapped so a failure never blocks the morning pipeline.
@@ -1217,7 +1257,7 @@ async def run_morning_weather_sync() -> JobResult:
                     await session.rollback()
                     log.exception(
                         "drivers precompute failed",
-                        profile_id=str(profile.id),
+                        profile_id=str(profile_id),
                         subject_date=subject_date.isoformat(),
                     )
         log.info(
@@ -1515,6 +1555,9 @@ async def _push_new_analyses(
     """
     pushed = 0
     failures = 0
+    # Batch 242 (CR236-01): hoisted before the loop — the rollback below expires
+    # the instance, and the caller keeps using it after this returns.
+    profile_id = profile.id
     for item in results:
         if not item.generated:
             continue
@@ -1528,9 +1571,10 @@ async def _push_new_analyses(
             await nudge_service.session.rollback()
             log.exception(
                 "post-workout push failed",
-                profile_id=str(profile.id),
+                profile_id=str(profile_id),
                 kind=kind,
             )
+            await _restore_after_rollback(nudge_service.session, profile)
             break
     return pushed, failures
 
@@ -1555,6 +1599,11 @@ async def run_post_workout_backstop() -> JobResult:
             pushes = 0
             failures = 0
             for profile in profiles:
+                await _restore_after_rollback(session, profile)
+                # Batch 242 (CR236-01): hoisted before the *reader* loop — one
+                # reader's rollback would otherwise expire the instance the next
+                # three readers take, and _push_new_analyses rolls back too.
+                profile_id = profile.id
                 local_midnight = datetime.combine(
                     _profile_today(profile), datetime.min.time(), tzinfo=ZoneInfo(profile.timezone)
                 )
@@ -1592,9 +1641,10 @@ async def run_post_workout_backstop() -> JobResult:
                         await session.rollback()
                         log.exception(
                             "post-workout backstop reader failed",
-                            profile_id=str(profile.id),
+                            profile_id=str(profile_id),
                             kind=kind,
                         )
+                        await _restore_after_rollback(session, profile)
         log.info(
             "post-workout backstop complete",
             profiles=len(profiles),
@@ -1635,6 +1685,8 @@ async def run_workout_autopush() -> JobResult:
             pushed = 0
             failed = 0
             for profile in profiles:
+                await _restore_after_rollback(session, profile)
+                profile_id = profile.id
                 try:
                     results = await service.auto_push_due(profile)
                     pushed += len(results)
@@ -1643,7 +1695,7 @@ async def run_workout_autopush() -> JobResult:
                     await session.rollback()
                     log.exception(
                         "workout autopush failed for profile",
-                        profile_id=str(profile.id),
+                        profile_id=str(profile_id),
                     )
         log.info("workout autopush complete", profiles=len(profiles), pushed=pushed, failed=failed)
         counters = {"profiles": len(profiles), "pushed": pushed, "failed": failed}

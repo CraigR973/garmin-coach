@@ -13,7 +13,8 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
-from sqlalchemy import func, select, text
+from sqlalchemy import func, inspect, select, text
+from sqlalchemy.exc import MissingGreenlet
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from src.models.coaching import (
@@ -27,6 +28,7 @@ from src.models.notification import ActionType, ActorType, AuditLog
 from src.models.profile import Profile, UserRole
 from src.scheduler import (
     MorningInputResult,
+    _active_profiles,
     _retry_async,
     _retry_sync,
     _sync_garmin_daily,
@@ -52,6 +54,7 @@ from src.services.dreo_fan import DreoFanError, DreoFanState
 from src.services.generation_requests import GenerationRequestInProgress
 from src.services.job_runs import JobResult, JobStatus
 from src.services.morning_inputs import MorningInputPresence
+from src.services.session_recovery import restore_after_rollback as _restore_after_rollback
 from src.services.wake_detection import (
     BACKSTOP,
     WAKE_CHECK_ANALYSIS_TYPE,
@@ -1964,3 +1967,212 @@ async def test_fan_control_is_idempotent_on_coalesced_double_fire(
 
     # Both fires land in the same 15-min slot → one upserted row, not two.
     assert len(await _fan_rows(db_conn, user_id)) == 1
+
+
+# ---------------------------------------------------------------------------
+# Batch 242 / CR236-01 — the error handlers must survive their own rollback
+#
+# These are isolation tests, not ordering tests. They use a real AsyncSession
+# and real ``Profile`` rows because the defect lives in what SQLAlchemy does to
+# the identity map on rollback, which an ``AsyncMock`` session and a
+# ``MagicMock`` profile are structurally incapable of showing (CR236-03).
+#
+# ``join_transaction_mode="create_savepoint"`` is load-bearing. The session's
+# own transaction stays top-level, so ``rollback()`` still expires the whole
+# identity map and the defect reproduces exactly as in production — but the
+# rollback unwinds to a savepoint, so the seeded row and the ``db_conn``
+# fixture's ``SET search_path`` both survive it. Without it the code under test
+# discards the very rows the test seeded, and the test would be exercising a
+# state production can never be in.
+# ---------------------------------------------------------------------------
+
+
+def _job_session(db_conn: AsyncConnection) -> AsyncSession:
+    return AsyncSession(
+        bind=db_conn,
+        expire_on_commit=False,
+        join_transaction_mode="create_savepoint",
+    )
+
+
+async def _seed_active_profile(db_conn: AsyncConnection, name: str) -> uuid.UUID:
+    user_id = uuid.uuid4()
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name=name,
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.commit()
+    return user_id
+
+
+@pytest.mark.asyncio
+async def test_rollback_expires_a_loaded_profile_and_restore_reloads_it(
+    db_conn: AsyncConnection,
+) -> None:
+    """The premise, pinned: rollback expires everything, including the PK.
+
+    If SQLAlchemy ever stops expiring untouched instances on a top-level
+    rollback, this fails and the hoists below become dead weight — which is
+    worth being told about rather than discovering by archaeology.
+    """
+    await _seed_active_profile(db_conn, "Expiry Premise")
+
+    async with _job_session(db_conn) as session:
+        profiles = await _active_profiles(session)
+        profile = profiles[0]
+        assert not inspect(profile).expired
+
+        await session.rollback()
+
+        # Untouched, never modified, and the primary key is not exempt.
+        assert inspect(profile).expired
+        assert "id" in inspect(profile).unloaded
+        with pytest.raises(MissingGreenlet):
+            str(profile.id)
+
+        await _restore_after_rollback(session, profile)
+        assert not inspect(profile).expired
+        assert str(profile.id)
+        assert profile.timezone == "Europe/London"
+
+
+@pytest.mark.asyncio
+async def test_weekly_review_in_flight_overlap_is_skipped_not_failed(
+    db_conn: AsyncConnection,
+) -> None:
+    """Decision #266's designed cron overlap is a skip, not an outage.
+
+    Before the Batch 242 hoist, ``str(profile.id)`` in this handler raised
+    ``MissingGreenlet`` past the sibling ``except Exception``, escaped the
+    profile loop, and the job's outer handler reported
+    ``failed("weekly_review_failed")`` — the designed outcome recorded as an
+    outage, with ``run_scheduled.py`` exiting 1.
+    """
+    await _seed_active_profile(db_conn, "Overlap Skip")
+
+    service = MagicMock()
+    service.run = AsyncMock(side_effect=GenerationRequestInProgress())
+    service.record_failure = AsyncMock()
+    holiday = MagicMock()
+    holiday.get_active_window_for_date = AsyncMock(return_value=None)
+
+    async with _job_session(db_conn) as session:
+        with (
+            patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
+            patch("src.scheduler.WeeklyReviewDeliveryService", return_value=service),
+            patch("src.scheduler.HolidayPauseService", return_value=holiday),
+        ):
+            result = await run_weekly_review_delivery()
+
+    assert result.status is not JobStatus.failed
+    assert result.counters["skipped_in_flight"] == 1
+    assert result.counters["failed"] == 0
+    # The designed skip must never be recorded as a failed generation.
+    service.record_failure.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_weekly_review_failure_reaches_record_failure_and_the_operator_alert(
+    db_conn: AsyncConnection,
+) -> None:
+    """An ordinary generation failure must still reach the failure turn and the alert.
+
+    This is the half CR236-01 broke silently: the handler raised on
+    ``str(profile.id)`` *before* ``record_failure`` and
+    ``notify_admin_generation_failure`` on the lines below it, so Mark got no
+    failure turn and no operator signal was ever emitted. Both callees take the
+    live ``Profile``, so this also proves the instance is usable again — a mock
+    that never touched it would pass whether or not the restore worked.
+    """
+    user_id = await _seed_active_profile(db_conn, "Alert Reaches Human")
+
+    seen: dict[str, object] = {}
+
+    async def _record_failure(profile: Profile, **kwargs: object) -> tuple[object, bool]:
+        # Reading the instance here is the assertion: before the fix this line
+        # raises MissingGreenlet from inside the handler.
+        seen["record_failure_profile_id"] = profile.id
+        return (MagicMock(), True)
+
+    async def _notify(**kwargs: object) -> bool:
+        seen["alert_reason"] = kwargs.get("reason")
+        seen["alert_artifact"] = kwargs.get("artifact")
+        return True
+
+    service = MagicMock()
+    service.run = AsyncMock(
+        side_effect=AnthropicApiError("boom", reason="timeout", status_code=504)
+    )
+    service.record_failure = AsyncMock(side_effect=_record_failure)
+    nudges = MagicMock()
+    nudges.notify_admin_generation_failure = AsyncMock(side_effect=_notify)
+    holiday = MagicMock()
+    holiday.get_active_window_for_date = AsyncMock(return_value=None)
+
+    async with _job_session(db_conn) as session:
+        with (
+            patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
+            patch("src.scheduler.WeeklyReviewDeliveryService", return_value=service),
+            patch("src.scheduler.NudgeAlertService", return_value=nudges),
+            patch("src.scheduler.HolidayPauseService", return_value=holiday),
+        ):
+            result = await run_weekly_review_delivery()
+
+    assert result.counters["failed"] == 1
+    service.record_failure.assert_awaited_once()
+    nudges.notify_admin_generation_failure.assert_awaited_once()
+    assert seen["record_failure_profile_id"] == user_id
+    assert seen["alert_reason"] == "timeout"
+    assert seen["alert_artifact"] == "weekly_review"
+
+
+@pytest.mark.asyncio
+async def test_profile_loop_survives_a_sibling_iteration_rollback(
+    db_conn: AsyncConnection,
+) -> None:
+    """One profile's failure must not expire the instance the next one needs.
+
+    The intra-handler hoist alone does not cover this: iteration N+1 reads
+    ``profile.timezone`` through ``_profile_today`` *before* its own ``try``,
+    so with a shared session the rollback in iteration N takes the next
+    iteration down outside any handler at all.
+    """
+    await _seed_active_profile(db_conn, "Sibling A")
+    await _seed_active_profile(db_conn, "Sibling B")
+
+    handled: list[uuid.UUID] = []
+
+    async def _run(profile: Profile, **kwargs: object) -> object:
+        handled.append(profile.id)
+        if len(handled) == 1:
+            raise AnthropicApiError("first profile fails", reason="other", status_code=500)
+        return SimpleNamespace(generated=1, message_created=1, push_recorded=1)
+
+    service = MagicMock()
+    service.run = AsyncMock(side_effect=_run)
+    service.record_failure = AsyncMock(return_value=(MagicMock(), True))
+    nudges = MagicMock()
+    nudges.notify_admin_generation_failure = AsyncMock(return_value=True)
+    holiday = MagicMock()
+    holiday.get_active_window_for_date = AsyncMock(return_value=None)
+
+    async with _job_session(db_conn) as session:
+        with (
+            patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
+            patch("src.scheduler.WeeklyReviewDeliveryService", return_value=service),
+            patch("src.scheduler.NudgeAlertService", return_value=nudges),
+            patch("src.scheduler.HolidayPauseService", return_value=holiday),
+        ):
+            result = await run_weekly_review_delivery()
+
+    # Both profiles were attempted, and the job did not abort at the first one.
+    assert len(handled) == 2
+    assert result.status is not JobStatus.failed
+    assert result.counters["failed"] == 1
+    assert result.counters["generated"] == 1

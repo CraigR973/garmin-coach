@@ -28,6 +28,9 @@ def test_jobs_cover_expected_names() -> None:
         "backup",
         "backup-drill",
         "egress-budget",
+        # Batch 242.5 — external runner only, never on the in-process scheduler.
+        # See test_job_ledger_freshness for the test that pins that separation.
+        "ledger-freshness",
     }
 
 

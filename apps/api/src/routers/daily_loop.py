@@ -57,6 +57,7 @@ from src.services.post_activity_analysis import (
     post_activity_kind,
     prepare_post_activity_read,
 )
+from src.services.session_recovery import restore_after_rollback
 from src.services.sleep_projection import SleepProjectionResult
 from src.services.sleep_projection_context import SleepProjectionContextService
 from src.services.strength_brief import StrengthBriefResult
@@ -1703,6 +1704,13 @@ async def upsert_post_ride_checkin(
             raise
         except Exception:
             await db.rollback()
+            # Batch 242 (CR236-01): the rollback expired both ORM instances, and
+            # ``mark_prepared_post_activity_failed`` reads ``player.id`` and
+            # ``activity.id``. Without the reload it raises MissingGreenlet from
+            # inside this handler, so the read is never marked failed and Mark is
+            # left on a spinner rather than a retryable state. ``prepared`` is a
+            # plain dataclass and is unaffected.
+            await restore_after_rollback(db, player, activity)
             await mark_prepared_post_activity_failed(
                 db,
                 player,
