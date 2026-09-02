@@ -51,6 +51,17 @@ Run each job from an external scheduler via the single-job runner:
 | `fan-control`   | every 15 min         | `*/15 * * * *`         |
 | `backup-drill`  | weekly after backup  | `0 4 * * 0`            |
 | `egress-budget` | every 15 min         | `*/15 * * * *`         |
+| `ledger-freshness` | hourly            | `20 * * * *`  ⭑ see below |
+
+⭑ **`ledger-freshness` is external-only, on purpose (Batch 242.5).** It is the
+one job in this table that is **not** registered on the in-process APScheduler,
+and a test asserts that absence. It reads the newest `job_runs` row per job and
+`log.error`s any that is older than its tolerance — which is what turns a
+scheduler that has silently stopped into an operator signal, so running it on
+the scheduler it watches would take it down for exactly the reason it needs to
+fire. Give it its own clock: a Railway cron service, or anything external. Its
+tolerances live in `services/job_ledger_freshness.MAX_AGE` and a test fails if a
+recurring job is added to `run_scheduled.JOBS` without one.
 
 ⚠ **DST:** Railway/most cron runs in UTC and does not track Europe/London
 BST↔GMT. The interval jobs (`hive-poll`, `activity-poll`, `backup`) are
