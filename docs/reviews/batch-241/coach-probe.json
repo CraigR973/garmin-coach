@@ -1,0 +1,32 @@
+{
+  "launcher": {
+    "found": true,
+    "aria": "Ask about today",
+    "position": "fixed",
+    "cls": "fixed right-4 z-tabbar tap-target bottom-[calc(60px+env(safe-area-inset-bottom)+1rem)] md:bottom-6 inline-flex items-center justify-center h-12 w-12 rounded-full bg-primary text-white shadow-sheet press-down focus-visible:outline-none focus-visible:shadow-glow",
+    "rect": {
+      "x": 326,
+      "y": 720,
+      "w": 48,
+      "h": 48
+    },
+    "inViewport": true,
+    "pageHeight": 1452
+  },
+  "thread": {
+    "dialogOpen": true,
+    "dialogText": "Your coach\nAsk about today\nThursday, 30 July 2026\n\nQuestion 1 — how should I handle the sweet spot session if my legs still feel heavy on the day?\n\n10:00\n\nAnswer 1 — hold the prescribed intensity for the first block and reassess. If power drifts more than 5% below target in block two, cut the last block rather than pushing through; the aerobic stimulus is already banked by then.\n\n22:00\nFriday, 31 July 2026\n\nQuestion 2 — how should I handle the sweet spot session if my legs still feel heavy on th",
+    "pane": {
+      "scrollTop": 9920,
+      "scrollHeight": 10308,
+      "clientHeight": 388,
+      "pxBelowFold": 0,
+      "firstText": "Thursday, 30 July 2026\n\nQuestion 1 — how should I handle the sweet spot session if my legs still feel heavy on the day?\n\n10:00\n\nAnswer 1 — hold the prescribed i"
+    },
+    "loadOlder": [
+      "More",
+      "More options",
+      "More"
+    ]
+  }
+}

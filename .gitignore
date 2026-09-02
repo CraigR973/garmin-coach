@@ -67,3 +67,6 @@ supabase/.temp/
 # Backfill / data import artifacts
 *.xlsx
 apps/api/*.xlsx
+
+# Session scratch (probe scripts, working files) — never committed
+scratchpad/

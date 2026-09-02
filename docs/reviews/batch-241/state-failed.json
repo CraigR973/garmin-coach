@@ -1,0 +1,16 @@
+{
+  "/": {
+    "mainText": "Good evening, Mark\n\nTUESDAY 1 SEPTEMBER\n\nCouldn't finish your brief\n\nSomething went wrong while writing today's brief. Your check-in is saved.\n\nTry again\nCycle day\n\nVO₂ (30/30s @ 130%)\n\nVO₂ · 51 min · VO₂ (see prescription)\n\nNot yet in Zwift.\n\nEdit\nSwap day\nMore options\nCycle\nWeights\nFlexibility\nView week\nMorning check-in\nSkip whole day\nI did something else\n\nMORE DETAIL\n\nTonight\nUse the usual sleep protocol\nBedroom\nIndoor 18.5°C · fan on auto",
+    "busy": 0,
+    "spinners": [],
+    "h": 1257,
+    "pageErrors": []
+  },
+  "/brief": {
+    "mainText": "HOME\n\nTUESDAY 1 SEPTEMBER\n\nMorning brief\nCheck in\nNo morning brief yet\n\nThe coach read appears here once today's morning analysis has run.",
+    "busy": 0,
+    "spinners": [],
+    "h": 844,
+    "pageErrors": []
+  }
+}

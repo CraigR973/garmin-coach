@@ -1,0 +1,16 @@
+{
+  "/": {
+    "mainText": "Good evening, Mark\n\nToday's brief couldn't load\n\n[ { \"code\": \"invalid_type\", \"expected\": \"number\", \"received\": \"string\", \"path\": [ \"data\", \"dailyMetrics\", \"readinessScore\" ], \"message\": \"Expected number, received string\" } ]\n\nTry again",
+    "busy": 0,
+    "spinners": [],
+    "h": 844,
+    "pageErrors": []
+  },
+  "/sleep": {
+    "mainText": "Sleep\n\nSleep data couldn't load\n\n[ { \"code\": \"invalid_type\", \"expected\": \"number\", \"received\": \"string\", \"path\": [ \"data\", \"dailyMetrics\", \"readinessScore\" ], \"message\": \"Expected number, received string\" } ]\n\nTry again",
+    "busy": 0,
+    "spinners": [],
+    "h": 844,
+    "pageErrors": []
+  }
+}

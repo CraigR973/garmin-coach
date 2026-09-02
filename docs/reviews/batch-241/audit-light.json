@@ -1,0 +1,564 @@
+{
+  "/|light": {
+    "route": "/",
+    "theme": "light",
+    "ttcMs": 2395,
+    "pageErrors": [],
+    "apiErrors": [],
+    "vw": 390,
+    "vh": 844,
+    "scrollHeight": 1452,
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "hOverflow": false,
+    "screensToScroll": 1.72,
+    "contrastFails": [],
+    "smallTargets": [
+      {
+        "tag": "A",
+        "label": "Change",
+        "w": 49,
+        "h": 20
+      }
+    ],
+    "fontSizes": [
+      [
+        "10",
+        5
+      ],
+      [
+        "11",
+        2
+      ],
+      [
+        "12",
+        5
+      ],
+      [
+        "14",
+        25
+      ],
+      [
+        "16",
+        10
+      ],
+      [
+        "18",
+        1
+      ],
+      [
+        "24",
+        1
+      ]
+    ],
+    "aboveFold": [
+      "CHECKMARK",
+      "Mark",
+      "TUESDAY 1 SEPTEMBER",
+      "Good to go",
+      "Good morning, Mark. You're good to go this morning.",
+      "HOW YOU FEEL TODAY",
+      "You said: OK · Feel OK this morning",
+      "Change",
+      "Green verdict",
+      "Your morning brief is ready\n\nRead it",
+      "Your morning brief is ready",
+      "Read it",
+      "Cycle day",
+      "VO₂ (30/30s @ 130%)",
+      "VO₂ · 51 min · VO₂ (see prescription)",
+      "Not yet in Zwift.",
+      "Edit",
+      "Swap day",
+      "More options",
+      "Cycle",
+      "Weights",
+      "Flexibility",
+      "Home",
+      "Week",
+      "Sleep",
+      "Climate",
+      "More"
+    ],
+    "busyStill": 0
+  },
+  "/brief|light": {
+    "route": "/brief",
+    "theme": "light",
+    "ttcMs": 2351,
+    "pageErrors": [],
+    "apiErrors": [],
+    "vw": 390,
+    "vh": 844,
+    "scrollHeight": 3809,
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "hOverflow": false,
+    "screensToScroll": 4.51,
+    "contrastFails": [],
+    "smallTargets": [],
+    "fontSizes": [
+      [
+        "10",
+        6
+      ],
+      [
+        "11",
+        2
+      ],
+      [
+        "12",
+        1
+      ],
+      [
+        "14",
+        84
+      ],
+      [
+        "16",
+        10
+      ],
+      [
+        "18",
+        3
+      ],
+      [
+        "24",
+        1
+      ]
+    ],
+    "aboveFold": [
+      "CHECKMARK",
+      "Mark",
+      "HOME",
+      "TUESDAY 1 SEPTEMBER",
+      "Morning brief",
+      "Check in",
+      "Today",
+      "Pre-cool the bedroom tonight\n\nTarget 17.0°C before bed.",
+      "Pre-cool the bedroom tonight",
+      "Target 17.0°C before bed.",
+      "Breathing at 20:00, snack by 21:30, seal near 22:00, bed 23:15",
+      "Last night's metrics",
+      "Home",
+      "Week",
+      "Sleep",
+      "Climate",
+      "More"
+    ],
+    "busyStill": 0
+  },
+  "/check-in|light": {
+    "route": "/check-in",
+    "theme": "light",
+    "ttcMs": 1760,
+    "pageErrors": [],
+    "apiErrors": [],
+    "vw": 390,
+    "vh": 844,
+    "scrollHeight": 964,
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "hOverflow": false,
+    "screensToScroll": 1.14,
+    "contrastFails": [],
+    "smallTargets": [],
+    "fontSizes": [
+      [
+        "10",
+        5
+      ],
+      [
+        "11",
+        2
+      ],
+      [
+        "12",
+        6
+      ],
+      [
+        "14",
+        18
+      ],
+      [
+        "16",
+        6
+      ],
+      [
+        "18",
+        3
+      ],
+      [
+        "24",
+        1
+      ],
+      [
+        "30",
+        1
+      ]
+    ],
+    "aboveFold": [
+      "CHECKMARK",
+      "Mark",
+      "HOME",
+      "Check in",
+      "How are you feeling?",
+      "A few taps — your read feeds every analysis.",
+      "6/10",
+      "/10",
+      "OK",
+      "Rough",
+      "Meh",
+      "Good",
+      "Great",
+      "Slept well",
+      "Low energy",
+      "Niggle",
+      "Last night's setup\nBedding, windows, blind and when pre-cooling started",
+      "Last night's setup",
+      "Bedding, windows, blind and when pre-cooling started",
+      "More\nIn your own words, blood pressure, and yesterday's supplements & food",
+      "More",
+      "In your own words, blood pressure, and yesterday's supplements & food",
+      "Home",
+      "Week",
+      "Sleep",
+      "Climate"
+    ],
+    "busyStill": 0
+  },
+  "/sleep|light": {
+    "route": "/sleep",
+    "theme": "light",
+    "ttcMs": 2736,
+    "pageErrors": [],
+    "apiErrors": [],
+    "vw": 390,
+    "vh": 844,
+    "scrollHeight": 2886,
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "hOverflow": false,
+    "screensToScroll": 3.42,
+    "contrastFails": [],
+    "smallTargets": [],
+    "fontSizes": [
+      [
+        "10",
+        6
+      ],
+      [
+        "11",
+        7
+      ],
+      [
+        "12",
+        15
+      ],
+      [
+        "14",
+        63
+      ],
+      [
+        "16",
+        6
+      ],
+      [
+        "18",
+        4
+      ],
+      [
+        "24",
+        1
+      ]
+    ],
+    "aboveFold": [
+      "CHECKMARK",
+      "Mark",
+      "TUESDAY 1 SEPTEMBER",
+      "Sleep",
+      "Last night",
+      "Tonight",
+      "Sleep calendar",
+      "Selected: Tue 1 Sep",
+      "Show calendar",
+      "Last night's sleep",
+      "How last night compares to your own normal and your age group.",
+      "Home",
+      "Week",
+      "Climate",
+      "More"
+    ],
+    "busyStill": 0
+  },
+  "/delivery|light": {
+    "route": "/delivery",
+    "theme": "light",
+    "ttcMs": 1604,
+    "pageErrors": [],
+    "apiErrors": [],
+    "vw": 390,
+    "vh": 844,
+    "scrollHeight": 2202,
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "hOverflow": false,
+    "screensToScroll": 2.61,
+    "contrastFails": [],
+    "smallTargets": [],
+    "fontSizes": [
+      [
+        "10",
+        5
+      ],
+      [
+        "11",
+        2
+      ],
+      [
+        "12",
+        32
+      ],
+      [
+        "14",
+        28
+      ],
+      [
+        "16",
+        19
+      ],
+      [
+        "18",
+        2
+      ],
+      [
+        "24",
+        1
+      ]
+    ],
+    "aboveFold": [
+      "CHECKMARK",
+      "Mark",
+      "Week",
+      "This week at a glance: what’s on each day, what’s done, and what’s still to do.",
+      "This week",
+      "Edit week",
+      "Mon 31 Aug",
+      "Dumbbells (full-body)\n\nMaintenance · 22 min\n\nDone",
+      "Dumbbells (full-body)",
+      "Maintenance · 22 min",
+      "Tue 1 Sept",
+      "VO₂ (30/30s @ 130%)\n\nVO₂ · 51 min\n\nTo do",
+      "VO₂ (30/30s @ 130%)",
+      "VO₂ · 51 min",
+      "Wed 2 Sept",
+      "Z2\n\nEndurance · 75 min\n\nTo do",
+      "Z2",
+      "Endurance · 75 min",
+      "Thu 3 Sept",
+      "Sweet Spot (3 × 20 min @ 89%)\n\nSweet spot · 94 min\n\nTo do",
+      "Sweet Spot (3 × 20 min @ 89%)",
+      "Sweet spot · 94 min",
+      "Home",
+      "Sleep",
+      "Climate",
+      "More"
+    ],
+    "busyStill": 0
+  },
+  "/trends|light": {
+    "route": "/trends",
+    "theme": "light",
+    "ttcMs": 2016,
+    "pageErrors": [],
+    "apiErrors": [],
+    "vw": 390,
+    "vh": 844,
+    "scrollHeight": 844,
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "hOverflow": false,
+    "screensToScroll": 1,
+    "contrastFails": [],
+    "smallTargets": [],
+    "fontSizes": [
+      [
+        "10",
+        5
+      ],
+      [
+        "11",
+        2
+      ],
+      [
+        "14",
+        9
+      ],
+      [
+        "16",
+        5
+      ],
+      [
+        "18",
+        1
+      ],
+      [
+        "24",
+        1
+      ]
+    ],
+    "aboveFold": [
+      "CHECKMARK",
+      "Mark",
+      "Trends",
+      "By month",
+      "By season",
+      "Loading your trends…",
+      "Home",
+      "Week",
+      "Sleep",
+      "Climate",
+      "More"
+    ],
+    "busyStill": 0
+  },
+  "/environment|light": {
+    "route": "/environment",
+    "theme": "light",
+    "ttcMs": 2015,
+    "pageErrors": [],
+    "apiErrors": [],
+    "vw": 390,
+    "vh": 844,
+    "scrollHeight": 1271,
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "hOverflow": false,
+    "screensToScroll": 1.51,
+    "contrastFails": [],
+    "smallTargets": [],
+    "fontSizes": [
+      [
+        "10",
+        6
+      ],
+      [
+        "11",
+        3
+      ],
+      [
+        "12",
+        5
+      ],
+      [
+        "14",
+        18
+      ],
+      [
+        "16",
+        8
+      ],
+      [
+        "18",
+        7
+      ],
+      [
+        "24",
+        1
+      ]
+    ],
+    "aboveFold": [
+      "CHECKMARK",
+      "Mark",
+      "TUESDAY 1 SEPTEMBER",
+      "Climate",
+      "Bedroom climate",
+      "The live room read and fan controls for the bedroom.",
+      "Indoor now",
+      "18.5°C",
+      "Thermostat",
+      "17.0°C",
+      "Overnight low",
+      "11.4°C",
+      "Wind",
+      "7 mph",
+      "Overnight autopilot",
+      "Following the room overnight; winds down by morning.",
+      "Manual control",
+      "Bedroom fan",
+      "Auto · on at speed 5, responding to 20.1°C",
+      "Turn off",
+      "Low",
+      "Medium",
+      "High",
+      "Using a manual control turns the overnight autopilot off.",
+      "Auto mode",
+      "Home",
+      "Week",
+      "Sleep",
+      "More"
+    ],
+    "busyStill": 0
+  },
+  "/settings|light": {
+    "route": "/settings",
+    "theme": "light",
+    "ttcMs": 1566,
+    "pageErrors": [],
+    "apiErrors": [],
+    "vw": 390,
+    "vh": 844,
+    "scrollHeight": 844,
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "hOverflow": false,
+    "screensToScroll": 1,
+    "contrastFails": [],
+    "smallTargets": [],
+    "fontSizes": [
+      [
+        "10",
+        5
+      ],
+      [
+        "11",
+        2
+      ],
+      [
+        "12",
+        1
+      ],
+      [
+        "14",
+        15
+      ],
+      [
+        "16",
+        5
+      ],
+      [
+        "24",
+        1
+      ]
+    ],
+    "aboveFold": [
+      "CHECKMARK",
+      "Mark",
+      "Settings",
+      "APPEARANCE",
+      "Light",
+      "Dark",
+      "System",
+      "NOTIFICATIONS",
+      "Enabling…",
+      "VOICE",
+      "Natural hosted voice",
+      "Home",
+      "Week",
+      "Sleep",
+      "Climate",
+      "More"
+    ],
+    "busyStill": 0
+  }
+}
