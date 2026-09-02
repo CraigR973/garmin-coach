@@ -292,8 +292,7 @@ weight goes where it is rare — a light standing line, a substantive escalation
 > actually feel — if those two disagree, trust yourself.
 
 **Escalation (E2) — emitted only when the acute-physiology rail trips.** Craig
-approved the resting-HR wording; the other two are drafted to the same four-part
-shape and need his sign-off before they ship. Every variant carries **the value,
+approved all three variants before Batch 246 started. Every variant carries **the value,
 his own baseline, and the window** — the app's established "numbers with meaning"
 voice — then the plain-language cause list, then why training through it is
 wrong, then the action and the medical route.
@@ -305,19 +304,19 @@ wrong, then the action and the medical route.
 > hard through it tends to make it worse. Take today off the bike, and if you
 > feel unwell alongside it, see your GP rather than just resting.
 
-*HRV collapse (draft):*
+*HRV collapse (approved):*
 > Your overnight HRV is 28 ms this morning against a usual 47 — a drop that size
 > in a single night is unusual for you. It usually means one of: an infection
 > starting, a heavy drink, a badly broken night, or real stress carried into
 > sleep. Training hard through it tends to deepen it. Take today off the bike,
 > and if you feel unwell alongside it, see your GP rather than just resting.
 
-*SpO₂ / respiration (draft) — deliberately a different action:*
+*SpO₂ / respiration (approved) — deliberately a different action:*
 > Your overnight oxygen saturation averaged 89% last night against a usual 96%,
 > and your breathing rate was 17 against a usual 11. Sustained low overnight
 > oxygen has causes worth checking properly — a chest infection, or disrupted
 > breathing during sleep. This one isn't something training or rest changes.
-> Take today off the bike, and mention this to your GP if it happens again.
+> Mention this to your GP if it happens again.
 
 **Why the third variant ends differently, and it matters.** Repeated overnight
 desaturation with elevated respiration in a 57-year-old man points at sleep-
