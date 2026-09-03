@@ -1022,7 +1022,7 @@ async def test_amber_morning_leads_with_week_swap_and_keeps_softening(
     adjustments = verdict["planAdjustments"]
     # The swap leads; softening stays available as the explicit fallback.
     assert "move vo2 max 30/30 from thursday to saturday" in adjustments[0].lower()
-    assert any("cut duration" in item.lower() for item in adjustments[1:])
+    assert any("cut the bike to" in item.lower() for item in adjustments[1:])
 
     # Batch 70 (#143): the same cautious morning reports the week's mix and, because
     # today's dropped VO2 can move to Saturday, frames it as re-patched — not lost.

@@ -296,8 +296,9 @@ def _adjust_steps_preserving_geometry(
     repetitions and rewrites their ``i/n`` labels. Warm-up/cool-down steps stay at
     full length while the target permits it, and continuous interval blocks absorb
     the exact remaining duration. If the cautious target is shorter than the fixed
-    opening/closing steps, the interval set is removed and those easy steps are
-    shortened as a recovery-session substitution.
+    opening/closing total, every divisible step is shortened proportionally while
+    atomic repeats remain indivisible. If no interval effort survives, the whole
+    plan becomes a continuous recovery substitution instead of an ungradable shell.
     """
     if not steps:
         return []
@@ -351,8 +352,19 @@ def _adjust_steps_preserving_geometry(
 
     keep_repeats: dict[tuple[str, int], set[int]] = {}
     if target_total <= fixed_total:
-        fixed_durations = _scaled_durations(steps, fixed_indices, target_total)
-        continuous_durations: dict[int, int] = {}
+        divisible_durations = _scaled_durations(
+            steps, fixed_indices + continuous_indices, target_total
+        )
+        fixed_durations = {
+            index: duration
+            for index, duration in divisible_durations.items()
+            if index in fixed_indices
+        }
+        continuous_durations = {
+            index: duration
+            for index, duration in divisible_durations.items()
+            if index in continuous_indices
+        }
     else:
         fixed_durations = {
             index: max(1, int(steps[index].get("durationSec", 0))) for index in fixed_indices
@@ -459,13 +471,16 @@ def _adjust_steps_preserving_geometry(
             ease=ease,
         )
         adjusted.append(next_step)
-    if not adjusted:
+    source_has_interval = any(str(step.get("phase") or "interval") == "interval" for step in steps)
+    adjusted_has_interval = any(step["phase"] == "interval" for step in adjusted)
+    if not adjusted or (source_has_interval and not adjusted_has_interval):
         # A valid manually-authored workout may contain only one work/recovery
         # pair and no divisible warm-up/cool-down (Decision #161). Removing that
-        # sole repetition would produce an empty workout, so take the other
-        # sanctioned easing route: change the session type to one continuous,
-        # genuinely easy recovery effort. Its 60%-FTP ceiling keeps load
-        # monotonic even when the source pair contains a long 45%-FTP recovery.
+        # sole repetition can produce an empty workout or only an easy fixed-step
+        # shell, so take the other sanctioned easing route: change the session
+        # type to one continuous, genuinely easy recovery effort. Its 60%-FTP
+        # ceiling keeps load monotonic even when the source pair contains a long
+        # 45%-FTP recovery.
         recovery_pct = min(power_cap, RECOVERY_CAP_PCT)
         recovery_source = {
             "label": "Recovery substitution",
@@ -474,14 +489,14 @@ def _adjust_steps_preserving_geometry(
             "powerStartPct": recovery_pct,
             "powerEndPct": recovery_pct,
         }
-        adjusted.append(
+        adjusted = [
             _adjust_step(
                 recovery_source,
                 duration_sec=target_total,
                 power_cap=recovery_pct,
                 ease=None,
             )
-        )
+        ]
     return adjusted
 
 

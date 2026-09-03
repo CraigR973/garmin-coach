@@ -636,6 +636,54 @@ def test_an_indivisible_single_pair_becomes_recovery_instead_of_an_empty_workout
     assert _duration_load(red) <= _duration_load(amber) <= _duration_load(base)
 
 
+def test_short_continuous_set_keeps_gradable_effort_when_fixed_steps_exceed_red() -> None:
+    base = {
+        "name": "Short VO2",
+        "steps": [
+            {
+                "label": "Warm-up",
+                "phase": "warmup",
+                "kind": "ramp",
+                "durationSec": 300,
+                "powerStartPct": 55,
+                "powerEndPct": 80,
+            },
+            {
+                "label": "VO2",
+                "phase": "interval",
+                "kind": "steady",
+                "durationSec": 120,
+                "powerStartPct": 120,
+                "powerEndPct": 120,
+            },
+            {
+                "label": "Recovery",
+                "phase": "interval",
+                "kind": "steady",
+                "durationSec": 180,
+                "powerStartPct": 55,
+                "powerEndPct": 55,
+            },
+            {
+                "label": "Cool-down",
+                "phase": "cooldown",
+                "kind": "ramp",
+                "durationSec": 300,
+                "powerStartPct": 70,
+                "powerEndPct": 45,
+            },
+        ],
+        "totalDurationSec": 900,
+    }
+
+    red = adjust_ir_for_verdict(base, "Red")
+
+    assert red["totalDurationSec"] == 450
+    assert [step["durationSec"] for step in red["steps"]] == [150, 60, 90, 150]
+    assert any(step["phase"] == "interval" for step in red["steps"])
+    assert _max_any_step_power(red) <= RECOVERY_CAP_PCT
+
+
 # ---------------------------------------------------------------------------
 # ExecutableCoachingService — DB-backed
 # ---------------------------------------------------------------------------
@@ -1591,7 +1639,7 @@ async def test_regenerate_for_verdict_holds_zone_two_on_a_red_morning(
         ir = created[0].structured_workout_ir
         assert created[0].status == "proposed"  # still never auto-approved
         assert ir["origin"] == "red_endurance_hold"
-        assert ir["totalDurationSec"] == 2295  # 38 min, against the pre-fix 1350
+        assert ir["totalDurationSec"] == 1890  # 32 min, against the pre-fix 1350
         assert _max_work_power(ir) == 62
         assert ir["adjustment"]["companionSession"] is False
 
