@@ -210,7 +210,13 @@ log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 # adjusted %FTP a 68-75% ride resolves to, and verdict.chronicAction gained the
 # training-debt exclusion bounds. The packet and these instructions both changed,
 # so v43 would otherwise be served as current on the day this ships.
-PROMPT_VERSION = "morning-analysis-v44-2026-09-03"
+# Batch 250: and again, for both halves at once. REM_FRAMING_RULE — embedded
+# verbatim in this prompt — now requires the read to state that the REM figure is
+# a wrist-device estimate whose early-night component is probably under-counted,
+# which is an instruction v44 never carried; and ageComparison gained
+# sleepBandBasis and remMeasurementBasis, so the packet changed underneath it too.
+# A v44 brief was written under neither.
+PROMPT_VERSION = "morning-analysis-v45-2026-09-03"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says

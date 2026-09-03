@@ -253,3 +253,56 @@ def test_summarize_handles_an_empty_history_and_a_history_without_rem() -> None:
     assert summary.nights == 1
     assert summary.nights_with_rem == 0
     assert not summary.architecture_is_real
+
+
+# ---------------------------------------------------------------------------
+# Batch 250: the limitation reaches every surface that judges the number
+# ---------------------------------------------------------------------------
+
+
+def test_the_measurement_basis_states_a_limit_not_a_reassurance() -> None:
+    """``REM_FRAMING_RULE`` still forbids concluding "no concern".
+
+    The note exists to stop the app overstating a total, not to start it
+    dismissing a flag — so it must not read as "your REM is fine".
+    """
+    from src.services.age_norms import REM_FRAMING_RULE, REM_MEASUREMENT_BASIS
+    from src.services.rem_architecture import REM_ARCHITECTURE_NOTE
+
+    assert REM_MEASUREMENT_BASIS is REM_ARCHITECTURE_NOTE
+    assert "wrist-device estimate" in REM_MEASUREMENT_BASIS
+    assert "understated" in REM_MEASUREMENT_BASIS
+    # It carries the evidence that earned it, not just an assertion.
+    assert "239" in REM_MEASUREMENT_BASIS
+    assert "final quarter" in REM_MEASUREMENT_BASIS
+    # And the rule it travels with still refuses the reassuring conclusion.
+    assert 'does not license concluding "no concern"' in REM_FRAMING_RULE
+    for banned in ("no concern", "not a deficit", "not a structural concern"):
+        assert banned in REM_FRAMING_RULE
+
+
+def test_both_prompts_that_embed_the_rule_moved_their_version() -> None:
+    """Changing a shared prompt constant withdraws the reads written under it.
+
+    Batch 227 bumped the trends version nine hours after Batch 225.5 had
+    regenerated that narrative and left Mark's Trends page empty. The versions
+    move together with the rule, and closeout drives the real lookup.
+    """
+    from src.services.morning_analysis import PROMPT_VERSION
+    from src.services.trends import PROMPT_VERSION_BY_BUCKET
+
+    assert PROMPT_VERSION.startswith("morning-analysis-v45")
+    assert PROMPT_VERSION_BY_BUCKET["month"].startswith("trends-month-v9")
+    assert PROMPT_VERSION_BY_BUCKET["season"].startswith("trends-season-v9")
+
+
+def test_the_trends_packet_can_back_every_sentence_its_prompt_demands() -> None:
+    """An instruction the packet cannot support is an invitation to invent.
+
+    Batch 244 exists to close that gap. The trends prompt now asks for the band
+    basis and the measurement basis by name, so both must travel in the packet.
+    """
+    from src.services.trends import TREND_SYSTEM_PROMPT
+
+    assert "remAgeBand.bandBasis" in TREND_SYSTEM_PROMPT
+    assert "remAgeBand.measurementBasis" in TREND_SYSTEM_PROMPT
