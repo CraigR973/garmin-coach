@@ -13,16 +13,16 @@ from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 from src.config import settings
 from src.models.coaching import BriefGenerationStatus
 from src.models.profile import Profile, UserRole
-from src.routers.daily_loop import (
-    STALE_GENERATING_REASON,
-    BriefGenerationStatusOut,
-    _serialize_brief_generation,
-)
+from src.routers.daily_loop_schemas import BriefGenerationStatusOut
 from src.services.brief_generation_status import (
     STATUS_FAILED,
     STATUS_GENERATING,
     STATUS_READY,
     BriefGenerationStatusService,
+)
+from src.services.daily_loop_envelope import (
+    STALE_GENERATING_REASON,
+    _serialize_brief_generation,
 )
 from src.services.nudge_alerts import NudgeAlertService
 

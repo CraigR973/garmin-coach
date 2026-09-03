@@ -75,7 +75,7 @@ from src.services.workout_delivery import (
 )
 
 if TYPE_CHECKING:
-    from src.services.morning_analysis import MorningAnalysisClient, MorningAnalysisService
+    pass
 
 PROMPT_VERSION = "executable-coaching:v1"
 AUDIT_TYPE_PROPOSED = "workout_proposed"
@@ -445,58 +445,6 @@ class ExecutableCoachingService:
                 proposal_count=len(expired),
             )
         return expired
-
-    async def regenerate_after_morning_checkin(
-        self,
-        player: Profile,
-        subject_date: date,
-        *,
-        morning_service: MorningAnalysisService,
-        client: MorningAnalysisClient | None = None,
-        commit: bool = True,
-    ) -> Analysis:
-        """Regenerate today's brief when Mark checks in (Batch 85).
-
-        The check-in is now the *primary* generate trigger — the wake job only
-        syncs the inputs and nudges (run_morning_sync). Every submit
-        force-regenerates today's read so his just-entered notes and any question
-        fold in; an empty check-in still produces today's objective brief.
-        Guardrails preserved:
-
-        * subjective is **downgrade-only** — the packet verdict already treats a low
-          score as a cap and a high one as non-upgrading, so regenerating can only
-          ever *ease* today, never harden it or lift a Red/Amber to Green;
-        * a ride Mark **deliberately approved or hand-edited today is never silently
-          re-adjusted** (Decision #29). Batch 173.1 moved that guard into
-          ``regenerate_for_verdict`` (``_deliberately_acted``) so a ride merely
-          *pre-delivered* by push-on-plan-set (Decision #99) still gets a proposed
-          adjustment at check-in — not only from the late 11:00 backstop — and both
-          paths share one rule.
-
-        Returns the regenerated analysis.
-        """
-        # Always regenerate the brief so his notes/questions shape today's read.
-        result = await morning_service.generate_and_store(
-            player, subject_date, client=client, force=True, commit=False
-        )
-
-        # Offer the eased ride the moment the verdict is cautious; the per-ride
-        # acted-on-today guard inside regenerate_for_verdict keeps Decision #29.
-        verdict = self._verdict_status(result.analysis)
-        if verdict in {"Amber", "Red"}:
-            await self.regenerate_for_verdict(
-                player, subject_date, analysis=result.analysis, commit=False
-            )
-        await self.propose_chronic_deload(
-            player,
-            subject_date,
-            analysis=result.analysis,
-            commit=False,
-        )
-
-        if commit:
-            await self.session.commit()
-        return result.analysis
 
     async def auto_push_due(
         self,

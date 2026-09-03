@@ -10,13 +10,13 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
-from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
 from src.models.coaching import Analysis, GenerationRequest, ManualEntry
+from src.services.anthropic_text import AnthropicApiError
 
 STATUS_RUNNING = "running"
 STATUS_COMPLETED = "completed"
@@ -254,7 +254,12 @@ def _advisory_key(lease_scope: str) -> int:
     return int.from_bytes(digest[:8], byteorder="big", signed=True)
 
 
-class GenerationRequestInProgress(HTTPException):
+#: What a client is told when it asks for a scope another worker already owns.
+#: Translated to 409 in exactly one place — ``main._generation_in_progress_handler``.
+GENERATION_IN_PROGRESS_DETAIL = "This read is already being generated. Please try again shortly."
+
+
+class GenerationRequestInProgress(Exception):
     """Another worker already owns this artifact scope — do not wait, do not fail.
 
     Batch 232: this is not an error state and callers must not present it as one.
@@ -262,13 +267,16 @@ class GenerationRequestInProgress(HTTPException):
     found alone, because the worker that *does* hold the scope is going to write
     the real outcome. Recording a failure here shows Mark a retryable failure
     card for a brief that is being written successfully in the next task along.
-    """
 
-    def __init__(self) -> None:
-        super().__init__(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="This read is already being generated. Please try again shortly.",
-        )
+    Batch 251 (CR236-06): this used to subclass ``HTTPException``, so a *transport*
+    type carried domain control flow through four handlers that each meant
+    something different by it — a router (409 to the client), a background task
+    (return quietly), and two scheduler jobs (count the run as skipped). Two jobs
+    and a background task have no client to send a 409 to, and anything catching
+    ``HTTPException`` broadly between the raise and the intended handler swallowed
+    it — which is the Batch 232 defect. It is now a plain domain exception, and the
+    single translation to 409 lives at the HTTP boundary where transport belongs.
+    """
 
 
 @dataclass
@@ -297,6 +305,37 @@ class GenerationClaim:
         self.row.failure_reason = reason[:40]
         self.row.lease_expires_at = _utcnow()
         self.row.updated_at = _utcnow()
+
+
+async def _record_claim_failure(
+    session: AsyncSession, claim: GenerationClaim, exc: BaseException
+) -> None:
+    """Record why a claimed generation failed, without destroying the reason.
+
+    Batch 251 (CR236-06). Two problems lived in the two hand-copied ``except``
+    bodies this replaces:
+
+    * The flush ran unconditionally. If the body failed for a *database* reason the
+      Session already needs a rollback, so the flush raised ``PendingRollbackError``
+      — replacing the original exception with a different one and losing the
+      ``failure_reason`` it was in the middle of recording. Mark then got the
+      generic failure copy while the row kept ``status='running'`` with a live
+      lease until it expired: the "stuck generating" class, from a different
+      direction than Batch 144 covered. The guard below skips the write when the
+      transaction is already dead, so the real exception is what propagates.
+    * The reason came from ``getattr(exc, "reason", …)`` — a duck-type where a type
+      test belongs, which would stringify any unrelated ``.reason`` an exception
+      happened to carry. ``AnthropicApiError`` is the type that actually defines
+      one.
+    """
+    if claim.row.status == STATUS_FAILED:
+        return
+    transaction = session.get_transaction()
+    if transaction is not None and not transaction.is_active:
+        return
+    reason = exc.reason if isinstance(exc, AnthropicApiError) else "generation_error"
+    claim.mark_failed(reason)
+    await session.flush()
 
 
 @asynccontextmanager
@@ -367,9 +406,7 @@ async def claim_generation_request(
         try:
             yield claim
         except Exception as exc:
-            if claim.row.status != STATUS_FAILED:
-                claim.mark_failed(str(getattr(exc, "reason", "generation_error")))
-                await session.flush()
+            await _record_claim_failure(session, claim, exc)
             raise
         return
 
@@ -403,7 +440,5 @@ async def claim_generation_request(
     try:
         yield claim
     except Exception as exc:
-        if claim.row.status != STATUS_FAILED:
-            claim.mark_failed(str(getattr(exc, "reason", "generation_error")))
-            await session.flush()
+        await _record_claim_failure(session, claim, exc)
         raise

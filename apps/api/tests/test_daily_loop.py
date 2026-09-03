@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import date, datetime, time
+from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -29,6 +29,8 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile, UserRole
 from src.routers import daily_loop as daily_loop_router
+from src.routers import daily_loop_schemas
+from src.services import morning_pipeline
 from src.services.anthropic_text import AnthropicApiError
 from src.services.daily_loop import (
     ANALYSIS_TYPE_POST_FLEXIBILITY,
@@ -40,6 +42,8 @@ from src.services.daily_loop import (
 from src.services.executable_coaching import ExecutableCoachingService
 from src.services.generation_requests import GenerationRequestInProgress
 from src.services.holiday_pause import HolidayWindow
+from src.services.morning_analysis import MorningAnalysisService
+from src.services.morning_pipeline import MorningBriefPipeline
 from src.services.morning_verdict import MEDICAL_BOUNDARY_STANDING_LINE
 from src.services.workout_delivery import IntervalsCreateResult
 
@@ -735,7 +739,7 @@ async def test_manual_entry_returns_immediately_and_queues_brief_generation(
 
     queued = AsyncMock()
     monkeypatch.setattr(daily_loop_router, "_generate_brief_after_checkin", queued)
-    monkeypatch.setattr(daily_loop_router, "_local_today", lambda timezone_name: subject_date)
+    monkeypatch.setattr(daily_loop_router, "local_today", lambda timezone_name: subject_date)
 
     app.dependency_overrides[get_current_user] = lambda: player
     app.dependency_overrides[get_db] = _db_override(session_factory)
@@ -774,7 +778,10 @@ async def test_checkin_background_syncs_before_generating(
         )
         await session.commit()
 
-    async def sync_inputs(session: AsyncSession, profiles: list[Profile]) -> None:
+    async def sync_inputs(pipeline: MorningBriefPipeline, profiles: list[Profile]) -> None:
+        # Batch 251: set on the class, so this receives the pipeline as ``self``
+        # and reads its session — the sync is the pipeline's own step now.
+        session = pipeline.session
         events.append("sync")
         assert [profile.id for profile in profiles] == [user_id]
         session.add_all(
@@ -799,7 +806,7 @@ async def test_checkin_background_syncs_before_generating(
 
     async def generate(*args: object, **kwargs: object) -> MagicMock:
         events.append("generate")
-        return generated_analysis
+        return MagicMock(analysis=generated_analysis, generated=True)
 
     async def notify(*args: object, **kwargs: object) -> bool:
         events.append("notify")
@@ -808,16 +815,26 @@ async def test_checkin_background_syncs_before_generating(
         assert args[2] is generated_analysis
         return True
 
-    monkeypatch.setattr(daily_loop_router, "AsyncSessionLocal", session_factory)
-    monkeypatch.setattr(daily_loop_router, "_local_time", lambda timezone_name: time(8, 0))
-    monkeypatch.setattr("src.scheduler._sync_morning_inputs", sync_inputs)
+    monkeypatch.setattr(morning_pipeline, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(
-        ExecutableCoachingService,
-        "regenerate_after_morning_checkin",
-        generate,
+        morning_pipeline,
+        "profile_now",
+        lambda profile: datetime(2026, 1, 1, 8, 0, tzinfo=UTC),
+    )
+    monkeypatch.setattr(morning_pipeline.MorningBriefPipeline, "sync_inputs", sync_inputs)
+    monkeypatch.setattr(MorningAnalysisService, "generate_and_store", generate)
+    # Batch 251: the check-in ladder is the pipeline's now, so the two coaching
+    # steps that used to sit *inside* the patched generate call are visible here.
+    # They have their own tests (test_executable_coaching); this one is about the
+    # trigger's ordering and its status write.
+    monkeypatch.setattr(
+        ExecutableCoachingService, "regenerate_for_verdict", AsyncMock(return_value=[])
     )
     monkeypatch.setattr(
-        "src.routers.daily_loop.NudgeAlertService.push_brief_ready",
+        ExecutableCoachingService, "propose_chronic_deload", AsyncMock(return_value=[])
+    )
+    monkeypatch.setattr(
+        "src.services.morning_pipeline.NudgeAlertService.push_brief_ready",
         notify,
     )
 
@@ -859,20 +876,20 @@ async def test_checkin_background_never_generates_when_sync_lands_no_inputs(
     generate = AsyncMock()
     notify = AsyncMock(return_value=True)
     mark_failed = AsyncMock(return_value=MagicMock())
-    monkeypatch.setattr(daily_loop_router, "AsyncSessionLocal", session_factory)
-    monkeypatch.setattr(daily_loop_router, "_local_time", lambda timezone_name: time(8, 0))
-    monkeypatch.setattr("src.scheduler._sync_morning_inputs", sync_inputs)
+    monkeypatch.setattr(morning_pipeline, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(
-        ExecutableCoachingService,
-        "regenerate_after_morning_checkin",
-        generate,
+        morning_pipeline,
+        "profile_now",
+        lambda profile: datetime(2026, 1, 1, 8, 0, tzinfo=UTC),
     )
+    monkeypatch.setattr(morning_pipeline.MorningBriefPipeline, "sync_inputs", sync_inputs)
+    monkeypatch.setattr(MorningAnalysisService, "generate_and_store", generate)
     monkeypatch.setattr(
-        "src.routers.daily_loop.NudgeAlertService.push_brief_ready",
+        "src.services.morning_pipeline.NudgeAlertService.push_brief_ready",
         notify,
     )
     monkeypatch.setattr(
-        daily_loop_router.BriefGenerationStatusService,
+        morning_pipeline.BriefGenerationStatusService,
         "mark_failed",
         mark_failed,
     )
@@ -948,19 +965,19 @@ async def test_checkin_background_leaves_an_in_flight_generation_alone(
     # connection, so the rollback the deferral path performs also discards rows
     # a previous session committed. Production sessions are independent.
     mark = AsyncMock(return_value=MagicMock())
-    monkeypatch.setattr(daily_loop_router, "AsyncSessionLocal", session_factory)
-    monkeypatch.setattr(daily_loop_router, "_local_time", lambda timezone_name: time(8, 0))
-    monkeypatch.setattr("src.scheduler._sync_morning_inputs", sync_inputs)
+    monkeypatch.setattr(morning_pipeline, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(
-        ExecutableCoachingService,
-        "regenerate_after_morning_checkin",
-        refuse,
+        morning_pipeline,
+        "profile_now",
+        lambda profile: datetime(2026, 1, 1, 8, 0, tzinfo=UTC),
     )
+    monkeypatch.setattr(morning_pipeline.MorningBriefPipeline, "sync_inputs", sync_inputs)
+    monkeypatch.setattr(MorningAnalysisService, "generate_and_store", refuse)
     monkeypatch.setattr(
-        "src.routers.daily_loop.NudgeAlertService.push_brief_ready",
+        "src.services.morning_pipeline.NudgeAlertService.push_brief_ready",
         notify,
     )
-    monkeypatch.setattr(daily_loop_router.BriefGenerationStatusService, "mark", mark)
+    monkeypatch.setattr(morning_pipeline.BriefGenerationStatusService, "mark", mark)
 
     # The background task swallows it: a losing attempt is not an error either.
     await daily_loop_router._generate_brief_after_checkin(user_id, subject_date)
@@ -1581,8 +1598,8 @@ def test_daily_loop_does_not_ship_the_raw_garmin_blobs() -> None:
     wire format, because the failure it prevents is silent: re-adding the field
     costs nothing locally and shows up as a slower cold load on Mark's phone.
     """
-    assert "rawPayload" not in daily_loop_router.DailyMetricOut.model_fields
-    assert "rawPayload" not in daily_loop_router.SleepOut.model_fields
+    assert "rawPayload" not in daily_loop_schemas.DailyMetricOut.model_fields
+    assert "rawPayload" not in daily_loop_schemas.SleepOut.model_fields
 
 
 def test_daily_loop_still_serves_the_fields_the_app_reads() -> None:
@@ -1592,8 +1609,8 @@ def test_daily_loop_still_serves_the_fields_the_app_reads() -> None:
     absence, so pin the neighbouring readings that Home and the sleep page do
     render.
     """
-    metric_fields = daily_loop_router.DailyMetricOut.model_fields
-    sleep_fields = daily_loop_router.SleepOut.model_fields
+    metric_fields = daily_loop_schemas.DailyMetricOut.model_fields
+    sleep_fields = daily_loop_schemas.SleepOut.model_fields
     for field in ("readinessScore", "recoveryTimeMin", "hrvLastNightAvgMs", "vo2max"):
         assert field in metric_fields, field
     for field in ("score", "ageAdjustedScore", "remSleepSec", "factorsJson"):
@@ -1720,26 +1737,32 @@ async def test_checkin_background_alerts_on_any_anthropic_reason_not_just_billin
     await _seed_brief_profile(session_factory, user_id, "Timeout Alerts")
 
     alert = AsyncMock(return_value=True)
-    monkeypatch.setattr(daily_loop_router, "AsyncSessionLocal", session_factory)
-    monkeypatch.setattr(daily_loop_router, "_local_time", lambda timezone_name: time(8, 0))
-    monkeypatch.setattr("src.scheduler._sync_morning_inputs", AsyncMock(return_value=None))
+    monkeypatch.setattr(morning_pipeline, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(
-        daily_loop_router,
+        morning_pipeline,
+        "profile_now",
+        lambda profile: datetime(2026, 1, 1, 8, 0, tzinfo=UTC),
+    )
+    monkeypatch.setattr(
+        morning_pipeline.MorningBriefPipeline, "sync_inputs", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(
+        morning_pipeline,
         "morning_input_presence",
         AsyncMock(return_value=MagicMock(ready_for_read=lambda **_kw: True)),
     )
     monkeypatch.setattr(
-        ExecutableCoachingService,
-        "regenerate_after_morning_checkin",
+        MorningAnalysisService,
+        "generate_and_store",
         AsyncMock(side_effect=AnthropicApiError("timed out", reason="timeout", status_code=0)),
     )
     monkeypatch.setattr(
-        daily_loop_router.BriefGenerationStatusService,
+        morning_pipeline.BriefGenerationStatusService,
         "mark_failed",
         AsyncMock(return_value=MagicMock()),
     )
     monkeypatch.setattr(
-        "src.routers.daily_loop.NudgeAlertService.notify_admin_generation_failure",
+        "src.services.morning_pipeline.NudgeAlertService.notify_admin_generation_failure",
         alert,
     )
 
@@ -1765,21 +1788,23 @@ async def test_checkin_background_does_not_alert_when_his_watch_has_not_synced(
     await _seed_brief_profile(session_factory, user_id, "No Alert For Inputs")
 
     alert = AsyncMock(return_value=True)
-    monkeypatch.setattr(daily_loop_router, "AsyncSessionLocal", session_factory)
-    monkeypatch.setattr(daily_loop_router, "_local_time", lambda timezone_name: time(8, 0))
-    monkeypatch.setattr("src.scheduler._sync_morning_inputs", AsyncMock(return_value=None))
+    monkeypatch.setattr(morning_pipeline, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(
-        ExecutableCoachingService,
-        "regenerate_after_morning_checkin",
-        AsyncMock(),
+        morning_pipeline,
+        "profile_now",
+        lambda profile: datetime(2026, 1, 1, 8, 0, tzinfo=UTC),
     )
     monkeypatch.setattr(
-        daily_loop_router.BriefGenerationStatusService,
+        morning_pipeline.MorningBriefPipeline, "sync_inputs", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(MorningAnalysisService, "generate_and_store", AsyncMock())
+    monkeypatch.setattr(
+        morning_pipeline.BriefGenerationStatusService,
         "mark_failed",
         AsyncMock(return_value=MagicMock()),
     )
     monkeypatch.setattr(
-        "src.routers.daily_loop.NudgeAlertService.notify_admin_generation_failure",
+        "src.services.morning_pipeline.NudgeAlertService.notify_admin_generation_failure",
         alert,
     )
 
