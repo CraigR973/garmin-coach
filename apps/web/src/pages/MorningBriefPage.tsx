@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Activity, BedDouble, ClipboardCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { AcutePhysiologyNotice, MedicalBoundaryFooter } from '@/components/AcutePhysiologyNotice';
 import { BriefListenControls } from '@/components/BriefListenControls';
 import { BriefPendingCta } from '@/components/BriefPendingCta';
 import { StaleDataNotice } from '@/components/EmptyState';
@@ -71,6 +72,11 @@ export function MorningBriefPage() {
 
   const data = query.data.data;
   const analysis = data.morningAnalysis;
+  const dataSufficiencyLine =
+    analysis?.acutePhysiology?.dataSufficiency?.status === 'insufficient_data'
+      ? (analysis.acutePhysiology.dataSufficiency.message ?? undefined)
+      : undefined;
+  const requiresBikeRest = analysis?.acutePhysiology?.requiresBikeRest === true;
 
   return (
     <div className="space-y-5">
@@ -98,7 +104,15 @@ export function MorningBriefPage() {
 
       {analysis ? (
         <>
-          <VerdictHero verdict={analysis.verdict} />
+          <VerdictHero
+            verdict={analysis.verdict}
+            label={requiresBikeRest ? 'Take today off the bike' : undefined}
+            line={
+              dataSufficiencyLine ??
+              (requiresBikeRest ? 'An acute recovery signal rules out riding today.' : undefined)
+            }
+          />
+          <AcutePhysiologyNotice boundary={analysis.acutePhysiology} />
           <TodayActions actions={analysis.todayActions} workouts={data.plannedWorkouts} />
           <Card>
             <CardHeader>
@@ -129,6 +143,7 @@ export function MorningBriefPage() {
               <Markdown>{analysis.outputMarkdown}</Markdown>
             </CardContent>
           </Card>
+          <MedicalBoundaryFooter boundary={analysis.acutePhysiology} />
         </>
       ) : (
         // Batch 248 (UX241-02): this was one "No morning brief yet" card for all

@@ -987,6 +987,46 @@ describe('v1 shared schemas', () => {
     expect(withoutActions.todayActions).toEqual([]);
   });
 
+  it('parses the deterministic acute-physiology boundary and keeps old reads compatible (Batch 246)', () => {
+    const withBoundary = dailyLoopAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-09-02T06:30:00Z',
+      verdict: 'amber',
+      promptVersion: 'morning-analysis-v42-2026-09-02',
+      outputMarkdown: '**Verdict:** Amber',
+      acutePhysiology: {
+        status: 'triggered',
+        standingLine:
+          "This read comes from your watch and your room sensors. It can't see how you actually feel — if those two disagree, trust yourself.",
+        requiresBikeRest: true,
+        triggeredSignals: ['resting_heart_rate'],
+        dataSufficiency: {
+          status: 'sufficient',
+          message: null,
+          missingRows: [],
+        },
+        escalations: [
+          {
+            kind: 'resting_heart_rate',
+            message: 'Your resting heart rate is outside its personal range.',
+          },
+        ],
+      },
+    });
+
+    expect(withBoundary.acutePhysiology?.requiresBikeRest).toBe(true);
+    expect(withBoundary.acutePhysiology?.escalations[0]?.kind).toBe('resting_heart_rate');
+
+    const older = dailyLoopAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-09-01T06:30:00Z',
+      verdict: 'green',
+      promptVersion: 'morning-analysis-v41-2026-08-30',
+      outputMarkdown: '**Verdict:** Green',
+    });
+    expect(older.acutePhysiology).toBeUndefined();
+  });
+
   it('parses a restructure preview/apply envelope (Batch 83)', () => {
     const parsed = restructureEnvelopeSchema.parse({
       data: {

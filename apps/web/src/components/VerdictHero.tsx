@@ -67,6 +67,8 @@ const PENDING: VerdictStyle = {
 interface VerdictHeroProps {
   verdict: string | null | undefined;
   dateLabel?: string;
+  /** Optional deterministic headline for a stronger policy instruction. */
+  label?: string;
   /** Optional override for the plain-English line (e.g. a one-line sleep summary). */
   line?: string;
   recap?: {
@@ -77,7 +79,7 @@ interface VerdictHeroProps {
   } | null;
 }
 
-export function VerdictHero({ verdict, dateLabel, line, recap = null }: VerdictHeroProps) {
+export function VerdictHero({ verdict, dateLabel, label, line, recap = null }: VerdictHeroProps) {
   const style =
     verdict === 'green' || verdict === 'amber' || verdict === 'red' ? STYLES[verdict] : PENDING;
   const { Icon } = style;
@@ -113,7 +115,7 @@ export function VerdictHero({ verdict, dateLabel, line, recap = null }: VerdictH
           )}
           <p className={cn('mt-1 inline-flex items-center gap-2 text-2xl font-semibold tracking-tight', style.tone)}>
             <Icon className="h-5 w-5 shrink-0" aria-hidden />
-            <span>{style.label}</span>
+            <span>{label ?? style.label}</span>
           </p>
           <p className="mt-0.5 text-sm text-text-secondary">{line ?? style.line}</p>
           {recap ? (

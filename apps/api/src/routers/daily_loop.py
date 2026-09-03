@@ -50,6 +50,7 @@ from src.services.fan_control import describe_fan_intent
 from src.services.generation_requests import GenerationRequestInProgress
 from src.services.morning_analysis import MorningAnalysisService
 from src.services.morning_inputs import morning_input_presence
+from src.services.morning_verdict import MEDICAL_BOUNDARY_STANDING_LINE
 from src.services.nudge_alerts import NudgeAlertService
 from src.services.post_activity_analysis import (
     generate_post_activity_read,
@@ -394,6 +395,7 @@ class AnalysisOut(BaseModel):
     # Batch 86 (#159): deterministic "Today" action block rendered above the brief
     # prose; rides in context_packet["verdict"], so no migration.
     todayActions: list[dict[str, Any]] = []
+    acutePhysiology: dict[str, Any] = Field(default_factory=dict)
     feedback: FeedbackOut | None = None
 
 
@@ -851,6 +853,15 @@ def _serialize_analysis(
         if isinstance(analysis.context_packet, dict)
         else {}
     )
+    acute_physiology = verdict.get("acutePhysiology", {}) if isinstance(verdict, dict) else {}
+    if not isinstance(acute_physiology, dict):
+        acute_physiology = {}
+    # The standing boundary is a product invariant, including for a stored
+    # pre-Batch-246 analysis during the narrow deploy/regeneration window.
+    acute_physiology = {
+        **acute_physiology,
+        "standingLine": MEDICAL_BOUNDARY_STANDING_LINE,
+    }
     return AnalysisOut(
         id=str(analysis.id),
         generatedAtUtc=_dt(analysis.generated_at_utc) or "",
@@ -881,6 +892,7 @@ def _serialize_analysis(
             if isinstance(verdict, dict) and isinstance(verdict.get("todayActions"), list)
             else []
         ),
+        acutePhysiology=acute_physiology,
         feedback=serialize_feedback(feedback) if feedback is not None else None,
     )
 

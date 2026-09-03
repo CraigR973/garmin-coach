@@ -18,7 +18,7 @@ import uuid
 from datetime import date, datetime, timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 
 from src.models.coaching import (
@@ -436,6 +436,43 @@ async def test_readiness_history_is_built_from_wake_readings(
 
     assert [score for _, score in history] == [64, 64, 64]
     assert [day for day, _ in history] == sorted(days)
+
+
+@pytest.mark.asyncio
+async def test_acute_physiology_history_is_projected_from_prior_wake_rows(
+    db_conn: AsyncConnection,
+) -> None:
+    """The acute rail excludes today and cannot pull either raw JSON payload."""
+    from src.services.morning_analysis import MorningAnalysisService
+
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    days = [DAY - timedelta(days=offset) for offset in range(3)]
+
+    async with session_factory() as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Acute physiology history",
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+        for day in days:
+            _seed_phase_pair(session, user_id, day)
+        await session.flush()
+
+        metrics, sleeps = await MorningAnalysisService(session)._acute_physiology_history(
+            user_id, DAY
+        )
+
+    expected_dates = sorted([DAY - timedelta(days=2), DAY - timedelta(days=1)])
+    assert [row.calendar_date for row in metrics] == expected_dates
+    assert [row.resting_heart_rate_bpm for row in metrics] == [44, 44]
+    assert [row.calendar_date for row in sleeps] == expected_dates
+    assert all("raw_payload" in inspect(row).unloaded for row in [*metrics, *sleeps])
 
 
 @pytest.mark.asyncio
