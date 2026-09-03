@@ -84,6 +84,15 @@ export interface AgeComparison {
    *  in words. Stated where the numbers are, so a stage % that will not divide
    *  into Garmin's displayed Duration says why. */
   sleepStagePctBasis?: string;
+  /** Batch 250 (HS240-14): the *band's* denominator, which is not the values'.
+   *  Ohayon's percentages are shares of total sleep time while these are shares
+   *  of measured sleep, so each band sits high — 0.8 points for REM, 4.7 for
+   *  light — and a value just under a floor is nearer it than it looks. */
+  sleepBandBasis?: string;
+  /** Batch 250 (HS240-05): what the REM value being judged actually is. Reaches
+   *  the model's packet and shapes the prose; deliberately not rendered as a
+   *  standalone claim on screen. */
+  remMeasurementBasis?: string;
 }
 
 // Direction of "better" per metric key. This list must cover every key the

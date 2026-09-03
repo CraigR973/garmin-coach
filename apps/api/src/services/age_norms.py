@@ -37,6 +37,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from src.services.rem_architecture import REM_ARCHITECTURE_NOTE
+
 Tone = Literal["good", "warn", "neutral"]
 Direction = Literal["higher", "lower"]
 Sex = Literal["male", "female"]
@@ -285,6 +287,13 @@ class AgeComparison:
             # Batch 230: every sleepRows percentage shares one denominator, so the
             # note travels with the group rather than being repeated per row.
             "sleepStagePctBasis": SLEEP_STAGE_PCT_BASIS_NOTE,
+            # Batch 250 (HS240-14): the *band* has a denominator too, and it is not
+            # the same one. Stated beside the values it judges rather than left in a
+            # close-out note nothing reads.
+            "sleepBandBasis": SLEEP_BAND_BASIS_NOTE,
+            # Batch 250 (HS240-05): and the REM value being judged is a wrist-device
+            # estimate whose early-night component is probably under-counted.
+            "remMeasurementBasis": REM_MEASUREMENT_BASIS,
         }
 
 
@@ -383,6 +392,40 @@ SLEEP_STAGE_PCT_BASIS_NOTE = (
     "minutes and these percentages do not divide into each other."
 )
 
+# Batch 250 (HS240-14). The bands below are Ohayon et al. 2004 percentages, which
+# are conventionally shares of **total sleep time**; this app judges them against
+# shares of **measured sleep**, which additionally includes time awake in bed. The
+# displacement is therefore proportional to the stage's own share and is *not*
+# the "~0.73 points" the Batch 227 close-out recorded — that figure is true of REM
+# alone. Measured across Mark's 437 stored nights at his 7.37% mean awake share:
+# REM +0.8, deep +1.4, awake +0.9, and **light +4.7 points on a 14-point band**.
+#
+# **The arithmetic correction was computed and deliberately not applied**, because
+# rescaling a band by (1 - awake share) is the same operation as moving the value
+# to the total-sleep-time denominator, and Batch 229 already measured that swap and
+# rejected it. Re-measured here on all 437 nights it degrades the same three flags
+# again: light's in-band nights halve (133 -> 66) while its above-ceiling nights
+# rise 296 -> 369, deep's above-ceiling nights rise 129 -> 152, and awake's 50 ->
+# 69. Only REM improves, 372 -> 359 below-band. The Batch 61 bands and the
+# measured-sleep denominator are a calibrated pair, and "correcting" one half of a
+# matched pair is not a correction.
+#
+# So the mismatch is **stated** rather than silently rescaled — which is also the
+# only honest option while HS240-05 stands: these are polysomnography norms applied
+# to a wrist device's stage estimates regardless of which denominator wins.
+SLEEP_BAND_BASIS_NOTE = (
+    "The age bands are Ohayon et al. 2004 polysomnography percentages of total sleep "
+    "time, compared here against shares of measured sleep, which also includes time "
+    "awake in bed. That makes each band sit slightly high for Mark — by about 0.8 "
+    "points for REM and 4.7 for light at his usual 7% awake share — so a value just "
+    "under a floor is nearer it than it looks."
+)
+
+# Batch 250 (HS240-05 fix step 1): what the REM number *is*, stated wherever it is
+# judged. Imported from the module that measured it so the sentence and its
+# evidence cannot drift apart.
+REM_MEASUREMENT_BASIS = REM_ARCHITECTURE_NOTE
+
 # Batch 230: the one REM framing rule, embedded verbatim by BOTH the morning
 # prompt and the trends prompt. It exists as a single constant because the defect
 # it fixes is a *cross-surface* one: on 2026-08-26 the morning brief correctly
@@ -413,7 +456,13 @@ deficit" or "not a structural concern" about a value below the band — say plai
 that it is normal for him AND below the band, and name the chronic pattern where \
 one exists. The 50-59 band is the app's own age-adjusted reference (Ohayon et al. \
 2004); Garmin's young-adult target is a separate, higher range, so never \
-attribute the app's band to Garmin or call it Garmin's flag."""
+attribute the app's band to Garmin or call it Garmin's flag. State once that this \
+is a wrist-device estimate and that REM is the stage such devices agree with \
+laboratory scoring on least, and that Mark's own stage data shows the pattern is \
+real — half his REM falls in the final quarter of the night — while the first REM \
+episode is detected far later than physiology expects, so the total is probably \
+understated by an unknown amount. That is a limit on the measurement, not \
+reassurance: it does not license concluding "no concern"."""
 
 # Morning-only, because a monthly mean has no minutes to lead with. 48 minutes is
 # the one REM figure that reconciles exactly with what Mark's watch shows him; the

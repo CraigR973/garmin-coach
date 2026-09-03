@@ -110,6 +110,24 @@ describe('SleepStageAgeTable', () => {
     expect(screen.getByText(/Ohayon et al\., 2004/)).toBeTruthy();
   });
 
+  it('states the band\'s own denominator beside the values it judges (Batch 250)', () => {
+    // HS240-14: Ohayon's percentages are shares of total sleep time; these values
+    // are shares of measured sleep, which also includes time awake in bed. The
+    // band therefore sits high by 0.8 points for REM and 4.7 for light, so a
+    // value just under a floor is nearer it than the table makes it look.
+    const bandBasis =
+      'The age bands are Ohayon et al. 2004 polysomnography percentages of total sleep time.';
+    render(
+      <SleepStageAgeTable rows={rows} ageBand="50\u201359" bandBasis={bandBasis} />,
+    );
+    expect(screen.getByText(bandBasis)).toBeTruthy();
+  });
+
+  it('omits the band note entirely when none is supplied', () => {
+    render(<SleepStageAgeTable rows={rows} ageBand="50\u201359" />);
+    expect(screen.queryByText(/Ohayon et al. 2004 polysomnography/)).toBeNull();
+  });
+
   it('renders a fallback when sleep-stage rows are not available', () => {
     render(<SleepStageAgeTable rows={[]} ageBand="50–59" />);
     expect(screen.getByText(/fills in when the overnight sleep stages are available/i)).toBeTruthy();
