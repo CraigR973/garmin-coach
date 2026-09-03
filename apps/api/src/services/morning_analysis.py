@@ -126,7 +126,7 @@ from src.services.sleep_scoring import (
 )
 from src.services.standing_habits import SECTION as STANDING_HABITS_SECTION
 from src.services.training_week import TrainingWeekService
-from src.services.verdict_scaling import AMBER_POWER_CAP_PCT
+from src.services.verdict_scaling import AMBER_POWER_CAP_PCT, ENDURANCE_PRESCRIPTION_PCT
 from src.services.workload_budget import workload_slot
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
@@ -204,7 +204,13 @@ log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 # Batch 243: verdict-adjustment geometry, companion-load scaling, and deterministic
 # session-specific instructions changed. Generation identity does not hash the
 # packet, so the version must move or today's pre-fix verdict remains current.
-PROMPT_VERSION = "morning-analysis-v43-2026-09-03"
+# Batch 252: the same rule applies again. verdict.verdictAdjustment gained
+# keptAsEndurance/endurancePrescriptionPct, intensityHeldAtEndurance narrowed to
+# mean "the number did not move", the Zone-2 prescription anchor moved the
+# adjusted %FTP a 68-75% ride resolves to, and verdict.chronicAction gained the
+# training-debt exclusion bounds. The packet and these instructions both changed,
+# so v43 would otherwise be served as current on the day this ships.
+PROMPT_VERSION = "morning-analysis-v44-2026-09-03"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -383,14 +389,18 @@ week can't be rearranged.
 When verdict.verdictAdjustment is present it is the app's own deterministic easing of
 today's ride — planned vs adjusted duration and the resulting %FTP. If you describe
 the softened session, quote those exact figures; never invent a different percentage
-or duration. When verdictAdjustment.intensityHeldAtEndurance is true the ride is
-already Zone 2, so it is only shortened, not dropped in intensity — say so rather
-than implying a zone drop. This is now reachable on Red as well as Amber: when it is
-true on a Red morning the day is a shortened Zone 2, not a recovery substitution, so
-do not describe the session as substituted, replaced or dropped to recovery, and do
-not tell him to swap it for rest. Sustained easy work builds sleep pressure without
-the arousal harder work produces, which is why Red keeps it; the hard work is still
-gone. When verdictAdjustment.companionSession is true the day already holds another
+or duration. When verdictAdjustment.keptAsEndurance is true the ride stays a
+Zone 2 endurance ride. This holds on Red as well as Amber: the day is a shortened
+Zone 2, not a recovery substitution, so do not describe the session as substituted,
+replaced or dropped to recovery, and do not tell him to swap it for rest. Sustained
+easy work builds sleep pressure without the arousal harder work produces, which is
+why Red keeps it; the hard work is still gone. Within that,
+verdictAdjustment.intensityHeldAtEndurance says whether the intensity itself moved:
+when true the ride is only shortened, not dropped in intensity — say so rather than
+implying a zone drop; when false it was eased to the plan's
+{ENDURANCE_PRESCRIPTION_PCT}% FTP Zone 2 anchor, a small
+reduction inside Zone 2 that is still not a recovery substitution.
+When verdictAdjustment.companionSession is true the day already holds another
 session, so the combined load is what the adjustment is protecting — say that rather
 than presenting the deeper cut as being about the ride alone. When former HIT/VO2
 work is capped at
@@ -2125,10 +2135,12 @@ def _eased_ride_detail(status: str, adjustment: Mapping[str, Any] | None = None)
         adjusted_min = adjustment.get("adjustedDurationMin")
         adjusted_power = adjustment.get("adjustedWorkPowerPct")
         if isinstance(adjusted_min, int) and isinstance(adjusted_power, int):
-            if adjustment.get("intensityHeldAtEndurance"):
+            if adjustment.get("keptAsEndurance"):
                 # Batch 215: on Red this is now reachable too — an already-Zone-2
                 # ride keeps its intensity, so the copy must stop calling it a
-                # recovery substitution.
+                # recovery substitution. Batch 252.4: this reads the endurance
+                # path, not the narrower held-intensity flag, so a 68-75% ride
+                # eased to the 67% anchor is still described as a shortened Zone 2.
                 return (
                     f"Hold Zone 2 (~{adjusted_power}% FTP) but cut to {adjusted_min} min "
                     "— shorter, not harder."

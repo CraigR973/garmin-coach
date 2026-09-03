@@ -1618,7 +1618,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v43")
+    assert PROMPT_VERSION.startswith("morning-analysis-v44")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
@@ -3265,6 +3265,50 @@ def test_red_packet_still_substitutes_recovery_for_a_hard_ride() -> None:
 
     detail = _eased_ride_detail("Red", packet)
     assert "Substitute recovery" in detail
+
+
+_UPPER_ENDURANCE_STRUCTURED = {
+    "format": "bike",
+    "steps": [
+        {"ramp": [50, 65], "label": "Warm-up ramp 50\u219265%", "minutes": 5},
+        {"label": "Upper Z2 70%", "target": "70%", "minutes": 50},
+        {"ramp": [60, 45], "label": "Cool-down ramp", "minutes": 5},
+    ],
+}
+
+
+def test_upper_endurance_red_is_a_shortened_zone_two_not_a_substitution() -> None:
+    """Batch 252.4 re-anchored 68-75% work to 67% FTP, which flipped
+    ``intensityHeldAtEndurance`` to false for a ride the transform still routes down
+    the endurance path. Keying the copy on that narrow flag made the brief say
+    "Substitute recovery ... ~67% FTP" while the delivery rail built a 67% Zone 2
+    ride — the brief/delivery disagreement Batch 173.3 and Batch 215 both exist to
+    prevent. The substitution wording now reads ``keptAsEndurance`` instead."""
+    ride = _bike_workout(
+        workout_date=date(2026, 8, 8),
+        title="Upper Zone 2",
+        workout_type="bike_endurance",
+        status="planned",
+        intensity_target="Zone 2 ~70% FTP",
+        structured_workout=_UPPER_ENDURANCE_STRUCTURED,
+    )
+
+    packet = _verdict_adjustment_packet("Red", [ride])
+    assert packet is not None
+    assert packet["plannedWorkPowerPct"] == 70
+    # Eased to the prescription anchor, but still on the endurance path.
+    assert packet["adjustedWorkPowerPct"] == 67
+    assert packet["keptAsEndurance"] is True
+    assert packet["intensityHeldAtEndurance"] is False
+
+    detail = _eased_ride_detail("Red", packet)
+    assert "Zone 2" in detail
+    assert "67% FTP" in detail
+    assert "Substitute" not in detail
+
+    instructions = _plan_adjustments("Red", [ride])
+    assert any("Hold Zone 2" in line for line in instructions)
+    assert not any("Substitute recovery" in line for line in instructions)
 
 
 def test_a_companion_session_reaches_the_packet_from_the_days_plan() -> None:

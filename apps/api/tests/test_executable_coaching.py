@@ -41,6 +41,7 @@ from src.services.verdict_scaling import (
     AMBER_DURATION_SCALE,
     AMBER_POWER_CAP_PCT,
     ENDURANCE_CEILING_PCT,
+    ENDURANCE_PRESCRIPTION_PCT,
     HIT_FLOOR_PCT,
     RECOVERY_CAP_PCT,
     RED_DURATION_SCALE,
@@ -321,9 +322,10 @@ def test_amber_holds_zone_two_ride_and_cuts_duration_only() -> None:
 
 def test_ease_amber_power_is_zone_aware() -> None:
     assert ease_amber_power_pct(55) == 55
-    assert ease_amber_power_pct(ENDURANCE_CEILING_PCT) == ENDURANCE_CEILING_PCT
     assert ease_amber_power_pct(67) == 67  # endurance held
-    assert ease_amber_power_pct(76) == ENDURANCE_CEILING_PCT  # a drop never lands below Z2
+    assert ease_amber_power_pct(68) == ENDURANCE_PRESCRIPTION_PCT
+    assert ease_amber_power_pct(ENDURANCE_CEILING_PCT) == ENDURANCE_PRESCRIPTION_PCT
+    assert ease_amber_power_pct(76) == ENDURANCE_PRESCRIPTION_PCT
     assert ease_amber_power_pct(91) == 78  # sweet spot drops a zone
     assert ease_amber_power_pct(108) == AMBER_POWER_CAP_PCT
     assert ease_amber_power_pct(108) < HIT_FLOOR_PCT
@@ -389,7 +391,7 @@ def test_red_holds_an_already_endurance_ride_instead_of_gutting_it() -> None:
     assert adjusted["origin"] == "red_endurance_hold"
     assert adjusted["name"].startswith("Red-adjusted: ")
     assert adjusted["adjustment"]["enduranceHold"] is True
-    assert adjusted["adjustment"]["powerCapPct"] == ENDURANCE_CEILING_PCT
+    assert adjusted["adjustment"]["powerCapPct"] == ENDURANCE_PRESCRIPTION_PCT
     # The safety rail is untouched — there was no hard work here to remove.
     assert adjusted["adjustment"]["removedHit"] is False
     assert blocks_red_vo2("Red", adjusted) is False
@@ -476,8 +478,31 @@ def test_the_brief_and_the_delivered_ride_quote_one_number() -> None:
         # The held-at-endurance flag reads the outcome, not the verdict's name.
         assert summary["intensityHeldAtEndurance"] is (
             summary["adjustedWorkPowerPct"] == summary["plannedWorkPowerPct"]
-            and summary["plannedWorkPowerPct"] <= ENDURANCE_CEILING_PCT
+            and summary["plannedWorkPowerPct"] <= ENDURANCE_PRESCRIPTION_PCT
         )
+
+
+def test_upper_endurance_is_classified_at_75_but_prescribed_at_67() -> None:
+    base = build_structured_workout_ir(
+        _planned_workout(
+            {
+                "format": "bike",
+                "steps": [{"label": "Upper endurance", "minutes": 60, "target": "75% FTP"}],
+            }
+        ),
+        ftp_watts=280,
+    )
+    assert ir_is_endurance(base) is True
+
+    for verdict in ("Amber", "Red"):
+        adjusted = adjust_ir_for_verdict(base, verdict)
+        summary = summarize_verdict_adjustment(base, verdict)
+        assert _max_work_power(adjusted) == ENDURANCE_PRESCRIPTION_PCT
+        assert summary is not None
+        assert summary["adjustedWorkPowerPct"] == ENDURANCE_PRESCRIPTION_PCT
+        assert summary["enduranceCeilingPct"] == ENDURANCE_CEILING_PCT
+        assert summary["endurancePrescriptionPct"] == ENDURANCE_PRESCRIPTION_PCT
+        assert summary["intensityHeldAtEndurance"] is False
 
 
 def test_red_endurance_reports_intensity_held_where_it_previously_could_not() -> None:

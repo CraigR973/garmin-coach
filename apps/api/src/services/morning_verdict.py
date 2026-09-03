@@ -1108,7 +1108,10 @@ def _plan_adjustments(
         # intensity and takes a light duration cut, so the instruction has to follow
         # the transform rather than assert a substitution that did not happen.
         adjustment = _verdict_adjustment_packet(status, planned_workouts)
-        if isinstance(adjustment, Mapping) and adjustment.get("intensityHeldAtEndurance"):
+        # Batch 252.4: key on the endurance *path*, not on whether the number
+        # moved. A 68-75% ride is eased to the 67% anchor and is still Zone 2, so
+        # the narrow flag would have sent it down the substitution branch below.
+        if isinstance(adjustment, Mapping) and adjustment.get("keptAsEndurance"):
             adjustments = [
                 f"Hold Zone 2 (~{adjustment.get('adjustedWorkPowerPct')}% FTP) and cut to "
                 f"{adjustment.get('adjustedDurationMin')} min; no intervals and no HIT/VO2. "

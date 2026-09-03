@@ -11,7 +11,8 @@ constraints are encoded here so the emitted workout always carries them:
   * used in **build weeks from ~Week 7 onward** (``RONNESTAD_FROM_WEEK``);
   * **ERG off** — the 30 s surges arrive faster than a smart trainer's ERG loop
     can react, so the rider holds power manually;
-  * **even-paced ~105-110 % FTP** work with **15 s easy** floats between reps.
+  * **even-paced 120-130 % FTP** work with **15 s easy** floats between reps,
+    adjusted to the highest even power repeatable across all sets.
 
 Earlier build weeks use the gentler 30/30 micro-interval. The emitted dict is the
 same ``structured_workout`` shape stored on ``planned_workouts`` (and consumed by
@@ -30,8 +31,12 @@ VO2_PROTOCOL_RONNESTAD_30_15 = "ronnestad_30_15"
 # Rønnestad 30/15 is a late-build progression — see Decision #33.
 RONNESTAD_FROM_WEEK = 7
 
-# Shared VO2 work target. Even-paced (not ramped) to match the protocol intent.
-VO2_WORK_TARGET = "105-110% FTP"
+# The Rønnestad studies start at power associated with VO2max and individualise
+# toward the highest sustainable session average. FTP is the app's available
+# prescription anchor, so 120-130% (125% midpoint in the IR) is the conservative
+# operational proxy; the repeatability cue preserves the study's intent.
+VO2_WORK_TARGET = "120-130% FTP"
+VO2_REPEATABILITY_CUE = "highest even power repeatable across all sets"
 
 
 @dataclass(frozen=True)
@@ -52,7 +57,7 @@ _PROTOCOL_30_30 = Vo2Protocol(
     main_repeats=3,
     main_pattern="5x 30s on / 30s off",
     erg_mode="off",
-    intensity_target="105-110% FTP, ERG off",
+    intensity_target=f"{VO2_WORK_TARGET}, {VO2_REPEATABILITY_CUE}, ERG off",
 )
 _PROTOCOL_RONNESTAD_30_15 = Vo2Protocol(
     key=VO2_PROTOCOL_RONNESTAD_30_15,
@@ -60,7 +65,7 @@ _PROTOCOL_RONNESTAD_30_15 = Vo2Protocol(
     main_repeats=3,
     main_pattern="13x 30s on / 15s easy",
     erg_mode="off",
-    intensity_target="105-110% FTP even-paced, 15s easy, ERG off",
+    intensity_target=(f"{VO2_WORK_TARGET} even-paced, {VO2_REPEATABILITY_CUE}, 15s easy, ERG off"),
 )
 
 
@@ -93,7 +98,7 @@ def build_vo2_structured_workout(
                 "label": "Main set",
                 "repeats": protocol.main_repeats,
                 "pattern": protocol.main_pattern,
-                "target": VO2_WORK_TARGET,
+                "target": f"{VO2_WORK_TARGET}, {VO2_REPEATABILITY_CUE}",
             },
             {"label": "Cool-down", "minutes": 10, "target": "easy spin"},
         ],
