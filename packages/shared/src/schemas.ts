@@ -722,6 +722,12 @@ export const ageComparisonSchema = z.object({
   // Batch 230: the one denominator every sleepRows percentage shares, in words.
   // Optional — a pre-230 stored analysis has no such field.
   sleepStagePctBasis: z.string().min(1).optional(),
+  // Batch 250 (HS240-14): the band's own denominator, stated beside the values it
+  // judges. Optional — a stored pre-250 analysis carries neither field.
+  sleepBandBasis: z.string().min(1).optional(),
+  // Batch 250 (HS240-05): what the REM number being judged actually is. Reaches
+  // the model's packet; deliberately not rendered as a standalone claim on screen.
+  remMeasurementBasis: z.string().min(1).optional(),
 });
 
 export const chronicSuggestionDriverSchema = z.object({
@@ -753,6 +759,10 @@ export const chronicSuggestionRotationSchema = z.object({
   shown: z.number().int(),
   total: z.number().int(),
   interventionIds: z.array(z.string().min(1)).default([]),
+  // Batch 250 (HS240-10): the library mixed A-grade physiology with invented
+  // mechanisms in one voice. Each issued lever now says what its REM claim is
+  // worth. Optional, so a stored pre-250 analysis still parses.
+  evidenceGrades: z.record(z.string(), z.enum(['A', 'B', 'C', 'D'])).optional(),
 });
 
 export const chronicSuggestionItemSchema = z.object({

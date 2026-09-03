@@ -5,6 +5,7 @@ import {
   ageComparisonRowSchema,
   ageComparisonSchema,
   chronicSuggestionDriverSchema,
+  chronicSuggestionRotationSchema,
   coachOriginKindSchema,
   coachingStateEnvelopeSchema,
   conversationLearningEnvelopeSchema,
@@ -950,6 +951,28 @@ describe('v1 shared schemas', () => {
     });
     expect(older.confidence ?? null).toBeNull();
     expect(older.confounds ?? null).toBeNull();
+  });
+
+  it('carries each issued REM lever\'s evidence grade (Batch 250)', () => {
+    const graded = chronicSuggestionRotationSchema.parse({
+      periodLabel: '2026-W37',
+      shown: 2,
+      total: 12,
+      interventionIds: ['rem_rebound_recovery', 'late_training_guard'],
+      evidenceGrades: { rem_rebound_recovery: 'A', late_training_guard: 'D' },
+    });
+    expect(graded.evidenceGrades?.rem_rebound_recovery).toBe('A');
+    expect(graded.evidenceGrades?.late_training_guard).toBe('D');
+
+    // A stored analysis written before this shipped carries no grades and must
+    // still render — the card simply shows the actions without them.
+    const older = chronicSuggestionRotationSchema.parse({
+      periodLabel: '2026-W30',
+      shown: 2,
+      total: 12,
+      interventionIds: ['wake_time_anchor', 'caffeine_cutoff'],
+    });
+    expect(older.evidenceGrades ?? null).toBeNull();
   });
 
   it('carries the interval that replaced the confidence word (Batch 249)', () => {

@@ -221,6 +221,7 @@ export function SleepPage() {
                       rows={historyAgeComparison?.sleepRows ?? []}
                       ageBand={historyAgeComparison?.ageBand}
                       stagePctBasis={historyAgeComparison?.sleepStagePctBasis}
+                      bandBasis={historyAgeComparison?.sleepBandBasis}
                     />
                   </CardContent>
                 </Card>

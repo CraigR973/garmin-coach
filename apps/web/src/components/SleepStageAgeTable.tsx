@@ -28,6 +28,7 @@ export function SleepStageAgeTable({
   rows,
   ageBand,
   stagePctBasis,
+  bandBasis,
 }: {
   rows: AgeComparisonRow[];
   ageBand?: string | null;
@@ -35,6 +36,12 @@ export function SleepStageAgeTable({
    *  stage minutes against a Duration that excludes time awake, so without this
    *  none of the four percentages divides into anything on his screen. */
   stagePctBasis?: string | null;
+  /** Batch 250 (HS240-14): the *band* has a denominator too, and it is a different
+   *  one — Ohayon's percentages are shares of total sleep time while these values
+   *  are shares of measured sleep. That makes each band sit slightly high, by 0.8
+   *  points for REM and 4.7 for light, so a value just under a floor is nearer it
+   *  than the table makes it look. Stated beside the numbers it judges. */
+  bandBasis?: string | null;
 }) {
   if (rows.length === 0) {
     return (
@@ -118,6 +125,8 @@ export function SleepStageAgeTable({
       )}
 
       {stagePctBasis && <p className="text-[11px] text-text-muted">{stagePctBasis}</p>}
+
+      {bandBasis && <p className="text-[11px] text-text-muted">{bandBasis}</p>}
 
       <p className="text-[11px] text-text-muted">
         Healthy ranges use age-adjusted sleep-stage norms (Ohayon et al., 2004) for{' '}
