@@ -493,6 +493,9 @@ async def test_service_driver_records_include_bedroom_rollups(
 
     assert records == [
         {
+            # Batch 249: the covariate every record carries so the correlations
+            # can be adjusted for the passage of time. Never a driver key.
+            CALENDAR_DAY_KEY: float(wake_date.toordinal()),
             OUTCOME_SLEEP_SCORE: 70.0,
             "recovery_hrv_ms": None,
             OUTCOME_REM_SLEEP_MIN: None,
@@ -539,6 +542,10 @@ async def test_service_driver_records_keep_missing_bedroom_data_none(
     assert records[0]["bedroom_mean_temp_c"] is None
     assert records[0]["bedroom_min_temp_c"] is None
     assert records[0]["bedroom_max_temp_c"] is None
+    # Batch 249: the calendar covariate is present even when everything else is
+    # missing — adjustment must never be skipped for want of a day.
+    assert records[0][CALENDAR_DAY_KEY] == float(wake_date.toordinal())
+    assert CALENDAR_DAY_KEY not in DRIVER_KEYS
 
 
 @pytest.mark.asyncio

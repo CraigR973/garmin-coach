@@ -464,8 +464,10 @@ async def test_service_recovery_week_uses_plan_blocks(db_conn: AsyncConnection) 
                 end_date=build_end,
             )
         )
-        # 5 worse nights in the recovery block, 5 better nights in the build block.
-        for i in range(5):
+        # Batch 249 raised the floor from four to seven nights an arm — one full
+        # weekly cycle — so the window is seven worse recovery nights against
+        # seven better build nights.
+        for i in range(7):
             session.add(
                 Sleep(
                     user_id=user_id,
@@ -473,7 +475,7 @@ async def test_service_recovery_week_uses_plan_blocks(db_conn: AsyncConnection) 
                     age_adjusted_score=70,
                 )
             )
-        for i in range(5):
+        for i in range(7):
             session.add(
                 Sleep(
                     user_id=user_id,
@@ -498,8 +500,10 @@ async def test_service_recovery_week_uses_plan_blocks(db_conn: AsyncConnection) 
         result = await service.evaluate(user, recovery, as_of=as_of)
         assert result.status == STATUS_OK
         assert result.recommendation == RECOMMEND_SUPPORTED
-        assert result.evidence["recoveryNights"] == 5
-        assert result.evidence["buildNights"] == 5
+        assert result.evidence["recoveryNights"] == 7
+        assert result.evidence["buildNights"] == 7
+        # Batch 249: the direction is carried by an interval, not by the gap alone.
+        assert result.evidence["deltaInterval"] == [-12.0, -12.0]
 
 
 @pytest.mark.asyncio
@@ -590,6 +594,14 @@ async def test_early_waking_evaluator_uses_bedroom_temperature_candidates(
     user_id = uuid.uuid4()
     await _seed_profile(db_conn, user_id)
     as_of = date(2026, 7, 10)
+    # Batch 249: the old fixture ramped warm ticks and awake minutes together
+    # with the day index, so the driver, the outcome and the *calendar* all
+    # marched in lockstep — indistinguishable from a pure seasonal trend, and now
+    # correctly refused. The warm nights are therefore scattered through the
+    # window instead of accumulating across it: r(driver, date) = 0.10, so the
+    # association survives adjustment at 0.91 with an interval of 0.62 to 0.98.
+    warm_ticks = [3, 9, 1, 7, 5, 10, 2, 8, 4, 6]
+    awake_jitter = [1, -1, 2, -2, 1, -1, 2, -2, 1, -1]
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
         for i in range(10):
             wake_date = as_of - timedelta(days=9 - i)
@@ -597,14 +609,14 @@ async def test_early_waking_evaluator_uses_bedroom_temperature_candidates(
                 Sleep(
                     user_id=user_id,
                     calendar_date=wake_date,
-                    awake_sleep_sec=(i + 1) * 60,
+                    awake_sleep_sec=(20 + warm_ticks[i] + awake_jitter[i]) * 60,
                     avg_sleep_stress=30.0,
                 )
             )
             night_start_utc = datetime(wake_date.year, wake_date.month, wake_date.day) - timedelta(
                 hours=3
             )
-            for j in range(i + 1):
+            for j in range(warm_ticks[i]):
                 session.add(
                     TemperatureReading(
                         user_id=user_id,
@@ -630,6 +642,7 @@ async def test_early_waking_evaluator_uses_bedroom_temperature_candidates(
     assert result.recommendation == RECOMMEND_SUPPORTED
     assert result.evidence["strongestDriver"] == "bedroom_warning_minutes"
     assert result.evidence["correlations"][0]["summary"] is not None
+    assert result.evidence["correlations"][0]["interval"] is not None
     assert any("Nights with 60+ min above 19.5C" in reason for reason in result.reasons)
 
 

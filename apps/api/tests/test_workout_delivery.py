@@ -952,7 +952,9 @@ async def test_expiry_retires_only_past_proposals_still_awaiting_approval(
 
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
         expired = await WorkoutDeliveryService(session).expire_stale_proposals(as_of=today)
-        assert {row.workout_date for row in expired} == {
+        # The job is global by design — it is maintenance, not a user action — so
+        # scope the assertion to the rows this test seeded.
+        assert {row.workout_date for row in expired if row.user_id == user_id} == {
             date(2026, 6, 27),
             date(2026, 8, 30),
         }
@@ -1013,7 +1015,7 @@ async def test_expiry_is_idempotent_and_keeps_the_evidence(db_conn: AsyncConnect
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
         service = WorkoutDeliveryService(session)
         first = await service.expire_stale_proposals(as_of=date(2026, 9, 3))
-        assert len(first) == 1
+        assert [row.user_id for row in first] == [user_id]
         assert await service.expire_stale_proposals(as_of=date(2026, 9, 3)) == []
 
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:

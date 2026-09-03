@@ -359,8 +359,13 @@ async def test_get_daily_loop_returns_today_snapshot(db_conn: AsyncConnection) -
     assert "Strength read" in payload["data"]["postStrengthAnalyses"][0]["outputMarkdown"]
     assert payload["data"]["breathworkBrief"]["window4w"]["sessionCount"] == 1
     assert payload["data"]["breathworkBrief"]["window4w"]["totalDurationMin"] == 3
-    assert payload["data"]["sleepProjection"]["status"] == "fallback"
-    assert payload["data"]["sleepProjection"]["headline"] == "Use the usual sleep protocol"
+    # Batch 249: the projection falls back on a rest day, not on a thin driver
+    # history. This snapshot has today's training, so it reads that and names no
+    # measured driver — the shared gate lets nothing through on this fixture.
+    assert payload["data"]["sleepProjection"]["status"] == "personalized"
+    assert not any(
+        "Measured driver" in line for line in payload["data"]["sleepProjection"]["evidence"]
+    )
     assert payload["data"]["plannedWorkouts"][0]["title"] == "Strength maintenance"
     assert payload["data"]["dataQualityWarnings"][0]["status"] == "active"
     # Batch 48 loop state is serialized on every payload. dayPhase is wall-clock
