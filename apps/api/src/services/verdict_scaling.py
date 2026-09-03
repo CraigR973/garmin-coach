@@ -598,6 +598,25 @@ def adjust_ir_for_verdict(
     return adjusted
 
 
+def kept_as_endurance(
+    base_ir: dict[str, Any], status: str | None, *, companion_session: bool = False
+) -> bool:
+    """True when the transform kept the ride on the **endurance path**.
+
+    Deliberately wider than ``intensityHeldAtEndurance``, which is the narrower
+    claim that the intensity number did not move. Batch 252.4 eases a 68-75% ride
+    to the 67% anchor, so its intensity *does* move while the ride is still a
+    shortened Zone 2 — and Batch 215's rule still applies to it: the copy must
+    never call that a recovery substitution. Keying the substitution wording on
+    the narrow flag made the brief contradict the ride the delivery rail builds.
+    """
+    if status == "Amber":
+        return ir_is_endurance(base_ir)
+    if status == "Red":
+        return red_holds_endurance(base_ir, companion_session=companion_session)
+    return False
+
+
 def _holds_endurance(
     base_ir: dict[str, Any], status: str | None, *, companion_session: bool
 ) -> bool:
@@ -764,6 +783,10 @@ def summarize_verdict_adjustment(
             if isinstance(adjusted.get("adjustment"), dict)
             else False
         ),
+        # The endurance *path* was taken, whether or not the number moved. The
+        # copy keys the "not a recovery substitution" rule on this, never on the
+        # narrower held flag above.
+        "keptAsEndurance": kept_as_endurance(base_ir, status, companion_session=companion_session),
         "enduranceCeilingPct": ENDURANCE_CEILING_PCT,
         "endurancePrescriptionPct": ENDURANCE_PRESCRIPTION_PCT,
         "source": "deterministic",
