@@ -28,11 +28,7 @@ from src.models.coaching import (
 from src.models.notification import ActionType, ActorType, AuditLog
 from src.models.profile import Profile, UserRole
 from src.scheduler import (
-    MorningInputResult,
     _active_profiles,
-    _retry_async,
-    _retry_sync,
-    _sync_garmin_daily,
     create_scheduler,
     run_activity_timeseries_retention,
     run_backup_restore_drill,
@@ -41,13 +37,13 @@ from src.scheduler import (
     run_evening_sleep_nudge,
     run_fan_control,
     run_hive_temperature_poll,
-    run_morning_sync,
     run_morning_weather_sync,
     run_post_workout_backstop,
     run_scheduled_backup,
     run_state_change_coach,
     run_tracked_job,
     run_wake_check,
+    run_wake_nudge,
     run_weekly_review_delivery,
     run_workout_autopush,
 )
@@ -56,6 +52,14 @@ from src.services.dreo_fan import DreoFanError, DreoFanState
 from src.services.generation_requests import GenerationRequestInProgress
 from src.services.job_runs import JobResult, JobStatus
 from src.services.morning_inputs import MorningInputPresence
+from src.services.morning_pipeline import (
+    MorningInputResult,
+)
+from src.services.morning_pipeline import (
+    sync_garmin_daily as _sync_garmin_daily,
+)
+from src.services.retry import retry_async as _retry_async
+from src.services.retry import retry_sync as _retry_sync
 from src.services.session_recovery import restore_after_rollback as _restore_after_rollback
 from src.services.wake_detection import (
     BACKSTOP,
@@ -816,8 +820,8 @@ async def test_sync_garmin_daily_syncs_metrics_and_sleep() -> None:
 
     today = date(2026, 8, 2)
     with (
-        patch("src.scheduler.GarminSyncService", return_value=sync_service),
-        patch("src.scheduler._profile_today", return_value=today),
+        patch("src.services.morning_pipeline.GarminSyncService", return_value=sync_service),
+        patch("src.services.morning_pipeline.profile_today", return_value=today),
     ):
         daily, sleep, failures = await _sync_garmin_daily(session, profiles, client=client)
 
@@ -858,8 +862,8 @@ async def test_sync_garmin_daily_isolates_profile_failure() -> None:
     sync_service.sync_daily = AsyncMock(side_effect=sync_daily)
 
     with (
-        patch("src.scheduler.GarminSyncService", return_value=sync_service),
-        patch("src.scheduler._profile_today", return_value=date(2026, 8, 2)),
+        patch("src.services.morning_pipeline.GarminSyncService", return_value=sync_service),
+        patch("src.services.morning_pipeline.profile_today", return_value=date(2026, 8, 2)),
     ):
         daily, sleep, failures = await _sync_garmin_daily(session, [bad, good], client=client)
 
@@ -894,8 +898,8 @@ async def test_poisoned_garmin_step_recovers_session_for_verdict(
 
         sync_service.sync_daily = AsyncMock(side_effect=sync_daily)
         with (
-            patch("src.scheduler.GarminSyncService", return_value=sync_service),
-            patch("src.scheduler._profile_today", return_value=date(2026, 8, 15)),
+            patch("src.services.morning_pipeline.GarminSyncService", return_value=sync_service),
+            patch("src.services.morning_pipeline.profile_today", return_value=date(2026, 8, 15)),
         ):
             daily, sleep, failures = await _sync_garmin_daily(session, [profile], client=client)
 
@@ -909,7 +913,7 @@ async def test_poisoned_garmin_step_recovers_session_for_verdict(
 async def test_sync_garmin_daily_no_profiles_skips_client() -> None:
     """With no active profiles the helper short-circuits without building a client."""
     session = AsyncMock()
-    with patch("src.scheduler.GarminConnectClient") as client_cls:
+    with patch("src.services.morning_pipeline.GarminConnectClient") as client_cls:
         result = await _sync_garmin_daily(session, [])
     assert result == (0, 0, 0)
     client_cls.assert_not_called()
@@ -948,7 +952,7 @@ async def test_morning_weather_sync_runs_daily_sync_before_analysis() -> None:
 
     analysis_service = MagicMock()
 
-    async def generate(_profile: object, _date: object) -> MagicMock:
+    async def generate(*_args: object, **_kwargs: object) -> MagicMock:
         calls.append("analysis")
         return MagicMock(generated=True)
 
@@ -962,16 +966,20 @@ async def test_morning_weather_sync_runs_daily_sync_before_analysis() -> None:
 
     with (
         patch("src.scheduler.AsyncSessionLocal", return_value=_Ctx()),
-        patch("src.scheduler.OpenMeteoClient", return_value=meteo_client),
-        patch("src.scheduler.EnvironmentSyncService", return_value=weather_service),
-        patch("src.scheduler._sync_garmin_daily", side_effect=fake_daily_sync),
+        patch("src.services.morning_pipeline.OpenMeteoClient", return_value=meteo_client),
+        patch("src.services.morning_pipeline.EnvironmentSyncService", return_value=weather_service),
+        patch("src.services.morning_pipeline.sync_garmin_daily", side_effect=fake_daily_sync),
         patch(
-            "src.scheduler.morning_input_presence",
+            "src.services.morning_pipeline.morning_input_presence",
             AsyncMock(return_value=MorningInputPresence(daily_metrics=True, sleep=True)),
         ),
-        patch("src.scheduler.MorningAnalysisService", return_value=analysis_service),
-        patch("src.scheduler.ExecutableCoachingService", return_value=coaching_service),
-        patch("src.scheduler.NudgeAlertService", return_value=nudge_service),
+        patch(
+            "src.services.morning_pipeline.MorningAnalysisService", return_value=analysis_service
+        ),
+        patch(
+            "src.services.morning_pipeline.ExecutableCoachingService", return_value=coaching_service
+        ),
+        patch("src.services.morning_pipeline.NudgeAlertService", return_value=nudge_service),
     ):
         await run_morning_weather_sync()
 
@@ -1007,22 +1015,28 @@ async def test_poisoned_input_step_does_not_cost_verdict() -> None:
         patch("src.scheduler.AsyncSessionLocal", return_value=_morning_sync_ctx(session)),
         patch("src.scheduler._active_profiles", AsyncMock(return_value=[profile])),
         patch(
-            "src.scheduler._sync_morning_inputs",
+            "src.services.morning_pipeline.MorningBriefPipeline.sync_inputs",
             AsyncMock(return_value=MorningInputResult(failures=1)),
         ),
         patch(
-            "src.scheduler.morning_input_presence",
+            "src.services.morning_pipeline.morning_input_presence",
             AsyncMock(return_value=MorningInputPresence(daily_metrics=True, sleep=True)),
         ),
-        patch("src.scheduler.MorningAnalysisService", return_value=analysis_service),
-        patch("src.scheduler.ExecutableCoachingService", return_value=coaching_service),
-        patch("src.scheduler.NudgeAlertService", return_value=nudge_service),
-        patch("src.scheduler.InsightsService", return_value=insights_service),
-        patch("src.scheduler.pregenerate_brief_audio", AsyncMock()),
+        patch(
+            "src.services.morning_pipeline.MorningAnalysisService", return_value=analysis_service
+        ),
+        patch(
+            "src.services.morning_pipeline.ExecutableCoachingService", return_value=coaching_service
+        ),
+        patch("src.services.morning_pipeline.NudgeAlertService", return_value=nudge_service),
+        patch("src.services.morning_pipeline.InsightsService", return_value=insights_service),
+        patch("src.services.morning_pipeline.pregenerate_brief_audio", AsyncMock()),
     ):
         result = await run_morning_weather_sync()
 
-    analysis_service.generate_and_store.assert_awaited_once_with(profile, ANY)
+    analysis_service.generate_and_store.assert_awaited_once_with(
+        profile, ANY, client=None, force=False, commit=True
+    )
     assert result.status == JobStatus.degraded
     assert result.counters["analyses_generated"] == 1
     assert result.counters["failed"] == 1
@@ -1039,17 +1053,19 @@ async def test_morning_backstop_holds_instead_of_generating_unsynced_read() -> N
         patch("src.scheduler.AsyncSessionLocal", return_value=_morning_sync_ctx(session)),
         patch("src.scheduler._active_profiles", AsyncMock(return_value=[profile])),
         patch(
-            "src.scheduler._sync_morning_inputs",
+            "src.services.morning_pipeline.MorningBriefPipeline.sync_inputs",
             AsyncMock(return_value=MorningInputResult()),
         ),
         patch(
-            "src.scheduler.morning_input_presence",
+            "src.services.morning_pipeline.morning_input_presence",
             AsyncMock(return_value=MorningInputPresence(daily_metrics=False, sleep=False)),
         ),
-        patch("src.scheduler.MorningAnalysisService", return_value=analysis_service),
-        patch("src.scheduler.ExecutableCoachingService", return_value=MagicMock()),
-        patch("src.scheduler.NudgeAlertService", return_value=MagicMock()),
-        patch("src.scheduler.InsightsService", return_value=MagicMock()),
+        patch(
+            "src.services.morning_pipeline.MorningAnalysisService", return_value=analysis_service
+        ),
+        patch("src.services.morning_pipeline.ExecutableCoachingService", return_value=MagicMock()),
+        patch("src.services.morning_pipeline.NudgeAlertService", return_value=MagicMock()),
+        patch("src.services.morning_pipeline.InsightsService", return_value=MagicMock()),
     ):
         result = await run_morning_weather_sync()
 
@@ -1080,7 +1096,7 @@ async def test_run_morning_sync_syncs_then_nudges() -> None:
     session = AsyncMock()
     session.commit = AsyncMock()
 
-    async def fake_sync(_session: object, _profiles: object) -> MorningInputResult:
+    async def fake_sync(*_args: object, **_kwargs: object) -> MorningInputResult:
         calls.append("sync")
         return MorningInputResult(weather_days=1, daily_metrics=1, sleep=1)
 
@@ -1097,11 +1113,13 @@ async def test_run_morning_sync_syncs_then_nudges() -> None:
     with (
         patch("src.scheduler.AsyncSessionLocal", return_value=_morning_sync_ctx(session)),
         patch("src.scheduler._active_profiles", AsyncMock(return_value=[profile])),
-        patch("src.scheduler._sync_morning_inputs", side_effect=fake_sync),
-        patch("src.scheduler.MorningAnalysisService", return_value=morning),
-        patch("src.scheduler.NudgeAlertService", return_value=nudge_service),
+        patch(
+            "src.services.morning_pipeline.MorningBriefPipeline.sync_inputs", side_effect=fake_sync
+        ),
+        patch("src.services.morning_pipeline.MorningAnalysisService", return_value=morning),
+        patch("src.services.morning_pipeline.NudgeAlertService", return_value=nudge_service),
     ):
-        await run_morning_sync()
+        await run_wake_nudge()
 
     assert calls == ["sync", "nudge"]  # sync strictly before the nudge
     nudge_service.push_good_morning.assert_awaited_once()
@@ -1125,11 +1143,11 @@ async def test_run_morning_sync_skips_nudge_when_brief_exists() -> None:
     with (
         patch("src.scheduler.AsyncSessionLocal", return_value=_morning_sync_ctx(session)),
         patch("src.scheduler._active_profiles", AsyncMock(return_value=[profile])),
-        patch("src.scheduler._sync_morning_inputs", fake_sync),
-        patch("src.scheduler.MorningAnalysisService", return_value=morning),
-        patch("src.scheduler.NudgeAlertService", return_value=nudge_service),
+        patch("src.services.morning_pipeline.MorningBriefPipeline.sync_inputs", fake_sync),
+        patch("src.services.morning_pipeline.MorningAnalysisService", return_value=morning),
+        patch("src.services.morning_pipeline.NudgeAlertService", return_value=nudge_service),
     ):
-        await run_morning_sync()
+        await run_wake_nudge()
 
     fake_sync.assert_awaited_once()  # inputs still synced
     nudge_service.push_good_morning.assert_not_awaited()  # but no redundant nudge
@@ -1393,7 +1411,7 @@ def _wake_patches(
         enter(patch("src.scheduler._last_seen_sleep_end", last_seen))
         enter(patch("src.scheduler.is_morning_ready", is_ready))
         enter(patch("src.scheduler._record_wake_check", record))
-        enter(patch("src.scheduler.run_morning_sync", morning_sync))
+        enter(patch("src.scheduler.run_wake_nudge", morning_sync))
         yield SimpleNamespace(
             session=session,
             input_presence=input_presence,
@@ -1610,7 +1628,7 @@ async def test_wake_check_persists_then_fires(db_conn: AsyncConnection) -> None:
         patch("src.scheduler.AsyncSessionLocal", new=_bind(db_conn)),
         patch("src.scheduler.GarminConnectClient", return_value=client),
         patch("src.scheduler._profile_now", lambda profile: now["value"]),
-        patch("src.scheduler.run_morning_sync", morning_sync),
+        patch("src.scheduler.run_wake_nudge", morning_sync),
     ):
         await run_wake_check()  # poll 1 → first sighting → wait, persist 07:00
         row1 = await _wake_check_row(db_conn, user_id)
@@ -1641,7 +1659,7 @@ async def test_wake_check_backstop_fires_on_unfinalized(db_conn: AsyncConnection
         patch("src.scheduler.AsyncSessionLocal", new=_bind(db_conn)),
         patch("src.scheduler.GarminConnectClient", return_value=client),
         patch("src.scheduler._profile_now", lambda profile: _local(11, 5)),
-        patch("src.scheduler.run_morning_sync", morning_sync),
+        patch("src.scheduler.run_wake_nudge", morning_sync),
     ):
         await run_wake_check()
 
@@ -1670,7 +1688,7 @@ async def test_wake_check_existing_empty_read_cannot_cancel_later_sync(
         patch("src.scheduler.AsyncSessionLocal", new=_bind(db_conn)),
         patch("src.scheduler.GarminConnectClient", return_value=client),
         patch("src.scheduler._profile_now", lambda profile: now["value"]),
-        patch("src.scheduler.run_morning_sync", morning_sync),
+        patch("src.scheduler.run_wake_nudge", morning_sync),
     ):
         await run_wake_check()  # 07:19:41 UTC: first sighting, wait and persist.
 
@@ -1735,7 +1753,7 @@ async def test_wake_check_short_circuits_with_synced_inputs(
         patch("src.scheduler.AsyncSessionLocal", new=_bind(db_conn)),
         patch("src.scheduler.GarminConnectClient", return_value=client),
         patch("src.scheduler._profile_now", lambda profile: _local(8, 25)),
-        patch("src.scheduler.run_morning_sync", morning_sync),
+        patch("src.scheduler.run_wake_nudge", morning_sync),
     ):
         await run_wake_check()
 

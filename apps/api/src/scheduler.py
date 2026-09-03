@@ -7,7 +7,7 @@ Current jobs:
     it existed nothing refreshed them at all, and they drifted up to 46 days
   - hive_temperature_poll: polls Hive indoor temperature every 15 minutes
   - wake_check: every ~15 min within Mark's morning window, does a light
-    sleep-only Garmin poll and fires run_morning_sync once his wake is stable
+    sleep-only Garmin poll and fires run_wake_nudge once his wake is stable
     (back-to-sleep guard) — replaces the old fixed 06:30 cron so the inputs are
     synced whatever time he surfaces
   - morning_backstop: at 11:00 Europe/London, runs run_morning_weather_sync
@@ -27,7 +27,7 @@ Current jobs:
     DS190-07) — a leading-indicator proxy, not the real provider meter
 
 The morning splits at its sync → generate seam (Batch 85, DECISIONS #158): the wake
-job runs run_morning_sync (pull all inputs + "good morning" nudge, no LLM), the
+job runs run_wake_nudge (pull all inputs + "good morning" nudge, no LLM), the
 check-in is the primary generate trigger, and run_morning_weather_sync (full
 sync + generate + push) is now the 11:00 backstop for a morning he never engages.
 See docs/designs/wake-triggered-morning.md and DECISIONS #87 / #158.
@@ -37,12 +37,11 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from collections.abc import Awaitable, Callable, Iterable
-from dataclasses import dataclass
+from collections.abc import Iterable
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
 from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 import structlog
 from apscheduler.schedulers.asyncio import (  # type: ignore[import-untyped,unused-ignore]
@@ -55,8 +54,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import settings
 from src.database import AsyncSessionLocal
 from src.models.coaching import (
-    DAILY_METRIC_PHASE_MORNING,
-    DAILY_METRIC_PHASE_SETTLED,
     Activity,
     Analysis,
     FanStateReading,
@@ -97,8 +94,6 @@ from src.services.environment_freshness import is_hive_temperature_fresh
 from src.services.environment_sync import (
     EnvironmentSyncService,
     HiveClient,
-    OpenMeteoClient,
-    WeatherRequest,
 )
 from src.services.executable_coaching import ExecutableCoachingService
 from src.services.fan_control import (
@@ -112,13 +107,11 @@ from src.services.fan_control import (
 )
 from src.services.garmin_sync import (
     GarminConnectClient,
-    GarminDailyPayloads,
     GarminSyncService,
     parse_sleep_fields,
 )
 from src.services.generation_requests import GenerationRequestInProgress
 from src.services.holiday_pause import HolidayPauseService
-from src.services.insights import InsightsService
 from src.services.job_runs import JobResult, run_tracked_job
 from src.services.longitudinal_analysis import (
     BillingAlertNotReady,
@@ -130,16 +123,28 @@ from src.services.metric_baselines import (
     MetricBaselineBackfillService,
     unincorporated_nights,
 )
-from src.services.morning_analysis import MorningAnalysisService
 from src.services.morning_inputs import morning_input_presence
+from src.services.morning_pipeline import (
+    BACKSTOP_POLICY,
+    MorningBriefPipeline,
+)
+from src.services.morning_pipeline import (
+    commit_step as _commit_morning_step,
+)
 from src.services.nudge_alerts import NudgeAlertService
 from src.services.post_flexibility_analysis import PostFlexibilityAnalysisService
 from src.services.post_strength_analysis import PostStrengthAnalysisService
 from src.services.post_walk_analysis import PostWalkAnalysisService
 from src.services.post_workout_analysis import PostWorkoutAnalysisService
+from src.services.profile_clock import (
+    profile_now as _profile_now,
+)
+from src.services.profile_clock import (
+    profile_today as _profile_today,
+)
+from src.services.retry import retry_sync as _retry_sync
 from src.services.session_recovery import restore_after_rollback as _restore_after_rollback
 from src.services.state_change_coach import StateChangeCoachService
-from src.services.tts_pregenerate import pregenerate_brief_audio
 from src.services.wake_detection import (
     BACKSTOP,
     DURATION_FLOOR_MIN,
@@ -1020,175 +1025,7 @@ async def _check_metric_baseline_freshness(profiles: Iterable[Profile]) -> int:
     return alerted
 
 
-async def _sync_garmin_daily(
-    session: AsyncSession,
-    profiles: list[Profile],
-    *,
-    client: GarminConnectClient | None = None,
-) -> tuple[int, int, int]:
-    """Sync today plus the last three closed Garmin days (429-safe).
-
-    Returns ``(daily_metrics_synced, sleep_synced, failures)``. The fetch is wrapped in an
-    exponential-backoff retry so a transient Garmin 429 is survived. Each date
-    is isolated, so one failed historical fetch cannot block today's inputs or
-    another date's self-heal. Each successful date commits independently.
-
-    This loop is where CI191-02 came from: Garmin returns a closed day's *final*
-    training readiness, so the D-1..D-3 pass used to overwrite the wake snapshot
-    the verdict had already been computed from. Batch 205 keeps both — today
-    writes the ``morning`` row, the closed days write ``settled`` — so the
-    re-sync still self-heals a missed morning without rewriting history.
-    """
-    if not profiles:
-        return (0, 0, 0)
-
-    client = client or GarminConnectClient()
-    sync_service = GarminSyncService(session)
-    daily_synced = 0
-    sleep_synced = 0
-    failures = 0
-    for profile in profiles:
-        await _restore_after_rollback(session, profile)
-        # Batch 242 (CR236-01): hoisted before the *date* loop, not just before
-        # the try. Each date is its own recovery boundary, so date N's rollback
-        # would otherwise expire the instance that date N+1 reads inside its
-        # own try — and the resulting MissingGreenlet escapes the handler.
-        profile_id = profile.id
-        today = _profile_today(profile)
-        for offset in range(4):
-            subject_date = today - timedelta(days=offset)
-            phase = DAILY_METRIC_PHASE_MORNING if offset == 0 else DAILY_METRIC_PHASE_SETTLED
-            try:
-                payloads: GarminDailyPayloads = await _retry_sync(
-                    lambda: client.fetch_daily_payloads(subject_date),
-                    backoff=2.0,
-                )
-                result = await sync_service.sync_daily(
-                    profile_id,
-                    subject_date,
-                    payloads,
-                    phase=phase,
-                    commit=False,
-                )
-                # One date is one recovery boundary. Committing here means a
-                # later bad historical row cannot roll today's good inputs back.
-                if await _commit_morning_step(
-                    session,
-                    step="garmin_daily",
-                    profile_id=profile_id,
-                    subject_date=subject_date,
-                ):
-                    daily_synced += result.daily_metrics_synced
-                    sleep_synced += result.sleep_synced
-                else:
-                    failures += 1
-            except Exception:
-                failures += 1
-                await session.rollback()
-                log.exception(
-                    "garmin daily sync failed",
-                    profile_id=str(profile_id),
-                    subject_date=subject_date.isoformat(),
-                )
-    return (daily_synced, sleep_synced, failures)
-
-
-@dataclass(frozen=True, slots=True)
-class MorningInputResult:
-    weather_days: int = 0
-    daily_metrics: int = 0
-    sleep: int = 0
-    failures: int = 0
-
-
-async def _commit_morning_step(
-    session: AsyncSession,
-    *,
-    step: str,
-    profile_id: uuid.UUID | None = None,
-    subject_date: date | None = None,
-) -> bool:
-    """Commit one morning input boundary, restoring the Session on failure."""
-
-    try:
-        await session.commit()
-        return True
-    except Exception:
-        await session.rollback()
-        log.exception(
-            "morning input commit failed",
-            step=step,
-            profile_id=str(profile_id) if profile_id is not None else None,
-            subject_date=subject_date.isoformat() if subject_date is not None else None,
-        )
-        return False
-
-
-async def _sync_morning_inputs(
-    session: AsyncSession, profiles: list[Profile]
-) -> MorningInputResult:
-    """Pull weather + current/finalized Garmin daily data for the given profiles.
-
-    Returns committed counts plus isolated failure count. Weather syncs first, then the
-    Garmin daily sync, so the morning verdict reads today's real readiness + sleep
-    instead of empty inputs (Batch 18). This helper commits each recoverable step
-    and returns the number that degraded without raising past verdict generation.
-    """
-    service = EnvironmentSyncService(session)
-    weather_days = 0
-    failures = 0
-    client = OpenMeteoClient()
-    for profile in profiles:
-        await _restore_after_rollback(session, profile)
-        profile_id = profile.id
-        subject_date = _profile_today(profile)
-        try:
-            request = WeatherRequest(
-                latitude=profile.latitude or settings.weather_latitude,
-                longitude=profile.longitude or settings.weather_longitude,
-                timezone=profile.timezone or settings.weather_timezone,
-            )
-            payload = await _retry_async(lambda: client.fetch_daily_payload(request))
-            result = await service.sync_weather_daily(
-                profile_id,
-                payload,
-                timezone=request.timezone,
-                commit=False,
-            )
-            if await _commit_morning_step(
-                session,
-                step="weather",
-                profile_id=profile_id,
-                subject_date=subject_date,
-            ):
-                weather_days += result.weather_days_synced
-            else:
-                failures += 1
-        except Exception:
-            failures += 1
-            await session.rollback()
-            log.exception(
-                "morning weather input failed",
-                profile_id=str(profile_id),
-            )
-
-    daily_metrics_synced, sleep_synced, garmin_failures = await _sync_garmin_daily(
-        session, profiles
-    )
-    failures += garmin_failures
-    # Keep a guarded phase boundary even though successful dates commit
-    # independently; this catches a driver-level failure before analysis begins.
-    if not await _commit_morning_step(session, step="garmin_phase"):
-        failures += 1
-    return MorningInputResult(
-        weather_days=weather_days,
-        daily_metrics=daily_metrics_synced,
-        sleep=sleep_synced,
-        failures=failures,
-    )
-
-
-async def run_morning_sync() -> JobResult:
+async def run_wake_nudge() -> JobResult:
     """Wake-triggered morning **sync + nudge** (Batch 85).
 
     Pulls all external inputs (weather + today's Garmin daily metrics/sleep; Hive
@@ -1199,6 +1036,11 @@ async def run_morning_sync() -> JobResult:
     data is already synced and the brief generates fast. Idempotent: the nudge is
     one-per-day and is skipped once today's brief already exists (he checked in, or
     the backstop generated it).
+
+    Batch 251 renamed this from ``run_morning_sync``: ``run_scheduled.py`` exposes
+    *the backstop* under the job name ``morning-sync``, so the two names collided
+    on the one word that told them apart. The job this function is — the wake nudge
+    — is not exposed to the external runner at all.
     """
     try:
         async with AsyncSessionLocal() as session:
@@ -1206,42 +1048,14 @@ async def run_morning_sync() -> JobResult:
             if not profiles:
                 log.info("morning sync skipped", reason="no_active_profiles")
                 return JobResult.skipped("no_active_profiles", profiles=0)
-            inputs = await _sync_morning_inputs(session, profiles)
-
-            morning = MorningAnalysisService(session)
-            nudge_service = NudgeAlertService(session)
+            pipeline = MorningBriefPipeline(session)
+            inputs = await pipeline.sync_inputs(profiles)
             nudges_sent = 0
             failures = inputs.failures
             for profile in profiles:
-                # _sync_morning_inputs above rolls back on a failed weather or
-                # Garmin step, so this loop's first read is already at risk.
-                await _restore_after_rollback(session, profile)
-                profile_id = profile.id
-                subject_date = _profile_today(profile)
-                # No point inviting a check-in once today's read is already done
-                # (he checked in, or the backstop generated it) — cheap DB read.
-                if await morning.latest_analysis(profile_id, subject_date) is not None:
-                    continue
-                try:
-                    if await nudge_service.push_good_morning(
-                        profile, subject_date=subject_date, commit=False
-                    ):
-                        nudges_sent += 1
-                    if not await _commit_morning_step(
-                        session,
-                        step="good_morning_nudge",
-                        profile_id=profile_id,
-                        subject_date=subject_date,
-                    ):
-                        failures += 1
-                except Exception:
-                    failures += 1
-                    await session.rollback()
-                    log.exception(
-                        "good morning nudge failed",
-                        profile_id=str(profile_id),
-                        subject_date=subject_date.isoformat(),
-                    )
+                nudge = await pipeline.send_wake_nudge(profile)
+                nudges_sent += 1 if nudge.sent else 0
+                failures += nudge.failures
         log.info(
             "morning sync complete",
             profiles=len(profiles),
@@ -1273,11 +1087,16 @@ async def run_morning_weather_sync() -> JobResult:
     This is the **11:00 backstop** (and the external-cron ``morning-sync`` entry) —
     it guarantees a verdict even for a morning Mark never engaged with. On the
     primary path generation is triggered by his check-in and the wake job runs the
-    lighter run_morning_sync (sync + nudge) instead (Batch 85). Idempotent per
+    lighter run_wake_nudge (sync + nudge) instead (Batch 85). Idempotent per
     profile: generate_and_store and push_brief_ready short-circuit if the brief /
     push already happened via the check-in (Batch 112 converged the backstop onto
     the same brief-ready notification the check-in path sends, so there is one
     "your brief is ready" push regardless of which path generated it first).
+
+    Batch 251: the ladder below the sync now lives in ``MorningBriefPipeline``,
+    which the check-in trigger runs too. What is left here is the job's own
+    concern — iterating active profiles and turning per-profile outcomes into a
+    ``JobResult``.
     """
     try:
         async with AsyncSessionLocal() as session:
@@ -1285,155 +1104,26 @@ async def run_morning_weather_sync() -> JobResult:
             if not profiles:
                 log.info("morning weather sync skipped", reason="no_active_profiles")
                 return JobResult.skipped("no_active_profiles", profiles=0)
-            inputs = await _sync_morning_inputs(session, profiles)
+            pipeline = MorningBriefPipeline(session, policy=BACKSTOP_POLICY)
+            inputs = await pipeline.sync_inputs(profiles)
             analyses_generated = 0
             analyses_existing = 0
             failures = inputs.failures
-
-            analysis_service = MorningAnalysisService(session)
-            coaching_service = ExecutableCoachingService(session)
-            nudge_service = NudgeAlertService(session)
-            insights_service = InsightsService(session)
             proposals_regenerated = 0
             chronic_deload_proposals = 0
             brief_ready_pushes = 0
             drivers_cached = 0
             inputs_not_ready = 0
             for profile in profiles:
-                # _sync_morning_inputs and _sync_garmin_daily both roll back on
-                # a failed step, so this instance can already be expired here.
-                await _restore_after_rollback(session, profile)
-                profile_id = profile.id
-                subject_date = _profile_today(profile)
-                input_presence = await morning_input_presence(
-                    session,
-                    user_id=profile_id,
-                    subject_date=subject_date,
-                )
-                # The 11:00 backstop may honestly read a successful Garmin pull
-                # with no sleep session (watch not worn), but it must never turn
-                # a failed/no pull into a confident no-data brief.
-                if not input_presence.ready_for_read(allow_missing_sleep=True):
-                    failures += 1
-                    inputs_not_ready += 1
-                    log.warning(
-                        "morning analysis held for unsynced inputs",
-                        profile_id=str(profile_id),
-                        subject_date=subject_date.isoformat(),
-                    )
-                    continue
-                try:
-                    analysis_result = await analysis_service.generate_and_store(
-                        profile,
-                        subject_date,
-                    )
-                    if analysis_result.generated:
-                        analyses_generated += 1
-                    else:
-                        analyses_existing += 1
-                except GenerationRequestInProgress:
-                    # Batch 232.1: the 11:00 backstop can collide with a check-in
-                    # Mark started moments earlier. The other worker owns the
-                    # scope and is writing today's brief, so this is not a
-                    # failure and must not be counted or logged as one.
-                    await session.rollback()
-                    log.info(
-                        "morning analysis deferred to the in-flight holder",
-                        profile_id=str(profile_id),
-                        subject_date=subject_date.isoformat(),
-                    )
-                    continue
-                except Exception:
-                    failures += 1
-                    await session.rollback()
-                    log.exception(
-                        "morning analysis failed",
-                        profile_id=str(profile_id),
-                        subject_date=subject_date.isoformat(),
-                    )
-                    continue
-                if analysis_result.generated:
-                    # Batch 112: push the same brief-ready notification the
-                    # check-in path sends, so the backstop can never announce a
-                    # second "brief ready" push under a different URL. Wrapped so
-                    # a push failure never blocks the Amber regeneration below.
-                    try:
-                        if await nudge_service.push_brief_ready(
-                            profile,
-                            analysis_result.analysis,
-                            subject_date=subject_date,
-                        ):
-                            brief_ready_pushes += 1
-                    except Exception:
-                        failures += 1
-                        await session.rollback()
-                        log.exception(
-                            "morning brief-ready push failed",
-                            profile_id=str(profile_id),
-                            subject_date=subject_date.isoformat(),
-                        )
-                        # CR236-01's worst intra-iteration case: everything below
-                        # this handler — the audio warm, the Amber regeneration,
-                        # the deload proposal, the driver precompute — takes
-                        # these two instances, and each was reported under its
-                        # own misleading failure message. One push failure
-                        # produced four.
-                        await _restore_after_rollback(session, profile, analysis_result.analysis)
-                    # Warms the hosted-voice cache (Batch 116 follow-up) so a
-                    # consenting user's first "Listen" tap is often already
-                    # synthesized. Best-effort — never raises.
-                    await pregenerate_brief_audio(profile, analysis_result.analysis)
-                try:
-                    proposals = await coaching_service.regenerate_for_verdict(
-                        profile,
-                        subject_date,
-                        analysis=analysis_result.analysis,
-                    )
-                    proposals_regenerated += len(proposals)
-                except Exception:
-                    failures += 1
-                    await session.rollback()
-                    log.exception(
-                        "amber regeneration failed",
-                        profile_id=str(profile_id),
-                        subject_date=subject_date.isoformat(),
-                    )
-                    await _restore_after_rollback(session, profile, analysis_result.analysis)
-                try:
-                    deloads = await coaching_service.propose_chronic_deload(
-                        profile,
-                        subject_date,
-                        analysis=analysis_result.analysis,
-                    )
-                    chronic_deload_proposals += len(deloads)
-                except Exception:
-                    failures += 1
-                    await session.rollback()
-                    log.exception(
-                        "chronic deload proposal failed",
-                        profile_id=str(profile_id),
-                        subject_date=subject_date.isoformat(),
-                    )
-                    await _restore_after_rollback(session, profile)
-                # Batch 62.2: precompute the 120-day driver correlation once here so
-                # GET /api/v1/daily-loop reads it back instead of recomputing on
-                # every open. Wrapped so a failure never blocks the morning pipeline.
-                try:
-                    report = await insights_service.record_drivers(
-                        profile,
-                        as_of=subject_date,
-                        commit=True,
-                    )
-                    if report.record_count >= 1:
-                        drivers_cached += 1
-                except Exception:
-                    failures += 1
-                    await session.rollback()
-                    log.exception(
-                        "drivers precompute failed",
-                        profile_id=str(profile_id),
-                        subject_date=subject_date.isoformat(),
-                    )
+                outcome = await pipeline.generate_brief(profile)
+                analyses_generated += 1 if outcome.generated else 0
+                analyses_existing += 1 if outcome.existing else 0
+                inputs_not_ready += 1 if outcome.inputs_not_ready else 0
+                proposals_regenerated += outcome.proposals_regenerated
+                chronic_deload_proposals += outcome.chronic_deload_proposals
+                brief_ready_pushes += outcome.brief_ready_pushes
+                drivers_cached += outcome.drivers_cached
+                failures += outcome.failures
         log.info(
             "morning weather sync complete",
             profiles=len(profiles),
@@ -1481,7 +1171,7 @@ async def run_wake_check() -> JobResult:
     (services/wake_detection.is_morning_ready); (4) persists the current
     ``sleepEnd`` as a ``wake_check`` audit row for the next poll's comparison. If
     any profile is ready (stable wake, or the ~11:00 backstop) it runs
-    ``run_morning_sync`` once — which is idempotent per profile, so re-firing on
+    ``run_wake_nudge`` once — which is idempotent per profile, so re-firing on
     later polls is harmless.
     """
     try:
@@ -1568,7 +1258,7 @@ async def run_wake_check() -> JobResult:
         # generation itself waits for his check-in (Batch 85). Runs on its own
         # session after the last-seen state is committed; idempotent per profile.
         if any_ready:
-            morning_result = await run_morning_sync()
+            morning_result = await run_wake_nudge()
             if morning_result.exit_code:
                 failures += 1
         counters = {
@@ -1896,22 +1586,6 @@ async def _active_profiles(session: AsyncSession) -> list[Profile]:
     )
 
 
-def _profile_zone(profile: Profile) -> ZoneInfo:
-    try:
-        return ZoneInfo(profile.timezone)
-    except ZoneInfoNotFoundError:
-        return ZoneInfo("UTC")
-
-
-def _profile_now(profile: Profile) -> datetime:
-    """Timezone-aware 'now' in the profile's local zone (the wake-check clock)."""
-    return datetime.now(_profile_zone(profile))
-
-
-def _profile_today(profile: Profile) -> date:
-    return _profile_now(profile).date()
-
-
 async def _last_seen_sleep_end(
     session: AsyncSession,
     user_id: uuid.UUID,
@@ -1990,46 +1664,6 @@ async def _record_wake_check(
             raw_response={},
         )
     )
-
-
-async def _retry_sync[T](
-    operation: Callable[[], T],
-    *,
-    attempts: int = 3,
-    delay_sec: float = 1.0,
-    backoff: float = 1.0,
-) -> T:
-    """Retry a sync operation, sleeping ``delay_sec`` (× ``backoff`` each retry).
-
-    ``backoff > 1.0`` gives exponential backoff, which keeps the Garmin daily
-    sync 429-safe without hammering the API on the rate-limit window.
-    """
-    delay = delay_sec
-    for attempt in range(attempts):
-        try:
-            return operation()
-        except Exception:
-            if attempt == attempts - 1:
-                raise
-            await asyncio.sleep(delay)
-            delay *= backoff
-    raise RuntimeError("retry loop exited unexpectedly")
-
-
-async def _retry_async[T](
-    operation: Callable[[], Awaitable[T]],
-    *,
-    attempts: int = 3,
-    delay_sec: float = 1.0,
-) -> T:
-    for attempt in range(attempts):
-        try:
-            return await operation()
-        except Exception:
-            if attempt == attempts - 1:
-                raise
-            await asyncio.sleep(delay_sec)
-    raise RuntimeError("retry loop exited unexpectedly")
 
 
 # -- Bedroom fan control (Batch 27.2) ----------------------------------------

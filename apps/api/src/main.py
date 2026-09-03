@@ -4,8 +4,9 @@ from typing import Any
 
 import sentry_sdk
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 from sentry_sdk.types import Event, Hint
@@ -49,7 +50,12 @@ from src.routers import (
     workout_delivery,
 )
 from src.scheduler import create_scheduler
-from src.services.generation_requests import timeout_ordering, validate_timeout_ordering
+from src.services.generation_requests import (
+    GENERATION_IN_PROGRESS_DETAIL,
+    GenerationRequestInProgress,
+    timeout_ordering,
+    validate_timeout_ordering,
+)
 
 configure_logging(settings.log_level)
 
@@ -113,6 +119,22 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+
+
+async def _generation_in_progress_handler(_request: Request, _exc: Exception) -> JSONResponse:
+    """Batch 251 (CR236-06): the one place a claimed scope becomes a 409.
+
+    ``GenerationRequestInProgress`` is a domain exception, not an ``HTTPException``.
+    The two scheduler jobs and the background task that catch it have no client to
+    answer; the routes that let it escape do, and this is where they answer.
+    """
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={"detail": GENERATION_IN_PROGRESS_DETAIL},
+    )
+
+
+app.add_exception_handler(GenerationRequestInProgress, _generation_in_progress_handler)
 
 app.add_middleware(
     CORSMiddleware,

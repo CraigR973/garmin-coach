@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -36,6 +39,8 @@ from src.services.executable_coaching import (
 from src.services.garmin_sync import GarminScheduledWorkout
 from src.services.interval_workout_editor import EditableIntervalBlock, IntervalLeg
 from src.services.morning_analysis import MorningAnalysisResult
+from src.services.morning_inputs import MorningInputPresence
+from src.services.morning_pipeline import CHECKIN_POLICY, MorningBriefPipeline
 from src.services.verdict_scaling import (
     AMBER_COMPANION_DURATION_SCALE,
     AMBER_DURATION_SCALE,
@@ -1835,6 +1840,43 @@ class _StubMorningService:
         return MorningAnalysisResult(analysis=analysis, generated=True)
 
 
+@contextmanager
+def _checkin_ladder() -> Iterator[None]:
+    """Run the real check-in ladder without its input gate or its brief-ready push.
+
+    Batch 251 folded ``regenerate_after_morning_checkin`` into
+    ``MorningBriefPipeline``, so these tests now drive the whole check-in ladder
+    rather than the coaching slice of it. Input readiness (Batch 222) and the
+    brief-ready push (Batch 97/112) have their own tests; holding them constant
+    here keeps each assertion below speaking only about the coaching adjustment it
+    was written for.
+    """
+    with (
+        patch(
+            "src.services.morning_pipeline.morning_input_presence",
+            AsyncMock(return_value=MorningInputPresence(daily_metrics=True, sleep=True)),
+        ),
+        patch(
+            "src.services.morning_pipeline.NudgeAlertService.push_brief_ready",
+            AsyncMock(return_value=False),
+        ),
+    ):
+        yield
+
+
+async def _run_checkin(
+    session: AsyncSession, user: Profile, subject: date, morning: _StubMorningService
+) -> Analysis | None:
+    pipeline = MorningBriefPipeline(
+        session,
+        policy=CHECKIN_POLICY,
+        morning_service=morning,  # type: ignore[arg-type]
+    )
+    with _checkin_ladder():
+        outcome = await pipeline.generate_brief(user, subject)
+    return outcome.analysis
+
+
 async def _seed_bike_day(
     db_conn: AsyncConnection, user_id: uuid.UUID, workout_id: uuid.UUID, subject: date
 ) -> None:
@@ -1872,14 +1914,11 @@ async def test_checkin_recompute_eases_ride_when_verdict_worsens(
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
         user = await session.get(Profile, user_id)
         assert user is not None
-        service = ExecutableCoachingService(session)
         morning = _StubMorningService(
             session, stored=_morning_analysis(user_id, subject, "Green"), new_status="Amber"
         )
 
-        result = await service.regenerate_after_morning_checkin(
-            user, subject, morning_service=morning
-        )
+        result = await _run_checkin(session, user, subject, morning)
 
         assert result is not None
         assert result.verdict == "Amber"
@@ -1904,14 +1943,11 @@ async def test_checkin_always_regenerates_brief_when_verdict_holds(
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
         user = await session.get(Profile, user_id)
         assert user is not None
-        service = ExecutableCoachingService(session)
         morning = _StubMorningService(
             session, stored=_morning_analysis(user_id, subject, "Green"), new_status="Green"
         )
 
-        result = await service.regenerate_after_morning_checkin(
-            user, subject, morning_service=morning
-        )
+        result = await _run_checkin(session, user, subject, morning)
 
         assert result is not None  # the brief is always regenerated
         assert result.verdict == "Green"
@@ -1954,14 +1990,11 @@ async def test_checkin_recompute_leaves_an_approved_ride_untouched(
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
         user = await session.get(Profile, user_id)
         assert user is not None
-        service = ExecutableCoachingService(session)
         morning = _StubMorningService(
             session, stored=_morning_analysis(user_id, subject, "Green"), new_status="Red"
         )
 
-        result = await service.regenerate_after_morning_checkin(
-            user, subject, morning_service=morning
-        )
+        result = await _run_checkin(session, user, subject, morning)
 
         # Batch 85: the brief still regenerates (so his notes/question fold in), but
         # the approved ride is never silently re-adjusted (Decision #29).
@@ -2013,12 +2046,11 @@ async def test_checkin_proposes_adjustment_on_pre_delivered_ride(
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
         user = await session.get(Profile, user_id)
         assert user is not None
-        service = ExecutableCoachingService(session)
         morning = _StubMorningService(
             session, stored=_morning_analysis(user_id, subject, "Green"), new_status="Amber"
         )
 
-        await service.regenerate_after_morning_checkin(user, subject, morning_service=morning)
+        await _run_checkin(session, user, subject, morning)
 
         proposals = (await session.execute(select(WorkoutDeliveryProposal))).scalars().all()
         eased = [p for p in proposals if p.status == "proposed"]
@@ -2091,12 +2123,9 @@ async def test_checkin_regenerates_brief_on_a_no_bike_day(
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
         user = await session.get(Profile, user_id)
         assert user is not None
-        service = ExecutableCoachingService(session)
         morning = _StubMorningService(session, stored=None, new_status="Green")
 
-        result = await service.regenerate_after_morning_checkin(
-            user, subject, morning_service=morning
-        )
+        result = await _run_checkin(session, user, subject, morning)
 
         assert result is not None  # the brief is generated even with no bike workout
         assert morning.generate_calls == 1
