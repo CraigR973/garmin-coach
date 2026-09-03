@@ -201,10 +201,10 @@ log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 # Batch 244: the four-section prose list had become a deletion instruction once
 # experiments and chronic actions joined the packet. The output contract is now
 # packet-derived and structurally checked, so existing reads must regenerate.
-# Batch 246: the stored deterministic verdict now carries an acute-physiology
-# rail and missing-data floor. Generation identity does not hash the packet, so
-# the version must move or today's pre-rail verdict remains current.
-PROMPT_VERSION = "morning-analysis-v42-2026-09-02"
+# Batch 243: verdict-adjustment geometry, companion-load scaling, and deterministic
+# session-specific instructions changed. Generation identity does not hash the
+# packet, so the version must move or today's pre-fix verdict remains current.
+PROMPT_VERSION = "morning-analysis-v43-2026-09-03"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says

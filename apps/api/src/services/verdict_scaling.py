@@ -40,6 +40,13 @@ The Red-never-VO2 guarantee is untouched by this: a VO2 ride can never be
 "already endurance", so it always takes the recovery substitution, and
 :func:`blocks_red_vo2` still gates the push independently.
 
+Batch 243 makes the ladder monotonic and preserves interval protocols. Red's
+endurance cut can no longer leave more work than Amber, a companion session
+tightens Amber to the edge of its 20–30% duration band, and repeated work/rest
+legs are removed as whole repetitions instead of being shortened into a different
+protocol. Continuous endurance blocks may still be shortened; their duration is
+the dose rather than a defining work/rest geometry.
+
 Every function here is pure (IR/int/bool in, IR/int/bool out) so the safety
 properties stay unit-testable without a database. The *facts* a caller needs to
 supply — today's verdict, and whether the day already holds another session — are
@@ -53,12 +60,15 @@ from typing import Any
 
 # Verdict-driven adjustment knobs (percentage points of FTP unless noted).
 AMBER_DURATION_SCALE = 0.75  # 25% cut keeps inside the 20-30% Amber band
+# A second session makes the day's total the dose. Amber therefore uses the
+# cautious edge of its existing 20–30% band rather than ignoring that load.
+AMBER_COMPANION_DURATION_SCALE = 0.70
 RED_DURATION_SCALE = 0.5
 # Batch 215: Red's duration cut for a ride that is *already* Zone 2. Still a
 # material reduction — a Red morning must not deliver a Green-looking session —
 # but it keeps the sustained easy work that builds sleep pressure, which the old
 # blanket half-cut deleted (Decision #293).
-RED_ENDURANCE_DURATION_SCALE = 0.85
+RED_ENDURANCE_DURATION_SCALE = 0.70
 ZONE_DROP_PCT = 13  # one training zone is ~13 percentage points of FTP
 HIT_FLOOR_PCT = 106  # VO2/anaerobic work begins around 106% FTP
 AMBER_POWER_CAP_PCT = 94  # Amber removes HIT: cap at the top of Sweet Spot
@@ -143,6 +153,11 @@ def red_duration_scale(ir: dict[str, Any] | None, *, companion_session: bool = F
     return RED_DURATION_SCALE
 
 
+def amber_duration_scale(*, companion_session: bool = False) -> float:
+    """Amber's duration scale, tightened when another session shares the day."""
+    return AMBER_COMPANION_DURATION_SCALE if companion_session else AMBER_DURATION_SCALE
+
+
 def red_power_cap_pct(ir: dict[str, Any] | None, *, companion_session: bool = False) -> int:
     """Red's working-intensity ceiling — the Zone-2 top on an already-easy ride."""
     if red_holds_endurance(ir, companion_session=companion_session):
@@ -187,12 +202,11 @@ def ease_amber_power_pct(power_pct: int) -> int:
 def _adjust_step(
     step: dict[str, Any],
     *,
-    duration_scale: float,
+    duration_sec: int,
     power_cap: int,
     ease: Callable[[int], int] | None,
 ) -> dict[str, Any]:
     phase = str(step.get("phase") or "interval")
-    duration = max(1, round(int(step.get("durationSec", 0)) * duration_scale))
 
     def _power(key: str) -> int:
         raw = int(step.get(key, 0))
@@ -208,7 +222,7 @@ def _adjust_step(
         "label": step.get("label", "Step"),
         "phase": phase,
         "kind": "ramp" if start != end else "steady",
-        "durationSec": duration,
+        "durationSec": duration_sec,
         "powerStartPct": start,
         "powerEndPct": end,
     }
@@ -216,6 +230,259 @@ def _adjust_step(
     if cadence:
         new_step["cadenceRpm"] = cadence
     return new_step
+
+
+def _repeat_identity(step: dict[str, Any]) -> tuple[str, str, int, int] | None:
+    """Parse the canonical ``<label> work|recovery i/n`` expanded-step suffix."""
+    label = str(step.get("label") or "")
+    try:
+        prefix_and_leg, position = label.rsplit(" ", 1)
+        prefix, leg = prefix_and_leg.rsplit(" ", 1)
+        index_text, total_text = position.split("/", 1)
+        index, total = int(index_text), int(total_text)
+    except (ValueError, TypeError):
+        return None
+    if leg not in {"work", "recovery"} or total < 1 or index < 1 or index > total:
+        return None
+    return prefix, leg, index, total
+
+
+def _scaled_durations(
+    steps: list[dict[str, Any]], indices: list[int], target_total: int
+) -> dict[int, int]:
+    """Scale divisible steps to an exact total while keeping every duration positive."""
+    if not indices or target_total <= 0:
+        return {}
+    source_total = sum(max(1, int(steps[index].get("durationSec", 0))) for index in indices)
+    if source_total <= 0:
+        return {}
+    target_total = max(len(indices), target_total)
+    durations = {
+        index: max(
+            1,
+            round(max(1, int(steps[index].get("durationSec", 0))) * target_total / source_total),
+        )
+        for index in indices
+    }
+    delta = target_total - sum(durations.values())
+    # Put rounding residue on the longest step; one-second corrections cannot
+    # distort a protocol and make the total deterministic.
+    anchor = max(indices, key=lambda index: durations[index])
+    durations[anchor] = max(1, durations[anchor] + delta)
+    return durations
+
+
+def _closest_prefix_count(unit_totals: list[int], target_total: float) -> int:
+    """Number of leading repetitions whose whole duration is closest to target."""
+    cumulative = 0
+    candidates = [(abs(target_total), 0)]
+    for count, duration in enumerate(unit_totals, start=1):
+        cumulative += duration
+        candidates.append((abs(cumulative - target_total), count))
+    # Equal-distance ties choose fewer reps: the cautious direction for an eased day.
+    return min(candidates, key=lambda item: (item[0], item[1]))[1]
+
+
+def _adjust_steps_preserving_geometry(
+    steps: list[dict[str, Any]],
+    *,
+    duration_scale: float,
+    power_cap: int,
+    ease: Callable[[int], int] | None,
+) -> list[dict[str, Any]]:
+    """Adjust duration without changing a repeated interval's work/rest geometry.
+
+    Expanded repeat legs are indivisible: easing removes complete trailing
+    repetitions and rewrites their ``i/n`` labels. Warm-up/cool-down steps stay at
+    full length while the target permits it, and continuous interval blocks absorb
+    the exact remaining duration. If the cautious target is shorter than the fixed
+    opening/closing steps, the interval set is removed and those easy steps are
+    shortened as a recovery-session substitution.
+    """
+    if not steps:
+        return []
+    source_total = sum(max(1, int(step.get("durationSec", 0))) for step in steps)
+    target_total = max(1, round(source_total * duration_scale))
+
+    candidate_groups: dict[tuple[str, int], dict[int, list[int]]] = {}
+    candidate_parts: dict[int, tuple[str, str, int, int]] = {}
+    for step_index, step in enumerate(steps):
+        identity = _repeat_identity(step)
+        if identity is None:
+            continue
+        prefix, leg, repeat_index, repeat_total = identity
+        candidate_parts[step_index] = identity
+        candidate_groups.setdefault((prefix, repeat_total), {}).setdefault(repeat_index, []).append(
+            step_index
+        )
+    # A one-leg ``work 1/1`` is how the source editor serializes a continuous
+    # block, not an interval protocol. It remains divisible. A work/recovery pair
+    # is geometry even at 1/1, and any multi-repeat set is atomic by definition.
+    atomic_keys = {
+        key
+        for key, repeats in candidate_groups.items()
+        if key[1] > 1
+        or any(
+            candidate_parts[index][1] == "recovery"
+            for indices in repeats.values()
+            for index in indices
+        )
+    }
+    repeat_groups = {
+        key: repeats for key, repeats in candidate_groups.items() if key in atomic_keys
+    }
+    repeat_parts = {
+        index: identity
+        for index, identity in candidate_parts.items()
+        if (identity[0], identity[3]) in atomic_keys
+    }
+
+    fixed_indices = [
+        index
+        for index, step in enumerate(steps)
+        if index not in repeat_parts and str(step.get("phase") or "interval") != "interval"
+    ]
+    continuous_indices = [
+        index
+        for index, step in enumerate(steps)
+        if index not in repeat_parts and str(step.get("phase") or "interval") == "interval"
+    ]
+    fixed_total = sum(max(1, int(steps[index].get("durationSec", 0))) for index in fixed_indices)
+
+    keep_repeats: dict[tuple[str, int], set[int]] = {}
+    if target_total <= fixed_total:
+        fixed_durations = _scaled_durations(steps, fixed_indices, target_total)
+        continuous_durations: dict[int, int] = {}
+    else:
+        fixed_durations = {
+            index: max(1, int(steps[index].get("durationSec", 0))) for index in fixed_indices
+        }
+        interval_budget = target_total - fixed_total
+        continuous_total = sum(
+            max(1, int(steps[index].get("durationSec", 0))) for index in continuous_indices
+        )
+        group_totals = {
+            key: sum(
+                max(1, int(steps[index].get("durationSec", 0)))
+                for indices in repeats.values()
+                for index in indices
+            )
+            for key, repeats in repeat_groups.items()
+        }
+        interval_source_total = continuous_total + sum(group_totals.values())
+        kept_repeat_total = 0
+        repeat_units: dict[tuple[str, int], list[tuple[int, int]]] = {}
+        for key, repeats in repeat_groups.items():
+            ordered_repeats = sorted(repeats)
+            unit_totals = [
+                sum(max(1, int(steps[index].get("durationSec", 0))) for index in repeats[number])
+                for number in ordered_repeats
+            ]
+            repeat_units[key] = list(zip(ordered_repeats, unit_totals, strict=True))
+            share = (
+                interval_budget * group_totals[key] / interval_source_total
+                if interval_source_total
+                else 0.0
+            )
+            keep_count = _closest_prefix_count(unit_totals, share)
+            kept = set(ordered_repeats[:keep_count])
+            keep_repeats[key] = kept
+            kept_repeat_total += sum(unit_totals[:keep_count])
+
+        # Whole repetitions are discrete. If the initial proportional choice
+        # leaves too little duration even with every fixed/continuous second, add
+        # the shortest next repetition. Conversely, remove a trailing repetition
+        # if the atomic work alone exceeds the target. Fixed easy steps then absorb
+        # the small residue, preserving the exact overall dose where possible.
+        while kept_repeat_total + fixed_total + continuous_total < target_total:
+            candidates = [
+                (duration, key, repeat_index)
+                for key, units in repeat_units.items()
+                for repeat_index, duration in units
+                if repeat_index == len(keep_repeats.get(key, set())) + 1
+            ]
+            if not candidates:
+                break
+            duration, key, repeat_index = min(candidates)
+            keep_repeats.setdefault(key, set()).add(repeat_index)
+            kept_repeat_total += duration
+
+        while kept_repeat_total > target_total:
+            candidates = [
+                (duration, key, repeat_index)
+                for key, units in repeat_units.items()
+                for repeat_index, duration in units
+                if repeat_index in keep_repeats.get(key, set())
+                and repeat_index == max(keep_repeats[key])
+            ]
+            if not candidates:
+                break
+            duration, key, repeat_index = min(
+                candidates,
+                key=lambda item: abs((kept_repeat_total - item[0]) - target_total),
+            )
+            keep_repeats[key].remove(repeat_index)
+            kept_repeat_total -= duration
+
+        remaining = max(0, target_total - kept_repeat_total)
+        fixed_target = min(fixed_total, remaining)
+        fixed_durations = _scaled_durations(steps, fixed_indices, fixed_target)
+        continuous_target = min(
+            continuous_total,
+            max(0, remaining - fixed_target),
+        )
+        continuous_durations = _scaled_durations(steps, continuous_indices, continuous_target)
+
+    adjusted: list[dict[str, Any]] = []
+    for index, step in enumerate(steps):
+        identity = repeat_parts.get(index)
+        if identity is not None:
+            prefix, leg, repeat_index, repeat_total = identity
+            kept = keep_repeats.get((prefix, repeat_total), set())
+            if repeat_index not in kept:
+                continue
+            duration = max(1, int(step.get("durationSec", 0)))
+            changed = dict(step)
+            changed["label"] = f"{prefix} {leg} {repeat_index}/{len(kept)}"
+        elif index in fixed_durations:
+            duration = fixed_durations[index]
+            changed = step
+        elif index in continuous_durations:
+            duration = continuous_durations[index]
+            changed = step
+        else:
+            continue
+        next_step = _adjust_step(
+            changed,
+            duration_sec=duration,
+            power_cap=power_cap,
+            ease=ease,
+        )
+        adjusted.append(next_step)
+    if not adjusted:
+        # A valid manually-authored workout may contain only one work/recovery
+        # pair and no divisible warm-up/cool-down (Decision #161). Removing that
+        # sole repetition would produce an empty workout, so take the other
+        # sanctioned easing route: change the session type to one continuous,
+        # genuinely easy recovery effort. Its 60%-FTP ceiling keeps load
+        # monotonic even when the source pair contains a long 45%-FTP recovery.
+        recovery_pct = min(power_cap, RECOVERY_CAP_PCT)
+        recovery_source = {
+            "label": "Recovery substitution",
+            "phase": "interval",
+            "durationSec": target_total,
+            "powerStartPct": recovery_pct,
+            "powerEndPct": recovery_pct,
+        }
+        adjusted.append(
+            _adjust_step(
+                recovery_source,
+                duration_sec=target_total,
+                power_cap=recovery_pct,
+                ease=None,
+            )
+        )
+    return adjusted
 
 
 def adjust_ir_for_verdict(
@@ -228,10 +495,11 @@ def adjust_ir_for_verdict(
 
     * **Green** (or unknown): proceed as planned — the IR is returned unchanged
       apart from an ``origin``/``adjustment`` annotation.
-    * **Amber**: cut every step to 75% duration and ease the working intervals via
+    * **Amber**: cut the total duration to 70–75% and ease working intervals via
       :func:`ease_amber_power_pct` — a hard interval drops a zone (never below the
       Zone-2 floor) and HIT is capped away, while an already-endurance ride keeps
-      its intensity and is only shortened.
+      its intensity. Repeated protocols lose whole reps; divisible easy steps
+      absorb any residue needed to preserve the exact total.
     * **Red** on an **already-endurance** ride (Batch 215): hold the planned Zone-2
       intensity and take the lighter ``RED_ENDURANCE_DURATION_SCALE`` cut. The hard
       work is still gone — there is none to remove — and the easy work that builds
@@ -246,7 +514,8 @@ def adjust_ir_for_verdict(
     original_name = str(base_ir.get("name") or "Workout")
 
     if status == "Amber":
-        duration_scale, power_cap = AMBER_DURATION_SCALE, AMBER_POWER_CAP_PCT
+        duration_scale = amber_duration_scale(companion_session=companion_session)
+        power_cap = AMBER_POWER_CAP_PCT
         ease: Callable[[int], int] | None = ease_amber_power_pct
         origin, name_prefix = "amber_regeneration", "Amber-adjusted"
     elif status == "Red":
@@ -264,10 +533,12 @@ def adjust_ir_for_verdict(
         return unchanged
 
     removed_hit = any(_step_power(step) >= HIT_FLOOR_PCT for step in steps)
-    new_steps = [
-        _adjust_step(step, duration_scale=duration_scale, power_cap=power_cap, ease=ease)
-        for step in steps
-    ]
+    new_steps = _adjust_steps_preserving_geometry(
+        steps,
+        duration_scale=duration_scale,
+        power_cap=power_cap,
+        ease=ease,
+    )
     basis_total = int(
         base_ir.get("totalDurationSec") or sum(int(step.get("durationSec", 0)) for step in steps)
     )
@@ -289,7 +560,11 @@ def adjust_ir_for_verdict(
     adjusted["adjustment"] = {
         "verdict": status,
         "changed": True,
-        "durationScalePct": round(duration_scale * 100),
+        "durationScalePct": (
+            round(sum(int(step["durationSec"]) for step in new_steps) / basis_total * 100)
+            if basis_total > 0
+            else round(duration_scale * 100)
+        ),
         "zoneDropPct": zone_drop_pts,
         "powerCapPct": power_cap,
         "removedHit": removed_hit,
@@ -299,9 +574,7 @@ def adjust_ir_for_verdict(
         "basisName": original_name,
         "basisTotalDurationSec": basis_total,
     }
-    if status == "Red":
-        # Recorded only where it is a rule. The combined-load gate is Red-only, and
-        # stamping it on an Amber adjustment would imply it had done something.
+    if status in {"Amber", "Red"}:
         adjusted["adjustment"]["companionSession"] = companion_session
     return adjusted
 
@@ -324,13 +597,13 @@ def verdict_duration_scale(
 ) -> float | None:
     """The duration scale :func:`adjust_ir_for_verdict` will apply, or ``None`` on Green.
 
-    Exposed so a caller that can only edit part of a workout — the interval editor,
-    whose warm-up/cool-down steps are read-only — can still land on the *same total
-    duration* the delivery transform and the brief quote.
+    Exposed for callers that need the nominal verdict ladder. The canonical IR
+    transform may report a nearby actual percentage when an interval protocol can
+    only be shortened by removing whole repetitions.
     """
     status = _normalize_verdict(verdict)
     if status == "Amber":
-        return AMBER_DURATION_SCALE
+        return amber_duration_scale(companion_session=companion_session)
     if status == "Red":
         return red_duration_scale(base_ir, companion_session=companion_session)
     return None
@@ -436,16 +709,15 @@ def summarize_verdict_adjustment(
     adjusted_primary = _primary_work_step(adjusted_steps)
     planned_power = _step_power(base_primary) if base_primary is not None else None
     adjusted_power = _step_power(adjusted_primary) if adjusted_primary is not None else None
-    duration_scale = (
-        red_duration_scale(base_ir, companion_session=companion_session)
-        if status == "Red"
-        else AMBER_DURATION_SCALE
+    adjustment = adjusted.get("adjustment")
+    duration_scale_pct = (
+        adjustment.get("durationScalePct") if isinstance(adjustment, dict) else None
     )
 
     summary: dict[str, Any] = {
         "verdict": status,
         "changed": True,
-        "durationScalePct": round(duration_scale * 100),
+        "durationScalePct": duration_scale_pct,
         "plannedDurationMin": _total_minutes(base_ir, base_steps),
         "adjustedDurationMin": _total_minutes(adjusted, adjusted_steps),
         "plannedWorkPowerPct": planned_power,
@@ -467,6 +739,6 @@ def summarize_verdict_adjustment(
         "source": "deterministic",
         "classificationImpact": "none",
     }
-    if status == "Red":
+    if status in {"Amber", "Red"}:
         summary["companionSession"] = companion_session
     return summary

@@ -13,8 +13,9 @@ Batch 13 turns the daily verdict into an *acted-on* workout (Decision #30):
     not an LLM call.
   * ``auto_push_due`` delivers already-**approved** proposals due today; Batch 25
     supersedes the old couple-days-ahead lead window from Decision #31. It never
-    pushes anything unapproved (Decision #29),
-    and never pushes a VO2 session on a Red day (Red-never-VO2 at the gate).
+    pushes anything unapproved (Decision #29). Batch 243 also puts Red-never-VO2
+    inside every Zwift create/update rail, so baseline reconcile and direct API
+    callers cannot bypass it.
   * Every proposal and push is written to the ``analyses`` audit log (Batch 9
     pattern) so each delivery has inspectable evidence.
 """
@@ -118,22 +119,36 @@ def _local_today(timezone_name: str, now_utc: datetime | None = None) -> date:
 def _proposal_content_matches_workout(
     proposal: WorkoutDeliveryProposal,
     workout: PlannedWorkout,
+    expected_ir: dict[str, Any],
 ) -> bool:
-    """Require both the local pointer and delivered IR fingerprint to match.
+    """Require both the local pointer and intended delivered IR to match.
 
     The IR is the persisted snapshot of what intervals.icu last accepted. Using
     its workout id/version alongside the mutable relationship columns prevents a
-    stale or legacy false pointer from suppressing reconciliation.
+    stale or legacy false pointer from suppressing reconciliation. Verdict-driven
+    baseline delivery is re-synced when the day's light changes, while a manual
+    edit remains deliberate and is never silently overwritten.
     """
     ir = proposal.structured_workout_ir
     if not isinstance(ir, dict):
         return False
-    return (
+    pointers_match = (
         proposal.planned_workout_id == workout.id
         and proposal.planned_workout_version == workout.version
         and ir.get("plannedWorkoutId") == str(workout.id)
         and ir.get("plannedWorkoutVersion") == workout.version
     )
+    if not pointers_match:
+        return False
+    automatic_origins = {
+        "as_planned",
+        "amber_regeneration",
+        "red_substitution",
+        "red_endurance_hold",
+    }
+    if str(ir.get("origin") or "") not in automatic_origins:
+        return True
+    return ir == expected_ir
 
 
 def apply_manual_override_to_ir(
@@ -656,14 +671,15 @@ class ExecutableCoachingService:
         live delivery matching its current content (Decision #99).
 
         **Indoor** rides deliver to Zwift via the intervals.icu rail; **outdoor**
-        rides deliver to Garmin Connect (Batch 78, Decision #151). The as-planned
-        baseline is delivered **without a per-workout approval** — a deliberate
-        reversal of #29/#30 for the baseline; approval now gates only the morning
-        adjustment (the Today card's Approve & upload). Each workout is reconciled in
-        isolation so one delivery failure (e.g. a missing intervals.icu key → 503, or
-        a Garmin 429) never blocks the rest, and the pass is idempotent: a slot
-        already carrying its current version is a no-op. The Zwift proposals are
-        returned; outdoor Garmin delivery is a side effect recorded on its own row.
+        rides deliver to Garmin Connect (Batch 78, Decision #151). The baseline is
+        delivered **without a per-workout approval** — as planned on Green/no read,
+        or through the canonical ease on Amber/Red (Batch 243). Explicit morning
+        offers remain human-approved; this default merely prevents a later plan
+        reconcile from putting the harder source back on the trainer. Each workout
+        is isolated so one delivery failure (e.g. a missing intervals.icu key → 503,
+        or a Garmin 429) never blocks the rest, and the pass is idempotent only when
+        both plan version and verdict-adjusted content match. The Zwift proposals
+        are returned; outdoor Garmin delivery is a side effect recorded on its own row.
         """
         delivered: list[WorkoutDeliveryProposal] = []
         for workout in await self._active_bike_workouts_in_range(player.id, start_date, end_date):
@@ -742,19 +758,29 @@ class ExecutableCoachingService:
                 proposal_id=str(failure.id),
             )
             return None
-        base_ir["origin"] = "as_planned"
-        base_ir["adjustment"] = {"verdict": None, "changed": False}
+        verdict = await self._morning_verdict_for(player.id, workout.workout_date)
+        companion = await self._companion_session(player.id, workout)
+        if verdict in {"Amber", "Red"}:
+            delivery_ir = adjust_ir_for_verdict(
+                base_ir,
+                verdict,
+                companion_session=companion,
+            )
+        else:
+            delivery_ir = dict(base_ir)
+            delivery_ir["origin"] = "as_planned"
+            delivery_ir["adjustment"] = {"verdict": verdict, "changed": False}
 
         live = await self.rail.latest_delivered_for_workout(player.id, workout.id)
         if live is None:
             live = await self.rail.latest_delivered_for_date(player.id, workout.workout_date)
-        if live is not None and _proposal_content_matches_workout(live, workout):
+        if live is not None and _proposal_content_matches_workout(live, workout, delivery_ir):
             return None  # this exact version is already on Zwift — idempotent
 
         if live is not None:
             # A restructure re-versioned the slot — re-sync the existing event in
             # place so Zwift never carries a stale or duplicate session.
-            delivered = await self.rail.replace_event(proposal=live, ir=base_ir, commit=False)
+            delivered = await self.rail.replace_event(proposal=live, ir=delivery_ir, commit=False)
             live.planned_workout_id = workout.id
             live.planned_workout_version = workout.version
             retried = await self.rail.mark_retry_delivered(
@@ -770,9 +796,13 @@ class ExecutableCoachingService:
             )
         else:
             proposal = await self.rail.propose_from_ir(
-                player=player, workout=workout, ir=base_ir, commit=False
+                player=player, workout=workout, ir=delivery_ir, commit=False
             )
-            delivered = await self.rail.create_event(proposal=proposal, ir=base_ir, commit=False)
+            delivered = await self.rail.create_event(
+                proposal=proposal,
+                ir=delivery_ir,
+                commit=False,
+            )
             audit_type = AUDIT_TYPE_DELIVERED
             summary = f"Delivered {workout.title} to Zwift for {workout.workout_date.isoformat()}."
 
@@ -784,7 +814,7 @@ class ExecutableCoachingService:
                 analysis_type=audit_type,
                 tag=tag,
                 subject_date=workout.workout_date,
-                verdict=None,
+                verdict=verdict,
                 summary=summary,
             )
         await self.session.commit()

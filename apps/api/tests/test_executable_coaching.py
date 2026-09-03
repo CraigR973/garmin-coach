@@ -37,6 +37,7 @@ from src.services.garmin_sync import GarminScheduledWorkout
 from src.services.interval_workout_editor import EditableIntervalBlock, IntervalLeg
 from src.services.morning_analysis import MorningAnalysisResult
 from src.services.verdict_scaling import (
+    AMBER_COMPANION_DURATION_SCALE,
     AMBER_DURATION_SCALE,
     AMBER_POWER_CAP_PCT,
     ENDURANCE_CEILING_PCT,
@@ -407,7 +408,7 @@ def test_red_still_substitutes_recovery_for_anything_harder_than_zone_two() -> N
         assert adjusted["name"].startswith("Recovery substitution: ")
         assert _max_any_step_power(adjusted) <= RECOVERY_CAP_PCT  # every step, not just the work
         assert all(int(s["powerStartPct"]) <= RECOVERY_CAP_PCT for s in adjusted["steps"])
-        assert adjusted["adjustment"]["durationScalePct"] == round(RED_DURATION_SCALE * 100)
+        assert adjusted["adjustment"]["durationScalePct"] <= round(RED_DURATION_SCALE * 100)
         assert adjusted["totalDurationSec"] <= base["totalDurationSec"] * 0.55
         assert adjusted["adjustment"]["enduranceHold"] is False
 
@@ -471,10 +472,7 @@ def test_the_brief_and_the_delivered_ride_quote_one_number() -> None:
         assert summary["adjustedDurationMin"] == round(adjusted["totalDurationSec"] / 60)
         assert summary["adjustedWorkPowerPct"] == _max_work_power(adjusted)
         assert summary["durationScalePct"] == adjusted["adjustment"]["durationScalePct"]
-        if verdict == "Red":
-            assert summary["companionSession"] is companion
-        else:
-            assert "companionSession" not in summary
+        assert summary["companionSession"] is companion
         # The held-at-endurance flag reads the outcome, not the verdict's name.
         assert summary["intensityHeldAtEndurance"] is (
             summary["adjustedWorkPowerPct"] == summary["plannedWorkPowerPct"]
@@ -494,7 +492,7 @@ def test_red_endurance_reports_intensity_held_where_it_previously_could_not() ->
     assert summary["plannedWorkPowerPct"] == 62
     assert summary["adjustedWorkPowerPct"] == 62
     assert summary["intensityHeldAtEndurance"] is True
-    assert summary["adjustedDurationMin"] == 38
+    assert summary["adjustedDurationMin"] == 32
     assert summary["classificationImpact"] == "none"  # explanatory only, still
 
 
@@ -518,24 +516,124 @@ def test_ir_is_endurance_reads_the_hardest_working_step() -> None:
     assert ir_is_endurance(None) is False
 
 
-def test_amber_is_unchanged_by_the_red_rework() -> None:
-    """A regression guard: 173.2's Amber behaviour must be bit-identical."""
+def test_amber_keeps_the_power_rule_and_accounts_for_a_companion_session() -> None:
+    """Batch 243: geometry/load changes do not weaken Amber's intensity ceiling."""
     for structured in (ENDURANCE_STRUCTURED, VO2_STRUCTURED, SWEET_SPOT_STRUCTURED):
         base = build_structured_workout_ir(_planned_workout(structured), ftp_watts=280)
         adjusted = adjust_ir_for_verdict(base, "Amber")
         assert adjusted["origin"] == "amber_regeneration"
-        # Per-step rounding means the total is not exactly total × scale, so assert
-        # the documented 20-30% band the existing Amber tests use.
+        # Whole-repetition rounding can land just outside the nominal 20–30% band;
+        # the actual percentage is recorded and the protocol geometry wins.
         assert (
             base["totalDurationSec"] * 0.70
             <= adjusted["totalDurationSec"]
-            <= base["totalDurationSec"] * 0.80
+            <= base["totalDurationSec"] * 0.81
         )
         assert adjusted["adjustment"]["durationScalePct"] == round(AMBER_DURATION_SCALE * 100)
         assert _max_any_step_power(adjusted) == ease_amber_power_pct(_max_any_step_power(base))
-        assert "companionSession" not in adjusted["adjustment"]
-        # The combined-load gate is a Red rule only — Amber is bit-identical.
-        assert adjust_ir_for_verdict(base, "Amber", companion_session=True) == adjusted
+        assert adjusted["adjustment"]["companionSession"] is False
+        shared = adjust_ir_for_verdict(base, "Amber", companion_session=True)
+        assert shared["adjustment"]["companionSession"] is True
+        assert shared["totalDurationSec"] <= adjusted["totalDurationSec"]
+        assert shared["adjustment"]["durationScalePct"] <= round(
+            AMBER_COMPANION_DURATION_SCALE * 100
+        )
+
+
+def _duration_load(ir: dict) -> int:
+    return sum(
+        int(step["durationSec"]) * max(int(step["powerStartPct"]), int(step["powerEndPct"]))
+        for step in ir["steps"]
+    )
+
+
+@pytest.mark.parametrize(
+    "structured",
+    [
+        ENDURANCE_STRUCTURED,
+        VO2_STRUCTURED,
+        SWEET_SPOT_STRUCTURED,
+        MARK_0808_STRUCTURED,
+        ENDURANCE_WITH_SPRINTS_STRUCTURED,
+    ],
+)
+@pytest.mark.parametrize("companion", [False, True])
+def test_verdict_easing_is_monotonic_on_duration_and_load(
+    structured: dict, companion: bool
+) -> None:
+    """Batch 243 property: Red <= Amber <= planned for every shipped ride shape."""
+    planned = build_structured_workout_ir(_planned_workout(structured), ftp_watts=280)
+    amber = adjust_ir_for_verdict(planned, "Amber", companion_session=companion)
+    red = adjust_ir_for_verdict(planned, "Red", companion_session=companion)
+
+    assert red["totalDurationSec"] <= amber["totalDurationSec"] <= planned["totalDurationSec"]
+    assert _duration_load(red) <= _duration_load(amber) <= _duration_load(planned)
+
+
+def test_ronnestad_geometry_is_preserved_when_repetitions_survive_easing() -> None:
+    """A 30/15 protocol loses reps, never seconds from either leg."""
+    structured = {
+        "format": "bike",
+        "steps": [
+            {"label": "Warm-up", "minutes": 10, "target": "easy spin"},
+            {
+                "label": "Rønnestad",
+                "repeats": 1,
+                "pattern": "13x 30s on / 15s easy",
+                "target": "108% FTP 95rpm",
+            },
+            {"label": "Cool-down", "minutes": 5, "target": "easy spin"},
+        ],
+    }
+    planned = build_structured_workout_ir(_planned_workout(structured), ftp_watts=280)
+    amber = adjust_ir_for_verdict(planned, "Amber")
+    planned_intervals = [step for step in planned["steps"] if step["phase"] == "interval"]
+    amber_intervals = [step for step in amber["steps"] if step["phase"] == "interval"]
+
+    assert 0 < len(amber_intervals) < len(planned_intervals)
+    assert [step["durationSec"] for step in amber_intervals[::2]] == [30] * (
+        len(amber_intervals) // 2
+    )
+    assert [step["durationSec"] for step in amber_intervals[1::2]] == [15] * (
+        len(amber_intervals) // 2
+    )
+
+
+def test_an_indivisible_single_pair_becomes_recovery_instead_of_an_empty_workout() -> None:
+    """Decision #161 permits no-ramp manual workouts; verdict easing stays valid."""
+    base = {
+        "name": "One hard effort",
+        "steps": [
+            {
+                "label": "Set work 1/1",
+                "phase": "interval",
+                "kind": "steady",
+                "durationSec": 30,
+                "powerStartPct": 120,
+                "powerEndPct": 120,
+            },
+            {
+                "label": "Set recovery 1/1",
+                "phase": "interval",
+                "kind": "steady",
+                "durationSec": 120,
+                "powerStartPct": 45,
+                "powerEndPct": 45,
+            },
+        ],
+        "totalDurationSec": 150,
+    }
+
+    amber = adjust_ir_for_verdict(base, "Amber")
+    red = adjust_ir_for_verdict(base, "Red")
+
+    assert len(amber["steps"]) == len(red["steps"]) == 1
+    assert amber["steps"][0]["label"] == "Recovery substitution"
+    assert red["steps"][0]["label"] == "Recovery substitution"
+    assert _max_any_step_power(amber) <= RECOVERY_CAP_PCT
+    assert _max_any_step_power(red) <= RECOVERY_CAP_PCT
+    assert red["totalDurationSec"] <= amber["totalDurationSec"] <= base["totalDurationSec"]
+    assert _duration_load(red) <= _duration_load(amber) <= _duration_load(base)
 
 
 # ---------------------------------------------------------------------------
@@ -2021,6 +2119,53 @@ async def test_reconcile_delivers_baseline_without_approval_and_is_idempotent(
         assert again == []
         assert len(fake.payloads) == 1  # no duplicate create
         assert fake.updates == []
+
+
+@pytest.mark.asyncio
+async def test_2026_07_22_reconcile_delivers_the_red_easing_not_the_sprints(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 243 replay: 6 x 12 s at 185% can no longer be the Red default."""
+    user_id, workout_id = uuid.uuid4(), uuid.uuid4()
+    subject = date(2026, 7, 22)
+    await _seed_bike(db_conn, user_id, workout_id, workout_date=subject)
+    fake = _FakeIntervalsClient()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        workout = await session.get(PlannedWorkout, workout_id)
+        assert workout is not None
+        workout.title = "Endurance with neuromuscular sprints"
+        workout.structured_workout = ENDURANCE_WITH_SPRINTS_STRUCTURED
+        session.add(
+            Analysis(
+                user_id=user_id,
+                analysis_type="morning",
+                subject_date=subject,
+                generated_at_utc=datetime(2026, 7, 22, 8, 41, 17),
+                prompt_version="morning-test",
+                verdict="Red",
+                context_packet={"verdict": {"status": "Red"}},
+                output_markdown="Red",
+                raw_response={},
+            )
+        )
+        await session.commit()
+
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session, intervals_client=fake)
+        delivered = await service.reconcile_deliveries(
+            user,
+            start_date=subject,
+            end_date=subject,
+        )
+
+        assert len(delivered) == 1
+        ir = delivered[0].structured_workout_ir
+        assert ir["origin"] == "red_substitution"
+        assert ir["adjustment"]["verdict"] == "Red"
+        assert max(int(step["powerEndPct"]) for step in ir["steps"]) <= RECOVERY_CAP_PCT
+        assert all("185%" not in payload["description"] for payload in fake.payloads)
 
 
 @pytest.mark.asyncio
