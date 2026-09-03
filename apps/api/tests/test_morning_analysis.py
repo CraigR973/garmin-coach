@@ -977,7 +977,9 @@ async def test_amber_morning_leads_with_week_swap_and_keeps_softening(
                     is_active=True,
                     planned_duration_min=60,
                     intensity_target="105-110% FTP",
-                    structured_workout={"format": "bike"},
+                    # The fallback copy is derived from the same executable IR as
+                    # delivery, so this fixture must describe a deliverable ride.
+                    structured_workout=_HARD_VO2_STRUCTURED,
                     source="test",
                 ),
                 PlannedWorkout(
