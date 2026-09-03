@@ -153,6 +153,7 @@ from src.services.wake_detection import (
     is_morning_ready,
 )
 from src.services.weekly_review_delivery import WeeklyReviewDeliveryService
+from src.services.workout_delivery import WorkoutDeliveryService
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -354,6 +355,31 @@ async def run_activity_timeseries_retention() -> JobResult:
     if result.dry_run:
         return JobResult.skipped("dry_run", **counters)
     return JobResult.succeeded(**counters)
+
+
+async def run_workout_proposal_expiry() -> JobResult:
+    """Retire delivery proposals for workout dates that have been and gone.
+
+    Batch 249.4 (CI239-12). CI211-01 recorded 16 stale ``proposed`` rows at the
+    Batch 211 refresh and 17 at the Batch 239 one — growing, all for past dates,
+    with no path out of the state. It stayed "hygiene" for two refreshes because
+    the daily loop looks proposals up by ``planned_workout_id`` and so never trips
+    over them, but the count is also the *measurement* of how many eased Amber and
+    Red offers were made and never taken, and a measurement nobody can read is not
+    one. Nothing is deleted; the row keeps its IR and its history.
+    """
+
+    async with AsyncSessionLocal() as session:
+        expired = await WorkoutDeliveryService(session).expire_stale_proposals()
+
+    if expired:
+        log.info(
+            "expired stale workout delivery proposals",
+            expired=len(expired),
+            oldest_workout_date=min(row.workout_date for row in expired).isoformat(),
+            newest_workout_date=max(row.workout_date for row in expired).isoformat(),
+        )
+    return JobResult.succeeded(expired=len(expired))
 
 
 async def run_backup_restore_drill() -> JobResult:
@@ -2443,6 +2469,18 @@ def create_scheduler() -> AsyncIOScheduler:
         hour=3,
         minute=40,
         id="timeseries_retention",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    # Batch 249.4 (CI239-12): daily at 03:50 UTC, right after the retention pass
+    # and well clear of the morning loop, because a proposal that expires while
+    # Mark is looking at his week would be a surprise for no benefit.
+    scheduler.add_job(
+        partial(run_tracked_job, "proposal-expiry", run_workout_proposal_expiry),
+        "cron",
+        hour=3,
+        minute=50,
+        id="proposal_expiry",
         replace_existing=True,
         misfire_grace_time=3600,
     )

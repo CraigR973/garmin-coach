@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker
 
 from src.models.coaching import Activity, Analysis, PlannedWorkout, WorkoutDeliveryProposal
@@ -883,3 +884,152 @@ async def test_delete_event_failure_keeps_local_state_honest(db_conn: AsyncConne
         # The cloud delete failed, so the event is still considered live locally.
         assert reread.status == "pushed"
         assert reread.last_error is not None
+
+
+# ---------------------------------------------------------------------------
+# Batch 249.4 (CI239-12 / CI211-01): proposals for days that have been and gone
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_expiry_retires_only_past_proposals_still_awaiting_approval(
+    db_conn: AsyncConnection,
+) -> None:
+    """The exact production shape on 2026-09-03: 17 stale rows, 0 live ones.
+
+    CI211-01 counted 16 of these at the Batch 211 refresh and CI239-12 counted 17
+    at the Batch 239 one — every one for a workout date already past, with no way
+    out of ``proposed``. Expiry is deliberately narrow: a row that was approved,
+    pushed, failed or deleted records something that happened and is never
+    rewritten, and a proposal for today or tomorrow is still live.
+    """
+    user_id = uuid.uuid4()
+    today = date(2026, 9, 3)
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Expiry Test",
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+        rows = {
+            # (label, workout_date, status)
+            "long_dead": (date(2026, 6, 27), "proposed"),
+            "recently_dead": (date(2026, 8, 30), "proposed"),
+            # Inside the one-day grace: a local date can still be "today" for a
+            # user a few hours behind the UTC job.
+            "yesterday": (today - timedelta(days=1), "proposed"),
+            "today": (today, "proposed"),
+            "tomorrow": (today + timedelta(days=1), "proposed"),
+            "pushed_past": (date(2026, 7, 1), "pushed"),
+            "failed_past": (date(2026, 7, 2), "failed"),
+            "deleted_past": (date(2026, 7, 3), "deleted"),
+            "approved_past": (date(2026, 7, 4), "approved"),
+        }
+        ids: dict[str, uuid.UUID] = {}
+        for label, (workout_date, status_value) in rows.items():
+            proposal = WorkoutDeliveryProposal(
+                user_id=user_id,
+                planned_workout_id=None,
+                planned_workout_version=1,
+                workout_date=workout_date,
+                provider="intervals_icu",
+                status=status_value,
+                proposed_at_utc=datetime(2026, 6, 27, 6, 0, 0),
+                structured_workout_ir={"version": 1, "name": label},
+                intervals_payload={},
+                zwo_xml="",
+            )
+            session.add(proposal)
+            await session.flush()
+            ids[label] = proposal.id
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        expired = await WorkoutDeliveryService(session).expire_stale_proposals(as_of=today)
+        # The job is global by design — it is maintenance, not a user action — so
+        # scope the assertion to the rows this test seeded.
+        assert {row.workout_date for row in expired if row.user_id == user_id} == {
+            date(2026, 6, 27),
+            date(2026, 8, 30),
+        }
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        statuses = {
+            label: (await session.get(WorkoutDeliveryProposal, proposal_id)).status  # type: ignore[union-attr]
+            for label, proposal_id in ids.items()
+        }
+
+    assert statuses["long_dead"] == "expired"
+    assert statuses["recently_dead"] == "expired"
+    # Still live, or a record of something that happened: untouched.
+    assert statuses["yesterday"] == "proposed"
+    assert statuses["today"] == "proposed"
+    assert statuses["tomorrow"] == "proposed"
+    assert statuses["pushed_past"] == "pushed"
+    assert statuses["failed_past"] == "failed"
+    assert statuses["deleted_past"] == "deleted"
+    assert statuses["approved_past"] == "approved"
+
+
+@pytest.mark.asyncio
+async def test_expiry_is_idempotent_and_keeps_the_evidence(db_conn: AsyncConnection) -> None:
+    """A second pass finds nothing, and the row keeps its IR.
+
+    These rows are also the measurement of how many eased Amber and Red offers
+    were made and never taken (CI239-02), so nothing about them is deleted.
+    """
+    user_id = uuid.uuid4()
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Expiry Idempotence",
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+        session.add(
+            WorkoutDeliveryProposal(
+                user_id=user_id,
+                planned_workout_id=None,
+                planned_workout_version=1,
+                workout_date=date(2026, 8, 1),
+                provider="intervals_icu",
+                status="proposed",
+                proposed_at_utc=datetime(2026, 8, 1, 6, 0, 0),
+                structured_workout_ir={"version": 1, "name": "Eased Amber offer"},
+                intervals_payload={"category": "WORKOUT"},
+                zwo_xml="<workout_file />",
+            )
+        )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        service = WorkoutDeliveryService(session)
+        first = await service.expire_stale_proposals(as_of=date(2026, 9, 3))
+        assert [row.user_id for row in first] == [user_id]
+        assert await service.expire_stale_proposals(as_of=date(2026, 9, 3)) == []
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        row = (
+            (
+                await session.execute(
+                    select(WorkoutDeliveryProposal).where(
+                        WorkoutDeliveryProposal.user_id == user_id
+                    )
+                )
+            )
+            .scalars()
+            .one()
+        )
+        assert row.status == "expired"
+        assert row.structured_workout_ir == {"version": 1, "name": "Eased Amber offer"}
+        assert row.zwo_xml == "<workout_file />"

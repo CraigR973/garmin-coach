@@ -732,8 +732,18 @@ export const chronicSuggestionDriverSchema = z.object({
   summary: z.string().nullable().optional(),
   // Batch 231: a correlation is reported with what it is worth. Optional, so a
   // stored pre-231 analysis still parses.
+  //
+  // Batch 249 stopped *emitting* `confidence`: a word chosen from the size of
+  // |r| cannot say how sure it is, and at the gate's own floor `moderate` meant
+  // p = 0.53. It stays in the schema because analyses stored before 249 still
+  // carry it and must keep parsing. What replaced it is the calendar-adjusted
+  // association, its 95% interval, and the sentence that states both.
   confidence: z.enum(['moderate', 'high']).optional(),
   confounds: z.array(z.string().min(1)).optional(),
+  adjustedCoefficient: z.number().nullable().optional(),
+  intervalLow: z.number().nullable().optional(),
+  intervalHigh: z.number().nullable().optional(),
+  evidenceSentence: z.string().nullable().optional(),
 });
 
 // Batch 72: a chronic REM miss surfaces a focused slice of a wider rotating

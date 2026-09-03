@@ -14,7 +14,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
-from src.models.coaching import Analysis, PlanBlock, Sleep, TemperatureReading
+from src.models.coaching import Analysis, Experiment, PlanBlock, Sleep, TemperatureReading
 from src.models.profile import Profile, UserRole
 from src.services.experiment_evaluation import (
     AUDIT_TYPE_EVALUATION,
@@ -99,9 +99,10 @@ def _corr_records(outcome: list[float], driver: list[float]) -> list[dict[str, f
 
 
 def test_correlation_strong_recommends_supported() -> None:
-    # Perfectly correlated driver and outcome.
-    outcome = [float(i) for i in range(10)]
-    driver = [float(i) * 2 for i in range(10)]
+    # Strongly but not perfectly correlated, so the interval is computable and
+    # comfortably clear of zero (Batch 249: a perfect r has no Fisher interval).
+    outcome = [float(i) for i in range(20)]
+    driver = [float(i) * 2 + (1.0 if i % 3 == 0 else 0.0) for i in range(20)]
     result = evaluate_correlation(
         _corr_records(outcome, driver),
         outcome_key=EARLY_WAKING_OUTCOME,
@@ -111,10 +112,17 @@ def test_correlation_strong_recommends_supported() -> None:
     assert result.status == STATUS_OK
     assert result.recommendation == RECOMMEND_SUPPORTED
     assert result.evidence["strongestDriver"] == "overnight_low_c"
+    assert "range" in result.reasons[0]
 
 
-def test_correlation_none_recommends_refuted() -> None:
-    # No relationship: constructed so the covariance is exactly zero.
+def test_ten_flat_nights_cannot_refute_a_trigger() -> None:
+    """Batch 249 (HS240-07): "no trigger" is a claim, and ten nights cannot make it.
+
+    Zero correlation over ten nights has a 95% interval running roughly -0.63 to
+    +0.63 — it is consistent with a *large* association in either direction. The
+    old rule read that as ``refuted``, which said something about Mark when it
+    only had something to say about the window.
+    """
     driver = [1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0]
     outcome = [1.0, 1.0, 2.0, 2.0, 1.0, 1.0, 2.0, 2.0, 1.0, 1.0]
     result = evaluate_correlation(
@@ -124,7 +132,30 @@ def test_correlation_none_recommends_refuted() -> None:
         min_samples=8,
     )
     assert result.status == STATUS_OK
+    assert result.recommendation == RECOMMEND_INCONCLUSIVE
+    assert "cannot separate it from no association" in result.reasons[0]
+
+
+def test_correlation_none_recommends_refuted_once_the_window_can_rule_it_out() -> None:
+    """``refuted`` survives — it just has to earn it with enough nights.
+
+    Fifty-two nights of exactly zero covariance narrows the interval inside the
+    module's own ``moderate`` line, which is what licenses "no identifiable
+    trigger among them".
+    """
+    period_driver = [0.0, 1.0, 0.0, 1.0]
+    period_outcome = [0.0, 0.0, 1.0, 1.0]
+    driver = period_driver * 13
+    outcome = period_outcome * 13
+    result = evaluate_correlation(
+        _corr_records(outcome, driver),
+        outcome_key=EARLY_WAKING_OUTCOME,
+        driver_keys=("overnight_low_c",),
+        min_samples=8,
+    )
+    assert result.status == STATUS_OK
     assert result.recommendation == RECOMMEND_REFUTED
+    assert "rules out anything as large as" in result.reasons[0]
 
 
 def test_correlation_insufficient_samples_skips() -> None:
@@ -159,31 +190,64 @@ def test_correlation_surfaces_unmeasured_drivers() -> None:
 
 
 def test_group_compare_recovery_worse_recommends_supported() -> None:
-    nights = [LabeledNight(day=_days(20)[i], value=70.0, group="recovery") for i in range(5)]
-    nights += [LabeledNight(day=_days(20)[10 + i], value=80.0, group="build") for i in range(5)]
+    nights = [LabeledNight(day=_days(40)[i], value=70.0, group="recovery") for i in range(7)]
+    nights += [LabeledNight(day=_days(40)[10 + i], value=80.0, group="build") for i in range(7)]
     result = evaluate_group_compare(nights, threshold=3.0)
     assert result.recommendation == RECOMMEND_SUPPORTED
     assert result.evidence["delta"] == -10.0
+    assert result.evidence["deltaInterval"] == [-10.0, -10.0]
 
 
 def test_group_compare_recovery_better_recommends_refuted() -> None:
-    nights = [LabeledNight(day=_days(20)[i], value=85.0, group="recovery") for i in range(5)]
-    nights += [LabeledNight(day=_days(20)[10 + i], value=75.0, group="build") for i in range(5)]
+    nights = [LabeledNight(day=_days(40)[i], value=85.0, group="recovery") for i in range(7)]
+    nights += [LabeledNight(day=_days(40)[10 + i], value=75.0, group="build") for i in range(7)]
     result = evaluate_group_compare(nights, threshold=3.0)
     assert result.recommendation == RECOMMEND_REFUTED
 
 
 def test_group_compare_small_gap_inconclusive() -> None:
-    nights = [LabeledNight(day=_days(20)[i], value=79.0, group="recovery") for i in range(5)]
-    nights += [LabeledNight(day=_days(20)[10 + i], value=80.0, group="build") for i in range(5)]
+    nights = [LabeledNight(day=_days(40)[i], value=79.0, group="recovery") for i in range(7)]
+    nights += [LabeledNight(day=_days(40)[10 + i], value=80.0, group="build") for i in range(7)]
     result = evaluate_group_compare(nights, threshold=3.0)
     assert result.recommendation == RECOMMEND_INCONCLUSIVE
+
+
+def test_group_compare_a_big_gap_inside_real_dispersion_is_not_a_direction() -> None:
+    """Batch 249 (HS240-07): the threshold is necessary, not sufficient.
+
+    A 4-point gap between two arms that each swing by ten points is not a result,
+    and the old rule called it ``supported`` because 4 > 3. Mark's measured
+    age-adjusted sleep SD is 9.66, so this is the shape of the real data.
+    """
+    recovery_values = [70.0, 80.0, 66.0, 84.0, 72.0, 78.0, 74.0]
+    build_values = [76.0, 84.0, 70.0, 88.0, 76.0, 82.0, 78.0]
+    nights = [
+        LabeledNight(day=_days(40)[i], value=value, group="recovery")
+        for i, value in enumerate(recovery_values)
+    ]
+    nights += [
+        LabeledNight(day=_days(40)[10 + i], value=value, group="build")
+        for i, value in enumerate(build_values)
+    ]
+    result = evaluate_group_compare(nights, threshold=3.0)
+    assert result.evidence["delta"] <= -3.0
+    assert result.recommendation == RECOMMEND_INCONCLUSIVE
+    assert "cannot call it" in result.reasons[0]
 
 
 def test_group_compare_insufficient_group_skips() -> None:
     nights = [LabeledNight(day=_days(20)[i], value=70.0, group="recovery") for i in range(2)]
     nights += [LabeledNight(day=_days(20)[10 + i], value=80.0, group="build") for i in range(5)]
     result = evaluate_group_compare(nights, min_per_group=4)
+    assert result.status == STATUS_INSUFFICIENT
+    assert result.recommendation is None
+
+
+def test_group_compare_five_nights_an_arm_is_now_below_the_floor() -> None:
+    """Batch 249 raised the floor from four to seven — one full weekly cycle."""
+    nights = [LabeledNight(day=_days(40)[i], value=70.0, group="recovery") for i in range(5)]
+    nights += [LabeledNight(day=_days(40)[10 + i], value=80.0, group="build") for i in range(5)]
+    result = evaluate_group_compare(nights)
     assert result.status == STATUS_INSUFFICIENT
     assert result.recommendation is None
 
@@ -230,11 +294,11 @@ def test_rem_intervention_directional_improvement_is_conservative_and_descriptiv
     nights = [
         *[
             _rem_night(index, response="applied", rem_pct=24 + index / 10, awake_min=30)
-            for index in range(3)
+            for index in range(7)
         ],
         *[
-            _rem_night(index + 3, response="not_applied", rem_pct=20, awake_min=42)
-            for index in range(3)
+            _rem_night(index + 7, response="not_applied", rem_pct=20, awake_min=42)
+            for index in range(7)
         ],
     ]
 
@@ -245,15 +309,71 @@ def test_rem_intervention_directional_improvement_is_conservative_and_descriptiv
     assert result.evidence["remPctDelta"] >= 2
     assert result.evidence["awakeMinDelta"] <= -10
     assert result.evidence["confidence"] == "low"
-    assert "observational comparison" in result.reasons[1]
+    assert result.evidence["remPctDeltaInterval"] is not None
+    assert "range" in result.reasons[0]
+    assert "observational comparison" in result.reasons[-1]
+
+
+def test_rem_intervention_three_nights_an_arm_is_below_the_floor() -> None:
+    """Batch 249 (HS240-07): the exact fixture that used to read ``supported``.
+
+    Three nights an arm against Mark's measured REM dispersion (SD 4.80 points
+    over 437 nights) gives a standard error of 3.92, so the 2.0-point decision
+    line sits at half an SE — a line noise crosses a large fraction of the time.
+    Seven an arm is one full week, which is the shortest window the weekly
+    rotation does not confound.
+    """
+    nights = [
+        *[
+            _rem_night(index, response="applied", rem_pct=24 + index / 10, awake_min=30)
+            for index in range(3)
+        ],
+        *[
+            _rem_night(index + 3, response="not_applied", rem_pct=20, awake_min=42)
+            for index in range(3)
+        ],
+    ]
+
+    result = evaluate_rem_interventions(nights)
+
+    assert result.recommendation == RECOMMEND_INCONCLUSIVE
+    assert result.evidence["minimumPerResponse"] == 7
+    assert "still needs" in result.reasons[0]
+
+
+def test_rem_intervention_a_threshold_crossing_inside_the_noise_is_described_not_called() -> None:
+    """Seven an arm, a 3-point REM gap, and nights that swing by five.
+
+    The gap clears the 2.0-point line and the awake direction agrees, so the old
+    rule would have said ``supported``. The interval spans zero, so this window
+    cannot tell the two apart and the loop says exactly that.
+    """
+    applied = [26.0, 19.0, 24.0, 17.0, 25.0, 20.0, 22.0]
+    not_applied = [22.0, 16.0, 21.0, 15.0, 22.0, 17.0, 19.0]
+    nights = [
+        *[
+            _rem_night(index, response="applied", rem_pct=value, awake_min=30)
+            for index, value in enumerate(applied)
+        ],
+        *[
+            _rem_night(index + 7, response="not_applied", rem_pct=value, awake_min=32)
+            for index, value in enumerate(not_applied)
+        ],
+    ]
+
+    result = evaluate_rem_interventions(nights)
+
+    assert result.evidence["remPctDelta"] >= 2
+    assert result.recommendation == RECOMMEND_INCONCLUSIVE
+    assert any("cannot tell these apart" in reason for reason in result.reasons)
 
 
 def test_rem_intervention_mixed_outcomes_remain_inconclusive() -> None:
     nights = [
-        *[_rem_night(index, response="applied", rem_pct=24, awake_min=55) for index in range(3)],
+        *[_rem_night(index, response="applied", rem_pct=24, awake_min=55) for index in range(7)],
         *[
-            _rem_night(index + 3, response="not_applied", rem_pct=20, awake_min=35)
-            for index in range(3)
+            _rem_night(index + 7, response="not_applied", rem_pct=20, awake_min=35)
+            for index in range(7)
         ],
     ]
 
@@ -344,8 +464,10 @@ async def test_service_recovery_week_uses_plan_blocks(db_conn: AsyncConnection) 
                 end_date=build_end,
             )
         )
-        # 5 worse nights in the recovery block, 5 better nights in the build block.
-        for i in range(5):
+        # Batch 249 raised the floor from four to seven nights an arm — one full
+        # weekly cycle — so the window is seven worse recovery nights against
+        # seven better build nights.
+        for i in range(7):
             session.add(
                 Sleep(
                     user_id=user_id,
@@ -353,7 +475,7 @@ async def test_service_recovery_week_uses_plan_blocks(db_conn: AsyncConnection) 
                     age_adjusted_score=70,
                 )
             )
-        for i in range(5):
+        for i in range(7):
             session.add(
                 Sleep(
                     user_id=user_id,
@@ -378,8 +500,10 @@ async def test_service_recovery_week_uses_plan_blocks(db_conn: AsyncConnection) 
         result = await service.evaluate(user, recovery, as_of=as_of)
         assert result.status == STATUS_OK
         assert result.recommendation == RECOMMEND_SUPPORTED
-        assert result.evidence["recoveryNights"] == 5
-        assert result.evidence["buildNights"] == 5
+        assert result.evidence["recoveryNights"] == 7
+        assert result.evidence["buildNights"] == 7
+        # Batch 249: the direction is carried by an interval, not by the gap alone.
+        assert result.evidence["deltaInterval"] == [-12.0, -12.0]
 
 
 @pytest.mark.asyncio
@@ -470,6 +594,14 @@ async def test_early_waking_evaluator_uses_bedroom_temperature_candidates(
     user_id = uuid.uuid4()
     await _seed_profile(db_conn, user_id)
     as_of = date(2026, 7, 10)
+    # Batch 249: the old fixture ramped warm ticks and awake minutes together
+    # with the day index, so the driver, the outcome and the *calendar* all
+    # marched in lockstep — indistinguishable from a pure seasonal trend, and now
+    # correctly refused. The warm nights are therefore scattered through the
+    # window instead of accumulating across it: r(driver, date) = 0.10, so the
+    # association survives adjustment at 0.91 with an interval of 0.62 to 0.98.
+    warm_ticks = [3, 9, 1, 7, 5, 10, 2, 8, 4, 6]
+    awake_jitter = [1, -1, 2, -2, 1, -1, 2, -2, 1, -1]
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
         for i in range(10):
             wake_date = as_of - timedelta(days=9 - i)
@@ -477,14 +609,14 @@ async def test_early_waking_evaluator_uses_bedroom_temperature_candidates(
                 Sleep(
                     user_id=user_id,
                     calendar_date=wake_date,
-                    awake_sleep_sec=(i + 1) * 60,
+                    awake_sleep_sec=(20 + warm_ticks[i] + awake_jitter[i]) * 60,
                     avg_sleep_stress=30.0,
                 )
             )
             night_start_utc = datetime(wake_date.year, wake_date.month, wake_date.day) - timedelta(
                 hours=3
             )
-            for j in range(i + 1):
+            for j in range(warm_ticks[i]):
                 session.add(
                     TemperatureReading(
                         user_id=user_id,
@@ -510,6 +642,7 @@ async def test_early_waking_evaluator_uses_bedroom_temperature_candidates(
     assert result.recommendation == RECOMMEND_SUPPORTED
     assert result.evidence["strongestDriver"] == "bedroom_warning_minutes"
     assert result.evidence["correlations"][0]["summary"] is not None
+    assert result.evidence["correlations"][0]["interval"] is not None
     assert any("Nights with 60+ min above 19.5C" in reason for reason in result.reasons)
 
 
@@ -528,3 +661,53 @@ async def test_no_evaluator_for_plain_experiment(db_conn: AsyncConnection) -> No
         result = await service.evaluate(user, experiment, as_of=date(2026, 6, 30))
         assert result.status == STATUS_NO_EVALUATOR
         assert result.recommendation is None
+
+
+def test_stored_criteria_cannot_lower_the_evidence_floor() -> None:
+    """Batch 249: the live experiment carries ``minimumPerResponse: 3``.
+
+    It was written when the constant was 3, so raising the constant alone would
+    have changed nothing for the only experiment this evaluator actually runs on
+    in production. Criteria may ask for *more* evidence than the power
+    calculation demands; they may not ask for less.
+    """
+    experiment = Experiment(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        title="REM intervention rotation",
+        hypothesis="Does the rotating lever help?",
+        status="active",
+        success_criteria_json={
+            "kind": "rem_intervention",
+            "minimumPerResponse": 3,
+        },
+    )
+    service = ExperimentEvaluationService.__new__(ExperimentEvaluationService)
+    result = service._evaluate_rem_intervention(experiment, experiment.success_criteria_json)
+    assert result.evidence["minimumPerResponse"] == 7
+
+    raised = dict(experiment.success_criteria_json)
+    raised["minimumPerResponse"] = 14
+    result_raised = service._evaluate_rem_intervention(experiment, raised)
+    assert result_raised.evidence["minimumPerResponse"] == 14
+
+
+def test_a_real_but_weak_correlation_is_not_described_as_indistinguishable() -> None:
+    """Two different inconclusive answers must not share one sentence.
+
+    Production on 2026-09-03: ``sleep_stress_avg`` at r = +0.34 over 121 nights
+    has an interval of +0.17 to +0.49 — it *does* separate from zero, and calling
+    that "cannot separate it from no association" would be a new false statement
+    installed by the batch that exists to remove one.
+    """
+    outcome = [float((i * 11) % 17) for i in range(121)]
+    driver = [value * 0.15 + float((i * 5) % 7) for i, value in enumerate(outcome)]
+    result = evaluate_correlation(
+        _corr_records(outcome, driver),
+        outcome_key=EARLY_WAKING_OUTCOME,
+        driver_keys=("overnight_low_c",),
+        min_samples=8,
+    )
+    assert result.recommendation == RECOMMEND_INCONCLUSIVE
+    assert "a real but weak association" in result.reasons[0]
+    assert "cannot separate it from no association" not in result.reasons[0]

@@ -32,6 +32,17 @@ STATUS_APPROVED = "approved"
 STATUS_PUSHED = "pushed"
 STATUS_FAILED = "failed"
 STATUS_DELETED = "deleted"
+# Batch 249.4 (CI239-12 / CI211-01): a proposal for a day that has been and gone
+# was never approved and never will be. Seventeen of them had accumulated in
+# production by 2026-09-03, the oldest from 2026-06-27, and nothing in the app
+# had a word for that state — so "offered and never taken" was indistinguishable
+# from "waiting for Mark" in every query anybody would write.
+STATUS_EXPIRED = "expired"
+
+# A workout date is local and the job runs in UTC, so a strictly-past comparison
+# could expire "today" for a user a few hours behind. One day of slack costs
+# nothing: a proposal for yesterday is just as dead tomorrow.
+PROPOSAL_EXPIRY_GRACE_DAYS = 1
 PostActivityKind = Literal["ride", "strength", "flexibility", "walk"]
 DeliveryFailureCode = Literal[
     "intervals_create_failed",
@@ -444,6 +455,46 @@ class WorkoutDeliveryService:
                 detail="Red verdict blocks VO2 delivery to Zwift",
             )
         return verdict
+
+    async def expire_stale_proposals(
+        self,
+        *,
+        as_of: date | None = None,
+        grace_days: int = PROPOSAL_EXPIRY_GRACE_DAYS,
+        commit: bool = True,
+    ) -> list[WorkoutDeliveryProposal]:
+        """Retire ``proposed`` rows whose workout date has passed, for every user.
+
+        Batch 249.4. Deliberately narrow: it touches only rows still at
+        ``proposed`` — an approved, pushed, failed or deleted proposal is a record
+        of something that happened and is never rewritten — and only once the
+        workout date is behind us by more than ``grace_days``. Nothing is deleted;
+        the IR, payload and ``.ZWO`` stay exactly as they were, because these rows
+        are also the measurement of how many eased offers were made and never
+        taken (CI239-02).
+        """
+        cutoff = (as_of or _utcnow().date()) - timedelta(days=grace_days)
+        stale = list(
+            (
+                await self.session.execute(
+                    select(WorkoutDeliveryProposal).where(
+                        WorkoutDeliveryProposal.status == STATUS_PROPOSED,
+                        WorkoutDeliveryProposal.workout_date < cutoff,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for proposal in stale:
+            proposal.status = STATUS_EXPIRED
+        if not stale:
+            return []
+        if commit:
+            await self.session.commit()
+        else:
+            await self.session.flush()
+        return stale
 
     async def list_proposals(self, player: Profile) -> list[WorkoutDeliveryProposal]:
         result = await self.session.execute(

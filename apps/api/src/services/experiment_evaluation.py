@@ -56,10 +56,14 @@ from src.services.bulk_history_reads import without_sleep_raw_payload
 from src.services.experiment_tracker import SLUG_REM_INTERVENTION
 from src.services.insights import (
     BEDROOM_DRIVER_KEYS,
+    CALENDAR_DAY_KEY,
     _mean,
     _slope,
     bedroom_driver_values_by_date,
     compute_drivers,
+    correlation_interval,
+    interval_excludes_zero,
+    mean_difference_interval,
 )
 
 PROMPT_VERSION = "experiment-eval:v1"
@@ -106,11 +110,24 @@ EARLY_WAKING_UNMEASURED = ("alcohol", "late_snack")
 
 # --- group compare (recovery-week disruption) ---------------------------------
 GROUP_LOOKBACK_DAYS = 120
-GROUP_MIN_PER_GROUP = 4
+# Batch 249 (HS240-07): 4 → 7. One full week per arm, because the plan and the
+# REM intervention library both rotate weekly, so anything shorter compares an
+# arm against a different part of the same cycle. Four nights against Mark's
+# measured age-adjusted sleep SD of 9.66 puts the 3.0-point threshold at 0.44
+# standard errors — a line noise crosses about two thirds of the time.
+GROUP_MIN_PER_GROUP = 7
 GROUP_THRESHOLD = 3.0  # age-adjusted sleep points = a meaningful gap
 
 # --- applied-vs-not-applied REM protocol -------------------------------------
-REM_MIN_PER_RESPONSE = 3
+# Batch 249 (HS240-07): 3 → 7, for the same reason and against the same
+# arithmetic. Mark's REM% of measured sleep has SD 4.80 over 437 nights
+# (2026-09-03; the Batch 240 review measured 4.43 over 185). Three nights an arm
+# gives a standard error of 3.92 points, so the 2.0-point decision threshold sits
+# at half an SE and a directional verdict falls out of pure noise a large
+# fraction of the time. Seven an arm gives SE 2.57 — still only able to call
+# effects of roughly five REM points, which is half his mean, and that is the
+# honest ceiling of an n-of-1 design rather than a defect.
+REM_MIN_PER_RESPONSE = 7
 REM_PCT_DIRECTION_THRESHOLD = 2.0
 REM_AWAKE_DIRECTION_THRESHOLD_MIN = 10.0
 
@@ -291,27 +308,55 @@ def evaluate_correlation(
         )
 
     top = correlations[0]
-    abs_r = abs(top.coefficient)
-    if abs_r >= strong_r:
+    abs_r = abs(top.effect)
+    # Batch 249 (HS240-07): the two directional verdicts each need the interval to
+    # earn them, and they need *different* things from it. ``supported`` needs the
+    # interval to exclude zero — otherwise the trigger may not exist. ``refuted``
+    # is the harder claim, because it asserts an absence: it needs the interval to
+    # rule a meaningful association *out*, which at this module's eight-night floor
+    # it never can. Without that, "no identifiable trigger" was a statement about
+    # the window's power dressed as a statement about Mark.
+    interval = top.interval or correlation_interval(top.effect, top.sample_count)
+    excludes_zero = interval_excludes_zero(interval)
+    rules_out_moderate = (
+        interval is not None and max(abs(interval[0]), abs(interval[1])) < moderate_r
+    )
+    range_phrase = (
+        "range too wide to bound"
+        if interval is None
+        else f"range {interval[0]:+.2f} to {interval[1]:+.2f}"
+    )
+    if abs_r >= strong_r and excludes_zero:
         recommendation = RECOMMEND_SUPPORTED
         reasons.insert(
             0,
             f"Strongest measured driver is {top.driver} "
-            f"({top.direction}, r={top.coefficient}) — an identifiable trigger.",
+            f"({top.direction}, r={top.effect:+.2f}, {range_phrase}) — an identifiable trigger.",
         )
-    elif abs_r >= moderate_r:
-        recommendation = RECOMMEND_INCONCLUSIVE
-        reasons.insert(
-            0,
-            f"Strongest measured driver is {top.driver} (r={top.coefficient}) — "
-            f"a weak signal, not conclusive.",
-        )
-    else:
+    elif rules_out_moderate:
         recommendation = RECOMMEND_REFUTED
         reasons.insert(
             0,
             f"No measured candidate correlates with overnight disruption "
-            f"(strongest r={top.coefficient}) — no identifiable trigger among them.",
+            f"(strongest r={top.effect:+.2f}, {range_phrase}, which rules out anything "
+            f"as large as {moderate_r:g}) — no identifiable trigger among them.",
+        )
+    elif excludes_zero:
+        # A real association, but not a strong one — and "identifiable trigger"
+        # is a claim about strength, not merely about existence.
+        recommendation = RECOMMEND_INCONCLUSIVE
+        reasons.insert(
+            0,
+            f"Strongest measured driver is {top.driver} (r={top.effect:+.2f}, "
+            f"{range_phrase}) — a real but weak association, not strong enough to "
+            "call an identifiable trigger.",
+        )
+    else:
+        recommendation = RECOMMEND_INCONCLUSIVE
+        reasons.insert(
+            0,
+            f"Strongest measured driver is {top.driver} (r={top.effect:+.2f}, "
+            f"{range_phrase}) — this window cannot separate it from no association.",
         )
     if top.summary:
         reasons.append(top.summary)
@@ -331,6 +376,8 @@ def evaluate_correlation(
                 {
                     "driver": c.driver,
                     "coefficient": c.coefficient,
+                    "adjustedCoefficient": c.adjusted_coefficient,
+                    "interval": _rounded_interval(c.interval),
                     "direction": c.direction,
                     "sampleCount": c.sample_count,
                     "summary": c.summary,
@@ -341,6 +388,20 @@ def evaluate_correlation(
         },
         reasons=reasons,
     )
+
+
+def _rounded_interval(interval: tuple[float, float] | None) -> list[float] | None:
+    """Serialise a confidence interval for the packet, or ``None`` if there isn't one."""
+    if interval is None:
+        return None
+    return [round(interval[0], 2), round(interval[1], 2)]
+
+
+def _interval_phrase(interval: tuple[float, float] | None) -> str:
+    """The range the window still allows, in words rather than notation."""
+    if interval is None:
+        return "(too few nights to give a range)"
+    return f"(range {interval[0]:+.1f} to {interval[1]:+.1f})"
 
 
 @dataclass(frozen=True)
@@ -475,12 +536,26 @@ def evaluate_rem_interventions(
     comparison_awake = _mean([row.awake_min for row in not_applied if row.awake_min is not None])
     rem_delta = applied_rem - comparison_rem
     awake_delta = applied_awake - comparison_awake
-    improves = (rem_delta >= REM_PCT_DIRECTION_THRESHOLD and awake_delta <= 0) or (
-        awake_delta <= -REM_AWAKE_DIRECTION_THRESHOLD_MIN and rem_delta >= 0
+    # Batch 249 (HS240-07): a threshold crossing is a direction only if the window
+    # could tell that direction from nothing. The interval on each difference is
+    # what decides that, and a difference whose interval spans zero is described,
+    # never called.
+    rem_interval = mean_difference_interval(
+        [row.rem_sleep_pct for row in applied if row.rem_sleep_pct is not None],
+        [row.rem_sleep_pct for row in not_applied if row.rem_sleep_pct is not None],
     )
-    worsens = (rem_delta <= -REM_PCT_DIRECTION_THRESHOLD and awake_delta >= 0) or (
-        awake_delta >= REM_AWAKE_DIRECTION_THRESHOLD_MIN and rem_delta <= 0
+    awake_interval = mean_difference_interval(
+        [row.awake_min for row in applied if row.awake_min is not None],
+        [row.awake_min for row in not_applied if row.awake_min is not None],
     )
+    rem_separates = interval_excludes_zero(rem_interval)
+    awake_separates = interval_excludes_zero(awake_interval)
+    improves = (
+        rem_delta >= REM_PCT_DIRECTION_THRESHOLD and awake_delta <= 0 and rem_separates
+    ) or (awake_delta <= -REM_AWAKE_DIRECTION_THRESHOLD_MIN and rem_delta >= 0 and awake_separates)
+    worsens = (
+        rem_delta <= -REM_PCT_DIRECTION_THRESHOLD and awake_delta >= 0 and rem_separates
+    ) or (awake_delta >= REM_AWAKE_DIRECTION_THRESHOLD_MIN and rem_delta <= 0 and awake_separates)
     recommendation = (
         RECOMMEND_SUPPORTED
         if improves
@@ -511,9 +586,11 @@ def evaluate_rem_interventions(
             "appliedRemPctMean": round(applied_rem, 2),
             "notAppliedRemPctMean": round(comparison_rem, 2),
             "remPctDelta": round(rem_delta, 2),
+            "remPctDeltaInterval": _rounded_interval(rem_interval),
             "appliedAwakeMinMean": round(applied_awake, 2),
             "notAppliedAwakeMinMean": round(comparison_awake, 2),
             "awakeMinDelta": round(awake_delta, 2),
+            "awakeMinDeltaInterval": _rounded_interval(awake_interval),
             "confidence": "low",
             "observationalConfounds": [
                 "weekly rotation",
@@ -524,8 +601,17 @@ def evaluate_rem_interventions(
             "interventions": summaries,
         },
         reasons=[
-            f"{intervention_id} is {direction}: REM {rem_delta:+.1f} percentage points and "
-            f"awake time {awake_delta:+.1f} minutes on applied nights.",
+            f"{intervention_id} is {direction}: REM {rem_delta:+.1f} percentage points "
+            f"{_interval_phrase(rem_interval)} and awake time {awake_delta:+.1f} minutes "
+            f"{_interval_phrase(awake_interval)} on applied nights.",
+            *(
+                []
+                if recommendation != RECOMMEND_INCONCLUSIVE
+                else [
+                    "Both ranges still include no difference at all, so this window "
+                    "cannot tell these apart.",
+                ]
+            ),
             "This is an observational comparison under a weekly rotation, not a causal result.",
         ],
     )
@@ -566,23 +652,37 @@ def evaluate_group_compare(
     recovery_mean = _mean(recovery)
     build_mean = _mean(build)
     delta = recovery_mean - build_mean  # negative ⇒ recovery weeks worse
+    # Batch 249 (HS240-07): the same rule as the intervention arm — a gap larger
+    # than the threshold is a direction only when the interval around it stays on
+    # one side of zero.
+    interval = mean_difference_interval(recovery, build)
+    separates = interval_excludes_zero(interval)
+    phrase = _interval_phrase(interval)
 
-    if delta <= -threshold:
+    if delta <= -threshold and separates:
         recommendation = RECOMMEND_SUPPORTED
         reasons = [
             f"Recovery-week sleep averages {recovery_mean:.1f} vs {build_mean:.1f} on "
-            f"build weeks ({delta:+.1f}) — recovery weeks sleep worse.",
+            f"build weeks ({delta:+.1f} points, {phrase}) — recovery weeks sleep worse.",
         ]
-    elif delta >= threshold:
+    elif delta >= threshold and separates:
         recommendation = RECOMMEND_REFUTED
         reasons = [
             f"Recovery-week sleep averages {recovery_mean:.1f} vs {build_mean:.1f} on "
-            f"build weeks ({delta:+.1f}) — recovery weeks sleep better, not worse.",
+            f"build weeks ({delta:+.1f} points, {phrase}) — recovery weeks sleep better, "
+            "not worse.",
+        ]
+    elif abs(delta) >= threshold:
+        recommendation = RECOMMEND_INCONCLUSIVE
+        reasons = [
+            f"Recovery vs build sleep differ by {delta:+.1f} points {phrase} — the gap "
+            "is large enough to matter but the range still includes no difference, so "
+            "this window cannot call it.",
         ]
     else:
         recommendation = RECOMMEND_INCONCLUSIVE
         reasons = [
-            f"Recovery vs build sleep differ by only {delta:+.1f} points "
+            f"Recovery vs build sleep differ by only {delta:+.1f} points {phrase} "
             f"(<{threshold:g}) — no meaningful disruption either way.",
         ]
 
@@ -598,6 +698,7 @@ def evaluate_group_compare(
             "recoveryMean": round(recovery_mean, 2),
             "buildMean": round(build_mean, 2),
             "delta": round(delta, 2),
+            "deltaInterval": _rounded_interval(interval),
             "recoveryNights": len(recovery),
             "buildNights": len(build),
         },
@@ -723,6 +824,9 @@ class ExperimentEvaluationService:
             bedroom = bedroom_by_date.get(sleep.calendar_date)
             records.append(
                 {
+                    # Batch 249: the same calendar covariate the driver records
+                    # carry, so this evaluator adjusts for the seasons too.
+                    CALENDAR_DAY_KEY: float(sleep.calendar_date.toordinal()),
                     EARLY_WAKING_OUTCOME: (
                         sleep.awake_sleep_sec / 60.0 if sleep.awake_sleep_sec is not None else None
                     ),
@@ -824,7 +928,16 @@ class ExperimentEvaluationService:
                             awake_min=awake_min,
                         )
                     )
-        minimum = _as_int(criteria.get("minimumPerResponse"), REM_MIN_PER_RESPONSE)
+        # Batch 249 (HS240-07): the constant is a **floor**, not a default. The
+        # live experiment carries ``minimumPerResponse: 3`` in its stored criteria
+        # — written when the constant was 3 — so raising the constant alone would
+        # have changed nothing for the only experiment this evaluator runs on.
+        # Criteria may ask for more evidence than the power calculation demands;
+        # they may not ask for less.
+        minimum = max(
+            REM_MIN_PER_RESPONSE,
+            _as_int(criteria.get("minimumPerResponse"), REM_MIN_PER_RESPONSE),
+        )
         return evaluate_rem_interventions(nights, min_per_response=minimum)
 
     async def _sleep_rows(self, player: Profile, *, start: date, end: date) -> list[Sleep]:

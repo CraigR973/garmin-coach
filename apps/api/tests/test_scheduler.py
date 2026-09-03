@@ -711,6 +711,8 @@ def test_create_scheduler_registers_environment_jobs() -> None:
             "backup_drill",
             # Batch 247.2 — registered from the first deploy, dry-run by default.
             "timeseries_retention",
+            # Batch 249.4 (CI239-12) — retires proposals for dates already past.
+            "proposal_expiry",
             "metric_baseline_refresh",
             "hive_temperature_poll",
             "wake_check",

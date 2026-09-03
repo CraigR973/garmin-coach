@@ -1,10 +1,36 @@
+"""Tonight's sleep read, from today's training and the room he is about to sleep in.
+
+**Batch 249 (HS240-11) removed a second, looser copy of a judgement the app had
+already made carefully once.** Batch 231 built one gate for naming a measured
+driver — actionable, enough nights, strong enough, unfavourable — and put it
+behind the chronic-suggestion card. This module kept its own: *any* driver with a
+negative coefficient and eight nights qualified, and the strongest by raw ``|r|``
+was printed as **"Measured driver: X has tracked with lower sleep scores"** on
+Home, on ``/sleep`` and in the evening push. On 2026-09-03 the driver it named in
+production was ``sleep_stress_avg`` — a measurement taken *during* the night it
+was being correlated against, and one of exactly two keys
+``driver_levers.CONCURRENT_DRIVERS`` exists to forbid. The looser claim won on
+exposure.
+
+The gate now arrives pre-applied: :func:`driver_levers.select_levers` decides
+what may be named, and this module reports what it is handed. When nothing
+clears the bar — the usual answer, and the honest one — the projection names no
+driver at all and stands on what it directly observed instead.
+
+**What deliberately did *not* move behind the gate.** A late, hard session is a
+fact about today; a bedroom at 20.5C is a thermometer reading; a warm overnight
+low is a forecast. None of them needs a correlation's permission, and the old
+code requiring one meant a genuine thermometer reading could only be acted on if
+some coefficient happened to be negative. Direct observation was never the
+unreliable part.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import time
 from typing import Any
 
-MIN_DRIVER_SAMPLES = 8
 LATE_SESSION_HOUR = 17
 HIGH_TRAINING_LOAD = 120.0
 LONG_SESSION_MIN = 90
@@ -27,10 +53,19 @@ class TrainingSignal:
 
 @dataclass(frozen=True)
 class SleepDriverEvidence:
+    """A driver that has already passed ``driver_levers``' gate (Batch 249).
+
+    Nothing in this module re-judges it. ``evidence_sentence`` carries the
+    interval and the sample the gate stood on, ``confounds`` the reasons the
+    number may not mean what it looks like.
+    """
+
     driver: str
     coefficient: float
     sample_count: int
     summary: str | None = None
+    evidence_sentence: str | None = None
+    confounds: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -71,10 +106,12 @@ _DRIVER_LABELS = {
 
 def project_sleep(inputs: SleepProjectionInputs) -> SleepProjectionResult:
     protocol = _normalise_protocol(inputs.sleep_protocol)
-    measured = [
-        driver for driver in inputs.sleep_drivers if driver.sample_count >= MIN_DRIVER_SAMPLES
-    ]
-    if not inputs.training or not measured:
+    measured = list(inputs.sleep_drivers)
+    # Batch 249: the fallback is now about today's training, not about whether a
+    # correlation survived. Requiring a named driver here would have sent almost
+    # every night to the generic protocol once the gate was applied, which is a
+    # worse read than the one today's session supports on its own.
+    if not inputs.training:
         return _fallback_result(protocol)
 
     training = _training_summary(inputs.training)
@@ -85,13 +122,13 @@ def project_sleep(inputs: SleepProjectionInputs) -> SleepProjectionResult:
     warm_forecast = (
         inputs.overnight_low_c is not None and inputs.overnight_low_c >= WARM_OVERNIGHT_LOW_C
     )
-    risk_drivers = _risk_drivers(measured)
-    training_driver = next((d for d in risk_drivers if d.driver == "prev_day_training_load"), None)
-    bedroom_driver = next((d for d in risk_drivers if d.driver.startswith("bedroom_")), None)
-    weather_driver = next((d for d in risk_drivers if d.driver == "overnight_low_c"), None)
+    training_driver = next((d for d in measured if d.driver == "prev_day_training_load"), None)
 
     load_risk = training["late"] or training["high_intensity"] or training["big_load"]
-    forecast_risk = warm_forecast and (bedroom_driver is not None or weather_driver is not None)
+    # Batch 249: a warm forecast is a forecast. It used to need a negative
+    # coefficient on a bedroom or weather driver before the app would act on it,
+    # which made a measured number wait on an unmeasured one.
+    forecast_risk = warm_forecast
     room_risk = warm_room or forecast_risk
     protect = load_risk and (training_driver is not None or room_risk)
     watch = load_risk or room_risk
@@ -124,12 +161,15 @@ def project_sleep(inputs: SleepProjectionInputs) -> SleepProjectionResult:
 
     evidence = _evidence_lines(
         training,
-        measured,
         warm_room=warm_room,
         warm_forecast=forecast_risk,
         latest_bedroom_temperature_c=inputs.latest_bedroom_temperature_c,
         overnight_low_c=inputs.overnight_low_c,
-    )
+    )[:3]
+    # Batch 249: the named driver's interval and confounds travel on the far side
+    # of the cap, for the same reason Batch 231 put the chronic card's confounds
+    # there — a caveat that loses a truncation race is a caveat Mark never reads.
+    evidence.extend(_driver_lines(measured))
     actions = _prep_actions(
         protocol,
         load_risk=load_risk,
@@ -141,7 +181,7 @@ def project_sleep(inputs: SleepProjectionInputs) -> SleepProjectionResult:
         tone=tone,
         headline=headline,
         summary=summary,
-        evidence=evidence[:3],
+        evidence=evidence,
         prep_actions=actions[:2],
         protocol=protocol,
     )
@@ -163,8 +203,8 @@ def _fallback_result(protocol: dict[str, Any]) -> SleepProjectionResult:
         tone="routine",
         headline="Use the usual sleep protocol",
         summary=(
-            "There is not enough personal signal from today's training and Mark's measured "
-            "sleep drivers to change the plan."
+            "There is no training logged today to shape tonight's read, so the usual "
+            "sleep protocol stands."
         ),
         evidence=[],
         prep_actions=_default_protocol_actions(protocol),
@@ -205,10 +245,6 @@ def _training_summary(training: list[TrainingSignal]) -> dict[str, Any]:
         "high_intensity": high_intensity,
         "big_load": big_load,
     }
-
-
-def _risk_drivers(drivers: list[SleepDriverEvidence]) -> list[SleepDriverEvidence]:
-    return [driver for driver in drivers if driver.coefficient < 0]
 
 
 def _risk_headline(
@@ -269,9 +305,31 @@ def _watch_summary(training: dict[str, Any], *, warm_room: bool, warm_forecast: 
     return "A small watch flag is present, but the standard routine should carry most of the load."
 
 
+def _driver_lines(drivers: list[SleepDriverEvidence]) -> list[str]:
+    """What the shared gate allows the app to say about a measured driver.
+
+    An empty list is the common answer and prints nothing, rather than promoting
+    the strongest of a weak field (Batch 249 / HS240-11).
+    """
+    if not drivers:
+        return []
+    strongest = drivers[0]
+    label = _DRIVER_LABELS.get(strongest.driver, strongest.driver.replace("_", " "))
+    lines = [
+        strongest.summary
+        or (
+            f"Measured driver: {label} has tracked with lower sleep scores — "
+            "an association in your own data, not a proven cause."
+        )
+    ]
+    if strongest.evidence_sentence:
+        lines.append(strongest.evidence_sentence)
+    lines.extend(strongest.confounds)
+    return lines
+
+
 def _evidence_lines(
     training: dict[str, Any],
-    drivers: list[SleepDriverEvidence],
     *,
     warm_room: bool,
     warm_forecast: bool,
@@ -290,14 +348,6 @@ def _evidence_lines(
         lines.append("; ".join(training_bits) + ".")
     else:
         lines.append("Training landed early/light enough to avoid a load flag.")
-
-    strongest = drivers[0]
-    label = _DRIVER_LABELS.get(strongest.driver, strongest.driver.replace("_", " "))
-    direction = "lower sleep scores" if strongest.coefficient < 0 else "better sleep scores"
-    if strongest.summary:
-        lines.append(strongest.summary)
-    else:
-        lines.append(f"Measured driver: {label} has tracked with {direction}.")
 
     if warm_room and latest_bedroom_temperature_c is not None:
         lines.append(f"Bedroom is currently {latest_bedroom_temperature_c:.1f}C.")

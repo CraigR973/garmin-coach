@@ -952,6 +952,43 @@ describe('v1 shared schemas', () => {
     expect(older.confounds ?? null).toBeNull();
   });
 
+  it('carries the interval that replaced the confidence word (Batch 249)', () => {
+    const measured = chronicSuggestionDriverSchema.parse({
+      driver: 'bedroom_warning_minutes',
+      label: 'time above 19.5C',
+      coefficient: -0.2388,
+      sampleCount: 64,
+      summary: 'Nights with 60+ min above 19.5C average 4.6 min lower REM sleep.',
+      confounds: [],
+      adjustedCoefficient: -0.1449,
+      intervalLow: -0.367,
+      intervalHigh: 0.093,
+      evidenceSentence:
+        'Measured over 64 nights: the link is 0.14 on a 0-1 scale, and the range the ' +
+        'data still allows (0.09 to 0.37) stays on one side of no effect.',
+    });
+    expect(measured.adjustedCoefficient).toBe(-0.1449);
+    expect(measured.intervalLow).toBe(-0.367);
+    expect(measured.evidenceSentence).toContain('64 nights');
+    // No confidence word is emitted any more, and its absence must parse.
+    expect(measured.confidence ?? null).toBeNull();
+
+    // A driver adjusted for a calendar it is collinear with has no interval at
+    // all; the packet says so with nulls rather than omitting the keys.
+    const unbounded = chronicSuggestionDriverSchema.parse({
+      driver: 'bedroom_mean_temp_c',
+      label: 'bedroom temperature',
+      coefficient: -0.21,
+      sampleCount: 71,
+      summary: null,
+      adjustedCoefficient: null,
+      intervalLow: null,
+      intervalHigh: null,
+      evidenceSentence: null,
+    });
+    expect(unbounded.intervalLow ?? null).toBeNull();
+  });
+
   it('parses the Today action block and defaults it to empty (Batch 86)', () => {
     const approve = todayActionSchema.parse({
       kind: 'approve_ride',
