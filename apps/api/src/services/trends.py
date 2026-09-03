@@ -57,6 +57,8 @@ from src.models.coaching import (
 from src.models.profile import Profile
 from src.services.age_norms import (
     REM_FRAMING_RULE,
+    REM_MEASUREMENT_BASIS,
+    SLEEP_BAND_BASIS_NOTE,
     SLEEP_STAGE_PCT_BASIS_NOTE,
     age_band_label,
     rem_sleep_pct_for_row,
@@ -103,9 +105,16 @@ ANALYSIS_TYPE_SEASONAL = "seasonal_trend"
 # carries `vo2max.sampleCount: 0` and a year-on-year `insufficient_history`
 # that were artefacts of reading the wake row, so the old narratives must stop
 # being served rather than be left to age out.
+# Batch 250 bumps both buckets for the same reason Batch 225 did: REM_FRAMING_RULE
+# is embedded verbatim in TREND_SYSTEM_PROMPT and now carries the measurement
+# limitation, so a v8 narrative was written under an instruction that no longer
+# exists. Batch 227 is the case that earned the care here — it bumped this same
+# constant nine hours after Batch 225.5 had regenerated the narrative to correct a
+# false VO2 max story, and left Mark's Trends page empty on the surface his
+# complaint came from. Closeout drives the real lookup, not a version comparison.
 PROMPT_VERSION_BY_BUCKET = {
-    BUCKET_MONTH: "trends-month-v8-2026-08-28",
-    BUCKET_SEASON: "trends-season-v8-2026-08-28",
+    BUCKET_MONTH: "trends-month-v9-2026-09-03",
+    BUCKET_SEASON: "trends-season-v9-2026-09-03",
 }
 
 # Indoor reading at/after this local hour belongs to the *next* morning's night.
@@ -128,9 +137,11 @@ cutoff as excluded. When sample counts are low or a prior-year window is missing
 say "insufficient history" plainly rather than inventing a trend. Interpret \
 readiness, HRV, resting HR, and REM against personalBaselines before using \
 alarming language. {REM_FRAMING_RULE} \
-REM's band numbers are in remAgeBand, and remAgeBand.basis says which total \
+REM's band numbers are in remAgeBand; remAgeBand.basis says which total \
 every REM percentage in this packet is a share of — state that total in your own \
-plain words whenever you give a percentage. If remAgeBand is absent, say the band \
+plain words whenever you give a percentage — and remAgeBand.bandBasis and \
+remAgeBand.measurementBasis carry, in the app's own words, what the band and the \
+REM figure are actually standing on. If remAgeBand is absent, say the band \
 is unavailable rather than recalling one. \
 Packet field names are instructions to you, never words for Mark: never print a \
 field, key or path (e.g. remAgeBand.basis, personalBaselines) in the output, and \
@@ -922,6 +933,13 @@ class TrendsService:
             "bandHigh": band[1],
             "unit": "%",
             "basis": SLEEP_STAGE_PCT_BASIS_NOTE,
+            # Batch 250: the shared REM_FRAMING_RULE now requires every surface to
+            # state what the REM figure is and what the band's own denominator is.
+            # An instruction the packet cannot back is an invitation to invent —
+            # the defect class Batch 244 exists to close — so both sentences travel
+            # here, exactly as they do in the morning packet's ageComparison.
+            "bandBasis": SLEEP_BAND_BASIS_NOTE,
+            "measurementBasis": REM_MEASUREMENT_BASIS,
         }
 
     async def _metric_baselines(self, user_id: uuid.UUID) -> list[MetricBaseline]:
