@@ -43,6 +43,7 @@ from src.services.executable_coaching import ExecutableCoachingService
 from src.services.generation_requests import GenerationRequestInProgress
 from src.services.holiday_pause import HolidayWindow
 from src.services.morning_analysis import MorningAnalysisService
+from src.services.morning_pipeline import MorningBriefPipeline
 from src.services.morning_verdict import MEDICAL_BOUNDARY_STANDING_LINE
 from src.services.workout_delivery import IntervalsCreateResult
 
@@ -738,7 +739,7 @@ async def test_manual_entry_returns_immediately_and_queues_brief_generation(
 
     queued = AsyncMock()
     monkeypatch.setattr(daily_loop_router, "_generate_brief_after_checkin", queued)
-    monkeypatch.setattr(daily_loop_router, "_local_today", lambda timezone_name: subject_date)
+    monkeypatch.setattr(daily_loop_router, "local_today", lambda timezone_name: subject_date)
 
     app.dependency_overrides[get_current_user] = lambda: player
     app.dependency_overrides[get_db] = _db_override(session_factory)
@@ -777,7 +778,10 @@ async def test_checkin_background_syncs_before_generating(
         )
         await session.commit()
 
-    async def sync_inputs(session: AsyncSession, profiles: list[Profile]) -> None:
+    async def sync_inputs(pipeline: MorningBriefPipeline, profiles: list[Profile]) -> None:
+        # Batch 251: set on the class, so this receives the pipeline as ``self``
+        # and reads its session — the sync is the pipeline's own step now.
+        session = pipeline.session
         events.append("sync")
         assert [profile.id for profile in profiles] == [user_id]
         session.add_all(
@@ -802,7 +806,7 @@ async def test_checkin_background_syncs_before_generating(
 
     async def generate(*args: object, **kwargs: object) -> MagicMock:
         events.append("generate")
-        return generated_analysis
+        return MagicMock(analysis=generated_analysis, generated=True)
 
     async def notify(*args: object, **kwargs: object) -> bool:
         events.append("notify")
@@ -819,6 +823,16 @@ async def test_checkin_background_syncs_before_generating(
     )
     monkeypatch.setattr(morning_pipeline.MorningBriefPipeline, "sync_inputs", sync_inputs)
     monkeypatch.setattr(MorningAnalysisService, "generate_and_store", generate)
+    # Batch 251: the check-in ladder is the pipeline's now, so the two coaching
+    # steps that used to sit *inside* the patched generate call are visible here.
+    # They have their own tests (test_executable_coaching); this one is about the
+    # trigger's ordering and its status write.
+    monkeypatch.setattr(
+        ExecutableCoachingService, "regenerate_for_verdict", AsyncMock(return_value=[])
+    )
+    monkeypatch.setattr(
+        ExecutableCoachingService, "propose_chronic_deload", AsyncMock(return_value=[])
+    )
     monkeypatch.setattr(
         "src.services.morning_pipeline.NudgeAlertService.push_brief_ready",
         notify,
