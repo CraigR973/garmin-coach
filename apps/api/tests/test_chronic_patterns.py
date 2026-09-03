@@ -409,6 +409,162 @@ def test_training_debt_with_intact_markers_is_excluded_but_crashed_red_counts() 
     ]
 
 
+def test_training_debt_needs_independent_load_corroboration() -> None:
+    as_of = date(2026, 8, 1)
+    result = build_chronic_pattern_suggestions(
+        sleeps=_nights(as_of, rem_pct=0.22),
+        recovery_days=[],
+        baselines={},
+        driver_outcomes={},
+        age=57,
+        sex="male",
+        sleep_protocol={},
+        as_of=as_of,
+        recent_verdicts=[VerdictDay(calendar_date=as_of, verdict="Red")],
+        red_day_evidence={
+            as_of: RedDayEvidence(
+                calendar_date=as_of,
+                recovery_time_min=2590,
+                acute_load=None,
+                hrv_ms=49,
+                hrv_status="Balanced",
+                hrv_floor_ms=44,
+                resting_heart_rate_bpm=44,
+                resting_hr_ceiling_bpm=45,
+            )
+        },
+    )
+
+    qualification = result.action_signal.red_morning_qualifications[0]
+    assert qualification.counts_toward_cluster is True
+    assert qualification.classification == "uncorroborated_training_debt"
+    assert qualification.explanation_sources == (
+        "recovery_debt",
+        "missing_acute_load_corroboration",
+    )
+
+
+def test_training_debt_exclusion_is_capped_at_one_recent_red() -> None:
+    as_of = date(2026, 8, 2)
+    red_days = [as_of - timedelta(days=1), as_of]
+    evidence = {
+        day: RedDayEvidence(
+            calendar_date=day,
+            recovery_time_min=2590,
+            acute_load=198,
+            hrv_ms=49,
+            hrv_status="Balanced",
+            hrv_floor_ms=44,
+            resting_heart_rate_bpm=44,
+            resting_hr_ceiling_bpm=45,
+        )
+        for day in red_days
+    }
+    result = build_chronic_pattern_suggestions(
+        sleeps=_nights(as_of, rem_pct=0.22),
+        recovery_days=[],
+        baselines={},
+        driver_outcomes={},
+        age=57,
+        sex="male",
+        sleep_protocol={},
+        as_of=as_of,
+        recent_verdicts=[VerdictDay(calendar_date=day, verdict="Red") for day in red_days],
+        red_day_evidence=evidence,
+    )
+
+    action = result.action_signal
+    assert action.red_morning_count == 1
+    assert [item.classification for item in action.red_morning_qualifications] == [
+        "training_debt_exclusion_cap_reached",
+        "expected_training_debt",
+    ]
+    packet = action.to_packet()
+    assert packet["trainingDebtExclusionLimit"] == 1
+    assert packet["trainingDebtExclusionMaxAgeDays"] == 2
+    assert packet["redMorningExclusionLimit"] == 1
+    assert packet["trainingDebtCorroboratingAcuteLoadMin"] == 1.0
+
+
+def test_acute_and_training_debt_share_one_exclusion_cap() -> None:
+    as_of = date(2026, 8, 2)
+    acute_day = as_of - timedelta(days=1)
+    result = build_chronic_pattern_suggestions(
+        sleeps=_nights(as_of, rem_pct=0.22),
+        recovery_days=[],
+        baselines={},
+        driver_outcomes={},
+        age=57,
+        sex="male",
+        sleep_protocol={},
+        as_of=as_of,
+        recent_verdicts=[
+            VerdictDay(calendar_date=acute_day, verdict="Red"),
+            VerdictDay(calendar_date=as_of, verdict="Red"),
+        ],
+        red_day_evidence={
+            acute_day: RedDayEvidence(
+                calendar_date=acute_day,
+                hrv_ms=49,
+                hrv_status="Balanced",
+                hrv_floor_ms=44,
+                resting_heart_rate_bpm=44,
+                resting_hr_ceiling_bpm=45,
+                check_in_reasons=("alcohol",),
+            ),
+            as_of: RedDayEvidence(
+                calendar_date=as_of,
+                recovery_time_min=2590,
+                acute_load=198,
+                hrv_ms=49,
+                hrv_status="Balanced",
+                hrv_floor_ms=44,
+                resting_heart_rate_bpm=44,
+                resting_hr_ceiling_bpm=45,
+            ),
+        },
+    )
+
+    action = result.action_signal
+    assert action.red_morning_count == 1
+    assert [item.classification for item in action.red_morning_qualifications] == [
+        "acute_exclusion_cap_reached",
+        "expected_training_debt",
+    ]
+
+
+def test_training_debt_exclusion_expires_before_red_window() -> None:
+    as_of = date(2026, 8, 5)
+    red_day = as_of - timedelta(days=3)
+    result = build_chronic_pattern_suggestions(
+        sleeps=_nights(as_of, rem_pct=0.22),
+        recovery_days=[],
+        baselines={},
+        driver_outcomes={},
+        age=57,
+        sex="male",
+        sleep_protocol={},
+        as_of=as_of,
+        recent_verdicts=[VerdictDay(calendar_date=red_day, verdict="Red")],
+        red_day_evidence={
+            red_day: RedDayEvidence(
+                calendar_date=red_day,
+                recovery_time_min=2590,
+                acute_load=198,
+                hrv_ms=49,
+                hrv_status="Balanced",
+                hrv_floor_ms=44,
+                resting_heart_rate_bpm=44,
+                resting_hr_ceiling_bpm=45,
+            )
+        },
+    )
+
+    qualification = result.action_signal.red_morning_qualifications[0]
+    assert qualification.counts_toward_cluster is True
+    assert qualification.classification == "training_debt_exclusion_expired"
+
+
 def test_acute_check_in_cannot_override_systemic_markers() -> None:
     as_of = date(2026, 8, 1)
     result = build_chronic_pattern_suggestions(

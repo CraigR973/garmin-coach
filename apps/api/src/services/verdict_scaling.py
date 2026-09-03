@@ -14,9 +14,8 @@ This module is the single rule they all now share:
     of the app's Sweet Spot range, rather than leaving former VO2 work at
     threshold);
   * drop hard intervals one zone (:data:`ZONE_DROP_PCT`) **but never below the
-    Zone-2 floor** (:data:`ENDURANCE_CEILING_PCT`); a step already at or below that
-    ceiling is endurance already, so its intensity is *held* and only the duration
-    is cut.
+    Zone-2 prescription anchor** (:data:`ENDURANCE_PRESCRIPTION_PCT`). A step at
+    or below that anchor is held; a higher endurance step is eased to it.
 
 ``adjust_ir_for_verdict`` (delivery transform), ``interval_workout_editor.scale_block``
 (editor preset), and the morning narrative/``verdictAdjustment`` packet all go
@@ -29,8 +28,8 @@ stimulus Red needs to delete: sustained low intensity builds sleep pressure with
 the sympathetic arousal harder work produces, so gutting it works against the Red
 rule's own purpose. Red now splits on what the ride actually is:
 
-  * **already endurance** (:func:`ir_is_endurance`): hold the planned intensity
-    inside Zone 2 and take a light duration cut
+  * **already endurance** (:func:`ir_is_endurance`): keep the ride in Zone 2,
+    easing upper-endurance work to the 67% prescription anchor, and take a light duration cut
     (:data:`RED_ENDURANCE_DURATION_SCALE`);
   * **anything harder**, or a day already carrying another session: the original
     recovery substitution, unchanged — half duration, every step capped at
@@ -75,8 +74,11 @@ AMBER_POWER_CAP_PCT = 94  # Amber removes HIT: cap at the top of Sweet Spot
 RECOVERY_CAP_PCT = 60  # Red easy-spin ceiling — guarantees no VO2
 MIN_POWER_PCT = 45
 # Top of Zone 2 (endurance). At or below this a working interval is already easy,
-# so an Amber ease cuts its duration only and never drops it into recovery.
+# so the ride remains eligible for the endurance path.
 ENDURANCE_CEILING_PCT = 75
+# Mark's plan-level Zone-2 anchor. This is a prescription, not a classification:
+# compromised-day work between 68% and the ceiling is brought back to this value.
+ENDURANCE_PRESCRIPTION_PCT = 67
 
 
 def _normalize_verdict(value: str | None) -> str | None:
@@ -159,9 +161,9 @@ def amber_duration_scale(*, companion_session: bool = False) -> float:
 
 
 def red_power_cap_pct(ir: dict[str, Any] | None, *, companion_session: bool = False) -> int:
-    """Red's working-intensity ceiling — the Zone-2 top on an already-easy ride."""
+    """Red's working-intensity ceiling — the 67% anchor on an endurance ride."""
     if red_holds_endurance(ir, companion_session=companion_session):
-        return ENDURANCE_CEILING_PCT
+        return ENDURANCE_PRESCRIPTION_PCT
     return RECOVERY_CAP_PCT
 
 
@@ -183,19 +185,20 @@ def _clamp_power(value: int, cap: int) -> int:
 def ease_amber_power_pct(power_pct: int) -> int:
     """The canonical Amber working-interval intensity after easing (Batch 173.2).
 
-    * **Already endurance** (``<= ENDURANCE_CEILING_PCT``): keep the intensity —
-      a Zone-2 ride is not dropped into recovery; only its duration is cut. This
-      is what Mark's 67% ride should stay at.
+    * **At/below the prescription anchor** (``<= 67%``): keep the intensity — a
+      Zone-2 ride is not dropped into recovery; only its duration is cut.
+    * **Upper endurance** (``68-75%``): keep the endurance classification but
+      ease the prescription to Mark's 67% Zone-2 anchor.
     * **Harder** (tempo/sweet-spot/threshold/VO2): drop one zone, but never below
-      the Zone-2 ceiling, and cap at the top of Sweet Spot so no HIT/VO2 or
+      the Zone-2 prescription anchor, and cap at the top of Sweet Spot so no HIT/VO2 or
       threshold work survives.
 
     Deterministic and pure, so the delivery transform, the editor preset, and the
     narrative all quote the same number for a given planned intensity.
     """
-    if power_pct <= ENDURANCE_CEILING_PCT:
+    if power_pct <= ENDURANCE_PRESCRIPTION_PCT:
         return power_pct
-    dropped = max(power_pct - ZONE_DROP_PCT, ENDURANCE_CEILING_PCT)
+    dropped = max(power_pct - ZONE_DROP_PCT, ENDURANCE_PRESCRIPTION_PCT)
     return min(dropped, AMBER_POWER_CAP_PCT)
 
 
@@ -512,11 +515,12 @@ def adjust_ir_for_verdict(
       apart from an ``origin``/``adjustment`` annotation.
     * **Amber**: cut the total duration to 70–75% and ease working intervals via
       :func:`ease_amber_power_pct` — a hard interval drops a zone (never below the
-      Zone-2 floor) and HIT is capped away, while an already-endurance ride keeps
-      its intensity. Repeated protocols lose whole reps; divisible easy steps
+      Zone-2 anchor) and HIT is capped away, while an already-endurance ride stays
+      at or below 67%. Repeated protocols lose whole reps; divisible easy steps
       absorb any residue needed to preserve the exact total.
-    * **Red** on an **already-endurance** ride (Batch 215): hold the planned Zone-2
-      intensity and take the lighter ``RED_ENDURANCE_DURATION_SCALE`` cut. The hard
+    * **Red** on an **already-endurance** ride (Batch 215): hold or anchor the
+      planned Zone-2 intensity at 67% and take the lighter
+      ``RED_ENDURANCE_DURATION_SCALE`` cut. The hard
       work is still gone — there is none to remove — and the easy work that builds
       sleep pressure survives.
     * **Red** on anything harder, or on a day already carrying another session:
@@ -583,8 +587,8 @@ def adjust_ir_for_verdict(
         "zoneDropPct": zone_drop_pts,
         "powerCapPct": power_cap,
         "removedHit": removed_hit,
-        # Batch 215: true when the ride was already Zone 2 and the transform kept
-        # its intensity, cutting duration only — on Amber since 173.2, on Red now.
+        # True only when the transform literally kept an already-Zone-2
+        # intensity, rather than easing upper endurance to the 67% anchor.
         "enduranceHold": _holds_endurance(base_ir, status, companion_session=companion_session),
         "basisName": original_name,
         "basisTotalDurationSec": basis_total,
@@ -597,10 +601,20 @@ def adjust_ir_for_verdict(
 def _holds_endurance(
     base_ir: dict[str, Any], status: str | None, *, companion_session: bool
 ) -> bool:
+    raw_steps = base_ir.get("steps")
+    steps = (
+        [step for step in raw_steps if isinstance(step, dict)]
+        if isinstance(raw_steps, list)
+        else []
+    )
+    primary = _primary_work_step(steps)
+    already_at_anchor = primary is not None and _step_power(primary) <= ENDURANCE_PRESCRIPTION_PCT
     if status == "Amber":
-        return ir_is_endurance(base_ir)
+        return ir_is_endurance(base_ir) and already_at_anchor
     if status == "Red":
-        return red_holds_endurance(base_ir, companion_session=companion_session)
+        return (
+            red_holds_endurance(base_ir, companion_session=companion_session) and already_at_anchor
+        )
     return False
 
 
@@ -737,13 +751,13 @@ def summarize_verdict_adjustment(
         "adjustedDurationMin": _total_minutes(adjusted, adjusted_steps),
         "plannedWorkPowerPct": planned_power,
         "adjustedWorkPowerPct": adjusted_power,
-        # Read off the outcome rather than the verdict name (Batch 215): Red now
-        # holds an already-Zone-2 ride's intensity too, and a flag hardcoded to
-        # Amber would keep telling Mark it had been dropped when it had not.
+        # Read off the outcome rather than the verdict name: upper endurance is
+        # still classified as endurance but is not described as held when it was
+        # eased to the 67% prescription anchor.
         "intensityHeldAtEndurance": (
             planned_power is not None
             and adjusted_power == planned_power
-            and planned_power <= ENDURANCE_CEILING_PCT
+            and planned_power <= ENDURANCE_PRESCRIPTION_PCT
         ),
         "removedHit": bool(
             adjusted.get("adjustment", {}).get("removedHit")
@@ -751,6 +765,7 @@ def summarize_verdict_adjustment(
             else False
         ),
         "enduranceCeilingPct": ENDURANCE_CEILING_PCT,
+        "endurancePrescriptionPct": ENDURANCE_PRESCRIPTION_PCT,
         "source": "deterministic",
         "classificationImpact": "none",
     }

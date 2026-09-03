@@ -180,7 +180,6 @@ def propose_next_block(outcome: BlockOutcome) -> NextBlockProposal:
 
     execution = outcome.execution
     hit_rate = execution.hit_rate or 0.0
-    over_rate = execution.over_rate or 0.0
     under_rate = execution.under_rate or 0.0
     adherence_rate = outcome.adherence_rate if outcome.adherence_rate is not None else 1.0
 
@@ -211,7 +210,7 @@ def propose_next_block(outcome: BlockOutcome) -> NextBlockProposal:
     if (
         execution.work_intervals >= MIN_WORK_INTERVALS
         and hit_rate >= 0.75
-        and over_rate >= 0.30
+        and under_rate <= 0.10
         and adherence_rate >= 0.75
         and outcome.ftp_drift_status == "rising"
     ):

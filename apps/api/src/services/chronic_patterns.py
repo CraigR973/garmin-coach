@@ -53,6 +53,13 @@ CHRONIC_DELOAD_WINDOW_DAYS = 7
 RECOVERY_DEBT_EXPLAINED_MIN = 24 * 60
 ACUTE_RED_EXCLUSION_LIMIT = 1
 ACUTE_RED_EXCLUSION_MAX_AGE_DAYS = 2
+TRAINING_DEBT_EXCLUSION_LIMIT = 1
+TRAINING_DEBT_EXCLUSION_MAX_AGE_DAYS = 2
+RED_MORNING_EXCLUSION_LIMIT = min(ACUTE_RED_EXCLUSION_LIMIT, TRAINING_DEBT_EXCLUSION_LIMIT)
+# Garmin's acute-load reading is independent of its recovery clock. Requiring a
+# positive value means the clock alone can never make a Red disappear from the
+# cluster; the cap and age bounds below keep even corroborated debt finite.
+TRAINING_DEBT_CORROBORATING_ACUTE_LOAD_MIN = 1.0
 
 _PLANNED_RECOVERY_BLOCK_TYPES = frozenset({"recovery", "taper", "consolidation"})
 _HEALTHY_HRV_STATES = frozenset({"balanced", "stable", "optimal", "normal"})
@@ -313,6 +320,10 @@ class ChronicActionSignal:
             "redMorningWindowDays": CHRONIC_ACTION_RED_WINDOW_DAYS,
             "acuteRedExclusionLimit": ACUTE_RED_EXCLUSION_LIMIT,
             "acuteRedExclusionMaxAgeDays": ACUTE_RED_EXCLUSION_MAX_AGE_DAYS,
+            "trainingDebtExclusionLimit": TRAINING_DEBT_EXCLUSION_LIMIT,
+            "trainingDebtExclusionMaxAgeDays": TRAINING_DEBT_EXCLUSION_MAX_AGE_DAYS,
+            "redMorningExclusionLimit": RED_MORNING_EXCLUSION_LIMIT,
+            "trainingDebtCorroboratingAcuteLoadMin": (TRAINING_DEBT_CORROBORATING_ACUTE_LOAD_MIN),
             "redMorningQualifications": [
                 item.to_packet() for item in self.red_morning_qualifications
             ],
@@ -1161,18 +1172,22 @@ def _chronic_action_signal(
     # Acute check-in explanations are a bounded exception, never a permanent
     # veto. Work newest-first so the one available exclusion belongs to the most
     # recent still-live explanation; return the evidence in chronological order.
-    acute_exclusions_remaining = ACUTE_RED_EXCLUSION_LIMIT
+    red_exclusions_remaining = RED_MORNING_EXCLUSION_LIMIT
     qualifications_by_date: dict[date, RedMorningQualification] = {}
     for day in reversed(red_days):
         qualification = _qualify_red_morning(
             day,
             evidence_by_date.get(day),
             as_of=as_of,
-            allow_acute_exclusion=acute_exclusions_remaining > 0,
+            allow_acute_exclusion=red_exclusions_remaining > 0,
+            allow_training_debt_exclusion=red_exclusions_remaining > 0,
         )
         qualifications_by_date[day] = qualification
-        if qualification.classification == "explained_by_acute_check_in":
-            acute_exclusions_remaining -= 1
+        if qualification.classification in {
+            "explained_by_acute_check_in",
+            "expected_training_debt",
+        }:
+            red_exclusions_remaining -= 1
     qualifications = tuple(qualifications_by_date[day] for day in red_days)
     red_count = sum(1 for item in qualifications if item.counts_toward_cluster)
 
@@ -1226,6 +1241,7 @@ def _qualify_red_morning(
     *,
     as_of: date,
     allow_acute_exclusion: bool,
+    allow_training_debt_exclusion: bool,
 ) -> RedMorningQualification:
     if evidence is None:
         return RedMorningQualification(
@@ -1315,11 +1331,44 @@ def _qualify_red_morning(
         and evidence.recovery_time_min > RECOVERY_DEBT_EXPLAINED_MIN
     )
     if recovery_debt and hrv_intact and resting_hr_intact:
+        training_load_corroborated = (
+            evidence.acute_load is not None
+            and evidence.acute_load >= TRAINING_DEBT_CORROBORATING_ACUTE_LOAD_MIN
+        )
+        if not training_load_corroborated:
+            return RedMorningQualification(
+                calendar_date=calendar_date,
+                counts_toward_cluster=True,
+                classification="uncorroborated_training_debt",
+                explanation_sources=("recovery_debt", "missing_acute_load_corroboration"),
+                evidence=evidence,
+            )
+        if (as_of - calendar_date).days > TRAINING_DEBT_EXCLUSION_MAX_AGE_DAYS:
+            return RedMorningQualification(
+                calendar_date=calendar_date,
+                counts_toward_cluster=True,
+                classification="training_debt_exclusion_expired",
+                explanation_sources=("recovery_debt", "acute_load", "exclusion_expired"),
+                evidence=evidence,
+            )
+        if not allow_training_debt_exclusion:
+            return RedMorningQualification(
+                calendar_date=calendar_date,
+                counts_toward_cluster=True,
+                classification="training_debt_exclusion_cap_reached",
+                explanation_sources=("recovery_debt", "acute_load", "exclusion_cap"),
+                evidence=evidence,
+            )
         return RedMorningQualification(
             calendar_date=calendar_date,
             counts_toward_cluster=False,
             classification="expected_training_debt",
-            explanation_sources=("recovery_debt", "intact_hrv", "intact_resting_hr"),
+            explanation_sources=(
+                "recovery_debt",
+                "acute_load",
+                "intact_hrv",
+                "intact_resting_hr",
+            ),
             evidence=evidence,
         )
 

@@ -6,7 +6,8 @@ blind:
   * **14.1 No-stack rule.** A VO2 session and a Sweet-Spot session must never
     land on the same or adjacent days. ``plan_week_restructure`` reorders the
     week's bike sessions (their dates) to enforce a ≥2-day gap with minimal
-    disruption — non-bike days (strength/mobility) count as spacers.
+    disruption — mobility can be a clear spacer, while strength carries moderate
+    load and cannot be the only recovery between the two quality sessions.
   * **14.2 Defer-on-fatigue.** ``assess_recovery_signal`` reads recent readiness,
     HRV status, and the morning-verdict trend; when fatigued, the restructurer
     pushes hard sessions later in the week (deferring load) as its primary
@@ -84,7 +85,7 @@ _CATEGORY_INTENSITY = {
     CATEGORY_TEMPO: INTENSITY_MODERATE,
     CATEGORY_ENDURANCE: INTENSITY_EASY,
     CATEGORY_RECOVERY: INTENSITY_EASY,
-    CATEGORY_STRENGTH: INTENSITY_NONE,
+    CATEGORY_STRENGTH: INTENSITY_MODERATE,
     CATEGORY_MOBILITY: INTENSITY_NONE,
     CATEGORY_OTHER: INTENSITY_MODERATE,
 }
@@ -212,16 +213,34 @@ class SwapSuggestion:
         }
 
 
-def _conflicts(assignment: dict[date, WeekItem]) -> list[tuple[date, date]]:
-    """Adjacent same-week VO2↔Sweet-Spot pairs (the no-stack violations)."""
+def _conflicts(
+    assignment: dict[date, WeekItem],
+    *,
+    fixed_loaded_dates: frozenset[date] = frozenset(),
+) -> list[tuple[date, date]]:
+    """Same-week VO2↔Sweet-Spot pairs without a genuinely clear day.
+
+    One calendar day between the quality sessions is sufficient only when that
+    day carries no moderate/hard work. ``fixed_loaded_dates`` preserves a
+    non-bike load such as strength even on a split day whose bike owns the
+    assignment mapping.
+    """
     dated = sorted(assignment.items(), key=lambda kv: kv[0])
     found: list[tuple[date, date]] = []
     for i, (d1, item1) in enumerate(dated):
         for d2, item2 in dated[i + 1 :]:
             gap = (d2 - d1).days
-            if gap >= MIN_GAP_DAYS:
+            if gap > MIN_GAP_DAYS:
                 break
-            if {item1.category, item2.category} == NO_STACK_PAIR:
+            if {item1.category, item2.category} != NO_STACK_PAIR:
+                continue
+            middle_date = d1 + timedelta(days=1)
+            middle = assignment.get(middle_date)
+            middle_is_loaded = middle is not None and middle.intensity in {
+                INTENSITY_MODERATE,
+                INTENSITY_HARD,
+            }
+            if gap < MIN_GAP_DAYS or middle_date in fixed_loaded_dates or middle_is_loaded:
                 found.append((d1, d2))
     return found
 
@@ -235,7 +254,8 @@ def plan_week_restructure(
     """Compute a (date → content) reassignment that honours the week's rules.
 
     Only bike sessions are reordered, among the dates that already hold a bike
-    session; strength/mobility days stay put and act as spacers. The chosen
+    session; strength/mobility days stay put, but strength is moderate load and
+    cannot supply the only clear day between VO2 and Sweet Spot. The chosen
     assignment satisfies the no-stack rule (hard constraint) and, when
     ``fatigued``, defers hard sessions as late as possible (primary objective),
     keeping disruption minimal as the secondary objective.
@@ -250,7 +270,12 @@ def plan_week_restructure(
         if item.is_bike or item.workout_date not in by_date_item:
             by_date_item[item.workout_date] = item
     original = dict(by_date_item)
-    conflicts_before = _conflicts(original)
+    fixed_loaded_dates = frozenset(
+        item.workout_date
+        for item in items
+        if not item.is_bike and item.intensity in {INTENSITY_MODERATE, INTENSITY_HARD}
+    )
+    conflicts_before = _conflicts(original, fixed_loaded_dates=fixed_loaded_dates)
 
     bike_items = sorted((item for item in items if item.is_bike), key=lambda it: it.workout_date)
     bike_dates = [item.workout_date for item in bike_items]
@@ -276,7 +301,10 @@ def plan_week_restructure(
         candidate: dict[date, WeekItem] = dict(fixed)
         for slot_date, item in zip(bike_dates, perm, strict=True):
             candidate[slot_date] = item
-        candidate_conflicts = _conflicts(candidate)
+        candidate_conflicts = _conflicts(
+            candidate,
+            fixed_loaded_dates=fixed_loaded_dates,
+        )
 
         feasible = not candidate_conflicts
         moves = sum(1 for d in bike_dates if candidate[d].workout_id != original[d].workout_id)
@@ -300,7 +328,7 @@ def plan_week_restructure(
 
     assert best is not None
     chosen = best[1]
-    conflicts_after = _conflicts(chosen)
+    conflicts_after = _conflicts(chosen, fixed_loaded_dates=fixed_loaded_dates)
     if conflicts_before and not conflicts_after:
         notes.append("Resolved a VO2/Sweet-Spot stacking conflict.")
     if not feasible_found and conflicts_after:

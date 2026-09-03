@@ -35,7 +35,7 @@ from src.services.weekly_restructure import (
     plan_swap_in_horizon,
     plan_week_restructure,
 )
-from src.services.workout_delivery import IntervalsCreateResult
+from src.services.workout_delivery import IntervalsCreateResult, expand_structured_steps
 
 # Week of Monday 2026-06-22.
 WEEK_START = date(2026, 6, 22)
@@ -95,6 +95,24 @@ def test_no_change_when_already_spaced_and_fresh() -> None:
     assert plan.conflicts_before == []
     assert plan.changes == []
     assert not plan.changed
+
+
+def test_strength_cannot_be_the_clear_day_between_quality_sessions() -> None:
+    vo2 = _item(TUE, "bike_vo2")
+    strength = _item(WED, "strength_maintenance")
+    sweet = _item(THU, "bike_sweet_spot")
+    endurance = _item(SAT, "bike_endurance")
+
+    assert strength.intensity == "moderate"
+    plan = plan_week_restructure(
+        [vo2, strength, sweet, endurance],
+        week_start=WEEK_START,
+        fatigued=False,
+    )
+
+    assert plan.conflicts_before == [(TUE, THU)]
+    assert plan.conflicts_after == []
+    assert plan.changed is True
 
 
 # ---------------------------------------------------------------------------
@@ -278,7 +296,12 @@ def test_late_build_week_selects_ronnestad_30_15() -> None:
     assert structured["ergMode"] == "off"  # surge lag → ERG off (Decision #33)
     main = next(s for s in structured["steps"] if s["label"] == "Main set")
     assert main["pattern"] == "13x 30s on / 15s easy"
-    assert main["target"] == "105-110% FTP"
+    assert main["target"] == ("120-130% FTP, highest even power repeatable across all sets")
+    assert "highest even power repeatable" in late.intensity_target
+    steps = expand_structured_steps(structured, late.intensity_target)
+    work_steps = [step for step in steps if " work " in step["label"]]
+    assert work_steps
+    assert {step["powerStartPct"] for step in work_steps} == {125}
 
 
 def test_early_build_week_keeps_30_30() -> None:

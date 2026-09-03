@@ -183,7 +183,7 @@ def test_generated_vo2_days_use_progression() -> None:
     assert _vo2_protocol_for_week(plan, 10) == VO2_PROTOCOL_RONNESTAD_30_15
 
 
-def test_block_progression_proposes_ftp_bump_from_over_target_rising_block() -> None:
+def test_block_progression_proposes_ftp_bump_from_perfect_erg_rising_block() -> None:
     outcome = BlockOutcome(
         block_start=date(2026, 4, 27),
         block_end=date(2026, 7, 26),
@@ -196,7 +196,7 @@ def test_block_progression_proposes_ftp_bump_from_over_target_rising_block() -> 
         adherence_captured=32,
         adherence_done=30,
         adherence_missed=2,
-        execution=ExecutionGradeSummary(work_intervals=12, on=5, over=6, under=1),
+        execution=ExecutionGradeSummary(work_intervals=12, on=12, over=0, under=0),
         ftp_drift_status="rising",
         current_ftp_watts=280,
         suggested_ftp_watts=292,
