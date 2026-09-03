@@ -977,7 +977,9 @@ async def test_amber_morning_leads_with_week_swap_and_keeps_softening(
                     is_active=True,
                     planned_duration_min=60,
                     intensity_target="105-110% FTP",
-                    structured_workout={"format": "bike"},
+                    # The fallback copy is derived from the same executable IR as
+                    # delivery, so this fixture must describe a deliverable ride.
+                    structured_workout=_HARD_VO2_STRUCTURED,
                     source="test",
                 ),
                 PlannedWorkout(
@@ -1022,7 +1024,7 @@ async def test_amber_morning_leads_with_week_swap_and_keeps_softening(
     adjustments = verdict["planAdjustments"]
     # The swap leads; softening stays available as the explicit fallback.
     assert "move vo2 max 30/30 from thursday to saturday" in adjustments[0].lower()
-    assert any("cut duration" in item.lower() for item in adjustments[1:])
+    assert any("cut the bike to" in item.lower() for item in adjustments[1:])
 
     # Batch 70 (#143): the same cautious morning reports the week's mix and, because
     # today's dropped VO2 can move to Saturday, frames it as re-patched — not lost.
@@ -1616,7 +1618,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v42")
+    assert PROMPT_VERSION.startswith("morning-analysis-v43")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
@@ -3232,14 +3234,14 @@ def test_red_packet_holds_zone_two_and_the_copy_stops_substituting_it() -> None:
     assert packet["plannedDurationMin"] == 45
     assert packet["plannedWorkPowerPct"] == 62
     assert packet["adjustedWorkPowerPct"] == 62  # held, not dropped to 60
-    assert packet["adjustedDurationMin"] == 38  # a light cut, not the pre-fix 22
+    assert packet["adjustedDurationMin"] == 32  # monotonic below Amber, not the pre-fix 22
     assert packet["intensityHeldAtEndurance"] is True
     assert packet["companionSession"] is False
     assert packet["classificationImpact"] == "none"  # still explanatory only
 
     detail = _eased_ride_detail("Red", packet)
     assert "Zone 2" in detail
-    assert "38 min" in detail
+    assert "32 min" in detail
     # The copy must no longer tell him to swap an already-easy ride for rest.
     assert "Substitute" not in detail
     assert "mobility, or rest" not in detail
@@ -3289,7 +3291,7 @@ def test_a_companion_session_reaches_the_packet_from_the_days_plan() -> None:
     alone = _verdict_adjustment_packet("Red", [ride, strength])
     assert alone is not None
     assert alone["companionSession"] is False
-    assert alone["adjustedDurationMin"] == 38
+    assert alone["adjustedDurationMin"] == 32
 
 
 def test_red_plan_adjustment_instruction_follows_the_transform() -> None:
@@ -3425,10 +3427,33 @@ def test_amber_plan_wording_matches_the_shared_sweet_spot_transform() -> None:
 
     guidance = " ".join(verdict["planAdjustments"])
     assert verdict["status"] == "Amber"
-    assert "25%" in guidance
+    assert "30 min" in guidance
     assert f"{AMBER_POWER_CAP_PCT}% FTP" in guidance
     assert "Sweet Spot" in guidance
     assert "remove HIT/VO2" not in guidance
+
+
+@pytest.mark.parametrize(
+    ("workout_type", "expected", "forbidden"),
+    [
+        ("strength_maintenance", "submaximal", "% FTP"),
+        ("mobility", "gentle", "intervals"),
+        ("walk", "conversational", "Sweet Spot"),
+    ],
+)
+def test_amber_plan_wording_matches_the_non_bike_session(
+    workout_type: str, expected: str, forbidden: str
+) -> None:
+    workout = _bike_workout(
+        workout_type=workout_type,
+        intensity_target=None,
+        structured_workout={},
+    )
+
+    guidance = " ".join(_plan_adjustments("Amber", [workout]))
+
+    assert expected in guidance
+    assert forbidden not in guidance
 
 
 def test_verdict_adjustment_packet_is_none_when_not_cautious() -> None:

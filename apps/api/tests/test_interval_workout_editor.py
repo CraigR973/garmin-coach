@@ -106,7 +106,10 @@ def test_mapper_round_trips_primary_block_and_leaves_every_pass_through_step_ide
         for step in expanded
         if step["label"].startswith("VO₂ 5×2min") and " work " in step["label"]
     )
-    assert edited_work["durationSec"] == 90
+    assert edited_work["durationSec"] == 120
+    assert (
+        len([step for step in expanded if step["label"].startswith("VO₂ 5×2min")]) == 8
+    )  # four intact work/recovery pairs, not five shortened ones
     # Batches 173/201: the "Scale down" preset shares the delivery transform's
     # Zone-2-aware ease, so a 120% VO2 leg drops a zone and is capped at the top
     # of Sweet Spot (HIT/threshold removed) instead of the old near-VO2 108%.
@@ -134,6 +137,9 @@ def test_scale_block_holds_zone_two_and_matches_the_shared_ease() -> None:
         rest=IntervalLeg(duration_sec=120, power_pct=55, cadence_rpm=None),
     )
     scaled_hard = scale_block(hard)
+    assert scaled_hard.repeat == 3
+    assert scaled_hard.work.duration_sec == hard.work.duration_sec
+    assert scaled_hard.rest.duration_sec == hard.rest.duration_sec
     assert scaled_hard.work.power_pct == ease_amber_power_pct(105)  # drops a zone, capped
     assert scaled_hard.work.power_pct < 105
 
@@ -220,7 +226,7 @@ def test_todays_adjustment_holds_zone_two_on_red_and_caps_it_when_load_is_shared
     held = interval_editor_snapshot(source, "62% FTP intervals", verdict="Red")
     assert held.todays_adjustment is not None
     assert held.todays_adjustment.work.power_pct == 62  # Zone 2 held, not dropped to 60
-    assert _snapshot_total_sec(held.todays_adjustment, 600) == 2295  # 38 min, not 22
+    assert _snapshot_total_sec(held.todays_adjustment, 600) == 1890  # 32 min, never > Amber
 
     shared = interval_editor_snapshot(
         source, "62% FTP intervals", verdict="Red", companion_session=True
@@ -228,6 +234,16 @@ def test_todays_adjustment_holds_zone_two_on_red_and_caps_it_when_load_is_shared
     assert shared.todays_adjustment is not None
     assert shared.todays_adjustment.work.power_pct == RECOVERY_CAP_PCT
     assert _snapshot_total_sec(shared.todays_adjustment, 600) == 1350  # the old 22 min
+
+
+def test_todays_adjustment_removes_reps_without_shortening_interval_legs() -> None:
+    source = _mark_vo2_source()
+    snapshot = interval_editor_snapshot(source, "VO₂", verdict="Amber")
+
+    assert snapshot.todays_adjustment is not None
+    assert snapshot.todays_adjustment.repeat < snapshot.current.repeat
+    assert snapshot.todays_adjustment.work.duration_sec == snapshot.current.work.duration_sec
+    assert snapshot.todays_adjustment.rest.duration_sec == snapshot.current.rest.duration_sec
 
 
 def test_a_green_morning_offers_no_todays_adjustment() -> None:

@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker
 
-from src.models.coaching import Activity, PlannedWorkout, WorkoutDeliveryProposal
+from src.models.coaching import Activity, Analysis, PlannedWorkout, WorkoutDeliveryProposal
 from src.models.profile import Profile, UserRole
 from src.services.workout_delivery import (
     IntervalsCreateResult,
@@ -649,6 +649,88 @@ async def test_create_event_delivers_baseline_without_approval(db_conn: AsyncCon
         assert proposal.approved_at_utc is None
         assert len(fake.payloads) == 1
         assert fake.updates == [] and fake.deletes == []
+
+
+@pytest.mark.asyncio
+async def test_red_vo2_is_blocked_inside_create_and_push_rails(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 243: callers cannot bypass Red-never-VO2 by missing their own check."""
+    user_id, workout_id = uuid.uuid4(), uuid.uuid4()
+    workout_date = date(2026, 7, 22)
+    await _seed_bike_workout(
+        db_conn,
+        user_id,
+        workout_id,
+        workout_date=workout_date,
+    )
+    fake = _FakeIntervalsClient()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = WorkoutDeliveryService(session, intervals_client=fake)
+        proposal = await service.propose(player=user, planned_workout_id=workout_id)
+        workout = await service._planned_workout(user_id, workout_id)
+        ir = build_structured_workout_ir(workout)
+        session.add(
+            Analysis(
+                user_id=user_id,
+                analysis_type="morning",
+                subject_date=workout_date,
+                generated_at_utc=datetime(2026, 7, 22, 8, 41, 17),
+                prompt_version="morning-test",
+                verdict="Red",
+                context_packet={"verdict": {"status": "Red"}},
+                output_markdown="Red",
+                raw_response={},
+            )
+        )
+        await session.commit()
+
+        with pytest.raises(HTTPException, match="Red verdict blocks VO2"):
+            await service.create_event(proposal=proposal, ir=ir)
+        await service.approve(player=user, proposal_id=proposal.id)
+        with pytest.raises(HTTPException, match="Red verdict blocks VO2"):
+            await service.push(player=user, proposal_id=proposal.id)
+
+        assert fake.payloads == []
+
+
+@pytest.mark.asyncio
+async def test_red_vo2_is_blocked_inside_replace_rail(db_conn: AsyncConnection) -> None:
+    user_id, workout_id = uuid.uuid4(), uuid.uuid4()
+    workout_date = date(2026, 7, 22)
+    await _seed_bike_workout(
+        db_conn,
+        user_id,
+        workout_id,
+        workout_date=workout_date,
+    )
+    fake = _FakeIntervalsClient()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        service, proposal = await _deliver_baseline(session, fake, user_id, workout_id)
+        session.add(
+            Analysis(
+                user_id=user_id,
+                analysis_type="morning",
+                subject_date=workout_date,
+                generated_at_utc=datetime(2026, 7, 22, 8, 41, 17),
+                prompt_version="morning-test",
+                verdict="Red",
+                context_packet={"verdict": {"status": "Red"}},
+                output_markdown="Red",
+                raw_response={},
+            )
+        )
+        await session.commit()
+
+        hard_ir = build_structured_workout_ir(await service._planned_workout(user_id, workout_id))
+        with pytest.raises(HTTPException, match="Red verdict blocks VO2"):
+            await service.replace_event(proposal=proposal, ir=hard_ir)
+
+        assert fake.updates == []
 
 
 @pytest.mark.asyncio

@@ -29,7 +29,13 @@ from src.services.verdict_scaling import (
     ir_has_vo2,
     summarize_verdict_adjustment,
 )
-from src.services.workout_categories import is_bike_workout_type
+from src.services.workout_categories import (
+    DAY_CATEGORY_FLEXIBILITY,
+    DAY_CATEGORY_WALK,
+    DAY_CATEGORY_WEIGHTS,
+    category_for_workout_type,
+    is_bike_workout_type,
+)
 from src.services.workout_delivery import build_structured_workout_ir
 
 # Batch 167 (#248): load can only harden the deterministic light.
@@ -1070,11 +1076,33 @@ def _plan_adjustments(
     elif status == "Green":
         adjustments = ["Proceed with the planned workout if warm-up confirms readiness."]
     elif status == "Amber":
-        adjustments = [
-            "Cut duration 25%; hold Zone 2, ease harder intervals by a zone, and "
-            f"convert former HIT/VO2 work to no more than {AMBER_POWER_CAP_PCT}% FTP "
-            "(Sweet Spot)."
-        ]
+        ride_adjustment = _verdict_adjustment_packet(status, planned_workouts)
+        categories = {category_for_workout_type(workout.workout_type) for workout in live_workouts}
+        adjustments = []
+        if ride_adjustment is not None:
+            duration = ride_adjustment.get("adjustedDurationMin")
+            adjustments.append(
+                f"Cut the bike to {duration} min; hold Zone 2, ease harder intervals by a "
+                f"zone, and convert former HIT/VO2 work to no more than "
+                f"{AMBER_POWER_CAP_PCT}% FTP (Sweet Spot)."
+            )
+            if ride_adjustment.get("companionSession") is True:
+                adjustments.append(
+                    "Another session shares today, so this cut accounts for the day's total load."
+                )
+        if DAY_CATEGORY_WEIGHTS in categories:
+            adjustments.append(
+                "Keep strength submaximal: reduce the sets and stop well short of failure."
+            )
+        if DAY_CATEGORY_FLEXIBILITY in categories:
+            adjustments.append(
+                "Keep mobility gentle and symptom-led; shorten it if it stops feeling restorative."
+            )
+        if DAY_CATEGORY_WALK in categories:
+            adjustments.append(
+                "Keep the walk easy and conversational; shorten it rather than "
+                "turning it into training."
+            )
     else:
         # Batch 215: Red no longer means one thing. An already-Zone-2 ride keeps its
         # intensity and takes a light duration cut, so the instruction has to follow

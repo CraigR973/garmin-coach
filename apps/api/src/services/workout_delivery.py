@@ -17,11 +17,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import settings
 from src.models.coaching import (
     Activity,
+    Analysis,
     KnowledgeBase,
     PlannedWorkout,
     WorkoutDeliveryProposal,
 )
 from src.models.profile import Profile
+from src.services.verdict_scaling import _normalize_verdict, blocks_red_vo2
 
 DEFAULT_FTP_WATTS = 280
 PROVIDER_INTERVALS_ICU = "intervals_icu"
@@ -413,6 +415,36 @@ class WorkoutDeliveryService:
         self.session = session
         self.intervals_client = intervals_client or IntervalsIcuClient()
 
+    async def _morning_verdict_for(self, user_id: uuid.UUID, subject_date: date) -> str | None:
+        """Latest stored morning verdict for a rail write, normalised or absent."""
+        analysis = await self.session.scalar(
+            select(Analysis)
+            .where(
+                Analysis.user_id == user_id,
+                Analysis.analysis_type == "morning",
+                Analysis.subject_date == subject_date,
+            )
+            .order_by(Analysis.generated_at_utc.desc(), Analysis.created_at.desc())
+            .limit(1)
+        )
+        return _normalize_verdict(analysis.verdict) if analysis else None
+
+    async def _assert_safe_for_rail(
+        self,
+        *,
+        user_id: uuid.UUID,
+        subject_date: date,
+        ir: dict[str, Any],
+    ) -> str | None:
+        """Put Red-never-VO2 at the final Zwift boundary (Batch 243)."""
+        verdict = await self._morning_verdict_for(user_id, subject_date)
+        if blocks_red_vo2(verdict, ir):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Red verdict blocks VO2 delivery to Zwift",
+            )
+        return verdict
+
     async def list_proposals(self, player: Profile) -> list[WorkoutDeliveryProposal]:
         result = await self.session.execute(
             select(WorkoutDeliveryProposal)
@@ -754,6 +786,11 @@ class WorkoutDeliveryService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Proposal must be approved before it can be pushed",
             )
+        await self._assert_safe_for_rail(
+            user_id=proposal.user_id,
+            subject_date=proposal.workout_date,
+            ir=dict(proposal.structured_workout_ir or {}),
+        )
         try:
             result = await self.intervals_client.create_workout_event(proposal.intervals_payload)
         except HTTPException as exc:
@@ -835,11 +872,17 @@ class WorkoutDeliveryService:
     ) -> WorkoutDeliveryProposal:
         """Create a brand-new Zwift event for a proposal from ``ir``.
 
-        Backs push-on-plan-set (the as-planned baseline, delivered without a
-        per-workout approval — Decision #99) and the replace/move fallback when a
-        slot has no live event yet. On a cloud failure the proposal is marked
-        ``failed`` with the error and re-raised; it is never recorded as delivered.
+        Backs push-on-plan-set (the verdict-aware baseline, delivered without a
+        per-workout approval — Decision #99/#319) and the replace/move fallback
+        when a slot has no live event yet. On a cloud failure the proposal is
+        marked ``failed`` with the error and re-raised; it is never recorded as
+        delivered.
         """
+        await self._assert_safe_for_rail(
+            user_id=proposal.user_id,
+            subject_date=proposal.workout_date,
+            ir=ir,
+        )
         payload = build_intervals_payload(ir)
         try:
             result = await self.intervals_client.create_workout_event(payload)
@@ -878,6 +921,11 @@ class WorkoutDeliveryService:
         """
         if not proposal.intervals_event_id:
             return await self.create_event(proposal=proposal, ir=ir, commit=commit)
+        await self._assert_safe_for_rail(
+            user_id=proposal.user_id,
+            subject_date=proposal.workout_date,
+            ir=ir,
+        )
         payload = build_intervals_payload(ir)
         planned_workout_id, planned_workout_version = _ir_workout_context(proposal, ir)
         try:
@@ -914,6 +962,11 @@ class WorkoutDeliveryService:
         ``workout_date`` only changes once the cloud move succeeds."""
         ir = dict(proposal.structured_workout_ir or {})
         ir["workoutDate"] = new_date.isoformat()
+        await self._assert_safe_for_rail(
+            user_id=proposal.user_id,
+            subject_date=new_date,
+            ir=ir,
+        )
         if not proposal.intervals_event_id:
             proposal.workout_date = new_date
             return await self.create_event(proposal=proposal, ir=ir, commit=commit)

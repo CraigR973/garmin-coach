@@ -10,8 +10,8 @@ from fastapi import HTTPException, status
 
 from src.services.verdict_scaling import (
     AMBER_DURATION_SCALE,
+    adjust_ir_for_verdict,
     ease_amber_power_pct,
-    verdict_duration_scale,
     verdict_power_pct,
 )
 from src.services.workout_delivery import _expand_step
@@ -58,8 +58,9 @@ class IntervalEditorSnapshot:
     sweet_spot: EditableIntervalBlock
     zone_two: EditableIntervalBlock
     fixed_steps: tuple[FixedWorkoutStep, ...]
-    #: Batch 215: today's Amber/Red adjustment, landing on the *same total duration*
-    #: the brief quotes. ``None`` on a Green or unknown morning.
+    #: Batch 215/243: today's Amber/Red adjustment. Continuous blocks land on the
+    #: canonical total; repeated protocols preserve whole work/recovery legs and
+    #: may therefore round cautiously to a nearby duration. ``None`` on Green.
     todays_adjustment: EditableIntervalBlock | None = None
 
 
@@ -140,37 +141,48 @@ def verdict_adjusted_block(
     """Today's verdict adjustment, expressed as an editable block.
 
     The editor can only change the primary block — warm-up, cool-down and primer
-    steps are read-only — so scaling the block alone lands on a *different total*
-    from :func:`adjust_ir_for_verdict`, which scales every step. On 2026-08-08 that
-    gap was the whole defect: a 45-minute ride became 37 rather than the 22 the
-    brief quoted, because the fixed 5+5 ramps absorbed none of the cut.
-
-    So the block absorbs the whole reduction instead: the target *total* is the
-    transform's, the fixed steps keep their durations, and what remains goes to the
-    block. Both paths then quote one number. Returns ``None`` on Green, an unknown
-    verdict, or a workout whose fixed steps already exceed the adjusted total.
+    steps are read-only. It therefore derives the target from the canonical IR
+    transform. A continuous block may shorten, but a repeated interval block loses
+    whole repetitions and keeps each work/rest leg byte-for-byte on duration. If
+    the transform replaces the whole set, the editor offers no dishonest partial
+    equivalent. Returns ``None`` on Green, an unknown verdict, or a workout whose
+    fixed steps already exceed the adjusted total.
     """
     try:
         expanded = _expand_step_list(structured, intensity_target)
     except HTTPException:
         return None
     base_ir = {"steps": expanded}
-    scale = verdict_duration_scale(base_ir, verdict, companion_session=companion_session)
-    if scale is None:
+    transformed = adjust_ir_for_verdict(
+        base_ir,
+        verdict,
+        companion_session=companion_session,
+    )
+    adjustment = transformed.get("adjustment")
+    if not isinstance(adjustment, dict) or adjustment.get("changed") is not True:
         return None
 
     total_sec = sum(int(step.get("durationSec", 0)) for step in expanded)
     block_sec = block.repeat * (block.work.duration_sec + block.rest.duration_sec)
     fixed_sec = total_sec - block_sec
-    target_block_sec = round(total_sec * scale) - fixed_sec
-    if block_sec <= 0 or target_block_sec < MIN_WORK_DURATION_SEC * block.repeat:
+    target_block_sec = int(transformed.get("totalDurationSec") or 0) - fixed_sec
+    if block_sec <= 0 or target_block_sec < MIN_WORK_DURATION_SEC:
         return None
 
-    block_scale = target_block_sec / block_sec
-    work_sec = max(MIN_WORK_DURATION_SEC, round(block.work.duration_sec * block_scale))
-    rest_sec = round(block.rest.duration_sec * block_scale)
+    pair_sec = block.work.duration_sec + block.rest.duration_sec
+    if block.repeat > 1 or block.rest.duration_sec > 0:
+        repeat = round(target_block_sec / pair_sec)
+        if repeat < 1:
+            return None
+        repeat = min(block.repeat, repeat)
+        work_sec = block.work.duration_sec
+        rest_sec = block.rest.duration_sec
+    else:
+        repeat = 1
+        work_sec = target_block_sec
+        rest_sec = 0
     return EditableIntervalBlock(
-        repeat=block.repeat,
+        repeat=repeat,
         work=IntervalLeg(
             duration_sec=min(work_sec, MAX_WORK_DURATION_SEC),
             power_pct=max(
@@ -249,23 +261,38 @@ def scale_block(block: EditableIntervalBlock) -> EditableIntervalBlock:
     """The "Scale down" preset — the *same* Zone-2-aware ease the delivery
     transform and the morning narrative use (Batch 173.2).
 
-    Cuts duration to :data:`AMBER_DURATION_SCALE` and eases the working power via
-    :func:`ease_amber_power_pct`: a hard interval drops a zone (never below the
-    Zone-2 floor), but an already-endurance ride *keeps* its intensity — so a 67%
-    Z2 ride now stays 67% instead of the old ``×0.9`` drop to 60% that Mark hand-
-    reset on 2026-07-29.
+    Cuts a continuous block to :data:`AMBER_DURATION_SCALE`; repeated protocols
+    instead lose complete trailing reps and keep each work/recovery leg intact.
+    Working power is eased via :func:`ease_amber_power_pct`: a hard interval drops
+    a zone (never below the Zone-2 floor), but an already-endurance ride *keeps*
+    its intensity — so a 67% Z2 ride stays 67% instead of the old ``×0.9`` drop to
+    60% that Mark hand-reset on 2026-07-29.
     """
+    repeated_protocol = block.repeat > 1 or block.rest.duration_sec > 0
+    repeat = (
+        max(MIN_REPEATS, round(block.repeat * AMBER_DURATION_SCALE))
+        if repeated_protocol
+        else block.repeat
+    )
+    work_duration_sec = (
+        block.work.duration_sec
+        if repeated_protocol
+        else max(MIN_WORK_DURATION_SEC, round(block.work.duration_sec * AMBER_DURATION_SCALE))
+    )
+    rest_duration_sec = (
+        block.rest.duration_sec
+        if repeated_protocol
+        else round(block.rest.duration_sec * AMBER_DURATION_SCALE)
+    )
     return EditableIntervalBlock(
-        repeat=block.repeat,
+        repeat=repeat,
         work=IntervalLeg(
-            duration_sec=max(
-                MIN_WORK_DURATION_SEC, round(block.work.duration_sec * AMBER_DURATION_SCALE)
-            ),
+            duration_sec=work_duration_sec,
             power_pct=max(MIN_POWER_PCT, ease_amber_power_pct(block.work.power_pct)),
             cadence_rpm=block.work.cadence_rpm,
         ),
         rest=IntervalLeg(
-            duration_sec=round(block.rest.duration_sec * AMBER_DURATION_SCALE),
+            duration_sec=rest_duration_sec,
             power_pct=max(MIN_POWER_PCT, ease_amber_power_pct(block.rest.power_pct)),
             cadence_rpm=block.rest.cadence_rpm,
         ),
