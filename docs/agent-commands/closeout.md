@@ -1,6 +1,9 @@
 # Command: closeout
 
-Explicitly close out a reviewed batch. This is never automatic.
+Close out a completed batch. **Automatic on this project since 2026-09-03** —
+run it yourself once the implementation is done and the gate is green, rather
+than waiting to be asked. See "Batch close-out is automatic" in `AGENTS.md` for
+the gate this depends on and the short list of steps that stay explicit.
 
 ## Inputs
 
@@ -10,7 +13,9 @@ Explicitly close out a reviewed batch. This is never automatic.
 
 1. Read `STATUS.md`, `AGENTS.md`, `ARCHITECTURE.md`, `DECISIONS.md`,
    `docs/phase-batches.md`, and `docs/runbooks/deploys-ongoing.md`.
-2. Confirm the user explicitly requested closeout for the batch.
+2. Confirm the batch's implementation is complete and its gate is green
+   (see `AGENTS.md`). Explicit user request is no longer required on this
+   project, but a red or unrun gate still stops the close-out.
 3. Confirm the batch row is not already struck through and not marked `Shipped`.
 4. Confirm the branch contains only the intended batch work.
 5. Commit any reviewed implementation changes using Conventional Commits.

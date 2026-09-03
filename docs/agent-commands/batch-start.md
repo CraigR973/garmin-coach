@@ -64,8 +64,9 @@ Start an implementation batch from `docs/phase-batches.md`.
      session that made it.
 8. Run the tests/lint/type checks required by the touched code.
 9. Commit and push the branch when the batch implementation is ready for review.
-10. Stop before promotion. Do not run `/closeout` unless the user explicitly
-    asks.
+10. Continue into `/closeout` once the gate is green — close-out is automatic
+    on this project (see `AGENTS.md`). Stop before promotion only if the gate is
+    red or a close-out step needs Craig's judgement rather than a green gate.
 
 ## Guardrails
 

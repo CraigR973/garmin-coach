@@ -63,6 +63,35 @@ device tokens provisioned by single-use activation links.
 - Backend lint/type: `PYTHONPATH=apps/api apps/api/.venv/bin/python -m ruff check apps/api/src apps/api/tests` and `PYTHONPATH=apps/api apps/api/.venv/bin/python -m mypy apps/api/src` (use absolute paths in the sandbox).
 - Frontend: `pnpm --dir apps/web test|build|lint` — but the **unit-test gate is `pnpm -r test`** (run from the repo root, Node 20), which is what CI runs. `--dir apps/web` skips `packages/shared` entirely, so a shared-schema test can pass locally by never running (Batch 206).
 
+## Batch close-out is automatic (project override)
+
+**This project overrides the global "close-out is explicit" default** (Craig,
+2026-09-03). When a batch's implementation is complete and its gate is green,
+run `docs/agent-commands/closeout.md` straight through — merge to `main`, verify
+production, tick the docs, strike the ledger row — without waiting to be asked.
+Do not stop at "ready for review" and hand back.
+
+`main` auto-deploys to Railway and Vercel (Decision #39), so an automatic
+close-out is an automatic production deploy. That is the intent, and it is why
+the gate in front of it is not optional:
+
+- Every CI check green on **both** the push and PR waves, and the local gates
+  (`pytest`, `ruff check`, `ruff format --check`, `mypy src`, `pnpm -r test`,
+  web build/lint) clean before the merge.
+- The close-out procedure's own guardrails still bind — above all the
+  prompt-version rule: a bump withdraws every stored analysis at the old
+  version, so decide in writing what gets regenerated, then drive the *real*
+  lookup and regenerate it.
+- Production is verified after the deploy, not assumed.
+
+**Still explicit, and never folded into an automatic close-out:** anything
+needing Craig's judgement rather than a green gate — Mark-facing copy he has not
+signed off, destructive or irreversible operations (the retention purge,
+`VACUUM FULL`, any data deletion), credential and hosting changes, and spending
+real Anthropic money to regenerate beyond what the close-out itself requires. If
+a batch's close-out would touch one of those, do the rest and stop at that step
+with the reason.
+
 ## Session handoff protocol (both tools)
 At the **end** of a work session: (1) update `STATUS.md` — overwrite the "Now"
 block (current state + next step + gotchas) and prepend a dated line to the
