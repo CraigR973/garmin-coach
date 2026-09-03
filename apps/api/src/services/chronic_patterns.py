@@ -37,7 +37,7 @@ from src.services.age_norms import build_age_comparison
 from src.services.bulk_history_reads import without_sleep_raw_payload
 from src.services.daily_metric_phase import prefer_morning
 from src.services.delivered_verdict import delivered_verdicts
-from src.services.driver_levers import select_lever
+from src.services.driver_levers import describe_evidence, select_lever
 from src.services.insights import DriverCorrelation
 from src.services.rem_interventions import RemRotation, select_rem_interventions
 from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
@@ -370,11 +370,15 @@ class SuggestionDriver:
     coefficient: float
     sample_count: int
     summary: str | None
-    # Batch 231: a correlation travels with what it is worth. ``confidence``
-    # uses Batch 220's low/moderate/high vocabulary; ``confounds`` names why it
-    # might not mean what it looks like.
-    confidence: str = "moderate"
+    # Batch 231: a correlation travels with what it is worth; ``confounds`` names
+    # why it might not mean what it looks like. Batch 249 replaced the
+    # ``confidence`` word with the numbers it was standing in for: the
+    # calendar-adjusted association and its 95% interval.
     confounds: tuple[str, ...] = ()
+    adjusted_coefficient: float | None = None
+    interval_low: float | None = None
+    interval_high: float | None = None
+    evidence_sentence: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -383,8 +387,11 @@ class SuggestionDriver:
             "coefficient": self.coefficient,
             "sampleCount": self.sample_count,
             "summary": self.summary,
-            "confidence": self.confidence,
             "confounds": list(self.confounds),
+            "adjustedCoefficient": self.adjusted_coefficient,
+            "intervalLow": self.interval_low,
+            "intervalHigh": self.interval_high,
+            "evidenceSentence": self.evidence_sentence,
         }
 
 
@@ -1408,8 +1415,11 @@ def _lever_for_flag(
         coefficient=correlation.coefficient,
         sample_count=correlation.sample_count,
         summary=correlation.summary,
-        confidence=evidence.confidence,
         confounds=evidence.confounds,
+        adjusted_coefficient=correlation.adjusted_coefficient,
+        interval_low=correlation.interval_low,
+        interval_high=correlation.interval_high,
+        evidence_sentence=describe_evidence(correlation),
     )
 
 
@@ -1434,6 +1444,11 @@ def _suggestion(
     # truncation race is a confound Mark never reads.
     evidence = evidence[:3]
     if driver:
+        # Batch 249: the interval is the strength of the claim the summary has
+        # just made, so it travels with the confounds on the far side of the cap
+        # for the same reason they do.
+        if driver.evidence_sentence:
+            evidence.append(driver.evidence_sentence)
         evidence.extend(driver.confounds)
     actions, rotation = _actions_for(
         flag.metric_key,
@@ -1494,11 +1509,15 @@ def _summary_for(flag: PatternFlag, driver: SuggestionDriver | None) -> str:
             f"{opening}; nothing measured tracks it closely enough to name a single "
             "lever, so keep the action narrow and measurable."
         )
-    closeness = "most closely" if driver.confidence == "high" else "most closely so far"
+    # Batch 249: "most closely" / "most closely so far" was the only visible
+    # trace of a confidence word chosen from the size of the coefficient alone.
+    # What Mark can act on is the sample and the range the data still allows, so
+    # the evidence sentence carries those and the summary stops implying a
+    # strength it never measured.
     return (
-        f"{opening}; of everything measured, {driver.label} tracks it {closeness} "
-        f"({driver.sample_count} nights) — an association in your own data, not a "
-        "proven cause."
+        f"{opening}; of everything measured, {driver.label} tracks it most closely "
+        f"once the time of year is accounted for — an association in your own data, "
+        "not a proven cause."
     )
 
 

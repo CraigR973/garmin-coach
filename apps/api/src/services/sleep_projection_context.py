@@ -18,8 +18,9 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile
 from src.services.activity_dates import activity_local_date as _activity_local_date
+from src.services.driver_levers import describe_evidence, select_levers
 from src.services.environment_freshness import is_hive_temperature_fresh
-from src.services.insights import OUTCOME_SLEEP_SCORE, DriversReport, InsightsService
+from src.services.insights import DriversReport, InsightsService
 from src.services.sleep_projection import (
     SleepDriverEvidence,
     SleepProjectionInputs,
@@ -96,14 +97,22 @@ class SleepProjectionContextService:
             profile,
             as_of=subject_date,
         )
+        # Batch 249 (HS240-11): one gate, applied here, so the projection reports
+        # what ``driver_levers`` allows rather than re-deciding it more loosely.
+        # ``"sleep_score"`` is not in ``FLAG_OUTCOMES``, so it resolves through
+        # ``DEFAULT_FLAG_OUTCOME`` to the sleep-score correlations this surface has
+        # always been about — via the same mapping the chronic card uses, so the
+        # two can never drift apart again.
         sleep_drivers = [
             SleepDriverEvidence(
-                driver=driver.driver,
-                coefficient=driver.coefficient,
-                sample_count=driver.sample_count,
-                summary=driver.summary,
+                driver=lever.correlation.driver,
+                coefficient=lever.correlation.coefficient,
+                sample_count=lever.correlation.sample_count,
+                summary=lever.correlation.summary,
+                evidence_sentence=describe_evidence(lever.correlation),
+                confounds=lever.confounds,
             )
-            for driver in drivers_report.outcomes.get(OUTCOME_SLEEP_SCORE, [])
+            for lever in select_levers("sleep_score", drivers_report.outcomes)
         ]
         fresh_temperature = (
             source.latest_temperature

@@ -11,11 +11,21 @@ from src.services.sleep_projection import (
 
 
 def _driver(driver: str = "prev_day_training_load") -> SleepDriverEvidence:
+    """A driver that has *already* passed ``driver_levers``' gate (Batch 249).
+
+    This module no longer judges drivers at all — the context service hands it
+    only what the shared gate allowed — so a fixture here means "one survived",
+    and an empty list means the usual answer: none did.
+    """
     return SleepDriverEvidence(
         driver=driver,
         coefficient=-0.62,
         sample_count=14,
         summary="Nights after higher training load average lower sleep scores.",
+        evidence_sentence=(
+            "Measured over 14 nights: the link is 0.62 on a 0-1 scale, and the range "
+            "the data still allows (0.19 to 0.86) stays on one side of no effect."
+        ),
     )
 
 
@@ -77,7 +87,16 @@ def test_easy_early_training_with_drivers_stays_routine() -> None:
     assert any("early/light" in line for line in result.evidence)
 
 
-def test_warm_forecast_is_not_named_without_a_measured_weather_or_bedroom_driver() -> None:
+def test_a_warm_forecast_no_longer_waits_for_a_correlation_to_permit_it() -> None:
+    """Batch 249 reversed this test, deliberately.
+
+    It used to assert that a 15C overnight low went unmentioned unless some
+    bedroom or weather driver happened to carry a negative coefficient. That made
+    a measured forecast wait on an unmeasured association, and once the shared
+    gate is applied almost nothing carries one — so the app would have gone quiet
+    about the room on exactly the nights it should speak. Direct observation was
+    never the unreliable part.
+    """
     result = project_sleep(
         SleepProjectionInputs(
             training=[
@@ -90,15 +109,17 @@ def test_warm_forecast_is_not_named_without_a_measured_weather_or_bedroom_driver
                     aerobic_training_effect=4.0,
                 )
             ],
-            sleep_drivers=[_driver()],
+            sleep_drivers=[],
             latest_bedroom_temperature_c=17.8,
             overnight_low_c=15.0,
         )
     )
 
     assert result.tone == "protect"
-    assert "warm overnight low" not in result.headline
-    assert not any("15.0C" in line for line in result.evidence)
+    assert "warm overnight low" in result.headline
+    assert any("15.0C" in line for line in result.evidence)
+    # And with no driver through the gate, no measured driver is claimed.
+    assert not any("Measured driver" in line for line in result.evidence)
 
 
 def test_rest_day_falls_back_to_static_protocol() -> None:
@@ -118,7 +139,13 @@ def test_rest_day_falls_back_to_static_protocol() -> None:
     ]
 
 
-def test_insufficient_driver_history_falls_back() -> None:
+def test_no_driver_through_the_gate_still_reads_today_training() -> None:
+    """Batch 249: the fallback is about training, not about a surviving correlation.
+
+    Requiring a named driver here would have sent almost every night to the
+    generic protocol once the shared gate was applied, which is a worse read than
+    the one a late, hard session supports on its own.
+    """
     result = project_sleep(
         SleepProjectionInputs(
             training=[
@@ -130,9 +157,51 @@ def test_insufficient_driver_history_falls_back() -> None:
                     aerobic_training_effect=4.0,
                 )
             ],
-            sleep_drivers=[SleepDriverEvidence("prev_day_training_load", -0.8, 4)],
+            sleep_drivers=[],
         )
     )
 
+    assert result.status == "personalized"
+    assert result.tone == "watch"
+    assert not any("Measured driver" in line for line in result.evidence)
+    assert any("18:00" in line for line in result.evidence)
+
+
+def test_a_gated_driver_brings_its_interval_and_confounds_past_the_cap() -> None:
+    """The caveat must not lose a truncation race (Batch 231's rule, Batch 249's numbers)."""
+    result = project_sleep(
+        SleepProjectionInputs(
+            training=[
+                TrainingSignal(
+                    name="Late hard ride",
+                    activity_type="indoor_cycling",
+                    local_start=time(18, 0),
+                    duration_min=95,
+                    training_load=150,
+                    aerobic_training_effect=4.0,
+                )
+            ],
+            sleep_drivers=[
+                SleepDriverEvidence(
+                    driver="bedroom_fan_ran_minutes",
+                    coefficient=-0.41,
+                    sample_count=55,
+                    summary="Nights the fan ran average 10.1 min lower REM sleep.",
+                    evidence_sentence="Measured over 55 nights: the link is 0.41 on a 0-1 scale.",
+                    confounds=("The fan runs because the room is already warm.",),
+                )
+            ],
+            latest_bedroom_temperature_c=20.4,
+            overnight_low_c=15.0,
+        )
+    )
+
+    assert any("55 nights" in line for line in result.evidence)
+    assert any("already warm" in line for line in result.evidence)
+
+
+def test_a_rest_day_is_the_only_fallback() -> None:
+    result = project_sleep(SleepProjectionInputs(training=[], sleep_drivers=[]))
     assert result.status == "fallback"
     assert result.tone == "routine"
+    assert "no training logged today" in result.summary

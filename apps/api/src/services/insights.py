@@ -23,6 +23,7 @@ the rows, calls them, and (on the ``/run`` path) records an audit row in
 
 from __future__ import annotations
 
+import math
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -91,6 +92,13 @@ READINESS_DECLINE_SLOPE = -2.0  # score points per day
 # --- 17.3 Driver/correlation settings ------------------------------------------
 DRIVERS_LOOKBACK_DAYS = 120
 MIN_CORRELATION_SAMPLES = 8
+
+# Batch 249 (HS240-06): the covariate every single-subject time series has and
+# almost none control for. Carried on each driver record so ``compute_drivers``
+# can report the association that survives the passage of the seasons, not the
+# one that shares them. Deliberately *not* a member of ``DRIVER_KEYS`` — it is
+# what we adjust for, never a lever we would offer Mark.
+CALENDAR_DAY_KEY = "calendar_day_ordinal"
 
 OUTCOME_SLEEP_SCORE = "sleep_score"
 OUTCOME_RECOVERY_HRV = "recovery_hrv_ms"
@@ -194,6 +202,91 @@ def pearson(xs: Sequence[float], ys: Sequence[float]) -> float | None:
         return None
     cov = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys, strict=True))
     return float(cov / (var_x**0.5 * var_y**0.5))
+
+
+def partial_pearson(
+    xs: Sequence[float], ys: Sequence[float], controls: Sequence[float]
+) -> float | None:
+    """Pearson correlation of ``xs`` and ``ys`` with ``controls`` held constant.
+
+    Batch 249 (HS240-06). Three lines of algebra that would have stopped the one
+    lever this app has ever issued: warm bedroom minutes fell steeply across the
+    summer and REM rose across the same weeks, so roughly 40% of their raw
+    association was the two variables sharing a season rather than a mechanism.
+    """
+    r_xy = pearson(xs, ys)
+    r_xz = pearson(xs, controls)
+    r_yz = pearson(ys, controls)
+    if r_xy is None or r_xz is None or r_yz is None:
+        return None
+    residual_x = 1 - r_xz**2
+    residual_y = 1 - r_yz**2
+    # A driver that *is* the calendar has no variance left once the calendar is
+    # removed, and the ratio below then divides two quantities that are both
+    # rounding error. Guarding on an exact zero is not enough: a perfect
+    # correlation comes back as 0.9999999999999999 and produces a confident
+    # nonsense number. ``None`` is the honest answer — this association cannot be
+    # separated from the passage of time at all.
+    if residual_x <= 1e-9 or residual_y <= 1e-9:
+        return None
+    return float((r_xy - r_xz * r_yz) / (residual_x * residual_y) ** 0.5)
+
+
+def correlation_interval(
+    coefficient: float, sample_count: int, *, controls: int = 0
+) -> tuple[float, float] | None:
+    """95% confidence interval for a (partial) correlation, via Fisher's z.
+
+    ``None`` when the sample cannot support an interval at all. ``controls`` is
+    the number of covariates partialled out; each one costs a degree of freedom,
+    so an interval computed on an adjusted coefficient is honestly slightly
+    wider than one computed on the raw.
+    """
+    df = sample_count - 3 - controls
+    if df <= 0 or abs(coefficient) >= 1:
+        return None
+    z = math.atanh(coefficient)
+    half_width = 1.96 / math.sqrt(df)
+    return math.tanh(z - half_width), math.tanh(z + half_width)
+
+
+def interval_excludes_zero(interval: tuple[float, float] | None) -> bool:
+    """True only when the whole interval sits on one side of zero.
+
+    A ``None`` interval is not evidence of an effect, so it fails — the caller
+    that could not compute an interval must not be allowed to skip the gate.
+    """
+    if interval is None:
+        return False
+    low, high = interval
+    return (low > 0 and high > 0) or (low < 0 and high < 0)
+
+
+def mean_difference_interval(
+    treatment: Sequence[float], comparison: Sequence[float]
+) -> tuple[float, float] | None:
+    """95% CI for ``mean(treatment) - mean(comparison)`` (Welch, normal approx).
+
+    Batch 249 (HS240-07). The experiment loop compared two means against a fixed
+    point threshold and called the crossing a direction; at three nights an arm
+    against Mark's measured dispersion that threshold sits at roughly half a
+    standard error, which pure noise clears a large fraction of the time. The
+    interval is what tells the difference between a result and a coin.
+    """
+    if len(treatment) < 2 or len(comparison) < 2:
+        return None
+    mean_t, mean_c = _mean(treatment), _mean(comparison)
+    var_t = sum((v - mean_t) ** 2 for v in treatment) / (len(treatment) - 1)
+    var_c = sum((v - mean_c) ** 2 for v in comparison) / (len(comparison) - 1)
+    standard_error = (var_t / len(treatment) + var_c / len(comparison)) ** 0.5
+    delta = mean_t - mean_c
+    if standard_error == 0:
+        # Zero observed dispersion in both arms: the limit of the formula, and the
+        # observed difference *is* the interval. A degenerate ``(0, 0)`` when the
+        # means also match still fails :func:`interval_excludes_zero`, which is
+        # the right answer for two identical arms.
+        return delta, delta
+    return delta - 1.96 * standard_error, delta + 1.96 * standard_error
 
 
 # ---------------------------------------------------------------------------
@@ -422,10 +515,32 @@ class DriverCorrelation:
     coefficient: float
     sample_count: int
     summary: str | None = None
+    # Batch 249 (HS240-06): the association after the passage of time is held
+    # constant, and the interval it is actually worth. ``None`` when the record
+    # set carried no calendar key or the sample cannot support an interval —
+    # which is a reason to say nothing, never a reason to skip the gate.
+    adjusted_coefficient: float | None = None
+    interval_low: float | None = None
+    interval_high: float | None = None
 
     @property
     def direction(self) -> str:
         return "positive" if self.coefficient >= 0 else "negative"
+
+    @property
+    def effect(self) -> float:
+        """The coefficient the gates judge: adjusted where possible, raw otherwise."""
+        return self.coefficient if self.adjusted_coefficient is None else self.adjusted_coefficient
+
+    @property
+    def interval(self) -> tuple[float, float] | None:
+        if self.interval_low is None or self.interval_high is None:
+            return None
+        return self.interval_low, self.interval_high
+
+    @property
+    def excludes_zero(self) -> bool:
+        return interval_excludes_zero(self.interval)
 
 
 @dataclass(frozen=True)
@@ -457,6 +572,7 @@ def compute_drivers(
     for driver in driver_keys:
         xs: list[float] = []
         ys: list[float] = []
+        days: list[float] = []
         for record in records:
             x = record.get(driver)
             y = record.get(outcome_key)
@@ -464,11 +580,28 @@ def compute_drivers(
                 continue
             xs.append(float(x))
             ys.append(float(y))
+            day = record.get(CALENDAR_DAY_KEY)
+            if day is not None:
+                days.append(float(day))
         if len(xs) < min_samples:
             continue
         coeff = pearson(xs, ys)
         if coeff is None:
             continue
+        # Batch 249: adjust for calendar time when the records carry it, and
+        # report the interval on whichever coefficient the gates will judge.
+        has_calendar = bool(days) and len(days) == len(xs)
+        adjusted = partial_pearson(xs, ys, days) if has_calendar else None
+        judged = coeff if adjusted is None else adjusted
+        if has_calendar and adjusted is None:
+            # The adjustment was attempted and is undefined — the driver is
+            # collinear with the calendar. There is no interval to report, and a
+            # missing interval must never read as separation, so the driver
+            # cannot be named. Falling back to the raw coefficient here would
+            # hand a lever to precisely the variable that is only a season.
+            interval = None
+        else:
+            interval = correlation_interval(judged, len(xs), controls=0 if adjusted is None else 1)
         result = DriverCorrelation(driver, outcome_key, round(coeff, 4), len(xs))
         results.append(
             DriverCorrelation(
@@ -477,9 +610,14 @@ def compute_drivers(
                 coefficient=result.coefficient,
                 sample_count=result.sample_count,
                 summary=driver_sentence(records, result),
+                adjusted_coefficient=None if adjusted is None else round(adjusted, 4),
+                interval_low=None if interval is None else round(interval[0], 4),
+                interval_high=None if interval is None else round(interval[1], 4),
             )
         )
-    results.sort(key=lambda r: abs(r.coefficient), reverse=True)
+    # Ranked by the adjusted association where there is one, so a driver that is
+    # mostly a calendar cannot out-rank one that is not.
+    results.sort(key=lambda r: abs(r.effect), reverse=True)
     return results
 
 
@@ -612,7 +750,14 @@ def driver_sentence(
         if not higher_is_better:
             comparison = f"{magnitude} {unit} {'more' if delta > 0 else 'less'} {outcome_label}"
 
-    return f"Nights with {label} average {comparison} ({correlation.sample_count} nights measured)."
+    # Batch 249 (HS240-11): the difference is estimated from a split, so the
+    # split is what gets reported. The old wording quoted the *total* pairs —
+    # "(64 nights measured)" for a 42/27 comparison — which reads as if every
+    # night had been exposed and overstates the evidence behind the number.
+    return (
+        f"Nights with {label} average {comparison} "
+        f"({len(exposed)} such nights vs {len(baseline)} without)."
+    )
 
 
 def _format_delta(value: float) -> str:
@@ -860,6 +1005,9 @@ class InsightsService:
             prev_load = load_by_date.get(day - timedelta(days=1))
             records.append(
                 {
+                    # Batch 249: the covariate, not a driver. ``DRIVER_KEYS``
+                    # never names it, so it is adjusted for and never offered.
+                    CALENDAR_DAY_KEY: float(day.toordinal()),
                     OUTCOME_SLEEP_SCORE: float(sleep.score)
                     if sleep and sleep.score is not None
                     else None,

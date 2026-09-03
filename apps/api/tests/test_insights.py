@@ -29,6 +29,7 @@ from src.services.insights import (
     AUDIT_TYPE_DRIVERS,
     AUDIT_TYPE_EARLY_WARNING,
     AUDIT_TYPE_FTP_DRIFT,
+    CALENDAR_DAY_KEY,
     DRIVER_KEYS,
     OUTCOME_OVERNIGHT_AWAKE_MIN,
     OUTCOME_RECOVERY_HRV,
@@ -42,8 +43,12 @@ from src.services.insights import (
     _drivers_packet,
     _drivers_report_from_packet,
     compute_drivers,
+    correlation_interval,
     detect_early_warning,
     detect_ftp_drift,
+    interval_excludes_zero,
+    mean_difference_interval,
+    partial_pearson,
     pearson,
 )
 from src.services.insights import (
@@ -275,8 +280,11 @@ def test_compute_drivers_adds_plain_language_bedroom_summary() -> None:
         driver_keys=("bedroom_critical_minutes",),
     )
 
+    # Batch 249 (HS240-11): the difference comes from a split, so the split is
+    # what is reported. "(10 nights measured)" overstated a 5-vs-5 comparison.
     assert drivers[0].summary == (
-        "Nights with 60+ min above 20C average 6 points lower sleep score (10 nights measured)."
+        "Nights with 60+ min above 20C average 6 points lower sleep score "
+        "(5 such nights vs 5 without)."
     )
 
 
@@ -864,3 +872,130 @@ async def test_stale_driver_cache_falls_back_and_regenerates_current_version(
         )
 
     assert sorted(versions) == ["insights:v1", INSIGHTS_PROMPT_VERSION]
+
+
+# ---------------------------------------------------------------------------
+# Batch 249 (HS240-06/07): the statistics that decide whether a claim is made
+# ---------------------------------------------------------------------------
+
+
+def test_partial_correlation_removes_a_shared_trend() -> None:
+    """Two variables that only share a calendar are not associated.
+
+    Constructed so the driver falls linearly and the outcome rises linearly with
+    time, with no relationship of their own beyond that. This is the shape
+    HS240-06 found in production: warm bedroom minutes fell across the summer and
+    REM rose across the same weeks.
+    """
+    days = [float(i) for i in range(60)]
+    driver = [100.0 - i for i in range(60)]
+    outcome = [50.0 + i * 0.5 for i in range(60)]
+
+    raw = pearson(driver, outcome)
+    adjusted = partial_pearson(driver, outcome, days)
+
+    assert raw is not None and raw < -0.99
+    # The driver *is* the calendar, so there is nothing left to correlate with
+    # once the calendar is held constant. ``None`` — not a number — is the answer.
+    assert adjusted is None
+
+    # And a driver in that state is never nameable: no interval, so no separation.
+    records: list[dict[str, float | None]] = [
+        {CALENDAR_DAY_KEY: day, OUTCOME_SLEEP_SCORE: y, "seasonal": x}
+        for day, x, y in zip(days, driver, outcome, strict=True)
+    ]
+    (result,) = compute_drivers(records, outcome_key=OUTCOME_SLEEP_SCORE, driver_keys=("seasonal",))
+    assert result.interval is None
+    assert not result.excludes_zero
+
+
+def test_partial_correlation_keeps_a_real_association() -> None:
+    """Adjustment removes the season, not the signal."""
+    days = [float(i) for i in range(60)]
+    driver = [float((i * 7) % 13) for i in range(60)]  # no trend
+    outcome = [100.0 - value * 3 for value in driver]
+
+    raw = pearson(driver, outcome)
+    adjusted = partial_pearson(driver, outcome, days)
+
+    assert raw is not None and adjusted is not None
+    assert abs(raw - adjusted) < 0.05
+
+
+def test_the_interval_at_the_gates_own_floor_spans_zero() -> None:
+    """r = 0.15 on 20 nights: a coin flip the old code labelled ``moderate``."""
+    interval = correlation_interval(0.15, 20)
+    assert interval is not None
+    low, high = interval
+    assert low < 0 < high
+    assert not interval_excludes_zero(interval)
+    # And the same coefficient on a real history does separate.
+    assert interval_excludes_zero(correlation_interval(0.15, 400))
+
+
+def test_an_interval_is_wider_once_a_covariate_is_partialled_out() -> None:
+    """Adjusting costs a degree of freedom, and the interval says so."""
+    plain = correlation_interval(-0.3, 40)
+    adjusted = correlation_interval(-0.3, 40, controls=1)
+    assert plain is not None and adjusted is not None
+    assert adjusted[1] - adjusted[0] > plain[1] - plain[0]
+
+
+def test_a_missing_interval_never_counts_as_separation() -> None:
+    assert correlation_interval(0.5, 3) is None
+    assert correlation_interval(1.0, 100) is None
+    assert not interval_excludes_zero(None)
+
+
+def test_mean_difference_interval_widens_with_dispersion() -> None:
+    """Mark's REM SD is 4.80 points; a 3-point gap on 7 nights is not a result."""
+    applied = [26.0, 19.0, 24.0, 17.0, 25.0, 20.0, 22.0]
+    not_applied = [22.0, 16.0, 21.0, 15.0, 22.0, 17.0, 19.0]
+    interval = mean_difference_interval(applied, not_applied)
+    assert interval is not None
+    assert interval[0] < 0 < interval[1]
+    assert not interval_excludes_zero(interval)
+
+
+def test_compute_drivers_ranks_on_the_calendar_adjusted_association() -> None:
+    """A driver that is mostly a season loses to one that is not.
+
+    ``seasonal_driver`` correlates about -0.87 with the outcome raw and nothing
+    at all once the day is held constant; ``real_driver`` is weaker raw and
+    survives. The old ranking, on |r| alone, had them the other way round.
+    """
+    records: list[dict[str, float | None]] = []
+    for i in range(60):
+        records.append(
+            {
+                CALENDAR_DAY_KEY: float(i),
+                OUTCOME_SLEEP_SCORE: 60.0 + i * 0.5 - float((i * 7) % 13),
+                "seasonal_driver": 100.0 - i,
+                "real_driver": float((i * 7) % 13),
+            }
+        )
+
+    drivers = compute_drivers(
+        records,
+        outcome_key=OUTCOME_SLEEP_SCORE,
+        driver_keys=("seasonal_driver", "real_driver"),
+    )
+
+    by_key = {d.driver: d for d in drivers}
+    assert abs(by_key["seasonal_driver"].coefficient) > abs(by_key["real_driver"].coefficient)
+    assert abs(by_key["seasonal_driver"].effect) < abs(by_key["real_driver"].effect)
+    assert drivers[0].driver == "real_driver"
+    assert drivers[0].excludes_zero
+    assert not by_key["seasonal_driver"].excludes_zero
+
+
+def test_compute_drivers_without_a_calendar_key_judges_the_raw_coefficient() -> None:
+    """A caller that supplies no covariate still gets an interval, on the raw r."""
+    records: list[dict[str, float | None]] = [
+        {OUTCOME_SLEEP_SCORE: 60.0 + float((i * 7) % 13), "driver": float((i * 5) % 11)}
+        for i in range(40)
+    ]
+    (result,) = compute_drivers(records, outcome_key=OUTCOME_SLEEP_SCORE, driver_keys=("driver",))
+    assert result.adjusted_coefficient is None
+    assert result.effect == result.coefficient
+    assert result.interval is not None

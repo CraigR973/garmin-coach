@@ -17,8 +17,36 @@ from src.services.chronic_patterns import (
     classify_check_in_cause_matches,
     classify_check_in_causes,
 )
-from src.services.insights import DriverCorrelation
+from src.services.insights import DriverCorrelation, correlation_interval
 from src.services.rem_interventions import RemRotation
+
+
+def _driver(
+    driver: str,
+    outcome: str,
+    coefficient: float,
+    sample_count: int,
+    summary: str | None = None,
+    *,
+    adjusted: float | None = None,
+) -> DriverCorrelation:
+    """A correlation shaped the way ``compute_drivers`` now builds one (Batch 249).
+
+    The interval is not decoration: ``select_lever`` refuses a driver that has
+    none, so a fixture without one can never name a lever.
+    """
+    judged = coefficient if adjusted is None else adjusted
+    interval = correlation_interval(judged, sample_count, controls=0 if adjusted is None else 1)
+    return DriverCorrelation(
+        driver=driver,
+        outcome=outcome,
+        coefficient=coefficient,
+        sample_count=sample_count,
+        summary=summary,
+        adjusted_coefficient=adjusted,
+        interval_low=None if interval is None else interval[0],
+        interval_high=None if interval is None else interval[1],
+    )
 
 
 def _nights(end: date, *, rem_pct: float, count: int = 28) -> list[SleepNight]:
@@ -56,29 +84,26 @@ def test_chronic_rem_suggestion_prioritises_measured_driver() -> None:
     outcomes = {
         # A strong load correlation, but against sleep score: not this flag's outcome.
         "sleep_score": [
-            DriverCorrelation(
-                driver="prev_day_training_load",
-                outcome="sleep_score",
-                coefficient=-0.61,
-                sample_count=18,
-                summary="Higher load nights averaged 5 points lower sleep score.",
+            _driver(
+                "prev_day_training_load",
+                "sleep_score",
+                -0.61,
+                18,
+                "Higher load nights averaged 5 points lower sleep score.",
             )
         ],
+        # Batch 249: strong enough that its interval clears zero. The real -0.24
+        # over 64 nights no longer qualifies, which is what
+        # ``test_the_card_never_calls_a_correlation_the_strongest_lever`` pins.
         "rem_sleep_min": [
-            DriverCorrelation(
-                driver="bedroom_warning_minutes",
-                outcome="rem_sleep_min",
-                coefficient=-0.24,
-                sample_count=64,
-                summary="Nights with 60+ min above 19.5C average 4.6 min lower REM sleep.",
+            _driver(
+                "bedroom_warning_minutes",
+                "rem_sleep_min",
+                -0.44,
+                64,
+                "Nights with 60+ min above 19.5C average 4.6 min lower REM sleep.",
             ),
-            DriverCorrelation(
-                driver="prev_day_training_load",
-                outcome="rem_sleep_min",
-                coefficient=-0.08,
-                sample_count=115,
-                summary=None,
-            ),
+            _driver("prev_day_training_load", "rem_sleep_min", -0.08, 115),
         ],
     }
 
@@ -993,19 +1018,20 @@ def test_check_in_context_packet_carries_its_basis() -> None:
 _PROD_REM_OUTCOMES_2026_08_27 = {
     # The real stored ranking on the fourth morning the false statement fired.
     "rem_sleep_min": [
-        DriverCorrelation("bedroom_peak_fan_speed", "rem_sleep_min", 0.3449, 10, None),
-        DriverCorrelation("sleep_stress_avg", "rem_sleep_min", -0.2597, 121, None),
-        DriverCorrelation(
+        _driver("bedroom_peak_fan_speed", "rem_sleep_min", 0.3449, 10),
+        _driver("sleep_stress_avg", "rem_sleep_min", -0.2597, 121),
+        _driver(
             "bedroom_warning_minutes",
             "rem_sleep_min",
             -0.2388,
             64,
-            "Nights with 60+ min above 19.5C average 4.6 min lower REM sleep (64 nights measured).",
+            "Nights with 60+ min above 19.5C average 4.6 min lower REM sleep "
+            "(42 such nights vs 22 without).",
         ),
-        DriverCorrelation("prev_day_training_load", "rem_sleep_min", -0.0783, 115, None),
+        _driver("prev_day_training_load", "rem_sleep_min", -0.0783, 115),
     ],
     "sleep_score": [
-        DriverCorrelation("prev_day_training_load", "sleep_score", -0.0464, 115, None),
+        _driver("prev_day_training_load", "sleep_score", -0.0464, 115),
     ],
 }
 
@@ -1029,32 +1055,59 @@ def test_the_card_never_calls_a_correlation_the_strongest_lever() -> None:
     """The exact sentence Mark read on 2026-08-25, -26, -27 and -28.
 
     ``prev_day_training_load`` carried -0.0464 over 115 nights in the very object
-    that called it the strongest measured lever.
+    that called it the strongest measured lever. Batch 231 stopped it winning;
+    Batch 249 finds that on this packet *nothing* wins, because the best
+    candidate's interval runs from -0.458 to +0.007 across 64 nights. The card
+    says that rather than naming its least weak member.
     """
     result = _rem_flag_result()
     suggestion = next(item for item in result.items if item.metric_key == "rem_sleep_pct")
 
     assert "strongest measured lever" not in suggestion.summary
     assert "training load" not in suggestion.summary
-    assert suggestion.driver is not None
-    assert suggestion.driver.driver == "bedroom_warning_minutes"
-    assert "not a proven cause" in suggestion.summary
+    assert suggestion.driver is None
+    assert "nothing measured tracks it closely enough" in suggestion.summary
+    # The advice survives the claim being withdrawn.
+    assert suggestion.actions
 
 
-def test_the_named_driver_and_the_summary_describe_the_same_measurement() -> None:
-    result = _rem_flag_result()
+def test_the_named_driver_and_its_evidence_describe_the_same_measurement() -> None:
+    """When a driver does qualify, the summary names it and the evidence sizes it."""
+    result = _rem_flag_result(
+        driver_outcomes={
+            "rem_sleep_min": [
+                _driver(
+                    "bedroom_warning_minutes",
+                    "rem_sleep_min",
+                    -0.44,
+                    64,
+                    "Nights with 60+ min above 19.5C average 4.6 min lower REM sleep "
+                    "(42 such nights vs 22 without).",
+                ),
+            ]
+        }
+    )
     suggestion = next(item for item in result.items if item.metric_key == "rem_sleep_pct")
 
     assert suggestion.driver is not None
     assert suggestion.driver.label in suggestion.summary
-    assert f"{suggestion.driver.sample_count} nights" in suggestion.summary
+    assert "not a proven cause" in suggestion.summary
+    # Batch 249: the sample and the interval moved out of the summary and into
+    # the evidence, past the truncation cap, and no confidence word replaced them.
+    assert suggestion.driver.evidence_sentence is not None
+    assert any(f"{suggestion.driver.sample_count} nights" in line for line in suggestion.evidence)
+    assert any("one side of no effect" in line for line in suggestion.evidence)
+    assert "moderate" not in suggestion.summary
+    assert suggestion.driver.to_dict()["adjustedCoefficient"] is None
+    assert suggestion.driver.to_dict()["intervalLow"] is not None
+    assert "confidence" not in suggestion.driver.to_dict()
 
 
 def test_no_qualifying_driver_names_no_lever_at_all() -> None:
     result = _rem_flag_result(
         driver_outcomes={
             "rem_sleep_min": [
-                DriverCorrelation("prev_day_training_load", "rem_sleep_min", -0.05, 115, None),
+                _driver("prev_day_training_load", "rem_sleep_min", -0.05, 115),
             ]
         }
     )
@@ -1071,12 +1124,13 @@ def test_a_confound_survives_the_evidence_cap() -> None:
     result = _rem_flag_result(
         driver_outcomes={
             "rem_sleep_min": [
-                DriverCorrelation(
+                _driver(
                     "bedroom_fan_ran_minutes",
                     "rem_sleep_min",
                     -0.41,
                     55,
-                    "Nights with the fan ran average 10.1 min lower REM sleep (55 nights).",
+                    "Nights with the fan ran average 10.1 min lower REM sleep "
+                    "(31 such nights vs 24 without).",
                 ),
             ]
         }
