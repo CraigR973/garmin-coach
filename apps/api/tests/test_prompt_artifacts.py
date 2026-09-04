@@ -167,4 +167,56 @@ async def test_the_orphan_check_reports_counts_rather_than_comparing_strings(
         # An empty database orphans nothing; the property under test is that the
         # report is derived from counts, not from a string comparison.
         assert report.orphaned >= 0 and report.current >= 0
-        assert report.blanks_a_surface is (report.orphaned > 0 and report.current == 0)
+
+
+def test_only_a_version_filtered_read_can_be_blanked() -> None:
+    """The correction the first production run of this check earned.
+
+    Against real data it reported **83 orphaned ``morning`` rows and none at the
+    current version** — which looks alarming and means nothing, because the morning
+    lookup does not filter on ``prompt_version``: 2026-09-03's brief still resolved
+    at v43 under a v46 constant. A close-out trusting the raw count would have
+    bought a paid regeneration for a surface that was never blank, which is the
+    exact mistake this module exists to prevent.
+    """
+    orphaned_and_none_current = dict(orphaned=83, current=0, newest_orphaned_subject_date=None)
+
+    self_healing = OrphanReport(
+        module="morning_analysis",
+        analysis_type="morning",
+        contract=RegenerationContract.SELF_HEAL,
+        current_version="morning-analysis-v46",
+        **orphaned_and_none_current,
+    )
+    assert self_healing.blanks_a_surface is False
+    assert self_healing.orphaned_rows_are_unreachable is False
+
+    unfiltered = OrphanReport(
+        module="reviews",
+        analysis_type="monthly_review",
+        contract=RegenerationContract.UNFILTERED,
+        current_version="reviews-v7",
+        **orphaned_and_none_current,
+    )
+    assert unfiltered.blanks_a_surface is False  # the old narrative is still served
+
+    filtered = OrphanReport(
+        module="trends",
+        analysis_type="seasonal_trend",
+        contract=RegenerationContract.VERSION_FILTERED,
+        current_version="trends-month-v10",
+        **orphaned_and_none_current,
+    )
+    assert filtered.blanks_a_surface is True
+    assert filtered.orphaned_rows_are_unreachable is True
+
+    replaced = OrphanReport(
+        module="trends",
+        analysis_type="seasonal_trend",
+        contract=RegenerationContract.VERSION_FILTERED,
+        current_version="trends-month-v10",
+        orphaned=12,
+        current=1,
+        newest_orphaned_subject_date="2026-08-01",
+    )
+    assert replaced.blanks_a_surface is False  # something current replaces them
