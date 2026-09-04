@@ -138,6 +138,7 @@ PROMPT_ARTIFACTS: tuple[PromptArtifact, ...] = (
 class OrphanReport:
     module: str
     analysis_type: str
+    contract: RegenerationContract
     current_version: str
     #: Rows stored at a version other than the current one.
     orphaned: int
@@ -147,8 +148,30 @@ class OrphanReport:
 
     @property
     def blanks_a_surface(self) -> bool:
-        """Orphans exist and nothing current replaces them."""
+        """Would a reader of this artifact find nothing?
+
+        **Only a version-filtered read can be blanked**, and the first production
+        run of this check proved why that has to be stated here rather than left
+        to whoever reads the output. Against real data it reported 83 orphaned
+        ``morning`` rows with none at the current version — which looks alarming
+        and means nothing: the morning lookup does not filter on
+        ``prompt_version``, so 2026-09-03's brief still resolves at v43 under a v46
+        constant. A close-out that trusted the raw count would have bought a paid
+        regeneration to fix a surface that was never blank, which is the exact
+        mistake this module exists to prevent (Batch 227, Batch 250).
+        """
+        if self.contract is not RegenerationContract.VERSION_FILTERED:
+            return False
         return self.orphaned > 0 and self.current == 0
+
+    @property
+    def orphaned_rows_are_unreachable(self) -> bool:
+        """Are the orphaned rows themselves beyond reach, blank surface or not?
+
+        True for a version-filtered read. For the other contracts the rows are
+        still served (``unfiltered``) or replaced on the next run (``self_heal``).
+        """
+        return self.contract is RegenerationContract.VERSION_FILTERED and self.orphaned > 0
 
 
 def _current_versions() -> dict[str, dict[str, str]]:
@@ -184,6 +207,7 @@ async def orphaned_artifacts(
     property close-out actually asks about.
     """
     reports: list[OrphanReport] = []
+    contracts = {artifact.module: artifact.contract for artifact in PROMPT_ARTIFACTS}
     for module, versions in _current_versions().items():
         for analysis_type, version in versions.items():
             where = [Analysis.analysis_type == analysis_type]
@@ -208,6 +232,7 @@ async def orphaned_artifacts(
                 OrphanReport(
                     module=module,
                     analysis_type=analysis_type,
+                    contract=contracts[module],
                     current_version=version,
                     orphaned=int(orphaned or 0),
                     current=int(current or 0),
