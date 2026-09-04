@@ -10,8 +10,10 @@ stop carrying a home address, a lifecycle that must stay one lifecycle.
 from __future__ import annotations
 
 import ast
+import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -297,7 +299,7 @@ def test_offline_sql_puts_alembic_version_in_the_coach_schema() -> None:
     failed on the first ``CREATE TABLE`` that already existed."""
     rendered = subprocess.run(
         [
-            str(REPO / "apps" / "api" / ".venv" / "bin" / "python"),
+            sys.executable,
             "-m",
             "alembic",
             "-c",
@@ -310,8 +312,9 @@ def test_offline_sql_puts_alembic_version_in_the_coach_schema() -> None:
         text=True,
         cwd=REPO,
         env={
-            "PATH": "/usr/bin:/bin",
+            **os.environ,
             "PYTHONPATH": str(REPO / "apps" / "api"),
+            # Rendering offline needs a parseable URL and never connects.
             "DATABASE_URL": "postgresql+asyncpg://u:p@localhost/db",
         },
         check=True,
