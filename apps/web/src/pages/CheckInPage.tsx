@@ -514,6 +514,42 @@ export function CheckInPage() {
         </Card>
       ) : null}
 
+      {/* Batch 253 (UX241-09): his own words used to sit two taps down, inside a
+          "More" accordion collapsed by default and summarised alongside blood
+          pressure and supplements — the fields he mostly leaves blank. It is the
+          single most informative thing he gives the app: his 2026-09-01 note about
+          window draughts opened the brief's second paragraph, and his post-workout
+          question got its own heading in the read that answered it. On a morning
+          when he is half awake, the path of least resistance was a chip and the
+          button — and the coach then read his day without the one thing only he
+          knows. This is a reordering, not new functionality. */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Anything you want me to know?</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="notes">In your own words</Label>
+            <Textarea
+              id="notes"
+              className="min-h-[100px]"
+              placeholder="Late night, stress, alcohol, illness, a question for me…"
+              value={manualForm.notes}
+              onChange={(e) => setManual('notes', e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="feel">In a few words</Label>
+            <Input
+              id="feel"
+              placeholder="e.g. tired at first, better now"
+              value={manualForm.feel}
+              onChange={(e) => setManual('feel', e.target.value)}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       <CollapsibleSection
         title="Last night's setup"
         summary="Bedding, windows, blind and when pre-cooling started"
@@ -606,32 +642,10 @@ export function CheckInPage() {
           elsewhere). */}
       <CollapsibleSection
         title="More"
-        summary="In your own words, blood pressure, and yesterday's supplements & food"
+        summary="Blood pressure and yesterday's supplements & food"
       >
         <div className="space-y-6">
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="feel">In a few words</Label>
-              <Input
-                id="feel"
-                placeholder="e.g. tired at first, better now"
-                value={manualForm.feel}
-                onChange={(e) => setManual('feel', e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="notes">Anything worth noting</Label>
-              <Textarea
-                id="notes"
-                className="min-h-[100px]"
-                placeholder="Late night, stress, alcohol, illness…"
-                value={manualForm.notes}
-                onChange={(e) => setManual('notes', e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-3 border-t border-border pt-4">
+          <div className="space-y-3">
             <div>
               <p className="text-sm font-semibold text-text-primary">Blood pressure</p>
               <p className="text-xs text-text-secondary">Optional — if you took a reading this morning.</p>

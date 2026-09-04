@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DailyLoopEnvelope } from '@/hooks/useDailyLoop';
 import { SettingsPage } from './SettingsPage';
 
@@ -17,8 +17,16 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
+const pushState = {
+  isSubscribed: false,
+  isLoading: false,
+  permission: 'default' as 'default' | 'granted' | 'denied',
+  subscribe: vi.fn(),
+  unsubscribe: vi.fn(),
+};
+
 vi.mock('../hooks/usePushSubscription', () => ({
-  usePushSubscription: () => ({ isSubscribed: false, isLoading: false, subscribe: vi.fn(), unsubscribe: vi.fn() }),
+  usePushSubscription: () => pushState,
 }));
 
 vi.mock('../hooks/useInstallPrompt', () => ({
@@ -111,5 +119,41 @@ describe('SettingsPage Voice section', () => {
         body: JSON.stringify({ enabled: true }),
       }),
     );
+  });
+});
+
+
+describe('notifications section (Batch 253, UX241-07)', () => {
+  beforeEach(() => {
+    pushState.isSubscribed = false;
+    pushState.isLoading = false;
+    pushState.permission = 'default';
+    // jsdom has no Notification API, and the section renders nothing without it.
+    vi.stubGlobal('Notification', { permission: 'default' });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('offers the enable button when the permission has never been asked', () => {
+    apiFetchMock.mockResolvedValue(makeSnapshot(false));
+    renderWithQuery(<SettingsPage />);
+    expect(screen.getByRole('button', { name: /enable push notifications/i })).toBeTruthy();
+  });
+
+  it('explains a blocked permission instead of showing an inert button', () => {
+    // The hook has always computed `permission`; this page never rendered it, so
+    // a denied permission looked exactly like a fresh one — and browsers do not
+    // re-prompt after a denial, which made the button do and say nothing. Push is
+    // the whole delivery mechanism of the daily loop, so the repair path
+    // mattering is the point.
+    pushState.permission = 'denied';
+    apiFetchMock.mockResolvedValue(makeSnapshot(false));
+    renderWithQuery(<SettingsPage />);
+
+    expect(screen.queryByRole('button', { name: /enable push notifications/i })).toBeNull();
+    expect(screen.getByText(/Notifications are blocked for CheckMark/i)).toBeTruthy();
+    expect(screen.getByText(/iPhone Settings/i)).toBeTruthy();
   });
 });

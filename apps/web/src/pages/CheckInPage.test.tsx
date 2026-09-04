@@ -627,15 +627,41 @@ describe('CheckInPage', () => {
 
     await user.click(niggle);
     expect(niggle.getAttribute('aria-pressed')).toBe('true');
-    // Niggle maps into "notes" (a free-text column), not "feel" — opening "More"
-    // shows it landed in the right field.
-    await user.click(screen.getByRole('button', { name: /more/i }));
-    expect(((await screen.findByLabelText('Anything worth noting')) as HTMLTextAreaElement).value).toBe('niggle');
+    // Niggle maps into "notes" (a free-text column), not "feel". Batch 253
+    // (UX241-09) promoted both out of the collapsed "More" and above the fold, so
+    // this no longer has to open an accordion to see where the chip landed.
+    expect(((await screen.findByLabelText('In your own words')) as HTMLTextAreaElement).value).toBe('niggle');
     expect((screen.getByLabelText('In a few words') as HTMLInputElement).value).toBe('');
 
     await user.click(niggle);
     expect(niggle.getAttribute('aria-pressed')).toBe('false');
-    expect((screen.getByLabelText('Anything worth noting') as HTMLTextAreaElement).value).toBe('');
+    expect((screen.getByLabelText('In your own words') as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it('puts his own words above the fold, not behind "More" (Batch 253, UX241-09)', async () => {
+    // His free text is where his intent enters the system: the 2026-09-01 note
+    // about window draughts opened the brief's second paragraph, and his
+    // post-workout question got its own heading in the read that answered it. It
+    // used to be two taps down, summarised alongside blood pressure and
+    // supplements — the fields he mostly leaves blank.
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CheckInPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByLabelText('In your own words')).toBeTruthy();
+    expect(screen.getByLabelText('In a few words')).toBeTruthy();
+    expect(screen.getByText('Anything you want me to know?')).toBeTruthy();
+
+    // BP and supplements stay behind "More" — reachable, never required.
+    expect(screen.queryByLabelText('Systolic')).toBeNull();
+    expect(
+      screen.getByText(/Blood pressure and yesterday's supplements & food/i),
+    ).toBeTruthy();
   });
 
   it('still saves BP when "More" is opened and filled in', async () => {

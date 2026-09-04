@@ -28,14 +28,43 @@ def _url() -> str:
     )
 
 
+#: Emitted by the offline path so a database provisioned from ``--sql`` output is
+#: byte-for-byte the database the online path builds. Batch 253 (CR236-08).
+#: Alembic appends its own terminator, so these carry none.
+_PREAMBLE = (
+    "CREATE SCHEMA IF NOT EXISTS coach",
+    "SET search_path TO coach, public",
+    # Fail fast if another connection holds a lock (e.g. long-running query).
+    # Transactional DDL rolls back cleanly on timeout.
+    "SET lock_timeout = '5s'",
+)
+
+
 def run_migrations_offline() -> None:
+    """Render the migrations as SQL without a database.
+
+    Batch 253 (CR236-08): this path used to configure *none* of what the online
+    path configures, so ``alembic upgrade base:head --sql`` — the offline
+    validation route this project relies on when no Postgres is available —
+    rendered ``CREATE TABLE alembic_version`` with **no schema qualifier**. It
+    landed in whatever ``search_path`` resolved to (``public``) while the online
+    path writes it to ``coach``. A database provisioned by piping that SQL was
+    then invisible to ``alembic current``: the next online ``upgrade head`` saw an
+    empty ``coach.alembic_version``, re-ran ``001``, and failed on the first
+    ``CREATE TABLE`` that already existed. The offline SQL also silently omitted
+    the 5s ``lock_timeout`` guard.
+    """
     context.configure(
         url=_url(),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        version_table_schema="coach",
+        include_schemas=True,
     )
     with context.begin_transaction():
+        for statement in _PREAMBLE:
+            context.execute(statement)
         context.run_migrations()
 
 

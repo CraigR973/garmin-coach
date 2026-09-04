@@ -9,6 +9,7 @@ from typing import Any, Literal, TypedDict
 
 import httpx
 import structlog
+from pydantic import BaseModel
 
 from src.config import settings
 
@@ -406,6 +407,51 @@ async def _post_with_retry(
     )
 
 
+#: Constraints Anthropic's structured-output grammar does not accept. Anthropic's
+#: own SDK helpers strip these before sending and then validate the response
+#: against the original model; this repo keeps a thin HTTP boundary, so it makes
+#: the same split explicitly — the provider gets grammar-supported structure, and
+#: ``model_validate`` retains every length/range constraint locally.
+#:
+#: Batch 253 (AI238-10) moved this out of ``longitudinal_analysis`` so the second
+#: structured caller could not re-derive it.
+UNSUPPORTED_SCHEMA_CONSTRAINTS = frozenset(
+    {
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "multipleOf",
+        "minLength",
+        "maxLength",
+        "minItems",
+        "maxItems",
+        "uniqueItems",
+        "pattern",
+    }
+)
+
+
+def anthropic_schema(model: type[BaseModel]) -> dict[str, Any]:
+    """A Pydantic model's JSON Schema in Anthropic's supported subset."""
+
+    def transform(value: Any) -> Any:
+        if isinstance(value, list):
+            return [transform(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+        return {
+            key: transform(item)
+            for key, item in value.items()
+            if key not in UNSUPPORTED_SCHEMA_CONSTRAINTS
+        }
+
+    schema = transform(model.model_json_schema(by_alias=True))
+    if not isinstance(schema, dict):  # pragma: no cover - Pydantic always returns an object
+        raise TypeError("Model JSON schema was not an object.")
+    return schema
+
+
 async def generate_anthropic_text(
     *,
     api_key: str,
@@ -417,6 +463,7 @@ async def generate_anthropic_text(
     prior_messages: list[dict[str, str]] | None = None,
     thinking: AnthropicThinking | None = None,
     effort: str | None = None,
+    output_schema: dict[str, Any] | None = None,
 ) -> AnthropicTextResult:
     """``prior_messages`` (optional) carries earlier user/assistant turns before
     ``user_prompt`` for a multi-turn conversation (Batch 119's brief follow-up
@@ -446,8 +493,17 @@ async def generate_anthropic_text(
     }
     if thinking is not None:
         payload["thinking"] = thinking
+    # Batch 253 (AI238-10): ``effort`` and ``format`` are two keys of **one**
+    # ``output_config``. Assigning it wholesale for either would silently drop the
+    # other — which for a structured caller means turning a schema-constrained
+    # response back into prose, with nothing failing until the parse does.
+    output_config: dict[str, Any] = {}
     if effort is not None:
-        payload["output_config"] = {"effort": effort}
+        output_config["effort"] = effort
+    if output_schema is not None:
+        output_config["format"] = {"type": "json_schema", "schema": output_schema}
+    if output_config:
+        payload["output_config"] = output_config
     headers = {
         "x-api-key": api_key,
         "anthropic-version": ANTHROPIC_VERSION,

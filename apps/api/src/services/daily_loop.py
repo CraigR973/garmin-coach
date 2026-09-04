@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -30,6 +30,12 @@ from src.services.activity_dates import activity_local_date as _activity_local_d
 from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
 from src.services.daily_loop_state import LoopState, describe_loop_state, is_evening
 from src.services.daily_metric_phase import morning_first_order
+from src.services.day_context_loaders import (
+    load_activities,
+    load_knowledge_base_content,
+    load_latest_temperature,
+    load_weather,
+)
 from src.services.feedback import FeedbackService
 from src.services.holiday_pause import HolidayPauseService, HolidayWindow
 from src.services.standing_habits import SECTION as STANDING_HABITS_SECTION
@@ -746,72 +752,24 @@ class DailyLoopService:
             return None
         return activity
 
+    # Batch 253 (CR236-12): one assembly, shared with
+    # ``SleepProjectionContextService``, which held a line-level copy of all four.
     async def _activities(
         self,
         user_id: uuid.UUID,
         subject_date: date,
         timezone_name: str,
     ) -> list[Activity]:
-        day_start = datetime(subject_date.year, subject_date.month, subject_date.day)
-        lower = day_start - timedelta(days=1)
-        upper = day_start + timedelta(days=2)
-        rows = (
-            (
-                await self.session.execute(
-                    select(Activity)
-                    .where(
-                        Activity.user_id == user_id,
-                        Activity.start_utc >= lower,
-                        Activity.start_utc < upper,
-                    )
-                    .order_by(Activity.start_utc.asc())
-                )
-            )
-            .scalars()
-            .all()
-        )
-        return [row for row in rows if _activity_local_date(row, timezone_name) == subject_date]
+        return await load_activities(self.session, user_id, subject_date, timezone_name)
 
     async def _latest_temperature(self, user_id: uuid.UUID) -> TemperatureReading | None:
-        return (
-            (
-                await self.session.execute(
-                    select(TemperatureReading)
-                    .where(TemperatureReading.user_id == user_id)
-                    .order_by(TemperatureReading.captured_at_utc.desc())
-                    .limit(1)
-                )
-            )
-            .scalars()
-            .first()
-        )
+        return await load_latest_temperature(self.session, user_id)
 
     async def _knowledge_base_content(self, user_id: uuid.UUID, section: str) -> dict[str, Any]:
-        row = await self.session.scalar(
-            select(KnowledgeBase)
-            .where(
-                KnowledgeBase.user_id == user_id,
-                KnowledgeBase.section == section,
-                KnowledgeBase.is_active.is_(True),
-            )
-            .order_by(KnowledgeBase.version.desc())
-            .limit(1)
-        )
-        return row.content if row is not None and isinstance(row.content, dict) else {}
+        return await load_knowledge_base_content(self.session, user_id, section)
 
     async def _weather(self, user_id: uuid.UUID, subject_date: date) -> WeatherDaily | None:
-        return (
-            (
-                await self.session.execute(
-                    select(WeatherDaily).where(
-                        WeatherDaily.user_id == user_id,
-                        WeatherDaily.calendar_date == subject_date,
-                    )
-                )
-            )
-            .scalars()
-            .first()
-        )
+        return await load_weather(self.session, user_id, subject_date)
 
     async def _data_quality_warnings(
         self,

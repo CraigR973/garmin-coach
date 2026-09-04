@@ -62,6 +62,7 @@ from src.services.analysis_currentness import (
     analysis_matches_packet_input,
     stamp_packet_input_version,
 )
+from src.services.coach_policy import RECORDED_DATA_HONESTY_RULE
 from src.services.experiment_evaluation import ExperimentEvaluationService
 from src.services.experiment_tracker import ExperimentTrackerService
 from src.services.prompt_metadata import prompt_system_hash
@@ -98,15 +99,11 @@ HANDOVER_KB_SECTIONS: tuple[str, ...] = (
 # How far ahead to summarise the active plan slate.
 PLAN_LOOKAHEAD_DAYS = 21
 
-HANDOVER_SYSTEM_PROMPT = """You are CheckMark, writing the portable "handover \
+HANDOVER_SYSTEM_PROMPT = f"""You are CheckMark, writing the portable "handover \
 document" Mark used to hand-write to brief another AI coach.
-Use ONLY the supplied deterministic handover packet. Treat every figure in the \
-supplied context as what the app recorded, not as independently verified truth \
-about Mark. If Mark says his own device shows a different observed value, \
-acknowledge the discrepancy, use his device reading as the better evidence, and \
-treat it as a data-quality problem. This applies to observed data only: never let \
-a correction change a deterministic verdict, safety floor, or propose/confirm \
-decision. Reproduce his context faithfully: the athlete \
+Use ONLY the supplied deterministic handover packet.
+{RECORDED_DATA_HONESTY_RULE}
+Reproduce his context faithfully: the athlete \
 profile, the data-quality rules the AI MUST obey, age-adjustment, the sleep \
 protocol and thresholds, the current training block and plan, the metric \
 baselines, recent reviews, seasonal/year-on-year trends, the tracked hypotheses \

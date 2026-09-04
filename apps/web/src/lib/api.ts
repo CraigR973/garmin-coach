@@ -1,3 +1,4 @@
+import { clearPersistedCache } from './queryClient';
 import { clearTokens, getAuthToken } from './tokens';
 
 // Empty/unset in production = same-origin (requests go through Vercel proxy rewrite).
@@ -62,6 +63,11 @@ export async function apiFetch<T>(
 
   if (resp.status === 401) {
     await clearTokens();
+    // Batch 253 (DS237-16): the logout and activation paths already clear both,
+    // so only involuntary expiry left the dehydrated `daily-loop` query — the
+    // morning brief — readable in localStorage on a device whose token was
+    // revoked, until the 24h maxAge or the next build's buster caught up.
+    clearPersistedCache();
     window.location.href = '/access';
     throw new Error('Session expired');
   }

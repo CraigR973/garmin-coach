@@ -45,11 +45,13 @@ from src.services.anthropic_batch import (
 )
 from src.services.anthropic_text import (
     AnthropicApiError,
+    anthropic_schema,
     classify_anthropic_error,
     configured_effort,
     configured_thinking,
 )
 from src.services.bulk_history_reads import without_sleep_raw_payload
+from src.services.coach_policy import RECORDED_DATA_HONESTY_RULE
 from src.services.experiment_tracker import ExperimentTrackerService
 from src.services.generation_requests import (
     claim_generation_request,
@@ -62,7 +64,7 @@ from src.services.workload_budget import workload_slot
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 ANALYSIS_TYPE = "longitudinal_findings"
-PROMPT_VERSION = "longitudinal-analysis-v1-2026-08-24"
+PROMPT_VERSION = "longitudinal-analysis-v2-2026-09-04"
 TARGET_EXPERIMENT_SLUG = "early_waking_0400"
 
 STATUS_PENDING = "pending"
@@ -76,9 +78,10 @@ MIN_NIGHTS_PER_TEMPERATURE_BAND = 5
 TEMPERATURE_BAND_WIDTH_C = 1.0
 MAX_INPUT_TOKENS = 900_000
 
-SYSTEM_PROMPT = """You are the longitudinal analyst for one private fitness coach.
+SYSTEM_PROMPT = f"""You are the longitudinal analyst for one private fitness coach.
 Reason from the supplied per-night evidence; do not diagnose disease and do not
 invent measurements, setup changes, causal mechanisms, or target temperatures.
+{RECORDED_DATA_HONESTY_RULE}
 
 The `nights` data is columnar: each row has the same positional order as
 `columns`. `temperatureBands` contains deterministic descriptive summaries, not
@@ -487,48 +490,15 @@ def build_message_params(
     return params, prompt
 
 
-_ANTHROPIC_UNSUPPORTED_SCHEMA_CONSTRAINTS = frozenset(
-    {
-        "minimum",
-        "maximum",
-        "exclusiveMinimum",
-        "exclusiveMaximum",
-        "multipleOf",
-        "minLength",
-        "maxLength",
-        "minItems",
-        "maxItems",
-        "uniqueItems",
-        "pattern",
-    }
-)
-
-
 def anthropic_output_schema() -> dict[str, Any]:
-    """Transform Pydantic JSON Schema for Anthropic's supported subset.
+    """This module's findings schema in Anthropic's supported subset.
 
-    Anthropic's SDK helpers remove these constraints before sending and then
-    validate the response against the original model.  This repo deliberately
-    keeps its thin HTTP boundary, so perform the same split explicitly: the
-    provider gets only grammar-supported structure; ``model_validate_json``
-    below retains every length/range constraint locally.
+    Batch 253 (AI238-10): the transform itself moved to
+    ``anthropic_text.anthropic_schema`` so ``conversation_learning`` — the second
+    structured caller, and the one that writes memory — could use the mechanism
+    rather than re-deriving it.
     """
-
-    def transform(value: Any) -> Any:
-        if isinstance(value, list):
-            return [transform(item) for item in value]
-        if not isinstance(value, dict):
-            return value
-        return {
-            key: transform(item)
-            for key, item in value.items()
-            if key not in _ANTHROPIC_UNSUPPORTED_SCHEMA_CONSTRAINTS
-        }
-
-    schema = transform(LongitudinalFindings.model_json_schema(by_alias=True))
-    if not isinstance(schema, dict):  # pragma: no cover - Pydantic always returns an object
-        raise LongitudinalAnalysisError("Longitudinal output schema was not an object.")
-    return schema
+    return anthropic_schema(LongitudinalFindings)
 
 
 def _deterministic_experiment() -> ProposedExperimentFinding:

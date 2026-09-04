@@ -47,6 +47,7 @@ from src.services.coaching_state import (
     _current_cycle_start,
 )
 from src.services.holiday_pause import is_build1
+from src.services.workout_categories import normalise_workout_type
 from src.services.workout_delivery import IntervalsEventClient
 
 GENERATED_BLOCK_SECTION = "generated_block"
@@ -488,7 +489,11 @@ class BlockGeneratorService:
                         workout_date=workout_date,
                         version=(current_version or 0) + 1,
                         title=str(workout["title"]),
-                        workout_type=str(workout["workoutType"]),
+                        # Batch 253 (CR236-05): the model writes this column, so
+                        # it is normalised into the shared vocabulary before it
+                        # lands rather than classified differently by each
+                        # language afterwards.
+                        workout_type=normalise_workout_type(str(workout["workoutType"])),
                         status="planned",
                         is_active=True,
                         planned_duration_min=workout.get("plannedDurationMin"),

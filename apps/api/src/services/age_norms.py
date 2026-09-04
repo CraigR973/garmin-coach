@@ -385,12 +385,29 @@ REM_PCT_BASIS = "REM as a percentage of measured sleep (deep + light + REM + awa
 # table under the identical denominator and say so just as little. So the basis
 # is stated once for the stage group, in two lengths — a compact one for a table
 # sub-line, and a sentence for the prose contract and the stage table's footnote.
-SLEEP_STAGE_PCT_BASIS = "% of measured sleep — deep + light + REM + awake"
+#: The sleep-stage denominator, stated once, in one register.
+#:
+#: Batch 253 (AI238-12): this fact used to reach the packet as **two** strings —
+#: a sentence in ``ageComparison.sleepStagePctBasis`` and a fragment
+#: (*"% of measured sleep — deep + light + REM + awake"*) on
+#: ``metricsVsBaselines[rem_sleep_pct].basis``. The model picked the terser one:
+#: the 2026-09-01 brief rendered *"REM: 34 minutes, 7.0% of measured sleep
+#: (deep+light+REM+awake)"*, which reads like field names on the very surface the
+#: "never print a field, key or path" rule governs — and it appeared only on the
+#: REM bullet, with Deep giving a percentage and no basis at all.
+#:
+#: Batch 217's convention is that **a basis is a sentence or it is nothing**.
+#: Given one string, the model cannot pick the wrong one.
 SLEEP_STAGE_PCT_BASIS_NOTE = (
     "Stage percentages are shares of measured sleep — deep + light + REM + awake — so "
     "they include time awake in bed. Garmin's displayed Duration excludes it, so its "
     "minutes and these percentages do not divide into each other."
 )
+
+#: The same sentence, under the name the ``metricsVsBaselines`` row uses. Kept as
+#: an alias rather than collapsed at the call sites so both packet paths are
+#: greppable, and pinned by a test to be the *same object*.
+SLEEP_STAGE_PCT_BASIS = SLEEP_STAGE_PCT_BASIS_NOTE
 
 # Batch 250 (HS240-14). The bands below are Ohayon et al. 2004 percentages, which
 # are conventionally shares of **total sleep time**; this app judges them against

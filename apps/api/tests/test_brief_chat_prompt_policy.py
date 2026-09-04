@@ -62,7 +62,18 @@ def _anthropic_calling_modules() -> set[str]:
     """Discover prompt surfaces from their model-boundary calls, not a list."""
 
     services_dir = Path(__file__).parents[1] / "src" / "services"
-    model_boundaries = {"generate_anthropic_text", "AnthropicReviewClient"}
+    # Batch 253 (AI238-07): ``AnthropicMessageBatchClient`` was missing, so
+    # ``longitudinal_analysis`` — which goes through the batch API rather than the
+    # messages one — was invisible to this discovery, absent from both
+    # ``READ_PROMPT_FLOORS`` and the exemptions, and audited for nothing. The
+    # exemption docstring claimed that could not happen. Its output routes into
+    # experiments and the knowledge base, so a drifted rule there propagates into
+    # surfaces that *are* audited, laundered through data.
+    model_boundaries = {
+        "generate_anthropic_text",
+        "AnthropicReviewClient",
+        "AnthropicMessageBatchClient",
+    }
     discovered: set[str] = set()
     for path in services_dir.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))

@@ -3,7 +3,9 @@ import { useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import {
+  briefMessageSchema,
   coachMessageInputSchema,
   PROACTIVE_COACH_ORIGIN_KINDS,
   type BriefMessage,
@@ -15,6 +17,8 @@ import { Sheet } from '@/components/ui/sheet';
 import { CoachConversation } from '@/components/CoachConversation';
 import { ORIGIN_PROMPTS, originForPath } from '@/lib/coachOrigin';
 import { cn } from '@/lib/utils';
+
+const coachThreadSchema = z.object({ data: z.array(briefMessageSchema) });
 
 /**
  * The coach, reachable from anywhere (Batch 179.4).
@@ -73,7 +77,15 @@ export function CoachLauncher({ userId, timeZone }: { userId?: string; timeZone?
 
   const threadQuery = useQuery({
     queryKey: ['coach-thread'],
-    queryFn: () => apiFetch<{ data: BriefMessage[] }>('/api/v1/coach/messages'),
+    // Batch 253 (UX241-06): this was the one fetch in the app with no schema
+    // guard. A 200 whose `data` is not an array made `messages.length` undefined,
+    // took the falsy branch, and rendered the *empty* state — so after an API
+    // change Mark's 268-message history read as deleted, with an invitation to
+    // start over and no way to tell that from data loss. Parsing turns drift into
+    // the honest error state Batch 193.2 already built, which could not fire
+    // because nothing threw.
+    queryFn: async () =>
+      coachThreadSchema.parse(await apiFetch<unknown>('/api/v1/coach/messages')),
     enabled: Boolean(userId) && !launcherHidden,
   });
 

@@ -50,7 +50,7 @@ function ThemeSection() {
 // ── Notifications section ─────────────────────────────────────────────────────
 
 function NotificationsSection() {
-  const { isSubscribed, isLoading, subscribe, unsubscribe } = usePushSubscription();
+  const { isSubscribed, isLoading, permission, subscribe, unsubscribe } = usePushSubscription();
   const { canInstall, prompt: triggerInstall } = useInstallPrompt();
 
   const pushSupported = typeof Notification !== 'undefined';
@@ -80,7 +80,19 @@ function NotificationsSection() {
             <span className="text-sm font-sans">Install app for notifications</span>
           </button>
         )}
-        {!isSubscribed ? (
+        {!isSubscribed && permission === 'denied' ? (
+          /* Batch 253 (UX241-07): the hook has always computed `permission` and
+             this page never rendered it, so a denied permission looked exactly
+             like a fresh one — and browsers will not re-prompt after a denial,
+             which made the button inert with no explanation. */
+          <div className="flex items-start gap-3 px-4 py-3 rounded-lg border border-warning/30 bg-warning/5 text-text-primary">
+            <BellOff className="h-4 w-4 mt-0.5 shrink-0 text-warning-text" aria-hidden />
+            <span className="text-sm font-sans">
+              Notifications are blocked for CheckMark. Turn them back on in iPhone
+              Settings › Notifications › CheckMark, then come back here.
+            </span>
+          </div>
+        ) : !isSubscribed ? (
           <button
             type="button"
             onClick={() => void subscribe()}
