@@ -34,7 +34,7 @@ export function ChronicSuggestionsCard({
             Pattern suggestions
           </div>
           <p className="text-sm text-text-secondary">{suggestions.summary}</p>
-          <p className="text-[11px] text-text-muted">{windowText(suggestions)}</p>
+          <p className="text-2xs text-text-muted">{windowText(suggestions)}</p>
         </CardContent>
       </Card>
     );
@@ -48,7 +48,7 @@ export function ChronicSuggestionsCard({
           <div className="space-y-1">
             <p className="text-sm font-semibold text-text-primary">{suggestions.headline}</p>
             <p className="text-sm text-text-secondary">{suggestions.summary}</p>
-            <p className="text-[11px] text-text-muted">{windowText(suggestions)}</p>
+            <p className="text-2xs text-text-muted">{windowText(suggestions)}</p>
           </div>
         </CardContent>
       </Card>
@@ -81,7 +81,7 @@ function SuggestionBlock({ item }: { item: Suggestion }) {
           <div className="flex items-center gap-2">
             <span
               className={cn(
-                'rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-normal',
+                'rounded-full border px-2 py-0.5 text-2xs font-semibold uppercase tracking-normal',
                 toneClass[item.tone],
               )}
             >
@@ -111,7 +111,7 @@ function SuggestionBlock({ item }: { item: Suggestion }) {
       )}
 
       {item.rotation && (
-        <p className="flex items-center gap-1.5 text-[11px] text-text-muted">
+        <p className="flex items-center gap-1.5 text-2xs text-text-muted">
           <RotateCw className="h-3 w-3 shrink-0" aria-hidden />
           Rotating focus — {item.rotation.shown} of {item.rotation.total} levers this week, a
           fresh set next week.

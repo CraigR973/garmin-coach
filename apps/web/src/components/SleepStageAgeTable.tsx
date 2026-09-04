@@ -92,7 +92,7 @@ export function SleepStageAgeTable({
                     </div>
                     <div
                       className={cn(
-                        'mt-0.5 inline-flex items-center justify-end gap-1 text-[11px] font-medium',
+                        'mt-0.5 inline-flex items-center justify-end gap-1 text-2xs font-medium',
                         toneText[row.tone],
                       )}
                     >
@@ -112,7 +112,7 @@ export function SleepStageAgeTable({
           <summary className="cursor-pointer list-none font-medium text-text-primary marker:hidden">
             Garmin target contrast
           </summary>
-          <div className="mt-2 space-y-1 text-[11px] leading-relaxed text-text-muted">
+          <div className="mt-2 space-y-1 text-2xs leading-relaxed text-text-muted">
             {garminRows.map((row) => (
               <p key={row.metricKey}>
                 {row.label}: healthy {row.ageBand} {fmtRange(row.bandLow, row.bandHigh, row.unit)}
@@ -124,11 +124,11 @@ export function SleepStageAgeTable({
         </details>
       )}
 
-      {stagePctBasis && <p className="text-[11px] text-text-muted">{stagePctBasis}</p>}
+      {stagePctBasis && <p className="text-2xs text-text-muted">{stagePctBasis}</p>}
 
-      {bandBasis && <p className="text-[11px] text-text-muted">{bandBasis}</p>}
+      {bandBasis && <p className="text-2xs text-text-muted">{bandBasis}</p>}
 
-      <p className="text-[11px] text-text-muted">
+      <p className="text-2xs text-text-muted">
         Healthy ranges use age-adjusted sleep-stage norms (Ohayon et al., 2004) for{' '}
         {ageBand ? `the ${ageBand} age band` : 'your age band'} — a rough guide, not medical
         advice.

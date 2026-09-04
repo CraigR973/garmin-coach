@@ -123,6 +123,20 @@ async def _make_profile(session: AsyncSession, name: str = "Chat Test") -> Profi
     return user
 
 
+async def _seed_profile(db_conn: AsyncConnection, user_id: uuid.UUID) -> None:
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name=f"Thread {user_id.hex[:6]}",
+                role=UserRole.player,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.commit()
+
+
 async def _make_analysis(
     session: AsyncSession,
     user_id: uuid.UUID,
@@ -678,11 +692,12 @@ async def test_the_conversation_carries_across_reads_and_origins(
             user, question="And what about tomorrow?", origin_kind="sleep", client=client
         )
 
-        thread = await service.thread(user)
+        page = await service.thread(user)
 
     second_call_prior = client.calls[1]["prior_messages"]
     assert {"role": "user", "content": "Why is today Amber?"} in second_call_prior
-    assert [row.content for row in thread] == [
+    assert page.has_more is False  # four messages, one page
+    assert [row.content for row in page.messages] == [
         "Why is today Amber?",
         "Grounded answer.",
         "And what about tomorrow?",
@@ -1261,3 +1276,171 @@ async def test_post_message_brief_chat_error_returns_json_not_a_bare_500(
     async with session_factory() as session:
         count = await session.scalar(select(func.count()).select_from(BriefMessage))
         assert count == 0
+
+
+# ---------------------------------------------------------------------------
+# Batch 254 (UX241-05): the older conversation is reachable
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_older_turns_are_reachable_a_page_at_a_time(db_conn: AsyncConnection) -> None:
+    """The coach held 276 messages and showed 60, so 216 were unreachable.
+
+    Up from 22 at Batch 192 and growing at roughly four a day — the window keeps
+    receding, so everything Mark asked before roughly mid-August was gone from his
+    view while the app still used that history as his coaching record.
+    """
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    base = datetime(2026, 8, 1, 9, 0)
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        for index in range(10):
+            asked = base + timedelta(hours=index)
+            session.add(
+                BriefMessage(
+                    user_id=user_id,
+                    analysis_id=None,
+                    role="user",
+                    content=f"question {index}",
+                    created_utc=asked,
+                )
+            )
+            session.add(
+                BriefMessage(
+                    user_id=user_id,
+                    analysis_id=None,
+                    role="assistant",
+                    content=f"answer {index}",
+                    created_utc=asked,
+                )
+            )
+        await session.commit()
+
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = BriefChatService(session)
+
+        newest = await service.thread(user, limit=6)
+        assert [row.content for row in newest.messages] == [
+            "question 7",
+            "answer 7",
+            "question 8",
+            "answer 8",
+            "question 9",
+            "answer 9",
+        ]
+        assert newest.has_more is True
+
+        older = await service.thread(user, limit=6, before=newest.messages[0].id)
+        assert [row.content for row in older.messages] == [
+            "question 4",
+            "answer 4",
+            "question 5",
+            "answer 5",
+            "question 6",
+            "answer 6",
+        ]
+        assert older.has_more is True
+
+        oldest = await service.thread(user, limit=6, before=older.messages[0].id)
+        assert [row.content for row in oldest.messages] == [
+            "question 1",
+            "answer 1",
+            "question 2",
+            "answer 2",
+            "question 3",
+            "answer 3",
+        ]
+
+        first = await service.thread(user, limit=6, before=oldest.messages[0].id)
+        assert [row.content for row in first.messages] == ["question 0", "answer 0"]
+        assert first.has_more is False  # the control disappears at the beginning
+
+
+@pytest.mark.asyncio
+async def test_paging_never_splits_a_question_from_its_answer(db_conn: AsyncConnection) -> None:
+    """A question and its answer share a timestamp, so paging on the timestamp
+    alone would drop or repeat one of the pair at every page boundary."""
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    same_instant = datetime(2026, 8, 2, 7, 30)
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        for index in range(6):
+            session.add(
+                BriefMessage(
+                    user_id=user_id,
+                    analysis_id=None,
+                    role="user",
+                    content=f"q{index}",
+                    created_utc=same_instant,
+                )
+            )
+            session.add(
+                BriefMessage(
+                    user_id=user_id,
+                    analysis_id=None,
+                    role="assistant",
+                    content=f"a{index}",
+                    created_utc=same_instant,
+                )
+            )
+        await session.commit()
+
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = BriefChatService(session)
+
+        seen: list[str] = []
+        cursor: uuid.UUID | None = None
+        for _ in range(6):
+            page = await service.thread(user, limit=4, before=cursor)
+            if not page.messages:
+                break
+            seen = [row.content for row in page.messages] + seen
+            if not page.has_more:
+                break
+            cursor = page.messages[0].id
+
+        assert len(seen) == 12, seen
+        assert len(set(seen)) == 12, "a message was repeated across pages"
+
+
+@pytest.mark.asyncio
+async def test_a_cursor_from_another_user_pages_from_the_newest_end(
+    db_conn: AsyncConnection,
+) -> None:
+    """A foreign or invented id must not disclose that it exists, and must not
+    error — it simply behaves as no cursor at all."""
+    mine, theirs = uuid.uuid4(), uuid.uuid4()
+    await _seed_profile(db_conn, mine)
+    await _seed_profile(db_conn, theirs)
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            BriefMessage(
+                user_id=mine,
+                analysis_id=None,
+                role="user",
+                content="mine",
+                created_utc=datetime(2026, 8, 3, 9, 0),
+            )
+        )
+        foreign = BriefMessage(
+            user_id=theirs,
+            analysis_id=None,
+            role="user",
+            content="theirs",
+            created_utc=datetime(2026, 8, 3, 10, 0),
+        )
+        session.add(foreign)
+        await session.commit()
+        foreign_id = foreign.id
+
+        user = await session.get(Profile, mine)
+        assert user is not None
+        page = await BriefChatService(session).thread(user, before=foreign_id)
+
+    assert [row.content for row in page.messages] == ["mine"]

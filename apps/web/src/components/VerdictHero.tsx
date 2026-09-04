@@ -129,7 +129,12 @@ export function VerdictHero({ verdict, dateLabel, label, line, recap = null }: V
               {recap.ctaLabel && recap.ctaTo ? (
                 <Link
                   to={recap.ctaTo}
-                  className="text-sm font-medium text-primary-text underline-offset-4 hover:underline"
+                  /* Batch 254 (UX241-13): this measured 49 x 20 px — the last
+                     control in the app under its own 44 px floor, and it sits
+                     inside the verdict hero, the highest-traffic card there is.
+                     It is the *correction* affordance, so it is reached precisely
+                     when he has mis-tapped something already. */
+                  className="tap-target inline-flex shrink-0 items-center justify-center px-2 text-sm font-medium text-primary-text underline-offset-4 hover:underline"
                 >
                   {recap.ctaLabel}
                 </Link>

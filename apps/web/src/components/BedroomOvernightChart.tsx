@@ -193,7 +193,7 @@ function ChartLegend({
 }) {
   const mutedLabels = [...new Set(muted.map((span) => span.label))];
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-text-muted">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs text-text-muted">
       <LegendDot color={c.primary} label="Room °C" />
       <LegendDot color={c.accent} label="Fan speed" />
       <span className="text-text-muted/80">Lines: fan on 19.5° · critical 20.0°</span>

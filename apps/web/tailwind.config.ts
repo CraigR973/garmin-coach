@@ -5,6 +5,19 @@ export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
+      fontSize: {
+        // Batch 254 (UX241-12). The app had 26 hard-coded `text-[10px]` /
+        // `text-[11px]` utilities — literal pixel values that ignore the reader's
+        // text-size setting entirely, on an app read every morning by a
+        // 61-year-old. Body text is `text-sm` and rem-based, so raising the phone's
+        // text size grew the body and left these behind: the gap widened rather
+        // than closed. These two rem tokens replace them, and the smaller is
+        // deliberately no smaller than 0.6875rem (11px at default) — the 10px
+        // eyebrows, combined with `tracking-[0.3em]` and `text-text-muted`, were
+        // the least legible text in the app, and one of them was the date.
+        '2xs': ['0.6875rem', { lineHeight: '1rem' }],
+        '3xs': ['0.625rem', { lineHeight: '0.875rem' }],
+      },
       colors: {
         // Surface tiers
         background: 'var(--bg)',

@@ -169,7 +169,7 @@ export function BedroomBody({
                 </div>
               </div>
             ))}
-            <p className="text-[11px] text-text-muted">
+            <p className="text-2xs text-text-muted">
               Using a manual control turns the overnight autopilot off.
             </p>
           </div>
@@ -216,7 +216,7 @@ function Stat({
         {label}
       </p>
       <p className="text-lg font-semibold text-text-primary">{value}</p>
-      {hint && <p className="text-[11px] text-text-muted">{hint}</p>}
+      {hint && <p className="text-2xs text-text-muted">{hint}</p>}
     </div>
   );
 }

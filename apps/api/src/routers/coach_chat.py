@@ -69,15 +69,37 @@ class CoachMessageInput(BaseModel):
     originDate: date | None = None
 
 
-@router.get("/messages", response_model=BriefMessageListEnvelope)
+class CoachThreadMeta(ApiMeta):
+    """Batch 254 (UX241-05): whether an older page exists.
+
+    It rides in ``meta`` rather than changing ``data`` from an array, so the
+    envelope shape every client already parses is unchanged — including the schema
+    guard Batch 253 put on this exact fetch.
+    """
+
+    hasMore: bool = False
+
+
+class CoachThreadEnvelope(BriefMessageListEnvelope):
+    meta: CoachThreadMeta
+
+
+@router.get("/messages", response_model=CoachThreadEnvelope)
 async def list_coach_messages(
     player: CurrentUser,
+    before: uuid.UUID | None = None,
     db: AsyncSession = Depends(get_db),
-) -> BriefMessageListEnvelope:
-    rows = await BriefChatService(db).thread(player)
-    return BriefMessageListEnvelope(
-        data=[serialize_message(row) for row in rows],
-        meta=ApiMeta(generatedAtUtc=generated_at()),
+) -> CoachThreadEnvelope:
+    """The rolling conversation, newest window first.
+
+    ``before`` is the id of the oldest message the client already holds; the page
+    returned is the window immediately older than it. Without it, the newest
+    window — which is what every existing caller gets, unchanged.
+    """
+    page = await BriefChatService(db).thread(player, before=before)
+    return CoachThreadEnvelope(
+        data=[serialize_message(row) for row in page.messages],
+        meta=CoachThreadMeta(generatedAtUtc=generated_at(), hasMore=page.has_more),
         errors=[],
     )
 

@@ -18,7 +18,12 @@ import { CoachConversation } from '@/components/CoachConversation';
 import { ORIGIN_PROMPTS, originForPath } from '@/lib/coachOrigin';
 import { cn } from '@/lib/utils';
 
-const coachThreadSchema = z.object({ data: z.array(briefMessageSchema) });
+const coachThreadSchema = z.object({
+  data: z.array(briefMessageSchema),
+  // Batch 254 (UX241-05): whether an older page exists. Optional so an older
+  // API — or a cached envelope from before this shipped — still parses.
+  meta: z.object({ hasMore: z.boolean().optional() }).optional(),
+});
 
 /**
  * The coach, reachable from anywhere (Batch 179.4).
@@ -89,8 +94,37 @@ export function CoachLauncher({ userId, timeZone }: { userId?: string; timeZone?
     enabled: Boolean(userId) && !launcherHidden,
   });
 
+  // Batch 254 (UX241-05): the conversation was a fixed-size window over a growing
+  // history — 276 messages stored, 60 shown, 216 unreachable and growing at about
+  // four a day. Older pages accumulate here, oldest-first, in front of the window
+  // the main query holds.
+  const [olderMessages, setOlderMessages] = useState<BriefMessage[]>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [reachedBeginning, setReachedBeginning] = useState(false);
+
   const anchoredAnalysisId = useCoachAnchor();
-  const messages = threadQuery.data?.data ?? [];
+  const windowMessages = threadQuery.data?.data ?? [];
+  const messages = [...olderMessages, ...windowMessages];
+  const hasMore = !reachedBeginning && (threadQuery.data?.meta?.hasMore ?? false);
+
+  // A new turn re-fetches the newest window; the pages Mark had already loaded
+  // stay where they are, so asking a question does not undo his scroll-back.
+  const loadEarlier = async () => {
+    const oldest = messages[0];
+    if (!oldest || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = coachThreadSchema.parse(
+        await apiFetch<unknown>(`/api/v1/coach/messages?before=${oldest.id}`),
+      );
+      setOlderMessages((current) => [...page.data, ...current]);
+      if (!page.meta?.hasMore) setReachedBeginning(true);
+    } catch {
+      toast.error("Couldn't load your earlier messages — try again");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
   const newestAssistant = latestAssistant(messages);
   const hasUnreadAssistant = Boolean(
     newestAssistant &&
@@ -175,6 +209,9 @@ export function CoachLauncher({ userId, timeZone }: { userId?: string; timeZone?
           pending={askMutation.isPending}
           onAsk={(question) => askMutation.mutate(question)}
           scrollMessages
+          hasMore={hasMore}
+          loadingMore={loadingMore}
+          onLoadMore={() => void loadEarlier()}
         />
       </Sheet>
     </>
