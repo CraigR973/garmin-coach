@@ -171,9 +171,7 @@ class OrphanReport:
         True for a version-filtered read. For the other contracts the rows are
         still served (``unfiltered``) or replaced on the next run (``self_heal``).
         """
-        return (
-            self.contract is RegenerationContract.VERSION_FILTERED and self.orphaned > 0
-        )
+        return self.contract is RegenerationContract.VERSION_FILTERED and self.orphaned > 0
 
 
 def _current_versions() -> dict[str, dict[str, str]]:
