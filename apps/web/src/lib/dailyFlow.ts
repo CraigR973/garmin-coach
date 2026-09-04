@@ -69,6 +69,42 @@ export function remContext(remSeconds: number | null | undefined): string | null
   return 'in your 65–90 min range';
 }
 
+/**
+ * The same read, short enough to survive Home's collapsed one-liner.
+ *
+ * Batch 253 (UX241-08). The full sentence made the summary too long for 390 px,
+ * and the shared truncation cut it mid-number: `REM below your 65–9…`, which
+ * could be 90 or 95 or 900. The genuinely useful part is his minutes and which
+ * side of his range they fall, so this leads with the number.
+ */
+export function remContextShort(remSeconds: number | null | undefined): string | null {
+  if (remSeconds === null || remSeconds === undefined) return null;
+  const mins = Math.round(remSeconds / 60);
+  const side = mins < 65 ? 'below' : mins > 90 ? 'above' : 'in';
+  return `REM ${mins}m, ${side} 65–90`;
+}
+
+/**
+ * Garmin's sleep grade in the app's own voice.
+ *
+ * Batch 253 (UX241-08). `qualifier` is Garmin's raw uppercase enum and Home
+ * passed it straight through, so the first thing Mark saw about last night was a
+ * shouted `FAIR` in a vocabulary the app uses nowhere else. Sentence case, and
+ * Garmin's own two-word grades spelled the way a person says them.
+ */
+const SLEEP_QUALIFIER_LABELS: Record<string, string> = {
+  excellent: 'Excellent',
+  good: 'Good',
+  fair: 'Fair',
+  poor: 'Poor',
+};
+
+export function sleepQualifierLabel(qualifier: string | null | undefined): string | null {
+  const value = (qualifier ?? '').trim().toLowerCase().replace(/_/g, ' ');
+  if (!value) return null;
+  return SLEEP_QUALIFIER_LABELS[value] ?? value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 export interface FanState {
   id: string;
   label: string;

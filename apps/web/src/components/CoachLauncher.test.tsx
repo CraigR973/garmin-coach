@@ -144,13 +144,43 @@ describe('CoachLauncher', () => {
     });
   });
 
+  it('shows the honest error state when a 200 arrives in the wrong shape', async () => {
+    // Batch 253 (UX241-06). This fetch was the one in the app with no schema
+    // guard: a 200 whose `data` is not an array made `messages.length` undefined,
+    // took the falsy branch, and rendered the *empty* state. After an API change
+    // Mark's 268-message history read as deleted, with an invitation to start
+    // over and no way to distinguish that from data loss. Batch 193.2 built an
+    // honest error state for *failed* fetches; it could not fire here because
+    // nothing threw.
+    const user = userEvent.setup();
+    apiFetchMock.mockResolvedValue({ data: { messages: [] } });
+
+    renderLauncher('/trends');
+    await user.click(screen.getByLabelText('Ask about your trends'));
+
+    expect(
+      await screen.findByText(/Could not load your conversation/i),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Nothing here yet/i)).toBeNull();
+  });
+
+  it('still shows the empty state for a genuinely empty thread', async () => {
+    const user = userEvent.setup();
+    apiFetchMock.mockResolvedValue({ data: [] });
+
+    renderLauncher('/trends');
+    await user.click(screen.getByLabelText('Ask about your trends'));
+
+    expect(await screen.findByText(/Nothing here yet/i)).toBeTruthy();
+  });
+
   it('shows the rolling thread in order with profile-local day separators and times', async () => {
     const user = userEvent.setup();
     apiFetchMock.mockResolvedValue({
       data: [
         {
-          id: 'm1',
-          analysisId: 'brief-1',
+          id: '00000000-0000-4000-8000-0000000000a1',
+          analysisId: '00000000-0000-4000-8000-0000000000b1',
           originKind: 'morning_brief',
           originDate: null,
           role: 'user',
@@ -159,7 +189,7 @@ describe('CoachLauncher', () => {
           createdAtUtc: '2026-07-31T22:50:00Z',
         },
         {
-          id: 'm2',
+          id: '00000000-0000-4000-8000-0000000000a2',
           analysisId: null,
           originKind: 'sleep',
           originDate: '2026-07-30',
@@ -169,7 +199,7 @@ describe('CoachLauncher', () => {
           createdAtUtc: '2026-07-31T22:55:00Z',
         },
         {
-          id: 'm3',
+          id: '00000000-0000-4000-8000-0000000000a3',
           analysisId: null,
           originKind: 'trends',
           originDate: '2026-08-01',
@@ -277,7 +307,7 @@ describe('CoachLauncher', () => {
     resolvePost({
       data: {
         userMessage: {
-          id: 'u1',
+          id: '00000000-0000-4000-8000-0000000000d1',
           analysisId: null,
           originKind: 'home',
           role: 'user',
@@ -286,7 +316,7 @@ describe('CoachLauncher', () => {
           createdAtUtc: '2026-08-06T07:00:00Z',
         },
         assistantMessage: {
-          id: 'a1',
+          id: '00000000-0000-4000-8000-0000000000d2',
           analysisId: null,
           originKind: 'home',
           role: 'assistant',
@@ -313,7 +343,7 @@ describe('CoachLauncher', () => {
     apiFetchMock.mockResolvedValue({
       data: [
         {
-          id: 'm1',
+          id: '00000000-0000-4000-8000-0000000000a1',
           analysisId: null,
           originKind: 'home',
           role: 'assistant',

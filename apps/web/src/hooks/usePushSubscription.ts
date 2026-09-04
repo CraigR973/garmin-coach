@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
 
 export type PushPermission = 'default' | 'granted' | 'denied';
@@ -86,7 +87,14 @@ export function usePushSubscription(): PushSubscriptionState {
       setIsSubscribed(true);
       window.dispatchEvent(new Event('push-sub-changed'));
     } catch (err) {
+      // Batch 253 (UX241-07): this used to be `console.error` alone, so the
+      // button returned to "Enable push notifications" and said nothing. Push is
+      // the whole delivery mechanism of the daily loop — the good-morning nudge,
+      // the brief-ready push, the workout check-in, the weekly review — so a
+      // silent failure on a re-install or a new phone leaves Mark concluding the
+      // app has stopped working with no way to find out why.
       console.error('push subscription failed', err);
+      toast.error("Couldn't turn notifications on — try again");
     } finally {
       setIsLoading(false);
     }

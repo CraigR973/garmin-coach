@@ -298,9 +298,17 @@ READ_PROMPT_FLOORS: dict[str, tuple[str, ...]] = {
     "post_strength_analysis": ("local_clock_times", "recorded_data_honesty"),
     "post_flexibility_analysis": ("local_clock_times", "recorded_data_honesty"),
     "post_walk_analysis": ("local_clock_times", "recorded_data_honesty"),
-    "reviews": ("recorded_data_honesty",),
-    "trends": ("recorded_data_honesty",),
+    # Batch 253 (AI238-06): ``no_power_balance`` is stated by all four of these
+    # prompts but was listed for only the first two, so dropping it from reviews
+    # or trends would have been silent.
+    "reviews": ("no_power_balance", "recorded_data_honesty"),
+    "trends": ("no_power_balance", "recorded_data_honesty"),
     "handover": ("recorded_data_honesty",),
+    # Batch 253 (AI238-07). Not user-facing prose — its output routes into
+    # experiments and the knowledge base — which is precisely why the honesty
+    # floor matters here: a drifted rule propagates into audited surfaces
+    # laundered through data.
+    "longitudinal_analysis": ("recorded_data_honesty",),
 }
 
 
@@ -323,6 +331,41 @@ def missing_floors(prompt: str, keys: tuple[str, ...]) -> tuple[str, ...]:
     """
     wanted = {floor.key: floor for floor in FLOORS}
     return tuple(key for key in keys if not wanted[key].pattern.search(prompt))
+
+
+#: The app's central honesty rule, embedded **verbatim** in every read prompt that
+#: owns it. Batch 253 (AI238-06): this paragraph was eight separate hand-written
+#: literals — morning, the four post-activity reads, reviews, trends, handover —
+#: plus a ninth, shorter paraphrase in the ``recorded_data_honesty`` Floor that
+#: chat composes. All eight were byte-identical *today*; nothing kept them that
+#: way, and the audit that existed matched a **regex**, so a divergent paraphrase
+#: containing the pattern passed. Batch 230 named this defect class and closed one
+#: instance with a shared constant pinned by a string test; this is the same shape
+#: applied to the rule most central to the app's honesty posture.
+#:
+#: The ``Floor`` sentence stays as it is and is *not* replaced by this text: it is
+#: a clause inside a one-sentence list for chat, and the two registers are
+#: deliberately different. What must not differ is the paragraph.
+RECORDED_DATA_HONESTY_RULE = (
+    "Treat every figure in the supplied context as what the app recorded, not as\n"
+    "independently verified truth about Mark. If Mark says his own device shows a\n"
+    "different observed value, acknowledge the discrepancy, use his device reading\n"
+    "as the better evidence, and treat it as a data-quality problem. This applies to\n"
+    "observed data only: never let a correction change a deterministic verdict,\n"
+    "safety floor, or propose/confirm decision."
+)
+
+#: Batch 230's own fix realised the class it named. "Packet field names are
+#: instructions to you, never words for Mark" existed as two near-copies —
+#: ``morning_analysis`` and ``trends`` — differing in punctuation, and with the
+#: trends copy naming two field paths as examples *inside a rule forbidding field
+#: names*. :data:`NO_PLUMBING_RULE` states the same idea in entirely different
+#: words for chat. Three wordings, one rule; this is the read-prompt one.
+PACKET_FIELD_NAMES_RULE = (
+    "Packet field names are instructions to you, never words for Mark: never print\n"
+    "a field, key or path in the output and never cite the packet as a source;\n"
+    "state the fact itself."
+)
 
 
 #: The one place the internal nouns are allowed to appear: naming them in order

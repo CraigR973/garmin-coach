@@ -309,6 +309,25 @@ class BriefChatService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def _assert_owned_analysis(self, player: Profile, analysis_id: uuid.UUID) -> None:
+        """The ownership half of ``_owned_analysis``, without loading the row.
+
+        Same 404-for-both rule (DS190-08) and the same operator log; it simply
+        selects the one column the question is about.
+        """
+        owner = await self.session.scalar(
+            select(Analysis.user_id).where(Analysis.id == analysis_id)
+        )
+        if owner is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Read not found")
+        if owner != player.id:
+            log.info(
+                "brief chat anchor belongs to another user",
+                analysis_id=str(analysis_id),
+                requesting_user_id=str(player.id),
+            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Read not found")
+
     async def _owned_analysis(self, player: Profile, analysis_id: uuid.UUID) -> Analysis:
         """404 for both an absent and a foreign anchor (DS190-08).
 
@@ -340,7 +359,11 @@ class BriefChatService:
         HTTP path can produce a mismatched row, but a future writer or repair
         script should not be able to make one visible here.
         """
-        await self._owned_analysis(player, analysis_id)
+        # Batch 253 (DS237-17): ``history`` discards the row entirely, so it asks
+        # only the ownership question. ``select(Analysis)`` materialised
+        # ``context_packet`` and ``raw_response`` — ~6.2 KB of JSON text per row —
+        # to answer a boolean.
+        await self._assert_owned_analysis(player, analysis_id)
         rows = (
             (
                 await self.session.execute(

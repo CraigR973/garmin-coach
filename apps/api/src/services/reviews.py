@@ -64,6 +64,7 @@ from src.services.bulk_history_reads import (
     temperature_series_columns,
     without_sleep_raw_payload,
 )
+from src.services.coach_policy import RECORDED_DATA_HONESTY_RULE
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
 from src.services.daily_metric_coverage import complete_body_battery_charged
 from src.services.daily_metric_phase import (
@@ -99,15 +100,10 @@ _ANALYSIS_TYPE_BY_PERIOD = {
 # (matches the morning-analysis default; the sleep protocol KB can refine it).
 THERMAL_DISRUPTION_C = 20.0
 
-SYSTEM_PROMPT = """You are CheckMark, a private endurance and sleep coach \
+SYSTEM_PROMPT = f"""You are CheckMark, a private endurance and sleep coach \
 writing a periodic training-block review.
 Use only the supplied deterministic rollup packet. Follow every data-quality \
-guardrail in the packet. Treat every figure in the supplied context as what the \
-app recorded, not as independently verified truth about Mark. If Mark says his \
-own device shows a different observed value, acknowledge the discrepancy, use \
-his device reading as the better evidence, and treat it as a data-quality \
-problem. This applies to observed data only: never let a correction change a \
-deterministic verdict, safety floor, or propose/confirm decision. Start with one \
+guardrail in the packet. {RECORDED_DATA_HONESTY_RULE} Start with one \
 short sentence in the exact form **Bottom line:** <the single \
 most important conclusion of this period>. This is the conclusion Mark will \
 receive proactively, so it must say what changed or mattered; never announce \

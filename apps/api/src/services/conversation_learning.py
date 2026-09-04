@@ -37,6 +37,7 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile
 from src.services.anthropic_text import (
+    anthropic_schema,
     configured_effort,
     configured_thinking,
     generate_anthropic_text,
@@ -52,7 +53,7 @@ SOURCE_WINDOW_DAYS = 30
 MAX_SOURCES = 60
 MAX_CANDIDATES = 12
 MAX_STATEMENT_LENGTH = 500
-PROMPT_VERSION = "conversation-learning-v1-2026-08-15"
+PROMPT_VERSION = "conversation-learning-v2-2026-09-04"
 
 KIND_FACT = "fact"
 KIND_PREFERENCE = "preference"
@@ -180,6 +181,17 @@ class AnthropicConversationLearningClient:
                 sort_keys=True,
             ),
             error_cls=ConversationLearningError,
+            # Batch 253 (AI238-10): use the API's own structured-output contract
+            # rather than asking for "strict JSON only" in prose and hand-rolling
+            # the parse. This is the path that proposes durable additions to
+            # Mark's ``learned_context`` — the app's persistent memory — and a
+            # model opening with one sentence of preamble before the JSON (more
+            # likely, not less, with thinking on) failed the whole extraction. It
+            # failed *safe* but *silently*: nothing was written and the proposal
+            # queue simply stayed empty. The fence-stripping in
+            # ``parse_extraction_output`` stays as a fallback rather than the
+            # mechanism.
+            output_schema=anthropic_schema(ExtractionEnvelope),
         )
         return result.output_markdown
 
@@ -350,7 +362,14 @@ def statement_is_durable(statement: str, *, kind: str) -> bool:
 
 
 def parse_extraction_output(output: str) -> ExtractionEnvelope:
-    """Parse the model response as a strict typed object, accepting JSON fences only."""
+    """Parse the model response as a strict typed object.
+
+    Batch 253 (AI238-10): the request now carries ``output_config.format`` with
+    this envelope's JSON schema, so a fenced or preamble-wrapped response should
+    no longer be produced. The fence-stripping below is kept as a **fallback**
+    rather than removed — it costs nothing, and a provider that ever ignores the
+    format should degrade to the old behaviour rather than to nothing.
+    """
     cleaned = output.strip()
     if cleaned.startswith("```"):
         lines = cleaned.splitlines()

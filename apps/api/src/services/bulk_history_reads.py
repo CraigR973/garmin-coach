@@ -1,5 +1,14 @@
 """Reading a history window without shipping the provider payload with it.
 
+**This module is the documented entry point for any multi-row read of a
+JSONB-carrying model** — ``sleep``, ``daily_metrics``, ``temperature_readings``,
+``analyses`` (Batch 253, CR236-13). It is not a lint rule, because the
+false-positive rate on ``select(Model)`` would be unmanageable; it is a named
+place plus a question ``batch-verify`` now asks once per batch. The reason it
+needs saying at all: ``select(Model)`` is still the default way to read a row in
+this codebase, so new full-row reads kept appearing — including in code written
+*after* Batch 235 built this module to stop them.
+
 A bare ``select(Sleep)`` over a 120-night window is not a small query. Every
 model here carries the untouched Garmin/Hive response in a JSONB column, and
 JSONB travels the wire **uncompressed** — Postgres stores it TOAST-compressed
@@ -46,13 +55,22 @@ from __future__ import annotations
 from sqlalchemy.orm import defer, load_only
 from sqlalchemy.orm.interfaces import ORMOption
 
-from src.models.coaching import FanStateReading, Sleep, TemperatureReading
+from src.models.coaching import ActivityTimeSeries, FanStateReading, Sleep, TemperatureReading
 
 __all__ = [
+    "activity_timeseries_columns",
     "fan_series_columns",
     "temperature_series_columns",
     "without_sleep_raw_payload",
 ]
+
+#: The four JSONB-carrying models. **Any multi-row read of one of these belongs
+#: here** — a bare ``select(Model)`` over them is the idiom that caused both of
+#: this app's egress incidents (Batch 232's pooler refusals, Batch 235's 34.8 GB),
+#: and it is still the default way to read a row in this codebase (Batch 253,
+#: CR236-13). ``batch-verify`` asks the question once per batch so it is checked
+#: rather than remembered.
+JSONB_CARRYING_MODELS = ("sleep", "daily_metrics", "temperature_readings", "analyses")
 
 
 def without_sleep_raw_payload() -> ORMOption:
@@ -90,4 +108,32 @@ def fan_series_columns() -> ORMOption:
         FanStateReading.fan_on,
         FanStateReading.fan_speed,
         raiseload=True,
+    )
+
+
+def activity_timeseries_columns() -> ORMOption:
+    """Load only the typed sample columns the post-activity analysers read.
+
+    Batch 253 (DS237-17). ``ActivityTimeSeries.raw_metrics`` is a per-sample JSONB
+    document retained in full for outdoor rides, and no analyser reads it — but
+    ``select(ActivityTimeSeries)`` materialised one for every sample of every
+    activity. Deferred rather than ``raiseload``: this is a per-request read
+    rather than a history window, and a future caller that genuinely wants the
+    raw sample should get it lazily rather than an exception.
+    """
+    return load_only(
+        ActivityTimeSeries.sample_index,
+        ActivityTimeSeries.timestamp_utc,
+        ActivityTimeSeries.elapsed_sec,
+        ActivityTimeSeries.moving_duration_sec,
+        ActivityTimeSeries.distance_m,
+        ActivityTimeSeries.power_watts,
+        ActivityTimeSeries.heart_rate_bpm,
+        ActivityTimeSeries.cadence_rpm,
+        ActivityTimeSeries.respiration,
+        ActivityTimeSeries.performance_condition,
+        ActivityTimeSeries.available_stamina,
+        ActivityTimeSeries.potential_stamina,
+        ActivityTimeSeries.speed_mps,
+        ActivityTimeSeries.air_temperature_c,
     )

@@ -68,6 +68,10 @@ from src.services.bulk_history_reads import (
     temperature_series_columns,
     without_sleep_raw_payload,
 )
+from src.services.coach_policy import (
+    PACKET_FIELD_NAMES_RULE,
+    RECORDED_DATA_HONESTY_RULE,
+)
 from src.services.daily_metric_phase import (
     index_morning_by_date,
     index_post_activity_by_date,
@@ -113,8 +117,8 @@ ANALYSIS_TYPE_SEASONAL = "seasonal_trend"
 # false VO2 max story, and left Mark's Trends page empty on the surface his
 # complaint came from. Closeout drives the real lookup, not a version comparison.
 PROMPT_VERSION_BY_BUCKET = {
-    BUCKET_MONTH: "trends-month-v9-2026-09-03",
-    BUCKET_SEASON: "trends-season-v9-2026-09-03",
+    BUCKET_MONTH: "trends-month-v10-2026-09-04",
+    BUCKET_SEASON: "trends-season-v10-2026-09-04",
 }
 
 # Indoor reading at/after this local hour belongs to the *next* morning's night.
@@ -123,12 +127,7 @@ _EVENING_HOUR = 18
 TREND_SYSTEM_PROMPT = f"""You are CheckMark, a private endurance and sleep \
 coach writing a long-horizon trend summary.
 Use only the supplied deterministic trend packet. Compare this period against the \
-same period last year and across seasons. Treat every figure in the supplied \
-context as what the app recorded, not as independently verified truth about Mark. \
-If Mark says his own device shows a different observed value, acknowledge the \
-discrepancy, use his device reading as the better evidence, and treat it as a \
-data-quality problem. This applies to observed data only: never let a correction \
-change a deterministic verdict, safety floor, or propose/confirm decision. Write \
+same period last year and across seasons. {RECORDED_DATA_HONESTY_RULE} Write \
 concise markdown with three \
 bolded sections — **Year-on-year**, **Seasonal patterns**, and \
 **What to watch** — each a short bullet list grounded in the packet's numbers. \
@@ -143,9 +142,7 @@ plain words whenever you give a percentage — and remAgeBand.bandBasis and \
 remAgeBand.measurementBasis carry, in the app's own words, what the band and the \
 REM figure are actually standing on. If remAgeBand is absent, say the band \
 is unavailable rather than recalling one. \
-Packet field names are instructions to you, never words for Mark: never print a \
-field, key or path (e.g. remAgeBand.basis, personalBaselines) in the output, and \
-never cite the packet as a source — state the fact itself. \
+{PACKET_FIELD_NAMES_RULE}
 Every year-on-year claim must cite the currentMean -> priorMean or \
 priorMean -> currentMean numbers plus both sample counts; every seasonal claim \
 must cite the window labels and sampleDays or metric sampleCount. If a metric \

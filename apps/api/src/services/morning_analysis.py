@@ -56,7 +56,11 @@ from src.services.chronic_patterns import (
     CHRONIC_DELOAD_WINDOW_DAYS,
     ChronicPatternSuggestionService,
 )
-from src.services.coach_policy import source_basis
+from src.services.coach_policy import (
+    PACKET_FIELD_NAMES_RULE,
+    RECORDED_DATA_HONESTY_RULE,
+    source_basis,
+)
 from src.services.coaching_state import CoachingStateService
 from src.services.daily_metric_coverage import (
     complete_body_battery_charged,
@@ -216,7 +220,7 @@ log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 # which is an instruction v44 never carried; and ageComparison gained
 # sleepBandBasis and remMeasurementBasis, so the packet changed underneath it too.
 # A v44 brief was written under neither.
-PROMPT_VERSION = "morning-analysis-v45-2026-09-03"
+PROMPT_VERSION = "morning-analysis-v46-2026-09-04"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -242,12 +246,7 @@ State time in bed from sleep.timeInBedMin and time asleep from sleep.timeAsleepM
 sleep.awakeSleepMin excluded, so never subtract awake time from it to compute an
 "actual sleep" figure; time in bed equals time asleep plus awake plus any brief
 unmeasurable time. State each figure as given — do not re-derive either.
-Treat every figure in the supplied context as what the app recorded, not as
-independently verified truth about Mark. If Mark says his own device shows a
-different observed value, acknowledge the discrepancy, use his device reading
-as the better evidence, and treat it as a data-quality problem. This applies to
-observed data only: never let a correction change a deterministic verdict,
-safety floor, or propose/confirm decision.
+{RECORDED_DATA_HONESTY_RULE}
 Refer to Mark's daily check-in by its word — verdict.subjectiveLabel /
 manualEntries[].subjectiveLabel (e.g. "you said you felt OK") — and never surface
 the raw subjectiveScore number or a "6/10"-style term for how he felt.
@@ -325,9 +324,8 @@ healthy for the user's age rather than repeating Garmin's young-adult flag (e.g.
 "Deep 17% is within the healthy 50-59 range; Garmin only flags it against a younger
 target"). Every sleepRows percentage is a share of the same denominator, stated in
 ageComparison.sleepStagePctBasis: say what that total is, in your own plain words,
-whenever you give a stage percentage. Packet field names are instructions to you,
-never words for Mark — never print a field, key or path in the output and never
-cite the packet as a source; state the fact itself.
+on **every** stage percentage you give, not once per read — a percentage without
+its denominator is the figure Mark cannot reconcile against his watch. {PACKET_FIELD_NAMES_RULE}
 {SLEEP_STAGE_MINUTES_RULE}
 {REM_FRAMING_RULE}
 {CHRONIC_DRIVER_RULE}
@@ -1412,12 +1410,17 @@ def _profile_packet(
     athlete_profile = dict(profile) if isinstance(profile, Mapping) else {}
     if effective_vo2max is not None:
         athlete_profile["vo2max"] = effective_vo2max
+    # Batch 253 (DS237-09): ``userId``, ``latitude`` and ``longitude`` are gone.
+    # No system prompt referenced any of them and the weather is already resolved
+    # into ``environment.weather`` before the packet is built, so every morning
+    # brief was sending a third party Mark's precise home location — twice, see
+    # ``_weather_packet`` — plus a stable cross-request correlator, attached to his
+    # sleep times, HRV and body weight. The packet is also stored in
+    # ``analyses.context_packet``, so it was in every archive and every export.
+    # ``displayName`` stays: the coach addresses him by name.
     return {
-        "userId": str(player.id),
         "displayName": player.display_name,
         "timezone": player.timezone,
-        "latitude": player.latitude,
-        "longitude": player.longitude,
         "athleteProfile": athlete_profile,
         "vo2maxAsOfDate": vo2max_as_of_date.isoformat() if vo2max_as_of_date else None,
         "weightKg": weight_kg,
@@ -1704,11 +1707,11 @@ def _rest_day_context(
 def _weather_packet(row: WeatherDaily | None) -> dict[str, Any] | None:
     if row is None:
         return None
+    # Batch 253 (DS237-09): the second copy of the same coordinates in the same
+    # request. The weather is already resolved to numbers the model reads.
     return {
         "calendarDate": row.calendar_date.isoformat(),
         "source": row.source,
-        "latitude": row.latitude,
-        "longitude": row.longitude,
         "tempHighC": row.temp_high_c,
         "tempLowC": row.temp_low_c,
         "overnightLowC": row.overnight_low_c,

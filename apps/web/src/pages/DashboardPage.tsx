@@ -72,7 +72,8 @@ import {
   friendlyDate,
   hm,
   nextDays,
-  remContext,
+  remContextShort,
+  sleepQualifierLabel,
 } from '@/lib/dailyFlow';
 import { greetingForNow, personalStatusLine, verdictLabel } from '@/lib/copy';
 import { dayStateForWorkouts, workoutTypeLabel, type DayCategory } from '@/lib/workoutCategories';
@@ -193,10 +194,15 @@ type TodaySleep = {
  *  payload — no bedroom-overnight query, so a collapsed sleep card stays lazy). */
 function sleepSummary(sleep: TodaySleep): string {
   if (!sleep) return 'No sleep data has synced for last night yet.';
+  // Batch 253 (UX241-08): three problems in eleven words. `FAIR` was Garmin's raw
+  // uppercase enum passed straight through, in a vocabulary the app uses nowhere
+  // else; and the genuinely useful part — his REM range — was cut off mid-number
+  // by the shared truncation, so `65–9…` could be 90 or 95 or 900.
   const parts = [`${hm(sleep.durationSec)} asleep`];
-  if (sleep.qualifier) parts.push(sleep.qualifier);
-  const rem = remContext(sleep.remSleepSec);
-  if (rem) parts.push(`REM ${rem}`);
+  const qualifier = sleepQualifierLabel(sleep.qualifier);
+  if (qualifier) parts.push(qualifier);
+  const rem = remContextShort(sleep.remSleepSec);
+  if (rem) parts.push(rem);
   return parts.join(' · ');
 }
 

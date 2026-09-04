@@ -36,26 +36,22 @@ from src.services.anthropic_text import (
     generate_anthropic_text,
 )
 from src.services.body_metrics import resolve_effective_vo2max, resolve_effective_weight_kg
+from src.services.bulk_history_reads import activity_timeseries_columns
 from src.services.bulk_post_activity_lookups import (
     generation_statuses_by_activity,
     latest_analyses_by_activity,
     latest_checkins_by_activity,
 )
+from src.services.coach_policy import RECORDED_DATA_HONESTY_RULE
 from src.services.coaching_state import CoachingStateService
 from src.services.feedback import FeedbackService
-from src.services.generation_requests import (
-    claim_generation_request,
-    manual_entry_generation_version,
-    post_activity_generation_identity,
-    stamp_generation_identity,
-)
 from src.services.learned_context import (
     LEARNED_CONTEXT_PROMPT_GUARDRAIL,
     learned_context_packet,
 )
-from src.services.post_activity_state import (
-    mark_post_activity_generation,
-    prepare_post_activity_generation,
+from src.services.post_activity_read_runner import (
+    PostActivityClient,
+    PostActivityReadRunner,
 )
 from src.services.prompt_metadata import prompt_system_hash
 from src.services.ride_intervals import (
@@ -63,7 +59,6 @@ from src.services.ride_intervals import (
     segment_ride_intervals,
     summarize_execution,
 )
-from src.services.workload_budget import workload_slot
 from src.services.workout_categories import DAY_CATEGORY_CYCLE, category_for_workout_type
 from src.services.workout_delivery import (
     DEFAULT_FTP_WATTS,
@@ -105,7 +100,7 @@ ANALYSIS_TYPE = "post_workout"
 # ``skip_day``). Duplicated as a local literal to avoid importing the heavy
 # ExecutableCoachingService just for the string.
 WORKOUT_STATUS_SKIPPED = "skipped"
-SYSTEM_PROMPT = """You are CheckMark, a private endurance post-workout analyst.
+SYSTEM_PROMPT = f"""You are CheckMark, a private endurance post-workout analyst.
 Use only the supplied context packet. Follow every data-quality guardrail.
 Use `subjectWeekday` as the authoritative weekday; never derive the weekday from
 `subjectDate` yourself.
@@ -114,12 +109,7 @@ Return concise markdown with a workout rating, performance read, specific timed
 recovery protocol, and tomorrow impact. Incorporate any post-ride check-in
 (RPE, feel, legs, niggles) when present. Include power, HR, zones, cadence,
 Performance Condition, Stamina, and Training Effect when present.
-Treat every figure in the supplied context as what the app recorded, not as
-independently verified truth about Mark. If Mark says his own device shows a
-different observed value, acknowledge the discrepancy, use his device reading
-as the better evidence, and treat it as a data-quality problem. This applies to
-observed data only: never let a correction change a deterministic verdict,
-safety floor, or propose/confirm decision.
+{RECORDED_DATA_HONESTY_RULE}
 
 If the post-ride check-in notes contain a question, answer it directly in the
 read using only the supplied packet. Say plainly when the packet cannot support
@@ -323,7 +313,7 @@ class AnthropicPostWorkoutAnalysisClient:
         )
 
 
-class PostWorkoutAnalysisService:
+class PostWorkoutAnalysisService(PostActivityReadRunner[PostWorkoutAnalysisResult]):
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
@@ -490,7 +480,8 @@ class PostWorkoutAnalysisService:
             "subjectWeekday": subject_date.strftime("%A"),
             "generatedAtUtc": _utcnow().isoformat() + "Z",
             "profile": {
-                "userId": str(player.id),
+                # Batch 253 (DS237-09): ``userId`` was a stable cross-request
+                # correlator no prompt ever read.
                 "displayName": player.display_name,
                 "timezone": player.timezone,
                 "athleteProfile": _athlete_profile_packet(knowledge_base, effective_vo2max),
@@ -556,165 +547,41 @@ class PostWorkoutAnalysisService:
             },
         }
 
-    async def generate_and_store(
-        self,
-        player: Profile,
-        activity: Activity,
-        *,
-        client: PostWorkoutAnalysisClient | None = None,
-        force: bool = False,
-        commit: bool = True,
-    ) -> PostWorkoutAnalysisResult:
-        subject_date = _activity_local_date(activity, player.timezone)
-        checkin = await self._post_ride_checkin(player.id, activity.id)
-        input_version = manual_entry_generation_version(checkin)
-        request_identity = post_activity_generation_identity(
-            user_id=player.id,
-            activity_id=activity.id,
-            input_version=input_version,
-            prompt_version=PROMPT_VERSION,
-        )
-        # Persist Batch 159's honest ``generating`` state before taking the
-        # transaction-scoped paid-work lock. No commit occurs after the claim
-        # until the completed/failed request state is ready.
-        matched_workout_id = await prepare_post_activity_generation(
-            self.session,
-            user_id=player.id,
-            activity_id=activity.id,
-            subject_date=subject_date,
-            kind="ride",
-            commit=False,
-        )
-        if commit:
-            await self.session.commit()
-        async with claim_generation_request(
-            self.session,
-            user_id=player.id,
-            request_identity=request_identity,
-            generation_kind=ANALYSIS_TYPE,
-            lease_scope=f"post:{player.id}:{activity.id}",
-        ) as claim:
-            existing: Analysis | None = claim.existing_analysis
-            if existing is not None:
-                packet = existing.context_packet
-                if not (
-                    existing.prompt_version == PROMPT_VERSION
-                    and isinstance(packet, dict)
-                    and packet.get("generationIdentity") == request_identity
-                ):
-                    claim.restart()
-                    existing = None
-            if existing is not None:
-                if (
-                    matched_workout_id is not None
-                    and existing.planned_workout_id != matched_workout_id
-                ):
-                    existing.planned_workout_id = matched_workout_id
-                await mark_post_activity_generation(
-                    self.session,
-                    user_id=player.id,
-                    activity_id=activity.id,
-                    planned_workout_id=matched_workout_id,
-                    subject_date=subject_date,
-                    kind="ride",
-                    status="ready",
-                    commit=False,
-                )
-                if commit:
-                    await self.session.commit()
-                    await self.session.refresh(existing)
-                else:
-                    await self.session.flush()
-                return PostWorkoutAnalysisResult(analysis=existing, generated=False)
+    # -- Batch 253 (CR236-04): the lifecycle is PostActivityReadRunner's. Two of
+    # this path's differences from its three siblings are real and are hooks
+    # rather than constants — its own currency predicate, which knows about ride
+    # re-grading, and a verdict derived from the recovery decision where the
+    # others are always "advisory".
+    kind = "ride"
+    analysis_type = ANALYSIS_TYPE
+    prompt_version = PROMPT_VERSION
 
-            if not force:
-                latest = await self.latest_analysis_for_activity(activity.id)
-                if latest is not None and _analysis_is_current(latest, checkin):
-                    if (
-                        matched_workout_id is not None
-                        and latest.planned_workout_id != matched_workout_id
-                    ):
-                        latest.planned_workout_id = matched_workout_id
-                    claim.mark_completed(latest)
-                    await mark_post_activity_generation(
-                        self.session,
-                        user_id=player.id,
-                        activity_id=activity.id,
-                        planned_workout_id=matched_workout_id,
-                        subject_date=subject_date,
-                        kind="ride",
-                        status="ready",
-                        commit=False,
-                    )
-                    if commit:
-                        await self.session.commit()
-                        await self.session.refresh(latest)
-                    else:
-                        await self.session.flush()
-                    return PostWorkoutAnalysisResult(analysis=latest, generated=False)
+    async def assemble_packet(self, player: Profile, activity: Activity) -> dict[str, Any]:
+        return await self.assemble_context_packet(player, activity)
 
-            try:
-                context_packet = await self.assemble_context_packet(player, activity)
-                stamp_generation_identity(
-                    context_packet,
-                    request_identity=request_identity,
-                    input_version=input_version,
-                )
-                user_prompt = build_post_workout_user_prompt(context_packet)
-                analysis_client = client or AnthropicPostWorkoutAnalysisClient()
-                async with workload_slot(workload="anthropic", user_id=player.id):
-                    generation = await analysis_client.generate(
-                        context_packet=context_packet,
-                        user_prompt=user_prompt,
-                    )
-            except Exception as exc:
-                claim.mark_failed(_generation_failure_reason(exc))
-                await mark_post_activity_generation(
-                    self.session,
-                    user_id=player.id,
-                    activity_id=activity.id,
-                    planned_workout_id=matched_workout_id,
-                    subject_date=subject_date,
-                    kind="ride",
-                    status="failed",
-                    reason=_generation_failure_reason(exc),
-                    commit=commit,
-                )
-                raise
-            verdict = context_packet.get("recoveryDecision", {}).get("status")
-            analysis = Analysis(
-                user_id=player.id,
-                activity_id=activity.id,
-                planned_workout_id=matched_workout_id,
-                analysis_type=ANALYSIS_TYPE,
-                subject_date=subject_date,
-                generated_at_utc=_utcnow(),
-                prompt_version=PROMPT_VERSION,
-                model_name=generation.model_name,
-                verdict=verdict if isinstance(verdict, str) else None,
-                context_packet=context_packet,
-                output_markdown=generation.output_markdown,
-                raw_response=generation.raw_response,
-            )
-            self.session.add(analysis)
-            await self.session.flush()
-            claim.mark_completed(analysis)
-            await mark_post_activity_generation(
-                self.session,
-                user_id=player.id,
-                activity_id=activity.id,
-                planned_workout_id=matched_workout_id,
-                subject_date=subject_date,
-                kind="ride",
-                status="ready",
-                commit=False,
-            )
-            if commit:
-                await self.session.commit()
-                await self.session.refresh(analysis)
-            else:
-                await self.session.flush()
-            return PostWorkoutAnalysisResult(analysis=analysis, generated=True)
+    def build_user_prompt(self, context_packet: dict[str, Any]) -> str:
+        return build_post_workout_user_prompt(context_packet)
+
+    def default_client(self) -> PostActivityClient:
+        return AnthropicPostWorkoutAnalysisClient()
+
+    def make_result(self, analysis: Analysis, *, generated: bool) -> PostWorkoutAnalysisResult:
+        return PostWorkoutAnalysisResult(analysis=analysis, generated=generated)
+
+    async def activity_checkin(
+        self, user_id: uuid.UUID, activity_id: uuid.UUID
+    ) -> ManualEntry | None:
+        return await self._post_ride_checkin(user_id, activity_id)
+
+    def analysis_is_current(self, analysis: Analysis, checkin: ManualEntry | None) -> bool:
+        return _analysis_is_current(analysis, checkin)
+
+    def failure_reason(self, exc: Exception) -> str:
+        return _generation_failure_reason(exc)
+
+    def verdict_for(self, context_packet: dict[str, Any]) -> str | None:
+        verdict = context_packet.get("recoveryDecision", {}).get("status")
+        return verdict if isinstance(verdict, str) else None
 
     async def latest_analysis_for_activity(self, activity_id: uuid.UUID) -> Analysis | None:
         return cast(
@@ -853,10 +720,16 @@ class PostWorkoutAnalysisService:
         )
 
     async def _timeseries(self, activity_id: uuid.UUID) -> list[ActivityTimeSeries]:
+        # Batch 253 (DS237-17): the analysers read only the typed float columns,
+        # but ``select(Model)`` materialised ``raw_metrics`` for every sample of
+        # every activity — a JSONB column retained in full for outdoor rides.
+        # ``load_only`` is the same query without the payload nothing reads. The
+        # deferred column still loads on demand if anything ever touches it.
         rows = (
             (
                 await self.session.execute(
                     select(ActivityTimeSeries)
+                    .options(activity_timeseries_columns())
                     .where(ActivityTimeSeries.activity_id == activity_id)
                     .order_by(ActivityTimeSeries.sample_index.asc())
                 )

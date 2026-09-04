@@ -1,6 +1,19 @@
+import {
+  categoryForWorkoutType,
+  isKnownWorkoutType,
+  WORKOUT_TYPE_CATEGORY,
+  WORKOUT_TYPES,
+} from '@coach/shared';
+import type { DayCategory, WorkoutType } from '@coach/shared';
+
 import type { DailyLoopData } from '@/hooks/useDailyLoop';
 
-export type DayCategory = 'cycle' | 'weights' | 'flexibility' | 'walk' | 'rest';
+// Batch 253 (CR236-05): the vocabulary and the classifier now live in
+// `@coach/shared`, mirrored entry-for-entry by `services/workout_categories`.
+// This module re-exports them so its existing importers do not move, and keeps
+// only what is genuinely app-side: the labels and the day-card assembly.
+export { categoryForWorkoutType, isKnownWorkoutType, WORKOUT_TYPE_CATEGORY, WORKOUT_TYPES };
+export type { DayCategory, WorkoutType };
 
 const LABELS: Record<Exclude<DayCategory, 'rest'>, string> = {
   cycle: 'Cycle',
@@ -8,23 +21,6 @@ const LABELS: Record<Exclude<DayCategory, 'rest'>, string> = {
   flexibility: 'Flexibility',
   walk: 'Walk',
 };
-
-export function categoryForWorkoutType(workoutType: string | null | undefined): Exclude<DayCategory, 'rest'> {
-  const value = (workoutType ?? '').toLowerCase();
-  if (value.startsWith('bike_') || /bike|cycl|ride|vo2|sweet|endurance|tempo|threshold/.test(value)) {
-    return 'cycle';
-  }
-  if (value.startsWith('strength_') || /dumbbell|bodyweight|strength|resist/.test(value)) {
-    return 'weights';
-  }
-  if (value === 'mobility' || /mobility|flex/.test(value)) {
-    return 'flexibility';
-  }
-  if (value === 'walking' || value.startsWith('walk_') || /deliberate.?walk/.test(value)) {
-    return 'walk';
-  }
-  return 'weights';
-}
 
 export function isBikeWorkoutType(workoutType: string | null | undefined): boolean {
   return categoryForWorkoutType(workoutType) === 'cycle';
