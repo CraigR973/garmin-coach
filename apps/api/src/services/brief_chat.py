@@ -51,7 +51,7 @@ from typing import Any, Protocol
 
 import structlog
 from fastapi import HTTPException, status
-from sqlalchemy import case, func, select
+from sqlalchemy import String, and_, case, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
@@ -95,6 +95,7 @@ __all__ = [
     "QUESTION_MAX_LENGTH",
     "SYSTEM_PROMPT",
     "THREAD_PAGE_LIMIT",
+    "ThreadPage",
     "AnthropicBriefChatClient",
     "BriefChatClient",
     "BriefChatError",
@@ -305,6 +306,14 @@ def _capability_instruction(adjustable_workout_id: uuid.UUID | None) -> str:
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 
+@dataclass(frozen=True, slots=True)
+class ThreadPage:
+    """One window of the coach conversation, plus whether an older one exists."""
+
+    messages: list[BriefMessage]
+    has_more: bool
+
+
 class BriefChatService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -385,32 +394,108 @@ class BriefChatService:
         player: Profile,
         *,
         limit: int = THREAD_PAGE_LIMIT,
-    ) -> list[BriefMessage]:
-        """The rolling conversation, most recent window, oldest first."""
-        rows = await self._recent_messages(player.id, limit=limit)
-        return rows
+        before: uuid.UUID | None = None,
+    ) -> ThreadPage:
+        """One window of the rolling conversation, oldest first.
 
-    async def _recent_messages(self, user_id: uuid.UUID, *, limit: int) -> list[BriefMessage]:
-        newest_first = (
-            (
-                await self.session.execute(
-                    select(BriefMessage)
-                    .where(BriefMessage.user_id == user_id)
-                    .order_by(
-                        BriefMessage.created_utc.desc(),
-                        case(
-                            (BriefMessage.role == ROLE_ASSISTANT, 0),
-                            (BriefMessage.role == ROLE_USER, 1),
-                            else_=2,
-                        ),
-                        BriefMessage.id.desc(),
-                    )
-                    .limit(limit)
-                )
+        Batch 254 (UX241-05): the window used to be all there was. The coach held
+        **276** messages and showed 60, so **216** were unreachable — up from 22 at
+        Batch 192 and growing at roughly four a day, which means the window keeps
+        receding. Everything Mark asked before roughly mid-August was gone from his
+        view: he could not go back and find what the coach told him about a session
+        or re-read an explanation, while the app *still used* that history. There
+        was a gap between what the coach remembered and what Mark could see it
+        remembering.
+
+        ``before`` is the id of the oldest message already on screen; the page
+        returned is the window immediately older than it. ``has_more`` says whether
+        another page exists, so the client shows the control only when it leads
+        somewhere.
+        """
+        anchor = await self._message_anchor(player.id, before) if before else None
+        rows = await self._recent_messages(player.id, limit=limit, before=anchor)
+        oldest = rows[0] if rows else None
+        has_more = await self._exists_before(player.id, self._sort_key(oldest)) if oldest else False
+        return ThreadPage(messages=rows, has_more=has_more)
+
+    @staticmethod
+    def _sort_key(row: BriefMessage) -> tuple[datetime, int, str]:
+        return (row.created_utc, 0 if row.role == ROLE_USER else 1, str(row.id))
+
+    async def _message_anchor(
+        self, user_id: uuid.UUID, message_id: uuid.UUID
+    ) -> tuple[datetime, int, str] | None:
+        """The sort position of a message the caller already has.
+
+        Scoped to the caller's own rows, so a foreign or invented id simply pages
+        from the newest end rather than disclosing that the id exists.
+        """
+        row = await self.session.scalar(
+            select(BriefMessage).where(
+                BriefMessage.id == message_id, BriefMessage.user_id == user_id
             )
-            .scalars()
-            .all()
         )
+        return self._sort_key(row) if row is not None else None
+
+    async def _exists_before(self, user_id: uuid.UUID, key: tuple[datetime, int, str]) -> bool:
+        found = await self.session.scalar(
+            select(BriefMessage.id)
+            .where(BriefMessage.user_id == user_id, *self._older_than(key))
+            .limit(1)
+        )
+        return found is not None
+
+    @staticmethod
+    def _older_than(key: tuple[datetime, int, str]) -> tuple[Any, ...]:
+        """Rows strictly before ``key`` in the thread's own three-part order.
+
+        The order is (created_utc, role, id) because a question and its answer
+        share a timestamp; paging on the timestamp alone would drop or repeat one
+        of the pair at every boundary.
+        """
+        created, role_rank, row_id = key
+        rank = case(
+            (BriefMessage.role == ROLE_USER, 0),
+            (BriefMessage.role == ROLE_ASSISTANT, 1),
+            else_=2,
+        )
+        return (
+            or_(
+                BriefMessage.created_utc < created,
+                and_(
+                    BriefMessage.created_utc == created,
+                    or_(
+                        rank < role_rank,
+                        and_(rank == role_rank, cast(BriefMessage.id, String) < row_id),
+                    ),
+                ),
+            ),
+        )
+
+    async def _recent_messages(
+        self,
+        user_id: uuid.UUID,
+        *,
+        limit: int,
+        before: tuple[datetime, int, str] | None = None,
+    ) -> list[BriefMessage]:
+        query = (
+            select(BriefMessage)
+            .where(BriefMessage.user_id == user_id)
+            .order_by(
+                BriefMessage.created_utc.desc(),
+                case(
+                    (BriefMessage.role == ROLE_ASSISTANT, 0),
+                    (BriefMessage.role == ROLE_USER, 1),
+                    else_=2,
+                ),
+                BriefMessage.id.desc(),
+            )
+            .limit(limit)
+        )
+        if before is not None:
+            query = query.where(*self._older_than(before))
+        newest_first = (await self.session.execute(query)).scalars().all()
         return sorted(
             newest_first,
             key=lambda row: (row.created_utc, 0 if row.role == ROLE_USER else 1, str(row.id)),

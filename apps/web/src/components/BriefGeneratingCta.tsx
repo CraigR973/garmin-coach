@@ -27,7 +27,7 @@ export function BriefGeneratingCta({ dateLabel }: { dateLabel?: string }) {
         </div>
         <div className="min-w-0 flex-1">
           {dateLabel && (
-            <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-text-muted">
+            <p className="font-mono text-2xs uppercase tracking-[0.25em] text-text-muted">
               {dateLabel}
             </p>
           )}

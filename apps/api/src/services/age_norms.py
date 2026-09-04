@@ -78,6 +78,12 @@ class _Norm:
     # Single population average per band label, per sex (fitness + descriptive).
     averages: dict[Sex, dict[str, float]] | None = None
     descriptive_only: bool = False
+    #: Batch 254 (HS240-13): the desirable side of an average comparison is
+    #: otherwise unbounded, so a resting HR of 30 read "Much better than average"
+    #: with no floor. Below this value the row is ``neutral`` and says what it is
+    #: rather than congratulating it. ``None`` for metrics with no meaningful
+    #: implausibility floor.
+    plausible_floor: float | None = None
 
 
 # --- Reference tables -------------------------------------------------------
@@ -102,6 +108,10 @@ _NORMS: dict[str, _Norm] = {
             "male": {"20–29": 70, "30–39": 71, "40–49": 71, "50–59": 71, "60–69": 72, "70+": 73},
             "female": {"20–29": 74, "30–39": 74, "40–49": 74, "50–59": 74, "60–69": 74, "70+": 74},
         },
+        # For a trained man in his fifties the 40s are normal and expected, so the
+        # floor sits below them. It marks a value as *unusual*, not as a problem —
+        # the app does not tell Mark what a low resting heart rate means.
+        plausible_floor=35,
     ),
     "vo2max": _Norm(
         label="VO₂max",
@@ -216,6 +226,13 @@ _SLEEP_BANDS: dict[str, dict[Sex, dict[str, tuple[float, float]]]] = {
 # an edge value is neutral rather than a fail.
 _BAND_TOLERANCE_FRACTION = 0.15
 
+#: How far past the *desirable* edge of a healthy band a value goes before it stops
+#: being congratulated and starts being noticed (Batch 254, HS240-12). A full band
+#: width beyond the edge: for the 50-59 deep band of 12-20%, that is >28%; for a
+#: 7-9h duration band, >11h. Wide on purpose — the tier exists for the values that
+#: are genuinely unusual, not for a good night.
+_FAR_BAND_TOLERANCE_FRACTION = 1.0
+
 # Garmin's own young-adult "optimal" stage-% ranges (from ``sleepScores`` —
 # remPercentage/deepPercentage/lightPercentage ``optimalStart``/``optimalEnd``).
 # These are the targets Garmin scores against regardless of age, so surfacing
@@ -297,16 +314,37 @@ class AgeComparison:
         }
 
 
-def _classify(value: float, average: float, better: Direction) -> tuple[Tone, str]:
+def _classify(
+    value: float,
+    average: float,
+    better: Direction,
+    *,
+    plausible_floor: float | None = None,
+) -> tuple[Tone, str]:
     """Direction-aware outcome tier of ``value`` against a population average.
 
     ``gap`` is signed so positive always means "better than average" regardless
-    of whether higher or lower is the desirable direction. Descriptors are
-    outcome-framed (better/below in terms of *good*) so a green tone always reads
-    as "better than average" — e.g. a resting HR well *below* average is good.
+    of whether higher or lower is the desirable direction, and the **tone** rides
+    on that: a resting HR well below average is genuinely good, and green.
+
+    Batch 253/254 (HS240-13): the *warn* descriptors used to inherit the flip as
+    well as the tone, so a resting heart rate of **110** was displayed as *"Well
+    below average"* — next to the value 110 and an age average of 71. The tone was
+    right and the sentence said the opposite of the fact. Batch 230 exists because
+    "every figure on the morning brief reconciles from what it shows"; this one did
+    not, and it is rendered verbatim on two tables **and shipped to the model** in
+    ``ageComparison.rows[].descriptor``.
+
+    So the good-side descriptors stay outcome-framed — that is the half that was
+    never wrong — and the concerning side becomes **directional**: it says which
+    way the number actually moved.
     """
     if average <= 0:
         return "neutral", "About average"
+    if plausible_floor is not None and value < plausible_floor:
+        # Batch 254 (HS240-13). Unusual is not the same as good, and the app does
+        # not say what an unusually low value means — only that it is unusual.
+        return "neutral", "Unusually low — worth checking the reading"
     raw_gap = (value - average) / average
     gap = raw_gap if better == "higher" else -raw_gap
     if gap >= 0.15:
@@ -315,30 +353,60 @@ def _classify(value: float, average: float, better: Direction) -> tuple[Tone, st
         return "good", "Better than average"
     if gap > -0.04:
         return "neutral", "About average"
+    # The concerning side, described by direction rather than by outcome.
+    away = "below" if better == "higher" else "above"
     if gap > -0.15:
-        return "warn", "Below average"
-    return "warn", "Well below average"
+        return "warn", f"{away.capitalize()} average"
+    return "warn", f"Well {away} average"
 
 
 def _classify_band(value: float, low: float, high: float, better: Direction) -> tuple[Tone, str]:
     """Band-aware outcome tier of ``value`` against a healthy age range.
 
-    Anywhere inside the band is good ("healthy for your age"). Beyond the band
-    on the *desirable* side (more REM/deep/sleep, less light/awake) is still
-    good. Beyond it on the concerning side is neutral within a small tolerance,
-    and only warns past that tolerance — so an edge value never reads as a fail.
+    Anywhere inside the band is good ("healthy for your age"). Modestly beyond it
+    on the *desirable* side is still good. Beyond it on the concerning side is
+    neutral within a small tolerance and only warns past that — so an edge value
+    never reads as a fail.
+
+    Batch 254 (HS240-12): **the desirable side used to be unbounded**, so
+    ``value > high`` returned "good" for any value at all. Driving the real
+    classifier for a 57-year-old returned "good" for a 12-hour night, a 45% REM
+    fraction and a 40% deep fraction. The one direction the sleep model could not
+    express was *"this is unusually high, and unusually high is a signal"*.
+
+    That matters physiologically rather than aesthetically. Sleep duration is
+    J-shaped, not monotone — the ≥9h tail carries increased all-cause mortality and
+    cardiovascular risk in large meta-analyses (Cappuccio et al. 2010, *Sleep*) —
+    and for an athlete a sudden jump against a stable baseline is a classic marker
+    of infection onset or functional overreaching. A REM fraction at 45% is not a
+    good night; it is rebound, whose common triggers (recent REM deprivation,
+    alcohol cessation, stopping a REM-suppressing medication) are exactly the
+    context in which the app's REM narrative should change. A deep fraction at 40%
+    is profound sleep debt or a device artefact.
+
+    The far tier is deliberately **neutral rather than warn**: "worth noticing" is
+    what the data supports, and calling an unusually good-looking night a failure
+    would be its own dishonesty. No new statistical model — a second tolerance
+    multiple on the side that had none.
     """
     if low <= value <= high:
         return "good", "Healthy for your age"
     tolerance = _BAND_TOLERANCE_FRACTION * (high - low)
+    far = _FAR_BAND_TOLERANCE_FRACTION * (high - low)
     if better == "higher":
-        # Concern is being below the band; above it is genuinely good.
+        # Concern is being below the band; above it is good until it is unusual.
+        if value > high + far:
+            return "neutral", "Well above the healthy range for your age — worth noticing"
         if value > high:
             return "good", "Above the healthy range for your age"
         if value >= low - tolerance:
             return "neutral", "Just below the healthy range for your age"
         return "warn", "Below the healthy range for your age"
-    # better == "lower": concern is being above the band; below it is fine.
+    # better == "lower": concern is being above the band; below it is fine until
+    # it is unusual — an awake or light fraction near zero is a device artefact
+    # before it is a triumph.
+    if value < low - far:
+        return "neutral", "Well below the typical range for your age — worth noticing"
     if value < low:
         return "good", "Below the typical range for your age"
     if value <= high + tolerance:
@@ -633,7 +701,9 @@ def _build_rows(
 
         if average is None:
             continue
-        tone, descriptor = _classify(numeric, average, norm.better)
+        tone, descriptor = _classify(
+            numeric, average, norm.better, plausible_floor=norm.plausible_floor
+        )
         rows.append(
             AgeComparisonRow(
                 metric_key=metric_key,

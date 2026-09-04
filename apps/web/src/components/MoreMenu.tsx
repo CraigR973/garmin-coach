@@ -13,7 +13,7 @@ export function MoreMenu({ open, onClose }: { open: boolean; onClose: () => void
       <div className="space-y-5">
         {MORE_GROUPS.map((group) => (
           <div key={group.heading}>
-            <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.25em] text-text-muted">
+            <p className="mb-2 font-mono text-2xs uppercase tracking-[0.25em] text-text-muted">
               {group.heading}
             </p>
             <ul className="space-y-1">

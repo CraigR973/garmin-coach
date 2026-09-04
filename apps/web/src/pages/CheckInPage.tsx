@@ -423,7 +423,7 @@ export function CheckInPage() {
               value={manualForm.subjectiveScore === '' ? 5 : manualForm.subjectiveScore}
               onChange={(event) => setSubjectiveScore(event.target.value)}
             />
-            <div className="grid grid-cols-5 gap-1 text-center text-[11px] text-text-secondary">
+            <div className="grid grid-cols-5 gap-1 text-center text-2xs text-text-secondary">
               {SUBJECTIVE_FEEL_OPTIONS.map((option) => {
                 const selected = manualForm.subjectiveScore === String(option.value);
                 return (

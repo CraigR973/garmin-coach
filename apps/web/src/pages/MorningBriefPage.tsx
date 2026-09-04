@@ -18,7 +18,7 @@ import { useDailyLoop } from '@/hooks/useDailyLoop';
 import { useDailyLoopFreshness } from '@/hooks/useDailyLoopFreshness';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { markBriefReviewed } from '@/lib/briefReview';
-import { formatDateTime, friendlyDate } from '@/lib/dailyFlow';
+import { friendlyDate, writtenAt } from '@/lib/dailyFlow';
 
 export function MorningBriefPage() {
   const query = useDailyLoop();
@@ -135,7 +135,10 @@ export function MorningBriefPage() {
                 Coach read
               </CardTitle>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <CardDescription>Generated {formatDateTime(analysis.generatedAtUtc)}</CardDescription>
+                <CardDescription>
+                  {writtenAt(analysis.generatedAtUtc, { timeZone: data.timezone }) ??
+                    'Not synced'}
+                </CardDescription>
                 <BriefListenControls markdown={analysis.outputMarkdown} hostedTtsConsent={data.hostedTtsConsent} />
               </div>
             </CardHeader>

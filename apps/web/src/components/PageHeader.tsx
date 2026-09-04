@@ -56,7 +56,7 @@ export function PageHeader({ title, eyebrow, showBack, back, action, className, 
         <div className="flex-1 min-w-0">
           {eyebrow && (
             <>
-              <p className="font-mono text-[10px] tracking-[0.3em] uppercase text-text-muted mb-1.5">
+              <p className="font-mono text-2xs tracking-[0.3em] uppercase text-text-muted mb-1.5">
                 {eyebrow}
               </p>
               <div className="border-t border-accent/30 mb-2" aria-hidden />

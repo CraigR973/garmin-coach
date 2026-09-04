@@ -160,14 +160,14 @@ export function SleepDateCalendar({
                     VERDICT_STYLES[tone],
                   )}
                 >
-                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-current/30 bg-bg/40 text-[10px] font-semibold">
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-current/30 bg-bg/40 text-2xs font-semibold">
                     {VERDICT_MARKS[tone]}
                   </span>
                   <span>{VERDICT_LABELS[tone].replace(' verdict', '')}</span>
                 </div>
               ))}
             </div>
-            <div className="grid grid-cols-7 gap-1 text-center text-[11px] uppercase tracking-[0.2em] text-text-muted">
+            <div className="grid grid-cols-7 gap-1 text-center text-2xs uppercase tracking-[0.2em] text-text-muted">
               {WEEKDAY_LABELS.map((label) => (
                 <div key={label} className="py-1">
                   {label}
@@ -206,7 +206,7 @@ export function SleepDateCalendar({
                     )}
                   >
                     <span className="font-medium">{format(day, 'd')}</span>
-                    <div className="mt-1 flex items-center gap-1 text-[10px]">
+                    <div className="mt-1 flex items-center gap-1 text-2xs">
                       <span
                         className={cn(
                           selected && !verdict ? 'text-on-primary/80' : 'text-text-muted',
@@ -218,7 +218,7 @@ export function SleepDateCalendar({
                       {verdict ? (
                         <span
                           aria-hidden
-                          className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-current/30 bg-bg/35 text-[9px] font-semibold"
+                          className="inline-flex min-h-4 min-w-4 items-center justify-center rounded-full border border-current/30 bg-bg/35 px-1 text-3xs font-semibold"
                         >
                           {VERDICT_MARKS[verdict]}
                         </span>

@@ -56,6 +56,12 @@ export interface CoachConversationProps {
   onAsk: (question: string) => void;
   /** Rendered in a scrolling pane when the thread can grow unbounded. */
   scrollMessages?: boolean;
+  /** Batch 254 (UX241-05): an older page exists behind the window on screen. */
+  hasMore?: boolean;
+  /** True while that older page is being fetched. */
+  loadingMore?: boolean;
+  /** Fetch the page immediately older than the oldest message on screen. */
+  onLoadMore?: () => void;
 }
 
 export function CoachConversation({
@@ -70,6 +76,9 @@ export function CoachConversation({
   pending,
   onAsk,
   scrollMessages = false,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
 }: CoachConversationProps) {
   const queryClient = useQueryClient();
   const [question, setQuestion] = useState('');
@@ -158,12 +167,19 @@ export function CoachConversation({
   // one place a proactive message lands was also the one place never on
   // screen. Only the unbounded rolling thread scrolls internally; the inline
   // per-read chat is short enough to live in the page's own scroll.
+  // Batch 254 (UX241-05): loading an older page grows `presentedMessages.length`
+  // exactly as a new reply does, so an unconditional scroll-to-bottom would fight
+  // the button — Mark would tap "earlier", the pane would jump back to the newest
+  // turn, and the messages he asked for would be off-screen above him. Anchoring
+  // on the *newest* message id instead of the count means older pages do not
+  // trigger it at all, and the pane holds its reading position.
+  const newestId = presentedMessages.at(-1)?.message.id;
   useEffect(() => {
     if (!scrollMessages) return;
     const node = scrollRef.current;
     if (!node) return;
     node.scrollTop = node.scrollHeight;
-  }, [scrollMessages, presentedMessages.length, pending]);
+  }, [scrollMessages, newestId, pending]);
 
   const proposeMutation = useMutation({
     mutationFn: (plannedWorkoutId: string) =>
@@ -222,6 +238,19 @@ export function CoachConversation({
           }
           aria-label="Coach conversation"
         >
+          {hasMore && onLoadMore ? (
+            <li className="flex justify-center pb-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="subtle"
+                onClick={onLoadMore}
+                disabled={loadingMore}
+              >
+                {loadingMore ? 'Loading…' : 'Load earlier messages'}
+              </Button>
+            </li>
+          ) : null}
           {presentedMessages.map(({ message, dayKey, dayLabel, timeLabel, startsDay }) => {
             return (
               <Fragment key={message.id}>
@@ -268,8 +297,8 @@ export function CoachConversation({
                     aria-label={`Sent ${dayLabel} at ${timeLabel}`}
                     className={
                       message.role === 'user'
-                        ? 'mt-1 block text-right text-[11px] text-text-muted'
-                        : 'mt-1 block text-[11px] text-text-muted'
+                        ? 'mt-1 block text-right text-2xs text-text-muted'
+                        : 'mt-1 block text-2xs text-text-muted'
                     }
                   >
                     {timeLabel}

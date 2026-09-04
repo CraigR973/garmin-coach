@@ -61,6 +61,56 @@ export function formatDateTime(value: string | null | undefined): string {
   return d.toLocaleString();
 }
 
+/**
+ * When the coach wrote a read, in the app's own voice.
+ *
+ * Batch 254 (UX241-14). `/brief` showed `Generated 01/09/2026, 09:25:19` — a raw
+ * locale date-time to the *second*. The seconds are meaningless to Mark and the
+ * numeric date duplicates the eyebrow directly above it. The rest of the app is
+ * careful and warm about time ("Good morning, Mark", "TUESDAY 1 SEPTEMBER",
+ * "Breathing at 20:00, snack by 21:30"), which made this one line read like debug
+ * output that had escaped.
+ */
+export function writtenAt(
+  value: string | null | undefined,
+  options?: { now?: Date; timeZone?: string },
+): string | null {
+  if (!value) return null;
+  const written = new Date(value);
+  if (Number.isNaN(written.getTime())) return null;
+  const now = options?.now ?? new Date();
+  if (written.getTime() > now.getTime() + 24 * 60 * 60 * 1000) return null;
+
+  const timeZone = options?.timeZone;
+  const time = new Intl.DateTimeFormat(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    ...(timeZone ? { timeZone } : {}),
+  }).format(written);
+  const dayKey = (date: Date) =>
+    new Intl.DateTimeFormat('en-CA', { ...(timeZone ? { timeZone } : {}) }).format(date);
+
+  const writtenDay = dayKey(written);
+  const today = dayKey(now);
+  const yesterday = dayKey(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+
+  if (writtenDay === today) {
+    const hour = Number(time.slice(0, 2));
+    const partOfDay = hour < 12 ? 'this morning' : hour < 18 ? 'this afternoon' : 'this evening';
+    return `Written at ${time} ${partOfDay}`;
+  }
+  if (writtenDay === yesterday) return `Written yesterday at ${time}`;
+
+  const day = new Intl.DateTimeFormat(undefined, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    ...(timeZone ? { timeZone } : {}),
+  }).format(written);
+  return `Written on ${day} at ${time}`;
+}
+
 export function remContext(remSeconds: number | null | undefined): string | null {
   if (remSeconds === null || remSeconds === undefined) return null;
   const mins = Math.round(remSeconds / 60);
