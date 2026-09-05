@@ -6,6 +6,57 @@
 
 ## Now
 
+**2026-09-05 — Batch 255 built, gate green, awaiting merge.** Branch
+`fix/batch-255-coach-context`, Decision **#326**. Authored and built in one
+session from Craig's request to pull the day's conversation — the transcript
+itself was the finding.
+
+**Mark asked why his REM jumped, and the coach truthfully answered that it could
+not see the nights or his snack note.** Every honesty guardrail worked; what
+failed was upstream of them. `CoachLauncher` treated "the newest assistant
+message is a `weekly_review`" as "Mark is replying to the weekly review", with no
+reply affordance behind the inference, and it re-armed from its own output
+because the answer is stored as a `weekly_review` turn too. **39 of 39 messages
+since 2026-08-25 were pinned to a six-day-stale review**, including questions
+about that same morning. It now releases the moment he answers.
+
+**The budget comment was a false claim doing load-bearing work.** "~22k
+characters, so trimming is a safety valve rather than routine" — measured, an
+untrimmed block is **33,782 / 34,879 / 42,770** characters, so every question
+overflowed 30,000 and the valve fired on all of them. `sinceThisRead` was exempt
+from trimming while being the one section sized by anchor staleness (960 chars
+fresh, 8,835 stale), so it evicted the fortnight of nights out of an answer about
+REM. Delta lists now trim first, never below two entries.
+
+**Verified against production, which is where two further defects appeared.**
+Taking the *latest* check-in returned Mark's bare "feel" workout entry rather
+than the 09:38 morning one holding the snack, the sleep-onset correction and the
+bedroom setup — and that entry predates the brief, so no delta could have carried
+it either. And older than this batch: the trim's own bookkeeping is appended
+*after* trimming, so a correctly-trimmed block reported itself
+`best_effort_over_budget`. All three anchors now sit inside budget with 14
+nights, `remSleepMin=104`, the snack text, 10 sessions and 2 reviews present.
+
+**Verification:** local backend **1,295 passed / 415 expected skips** (6 new
+tests) against Batch 254's 1,292/412; Ruff check and format clean across 283
+files; mypy clean across 161; shared 42 and web 437 tests; build clean; lint 0
+errors / 9 pre-existing warnings. The three new launcher tests were confirmed to
+**fail against the old logic** before being kept. No migration. Chat prompt
+`coach-chat-v9` → `v10`, which withdraws nothing (`brief_chat` is `UNFILTERED`).
+
+**Next: push, PR, CI, and close out.** Then Batches 208, 209 and 210 — the three
+ledger rows the 236-241 wave never touched, each needing its own `/batch-start`.
+
+**Gotchas.** (1) `test_char_budget_never_drops_the_week_or_the_since_read_delta`
+was **tautological** — it compared `state["sinceThisRead"]` to the same object
+`_state()` had stored, so it passed regardless of what the function did. Fixed
+here; worth checking the same shape elsewhere. (2) The 3 new `db_conn` tests skip
+locally as always (no Postgres on this Mac) and first run in CI, so treat CI's
+count as the real one. (3) Everything in the previous Now block still stands
+below.
+
+## Prior current-state snapshots
+
 **2026-09-04 — Batch 254 SHIPPED. Group E is complete, and so is the 236–241 remediation wave.** PR #285 / squash `2315eeb`, Decision **#325**. Thirteen batches, five groups, every finding from six audit passes closed. **Three ledger rows remain, and none of them is from this wave** — Batches 208/209/210 are the deferred security and connection items specced on 2026-08-16 from the 189/190 audit.
 
 **Two of this batch's findings are the same defect wearing different clothes: a classifier with no vocabulary for "unusual".** `_classify_band` returned "good" for anything above a band, so a 12-hour night, a 45% REM fraction and a 40% deep fraction all read as good nights. And `_classify`'s warn descriptors inherited the deliberate sign flip along with the tone, so a resting heart rate of **110** was displayed as *"Well below average"* beside the value 110 and an age average of 71 — on two tables and in the model's own packet.
@@ -29,8 +80,6 @@
 Also open, and **all needing Craig rather than code**: the Group A operational items below. The parked local branch `wip/bulk-history-reads-2026-08-30` remains intentionally untouched and safe to leave.
 
 **Gotchas.** (1) **The Group A operational items are still open and all need Craig** — `SENTRY_DSN_BACKEND` unset on both Railway services and in Vercel, so Batch 242's alerting has code and no destination; `activity_timeseries` retention still deliberately dry-run after he declined the purge; and no backup yet proved restorable. These are the wave's only unfinished business. (2) **`monthly_review` is served stale** — the only stored one was generated 2026-07-05 on `reviews-v3` while the code is on `reviews-v7`, because the reviews lookup does not filter on version. Batch 253 *declared* that contract rather than changing it, so it is now visible instead of surprising. (3) **`ADMIN_ALERT_USER_ID` remains unset**, which is why `longitudinal-analysis` has still never run in production (0 succeeded, 7 skipped on `admin_billing_alert_not_ready`) — Batch 253 added the honesty rule to a prompt that has never been sent. (4) Batch 249's `describe_evidence` copy remains dormant. (5) Railway warns its legacy Config-as-Code files are deprecated from 2026-12-01, and its CLI suggests upgrading to v5.49.1.
-
-## Prior current-state snapshots
 
 **2026-09-04 — Batch 253 SHIPPED; Group E is 2/3 complete.** PR #283 / squash `f4f8e52`, follow-up PR #284 / squash `1e939f3`, Decision **#324**. Nineteen findings across all four audit passes — the drift layer, individually small and collectively the reason findings recur wave after wave.
 

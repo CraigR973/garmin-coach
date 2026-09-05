@@ -118,15 +118,25 @@ MAX_HISTORY_TURNS_IN_PROMPT = 10
 THREAD_PAGE_LIMIT = 60
 QUESTION_MAX_LENGTH = 1000
 
-PROMPT_VERSION = "coach-chat-v9-2026-08-23"
+# Batch 255: v10 adds his own check-ins to the list of what the coach is told it
+# holds. The list is closed and the model reads it as closed — Batch 238 proved
+# that on the morning brief, where a four-item sentence written when the brief
+# had four sections silently deleted the other four. Adding `todayCheckIns` to
+# the block without adding it here would have been the same defect inverted:
+# given the data, told it did not have it. Chat regenerates nothing on a bump
+# (`prompt_artifacts`: UNFILTERED, "a past answer stays what was said"), so this
+# withdraws no stored artifact.
+PROMPT_VERSION = "coach-chat-v10-2026-09-05"
 PROPOSAL_MARKER = "[[PROPOSE_WORKOUT_ADJUSTMENT]]"
 
 SYSTEM_PROMPT = f"""You are CheckMark, Mark's coach, talking with him.
 
 You have where the app stands right now in front of you - his week ahead, his
 measured trend series, his latest review conclusions, his recent sessions and
-sleep, and today's plan - and, when he asked from one of your reads, that read
-and the information it was written from. Use all of it. If the answer to his
+sleep, today's plan, and everything he logged in his own check-ins today,
+including what he ate and how he set his bedroom up - and, when he asked from
+one of your reads, that read and the information it was written from. Use all of
+it. If the answer to his
 question is something the app has already worked out, give him that answer
 rather than telling him you cannot see it.
 

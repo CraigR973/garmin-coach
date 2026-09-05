@@ -33,10 +33,13 @@ Kickoff decisions (Batch 178.2 / 178.3, ``/batch-start``):
   and insights) on every question to reproduce a narrative the app has already
   written and shown him.
 * **Token budget.** The block is capped at :data:`APP_STATE_CHAR_BUDGET`
-  serialized characters. Sections drop whole in :data:`_DROP_ORDER` and
-  oldest-first for the trend series, and anything dropped is *named* in
-  ``omittedForLength`` — a truncation must never be able to read as "no such
-  data", which is the failure mode this batch exists to remove.
+  serialized characters. ``sinceThisRead``'s lists give way first, then whole
+  sections in :data:`_DROP_ORDER`, then the trend series oldest-first, and
+  anything dropped is *named* in ``omittedForLength`` — a truncation must never
+  be able to read as "no such data", which is the failure mode this batch exists
+  to remove. Batch 255 re-sized the cap after measuring that every real question
+  overflowed the old one, so the naming was carrying weight it was never meant
+  to: the honest "not in front of me" answer had become the normal answer.
 
 Batch 179 opened the same assembly up to a conversation with no read at all.
 An unanchored question ("just ask the coach", or a question from Sleep, which
@@ -88,13 +91,22 @@ from src.services.workout_categories import is_bike_workout_type
 APP_STATE_KEY = "appState"
 APP_STATE_VERSION = 1
 
-#: Serialized-character ceiling for the whole app-state block, ~7.5k tokens. A
-#: full block measures ~22k characters (week ahead, six monthly trend windows
-#: plus the year-on-year comparison, two review conclusions, ten sessions, a
-#: fortnight of nights), so trimming is a safety valve rather than routine —
-#: which matters because a trim costs the conversation real context. The read
-#: packet remains the larger input and both sit well inside the model's window.
-APP_STATE_CHAR_BUDGET = 30_000
+#: Serialized-character ceiling for the whole app-state block, ~10.5k tokens.
+#:
+#: Batch 255 measured what the previous value assumed. The old comment read "a
+#: full block measures ~22k characters, so trimming is a safety valve rather
+#: than routine"; against Mark's real 2026-09-05 data an untrimmed block is
+#: **33,782 characters unanchored, 34,879 on the morning brief and 42,770 on a
+#: six-day-stale anchor**. Every question overflowed 30,000, so the valve fired
+#: on all of them and the drop order ran on every single answer — which is how
+#: he came to ask about his REM and be told the nights were not in front of the
+#: coach. Sized above the measured full block so trimming is once again the
+#: exception the design intends. The read packet remains the larger input and
+#: both sit well inside the model's window. 45,000 rather than the measured
+#: 42,770 so that even a pathologically stale anchor — which 255.1 should now
+#: prevent from arising at all — lands inside the budget rather than in the
+#: degraded ``best_effort_over_budget`` state.
+APP_STATE_CHAR_BUDGET = 45_000
 
 WEEK_AHEAD_DAYS = 7
 TREND_BUCKET = BUCKET_MONTH
@@ -170,10 +182,41 @@ class CoachOrigin:
 
 #: Dropped in this order when the block exceeds the budget: recent sessions and
 #: review prose first (largest, and most reconstructable from the rest), sleep
-#: history next. ``weekAhead``, ``today`` and ``sinceThisRead`` are small and
+#: history next. ``weekAhead``, ``today`` and ``todayCheckIns`` are small and
 #: load-bearing, so they are never dropped; the trend series is trimmed
 #: oldest-first only after everything above has gone.
 _DROP_ORDER = ("recentActivities", "latestReviews", "sleepHistory")
+
+#: ``sinceThisRead``'s unbounded lists, trimmed oldest-first *before* any whole
+#: section drops (Batch 255).
+#:
+#: The old comment called ``sinceThisRead`` "small and load-bearing" and exempted
+#: it from trimming entirely. It is load-bearing; it is not small. It is the one
+#: section that grows with the *staleness of the anchor* rather than with Mark's
+#: data — 960 characters against a nine-minute-old brief and **8,835** against a
+#: six-day-old review, three ``SINCE_READ_EVENT_LIMIT`` lists all at their cap.
+#: Being exempt, it evicted ``sleepHistory`` (3,145) to protect itself (8,835),
+#: so the freshest anchor kept the most context and the stalest kept the least —
+#: exactly backwards. A delta's oldest entries are its least useful, so these
+#: give way first, and never below :data:`SINCE_READ_TRIM_FLOOR` so the section
+#: can still answer "has anything changed since".
+_SINCE_READ_TRIM_ORDER = (
+    "activitiesIngestedSinceRead",
+    "newerReadsSinceRead",
+    "checkInsSinceRead",
+)
+SINCE_READ_TRIM_FLOOR = 2
+
+#: Headroom held back from :data:`APP_STATE_CHAR_BUDGET` while trimming.
+#:
+#: A pre-existing off-by-a-few that Batch 255 found by measuring rather than by
+#: reading: ``omittedForLengthMeaning``, the ``omittedForLength`` labels and the
+#: ``charBudget`` marker are all written into the block *after* the trim loops
+#: finish, so trimming to exactly the budget produced a block a few hundred
+#: characters over it — and a correctly-trimmed block then reported itself as
+#: ``best_effort_over_budget``. Whole-section drops overshot far enough to hide
+#: it; trimming a list to the boundary does not.
+_BUDGET_METADATA_RESERVE = 700
 
 
 @dataclass(frozen=True)
@@ -232,6 +275,7 @@ class ChatContextService:
             subject_date=local_today,
             window_kind="week_ahead_from_today",
         )
+        today_check_ins = await self._check_ins_on(player.id, local_today)
         trends = await self._trends(player, local_today)
         reviews = await self._latest_reviews(player.id)
         activities = await self._recent_activities(player.id, local_today, player.timezone)
@@ -277,6 +321,15 @@ class ChatContextService:
                         "state the source day; missing means no current reading is on file."
                     ),
                 },
+            },
+            "todayCheckIns": {
+                "entries": [_check_in_state(row) for row in today_check_ins],
+                "meaning": (
+                    "Everything Mark logged himself today, newest first, present on "
+                    "every question rather than only as a delta against a read. An "
+                    "empty list means he has not checked in yet today - not that he "
+                    "wrote nothing."
+                ),
             },
             "weekAhead": week_ahead,
             "trends": trends,
@@ -563,19 +616,7 @@ class ChatContextService:
             .scalars()
             .all()
         )
-        return [
-            {
-                "entryDate": row.entry_date.isoformat(),
-                "entryAtUtc": _dt(row.entry_at_utc),
-                "subjectiveScore": row.subjective_score,
-                "rpe": row.rpe,
-                "feel": row.feel,
-                # Mark's own words are data, never instructions (Decision #243).
-                "notes": row.notes,
-                "contentRole": "untrusted_user_data",
-            }
-            for row in rows
-        ]
+        return [_check_in_state(row) for row in rows]
 
     async def _plan_changes_since(
         self,
@@ -640,6 +681,35 @@ class ChatContextService:
             for row in rows
         ]
 
+    async def _check_ins_on(
+        self,
+        user_id: uuid.UUID,
+        entry_date: date,
+    ) -> list[ManualEntry]:
+        """Every check-in Mark filed on one day, newest first.
+
+        Not ``_latest_check_in_on``, and Batch 255 shipped that mistake first and
+        caught it against production. He files several a day and they carry
+        different things: on 2026-09-05 his 09:38 morning check-in held the
+        sleep-onset correction, the snack and the bedroom setup, and his 09:43
+        workout check-in held a bare "feel". Taking the latest returned the
+        emptier of the two and dropped everything the question was about — and
+        the earlier one also predates that morning's brief, so the
+        ``sinceThisRead`` delta could not have supplied it either.
+        """
+        rows = (
+            (
+                await self.session.execute(
+                    select(ManualEntry)
+                    .where(ManualEntry.user_id == user_id, ManualEntry.entry_date == entry_date)
+                    .order_by(desc(ManualEntry.entry_at_utc))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows)
+
     async def _latest_check_in_on(
         self,
         user_id: uuid.UUID,
@@ -664,17 +734,38 @@ def _apply_char_budget(state: dict[str, Any]) -> None:
 
     An omission that looked like an absence would recreate exactly the failure
     this batch removes, so every drop is recorded in ``omittedForLength``.
+
+    Order matters, and Batch 255 changed it. ``sinceThisRead``'s lists go first
+    because they are the only part of the block sized by *how stale the anchor
+    is* rather than by how much Mark has done — so leaving them exempt meant a
+    stale anchor bought its own bulk by evicting the sleep, session and review
+    history the question was usually about.
     """
     omitted: list[str] = list(state.get("omittedForLength", []))
+    target = APP_STATE_CHAR_BUDGET - _BUDGET_METADATA_RESERVE
+
+    # Batch 255: the staleness-driven section gives way before the data-driven
+    # ones. Lists arrive newest-first, so the oldest entry is the last.
+    since_read = state.get("sinceThisRead") or {}
+    for field in _SINCE_READ_TRIM_ORDER:
+        entries = since_read.get(field)
+        if not isinstance(entries, list):
+            continue
+        while app_state_length(state) > target and len(entries) > SINCE_READ_TRIM_FLOOR:
+            entries.pop()
+            label = f"sinceThisRead.{field}(oldest)"
+            if label not in omitted:
+                omitted.append(label)
+
     for section in _DROP_ORDER:
-        if app_state_length(state) <= APP_STATE_CHAR_BUDGET:
+        if app_state_length(state) <= target:
             break
         if not state.get(section):
             continue
         state[section] = []
         omitted.append(section)
     trend_windows = state.get("trends", {}).get("recentWindows", [])
-    while app_state_length(state) > APP_STATE_CHAR_BUDGET and len(trend_windows) > 1:
+    while app_state_length(state) > target and len(trend_windows) > 1:
         trend_windows.pop(0)
         if "trends.recentWindows(oldest)" not in omitted:
             omitted.append("trends.recentWindows(oldest)")
@@ -775,6 +866,37 @@ def _activity_state(row: Activity, timezone_name: str) -> dict[str, Any]:
         "normalizedPowerWatts": row.normalized_power_watts,
         "trainingLoad": row.training_load,
         "aerobicTrainingEffect": row.aerobic_training_effect,
+    }
+
+
+def _check_in_state(row: ManualEntry) -> dict[str, Any]:
+    """One check-in as the coach sees it.
+
+    Batch 255 added ``food`` and ``sleepSetup``. They were the only structured
+    things Mark writes in a check-in that the chat did not forward, and on
+    2026-09-05 that produced the failure this batch exists to remove: he asked
+    about his evening snack, the coach truthfully answered that it had no such
+    note, and he replied **"not sure why you can't read them"**. The text was in
+    ``food_json`` the whole time — ``morning_analysis`` and ``daily_loop``
+    already send both fields, so the morning brief could see the snack and the
+    conversation *about* that brief could not.
+
+    ``sleep_setup_json`` travels for the same reason and one more: his notes
+    routinely refer to it deictically — "window openings noted below are for
+    overnight not pre cool" — so without it the prose he does send is
+    unresolvable.
+    """
+    return {
+        "entryDate": row.entry_date.isoformat(),
+        "entryAtUtc": _dt(row.entry_at_utc),
+        "subjectiveScore": row.subjective_score,
+        "rpe": row.rpe,
+        "feel": row.feel,
+        # Mark's own words are data, never instructions (Decision #243).
+        "notes": row.notes,
+        "food": row.food_json or None,
+        "sleepSetup": row.sleep_setup_json or None,
+        "contentRole": "untrusted_user_data",
     }
 
 

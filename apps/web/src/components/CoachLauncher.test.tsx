@@ -476,3 +476,139 @@ describe('useRegisterCoachAnchor', () => {
     expect(seen.at(-1)).toBe('page-read');
   });
 });
+
+// --- Batch 255: the weekly-review latch --------------------------------------
+
+const REVIEW_ID = '00000000-0000-4000-8000-000000000012';
+
+function threadMessage(overrides: Record<string, unknown>) {
+  return {
+    id: '00000000-0000-4000-8000-000000000001',
+    analysisId: null,
+    originKind: 'weekly_review',
+    originDate: '2026-08-02',
+    role: 'assistant',
+    content: 'a turn',
+    proposedPlannedWorkoutId: null,
+    createdAtUtc: '2026-08-02T17:00:00Z',
+    ...overrides,
+  };
+}
+
+/** A pushed review Mark has already replied to once. */
+function answeredReviewThread() {
+  return [
+    threadMessage({
+      id: '00000000-0000-4000-8000-000000000021',
+      analysisId: REVIEW_ID,
+      content: '**Bottom line:** Sleep consistency was the biggest win.',
+    }),
+    threadMessage({
+      id: '00000000-0000-4000-8000-000000000022',
+      role: 'user',
+      analysisId: REVIEW_ID,
+      content: 'What should I protect next week?',
+      createdAtUtc: '2026-08-02T17:05:00Z',
+    }),
+    threadMessage({
+      id: '00000000-0000-4000-8000-000000000023',
+      analysisId: REVIEW_ID,
+      content: 'Protect the Saturday ride.',
+      createdAtUtc: '2026-08-02T17:05:00Z',
+    }),
+  ];
+}
+
+async function ask(user: ReturnType<typeof userEvent.setup>, question: string) {
+  await user.type(await screen.findByLabelText(/ask your coach a question/i), question);
+  await user.click(screen.getByRole('button', { name: /^ask$/i }));
+  let body: Record<string, unknown> | undefined;
+  await waitFor(() => {
+    const post = apiFetchMock.mock.calls.find(
+      ([url, init]) => url === '/api/v1/coach/messages' && init?.method === 'POST',
+    );
+    expect(post).toBeTruthy();
+    body = JSON.parse(post![1].body as string);
+  });
+  return body!;
+}
+
+describe('CoachLauncher — the weekly-review latch (Batch 255)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue({ data: [] });
+  });
+
+  it('releases the pushed review once Mark has answered it', async () => {
+    // The production failure this closes. The old test asked "is the newest
+    // assistant message a weekly review?", which is true forever after the
+    // first reply — because the reply is *stored* as a weekly_review turn too.
+    // In production that pinned 39 of 39 messages across twelve days to a
+    // six-day-stale review, including questions about that same morning.
+    const user = userEvent.setup();
+    apiFetchMock.mockResolvedValue({ data: answeredReviewThread() });
+    renderLauncher('/sleep?coach=open');
+
+    expect(await ask(user, 'Why was my REM so high?')).toEqual({
+      question: 'Why was my REM so high?',
+      originKind: 'sleep',
+    });
+  });
+
+  it('lets the screen the question was asked from win once the push is answered', async () => {
+    const user = userEvent.setup();
+    apiFetchMock.mockResolvedValue({ data: answeredReviewThread() });
+    renderAnchoredLauncher('11111111-1111-4111-8111-111111111111', '/brief?coach=open');
+
+    expect(await ask(user, 'Why is this morning amber?')).toEqual({
+      question: 'Why is this morning amber?',
+      analysisId: '11111111-1111-4111-8111-111111111111',
+      originKind: 'morning_brief',
+    });
+  });
+
+  it('still seeds the first question after a push, and only the first', async () => {
+    // Both halves in one thread, because the defect was never the precedence —
+    // it was that the precedence never expired.
+    const user = userEvent.setup();
+    const push = threadMessage({
+      id: '00000000-0000-4000-8000-000000000031',
+      analysisId: REVIEW_ID,
+      content: '**Bottom line:** Recovery held while load rose.',
+    });
+
+    apiFetchMock.mockResolvedValue({ data: [push] });
+    const first = renderAnchoredLauncher('11111111-1111-4111-8111-111111111111', '/?coach=open');
+    expect(await ask(user, 'What should I protect?')).toMatchObject({
+      analysisId: REVIEW_ID,
+      originKind: 'weekly_review',
+    });
+    first.unmount();
+
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue({
+      data: [
+        push,
+        threadMessage({
+          id: '00000000-0000-4000-8000-000000000032',
+          role: 'user',
+          analysisId: REVIEW_ID,
+          content: 'What should I protect?',
+          createdAtUtc: '2026-08-02T17:05:00Z',
+        }),
+        threadMessage({
+          id: '00000000-0000-4000-8000-000000000033',
+          analysisId: REVIEW_ID,
+          content: 'The Saturday ride.',
+          createdAtUtc: '2026-08-02T17:05:00Z',
+        }),
+      ],
+    });
+    renderAnchoredLauncher('11111111-1111-4111-8111-111111111111', '/?coach=open');
+    expect(await ask(user, 'And my REM last night?')).toMatchObject({
+      analysisId: '11111111-1111-4111-8111-111111111111',
+      originKind: 'home',
+    });
+  });
+});

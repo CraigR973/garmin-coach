@@ -56,6 +56,36 @@ function latestAssistant(messages: BriefMessage[]): BriefMessage | null {
   return null;
 }
 
+/**
+ * A pushed review Mark has not answered yet, or null (Batch 255).
+ *
+ * This replaces `newestAssistant?.originKind === 'weekly_review'`, which read
+ * "the newest assistant message happens to be a weekly review" as "Mark is
+ * replying to the weekly review" — an inference with no affordance behind it,
+ * because there is no reply control in this UI. It then beat both the screen's
+ * origin and its registered read, and it could never release: the *answer* is
+ * stored with `origin_kind='weekly_review'` too, so it became the newest
+ * assistant message and re-armed the test that selected it. In production it
+ * latched on 2026-08-23 and pinned **39 of 39 messages over twelve days** to a
+ * six-day-stale review — including Mark asking about *this morning's* REM nine
+ * minutes after that morning's brief was generated, and being told the nights
+ * were not in front of the coach.
+ *
+ * Two conditions, and the pair is what makes it self-releasing. The push must be
+ * the newest message in the thread, so it is genuinely unanswered; and it must
+ * be a *proactive delivery* rather than a reply, which is exactly "no question
+ * immediately before it" — a reply always has one. The moment Mark answers, the
+ * newest turn is his answer's reply, preceded by his question, and the seed is
+ * gone without anything having to expire it.
+ */
+function unansweredProactivePush(messages: BriefMessage[]): BriefMessage | null {
+  const newest = messages[messages.length - 1];
+  if (!newest || newest.role !== 'assistant' || !newest.analysisId) return null;
+  if (newest.originKind !== 'weekly_review') return null;
+  if (messages[messages.length - 2]?.role === 'user') return null;
+  return newest;
+}
+
 export function CoachLauncher({ userId, timeZone }: { userId?: string; timeZone?: string }) {
   const { pathname, search } = useLocation();
   const queryClient = useQueryClient();
@@ -141,21 +171,22 @@ export function CoachLauncher({ userId, timeZone }: { userId?: string; timeZone?
 
   const askMutation = useMutation({
     mutationFn: async (question: string) => {
-      const replyingToWeeklyReview =
-        newestAssistant?.originKind === 'weekly_review' && newestAssistant.analysisId
-          ? newestAssistant
-          : null;
       // Batch 207: the inline per-read chats are gone, so this is the only box.
       // It still anchors to whatever read the screen is showing, so asking
       // "why?" while looking at a brief reaches the coach with that brief
       // attached — the useful half of the old anchoring, without the second
       // affordance that made a question vanish from the read it was about.
-      // Replying to a weekly review still wins, because that reply is
-      // explicitly to a message rather than to the page behind it.
+      //
+      // Batch 255: an unanswered pushed review still wins the *first* question
+      // after it, because its notification deep-links to `/?coach=open` and the
+      // screen behind it is Home — so deferring to the screen there would answer
+      // about the morning brief a man who just tapped "your weekly review is
+      // ready". It wins that one question and no more.
+      const seedingPush = unansweredProactivePush(messages);
       const payload = coachMessageInputSchema.parse({
         question,
-        analysisId: replyingToWeeklyReview?.analysisId ?? anchoredAnalysisId ?? undefined,
-        originKind: replyingToWeeklyReview ? 'weekly_review' : origin,
+        analysisId: seedingPush?.analysisId ?? anchoredAnalysisId ?? undefined,
+        originKind: seedingPush ? 'weekly_review' : origin,
       });
       return apiFetch<{ data: BriefMessageTurn }>('/api/v1/coach/messages', {
         method: 'POST',
