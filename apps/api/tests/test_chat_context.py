@@ -26,21 +26,31 @@ from src.models.coaching import (
     DailyMetric,
     KnowledgeBase,
     ManualEntry,
+    MetricBaseline,
     PlannedWorkout,
     Sleep,
+    TemperatureReading,
+    WeatherDaily,
 )
 from src.models.profile import Profile, UserRole
 from src.services.chat_context import (
+    _DROP_ORDER,
     APP_STATE_CHAR_BUDGET,
+    KNOWLEDGE_BASE_MEANING,
     ORIGIN_KINDS,
     SINCE_READ_TRIM_FLOOR,
     ChatContextService,
     CoachOrigin,
     _apply_char_budget,
+    _night_for,
     _packet_check_in_versions,
     app_state_length,
 )
 from src.services.holiday_pause import KB_SECTION as HOLIDAY_KB_SECTION
+
+#: Mark's coordinates; ``weather_daily`` stores them NOT NULL.
+KILMARNOCK_LAT = 55.6045
+KILMARNOCK_LONG = -4.5249
 
 ASKED_AT = datetime(2026, 7, 30, 9, 0)
 TODAY = date(2026, 7, 30)
@@ -213,6 +223,86 @@ def test_char_budget_keeps_enough_of_the_delta_to_still_answer_since_when() -> N
     # happened since the read", which is the absence-vs-omission failure again.
     assert len(since["activitiesIngestedSinceRead"]) == SINCE_READ_TRIM_FLOOR
     assert state["charBudget"]["status"] == "best_effort_over_budget"
+
+
+def test_char_budget_drops_the_knowledge_base_last_and_keeps_its_shape() -> None:
+    """Batch 256: the only new section big enough to buy anything back.
+
+    It goes after the three list sections because a rule of Mark's is less
+    reconstructable than a session he rode, and it empties to a **mapping** —
+    the drop loop was written when every droppable section was a list, and
+    flipping a dict to ``[]`` would hand the model a shape it has never seen.
+    """
+    state = _state(
+        recentActivities=_filler(4, _QUARTER),
+        latestReviews=_filler(4, _QUARTER),
+        sleepHistory=_filler(4, _QUARTER),
+        knowledgeBase={"sections": _filler(4, _QUARTER), "meaning": "his own rules"},
+    )
+    assert app_state_length(state) > APP_STATE_CHAR_BUDGET
+
+    _apply_char_budget(state)
+
+    assert app_state_length(state) <= APP_STATE_CHAR_BUDGET
+    assert state["omittedForLength"] == [
+        "recentActivities",
+        "latestReviews",
+        "sleepHistory",
+        "knowledgeBase",
+    ]
+    assert state["knowledgeBase"] == {}
+
+
+def test_the_small_new_sections_are_never_dropped() -> None:
+    """677, 767 and 993 characters: dropping them costs a fact and saves nothing.
+
+    Today's readiness, last night's bedroom and his own bands are undroppable
+    for the same reason ``today`` is — the trim exists to shed bulk, and these
+    are not bulk.
+
+    The membership assertion is the load-bearing half. A behavioural check alone
+    would pass whether or not they were in the drop order, because emptying the
+    four larger sections already brings any realistic block under budget — so
+    the loop would never reach them, and the test would never fail. Batch 255
+    found a test in this exact file that could not fail; one is enough.
+    """
+    assert set(_DROP_ORDER).isdisjoint({"dailyMetrics", "environment", "personalBaselines"})
+
+    state = _state(
+        recentActivities=_filler(6, _QUARTER),
+        latestReviews=_filler(6, _QUARTER),
+        sleepHistory=_filler(6, _QUARTER),
+        knowledgeBase={"sections": _filler(6, _QUARTER)},
+        dailyMetrics={"today": {"readinessScore": 80}, "meaning": "wake observation"},
+        environment={"thermalReview": {"indoorPeakC": 18.7}, "meaning": "bedroom"},
+        personalBaselines={"bands": {"sleep_score": {"median": 74}}, "meaning": "his bands"},
+    )
+
+    _apply_char_budget(state)
+
+    assert state["dailyMetrics"]["today"]["readinessScore"] == 80
+    assert state["environment"]["thermalReview"]["indoorPeakC"] == 18.7
+    assert state["personalBaselines"]["bands"]["sleep_score"]["median"] == 74
+
+
+def test_only_last_nights_row_is_offered_as_the_thermal_window() -> None:
+    """``thermal_review`` takes a sleep window, and a stale one is worse than none.
+
+    The history is newest-first and can begin two days back when Garmin has not
+    written last night yet; handing that row over would clip the readings to a
+    window they did not fall in and report a peak from the wrong night.
+    """
+    last_night = Sleep(id=uuid.uuid4(), user_id=uuid.uuid4(), calendar_date=TODAY, score=80)
+    older = Sleep(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        calendar_date=TODAY - timedelta(days=2),
+        score=70,
+    )
+
+    assert _night_for([last_night, older], TODAY) is last_night
+    assert _night_for([older], TODAY) is None
+    assert _night_for([], TODAY) is None
 
 
 def test_packet_check_in_versions_reads_both_read_shapes() -> None:
@@ -883,6 +973,255 @@ KNOWN_CLIENT_ORIGIN_KINDS = frozenset(
         "check_in",
     }
 )
+
+
+# ---------------------------------------------------------------------------
+# Batch 256 — the four sections every question needs, from live rows
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_an_unanchored_question_holds_his_rules_readiness_and_bedroom(
+    db_conn: AsyncConnection,
+) -> None:
+    """256.1: "just ask the coach" from Home used to hold none of these.
+
+    The measurement that opened this batch: of Mark's real 2026-09-05 morning
+    packet, 41,757 characters never reached the live block — including his own
+    knowledge base, today's readiness and his bedroom climate. So the same
+    question answered from Home and from the morning brief got two different
+    coaches, and on 09-05 he asked about REM in an explicitly thermal context
+    with no ``environment`` in front of it at all.
+    """
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        session.add_all(
+            [
+                KnowledgeBase(
+                    id=uuid.uuid4(),
+                    user_id=user.id,
+                    section="sleep_protocol",
+                    version=3,
+                    source="batch_5_seed",
+                    content={"bedtimeTarget": "23:15", "preCoolTemperatureC": 17.0},
+                    is_active=True,
+                ),
+                DailyMetric(
+                    id=uuid.uuid4(),
+                    user_id=user.id,
+                    calendar_date=TODAY,
+                    readiness_score=80,
+                    hrv_last_night_avg_ms=51,
+                    resting_heart_rate_bpm=44,
+                    body_battery_end=78,
+                    raw_payload={},
+                ),
+                Sleep(
+                    id=uuid.uuid4(),
+                    user_id=user.id,
+                    calendar_date=TODAY,
+                    score=78,
+                    duration_sec=27000,
+                    sleep_start_utc=datetime(2026, 7, 29, 22, 30),
+                    sleep_end_utc=datetime(2026, 7, 30, 6, 0),
+                    raw_payload={},
+                ),
+                WeatherDaily(
+                    id=uuid.uuid4(),
+                    user_id=user.id,
+                    calendar_date=TODAY,
+                    source="open_meteo",
+                    latitude=KILMARNOCK_LAT,
+                    longitude=KILMARNOCK_LONG,
+                    overnight_low_c=12.7,
+                ),
+                MetricBaseline(
+                    id=uuid.uuid4(),
+                    user_id=user.id,
+                    metric_key="sleep_score",
+                    metric_label="Sleep score",
+                    source="garmin",
+                    sample_count=90,
+                    median_value=74,
+                    lower_quartile_value=68,
+                    upper_quartile_value=82,
+                    window_start_date=TODAY - timedelta(days=90),
+                    window_end_date=TODAY,
+                ),
+            ]
+        )
+        for offset, celsius in ((0, 19.4), (60, 18.2), (240, 17.9)):
+            session.add(
+                TemperatureReading(
+                    id=uuid.uuid4(),
+                    user_id=user.id,
+                    captured_at_utc=datetime(2026, 7, 29, 21, 45) + timedelta(minutes=offset),
+                    temperature_c=celsius,
+                    source="hive",
+                )
+            )
+        await session.commit()
+
+        context = await ChatContextService(session).build(
+            user, None, asked_at_utc=ASKED_AT, origin=CoachOrigin(kind="home")
+        )
+
+    state = context.app_state
+    # His own rules, read live rather than copied off a read he may not be on.
+    sections = {row["section"]: row for row in state["knowledgeBase"]["sections"]}
+    assert sections["sleep_protocol"]["content"]["bedtimeTarget"] == "23:15"
+    assert state["knowledgeBase"]["sleepProtocol"]["preCoolTemperatureC"] == 17.0
+    assert state["knowledgeBase"]["meaning"] == KNOWLEDGE_BASE_MEANING
+    # Today's readiness.
+    assert state["dailyMetrics"]["today"]["readinessScore"] == 80
+    assert state["dailyMetrics"]["today"]["hrvLastNightAvgMs"] == 51
+    # Last night's bedroom, scoped to the sleep window and using his own target.
+    review = state["environment"]["thermalReview"]
+    assert review["windowSource"] == "sleep"
+    assert review["indoorPeakC"] == 18.2
+    assert review["targetPreCoolC"] == 17.0
+    assert state["environment"]["weather"]["overnightLowC"] == 12.7
+    # And what is normal for him rather than for a population.
+    assert state["personalBaselines"]["bands"]["sleep_score"]["median"] == 74
+
+
+@pytest.mark.asyncio
+async def test_the_knowledge_base_is_read_live_not_copied_from_the_read(
+    db_conn: AsyncConnection,
+) -> None:
+    """256.1's reason for building from rows rather than copying the packet.
+
+    A read's packet freezes the knowledge base at generation, and the knowledge
+    base is edited *between* reads — the seed fills only missing sections, so
+    production is changed by read-modify-write or the wholesale admin PUT. A
+    copy would therefore let the coach state a rule Mark has since changed, and
+    state it as current.
+    """
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        session.add(
+            KnowledgeBase(
+                id=uuid.uuid4(),
+                user_id=user.id,
+                section="sleep_protocol",
+                version=4,
+                source="batch_5_seed",
+                content={"bedtimeTarget": "22:45"},
+                is_active=True,
+            )
+        )
+        await session.commit()
+        analysis = await _make_read(
+            session,
+            user.id,
+            context_packet={
+                "knowledgeBase": {
+                    "sections": [
+                        {"section": "sleep_protocol", "content": {"bedtimeTarget": "23:15"}}
+                    ]
+                }
+            },
+        )
+
+        context = await ChatContextService(session).build(user, analysis, asked_at_utc=ASKED_AT)
+
+    state = context.app_state
+    live = {row["section"]: row for row in state["knowledgeBase"]["sections"]}
+    assert live["sleep_protocol"]["content"]["bedtimeTarget"] == "22:45"
+    # The read keeps its own frozen record untouched — the block is the later of
+    # the two, and ``meaning`` already tells the coach which is which.
+    frozen = analysis.context_packet["knowledgeBase"]["sections"][0]
+    assert frozen["content"]["bedtimeTarget"] == "23:15"
+
+
+@pytest.mark.asyncio
+async def test_a_holiday_leaves_no_bedroom_to_review_but_keeps_the_weather(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 113 (#186)'s rule, applied to the conversation.
+
+    Away from home the bedroom is not being slept in, so a thermal review would
+    describe an empty room. The weather still travels, exactly as it does in the
+    morning packet, because it is true wherever he is — and ``thermalReview`` is
+    an explicit ``null`` with a ``meaning`` that says why, never a missing key.
+    """
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        session.add_all(
+            [
+                KnowledgeBase(
+                    id=uuid.uuid4(),
+                    user_id=user.id,
+                    section=HOLIDAY_KB_SECTION,
+                    content={
+                        "windows": [
+                            {
+                                "startDate": (TODAY - timedelta(days=2)).isoformat(),
+                                "endDate": (TODAY + timedelta(days=2)).isoformat(),
+                                "pausedAtUtc": READ_AT.isoformat(),
+                            }
+                        ]
+                    },
+                    is_active=True,
+                ),
+                WeatherDaily(
+                    id=uuid.uuid4(),
+                    user_id=user.id,
+                    calendar_date=TODAY,
+                    source="open_meteo",
+                    latitude=KILMARNOCK_LAT,
+                    longitude=KILMARNOCK_LONG,
+                    overnight_low_c=12.7,
+                ),
+                TemperatureReading(
+                    id=uuid.uuid4(),
+                    user_id=user.id,
+                    captured_at_utc=datetime(2026, 7, 29, 23, 0),
+                    temperature_c=21.5,
+                    source="hive",
+                ),
+            ]
+        )
+        await session.commit()
+
+        context = await ChatContextService(session).build(
+            user, None, asked_at_utc=ASKED_AT, origin=CoachOrigin(kind="home")
+        )
+
+    environment = context.app_state["environment"]
+    assert environment["thermalReview"] is None
+    assert environment["weather"]["overnightLowC"] == 12.7
+    assert "away on a holiday" in environment["meaning"]
+
+
+@pytest.mark.asyncio
+async def test_no_reading_yet_today_is_a_null_not_a_missing_section(
+    db_conn: AsyncConnection,
+) -> None:
+    """The rule the whole block is built on: an absence must not read as nothing.
+
+    Garmin has not written a wake observation before Mark's watch syncs, and a
+    section that simply vanished would tell the coach the app holds no such
+    thing — the failure ``omittedForLength`` exists to prevent, arriving by a
+    different door.
+    """
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+
+        context = await ChatContextService(session).build(
+            user, None, asked_at_utc=ASKED_AT, origin=CoachOrigin(kind="home")
+        )
+
+    state = context.app_state
+    assert state["dailyMetrics"]["today"] is None
+    assert "not the same as a reading of zero" in state["dailyMetrics"]["meaning"]
+    assert state["environment"]["thermalReview"]["sampleCount"] == 0
+    assert state["personalBaselines"]["bands"] == {}
+    assert state["knowledgeBase"]["sections"] == []
 
 
 def test_origin_kinds_match_the_client_schema() -> None:

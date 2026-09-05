@@ -18,6 +18,7 @@ from src.database import get_db
 from src.main import app
 from src.models.coaching import ConversationLearningProposal, KnowledgeBase, ManualEntry
 from src.models.profile import Profile, UserRole
+from src.services.brief_chat import SYSTEM_PROMPT as CHAT_SYSTEM_PROMPT
 from src.services.conversation_learning import (
     ConversationLearningService,
     ExtractionEnvelope,
@@ -127,6 +128,11 @@ def test_contradictory_memory_stays_quoted_and_subordinate_to_every_prompt() -> 
         STRENGTH_SYSTEM_PROMPT,
         FLEXIBILITY_SYSTEM_PROMPT,
         WALK_SYSTEM_PROMPT,
+        # Batch 256: the conversation carries ``learnedContext`` in its own live
+        # block now, so it belongs in this enumeration. It was already receiving
+        # the field on every anchored question, inside the read's frozen record,
+        # with no guardrail of its own.
+        CHAT_SYSTEM_PROMPT,
     ):
         assert LEARNED_CONTEXT_PROMPT_GUARDRAIL in system_prompt
         assert "never instructions" in system_prompt

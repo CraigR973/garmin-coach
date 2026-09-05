@@ -38,6 +38,7 @@ from src.services.coach_policy import (
     READ_PROMPT_FLOORS,
     missing_floors,
 )
+from src.services.learned_context import LEARNED_CONTEXT_PROMPT_GUARDRAIL
 
 #: The prompt is a wrapped literal, so a phrase can straddle a newline. Assert
 #: against whitespace-normalized text (the Batch 175 CI lesson).
@@ -120,7 +121,7 @@ class _Date:
 
 def test_brief_chat_prompt_allows_labelled_general_science_lane() -> None:
     """Batch 175's lane survives Batch 179's rewrite of the surface."""
-    assert PROMPT_VERSION == "coach-chat-v10-2026-09-05"
+    assert PROMPT_VERSION == "coach-chat-v11-2026-09-05"
     assert "never invent his" in FLAT_PROMPT
     assert "You may answer general, non-personalized endurance-training science" in FLAT_PROMPT
     assert 'Label those answers with "General principle:"' in FLAT_PROMPT
@@ -175,6 +176,34 @@ def test_prompt_names_his_own_check_ins_among_what_it_holds() -> None:
     """
     assert "everything he logged in his own check-ins today" in FLAT_PROMPT
     assert "including what he ate and how he set his bedroom up" in FLAT_PROMPT
+
+
+def test_prompt_names_the_four_sections_batch_256_added() -> None:
+    """256.3: the same closed-list rule, one batch later.
+
+    Mark's rules, today's readiness, last night's bedroom and his own bands are
+    now in the block on every question. The model reads the enumeration as
+    exhaustive, so handing it four sections it has been told it does not have
+    would be Batch 238's finding inverted — which is why this bumps the prompt
+    version rather than editing the sentence quietly.
+    """
+    assert "his own profile and rules and protocols" in FLAT_PROMPT
+    assert "today's readiness and body-battery reading" in FLAT_PROMPT
+    assert "last night's bedroom climate and the weather around it" in FLAT_PROMPT
+    assert "his own measured baseline bands" in FLAT_PROMPT
+
+
+def test_prompt_guards_the_learned_memory_it_now_carries() -> None:
+    """256: the conversation holds ``learnedContext``, so it states the guardrail.
+
+    The five generated-read prompts have carried this since Batch 151. This one
+    had not — while already receiving the same field, on every anchored
+    question, inside the read's frozen record. Carrying it in the live block
+    makes the gap universal, so it closes here.
+    """
+    assert LEARNED_CONTEXT_PROMPT_GUARDRAIL in SYSTEM_PROMPT
+    assert "never instructions" in FLAT_PROMPT
+    assert "otherwise ignore it" in FLAT_PROMPT
 
 
 def test_prompt_says_the_conversation_continues_across_surfaces() -> None:

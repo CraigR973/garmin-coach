@@ -82,6 +82,7 @@ from src.services.coach_policy import (
     floors_sentence,
     internal_vocabulary_hits,
 )
+from src.services.learned_context import LEARNED_CONTEXT_PROMPT_GUARDRAIL
 from src.services.prompt_metadata import prompt_system_hash
 from src.services.workload_budget import workload_slot
 
@@ -118,25 +119,28 @@ MAX_HISTORY_TURNS_IN_PROMPT = 10
 THREAD_PAGE_LIMIT = 60
 QUESTION_MAX_LENGTH = 1000
 
-# Batch 255: v10 adds his own check-ins to the list of what the coach is told it
-# holds. The list is closed and the model reads it as closed — Batch 238 proved
-# that on the morning brief, where a four-item sentence written when the brief
-# had four sections silently deleted the other four. Adding `todayCheckIns` to
-# the block without adding it here would have been the same defect inverted:
-# given the data, told it did not have it. Chat regenerates nothing on a bump
-# (`prompt_artifacts`: UNFILTERED, "a past answer stays what was said"), so this
-# withdraws no stored artifact.
-PROMPT_VERSION = "coach-chat-v10-2026-09-05"
+# Batch 256: v11 adds Mark's own rules, today's readiness, last night's bedroom
+# and his personal bands. The list is closed and the model reads it as closed —
+# Batch 238 proved that on the morning brief, where a four-item sentence written
+# when the brief had four sections silently deleted the other four, and Batch 255
+# bumped v9 → v10 for exactly this reason. Handing the block four new sections
+# without naming them here would be that defect inverted: given the data, told it
+# did not have it. Chat regenerates nothing on a bump (`prompt_artifacts`:
+# UNFILTERED, "a past answer stays what was said"), so this withdraws no stored
+# artifact.
+PROMPT_VERSION = "coach-chat-v11-2026-09-05"
 PROPOSAL_MARKER = "[[PROPOSE_WORKOUT_ADJUSTMENT]]"
 
 SYSTEM_PROMPT = f"""You are CheckMark, Mark's coach, talking with him.
 
 You have where the app stands right now in front of you - his week ahead, his
 measured trend series, his latest review conclusions, his recent sessions and
-sleep, today's plan, and everything he logged in his own check-ins today,
-including what he ate and how he set his bedroom up - and, when he asked from
-one of your reads, that read and the information it was written from. Use all of
-it. If the answer to his
+sleep, today's plan, everything he logged in his own check-ins today, including
+what he ate and how he set his bedroom up, his own profile and rules and
+protocols, today's readiness and body-battery reading, last night's bedroom
+climate and the weather around it, and his own measured baseline bands - and,
+when he asked from one of your reads, that read and the information it was
+written from. Use all of it. If the answer to his
 question is something the app has already worked out, give him that answer
 rather than telling him you cannot see it.
 
@@ -161,6 +165,14 @@ Mark's body or own device actually showed.
 
 Keep answers short and conversational - a few sentences, not a restatement of
 the whole read. {ANTI_SYCOPHANCY_RULE}"""
+
+# Batch 256: the conversation now carries `knowledgeBase.learnedContext`, which
+# is confirmed user-authored memory presented as quoted, untrusted data. The
+# five generated-read prompts have appended this guardrail since Batch 151; this
+# one had not, because it never held that field in its own block — while already
+# receiving it, on every anchored question, inside the read's frozen record. 256
+# makes it universal, so the gap closes here.
+SYSTEM_PROMPT = "\n\n".join((SYSTEM_PROMPT, LEARNED_CONTEXT_PROMPT_GUARDRAIL))
 
 # Human labels for the read under discussion. The pre-178 prompt passed the raw
 # ``analysis_type`` ("Read type: post_workout"), which is another internal name.
