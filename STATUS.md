@@ -6,8 +6,7 @@
 
 ## Now
 
-**2026-09-05 — Batch 255 built, gate green, awaiting merge.** Branch
-`fix/batch-255-coach-context`, Decision **#326**. Authored and built in one
+**2026-09-05 — Batch 255 SHIPPED.** PR #286 / squash `1eb55a4`, Decision **#326**. Authored and built in one
 session from Craig's request to pull the day's conversation — the transcript
 itself was the finding.
 
@@ -37,15 +36,26 @@ it either. And older than this batch: the trim's own bookkeeping is appended
 `best_effort_over_budget`. All three anchors now sit inside budget with 14
 nights, `remSleepMin=104`, the snack text, 10 sessions and 2 reviews present.
 
-**Verification:** local backend **1,295 passed / 415 expected skips** (6 new
-tests) against Batch 254's 1,292/412; Ruff check and format clean across 283
+**Verification:** all 16 PR checks green across both waves; PostgreSQL CI
+**1,710 passed / 0 skipped** against Batch 254's 1,704, so all three
+locally-skipped `db_conn` tests ran on a real server. Local backend **1,295
+passed / 415 expected skips** (6 new tests) against Batch 254's 1,292/412; Ruff check and format clean across 283
 files; mypy clean across 161; shared 42 and web 437 tests; build clean; lint 0
 errors / 9 pre-existing warnings. The three new launcher tests were confirmed to
 **fail against the old logic** before being kept. No migration. Chat prompt
 `coach-chat-v9` → `v10`, which withdraws nothing (`brief_chat` is `UNFILTERED`).
 
-**Next: push, PR, CI, and close out.** Then Batches 208, 209 and 210 — the three
-ledger rows the 236-241 wave never touched, each needing its own `/batch-start`.
+**Production is current through the merge SHA.** Railway direct and Vercel
+same-origin health both serve exact
+`1eb55a4f6a1ae9107c2944ccfde4c90b93882bfd`; web `/` is 200 and unauthenticated
+daily-loop is 401 on both paths. The deployed smoke, **writing nothing**,
+confirms `coach-chat-v10`, budget 45,000, the prompt naming his check-ins, and
+all three anchors within budget carrying 14 nights, `remSleepMin=104`, the snack
+text, the bedroom setup, 10 sessions and 2 reviews.
+
+**Next: Batches 208, 209 and 210** — the three ledger rows the 236-241 wave never
+touched, each needing its own `/batch-start`. 209 (🔴 High) is the substantial
+one: re-verify the RLS counts before building, as they were measured 2026-08-16.
 
 **Gotchas.** (1) `test_char_budget_never_drops_the_week_or_the_since_read_delta`
 was **tautological** — it compared `state["sinceThisRead"]` to the same object
@@ -501,6 +511,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**2026-09-05 — Batch 255 shipped; the coach can see the screen Mark is on and the check-in he wrote.** PR #286 / squash `1eb55a4`, Decision #326. Authored and built in one session from a request to pull the day's conversation — the transcript was the finding. Mark asked why his REM jumped and was truthfully told the coach had neither the nights nor his snack note; every honesty guardrail worked and the defect was entirely upstream. Released the `CoachLauncher` latch that read "the newest assistant message is a `weekly_review`" as "Mark is replying to it" and re-armed from its own output, pinning **39 of 39 messages across twelve days** to a six-day-stale review; a push now seeds only while unanswered, so answering releases it. Sized the app-state budget from measurement after finding its comment false — "~22k characters, a safety valve rather than routine" against a measured 33,782 / 34,879 / 42,770, so every question overflowed 30,000 — and brought `sinceThisRead` into the trim path, since it is the one section sized by anchor staleness (960 chars fresh, 8,835 stale) and, being exempt, evicted the fortnight of nights out of an answer about REM. Forwarded `food_json` and `sleep_setup_json`, which `morning_analysis` has always sent, and gave today's check-ins their own section so an unanchored question sees them at all. **Two defects surfaced only against production:** taking the *latest* check-in returned the bare "feel" workout entry rather than the substantive morning one (which also predates the brief), and — older than this batch — the trim's own bookkeeping is appended after trimming, so a correctly-trimmed block reported itself over budget. Chat prompt v9 → v10 because its list of what the coach holds is closed and the model reads it as closed (Batch 238); `brief_chat` is `UNFILTERED`, so nothing was withdrawn and no regeneration was performed. One existing budget test compared an object to itself and could never have failed. All 16 checks green; PostgreSQL CI 1,710 / 0 against 1,704. Exact-SHA Railway/Vercel health, web 200 and 401 auth smokes passed; the deployed smoke confirmed all three anchors within budget with `remSleepMin=104` and the snack text present. Next are Batches 208/209/210.
 
 **2026-09-04 — Batch 254 shipped; Group E and the 236–241 remediation wave are complete.** PR #285 / squash `2315eeb`, Decision #325. Thirteen batches, five groups, every finding closed — though the ledger is not empty: Batches 208/209/210 predate this wave. Gave the sleep model a vocabulary for "unusual": a value a full band width past the desirable edge reads neutral and "worth noticing" rather than good, so a 12-hour night, a 45% REM rebound and a 40% deep fraction stop being congratulated — deliberately not `warn`, because calling an unusually good-looking night a failure is its own dishonesty. Made the concerning-side descriptors directional, so a resting HR of 110 stops reading "Well below average" beside the number 110. Bounded the low side with a per-metric plausibility floor that says a value is unusual without saying what it means. Made all 276 coach messages reachable — 216 were not — with a cursor on the thread's own three-part order, because a question and its answer share a timestamp; and re-anchored the scroll effect on the newest message id so the control does not fight it. Moved 27 hard-coded pixel font sizes onto the rem scale and gave the verdict hero's "Change" link the 44px floor. Replaced `Generated 01/09/2026, 09:25:19` with "Written at 09:25 this morning". **Closed UX241-15 by measuring it**: the "275 KB payload" is 33.8 KB in production, off by 8×, and no redesign was performed because the measurement does not support one. All 16 checks green; PostgreSQL CI 1,704 / 0 against 1,684. Exact-SHA Railway/Vercel health, web 200 and 401 auth smokes passed; the deployed smoke paged Mark's real thread back to 276 of 276. Next are Batches 208/209/210, the deferred wave-2 items specced 2026-08-16, which this wave never touched.
 
