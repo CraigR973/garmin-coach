@@ -3218,3 +3218,76 @@ backup by design** — there is no undo. Build the retention job, test it, verif
 the window and both readers (`post_workout_analysis`, `post_walk_analysis`),
 then **stop and ask for explicit confirmation naming the row count** before it
 executes against production. The rest of Batch 247 may close out normally.
+
+## Post-roadmap — 2026-09-05 — Mark asked about this morning and the coach answered about last month (Batch 255)
+
+**Found by reading `coach.brief_messages`, which is exactly the source
+`batch-start.md` step 4 names as routinely decisive.** Craig asked for the
+2026-09-05 conversation. Mark opened it with *"From this morning's metrics and
+my check in notes is there anything you can suggest as possible causes that led
+to massive jump in rem sleep"*, and the coach replied that it did not have
+*"the detailed night-by-night sleep architecture (deep/REM stage breakdown per
+night) in front of me right now"*. Two turns later, after being told the coach
+could not see his evening-snack note either, Mark wrote **"not sure why you can't
+read them"**.
+
+**The coach was telling the truth, and that is the finding.** Every honesty
+guardrail worked — it refused to invent the note, it named its own limit, and it
+used the exact "not in front of me" wording `omittedForLengthMeaning` prescribes
+for a section trimmed rather than absent. What failed is everything upstream of
+the guardrail. Craig's read on it — *"if he opens the assistant it should have
+context to everything"* — is also what the code already says it intends:
+`chat_context.py`'s own docstrings call the anchor "a seed for the answer, not a
+fence around it", and `conversationOpenedFrom.meaning` tells the model the
+conversation "is not limited to it".
+
+**Mark never chose to talk about the weekly review.** `CoachLauncher.tsx:145`
+treats *"the newest assistant message in the thread happens to be a
+`weekly_review`"* as *"Mark is replying to the weekly review"*, and there is no
+reply affordance in the UI for that inference to be drawn from. It then beats
+both `origin` (the screen he is on) and `anchoredAnalysisId` (the read that
+screen registered). **It is self-perpetuating:** the answer is stored with
+`origin_kind='weekly_review'` too (`brief_chat.py:590`), so it becomes the newest
+assistant message and the rule re-fires forever. Production shows exactly that —
+origins varied through 2026-08-22 (`morning_brief` ×38, `state_change`, `home`),
+a proactive review landed **2026-08-23 17:00:03**, and **every message since
+2026-08-25 is `weekly_review`: 39 of 39 across twelve days**, regardless of
+screen or subject.
+
+**The measured cost, from rebuilding the real context against production at the
+moment he asked** (read-only; no Anthropic spend):
+
+| | Anchor he got (weekly, 6 days stale) | Anchor he meant (that morning's brief) |
+|---|---|---|
+| `sinceThisRead` | **8,835 chars** (10 check-ins, 10 activities, 10 newer reads) | 960 chars (1 check-in) |
+| Block after trimming | 29,013 / 30,000 | 29,389 / 30,000 |
+| `sleepHistory` | **0 nights — evicted** | 14 nights |
+| `recentActivities`, `latestReviews` | evicted | evicted |
+
+His morning brief was generated at **08:40:25** and he asked at **08:49:25** —
+nine minutes later, never attached. The data his question was about was in the
+evicted section: `{"calendarDate": "2026-09-05", "score": 91,
+"ageAdjustedScore": 95, "qualifier": "EXCELLENT", "remSleepMin": 104,
+"deepSleepMin": 69}`.
+
+**The budget comment is factually wrong and is the second defect.** It states *"A
+full block measures ~22k characters … so trimming is a safety valve rather than
+routine."* Measured untrimmed: **33,782 unanchored, 34,879 on the morning anchor,
+42,770 on the stale one**. Every question overflows, so the valve fires on all of
+them — and `sinceThisRead` is **not in `_DROP_ORDER`**, so the one section that
+grows without bound is the one section that cannot be trimmed, and it evicts
+`sleepHistory` (3,145 chars) to protect itself (8,835).
+
+**Two context gaps sit underneath, both independent of the anchor.**
+`_check_ins_since` forwards `notes`, `feel`, `rpe` and `subjectiveScore` and
+drops **`food_json`** — which is where Mark's snack actually was, verbatim, the
+whole time — and **`sleep_setup_json`**, which is what his note means by "window
+openings noted below". `morning_analysis.py` and `daily_loop.py` both forward
+them, so the morning brief sees the snack and the chat over it does not. And
+because check-ins reach the block **only** through `sinceThisRead`, an
+**unanchored** question — "just ask the coach" from Home — carries no check-in at
+all: measured `checkInsSinceRead` absent, today's entry invisible.
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 255 — The coach can see what Mark is looking at, and what he wrote this morning | 🟢 Mid | Planned | 255.1 **Release the weekly-review latch** (`CoachLauncher.tsx`). The screen's registered read wins whenever there is one. A pushed review may still seed a question, but only while **unanswered** — detectable because a proactive delivery is an assistant turn with no question before it, so the seed releases by itself the moment Mark replies. Tests must cover the latch's twelve-day shape, not just one hop.<br>255.2 **Size the budget from measurement and stop `sinceThisRead` evicting everything else.** Correct the false "~22k / safety valve" comment with the measured figures; raise `APP_STATE_CHAR_BUDGET` to fit a real full block; bring `sinceThisRead`'s three unbounded lists into the trim path **before** whole high-value sections drop, so `sleepHistory` is never the first casualty of a stale anchor.<br>255.3 **Forward `food_json` and `sleep_setup_json`** on every check-in the chat sees, matching what `morning_analysis.py` already sends.<br>255.4 **Today's check-in unconditionally**, in its own section rather than only as a `sinceThisRead` delta, so an unanchored question sees what Mark logged this morning. | Make the honest "not in front of me" answer rare and true, instead of routine and self-inflicted — so a question asked from a screen is answered about that screen, with this morning's check-in and a fortnight of nights actually present. | Reproduce Mark's 2026-09-05 question against production data and show `sleepHistory` present with `remSleepMin` for 2026-09-05, his snack text reaching the block, and the anchor resolving to the morning brief rather than the 2026-08-24 review. The latch cannot re-arm across a reply. Gates green; no migration. |
