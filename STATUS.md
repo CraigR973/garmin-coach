@@ -53,7 +53,23 @@ confirms `coach-chat-v10`, budget 45,000, the prompt naming his check-ins, and
 all three anchors within budget carrying 14 nights, `remSleepMin=104`, the snack
 text, the bedroom setup, 10 sessions and 2 reviews.
 
-**Next: Batches 208, 209 and 210** — the three ledger rows the 236-241 wave never
+**Batches 256 and 257 are specced but not built**, from Craig's follow-up: *does
+the coach now have full access, and should there be a pre-submit step that finds
+missing data before asking?* **No — 255 widened the live block, but the anchored
+read's frozen packet still holds 41,757 characters the live block never carries**,
+including `knowledgeBase` (8,442 — his own rules), `environment` (767) and
+`dailyMetrics` (677). So an unanchored question from Home has neither his rules,
+his readiness, nor his bedroom temperature, and the weekly review he was pinned to
+for twelve days carries none of them either. **256 (🟢 Mid)** puts the four
+always-relevant sections in the live block and re-sizes the budget again (36,621 +
+10,879 ≈ 47,500 against a 45,000 ceiling). **257 (🔴 High)** is the pre-submit idea
+inverted — tool use, so the coach fetches what it lacks rather than a classifier
+guessing before the question is read; `chat_context.py` already set that revisit
+condition and 09-05 met it. **257 opens on a boundary decision, not code:** the
+`anthropic` SDK is not a dependency, and adopting its tool runner for the chat path
+alone would fork the hand-built taxonomy Batches 141/234/248/253 consolidated.
+
+**Then Batches 208, 209 and 210** — the three ledger rows the 236-241 wave never
 touched, each needing its own `/batch-start`. 209 (🔴 High) is the substantial
 one: re-verify the RLS counts before building, as they were measured 2026-08-16.
 
