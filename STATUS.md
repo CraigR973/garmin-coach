@@ -6,6 +6,83 @@
 
 ## Now
 
+**2026-09-05 — Batch 256 SHIPPED.** PR #287 / squash `fa39dd0`, Decision **#327**. Second batch of the
+day, straight out of Craig's follow-up question to 255: *does the coach now have
+full access?*
+
+**The answer was no, and the unevenness ran the wrong way.** Four categories bear
+on almost any question Mark asks — his own profile and rules, today's readiness,
+last night's bedroom, his personal bands — and all four lived **only** inside a
+generated read's frozen packet. On his morning brief the coach held them; asked
+from Home it held none, and could not answer a question about his own bedtime
+target or his bedroom temperature. On 09-05 he asked about REM in an explicitly
+thermal context with none of the three present. They are now in the live block,
+**built from live rows at ask time** — strictly better than a packet copy,
+because the knowledge base is edited *between* reads, so a copy can state a rule
+he has since changed. A test pins exactly that.
+
+**Three of the spec row's claims needed correcting before any code was written.**
+(1) "the weekly packet carries none of them either" is wrong — it carries
+`personalBaselines`, `dataQualityGuardrails` and `trainingSchedule`. (2) The
+arithmetic understated it: the **stale weekly anchor was already 46,137
+untrimmed, over the 45,000 ceiling before this batch added anything** — Batch 255
+measured that same anchor at 42,770 the same morning, so the block drifts upward
+through a day. (3) **A guardrail the row never mentions is mandatory:**
+`knowledgeBase.learnedContext.untrustedQuotedData` is confirmed user-authored
+memory, all five prompts carrying it append `LEARNED_CONTEXT_PROMPT_GUARDRAIL`,
+and the chat prompt did not — while already receiving that field on every
+*anchored* question inside the frozen packet. It is the sixth now.
+
+**The budget is 45,000 → 55,000 and the choice is deliberate rather than
+maximal.** Both ordinary anchors sit untrimmed with headroom; the stale one is
+left to the trim order Batch 255 built, landing on 54,293 by shedding three of
+its own oldest delta entries with `sleepHistory`, `recentActivities` and
+`latestReviews` intact. Sizing above 57,093 would have made that order dead code.
+
+**Verification.** All 16 PR checks green across both waves; **PostgreSQL CI 1,719
+passed / 0 skipped** against Batch 255's 1,710, so all four new `db_conn` tests
+ran on a real server. Local backend **1,300 passed / 419 expected skips** (9 new
+tests) against 255's 1,295/419; Ruff check and format clean across 284 files;
+mypy clean across 162; shared 42 and web 437; build clean; lint 0 errors / 9
+pre-existing warnings. Five of the six new tests that *could* fail were confirmed
+to **fail against the old logic**; the sixth is honestly labelled as a decision
+pin. No migration. Chat prompt `coach-chat-v10` → `v11` and `APP_STATE_VERSION`
+1 → 2, which withdraw nothing (`brief_chat` is `UNFILTERED` with no filtered
+analysis types, verified in `prompt_artifacts`).
+
+**Production is current through the merge SHA** — see the log entry below for the
+deployed smoke.
+
+**Next: Batch 257 (🔴 High) — the coach can ask for what it does not have.** It is
+the pre-submit idea inverted: tool use, so the model fetches what it lacks rather
+than a classifier guessing before the question is read. **257 opens on a boundary
+decision, not code:** the `anthropic` SDK is not a dependency, and adopting its
+tool runner for the chat path alone would fork the hand-built taxonomy Batches
+141/234/248/253 consolidated — the row recommends building the loop on the
+existing `httpx` boundary and says to confirm before writing code. 257.4's caching
+question now has a concrete number in front of it: this batch measured the chat
+path at **+5,265 input tokens per question** on the free `count_tokens` endpoint
+(morning brief 55,154 → 60,419, unanchored 19,446 → 24,711), and the block sits
+*after* the cache breakpoint while the frozen packet sits inside it.
+
+**Then Batches 208, 209 and 210** — the three ledger rows the 236-241 wave never
+touched, each needing its own `/batch-start`. 209 (🔴 High) is the substantial
+one: re-verify the RLS counts before building, as they were measured 2026-08-16.
+
+**Gotchas.** (1) `weather_daily.latitude`/`longitude` are **NOT NULL with no
+default** — four new `db_conn` tests would have failed on their first-ever run in
+CI; check `__table__.columns` for NOT-NULL-without-default before writing a
+fixture you cannot run locally. (2) A behavioural assertion that a section is
+*undroppable* cannot fail, because emptying the larger sections brings the block
+under budget before the loop reaches it — assert `_DROP_ORDER` membership
+directly. (3) Two sections nothing bounds: `trends` is the block's **largest**
+section (13,000) and is never dropped, while the trim sheds `sleepHistory`
+(3,145) and `latestReviews` (2,139); and `todayCheckIns` is uncapped and outside
+every trim path. Neither is a bug today; both look like inheritance rather than
+decision. (4) Everything in the previous Now block still stands below.
+
+## Prior current-state snapshots
+
 **2026-09-05 — Batch 255 SHIPPED.** PR #286 / squash `1eb55a4`, Decision **#326**. Authored and built in one
 session from Craig's request to pull the day's conversation — the transcript
 itself was the finding.
@@ -80,8 +157,6 @@ here; worth checking the same shape elsewhere. (2) The 3 new `db_conn` tests ski
 locally as always (no Postgres on this Mac) and first run in CI, so treat CI's
 count as the real one. (3) Everything in the previous Now block still stands
 below.
-
-## Prior current-state snapshots
 
 **2026-09-04 — Batch 254 SHIPPED. Group E is complete, and so is the 236–241 remediation wave.** PR #285 / squash `2315eeb`, Decision **#325**. Thirteen batches, five groups, every finding from six audit passes closed. **Three ledger rows remain, and none of them is from this wave** — Batches 208/209/210 are the deferred security and connection items specced on 2026-08-16 from the 189/190 audit.
 
@@ -527,6 +602,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**2026-09-05 — Batch 256 shipped; the coach holds Mark's own rules on every question, not just on his brief.** PR #287 / squash `fa39dd0`, Decision #327. Second batch of the day, from Craig's follow-up to 255: *does the coach now have full access?* No — four categories that bear on almost any question he asks (his profile and rules, today's readiness, last night's bedroom, his personal bands) lived **only** inside a generated read's frozen packet, so on his morning brief the coach held them and asked from Home it held none, and on 09-05 he asked about REM in an explicitly thermal context with none of the three present. They are now in the live block, **built from live rows at ask time** — strictly better than a packet copy, because the knowledge base is edited *between* reads, so a copy can state a rule he has since changed; a test pins exactly that. **Three of the spec row's claims needed correcting before any code was written:** "the weekly packet carries none of them either" is wrong (it carries `personalBaselines`, `dataQualityGuardrails` and `trainingSchedule`); the arithmetic understated it, because the stale weekly anchor was **already 46,137 untrimmed, over the 45,000 ceiling before this batch added anything**, against 42,770 measured on the same anchor that morning; and a guardrail the row never mentions is mandatory — `knowledgeBase.learnedContext.untrustedQuotedData` is confirmed user-authored memory, all five prompts carrying it append `LEARNED_CONTEXT_PROMPT_GUARDRAIL`, and the chat prompt did not, while already receiving that field on every *anchored* question. It is the sixth now. Budget 45,000 → 55,000, chosen deliberately rather than maximally: both ordinary anchors sit untrimmed and the stale one is left to the trim order Batch 255 built, landing on 54,293 by shedding three of its own oldest delta entries with `sleepHistory`, `recentActivities` and `latestReviews` intact — sizing above 57,093 would have made that order dead code. The packet builders moved to a new leaf, `services/coach_sections.py`, so the morning read and the conversation are one definition. Chat prompt v10 → v11 and `APP_STATE_VERSION` 1 → 2; `brief_chat` is `UNFILTERED` with no filtered analysis types, so nothing was withdrawn and no regeneration was performed. **Cost measured rather than estimated on the free `count_tokens` endpoint: +5,265 input tokens per question** (morning brief +9.5%, unanchored +27.1%, which is also the size of the gap closed). All 16 checks green across both waves; PostgreSQL CI **1,719 / 0** against 1,710, so all four new `db_conn` tests ran on a real server — one of which would have failed on its first-ever CI run had `weather_daily`'s NOT NULL `latitude`/`longitude` not been checked first. Exact-SHA Railway/Vercel health, web 200 and 401 auth smokes passed; the deployed smoke confirmed an unanchored question at 48,033 characters carrying all 11 knowledge-base sections, readiness 80, last night's 18.69 °C peak and Batch 255's 14 nights / 10 sessions / 2 reviews intact. Next is Batch 257 (🔴 High), which opens on a boundary decision rather than code.
 
 **2026-09-05 — Batch 255 shipped; the coach can see the screen Mark is on and the check-in he wrote.** PR #286 / squash `1eb55a4`, Decision #326. Authored and built in one session from a request to pull the day's conversation — the transcript was the finding. Mark asked why his REM jumped and was truthfully told the coach had neither the nights nor his snack note; every honesty guardrail worked and the defect was entirely upstream. Released the `CoachLauncher` latch that read "the newest assistant message is a `weekly_review`" as "Mark is replying to it" and re-armed from its own output, pinning **39 of 39 messages across twelve days** to a six-day-stale review; a push now seeds only while unanswered, so answering releases it. Sized the app-state budget from measurement after finding its comment false — "~22k characters, a safety valve rather than routine" against a measured 33,782 / 34,879 / 42,770, so every question overflowed 30,000 — and brought `sinceThisRead` into the trim path, since it is the one section sized by anchor staleness (960 chars fresh, 8,835 stale) and, being exempt, evicted the fortnight of nights out of an answer about REM. Forwarded `food_json` and `sleep_setup_json`, which `morning_analysis` has always sent, and gave today's check-ins their own section so an unanchored question sees them at all. **Two defects surfaced only against production:** taking the *latest* check-in returned the bare "feel" workout entry rather than the substantive morning one (which also predates the brief), and — older than this batch — the trim's own bookkeeping is appended after trimming, so a correctly-trimmed block reported itself over budget. Chat prompt v9 → v10 because its list of what the coach holds is closed and the model reads it as closed (Batch 238); `brief_chat` is `UNFILTERED`, so nothing was withdrawn and no regeneration was performed. One existing budget test compared an object to itself and could never have failed. All 16 checks green; PostgreSQL CI 1,710 / 0 against 1,704. Exact-SHA Railway/Vercel health, web 200 and 401 auth smokes passed; the deployed smoke confirmed all three anchors within budget with `remSleepMin=104` and the snack text present. Next are Batches 208/209/210.
 

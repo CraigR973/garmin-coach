@@ -297,7 +297,19 @@ since the read (activities, check-ins, plan-action audits, newer reads, and
 whether the read still reflects the latest check-in, using Batch 159's check-in
 version), today's plan, the week ahead, the monthly trend series plus the
 year-on-year comparison, the latest weekly/monthly review conclusions, recent
-sessions, and sleep history. It reuses the existing deterministic builders
+sessions, and sleep history. Batch 255 (DECISIONS #326) added every check-in Mark
+filed today, unconditionally rather than only as a delta. Batch 256
+(DECISIONS #327) added the four categories that bear on almost any question and
+had until then lived *only* inside a read's frozen packet — his knowledge base,
+today's daily metrics, last night's bedroom environment and his personal
+baseline bands — so a question asked from Home is as well-informed as one asked
+from the morning brief. Those four are built from **live rows at ask time**
+rather than copied from a packet, which is strictly better than the copy because
+the knowledge base is edited between reads; their packet builders moved into a
+leaf, `services/coach_sections.py`, so the morning read and the conversation are
+one definition rather than two that can drift. `experimentLoop` and `verdict`
+stay excluded as genuinely specific to the read they belong to. It reuses the
+existing deterministic builders
 (`TrainingWeekService.build_window`, `TrendsService.windows` +
 `compute_year_on_year`, stored review rows) rather than duplicating them, is
 capped at a documented character budget, and *names* anything trimmed so an
