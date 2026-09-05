@@ -14,6 +14,7 @@ from the app. Two causes, both covered here:
 from __future__ import annotations
 
 import uuid
+from copy import deepcopy
 from datetime import date, datetime, timedelta
 
 import pytest
@@ -32,6 +33,7 @@ from src.models.profile import Profile, UserRole
 from src.services.chat_context import (
     APP_STATE_CHAR_BUDGET,
     ORIGIN_KINDS,
+    SINCE_READ_TRIM_FLOOR,
     ChatContextService,
     CoachOrigin,
     _apply_char_budget,
@@ -136,6 +138,12 @@ def test_char_budget_preserves_named_field_truncations() -> None:
 def test_char_budget_never_drops_the_week_or_the_since_read_delta() -> None:
     week = {"window": {"kind": "week_ahead_from_today"}, "days": _filler(7, _EIGHTH)}
     since = {"anythingChangedSinceRead": True, "activitiesIngestedSinceRead": _filler(5, _EIGHTH)}
+    # Batch 255: compared against a snapshot rather than against the same object.
+    # `_state(sinceThisRead=since)` stores the identical dict, so the old
+    # `state["sinceThisRead"] == since` compared it to itself and passed no
+    # matter what `_apply_char_budget` did to it — including the trimming this
+    # batch added underneath it.
+    week_before = deepcopy(week)
     state = _state(
         weekAhead=week,
         sinceThisRead=since,
@@ -147,13 +155,64 @@ def test_char_budget_never_drops_the_week_or_the_since_read_delta() -> None:
 
     _apply_char_budget(state)
 
-    assert state["weekAhead"] == week
-    assert state["sinceThisRead"] == since
+    assert state["weekAhead"] == week_before
+    # The delta survives as a section — it is trimmed, never dropped whole, so
+    # "has anything changed since this read" is always answerable.
+    assert state["sinceThisRead"]["anythingChangedSinceRead"] is True
+    assert state["sinceThisRead"]["activitiesIngestedSinceRead"]
     # The trend series is trimmed oldest-first only after the droppable
     # sections have gone, and at least one window always survives.
     trend_windows = state["trends"]["recentWindows"]  # type: ignore[index]
     assert len(trend_windows) >= 1
     assert trend_windows[-1]["id"] == "5"
+
+
+def test_char_budget_trims_the_stale_delta_before_the_history_mark_asks_about() -> None:
+    """The inversion Batch 255 fixes, in one assertion.
+
+    ``sinceThisRead`` is sized by how *stale the anchor is*, not by how much Mark
+    has done: 960 characters against a nine-minute-old brief and 8,835 against a
+    six-day-old review. Exempting it from the budget meant the stalest anchor
+    bought its own bulk by evicting everything else — in production, on
+    2026-09-05, it evicted the fortnight of nights out of an answer about REM.
+    """
+    since = {
+        "anythingChangedSinceRead": True,
+        "activitiesIngestedSinceRead": _filler(10, _EIGHTH),
+        "checkInsSinceRead": _filler(10, 200),
+    }
+    state = _state(
+        sinceThisRead=since,
+        sleepHistory=_filler(14, 200),
+        trends={"bucket": "month", "recentWindows": _filler(6, 200), "yearOnYear": {}},
+    )
+    assert app_state_length(state) > APP_STATE_CHAR_BUDGET
+
+    _apply_char_budget(state)
+
+    assert app_state_length(state) <= APP_STATE_CHAR_BUDGET
+    # The stale delta gave way; the nights Mark was asking about did not.
+    assert len(since["activitiesIngestedSinceRead"]) < 10
+    assert state["sleepHistory"] != []
+    assert "sinceThisRead.activitiesIngestedSinceRead(oldest)" in state["omittedForLength"]
+    assert "sleepHistory" not in state["omittedForLength"]
+
+
+def test_char_budget_keeps_enough_of_the_delta_to_still_answer_since_when() -> None:
+    # Every entry is a whole budget on its own, so trimming can never get under
+    # it — which is the only way to observe where the trim *stops*.
+    since = {
+        "anythingChangedSinceRead": True,
+        "activitiesIngestedSinceRead": _filler(10, APP_STATE_CHAR_BUDGET),
+    }
+    state = _state(sinceThisRead=since)
+
+    _apply_char_budget(state)
+
+    # Trimmed hard, but never to nothing: an empty list would read as "nothing
+    # happened since the read", which is the absence-vs-omission failure again.
+    assert len(since["activitiesIngestedSinceRead"]) == SINCE_READ_TRIM_FLOOR
+    assert state["charBudget"]["status"] == "best_effort_over_budget"
 
 
 def test_packet_check_in_versions_reads_both_read_shapes() -> None:
@@ -694,6 +753,105 @@ async def test_an_unanchored_question_gets_the_state_without_a_read(
     assert [night["score"] for night in state["sleepHistory"]] == [78]
     assert "weekAhead" in state
     assert "trends" in state
+
+
+@pytest.mark.asyncio
+async def test_todays_check_in_reaches_an_unanchored_question(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 255: what Mark wrote today is not a delta, so it cannot need one.
+
+    Check-ins reached the block only through ``sinceThisRead``, which exists only
+    when there is a read to be *since* — so "just ask the coach" from Home could
+    not see this morning's check-in at all. Measured against production on
+    2026-09-05: ``checkInsSinceRead`` absent, today's entry invisible.
+    """
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        session.add(
+            ManualEntry(
+                id=uuid.uuid4(),
+                user_id=user.id,
+                entry_date=TODAY,
+                entry_at_utc=datetime(2026, 7, 30, 6, 30),
+                subjective_score=8,
+                feel="Feel good this morning",
+                notes="Window openings noted below are for overnight not pre cool.",
+                actual_workout_json={},
+                supplements_json={},
+                food_json={"summary": "25g kettle chips, skyr, and 2 slices toast"},
+                sleep_setup_json={"windowCount": 0, "beddingWeight": "quilt"},
+            )
+        )
+        await session.commit()
+
+        context = await ChatContextService(session).build(
+            user,
+            None,
+            asked_at_utc=ASKED_AT,
+            origin=CoachOrigin(kind="home", subject_date=TODAY),
+        )
+
+    entries = context.app_state["todayCheckIns"]["entries"]
+    assert "sinceThisRead" not in context.app_state
+    entry = entries[0]
+    assert entry["subjectiveScore"] == 8
+    # The two fields the chat used to drop. `morning_analysis` has always sent
+    # them, so the brief could see the snack and the chat about it could not.
+    assert entry["food"] == {"summary": "25g kettle chips, skyr, and 2 slices toast"}
+    assert entry["sleepSetup"] == {"windowCount": 0, "beddingWeight": "quilt"}
+    # And his prose still says "noted below", which only resolves with the above.
+    assert "noted below" in entry["notes"]
+    assert entry["contentRole"] == "untrusted_user_data"
+
+
+@pytest.mark.asyncio
+async def test_no_check_in_yet_says_so_rather_than_leaving_a_hole(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        await session.commit()
+        context = await ChatContextService(session).build(
+            user, None, asked_at_utc=ASKED_AT, origin=CoachOrigin(kind="home")
+        )
+
+    today_check_ins = context.app_state["todayCheckIns"]
+    assert today_check_ins["entries"] == []
+    assert "not that he wrote nothing" in today_check_ins["meaning"]
+
+
+@pytest.mark.asyncio
+async def test_a_check_in_since_the_read_carries_its_structured_fields_too(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        analysis = await _make_read(session, user.id)
+        session.add(
+            ManualEntry(
+                id=uuid.uuid4(),
+                user_id=user.id,
+                entry_date=TODAY,
+                entry_at_utc=datetime(2026, 7, 30, 7, 45),
+                subjective_score=6,
+                notes="Hungry overnight",
+                actual_workout_json={},
+                supplements_json={},
+                food_json={"summary": "2 slices toast on top of the usual"},
+                sleep_setup_json={"preCoolStartLocal": "18:10"},
+            )
+        )
+        await session.commit()
+
+        context = await ChatContextService(session).build(user, analysis, asked_at_utc=ASKED_AT)
+
+    since = context.app_state["sinceThisRead"]["checkInsSinceRead"]
+    assert since[0]["food"] == {"summary": "2 slices toast on top of the usual"}
+    assert since[0]["sleepSetup"] == {"preCoolStartLocal": "18:10"}
 
 
 # ---------------------------------------------------------------------------

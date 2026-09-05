@@ -120,7 +120,7 @@ class _Date:
 
 def test_brief_chat_prompt_allows_labelled_general_science_lane() -> None:
     """Batch 175's lane survives Batch 179's rewrite of the surface."""
-    assert PROMPT_VERSION == "coach-chat-v9-2026-08-23"
+    assert PROMPT_VERSION == "coach-chat-v10-2026-09-05"
     assert "never invent his" in FLAT_PROMPT
     assert "You may answer general, non-personalized endurance-training science" in FLAT_PROMPT
     assert 'Label those answers with "General principle:"' in FLAT_PROMPT
@@ -161,6 +161,20 @@ def test_prompt_tells_the_coach_to_use_the_wider_app_state() -> None:
     # Where the two disagree, name them as app records rather than physical truth.
     assert "the current state is the app's latest record" in FLAT_PROMPT
     assert "Neither record proves what Mark's body or own device actually showed" in FLAT_PROMPT
+
+
+def test_prompt_names_his_own_check_ins_among_what_it_holds() -> None:
+    """Batch 255: the enumeration is closed, so anything given must be listed.
+
+    On 2026-09-05 Mark asked about his evening snack and was told, truthfully,
+    that there was no such note — his ``food_json`` was never forwarded. Adding
+    it to the block without adding it to this sentence would have replaced that
+    with the failure Batch 238 measured on the morning brief, where a four-item
+    list written when the brief had four sections deleted the other four: the
+    model treats the list as exhaustive.
+    """
+    assert "everything he logged in his own check-ins today" in FLAT_PROMPT
+    assert "including what he ate and how he set his bedroom up" in FLAT_PROMPT
 
 
 def test_prompt_says_the_conversation_continues_across_surfaces() -> None:
