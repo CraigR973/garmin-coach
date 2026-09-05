@@ -47,9 +47,11 @@ from src.services.coach_policy import (
     missing_floors,
     source_basis,
 )
+from src.services.coach_sections import (
+    knowledge_base_packet as _knowledge_base_packet,
+)
 from src.services.morning_analysis import (
     MorningAnalysisService,
-    _knowledge_base_packet,
     _planned_workout_packet,
 )
 from src.services.training_week import (

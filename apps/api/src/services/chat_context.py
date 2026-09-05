@@ -69,12 +69,32 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.coaching import Activity, Analysis, ManualEntry, PlannedWorkout, Sleep
+from src.models.coaching import (
+    Activity,
+    Analysis,
+    DailyMetric,
+    KnowledgeBase,
+    ManualEntry,
+    MetricBaseline,
+    PlannedWorkout,
+    Sleep,
+    TemperatureReading,
+    WeatherDaily,
+)
 from src.models.profile import Profile
 from src.services.analysis_currentness import manual_entry_input_version
+from src.services.bedroom_overnight import night_window
 from src.services.body_metrics import resolve_effective_vo2max, resolve_effective_weight_kg
-from src.services.bulk_history_reads import without_sleep_raw_payload
+from src.services.bulk_history_reads import temperature_series_columns, without_sleep_raw_payload
+from src.services.coach_sections import (
+    daily_metric_packet,
+    environment_section,
+    knowledge_base_section,
+    thermal_review,
+)
+from src.services.daily_metric_phase import morning_first_order
 from src.services.holiday_pause import HolidayPauseService, holiday_windows_covering_date
+from src.services.personal_baselines import baseline_band_packet
 from src.services.reviews import ANALYSIS_TYPE_MONTHLY, ANALYSIS_TYPE_WEEKLY
 from src.services.training_week import ACTION_AUDIT_TYPES, TrainingWeekService
 from src.services.trends import (
@@ -89,24 +109,36 @@ from src.services.trends import (
 from src.services.workout_categories import is_bike_workout_type
 
 APP_STATE_KEY = "appState"
-APP_STATE_VERSION = 1
+APP_STATE_VERSION = 2
 
-#: Serialized-character ceiling for the whole app-state block, ~10.5k tokens.
+#: Serialized-character ceiling for the whole app-state block, ~13.75k tokens.
 #:
-#: Batch 255 measured what the previous value assumed. The old comment read "a
-#: full block measures ~22k characters, so trimming is a safety valve rather
-#: than routine"; against Mark's real 2026-09-05 data an untrimmed block is
-#: **33,782 characters unanchored, 34,879 on the morning brief and 42,770 on a
-#: six-day-stale anchor**. Every question overflowed 30,000, so the valve fired
-#: on all of them and the drop order ran on every single answer — which is how
-#: he came to ask about his REM and be told the nights were not in front of the
-#: coach. Sized above the measured full block so trimming is once again the
-#: exception the design intends. The read packet remains the larger input and
-#: both sit well inside the model's window. 45,000 rather than the measured
-#: 42,770 so that even a pathologically stale anchor — which 255.1 should now
-#: prevent from arising at all — lands inside the budget rather than in the
-#: degraded ``best_effort_over_budget`` state.
-APP_STATE_CHAR_BUDGET = 45_000
+#: Measured, twice now, against Mark's real data rather than estimated. Batch
+#: 255 found the previous comment ("a full block measures ~22k characters, so
+#: trimming is a safety valve rather than routine") to be a false claim doing
+#: load-bearing work: every real question overflowed 30,000, so the drop order
+#: ran on every single answer, which is how he came to ask about his REM and be
+#: told the nights were not in front of the coach.
+#:
+#: Batch 256 adds ``knowledgeBase``, ``dailyMetrics``, ``environment`` and
+#: ``personalBaselines`` — **10,879 characters** built from live rows — and
+#: re-measured rather than trusting arithmetic. Against 2026-09-05 production,
+#: untrimmed with those four present: **48,315 on the morning brief, 46,865
+#: unanchored, 57,093 on a twelve-day-stale weekly anchor.** At the old 45,000
+#: the two ordinary anchors would have lost ``recentActivities`` and
+#: ``latestReviews`` on every question, and the stale one ``sleepHistory`` as
+#: well — reinstating, by growth, exactly the eviction Batch 255 removed.
+#:
+#: 55,000 is chosen so both ordinary anchors sit untrimmed with real headroom
+#: (6,685 on the morning brief, 8,135 unanchored — the block drifted ~740
+#: characters upward over a few hours of one day, and ``todayCheckIns`` is
+#: unbounded, so headroom is not decoration). The stale anchor is *deliberately*
+#: left to the trimmer: at 55,000 it lands on 54,242 by shedding two of its own
+#: oldest delta entries and keeps ``sleepHistory``, ``recentActivities`` and
+#: ``latestReviews`` intact. That is precisely the behaviour Batch 255 built
+#: :data:`_SINCE_READ_TRIM_ORDER` to produce, and sizing above 57,093 to spare a
+#: state 255.1 already made self-releasing would turn that order into dead code.
+APP_STATE_CHAR_BUDGET = 55_000
 
 WEEK_AHEAD_DAYS = 7
 TREND_BUCKET = BUCKET_MONTH
@@ -125,6 +157,54 @@ TRENDS_MEANING = (
     "renders. These are series measured and stored by the app; a direction stated "
     "here is the app's recorded trend, not independent proof of what Mark's body or "
     "own device showed."
+)
+
+#: Batch 256. Four categories bear on almost any question Mark asks and, until
+#: this batch, existed only inside a generated read's frozen packet — so the same
+#: question answered from Home and from the morning brief got two different
+#: coaches. Each is built from live rows at ask time, which is strictly better
+#: than the packet copy it replaces: the knowledge base is edited *between*
+#: reads (the seed fills only missing sections; production is changed by
+#: read-modify-write or the wholesale admin PUT), so a copy can state a rule
+#: Mark has since changed.
+
+KNOWLEDGE_BASE_MEANING = (
+    "Mark's own profile, rules, protocols and confirmed learned context, read from "
+    "his live record when he asked rather than copied from an earlier read - so a "
+    "rule he has changed since reads as changed. When he asks what one of his own "
+    "targets is, or why it is what it is, the answer is here. `basis` says, in "
+    "words you may use with him, how a rule was arrived at; the `source` beside it "
+    "is an internal label, so give him the basis and never the label."
+)
+
+DAILY_METRICS_MEANING = (
+    "Today's Garmin wake observation as it stands now - readiness, HRV, resting "
+    "heart rate, body battery and training load. `today` is null when Garmin has "
+    "not written one for today yet, which is not the same as a reading of zero."
+)
+
+ENVIRONMENT_MEANING = (
+    "Last night's bedroom climate and the overnight weather around it, from the "
+    "live temperature record. `thermalReview` is null while Mark is away on a "
+    "holiday, because the bedroom is not being slept in - not because the app has "
+    "no readings for it."
+)
+
+#: The four bands the morning read compares against, so the conversation and the
+#: brief argue from the same numbers rather than two different subsets.
+_BASELINE_BAND_KEYS = frozenset(
+    {
+        "age_adjusted_sleep_score",
+        "sleep_score",
+        "hrv_7_day_avg_ms",
+        "resting_heart_rate_bpm",
+    }
+)
+
+PERSONAL_BASELINES_MEANING = (
+    "His own measured bands over the app's baseline window - what is normal for "
+    "Mark, not for a population. Check a figure against his own band before "
+    "calling it high or low."
 )
 
 #: Read types that hold a conversation today; a newer one of the same type
@@ -182,10 +262,16 @@ class CoachOrigin:
 
 #: Dropped in this order when the block exceeds the budget: recent sessions and
 #: review prose first (largest, and most reconstructable from the rest), sleep
-#: history next. ``weekAhead``, ``today`` and ``todayCheckIns`` are small and
-#: load-bearing, so they are never dropped; the trend series is trimmed
-#: oldest-first only after everything above has gone.
-_DROP_ORDER = ("recentActivities", "latestReviews", "sleepHistory")
+#: history next, and ``knowledgeBase`` last of all. ``weekAhead``, ``today`` and
+#: ``todayCheckIns`` are small and load-bearing, so they are never dropped; the
+#: trend series is trimmed oldest-first only after everything above has gone.
+#:
+#: Batch 256 adds ``knowledgeBase`` at the end because it is the only one of the
+#: four new sections large enough to buy anything back — 8,442 characters
+#: against 677, 767 and 993. Dropping today's readiness, last night's bedroom or
+#: his own bands would cost a load-bearing fact for a rounding error, so those
+#: three are undroppable for the same reason ``today`` is.
+_DROP_ORDER = ("recentActivities", "latestReviews", "sleepHistory", "knowledgeBase")
 
 #: ``sinceThisRead``'s unbounded lists, trimmed oldest-first *before* any whole
 #: section drops (Batch 255).
@@ -264,8 +350,12 @@ class ChatContextService:
             if subject_date == local_today
             else await self._planned_workouts_on(player.id, local_today)
         )
-        adjustable_workout_id = await self._adjustable_workout_id(
-            player, local_today, today_workouts
+        # One holiday lookup answers two questions: whether a proposal has
+        # anything to act on, and whether there is a bedroom to review at all.
+        holiday_windows = await HolidayPauseService(self.session).get_windows(player)
+        inside_holiday = bool(holiday_windows_covering_date(holiday_windows, local_today))
+        adjustable_workout_id = self._adjustable_workout_id(
+            today_workouts, inside_holiday=inside_holiday
         )
 
         week_ahead = await TrainingWeekService(self.session).build_window(
@@ -279,13 +369,27 @@ class ChatContextService:
         trends = await self._trends(player, local_today)
         reviews = await self._latest_reviews(player.id)
         activities = await self._recent_activities(player.id, local_today, player.timezone)
-        sleep_nights = await self._sleep_history(player.id, local_today)
+        sleep_rows = await self._sleep_history(player.id, local_today)
         weight_kg, weight_as_of_date = await resolve_effective_weight_kg(
             self.session, player.id, local_today
         )
         vo2max, vo2max_as_of_date = await resolve_effective_vo2max(
             self.session, player.id, local_today
         )
+        # One knowledge-base read serves both sections that need it: the
+        # thermal thresholds live in ``sleep_protocol``.
+        kb_rows = await self._active_knowledge_base(player.id)
+        daily_metrics = await self._daily_metrics(
+            player, local_today, vo2max=vo2max, vo2max_as_of_date=vo2max_as_of_date
+        )
+        environment = await self._environment(
+            player,
+            local_today,
+            knowledge_base={row.section: row.content for row in kb_rows},
+            last_night=_night_for(sleep_rows, local_today),
+            inside_holiday=inside_holiday,
+        )
+        personal_baselines = await self._personal_baselines(player)
 
         state: dict[str, Any] = {
             "version": APP_STATE_VERSION,
@@ -335,7 +439,19 @@ class ChatContextService:
             "trends": trends,
             "latestReviews": reviews,
             "recentActivities": activities,
-            "sleepHistory": sleep_nights,
+            "sleepHistory": [_sleep_state(row) for row in sleep_rows],
+            # Batch 256: the four the frozen packet used to hold alone. On an
+            # anchored question a read's packet may carry its own copy of these
+            # under the same names; ``meaning`` on the block already says which
+            # record is which, so the duplication reads as current-versus-earlier
+            # rather than as a contradiction.
+            "knowledgeBase": {
+                **knowledge_base_section(kb_rows),
+                "meaning": KNOWLEDGE_BASE_MEANING,
+            },
+            "dailyMetrics": daily_metrics,
+            "environment": environment,
+            "personalBaselines": personal_baselines,
             "omittedForLength": _field_truncations(latest_reviews=reviews, plan_changes=[]),
         }
         if analysis is not None:
@@ -355,11 +471,11 @@ class ChatContextService:
 
     # -- sections -----------------------------------------------------------
 
-    async def _adjustable_workout_id(
+    def _adjustable_workout_id(
         self,
-        player: Profile,
-        local_today: date,
         today_workouts: Sequence[PlannedWorkout],
+        *,
+        inside_holiday: bool,
     ) -> uuid.UUID | None:
         """Today's one workout a proposal could act on, from live plan rows.
 
@@ -370,8 +486,14 @@ class ChatContextService:
         affordance appears from any entry point exactly when it can do
         something, and never on a rest day, inside a holiday, or once the ride
         is completed or skipped.
+
+        Batch 256 moved the holiday lookup up to :meth:`build`, which needs the
+        same answer for the bedroom review. An explicit holiday window stays
+        authoritative even when a stale plan row was never re-versioned, so it
+        is still checked against the window rather than inferred from statuses
+        (``morning_analysis._rest_day_context``).
         """
-        if not today_workouts:
+        if inside_holiday or not today_workouts:
             return None
         candidates = [
             row
@@ -382,13 +504,60 @@ class ChatContextService:
         ]
         if not candidates:
             return None
-        # An explicit holiday window is authoritative even when a stale plan row
-        # was never re-versioned, so it is checked against the window rather than
-        # inferred from statuses (``morning_analysis._rest_day_context``).
-        windows = await HolidayPauseService(self.session).get_windows(player)
-        if holiday_windows_covering_date(windows, local_today):
-            return None
         return candidates[0].id
+
+    # -- Batch 256: the four sections every question needs ------------------
+
+    async def _daily_metrics(
+        self,
+        player: Profile,
+        local_today: date,
+        *,
+        vo2max: float | None,
+        vo2max_as_of_date: date | None,
+    ) -> dict[str, Any]:
+        row = await self._daily_metric_on(player.id, local_today)
+        return {
+            "today": daily_metric_packet(row, vo2max=vo2max, vo2max_as_of_date=vo2max_as_of_date),
+            "meaning": DAILY_METRICS_MEANING,
+        }
+
+    async def _environment(
+        self,
+        player: Profile,
+        local_today: date,
+        *,
+        knowledge_base: Mapping[str, Any],
+        last_night: Sleep | None,
+        inside_holiday: bool,
+    ) -> dict[str, Any]:
+        """Last night's bedroom, on the same holiday rule the morning read uses.
+
+        Batch 113 (#186): a holiday is "away" for thermal purposes — the bedroom
+        is not being slept in, so there is nothing to review. The weather still
+        travels, exactly as it does in the morning packet, because it is true
+        wherever he is.
+        """
+        weather = await self._weather_on(player.id, local_today)
+        review: dict[str, Any] | None = None
+        if not inside_holiday:
+            review = thermal_review(
+                await self._overnight_temperature_rows(player.id, local_today, player.timezone),
+                weather,
+                knowledge_base,
+                sleep=last_night,
+            )
+        return {
+            **environment_section(thermal_review=review, weather=weather),
+            "meaning": ENVIRONMENT_MEANING,
+        }
+
+    async def _personal_baselines(self, player: Profile) -> dict[str, Any]:
+        rows = await self._metric_baselines(player.id)
+        return {
+            "bands": baseline_band_packet(rows, keys=set(_BASELINE_BAND_KEYS)),
+            "meaning": PERSONAL_BASELINES_MEANING,
+        }
 
     async def _since_read(
         self,
@@ -516,7 +685,13 @@ class ChatContextService:
         )
         return [_activity_state(row, timezone_name) for row in rows]
 
-    async def _sleep_history(self, user_id: uuid.UUID, as_of: date) -> list[dict[str, Any]]:
+    async def _sleep_history(self, user_id: uuid.UUID, as_of: date) -> list[Sleep]:
+        """The fortnight of nights, newest first.
+
+        Batch 256 returns rows rather than rendered dicts: the same newest row
+        is the sleep window ``thermal_review`` needs, and a second query for the
+        night the block is already holding would be a query for nothing.
+        """
         rows = (
             (
                 await self.session.execute(
@@ -533,9 +708,87 @@ class ChatContextService:
             .scalars()
             .all()
         )
-        return [_sleep_state(row) for row in rows]
+        return list(rows)
 
     # -- row loaders --------------------------------------------------------
+
+    async def _active_knowledge_base(self, user_id: uuid.UUID) -> list[KnowledgeBase]:
+        rows = (
+            (
+                await self.session.execute(
+                    select(KnowledgeBase)
+                    .where(KnowledgeBase.user_id == user_id, KnowledgeBase.is_active.is_(True))
+                    .order_by(KnowledgeBase.section.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows)
+
+    async def _daily_metric_on(self, user_id: uuid.UUID, day: date) -> DailyMetric | None:
+        """The wake observation for a day, preferring the morning row.
+
+        The same ordering the morning read uses (Batch 205): a day can carry a
+        morning row and a settled one, and readiness/HRV are wake figures.
+        """
+        row: DailyMetric | None = await self.session.scalar(
+            select(DailyMetric)
+            .where(DailyMetric.user_id == user_id, DailyMetric.calendar_date == day)
+            .order_by(morning_first_order())
+            .limit(1)
+        )
+        return row
+
+    async def _metric_baselines(self, user_id: uuid.UUID) -> list[MetricBaseline]:
+        rows = (
+            (
+                await self.session.execute(
+                    select(MetricBaseline)
+                    .where(MetricBaseline.user_id == user_id)
+                    .order_by(MetricBaseline.metric_key.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows)
+
+    async def _weather_on(self, user_id: uuid.UUID, day: date) -> WeatherDaily | None:
+        row: WeatherDaily | None = await self.session.scalar(
+            select(WeatherDaily)
+            .where(WeatherDaily.user_id == user_id, WeatherDaily.calendar_date == day)
+            .order_by(desc(WeatherDaily.updated_at))
+            .limit(1)
+        )
+        return row
+
+    async def _overnight_temperature_rows(
+        self,
+        user_id: uuid.UUID,
+        day: date,
+        timezone_name: str,
+    ) -> list[TemperatureReading]:
+        # ``day`` is the wake date; the shared bedroom helper takes the date the
+        # night *starts* on (Batch 92 #165).
+        start_utc, end_utc = night_window(day - timedelta(days=1), _timezone(timezone_name))
+        rows = (
+            (
+                await self.session.execute(
+                    select(TemperatureReading)
+                    .options(temperature_series_columns())
+                    .where(
+                        TemperatureReading.user_id == user_id,
+                        TemperatureReading.captured_at_utc >= start_utc,
+                        TemperatureReading.captured_at_utc < end_utc,
+                    )
+                    .order_by(TemperatureReading.captured_at_utc.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows)
 
     async def _planned_workouts_on(
         self,
@@ -762,7 +1015,11 @@ def _apply_char_budget(state: dict[str, Any]) -> None:
             break
         if not state.get(section):
             continue
-        state[section] = []
+        # Emptied, never deleted: an absent key would read as "no such data",
+        # which is the failure this whole mechanism exists to prevent. Batch 256
+        # put a dict section (``knowledgeBase``) in this list, so the empty
+        # container has to match the shape that was there.
+        state[section] = [] if isinstance(state[section], list) else {}
         omitted.append(section)
     trend_windows = state.get("trends", {}).get("recentWindows", [])
     while app_state_length(state) > target and len(trend_windows) > 1:
@@ -838,6 +1095,19 @@ def _packet_check_in_versions(context_packet: Any) -> frozenset[str]:
                 if isinstance(entry_at, str):
                     versions.add(entry_at)
     return frozenset(versions)
+
+
+def _night_for(sleep_rows: Sequence[Sleep], day: date) -> Sleep | None:
+    """Last night's sleep row, or ``None`` when Garmin has not written one.
+
+    The history is newest-first, so this is a check on the head rather than a
+    scan — and it must be a check: without it a two-day-old night would be
+    handed to ``thermal_review`` as though it were the window last night's
+    readings fell in.
+    """
+    if sleep_rows and sleep_rows[0].calendar_date == day:
+        return sleep_rows[0]
+    return None
 
 
 def _planned_workout_state(row: PlannedWorkout) -> dict[str, Any]:

@@ -27,6 +27,15 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile, UserRole
 from src.services import morning_analysis as morning_analysis_module
+from src.services.coach_sections import (
+    daily_metric_packet as _daily_metric_packet,
+)
+from src.services.coach_sections import (
+    thermal_review as _thermal_review,
+)
+from src.services.coach_sections import (
+    training_and_activity_fields as _training_and_activity_fields,
+)
 from src.services.holiday_pause import HolidayPauseService, HolidayWindow
 from src.services.morning_analysis import (
     ACWR_AMBER_CAP_THRESHOLD,
@@ -38,7 +47,6 @@ from src.services.morning_analysis import (
     MorningAnalysisError,
     MorningAnalysisService,
     _age_comparison,
-    _daily_metric_packet,
     _date_label,
     _eased_ride_detail,
     _manual_entry_packet,
@@ -48,8 +56,6 @@ from src.services.morning_analysis import (
     _rest_day_context,
     _sleep_packet,
     _thermal_action,
-    _thermal_review,
-    _training_and_activity_fields,
     _training_load_signal,
     _verdict_adjustment_packet,
     _yesterday_load_packet,
