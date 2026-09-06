@@ -33,6 +33,7 @@ from typing import Any, Literal, Protocol, TypedDict
 import structlog
 from anthropic import (
     APIConnectionError,
+    APIError,
     APIStatusError,
     APITimeoutError,
     AsyncAnthropic,
@@ -449,6 +450,30 @@ def anthropic_client(*, api_key: str, read: float | None = None) -> AsyncAnthrop
     )
 
 
+def anthropic_error_from_sdk(exc: APIError) -> AnthropicApiError:
+    """Classify an SDK failure that is neither a status nor a connection error.
+
+    ``other`` rather than a retryable slug: a response the SDK could not validate
+    is not a transient network event, and re-asking for it produces the same
+    unparseable answer while Mark waits three times as long — the reasoning that
+    already excludes ``billing`` from :data:`_AUTO_RETRY_REASONS`. ``status_code``
+    is 0 for the same reason it is on the transport path: there is no upstream
+    status worth reporting, and inventing a plausible-looking 5xx is worse than
+    saying so.
+    """
+    log.error(
+        "anthropic_sdk_error",
+        reason="other",
+        exception_type=type(exc).__name__,
+        detail=str(exc),
+    )
+    return AnthropicApiError(
+        f"Anthropic call failed inside the SDK: {type(exc).__name__}.",
+        reason="other",
+        status_code=0,
+    )
+
+
 async def _create_with_retry(
     *,
     api_key: str,
@@ -494,8 +519,15 @@ async def _create_with_retry(
             error = anthropic_error_from_http_status(exc)
         except APIConnectionError as exc:
             error = anthropic_error_from_transport(exc)
-        except AnthropicApiError as exc:  # pragma: no cover - defensive
-            error = exc
+        except APIError as exc:
+            # The clause that keeps Batch 248's lesson true under the SDK. Its
+            # hierarchy has two members outside the two above —
+            # ``APIResponseValidationError`` and ``APIWebhookValidationError`` —
+            # and without this they would escape ``generate_anthropic_text``
+            # entirely, reaching Mark as the bare unparseable 500 that AI238-04
+            # existed to remove and the operator as nothing at all. Exactly the
+            # shape of the old bug, in a new library.
+            error = anthropic_error_from_sdk(exc)
         last = error
 
         if error.reason not in _AUTO_RETRY_REASONS or attempt == _MAX_ANTHROPIC_ATTEMPTS:

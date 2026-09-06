@@ -4,7 +4,13 @@ from typing import Any
 
 import httpx2
 import pytest
-from anthropic import APIConnectionError, APIStatusError, APITimeoutError, Timeout
+from anthropic import (
+    APIConnectionError,
+    APIResponseValidationError,
+    APIStatusError,
+    APITimeoutError,
+    Timeout,
+)
 from anthropic.types import Message
 
 from src.config import settings
@@ -776,6 +782,37 @@ async def test_a_retry_is_refused_when_the_call_budget_is_gone(
     assert caught.value.reason == "overloaded"
     # Retryable, but there was no budget left to retry inside.
     assert _ScriptedAnthropic.attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_an_sdk_error_that_is_neither_status_nor_connection_is_still_classified(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Batch 248's lesson, kept true under the SDK (Batch 257).
+
+    ``APIResponseValidationError`` and ``APIWebhookValidationError`` sit under
+    ``APIError`` but under neither ``APIStatusError`` nor ``APIConnectionError``.
+    Caught by neither clause they would escape ``generate_anthropic_text``
+    entirely — `main.py` registers one exception handler and it is not this one —
+    reaching Mark as the bare unparseable 500 that AI238-04 removed and the
+    operator as silence. The same bug, in a new library.
+    """
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _ScriptedAnthropic)
+    monkeypatch.setattr("src.services.anthropic_text.asyncio.sleep", _no_sleep)
+    _ScriptedAnthropic.load(
+        APIResponseValidationError(
+            response=httpx2.Response(200, json={"nonsense": True}, request=_request()),
+            body={"nonsense": True},
+        )
+    )
+
+    with pytest.raises(AnthropicApiError) as caught:
+        await _generate()
+
+    assert caught.value.reason == "other"
+    # Not retryable: re-asking produces the same unparseable answer.
+    assert _ScriptedAnthropic.attempts == 1
+    assert caught.value.status_code == 0
 
 
 def test_the_spend_cap_wording_classifies_as_billing() -> None:
