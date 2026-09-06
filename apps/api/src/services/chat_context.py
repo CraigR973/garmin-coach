@@ -328,6 +328,19 @@ _FETCHABLE_OMISSIONS = {
     "sinceThisRead.activitiesIngestedSinceRead(oldest)": "get_activities",
     "sinceThisRead.newerReadsSinceRead(oldest)": "get_read",
     "sinceThisRead.checkInsSinceRead(oldest)": "get_check_ins",
+    # The *field* truncations, not just the whole-section drops — and this one is
+    # the omission that actually fires. Measured on Mark's real 2026-09-06 block,
+    # `omittedForLength` was exactly `['latestReviews.conclusions(truncated)']`
+    # and nothing else: `REVIEW_CONCLUSION_MAX_CHARS` cuts a review's conclusion
+    # at 900 characters on a block that is otherwise inside budget. It is
+    # precisely what `get_read` returns in full, so leaving it unmapped would
+    # have shipped a fetch-back mechanism that never fired on the one case it
+    # was built for.
+    "latestReviews.conclusions(truncated)": "get_read",
+    # `sinceThisRead.planChangesSinceRead.summary(truncated)` is deliberately
+    # absent: plan-action audit rows are `ACTION_AUDIT_TYPES`, which are not in
+    # `READABLE_ANALYSIS_TYPES` because they are not reads Mark was ever shown.
+    # No tool can fetch them, so that omission keeps the honest refusal.
 }
 
 #: Headroom held back from :data:`APP_STATE_CHAR_BUDGET` while trimming.

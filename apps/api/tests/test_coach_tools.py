@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from src.models.coaching import Activity, Analysis, ManualEntry, Sleep
 from src.models.profile import Profile, UserRole
-from src.services.chat_context import _FETCHABLE_OMISSIONS
+from src.services.chat_context import _FETCHABLE_OMISSIONS, _field_truncations
 from src.services.coach_tools import (
     COACH_TOOLS,
     MAX_RESULT_CHARS,
@@ -96,6 +96,27 @@ def test_every_fetchable_omission_names_a_tool_that_exists() -> None:
     a failed one — worse than the sentence it replaced.
     """
     assert set(_FETCHABLE_OMISSIONS.values()) <= set(TOOL_NAMES)
+
+
+def test_the_truncation_that_actually_fires_is_fetchable() -> None:
+    """The whole-section drops are the rare case; a field truncation is the real one.
+
+    Measured on Mark's real 2026-09-06 block, ``omittedForLength`` was exactly
+    ``['latestReviews.conclusions(truncated)']`` and nothing else — the block was
+    inside budget, so no section was dropped, but ``REVIEW_CONCLUSION_MAX_CHARS``
+    still cut a review's conclusion at 900 characters. Mapping only the section
+    drops would have shipped a fetch-back mechanism that never fired on the one
+    case it was built for.
+    """
+    labels = _field_truncations(
+        latest_reviews=[{"conclusions": "a long conclusion..."}],
+        plan_changes=[{"summary": "a long summary..."}],
+    )
+
+    assert _FETCHABLE_OMISSIONS[labels[0]] == "get_read"
+    # And the other one stays honestly unmapped: plan-action audit rows are not
+    # reads Mark was ever shown, so no tool returns them.
+    assert labels[1] not in _FETCHABLE_OMISSIONS
 
 
 def test_reads_the_coach_can_quote_are_reads_mark_was_shown() -> None:
