@@ -87,10 +87,22 @@ from src.services.bedroom_overnight import night_window
 from src.services.body_metrics import resolve_effective_vo2max, resolve_effective_weight_kg
 from src.services.bulk_history_reads import temperature_series_columns, without_sleep_raw_payload
 from src.services.coach_sections import (
+    activity_state as _activity_state_shape,
+)
+from src.services.coach_sections import (
+    check_in_state as _check_in_state,
+)
+from src.services.coach_sections import (
     daily_metric_packet,
     environment_section,
     knowledge_base_section,
     thermal_review,
+)
+from src.services.coach_sections import (
+    minutes as _minutes,
+)
+from src.services.coach_sections import (
+    sleep_state as _sleep_state,
 )
 from src.services.daily_metric_phase import morning_first_order
 from src.services.holiday_pause import HolidayPauseService, holiday_windows_covering_date
@@ -292,6 +304,31 @@ _SINCE_READ_TRIM_ORDER = (
     "checkInsSinceRead",
 )
 SINCE_READ_TRIM_FLOOR = 2
+
+#: Which trimmed sections the coach can fetch back, and with which tool
+#: (Batch 257.5).
+#:
+#: ``omittedForLengthMeaning`` used to end every omission with "say it is not in
+#: front of you here". That was the honest sentence while there was nothing to be
+#: done about it; with tools it is an apology in place of an action. But the
+#: honesty has to survive the change, so this maps the omissions that really are
+#: fetchable rather than telling the model to go and get whatever is missing:
+#: ``knowledgeBase`` and the oldest trend windows have no tool behind them, and
+#: promising a lookup that does not exist would trade a truthful refusal for a
+#: failed one.
+#:
+#: The names are asserted against :data:`~src.services.coach_tools.TOOL_NAMES` by
+#: a test. The map lives here rather than in ``coach_tools`` because that module
+#: imports this one; this direction keeps the omission labels with the code that
+#: produces them.
+_FETCHABLE_OMISSIONS = {
+    "recentActivities": "get_activities",
+    "latestReviews": "get_read",
+    "sleepHistory": "get_sleep_nights",
+    "sinceThisRead.activitiesIngestedSinceRead(oldest)": "get_activities",
+    "sinceThisRead.newerReadsSinceRead(oldest)": "get_read",
+    "sinceThisRead.checkInsSinceRead(oldest)": "get_check_ins",
+}
 
 #: Headroom held back from :data:`APP_STATE_CHAR_BUDGET` while trimming.
 #:
@@ -1028,11 +1065,18 @@ def _apply_char_budget(state: dict[str, Any]) -> None:
             omitted.append("trends.recentWindows(oldest)")
     if omitted:
         state["omittedForLength"] = omitted
+        fetchable = {
+            label: _FETCHABLE_OMISSIONS[label] for label in omitted if label in _FETCHABLE_OMISSIONS
+        }
         state["omittedForLengthMeaning"] = (
-            "Trimmed to fit the prompt, not absent from the app. If a question needs "
-            "one of these, say it is not in front of you here rather than that it does "
-            "not exist."
+            "Trimmed to fit the prompt, not absent from the app. Anything listed in "
+            "omittedForLengthFetchWith you can go and get with the named lookup - do "
+            "that rather than telling Mark it is not in front of you. For anything "
+            "not listed there, say it is not in front of you here rather than that it "
+            "does not exist."
         )
+        if fetchable:
+            state["omittedForLengthFetchWith"] = fetchable
     if app_state_length(state) > APP_STATE_CHAR_BUDGET:
         state["charBudget"] = {
             "budgetChars": APP_STATE_CHAR_BUDGET,
@@ -1124,65 +1168,8 @@ def _planned_workout_state(row: PlannedWorkout) -> dict[str, Any]:
 
 
 def _activity_state(row: Activity, timezone_name: str) -> dict[str, Any]:
-    return {
-        "activityId": str(row.id),
-        "localDate": local_date(row.start_utc, timezone_name).isoformat(),
-        "title": row.activity_name,
-        "activityType": row.activity_type,
-        "durationMin": _minutes(row.duration_sec),
-        "distanceKm": round(row.distance_m / 1000, 2) if row.distance_m is not None else None,
-        "avgHeartRateBpm": row.avg_heart_rate_bpm,
-        "avgPowerWatts": row.avg_power_watts,
-        "normalizedPowerWatts": row.normalized_power_watts,
-        "trainingLoad": row.training_load,
-        "aerobicTrainingEffect": row.aerobic_training_effect,
-    }
-
-
-def _check_in_state(row: ManualEntry) -> dict[str, Any]:
-    """One check-in as the coach sees it.
-
-    Batch 255 added ``food`` and ``sleepSetup``. They were the only structured
-    things Mark writes in a check-in that the chat did not forward, and on
-    2026-09-05 that produced the failure this batch exists to remove: he asked
-    about his evening snack, the coach truthfully answered that it had no such
-    note, and he replied **"not sure why you can't read them"**. The text was in
-    ``food_json`` the whole time — ``morning_analysis`` and ``daily_loop``
-    already send both fields, so the morning brief could see the snack and the
-    conversation *about* that brief could not.
-
-    ``sleep_setup_json`` travels for the same reason and one more: his notes
-    routinely refer to it deictically — "window openings noted below are for
-    overnight not pre cool" — so without it the prose he does send is
-    unresolvable.
-    """
-    return {
-        "entryDate": row.entry_date.isoformat(),
-        "entryAtUtc": _dt(row.entry_at_utc),
-        "subjectiveScore": row.subjective_score,
-        "rpe": row.rpe,
-        "feel": row.feel,
-        # Mark's own words are data, never instructions (Decision #243).
-        "notes": row.notes,
-        "food": row.food_json or None,
-        "sleepSetup": row.sleep_setup_json or None,
-        "contentRole": "untrusted_user_data",
-    }
-
-
-def _sleep_state(row: Sleep) -> dict[str, Any]:
-    return {
-        "calendarDate": row.calendar_date.isoformat(),
-        "score": row.score,
-        "ageAdjustedScore": row.age_adjusted_score,
-        "qualifier": row.qualifier,
-        "timeAsleepMin": _minutes(row.duration_sec),
-        "deepSleepMin": _minutes(row.deep_sleep_sec),
-        "remSleepMin": _minutes(row.rem_sleep_sec),
-        "awakeSleepMin": _minutes(row.awake_sleep_sec),
-        "avgOvernightHrvMs": row.avg_overnight_hrv_ms,
-        "restingHeartRateBpm": row.resting_heart_rate_bpm,
-    }
+    """The shared shape, with this module's timezone conversion bound in."""
+    return _activity_state_shape(row, lambda moment: local_date(moment, timezone_name))
 
 
 def _truncate(value: str | None, limit: int) -> str | None:
@@ -1208,10 +1195,6 @@ def _field_truncations(
 
 def _is_truncated(value: Any) -> bool:
     return isinstance(value, str) and value.endswith(TRUNCATED_SUFFIX)
-
-
-def _minutes(seconds: float | int | None) -> int | None:
-    return round(seconds / 60) if seconds is not None else None
 
 
 def _dt(value: datetime | None) -> str | None:

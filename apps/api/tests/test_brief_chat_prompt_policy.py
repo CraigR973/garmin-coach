@@ -121,7 +121,7 @@ class _Date:
 
 def test_brief_chat_prompt_allows_labelled_general_science_lane() -> None:
     """Batch 175's lane survives Batch 179's rewrite of the surface."""
-    assert PROMPT_VERSION == "coach-chat-v11-2026-09-05"
+    assert PROMPT_VERSION == "coach-chat-v12-2026-09-06"
     assert "never invent his" in FLAT_PROMPT
     assert "You may answer general, non-personalized endurance-training science" in FLAT_PROMPT
     assert 'Label those answers with "General principle:"' in FLAT_PROMPT
@@ -264,7 +264,28 @@ def test_every_floor_holds_from_every_entry_point() -> None:
         )
 
 
-def test_chat_system_prompt_marks_only_the_stable_prefix_as_cacheable() -> None:
+def test_chat_system_prompt_caches_the_stable_prefix_and_the_live_block() -> None:
+    """Two breakpoints, and the split between them is the point (Batch 257.4).
+
+    Until this batch there was one, on the stable prefix, and the live app-state
+    block sat *after* it — re-read at full price on every request. Measured on
+    2026-09-06 production that block is 22,791-24,246 tokens, 93% of an
+    unanchored question's input, and a tool loop would have paid for it again on
+    every round trip.
+
+    They earn it on different timescales, and only one of them is a free win.
+    The prefix is byte-identical between consecutive questions on the same anchor
+    (74 of Mark's 141 arrived within five minutes of the one before) — measured
+    live, a second question read 39,978 tokens of it. The block is rebuilt per
+    question, so it is only ever read back across the *rounds of one answer*:
+    +0.25x on a lookup-free question, -0.65x on a lookup question, break-even
+    around 28%. Kept deliberately; ``coach_chat_used_tools`` is logged so the
+    real rate can replace the estimate.
+
+    The boundary between the two has not moved, which is what keeps the first
+    breakpoint stable at all: the read and its frozen packet on one side,
+    everything assembled at ask time on the other.
+    """
     blocks = _build_cached_system_prompt(
         analysis=_FakeAnalysis("morning", context_packet={"verdict": {"status": "Amber"}}),  # type: ignore[arg-type]
         origin=CoachOrigin(kind="morning_brief"),
@@ -279,8 +300,15 @@ def test_chat_system_prompt_marks_only_the_stable_prefix_as_cacheable() -> None:
             "text": blocks[0]["text"],
             "cache_control": {"type": "ephemeral"},
         },
-        {"type": "text", "text": blocks[1]["text"]},
+        {
+            "type": "text",
+            "text": blocks[1]["text"],
+            "cache_control": {"type": "ephemeral"},
+        },
     ]
+    # Four breakpoints per request is the provider's cap, and the tools block
+    # ahead of these carries none of its own.
+    assert sum(1 for block in blocks if "cache_control" in block) <= 4
     assert "Mark's information behind that read" in blocks[0]["text"]
     assert "Where things stand right now" not in blocks[0]["text"]
     assert "Where things stand right now" in blocks[1]["text"]

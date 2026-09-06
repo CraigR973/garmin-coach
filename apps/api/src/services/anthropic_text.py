@@ -28,7 +28,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, Protocol, TypedDict
 
 import structlog
 from anthropic import (
@@ -120,6 +120,40 @@ class AnthropicTextResult:
     output_markdown: str
     raw_response: dict[str, Any]
     model_name: str
+    #: How many tool calls were executed to produce this answer, and how many
+    #: paid API calls it took (Batch 257.6). Both default to the single-call
+    #: shape, so every pre-257 caller reads exactly what it always did.
+    tool_uses: int = 0
+    api_calls: int = 1
+
+
+@dataclass(frozen=True, slots=True)
+class ToolResult:
+    """One executed tool call, on its way back to the model."""
+
+    tool_use_id: str
+    content: str
+    is_error: bool = False
+
+    def to_block(self) -> dict[str, Any]:
+        block: dict[str, Any] = {
+            "type": "tool_result",
+            "tool_use_id": self.tool_use_id,
+            "content": self.content,
+        }
+        if self.is_error:
+            # A failed tool is *reported*, never dropped. Dropping it leaves a
+            # ``tool_use`` block with no matching result, which the provider
+            # rejects on the next turn — turning a failed lookup into a failed
+            # answer.
+            block["is_error"] = True
+        return block
+
+
+class ToolExecutor(Protocol):
+    """Runs one tool call. Supplied by the caller; unknown to this module."""
+
+    async def __call__(self, *, tool_use_id: str, name: str, payload: Any) -> ToolResult: ...
 
 
 class AnthropicApiError(RuntimeError):
@@ -544,6 +578,56 @@ def anthropic_schema(model: type[BaseModel]) -> dict[str, Any]:
     return schema
 
 
+def build_messages_payload(
+    *,
+    model_name: str,
+    max_tokens: int,
+    system_prompt: AnthropicSystemPrompt,
+    messages: list[dict[str, Any]],
+    thinking: AnthropicThinking | None = None,
+    effort: str | None = None,
+    output_schema: dict[str, Any] | None = None,
+    tools: list[dict[str, Any]] | None = None,
+    tool_choice: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The one place a Messages request is assembled (Batch 257).
+
+    Both callers in this module go through it, so the properties earlier batches
+    fought for hold on the tool path for free rather than by being remembered:
+
+    * **A field is absent unless passed** (Batch 233). ``thinking`` and
+      ``output_config`` are the only wire-format difference between this app on
+      Sonnet 5 and this app as it was on Sonnet 4.6, so the rollback stays a
+      settings change rather than a code change.
+    * **``effort`` and ``format`` are two keys of one ``output_config``** (Batch
+      253, AI238-10). Assigning it wholesale for either silently drops the other,
+      which for a structured caller turns a schema-constrained response back into
+      prose with nothing failing until the parse does. ``test_batch253_hygiene``
+      greps this module's source for that pattern, and it caught the tool loop
+      re-introducing it.
+    """
+    payload: dict[str, Any] = {
+        "model": model_name,
+        "max_tokens": max_tokens,
+        "system": system_prompt,
+        "messages": messages,
+    }
+    if tools is not None:
+        payload["tools"] = tools
+    if tool_choice is not None:
+        payload["tool_choice"] = tool_choice
+    if thinking is not None:
+        payload["thinking"] = thinking
+    output_config: dict[str, Any] = {}
+    if effort is not None:
+        output_config["effort"] = effort
+    if output_schema is not None:
+        output_config["format"] = {"type": "json_schema", "schema": output_schema}
+    if output_config:
+        payload["output_config"] = output_config
+    return payload
+
+
 async def generate_anthropic_text(
     *,
     api_key: str,
@@ -573,29 +657,19 @@ async def generate_anthropic_text(
     ``reason``); a well-formed response that is unusable (max_tokens, no text, not a
     JSON object) still raises the caller's ``error_cls`` as before.
     """
-    messages: list[dict[str, str]] = [
+    messages: list[dict[str, Any]] = [
         *(prior_messages or []),
         {"role": "user", "content": user_prompt},
     ]
-    payload: dict[str, Any] = {
-        "model": model_name,
-        "max_tokens": max_tokens,
-        "system": system_prompt,
-        "messages": messages,
-    }
-    if thinking is not None:
-        payload["thinking"] = thinking
-    # Batch 253 (AI238-10): ``effort`` and ``format`` are two keys of **one**
-    # ``output_config``. Assigning it wholesale for either would silently drop the
-    # other — which for a structured caller means turning a schema-constrained
-    # response back into prose, with nothing failing until the parse does.
-    output_config: dict[str, Any] = {}
-    if effort is not None:
-        output_config["effort"] = effort
-    if output_schema is not None:
-        output_config["format"] = {"type": "json_schema", "schema": output_schema}
-    if output_config:
-        payload["output_config"] = output_config
+    payload = build_messages_payload(
+        model_name=model_name,
+        max_tokens=max_tokens,
+        system_prompt=system_prompt,
+        messages=messages,
+        thinking=thinking,
+        effort=effort,
+        output_schema=output_schema,
+    )
     message = await _create_with_retry(api_key=api_key, payload=payload, model_name=model_name)
     raw = message.to_dict()
 
@@ -614,3 +688,146 @@ async def generate_anthropic_text(
         raw_response=raw,
         model_name=resolved_model,
     )
+
+
+# ---------------------------------------------------------------------------
+# Batch 257 — the tool loop
+# ---------------------------------------------------------------------------
+
+#: API calls one answer may take, tool rounds included. Three rounds is two
+#: chances to fetch and then answer; the cap exists because chat runs the model
+#: call **in-request** (``ask_coach``), so every extra round trip is time Mark
+#: spends watching a spinner.
+MAX_TOOL_ROUNDS = 3
+
+#: Tool calls one answer may execute, across all rounds. Parallel calls in one
+#: round count individually — a round that asks for three lookups spends three.
+MAX_TOOL_USES = 4
+
+
+async def generate_anthropic_text_with_tools(
+    *,
+    api_key: str,
+    model_name: str,
+    max_tokens: int,
+    system_prompt: AnthropicSystemPrompt,
+    user_prompt: str,
+    error_cls: type[Exception],
+    tools: list[dict[str, Any]],
+    execute_tool: ToolExecutor,
+    prior_messages: list[dict[str, Any]] | None = None,
+    thinking: AnthropicThinking | None = None,
+    effort: str | None = None,
+    max_tool_rounds: int = MAX_TOOL_ROUNDS,
+    max_tool_uses: int = MAX_TOOL_USES,
+) -> AnthropicTextResult:
+    """``generate_anthropic_text``, plus the loop that lets the model fetch.
+
+    A manual loop rather than the SDK's ``tool_runner``, for two reasons that are
+    about this app rather than about taste. The runner is beta and drives its own
+    loop, so the shared-deadline retry every call here goes through — the one
+    Batch 232 sized against the generation lease — would have to be rebuilt
+    around it. And the runner would own the request shape, which is where
+    ``thinking``/``effort``/``cache_control`` are decided. Everything the runner
+    is *recommended* for (approval gates, interception) this path does not need,
+    because the tools are read-only by construction.
+
+    Three rules the provider cares about, all load-bearing:
+
+    * **Every** ``tool_result`` goes back in a **single** user message. Splitting
+      them across messages trains the model out of asking for parallel calls,
+      which is the one thing that keeps a two-lookup answer to one round trip.
+    * The assistant turn is appended as the model's own ``content``, unedited —
+      thinking blocks included. Re-serialising only the parts that look useful is
+      how a harness silently invalidates its own history.
+    * A failed tool returns ``is_error``; it is never dropped.
+
+    The last round is sent with ``tool_choice: {"type": "none"}`` so the answer
+    is always prose. That is cheap here on purpose: a ``tool_choice`` change
+    invalidates only the *messages* cache, and this path's breakpoints are both
+    in ``system``.
+    """
+    messages: list[dict[str, Any]] = [
+        *(prior_messages or []),
+        {"role": "user", "content": user_prompt},
+    ]
+    tool_uses = 0
+    api_calls = 0
+    raw: dict[str, Any] = {}
+
+    for round_index in range(1, max_tool_rounds + 1):
+        exhausted = tool_uses >= max_tool_uses or round_index == max_tool_rounds
+        payload = build_messages_payload(
+            model_name=model_name,
+            max_tokens=max_tokens,
+            system_prompt=system_prompt,
+            messages=messages,
+            thinking=thinking,
+            effort=effort,
+            tools=tools,
+            tool_choice={"type": "none"} if exhausted else None,
+        )
+
+        message = await _create_with_retry(api_key=api_key, payload=payload, model_name=model_name)
+        api_calls += 1
+        raw = message.to_dict()
+        _log_usage(raw, model_name=_resolved_model(raw, model_name))
+
+        if message.stop_reason == "max_tokens":
+            raise error_cls("Claude response hit max_tokens before completing.")
+
+        calls = _tool_use_blocks(raw)
+        if not calls:
+            break
+
+        messages.append({"role": "assistant", "content": raw.get("content", [])})
+        results = [
+            (
+                await execute_tool(
+                    tool_use_id=str(call.get("id")),
+                    name=str(call.get("name")),
+                    payload=call.get("input"),
+                )
+            ).to_block()
+            for call in calls
+        ]
+        tool_uses += len(calls)
+        log.info(
+            "anthropic_tool_round",
+            model_name=model_name,
+            round=round_index,
+            tools=[str(call.get("name")) for call in calls],
+            errors=sum(1 for block in results if block.get("is_error")),
+            tool_uses=tool_uses,
+        )
+        messages.append({"role": "user", "content": results})
+
+    output = text_from_content(raw.get("content"))
+    if not output:
+        raise error_cls("Claude response did not contain text output.")
+    resolved_model = _resolved_model(raw, model_name)
+    return AnthropicTextResult(
+        output_markdown=output,
+        raw_response=raw,
+        model_name=resolved_model,
+        tool_uses=tool_uses,
+        api_calls=api_calls,
+    )
+
+
+def _resolved_model(raw: dict[str, Any], fallback: str) -> str:
+    model = raw.get("model")
+    return model if isinstance(model, str) else fallback
+
+
+def _tool_use_blocks(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    """The ``tool_use`` blocks of one response, in the order the model asked.
+
+    ``input`` arrives already parsed by the SDK; it is never string-matched. The
+    4.6+ models vary their JSON escaping inside tool inputs, so matching on the
+    serialized form is a bug that only shows up on some inputs.
+    """
+    content = raw.get("content")
+    if not isinstance(content, list):
+        return []
+    return [item for item in content if isinstance(item, dict) and item.get("type") == "tool_use"]

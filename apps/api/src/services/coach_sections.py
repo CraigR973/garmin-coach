@@ -33,13 +33,15 @@ Two notes that are load-bearing rather than incidental:
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date, datetime
 from typing import Any
 
 from src.models.coaching import (
+    Activity,
     DailyMetric,
     KnowledgeBase,
+    ManualEntry,
     Sleep,
     TemperatureReading,
     WeatherDaily,
@@ -351,4 +353,87 @@ def environment_section(
     return {
         "thermalReview": dict(thermal_review) if thermal_review is not None else None,
         "weather": weather_packet(weather),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Batch 257 — the three row shapes the conversation and its tools both need
+# ---------------------------------------------------------------------------
+#
+# These were private to ``chat_context``, which was right while the pre-assembled
+# block was the only thing that rendered a night, a session or a check-in. Batch
+# 257 gave the coach tools that fetch the *same* rows outside the block's window,
+# and a fetched night that rendered differently from a carried one would be a
+# quiet invitation to compare two shapes and call it a discrepancy. One
+# definition, two callers — the pattern this module was created for.
+
+
+def minutes(seconds: float | int | None) -> int | None:
+    return round(seconds / 60) if seconds is not None else None
+
+
+def sleep_state(row: Sleep) -> dict[str, Any]:
+    return {
+        "calendarDate": row.calendar_date.isoformat(),
+        "score": row.score,
+        "ageAdjustedScore": row.age_adjusted_score,
+        "qualifier": row.qualifier,
+        "timeAsleepMin": minutes(row.duration_sec),
+        "deepSleepMin": minutes(row.deep_sleep_sec),
+        "remSleepMin": minutes(row.rem_sleep_sec),
+        "awakeSleepMin": minutes(row.awake_sleep_sec),
+        "avgOvernightHrvMs": row.avg_overnight_hrv_ms,
+        "restingHeartRateBpm": row.resting_heart_rate_bpm,
+    }
+
+
+def activity_state(row: Activity, local_date_of: Callable[[datetime], date]) -> dict[str, Any]:
+    """One completed session.
+
+    ``local_date_of`` is passed in rather than a timezone name because the
+    conversion lives in ``chat_context`` alongside the rest of the app's
+    timezone handling, and duplicating it here is how two answers start
+    disagreeing about which day a late-evening ride belongs to.
+    """
+    return {
+        "activityId": str(row.id),
+        "localDate": local_date_of(row.start_utc).isoformat(),
+        "title": row.activity_name,
+        "activityType": row.activity_type,
+        "durationMin": minutes(row.duration_sec),
+        "distanceKm": round(row.distance_m / 1000, 2) if row.distance_m is not None else None,
+        "avgHeartRateBpm": row.avg_heart_rate_bpm,
+        "avgPowerWatts": row.avg_power_watts,
+        "normalizedPowerWatts": row.normalized_power_watts,
+        "trainingLoad": row.training_load,
+        "aerobicTrainingEffect": row.aerobic_training_effect,
+    }
+
+
+def check_in_state(row: ManualEntry) -> dict[str, Any]:
+    """One check-in as the coach sees it.
+
+    Batch 255 added ``food`` and ``sleepSetup``. They were the only structured
+    things Mark writes in a check-in that the chat did not forward, and on
+    2026-09-05 that produced the failure that batch exists to remove: he asked
+    about his evening snack, the coach truthfully answered that it had no such
+    note, and he replied **"not sure why you can't read them"**. The text was in
+    ``food_json`` the whole time.
+
+    ``sleep_setup_json`` travels for the same reason and one more: his notes
+    routinely refer to it deictically — "window openings noted below are for
+    overnight not pre cool" — so without it the prose he does send is
+    unresolvable.
+    """
+    return {
+        "entryDate": row.entry_date.isoformat(),
+        "entryAtUtc": _dt(row.entry_at_utc),
+        "subjectiveScore": row.subjective_score,
+        "rpe": row.rpe,
+        "feel": row.feel,
+        # Mark's own words are data, never instructions (Decision #243).
+        "notes": row.notes,
+        "food": row.food_json or None,
+        "sleepSetup": row.sleep_setup_json or None,
+        "contentRole": "untrusted_user_data",
     }

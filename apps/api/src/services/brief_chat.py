@@ -63,6 +63,7 @@ from src.services.anthropic_text import (
     configured_effort,
     configured_thinking,
     generate_anthropic_text,
+    generate_anthropic_text_with_tools,
 )
 from src.services.chat_context import (
     ChatContextService,
@@ -82,6 +83,7 @@ from src.services.coach_policy import (
     floors_sentence,
     internal_vocabulary_hits,
 )
+from src.services.coach_tools import COACH_TOOLS, CoachToolbox
 from src.services.learned_context import LEARNED_CONTEXT_PROMPT_GUARDRAIL
 from src.services.prompt_metadata import prompt_system_hash
 from src.services.workload_budget import workload_slot
@@ -119,16 +121,15 @@ MAX_HISTORY_TURNS_IN_PROMPT = 10
 THREAD_PAGE_LIMIT = 60
 QUESTION_MAX_LENGTH = 1000
 
-# Batch 256: v11 adds Mark's own rules, today's readiness, last night's bedroom
-# and his personal bands. The list is closed and the model reads it as closed —
-# Batch 238 proved that on the morning brief, where a four-item sentence written
-# when the brief had four sections silently deleted the other four, and Batch 255
-# bumped v9 → v10 for exactly this reason. Handing the block four new sections
-# without naming them here would be that defect inverted: given the data, told it
-# did not have it. Chat regenerates nothing on a bump (`prompt_artifacts`:
-# UNFILTERED, "a past answer stays what was said"), so this withdraws no stored
-# artifact.
-PROMPT_VERSION = "coach-chat-v11-2026-09-05"
+# Batch 257: v12 tells the coach it can go and fetch what it does not hold. The
+# same reasoning that forced v10 and v11 forces this one — the enumeration of
+# what the coach has is closed and the model reads it as closed (Batch 238
+# measured that on the morning brief) — and a capability is closed the same way:
+# tool definitions alone put the tools in reach, but a coach that has spent
+# months being told to say "that is not in front of me" will keep saying it.
+# Chat regenerates nothing on a bump (`prompt_artifacts`: UNFILTERED, "a past
+# answer stays what was said"), so this withdraws no stored artifact.
+PROMPT_VERSION = "coach-chat-v12-2026-09-06"
 PROPOSAL_MARKER = "[[PROPOSE_WORKOUT_ADJUSTMENT]]"
 
 SYSTEM_PROMPT = f"""You are CheckMark, Mark's coach, talking with him.
@@ -143,6 +144,16 @@ when he asked from one of your reads, that read and the information it was
 written from. Use all of it. If the answer to his
 question is something the app has already worked out, give him that answer
 rather than telling him you cannot see it.
+
+When what he asks about is outside what you are holding, look it up before you
+answer. You can fetch his recorded sleep for any range of nights, his completed
+sessions for any range of dates, the check-ins he wrote on any past day, and any
+earlier read you wrote for him. Reach for a lookup when the question turns on a
+specific night, an older session, something he told you before today, or what
+you said on a particular day - "that is not in front of me" is the wrong answer
+when you can go and get it. Ask for everything you need in one go rather than
+one thing at a time. If a lookup comes back empty or fails, say so plainly and
+answer from what you do have; never fill the gap with a number you did not read.
 
 This is one continuing conversation, not a fresh start on each page. Mark may
 open it from anywhere; where he opened it tells you what he is most likely
@@ -208,6 +219,7 @@ class BriefChatClient(Protocol):
         system_prompt: AnthropicSystemPrompt,
         user_prompt: str,
         prior_messages: list[dict[str, str]],
+        toolbox: CoachToolbox | None = None,
     ) -> str: ...
 
 
@@ -225,20 +237,52 @@ class AnthropicBriefChatClient:
         system_prompt: AnthropicSystemPrompt,
         user_prompt: str,
         prior_messages: list[dict[str, str]],
+        toolbox: CoachToolbox | None = None,
     ) -> str:
+        """One answer, with or without the lookups (Batch 257).
+
+        ``toolbox is None`` keeps the exact single-call path every question took
+        before this batch — same function, same payload — so the tool loop is one
+        argument away from being switched off if it ever misbehaves in front of
+        Mark, rather than a rewrite to back out.
+        """
         if not self.api_key:
             raise BriefChatError("ANTHROPIC_API_KEY is not configured.")
-        result = await generate_anthropic_text(
+        if toolbox is None:
+            result = await generate_anthropic_text(
+                api_key=self.api_key,
+                model_name=self.model_name,
+                max_tokens=self.max_tokens,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                prior_messages=prior_messages,
+                thinking=self.thinking,
+                effort=self.effort,
+                error_cls=BriefChatError,
+            )
+            return result.output_markdown
+        result = await generate_anthropic_text_with_tools(
             api_key=self.api_key,
             model_name=self.model_name,
             max_tokens=self.max_tokens,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            prior_messages=prior_messages,
+            prior_messages=list(prior_messages),
             thinking=self.thinking,
             effort=self.effort,
             error_cls=BriefChatError,
+            tools=COACH_TOOLS,
+            execute_tool=toolbox.execute,
         )
+        if result.tool_uses:
+            # 257.6: chat runs in-request, so the cost of a lookup is time Mark
+            # spends waiting. Logged per answer rather than inferred, so the cap
+            # can be tuned from what he actually triggers.
+            log.info(
+                "coach_chat_used_tools",
+                tool_uses=result.tool_uses,
+                api_calls=result.api_calls,
+            )
         return result.output_markdown
 
 
@@ -585,6 +629,12 @@ class BriefChatService:
                 system_prompt=system_prompt,
                 user_prompt=cleaned,
                 prior_messages=prior_messages,
+                # Batch 257: the lookups, bound to *this* profile. The toolbox
+                # holds the authenticated player, so no tool can be executed
+                # against a ``user_id`` this request did not authenticate — the
+                # scoping cannot be forgotten at a call site because no call site
+                # supplies it.
+                toolbox=CoachToolbox(self.session, player),
             )
         answer_for_mark, model_offered_proposal = _strip_proposal_marker(answer)
 
@@ -687,7 +737,39 @@ def _build_cached_system_prompt(
             ),
             "cache_control": {"type": "ephemeral"},
         },
-        {"type": "text", "text": _app_state_system_text(app_state)},
+        {
+            "type": "text",
+            "text": _app_state_system_text(app_state),
+            # Batch 257.4, and it is a **trade rather than a free win** — the
+            # measurement said so and the first draft of this comment did not.
+            #
+            # This block is 22,791-24,246 tokens on 2026-09-06 production, and it
+            # sat after the only breakpoint, so it was re-read at full price on
+            # every request: 93% of an unanchored question's input. Marking it
+            # means an extra round trip *reads* it at 0.1x instead of paying for
+            # it again — measured live, round 2 of a real lookup read 25,942
+            # tokens from cache.
+            #
+            # What it costs: a question that uses no lookup writes the block at
+            # 1.25x instead of paying 1.0x once, because nothing reads it back.
+            # Across questions the block always changes (``assembledAtUtc`` alone
+            # guarantees it), so it is never read there — measured: a second
+            # question on the same anchor read 39,978 tokens (tools + prefix) and
+            # wrote the block afresh.
+            #
+            # So: **+0.25x of the block on a lookup-free question, -0.65x on a
+            # lookup question, break-even at ~28% of questions using a tool.**
+            # Kept because the whole point of the batch is that lookups become
+            # routine, and because the absolute numbers are small either way
+            # (~$0.012 against ~$0.032 on a ~$0.065 question). ``coach_chat_used_tools``
+            # is logged per answer precisely so the real rate replaces this
+            # estimate rather than the estimate quietly becoming the fact.
+            #
+            # The *first* breakpoint is unambiguous and unchanged: 74 of Mark's
+            # 141 questions arrived within five minutes of the previous one on
+            # the same anchor, and that prefix is byte-identical between them.
+            "cache_control": {"type": "ephemeral"},
+        },
     ]
 
 
