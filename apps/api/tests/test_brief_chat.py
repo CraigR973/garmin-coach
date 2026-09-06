@@ -50,6 +50,7 @@ from src.services.brief_chat import (
     BriefChatService,
     internal_vocabulary_hits,
 )
+from src.services.coach_tools import CoachToolbox
 
 
 class FakeBriefChatClient(BriefChatClient):
@@ -63,12 +64,14 @@ class FakeBriefChatClient(BriefChatClient):
         system_prompt: AnthropicSystemPrompt,
         user_prompt: str,
         prior_messages: list[dict[str, str]],
+        toolbox: CoachToolbox | None = None,
     ) -> str:
         self.calls.append(
             {
                 "system_prompt": system_prompt,
                 "user_prompt": user_prompt,
                 "prior_messages": prior_messages,
+                "toolbox": toolbox,
             }
         )
         return self.answer

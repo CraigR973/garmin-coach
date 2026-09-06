@@ -6,80 +6,101 @@
 
 ## Now
 
-**2026-09-05 — Batch 256 SHIPPED.** PR #287 / squash `fa39dd0`, Decision **#327**. Second batch of the
-day, straight out of Craig's follow-up question to 255: *does the coach now have
-full access?*
+**2026-09-06 — Batch 257 SHIPPED.** Squash `TBD`, Decision **#328**. The 🔴 High one, and
+it grew a foundation before it grew a feature.
 
-**The answer was no, and the unevenness ran the wrong way.** Four categories bear
-on almost any question Mark asks — his own profile and rules, today's readiness,
-last night's bedroom, his personal bands — and all four lived **only** inside a
-generated read's frozen packet. On his morning brief the coach held them; asked
-from Home it held none, and could not answer a question about his own bedtime
-target or his bedroom temperature. On 09-05 he asked about REM in an explicitly
-thermal context with none of the three present. They are now in the live block,
-**built from live rows at ask time** — strictly better than a packet copy,
-because the knowledge base is edited *between* reads, so a copy can state a rule
-he has since changed. A test pins exactly that.
+**257.1's boundary question was answered wider than the row proposed.** Offered
+three ways to get a tool loop — the raw `httpx` boundary (the row's own
+recommendation), the `anthropic` SDK for chat alone, or the SDK everywhere —
+Craig chose the third, knowing it was stated as the bigger option. So 257 is two
+pieces: **the migration first, then the loop on top of it**, and it supersedes
+the SDK clause of Decision #47.
 
-**Three of the spec row's claims needed correcting before any code was written.**
-(1) "the weekly packet carries none of them either" is wrong — it carries
-`personalBaselines`, `dataQualityGuardrails` and `trainingSchedule`. (2) The
-arithmetic understated it: the **stale weekly anchor was already 46,137
-untrimmed, over the 45,000 ceiling before this batch added anything** — Batch 255
-measured that same anchor at 42,770 the same morning, so the block drifts upward
-through a day. (3) **A guardrail the row never mentions is mandatory:**
-`knowledgeBase.learnedContext.untrustedQuotedData` is confirmed user-authored
-memory, all five prompts carrying it append `LEARNED_CONTEXT_PROMPT_GUARDRAIL`,
-and the chat prompt did not — while already receiving that field on every
-*anchored* question inside the frozen packet. It is the sixth now.
+**What the migration did not change is the point.** The SDK replaces exactly one
+thing — hand-rolled HTTP against `POST /v1/messages`. The classified taxonomy
+(141), transport slugs (248), shared-deadline retry (248/232) and usage logging
+(233) are all still owned here, and every public name survived, so **all nine
+`generate_anthropic_text` callers were untouched by a migration of the thing they
+all call**. `max_retries=0` and per-phase timeouts keep the repo's contracts over
+the SDK's, both pinned by tests: the SDK's own two retries would have nested
+inside a budget Batch 232 sized for three attempts.
 
-**The budget is 45,000 → 55,000 and the choice is deliberate rather than
-maximal.** Both ordinary anchors sit untrimmed with headroom; the stale one is
-left to the trim order Batch 255 built, landing on 54,293 by shedding three of
-its own oldest delta entries with `sleepHistory`, `recentActivities` and
-`latestReviews` intact. Sizing above 57,093 would have made that order dead code.
+**The near-miss worth carrying forward: the image installs from the hashed
+`requirements.lock`, not `pyproject.toml`.** Adding the SDK to `pyproject` alone
+passes every local gate and every test, then deploys a container with no
+`anthropic` module in it. `requirements.txt` + a regenerated hashed lock are part
+of this batch; `pip-audit --require-hashes` is clean and the lock adds only the
+SDK and its seven transitive deps, with no version bump to anything already
+there. The image now carries **two HTTP stacks** (`anthropic` 1.x is on `httpx2`;
+`httpx` is still required by `environment_sync`/`workout_delivery`).
 
-**Verification.** All 16 PR checks green across both waves; **PostgreSQL CI 1,719
-passed / 0 skipped** against Batch 255's 1,710, so all four new `db_conn` tests
-ran on a real server. Local backend **1,300 passed / 419 expected skips** (9 new
-tests) against 255's 1,295/419; Ruff check and format clean across 284 files;
-mypy clean across 162; shared 42 and web 437; build clean; lint 0 errors / 9
-pre-existing warnings. Five of the six new tests that *could* fail were confirmed
-to **fail against the old logic**; the sixth is honestly labelled as a decision
-pin. No migration. Chat prompt `coach-chat-v10` → `v11` and `APP_STATE_VERSION`
-1 → 2, which withdraw nothing (`brief_chat` is `UNFILTERED` with no filtered
-analysis types, verified in `prompt_artifacts`).
+**Three of the row's claims needed correcting before code was written.** (1)
+257.4's premise — `cache_read`/`cache_creation` 0 across all stored generations
+(275 now, up from Batch 238's 87) is **not** evidence caching is broken: the chat
+path is the only caller that ever sets `cache_control`, and chat turns store no
+`raw_response`, so those rows could not have shown a hit under any
+circumstances. A sub-cent live probe proved caching works. (2) 257.2's "a KB
+section" is stale — since Batch 256 the whole knowledge base is in the live block
+on every question — so **four tools, not five**. (3) 257.5 needed more than a
+reworded sentence: "go and fetch what is missing" is a lie for the two omissions
+with no tool behind them, so the block now names *which* omissions are fetchable
+and with which tool.
 
-**Production is current through the merge SHA** — see the log entry below for the
-deployed smoke.
+**The second cache breakpoint is a trade, and the code says so out loud** — the
+first draft of that comment overclaimed it and the cross-question measurement
+corrected it. An extra round trip reads the ~24k-token live block at 0.1x
+(measured: round 2 read 25,942), but a lookup-free question writes it at 1.25x
+for nothing: **+0.25x / −0.65x, break-even ~28% of questions using a tool**.
+Kept, with `coach_chat_used_tools` logged per answer so the real rate replaces
+the estimate. The first breakpoint needed no such argument — a second question on
+the same anchor read **39,978** tokens.
 
-**Next: Batch 257 (🔴 High) — the coach can ask for what it does not have.** It is
-the pre-submit idea inverted: tool use, so the model fetches what it lacks rather
-than a classifier guessing before the question is read. **257 opens on a boundary
-decision, not code:** the `anthropic` SDK is not a dependency, and adopting its
-tool runner for the chat path alone would fork the hand-built taxonomy Batches
-141/234/248/253 consolidated — the row recommends building the loop on the
-existing `httpx` boundary and says to confirm before writing code. 257.4's caching
-question now has a concrete number in front of it: this batch measured the chat
-path at **+5,265 input tokens per question** on the free `count_tokens` endpoint
-(morning brief 55,154 → 60,419, unanchored 19,446 → 24,711), and the block sits
-*after* the cache breakpoint while the frozen packet sits inside it.
+**Two defects were found by reviewing the batch's own work, and both are this
+batch re-creating a bug it was meant to carry forward the fix for.** The
+migrated retry loop left `APIResponseValidationError` uncaught — it sits under
+`APIError` but under neither `APIStatusError` nor `APIConnectionError` — so it
+would have escaped `generate_anthropic_text` as the bare unparseable 500 Batch
+248 removed. And `_FETCHABLE_OMISSIONS` mapped the whole-section drops but not
+the *field* truncations, which is the omission that actually fires: on Mark's
+real block it is exactly `['latestReviews.conclusions(truncated)']`, so 257.5's
+mechanism was shipping in a state where `omittedForLengthFetchWith` never
+appeared. Both fixed, both pinned, the second verified against production
+before and after.
 
-**Then Batches 208, 209 and 210** — the three ledger rows the 236-241 wave never
+**Met on real production data, writing nothing.** Asked what his REM was on the
+night of 12 August (25 days back, outside the fortnight the block carries), the
+pre-257 path answered *"I don't have the night of August 12 in front of me
+here"*; the tool path fetched and answered **16 minutes against 63 last night**,
+with score, HRV and resting HR beside it. 16 is what the app recorded. **Cost
+$0.0645 → $0.0746 (+16%)**, not the +100% a naive doubling implies; **latency
+4.9s → 16.9s**, paid only when a lookup happens.
+
+**Verification.** Local backend **1,326 passed / 424 expected skips** (24 new
+tests) against 256's 1,300/419; **PostgreSQL CI 1,748 / 0** against 256's 1,719,
+so all five new `db_conn` tests — the profile-scoping assertion among them — ran
+on a real server; Ruff check and format clean across 287 files;
+mypy clean across 163; shared 42 and web 437; build clean; lint 0 errors / 9
+pre-existing warnings; `pip-audit --require-hashes` clean. The loop's key tests
+were confirmed to **fail against wrong logic** — results split across messages,
+`is_error` dropped, the cap not forcing `tool_choice: none`. No migration. Chat
+prompt `coach-chat-v11` → `v12`, which withdraws nothing (`brief_chat` is
+`UNFILTERED`).
+
+**Next: Batches 208, 209 and 210** — the three ledger rows the 236-241 wave never
 touched, each needing its own `/batch-start`. 209 (🔴 High) is the substantial
 one: re-verify the RLS counts before building, as they were measured 2026-08-16.
 
-**Gotchas.** (1) `weather_daily.latitude`/`longitude` are **NOT NULL with no
-default** — four new `db_conn` tests would have failed on their first-ever run in
-CI; check `__table__.columns` for NOT-NULL-without-default before writing a
-fixture you cannot run locally. (2) A behavioural assertion that a section is
-*undroppable* cannot fail, because emptying the larger sections brings the block
-under budget before the loop reaches it — assert `_DROP_ORDER` membership
-directly. (3) Two sections nothing bounds: `trends` is the block's **largest**
-section (13,000) and is never dropped, while the trim sheds `sleepHistory`
-(3,145) and `latestReviews` (2,139); and `todayCheckIns` is uncapped and outside
-every trim path. Neither is a bug today; both look like inheritance rather than
-decision. (4) Everything in the previous Now block still stands below.
+**Gotchas.** (1) **`Activity.garmin_activity_id` is NOT NULL with no default and
+unique per `(user_id, garmin_activity_id)`** — a fixture omitting it passes
+locally, where every `db_conn` test skips, and fails on its first ever run in CI.
+Same class as Batch 256's `weather_daily.latitude`; check `__table__.columns`
+before writing a fixture you cannot run locally. (2) **`test_batch253_hygiene`
+greps `anthropic_text.py`'s source** for `payload["output_config"] = {...}` and
+caught the tool loop re-introducing it; both paths now build the payload through
+one `build_messages_payload`. (3) The five new `db_conn` tests in
+`test_coach_tools.py` skip locally and first run in CI, so treat CI's count as
+the real one — the profile-scoping assertion is among them. (4) Everything in the
+previous Now block still stands below.
 
 ## Prior current-state snapshots
 
@@ -602,6 +623,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**2026-09-06 — Batch 257 shipped; the Anthropic boundary became one boundary, and the coach can go and get what it does not hold.** Squash `TBD`, Decision #328. The 🔴 High one, and it grew a foundation before it grew a feature: **257.1's boundary question was answered wider than the row proposed** — offered the raw `httpx` boundary (the row's own recommendation), the `anthropic` SDK for chat alone, or the SDK everywhere, Craig chose the third, so the batch is the migration first and the tool loop on top of it, superseding the SDK clause of Decision #47. **What the migration did not change is the point:** the SDK replaces exactly one thing, hand-rolled HTTP against `POST /v1/messages`, while the classified taxonomy (141), transport slugs (248), shared-deadline retry (248/232) and usage logging (233) stay owned here — every public name survived, so all nine `generate_anthropic_text` callers were untouched by a migration of the thing they all call. `max_retries=0` and per-phase timeouts keep the repo's contracts over the SDK's, both pinned by tests, because the SDK's own two retries would have nested inside a budget Batch 232 sized for three attempts. **The near-miss worth carrying forward: the image installs from the hashed `requirements.lock`, not `pyproject.toml`** — adding the SDK to `pyproject` alone passes every gate and deploys a container with no `anthropic` in it; the regenerated lock adds only the SDK and seven transitive deps with no other version bump, and `pip-audit --require-hashes` is clean. The image now carries two HTTP stacks (`anthropic` 1.x is on `httpx2`). **Three of the row's claims needed correcting before code:** 257.4's premise (0 cache reads across 275 stored generations is not evidence caching is broken — the chat path is the only caller that ever set `cache_control` and chat turns store no `raw_response`; a sub-cent probe proved caching works); 257.2's "a KB section", stale since Batch 256 put the whole knowledge base in the block, so **four tools not five**; and 257.5, which needed more than a reworded sentence, because telling the model to fetch whatever is missing is a lie for the two omissions with no tool behind them — the block now names which omissions are fetchable and with which tool. **The second cache breakpoint is a trade the code states out loud** after the cross-question measurement corrected the first draft of its comment: an extra round trip reads the ~24k-token live block at 0.1x (round 2 read 25,942), but a lookup-free question writes it at 1.25x for nothing — +0.25x / −0.65x, break-even ~28%, kept with `coach_chat_used_tools` logged so the real rate replaces the estimate; the first breakpoint needed no argument, a second question on the same anchor read 39,978 tokens. **Met on real production data, writing nothing:** asked his REM on the night of 12 August, the pre-257 path said *"I don't have the night of August 12 in front of me here"* and the tool path fetched and answered **16 minutes against 63 last night** — 16 is what the app recorded. **Cost $0.0645 → $0.0746 (+16%)**, not the +100% a naive doubling implies; **latency 4.9s → 16.9s**, paid only when a lookup happens. **Two defects were found by reviewing the batch's own work**, both of them this batch re-creating a bug it was meant to carry the fix for: `APIResponseValidationError` would have escaped `generate_anthropic_text` as the bare unparseable 500 Batch 248 removed, and `_FETCHABLE_OMISSIONS` mapped the section drops but not the *field* truncation that actually fires, so 257.5's mechanism was shipping without ever appearing on a real block. Local backend 1,326 / 424 against 256's 1,300/419, **PostgreSQL CI 1,748 / 0** against 1,719; ruff, format, mypy, shared 42, web 437, build and lint clean. The loop's key tests were confirmed to fail against wrong logic. Chat prompt v11 → v12; `brief_chat` is `UNFILTERED`, so nothing was withdrawn. No migration. Next are Batches 208/209/210.
 
 **2026-09-05 — Batch 256 shipped; the coach holds Mark's own rules on every question, not just on his brief.** PR #287 / squash `fa39dd0`, Decision #327. Second batch of the day, from Craig's follow-up to 255: *does the coach now have full access?* No — four categories that bear on almost any question he asks (his profile and rules, today's readiness, last night's bedroom, his personal bands) lived **only** inside a generated read's frozen packet, so on his morning brief the coach held them and asked from Home it held none, and on 09-05 he asked about REM in an explicitly thermal context with none of the three present. They are now in the live block, **built from live rows at ask time** — strictly better than a packet copy, because the knowledge base is edited *between* reads, so a copy can state a rule he has since changed; a test pins exactly that. **Three of the spec row's claims needed correcting before any code was written:** "the weekly packet carries none of them either" is wrong (it carries `personalBaselines`, `dataQualityGuardrails` and `trainingSchedule`); the arithmetic understated it, because the stale weekly anchor was **already 46,137 untrimmed, over the 45,000 ceiling before this batch added anything**, against 42,770 measured on the same anchor that morning; and a guardrail the row never mentions is mandatory — `knowledgeBase.learnedContext.untrustedQuotedData` is confirmed user-authored memory, all five prompts carrying it append `LEARNED_CONTEXT_PROMPT_GUARDRAIL`, and the chat prompt did not, while already receiving that field on every *anchored* question. It is the sixth now. Budget 45,000 → 55,000, chosen deliberately rather than maximally: both ordinary anchors sit untrimmed and the stale one is left to the trim order Batch 255 built, landing on 54,293 by shedding three of its own oldest delta entries with `sleepHistory`, `recentActivities` and `latestReviews` intact — sizing above 57,093 would have made that order dead code. The packet builders moved to a new leaf, `services/coach_sections.py`, so the morning read and the conversation are one definition. Chat prompt v10 → v11 and `APP_STATE_VERSION` 1 → 2; `brief_chat` is `UNFILTERED` with no filtered analysis types, so nothing was withdrawn and no regeneration was performed. **Cost measured rather than estimated on the free `count_tokens` endpoint: +5,265 input tokens per question** (morning brief +9.5%, unanchored +27.1%, which is also the size of the gap closed). All 16 checks green across both waves; PostgreSQL CI **1,719 / 0** against 1,710, so all four new `db_conn` tests ran on a real server — one of which would have failed on its first-ever CI run had `weather_daily`'s NOT NULL `latitude`/`longitude` not been checked first. Exact-SHA Railway/Vercel health, web 200 and 401 auth smokes passed; the deployed smoke confirmed an unanchored question at 48,033 characters carrying all 11 knowledge-base sections, readiness 80, last night's 18.69 °C peak and Batch 255's 14 nights / 10 sessions / 2 reviews intact. Next is Batch 257 (🔴 High), which opens on a boundary decision rather than code.
 

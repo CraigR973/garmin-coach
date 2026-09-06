@@ -1,25 +1,58 @@
-"""Shared Anthropic text-generation boundary for Garmin Coach analyses."""
+"""Shared Anthropic text-generation boundary for Garmin Coach analyses.
+
+**Batch 257 moved this onto the official ``anthropic`` SDK**, superseding the
+SDK clause of Decision #47. What sits *around* the call is unchanged and is the
+reason the migration was worth doing carefully rather than quickly: the
+classified error taxonomy (Batch 141), the transport slugs (Batch 248), the
+shared-deadline retry (Batch 248, bounded by Batch 232's lease) and the usage
+logging (Batch 233) are all still owned here. The SDK replaces exactly one
+thing — hand-rolled HTTP against ``POST /v1/messages`` — and every public name
+this module exported before the migration still means the same thing, so all
+nine ``generate_anthropic_text`` callers were untouched by it.
+
+Two deliberate settings keep the repo's contracts rather than the SDK's:
+
+* ``max_retries=0`` on the client. The SDK retries 408/409/429/5xx twice by
+  default, and the app already has a retry whose budget is *the whole call*
+  (:data:`_MAX_ANTHROPIC_ATTEMPTS`) because Batch 232 made the generation lease
+  expire before Batch 144's stale-after guard. Two retry layers would multiply
+  into 9 attempts against a budget sized for 3, which is precisely the class of
+  defect Batch 232 exists to remove. One retry layer, and it is this one.
+* Per-phase timeouts built here, not the SDK's flat 10-minute default, so
+  ``connect``/``write``/``pool`` still fail fast while only ``read`` scales with
+  generation length (Batch 234).
+"""
 
 from __future__ import annotations
 
 import asyncio
 import time
 from dataclasses import dataclass
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, Protocol, TypedDict
 
-import httpx
 import structlog
+from anthropic import (
+    APIConnectionError,
+    APIError,
+    APIStatusError,
+    APITimeoutError,
+    AsyncAnthropic,
+    Timeout,
+)
+from anthropic.types import Message
 from pydantic import BaseModel
 
 from src.config import settings
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
-ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
-ANTHROPIC_VERSION = "2023-06-01"
+# Batch 257 deleted ``ANTHROPIC_MESSAGES_URL`` and ``ANTHROPIC_VERSION`` with the
+# migration. The SDK owns both — it sends ``anthropic-version: 2023-06-01``, the
+# same value this module pinned by hand — and a hand-maintained copy of a header
+# nothing sends is the kind of constant a later reader trusts and should not.
 
 
-def _timeout(*, read: float | None = None) -> httpx.Timeout:
+def _timeout(*, read: float | None = None) -> Timeout:
     """Per-phase timeouts for a non-streamed Messages call.
 
     The single ``timeout=60.0`` this replaces applied 60s to *every* phase, so the
@@ -27,8 +60,12 @@ def _timeout(*, read: float | None = None) -> httpx.Timeout:
     morning brief outgrew on 2026-08-30 (measured 75.1s). Only ``read`` needs to
     scale with generation length; connect/write/pool stay short so a genuinely
     unreachable API still fails fast instead of hanging for the full read budget.
+
+    ``anthropic.Timeout`` *is* ``httpx2.Timeout`` (the SDK is built on ``httpx2``,
+    not the ``httpx`` the rest of the app uses), so this is the same per-phase
+    object it always was, reached through the SDK's own re-export.
     """
-    return httpx.Timeout(
+    return Timeout(
         connect=10.0,
         # Batch 248: a retry shares one budget with its predecessors, so an
         # attempt gets what is left rather than the whole thing. ``None`` keeps
@@ -84,6 +121,40 @@ class AnthropicTextResult:
     output_markdown: str
     raw_response: dict[str, Any]
     model_name: str
+    #: How many tool calls were executed to produce this answer, and how many
+    #: paid API calls it took (Batch 257.6). Both default to the single-call
+    #: shape, so every pre-257 caller reads exactly what it always did.
+    tool_uses: int = 0
+    api_calls: int = 1
+
+
+@dataclass(frozen=True, slots=True)
+class ToolResult:
+    """One executed tool call, on its way back to the model."""
+
+    tool_use_id: str
+    content: str
+    is_error: bool = False
+
+    def to_block(self) -> dict[str, Any]:
+        block: dict[str, Any] = {
+            "type": "tool_result",
+            "tool_use_id": self.tool_use_id,
+            "content": self.content,
+        }
+        if self.is_error:
+            # A failed tool is *reported*, never dropped. Dropping it leaves a
+            # ``tool_use`` block with no matching result, which the provider
+            # rejects on the next turn — turning a failed lookup into a failed
+            # answer.
+            block["is_error"] = True
+        return block
+
+
+class ToolExecutor(Protocol):
+    """Runs one tool call. Supplied by the caller; unknown to this module."""
+
+    async def __call__(self, *, tool_use_id: str, name: str, payload: Any) -> ToolResult: ...
 
 
 class AnthropicApiError(RuntimeError):
@@ -237,6 +308,29 @@ def _thinking_tokens(usage: dict[str, Any]) -> int | None:
     return _usage_int(details, "thinking_tokens")
 
 
+def text_from_content(content: Any) -> str:
+    """The prose out of a response's content blocks, and nothing else.
+
+    Batch 233.3: with thinking on, ``content`` also carries ``thinking`` blocks,
+    and with Batch 257's tools it also carries ``tool_use`` blocks. This filter
+    has always selected ``type == "text"`` and so skips both — the reasoning can
+    never be concatenated into Mark's brief, and neither can a tool call. Pinned
+    by a test, because it is the one place adaptive thinking could have leaked
+    into user-facing prose and it is safe by design rather than by accident.
+
+    Takes the serialized (``to_dict``) form rather than SDK block objects so the
+    single-call path and the tool loop share one definition of "the answer".
+    """
+    text_parts: list[str] = []
+    if isinstance(content, list):
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                text = item.get("text")
+                if isinstance(text, str):
+                    text_parts.append(text)
+    return "\n\n".join(text_parts).strip()
+
+
 def _log_usage(raw: dict[str, Any], *, model_name: str) -> None:
     usage = raw.get("usage")
     if not isinstance(usage, dict):
@@ -252,24 +346,28 @@ def _log_usage(raw: dict[str, Any], *, model_name: str) -> None:
     )
 
 
-def anthropic_error_from_http_status(exc: httpx.HTTPStatusError) -> AnthropicApiError:
+def anthropic_error_from_http_status(exc: APIStatusError) -> AnthropicApiError:
     """Parse + log an Anthropic non-2xx into a classified error (Batch 141).
 
-    ``httpx``'s ``raise_for_status`` discards the response body, so the *reason*
+    ``httpx``'s ``raise_for_status`` discarded the response body, so the *reason*
     (e.g. "Your credit balance is too low…") never reached the logs — recovering it
-    on 2026-07-21 needed a manual out-of-band API call. Read the body here and log
-    the provider's ``error.type`` / ``error.message``. The API key is never logged:
-    it travels only in the request ``x-api-key`` header and is never echoed in a
-    response body.
+    on 2026-07-21 needed a manual out-of-band API call. The SDK keeps the parsed
+    body on the exception (``exc.body``), so Batch 257 reads it from there instead
+    of re-parsing the response; the provider's ``error.type`` / ``error.message``
+    still reach the log, and the classification is byte-for-byte the same function
+    it always was. The API key is never logged: it travels only in the request
+    ``x-api-key`` header and is never echoed in a response body.
+
+    The SDK raises a *subclass* per status (``RateLimitError``, ``BadRequestError``,
+    …), but this deliberately keeps classifying from the status code and body
+    rather than the exception class: the credit-exhaustion outage arrives as a
+    ``BadRequestError`` and is only distinguishable by its message, so catching the
+    subclass would re-introduce exactly the blind spot Batch 141 closed.
     """
-    response = exc.response
-    status_code = response.status_code
+    status_code = exc.status_code
     error_type: str | None = None
     error_message: str | None = None
-    try:
-        body = response.json()
-    except Exception:  # pragma: no cover - non-JSON error body is rare
-        body = None
+    body: object | None = exc.body
     if isinstance(body, dict):
         err = body.get("error")
         if isinstance(err, dict):
@@ -293,7 +391,7 @@ def anthropic_error_from_http_status(exc: httpx.HTTPStatusError) -> AnthropicApi
     )
 
 
-def anthropic_error_from_transport(exc: httpx.RequestError) -> AnthropicApiError:
+def anthropic_error_from_transport(exc: APIConnectionError) -> AnthropicApiError:
     """Classify a transport failure that never became an HTTP response (Batch 248).
 
     AI238-04, and the oldest AI-layer defect in the repo. A single `client.post`
@@ -312,9 +410,11 @@ def anthropic_error_from_transport(exc: httpx.RequestError) -> AnthropicApiError
     A timeout is not the same event as a connection refusal, and the reason slug
     keeps them apart: `timeout` is "we may already have been billed for an answer
     we hung up on" (Batch 234's finding), `transport` is "the request never
-    landed".
+    landed". Batch 257: the SDK models that split as `APITimeoutError` inheriting
+    from `APIConnectionError`, so the same two slugs come out of an `isinstance`
+    on the SDK's own types rather than on `httpx`'s.
     """
-    reason = "timeout" if isinstance(exc, httpx.TimeoutException) else "transport"
+    reason = "timeout" if isinstance(exc, APITimeoutError) else "transport"
     log.error(
         "anthropic_transport_error",
         reason=reason,
@@ -332,13 +432,55 @@ def anthropic_error_from_transport(exc: httpx.RequestError) -> AnthropicApiError
     )
 
 
-async def _post_with_retry(
+def anthropic_client(*, api_key: str, read: float | None = None) -> AsyncAnthropic:
+    """The SDK client every Anthropic call in this app goes through (Batch 257).
+
+    ``max_retries=0`` is the load-bearing argument. The SDK retries 408/409/429
+    and 5xx twice of its own accord, and :func:`_create_with_retry` below already
+    retries the reasons a retry can fix against a budget that is *the whole call*.
+    Leaving the SDK's default on would nest one inside the other — up to nine
+    attempts against a budget Batch 232 sized for three, with the extra ones
+    invisible to the ``anthropic_call_retrying`` log line and to the deadline that
+    keeps a generation inside its lease.
+    """
+    return AsyncAnthropic(
+        api_key=api_key,
+        timeout=_timeout(read=read),
+        max_retries=0,
+    )
+
+
+def anthropic_error_from_sdk(exc: APIError) -> AnthropicApiError:
+    """Classify an SDK failure that is neither a status nor a connection error.
+
+    ``other`` rather than a retryable slug: a response the SDK could not validate
+    is not a transient network event, and re-asking for it produces the same
+    unparseable answer while Mark waits three times as long — the reasoning that
+    already excludes ``billing`` from :data:`_AUTO_RETRY_REASONS`. ``status_code``
+    is 0 for the same reason it is on the transport path: there is no upstream
+    status worth reporting, and inventing a plausible-looking 5xx is worse than
+    saying so.
+    """
+    log.error(
+        "anthropic_sdk_error",
+        reason="other",
+        exception_type=type(exc).__name__,
+        detail=str(exc),
+    )
+    return AnthropicApiError(
+        f"Anthropic call failed inside the SDK: {type(exc).__name__}.",
+        reason="other",
+        status_code=0,
+    )
+
+
+async def _create_with_retry(
     *,
-    headers: dict[str, str],
+    api_key: str,
     payload: dict[str, Any],
     model_name: str,
-) -> Any:
-    """POST to Anthropic, re-attempting only the reasons a retry can actually fix.
+) -> Message:
+    """Call Anthropic, re-attempting only the reasons a retry can actually fix.
 
     Batch 248 (AI238-04). Before this there was no retry anywhere in the app:
     ``_RETRYABLE_ANTHROPIC_REASONS`` only chose which sentence Mark saw, so a
@@ -347,6 +489,12 @@ async def _post_with_retry(
     One change to one function covers all nine ``generate_anthropic_text``
     callers. See ``_MAX_ANTHROPIC_ATTEMPTS`` for why the budget is the call
     rather than the attempt.
+
+    Batch 257 swapped the transport underneath for the SDK and changed nothing
+    else here. ``payload`` stays a dict rather than becoming explicit keyword
+    arguments *deliberately*: "a field is absent from the request unless a caller
+    passes it" is the property Batch 233 built the rollback path on and pinned
+    with a test, and a dict is the shape that keeps it directly inspectable.
     """
 
     budget = settings.anthropic_read_timeout_seconds
@@ -359,17 +507,27 @@ async def _post_with_retry(
         # for its predecessors out of the same budget.
         remaining = None if attempt == 1 else deadline - time.monotonic()
         try:
-            async with httpx.AsyncClient(timeout=_timeout(read=remaining)) as client:
-                response = await client.post(ANTHROPIC_MESSAGES_URL, headers=headers, json=payload)
-                try:
-                    response.raise_for_status()
-                except httpx.HTTPStatusError as exc:
-                    raise anthropic_error_from_http_status(exc) from exc
-                return response.json()
-        except httpx.RequestError as exc:
+            async with anthropic_client(api_key=api_key, read=remaining) as client:
+                # ``messages.create`` is overloaded on ``stream``, so a ``**dict``
+                # expansion cannot be checked against it. The untyped local is the
+                # cost of keeping the payload a dict (see the docstring); the
+                # return is annotated, so everything downstream stays typed.
+                create: Any = client.messages.create
+                message: Message = await create(**payload)
+                return message
+        except APIStatusError as exc:
+            error = anthropic_error_from_http_status(exc)
+        except APIConnectionError as exc:
             error = anthropic_error_from_transport(exc)
-        except AnthropicApiError as exc:
-            error = exc
+        except APIError as exc:
+            # The clause that keeps Batch 248's lesson true under the SDK. Its
+            # hierarchy has two members outside the two above —
+            # ``APIResponseValidationError`` and ``APIWebhookValidationError`` —
+            # and without this they would escape ``generate_anthropic_text``
+            # entirely, reaching Mark as the bare unparseable 500 that AI238-04
+            # existed to remove and the operator as nothing at all. Exactly the
+            # shape of the old bug, in a new library.
+            error = anthropic_error_from_sdk(exc)
         last = error
 
         if error.reason not in _AUTO_RETRY_REASONS or attempt == _MAX_ANTHROPIC_ATTEMPTS:
@@ -452,6 +610,56 @@ def anthropic_schema(model: type[BaseModel]) -> dict[str, Any]:
     return schema
 
 
+def build_messages_payload(
+    *,
+    model_name: str,
+    max_tokens: int,
+    system_prompt: AnthropicSystemPrompt,
+    messages: list[dict[str, Any]],
+    thinking: AnthropicThinking | None = None,
+    effort: str | None = None,
+    output_schema: dict[str, Any] | None = None,
+    tools: list[dict[str, Any]] | None = None,
+    tool_choice: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The one place a Messages request is assembled (Batch 257).
+
+    Both callers in this module go through it, so the properties earlier batches
+    fought for hold on the tool path for free rather than by being remembered:
+
+    * **A field is absent unless passed** (Batch 233). ``thinking`` and
+      ``output_config`` are the only wire-format difference between this app on
+      Sonnet 5 and this app as it was on Sonnet 4.6, so the rollback stays a
+      settings change rather than a code change.
+    * **``effort`` and ``format`` are two keys of one ``output_config``** (Batch
+      253, AI238-10). Assigning it wholesale for either silently drops the other,
+      which for a structured caller turns a schema-constrained response back into
+      prose with nothing failing until the parse does. ``test_batch253_hygiene``
+      greps this module's source for that pattern, and it caught the tool loop
+      re-introducing it.
+    """
+    payload: dict[str, Any] = {
+        "model": model_name,
+        "max_tokens": max_tokens,
+        "system": system_prompt,
+        "messages": messages,
+    }
+    if tools is not None:
+        payload["tools"] = tools
+    if tool_choice is not None:
+        payload["tool_choice"] = tool_choice
+    if thinking is not None:
+        payload["thinking"] = thinking
+    output_config: dict[str, Any] = {}
+    if effort is not None:
+        output_config["effort"] = effort
+    if output_schema is not None:
+        output_config["format"] = {"type": "json_schema", "schema": output_schema}
+    if output_config:
+        payload["output_config"] = output_config
+    return payload
+
+
 async def generate_anthropic_text(
     *,
     api_key: str,
@@ -481,57 +689,26 @@ async def generate_anthropic_text(
     ``reason``); a well-formed response that is unusable (max_tokens, no text, not a
     JSON object) still raises the caller's ``error_cls`` as before.
     """
-    messages: list[dict[str, str]] = [
+    messages: list[dict[str, Any]] = [
         *(prior_messages or []),
         {"role": "user", "content": user_prompt},
     ]
-    payload: dict[str, Any] = {
-        "model": model_name,
-        "max_tokens": max_tokens,
-        "system": system_prompt,
-        "messages": messages,
-    }
-    if thinking is not None:
-        payload["thinking"] = thinking
-    # Batch 253 (AI238-10): ``effort`` and ``format`` are two keys of **one**
-    # ``output_config``. Assigning it wholesale for either would silently drop the
-    # other — which for a structured caller means turning a schema-constrained
-    # response back into prose, with nothing failing until the parse does.
-    output_config: dict[str, Any] = {}
-    if effort is not None:
-        output_config["effort"] = effort
-    if output_schema is not None:
-        output_config["format"] = {"type": "json_schema", "schema": output_schema}
-    if output_config:
-        payload["output_config"] = output_config
-    headers = {
-        "x-api-key": api_key,
-        "anthropic-version": ANTHROPIC_VERSION,
-        "content-type": "application/json",
-    }
-    raw = await _post_with_retry(headers=headers, payload=payload, model_name=model_name)
+    payload = build_messages_payload(
+        model_name=model_name,
+        max_tokens=max_tokens,
+        system_prompt=system_prompt,
+        messages=messages,
+        thinking=thinking,
+        effort=effort,
+        output_schema=output_schema,
+    )
+    message = await _create_with_retry(api_key=api_key, payload=payload, model_name=model_name)
+    raw = message.to_dict()
 
-    if not isinstance(raw, dict):
-        raise error_cls("Claude response was not a JSON object.")
-
-    stop_reason = raw.get("stop_reason")
-    if stop_reason == "max_tokens":
+    if message.stop_reason == "max_tokens":
         raise error_cls("Claude response hit max_tokens before completing.")
 
-    # Batch 233.3: with thinking on, ``content`` also carries ``thinking`` blocks.
-    # This filter already selected ``type == "text"`` and so skips them — the
-    # reasoning can never be concatenated into Mark's brief. Pinned by a test
-    # because it is the one place adaptive thinking could have leaked into user-
-    # facing prose, and it is safe by accident rather than by design.
-    text_parts: list[str] = []
-    content = raw.get("content", [])
-    if isinstance(content, list):
-        for item in content:
-            if isinstance(item, dict) and item.get("type") == "text":
-                text = item.get("text")
-                if isinstance(text, str):
-                    text_parts.append(text)
-    output = "\n\n".join(text_parts).strip()
+    output = text_from_content(raw.get("content"))
     if not output:
         raise error_cls("Claude response did not contain text output.")
 
@@ -543,3 +720,146 @@ async def generate_anthropic_text(
         raw_response=raw,
         model_name=resolved_model,
     )
+
+
+# ---------------------------------------------------------------------------
+# Batch 257 — the tool loop
+# ---------------------------------------------------------------------------
+
+#: API calls one answer may take, tool rounds included. Three rounds is two
+#: chances to fetch and then answer; the cap exists because chat runs the model
+#: call **in-request** (``ask_coach``), so every extra round trip is time Mark
+#: spends watching a spinner.
+MAX_TOOL_ROUNDS = 3
+
+#: Tool calls one answer may execute, across all rounds. Parallel calls in one
+#: round count individually — a round that asks for three lookups spends three.
+MAX_TOOL_USES = 4
+
+
+async def generate_anthropic_text_with_tools(
+    *,
+    api_key: str,
+    model_name: str,
+    max_tokens: int,
+    system_prompt: AnthropicSystemPrompt,
+    user_prompt: str,
+    error_cls: type[Exception],
+    tools: list[dict[str, Any]],
+    execute_tool: ToolExecutor,
+    prior_messages: list[dict[str, Any]] | None = None,
+    thinking: AnthropicThinking | None = None,
+    effort: str | None = None,
+    max_tool_rounds: int = MAX_TOOL_ROUNDS,
+    max_tool_uses: int = MAX_TOOL_USES,
+) -> AnthropicTextResult:
+    """``generate_anthropic_text``, plus the loop that lets the model fetch.
+
+    A manual loop rather than the SDK's ``tool_runner``, for two reasons that are
+    about this app rather than about taste. The runner is beta and drives its own
+    loop, so the shared-deadline retry every call here goes through — the one
+    Batch 232 sized against the generation lease — would have to be rebuilt
+    around it. And the runner would own the request shape, which is where
+    ``thinking``/``effort``/``cache_control`` are decided. Everything the runner
+    is *recommended* for (approval gates, interception) this path does not need,
+    because the tools are read-only by construction.
+
+    Three rules the provider cares about, all load-bearing:
+
+    * **Every** ``tool_result`` goes back in a **single** user message. Splitting
+      them across messages trains the model out of asking for parallel calls,
+      which is the one thing that keeps a two-lookup answer to one round trip.
+    * The assistant turn is appended as the model's own ``content``, unedited —
+      thinking blocks included. Re-serialising only the parts that look useful is
+      how a harness silently invalidates its own history.
+    * A failed tool returns ``is_error``; it is never dropped.
+
+    The last round is sent with ``tool_choice: {"type": "none"}`` so the answer
+    is always prose. That is cheap here on purpose: a ``tool_choice`` change
+    invalidates only the *messages* cache, and this path's breakpoints are both
+    in ``system``.
+    """
+    messages: list[dict[str, Any]] = [
+        *(prior_messages or []),
+        {"role": "user", "content": user_prompt},
+    ]
+    tool_uses = 0
+    api_calls = 0
+    raw: dict[str, Any] = {}
+
+    for round_index in range(1, max_tool_rounds + 1):
+        exhausted = tool_uses >= max_tool_uses or round_index == max_tool_rounds
+        payload = build_messages_payload(
+            model_name=model_name,
+            max_tokens=max_tokens,
+            system_prompt=system_prompt,
+            messages=messages,
+            thinking=thinking,
+            effort=effort,
+            tools=tools,
+            tool_choice={"type": "none"} if exhausted else None,
+        )
+
+        message = await _create_with_retry(api_key=api_key, payload=payload, model_name=model_name)
+        api_calls += 1
+        raw = message.to_dict()
+        _log_usage(raw, model_name=_resolved_model(raw, model_name))
+
+        if message.stop_reason == "max_tokens":
+            raise error_cls("Claude response hit max_tokens before completing.")
+
+        calls = _tool_use_blocks(raw)
+        if not calls:
+            break
+
+        messages.append({"role": "assistant", "content": raw.get("content", [])})
+        results = [
+            (
+                await execute_tool(
+                    tool_use_id=str(call.get("id")),
+                    name=str(call.get("name")),
+                    payload=call.get("input"),
+                )
+            ).to_block()
+            for call in calls
+        ]
+        tool_uses += len(calls)
+        log.info(
+            "anthropic_tool_round",
+            model_name=model_name,
+            round=round_index,
+            tools=[str(call.get("name")) for call in calls],
+            errors=sum(1 for block in results if block.get("is_error")),
+            tool_uses=tool_uses,
+        )
+        messages.append({"role": "user", "content": results})
+
+    output = text_from_content(raw.get("content"))
+    if not output:
+        raise error_cls("Claude response did not contain text output.")
+    resolved_model = _resolved_model(raw, model_name)
+    return AnthropicTextResult(
+        output_markdown=output,
+        raw_response=raw,
+        model_name=resolved_model,
+        tool_uses=tool_uses,
+        api_calls=api_calls,
+    )
+
+
+def _resolved_model(raw: dict[str, Any], fallback: str) -> str:
+    model = raw.get("model")
+    return model if isinstance(model, str) else fallback
+
+
+def _tool_use_blocks(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    """The ``tool_use`` blocks of one response, in the order the model asked.
+
+    ``input`` arrives already parsed by the SDK; it is never string-matched. The
+    4.6+ models vary their JSON escaping inside tool inputs, so matching on the
+    serialized form is a bug that only shows up on some inputs.
+    """
+    content = raw.get("content")
+    if not isinstance(content, list):
+        return []
+    return [item for item in content if isinstance(item, dict) and item.get("type") == "tool_use"]
