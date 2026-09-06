@@ -1,4 +1,27 @@
-"""Shared Anthropic text-generation boundary for Garmin Coach analyses."""
+"""Shared Anthropic text-generation boundary for Garmin Coach analyses.
+
+**Batch 257 moved this onto the official ``anthropic`` SDK**, superseding the
+SDK clause of Decision #47. What sits *around* the call is unchanged and is the
+reason the migration was worth doing carefully rather than quickly: the
+classified error taxonomy (Batch 141), the transport slugs (Batch 248), the
+shared-deadline retry (Batch 248, bounded by Batch 232's lease) and the usage
+logging (Batch 233) are all still owned here. The SDK replaces exactly one
+thing — hand-rolled HTTP against ``POST /v1/messages`` — and every public name
+this module exported before the migration still means the same thing, so all
+nine ``generate_anthropic_text`` callers were untouched by it.
+
+Two deliberate settings keep the repo's contracts rather than the SDK's:
+
+* ``max_retries=0`` on the client. The SDK retries 408/409/429/5xx twice by
+  default, and the app already has a retry whose budget is *the whole call*
+  (:data:`_MAX_ANTHROPIC_ATTEMPTS`) because Batch 232 made the generation lease
+  expire before Batch 144's stale-after guard. Two retry layers would multiply
+  into 9 attempts against a budget sized for 3, which is precisely the class of
+  defect Batch 232 exists to remove. One retry layer, and it is this one.
+* Per-phase timeouts built here, not the SDK's flat 10-minute default, so
+  ``connect``/``write``/``pool`` still fail fast while only ``read`` scales with
+  generation length (Batch 234).
+"""
 
 from __future__ import annotations
 
@@ -7,19 +30,28 @@ import time
 from dataclasses import dataclass
 from typing import Any, Literal, TypedDict
 
-import httpx
 import structlog
+from anthropic import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AsyncAnthropic,
+    Timeout,
+)
+from anthropic.types import Message
 from pydantic import BaseModel
 
 from src.config import settings
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
-ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
-ANTHROPIC_VERSION = "2023-06-01"
+# Batch 257 deleted ``ANTHROPIC_MESSAGES_URL`` and ``ANTHROPIC_VERSION`` with the
+# migration. The SDK owns both — it sends ``anthropic-version: 2023-06-01``, the
+# same value this module pinned by hand — and a hand-maintained copy of a header
+# nothing sends is the kind of constant a later reader trusts and should not.
 
 
-def _timeout(*, read: float | None = None) -> httpx.Timeout:
+def _timeout(*, read: float | None = None) -> Timeout:
     """Per-phase timeouts for a non-streamed Messages call.
 
     The single ``timeout=60.0`` this replaces applied 60s to *every* phase, so the
@@ -27,8 +59,12 @@ def _timeout(*, read: float | None = None) -> httpx.Timeout:
     morning brief outgrew on 2026-08-30 (measured 75.1s). Only ``read`` needs to
     scale with generation length; connect/write/pool stay short so a genuinely
     unreachable API still fails fast instead of hanging for the full read budget.
+
+    ``anthropic.Timeout`` *is* ``httpx2.Timeout`` (the SDK is built on ``httpx2``,
+    not the ``httpx`` the rest of the app uses), so this is the same per-phase
+    object it always was, reached through the SDK's own re-export.
     """
-    return httpx.Timeout(
+    return Timeout(
         connect=10.0,
         # Batch 248: a retry shares one budget with its predecessors, so an
         # attempt gets what is left rather than the whole thing. ``None`` keeps
@@ -237,6 +273,29 @@ def _thinking_tokens(usage: dict[str, Any]) -> int | None:
     return _usage_int(details, "thinking_tokens")
 
 
+def text_from_content(content: Any) -> str:
+    """The prose out of a response's content blocks, and nothing else.
+
+    Batch 233.3: with thinking on, ``content`` also carries ``thinking`` blocks,
+    and with Batch 257's tools it also carries ``tool_use`` blocks. This filter
+    has always selected ``type == "text"`` and so skips both — the reasoning can
+    never be concatenated into Mark's brief, and neither can a tool call. Pinned
+    by a test, because it is the one place adaptive thinking could have leaked
+    into user-facing prose and it is safe by design rather than by accident.
+
+    Takes the serialized (``to_dict``) form rather than SDK block objects so the
+    single-call path and the tool loop share one definition of "the answer".
+    """
+    text_parts: list[str] = []
+    if isinstance(content, list):
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                text = item.get("text")
+                if isinstance(text, str):
+                    text_parts.append(text)
+    return "\n\n".join(text_parts).strip()
+
+
 def _log_usage(raw: dict[str, Any], *, model_name: str) -> None:
     usage = raw.get("usage")
     if not isinstance(usage, dict):
@@ -252,24 +311,28 @@ def _log_usage(raw: dict[str, Any], *, model_name: str) -> None:
     )
 
 
-def anthropic_error_from_http_status(exc: httpx.HTTPStatusError) -> AnthropicApiError:
+def anthropic_error_from_http_status(exc: APIStatusError) -> AnthropicApiError:
     """Parse + log an Anthropic non-2xx into a classified error (Batch 141).
 
-    ``httpx``'s ``raise_for_status`` discards the response body, so the *reason*
+    ``httpx``'s ``raise_for_status`` discarded the response body, so the *reason*
     (e.g. "Your credit balance is too low…") never reached the logs — recovering it
-    on 2026-07-21 needed a manual out-of-band API call. Read the body here and log
-    the provider's ``error.type`` / ``error.message``. The API key is never logged:
-    it travels only in the request ``x-api-key`` header and is never echoed in a
-    response body.
+    on 2026-07-21 needed a manual out-of-band API call. The SDK keeps the parsed
+    body on the exception (``exc.body``), so Batch 257 reads it from there instead
+    of re-parsing the response; the provider's ``error.type`` / ``error.message``
+    still reach the log, and the classification is byte-for-byte the same function
+    it always was. The API key is never logged: it travels only in the request
+    ``x-api-key`` header and is never echoed in a response body.
+
+    The SDK raises a *subclass* per status (``RateLimitError``, ``BadRequestError``,
+    …), but this deliberately keeps classifying from the status code and body
+    rather than the exception class: the credit-exhaustion outage arrives as a
+    ``BadRequestError`` and is only distinguishable by its message, so catching the
+    subclass would re-introduce exactly the blind spot Batch 141 closed.
     """
-    response = exc.response
-    status_code = response.status_code
+    status_code = exc.status_code
     error_type: str | None = None
     error_message: str | None = None
-    try:
-        body = response.json()
-    except Exception:  # pragma: no cover - non-JSON error body is rare
-        body = None
+    body: object | None = exc.body
     if isinstance(body, dict):
         err = body.get("error")
         if isinstance(err, dict):
@@ -293,7 +356,7 @@ def anthropic_error_from_http_status(exc: httpx.HTTPStatusError) -> AnthropicApi
     )
 
 
-def anthropic_error_from_transport(exc: httpx.RequestError) -> AnthropicApiError:
+def anthropic_error_from_transport(exc: APIConnectionError) -> AnthropicApiError:
     """Classify a transport failure that never became an HTTP response (Batch 248).
 
     AI238-04, and the oldest AI-layer defect in the repo. A single `client.post`
@@ -312,9 +375,11 @@ def anthropic_error_from_transport(exc: httpx.RequestError) -> AnthropicApiError
     A timeout is not the same event as a connection refusal, and the reason slug
     keeps them apart: `timeout` is "we may already have been billed for an answer
     we hung up on" (Batch 234's finding), `transport` is "the request never
-    landed".
+    landed". Batch 257: the SDK models that split as `APITimeoutError` inheriting
+    from `APIConnectionError`, so the same two slugs come out of an `isinstance`
+    on the SDK's own types rather than on `httpx`'s.
     """
-    reason = "timeout" if isinstance(exc, httpx.TimeoutException) else "transport"
+    reason = "timeout" if isinstance(exc, APITimeoutError) else "transport"
     log.error(
         "anthropic_transport_error",
         reason=reason,
@@ -332,13 +397,31 @@ def anthropic_error_from_transport(exc: httpx.RequestError) -> AnthropicApiError
     )
 
 
-async def _post_with_retry(
+def anthropic_client(*, api_key: str, read: float | None = None) -> AsyncAnthropic:
+    """The SDK client every Anthropic call in this app goes through (Batch 257).
+
+    ``max_retries=0`` is the load-bearing argument. The SDK retries 408/409/429
+    and 5xx twice of its own accord, and :func:`_create_with_retry` below already
+    retries the reasons a retry can fix against a budget that is *the whole call*.
+    Leaving the SDK's default on would nest one inside the other — up to nine
+    attempts against a budget Batch 232 sized for three, with the extra ones
+    invisible to the ``anthropic_call_retrying`` log line and to the deadline that
+    keeps a generation inside its lease.
+    """
+    return AsyncAnthropic(
+        api_key=api_key,
+        timeout=_timeout(read=read),
+        max_retries=0,
+    )
+
+
+async def _create_with_retry(
     *,
-    headers: dict[str, str],
+    api_key: str,
     payload: dict[str, Any],
     model_name: str,
-) -> Any:
-    """POST to Anthropic, re-attempting only the reasons a retry can actually fix.
+) -> Message:
+    """Call Anthropic, re-attempting only the reasons a retry can actually fix.
 
     Batch 248 (AI238-04). Before this there was no retry anywhere in the app:
     ``_RETRYABLE_ANTHROPIC_REASONS`` only chose which sentence Mark saw, so a
@@ -347,6 +430,12 @@ async def _post_with_retry(
     One change to one function covers all nine ``generate_anthropic_text``
     callers. See ``_MAX_ANTHROPIC_ATTEMPTS`` for why the budget is the call
     rather than the attempt.
+
+    Batch 257 swapped the transport underneath for the SDK and changed nothing
+    else here. ``payload`` stays a dict rather than becoming explicit keyword
+    arguments *deliberately*: "a field is absent from the request unless a caller
+    passes it" is the property Batch 233 built the rollback path on and pinned
+    with a test, and a dict is the shape that keeps it directly inspectable.
     """
 
     budget = settings.anthropic_read_timeout_seconds
@@ -359,16 +448,19 @@ async def _post_with_retry(
         # for its predecessors out of the same budget.
         remaining = None if attempt == 1 else deadline - time.monotonic()
         try:
-            async with httpx.AsyncClient(timeout=_timeout(read=remaining)) as client:
-                response = await client.post(ANTHROPIC_MESSAGES_URL, headers=headers, json=payload)
-                try:
-                    response.raise_for_status()
-                except httpx.HTTPStatusError as exc:
-                    raise anthropic_error_from_http_status(exc) from exc
-                return response.json()
-        except httpx.RequestError as exc:
+            async with anthropic_client(api_key=api_key, read=remaining) as client:
+                # ``messages.create`` is overloaded on ``stream``, so a ``**dict``
+                # expansion cannot be checked against it. The untyped local is the
+                # cost of keeping the payload a dict (see the docstring); the
+                # return is annotated, so everything downstream stays typed.
+                create: Any = client.messages.create
+                message: Message = await create(**payload)
+                return message
+        except APIStatusError as exc:
+            error = anthropic_error_from_http_status(exc)
+        except APIConnectionError as exc:
             error = anthropic_error_from_transport(exc)
-        except AnthropicApiError as exc:
+        except AnthropicApiError as exc:  # pragma: no cover - defensive
             error = exc
         last = error
 
@@ -504,34 +596,13 @@ async def generate_anthropic_text(
         output_config["format"] = {"type": "json_schema", "schema": output_schema}
     if output_config:
         payload["output_config"] = output_config
-    headers = {
-        "x-api-key": api_key,
-        "anthropic-version": ANTHROPIC_VERSION,
-        "content-type": "application/json",
-    }
-    raw = await _post_with_retry(headers=headers, payload=payload, model_name=model_name)
+    message = await _create_with_retry(api_key=api_key, payload=payload, model_name=model_name)
+    raw = message.to_dict()
 
-    if not isinstance(raw, dict):
-        raise error_cls("Claude response was not a JSON object.")
-
-    stop_reason = raw.get("stop_reason")
-    if stop_reason == "max_tokens":
+    if message.stop_reason == "max_tokens":
         raise error_cls("Claude response hit max_tokens before completing.")
 
-    # Batch 233.3: with thinking on, ``content`` also carries ``thinking`` blocks.
-    # This filter already selected ``type == "text"`` and so skips them — the
-    # reasoning can never be concatenated into Mark's brief. Pinned by a test
-    # because it is the one place adaptive thinking could have leaked into user-
-    # facing prose, and it is safe by accident rather than by design.
-    text_parts: list[str] = []
-    content = raw.get("content", [])
-    if isinstance(content, list):
-        for item in content:
-            if isinstance(item, dict) and item.get("type") == "text":
-                text = item.get("text")
-                if isinstance(text, str):
-                    text_parts.append(text)
-    output = "\n\n".join(text_parts).strip()
+    output = text_from_content(raw.get("content"))
     if not output:
         raise error_cls("Claude response did not contain text output.")
 

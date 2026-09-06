@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-import httpx
+import httpx2
 import pytest
+from anthropic import APIConnectionError, APIStatusError, APITimeoutError, Timeout
+from anthropic.types import Message
 
 from src.config import settings
 from src.services.anthropic_text import (
@@ -17,53 +19,73 @@ from src.services.anthropic_text import (
 )
 from src.services.morning_analysis import MorningAnalysisError
 
+# Batch 257 moved the boundary onto the ``anthropic`` SDK, so the fake below is a
+# fake *client* rather than a fake transport. Everything these tests actually
+# assert is unchanged — ``last_request_json`` is still the request the boundary
+# asked to be sent, and the payloads are still the provider's own JSON shape,
+# now round-tripped through the SDK's ``Message`` model so a response the SDK
+# would reject cannot pass here and fail in production.
+
+_ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
+
+
+def _message(payload: dict[str, Any]) -> Message:
+    """A real SDK ``Message`` from the partial payloads these tests write."""
+    return Message.model_validate(
+        {
+            "id": "msg_test",
+            "type": "message",
+            "role": "assistant",
+            "model": "claude-test",
+            "content": [],
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 0, "output_tokens": 0},
+            **payload,
+        }
+    )
+
+
+def _request() -> httpx2.Request:
+    """The SDK is built on ``httpx2``; an ``httpx`` object is rejected by it."""
+    return httpx2.Request("POST", _ANTHROPIC_URL)
+
 
 async def _no_sleep(_seconds: float) -> None:
     """Retry backoff is real time; the tests must not spend it."""
     return None
 
 
-class _DummyResponse:
-    def __init__(self, payload: Any) -> None:
-        self._payload = payload
+class _Messages:
+    """The ``client.messages`` namespace, for a fake that records one call."""
 
-    def raise_for_status(self) -> None:
-        return None
+    def __init__(self, owner: type[_DummyAnthropic]) -> None:
+        self._owner = owner
 
-    def json(self) -> Any:
-        return self._payload
+    async def create(self, **kwargs: Any) -> Message:
+        self._owner.last_request_json = kwargs
+        return _message(self._owner.response_payload)
 
 
-class _DummyAsyncClient:
+class _DummyAnthropic:
     last_request_json: dict[str, Any] | None = None
     response_payload: Any = None
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        return None
+        self.messages = _Messages(type(self))
 
-    async def __aenter__(self) -> _DummyAsyncClient:
+    async def __aenter__(self) -> _DummyAnthropic:
         return self
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
         return None
-
-    async def post(
-        self,
-        url: str,
-        *,
-        headers: dict[str, str],
-        json: dict[str, Any],
-    ) -> _DummyResponse:
-        _DummyAsyncClient.last_request_json = json
-        return _DummyResponse(_DummyAsyncClient.response_payload)
 
 
 @pytest.mark.asyncio
 async def test_generate_anthropic_text_raises_on_max_tokens(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _DummyAsyncClient)
-    _DummyAsyncClient.response_payload = {
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _DummyAnthropic)
+    _DummyAnthropic.response_payload = {
         "model": "claude-test",
         "stop_reason": "max_tokens",
         "content": [{"type": "text", "text": "partial"}],
@@ -84,8 +106,8 @@ async def test_generate_anthropic_text_raises_on_max_tokens(
 async def test_generate_anthropic_text_returns_text_on_end_turn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _DummyAsyncClient)
-    _DummyAsyncClient.response_payload = {
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _DummyAnthropic)
+    _DummyAnthropic.response_payload = {
         "model": "claude-test",
         "stop_reason": "end_turn",
         "content": [
@@ -111,8 +133,8 @@ async def test_generate_anthropic_text_returns_text_on_end_turn(
 async def test_generate_anthropic_text_uses_shared_max_token_ceiling(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _DummyAsyncClient)
-    _DummyAsyncClient.response_payload = {
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _DummyAnthropic)
+    _DummyAnthropic.response_payload = {
         "model": "claude-test",
         "stop_reason": "end_turn",
         "content": [{"type": "text", "text": "complete"}],
@@ -127,16 +149,16 @@ async def test_generate_anthropic_text_uses_shared_max_token_ceiling(
         error_cls=MorningAnalysisError,
     )
 
-    assert _DummyAsyncClient.last_request_json is not None
-    assert _DummyAsyncClient.last_request_json["max_tokens"] == 4096
+    assert _DummyAnthropic.last_request_json is not None
+    assert _DummyAnthropic.last_request_json["max_tokens"] == 4096
 
 
 @pytest.mark.asyncio
 async def test_generate_anthropic_text_accepts_system_blocks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _DummyAsyncClient)
-    _DummyAsyncClient.response_payload = {
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _DummyAnthropic)
+    _DummyAnthropic.response_payload = {
         "model": "claude-test",
         "stop_reason": "end_turn",
         "content": [{"type": "text", "text": "complete"}],
@@ -165,8 +187,8 @@ async def test_generate_anthropic_text_accepts_system_blocks(
         error_cls=MorningAnalysisError,
     )
 
-    assert _DummyAsyncClient.last_request_json is not None
-    assert _DummyAsyncClient.last_request_json["system"] == system_blocks
+    assert _DummyAnthropic.last_request_json is not None
+    assert _DummyAnthropic.last_request_json["system"] == system_blocks
 
 
 # Batch 141: an Anthropic non-2xx must be classified so a caller can act on the
@@ -209,40 +231,31 @@ def test_classify_anthropic_error(
     )
 
 
-class _ErrorAsyncClient:
-    status_code: int = 400
-    body: Any = {
-        "type": "error",
-        "error": {
-            "type": "invalid_request_error",
-            "message": "Your credit balance is too low to access the Anthropic API.",
-        },
-    }
+class _ErrorMessages:
+    async def create(self, **kwargs: Any) -> Message:
+        raise _status_error(
+            400,
+            etype="invalid_request_error",
+            message="Your credit balance is too low to access the Anthropic API.",
+        )
 
+
+class _ErrorAnthropic:
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        return None
+        self.messages = _ErrorMessages()
 
-    async def __aenter__(self) -> _ErrorAsyncClient:
+    async def __aenter__(self) -> _ErrorAnthropic:
         return self
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
         return None
-
-    async def post(
-        self,
-        url: str,
-        *,
-        headers: dict[str, str],
-        json: dict[str, Any],
-    ) -> httpx.Response:
-        return httpx.Response(self.status_code, json=self.body, request=httpx.Request("POST", url))
 
 
 @pytest.mark.asyncio
 async def test_generate_anthropic_text_raises_classified_billing_on_400(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _ErrorAsyncClient)
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _ErrorAnthropic)
 
     with pytest.raises(AnthropicApiError) as excinfo:
         await generate_anthropic_text(
@@ -260,13 +273,15 @@ async def test_generate_anthropic_text_raises_classified_billing_on_400(
     assert excinfo.value.status_code == 400
 
 
-class _TimeoutCapturingAsyncClient(_DummyAsyncClient):
+class _TimeoutCapturingAnthropic(_DummyAnthropic):
     """Records the ``timeout=`` the boundary constructs its client with."""
 
-    last_timeout: httpx.Timeout | None = None
+    last_timeout: Timeout | None = None
+    last_max_retries: Any = None
 
     def __init__(self, *args: Any, timeout: Any = None, **kwargs: Any) -> None:
-        _TimeoutCapturingAsyncClient.last_timeout = timeout
+        _TimeoutCapturingAnthropic.last_timeout = timeout
+        _TimeoutCapturingAnthropic.last_max_retries = kwargs.get("max_retries")
         super().__init__(*args, **kwargs)
 
 
@@ -281,10 +296,8 @@ async def test_generate_anthropic_text_read_timeout_outlasts_a_long_generation(
     ``httpx.ReadTimeout`` *after* Anthropic had already generated and billed it.
     Every attempt that morning failed the same way, so the brief never arrived.
     """
-    monkeypatch.setattr(
-        "src.services.anthropic_text.httpx.AsyncClient", _TimeoutCapturingAsyncClient
-    )
-    _TimeoutCapturingAsyncClient.response_payload = {
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _TimeoutCapturingAnthropic)
+    _TimeoutCapturingAnthropic.response_payload = {
         "model": "claude-test",
         "stop_reason": "end_turn",
         "content": [{"type": "text", "text": "brief"}],
@@ -299,8 +312,8 @@ async def test_generate_anthropic_text_read_timeout_outlasts_a_long_generation(
         error_cls=MorningAnalysisError,
     )
 
-    timeout = _TimeoutCapturingAsyncClient.last_timeout
-    assert isinstance(timeout, httpx.Timeout)
+    timeout = _TimeoutCapturingAnthropic.last_timeout
+    assert isinstance(timeout, Timeout)
     # Comfortably past the slowest observed brief, so growth in the packet does
     # not silently re-open the failure.
     assert timeout.read is not None and timeout.read >= 240.0
@@ -315,13 +328,11 @@ async def test_generate_anthropic_text_read_timeout_is_env_tunable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A slow spell can be ridden out from Railway without shipping a deploy."""
-    monkeypatch.setattr(
-        "src.services.anthropic_text.httpx.AsyncClient", _TimeoutCapturingAsyncClient
-    )
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _TimeoutCapturingAnthropic)
     monkeypatch.setattr(
         "src.services.anthropic_text.settings.anthropic_read_timeout_seconds", 450.0
     )
-    _TimeoutCapturingAsyncClient.response_payload = {
+    _TimeoutCapturingAnthropic.response_payload = {
         "model": "claude-test",
         "stop_reason": "end_turn",
         "content": [{"type": "text", "text": "brief"}],
@@ -336,8 +347,41 @@ async def test_generate_anthropic_text_read_timeout_is_env_tunable(
         error_cls=MorningAnalysisError,
     )
 
-    timeout = _TimeoutCapturingAsyncClient.last_timeout
+    timeout = _TimeoutCapturingAnthropic.last_timeout
     assert timeout is not None and timeout.read == 450.0
+
+
+@pytest.mark.asyncio
+async def test_the_sdks_own_retries_are_switched_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One retry layer, and it is this module's (Batch 257).
+
+    The SDK re-attempts 408/409/429 and 5xx twice by default. Left on, it nests
+    inside :data:`_MAX_ANTHROPIC_ATTEMPTS` — up to nine attempts against a budget
+    Batch 232 sized for three, with the extra ones invisible to the
+    ``anthropic_call_retrying`` log line *and* free to outlive the generation
+    lease that `validate_timeout_ordering()` refuses to boot without. The nesting
+    would not fail a test or raise an error; it would just quietly spend three
+    times the wall clock the deadline was built around.
+    """
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _TimeoutCapturingAnthropic)
+    _TimeoutCapturingAnthropic.response_payload = {
+        "model": "claude-test",
+        "stop_reason": "end_turn",
+        "content": [{"type": "text", "text": "brief"}],
+    }
+
+    await generate_anthropic_text(
+        api_key="test-key",
+        model_name="claude-test",
+        max_tokens=4096,
+        system_prompt="system",
+        user_prompt="prompt",
+        error_cls=MorningAnalysisError,
+    )
+
+    assert _TimeoutCapturingAnthropic.last_max_retries == 0
 
 
 # ---------------------------------------------------------------------------
@@ -356,8 +400,8 @@ async def test_thinking_and_effort_are_absent_unless_passed(
     leaks into the payload by default, reverting the model becomes a code change
     rather than a settings change.
     """
-    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _DummyAsyncClient)
-    _DummyAsyncClient.response_payload = {
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _DummyAnthropic)
+    _DummyAnthropic.response_payload = {
         "model": "claude-test",
         "stop_reason": "end_turn",
         "content": [{"type": "text", "text": "complete"}],
@@ -372,7 +416,7 @@ async def test_thinking_and_effort_are_absent_unless_passed(
         error_cls=MorningAnalysisError,
     )
 
-    payload = _DummyAsyncClient.last_request_json
+    payload = _DummyAnthropic.last_request_json
     assert payload is not None
     assert set(payload) == {"model", "max_tokens", "system", "messages"}
 
@@ -381,8 +425,8 @@ async def test_thinking_and_effort_are_absent_unless_passed(
 async def test_thinking_and_effort_reach_the_payload_when_passed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _DummyAsyncClient)
-    _DummyAsyncClient.response_payload = {
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _DummyAnthropic)
+    _DummyAnthropic.response_payload = {
         "model": "claude-test",
         "stop_reason": "end_turn",
         "content": [{"type": "text", "text": "complete"}],
@@ -399,7 +443,7 @@ async def test_thinking_and_effort_reach_the_payload_when_passed(
         effort="high",
     )
 
-    payload = _DummyAsyncClient.last_request_json
+    payload = _DummyAnthropic.last_request_json
     assert payload is not None
     assert payload["thinking"] == {"type": "adaptive"}
     assert payload["output_config"] == {"effort": "high"}
@@ -414,8 +458,8 @@ async def test_payload_never_carries_a_parameter_sonnet_5_rejects(
     The boundary builds a fixed payload, so this pins the whole breaking-change
     list in one place rather than trusting a grep that decays.
     """
-    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _DummyAsyncClient)
-    _DummyAsyncClient.response_payload = {
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _DummyAnthropic)
+    _DummyAnthropic.response_payload = {
         "model": "claude-test",
         "stop_reason": "end_turn",
         "content": [{"type": "text", "text": "complete"}],
@@ -433,7 +477,7 @@ async def test_payload_never_carries_a_parameter_sonnet_5_rejects(
         effort="high",
     )
 
-    payload = _DummyAsyncClient.last_request_json
+    payload = _DummyAnthropic.last_request_json
     assert payload is not None
     for rejected in ("temperature", "top_p", "top_k", "budget_tokens"):
         assert rejected not in payload
@@ -451,12 +495,16 @@ async def test_thinking_blocks_never_reach_the_users_brief(
     Measured on a real morning brief, 14,610 of 16,157 output tokens were
     thinking. The boundary must return only the prose.
     """
-    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _DummyAsyncClient)
-    _DummyAsyncClient.response_payload = {
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _DummyAnthropic)
+    _DummyAnthropic.response_payload = {
         "model": "claude-test",
         "stop_reason": "end_turn",
         "content": [
-            {"type": "thinking", "thinking": "the user's readiness is 64, so..."},
+            {
+                "type": "thinking",
+                "thinking": "the user's readiness is 64, so...",
+                "signature": "sig",
+            },
             {"type": "text", "text": "# Morning Read"},
         ],
     }
@@ -485,12 +533,16 @@ async def test_max_tokens_still_raises_rather_than_returning_partial_text(
     A truncated brief that returned quietly would read as a complete coaching
     verdict with its conclusion missing — worse than the Batch 141 failure card.
     """
-    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _DummyAsyncClient)
-    _DummyAsyncClient.response_payload = {
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _DummyAnthropic)
+    _DummyAnthropic.response_payload = {
         "model": "claude-test",
         "stop_reason": "max_tokens",
         "content": [
-            {"type": "thinking", "thinking": "long deliberation that ate the budget"},
+            {
+                "type": "thinking",
+                "thinking": "long deliberation that ate the budget",
+                "signature": "sig",
+            },
             {"type": "text", "text": "# Morning Read\n\nYour readiness is"},
         ],
     }
@@ -540,11 +592,21 @@ def test_thinking_tokens_are_logged_when_the_provider_reports_them() -> None:
 # ---------------------------------------------------------------------------
 
 
-class _ScriptedAsyncClient:
+class _ScriptedMessages:
+    async def create(self, **kwargs: Any) -> Message:
+        index = _ScriptedAnthropic.attempts
+        _ScriptedAnthropic.attempts += 1
+        outcome = _ScriptedAnthropic.script[index]
+        if isinstance(outcome, Exception):
+            raise outcome
+        return _message(outcome)
+
+
+class _ScriptedAnthropic:
     """Plays a scripted sequence of outcomes, one per attempt.
 
     Each item is either an exception to raise or a payload to return, so a test
-    can express "529, then success" without stubbing the whole transport.
+    can express "529, then success" without stubbing the whole client.
     """
 
     script: list[Any] = []
@@ -554,21 +616,14 @@ class _ScriptedAsyncClient:
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         timeout = kwargs.get("timeout")
         if timeout is not None:
-            _ScriptedAsyncClient.read_timeouts.append(timeout.read)
+            _ScriptedAnthropic.read_timeouts.append(timeout.read)
+        self.messages = _ScriptedMessages()
 
-    async def __aenter__(self) -> _ScriptedAsyncClient:
+    async def __aenter__(self) -> _ScriptedAnthropic:
         return self
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
         return None
-
-    async def post(self, url: str, *, headers: dict[str, str], json: dict[str, Any]) -> Any:
-        index = _ScriptedAsyncClient.attempts
-        _ScriptedAsyncClient.attempts += 1
-        outcome = _ScriptedAsyncClient.script[index]
-        if isinstance(outcome, Exception):
-            raise outcome
-        return _DummyResponse(outcome)
 
     @classmethod
     def load(cls, *outcomes: Any) -> None:
@@ -585,25 +640,15 @@ def _ok_payload() -> dict[str, Any]:
     }
 
 
-def _status_error(status_code: int, *, etype: str, message: str) -> httpx.HTTPStatusError:
-    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
-    response = httpx.Response(
-        status_code,
-        json={"error": {"type": etype, "message": message}},
-        request=request,
-    )
-    return httpx.HTTPStatusError("boom", request=request, response=response)
+def _status_error(status_code: int, *, etype: str, message: str) -> APIStatusError:
+    """The SDK's own non-2xx exception, carrying the provider's parsed body.
 
-
-class _RaisingResponse:
-    def __init__(self, error: httpx.HTTPStatusError) -> None:
-        self._error = error
-
-    def raise_for_status(self) -> None:
-        raise self._error
-
-    def json(self) -> Any:  # pragma: no cover - never reached
-        return {}
+    ``anthropic_error_from_http_status`` reads ``exc.body`` rather than re-parsing
+    the response, so the body is what the classification actually sees.
+    """
+    body = {"type": "error", "error": {"type": etype, "message": message}}
+    response = httpx2.Response(status_code, json=body, request=_request())
+    return APIStatusError("boom", response=response, body=body)
 
 
 async def _generate() -> Any:
@@ -628,12 +673,11 @@ async def test_read_timeout_becomes_a_classified_timeout_not_an_escape(
     Mark as a bare 500 the web client could not parse and the operator as
     silence. `main.py` registers one exception handler and it is not this one.
     """
-    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _ScriptedAsyncClient)
-    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
-    _ScriptedAsyncClient.load(
-        httpx.ReadTimeout("timed out", request=request),
-        httpx.ReadTimeout("timed out", request=request),
-        httpx.ReadTimeout("timed out", request=request),
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _ScriptedAnthropic)
+    _ScriptedAnthropic.load(
+        APITimeoutError(request=_request()),
+        APITimeoutError(request=_request()),
+        APITimeoutError(request=_request()),
     )
 
     with pytest.raises(AnthropicApiError) as caught:
@@ -651,12 +695,11 @@ async def test_a_connection_failure_is_transport_not_timeout(
     """`timeout` means "we may already have been billed for an answer we hung up
     on" (Batch 234's finding); `transport` means the request never landed. The
     two deserve different reason slugs even though both are `RequestError`s."""
-    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _ScriptedAsyncClient)
-    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
-    _ScriptedAsyncClient.load(
-        httpx.ConnectError("refused", request=request),
-        httpx.ConnectError("refused", request=request),
-        httpx.ConnectError("refused", request=request),
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _ScriptedAnthropic)
+    _ScriptedAnthropic.load(
+        APIConnectionError(message="refused", request=_request()),
+        APIConnectionError(message="refused", request=_request()),
+        APIConnectionError(message="refused", request=_request()),
     )
 
     with pytest.raises(AnthropicApiError) as caught:
@@ -671,19 +714,10 @@ async def test_an_overloaded_response_is_retried_and_can_succeed(
 ) -> None:
     """A single 529 at 06:40 used to cost the whole morning until the 11:00
     backstop, because nothing anywhere in the app retried anything."""
-    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _ScriptedAsyncClient)
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _ScriptedAnthropic)
     monkeypatch.setattr("src.services.anthropic_text.asyncio.sleep", _no_sleep)
 
-    async def _post(self: Any, url: str, *, headers: Any, json: Any) -> Any:
-        index = _ScriptedAsyncClient.attempts
-        _ScriptedAsyncClient.attempts += 1
-        outcome = _ScriptedAsyncClient.script[index]
-        if isinstance(outcome, httpx.HTTPStatusError):
-            return _RaisingResponse(outcome)
-        return _DummyResponse(outcome)
-
-    monkeypatch.setattr(_ScriptedAsyncClient, "post", _post)
-    _ScriptedAsyncClient.load(
+    _ScriptedAnthropic.load(
         _status_error(529, etype="overloaded_error", message="Overloaded"),
         _ok_payload(),
     )
@@ -691,7 +725,7 @@ async def test_an_overloaded_response_is_retried_and_can_succeed(
     result = await _generate()
 
     assert result.output_markdown == "the read"
-    assert _ScriptedAsyncClient.attempts == 2
+    assert _ScriptedAnthropic.attempts == 2
 
 
 @pytest.mark.asyncio
@@ -699,27 +733,22 @@ async def test_billing_is_never_auto_retried(monkeypatch: pytest.MonkeyPatch) ->
     """A credit outage does not clear in eight seconds. Retrying it turns one
     failure into three identical log lines while Mark waits three times as long
     for the same answer."""
-    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _ScriptedAsyncClient)
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _ScriptedAnthropic)
     monkeypatch.setattr("src.services.anthropic_text.asyncio.sleep", _no_sleep)
 
-    async def _post(self: Any, url: str, *, headers: Any, json: Any) -> Any:
-        _ScriptedAsyncClient.attempts += 1
-        return _RaisingResponse(
-            _status_error(
-                400,
-                etype="invalid_request_error",
-                message="Your credit balance is too low to access the Anthropic API.",
-            )
+    _ScriptedAnthropic.load(
+        _status_error(
+            400,
+            etype="invalid_request_error",
+            message="Your credit balance is too low to access the Anthropic API.",
         )
-
-    monkeypatch.setattr(_ScriptedAsyncClient, "post", _post)
-    _ScriptedAsyncClient.load(None)
+    )
 
     with pytest.raises(AnthropicApiError) as caught:
         await _generate()
 
     assert caught.value.reason == "billing"
-    assert _ScriptedAsyncClient.attempts == 1
+    assert _ScriptedAnthropic.attempts == 1
 
 
 @pytest.mark.asyncio
@@ -734,24 +763,19 @@ async def test_a_retry_is_refused_when_the_call_budget_is_gone(
     be 3x550s against a 670s lease — a retry outliving its own lease and handing
     the artifact scope to another worker mid-flight.
     """
-    monkeypatch.setattr("src.services.anthropic_text.httpx.AsyncClient", _ScriptedAsyncClient)
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _ScriptedAnthropic)
     monkeypatch.setattr("src.services.anthropic_text.asyncio.sleep", _no_sleep)
     # A budget too small to fit a second attempt.
     monkeypatch.setattr(settings, "anthropic_read_timeout_seconds", 5.0)
 
-    async def _post(self: Any, url: str, *, headers: Any, json: Any) -> Any:
-        _ScriptedAsyncClient.attempts += 1
-        return _RaisingResponse(_status_error(529, etype="overloaded_error", message="Overloaded"))
-
-    monkeypatch.setattr(_ScriptedAsyncClient, "post", _post)
-    _ScriptedAsyncClient.load(None)
+    _ScriptedAnthropic.load(_status_error(529, etype="overloaded_error", message="Overloaded"))
 
     with pytest.raises(AnthropicApiError) as caught:
         await _generate()
 
     assert caught.value.reason == "overloaded"
     # Retryable, but there was no budget left to retry inside.
-    assert _ScriptedAsyncClient.attempts == 1
+    assert _ScriptedAnthropic.attempts == 1
 
 
 def test_the_spend_cap_wording_classifies_as_billing() -> None:
