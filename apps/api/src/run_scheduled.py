@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 
+from src.observability import init_sentry
 from src.scheduler import (
     run_activity_timeseries_retention,
     run_backup_restore_drill,
@@ -93,6 +94,12 @@ async def _run(job: str) -> JobResult:
 
 
 def main() -> None:
+    # The API gets Sentry from ``src.main``; this entrypoint never imports it, so
+    # without this line every externally-run job — the Railway ``weekly-review``
+    # cron, any manual ``railway run``, and Batch 242.5's external-only
+    # ``ledger-freshness`` watchdog — reports to nobody. Verified in the deployed
+    # image on 2026-09-12.
+    init_sentry()
     args = _build_parser().parse_args()
     result = asyncio.run(_run(args.job))
     if result.exit_code:

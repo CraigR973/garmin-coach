@@ -1,25 +1,22 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Any
 
-import sentry_sdk
 import structlog
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sentry_sdk.integrations.fastapi import FastApiIntegration
-from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
-from sentry_sdk.types import Event, Hint
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from src.config import Environment, docs_urls, settings
+from src.config import docs_urls, settings
 from src.logging_config import configure_logging
 from src.middleware import (
     CorrelationIdMiddleware,
     EgressBudgetMiddleware,
     SecurityHeadersMiddleware,
 )
+from src.observability import init_sentry
 from src.rate_limit import limiter
 from src.routers import (
     auth,
@@ -62,24 +59,10 @@ configure_logging(settings.log_level)
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 
-def _scrub_pii(event: Event, hint: Hint) -> Event | None:
-    """Remove display names from Sentry events so player names never appear in error reports."""
-    user: Any = event.get("user")
-    if isinstance(user, dict):
-        user.pop("display_name", None)
-        user.pop("username", None)
-    return event
-
-
-if settings.sentry_dsn_backend:
-    sentry_sdk.init(
-        dsn=settings.sentry_dsn_backend,
-        environment=settings.environment,
-        integrations=[FastApiIntegration(), SqlalchemyIntegration()],
-        send_default_pii=False,
-        before_send=_scrub_pii,
-        traces_sample_rate=0.0 if settings.environment != Environment.production else 0.05,
-    )
+# Moved to ``src.observability`` so the job runner gets it too — living here, it
+# only ever initialised for ``uvicorn src.main:app``, and the Railway
+# ``weekly-review`` cron had the DSN set with nothing to act on it.
+init_sentry(integrations=[FastApiIntegration()])
 
 
 @asynccontextmanager
