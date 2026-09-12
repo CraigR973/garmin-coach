@@ -8,8 +8,10 @@ because `sentry_sdk.init()` lived at module scope in `main.py` and
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from src.config import settings
@@ -102,12 +104,14 @@ def test_the_job_runner_initialises_sentry_without_importing_the_api() -> None:
         "print('INIT_CALLED', len(calls))\n"
         "print('MAIN_IMPORTED', 'src.main' in sys.modules)\n"
     )
+    # Derived, not hardcoded: this runs on CI as well as on a laptop.
+    api_root = Path(__file__).resolve().parents[1]
     result = subprocess.run(
         [sys.executable, "-c", script],
         capture_output=True,
         text=True,
-        cwd="/Users/craigrobinson/garmin-coach/apps/api",
-        env={"PYTHONPATH": "/Users/craigrobinson/garmin-coach/apps/api", "PATH": "/usr/bin:/bin"},
+        cwd=api_root,
+        env={**os.environ, "PYTHONPATH": str(api_root)},
     )
     assert result.returncode == 0, result.stderr
     assert "INIT_CALLED 1" in result.stdout, result.stdout
