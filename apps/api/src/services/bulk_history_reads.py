@@ -36,6 +36,10 @@ The two shapes below are deliberate and different:
 * :func:`temperature_series_columns` / :func:`fan_series_columns` **project**,
   because those readers want two or three columns out of the row and the
   payload is the rest of it.
+* :func:`daily_metric_reading_columns` and :func:`weather_summary_columns`
+  project the typed history that the coach may fetch. They deliberately do not
+  promise whole-day coverage from an unlabelled morning row: the caller carries
+  the metric phase, while the weather summary uses only promoted columns.
 
 Both pass ``raiseload=True``. An unloaded attribute would otherwise emit a lazy
 SELECT, which under an async session fails as ``MissingGreenlet`` far from the
@@ -55,12 +59,21 @@ from __future__ import annotations
 from sqlalchemy.orm import defer, load_only
 from sqlalchemy.orm.interfaces import ORMOption
 
-from src.models.coaching import ActivityTimeSeries, FanStateReading, Sleep, TemperatureReading
+from src.models.coaching import (
+    ActivityTimeSeries,
+    DailyMetric,
+    FanStateReading,
+    Sleep,
+    TemperatureReading,
+    WeatherDaily,
+)
 
 __all__ = [
     "activity_timeseries_columns",
+    "daily_metric_reading_columns",
     "fan_series_columns",
     "temperature_series_columns",
+    "weather_summary_columns",
     "without_sleep_raw_payload",
 ]
 
@@ -93,6 +106,58 @@ def temperature_series_columns() -> ORMOption:
     return load_only(
         TemperatureReading.captured_at_utc,
         TemperatureReading.temperature_c,
+        raiseload=True,
+    )
+
+
+def daily_metric_reading_columns() -> ORMOption:
+    """Load the typed recovery observation used by the coach history lookup.
+
+    Other history consumers still load ``raw_payload`` because they evaluate
+    complete-day aggregate coverage from Garmin's source window. The coach tool
+    instead labels every row as ``morning`` or ``settled`` and describes Body
+    Battery relative to that observation, so moving the large provider payload
+    would add egress without strengthening its claim.
+    """
+    return load_only(
+        DailyMetric.calendar_date,
+        DailyMetric.phase,
+        DailyMetric.recorded_at_utc,
+        DailyMetric.readiness_score,
+        DailyMetric.readiness_level,
+        DailyMetric.readiness_sleep_score,
+        DailyMetric.recovery_time_min,
+        DailyMetric.acute_load,
+        DailyMetric.training_status,
+        DailyMetric.hrv_last_night_avg_ms,
+        DailyMetric.hrv_weekly_avg_ms,
+        DailyMetric.hrv_status,
+        DailyMetric.hrv_baseline_low_ms,
+        DailyMetric.hrv_baseline_high_ms,
+        DailyMetric.resting_heart_rate_bpm,
+        DailyMetric.stress_avg,
+        DailyMetric.body_battery_charged,
+        DailyMetric.body_battery_drained,
+        DailyMetric.body_battery_end,
+        raiseload=True,
+    )
+
+
+def weather_summary_columns() -> ORMOption:
+    """Load the promoted weather fields used beside a thermal-night review."""
+    return load_only(
+        WeatherDaily.calendar_date,
+        WeatherDaily.source,
+        WeatherDaily.temp_high_c,
+        WeatherDaily.temp_low_c,
+        WeatherDaily.overnight_low_c,
+        WeatherDaily.overnight_wind_max_mph,
+        WeatherDaily.overnight_wind_gust_mph,
+        WeatherDaily.overnight_wind_direction_deg,
+        WeatherDaily.overnight_relative_humidity_mean_pct,
+        WeatherDaily.precipitation_mm,
+        WeatherDaily.sunrise_utc,
+        WeatherDaily.sunset_utc,
         raiseload=True,
     )
 

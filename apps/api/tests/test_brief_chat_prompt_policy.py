@@ -121,7 +121,7 @@ class _Date:
 
 def test_brief_chat_prompt_allows_labelled_general_science_lane() -> None:
     """Batch 175's lane survives Batch 179's rewrite of the surface."""
-    assert PROMPT_VERSION == "coach-chat-v13-2026-09-13"
+    assert PROMPT_VERSION == "coach-chat-v14-2026-09-13"
     assert "never invent his" in FLAT_PROMPT
     assert "You may answer general, non-personalized endurance-training science" in FLAT_PROMPT
     assert 'Label those answers with "General principle:"' in FLAT_PROMPT
@@ -161,6 +161,11 @@ def test_prompt_tells_the_coach_to_use_the_wider_app_state() -> None:
     assert "week ahead" in FLAT_PROMPT
     assert "latest review conclusions" in FLAT_PROMPT
     assert "rather than telling him you cannot see it" in FLAT_PROMPT
+    assert "bedroom climate for any range of nights" in FLAT_PROMPT
+    assert "Garmin wake recovery readings" in FLAT_PROMPT
+    assert "prescribed workouts for any range of dates" in FLAT_PROMPT
+    assert "what was prescribed versus completed" in FLAT_PROMPT
+    assert "missing data, not evidence that the room was fine" in FLAT_PROMPT
     # Where the two disagree, name them as app records rather than physical truth.
     assert "the current state is the app's latest record" in FLAT_PROMPT
     assert "Neither record proves what Mark's body or own device actually showed" in FLAT_PROMPT
