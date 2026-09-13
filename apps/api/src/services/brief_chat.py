@@ -740,35 +740,29 @@ def _build_cached_system_prompt(
         {
             "type": "text",
             "text": _app_state_system_text(app_state),
-            # Batch 257.4, and it is a **trade rather than a free win** — the
-            # measurement said so and the first draft of this comment did not.
+            # Batch 257.4 made the live block a cache breakpoint because a tool
+            # round trip reads it at 0.1x rather than paying for it again. Batch
+            # 258 moves the one per-question field out of this block, so the
+            # same cache entry also survives a follow-up question.
             #
-            # This block is 22,791-24,246 tokens on 2026-09-06 production, and it
-            # sat after the only breakpoint, so it was re-read at full price on
-            # every request: 93% of an unanchored question's input. Marking it
-            # means an extra round trip *reads* it at 0.1x instead of paying for
-            # it again — measured live, round 2 of a real lookup read 25,942
-            # tokens from cache.
+            # The 2026-09-06 measurement showed 22,791-24,246 tokens here (93%
+            # of an unanchored question). It was already a win within a lookup
+            # answer: round 2 read 25,942 tokens from cache. It was not yet a
+            # win across questions because ``assembledAtUtc`` sorted first in
+            # the JSON and made every rebuilt block differ at character 35.
             #
-            # What it costs: a question that uses no lookup writes the block at
-            # 1.25x instead of paying 1.0x once, because nothing reads it back.
-            # Across questions the block always changes (``assembledAtUtc`` alone
-            # guarantees it), so it is never read there — measured: a second
-            # question on the same anchor read 39,978 tokens (tools + prefix) and
-            # wrote the block afresh.
+            # Cache writes still cost 1.25x, but once a follow-up is a cache read
+            # the write amortises independently of whether either answer uses a
+            # tool. The old +0.25x/-0.65x tool-rate break-even therefore no
+            # longer describes this block. The five-minute TTL remains deliberate:
+            # 74 of 141 questions were inside it; a one-hour entry costs 2x to
+            # write and needs three requests before it wins.
             #
-            # So: **+0.25x of the block on a lookup-free question, -0.65x on a
-            # lookup question, break-even at ~28% of questions using a tool.**
-            # Kept because the whole point of the batch is that lookups become
-            # routine, and because the absolute numbers are small either way
-            # (~$0.012 against ~$0.032 on a ~$0.065 question). ``coach_chat_used_tools``
-            # is logged per answer precisely so the real rate replaces this
-            # estimate rather than the estimate quietly becoming the fact.
-            #
-            # The *first* breakpoint is unambiguous and unchanged: 74 of Mark's
-            # 141 questions arrived within five minutes of the previous one on
-            # the same anchor, and that prefix is byte-identical between them.
             "cache_control": {"type": "ephemeral"},
+        },
+        {
+            "type": "text",
+            "text": _assembled_at_system_text(app_state),
         },
     ]
 
@@ -796,7 +790,15 @@ def _build_system_prompt_prefix(
 
 
 def _app_state_system_text(app_state: dict[str, Any]) -> str:
-    return f"Where things stand right now:\n{app_state_json(app_state)}"
+    cacheable_state = {key: value for key, value in app_state.items() if key != "assembledAtUtc"}
+    return f"Where things stand right now:\n{app_state_json(cacheable_state)}"
+
+
+def _assembled_at_system_text(app_state: dict[str, Any]) -> str:
+    """Keep volatile assembly metadata after every cache breakpoint (Batch 258.1)."""
+
+    assembled_at = app_state.get("assembledAtUtc")
+    return f"This context was assembled at UTC: {assembled_at}."
 
 
 def _packet_json(context_packet: dict[str, Any]) -> str:
