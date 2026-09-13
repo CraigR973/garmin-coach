@@ -6,6 +6,33 @@
 
 ## Now
 
+**2026-09-13 — Batch 259 SHIPPED.** PR #291 / squash `dc7c5df`, Decision
+**#331**. Every ranged coach lookup now fetches one sentinel row beyond its
+40-row result limit, so a returned partial range explicitly says that more
+matching rows exist; the existing character cap uses the same `truncated`
+channel. The 120-day span and 40-row cap remain deliberate: wider mixed ranges
+and free-text check-ins are safely bounded only when the coach is told they are
+partial, rather than by pretending the 40 rows are complete.
+
+`get_activities` now accepts an optional closed `activityType` filter for the
+eight Garmin types actually present. It lets the coach retrieve strength work
+without newer walking, breathwork, and cycling rows crowding it out. The tool
+description and prompt move `coach-chat` v12 → v13; `brief_chat` is UNFILTERED,
+so no stored artifact was withdrawn. No migration.
+
+**Verification.** Local backend 1,333 passed / 424 skipped; PostgreSQL CI
+passed both pytest waves, including the new database-backed 90-row overflow and
+strength-filter tests; shared 42 and web 437; Ruff, format, mypy, web build, and
+lint clean (0 errors / 9 existing warnings). Railway and Vercel health serve
+exact `dc7c5df69b7e59f49b9e9cf3303362f47cd7753e`; web `/` is 200. Deployed,
+read-only smoke: a 90-day sleep lookup returned 40 rows with “more matching rows
+exist” inside the character cap; the strength filter returned 33 strength-only
+rows; an oversized check-in result retained its truncation notice.
+
+**Next: Batch 260** — three past-data tools as one cache-key move.
+
+## Prior current-state snapshots
+
 **2026-09-13 — Batch 258 SHIPPED.** PR #290 / squash `40be2b4`, Decision **#330**.
 `assembledAtUtc` was the one self-inflicted cache invalidator: because it sorted
 first in the live JSON, otherwise-identical questions diverged at character 35.
@@ -139,8 +166,6 @@ one `build_messages_payload`. (3) The five new `db_conn` tests in
 `test_coach_tools.py` skip locally and first run in CI, so treat CI's count as
 the real one — the profile-scoping assertion is among them. (4) Everything in the
 previous Now block still stands below.
-
-## Prior current-state snapshots
 
 **2026-09-05 — Batch 255 SHIPPED.** PR #286 / squash `1eb55a4`, Decision **#326**. Authored and built in one
 session from Craig's request to pull the day's conversation — the transcript
@@ -661,6 +686,16 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**2026-09-13 — Batch 259 shipped.** PR #291 / squash `dc7c5df`, Decision #331.
+Range tools now fetch `MAX_ROWS + 1`, using the sentinel only to state an honest
+overflow through the same result channel as character trimming. The deliberately
+retained 120-day/40-row bounds are re-documented with live rates: 3.58 activities,
+1.63 check-ins, and one sleep row per day. `get_activities` gained the eight-type
+validated `activityType` filter; chat v12 → v13 says to use it and to treat a
+truncation as partial, withdrawing nothing because chat is UNFILTERED. Both CI
+waves, exact-SHA production health, web 200, and deployed non-mutating cap/filter
+smokes passed. Next: Batch 260.
 
 **2026-09-13 — Batch 258 shipped.** PR #290 / squash `40be2b4`, Decision #330.
 Moved volatile `assembledAtUtc` after both cache breakpoints, keeping it visible
