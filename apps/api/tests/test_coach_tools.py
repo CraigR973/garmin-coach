@@ -17,7 +17,15 @@ from typing import Any, cast
 import pytest
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
-from src.models.coaching import Activity, Analysis, ManualEntry, Sleep
+from src.models.coaching import (
+    Activity,
+    Analysis,
+    DailyMetric,
+    ManualEntry,
+    PlannedWorkout,
+    Sleep,
+    TemperatureReading,
+)
 from src.models.profile import Profile, UserRole
 from src.services.chat_context import _FETCHABLE_OMISSIONS, _field_truncations
 from src.services.coach_tools import (
@@ -63,6 +71,7 @@ def test_the_tool_list_is_deterministically_ordered() -> None:
     names = [tool["name"] for tool in COACH_TOOLS]
     assert names == sorted(names)
     assert tuple(names) == TOOL_NAMES
+    assert len(names) == 7
     assert json.dumps(COACH_TOOLS, sort_keys=True) == json.dumps(COACH_TOOLS, sort_keys=True)
 
 
@@ -275,6 +284,203 @@ async def test_a_night_outside_the_carried_fortnight_can_be_fetched(
 
 
 @pytest.mark.asyncio
+async def test_past_recovery_readings_prefer_and_label_the_wake_observation(
+    db_conn: AsyncConnection,
+) -> None:
+    """Two phase rows are one date, not two conflicting-looking readings."""
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        player = await _seed_player(session, "Recovery lookup")
+        day = TODAY - timedelta(days=28)
+        session.add_all(
+            [
+                DailyMetric(
+                    id=uuid.uuid4(),
+                    user_id=player.id,
+                    calendar_date=day,
+                    phase="morning",
+                    readiness_score=71,
+                    hrv_last_night_avg_ms=48,
+                    resting_heart_rate_bpm=45,
+                    body_battery_charged=24,
+                    body_battery_drained=3,
+                    body_battery_end=67,
+                    raw_payload={},
+                ),
+                DailyMetric(
+                    id=uuid.uuid4(),
+                    user_id=player.id,
+                    calendar_date=day,
+                    phase="settled",
+                    readiness_score=39,
+                    hrv_last_night_avg_ms=40,
+                    resting_heart_rate_bpm=51,
+                    body_battery_charged=25,
+                    body_battery_drained=62,
+                    body_battery_end=19,
+                    raw_payload={},
+                ),
+            ]
+        )
+        await session.commit()
+
+        result = await CoachToolbox(session, player).execute(
+            tool_use_id="tu_1",
+            name="get_daily_metrics",
+            payload={"startDate": day.isoformat(), "endDate": day.isoformat()},
+        )
+
+    payload = json.loads(result.content)
+    assert payload["rowCount"] == 1
+    assert payload["rows"][0]["observationPhase"] == "morning"
+    assert payload["rows"][0]["readinessScore"] == 71
+    assert payload["rows"][0]["bodyBatteryEnd"] == 67
+    assert "not finished-day totals" in payload["rows"][0]["bodyBatteryMeaning"]
+
+
+@pytest.mark.asyncio
+async def test_past_prescriptions_exclude_superseded_versions(
+    db_conn: AsyncConnection,
+) -> None:
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        player = await _seed_player(session, "Plan lookup")
+        day = TODAY - timedelta(days=35)
+        session.add_all(
+            [
+                PlannedWorkout(
+                    id=uuid.uuid4(),
+                    user_id=player.id,
+                    workout_date=day,
+                    version=1,
+                    title="Superseded ride",
+                    workout_type="bike_vo2",
+                    status="planned",
+                    is_active=False,
+                    planned_duration_min=60,
+                    intensity_target="120% FTP",
+                    structured_workout={"workPctFtp": 120},
+                ),
+                PlannedWorkout(
+                    id=uuid.uuid4(),
+                    user_id=player.id,
+                    workout_date=day,
+                    version=2,
+                    title="Final prescription",
+                    workout_type="bike_vo2",
+                    status="completed",
+                    is_active=True,
+                    planned_duration_min=52,
+                    intensity_target="115% FTP",
+                    structured_workout={"workPctFtp": 115},
+                ),
+            ]
+        )
+        await session.commit()
+
+        result = await CoachToolbox(session, player).execute(
+            tool_use_id="tu_1",
+            name="get_planned_workouts",
+            payload={"startDate": day.isoformat(), "endDate": day.isoformat()},
+        )
+
+    payload = json.loads(result.content)
+    assert payload["rowCount"] == 1
+    assert payload["rows"][0]["version"] == 2
+    assert payload["rows"][0]["title"] == "Final prescription"
+    assert payload["rows"][0]["structuredWorkout"] == {"workPctFtp": 115}
+    assert "not proof that Mark executed it" in payload["meaning"]
+
+
+@pytest.mark.asyncio
+async def test_thermal_range_uses_sleep_samples_and_names_a_missing_night(
+    db_conn: AsyncConnection,
+) -> None:
+    """A warm pre-sleep sample is not an overnight peak, and absence is not Green."""
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        player = await _seed_player(session, "Thermal lookup")
+        wake_day = TODAY - timedelta(days=5)
+        missing_day = wake_day + timedelta(days=1)
+        session.add(
+            Sleep(
+                id=uuid.uuid4(),
+                user_id=player.id,
+                calendar_date=wake_day,
+                sleep_start_utc=datetime.combine(wake_day - timedelta(days=1), time(22, 0)),
+                sleep_end_utc=datetime.combine(wake_day, time(6, 0)),
+                duration_sec=8 * 3600,
+            )
+        )
+        for captured_at, value in (
+            (datetime.combine(wake_day - timedelta(days=1), time(21, 0)), 25.0),
+            (datetime.combine(wake_day - timedelta(days=1), time(23, 0)), 18.5),
+            (datetime.combine(wake_day, time(5, 0)), 18.8),
+        ):
+            session.add(
+                TemperatureReading(
+                    id=uuid.uuid4(),
+                    user_id=player.id,
+                    source="hive",
+                    captured_at_utc=captured_at,
+                    temperature_c=value,
+                    raw_payload={},
+                )
+            )
+        await session.commit()
+
+        result = await CoachToolbox(session, player).execute(
+            tool_use_id="tu_1",
+            name="get_thermal_nights",
+            payload={
+                "startDate": wake_day.isoformat(),
+                "endDate": missing_day.isoformat(),
+            },
+        )
+
+    payload = json.loads(result.content)
+    assert payload["rowCount"] == 1
+    assert payload["datesWithoutReadings"] == [missing_day.isoformat()]
+    row = payload["rows"][0]
+    assert row["wakeDate"] == wake_day.isoformat()
+    assert row["thermalReview"]["windowSource"] == "sleep"
+    assert row["thermalReview"]["sampleCount"] == 2
+    assert row["thermalReview"]["indoorPeakC"] == 18.8
+    assert not any(flag.startswith("thermal_disruption") for flag in row["thermalReview"]["flags"])
+    assert "not a cool or in-band result" in payload["meaning"]
+
+
+@pytest.mark.asyncio
+async def test_thermal_range_names_logical_night_overflow(db_conn: AsyncConnection) -> None:
+    """Raw samples are reduced first, but the same honest 40-row cap still applies."""
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        player = await _seed_player(session, "Many thermal nights")
+        start = TODAY - timedelta(days=MAX_ROWS + 4)
+        for offset in range(MAX_ROWS + 5):
+            wake_day = start + timedelta(days=offset)
+            session.add(
+                TemperatureReading(
+                    id=uuid.uuid4(),
+                    user_id=player.id,
+                    source="hive",
+                    captured_at_utc=datetime.combine(wake_day - timedelta(days=1), time(23, 0)),
+                    temperature_c=18.5,
+                    raw_payload={},
+                )
+            )
+        await session.commit()
+
+        result = await CoachToolbox(session, player).execute(
+            tool_use_id="tu_1",
+            name="get_thermal_nights",
+            payload={"startDate": start.isoformat(), "endDate": TODAY.isoformat()},
+        )
+
+    payload = json.loads(result.content)
+    # The verbose per-night shape also reaches the character ceiling, but the
+    # row-cap fact must survive that second trim rather than disappearing.
+    assert payload["rowCount"] < MAX_ROWS
+    assert "More matching rows also exist" in payload["truncated"]
+
+
+@pytest.mark.asyncio
 async def test_a_lookup_never_reaches_another_profiles_rows(db_conn: AsyncConnection) -> None:
     """The one assertion that has to hold for every tool.
 
@@ -324,6 +530,39 @@ async def test_a_lookup_never_reaches_another_profiles_rows(db_conn: AsyncConnec
                 raw_response={},
             )
         )
+        session.add(
+            DailyMetric(
+                id=uuid.uuid4(),
+                user_id=other.id,
+                calendar_date=day,
+                phase="morning",
+                readiness_score=99,
+                raw_payload={},
+            )
+        )
+        session.add(
+            PlannedWorkout(
+                id=uuid.uuid4(),
+                user_id=other.id,
+                workout_date=day,
+                version=1,
+                title="Their private prescription",
+                workout_type="bike_vo2",
+                status="planned",
+                is_active=True,
+                structured_workout={},
+            )
+        )
+        session.add(
+            TemperatureReading(
+                id=uuid.uuid4(),
+                user_id=other.id,
+                source="hive",
+                captured_at_utc=datetime.combine(day - timedelta(days=1), time(23, 0)),
+                temperature_c=19.0,
+                raw_payload={},
+            )
+        )
         await session.commit()
 
         toolbox = CoachToolbox(session, asker)
@@ -332,11 +571,14 @@ async def test_a_lookup_never_reaches_another_profiles_rows(db_conn: AsyncConnec
             await toolbox.execute(tool_use_id="t1", name="get_sleep_nights", payload=span),
             await toolbox.execute(tool_use_id="t2", name="get_activities", payload=span),
             await toolbox.execute(tool_use_id="t3", name="get_check_ins", payload=span),
+            await toolbox.execute(tool_use_id="t4", name="get_daily_metrics", payload=span),
+            await toolbox.execute(tool_use_id="t5", name="get_planned_workouts", payload=span),
             await toolbox.execute(
-                tool_use_id="t4",
+                tool_use_id="t6",
                 name="get_read",
                 payload={"readType": "morning", "subjectDate": day.isoformat()},
             ),
+            await toolbox.execute(tool_use_id="t7", name="get_thermal_nights", payload=span),
         ]
 
     for result in results:
@@ -344,6 +586,7 @@ async def test_a_lookup_never_reaches_another_profiles_rows(db_conn: AsyncConnec
         assert json.loads(result.content)["rowCount"] == 0
     assert "private note" not in " ".join(r.content for r in results)
     assert "private brief" not in " ".join(r.content for r in results)
+    assert "private prescription" not in " ".join(r.content for r in results)
 
 
 @pytest.mark.asyncio

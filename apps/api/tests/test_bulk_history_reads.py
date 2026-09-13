@@ -13,10 +13,9 @@ Two things are pinned here, and they fail for different reasons:
   the values the un-projected query produced. Narrowing a query must not move a
   number.
 
-``daily_metrics.raw_payload`` is deliberately *not* covered: it is still read
-(``daily_metric_coverage``), so a test asserting its absence would be asserting
-a bug. The floor below states that explicitly so a later sweep cannot quietly
-widen itself into that column.
+``daily_metrics.raw_payload`` remains loaded by coverage-aware consumers. The
+coach history lookup is narrower: it labels the observation phase and reads
+only typed recovery fields, so its dedicated projection is tested separately.
 """
 
 from __future__ import annotations
@@ -29,11 +28,19 @@ import pytest
 from sqlalchemy import Select
 from sqlalchemy.dialects import postgresql
 
-from src.models.coaching import DailyMetric, FanStateReading, Sleep, TemperatureReading
+from src.models.coaching import (
+    DailyMetric,
+    FanStateReading,
+    Sleep,
+    TemperatureReading,
+    WeatherDaily,
+)
 from src.models.profile import Profile, UserRole
 from src.services.bulk_history_reads import (
+    daily_metric_reading_columns,
     fan_series_columns,
     temperature_series_columns,
+    weather_summary_columns,
     without_sleep_raw_payload,
 )
 
@@ -166,10 +173,37 @@ def test_daily_metric_raw_payload_is_deliberately_still_loaded() -> None:
     """
     from sqlalchemy import select
 
-    import src.services.bulk_history_reads as module
-
-    assert "DailyMetric" not in module.__all__
     assert "raw_payload" in compiled(select(DailyMetric))
+
+
+def test_coach_daily_metric_projection_leaves_provider_payload_behind() -> None:
+    """The tool labels the phase instead of inferring full-day source coverage."""
+    from sqlalchemy import select
+
+    sql = compiled(select(DailyMetric).options(daily_metric_reading_columns()))
+    assert "raw_payload" not in sql
+    for column in (
+        "daily_metrics.calendar_date",
+        "daily_metrics.phase",
+        "daily_metrics.readiness_score",
+        "daily_metrics.hrv_last_night_avg_ms",
+        "daily_metrics.resting_heart_rate_bpm",
+        "daily_metrics.body_battery_end",
+    ):
+        assert column in sql, column
+
+
+def test_thermal_weather_projection_leaves_provider_payload_behind() -> None:
+    from sqlalchemy import select
+
+    sql = compiled(select(WeatherDaily).options(weather_summary_columns()))
+    assert "raw_payload" not in sql
+    for column in (
+        "weather_daily.calendar_date",
+        "weather_daily.overnight_low_c",
+        "weather_daily.overnight_wind_gust_mph",
+    ):
+        assert column in sql, column
 
 
 # --------------------------------------------------------------------------
