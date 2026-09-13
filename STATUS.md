@@ -20,9 +20,8 @@ is retired because reuse now applies across ordinary follow-ups.
 Ruff, format and mypy clean; web build clean; lint 0 errors / 9 existing warnings.
 Both CI waves and the preview passed. Railway and Vercel health serve exact
 `40be2b43b7d4ca720570500093b721a3835f9f84`; web `/` is 200. The production
-cache-read smoke remains the next check: no authenticated browser session was
-available in this workspace, so no Mark-facing question or paid model request
-was manufactured to obtain it.
+cache-read smoke passed at 13:51 UTC: the first Home request wrote 25,382 tokens
+and the second, 24 seconds later, read all 25,382 from cache.
 
 **Also fixed while gating.** Alembic reads its `.ini` using the local ASCII
 locale; an em dash in a comment made the repository's offline migration test
