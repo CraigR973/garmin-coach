@@ -6,30 +6,48 @@
 
 ## Now
 
-**2026-09-13 — Batch 259 SHIPPED.** PR #291 / squash `dc7c5df`, Decision
-**#331**. Every ranged coach lookup now fetches one sentinel row beyond its
-40-row result limit, so a returned partial range explicitly says that more
-matching rows exist; the existing character cap uses the same `truncated`
-channel. The 120-day span and 40-row cap remain deliberate: wider mixed ranges
-and free-text check-ins are safely bounded only when the coach is told they are
-partial, rather than by pretending the 40 rows are complete.
+**2026-09-13 — Batch 260 SHIPPED.** PR #292 / squash `a0ccf6d`, Decision
+**#332**. The coach now has seven read-only, profile-scoped tools. The three new
+ones fetch a range of past bedroom nights, Garmin wake-recovery observations,
+and active historical prescriptions; the existing activity lookup supplies the
+execution side of a past adherence question. Thermal nights reuse the same
+sleep-window, weather, holiday, protocol and `thermal_review` builders as the
+morning/live context, and a missing reading is reported separately from a cool
+night. Recovery selects one morning-first observation per date and labels its
+phase; plans return only active versions and explicitly say plan status is not
+proof of execution. Projected columns keep provider JSONB off the wire.
 
-`get_activities` now accepts an optional closed `activityType` filter for the
-eight Garmin types actually present. It lets the coach retrieve strength work
-without newer walking, breathwork, and cycling rows crowding it out. The tool
-description and prompt move `coach-chat` v12 → v13; `brief_chat` is UNFILTERED,
-so no stored artifact was withdrawn. No migration.
+The ledger was corrected before code: production now holds 8,057 temperature
+readings across 84 source dates, 530 daily-metric phase rows across 447 dates,
+and 156 plan versions / 119 active. The existing sleep tool already carried
+historical HRV/RHR, while the real gaps were readiness/training state/wake Body
+Battery and prescriptions older than the carried week.
 
-**Verification.** Local backend 1,333 passed / 424 skipped; PostgreSQL CI
-passed both pytest waves, including the new database-backed 90-row overflow and
-strength-filter tests; shared 42 and web 437; Ruff, format, mypy, web build, and
-lint clean (0 errors / 9 existing warnings). Railway and Vercel health serve
-exact `dc7c5df69b7e59f49b9e9cf3303362f47cd7753e`; web `/` is 200. Deployed,
-read-only smoke: a 90-day sleep lookup returned 40 rows with “more matching rows
-exist” inside the character cap; the strength filter returned 33 strength-only
-rows; an oversized check-in result retained its truncation notice.
+**Verification.** Local backend **1,337 passed / 430 expected PostgreSQL
+skips**; CI **1,767 / 0** in the branch push, PR and post-merge waves; shared 42
+and web 437; Ruff check/format, mypy, migration round-trip, dependency audit,
+web build and lint passed (0 errors / 9 existing warnings). Railway direct and
+Vercel same-origin health serve exact
+`a0ccf6df13e4042ff6969245520a74e81500f925`; web `/` is 200 and protected
+daily-loop is 401 through both paths. A live model check, writing no rows and
+anchored to the weekly review Mark disputed, made four parallel lookups in one
+round: all seven Sep 7–13 bedroom peaks were present at 17.87–19.20°C (none
+above 20°C), Aug 7 wake recovery was readiness 30 / HRV 38 ms / Body Battery
+charge 40 and end 52, and five prescribed sessions matched recorded activities
+while one bodyweight prescription did not. The compound three-question check
+took 34.0s and an estimated $0.1586 at the repo-recorded Sonnet 5 rates, versus
+Batch 257's one-lookup 16.9s / $0.0746; it is intentionally reported as a wider
+four-tool workload, not an apples-to-apples regression. Chat v13 → v14 once;
+the deployed artifact registry confirms `brief_chat` is UNFILTERED with no
+analysis types, so no stored artifact was withdrawn. No migration.
 
-**Next: Batch 260** — three past-data tools as one cache-key move.
+**Next: Batch 261** — make the tool-loop deadline, slot and use cap real bounds.
+
+**Gotcha:** the stored Sep 7 weekly review's thermal aggregate is itself false
+(it claimed a 20.9°C average peak/all nights disrupted, while the sleep-window
+readings above are all below 20°C). Batch 260 lets the coach audit and correct
+that claim in conversation; it does not repair the separate weekly-review
+generation defect.
 
 ## Prior current-state snapshots
 
@@ -686,6 +704,18 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**2026-09-13 — Batch 260 shipped.** PR #292 / squash `a0ccf6d`, Decision #332.
+Added range-based thermal-night, morning-first recovery and active-prescription
+tools, bringing the closed read-only set to seven with the toolbox's
+profile-scoping invariant intact. Corrected stale ledger measurements before
+code, projected away provider JSONB, and moved chat v13 → v14 once. All local,
+push, PR and post-merge gates passed; exact-SHA production health and a live
+four-tool model check passed, including the seven disputed thermal nights. The
+compound check measured 34.0s / $0.1586 against the older single-lookup
+16.9s / $0.0746 baseline. No artifact was orphaned and no migration shipped.
+The false thermal aggregate in the stored weekly review remains a separate
+recorded defect. Next: Batch 261.
 
 **2026-09-13 — Batch 259 shipped.** PR #291 / squash `dc7c5df`, Decision #331.
 Range tools now fetch `MAX_ROWS + 1`, using the sentinel only to state an honest
