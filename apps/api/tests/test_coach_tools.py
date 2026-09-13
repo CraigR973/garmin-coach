@@ -21,6 +21,7 @@ from src.models.coaching import Activity, Analysis, ManualEntry, Sleep
 from src.models.profile import Profile, UserRole
 from src.services.chat_context import _FETCHABLE_OMISSIONS, _field_truncations
 from src.services.coach_tools import (
+    ACTIVITY_TYPES,
     COACH_TOOLS,
     MAX_RESULT_CHARS,
     MAX_ROWS,
@@ -195,6 +196,22 @@ async def test_an_unreadable_read_type_is_refused() -> None:
 
     assert result.is_error is True
     assert "readType must be one of" in result.content
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_activity_type_is_refused() -> None:
+    result = await _offline_toolbox().execute(
+        tool_use_id="tu_1",
+        name="get_activities",
+        payload={
+            "startDate": "2026-08-01",
+            "endDate": "2026-08-12",
+            "activityType": "dumbbells",
+        },
+    )
+
+    assert result.is_error is True
+    assert "activityType must be one of" in result.content
 
 
 # ---------------------------------------------------------------------------
@@ -420,7 +437,93 @@ async def test_a_result_that_does_not_fit_says_so_rather_than_going_quiet(
 
     payload = json.loads(result.content)
     assert len(result.content) <= MAX_RESULT_CHARS
-    # The row cap bites first, then the character cap; either way it is named.
     assert payload["rowCount"] <= MAX_ROWS
     assert "truncated" in payload
-    assert "The rest exist" in payload["truncated"]
+    assert "Narrow the window" in payload["truncated"]
+
+
+@pytest.mark.asyncio
+async def test_a_sql_row_cap_is_named_even_when_small_rows_fit(
+    db_conn: AsyncConnection,
+) -> None:
+    """This is the case the old character-cap test could never exercise.
+
+    Before Batch 259 the SQL query returned only 40 of these 90 short notes and
+    ``_result`` had no way to know the other 50 existed, so this assertion fails
+    on the old query even though the serialized result is well below 12k chars.
+    """
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        player = await _seed_player(session, "Many short notes")
+        start = TODAY - timedelta(days=89)
+        for offset in range(90):
+            day = start + timedelta(days=offset)
+            session.add(
+                ManualEntry(
+                    id=uuid.uuid4(),
+                    user_id=player.id,
+                    entry_date=day,
+                    entry_at_utc=datetime.combine(day, time(9, 0)),
+                    notes="short note",
+                )
+            )
+        await session.commit()
+
+        result = await CoachToolbox(session, player).execute(
+            tool_use_id="tu_1",
+            name="get_check_ins",
+            payload={"startDate": start.isoformat(), "endDate": TODAY.isoformat()},
+        )
+
+    payload = json.loads(result.content)
+    assert len(result.content) < MAX_RESULT_CHARS
+    assert payload["rowCount"] == MAX_ROWS
+    assert "more matching rows exist" in payload["truncated"]
+
+
+@pytest.mark.asyncio
+async def test_an_activity_type_filter_returns_strength_sessions_from_a_mixed_range(
+    db_conn: AsyncConnection,
+) -> None:
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        player = await _seed_player(session, "Strength lookup")
+        start = TODAY - timedelta(days=89)
+        for offset in range(90):
+            day = start + timedelta(days=offset)
+            activity_type = "strength_training" if offset % 3 == 0 else "indoor_cycling"
+            session.add(
+                Activity(
+                    id=uuid.uuid4(),
+                    user_id=player.id,
+                    garmin_activity_id=800_000 + offset,
+                    activity_name=(
+                        "Strength work" if activity_type == "strength_training" else "Ride"
+                    ),
+                    activity_type=activity_type,
+                    start_utc=datetime.combine(day, time(10, 0)),
+                    duration_sec=3600,
+                )
+            )
+        await session.commit()
+
+        result = await CoachToolbox(session, player).execute(
+            tool_use_id="tu_1",
+            name="get_activities",
+            payload={
+                "startDate": start.isoformat(),
+                "endDate": TODAY.isoformat(),
+                "activityType": "strength_training",
+            },
+        )
+
+    payload = json.loads(result.content)
+    assert payload["requestedActivityType"] == "strength_training"
+    assert payload["rowCount"] == 30
+    assert {row["activityType"] for row in payload["rows"]} == {"strength_training"}
+
+
+def test_activity_type_schema_matches_the_validated_production_types() -> None:
+    activities = next(tool for tool in COACH_TOOLS if tool["name"] == "get_activities")
+    schema = activities["input_schema"]
+
+    assert schema["required"] == ["startDate", "endDate"]
+    assert schema["properties"]["activityType"]["enum"] == list(ACTIVITY_TYPES)

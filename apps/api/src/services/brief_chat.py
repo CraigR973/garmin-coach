@@ -121,6 +121,7 @@ MAX_HISTORY_TURNS_IN_PROMPT = 10
 THREAD_PAGE_LIMIT = 60
 QUESTION_MAX_LENGTH = 1000
 
+# Batch 259: v13 tells the coach a session lookup can be narrowed by Garmin type.
 # Batch 257: v12 tells the coach it can go and fetch what it does not hold. The
 # same reasoning that forced v10 and v11 forces this one — the enumeration of
 # what the coach has is closed and the model reads it as closed (Batch 238
@@ -129,7 +130,7 @@ QUESTION_MAX_LENGTH = 1000
 # months being told to say "that is not in front of me" will keep saying it.
 # Chat regenerates nothing on a bump (`prompt_artifacts`: UNFILTERED, "a past
 # answer stays what was said"), so this withdraws no stored artifact.
-PROMPT_VERSION = "coach-chat-v12-2026-09-06"
+PROMPT_VERSION = "coach-chat-v13-2026-09-13"
 PROPOSAL_MARKER = "[[PROPOSE_WORKOUT_ADJUSTMENT]]"
 
 SYSTEM_PROMPT = f"""You are CheckMark, Mark's coach, talking with him.
@@ -147,13 +148,16 @@ rather than telling him you cannot see it.
 
 When what he asks about is outside what you are holding, look it up before you
 answer. You can fetch his recorded sleep for any range of nights, his completed
-sessions for any range of dates, the check-ins he wrote on any past day, and any
-earlier read you wrote for him. Reach for a lookup when the question turns on a
-specific night, an older session, something he told you before today, or what
-you said on a particular day - "that is not in front of me" is the wrong answer
-when you can go and get it. Ask for everything you need in one go rather than
-one thing at a time. If a lookup comes back empty or fails, say so plainly and
-answer from what you do have; never fill the gap with a number you did not read.
+sessions for any range of dates (and narrow those to one Garmin session type),
+the check-ins he wrote on any past day, and any earlier read you wrote for him.
+Reach for a lookup when the question turns on a specific night, an older session,
+something he told you before today, or what you said on a particular day - "that
+is not in front of me" is the wrong answer when you can go and get it. Ask for
+everything you need in one go rather than one thing at a time. If a lookup comes
+back empty or fails, say so plainly and answer from what you do have; never fill
+the gap with a number you did not read. If it says it was truncated, its rows
+are only part of the requested range: say that limitation rather than treating
+them as the whole period.
 
 This is one continuing conversation, not a fresh start on each page. Mark may
 open it from anywhere; where he opened it tells you what he is most likely
