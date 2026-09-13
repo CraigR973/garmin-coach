@@ -6,6 +6,31 @@
 
 ## Now
 
+**2026-09-13 — Batch 258 SHIPPED.** PR #290 / squash `40be2b4`, Decision **#330**.
+`assembledAtUtc` was the one self-inflicted cache invalidator: because it sorted
+first in the live JSON, otherwise-identical questions diverged at character 35.
+It now sits in a trailing unmarked system block. The two cacheable blocks stay
+byte-identical when only the timestamp changes, pinned by regression coverage;
+the timestamp remains available to the coach at full precision. The 5-minute TTL
+is unchanged: 74/141 prior questions fit it, while a 1-hour cache writes at 2x
+and needs three requests to repay that cost. The old tool-rate break-even claim
+is retired because reuse now applies across ordinary follow-ups.
+
+**Verification.** Local backend 1,333 passed / 424 skipped; shared 42; web 437;
+Ruff, format and mypy clean; web build clean; lint 0 errors / 9 existing warnings.
+Both CI waves and the preview passed. Railway and Vercel health serve exact
+`40be2b43b7d4ca720570500093b721a3835f9f84`; web `/` is 200. The production
+cache-read smoke remains the next check: no authenticated browser session was
+available in this workspace, so no Mark-facing question or paid model request
+was manufactured to obtain it.
+
+**Also fixed while gating.** Alembic reads its `.ini` using the local ASCII
+locale; an em dash in a comment made the repository's offline migration test
+fail before it ran. The comment is ASCII-only, and the direct offline render now
+passes.
+
+**Next: Batch 259** — honest row-cap overflow, before Batch 260 adds tools.
+
 **2026-09-06 — Batch 257 SHIPPED.** PR #288 / squash `9f5cc83`, Decision **#328**. The 🔴 High one, and
 it grew a foundation before it grew a feature.
 
@@ -637,6 +662,14 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**2026-09-13 — Batch 258 shipped.** PR #290 / squash `40be2b4`, Decision #330.
+Moved volatile `assembledAtUtc` after both cache breakpoints, keeping it visible
+without making the ~23k-token live state rewrite on every follow-up. The two
+cached blocks are now pinned byte-identical across timestamp-only changes; TTL
+stays at five minutes. Local and CI gates passed; Railway and Vercel serve the
+merge SHA. A local offline Alembic failure also exposed an ASCII-only config
+parser, fixed by changing a comment's em dash to a hyphen. Next: Batch 259.
 
 **2026-09-06 — Batch 257 shipped; the Anthropic boundary became one boundary, and the coach can go and get what it does not hold.** PR #288 / squash `9f5cc83`, Decision #328. The 🔴 High one, and it grew a foundation before it grew a feature: **257.1's boundary question was answered wider than the row proposed** — offered the raw `httpx` boundary (the row's own recommendation), the `anthropic` SDK for chat alone, or the SDK everywhere, Craig chose the third, so the batch is the migration first and the tool loop on top of it, superseding the SDK clause of Decision #47. **What the migration did not change is the point:** the SDK replaces exactly one thing, hand-rolled HTTP against `POST /v1/messages`, while the classified taxonomy (141), transport slugs (248), shared-deadline retry (248/232) and usage logging (233) stay owned here — every public name survived, so all nine `generate_anthropic_text` callers were untouched by a migration of the thing they all call. `max_retries=0` and per-phase timeouts keep the repo's contracts over the SDK's, both pinned by tests, because the SDK's own two retries would have nested inside a budget Batch 232 sized for three attempts. **The near-miss worth carrying forward: the image installs from the hashed `requirements.lock`, not `pyproject.toml`** — adding the SDK to `pyproject` alone passes every gate and deploys a container with no `anthropic` in it; the regenerated lock adds only the SDK and seven transitive deps with no other version bump, and `pip-audit --require-hashes` is clean. The image now carries two HTTP stacks (`anthropic` 1.x is on `httpx2`). **Three of the row's claims needed correcting before code:** 257.4's premise (0 cache reads across 275 stored generations is not evidence caching is broken — the chat path is the only caller that ever set `cache_control` and chat turns store no `raw_response`; a sub-cent probe proved caching works); 257.2's "a KB section", stale since Batch 256 put the whole knowledge base in the block, so **four tools not five**; and 257.5, which needed more than a reworded sentence, because telling the model to fetch whatever is missing is a lie for the two omissions with no tool behind them — the block now names which omissions are fetchable and with which tool. **The second cache breakpoint is a trade the code states out loud** after the cross-question measurement corrected the first draft of its comment: an extra round trip reads the ~24k-token live block at 0.1x (round 2 read 25,942), but a lookup-free question writes it at 1.25x for nothing — +0.25x / −0.65x, break-even ~28%, kept with `coach_chat_used_tools` logged so the real rate replaces the estimate; the first breakpoint needed no argument, a second question on the same anchor read 39,978 tokens. **Met on real production data, writing nothing:** asked his REM on the night of 12 August, the pre-257 path said *"I don't have the night of August 12 in front of me here"* and the tool path fetched and answered **16 minutes against 63 last night** — 16 is what the app recorded. **Cost $0.0645 → $0.0746 (+16%)**, not the +100% a naive doubling implies; **latency 4.9s → 16.9s**, paid only when a lookup happens. **Two defects were found by reviewing the batch's own work**, both of them this batch re-creating a bug it was meant to carry the fix for: `APIResponseValidationError` would have escaped `generate_anthropic_text` as the bare unparseable 500 Batch 248 removed, and `_FETCHABLE_OMISSIONS` mapped the section drops but not the *field* truncation that actually fires, so 257.5's mechanism was shipping without ever appearing on a real block. Local backend 1,326 / 424 against 256's 1,300/419, **PostgreSQL CI 1,750 / 0** against 1,719; ruff, format, mypy, shared 42, web 437, build and lint clean. The loop's key tests were confirmed to fail against wrong logic. Chat prompt v11 → v12; `brief_chat` is `UNFILTERED`, so nothing was withdrawn. No migration. Next are Batches 208/209/210.
 
