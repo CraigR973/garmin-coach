@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from anthropic.types import Message
 
+from src.config import settings
 from src.services.anthropic_text import (
     MAX_TOOL_ROUNDS,
     ToolResult,
@@ -65,9 +66,14 @@ class _Scripted:
     script: list[dict[str, Any]] = []
     payloads: list[dict[str, Any]] = []
     calls: int = 0
+    #: The ``timeout=`` kwarg each ``AsyncAnthropic(...)`` construction was given,
+    #: in call order — how the shared-deadline tests observe what read budget
+    #: each round actually asked for (Batch 261).
+    timeouts: list[Any] = []
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         self.messages = _Messages()
+        _Scripted.timeouts.append(kwargs.get("timeout"))
 
     async def __aenter__(self) -> _Scripted:
         return self
@@ -80,6 +86,7 @@ class _Scripted:
         cls.script = list(responses)
         cls.payloads = []
         cls.calls = 0
+        cls.timeouts = []
 
 
 class _Recorder:
@@ -315,6 +322,81 @@ async def test_an_answer_with_no_lookups_costs_exactly_one_call() -> None:
     assert (result.api_calls, result.tool_uses) == (1, 0)
     assert _Scripted.payloads[0]["tools"] == TOOLS
     assert "tool_choice" not in _Scripted.payloads[0]
+
+
+@pytest.mark.asyncio
+async def test_a_later_round_shares_the_first_rounds_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Batch 261.1: one deadline for the whole answer, not one per round.
+
+    Before this, every round called ``_create_with_retry`` with no deadline of
+    its own, so each round restarted the full read budget from scratch — three
+    rounds could take three times as long as the single-call path, in-request,
+    with Mark watching. A round's first attempt must be sized off what is
+    *left* of the shared deadline, not the full budget again.
+    """
+    monkeypatch.setattr(settings, "anthropic_read_timeout_seconds", 100.0)
+    clock = {"t": 0.0}
+    monkeypatch.setattr("src.services.anthropic_text.time.monotonic", lambda: clock["t"])
+
+    _Scripted.load(
+        {
+            "stop_reason": "tool_use",
+            "content": [_tool_use("tu_1", "get_sleep_nights", {"startDate": "a", "endDate": "b"})],
+        },
+        {"stop_reason": "end_turn", "content": [{"type": "text", "text": "done"}]},
+    )
+
+    real_create = _Messages.create
+
+    async def _timed_create(self: _Messages, **kwargs: Any) -> Message:
+        message = await real_create(self, **kwargs)
+        # The first round's call took 40s of the shared 100s budget.
+        if clock["t"] == 0.0:
+            clock["t"] = 40.0
+        return message
+
+    monkeypatch.setattr(_Messages, "create", _timed_create)
+
+    await _run(_Recorder())
+
+    # Round 1 gets the whole budget; round 2 gets what round 1 left behind, not
+    # a fresh 100s.
+    assert [timeout.read for timeout in _Scripted.timeouts] == [100.0, 60.0]
+
+
+@pytest.mark.asyncio
+async def test_a_round_that_asks_for_more_than_the_cap_refuses_the_excess() -> None:
+    """Batch 261.3: the cap gates what executes, not just what the next round
+    may ask for.
+
+    ``tool_uses`` used to increment only after every call in a round had
+    already run, so a round asking for more parallel lookups than the cap
+    allows executed all of them and the cap only gated the round after. The
+    excess in an over-budget round is now refused as ``is_error`` — a dropped
+    ``tool_use`` is a 400 on the next turn — rather than executed.
+    """
+    _Scripted.load(
+        {
+            "stop_reason": "tool_use",
+            "content": [
+                _tool_use("tu_1", "get_sleep_nights", {"startDate": "a", "endDate": "b"}),
+                _tool_use("tu_2", "get_sleep_nights", {"startDate": "c", "endDate": "d"}),
+            ],
+        },
+        {"stop_reason": "end_turn", "content": [{"type": "text", "text": "done"}]},
+    )
+    executor = _Recorder()
+
+    result = await _run(executor, max_tool_uses=1)
+
+    assert result.tool_uses == 1
+    assert executor.seen == [("tu_1", "get_sleep_nights", {"startDate": "a", "endDate": "b"})]
+    sent = _Scripted.payloads[-1]["messages"][-1]["content"]
+    assert [block["tool_use_id"] for block in sent] == ["tu_1", "tu_2"]
+    refused_block = next(block for block in sent if block["tool_use_id"] == "tu_2")
+    assert refused_block["is_error"] is True
 
 
 @pytest.mark.asyncio

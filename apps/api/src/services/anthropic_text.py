@@ -479,6 +479,7 @@ async def _create_with_retry(
     api_key: str,
     payload: dict[str, Any],
     model_name: str,
+    deadline: float | None = None,
 ) -> Message:
     """Call Anthropic, re-attempting only the reasons a retry can actually fix.
 
@@ -495,17 +496,51 @@ async def _create_with_retry(
     arguments *deliberately*: "a field is absent from the request unless a caller
     passes it" is the property Batch 233 built the rollback path on and pinned
     with a test, and a dict is the shape that keeps it directly inspectable.
+
+    ``deadline`` (Batch 261) lets a caller that makes *several* calls toward one
+    answer — the tool loop — share a single budget across all of them, the way
+    ``_MAX_ANTHROPIC_ATTEMPTS`` already shares one budget across retries. Left
+    ``None`` (every pre-261 caller, and the single-call path today), the deadline
+    is computed fresh right here and the first attempt keeps ``read=None`` —
+    exactly Batch 234's budget, unchanged down to the float. A caller that passes
+    its own deadline gets a first attempt sized off *that* clock instead, so a
+    second round starts with what is actually left rather than a fresh 550s.
     """
 
     budget = settings.anthropic_read_timeout_seconds
-    deadline = time.monotonic() + budget
+    shared_deadline = deadline is not None
+    if deadline is None:
+        deadline = time.monotonic() + budget
     last: AnthropicApiError | None = None
 
     for attempt in range(1, _MAX_ANTHROPIC_ATTEMPTS + 1):
-        # The first attempt gets the budget itself, so the common path is exactly
-        # what Batch 234 derived and nothing about it changed. Only a retry pays
-        # for its predecessors out of the same budget.
-        remaining = None if attempt == 1 else deadline - time.monotonic()
+        if attempt == 1 and not shared_deadline:
+            # The common path: the first attempt gets the budget itself, so
+            # nothing about Batch 234's behaviour changed.
+            remaining: float | None = None
+        else:
+            remaining = deadline - time.monotonic()
+            if remaining < _MIN_ATTEMPT_SECONDS:
+                # Reached either on a shared deadline that a prior round already
+                # spent down, or on a retry that would start after the same
+                # deadline used to be checked only before sleeping. There is no
+                # point starting an attempt with next to no read budget left.
+                log.warning(
+                    "anthropic_call_not_retried",
+                    model_name=model_name,
+                    attempt=attempt,
+                    cause="budget_exhausted",
+                    budget_seconds=budget,
+                )
+                raise (
+                    last
+                    if last is not None
+                    else AnthropicApiError(
+                        "Anthropic call budget was exhausted before this attempt could start.",
+                        reason="timeout",
+                        status_code=0,
+                    )
+                )
         try:
             async with anthropic_client(api_key=api_key, read=remaining) as client:
                 # ``messages.create`` is overloaded on ``stream``, so a ``**dict``
@@ -778,6 +813,24 @@ async def generate_anthropic_text_with_tools(
     is always prose. That is cheap here on purpose: a ``tool_choice`` change
     invalidates only the *messages* cache, and this path's breakpoints are both
     in ``system``.
+
+    **One deadline for the whole answer, not one per round (Batch 261).** Before
+    this, every round called ``_create_with_retry`` with no deadline of its own,
+    so each restarted the full ``anthropic_read_timeout_seconds`` budget — three
+    rounds could take three times as long as the single-call path, in-request,
+    with Mark watching. A single ``deadline`` computed once here and threaded
+    into every round makes the *answer* bounded rather than each of its calls;
+    the single-call path (``generate_anthropic_text``) never passes one and is
+    unchanged.
+
+    **The tool-use cap is enforced within a round, not just between them
+    (Batch 261).** ``max_tool_uses`` is documented as the calls one answer may
+    *execute*, but a round's calls used to run in full before the count was
+    checked, so a round asking for more parallel lookups than the cap allows
+    spent all of them and the cap only gated the round after. Excess calls in an
+    over-budget round are now refused as ``is_error`` results the model can
+    recover from — a dropped ``tool_use`` is a 400 on the next turn — rather
+    than executed.
     """
     messages: list[dict[str, Any]] = [
         *(prior_messages or []),
@@ -786,6 +839,7 @@ async def generate_anthropic_text_with_tools(
     tool_uses = 0
     api_calls = 0
     raw: dict[str, Any] = {}
+    deadline = time.monotonic() + settings.anthropic_read_timeout_seconds
 
     for round_index in range(1, max_tool_rounds + 1):
         exhausted = tool_uses >= max_tool_uses or round_index == max_tool_rounds
@@ -800,7 +854,9 @@ async def generate_anthropic_text_with_tools(
             tool_choice={"type": "none"} if exhausted else None,
         )
 
-        message = await _create_with_retry(api_key=api_key, payload=payload, model_name=model_name)
+        message = await _create_with_retry(
+            api_key=api_key, payload=payload, model_name=model_name, deadline=deadline
+        )
         api_calls += 1
         raw = message.to_dict()
         _log_usage(raw, model_name=_resolved_model(raw, model_name))
@@ -813,6 +869,8 @@ async def generate_anthropic_text_with_tools(
             break
 
         messages.append({"role": "assistant", "content": raw.get("content", [])})
+        allowed = calls[: max(0, max_tool_uses - tool_uses)]
+        refused = calls[len(allowed) :]
         results = [
             (
                 await execute_tool(
@@ -821,15 +879,23 @@ async def generate_anthropic_text_with_tools(
                     payload=call.get("input"),
                 )
             ).to_block()
-            for call in calls
+            for call in allowed
+        ] + [
+            ToolResult(
+                tool_use_id=str(call.get("id")),
+                content="Tool-call budget for this answer is exhausted.",
+                is_error=True,
+            ).to_block()
+            for call in refused
         ]
-        tool_uses += len(calls)
+        tool_uses += len(allowed)
         log.info(
             "anthropic_tool_round",
             model_name=model_name,
             round=round_index,
             tools=[str(call.get("name")) for call in calls],
             errors=sum(1 for block in results if block.get("is_error")),
+            refused=len(refused),
             tool_uses=tool_uses,
         )
         messages.append({"role": "user", "content": results})
