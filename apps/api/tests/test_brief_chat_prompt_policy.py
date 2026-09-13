@@ -121,7 +121,7 @@ class _Date:
 
 def test_brief_chat_prompt_allows_labelled_general_science_lane() -> None:
     """Batch 175's lane survives Batch 179's rewrite of the surface."""
-    assert PROMPT_VERSION == "coach-chat-v12-2026-09-06"
+    assert PROMPT_VERSION == "coach-chat-v13-2026-09-13"
     assert "never invent his" in FLAT_PROMPT
     assert "You may answer general, non-personalized endurance-training science" in FLAT_PROMPT
     assert 'Label those answers with "General principle:"' in FLAT_PROMPT
@@ -150,6 +150,8 @@ def test_prompt_gives_the_not_known_case_a_coachs_sentence() -> None:
     # A trimmed section must never read as an absence — that is the same defect.
     assert "trimmed for length" in FLAT_PROMPT
     assert "not that the app does not hold it" in FLAT_PROMPT
+    assert "If it says it was truncated" in FLAT_PROMPT
+    assert "only part of the requested range" in FLAT_PROMPT
 
 
 def test_prompt_tells_the_coach_to_use_the_wider_app_state() -> None:
