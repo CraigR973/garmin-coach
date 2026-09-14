@@ -6,6 +6,41 @@
 
 ## Now
 
+**2026-09-14 — Batch 261 SHIPPED.** PR #293 / squash `6a8a7be`, Decision
+**#333**. `generate_anthropic_text_with_tools` now shares one deadline across
+every round instead of each round restarting the full 550s
+`anthropic_read_timeout_seconds` — before this, a three-round chat answer could
+take up to ~27 minutes in-request, with Mark watching. `_create_with_retry`
+takes an optional shared `deadline`; the tool loop computes one before its
+first round and a later round's first attempt is sized off what is left of it.
+The single-call path (`generate_anthropic_text`) never passes a deadline, so
+its behaviour is byte-for-byte unchanged, pinned by the existing env-tunable
+timeout test. `workload_slot` needed no code change: it already wraps exactly
+the bounded call, so bounding the answer bounds the slot hold time — 261.2 was
+subsumed by 261.1, as the row anticipated it might be. `MAX_TOOL_USES` is now
+enforced within a round rather than only between rounds: a round asking for
+more parallel calls than the remaining cap allows executes only up to the cap
+and refuses the rest as `is_error` tool results, never dropped.
+
+**Verification.** Local backend **1,339 passed / 430 expected PostgreSQL
+skips** (2 new tests); push, PR and post-merge CI each passed, including
+PostgreSQL pytest, Ruff check/format, mypy, migration check, dependency audit,
+web build/lint, and shared 42 / web 437 unit tests. Railway direct and Vercel
+same-origin health serve exact `6a8a7be01434a56ad00ddfb8b375b137bab09067`; web
+`/` is 200 and protected daily-loop is 401 through both paths. Two new
+regression tests pin both fixes: a fake, controllable clock proves a later
+round's read timeout reflects the shared deadline rather than a fresh budget,
+and an over-budget round is proved to execute only the capped calls with the
+rest refused as `is_error`. Both were confirmed to fail against the pre-261
+code first. No prompt-version bump, no migration, no Mark-facing copy change.
+
+**Next: no unshipped batch is queued.** Batch 261 is the last row in
+`docs/phase-batches.md`; the next session should look for new feedback to
+reconcile into a batch (see `docs/agent-commands/batch-start.md` step 4) rather
+than assuming one is already specced.
+
+## Prior current-state snapshots
+
 **2026-09-13 — Batch 260 SHIPPED.** PR #292 / squash `a0ccf6d`, Decision
 **#332**. The coach now has seven read-only, profile-scoped tools. The three new
 ones fetch a range of past bedroom nights, Garmin wake-recovery observations,
@@ -41,15 +76,11 @@ four-tool workload, not an apples-to-apples regression. Chat v13 → v14 once;
 the deployed artifact registry confirms `brief_chat` is UNFILTERED with no
 analysis types, so no stored artifact was withdrawn. No migration.
 
-**Next: Batch 261** — make the tool-loop deadline, slot and use cap real bounds.
-
 **Gotcha:** the stored Sep 7 weekly review's thermal aggregate is itself false
 (it claimed a 20.9°C average peak/all nights disrupted, while the sleep-window
 readings above are all below 20°C). Batch 260 lets the coach audit and correct
 that claim in conversation; it does not repair the separate weekly-review
 generation defect.
-
-## Prior current-state snapshots
 
 **2026-09-13 — Batch 258 SHIPPED.** PR #290 / squash `40be2b4`, Decision **#330**.
 `assembledAtUtc` was the one self-inflicted cache invalidator: because it sorted
