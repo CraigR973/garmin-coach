@@ -34,10 +34,15 @@ and an over-budget round is proved to execute only the capped calls with the
 rest refused as `is_error`. Both were confirmed to fail against the pre-261
 code first. No prompt-version bump, no migration, no Mark-facing copy change.
 
-**Next: no unshipped batch is queued.** Batch 261 is the last row in
-`docs/phase-batches.md`; the next session should look for new feedback to
-reconcile into a batch (see `docs/agent-commands/batch-start.md` step 4) rather
-than assuming one is already specced.
+**Next: Batches 262-264**, authored 2026-09-16 from two pieces of Mark
+feedback and reconciled against production first. **262 has a hard date** - week
+10's VO2 session is 2026-09-22, six days out, and is already pushed to his
+device; his question (a) must be answered and signed off by Craig before the
+plan is touched. **263 before 2026-09-29**, or week 11 repeats the half-edit
+that gave him a mixed 40/20 + 35/25 session on 09-08. **264 last** - it writes a
+negotiated change into a workout, so it needs 263's answer first. Evidence,
+measurements and sequencing are in `docs/phase-batches.md` under the 2026-09-16
+heading. Not yet committed.
 
 ## Prior current-state snapshots
 

@@ -3459,3 +3459,162 @@ tools render at position 0, so adding one moves the cache key for everything.
 | ~~Batch 259 — The row cap that truncates in silence~~ | 🟢 Mid | Shipped | 2026-09-13: all range queries fetch `MAX_ROWS + 1` and report overflow through `truncated`; `get_activities` accepts a validated eight-type `activityType` filter; `coach-chat` v12 → v13. No migration. | Honest partial-range answers and focused activity retrieval. | PR #291 / squash `dc7c5df`, Decision #331. CI and deployed read-only smokes passed: 40 of 90 sleep rows state that more exist; 33 returned strength rows are strength-only. |
 | ~~Batch 260 — What his body did, never what the room did~~ | 🔴 High | **Shipped** (PR #292, squash `a0ccf6d`, Decision #332) | 260.1 **A thermal-night lookup.** `environment` in the live block is last-night-only by construction and `sleep_state` carries no thermal field, so the bedroom is unreachable for every night but one — in an app whose sleep protocol is largely thermal, and after a 2026-09-05 question about REM *in a thermal context* triggered Batch 257. The live 2026-09-13 exchange now proves the exact gap: when Mark disputed a seven-night thermal summary, the coach said it could not fetch the 2026-09-07 → 2026-09-13 indoor peaks to check. Return the same `thermal_review` shape the block and the morning packet already use, over `TemperatureReading` plus the night's weather, so a fetched night and a carried one cannot be compared as if they disagreed. **8,057 readings across 84 distinct source-calendar days (2026-06-16 → 2026-09-13), re-measured 2026-09-13** — real substance, and shallower than the 446 nights of sleep, so the tool must say "no readings for that night" distinctly from "the room was fine".<br>260.2 **A readings lookup over `DailyMetric`** — wake readiness, HRV, RHR, training state/load and body battery for past dates (**530 phase rows across 447 dates, re-measured 2026-09-13**). Today's wake observation is in the block. The existing sleep lookup already reaches historical overnight HRV/RHR, but it does not reach DailyMetric readiness, training state/load or the wake Body Battery observation, so "what was my body battery the morning of the sportive" remains unanswerable.<br>260.3 **A planned-workout lookup** (**156 version rows, 119 active, re-measured 2026-09-13**). `get_activities` returns what Garmin recorded, while the live block carries prescriptions only for today and the week ahead; nothing returns what was prescribed on older dates, so adherence over a past block — a core coaching read — cannot be done at all. Return active rows so superseded versions cannot look like simultaneous prescriptions. Read-only: the propose/confirm rail stays the only mutation path (Decision #29).<br>260.4 **Ship them as one change, and say so in the prompt.** Tools render at position 0, so each addition moves the cache key for the whole request — three separate batches would pay that three times. The `SYSTEM_PROMPT` enumeration of what the coach can fetch is closed and the model reads it as closed (the Batch 238 finding, and why 256 and 257 both bumped); these must be named there, with `coach-chat` bumping once.<br>260.5 **Keep the scoping property 257 built.** Every tool is a `SELECT` on the asking profile's `user_id`, held on the toolbox rather than passed per call, so no call site can forget it — and each new tool gets the `db_conn` profile-scoping assertion, which first runs in CI because it skips locally. | Let the coach answer the thermal, recovery and adherence questions Mark actually asks about the past — the categories where the app holds the rows and the conversation cannot reach them. | On real production data, writing nothing: a question about the bedroom on a named past night is answered from `temperature_readings` rather than refused; a question about readiness or HRV on a past date is answered from `daily_metrics`; a question about what was prescribed versus what was done over a past week is answered from both sides. A night with no readings is distinguishable from a night that was fine. Cost and latency reported against the post-257 baseline ($0.0645 → $0.0746; 4.9s → 16.9s), not assumed — seven tools is a larger always-on prefix than four, and 258.1 should already have landed so the measurement is not taken across a cache-key move. `coach-chat` bumps once for all three; `brief_chat` is `UNFILTERED` and `brief_messages` has no `prompt_version` column, so nothing is withdrawn. No migration expected. |
 | ~~Batch 261 — The loop's bounds are not bounds~~ | 🟢 Mid | Shipped | 261.1 **One deadline per answer, not per call.** `_create_with_retry` starts a fresh `deadline = time.monotonic() + budget` on each call and `anthropic_read_timeout_seconds` is **550s**, so Batch 257 took one answer's ceiling from 550s to **~27 minutes** — in-request, with Mark watching. Thread a shared deadline through `generate_anthropic_text_with_tools` the way Batch 248 already threads one through the retry attempts, so the *answer* is bounded rather than each of its three calls. The single-call path must keep exactly the budget Batch 234 derived.<br>261.2 **Bound the slot, or bound what holding it means.** `workload_slot` has no timeout and a per-user limit of one, so a hung answer 429s Mark's next question ("An expensive request is already running") for as long as it hangs — a stuck request stops being slow and starts being a lockout. Decide at `/batch-start` whether the fix belongs in the slot or is subsumed by 261.1.<br>261.3 **Make `MAX_TOOL_USES` a cap.** `tool_uses += len(calls)` runs after executing every call in the round, so a round asking for eight parallel lookups runs all eight and the cap only gates the *next* round. Blast radius today is small — bounded, profile-scoped `SELECT`s — but the constant is documented as "tool calls one answer may execute", and after Batch 260 there are more tools to ask for at once. Enforce it within the round, refusing the excess as `is_error` results the model can recover from rather than dropping them, since a dropped `tool_use` is a 400 on the next turn.<br>261.4 Tests: an answer whose rounds each approach the budget is refused on the shared deadline rather than running three times it; a round requesting more calls than the cap allows executes the cap and reports the rest; the single-call path's budget is unchanged. Confirm each fails against today's logic before keeping it. | Keep the cost of a lookup to time Mark waits, rather than a request that can outlive his patience and then lock him out of asking again. | One answer's wall clock is bounded once, not once per round, with the single-call budget provably unchanged. A hung answer cannot 429 the next question. `MAX_TOOL_USES` caps what executes, not just what the next round may ask for. No prompt change, no migration. |
+
+## Post-roadmap — 2026-09-16 — Mark's 08-28 VO2 review and his 09-08 post-workout note (Batches 262–264)
+
+**Two pieces of feedback, reconciled against production before anything was
+authored.** The first is `~/Downloads/Dad Fitness/Current 13 week 2121 Plan Vo2
+Issues 28.08.26.docx`, in which Mark reviews the whole VO2 progression of the
+current 13-week block and asks for **one week** to change. The second is a
+post-workout note reporting two technical failures on the 2026-09-08 session.
+They are unrelated in cause and land in the same place: a multi-block VO2
+session Mark could not get changed to what he and the coach had agreed.
+
+**The plan in production matches his document week for week.** All eight active
+VO2 sessions from 2026-08-25 to 2026-10-13 line up with his list, warm-ups and
+cool-downs byte-identical throughout — so his "no changes to existing warm ups
+or cool downs" needs no special handling, it falls out of editing one step.
+
+| Week | Date | Active plan row | His document |
+|---|---|---|---|
+| 8 | 2026-09-08 | 2 × 10 × 40/20 @ 125% | unchanged |
+| 9 | 2026-09-15 | 3 × 2 min @ 115% | unchanged |
+| **10** | **2026-09-22** | **7 × 3 min @ 119%** (`89f0afe0`, v1, `planned`) | **→ 5 × 2:30 @ 119%, 3:30 recoveries** |
+| 11 | 2026-09-29 | 2 × 12 × 40/20 @ 125% | unchanged |
+| 12 | 2026-10-06 | 4 × 2 min @ 115% | unchanged |
+| 13 | 2026-10-13 | 3 × 1 min @ 120% | unchanged |
+
+**"No desperate rush" has expired.** The document was written 2026-08-28, when
+Mark was starting week 8. Week 9 was ridden on 2026-09-15 and is `completed`.
+**Week 10 is 2026-09-22 — six days out.** It is also **already on his device**:
+proposal `83b45cdf` for that workout was pushed on 2026-07-11, so changing the
+plan row alone changes nothing he can see.
+
+**The premise the revision rests on does not survive his own session files, and
+that is the finding — not the arithmetic.** His document states he was
+struggling "in both weeks 5 & 6". Weeks 5 and 6 were the **same prescription**,
+6 × 3 min @ 119% with 3 min recoveries, and they went nothing alike:
+
+| | Week 5 — 2026-08-18 | Week 6 — 2026-08-25 |
+|---|---|---|
+| Reps on target | 3 of 6 | **6 of 6** |
+| Held power | 118.0 / 117.4 / 117.3%, then 111.9 / 112.7 / 112.9% | 118.6 / 117.9 / 118.0 / 118.4 / 118.4 / 117.8% |
+| Rating | 6.5 / 10 | **9 / 10** |
+| Avg HR across the set | 138 → 144 bpm | **134 → 142 bpm** |
+
+Week 6 was clean, unadjusted (its analysis contains no mention of easing or
+adjustment) and ridden at a **lower heart rate than week 5 for the same power** —
+the signature of a session inside his reach, not at his ceiling. Both were Green
+days. **And he attributed week 5 himself, at 11:55 that morning**, in
+`manual_entries`: *"Legs felt heavy in warm up and just didn't feel on it. Not
+sure if residual effect of weekend stomach upset and poorer sleep and / or busy
+rest day yesterday… Wasn't sure whether to abandon or modify to preserve
+integrity of week."* He dialled the ERG back from rep 4 deliberately. Week 5 is
+evidence about that Tuesday; week 6 answered the prescription question directly,
+seven days later, and the answer was no.
+
+**Where he is right, and it should be said:** the week 4 → 5 step *is* steep on
+paper — 6 × 2 min (12 min) to 6 × 3 min (18 min) is +50% work at one intensity
+with no intermediate step. It landed on a week he was unwell, which is what made
+it read as a cliff. The bridging instinct is sound; it is the placement that has
+been overtaken.
+
+**Two further measured facts the answer has to carry.** The revision is
+described as consolidating "at higher volume", but against the session it
+replaces it is a **40% cut** — 7 × 3 min = 21 min at 119% becomes 5 × 2:30 =
+12 min 30 s, work:recovery 1:1 → 1:1.4 — and **5 min 30 s below the 18 min he
+completed cleanly on 2026-08-25**. And **2026-09-22 is the last sustained
+3-minute session in the block**: week 11 is 40/20 micro-intervals, week 12 is
+consolidation at 115%, week 13 is the taper. Easing it means this block's peak
+sustained-VO2 effort was 18 minutes on 25 August and nothing after it goes
+higher.
+
+**The legitimate case for easing is a different one, and it holds.** He has not
+done sustained 3-minute work since 2026-08-25 — weeks 7 and 8 were 30/30 and
+40/20, a different stimulus, and week 9 was recovery. Week 10 is a **four-week
+re-entry** to the format, which justifies easing the step and makes his longer
+recovery the right lever. It does not justify going below a level already
+demonstrated.
+
+### The 2026-09-08 session: two separate defects, both confirmed in production
+
+**The propose button fired. Twice. It proposed the wrong thing.** The thread is
+in `coach.brief_messages`. At **09:03:16** Mark wrote *"Yes propose 35/25"* and
+the coach answered *"I'll get that queued up for you to confirm — 2×10 min
+blocks of 35s work / 25s recovery at 125%, same structure otherwise"*, with the
+button attached to `1795a107` (then the active v1 of that day's VO2). Two
+proposal rows exist against it — **09:04:24.9** and **09:05:52.8**, 88 seconds
+apart, which is Mark tapping again because nothing looked like it happened.
+Both POSTs succeeded; both were later swept to `expired` by the ordinary
+housekeeping pass over unapproved rows past their date.
+
+**They could never have carried the change.** `WorkoutDeliveryService.propose`
+([`workout_delivery.py:514`](../apps/api/src/services/workout_delivery.py))
+builds the IR straight from the stored plan row —
+`ir = build_structured_workout_ir(workout, ftp_watts=ftp_watts)` — with no
+adjustment parameter anywhere in the path. Both proposals were the **unchanged
+40/20 session**. Decision #194 built this button deliberately as a new entry
+point into the *existing* propose flow, and it was never parameterised. The
+defect is not the button; it is that the coach promises something the button
+cannot keep, in a sentence the model composes freely.
+
+**The editor then changed one block of two, and the data shows exactly why.**
+At 09:36:58 Mark gave up and edited manually, producing v2 (`49628cdf`), whose
+steps are: `"40s/20s @125% block 1"` still `"pattern": "10 x 40s / 20s @55%"`,
+and `"40s/20s @125% block 2"` now a `block` of 35 s work / 25 s rest × 10.
+[`interval_workout_editor.py:416`](../apps/api/src/services/interval_workout_editor.py)
+`_primary_step_index` selects exactly one step, and among pattern steps returns
+`max(candidates)[1]` over `(duration, index)` tuples. Both blocks expand to
+600 s, so **the tie breaks on index and the later block always wins**.
+`apply_interval_block` then writes that index alone. Its docstring states the
+limit as intentional — *"V1 edits the primary block only. Current plans contain
+one interval block"* — and that premise is false for this plan.
+
+**Three things make it worse than a one-off.** First, **block 1 is now
+permanently unreachable**: `_primary_step_index` returns the first step carrying
+a `block` dict *before* it considers patterns at all, and the applied edit is
+what converts a step to `block` form — so every future edit of that workout
+re-targets block 2. Second, **the copy went stale**: the step is still labelled
+"40s/20s @125% block 2" and `summary` still reads "2 × 10-rep blocks of 40s/20s
+@125%", so the session's own description contradicts its steps and is what the
+coach reads back about it. Third, **it recurs**.
+
+**Measured over the 88 active bike workouts (2026-06-16 → 2026-10-18):** 28 have
+two or more interval steps, but most are primer + main, where picking the
+longest is correct. Two classes actually misfire. **Three** carry a primer plus
+two equal main blocks — 2026-09-01, 2026-09-08, and **2026-09-29, the only one
+still ahead of us**, which is week 11's 2 × 12 × 40/20 and will break the same
+way. And **10 "Z2 + Neuromuscular" sessions (2 of them future: 2026-09-26 and
+2026-10-03)** hold two genuinely different main blocks — a 1,800 s Z2 block and
+a 1,080 s sprint block — where the longer one wins and the neuromuscular sprints
+cannot be edited or eased at all.
+
+**Settled, so it does not get re-litigated:** Mark's document says "35 sec / 24
+secs" in one place and "35/25" in another. The thread is unambiguous — he asked
+for 35/25 and the app wrote 35/25. The "24" is a slip in the write-up; there is
+nothing to fix.
+
+**Sequencing.** 262 first — it has a date on it. 263 before 2026-09-29, or the
+same half-edit happens on week 11. 264 last: it has to write a negotiated change
+into a workout, so it needs 263's answer to *what editing a multi-block session
+means* before it can build on it. **Decision numbers are assigned at
+`/batch-start`, not here.**
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 262 — Week 10's VO2 session, and the answer Mark asked for first | 🟢 Mid | Planned | 262.1 **Answer his question (a) in writing, before touching the plan.** He asked two things and (b) is conditional on (a): *"review these and confirm it is both logical and beneficial"*. **Drafted 2026-09-16, awaiting Craig's sign-off.** It cannot agree by default, because the premise does not hold: weeks 5 and 6 were the same 6 × 3 min @ 119% and week 6 went **6 of 6 on target, 9/10, unadjusted, at a lower heart rate than week 5** — while week 5's shortfall is attributed in his own 11:55 check-in to a stomach upset, poor sleep and a heavy rest day, with the ERG dialled back deliberately from rep 4. The answer must (i) credit the bridging instinct and the genuinely steep week 4 → 5 step on paper, (ii) show the week 5 / week 6 comparison and quote his check-in back to him, (iii) carry the two measured costs — a 40% cut that lands 5 min 30 s below what he completed cleanly on 08-25, and 2026-09-22 being the **last sustained 3-minute session in the block**, (iv) concede the real case for easing, which is a four-week re-entry to a format he has been away from, and (v) recommend rather than merely critique. **Recommendation as drafted: 6 × 3 min @ 119% with his 3:30 recoveries** — the session he has proved, one full rep down from the plan, keeping the recovery lever that makes the re-entry safe; 6 × 2:30 offered as the more cautious option; 5 × 2:30 argued against but explicitly left as his call. The distinctive value here is that the app holds the rides while his other three reviewers had only his recollection — say that plainly. **Mark-facing and stays explicit: Craig signs it off, including tone, before 262.2 runs.**<br>262.2 **Apply the agreed change to `89f0afe0` (2026-09-22).** Steps, title (`VO₂ (7 × 3 min @ 119%)`) and `summary` all carry the old prescription and all three must move together, or the session describes itself wrongly the way 2026-09-08 now does. Prefer the `block` source form: `_expand_interval_block` stores integer seconds, so 2:30 / 3:30 round-trips exactly as `durationSec` 150 / 210 — check whether the pattern grammar accepts `2.5min` before choosing it instead, do not assume. Warm-up, primer and cool-down steps unchanged, per his NB.<br>262.3 **Decide at `/batch-start` how the change is written** — a version bump through the real plan path (audit rows, `is_active` handoff, the shape every other change has) versus direct SQL (none of that). The 2026-07-11 calendar edits went in by direct SQL and left no audit trail; that is a known cost, not a default.<br>262.4 **Re-push, because the old session is already on his device.** Proposal `83b45cdf` was pushed 2026-07-11 with the 7 × 3 min IR. Verify what intervals.icu/Garmin actually holds afterwards, not just what the database says. | Give Mark the answer he asked for before the change he asked for, and have week 10 be the session he agreed to — in the app and on the device — before Tuesday 22 September. | Craig has signed off the (a) answer. `89f0afe0`'s active version prescribes the agreed session, with title and `summary` matching its own steps, and warm-up/primer/cool-down byte-identical to v1. A fresh proposal is pushed and the device is confirmed to hold it. Weeks 11–13 are untouched. No code change expected; if one proves necessary, it is a separate row. |
+| Batch 263 — The editor edits one block of two | 🔴 High | Planned | 263.1 **Decide what editing a multi-block session means**, at `/batch-start`, because the fix follows from it and not the other way round. Three candidates: edit every sibling block of the same shape together (what Mark plainly expected — he asked for "2 × 10 min blocks of 35/25"); let him choose which block; or model repeated blocks as one logical set with a repeat count. The third is closest to how the plan already reads them (`block 1` / `block 2` with a fixed recovery between) but is the largest change.<br>263.2 **Fix `_primary_step_index`'s two failure modes** ([`interval_workout_editor.py:416`](../apps/api/src/services/interval_workout_editor.py)). The `max((duration, index))` tie-break silently prefers the *last* equal block; and the earlier `return` on the first `block`-dict step means an applied edit permanently re-targets the step it just converted, so block 1 becomes unreachable through the UI forever. Whatever 263.1 decides, neither behaviour may survive it.<br>263.3 **Never leave a session describing itself wrongly.** `apply_interval_block` rewrites one step and leaves `label` and the workout's `summary` stating the old prescription — 2026-09-08 v2 still says "2 × 10-rep blocks of 40s/20s @125%" and is what the coach reads back about that ride. Derive them from the steps on apply.<br>263.4 **Correct the 2026-09-08 record without rewriting history.** Its *steps* are honest — block 1 at 40/20 and block 2 at 35/25 is what he actually rode. Only the label and `summary` lie. Fix those; do not touch the steps, the activity, or the post-workout analysis.<br>263.5 Tests, each confirmed to fail against today's logic first: a two-equal-block session edits as 263.1 decides rather than silently changing the last one; a session already carrying a `block` step does not re-target that step on the next edit; the 1,800 s Z2 / 1,080 s sprint pair is addressable; label and summary follow the steps. | Make "edit this workout" mean the workout, so Mark stops riding sessions that are half what he asked for and half what he did not — before week 11 on 2026-09-29 does it again. | The 2026-09-08 shape, replayed, produces the session Mark asked for rather than a mixed one, and 2026-09-29 behaves the same. A session's label and summary can no longer contradict its own steps. The neuromuscular block of a "Z2 + Neuromuscular" session is reachable. The historical 2026-09-08 row reads honestly without its steps changing. No migration expected. |
+| Batch 264 — The button that promises a change it cannot carry | 🔴 High | Planned | 264.1 **Stop the coach promising delivery it does not have.** *"I'll get that queued up for you to confirm — 2×10 min blocks of 35s work / 25s recovery at 125%"* is composed freely by the model, and the button beneath it re-proposes the plan's unmodified session. Whatever 264.2 decides, the prompt must constrain what may be claimed to what the affordance actually does — this is the same closed-list problem Batches 238 and 255 hit, so expect a `coach-chat` bump and confirm what it withdraws before making it.<br>264.2 **Decide at `/batch-start` how a negotiated change reaches the plan.** Either the proposal carries the agreed block (a real new capability: the model's proposed numbers become a structured, validated change rather than prose), or the button stops pretending and opens the interval editor pre-filled with them, leaving the existing rail to do the work. The second is much smaller and reuses 263 directly; the first is what Mark thought he was getting. Decide on cost, not on ambition.<br>264.3 **Decision #29's propose→approve→push gate is not in scope and does not move.** A chat-originated change still lands as a proposal Mark confirms. If 264.2 takes the first option, the model supplies *numbers* into a validated structure — `validate_interval_block` already bounds every leg — never a free-form workout.<br>264.4 **Make a created proposal visible where he is standing.** He tapped twice in 88 seconds because the first tap produced nothing he could see; the toast, if it fired, pointed him to another screen, where he would have found the unchanged 40/20 session anyway. Confirm in place, and say what was proposed. | Close the gap between what the coach offers in conversation and what the app can actually do with it — so "yes, propose that" produces the thing that was discussed, or says honestly that it cannot. | Replaying the 2026-09-08 exchange, accepting the coach's offer produces either the agreed 35/25 session awaiting confirmation, or an editor pre-filled with it — never a silent re-proposal of the unchanged workout. The coach cannot claim to have queued a change it did not queue. Mark sees the outcome without leaving the conversation. The approve/push gate is unchanged, pinned by its existing tests. The prompt bump's withdrawal set is stated in writing before the bump. No migration expected. |
+
+### Recorded, not scheduled (2026-09-16)
+
+**Mark's suggested VO2 progression for the next block.** The same 08-28 document
+closes with a full 13-week progression for the *following* block (foundation →
+density → 2:30 transitions → 30/30 and 40/20 kinetics → three weeks of 3-min
+sustained peaks → consolidation → taper), explicitly offered "for future
+reference" rather than as part of this request. It is not a plan edit: the
+current block is imported data, while `services/vo2_progression.py` — which
+holds the 30/30 and Rønnestad 30/15 protocols behind Decision #33 — is what
+would generate a future block. Whether his progression should become that
+toolkit's shape is a real question, and a separate one. Raise it when the
+current block ends on 2026-10-13, not before.
