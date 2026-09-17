@@ -692,10 +692,32 @@ async def test_adjustable_workout_is_resolved_from_live_plan_rows(
     assert [row["isLive"] for row in context.app_state["today"]["plannedWorkouts"]] == [False, True]
 
 
+#: An indoor bike session with a real interval set the editor can change.
+EDITABLE_BIKE_SOURCE: dict[str, object] = {
+    "format": "bike",
+    "steps": [
+        {"label": "Warm-up ramp 55→80%", "ramp": [55, 80], "minutes": 10},
+        {
+            "label": "40s/20s @125%",
+            "target": "125%",
+            "pattern": "10 x 40s / 20s @55%",
+            "cadenceRpm": 95,
+        },
+        {"label": "Cool-down ramp", "ramp": [70, 45], "minutes": 10},
+    ],
+}
+
+
 @pytest.mark.asyncio
-async def test_adjustable_workout_is_todays_live_deliverable_ride(
+async def test_adjustable_workout_is_todays_live_editable_ride(
     db_conn: AsyncConnection,
 ) -> None:
+    """Batch 264: adjustable now means the interval rail could actually act.
+
+    The old gate asked only whether the row was a live bike session with some
+    structured JSON, which is a weaker question than the one the affordance
+    implies — and the rail refuses anything it cannot upload to Zwift.
+    """
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     async with session_factory() as session:
         user = await _make_profile(session)
@@ -708,7 +730,7 @@ async def test_adjustable_workout_is_todays_live_deliverable_ride(
             workout_type="bike_sweet_spot",
             status="planned",
             is_active=True,
-            structured_workout={"format": "bike"},
+            structured_workout=dict(EDITABLE_BIKE_SOURCE),
         )
         session.add(ride)
         await session.commit()
@@ -717,6 +739,64 @@ async def test_adjustable_workout_is_todays_live_deliverable_ride(
         context = await ChatContextService(session).build(user, analysis, asked_at_utc=ASKED_AT)
 
     assert context.adjustable_workout_id == ride.id
+    assert context.adjustable_workout_version == 1
+    assert context.adjustable_interval_set is not None
+    assert context.adjustable_interval_set.current.work.duration_sec == 40
+    assert context.adjustable_interval_set.current.work.power_pct == 125
+
+
+@pytest.mark.asyncio
+async def test_a_bike_session_with_no_editable_set_is_not_adjustable(
+    db_conn: AsyncConnection,
+) -> None:
+    """A row the editor would 422 on must not raise the affordance (Batch 264).
+
+    Both shapes here reached it before: a bike row with no steps at all, and an
+    outdoor ride, which ``approve_interval_edit`` refuses outright because the
+    interval rail only uploads indoor sessions.
+    """
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        outdoor_user = await _make_profile(session, "Outdoor ride")
+        stepless_user = await _make_profile(session, "Stepless bike row")
+        session.add_all(
+            [
+                PlannedWorkout(
+                    id=uuid.uuid4(),
+                    user_id=outdoor_user.id,
+                    workout_date=TODAY,
+                    version=1,
+                    title="Outdoor endurance",
+                    workout_type="bike_endurance",
+                    status="planned",
+                    is_active=True,
+                    structured_workout={**EDITABLE_BIKE_SOURCE, "delivery": "outdoor"},
+                ),
+                PlannedWorkout(
+                    id=uuid.uuid4(),
+                    user_id=stepless_user.id,
+                    workout_date=TODAY,
+                    version=1,
+                    title="Sweet spot",
+                    workout_type="bike_sweet_spot",
+                    status="planned",
+                    is_active=True,
+                    structured_workout={"format": "bike"},
+                ),
+            ]
+        )
+        await session.commit()
+        outdoor_read = await _make_read(session, outdoor_user.id)
+        stepless_read = await _make_read(session, stepless_user.id)
+
+        service = ChatContextService(session)
+        outdoor = await service.build(outdoor_user, outdoor_read, asked_at_utc=ASKED_AT)
+        stepless = await service.build(stepless_user, stepless_read, asked_at_utc=ASKED_AT)
+
+    assert outdoor.adjustable_workout_id is None
+    assert outdoor.adjustable_interval_set is None
+    assert stepless.adjustable_workout_id is None
+    assert stepless.adjustable_interval_set is None
 
 
 @pytest.mark.asyncio

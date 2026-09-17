@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime
+from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
@@ -75,6 +76,10 @@ class BriefMessageOut(BaseModel):
     role: str
     content: str
     proposedPlannedWorkoutId: str | None
+    #: Batch 264: the interval change this answer carries — its before and after,
+    #: what stays fixed — or the plain reason it carries none. Null on every turn
+    #: that made no offer.
+    proposedIntervalChange: dict[str, Any] | None
     createdAtUtc: str
 
 
@@ -106,6 +111,7 @@ def serialize_message(row: BriefMessage) -> BriefMessageOut:
         proposedPlannedWorkoutId=(
             str(row.proposed_planned_workout_id) if row.proposed_planned_workout_id else None
         ),
+        proposedIntervalChange=row.proposed_interval_change,
         createdAtUtc=row.created_utc.isoformat() + "Z",
     )
 

@@ -106,8 +106,10 @@ from src.services.coach_sections import (
 )
 from src.services.daily_metric_phase import morning_first_order
 from src.services.holiday_pause import HolidayPauseService, holiday_windows_covering_date
+from src.services.interval_workout_editor import IntervalEditorSnapshot, editable_snapshot_for
 from src.services.personal_baselines import baseline_band_packet
 from src.services.reviews import ANALYSIS_TYPE_MONTHLY, ANALYSIS_TYPE_WEEKLY
+from src.services.structured_workout_builder import is_indoor_bike_workout
 from src.services.training_week import ACTION_AUDIT_TYPES, TrainingWeekService
 from src.services.trends import (
     BUCKET_MONTH,
@@ -367,6 +369,15 @@ class ChatContext:
     #: Batch 178's subject-date liveness set, which could only ever *retire* an
     #: affordance the packet had already offered.
     adjustable_workout_id: uuid.UUID | None = None
+    #: Batch 264: the interval set that workout actually prescribes, so the coach
+    #: negotiates against real numbers rather than inferring them from a title —
+    #: and so a change it offers can be checked against what is there. ``None``
+    #: when today holds no editable indoor-bike block, which is also the answer to
+    #: "may the coach offer a change at all?".
+    adjustable_interval_set: IntervalEditorSnapshot | None = None
+    #: The version the offer was made against, recorded on the turn so a change
+    #: confirmed later can be read back against the row it was composed from.
+    adjustable_workout_version: int | None = None
 
 
 class ChatContextService:
@@ -404,8 +415,14 @@ class ChatContextService:
         # anything to act on, and whether there is a bedroom to review at all.
         holiday_windows = await HolidayPauseService(self.session).get_windows(player)
         inside_holiday = bool(holiday_windows_covering_date(holiday_windows, local_today))
-        adjustable_workout_id = self._adjustable_workout_id(
-            today_workouts, inside_holiday=inside_holiday
+        adjustable_workout = self._adjustable_workout(today_workouts, inside_holiday=inside_holiday)
+        adjustable_set = (
+            editable_snapshot_for(
+                adjustable_workout.structured_workout,
+                adjustable_workout.intensity_target,
+            )
+            if adjustable_workout is not None
+            else None
         )
 
         week_ahead = await TrainingWeekService(self.session).build_window(
@@ -517,17 +534,35 @@ class ChatContextService:
                 plan_changes=state["sinceThisRead"]["planChangesSinceRead"],
             )
         _apply_char_budget(state)
-        return ChatContext(app_state=state, adjustable_workout_id=adjustable_workout_id)
+        return ChatContext(
+            app_state=state,
+            # Batch 264: a workout the rail would refuse is not adjustable, whatever
+            # the plan row says, so the affordance follows the block rather than the
+            # bare existence of a bike session.
+            adjustable_workout_id=(
+                adjustable_workout.id
+                if adjustable_workout is not None and adjustable_set is not None
+                else None
+            ),
+            adjustable_interval_set=adjustable_set,
+            adjustable_workout_version=(
+                adjustable_workout.version if adjustable_workout is not None else None
+            ),
+        )
 
     # -- sections -----------------------------------------------------------
 
-    def _adjustable_workout_id(
+    def _adjustable_workout(
         self,
         today_workouts: Sequence[PlannedWorkout],
         *,
         inside_holiday: bool,
-    ) -> uuid.UUID | None:
+    ) -> PlannedWorkout | None:
         """Today's one workout a proposal could act on, from live plan rows.
+
+        Batch 264 returns the row rather than its id: the caller also needs the
+        interval set it prescribes, and re-finding the same row to read it would
+        be two answers to one question.
 
         Batch 179.3: the pre-179 gate asked ``analysis_type == "morning"`` as a
         proxy for "there is a live adjustable ride", and read the candidate out
@@ -551,10 +586,14 @@ class ChatContextService:
             if row.status not in _CLOSED_WORKOUT_STATUSES
             and row.structured_workout
             and is_bike_workout_type(row.workout_type)
+            # Batch 264: the interval rail only ever uploads indoor sessions, so
+            # an outdoor ride was never adjustable from here — the old gate just
+            # did not say so until a confirm reached the rail and was refused.
+            and is_indoor_bike_workout(row.structured_workout)
         ]
         if not candidates:
             return None
-        return candidates[0].id
+        return candidates[0]
 
     # -- Batch 256: the four sections every question needs ------------------
 

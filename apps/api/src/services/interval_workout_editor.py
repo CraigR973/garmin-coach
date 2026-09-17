@@ -686,3 +686,86 @@ def _as_int(value: Any) -> int:
 
 def _optional_int(value: Any) -> int | None:
     return None if value is None else _as_int(value)
+
+
+# ---------------------------------------------------------------------------
+# Batch 264 — the coach quotes a real block, and its answer carries one back.
+# ---------------------------------------------------------------------------
+#
+# Until now the only way a conversation reached the plan was a button that
+# re-proposed the *stored* session, so an agreed "2 × 10 min of 35s/25s" was
+# composed in prose and thrown away. These three helpers are the whole of the
+# structured path: the editable block of today's session (so the coach quotes
+# what is actually prescribed rather than guessing from a title), a plain
+# rendering of a block for Mark-facing copy, and a parser that turns the five
+# numbers the coach may change into a validated :class:`EditableIntervalBlock`.
+#
+# Cadence is deliberately *not* one of those numbers. Every prescribed block
+# already carries it, Mark has never negotiated it in conversation, and carrying
+# it forward removes one more field the model could invent.
+
+
+#: The exact keys a coach-proposed change must supply. Closed, and stated to the
+#: model in the prompt, because an open shape is an invitation to invent one.
+PROPOSED_BLOCK_FIELDS = ("repeat", "workSec", "workPct", "restSec", "restPct")
+
+
+def editable_snapshot_for(
+    structured: dict[str, Any] | None,
+    intensity_target: str | None,
+) -> IntervalEditorSnapshot | None:
+    """Today's editable interval set, or ``None`` when there is not one.
+
+    The snapshot raises for a session with no editable bike block, which is a
+    correct answer to "can this be edited?" rather than an error to propagate
+    into a chat turn. No verdict is passed: this asks what is editable, not what
+    today's adjustment would be.
+    """
+    try:
+        return interval_editor_snapshot(structured, intensity_target)
+    except HTTPException:
+        return None
+
+
+def format_interval_block(block: EditableIntervalBlock) -> str:
+    """``10 × 40s/20s @ 125%/55%`` — the same phrasing the step labels use."""
+    return _format_block(block)
+
+
+def block_from_proposal(
+    payload: Any,
+    *,
+    current: EditableIntervalBlock,
+) -> EditableIntervalBlock:
+    """Build a validated block from the five numbers a coach answer may carry.
+
+    Raises :class:`HTTPException` exactly as every other editor entry point does
+    when a number is outside the bounds ``validate_interval_block`` enforces, so
+    a model-composed change is bounded by the same rules as a hand-typed one.
+    """
+    if not isinstance(payload, dict):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="The proposed interval change is malformed",
+        )
+    missing = [field for field in PROPOSED_BLOCK_FIELDS if field not in payload]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"The proposed interval change is missing {', '.join(missing)}",
+        )
+    block = EditableIntervalBlock(
+        repeat=_as_int(payload["repeat"]),
+        work=IntervalLeg(
+            duration_sec=_as_int(payload["workSec"]),
+            power_pct=_as_int(payload["workPct"]),
+            cadence_rpm=current.work.cadence_rpm,
+        ),
+        rest=IntervalLeg(
+            duration_sec=_as_int(payload["restSec"]),
+            power_pct=_as_int(payload["restPct"]),
+            cadence_rpm=current.rest.cadence_rpm,
+        ),
+    )
+    validate_interval_block(block)
+    return block

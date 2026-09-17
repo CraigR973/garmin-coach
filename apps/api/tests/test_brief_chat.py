@@ -13,12 +13,19 @@ never reaches Mark.
 Batch 179 turns it into one rolling conversation: a question needs no document
 behind it, history and the turn cap belong to the thread rather than to a read,
 and the propose affordance follows today's real plan state from any entry point.
+
+Batch 264 makes the offer carry the change. The keyword check on Mark's own
+words is gone — it fired on *"had to slightly adjust last week"* and would have
+missed *"can we do 35/25 instead?"* — and what replaces it is stricter: the
+answer must resolve to a block that validates against today's live plan row and
+differs from it.
 """
 
 from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator
+from copy import deepcopy
 from datetime import UTC, date, datetime, time, timedelta
 from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
@@ -43,7 +50,8 @@ from src.services.anthropic_text import AnthropicApiError
 from src.services.brief_chat import (
     MAX_USER_TURNS_PER_DAY,
     NO_PLUMBING_RULE,
-    PROPOSAL_MARKER,
+    PROPOSAL_MARKER_CLOSE,
+    PROPOSAL_MARKER_OPEN,
     AnthropicSystemPrompt,
     BriefChatClient,
     BriefChatError,
@@ -165,6 +173,57 @@ async def _make_analysis(
     return analysis
 
 
+#: Mark's real 2026-09-08 session, as ``plan_no2_import`` wrote it: a warm-up,
+#: a primer, two *equal* 40s/20s @125% blocks around a fixed 4-minute recovery,
+#: and a cool-down ramp. Batch 264's default because the affordance now depends
+#: on the session actually holding an editable interval set — a placeholder with
+#: no steps is correctly not adjustable, which is a different test.
+SEPTEMBER_EIGHTH_VO2: dict[str, object] = {
+    "format": "bike",
+    "summary": "WarmUp v1.3 · Main 2 × 10-rep blocks of 40s/20s @125% · CoolDown 10 min ramp",
+    "steps": [
+        {"label": "Warm-up ramp 55→80%", "ramp": [55, 80], "minutes": 10},
+        {
+            "label": "Primer 2×30s @100% / 55%",
+            "target": "100%",
+            "pattern": "2 x 30s / 30s @55%",
+            "cadenceRpm": 95,
+        },
+        {"label": "Warm-up @72%", "target": "72%", "minutes": 3},
+        {
+            "label": "40s/20s @125% block 1",
+            "target": "125%",
+            "pattern": "10 x 40s / 20s @55%",
+            "cadenceRpm": 95,
+        },
+        {"label": "Recover between blocks", "target": "60%", "minutes": 4},
+        {
+            "label": "40s/20s @125% block 2",
+            "target": "125%",
+            "pattern": "10 x 40s / 20s @55%",
+            "cadenceRpm": 95,
+        },
+        {"label": "Cool-down ramp", "ramp": [70, 45], "minutes": 10},
+    ],
+}
+
+
+def _marker(
+    *,
+    repeat: int = 10,
+    work_sec: int = 35,
+    work_pct: int = 125,
+    rest_sec: int = 25,
+    rest_pct: int = 55,
+) -> str:
+    """The marker as the coach must now emit it — the change, not a flag."""
+    payload = (
+        f'{{"repeat": {repeat}, "workSec": {work_sec}, "workPct": {work_pct}, '
+        f'"restSec": {rest_sec}, "restPct": {rest_pct}}}'
+    )
+    return f"{PROPOSAL_MARKER_OPEN}{payload}{PROPOSAL_MARKER_CLOSE}"
+
+
 async def _make_planned_workout(
     session: AsyncSession,
     user_id: uuid.UUID,
@@ -173,6 +232,7 @@ async def _make_planned_workout(
     workout_date: date | None = None,
     workout_type: str = "bike_sweet_spot",
     version: int = 1,
+    structured_workout: dict[str, object] | None = None,
 ) -> PlannedWorkout:
     workout = PlannedWorkout(
         id=uuid.uuid4(),
@@ -184,7 +244,11 @@ async def _make_planned_workout(
         title="Sweet spot",
         workout_type=workout_type,
         status=status,
-        structured_workout={"segments": []},
+        # Copied per row: a shared dict in JSONB would let one test's edit reach
+        # another's fixture.
+        structured_workout=(
+            deepcopy(SEPTEMBER_EIGHTH_VO2) if structured_workout is None else structured_workout
+        ),
     )
     session.add(workout)
     await session.commit()
@@ -219,8 +283,8 @@ async def test_ask_grounds_in_packet_and_stores_both_turns(db_conn: AsyncConnect
     prompt = _flat(client.calls[0]["system_prompt"])
     assert "Green" in prompt
     assert "He asked this from this morning's brief" in prompt
-    assert "today's plan holds a live workout" in prompt
-    assert "the app can propose one" in prompt
+    assert "main interval set is 10 × 40s/20s @ 125%/55%" in prompt
+    assert "and only that set" in prompt
     assert "Do not cave to reassurance pressure" in prompt
     assert "General principle:" in prompt
     assert "never invent his metrics, plan, history, readiness, or prescription" in prompt
@@ -313,43 +377,273 @@ async def test_yesterdays_turns_do_not_count_against_today(db_conn: AsyncConnect
 
 
 @pytest.mark.asyncio
-async def test_ask_only_offers_a_proposal_on_keyword_and_model_marker(
+async def test_the_september_eighth_exchange_now_carries_the_agreed_session(
     db_conn: AsyncConnection,
 ) -> None:
-    """A proposal needs Mark's intent, a live ride, and the answer's marker."""
+    """The replay this batch exists for.
+
+    At 09:03:16 Mark wrote *"Yes propose 35/25"* and the coach answered *"I'll
+    get that queued up for you to confirm - 2x10 min blocks of 35s work / 25s
+    recovery at 125%"*. Both taps beneath it wrote the unchanged 40s/20s
+    session, because ``WorkoutDeliveryService.propose`` builds the IR from the
+    stored plan row and takes no adjustment. The turn now carries the block
+    itself, and the numbers are the ones he agreed to.
+    """
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        workout = await _make_planned_workout(session, user.id, workout_type="bike_vo2")
+        analysis = await _make_analysis(session, user.id)
+        client = FakeBriefChatClient(
+            "That's the one to confirm below - 2x10 min blocks of 35s work / 25s "
+            f"recovery at 125%, same structure otherwise. {_marker()}"
+        )
+
+        turn = await BriefChatService(session).ask(
+            user, analysis.id, question="Yes propose 35/25", client=client
+        )
+
+    change = turn.assistant_message.proposed_interval_change
+    assert change is not None
+    assert change["status"] == "proposed"
+    assert change["plannedWorkoutId"] == str(workout.id)
+    assert change["currentLabel"] == "10 × 40s/20s @ 125%/55%"
+    assert change["changeToLabel"] == "10 × 35s/25s @ 125%/55%"
+    # Both equal blocks are one logical set (Batch 263), so the card says two.
+    assert change["matchingSets"] == 2
+    assert change["changeTo"] == {
+        "repeat": 10,
+        "work": {"durationSec": 35, "powerPct": 125, "cadenceRpm": 95},
+        "rest": {"durationSec": 25, "powerPct": 55},
+    }
+    # Warm-up, primer and cool-down are named as staying put, per his NB.
+    assert "Warm-up ramp 55→80%" in change["heldConstant"]
+    assert "Cool-down ramp" in change["heldConstant"]
+    assert turn.assistant_message.proposed_planned_workout_id == workout.id
+    assert "PROPOSE_WORKOUT_ADJUSTMENT" not in turn.assistant_message.content
+
+
+@pytest.mark.asyncio
+async def test_an_answer_that_makes_no_offer_carries_no_change(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        await _make_planned_workout(session, user.id)
+        analysis = await _make_analysis(session, user.id)
+
+        turn = await BriefChatService(session).ask(
+            user,
+            analysis.id,
+            question="How did I sleep?",
+            client=FakeBriefChatClient("Seven hours, mostly unbroken."),
+        )
+
+    assert turn.assistant_message.proposed_interval_change is None
+    assert turn.assistant_message.proposed_planned_workout_id is None
+
+
+@pytest.mark.asyncio
+async def test_a_retrospective_mention_of_adjusting_no_longer_offers_anything(
+    db_conn: AsyncConnection,
+) -> None:
+    """The keyword gate's false positive, in Mark's own words.
+
+    His 08:58 question on 2026-09-08 contained *"had to slightly adjust last
+    week"* — a clause about the past — and the old check attached the affordance
+    to a turn that was still discussing the idea. Only the change decides now.
+    """
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        await _make_planned_workout(session, user.id)
+        analysis = await _make_analysis(session, user.id)
+
+        turn = await BriefChatService(session).ask(
+            user,
+            analysis.id,
+            question=(
+                "My instinct is the 40/20 jump is too sharp, especially as I had to "
+                "slightly adjust last week. What do you think?"
+            ),
+            client=FakeBriefChatClient("Your instinct is well-grounded. Here's the reasoning."),
+        )
+
+    assert turn.assistant_message.proposed_interval_change is None
+    assert turn.assistant_message.proposed_planned_workout_id is None
+
+
+@pytest.mark.asyncio
+async def test_a_change_asked_for_without_a_keyword_still_reaches_the_plan(
+    db_conn: AsyncConnection,
+) -> None:
+    """The keyword gate's false negative. "instead" was never one of its words."""
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     async with session_factory() as session:
         user = await _make_profile(session)
         workout = await _make_planned_workout(session, user.id)
-        packet = {
-            "restDay": {"isRestDay": False},
-            "plannedWorkouts": [
-                {
-                    "id": str(workout.id),
-                    "workoutType": "bike_sweet_spot",
-                    "status": "planned",
-                    "structuredWorkout": {"segments": []},
-                }
-            ],
-        }
-        analysis = await _make_analysis(session, user.id, context_packet=packet)
-        service = BriefChatService(session)
-        client = FakeBriefChatClient(f"Sure, I can offer that. {PROPOSAL_MARKER}")
+        analysis = await _make_analysis(session, user.id)
 
-        neutral = await service.ask(user, analysis.id, question="How did I sleep?", client=client)
-        wants_ease = await service.ask(
-            user, analysis.id, question="Can you ease today's ride?", client=client
+        turn = await BriefChatService(session).ask(
+            user,
+            analysis.id,
+            question="Can we do 35/25 instead?",
+            client=FakeBriefChatClient(f"Here it is to confirm. {_marker()}"),
         )
 
-    assert neutral.assistant_message.proposed_planned_workout_id is None
-    assert wants_ease.assistant_message.proposed_planned_workout_id == workout.id
-    assert PROPOSAL_MARKER not in wants_ease.assistant_message.content
+    assert turn.assistant_message.proposed_planned_workout_id == workout.id
 
 
 @pytest.mark.asyncio
-async def test_keyword_without_model_offer_does_not_attach_a_proposal(
+async def test_a_change_outside_the_editor_bounds_is_refused_not_offered(
     db_conn: AsyncConnection,
 ) -> None:
+    """A model-composed change is bounded exactly as a hand-typed one is.
+
+    ``validate_interval_block`` caps power at 200% FTP, so the coach cannot
+    widen its own authority by writing a bigger number, and Mark is told there
+    is nothing to confirm rather than being shown a claim with no button.
+    """
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        await _make_planned_workout(session, user.id)
+        analysis = await _make_analysis(session, user.id)
+
+        turn = await BriefChatService(session).ask(
+            user,
+            analysis.id,
+            question="Can we do 35/25 at 260%?",
+            client=FakeBriefChatClient(f"Here it is. {_marker(work_pct=260)}"),
+        )
+
+    assert turn.assistant_message.proposed_interval_change == {
+        "status": "unavailable",
+        "reason": "out_of_range",
+    }
+    assert turn.assistant_message.proposed_planned_workout_id is None
+    assert "PROPOSE_WORKOUT_ADJUSTMENT" not in turn.assistant_message.content
+
+
+@pytest.mark.asyncio
+async def test_a_change_identical_to_the_prescription_is_not_a_change(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        await _make_planned_workout(session, user.id)
+        analysis = await _make_analysis(session, user.id)
+
+        turn = await BriefChatService(session).ask(
+            user,
+            analysis.id,
+            question="Keep it as it is?",
+            client=FakeBriefChatClient(f"Same again. {_marker(work_sec=40, rest_sec=20)}"),
+        )
+
+    assert turn.assistant_message.proposed_interval_change == {
+        "status": "unavailable",
+        "reason": "unchanged",
+    }
+    assert turn.assistant_message.proposed_planned_workout_id is None
+
+
+@pytest.mark.asyncio
+async def test_a_bare_marker_is_stripped_and_carries_nothing(db_conn: AsyncConnection) -> None:
+    """The v14 marker was a flag with the offer only in prose. It still hides."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        await _make_planned_workout(session, user.id)
+        analysis = await _make_analysis(session, user.id)
+
+        turn = await BriefChatService(session).ask(
+            user,
+            analysis.id,
+            question="Can you ease today's ride?",
+            client=FakeBriefChatClient(
+                "I'll get that queued up for you to confirm. [[PROPOSE_WORKOUT_ADJUSTMENT]]"
+            ),
+        )
+
+    assert "PROPOSE_WORKOUT_ADJUSTMENT" not in turn.assistant_message.content
+    assert turn.assistant_message.proposed_interval_change == {
+        "status": "unavailable",
+        "reason": "malformed",
+    }
+    assert turn.assistant_message.proposed_planned_workout_id is None
+
+
+@pytest.mark.asyncio
+async def test_a_session_with_no_editable_interval_set_is_not_adjustable(
+    db_conn: AsyncConnection,
+) -> None:
+    """An outdoor ride was never adjustable from here; now the prompt says so.
+
+    ``approve_interval_edit`` refuses anything the interval rail cannot upload
+    to Zwift, so offering against one only ever produced a refusal after the tap.
+    """
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        await _make_planned_workout(
+            session,
+            user.id,
+            structured_workout={**SEPTEMBER_EIGHTH_VO2, "delivery": "outdoor"},
+        )
+        analysis = await _make_analysis(session, user.id)
+        client = FakeBriefChatClient(f"Here it is. {_marker()}")
+
+        turn = await BriefChatService(session).ask(
+            user, analysis.id, question="Can we do 35/25 instead?", client=client
+        )
+
+    assert turn.assistant_message.proposed_interval_change == {
+        "status": "unavailable",
+        "reason": "not_editable",
+    }
+    system_prompt = _flat(client.calls[0]["system_prompt"])
+    assert "there is no session you can change today" in system_prompt
+
+
+@pytest.mark.asyncio
+async def test_the_capability_line_quotes_the_real_block_and_its_bounds(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 238 measured that the model reads a capability list as closed.
+
+    So the list has to be the real one: the prescription it may change, the five
+    numbers it may change about it, what is held constant, and the bounds. The
+    old wording said only that "a live workout can still be adjusted", which
+    bounded nothing and is how a 35s/25s promise was made on a button that could
+    only ever re-propose 40s/20s.
+    """
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        await _make_planned_workout(session, user.id)
+        analysis = await _make_analysis(session, user.id)
+        client = FakeBriefChatClient("Noted.")
+
+        await BriefChatService(session).ask(
+            user, analysis.id, question="What's on today?", client=client
+        )
+
+    system_prompt = _flat(client.calls[0]["system_prompt"])
+    assert "main interval set is 10 × 40s/20s @ 125%/55%" in system_prompt
+    assert "repeats that set 2 times" in system_prompt
+    assert "Warm-up ramp 55→80%" in system_prompt
+    assert "both percentages 40-200" in system_prompt
+    assert "never say you have queued, applied, changed, scheduled or uploaded" in system_prompt
+
+
+@pytest.mark.asyncio
+async def test_an_answer_that_refuses_attaches_nothing(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 202's guard, kept: the answer decides, not the question."""
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     async with session_factory() as session:
         user = await _make_profile(session)
@@ -499,7 +793,7 @@ async def test_plan_change_request_still_uses_propose_confirm_and_red_floor(
         }
         analysis = await _make_analysis(session, user.id, context_packet=packet)
         client = FakeBriefChatClient(
-            f"The app can propose an easier version for you to confirm. {PROPOSAL_MARKER}"
+            f"Here's an easier version to confirm. {_marker(repeat=6, work_pct=110)}"
         )
 
         turn = await BriefChatService(session).ask(
@@ -583,7 +877,7 @@ async def test_post_workout_read_chat_is_grounded_and_advisory_only(
     assert turn.assistant_message.proposed_planned_workout_id is None
     prompt = _flat(client.calls[0]["system_prompt"])
     assert "He asked this from the read on his completed session" in prompt
-    assert "no live workout to adjust today" in prompt
+    assert "no session you can change today" in prompt
     assert "Do not say the app can propose" in prompt
     assert "Tempo ride" in prompt
 
@@ -615,7 +909,7 @@ async def test_propose_affordance_follows_the_plan_not_the_read_type(
             user,
             analysis.id,
             question="Can you ease today's ride?",
-            client=FakeBriefChatClient(f"The app can propose an easier version. {PROPOSAL_MARKER}"),
+            client=FakeBriefChatClient(f"Here's an easier version. {_marker(repeat=6)}"),
         )
 
     assert turn.assistant_message.proposed_planned_workout_id == live_ride.id

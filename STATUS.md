@@ -6,6 +6,46 @@
 
 ## Now
 
+**2026-09-17 — Batch 264 built, gate green, awaiting merge.** Branch
+`feat/batch-264-chat-carries-the-change`, Decision **#335**. A change agreed in
+conversation now reaches the plan. The coach's answer ends with a marker
+carrying five numbers — repeats, effort seconds, effort %FTP, recovery seconds,
+recovery %FTP — for today's live editable indoor bike interval set; cadence is
+carried forward from the prescription rather than composed. The service validates
+them with the interval editor's own `validate_interval_block` against the live
+plan row, and the chat shows the before and after and confirms it in place.
+
+**What was actually wrong, measured before any code.** `WorkoutDeliveryService.propose`
+takes no adjustment parameter, so the old button always re-proposed the stored
+session. Eight unadjusted proposal rows sit within two hours of a button-bearing
+turn across six days (18 Jul → 8 Sep), every one expired unapproved; 23 July
+carries the same repeat tap 59 seconds apart that 8 Sep does. The affordance also
+attached to turns that made no offer, because `_wants_adjustment` matched
+"adjust" inside Mark's retrospective *"had to slightly adjust last week"*. That
+keyword gate is retired; what replaces it is stricter — the change must parse,
+validate against the live plan row, and differ from it.
+
+**The gate in front of the plan did not move.** Confirming calls the existing
+`interval-editor/approve` rail — the same one the editor's own button uses and
+Batch 262 exercised in production — so propose→approve→push and Red-never-VO2 are
+unchanged, and a superseded workout 404s. An offer the app cannot carry is now
+said in one plain line rather than left as a claim with nothing under it.
+
+**Verification.** Local backend **1,362 passed / 439 expected PostgreSQL skips**
+(18 new pure tests run locally; the DB-backed chat tests run only in CI); shared
+44, web 443; Ruff check and format, mypy strict on `src`, web build and lint (0
+errors / 9 existing warnings) all clean. Migration `031` renders and reverses
+offline. **Not yet run: CI, the merge, and production verification.**
+
+**Prompt bump:** `coach-chat-v14` → **`v15`**. Withdrawal set stated before the
+bump and **empty** — `brief_chat` is UNFILTERED with no analysis types, so no
+stored artifact is withdrawn and nothing is regenerated.
+
+**Next: Batch 265** — reconcile the imported block's missing recovery week
+against the canonical sequence before the next plan import.
+
+## Prior current-state snapshots
+
 **2026-09-17 — Batch 263 SHIPPED.** PR #294 / merge `0530b25`, Decision
 **#334**. The interval editor now treats equal-shape sibling blocks as one
 logical set: editing Mark's two matching VO₂ blocks changes both, while a
@@ -46,8 +86,6 @@ migration or prompt-version bump.
 change while queuing the unchanged stored workout; that mutation-contract gap is
 now the next urgent row. Batch 265 then reconciles the imported block's missing
 recovery week against the canonical sequence before the next plan import.
-
-## Prior current-state snapshots
 
 **2026-09-13 — Batch 260 SHIPPED.** PR #292 / squash `a0ccf6d`, Decision
 **#332**. The coach now has seven read-only, profile-scoped tools. The three new
@@ -743,6 +781,17 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**2026-09-17 — Batch 264 built.** Branch `feat/batch-264-chat-carries-the-change`,
+Decision #335. A change negotiated in conversation now reaches the plan as five
+validated numbers rather than prose: the coach's marker carries the agreed
+interval set, the service bounds it with the editor's own
+`validate_interval_block` against the live plan row, and the chat confirms it in
+place through the existing `interval-editor/approve` rail. `_wants_adjustment`
+is retired — it fired on a retrospective "had to slightly adjust last week" and
+would have missed "can we do 35/25 instead?". Migration `031` adds nullable
+`brief_messages.proposed_interval_change`; prompt `coach-chat-v15`, withdrawal
+set empty. Local gate green; CI, merge and production verification still to run.
 
 **2026-09-17 — Batch 263 shipped.** PR #294 / merge `0530b25`, Decision #334.
 Equal-shape interval siblings are now one logical edit set; the selector targets

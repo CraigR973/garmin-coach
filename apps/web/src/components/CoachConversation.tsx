@@ -1,11 +1,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { MessageCircle, Send } from 'lucide-react';
-import { toast } from 'sonner';
 import type { BriefMessage } from '@coach/shared';
-import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { CoachIntervalChangeCard } from '@/components/CoachIntervalChangeCard';
 import { Markdown } from '@/components/Markdown';
 
 /** Three distinct presentations for the thread fetch — Batch 193.3 / UX192-03:
@@ -21,10 +19,14 @@ export type CoachConversationStatus = 'loading' | 'error' | 'ready';
  * share one transcript. Batch 207 retired the inline views entirely — there is
  * one coach and one thread now — so this renders the launcher's sheet alone.
  *
- * A `proposedPlannedWorkoutId` on an assistant turn is decided server-side by a
- * deterministic check on Mark's own question plus today's real plan state — the
- * model never triggers it, and the button calls the *existing* workout-delivery
- * propose endpoint, so Decision #29's propose→approve→push gate is unchanged.
+ * Batch 264 replaced the propose button with the change itself. It used to call
+ * the ordinary workout-delivery propose endpoint, which rebuilds the *stored*
+ * session, so an agreed change was discarded between the sentence that offered
+ * it and the row that was written. An assistant turn now carries the validated
+ * block in `proposedIntervalChange`, and `CoachIntervalChangeCard` shows its
+ * before and after and confirms it in place. Decision #29's
+ * propose→approve→push gate is unchanged: the confirm tap is the approval, and
+ * it runs the same interval-editor rail the editor's own button uses.
  */
 
 const MAX_QUESTION_LENGTH = 1000;
@@ -80,7 +82,6 @@ export function CoachConversation({
   loadingMore = false,
   onLoadMore,
 }: CoachConversationProps) {
-  const queryClient = useQueryClient();
   const [question, setQuestion] = useState('');
   // The turn Mark just sent, shown immediately rather than waiting for the
   // round trip and thread-invalidation to bring it back (Batch 193.5 /
@@ -140,6 +141,7 @@ export function CoachConversation({
       role: 'user',
       content: pendingQuestion,
       proposedPlannedWorkoutId: null,
+      proposedIntervalChange: null,
       createdAtUtc: new Date().toISOString(),
     };
     return [...messages, optimisticTurn];
@@ -180,22 +182,6 @@ export function CoachConversation({
     if (!node) return;
     node.scrollTop = node.scrollHeight;
   }, [scrollMessages, newestId, pending]);
-
-  const proposeMutation = useMutation({
-    mutationFn: (plannedWorkoutId: string) =>
-      apiFetch(`/api/v1/workout-delivery/planned-workouts/${plannedWorkoutId}/proposals`, {
-        method: 'POST',
-      }),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['daily-loop'] }),
-        queryClient.invalidateQueries({ queryKey: ['workout-delivery'] }),
-      ]);
-      toast.success('Proposed — review and approve it on Delivery');
-    },
-    onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not propose that adjustment'),
-  });
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -277,20 +263,8 @@ export function CoachConversation({
                   ) : (
                     <p>{message.content}</p>
                   )}
-                  {message.role === 'assistant' && message.proposedPlannedWorkoutId ? (
-                    <div className="mt-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="subtle"
-                        disabled={proposeMutation.isPending}
-                        onClick={() =>
-                          proposeMutation.mutate(message.proposedPlannedWorkoutId as string)
-                        }
-                      >
-                        Propose this adjustment
-                      </Button>
-                    </div>
+                  {message.role === 'assistant' && message.proposedIntervalChange ? (
+                    <CoachIntervalChangeCard change={message.proposedIntervalChange} />
                   ) : null}
                   <time
                     dateTime={message.createdAtUtc}

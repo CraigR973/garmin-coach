@@ -625,6 +625,13 @@ class BriefMessage(Base, UUIDPrimaryKeyMixin):
     proposed_planned_workout_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("planned_workouts.id", ondelete="SET NULL"), nullable=True
     )
+    #: Batch 264: the interval change the answer actually carries, or the plain
+    #: reason there is none. Before this the offer existed only as prose and the
+    #: affordance beneath it re-proposed the unchanged session, so an agreed
+    #: 35s/25s reached nothing. Written only from a model payload that survived
+    #: ``validate_interval_block`` against today's live plan row, which is also
+    #: the record of what Mark was shown before he confirmed.
+    proposed_interval_change: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_utc: Mapped[datetime] = mapped_column(
