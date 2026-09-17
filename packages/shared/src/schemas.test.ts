@@ -1162,6 +1162,23 @@ describe('v1 shared schemas', () => {
     // Green morning: no verdict adjustment is offered, and that must parse.
     expect(parsed.data.presets.todaysAdjustment).toBeUndefined();
     expect(parsed.data.adjustmentVerdict ?? null).toBeNull();
+
+    // Batch 263: the real neuromuscular set is 185% FTP. The editor must parse
+    // that stored value while retaining a finite editor-only sanity ceiling.
+    expect(
+      intervalWorkoutBlockSchema.parse({
+        repeat: 6,
+        work: { durationSec: 12, powerPct: 185 },
+        rest: { durationSec: 168, powerPct: 55 },
+      }).work.powerPct,
+    ).toBe(185);
+    expect(() =>
+      intervalWorkoutBlockSchema.parse({
+        repeat: 6,
+        work: { durationSec: 12, powerPct: 201 },
+        rest: { durationSec: 168, powerPct: 55 },
+      }),
+    ).toThrow();
   });
 
   it('keeps the verdict adjustment the editor pre-fills with (Batch 215)', () => {

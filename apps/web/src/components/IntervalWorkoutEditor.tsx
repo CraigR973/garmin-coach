@@ -163,7 +163,8 @@ function IntervalWorkoutEditorForm({
       <div>
         <p className="font-medium text-text-primary">Change the interval set</p>
         <p className="mt-1 text-xs text-text-secondary">
-          Warm-up, cool-down and primer steps stay fixed. Choose a suggestion, then fine-tune it.
+          Matching interval sets change together. Everything listed below stays fixed.
+          Choose a suggestion, then fine-tune it.
         </p>
         {editor.adjustmentVerdict ? (
           <p className="mt-1 text-xs text-text-secondary">
@@ -224,7 +225,7 @@ function IntervalWorkoutEditorForm({
             ariaLabel="Change to work percent FTP"
             value={changeTo.work.powerPct}
             min={40}
-            max={150}
+            max={200}
             suffix="%"
             onChange={(value) => updateLeg('work', 'powerPct', value)}
           />
@@ -252,7 +253,7 @@ function IntervalWorkoutEditorForm({
             ariaLabel="Change to rest percent FTP"
             value={changeTo.rest.powerPct}
             min={40}
-            max={150}
+            max={200}
             suffix="%"
             onChange={(value) => updateLeg('rest', 'powerPct', value)}
           />

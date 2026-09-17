@@ -34,10 +34,40 @@ and an over-budget round is proved to execute only the capped calls with the
 rest refused as `is_error`. Both were confirmed to fail against the pre-261
 code first. No prompt-version bump, no migration, no Mark-facing copy change.
 
-**Next: no unshipped batch is queued.** Batch 261 is the last row in
-`docs/phase-batches.md`; the next session should look for new feedback to
-reconcile into a batch (see `docs/agent-commands/batch-start.md` step 4) rather
-than assuming one is already specced.
+**Next: Batches 263-265.** Batch 262 SHIPPED 2026-09-17 (data change only, no
+code, no migration). Mark's 08-28 VO2 review was answered against his real
+session files rather than his summary, he chose the change, and 2026-09-22 is
+now `VO₂ (5 × 2:30 @ 119%)` — active version `a9046266`, 57 min, with v1
+`89f0afe0` left inactive and still describing what it actually prescribed.
+Applied through the real rail (`approve_interval_edit` via `railway run`), so it
+carries an audit row and replaced the live intervals.icu event in place; a
+read-only GET of event `121350317` confirms the device holds it.
+
+**The finding worth carrying forward:** his premise was that the week 4→5 jump
+broke him. The record says otherwise — weeks 5 and 6 were the same 6 × 3 min @
+119%, week 5 went 3 of 6 (his own check-in that morning cites a stomach upset
+and poor sleep) and week 6 went **6 of 6 at a lower heart rate**. What actually
+under-recovered him is that this block ran **week 4 to week 9 with no recovery
+week**, against the every-third-week cadence of his earlier plans. That is a
+plan-design issue, it is not yet a ledger row, and it matters more for the next
+block than the interval durations do.
+
+**Batch 265 was authored 2026-09-17 from the same investigation**, and it is the
+finding with the longest reach. `BLOCK_SEQUENCE` (`coaching_state.py:534`) is the
+app's canonical 2121 slate with recovery at weeks 3, 6 and 9; the live imported
+plan has recovery at 3 and 9 only, so **week 6's recovery is missing** and weeks
+4-8 are five unbroken build weeks. `plan_import.py:116` takes `block_type`
+verbatim and **nothing has ever compared the two**, though both have sat in
+`plan_blocks` in directly comparable form since 2026-07-20. 265 does not re-cut
+the current block - only three build weeks remain - it changes what the next
+import does.
+
+**Batch 263 is now urgent for a second reason.** 262 hit 263.3 on its first real
+use: `approve_interval_edit` carries the old title through and
+`apply_interval_block` preserves the old step label, and **both reach the device**
+via the IR. It was worked around by hand here; the next edit will need the same
+workaround. 263 also still has its 2026-09-29 deadline — week 11 is the same
+two-equal-block shape that gave Mark a half-edited session on 09-08.
 
 ## Prior current-state snapshots
 

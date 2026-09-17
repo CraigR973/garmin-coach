@@ -102,6 +102,34 @@ def test_build_structured_workout_ir_expands_cadence_critical_repeats() -> None:
     assert "cadenceRpm" not in ir["steps"][2]
 
 
+def test_first_class_block_delivers_the_plans_neuromuscular_dose() -> None:
+    """Batch 263: editor bounds and source expansion share one contract."""
+    workout = _planned_workout(
+        {
+            "format": "bike",
+            "steps": [
+                {"label": "Warm-up", "minutes": 5, "target": "55%"},
+                {
+                    "label": "Neuromuscular sprints",
+                    "block": {
+                        "repeat": 6,
+                        "work": {"durationSec": 12, "powerPct": 185},
+                        "rest": {"durationSec": 168, "powerPct": 55},
+                    },
+                },
+                {"label": "Cool-down", "minutes": 5, "target": "50%"},
+            ],
+        }
+    )
+
+    ir = build_structured_workout_ir(workout)
+
+    work = [step for step in ir["steps"] if " work " in step["label"]]
+    assert len(work) == 6
+    assert {step["durationSec"] for step in work} == {12}
+    assert {step["powerEndPct"] for step in work} == {185}
+
+
 def test_intervals_payload_uses_output_only_calendar_event_shape() -> None:
     workout = _planned_workout(
         {
