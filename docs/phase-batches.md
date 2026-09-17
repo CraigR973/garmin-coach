@@ -3618,3 +3618,72 @@ holds the 30/30 and Rønnestad 30/15 protocols behind Decision #33 — is what
 would generate a future block. Whether his progression should become that
 toolkit's shape is a real question, and a separate one. Raise it when the
 current block ends on 2026-10-13, not before.
+
+## Post-roadmap — 2026-09-17 — Found while answering Mark's VO2 review: the block shape the app already knows (Batch 265)
+
+**Batch 262 set out to change one VO2 session and found the wrong thing had been
+diagnosed.** Mark's 2026-08-28 review blamed the week 4 → 5 interval jump. His
+own session files say he cleared it: weeks 5 and 6 were the **same** 6 × 3 min @
+119%, week 5 went 3 of 6 (his 11:55 check-in that day cites a stomach upset,
+poor sleep and a heavy rest day) and **week 6 went 6 of 6, rated 9/10, at a
+lower heart rate for the same power**. So the prescription was never the
+problem. What he then identified himself, on 2026-09-15, was: *"rather than
+having a recovery week every 3rd week as with previous 13 week plans, this one
+went from week 4 to week 9 without one"*.
+
+**He is right, and the app already holds the shape that says so.**
+`BLOCK_SEQUENCE` ([`coaching_state.py:534`](../apps/api/src/services/coaching_state.py))
+is the canonical 2121 slate, and the block generator's docstring states the
+intent outright — *"2 build / 1 recovery, repeated"*:
+
+| | Wk 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **`BLOCK_SEQUENCE`** | build | build | **recovery** | build | build | **recovery** | build | build | **recovery** | build | build | taper | consolidation |
+| **Live plan (`PN2`)** | build | build | **recovery** | build | build | build | build | build | **recovery** | build | build | consolidation | taper |
+
+**Week 6's recovery is simply missing** — `plan_blocks` records
+`PN2 W06 BUILD`, `block_type='build'`, where the canonical slate says
+`recovery`. That turns two unbroken build weeks into **five (weeks 4–8)**. The
+divergence has been sitting in the database in directly comparable form since
+the plan was imported on 2026-07-20, and **nothing has ever compared them**:
+`plan_import.py:116` takes `block_type=str(wk["block_type"])` verbatim from the
+transcribed plan, and the only other uses of `BLOCK_SEQUENCE` are the generator
+itself and `TOTAL_WEEKS = len(BLOCK_SEQUENCE)` in `plan_actions.py` — a length,
+not a check.
+
+**What followed is consistent with it, though not proof of it.** Week 5's
+shortfall he attributed to illness. By week 9 the early-warning fired on HRV,
+sleep and readiness drifting together. On 2026-09-15 — the *first* session of
+the overdue recovery week, and one of the lightest in the block at 3 × 2 min @
+115% — he logged **RPE 7** and *"don't feel like could've done much more
+today"*, executing 4 of 4 reps on target. A rider who is fine does not arrive
+there. The causal claim this batch can safely make is the structural one: the
+plan under-recovered him against the app's own definition, and the app never
+said so.
+
+**A second, smaller divergence in the same table:** the canonical slate ends
+taper (12) then consolidation (13); the import ends consolidation (12) then
+taper (13). The import's order is the more conventional one, which raises the
+possibility that `BLOCK_SEQUENCE` is the row that is wrong. That should be
+settled rather than assumed either way.
+
+**Scope note: this is about the next block, not this one.** Weeks 10–13 are
+nearly spent, week 12 is consolidation and week 13 is the taper, so only three
+build weeks remain and re-cutting the current plan now would cost more than it
+buys. Batch 262 already eased week 10 for exactly this reason. **Decision
+numbers are assigned at `/batch-start`, not here.**
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 265 — The plan under-recovered him and the app knew the right shape | 🔴 High | Planned | 265.1 **Compare an imported plan's week-type sequence against `BLOCK_SEQUENCE`, and say when they differ.** `plan_import.py:116` accepts `block_type` verbatim; the check does not exist anywhere. Report the divergence in the terms that matter to a rider — "week 6 is a build week where the 2121 slate has recovery; that makes weeks 4–8 five unbroken build weeks" — not as a diff of two lists.<br>265.2 **Decide at `/batch-start` what the check does when they differ.** Mark authors these plans himself and transcribes them in, so this must not become a gate that overrides him; a stated divergence he confirms is the likely shape, and a hard block is almost certainly wrong. Decide also whether confirming is recorded, so a deliberate divergence is not re-flagged every import.<br>265.3 **Surface a long build run while the block is running, not only at import.** The five-week run was visible from 2026-07-20 and nothing said anything until Mark felt it in week 9 and worked it out himself. Decide where it belongs: the weekly review already fires an early-warning on drifting HRV/sleep/readiness and is the natural home, while the morning read risks nagging daily about a structural fact that cannot change today. Whatever is chosen must be able to say *why* — "this is week 5 of an unbroken build run" is actionable in a way that "readiness is drifting" is not.<br>265.4 **Settle the week 12/13 order rather than assuming the constant is right.** Canonical is taper → consolidation; the import and Mark's own written plans are consolidation → taper, which is the more conventional reading. If `BLOCK_SEQUENCE` is wrong, fix it and say so in `DECISIONS.md`; if it is right, the comparison in 265.1 must not report a false divergence for every plan he writes.<br>265.5 Tests, each confirmed to fail against today's code first: the real `PN2` week-type sequence is flagged with week 6 named and the five-week run measured; a plan matching `BLOCK_SEQUENCE` produces no divergence at all; a confirmed divergence is not re-reported. | Catch a plan that under-recovers him **before he rides it**, using a shape the app already holds — so the next block does not repeat the five-week run that this one only revealed once he felt it. | Replaying the real 2026-07-20 `PN2` import names week 6 as the missing recovery week and measures weeks 4–8 as five consecutive build weeks, and a conforming plan is silent. Mark can still author and import whatever he wants — the check informs, it does not veto. The 12/13 order is settled in writing either way. A long build run is visible while it is happening, in a place that says why. **The current block is not re-cut**; this changes what the next import and the next generated block do. No migration expected; if a prompt names the new signal, its withdrawal set is stated before the bump. |
+
+### Recorded, not scheduled (2026-09-17)
+
+**Do the every-third-week recovery weeks belong in Mark's next written plan, or
+in the generator?** He writes these blocks himself and transcribes them in, so
+265 deliberately stops at telling him when a plan diverges. The separate
+question — whether the app should ever *propose* the next block's shape from
+`BLOCK_SEQUENCE` plus `block_progression.py`'s outcome read, rather than waiting
+for a document — is a real one and is untouched here. It also interacts with his
+next-block VO2 progression, already recorded on 2026-09-16. Raise both together
+when this block ends on 2026-10-18.

@@ -34,7 +34,7 @@ and an over-budget round is proved to execute only the capped calls with the
 rest refused as `is_error`. Both were confirmed to fail against the pre-261
 code first. No prompt-version bump, no migration, no Mark-facing copy change.
 
-**Next: Batches 263-264.** Batch 262 SHIPPED 2026-09-17 (data change only, no
+**Next: Batches 263-265.** Batch 262 SHIPPED 2026-09-17 (data change only, no
 code, no migration). Mark's 08-28 VO2 review was answered against his real
 session files rather than his summary, he chose the change, and 2026-09-22 is
 now `VO₂ (5 × 2:30 @ 119%)` — active version `a9046266`, 57 min, with v1
@@ -51,6 +51,16 @@ under-recovered him is that this block ran **week 4 to week 9 with no recovery
 week**, against the every-third-week cadence of his earlier plans. That is a
 plan-design issue, it is not yet a ledger row, and it matters more for the next
 block than the interval durations do.
+
+**Batch 265 was authored 2026-09-17 from the same investigation**, and it is the
+finding with the longest reach. `BLOCK_SEQUENCE` (`coaching_state.py:534`) is the
+app's canonical 2121 slate with recovery at weeks 3, 6 and 9; the live imported
+plan has recovery at 3 and 9 only, so **week 6's recovery is missing** and weeks
+4-8 are five unbroken build weeks. `plan_import.py:116` takes `block_type`
+verbatim and **nothing has ever compared the two**, though both have sat in
+`plan_blocks` in directly comparable form since 2026-07-20. 265 does not re-cut
+the current block - only three build weeks remain - it changes what the next
+import does.
 
 **Batch 263 is now urgent for a second reason.** 262 hit 263.3 on its first real
 use: `approve_interval_edit` carries the old title through and
