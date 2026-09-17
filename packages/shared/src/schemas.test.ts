@@ -6,6 +6,7 @@ import {
   ageComparisonSchema,
   chronicSuggestionDriverSchema,
   chronicSuggestionRotationSchema,
+  briefMessageSchema,
   coachOriginKindSchema,
   coachingStateEnvelopeSchema,
   conversationLearningEnvelopeSchema,
@@ -1306,5 +1307,69 @@ describe('v1 shared schemas', () => {
     }
     expect(PROACTIVE_COACH_ORIGIN_KINDS).toContain('weekly_review');
     expect(PROACTIVE_COACH_ORIGIN_KINDS).toContain('state_change');
+  });
+
+  it('carries the interval change an assistant turn agreed to (Batch 264)', () => {
+    // A field zod does not declare is stripped before the card ever sees it,
+    // which is how a whole affordance can go missing silently (Batch 214).
+    const turn = briefMessageSchema.parse({
+      id: '042c897f-1492-46cf-b529-9030889c5904',
+      analysisId: null,
+      role: 'assistant',
+      content: 'That’s the one to confirm below.',
+      proposedPlannedWorkoutId: '1795a107-d43f-4985-a92e-f9f097842f28',
+      proposedIntervalChange: {
+        status: 'proposed',
+        plannedWorkoutId: '1795a107-d43f-4985-a92e-f9f097842f28',
+        plannedWorkoutVersion: 1,
+        matchingSets: 2,
+        current: {
+          repeat: 10,
+          work: { durationSec: 40, powerPct: 125, cadenceRpm: 95 },
+          rest: { durationSec: 20, powerPct: 55 },
+        },
+        changeTo: {
+          repeat: 10,
+          work: { durationSec: 35, powerPct: 125, cadenceRpm: 95 },
+          rest: { durationSec: 25, powerPct: 55 },
+        },
+        currentLabel: '10 × 40s/20s @ 125%/55%',
+        changeToLabel: '10 × 35s/25s @ 125%/55%',
+        heldConstant: ['Warm-up ramp 55→80%'],
+      },
+      createdAtUtc: '2026-09-08T09:03:16Z',
+    });
+
+    expect(turn.proposedIntervalChange).toMatchObject({
+      status: 'proposed',
+      changeToLabel: '10 × 35s/25s @ 125%/55%',
+    });
+  });
+
+  it('carries an offer the app could not make as a plain reason (Batch 264)', () => {
+    const turn = briefMessageSchema.parse({
+      id: '042c897f-1492-46cf-b529-9030889c5905',
+      analysisId: null,
+      role: 'assistant',
+      content: 'Not a change I can make here.',
+      proposedPlannedWorkoutId: null,
+      proposedIntervalChange: { status: 'unavailable', reason: 'out_of_range' },
+      createdAtUtc: '2026-09-08T09:03:16Z',
+    });
+
+    expect(turn.proposedIntervalChange).toEqual({
+      status: 'unavailable',
+      reason: 'out_of_range',
+    });
+    // A turn that made no offer carries nothing at all.
+    expect(
+      briefMessageSchema.parse({
+        id: '042c897f-1492-46cf-b529-9030894c5905',
+        analysisId: null,
+        role: 'assistant',
+        content: 'Seven hours, mostly unbroken.',
+        createdAtUtc: '2026-09-08T09:03:16Z',
+      }).proposedIntervalChange,
+    ).toBeUndefined();
   });
 });

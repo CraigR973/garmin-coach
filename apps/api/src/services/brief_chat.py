@@ -44,6 +44,7 @@ Batch 179 kickoff decisions (`/batch-start`):
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -84,6 +85,21 @@ from src.services.coach_policy import (
     internal_vocabulary_hits,
 )
 from src.services.coach_tools import COACH_TOOLS, CoachToolbox
+from src.services.interval_workout_editor import (
+    MAX_POWER_PCT,
+    MAX_REPEATS,
+    MAX_REST_DURATION_SEC,
+    MAX_WORK_DURATION_SEC,
+    MIN_POWER_PCT,
+    MIN_REPEATS,
+    MIN_REST_DURATION_SEC,
+    MIN_WORK_DURATION_SEC,
+    PROPOSED_BLOCK_FIELDS,
+    IntervalEditorSnapshot,
+    block_from_proposal,
+    block_to_source,
+    format_interval_block,
+)
 from src.services.learned_context import LEARNED_CONTEXT_PROMPT_GUARDRAIL
 from src.services.prompt_metadata import prompt_system_hash
 from src.services.workload_budget import workload_slot
@@ -94,7 +110,8 @@ __all__ = [
     "MAX_USER_TURNS_PER_DAY",
     "NO_PLUMBING_RULE",
     "PROMPT_VERSION",
-    "PROPOSAL_MARKER",
+    "PROPOSAL_MARKER_CLOSE",
+    "PROPOSAL_MARKER_OPEN",
     "QUESTION_MAX_LENGTH",
     "SYSTEM_PROMPT",
     "THREAD_PAGE_LIMIT",
@@ -134,8 +151,23 @@ QUESTION_MAX_LENGTH = 1000
 # months being told to say "that is not in front of me" will keep saying it.
 # Chat regenerates nothing on a bump (`prompt_artifacts`: UNFILTERED, "a past
 # answer stays what was said"), so this withdraws no stored artifact.
-PROMPT_VERSION = "coach-chat-v14-2026-09-13"
-PROPOSAL_MARKER = "[[PROPOSE_WORKOUT_ADJUSTMENT]]"
+PROMPT_VERSION = "coach-chat-v15-2026-09-17"
+#: Batch 264: the marker now carries the change. It was a bare flag meaning "I
+#: offered something"; the offer itself lived only in prose, so the app could
+#: never act on it. ``brief_chat`` is UNFILTERED in ``prompt_artifacts`` with no
+#: analysis types, so this bump withdraws no stored artifact.
+PROPOSAL_MARKER_OPEN = "[[PROPOSE_WORKOUT_ADJUSTMENT "
+PROPOSAL_MARKER_CLOSE = "]]"
+#: Matches the marker with or without a payload, so a v14-shaped bare marker is
+#: still stripped from Mark's copy rather than shown to him.
+_PROPOSAL_MARKER_PATTERN = re.compile(
+    r"\[\[PROPOSE_WORKOUT_ADJUSTMENT\s*(?P<payload>\{.*?\})?\s*\]\]",
+    re.DOTALL,
+)
+#: The two states a turn's offer can be in. There is no third: an answer that
+#: made no offer carries no change at all.
+STATUS_PROPOSED = "proposed"
+STATUS_UNAVAILABLE = "unavailable"
 
 SYSTEM_PROMPT = f"""You are CheckMark, Mark's coach, talking with him.
 
@@ -297,23 +329,6 @@ class AnthropicBriefChatClient:
         return result.output_markdown
 
 
-# Deterministic intent check on Mark's own words. Batch 202 adds a second key:
-# the model must also mark that its answer actually offered a proposal before
-# the service attaches the planned-workout id.
-_ADJUSTMENT_KEYWORDS = (
-    "ease",
-    "easier",
-    "lighter",
-    "reduce",
-    "shorter",
-    "swap",
-    "adjust",
-    "propose",
-    "change today",
-    "harder",
-)
-
-
 def _utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
@@ -322,11 +337,6 @@ def _utcnow() -> datetime:
 class BriefChatTurn:
     user_message: BriefMessage
     assistant_message: BriefMessage
-
-
-def _wants_adjustment(question: str) -> bool:
-    lowered = question.lower()
-    return any(keyword in lowered for keyword in _ADJUSTMENT_KEYWORDS)
 
 
 def _message_ordering() -> tuple[Any, ...]:
@@ -358,25 +368,59 @@ def _origin_description(origin: CoachOrigin, *, local_today: date) -> str:
     )
 
 
-def _capability_instruction(adjustable_workout_id: uuid.UUID | None) -> str:
-    """What the coach may offer, from today's plan rather than the read type.
+def _capability_instruction(adjustable_set: IntervalEditorSnapshot | None) -> str:
+    """What the coach may offer, in the exact terms the app can carry out.
 
-    Batch 179.3 re-keyed this: the affordance now follows whether a live,
-    deliverable workout actually exists today, so it is right from every entry
-    point instead of only from the morning read.
+    Batch 179.3 keyed this on whether a live workout exists today. Batch 264
+    keys it on what can actually be *done* to that workout, because the previous
+    wording bounded nothing: on 2026-09-08 the coach told Mark it would queue a
+    35s/25s change and the affordance beneath it re-proposed the unchanged
+    40s/20s session, which was the only thing it had ever been able to do. The
+    enumeration below is closed on purpose — Batch 238 measured that the model
+    reads a capability list as closed — and the five numbers are the five the
+    interval editor already validates.
     """
-    if adjustable_workout_id is not None:
+    if adjustable_set is None:
         return (
-            "Capability right now: today's plan holds a live workout that can still be "
-            "adjusted. You cannot change it yourself, but if Mark asks for an adjustment, "
-            "you may say the app can propose one for him to confirm. If and only if "
-            f"your answer actually makes that offer, include {PROPOSAL_MARKER} once "
-            "at the very end of the answer. The app removes that marker before Mark sees it."
+            "Capability right now: there is no session you can change today - it is rest, "
+            "away, already done, or not an indoor bike session. Do not say the app can "
+            "propose, queue, confirm, upload, or change a workout from this conversation."
         )
+    current = adjustable_set.current
+    sets = len(adjustable_set.editable_step_indices)
+    matching = (
+        f" Today's session repeats that set {sets} times around a fixed recovery, and a "
+        "change moves every matching set together, so give the numbers for ONE set."
+        if sets > 1
+        else ""
+    )
+    fixed = ", ".join(step.label for step in adjustable_set.fixed_steps) or "none"
     return (
-        "Capability right now: there is no live workout to adjust today - it is rest, "
-        "away, or already done. Do not say the app can propose, confirm, upload, or "
-        "change a workout from this conversation."
+        "Capability right now: today's plan holds a live indoor bike session whose main "
+        f"interval set is {format_interval_block(current)}.{matching} You can offer to "
+        "change that set, and only that set: how many intervals, how long each effort is, "
+        "what percentage of FTP it is ridden at, how long the recovery is, and what "
+        "percentage of FTP the recovery is. Everything else is held exactly as prescribed "
+        f"({fixed}), including cadence, and you cannot move the session to another day, "
+        "change what kind of session it is, or alter anything outside that one set.\n\n"
+        "If Mark asks for a change you can express in those five numbers and your answer "
+        "offers it to him, end the answer with the marker on its own line, carrying the "
+        "numbers the session would have AFTER the change:\n"
+        f'{PROPOSAL_MARKER_OPEN}{{"repeat": {current.repeat}, '
+        f'"workSec": {current.work.duration_sec}, "workPct": {current.work.power_pct}, '
+        f'"restSec": {current.rest.duration_sec}, "restPct": {current.rest.power_pct}}}'
+        f"{PROPOSAL_MARKER_CLOSE}\n"
+        f"Whole numbers only, within these bounds: repeats {MIN_REPEATS}-{MAX_REPEATS}, "
+        f"effort {MIN_WORK_DURATION_SEC}-{MAX_WORK_DURATION_SEC} seconds, recovery "
+        f"{MIN_REST_DURATION_SEC}-{MAX_REST_DURATION_SEC} seconds, both percentages "
+        f"{MIN_POWER_PCT}-{MAX_POWER_PCT}. The app removes the marker before Mark sees it "
+        "and shows him the change with its before and after; it reaches his plan and his "
+        "turbo only when he confirms it there.\n\n"
+        "So describe what you are putting in front of him to confirm, and never say you "
+        "have queued, applied, changed, scheduled or uploaded anything - you have not, and "
+        "he has not confirmed yet. If what he wants cannot be expressed in those five "
+        "numbers, say plainly that it is not a change you can make here, and what he would "
+        "have to do instead; do not offer it anyway."
     )
 
 
@@ -632,7 +676,7 @@ class BriefChatService:
             origin=origin,
             local_today=local_today,
             app_state=context.app_state,
-            adjustable_workout_id=context.adjustable_workout_id,
+            adjustable_set=context.adjustable_interval_set,
         )
         chat_client = client or AnthropicBriefChatClient()
         async with workload_slot(workload="anthropic", user_id=player.id):
@@ -647,16 +691,38 @@ class BriefChatService:
                 # supplies it.
                 toolbox=CoachToolbox(self.session, player),
             )
-        answer_for_mark, model_offered_proposal = _strip_proposal_marker(answer)
+        answer_for_mark, payload, model_offered_proposal = _extract_proposal(answer)
 
-        # Batch 179.3 asks whether there is a live workout to adjust today.
-        # Batch 202.3 adds the answer marker so a keyword like "harder" cannot
-        # attach an affordance when the coach refused or answered something else.
-        proposed_id = (
-            context.adjustable_workout_id
-            if _wants_adjustment(cleaned) and model_offered_proposal
+        # Batch 264 retires the keyword gate on Mark's own words. It was a proxy
+        # for "he asked for a change" and it was wrong in both directions: on
+        # 2026-09-08 it fired on *"had to slightly adjust last week"*, a
+        # retrospective clause, and it would have blocked a plain "can we do
+        # 35/25 instead?" because "instead" is not one of its ten words. What
+        # replaces it is a stronger deterministic gate than any wording test —
+        # the offer must resolve to a validated block that differs from what
+        # today's live plan row actually prescribes.
+        proposed_change = (
+            _proposed_change(
+                payload=payload,
+                adjustable_set=context.adjustable_interval_set,
+                workout_id=context.adjustable_workout_id,
+                workout_version=context.adjustable_workout_version,
+            )
+            if model_offered_proposal
             else None
         )
+        proposed_id = (
+            context.adjustable_workout_id
+            if proposed_change is not None and proposed_change["status"] == STATUS_PROPOSED
+            else None
+        )
+        if proposed_change is not None and proposed_change["status"] == STATUS_UNAVAILABLE:
+            log.info(
+                "coach offered a change the app cannot carry",
+                profile_id=str(player.id),
+                reason=proposed_change["reason"],
+                payload=payload,
+            )
 
         user_message = BriefMessage(
             user_id=player.id,
@@ -675,6 +741,7 @@ class BriefChatService:
             role=ROLE_ASSISTANT,
             content=answer_for_mark,
             proposed_planned_workout_id=proposed_id,
+            proposed_interval_change=proposed_change,
             created_utc=now,
         )
         self.session.add(user_message)
@@ -714,7 +781,7 @@ def _build_system_prompt(
     origin: CoachOrigin,
     local_today: date,
     app_state: dict[str, Any],
-    adjustable_workout_id: uuid.UUID | None,
+    adjustable_set: IntervalEditorSnapshot | None,
 ) -> str:
     return "\n\n".join(
         (
@@ -722,7 +789,7 @@ def _build_system_prompt(
                 analysis=analysis,
                 origin=origin,
                 local_today=local_today,
-                adjustable_workout_id=adjustable_workout_id,
+                adjustable_set=adjustable_set,
             ),
             _app_state_system_text(app_state),
         )
@@ -735,7 +802,7 @@ def _build_cached_system_prompt(
     origin: CoachOrigin,
     local_today: date,
     app_state: dict[str, Any],
-    adjustable_workout_id: uuid.UUID | None,
+    adjustable_set: IntervalEditorSnapshot | None,
 ) -> list[AnthropicSystemTextBlock]:
     return [
         {
@@ -744,7 +811,7 @@ def _build_cached_system_prompt(
                 analysis=analysis,
                 origin=origin,
                 local_today=local_today,
-                adjustable_workout_id=adjustable_workout_id,
+                adjustable_set=adjustable_set,
             ),
             "cache_control": {"type": "ephemeral"},
         },
@@ -783,14 +850,14 @@ def _build_system_prompt_prefix(
     analysis: Analysis | None,
     origin: CoachOrigin,
     local_today: date,
-    adjustable_workout_id: uuid.UUID | None,
+    adjustable_set: IntervalEditorSnapshot | None,
 ) -> str:
     parts = [SYSTEM_PROMPT]
     if analysis is not None:
         parts.append(_read_description(analysis))
     else:
         parts.append(_origin_description(origin, local_today=local_today))
-    parts.append(_capability_instruction(adjustable_workout_id))
+    parts.append(_capability_instruction(adjustable_set))
     if analysis is not None:
         parts.append(f"What you wrote in that read:\n{analysis.output_markdown}")
         parts.append(
@@ -821,10 +888,76 @@ def _packet_json(context_packet: dict[str, Any]) -> str:
     )
 
 
-def _strip_proposal_marker(answer: str) -> tuple[str, bool]:
-    if PROPOSAL_MARKER not in answer:
-        return answer, False
-    return answer.replace(PROPOSAL_MARKER, "").strip(), True
+#: Why a change the coach offered could not be put in front of Mark. Plain,
+#: closed, and rendered by the web as a sentence — never an internal token
+#: (:data:`NO_PLUMBING_RULE`), and never silence, because a claim with nothing
+#: under it is the 2026-09-08 failure itself.
+UNAVAILABLE_NOT_EDITABLE = "not_editable"
+UNAVAILABLE_MALFORMED = "malformed"
+UNAVAILABLE_OUT_OF_RANGE = "out_of_range"
+UNAVAILABLE_UNCHANGED = "unchanged"
+
+
+def _extract_proposal(answer: str) -> tuple[str, str | None, bool]:
+    """Split Mark's copy from the change the answer carries.
+
+    Returns the answer with the marker removed, the raw payload when there was
+    one, and whether a marker was present at all. A v14-shaped bare marker is
+    still removed — Mark must never see the plumbing — but carries no change, so
+    it is reported as an offer with nothing under it rather than as no offer.
+    """
+    match = _PROPOSAL_MARKER_PATTERN.search(answer)
+    if match is None:
+        return answer, None, False
+    cleaned = _PROPOSAL_MARKER_PATTERN.sub("", answer).strip()
+    return cleaned, match.group("payload"), True
+
+
+def _proposed_change(
+    *,
+    payload: str | None,
+    adjustable_set: IntervalEditorSnapshot | None,
+    workout_id: uuid.UUID | None,
+    workout_version: int | None,
+) -> dict[str, Any]:
+    """The change to put in front of Mark, or an honest reason there is none.
+
+    Every check here is deterministic and run against live plan rows: the model
+    supplies five numbers and nothing else decides. ``validate_interval_block``
+    bounds each leg exactly as it does for a number typed into the editor, so a
+    coach-composed change is not a wider authority than Mark's own.
+    """
+    if adjustable_set is None or workout_id is None:
+        return {"status": STATUS_UNAVAILABLE, "reason": UNAVAILABLE_NOT_EDITABLE}
+    if payload is None:
+        return {"status": STATUS_UNAVAILABLE, "reason": UNAVAILABLE_MALFORMED}
+    try:
+        parsed = json.loads(payload)
+    except ValueError:
+        return {"status": STATUS_UNAVAILABLE, "reason": UNAVAILABLE_MALFORMED}
+    # A payload of the wrong shape and a payload of the wrong size are different
+    # answers to Mark: one is the app failing to read an offer, the other is the
+    # offer being outside what this editor may set.
+    if not isinstance(parsed, dict) or any(field not in parsed for field in PROPOSED_BLOCK_FIELDS):
+        return {"status": STATUS_UNAVAILABLE, "reason": UNAVAILABLE_MALFORMED}
+    current = adjustable_set.current
+    try:
+        block = block_from_proposal(parsed, current=current)
+    except HTTPException:
+        return {"status": STATUS_UNAVAILABLE, "reason": UNAVAILABLE_OUT_OF_RANGE}
+    if block == current:
+        return {"status": STATUS_UNAVAILABLE, "reason": UNAVAILABLE_UNCHANGED}
+    return {
+        "status": STATUS_PROPOSED,
+        "plannedWorkoutId": str(workout_id),
+        "plannedWorkoutVersion": workout_version,
+        "matchingSets": len(adjustable_set.editable_step_indices),
+        "current": block_to_source(current),
+        "changeTo": block_to_source(block),
+        "currentLabel": format_interval_block(current),
+        "changeToLabel": format_interval_block(block),
+        "heldConstant": [step.label for step in adjustable_set.fixed_steps],
+    }
 
 
 def _packet_without_stored_system_prompt(value: Any) -> Any:

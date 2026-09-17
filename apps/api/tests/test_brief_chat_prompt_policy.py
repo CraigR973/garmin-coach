@@ -38,6 +38,7 @@ from src.services.coach_policy import (
     READ_PROMPT_FLOORS,
     missing_floors,
 )
+from src.services.interval_workout_editor import editable_snapshot_for
 from src.services.learned_context import LEARNED_CONTEXT_PROMPT_GUARDRAIL
 
 #: The prompt is a wrapped literal, so a phrase can straddle a newline. Assert
@@ -45,6 +46,25 @@ from src.services.learned_context import LEARNED_CONTEXT_PROMPT_GUARDRAIL
 FLAT_PROMPT = " ".join(SYSTEM_PROMPT.split())
 
 WORKOUT_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
+
+#: Batch 264: the capability line now quotes the session it can change, so these
+#: assemblies need a real editable set rather than a bare id.
+ADJUSTABLE_SET = editable_snapshot_for(
+    {
+        "format": "bike",
+        "steps": [
+            {"label": "Warm-up ramp 55→80%", "ramp": [55, 80], "minutes": 10},
+            {
+                "label": "40s/20s @125%",
+                "target": "125%",
+                "pattern": "10 x 40s / 20s @55%",
+                "cadenceRpm": 95,
+            },
+            {"label": "Cool-down ramp", "ramp": [70, 45], "minutes": 10},
+        ],
+    },
+    "VO₂ (see prescription)",
+)
 
 
 def _flat(text: str) -> str:
@@ -121,7 +141,7 @@ class _Date:
 
 def test_brief_chat_prompt_allows_labelled_general_science_lane() -> None:
     """Batch 175's lane survives Batch 179's rewrite of the surface."""
-    assert PROMPT_VERSION == "coach-chat-v14-2026-09-13"
+    assert PROMPT_VERSION == "coach-chat-v15-2026-09-17"
     assert "never invent his" in FLAT_PROMPT
     assert "You may answer general, non-personalized endurance-training science" in FLAT_PROMPT
     assert 'Label those answers with "General principle:"' in FLAT_PROMPT
@@ -238,21 +258,21 @@ def test_every_floor_holds_from_every_entry_point() -> None:
             origin=CoachOrigin(kind="morning_brief"),
             local_today=date(2026, 7, 31),
             app_state={"today": {}},
-            adjustable_workout_id=WORKOUT_ID,
+            adjustable_set=ADJUSTABLE_SET,
         ),
         _build_system_prompt(
             analysis=_FakeAnalysis("post_workout"),  # type: ignore[arg-type]
             origin=CoachOrigin(kind="workout"),
             local_today=date(2026, 7, 31),
             app_state={"today": {}},
-            adjustable_workout_id=None,
+            adjustable_set=None,
         ),
         _build_system_prompt(
             analysis=None,
             origin=CoachOrigin(kind="sleep", subject_date=date(2026, 7, 30)),
             local_today=date(2026, 7, 31),
             app_state={"today": {}},
-            adjustable_workout_id=None,
+            adjustable_set=None,
         ),
     ]
     for prompt in entry_points:
@@ -294,7 +314,7 @@ def test_chat_system_prompt_caches_the_stable_prefix_and_the_live_block() -> Non
         origin=CoachOrigin(kind="morning_brief"),
         local_today=date(2026, 7, 31),
         app_state={"assembledAtUtc": "2026-09-13T08:14:02", "today": {"bodyMetrics": []}},
-        adjustable_workout_id=WORKOUT_ID,
+        adjustable_set=ADJUSTABLE_SET,
     )
 
     assert blocks == [
@@ -329,7 +349,7 @@ def test_chat_live_block_stays_byte_identical_when_only_assembly_time_changes() 
         analysis=None,
         origin=CoachOrigin(kind="home"),
         local_today=date(2026, 9, 13),
-        adjustable_workout_id=None,
+        adjustable_set=None,
     )
     first = _build_cached_system_prompt(
         **common,
@@ -354,7 +374,7 @@ def test_chat_system_prompt_serialises_packets_deterministically() -> None:
         origin=CoachOrigin(kind="morning_brief"),
         local_today=date(2026, 7, 31),
         app_state={"today": {"bodyMetrics": []}, "trends": {"hrv": [52]}},
-        adjustable_workout_id=WORKOUT_ID,
+        adjustable_set=ADJUSTABLE_SET,
     )
     second = _build_cached_system_prompt(
         analysis=_FakeAnalysis(  # type: ignore[arg-type]
@@ -364,7 +384,7 @@ def test_chat_system_prompt_serialises_packets_deterministically() -> None:
         origin=CoachOrigin(kind="morning_brief"),
         local_today=date(2026, 7, 31),
         app_state={"trends": {"hrv": [52]}, "today": {"bodyMetrics": []}},
-        adjustable_workout_id=WORKOUT_ID,
+        adjustable_set=ADJUSTABLE_SET,
     )
 
     assert first == second
@@ -419,13 +439,19 @@ def test_observed_data_corrections_do_not_soften_coaching_judgement() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_capability_wording_follows_the_plan_not_the_read_type() -> None:
-    """179.3: the affordance is about today's plan, from any entry point."""
-    live = _capability_instruction(WORKOUT_ID)
+def test_capability_wording_follows_what_can_actually_be_done() -> None:
+    """179.3 keyed this on today's plan; Batch 264 keys it on the change itself.
+
+    "A live workout that can still be adjusted" bounded nothing, which is how
+    the coach came to promise a 35s/25s session over a button that could only
+    re-propose the stored 40s/20s one. The wording now names the prescription,
+    the five numbers, and what is held constant.
+    """
+    live = _capability_instruction(ADJUSTABLE_SET)
     nothing_live = _capability_instruction(None)
-    assert "today's plan holds a live workout" in live
-    assert "the app can propose one" in live
-    assert "no live workout to adjust today" in nothing_live
+    assert "main interval set is 10 × 40s/20s @ 125%/55%" in live
+    assert "and only that set" in live
+    assert "no session you can change today" in nothing_live
     assert "Do not say the app can propose" in nothing_live
     assert internal_vocabulary_hits(live) == ()
     assert internal_vocabulary_hits(nothing_live) == ()

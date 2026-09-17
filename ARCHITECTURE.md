@@ -366,6 +366,24 @@ chat now requires all three gates: Mark's question contains adjustment intent,
 today's plan has a live adjustable bike workout, and the model answer includes
 the service-stripped proposal marker.
 
+**A chat-agreed change carries its own numbers (Batch 264, DECISIONS #335).**
+Those three gates could not bound *what* was claimed, and the affordance under
+the claim called the ordinary propose endpoint, which rebuilds the stored plan
+row — so an agreed "2 × 10 min of 35s/25s" reached nothing, eight times across
+six days. A coach answer now ends with a payload-bearing marker carrying five
+numbers — repeats, effort seconds, effort %FTP, recovery seconds, recovery %FTP
+— for today's live **editable indoor** bike interval set; cadence is carried
+forward from the prescription rather than composed. The service runs them
+through the interval editor's own `validate_interval_block` against the live plan
+row and stores the result, with what it replaces, in nullable
+`brief_messages.proposed_interval_change` (migration `031`). The chat shows that
+before and after and confirms it in place; the confirm calls the **existing**
+`interval-editor/approve` rail, so propose→approve→push (#29) and Red-never-VO2
+are unchanged. The keyword gate on Mark's own words (`_wants_adjustment`) is
+retired in favour of a stricter deterministic test — the change must parse,
+validate, and differ from what is prescribed. Prompt `coach-chat-v15`;
+`brief_chat` is UNFILTERED, so the bump withdraws nothing.
+
 **One coach conversation (Batch 179, PR #208 / squash `94f10b8`, DECISIONS #259).** Until this batch the
 schema asserted that a conversation cannot exist without a document —
 `brief_messages.analysis_id` was `NOT NULL` — so there was no way to just ask the

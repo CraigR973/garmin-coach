@@ -929,6 +929,40 @@ export const PROACTIVE_COACH_ORIGIN_KINDS = [
   'state_change',
 ] as const satisfies readonly z.infer<typeof coachOriginKindSchema>[];
 
+// Batch 264: the interval change an answer actually carries. Before this, a
+// negotiated change existed only in the coach's prose and the affordance under
+// it re-proposed the *stored* session, so "I'll get that queued up — 2×10 min
+// blocks of 35s/25s" proposed the unchanged 40s/20s ride, twice. The five
+// numbers the coach may change are validated server-side against today's live
+// plan row before this is written, so `changeTo` is a real block, not a claim.
+export const coachIntervalChangeReasonSchema = z.enum([
+  'not_editable',
+  'malformed',
+  'out_of_range',
+  'unchanged',
+]);
+
+export const coachIntervalChangeSchema = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('proposed'),
+    plannedWorkoutId: z.string().uuid(),
+    plannedWorkoutVersion: z.number().int().nullable().optional(),
+    /** Equal sibling sets move together (Batch 263), so the card says how many. */
+    matchingSets: z.number().int().min(1),
+    current: intervalWorkoutBlockSchema,
+    changeTo: intervalWorkoutBlockSchema,
+    currentLabel: z.string().min(1),
+    changeToLabel: z.string().min(1),
+    heldConstant: z.array(z.string()),
+  }),
+  // An offer the app could not carry is said so in one line rather than left as
+  // a claim with nothing under it — which is the 2026-09-08 failure exactly.
+  z.object({
+    status: z.literal('unavailable'),
+    reason: coachIntervalChangeReasonSchema,
+  }),
+]);
+
 export const briefMessageSchema = z.object({
   id: z.string().uuid(),
   analysisId: z.string().uuid().nullable(),
@@ -937,8 +971,10 @@ export const briefMessageSchema = z.object({
   role: briefMessageRoleSchema,
   content: z.string().min(1),
   proposedPlannedWorkoutId: z.string().uuid().nullable().optional(),
+  proposedIntervalChange: coachIntervalChangeSchema.nullable().optional(),
   createdAtUtc: isoDateTimeSchema,
 });
+
 
 export const briefMessageInputSchema = z.object({
   question: z.string().min(1).max(1000),

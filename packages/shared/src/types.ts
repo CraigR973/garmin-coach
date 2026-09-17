@@ -9,6 +9,7 @@ import {
   briefMessageRoleSchema,
   briefMessageSchema,
   briefMessageTurnSchema,
+  coachIntervalChangeSchema,
   coachMessageInputSchema,
   coachOriginKindSchema,
   conversationLearningEvidenceSchema,
@@ -54,6 +55,8 @@ export type FeedbackRating = z.infer<typeof feedbackRatingSchema>;
 export type FeedbackReasonTag = z.infer<typeof feedbackReasonTagSchema>;
 export type BriefMessageRole = z.infer<typeof briefMessageRoleSchema>;
 export type BriefMessage = z.infer<typeof briefMessageSchema>;
+/** Batch 264: the validated interval change an assistant turn carries, if any. */
+export type CoachIntervalChange = z.infer<typeof coachIntervalChangeSchema>;
 export type BriefMessageInput = z.infer<typeof briefMessageInputSchema>;
 export type BriefMessageTurn = z.infer<typeof briefMessageTurnSchema>;
 export type CoachOriginKind = z.infer<typeof coachOriginKindSchema>;
