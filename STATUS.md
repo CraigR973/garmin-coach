@@ -6,8 +6,8 @@
 
 ## Now
 
-**2026-09-17 — Batch 264 built, gate green, awaiting merge.** Branch
-`feat/batch-264-chat-carries-the-change`, Decision **#335**. A change agreed in
+**2026-09-17 — Batch 264 SHIPPED.** PR #295 / merge `a3d81a4`, Decision
+**#335**. A change agreed in
 conversation now reaches the plan. The coach's answer ends with a marker
 carrying five numbers — repeats, effort seconds, effort %FTP, recovery seconds,
 recovery %FTP — for today's live editable indoor bike interval set; cadence is
@@ -31,15 +31,42 @@ Batch 262 exercised in production — so propose→approve→push and Red-never-
 unchanged, and a superseded workout 404s. An offer the app cannot carry is now
 said in one plain line rather than left as a claim with nothing under it.
 
-**Verification.** Local backend **1,362 passed / 439 expected PostgreSQL skips**
-(18 new pure tests run locally; the DB-backed chat tests run only in CI); shared
-44, web 443; Ruff check and format, mypy strict on `src`, web build and lint (0
-errors / 9 existing warnings) all clean. Migration `031` renders and reverses
-offline. **Not yet run: CI, the merge, and production verification.**
+**Verification.** Local backend **1,362 passed / 439 expected PostgreSQL skips**;
+CI PostgreSQL **1,801 / 0** on the second PR wave and post-merge; shared 44 and
+web 443; Ruff check/format, mypy, migration check, dependency audit, web build
+and lint (0 errors / 9 existing warnings) all passed, plus the Vercel preview.
+Railway direct and Vercel same-origin health serve exact
+`a3d81a4d29f56a1b8cf4c6d62058ad2ea2370467`; web `/` is 200 and protected
+daily-loop is 401 through both paths.
+
+**The first CI wave caught two stale assertions the local gate could not run** —
+both DB-backed, both asserting the retired v14 capability sentences. That is the
+no-local-Postgres trap again: 1,799 passed / 2 failed, and neither failure was
+reachable locally.
+
+**Production smoke, read-only, on Mark's real 8 Sep row.** Replaying v1
+`1795a107` through the deployed code: the editable sets are indices 4 and 6, the
+marker is stripped from Mark's copy, and the turn carries `10 × 40s/20s @
+125%/55%` → `10 × 35s/25s @ 125%/55%` across **2 matching sets**, with the block
+that reaches the rail being `repeat 10 / 35s @125% (95 rpm) / 25s @55%` — the
+session he actually agreed to. All three refusals behaved on the same row: 260%
+FTP `out_of_range`, an unchanged block `unchanged`, a bare v14 marker
+`malformed`. Today (17 Sep) holds no editable indoor bike session, so the live
+capability line refuses outright.
 
 **Prompt bump:** `coach-chat-v14` → **`v15`**. Withdrawal set stated before the
-bump and **empty** — `brief_chat` is UNFILTERED with no analysis types, so no
-stored artifact is withdrawn and nothing is regenerated.
+bump and **empty**, then confirmed against the real lookup after deploy:
+`orphaned_artifacts` reports no `brief_chat` row at all, because chat writes no
+`analyses` — a past answer stays what was said.
+
+**Gotcha found while verifying, NOT caused by this batch, and left for Craig's
+call:** the real orphan lookup reports **`trends/seasonal_trend` currently blanks
+a surface** — 0 rows at `trends-month-v10-2026-09-04` against 12 orphaned, newest
+subject date 2026-08-01. That is the Batch 227 failure mode (a `VERSION_FILTERED`
+bump emptying the Trends narrative), pre-existing since the 2026-09-04 trends
+bump and unrelated to the chat prompt. Repairing it means paying for a real
+regeneration, which `AGENTS.md` keeps explicit, so it is recorded rather than
+done.
 
 **Next: Batch 265** — reconcile the imported block's missing recovery week
 against the canonical sequence before the next plan import.
@@ -782,8 +809,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
-**2026-09-17 — Batch 264 built.** Branch `feat/batch-264-chat-carries-the-change`,
-Decision #335. A change negotiated in conversation now reaches the plan as five
+**2026-09-17 — Batch 264 shipped.** PR #295 / merge `a3d81a4`, Decision #335. A change negotiated in conversation now reaches the plan as five
 validated numbers rather than prose: the coach's marker carries the agreed
 interval set, the service bounds it with the editor's own
 `validate_interval_block` against the live plan row, and the chat confirms it in
@@ -791,7 +817,12 @@ place through the existing `interval-editor/approve` rail. `_wants_adjustment`
 is retired — it fired on a retrospective "had to slightly adjust last week" and
 would have missed "can we do 35/25 instead?". Migration `031` adds nullable
 `brief_messages.proposed_interval_change`; prompt `coach-chat-v15`, withdrawal
-set empty. Local gate green; CI, merge and production verification still to run.
+set empty and confirmed against the real orphan lookup after deploy. All CI waves
+green (PostgreSQL 1,801 / 0); exact-SHA production verified, and a read-only
+smoke replayed Mark's real 8 Sep row to the agreed 35/25 across both matching
+sets. Recorded, not fixed: `trends/seasonal_trend` blanks its surface (0 current
+/ 12 orphaned) from the 2026-09-04 trends bump — pre-existing, and a paid
+regeneration, so it stays Craig's call.
 
 **2026-09-17 — Batch 263 shipped.** PR #294 / merge `0530b25`, Decision #334.
 Equal-shape interval siblings are now one logical edit set; the selector targets
