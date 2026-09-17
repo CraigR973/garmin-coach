@@ -6,68 +6,46 @@
 
 ## Now
 
-**2026-09-14 — Batch 261 SHIPPED.** PR #293 / squash `6a8a7be`, Decision
-**#333**. `generate_anthropic_text_with_tools` now shares one deadline across
-every round instead of each round restarting the full 550s
-`anthropic_read_timeout_seconds` — before this, a three-round chat answer could
-take up to ~27 minutes in-request, with Mark watching. `_create_with_retry`
-takes an optional shared `deadline`; the tool loop computes one before its
-first round and a later round's first attempt is sized off what is left of it.
-The single-call path (`generate_anthropic_text`) never passes a deadline, so
-its behaviour is byte-for-byte unchanged, pinned by the existing env-tunable
-timeout test. `workload_slot` needed no code change: it already wraps exactly
-the bounded call, so bounding the answer bounds the slot hold time — 261.2 was
-subsumed by 261.1, as the row anticipated it might be. `MAX_TOOL_USES` is now
-enforced within a round rather than only between rounds: a round asking for
-more parallel calls than the remaining cap allows executes only up to the cap
-and refuses the rest as `is_error` tool results, never dropped.
+**2026-09-17 — Batch 263 SHIPPED.** PR #294 / merge `0530b25`, Decision
+**#334**. The interval editor now treats equal-shape sibling blocks as one
+logical set: editing Mark's two matching VO₂ blocks changes both, while a
+different block remains fixed. Selection is based on the strongest sustained
+interval stimulus, with a stable first-in-source tie-break, instead of the
+longest or most recently converted block. That makes the 12-second / 185% FTP
+neuromuscular set reachable without turning its Zone 2 sibling into the workout
+purpose.
 
-**Verification.** Local backend **1,339 passed / 430 expected PostgreSQL
-skips** (2 new tests); push, PR and post-merge CI each passed, including
-PostgreSQL pytest, Ruff check/format, mypy, migration check, dependency audit,
-web build/lint, and shared 42 / web 437 unit tests. Railway direct and Vercel
-same-origin health serve exact `6a8a7be01434a56ad00ddfb8b375b137bab09067`; web
-`/` is 200 and protected daily-loop is 401 through both paths. Two new
-regression tests pin both fixes: a fake, controllable clock proves a later
-round's read timeout reflects the shared deadline rather than a fresh budget,
-and an over-budget round is proved to execute only the capped calls with the
-rest refused as `is_error`. Both were confirmed to fail against the pre-261
-code first. No prompt-version bump, no migration, no Mark-facing copy change.
+**The source, editor and delivery grammar now agree.** The editor accepts the
+real 12-second / 185% FTP prescription (10 seconds minimum, 200% maximum), and
+delivery expands it without loss. Applying an edit derives the interval labels,
+whole-workout summary and prescription-bearing title from the resulting steps;
+generic titles such as `Z2 + Neuromuscular` stay generic. The one-set mobile
+surface remains: matching sets move together, and fixed steps are listed as
+fixed rather than exposed as a second independent editor.
 
-**Next: Batches 263-265.** Batch 262 SHIPPED 2026-09-17 (data change only, no
-code, no migration). Mark's 08-28 VO2 review was answered against his real
-session files rather than his summary, he chose the change, and 2026-09-22 is
-now `VO₂ (5 × 2:30 @ 119%)` — active version `a9046266`, 57 min, with v1
-`89f0afe0` left inactive and still describing what it actually prescribed.
-Applied through the real rail (`approve_interval_edit` via `railway run`), so it
-carries an audit row and replaced the live intervals.icu event in place; a
-read-only GET of event `121350317` confirms the device holds it.
+**The 8 Sep historical record is honest without rewriting the ride.** Active v2
+`49628cdf-00ac-4767-8787-2ee9a2cb6bab` still contains exactly the dose Mark rode:
+10 × 40/20 followed by 10 × 35/25. Only its title, the two interval labels and
+summary were repaired in place, under assertions that every expanded duration,
+power, cadence and phase remained identical. The activity and post-workout
+analysis were untouched.
 
-**The finding worth carrying forward:** his premise was that the week 4→5 jump
-broke him. The record says otherwise — weeks 5 and 6 were the same 6 × 3 min @
-119%, week 5 went 3 of 6 (his own check-in that morning cites a stomach upset
-and poor sleep) and week 6 went **6 of 6 at a lower heart rate**. What actually
-under-recovered him is that this block ran **week 4 to week 9 with no recovery
-week**, against the every-third-week cadence of his earlier plans. That is a
-plan-design issue, it is not yet a ledger row, and it matters more for the next
-block than the interval durations do.
+**Verification.** Local backend **1,344 passed / 430 expected PostgreSQL skips**;
+post-merge PostgreSQL CI **1,774 / 0**; shared 42 and web 437; Ruff check/format,
+mypy, migration round-trip, dependency audit, web build and lint all passed.
+Both PR CI waves and the Vercel preview passed. Railway direct and Vercel
+same-origin health serve exact `0530b25011f70a99dacc31eac5b48a2a86dde536`;
+web `/` is 200 and protected daily-loop is 401 through both paths. A read-only
+smoke in the deployed container replayed Mark's real 29 Sep, 8 Sep and 26 Sep
+rows: both 29 Sep siblings moved together, the 8 Sep repair left dose unchanged,
+and the 185% sprint set remained an endurance ride with short efforts. The live
+Dashboard bundle contains the matching-set explanation and 200% bound. No
+migration or prompt-version bump.
 
-**Batch 265 was authored 2026-09-17 from the same investigation**, and it is the
-finding with the longest reach. `BLOCK_SEQUENCE` (`coaching_state.py:534`) is the
-app's canonical 2121 slate with recovery at weeks 3, 6 and 9; the live imported
-plan has recovery at 3 and 9 only, so **week 6's recovery is missing** and weeks
-4-8 are five unbroken build weeks. `plan_import.py:116` takes `block_type`
-verbatim and **nothing has ever compared the two**, though both have sat in
-`plan_blocks` in directly comparable form since 2026-07-20. 265 does not re-cut
-the current block - only three build weeks remain - it changes what the next
-import does.
-
-**Batch 263 is now urgent for a second reason.** 262 hit 263.3 on its first real
-use: `approve_interval_edit` carries the old title through and
-`apply_interval_block` preserves the old step label, and **both reach the device**
-via the IR. It was worked around by hand here; the next edit will need the same
-workaround. 263 also still has its 2026-09-29 deadline — week 11 is the same
-two-equal-block shape that gave Mark a half-edited session on 09-08.
+**Next: Batch 264.** The proposal button can still promise an agreed interval
+change while queuing the unchanged stored workout; that mutation-contract gap is
+now the next urgent row. Batch 265 then reconciles the imported block's missing
+recovery week against the canonical sequence before the next plan import.
 
 ## Prior current-state snapshots
 
@@ -765,6 +743,16 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**2026-09-17 — Batch 263 shipped.** PR #294 / merge `0530b25`, Decision #334.
+Equal-shape interval siblings are now one logical edit set; the selector targets
+the strongest main stimulus with a stable source-order tie-break, making both
+split VO₂ sets and the 12-second / 185% neuromuscular set behave honestly.
+Labels, summary and prescription title are derived after every edit, and the
+source/editor/delivery bounds now share the real 10-second / 200% envelope. All
+local, PR, post-merge and production gates passed. The 8 Sep active v2 copy was
+repaired in place with its dose, activity and analysis proved unchanged. No
+migration or prompt-version bump. Next: Batch 264.
 
 **2026-09-13 — Batch 260 shipped.** PR #292 / squash `a0ccf6d`, Decision #332.
 Added range-based thermal-night, morning-first recovery and active-prescription
