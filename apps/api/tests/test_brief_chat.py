@@ -283,8 +283,8 @@ async def test_ask_grounds_in_packet_and_stores_both_turns(db_conn: AsyncConnect
     prompt = _flat(client.calls[0]["system_prompt"])
     assert "Green" in prompt
     assert "He asked this from this morning's brief" in prompt
-    assert "today's plan holds a live workout" in prompt
-    assert "the app can propose one" in prompt
+    assert "main interval set is 10 × 40s/20s @ 125%/55%" in prompt
+    assert "and only that set" in prompt
     assert "Do not cave to reassurance pressure" in prompt
     assert "General principle:" in prompt
     assert "never invent his metrics, plan, history, readiness, or prescription" in prompt
@@ -877,7 +877,7 @@ async def test_post_workout_read_chat_is_grounded_and_advisory_only(
     assert turn.assistant_message.proposed_planned_workout_id is None
     prompt = _flat(client.calls[0]["system_prompt"])
     assert "He asked this from the read on his completed session" in prompt
-    assert "no live workout to adjust today" in prompt
+    assert "no session you can change today" in prompt
     assert "Do not say the app can propose" in prompt
     assert "Tempo ride" in prompt
 
