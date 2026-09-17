@@ -26,6 +26,19 @@ from src.models.profile import Profile
 from src.services.verdict_scaling import _normalize_verdict, blocks_red_vo2
 
 DEFAULT_FTP_WATTS = 280
+INTERVAL_BLOCK_MIN_REPEATS = 1
+INTERVAL_BLOCK_MAX_REPEATS = 20
+# Batch 263: active neuromuscular plan steps are 12 seconds at 185% FTP.
+# These source-grammar bounds are shared by expansion and the editor mapper so a
+# value the editor accepts can never become undeliverable one function later.
+INTERVAL_BLOCK_MIN_WORK_DURATION_SEC = 10
+INTERVAL_BLOCK_MAX_WORK_DURATION_SEC = 7200
+INTERVAL_BLOCK_MIN_REST_DURATION_SEC = 0
+INTERVAL_BLOCK_MAX_REST_DURATION_SEC = 3600
+INTERVAL_BLOCK_MIN_POWER_PCT = 40
+INTERVAL_BLOCK_MAX_POWER_PCT = 200
+INTERVAL_BLOCK_MIN_CADENCE_RPM = 40
+INTERVAL_BLOCK_MAX_CADENCE_RPM = 130
 PROVIDER_INTERVALS_ICU = "intervals_icu"
 STATUS_PROPOSED = "proposed"
 STATUS_APPROVED = "approved"
@@ -1220,7 +1233,12 @@ def _expand_interval_block(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Interval block {label!r} must be an object",
         )
-    repeat = _bounded_block_int(raw_block.get("repeat"), "repeat", minimum=1, maximum=20)
+    repeat = _bounded_block_int(
+        raw_block.get("repeat"),
+        "repeat",
+        minimum=INTERVAL_BLOCK_MIN_REPEATS,
+        maximum=INTERVAL_BLOCK_MAX_REPEATS,
+    )
     work = _block_leg(raw_block.get("work"), "work", allow_zero_duration=False)
     rest = _block_leg(raw_block.get("rest"), "rest", allow_zero_duration=True)
 
@@ -1268,20 +1286,33 @@ def _block_leg(raw_leg: Any, name: str, *, allow_zero_duration: bool) -> _BlockL
     duration = _bounded_block_int(
         raw_leg.get("durationSec"),
         f"{name}.durationSec",
-        minimum=0 if allow_zero_duration else 30,
-        maximum=3600 if allow_zero_duration else 7200,
+        minimum=(
+            INTERVAL_BLOCK_MIN_REST_DURATION_SEC
+            if allow_zero_duration
+            else INTERVAL_BLOCK_MIN_WORK_DURATION_SEC
+        ),
+        maximum=(
+            INTERVAL_BLOCK_MAX_REST_DURATION_SEC
+            if allow_zero_duration
+            else INTERVAL_BLOCK_MAX_WORK_DURATION_SEC
+        ),
     )
     power = _bounded_block_int(
         raw_leg.get("powerPct"),
         f"{name}.powerPct",
-        minimum=40,
-        maximum=150,
+        minimum=INTERVAL_BLOCK_MIN_POWER_PCT,
+        maximum=INTERVAL_BLOCK_MAX_POWER_PCT,
     )
     cadence_raw = raw_leg.get("cadenceRpm")
     cadence = (
         None
         if cadence_raw is None
-        else _bounded_block_int(cadence_raw, f"{name}.cadenceRpm", minimum=40, maximum=130)
+        else _bounded_block_int(
+            cadence_raw,
+            f"{name}.cadenceRpm",
+            minimum=INTERVAL_BLOCK_MIN_CADENCE_RPM,
+            maximum=INTERVAL_BLOCK_MAX_CADENCE_RPM,
+        )
     )
     return {"durationSec": duration, "powerPct": power, "cadenceRpm": cadence}
 

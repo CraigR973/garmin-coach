@@ -7,8 +7,11 @@ from src.services.interval_workout_editor import (
     IntervalLeg,
     apply_interval_block,
     interval_editor_snapshot,
+    interval_workout_title,
+    normalise_interval_workout_copy,
     scale_block,
 )
+from src.services.structured_workout_builder import classify_bike_workout_steps
 from src.services.verdict_scaling import (
     RECOVERY_CAP_PCT,
     adjust_ir_for_verdict,
@@ -46,6 +49,155 @@ def _mark_vo2_source() -> dict:
     }
 
 
+def _mark_two_block_source() -> dict:
+    """The two-equal-main-block shape from 2026-09-08 and 2026-09-29."""
+    return {
+        "format": "bike",
+        "summary": "2 × 10-rep blocks of 40s/20s @125%",
+        "steps": [
+            {"label": "Warm-up", "minutes": 10, "ramp": [55, 80]},
+            {
+                "label": "Primer 2×30s @100% / 55%",
+                "target": "100%",
+                "pattern": "2 x 30s / 30s @55%",
+            },
+            {
+                "label": "40s/20s @125% block 1",
+                "target": "125%",
+                "pattern": "10 x 40s / 20s @55%",
+                "cadenceRpm": 95,
+            },
+            {"label": "Recover between blocks", "minutes": 4, "target": "60%"},
+            {
+                "label": "40s/20s @125% block 2",
+                "target": "125%",
+                "pattern": "10 x 40s / 20s @55%",
+                "cadenceRpm": 95,
+            },
+            {"label": "Cool-down", "minutes": 10, "ramp": [70, 45]},
+        ],
+    }
+
+
+def _mark_edited_35_25_block() -> EditableIntervalBlock:
+    return EditableIntervalBlock(
+        repeat=10,
+        work=IntervalLeg(duration_sec=35, power_pct=125, cadence_rpm=95),
+        rest=IntervalLeg(duration_sec=25, power_pct=55, cadence_rpm=None),
+    )
+
+
+def test_two_equal_main_blocks_are_edited_together_and_copy_follows_the_steps() -> None:
+    source = _mark_two_block_source()
+
+    snapshot = interval_editor_snapshot(source, "VO₂")
+    updated = apply_interval_block(source, "VO₂", _mark_edited_35_25_block())
+
+    assert snapshot.primary_step_index == 2  # stable first-on-tie, never the last block
+    assert [step.index for step in snapshot.fixed_steps] == [0, 1, 3, 5]
+    assert [updated["steps"][index]["block"] for index in (2, 4)] == [
+        {
+            "repeat": 10,
+            "work": {"durationSec": 35, "powerPct": 125, "cadenceRpm": 95},
+            "rest": {"durationSec": 25, "powerPct": 55},
+        },
+        {
+            "repeat": 10,
+            "work": {"durationSec": 35, "powerPct": 125, "cadenceRpm": 95},
+            "rest": {"durationSec": 25, "powerPct": 55},
+        },
+    ]
+    assert updated["steps"][2]["label"] == "10 × 35s/25s @ 125%/55% block 1"
+    assert updated["steps"][4]["label"] == "10 × 35s/25s @ 125%/55% block 2"
+    assert "40s/20s" not in updated["summary"]
+    assert updated["summary"].count("10 × 35s/25s @ 125%/55%") == 2
+
+
+def test_a_prior_native_block_does_not_hide_the_unedited_first_sibling() -> None:
+    source = _mark_two_block_source()
+    source["steps"][4] = {
+        "label": "40s/20s @125% block 2",
+        "block": {
+            "repeat": 10,
+            "work": {"durationSec": 35, "powerPct": 125, "cadenceRpm": 95},
+            "rest": {"durationSec": 25, "powerPct": 55},
+        },
+    }
+    second_before = deepcopy(source["steps"][4]["block"])
+
+    snapshot = interval_editor_snapshot(source, "VO₂")
+    updated = apply_interval_block(source, "VO₂", _mark_edited_35_25_block())
+
+    assert snapshot.primary_step_index == 2
+    assert snapshot.current.work.duration_sec == 40
+    assert updated["steps"][4]["block"] == second_before
+    assert updated["steps"][4]["label"] == "10 × 35s/25s @ 125%/55% block 2"
+
+
+def test_historical_mixed_session_copy_is_repaired_without_changing_its_steps() -> None:
+    source = _mark_two_block_source()
+    source["steps"][4] = {
+        "label": "40s/20s @125% block 2",
+        "block": {
+            "repeat": 10,
+            "work": {"durationSec": 35, "powerPct": 125, "cadenceRpm": 95},
+            "rest": {"durationSec": 25, "powerPct": 55},
+        },
+    }
+    dose_before = [
+        deepcopy(source["steps"][2]["pattern"]),
+        deepcopy(source["steps"][4]["block"]),
+    ]
+
+    repaired = normalise_interval_workout_copy(source, "125% FTP intervals")
+    title = interval_workout_title(
+        "VO₂ (40/20s @ 125%)",
+        repaired,
+        "125% FTP intervals",
+    )
+
+    assert [repaired["steps"][2]["pattern"], repaired["steps"][4]["block"]] == dose_before
+    assert repaired["steps"][2]["label"] == "10 × 40s/20s @ 125%/55% block 1"
+    assert repaired["steps"][4]["label"] == "10 × 35s/25s @ 125%/55% block 2"
+    assert title == "VO₂ (10 × 40s/20s @ 125%/55% + 10 × 35s/25s @ 125%/55%)"
+    assert "10 × 40s/20s @ 125%/55%" in repaired["summary"]
+    assert "10 × 35s/25s @ 125%/55%" in repaired["summary"]
+
+
+def test_neuromuscular_set_wins_over_the_longer_zone_two_block() -> None:
+    source = {
+        "format": "bike",
+        "steps": [
+            {"label": "Warm-up", "minutes": 5, "ramp": [50, 75]},
+            {
+                "label": "Z2 @65% + cadence surges",
+                "target": "65%",
+                "pattern": "5 x 1min / 5min @65%",
+                "cadenceRpm": 102,
+            },
+            {
+                "label": "Neuromuscular sprints @185%",
+                "target": "185%",
+                "pattern": "6 x 12s / 168s @55%",
+            },
+            {"label": "Cool-down", "minutes": 5, "target": "50%"},
+        ],
+    }
+
+    snapshot = interval_editor_snapshot(source, "Zone 2")
+
+    assert snapshot.primary_step_index == 2
+    assert snapshot.current.repeat == 6
+    assert snapshot.current.work.duration_sec == 12
+    assert snapshot.current.work.power_pct == 185
+    z2 = next(step for step in snapshot.fixed_steps if step.index == 1)
+    assert z2.role == "main"
+    updated = apply_interval_block(source, "Zone 2", snapshot.current)
+    classification = classify_bike_workout_steps(expand_structured_steps(updated, "Zone 2"))
+    assert classification.workout_type == "bike_endurance"
+    assert classification.intensity_target == "Endurance with short efforts up to 185% FTP"
+
+
 def test_new_block_expands_independent_work_and_rest_cadence_into_zwo() -> None:
     source = _mark_vo2_source()
     source["steps"][4] = {
@@ -74,7 +226,7 @@ def test_zone_two_one_repeat_zero_rest_is_one_work_step_and_still_deliverable() 
     updated = apply_interval_block(source, "VO₂", snapshot.zone_two)
 
     steps = validate_deliverable_bike_workout(updated, "Z2")
-    main_steps = [step for step in steps if step["label"].startswith("VO₂ 5×2min")]
+    main_steps = [step for step in steps if step["label"].startswith("45 min @ 65%")]
     assert len(main_steps) == 1
     assert main_steps[0]["durationSec"] == 2700
     assert main_steps[0]["powerEndPct"] == 65
@@ -104,11 +256,12 @@ def test_mapper_round_trips_primary_block_and_leaves_every_pass_through_step_ide
     edited_work = next(
         step
         for step in expanded
-        if step["label"].startswith("VO₂ 5×2min") and " work " in step["label"]
+        if step["label"].startswith("4 × 2 min/2 min @ 94%/60%") and " work " in step["label"]
     )
     assert edited_work["durationSec"] == 120
     assert (
-        len([step for step in expanded if step["label"].startswith("VO₂ 5×2min")]) == 8
+        len([step for step in expanded if step["label"].startswith("4 × 2 min/2 min @ 94%/60%")])
+        == 8
     )  # four intact work/recovery pairs, not five shortened ones
     # Batches 173/201: the "Scale down" preset shares the delivery transform's
     # Zone-2-aware ease, so a 120% VO2 leg drops a zone and is capped at the top

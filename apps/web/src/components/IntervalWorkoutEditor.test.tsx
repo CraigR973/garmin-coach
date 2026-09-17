@@ -83,6 +83,8 @@ describe('IntervalWorkoutEditor', () => {
     expect(await screen.findByRole('region', { name: 'Per-interval workout editor' })).toBeTruthy();
     expect(screen.getByLabelText('Change to number of intervals')).toBeTruthy();
     expect(screen.getByLabelText('Change to rest seconds')).toBeTruthy();
+    expect(screen.getByLabelText('Change to work percent FTP').getAttribute('max')).toBe('200');
+    expect(container.textContent).toContain('Matching interval sets change together');
     expect(container.querySelector('.overflow-x-auto')).toBeNull();
     expect(container.textContent).toContain('Current');
     expect(container.textContent).toContain('Change to');

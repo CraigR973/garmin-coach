@@ -44,9 +44,10 @@ from src.services.garmin_workout_delivery import (
 from src.services.interval_workout_editor import (
     EditableIntervalBlock,
     apply_interval_block,
-    block_workout_type,
+    interval_workout_title,
 )
 from src.services.structured_workout_builder import (
+    classify_bike_workout_steps,
     is_indoor_bike_workout,
     is_outdoor_bike_workout,
 )
@@ -894,7 +895,13 @@ class ExecutableCoachingService:
             current.intensity_target,
             block,
         )
+        title = interval_workout_title(
+            current.title,
+            structured,
+            current.intensity_target,
+        )
         expanded_steps = expand_structured_steps(structured, current.intensity_target)
+        classification = classify_bike_workout_steps(expanded_steps)
         verdict = await self._morning_verdict_for(player.id, current.workout_date)
         if blocks_red_vo2(verdict, {"steps": expanded_steps}):
             raise HTTPException(status_code=409, detail="Red verdict blocks VO2 delivery to Zwift")
@@ -914,14 +921,14 @@ class ExecutableCoachingService:
             plan_block_id=current.plan_block_id,
             workout_date=current.workout_date,
             version=(current_version or 0) + 1,
-            title=current.title,
-            workout_type=block_workout_type(block),
+            title=title,
+            workout_type=classification.workout_type,
             status="planned",
             is_active=True,
             planned_duration_min=ceil(
                 sum(int(step["durationSec"]) for step in expanded_steps) / 60
             ),
-            intensity_target=f"{block.work.power_pct}% FTP intervals",
+            intensity_target=classification.intensity_target,
             structured_workout=structured,
             source="interval_editor",
         )

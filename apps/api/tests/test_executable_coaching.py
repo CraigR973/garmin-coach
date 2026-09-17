@@ -2879,6 +2879,11 @@ async def test_interval_edit_versions_source_and_approves_existing_event_update(
         assert [(row.version, row.is_active) for row in rows] == [(1, False), (2, True)]
         edited = rows[1]
         assert edited.source == "interval_editor"
+        assert edited.title == "VO2 Max (3 × 10 min/5 min @ 90%/55%)"
+        assert delivered.structured_workout_ir["name"] == edited.title
+        assert edited.structured_workout["summary"] == (
+            "15 min @ easy spin → 3 × 10 min/5 min @ 90%/55% → 10 min @ easy spin"
+        )
         assert edited.structured_workout["steps"][0] == VO2_STRUCTURED["steps"][0]
         assert edited.structured_workout["steps"][2] == VO2_STRUCTURED["steps"][2]
         assert edited.structured_workout["steps"][1]["block"]["rest"] == {

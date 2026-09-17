@@ -1,31 +1,37 @@
-"""Pure source mapper and deterministic suggestions for Batch 147's ride editor."""
+"""Pure source mapper and deterministic suggestions for the interval editor.
+
+Batch 147 introduced one primary-block edit; Batch 263 makes equal sibling
+blocks one logical set and derives every prescription-bearing description from
+the resulting steps.
+"""
 
 from __future__ import annotations
 
+import re
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
 from fastapi import HTTPException, status
 
+from src.services import workout_delivery
 from src.services.verdict_scaling import (
     AMBER_DURATION_SCALE,
     adjust_ir_for_verdict,
     ease_amber_power_pct,
     verdict_power_pct,
 )
-from src.services.workout_delivery import _expand_step
 
-MIN_REPEATS = 1
-MAX_REPEATS = 20
-MIN_WORK_DURATION_SEC = 30
-MAX_WORK_DURATION_SEC = 7200
-MIN_REST_DURATION_SEC = 0
-MAX_REST_DURATION_SEC = 3600
-MIN_POWER_PCT = 40
-MAX_POWER_PCT = 150
-MIN_CADENCE_RPM = 40
-MAX_CADENCE_RPM = 130
+MIN_REPEATS = workout_delivery.INTERVAL_BLOCK_MIN_REPEATS
+MAX_REPEATS = workout_delivery.INTERVAL_BLOCK_MAX_REPEATS
+MIN_WORK_DURATION_SEC = workout_delivery.INTERVAL_BLOCK_MIN_WORK_DURATION_SEC
+MAX_WORK_DURATION_SEC = workout_delivery.INTERVAL_BLOCK_MAX_WORK_DURATION_SEC
+MIN_REST_DURATION_SEC = workout_delivery.INTERVAL_BLOCK_MIN_REST_DURATION_SEC
+MAX_REST_DURATION_SEC = workout_delivery.INTERVAL_BLOCK_MAX_REST_DURATION_SEC
+MIN_POWER_PCT = workout_delivery.INTERVAL_BLOCK_MIN_POWER_PCT
+MAX_POWER_PCT = workout_delivery.INTERVAL_BLOCK_MAX_POWER_PCT
+MIN_CADENCE_RPM = workout_delivery.INTERVAL_BLOCK_MIN_CADENCE_RPM
+MAX_CADENCE_RPM = workout_delivery.INTERVAL_BLOCK_MAX_CADENCE_RPM
 
 
 @dataclass(frozen=True)
@@ -53,6 +59,7 @@ class FixedWorkoutStep:
 @dataclass(frozen=True)
 class IntervalEditorSnapshot:
     primary_step_index: int
+    editable_step_indices: tuple[int, ...]
     current: EditableIntervalBlock
     scaled: EditableIntervalBlock
     sweet_spot: EditableIntervalBlock
@@ -73,9 +80,10 @@ def interval_editor_snapshot(
 ) -> IntervalEditorSnapshot:
     """Map one planned workout source to Mark's Current/Change-to table.
 
-    V1 edits the primary block only. Current plans contain one interval block;
-    warm-up, cool-down, and primer steps remain read-only context and are copied
-    without alteration when the edit is applied.
+    The editor targets the main interval stimulus, not simply the longest source
+    step. Equal sibling blocks are one logical set and are edited together;
+    distinct blocks remain fixed context. Warm-up, cool-down, and primer steps
+    are always copied without alteration when the edit is applied.
 
     Batch 215: the editor used to open pre-filled with :func:`scale_block` — the
     *Amber* preset — on every morning including a Red one, so on 2026-08-08 the
@@ -90,12 +98,13 @@ def interval_editor_snapshot(
             detail="This session has no editable bike interval block",
         )
 
-    primary_index = _primary_step_index(raw_steps, intensity_target)
-    if primary_index is None:
+    editable_indices = _editable_step_indices(raw_steps, intensity_target)
+    if not editable_indices:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="This session has no editable bike interval block",
         )
+    primary_index = editable_indices[0]
     raw_primary = raw_steps[primary_index]
     if not isinstance(raw_primary, dict):
         raise HTTPException(
@@ -111,10 +120,11 @@ def interval_editor_snapshot(
             raw_step=deepcopy(raw),
         )
         for index, raw in enumerate(raw_steps)
-        if index != primary_index and isinstance(raw, dict)
+        if index not in editable_indices and isinstance(raw, dict)
     )
     return IntervalEditorSnapshot(
         primary_step_index=primary_index,
+        editable_step_indices=editable_indices,
         current=current,
         scaled=scale_block(current),
         sweet_spot=sweet_spot_block(current),
@@ -140,13 +150,14 @@ def verdict_adjusted_block(
 ) -> EditableIntervalBlock | None:
     """Today's verdict adjustment, expressed as an editable block.
 
-    The editor can only change the primary block — warm-up, cool-down and primer
-    steps are read-only. It therefore derives the target from the canonical IR
-    transform. A continuous block may shorten, but a repeated interval block loses
-    whole repetitions and keeps each work/rest leg byte-for-byte on duration. If
-    the transform replaces the whole set, the editor offers no dishonest partial
-    equivalent. Returns ``None`` on Green, an unknown verdict, or a workout whose
-    fixed steps already exceed the adjusted total.
+    The editor changes one logical set — including every equal sibling block —
+    while warm-up, cool-down, primer and distinct main steps stay read-only. It
+    therefore derives the target from the canonical IR transform. A continuous
+    block may shorten, but a repeated interval block loses whole repetitions and
+    keeps each work/rest leg byte-for-byte on duration. If the transform replaces
+    the whole set, the editor offers no dishonest partial equivalent. Returns
+    ``None`` on Green, an unknown verdict, or a workout whose fixed steps already
+    exceed the adjusted total.
     """
     try:
         expanded = _expand_step_list(structured, intensity_target)
@@ -164,8 +175,16 @@ def verdict_adjusted_block(
 
     total_sec = sum(int(step.get("durationSec", 0)) for step in expanded)
     block_sec = block.repeat * (block.work.duration_sec + block.rest.duration_sec)
-    fixed_sec = total_sec - block_sec
-    target_block_sec = int(transformed.get("totalDurationSec") or 0) - fixed_sec
+    raw_steps = structured.get("steps")
+    if not isinstance(raw_steps, list):
+        return None
+    sibling_count = len(_editable_step_indices(raw_steps, intensity_target))
+    if sibling_count == 0:
+        return None
+    fixed_sec = total_sec - block_sec * sibling_count
+    target_block_sec = round(
+        (int(transformed.get("totalDurationSec") or 0) - fixed_sec) / sibling_count
+    )
     if block_sec <= 0 or target_block_sec < MIN_WORK_DURATION_SEC:
         return None
 
@@ -224,7 +243,7 @@ def _expand_step_list(
     expanded: list[dict[str, Any]] = []
     for raw in raw_steps:
         if isinstance(raw, dict):
-            expanded.extend(_expand_step(raw, intensity_target))
+            expanded.extend(workout_delivery._expand_step(raw, intensity_target))
     return expanded
 
 
@@ -233,19 +252,82 @@ def apply_interval_block(
     intensity_target: str | None,
     block: EditableIntervalBlock,
 ) -> dict[str, Any]:
-    """Write the edited primary block while preserving every other source step."""
+    """Write one logical interval set and derive its source-facing copy.
+
+    Equal sibling blocks are the same set split around a fixed recovery, so they
+    move together. Distinct blocks and all non-interval steps are preserved.
+    """
     validate_interval_block(block)
     snapshot = interval_editor_snapshot(structured, intensity_target)
     updated = deepcopy(structured)
     raw_steps = updated.get("steps")
     assert isinstance(raw_steps, list)  # established by interval_editor_snapshot
-    original = raw_steps[snapshot.primary_step_index]
-    label = str(original.get("label") or "Intervals") if isinstance(original, dict) else "Intervals"
-    raw_steps[snapshot.primary_step_index] = {
-        "label": label,
-        "block": block_to_source(block),
-    }
+    for index in snapshot.editable_step_indices:
+        original = raw_steps[index]
+        original_label = (
+            str(original.get("label") or "Intervals") if isinstance(original, dict) else "Intervals"
+        )
+        raw_steps[index] = {
+            "label": _block_label(block, original_label),
+            "block": block_to_source(block),
+        }
+    _normalise_matching_interval_labels(raw_steps, intensity_target, block)
+    updated["summary"] = summarize_structured_workout(updated, intensity_target)
     return updated
+
+
+def normalise_interval_workout_copy(
+    structured: dict[str, Any], intensity_target: str | None
+) -> dict[str, Any]:
+    """Repair labels and summary from existing steps without changing their dose."""
+    updated = deepcopy(structured)
+    raw_steps = updated.get("steps")
+    if not isinstance(raw_steps, list):
+        return updated
+    _normalise_main_interval_labels(raw_steps, intensity_target)
+    updated["summary"] = summarize_structured_workout(updated, intensity_target)
+    return updated
+
+
+def interval_workout_title(
+    current_title: str,
+    structured: dict[str, Any],
+    intensity_target: str | None,
+) -> str:
+    """Derive a prescription-bearing title from the resulting source steps.
+
+    Generic titles such as ``Z2 + Neuromuscular`` remain generic. A title that
+    already embeds interval numbers is rebuilt so the delivered IR name cannot
+    carry the pre-edit prescription.
+    """
+    raw_steps = structured.get("steps")
+    if not isinstance(raw_steps, list):
+        return current_title
+    prefix = _prescription_title_prefix(current_title)
+    if prefix is None:
+        return current_title
+    blocks = [
+        candidate.block for candidate in _main_interval_candidates(raw_steps, intensity_target)
+    ]
+    if not blocks:
+        return current_title
+    if all(block == blocks[0] for block in blocks[1:]):
+        description = _format_block(blocks[0])
+        if len(blocks) > 1:
+            description = f"{len(blocks)} blocks of {description}"
+    else:
+        description = " + ".join(_format_block(block) for block in blocks)
+    return f"{prefix} ({description})"
+
+
+def summarize_structured_workout(structured: dict[str, Any], intensity_target: str | None) -> str:
+    """Render the source steps themselves, never stale hand-authored copy."""
+    raw_steps = structured.get("steps")
+    if not isinstance(raw_steps, list):
+        return ""
+    return " → ".join(
+        _summarize_source_step(raw, intensity_target) for raw in raw_steps if isinstance(raw, dict)
+    )
 
 
 def block_to_source(block: EditableIntervalBlock) -> dict[str, Any]:
@@ -331,14 +413,6 @@ def validate_interval_block(block: EditableIntervalBlock) -> None:
     )
 
 
-def block_workout_type(block: EditableIntervalBlock) -> str:
-    if block.work.power_pct >= 106:
-        return "bike_vo2"
-    if block.work.power_pct >= 85:
-        return "bike_sweet_spot"
-    return "bike_endurance"
-
-
 def _block_from_step(
     raw_step: dict[str, Any],
     intensity_target: str | None,
@@ -347,7 +421,7 @@ def _block_from_step(
     if isinstance(raw_block, dict):
         return _block_from_source(raw_block)
 
-    expanded = _expand_step(raw_step, intensity_target)
+    expanded = workout_delivery._expand_step(raw_step, intensity_target)
     if not expanded:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -413,36 +487,74 @@ def _leg_to_source(leg: IntervalLeg) -> dict[str, Any]:
     return result
 
 
-def _primary_step_index(raw_steps: list[Any], intensity_target: str | None) -> int | None:
-    for index, raw in enumerate(raw_steps):
-        if isinstance(raw, dict) and isinstance(raw.get("block"), dict):
-            return index
+@dataclass(frozen=True)
+class _IntervalCandidate:
+    index: int
+    block: EditableIntervalBlock
 
-    candidates: list[tuple[int, int]] = []
-    for index, raw in enumerate(raw_steps):
-        if isinstance(raw, dict) and isinstance(raw.get("pattern"), str) and "/" in raw["pattern"]:
-            try:
-                duration = sum(
-                    int(step["durationSec"]) for step in _expand_step(raw, intensity_target)
-                )
-            except (HTTPException, KeyError, TypeError, ValueError):
-                continue
-            candidates.append((duration, index))
-    if candidates:
-        return max(candidates)[1]
 
-    candidates = []
+def _interval_candidates(
+    raw_steps: list[Any], intensity_target: str | None
+) -> list[_IntervalCandidate]:
+    candidates: list[_IntervalCandidate] = []
     for index, raw in enumerate(raw_steps):
-        if not isinstance(raw, dict) or "minutes" not in raw or "ramp" in raw:
+        if not isinstance(raw, dict):
             continue
-        if _step_role(raw) != "primer":
+        has_block = isinstance(raw.get("block"), dict)
+        pattern = raw.get("pattern")
+        has_interval_pattern = isinstance(pattern, str) and "/" in pattern
+        has_continuous_main = "minutes" in raw and "ramp" not in raw and _step_role(raw) == "main"
+        if not has_block and not has_interval_pattern and not has_continuous_main:
             continue
         try:
-            duration = round(float(raw["minutes"]) * 60)
-        except (TypeError, ValueError):
+            candidates.append(
+                _IntervalCandidate(
+                    index=index,
+                    block=_block_from_step(raw, intensity_target),
+                )
+            )
+        except (HTTPException, KeyError, TypeError, ValueError):
             continue
-        candidates.append((duration, index))
-    return max(candidates)[1] if candidates else None
+    return candidates
+
+
+def _main_interval_candidates(
+    raw_steps: list[Any], intensity_target: str | None
+) -> list[_IntervalCandidate]:
+    candidates = _interval_candidates(raw_steps, intensity_target)
+    main = [
+        candidate
+        for candidate in candidates
+        if isinstance(raw_steps[candidate.index], dict)
+        and _step_role(raw_steps[candidate.index]) == "main"
+    ]
+    return main or candidates
+
+
+def _editable_step_indices(raw_steps: list[Any], intensity_target: str | None) -> tuple[int, ...]:
+    candidates = _main_interval_candidates(raw_steps, intensity_target)
+    if not candidates:
+        return ()
+    # The editor changes the workout's interval stimulus. Power is the decisive
+    # discriminator when a longer Zone-2 block sits beside a shorter sprint set;
+    # total duration breaks ordinary main-set ties, and ``-index`` makes an exact
+    # tie stable on the first source step instead of silently preferring the last.
+    selected = max(
+        candidates,
+        key=lambda candidate: (
+            candidate.block.work.power_pct,
+            candidate.block.repeat
+            * (candidate.block.work.duration_sec + candidate.block.rest.duration_sec),
+            -candidate.index,
+        ),
+    )
+    return tuple(candidate.index for candidate in candidates if candidate.block == selected.block)
+
+
+def _primary_step_index(raw_steps: list[Any], intensity_target: str | None) -> int | None:
+    """Compatibility name for the first step in the logical editable set."""
+    indices = _editable_step_indices(raw_steps, intensity_target)
+    return indices[0] if indices else None
 
 
 def _step_role(raw: dict[str, Any]) -> str:
@@ -451,7 +563,95 @@ def _step_role(raw: dict[str, Any]) -> str:
         return "warmup"
     if "cool" in label:
         return "cooldown"
-    return "primer"
+    if "primer" in label:
+        return "primer"
+    if "recover" in label:
+        return "recovery"
+    return "main"
+
+
+def _normalise_main_interval_labels(raw_steps: list[Any], intensity_target: str | None) -> None:
+    for candidate in _main_interval_candidates(raw_steps, intensity_target):
+        raw = raw_steps[candidate.index]
+        assert isinstance(raw, dict)
+        raw["label"] = _block_label(candidate.block, str(raw.get("label") or "Intervals"))
+
+
+def _normalise_matching_interval_labels(
+    raw_steps: list[Any],
+    intensity_target: str | None,
+    block: EditableIntervalBlock,
+) -> None:
+    for candidate in _main_interval_candidates(raw_steps, intensity_target):
+        if candidate.block != block:
+            continue
+        raw = raw_steps[candidate.index]
+        assert isinstance(raw, dict)
+        raw["label"] = _block_label(candidate.block, str(raw.get("label") or "Intervals"))
+
+
+def _block_label(block: EditableIntervalBlock, original_label: str) -> str:
+    suffix = re.search(r"\bblock\s+\d+\b", original_label, flags=re.IGNORECASE)
+    return f"{_format_block(block)}{f' {suffix.group(0).lower()}' if suffix else ''}"
+
+
+def _format_block(block: EditableIntervalBlock) -> str:
+    work = _format_duration(block.work.duration_sec)
+    if block.rest.duration_sec > 0:
+        effort = f"{work}/{_format_duration(block.rest.duration_sec)}"
+        power = f"{block.work.power_pct}%/{block.rest.power_pct}%"
+    else:
+        effort = work
+        power = f"{block.work.power_pct}%"
+    prefix = f"{block.repeat} × " if block.repeat > 1 else ""
+    return f"{prefix}{effort} @ {power}"
+
+
+def _format_duration(duration_sec: int) -> str:
+    if duration_sec < 60:
+        return f"{duration_sec}s"
+    minutes, seconds = divmod(duration_sec, 60)
+    if seconds == 0:
+        return f"{minutes} min"
+    return f"{minutes}:{seconds:02d}"
+
+
+def _format_minutes(value: Any) -> str:
+    try:
+        minutes = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    return f"{minutes:g} min"
+
+
+def _summarize_source_step(raw: dict[str, Any], intensity_target: str | None) -> str:
+    if isinstance(raw.get("block"), dict) or (
+        isinstance(raw.get("pattern"), str) and "/" in str(raw["pattern"])
+    ):
+        try:
+            return _format_block(_block_from_step(raw, intensity_target))
+        except (HTTPException, KeyError, TypeError, ValueError):
+            pass
+    if "ramp" in raw and isinstance(raw.get("ramp"), list) and len(raw["ramp"]) == 2:
+        return f"{_format_minutes(raw.get('minutes'))} ramp {raw['ramp'][0]}→{raw['ramp'][1]}%"
+    if "minutes" in raw:
+        target = str(raw.get("target") or raw.get("label") or "steady")
+        return f"{_format_minutes(raw.get('minutes'))} @ {target}"
+    return str(raw.get("label") or "Step")
+
+
+def _prescription_title_prefix(title: str) -> str | None:
+    if " (" in title:
+        return title.split(" (", 1)[0].rstrip()
+    marker = re.search(
+        r"\b(?:\d+\s*[×x]\s*|\d+(?::\d+)?(?:s|min)\b|\d+/\d+)",
+        title,
+        flags=re.IGNORECASE,
+    )
+    if marker is None:
+        return None
+    prefix = title[: marker.start()].rstrip(" -(")
+    return prefix or None
 
 
 def _validate_leg(

@@ -423,13 +423,13 @@ export const todayCardEditInputSchema = z.object({
 // contract. Seconds preserve sub-minute reps; power is absolute %FTP.
 export const intervalWorkoutLegSchema = z.object({
   durationSec: z.number().int().min(0).max(7200),
-  powerPct: z.number().int().min(40).max(150),
+  powerPct: z.number().int().min(40).max(200),
   cadenceRpm: z.number().int().min(40).max(130).nullable().optional(),
 });
 
 export const intervalWorkoutBlockSchema = z.object({
   repeat: z.number().int().min(1).max(20),
-  work: intervalWorkoutLegSchema.extend({ durationSec: z.number().int().min(30).max(7200) }),
+  work: intervalWorkoutLegSchema.extend({ durationSec: z.number().int().min(10).max(7200) }),
   rest: intervalWorkoutLegSchema.extend({ durationSec: z.number().int().min(0).max(3600) }),
 });
 
