@@ -41,8 +41,10 @@ scheduler jobs, `homeSections`, and services. Two concrete symptoms:
     wind-down → night. Generalise `post_ride` → **`post_training`** off *any* of
     the `post_*` analyses (ride / strength / flexibility / walk), and add a
     first-class **`wind_down`** evening phase (not just a clock reorder).
-  - The **block** advances build / recovery / … / consolidation → next block
-    (the Batch 47 boundary becomes an explicit block-phase transition).
+  - The **block** advances through its authored build / recovery / taper /
+    consolidation phases; indexed week 13 → next block is the explicit Batch 47
+    boundary. Batch 265 corrected the earlier phase-name assumption because the
+    current plan ends in taper, while its predecessor ended in consolidation.
 - **An orchestration seam** — one function that answers "where is Mark in his
   day/block, and what is the next thing to push / surface", which Batches 45 / 46
   / 47 **consume** instead of each re-deriving state.
@@ -68,7 +70,7 @@ scheduler jobs, `homeSections`, and services. Two concrete symptoms:
 - Phase derivation across **all** modalities: ride / strength / walk / flexibility
   / breathwork-only days each advance to `post_training` (not stuck `pre_ride`),
   plus rest and the evening `wind_down` phase.
-- Block-phase transitions (build → recovery → consolidation → next block).
+- Block-phase transitions, with only sequence position 13 marking next-block time.
 - Home primary-section selection reads the generalised phase, with the existing
   per-state renders preserved (no visual regression).
 - The orchestration seam returns the right "next thing" per state, exercised by

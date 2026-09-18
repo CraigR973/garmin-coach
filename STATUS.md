@@ -6,6 +6,48 @@
 
 ## Now
 
+**2026-09-18 — Batch 265 SHIPPED.** PR #297 / merge `6982e69`, Decision
+**#336**. An imported or reviewed plan is now audited against the canonical
+2121 recovery shape without taking authorship away from Mark. The real PN2
+sequence reports week 6 as build where recovery was expected and measures weeks
+4–8 as five unbroken build weeks. Imports still complete; a reviewed exception
+can carry durable who/when/reason provenance and then stops warning.
+
+**The signal appears once a week, with context.** Sunday review v8 receives the
+complete dated 13-week sequence, the missing recovery week and the coming week's
+position inside any long build run. It does not enter the morning brief, change
+Green/Amber/Red, alter a safety floor or mutate a workout. An incomplete sequence
+is unavailable, never falsely “conforming”.
+
+**The plan tail now agrees everywhere:** week 12 consolidation → week 13 taper.
+Generation, seed context and Builder copy use the same sequence; the daily-loop
+boundary is sequence position 13 rather than the word `consolidation`. Production
+held the exact old v1 `batch_5_seed`, so it was versioned reversibly to active v2
+`batch_265_periodisation_alignment`. The live PN2 plan blocks and workouts were
+not re-cut.
+
+**Verification.** Local backend **1,368 passed / 440 expected PostgreSQL skips**;
+shared 44 and web 443; Ruff, format, no-cache mypy, web build and lint passed.
+The first CI wave caught two stale imports of the moved sequence constant; after
+the direct-import fix, both push and PR waves, Vercel preview and post-merge CI
+were green, including PostgreSQL **1,808 / 0**. Railway and Vercel same-origin
+health serve exact `6982e69c5422c4846d867d41780d3359125a942a`; `/builder` is
+200 and the protected weekly-review route is 401 direct and proxied. A deployed
+read-only replay against Mark's real plan produced the exact week-6/five-week
+packet, and a post-update reread proved the KB v2 active.
+
+**Prompt bump:** `reviews-v7` → **`reviews-v8`**. The withdrawal set was stated
+before the bump and is empty. Production's real artifact lookup found 10 weekly
+and 2 monthly older-version rows, zero current, but the `UNFILTERED` contract
+makes none blank or unreachable. Nothing was regenerated; the next normal Sunday
+review will use v8.
+
+**Next: Batch 266** — schedule the month/season trend summaries that currently
+have only a manual writer, and split the orphan alarm so it cannot misdiagnose a
+normal subject-date rollover as a prompt-withdrawal outage.
+
+## Prior current-state snapshots
+
 **2026-09-17 — Batch 264 SHIPPED.** PR #295 / merge `a3d81a4`, Decision
 **#335**. A change agreed in
 conversation now reaches the plan. The coach's answer ends with a marker
@@ -79,8 +121,6 @@ as **Batch 266**; regenerating the orphaned rows is explicitly *not* the fix.
 against the canonical sequence before the next plan import. **Batch 266** is
 authored behind it: the Trends summary nobody writes, plus splitting the orphan
 alarm that produced the wrong cause above.
-
-## Prior current-state snapshots
 
 **2026-09-17 — Batch 263 SHIPPED.** PR #294 / merge `0530b25`, Decision
 **#334**. The interval editor now treats equal-shape sibling blocks as one
@@ -817,6 +857,18 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**2026-09-18 — Batch 265 shipped.** PR #297 / merge `6982e69`, Decision #336.
+Plan imports now warn without blocking when the authored week types omit a
+canonical recovery; durable reviewed acknowledgements suppress deliberate
+exceptions. Sunday reviews receive the complete periodisation audit and exact
+long-build-run position. Canonical weeks 12/13 are consolidation→taper and the
+block boundary is indexed week 13. Local gates, both corrected CI waves,
+Vercel preview, post-merge CI and exact-SHA production passed; the real PN2
+replay emitted week 6 / weeks 4–8 exactly. Production training-plan context was
+versioned v1→v2 under an exact-match assertion; live plan/workout rows stayed
+unchanged. Review v8 is unfiltered, so 10 weekly + 2 monthly old rows remain
+reachable and no paid regeneration ran. Next: Batch 266.
 
 **2026-09-17 — Batch 264 shipped.** PR #295 / merge `a3d81a4`, Decision #335. A change negotiated in conversation now reaches the plan as five
 validated numbers rather than prose: the coach's marker carries the agreed
