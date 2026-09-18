@@ -468,7 +468,7 @@ async def test_preview_assembles_rollup_and_never_writes(db_conn: AsyncConnectio
             "do not describe this as strength training stopped"
             in preview.packet["strengthBrief"]["zeroInterpretation"]
         )
-        assert REVIEW_PROMPT_VERSION.startswith("reviews-v7")
+        assert REVIEW_PROMPT_VERSION.startswith("reviews-v8")
         assert "**Bottom line:**" in REVIEW_SYSTEM_PROMPT
         assert "never announce" in REVIEW_SYSTEM_PROMPT
         assert "usual routine only" in REVIEW_SYSTEM_PROMPT
@@ -476,6 +476,8 @@ async def test_preview_assembles_rollup_and_never_writes(db_conn: AsyncConnectio
         assert "merely planned session as executed" in REVIEW_SYSTEM_PROMPT
         assert "weekAhead" in REVIEW_SYSTEM_PROMPT
         assert "target=0" in REVIEW_SYSTEM_PROMPT
+        assert "weekAhead.periodisation" in REVIEW_SYSTEM_PROMPT
+        assert "week 5 of an unbroken build run" in REVIEW_SYSTEM_PROMPT
 
         # GET preview must not write an analyses row (#71).
         after = await session.scalar(select(func.count()).select_from(Analysis))

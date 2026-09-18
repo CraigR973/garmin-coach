@@ -1,7 +1,7 @@
 """App-generated 13-week 2121 training blocks — Batch 16.
 
 The generator emits a structured, versioned 13-week 2121 block (2 build / 1
-recovery, repeated, then wk12 taper / wk13 consolidation) from the athlete's
+recovery, repeated, then wk12 consolidation / wk13 taper) from the athlete's
 profile + FTP, then supports a **refine-then-lock** workflow (Decision #16):
 mould individual days, fix errors, then lock. Locking writes the draft into the
 owned plan (``plan_blocks`` + ``planned_workouts``, active) so the block feeds

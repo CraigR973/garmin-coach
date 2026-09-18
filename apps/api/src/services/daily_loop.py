@@ -204,6 +204,7 @@ class DailyLoopService:
             is_evening=is_evening(_local_now(player.timezone)),
             block_type=active_block.block_type if active_block else None,
             block_name=active_block.name if active_block else None,
+            block_sequence_index=active_block.sequence_index if active_block else None,
         )
 
         return DailyLoopSnapshot(

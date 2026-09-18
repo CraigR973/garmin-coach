@@ -98,12 +98,12 @@ class TestBlockPhase:
 
 
 class TestBlockBoundary:
-    def test_consolidation_is_the_boundary(self) -> None:
-        assert is_block_boundary("consolidation") is True
+    def test_final_sequence_position_is_the_boundary(self) -> None:
+        assert is_block_boundary(block_sequence_index=13) is True
 
-    @pytest.mark.parametrize("phase", ["build", "recovery", "taper", "transition", None])
-    def test_other_phases_are_not(self, phase: str | None) -> None:
-        assert is_block_boundary(phase) is False  # type: ignore[arg-type]
+    @pytest.mark.parametrize("sequence_index", [1, 3, 9, 12, None])
+    def test_other_positions_are_not(self, sequence_index: int | None) -> None:
+        assert is_block_boundary(block_sequence_index=sequence_index) is False
 
 
 class TestNextAction:
@@ -136,16 +136,28 @@ class TestDescribeLoopState:
             at_block_boundary=False,
         )
 
-    def test_consolidation_week_flags_the_block_boundary(self) -> None:
+    def test_final_taper_week_flags_the_block_boundary(self) -> None:
         state = describe_loop_state(
             has_post_analysis=False,
             has_planned_workout=True,
             is_evening=False,
-            block_name="Week 13 Consolidation",
+            block_name="Week 13 Taper",
+            block_sequence_index=13,
         )
-        assert state.block_phase == "consolidation"
+        assert state.block_phase == "taper"
         assert state.at_block_boundary is True
         assert state.day_phase == "pre_training"
+
+    def test_week_twelve_consolidation_is_not_the_boundary(self) -> None:
+        state = describe_loop_state(
+            has_post_analysis=False,
+            has_planned_workout=True,
+            is_evening=False,
+            block_name="Week 12 Consolidation",
+            block_sequence_index=12,
+        )
+        assert state.block_phase == "consolidation"
+        assert state.at_block_boundary is False
 
     def test_to_dict_is_camel_case(self) -> None:
         state = describe_loop_state(

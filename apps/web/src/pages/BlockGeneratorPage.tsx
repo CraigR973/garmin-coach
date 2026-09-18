@@ -165,7 +165,7 @@ export function BlockGeneratorPage() {
             Mould it, then lock it
           </CardTitle>
           <CardDescription>
-            The coach generates a 13-week 2121 block (2 build / 1 recovery, taper, consolidation).
+            The coach generates a 13-week 2121 block (2 build / 1 recovery, consolidation, taper).
             Refine any day, then lock it — locked workouts feed your daily plan and deliver to Zwift
             on approval.
           </CardDescription>

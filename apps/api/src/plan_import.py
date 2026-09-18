@@ -67,20 +67,21 @@ async def _main() -> None:
             dry_run=args.dry_run,
         )
 
-    print(
-        "\n".join(
-            [
-                f"Plan: {plan.get('name', '(unnamed)')}  ->  {args.display_name}",
-                f"Start (Monday): {summary.start_date}  |  dry_run={summary.dry_run}",
-                f"Removed prior import: {summary.prior_import_blocks_removed} blocks / "
-                f"{summary.prior_import_workouts_removed} workouts",
-                f"Removed forward seed: {summary.forward_blocks_removed} blocks / "
-                f"{summary.forward_workouts_removed} workouts",
-                f"Inserted: {summary.blocks_inserted} blocks / "
-                f"{summary.workouts_inserted} workouts",
-            ]
-        )
-    )
+    lines = [
+        f"Plan: {plan.get('name', '(unnamed)')}  ->  {args.display_name}",
+        f"Start (Monday): {summary.start_date}  |  dry_run={summary.dry_run}",
+        f"Removed prior import: {summary.prior_import_blocks_removed} blocks / "
+        f"{summary.prior_import_workouts_removed} workouts",
+        f"Removed forward seed: {summary.forward_blocks_removed} blocks / "
+        f"{summary.forward_workouts_removed} workouts",
+        f"Inserted: {summary.blocks_inserted} blocks / {summary.workouts_inserted} workouts",
+    ]
+    if summary.periodisation_warnings:
+        lines.append("Periodisation warnings (informational; import was not blocked):")
+        lines.extend(f"- {warning}" for warning in summary.periodisation_warnings)
+    else:
+        lines.append("Periodisation: no unacknowledged divergence from the 2121 slate.")
+    print("\n".join(lines))
 
 
 if __name__ == "__main__":

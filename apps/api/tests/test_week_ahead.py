@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
@@ -104,6 +104,12 @@ async def test_week_ahead_packet_names_plan_mix_hardest_day_and_protecting_night
     assert buckets["sweet_spot"]["target"] == 1
     assert buckets["z2"]["target"] == 1
     assert packet["coachingContract"]["classificationImpact"] == "none"
+    assert packet["periodisation"] == {
+        "status": "unavailable",
+        "reason": "A complete indexed 13-week plan sequence is not available.",
+        "focusWeekNumber": 2,
+        "focusBuildRun": None,
+    }
 
 
 @pytest.mark.asyncio
@@ -158,3 +164,78 @@ async def test_recovery_week_zero_quality_targets_are_explicit_not_shortfalls(
     assert buckets["vo2"]["atRisk"] is False
     assert buckets["sweet_spot"]["target"] == 0
     assert buckets["sweet_spot"]["atRisk"] is False
+
+
+@pytest.mark.asyncio
+async def test_week_ahead_names_position_inside_the_real_five_week_build_run(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    plan_start = date(2026, 7, 20)
+    block_types = [
+        "build",
+        "build",
+        "recovery",
+        "build",
+        "build",
+        "build",
+        "build",
+        "build",
+        "recovery",
+        "build",
+        "build",
+        "consolidation",
+        "taper",
+    ]
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        profile = Profile(
+            id=user_id,
+            display_name="Periodisation week test",
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(profile)
+        await session.flush()
+        for index, block_type in enumerate(block_types, start=1):
+            block_start = plan_start + timedelta(weeks=index - 1)
+            session.add(
+                PlanBlock(
+                    user_id=user_id,
+                    name=f"PN2 W{index:02d} {block_type.upper()}",
+                    version=1,
+                    sequence_index=index,
+                    block_type=block_type,
+                    start_date=block_start,
+                    end_date=block_start + timedelta(days=6),
+                )
+            )
+        await session.commit()
+
+        packet = await WeekAheadService(session).build(
+            profile,
+            week_start=plan_start + timedelta(weeks=5),
+        )
+
+    assert packet["periodisation"]["status"] == "divergent"
+    assert packet["periodisation"]["divergences"] == [
+        {
+            "code": "week-6-build-instead-of-recovery",
+            "weekNumber": 6,
+            "expectedBlockType": "recovery",
+            "actualBlockType": "build",
+            "acknowledged": False,
+            "acknowledgement": None,
+            "summary": (
+                "Week 6 is a build week where the 2121 slate has recovery. "
+                "That makes weeks 4–8 five unbroken build weeks."
+            ),
+        }
+    ]
+    assert packet["periodisation"]["focusBuildRun"] == {
+        "startWeek": 4,
+        "endWeek": 8,
+        "lengthWeeks": 5,
+        "position": 3,
+        "summary": "This is week 3 of an unbroken five-week build run (weeks 4–8).",
+    }
