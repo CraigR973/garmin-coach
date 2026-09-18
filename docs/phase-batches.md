@@ -3714,3 +3714,56 @@ question — whether the app should ever *propose* the next block's shape from
 for a document — is a real one and is untouched here. It also interacts with his
 next-block VO2 progression, already recorded on 2026-09-16. Raise both together
 when this block ends on 2026-10-18.
+
+## Post-roadmap — 2026-09-18 — Found during Batch 264's close-out: the summary nobody writes, and an alarm that means two things (Batch 266)
+
+**Batch 264's close-out reported that the Trends narrative was blank because of
+the 2026-09-04 prompt bump. That causal claim was wrong, and the way it was
+reached is the more interesting half.** The close-out procedure says to drive the
+real lookup rather than compare version strings, and it did: `orphaned_artifacts`
+returned `trends/seasonal_trend` with **0 rows at the current version against 12
+orphaned**, and `blanks_a_surface` true. Every number there is correct. The
+conclusion drawn from it was not.
+
+**Driving the *page's own* lookup settles it.** `narrative_preview` for both
+buckets against production on 2026-09-18 returns `target_key` **2026-09** and
+**2026-autumn**, both with `subject_date` 2026-09-01, both `comparison: ok`, and
+both with **no stored narrative at any version** — the newest month row is
+`2026-08-01` and the newest season row `2026-06-01`. The buckets rolled over into
+a new period, and nothing has written that period's summary. **Remove the v10
+bump entirely and the card reads exactly the same.** The bump did orphan 12 rows,
+but those 12 rows are 12 historical *versions* across only three distinct subject
+dates (June/July/August month, June season) — past periods the page does not show
+unless asked for with `as_of`.
+
+**And the page is not blank.** Charts, the year-on-year comparison and the recent
+windows all render from deterministic data. One card — "Written summary" — reads
+*"No summary written for this period yet."* above an **enabled "Write summary"
+button**. What is wrong is smaller and more permanent than a blanked page: the
+button is the *only* writer there has ever been.
+
+**Nothing writes a trend narrative on a schedule.** The only caller of
+`narrative_run` is `POST /api/v1/trends/narrative/run`
+([`routers/trends.py:211`](../apps/api/src/routers/trends.py)), behind that
+button. So **every** month rollover and **every** season change leaves the card
+empty until Mark happens to open Trends and know to tap. That has nothing to do
+with prompt versions and predates every bump.
+
+**The money question is settled and it is not a question.** Measured with the
+free `count_tokens` endpoint against the real production packet: the September
+month narrative is **10,431 input tokens** and the autumn one **10,368**, which
+at the repo-recorded Sonnet 5 rates and a deliberately generous 900-token output
+allowance is **~$0.045 each, ~$0.09 for both buckets of one period** — about
+**$1.10 a year** if every month and season is written once. The close-out
+guardrail that keeps paid regeneration explicit is the right rule and it is what
+stopped Batch 264 mid-step; it is simply not load-bearing at this price.
+
+**So the batch that was asked for — regenerate the orphaned narratives — is the
+wrong batch.** Regenerating August at v10 files a row behind a period the page
+does not display, and changes nothing Mark would see.
+
+**Decision numbers are assigned at `/batch-start`, not here.**
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 266 — The summary nobody writes, and the alarm that cried blank | 🟢 Mid | Planned | 266.1 **Decide at `/batch-start` who writes a new period's first narrative.** Three options, to be decided on cost and on what Batch 253 actually ruled out. **(a) A scheduled job**, once per period per bucket, idempotent — the shape `longitudinal_analysis` already uses for its monthly whole-history submission (`submit_monthly`, driven from `scheduler.py`'s collector via `run_tracked_job`), so this is an existing precedent for a bounded once-a-month paid generation rather than a new kind of thing. ~$0.09 per period, ~$1.10 a year. **(b) Generate on the first page open of a new period**, capped once per period. **(c) Leave it manual** and fix only the card's copy so the tap is invited rather than merely available. **Recommendation (a):** Batch 253 declined to self-heal *on a page open*, which is unbounded and fires for a reason the reader did not choose; a once-per-period job is neither. Verify that reading of 253 against `DECISIONS.md` before building, and if it does not hold, say so and re-decide rather than proceeding.<br>266.2 **Split the orphan alarm, because it currently means two things and reported the wrong one.** `blanks_a_surface` is true whenever the current prompt version has zero rows, which covers both "a bump withdrew the narrative Mark was reading" — the Batch 227 failure, worth stopping a close-out for — and "a new period began and nobody has asked for a summary yet", which is ordinary and unrelated to the bump being closed out. Only the first is a close-out finding. The report must distinguish them, and the close-out procedure's wording should follow, so the signal it tells you to trust does not again produce a confident false cause.<br>266.3 **Settle the 12 orphaned rows in writing.** They sit behind past periods the page does not surface by default; they cost nothing and are an honest record of what was said at the time. **Recommendation: leave them**, and record that, so it is not re-litigated at the next bump. Regenerating the most recent month and season at v10 is the alternative and costs ~$0.09; it is defensible but buys a page Mark would have to navigate to with `as_of`.<br>266.4 **Tests, each confirmed to fail against today's logic first:** a period that has simply rolled over is not reported as a bump-orphaned surface, while a genuine bump-orphaned narrative still is; Batch 264's exact production state would not have been reported as the latter; whatever 266.1 chooses is pinned, including its idempotence across two runs in one period; and the existing `PROMPT_VERSION_BY_BUCKET` read filter is unchanged — 266 does not relax the filter that makes a bump withdraw a stale narrative, which is the behaviour Batches 225/227/250 all deliberately relied on. | Make the Trends written summary appear for a new period without Mark having to know to ask for it, and make the close-out orphan signal mean one thing so the next batch is not told a confident wrong cause. | On the first day of a new month and at a season change, both buckets hold a written summary with no one having tapped anything, written once rather than per page view. The orphan report separates a bump-withdrawn narrative from a period with no summary yet; replaying Batch 264's real production state produces the second, not the first, and a genuine withdrawal still produces the first. The 12 historical rows have an explicit written decision behind them. The version read filter is untouched, pinned by its existing tests. No prompt bump expected. No migration expected. |

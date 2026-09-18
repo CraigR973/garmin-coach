@@ -59,17 +59,26 @@ bump and **empty**, then confirmed against the real lookup after deploy:
 `orphaned_artifacts` reports no `brief_chat` row at all, because chat writes no
 `analyses` — a past answer stays what was said.
 
-**Gotcha found while verifying, NOT caused by this batch, and left for Craig's
-call:** the real orphan lookup reports **`trends/seasonal_trend` currently blanks
-a surface** — 0 rows at `trends-month-v10-2026-09-04` against 12 orphaned, newest
-subject date 2026-08-01. That is the Batch 227 failure mode (a `VERSION_FILTERED`
-bump emptying the Trends narrative), pre-existing since the 2026-09-04 trends
-bump and unrelated to the chat prompt. Repairing it means paying for a real
-regeneration, which `AGENTS.md` keeps explicit, so it is recorded rather than
-done.
+**Correction to that gotcha, made 2026-09-18 while scoping the follow-up.** The
+close-out reported `trends/seasonal_trend` as blanked *by the 2026-09-04 prompt
+bump*. The counts were right — 0 rows at the current version, 12 orphaned — but
+the cause was not. Driving the page's own lookup shows both buckets have rolled
+over to **2026-09 / 2026-autumn**, and no narrative has ever been written at that
+subject date **at any version**; remove the bump and the card reads the same. The
+12 orphaned rows are 12 historical *versions* across three past subject dates the
+page does not show by default. The Trends page is not blank either: charts and
+year-on-year render, and one card reads "No summary written for this period yet."
+above an enabled **Write summary** button. **The real defect is that the button is
+the only writer there has ever been** — no scheduled job writes a trend narrative,
+so every month and season rollover leaves that card empty until Mark taps. Cost is
+not the obstacle it was assumed to be: measured with free `count_tokens`, a
+narrative is **~$0.045**, both buckets **~$0.09**, about **$1.10 a year**. Scoped
+as **Batch 266**; regenerating the orphaned rows is explicitly *not* the fix.
 
 **Next: Batch 265** — reconcile the imported block's missing recovery week
-against the canonical sequence before the next plan import.
+against the canonical sequence before the next plan import. **Batch 266** is
+authored behind it: the Trends summary nobody writes, plus splitting the orphan
+alarm that produced the wrong cause above.
 
 ## Prior current-state snapshots
 
