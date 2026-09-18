@@ -2,7 +2,7 @@
 
 Covers the acceptance pillars:
   1. Generation shape — structured, 13-week 2121 (2 build / 1 recovery, then
-     wk12 taper / wk13 consolidation).
+     wk12 consolidation / wk13 taper).
   2. VO2 progression rules — generated VO2 days use the 30/15 progression late.
   3. Refine-then-lock versioning — edits are preserved and the draft is versioned.
   4. Locked blocks feed the owned plan (active planned_workouts) and are
@@ -73,8 +73,8 @@ def test_block_label_build_pairs_alternate() -> None:
 
 def test_block_label_non_build() -> None:
     assert block_label(3, "recovery") == "Recovery"
-    assert block_label(12, "taper") == "Taper"
-    assert block_label(13, "consolidation") == "Consolidation"
+    assert block_label(12, "consolidation") == "Consolidation"
+    assert block_label(13, "taper") == "Taper"
 
 
 def test_next_cycle_start_is_next_monday() -> None:
@@ -150,8 +150,8 @@ def test_generate_block_plan_2121_block_types() -> None:
         "recovery",
         "build",
         "build",
-        "taper",
         "consolidation",
+        "taper",
     ]
     assert types.count("build") == 8
     assert types.count("recovery") == 3

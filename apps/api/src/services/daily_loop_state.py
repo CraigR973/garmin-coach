@@ -13,9 +13,10 @@ Two generalisations over the cycling-shaped frontend ``useDailyPhase``
   instead of being stuck ``pre_ride``.
 * A first-class evening **``wind_down``** phase replaces the 20:00 clock reorder.
 
-The block advances build → recovery → taper → consolidation, and the end of a
-13-week block (``consolidation``) is an explicit boundary — the seam Batch 47's
-"plan your next block" prompt reads.
+The block advances through its authored phases, and sequence position 13 is the
+explicit boundary — the seam Batch 47's "plan your next block" prompt reads.
+The phase name cannot carry that meaning: Mark's current block ends in a taper,
+while the preceding block ended in consolidation.
 
 Consolidating refactor (DECISIONS #118): **behaviour-preserving, no new coaching
 logic, no migration.** The frontend ``useDailyPhase`` mirrors these rules;
@@ -91,11 +92,10 @@ def derive_block_phase(*, block_type: str | None, block_name: str | None) -> Blo
     return None
 
 
-def is_block_boundary(block_phase: BlockPhase | None) -> bool:
-    """True when the block is at its end — consolidation (wk13) closes a 13-week
-    block, so it's time to program the next one (the Batch 47 trigger)."""
+def is_block_boundary(*, block_sequence_index: int | None) -> bool:
+    """True at the final position of the 13-week slate, regardless of phase."""
 
-    return block_phase == "consolidation"
+    return block_sequence_index == 13
 
 
 def next_action(day_phase: DayPhase) -> NextAction:
@@ -135,6 +135,7 @@ def describe_loop_state(
     is_evening: bool,
     block_type: str | None = None,
     block_name: str | None = None,
+    block_sequence_index: int | None = None,
 ) -> LoopState:
     """The orchestration seam — pure derivation of the whole loop state from
     already-assembled facts. Batches 45-47 can consume this instead of each
@@ -150,5 +151,5 @@ def describe_loop_state(
         day_phase=day_phase,
         block_phase=block_phase,
         next_action=next_action(day_phase),
-        at_block_boundary=is_block_boundary(block_phase),
+        at_block_boundary=is_block_boundary(block_sequence_index=block_sequence_index),
     )

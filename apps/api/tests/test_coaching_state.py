@@ -14,6 +14,16 @@ from src.database import get_db
 from src.main import app
 from src.models.coaching import KnowledgeBase, PlannedWorkout
 from src.models.profile import Profile, UserRole
+from src.services.coaching_state import _training_plan_content
+
+
+def test_seeded_training_plan_ends_with_consolidation_then_taper() -> None:
+    content = _training_plan_content(date(2026, 6, 15))
+
+    assert content["cycleStructure"][-2:] == [
+        "Week 12 consolidation",
+        "Week 13 taper",
+    ]
 
 
 def _db_override(session_factory: async_sessionmaker[AsyncSession]):

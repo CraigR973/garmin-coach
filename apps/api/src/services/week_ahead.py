@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import PlanBlock, PlannedWorkout
 from src.models.profile import Profile
+from src.services.plan_periodisation import audit_plan_periodisation
 from src.services.training_week import TrainingWeekService
 from src.services.weekly_mix import MixSession, summarize_weekly_mix
 from src.services.weekly_restructure import (
@@ -51,6 +52,7 @@ class WeekAheadService:
         week_end = week_start + timedelta(days=6)
         planned = await self._active_planned_workouts(player.id, week_start, week_end)
         blocks = await self._plan_blocks(player.id, week_start, week_end)
+        sequence_blocks = await self._plan_sequence_blocks(player.id, blocks)
         training_week = await TrainingWeekService(self.session).build_window(
             player,
             start_date=week_start,
@@ -88,6 +90,7 @@ class WeekAheadService:
                 _block_packet(block, week_start=week_start, week_end=week_end) for block in blocks
             ],
             "blockSummary": _block_summary(blocks, week_start=week_start, week_end=week_end),
+            "periodisation": _periodisation_packet(sequence_blocks, blocks),
             "weeklyMix": mix.to_packet(),
             "qualitySessions": quality_sessions,
             "hardestSession": hardest,
@@ -160,6 +163,54 @@ class WeekAheadService:
                 latest[key] = row
         return list(latest.values())
 
+    async def _plan_sequence_blocks(
+        self,
+        user_id: uuid.UUID,
+        focus_blocks: Sequence[PlanBlock],
+    ) -> list[PlanBlock]:
+        """Return the coherent 13-week sequence containing the focus week.
+
+        Sequence indexes alone are not globally unique: old and current plans can
+        coexist. Anchor the lookup to the dated focus row, then keep only blocks
+        whose dates line up with that same Monday-based sequence.
+        """
+
+        anchor = next(
+            (block for block in focus_blocks if block.sequence_index is not None),
+            None,
+        )
+        if anchor is None or anchor.sequence_index is None:
+            return []
+        plan_start = anchor.start_date - timedelta(weeks=anchor.sequence_index - 1)
+        plan_end = plan_start + timedelta(weeks=13, days=-1)
+        rows = (
+            (
+                await self.session.execute(
+                    select(PlanBlock)
+                    .where(
+                        PlanBlock.user_id == user_id,
+                        PlanBlock.sequence_index.is_not(None),
+                        PlanBlock.start_date >= plan_start,
+                        PlanBlock.end_date <= plan_end,
+                    )
+                    .order_by(
+                        PlanBlock.sequence_index.asc(),
+                        PlanBlock.version.desc(),
+                        PlanBlock.name.asc(),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        latest: dict[int, PlanBlock] = {}
+        for row in rows:
+            assert row.sequence_index is not None
+            expected_start = plan_start + timedelta(weeks=row.sequence_index - 1)
+            if row.start_date == expected_start and row.sequence_index not in latest:
+                latest[row.sequence_index] = row
+        return list(latest.values())
+
 
 def _block_packet(block: PlanBlock, *, week_start: date, week_end: date) -> dict[str, Any]:
     return {
@@ -171,6 +222,42 @@ def _block_packet(block: PlanBlock, *, week_start: date, week_end: date) -> dict
         "startsThisWeek": week_start <= block.start_date <= week_end,
         "endsThisWeek": week_start <= block.end_date <= week_end,
     }
+
+
+def _periodisation_packet(
+    sequence_blocks: Sequence[PlanBlock],
+    focus_blocks: Sequence[PlanBlock],
+) -> dict[str, object]:
+    focus = next(
+        (block for block in focus_blocks if block.sequence_index is not None),
+        None,
+    )
+    sequence_indexes = {
+        block.sequence_index for block in sequence_blocks if block.sequence_index is not None
+    }
+    if focus is None or sequence_indexes != set(range(1, 14)):
+        return {
+            "status": "unavailable",
+            "reason": "A complete indexed 13-week plan sequence is not available.",
+            "focusWeekNumber": focus.sequence_index if focus is not None else None,
+            "focusBuildRun": None,
+        }
+
+    raw_acknowledgements = sequence_blocks[0].raw_plan.get("periodisationAcknowledgements", [])
+    acknowledgements = (
+        [item for item in raw_acknowledgements if isinstance(item, dict)]
+        if isinstance(raw_acknowledgements, list)
+        else []
+    )
+    audit = audit_plan_periodisation(
+        [
+            (block.sequence_index, str(block.block_type or "unknown"))
+            for block in sequence_blocks
+            if block.sequence_index is not None
+        ],
+        acknowledgements=acknowledgements,
+    )
+    return audit.to_packet(focus_week_number=focus.sequence_index)
 
 
 def _block_summary(

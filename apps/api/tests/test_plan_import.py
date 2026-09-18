@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from copy import deepcopy
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -23,7 +24,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
-from src.models.coaching import PlannedWorkout
+from src.models.coaching import PlanBlock, PlannedWorkout
 from src.models.profile import Profile, UserRole
 from src.services.plan_import import build_plan_rows, import_plan
 from src.services.workout_categories import category_for_workout_type
@@ -55,6 +56,85 @@ def test_block_types_follow_structure(plan: dict) -> None:
     assert by_seq[9] == "recovery"
     assert by_seq[12] == "consolidation"
     assert by_seq[13] == "taper"
+
+
+def test_real_plan_reports_missing_week_six_recovery_and_five_week_build_run(
+    plan: dict,
+) -> None:
+    audit = build_plan_rows(plan).periodisation
+
+    assert [item.week_number for item in audit.unacknowledged_divergences] == [6]
+    assert audit.unacknowledged_divergences[0].summary == (
+        "Week 6 is a build week where the 2121 slate has recovery. "
+        "That makes weeks 4–8 five unbroken build weeks."
+    )
+    assert [(run.start_week, run.end_week, run.length_weeks) for run in audit.long_build_runs] == [
+        (4, 8, 5)
+    ]
+
+
+def test_plan_matching_canonical_sequence_has_no_periodisation_warning(plan: dict) -> None:
+    conforming = deepcopy(plan)
+    canonical = [
+        "build",
+        "build",
+        "recovery",
+        "build",
+        "build",
+        "recovery",
+        "build",
+        "build",
+        "recovery",
+        "build",
+        "build",
+        "consolidation",
+        "taper",
+    ]
+    for week, block_type in zip(conforming["weeks"], canonical, strict=True):
+        week["block_type"] = block_type
+
+    audit = build_plan_rows(conforming).periodisation
+
+    assert audit.divergences == ()
+    assert audit.long_build_runs == ()
+
+
+def test_confirmed_divergence_is_recorded_and_not_re_reported(plan: dict) -> None:
+    first = build_plan_rows(plan).periodisation
+    divergence = first.unacknowledged_divergences[0]
+    confirmed = deepcopy(plan)
+    confirmed["periodisation_acknowledgements"] = [
+        {
+            "code": divergence.code,
+            "confirmed_by": "Mark",
+            "confirmed_on": "2026-09-18",
+            "reason": "Deliberate overload block.",
+        }
+    ]
+
+    rows = build_plan_rows(confirmed)
+
+    assert rows.periodisation.unacknowledged_divergences == ()
+    assert rows.periodisation.divergences[0].acknowledged is True
+    assert rows.periodisation.divergences[0].acknowledgement is not None
+    assert rows.periodisation.divergences[0].acknowledgement.confirmed_by == "Mark"
+
+
+def test_periodisation_acknowledgement_requires_an_iso_confirmation_date(
+    plan: dict,
+) -> None:
+    confirmed = deepcopy(plan)
+    confirmed["periodisation_acknowledgements"] = [
+        {
+            "code": "week-6-build-instead-of-recovery",
+            "confirmed_by": "Mark",
+            "confirmed_on": "last Thursday",
+            "reason": "Deliberate overload block.",
+        }
+    ]
+
+    with pytest.raises(ValueError, match="confirmed_on must be an ISO date"):
+        build_plan_rows(confirmed)
 
 
 def test_weekly_shape(plan: dict) -> None:
@@ -124,6 +204,10 @@ async def test_import_plan_assigns_per_date_versions(db_conn: AsyncConnection, p
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
         summary = await import_plan(session, user_id, plan, dry_run=False)
     assert summary.workouts_inserted == 87
+    assert summary.periodisation_warnings == (
+        "Week 6 is a build week where the 2121 slate has recovery. "
+        "That makes weeks 4–8 five unbroken build weeks.",
+    )
 
     monday, saturday = date(2026, 7, 6), date(2026, 7, 11)  # W1 Mon (start) + Sat
 
@@ -154,11 +238,37 @@ async def test_import_plan_assigns_per_date_versions(db_conn: AsyncConnection, p
     assert [w.version for w in mon_rows] == [1]
     assert category_for_workout_type(mon_rows[0].workout_type) == "weights"
 
-    # A second import clears the forward schedule and re-lands on the same versions.
+    # A reviewed acknowledgement suppresses the warning on the next import and is
+    # stored with the owned plan, while row versioning remains deterministic.
+    confirmed = deepcopy(plan)
+    confirmed["periodisation_acknowledgements"] = [
+        {
+            "code": "week-6-build-instead-of-recovery",
+            "confirmed_by": "Craig",
+            "confirmed_on": "2026-09-18",
+            "reason": "Deliberate overload block.",
+        }
+    ]
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
-        await import_plan(session, user_id, plan, dry_run=False)
+        second_summary = await import_plan(session, user_id, confirmed, dry_run=False)
         again = await _rows_on(session, saturday)
+        first_block = await session.scalar(
+            select(PlanBlock).where(
+                PlanBlock.user_id == user_id,
+                PlanBlock.sequence_index == 1,
+            )
+        )
     assert [w.version for w in again] == [1, 2]
+    assert second_summary.periodisation_warnings == ()
+    assert first_block is not None
+    assert first_block.raw_plan["periodisationAcknowledgements"] == [
+        {
+            "code": "week-6-build-instead-of-recovery",
+            "confirmed_by": "Craig",
+            "confirmed_on": "2026-09-18",
+            "reason": "Deliberate overload block.",
+        }
+    ]
 
 
 def test_field_bounds(plan: dict) -> None:

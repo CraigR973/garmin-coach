@@ -1,7 +1,7 @@
 """App-generated 13-week 2121 training blocks — Batch 16.
 
 The generator emits a structured, versioned 13-week 2121 block (2 build / 1
-recovery, repeated, then wk12 taper / wk13 consolidation) from the athlete's
+recovery, repeated, then wk12 consolidation / wk13 taper) from the athlete's
 profile + FTP, then supports a **refine-then-lock** workflow (Decision #16):
 mould individual days, fix errors, then lock. Locking writes the draft into the
 owned plan (``plan_blocks`` + ``planned_workouts``, active) so the block feeds
@@ -41,12 +41,12 @@ from src.models.coaching import KnowledgeBase, PlanBlock, PlannedWorkout
 from src.models.profile import Profile
 from src.services.block_progression import BlockProgressionService, NextBlockProposal
 from src.services.coaching_state import (
-    BLOCK_SEQUENCE,
     _block_name,
     _block_templates,
     _current_cycle_start,
 )
 from src.services.holiday_pause import is_build1
+from src.services.plan_periodisation import BLOCK_SEQUENCE
 from src.services.workout_categories import normalise_workout_type
 from src.services.workout_delivery import IntervalsEventClient
 

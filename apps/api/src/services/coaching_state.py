@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import KnowledgeBase, PlanBlock, PlannedWorkout
 from src.models.profile import Profile
+from src.services.plan_periodisation import BLOCK_SEQUENCE
 from src.services.standing_habits import standing_habits_content
 from src.services.vo2_progression import build_vo2_structured_workout, select_vo2_protocol
 
@@ -179,8 +180,8 @@ def _training_plan_content(cycle_start: date) -> dict[str, Any]:
             "Weeks 7-8 build",
             "Week 9 recovery",
             "Weeks 10-11 build",
-            "Week 12 taper",
-            "Week 13 consolidation",
+            "Week 12 consolidation",
+            "Week 13 taper",
         ],
         "weeklyRhythm": [
             "Monday recovery or mobility strength",
@@ -529,23 +530,6 @@ def _block_name(week_number: int, block_type: str) -> str:
         "consolidation": "Consolidation",
     }
     return f"Week {week_number:02d} {label_map[block_type]}"
-
-
-BLOCK_SEQUENCE = [
-    "build",
-    "build",
-    "recovery",
-    "build",
-    "build",
-    "recovery",
-    "build",
-    "build",
-    "recovery",
-    "build",
-    "build",
-    "taper",
-    "consolidation",
-]
 
 
 @dataclass

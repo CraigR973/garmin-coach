@@ -38,6 +38,11 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import PlanBlock, PlannedWorkout
+from src.services.plan_periodisation import (
+    ACKNOWLEDGEMENTS_KEY,
+    PeriodisationAudit,
+    audit_plan_periodisation,
+)
 from src.services.workout_delivery import validate_deliverable_bike_workout
 
 DEFAULT_BLOCK_PREFIX = "PN2"
@@ -70,6 +75,8 @@ class PlanRows:
     start_date: dt.date
     source: str
     block_prefix: str
+    plan_name: str
+    periodisation: PeriodisationAudit
     blocks: list[BlockRow] = field(default_factory=list)
     workouts: list[WorkoutRow] = field(default_factory=list)
 
@@ -84,6 +91,7 @@ class ImportSummary:
     forward_blocks_removed: int
     prior_import_workouts_removed: int
     prior_import_blocks_removed: int
+    periodisation_warnings: tuple[str, ...]
 
 
 def build_plan_rows(
@@ -103,6 +111,12 @@ def build_plan_rows(
         raise ValueError(f"start_date {start.isoformat()} must be a Monday")
 
     source = str(plan.get("source", DEFAULT_SOURCE))
+    plan_name = str(plan.get("name", "(unnamed)"))
+    raw_acknowledgements = plan.get(ACKNOWLEDGEMENTS_KEY, [])
+    if not isinstance(raw_acknowledgements, list) or not all(
+        isinstance(item, dict) for item in raw_acknowledgements
+    ):
+        raise ValueError(f"{ACKNOWLEDGEMENTS_KEY} must be a list of objects")
     blocks: list[BlockRow] = []
     workouts: list[WorkoutRow] = []
     for wk in plan["weeks"]:
@@ -153,10 +167,16 @@ def build_plan_rows(
                     structured_workout=structured,
                 )
             )
+    periodisation = audit_plan_periodisation(
+        [(block.sequence_index, block.block_type) for block in blocks],
+        acknowledgements=raw_acknowledgements,
+    )
     return PlanRows(
         start_date=start,
         source=source,
         block_prefix=block_prefix,
+        plan_name=plan_name,
+        periodisation=periodisation,
         blocks=blocks,
         workouts=workouts,
     )
@@ -213,7 +233,12 @@ async def import_plan(
             start_date=block.start_date,
             end_date=block.end_date,
             goals_json={"label": block.label},
-            raw_plan={},
+            raw_plan={
+                "planName": rows.plan_name,
+                "periodisationAcknowledgements": [
+                    item.to_dict() for item in rows.periodisation.acknowledgements
+                ],
+            },
         )
         session.add(obj)
         await session.flush()
@@ -254,6 +279,9 @@ async def import_plan(
         forward_blocks_removed=forward_blocks,
         prior_import_workouts_removed=prior_workouts,
         prior_import_blocks_removed=prior_blocks,
+        periodisation_warnings=tuple(
+            item.summary for item in rows.periodisation.unacknowledged_divergences
+        ),
     )
     if dry_run:
         await session.rollback()

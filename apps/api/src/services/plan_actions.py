@@ -14,12 +14,12 @@ from src.models.coaching import Activity, ManualEntry, PlanBlock, PlannedWorkout
 from src.models.profile import Profile
 from src.services.activity_dates import activity_local_date as _local_activity_date
 from src.services.activity_dates import timezone_or_utc
-from src.services.coaching_state import BLOCK_SEQUENCE
 from src.services.executable_coaching import (
     WORKOUT_STATUS_SKIPPED,
     ExecutableCoachingService,
 )
 from src.services.holiday_pause import HolidayPauseService
+from src.services.plan_periodisation import BLOCK_SEQUENCE
 from src.services.structured_workout_builder import (
     BuiltCustomBikeWorkout,
     FreeformBikeWorkoutSpec,

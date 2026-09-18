@@ -82,7 +82,7 @@ from src.services.training_week import TrainingWeekService
 from src.services.week_ahead import WeekAheadService
 from src.services.workload_budget import workload_slot
 
-PROMPT_VERSION = "reviews-v7-2026-08-05"
+PROMPT_VERSION = "reviews-v8-2026-09-18"
 PACKET_VERSION = 3
 
 PERIOD_WEEKLY = "weekly"
@@ -132,7 +132,13 @@ part: say what the coming Monday-Sunday week asks of him, which planned day is \
 hardest, which previous night protects it, whether the week is build/recovery/\
 taper/consolidation, and what the week's own mix targets still need. A \
 recovery, taper, or consolidation week is deliberate structure; any target=0 \
-bucket is not a shortfall. This forward guidance is explanatory only: never \
+bucket is not a shortfall. Read weekAhead.periodisation when it is available. \
+When focusBuildRun is present, state its exact position — for example, week 5 \
+of an unbroken build run — and name the missing recovery week behind any \
+unacknowledged divergence. Treat an acknowledged divergence as deliberate and \
+do not re-raise it as a concern. Describe structural consistency, never claim \
+that periodisation alone caused a recovery change. This forward guidance is \
+explanatory only: never \
 directly propose, approve, move, skip, or change a workout, and never alter the \
 deterministic Green/Amber/Red verdict or safety floors. When trainingWeekSoFar \
 is absent, use the deterministic rollup for history and still never reconstruct \
@@ -1194,6 +1200,7 @@ def _build_packet(
                 "fold_week_ahead_guidance_into_weekly_review",
                 "week_ahead_is_explanatory_only",
                 "recovery_week_targets_zero_are_not_shortfalls",
+                "surface_long_build_run_position_and_missing_recovery_reason",
                 "never_reference_left_right_power_balance",
                 "exclude_wrist_hr_strength_from_recovery",
                 "ignore_broken_sleep_duration_column",
