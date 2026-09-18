@@ -41,12 +41,12 @@ from src.models.coaching import KnowledgeBase, PlanBlock, PlannedWorkout
 from src.models.profile import Profile
 from src.services.block_progression import BlockProgressionService, NextBlockProposal
 from src.services.coaching_state import (
-    BLOCK_SEQUENCE,
     _block_name,
     _block_templates,
     _current_cycle_start,
 )
 from src.services.holiday_pause import is_build1
+from src.services.plan_periodisation import BLOCK_SEQUENCE
 from src.services.workout_categories import normalise_workout_type
 from src.services.workout_delivery import IntervalsEventClient
 
