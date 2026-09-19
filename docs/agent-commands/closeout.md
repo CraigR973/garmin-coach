@@ -38,7 +38,11 @@ the gate this depends on and the short list of steps that stay explicit.
       unreachable — including one an *earlier batch* deliberately regenerated.
       List the affected `analysis_type`s, drive the real lookup (not a version
       string comparison) to see what the endpoint now returns, and regenerate
-      anything a user would otherwise find blank. Batch 227 bumped
+      anything a user would otherwise find blank. For Trends, use the
+      profile-scoped report for each bucket: `bump_withdrew_current_surface`
+      means an older narrative exists for the page's current subject date;
+      `current_period_is_unwritten` means a normal new-period gap, not a
+      prompt-withdrawal finding. Batch 227 bumped
       `trends-month-v5` → `v6` nine hours after Batch 225.5 regenerated that
       narrative to correct a false VO2 max story, and left Mark's Trends page
       empty on the surface his original complaint came from.

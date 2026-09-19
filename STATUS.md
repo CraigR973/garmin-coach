@@ -6,45 +6,33 @@
 
 ## Now
 
-**2026-09-18 — Batch 265 SHIPPED.** PR #297 / merge `6982e69`, Decision
-**#336**. An imported or reviewed plan is now audited against the canonical
-2121 recovery shape without taking authorship away from Mark. The real PN2
-sequence reports week 6 as build where recovery was expected and measures weeks
-4–8 as five unbroken build weeks. Imports still complete; a reviewed exception
-can carry durable who/when/reason provenance and then stops warning.
+**2026-09-19 — Batch 266 implementation is ready for its full gate; production
+promotion is blocked on Craig's explicit hosting decision.** Decision **#337**
+selects the bounded scheduler-owned writer: 12:30 Europe/London checks both
+current Trend buckets per active sleep-bearing profile, calls no model until the
+comparison is eligible, and costs nothing after a per-bucket/per-window narrative
+exists. Page views remain read-only. The report now distinguishes a current-period
+old-version row (`bump_withdrew_current_surface`) from a normal new period with no
+row at any version (`current_period_is_unwritten`). The twelve historical rows
+remain as records.
 
-**The signal appears once a week, with context.** Sunday review v8 receives the
-complete dated 13-week sequence, the missing recovery week and the coming week's
-position inside any long build run. It does not enter the morning brief, change
-Green/Amber/Red, alter a safety floor or mutate a workout. An incomplete sequence
-is unavailable, never falsely “conforming”.
+**The code is on `feat/batch-266-trends-scheduler`; no migration or prompt bump.**
+Backend: **1,368 passed / 443 expected PostgreSQL skips**; focused scheduler,
+artifact-report and runner tests passed locally; Ruff, format and mypy are clean.
+The full shared/web run completed its shared suite and advanced to the web build,
+but the desktop command session was terminated before a final build/lint result;
+rerun that gate before push.
 
-**The plan tail now agrees everywhere:** week 12 consolidation → week 13 taper.
-Generation, seed context and Builder copy use the same sequence; the daily-loop
-boundary is sequence position 13 rather than the word `consolidation`. Production
-held the exact old v1 `batch_5_seed`, so it was versioned reversibly to active v2
-`batch_265_periodisation_alignment`. The live PN2 plan blocks and workouts were
-not re-cut.
+**Blocker: durable scheduling needs a new Railway cron service.** Production's
+API may sleep and only `weekly-review` has an independent clock. The required
+`trend-narratives` service would run the existing external entry point at 12:30
+London, sharing the production API's required variables. This is a hosting change
+and is explicitly not automatic under `AGENTS.md`; do not create it without
+Craig's instruction.
 
-**Verification.** Local backend **1,368 passed / 440 expected PostgreSQL skips**;
-shared 44 and web 443; Ruff, format, no-cache mypy, web build and lint passed.
-The first CI wave caught two stale imports of the moved sequence constant; after
-the direct-import fix, both push and PR waves, Vercel preview and post-merge CI
-were green, including PostgreSQL **1,808 / 0**. Railway and Vercel same-origin
-health serve exact `6982e69c5422c4846d867d41780d3359125a942a`; `/builder` is
-200 and the protected weekly-review route is 401 direct and proxied. A deployed
-read-only replay against Mark's real plan produced the exact week-6/five-week
-packet, and a post-update reread proved the KB v2 active.
-
-**Prompt bump:** `reviews-v7` → **`reviews-v8`**. The withdrawal set was stated
-before the bump and is empty. Production's real artifact lookup found 10 weekly
-and 2 monthly older-version rows, zero current, but the `UNFILTERED` contract
-makes none blank or unreachable. Nothing was regenerated; the next normal Sunday
-review will use v8.
-
-**Next: Batch 266** — schedule the month/season trend summaries that currently
-have only a manual writer, and split the orphan alarm so it cannot misdiagnose a
-normal subject-date rollover as a prompt-withdrawal outage.
+**Next:** rerun `pnpm -r test`, web build/lint and the complete local gate; commit
+and push the branch; then, if Craig approves the cron service, create and verify
+it before automatic close-out.
 
 ## Prior current-state snapshots
 
@@ -857,6 +845,13 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**2026-09-19 — Batch 266 started.** Decision #337 takes the scheduled,
+idempotent current-month/current-season writer over page-open generation; the
+orphan report is now bucket- and current-period-aware, and the twelve historical
+Trend narratives remain. Local backend and static gates are green. Production
+promotion awaits explicit approval to add the required Railway cron service;
+the API's in-process scheduler is not a durable clock.
 
 **2026-09-18 — Batch 265 shipped.** PR #297 / merge `6982e69`, Decision #336.
 Plan imports now warn without blocking when the authored week types omit a

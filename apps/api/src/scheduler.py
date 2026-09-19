@@ -18,6 +18,8 @@ Current jobs:
   - weekly_review_delivery: Sunday 18:00 local, writes the week into the coach thread
   - state_change_coach: late morning local, writes one meaningful transition into the coach thread
   - longitudinal_analysis: daily collector plus idempotent monthly whole-history submission
+  - trend_narratives: daily idempotent check that writes the current month and
+    season summaries without making a page view a paid side effect
   - evening_sleep_nudge: sends a quiet, projection-backed 20:00 sleep push
   - evening_monitoring_alerts: checks thermal and source freshness before bed
   - fan_control: every ~15 min within the overnight window, reconciles the Dreo
@@ -145,6 +147,7 @@ from src.services.profile_clock import (
 from src.services.retry import retry_sync as _retry_sync
 from src.services.session_recovery import restore_after_rollback as _restore_after_rollback
 from src.services.state_change_coach import StateChangeCoachService
+from src.services.trends import BUCKET_MONTH, BUCKET_SEASON, TrendsService
 from src.services.wake_detection import (
     BACKSTOP,
     DURATION_FLOOR_MIN,
@@ -275,6 +278,61 @@ async def run_longitudinal_analysis() -> JobResult:
             alert_gated=skipped_alert_gate,
         )
     return JobResult.succeeded(**counters, alert_gated=skipped_alert_gate)
+
+
+async def run_trend_narratives() -> JobResult:
+    """Write each active profile's current month and season narrative once.
+
+    The Trends read remains pure: a page load never spends money.  This daily
+    owner retries an insufficient-history period as data arrives, while
+    ``narrative_run`` makes successful generation idempotent for each bucket and
+    period.
+    """
+    counters = {"profiles": 0, "generated": 0, "existing": 0, "insufficient_history": 0}
+    failures = 0
+    async with AsyncSessionLocal() as session:
+        profiles = list(
+            (
+                await session.execute(
+                    select(Profile).where(
+                        Profile.is_active.is_(True),
+                        Profile.deleted_at.is_(None),
+                        select(Sleep.id).where(Sleep.user_id == Profile.id).exists(),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not profiles:
+            return JobResult.skipped("no_active_profiles")
+        for player in profiles:
+            counters["profiles"] += 1
+            subject_date = _profile_today(player)
+            service = TrendsService(session)
+            for bucket in (BUCKET_MONTH, BUCKET_SEASON):
+                try:
+                    result = await service.narrative_run(player, bucket=bucket, as_of=subject_date)
+                    if result.generated:
+                        counters["generated"] += 1
+                    else:
+                        counters[result.status] = counters.get(result.status, 0) + 1
+                except Exception as exc:
+                    await session.rollback()
+                    failures += 1
+                    log.exception(
+                        "trend narrative generation failed",
+                        user_id=str(player.id),
+                        bucket=bucket,
+                    )
+                    await NudgeAlertService(session).notify_admin_generation_failure(
+                        reason=str(exc),
+                        subject_date=subject_date,
+                        artifact=f"trends/{bucket}",
+                    )
+    if failures:
+        return JobResult.degraded("trend_narratives_failed", **counters, failures=failures)
+    return JobResult.succeeded(**counters)
 
 
 async def run_metric_baseline_refresh() -> JobResult:
@@ -2055,6 +2113,21 @@ def create_scheduler() -> AsyncIOScheduler:
         minute=15,
         timezone=settings.weather_timezone,
         id="longitudinal_analysis",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        # Batch 266: the page stays read-only.  This daily run owns the bounded
+        # once-per-current-period spend, retrying only while a period is still
+        # ineligible and otherwise short-circuiting through narrative_run's
+        # per-bucket/per-window idempotence.
+        partial(run_tracked_job, "trend-narratives", run_trend_narratives),
+        trigger="cron",
+        hour=12,
+        minute=30,
+        timezone=settings.weather_timezone,
+        id="trend_narratives",
         replace_existing=True,
         coalesce=True,
         max_instances=1,
