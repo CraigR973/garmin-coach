@@ -32,12 +32,15 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import date
 from enum import StrEnum
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import Analysis
+from src.models.profile import Profile
+from src.services.profile_clock import profile_today
 
 
 class RegenerationContract(StrEnum):
@@ -145,6 +148,14 @@ class OrphanReport:
     #: Rows stored at the current version.
     current: int
     newest_orphaned_subject_date: str | None
+    #: Trends has two prompt-version families in the same analysis type.
+    bucket: str | None = None
+    #: The period the reader would receive now, when this is a profile-scoped
+    #: trends report.  Historical counts alone cannot say whether that surface
+    #: was withdrawn by a bump or is simply a new, unwritten period.
+    current_subject_date: str | None = None
+    current_period_current: int | None = None
+    current_period_orphaned: int | None = None
 
     @property
     def blanks_a_surface(self) -> bool:
@@ -173,12 +184,37 @@ class OrphanReport:
         """
         return self.contract is RegenerationContract.VERSION_FILTERED and self.orphaned > 0
 
+    @property
+    def bump_withdrew_current_surface(self) -> bool:
+        """Whether a prompt bump, rather than a period rollover, blanked Trends.
 
-def _current_versions() -> dict[str, dict[str, str]]:
-    """``{module: {analysis_type: version}}`` resolved from the live constants."""
+        This is intentionally profile- and period-scoped.  A new month has no
+        row at any version; a genuine withdrawal has an older-version row for
+        the very subject date the page is trying to render.
+        """
+        return (
+            self.contract is RegenerationContract.VERSION_FILTERED
+            and self.current_subject_date is not None
+            and self.current_period_current == 0
+            and bool(self.current_period_orphaned)
+        )
+
+    @property
+    def current_period_is_unwritten(self) -> bool:
+        """Whether the current Trends period has never had a narrative at all."""
+        return (
+            self.contract is RegenerationContract.VERSION_FILTERED
+            and self.current_subject_date is not None
+            and self.current_period_current == 0
+            and self.current_period_orphaned == 0
+        )
+
+
+def _current_versions() -> list[tuple[str, str, str | None, str]]:
+    """``(module, analysis_type, bucket, version)`` resolved from live constants."""
     from importlib import import_module
 
-    resolved: dict[str, dict[str, str]] = {}
+    resolved: list[tuple[str, str, str | None, str]] = []
     for artifact in PROMPT_ARTIFACTS:
         if artifact.contract is RegenerationContract.DETERMINISTIC or not artifact.analysis_types:
             continue
@@ -188,16 +224,19 @@ def _current_versions() -> dict[str, dict[str, str]]:
         for analysis_type in artifact.analysis_types:
             if isinstance(by_bucket, dict):
                 # One module, several artifacts, several versions (trends).
-                resolved.setdefault(artifact.module, {})[analysis_type] = str(
-                    next(iter(by_bucket.values()))
+                # Keep both families: choosing the first one made the orphan
+                # report count monthly rows as seasonal orphans and vice versa.
+                resolved.extend(
+                    (artifact.module, analysis_type, str(bucket), str(bucket_version))
+                    for bucket, bucket_version in by_bucket.items()
                 )
             elif isinstance(version, str):
-                resolved.setdefault(artifact.module, {})[analysis_type] = version
+                resolved.append((artifact.module, analysis_type, None, version))
     return resolved
 
 
 async def orphaned_artifacts(
-    session: AsyncSession, *, user_id: uuid.UUID | None = None
+    session: AsyncSession, *, user_id: uuid.UUID | None = None, as_of: date | None = None
 ) -> list[OrphanReport]:
     """What each declared artifact's current prompt version leaves unreachable.
 
@@ -208,35 +247,69 @@ async def orphaned_artifacts(
     """
     reports: list[OrphanReport] = []
     contracts = {artifact.module: artifact.contract for artifact in PROMPT_ARTIFACTS}
-    for module, versions in _current_versions().items():
-        for analysis_type, version in versions.items():
-            where = [Analysis.analysis_type == analysis_type]
-            if user_id is not None:
-                where.append(Analysis.user_id == user_id)
-            current = await session.scalar(
-                select(func.count())
-                .select_from(Analysis)
-                .where(*where, Analysis.prompt_version == version)
+    profile = await session.get(Profile, user_id) if user_id is not None else None
+    for module, analysis_type, bucket, version in _current_versions():
+        where = [Analysis.analysis_type == analysis_type]
+        if user_id is not None:
+            where.append(Analysis.user_id == user_id)
+        if bucket is not None:
+            where.append(Analysis.prompt_version.like(f"trends-{bucket}-%"))
+        current = await session.scalar(
+            select(func.count())
+            .select_from(Analysis)
+            .where(*where, Analysis.prompt_version == version)
+        )
+        orphaned = await session.scalar(
+            select(func.count())
+            .select_from(Analysis)
+            .where(*where, Analysis.prompt_version != version)
+        )
+        newest = await session.scalar(
+            select(func.max(Analysis.subject_date)).where(
+                *where, Analysis.prompt_version != version
             )
-            orphaned = await session.scalar(
-                select(func.count())
-                .select_from(Analysis)
-                .where(*where, Analysis.prompt_version != version)
+        )
+        current_subject_date: date | None = None
+        current_period_current: int | None = None
+        current_period_orphaned: int | None = None
+        if bucket is not None and profile is not None:
+            from src.services.trends import window_key, window_start_date
+
+            current_subject_date = window_start_date(
+                bucket, window_key(bucket, as_of or profile_today(profile))
             )
-            newest = await session.scalar(
-                select(func.max(Analysis.subject_date)).where(
-                    *where, Analysis.prompt_version != version
+            period_where = [*where, Analysis.subject_date == current_subject_date]
+            current_period_current = int(
+                await session.scalar(
+                    select(func.count())
+                    .select_from(Analysis)
+                    .where(*period_where, Analysis.prompt_version == version)
                 )
+                or 0
             )
-            reports.append(
-                OrphanReport(
-                    module=module,
-                    analysis_type=analysis_type,
-                    contract=contracts[module],
-                    current_version=version,
-                    orphaned=int(orphaned or 0),
-                    current=int(current or 0),
-                    newest_orphaned_subject_date=newest.isoformat() if newest else None,
+            current_period_orphaned = int(
+                await session.scalar(
+                    select(func.count())
+                    .select_from(Analysis)
+                    .where(*period_where, Analysis.prompt_version != version)
                 )
+                or 0
             )
+        reports.append(
+            OrphanReport(
+                module=module,
+                analysis_type=analysis_type,
+                contract=contracts[module],
+                current_version=version,
+                orphaned=int(orphaned or 0),
+                current=int(current or 0),
+                newest_orphaned_subject_date=newest.isoformat() if newest else None,
+                bucket=bucket,
+                current_subject_date=(
+                    current_subject_date.isoformat() if current_subject_date is not None else None
+                ),
+                current_period_current=current_period_current,
+                current_period_orphaned=current_period_orphaned,
+            )
+        )
     return reports
