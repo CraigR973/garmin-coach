@@ -12,12 +12,16 @@ from __future__ import annotations
 
 import ast
 import re
+import uuid
+from datetime import date, datetime
 from importlib import import_module
 from pathlib import Path
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
+from src.models.coaching import Analysis
+from src.models.profile import Profile, UserRole
 from src.services.prompt_artifacts import (
     PROMPT_ARTIFACTS,
     OrphanReport,
@@ -160,13 +164,111 @@ async def test_the_orphan_check_reports_counts_rather_than_comparing_strings(
 
     assert reports, "the registry resolved no versioned artifacts at all"
     assert all(isinstance(report, OrphanReport) for report in reports)
-    by_type = {report.analysis_type: report for report in reports}
+    by_type = {report.analysis_type for report in reports}
     assert "morning" in by_type
     assert "seasonal_trend" in by_type
     for report in reports:
         # An empty database orphans nothing; the property under test is that the
         # report is derived from counts, not from a string comparison.
         assert report.orphaned >= 0 and report.current >= 0
+
+
+@pytest.mark.asyncio
+async def test_trend_orphan_report_separates_a_rollover_from_a_prompt_withdrawal(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 264's September state is unwritten, not a v10 withdrawal."""
+    user_id = uuid.uuid4()
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Trend report",
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+        session.add_all(
+            [
+                Analysis(
+                    user_id=user_id,
+                    activity_id=None,
+                    analysis_type="seasonal_trend",
+                    subject_date=date(2026, 8, 1),
+                    generated_at_utc=datetime(2026, 8, 1),
+                    prompt_version="trends-month-v9-2026-08-01",
+                    model_name="test",
+                    verdict=None,
+                    context_packet={},
+                    output_markdown="old month",
+                    raw_response={},
+                ),
+                Analysis(
+                    user_id=user_id,
+                    activity_id=None,
+                    analysis_type="seasonal_trend",
+                    subject_date=date(2026, 8, 1),
+                    generated_at_utc=datetime(2026, 8, 1),
+                    prompt_version="trends-season-v9-2026-08-01",
+                    model_name="test",
+                    verdict=None,
+                    context_packet={},
+                    output_markdown="old season",
+                    raw_response={},
+                ),
+            ]
+        )
+        await session.commit()
+        reports = await orphaned_artifacts(session, user_id=user_id, as_of=date(2026, 9, 18))
+
+    trends = {report.bucket: report for report in reports if report.module == "trends"}
+    assert trends["month"].current_subject_date == "2026-09-01"
+    assert trends["month"].current_period_is_unwritten is True
+    assert trends["month"].bump_withdrew_current_surface is False
+    assert trends["season"].current_period_is_unwritten is True
+
+
+@pytest.mark.asyncio
+async def test_trend_orphan_report_keeps_a_real_current_period_withdrawal_visible(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Trend withdrawal",
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+        session.add(
+            Analysis(
+                user_id=user_id,
+                activity_id=None,
+                analysis_type="seasonal_trend",
+                subject_date=date(2026, 9, 1),
+                generated_at_utc=datetime(2026, 9, 1),
+                prompt_version="trends-month-v9-2026-08-01",
+                model_name="test",
+                verdict=None,
+                context_packet={},
+                output_markdown="withdrawn month",
+                raw_response={},
+            )
+        )
+        await session.commit()
+        reports = await orphaned_artifacts(session, user_id=user_id, as_of=date(2026, 9, 18))
+
+    month = next(
+        report for report in reports if report.module == "trends" and report.bucket == "month"
+    )
+    assert month.bump_withdrew_current_surface is True
+    assert month.current_period_is_unwritten is False
 
 
 def test_only_a_version_filtered_read_can_be_blanked() -> None:
