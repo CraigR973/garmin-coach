@@ -24,6 +24,7 @@ from src.services.garmin_sync import (
     GarminDailyPayloads,
     GarminLoginError,
     GarminSyncService,
+    GarminTransientError,
     parse_activity_summary_fields,
     parse_activity_timeseries_fields,
     parse_daily_metric_fields,
@@ -130,7 +131,23 @@ def test_parse_activity_summary_and_timeseries_channels() -> None:
     assert rows[1]["potential_stamina"] == 95
 
 
-def test_garmin_login_error_does_not_expose_credentials(tmp_path: Path) -> None:
+def _force_tty(monkeypatch: pytest.MonkeyPatch, *, interactive: bool) -> None:
+    """Pin whether a human could answer Garmin's MFA prompt.
+
+    pytest replaces stdin with a non-tty capture object, so without this every
+    credentialed-login test would take Batch 267's refusal path by accident
+    rather than on purpose.
+    """
+    monkeypatch.setattr(
+        "src.services.garmin_sync._interactive_mfa_available",
+        lambda: interactive,
+    )
+
+
+def test_garmin_login_error_does_not_expose_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     class BrokenGarmin:
         def __init__(self, email: str, password: str) -> None:
             self.email = email
@@ -139,6 +156,7 @@ def test_garmin_login_error_does_not_expose_credentials(tmp_path: Path) -> None:
         def login(self, tokenstore: str) -> None:  # noqa: ARG002
             raise RuntimeError(f"bad login for {self.email} with {self.password}")
 
+    _force_tty(monkeypatch, interactive=True)
     credentials = GarminCredentials(
         email="mark@example.com",
         password="super-secret-password",
@@ -152,6 +170,121 @@ def test_garmin_login_error_does_not_expose_credentials(tmp_path: Path) -> None:
     message = str(exc_info.value)
     assert "super-secret-password" not in message
     assert "mark@example.com" not in message
+
+
+def test_garmin_rate_limit_never_escalates_to_a_credentialed_login(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Batch 267: the 2026-09-20 sequence, replayed.
+
+    Garmin 429s the token login. Before the fix that fell through to a full
+    password login, whose MFA challenge Garmin answered by emailing Mark a code.
+    """
+    from garminconnect.exceptions import GarminConnectTooManyRequestsError
+
+    credentialed: list[str] = []
+
+    class RateLimitedGarmin:
+        def __init__(self, email: str = "", password: str = "", **_kw: object) -> None:
+            if email or password:
+                credentialed.append(email)
+
+        def login(self, _tokenstore: str) -> None:
+            raise GarminConnectTooManyRequestsError(
+                "Mobile login returned 429 — IP rate limited by Garmin"
+            )
+
+    monkeypatch.setitem(
+        sys.modules,
+        "garminconnect",
+        types.SimpleNamespace(Garmin=RateLimitedGarmin),
+    )
+    _force_tty(monkeypatch, interactive=True)
+    client = GarminConnectClient(
+        GarminCredentials(
+            email="mark@example.com",
+            password="super-secret-password",
+            tokenstore=tmp_path / "garmin",
+            tokenstore_b64="x" * 600,
+        )
+    )
+
+    with pytest.raises(GarminTransientError):
+        client.login()
+
+    assert credentialed == []
+
+
+def test_garmin_credentialed_login_refuses_without_a_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Batch 267: off a TTY the MFA prompt is unreachable, so the login never starts."""
+    prompted: list[str] = []
+    constructed: list[str] = []
+
+    class MfaGarmin:
+        def __init__(self, email: str = "", password: str = "", **_kw: object) -> None:
+            constructed.append(email)
+
+        def login(self, _tokenstore: str) -> None:
+            raise AssertionError("a credentialed login must not be attempted")
+
+    monkeypatch.setattr(
+        "src.services.garmin_sync._read_mfa_code",
+        lambda: prompted.append("asked") or "000000",
+    )
+    _force_tty(monkeypatch, interactive=False)
+    credentials = GarminCredentials(
+        email="mark@example.com",
+        password="super-secret-password",
+        tokenstore=tmp_path / "garmin",
+    )
+    client = GarminConnectClient(credentials)
+
+    with pytest.raises(GarminLoginError) as exc_info:
+        client._fresh_login(MfaGarmin, str(credentials.tokenstore))
+
+    assert prompted == []
+    assert constructed == []
+    assert "GARMIN_TOKENSTORE_B64" in str(exc_info.value)
+
+
+def test_garmin_genuine_rejection_still_reaches_a_fresh_login(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Batch 267 narrows the fallback; it does not remove it."""
+    credentialed: list[str] = []
+
+    class RejectingGarmin:
+        def __init__(self, email: str = "", password: str = "", **_kw: object) -> None:
+            self.email = email
+            if email:
+                credentialed.append(email)
+
+        def login(self, _tokenstore: str) -> None:
+            if not self.email:
+                raise RuntimeError("token rejected")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "garminconnect",
+        types.SimpleNamespace(Garmin=RejectingGarmin),
+    )
+    _force_tty(monkeypatch, interactive=True)
+    client = GarminConnectClient(
+        GarminCredentials(
+            email="mark@example.com",
+            password="super-secret-password",
+            tokenstore=tmp_path / "garmin",
+            tokenstore_b64="x" * 600,
+        )
+    )
+
+    assert isinstance(client.login(), RejectingGarmin)
+    assert credentialed == ["mark@example.com"]
 
 
 def test_garmin_login_uses_token_blob_without_credentials(
