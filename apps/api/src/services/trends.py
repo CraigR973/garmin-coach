@@ -42,7 +42,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import (
@@ -580,7 +580,7 @@ class NarrativeRunResult:
     preview: NarrativePreview
     narrative: Analysis | None
     generated: bool
-    status: str  # generated | existing | insufficient_history
+    status: str  # generated | existing | insufficient_history | in_progress
 
 
 # ---------------------------------------------------------------------------
@@ -695,6 +695,36 @@ class TrendsService:
                 generated=False,
                 status="existing",
             )
+
+        # The API's in-process scheduler and Railway's durable cron runner can
+        # wake at the same London-time boundary.  Keep the paid call inside a
+        # transaction-scoped, non-blocking lock so only one can create a given
+        # bucket/period; the other will try again tomorrow rather than waiting
+        # on a database connection or paying twice.
+        lock_scope = f"trend-narrative:{player.id}:{bucket}:{preview.subject_date.isoformat()}"
+        acquired: bool | None = await self.session.scalar(
+            select(func.pg_try_advisory_xact_lock(func.hashtext(lock_scope)))
+        )
+        if not acquired:
+            return NarrativeRunResult(
+                preview=preview,
+                narrative=None,
+                generated=False,
+                status="in_progress",
+            )
+
+        # A competing runner can have committed while this invocation was
+        # preparing its deterministic preview, before it acquired the lock.
+        # Re-read under the lock before the model call.
+        if not force:
+            existing = await self.latest_narrative(player.id, bucket, preview.subject_date)
+            if existing is not None:
+                return NarrativeRunResult(
+                    preview=preview,
+                    narrative=existing,
+                    generated=False,
+                    status="existing",
+                )
 
         user_prompt = build_trend_user_prompt(preview.packet)
         review_client = client or AnthropicReviewClient(system_prompt=TREND_SYSTEM_PROMPT)

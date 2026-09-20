@@ -386,6 +386,33 @@ async def test_narrative_run_generates_and_is_idempotent(db_conn: AsyncConnectio
 
 
 @pytest.mark.asyncio
+async def test_narrative_run_skips_when_another_runner_holds_its_period_lock(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    await _seed_two_julys(db_conn, user_id)
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as holder:
+        lock_scope = f"trend-narrative:{user_id}:{BUCKET_MONTH}:2026-07-01"
+        assert await holder.scalar(
+            select(func.pg_try_advisory_xact_lock(func.hashtext(lock_scope)))
+        )
+        async with AsyncSession(bind=db_conn, expire_on_commit=False) as contender:
+            user = await contender.get(Profile, user_id)
+            assert user is not None
+            client = FakeReviewClient()
+            result = await TrendsService(contender).narrative_run(
+                user, bucket=BUCKET_MONTH, as_of=AS_OF, client=client
+            )
+
+            assert result.generated is False
+            assert result.status == "in_progress"
+            assert client.calls == []
+        await holder.rollback()
+
+
+@pytest.mark.asyncio
 async def test_narrative_run_reports_insufficient_history_without_calling_model(
     db_conn: AsyncConnection,
 ) -> None:
