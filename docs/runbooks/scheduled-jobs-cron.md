@@ -158,7 +158,8 @@ Railway runs a cron on a **service**, run-to-completion. The `api` web service
 can't also be a cron, so add one Railway service per cron job (same repo/image):
 
 - Root Directory = repo root (so the Docker build context sees `/migrations`).
-- Start command = `python -m src.run_scheduled <job>` (no `alembic upgrade head`).
+- Set `SCHEDULED_JOB=<job>` instead of a start command: the shared Docker image
+  then runs `python -m src.run_scheduled <job>` without `alembic upgrade head`.
 - Set the **Cron Schedule** from the table above.
 - Same env vars as `api` (`DATABASE_URL`, `GARMIN_*`, `HIVE_TOKENSTORE_B64`,
   `ANTHROPIC_*`, `INTERVALS_*`).
@@ -182,12 +183,12 @@ push idempotency make an APScheduler/cron overlap safe.
 
 #### Production trend-narratives service (Batch 266)
 
-The `trend-narratives` service uses its own checked-in
-`railway-trend-narratives.toml`, so its run-to-completion command cannot be
-replaced by the API service's web entrypoint. It runs at `30 11,12 * * *` UTC;
-the London-minute guard permits only `12:30` Europe/London, once through both
-BST and GMT. It references the API's database, Anthropic, Sentry and VAPID
-variables, has no public domain and uses `restartPolicyType=NEVER`.
+The `trend-narratives` service sets `SCHEDULED_JOB=trend-narratives` and
+`SCHEDULED_LONDON_HHMM=1230` on the shared image. It runs at
+`30 11,12 * * *` UTC; the image's London-minute guard permits only `12:30`
+Europe/London, once through both BST and GMT. It references the API's database,
+Anthropic, Sentry and VAPID variables, has no public domain and uses
+`restartPolicyType=NEVER`.
 
 Keep the API's in-process scheduler enabled. A transaction-scoped PostgreSQL
 advisory lock covers each profile/bucket/period paid call, so an overlap with

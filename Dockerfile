@@ -64,4 +64,8 @@ EXPOSE 8000
 # Apply pending Alembic migrations before starting the API. If migrations
 # fail the container exits — Railway's restartPolicy will retry, surfacing
 # the failure in logs rather than masking it with a broken-but-up service.
-CMD ["sh", "-c", "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+#
+# A Railway Cron service uses this same image but sets ``SCHEDULED_JOB``.  It
+# must not run migrations or start uvicorn; the optional London-time guard
+# makes the two UTC candidates around a DST boundary one real invocation.
+CMD ["sh", "-c", "if [ -n \"${SCHEDULED_JOB:-}\" ]; then if [ -n \"${SCHEDULED_LONDON_HHMM:-}\" ] && [ \"$(TZ=Europe/London date +%H%M)\" != \"${SCHEDULED_LONDON_HHMM}\" ]; then echo scheduled-job-skipped-outside-London-time; exit 0; fi; exec python -m src.run_scheduled \"${SCHEDULED_JOB}\"; fi; alembic upgrade head && exec uvicorn src.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
