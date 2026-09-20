@@ -42,6 +42,7 @@ from src.scheduler import (
     run_scheduled_backup,
     run_state_change_coach,
     run_tracked_job,
+    run_trend_narratives,
     run_wake_check,
     run_wake_nudge,
     run_weekly_review_delivery,
@@ -727,6 +728,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
             "weekly_review_delivery",
             "state_change_coach",
             "longitudinal_analysis",
+            "trend_narratives",
             "evening_sleep_nudge",
             "evening_monitoring_alerts",
             "fan_control",
@@ -743,6 +745,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
         weekly_review_job = scheduler.get_job("weekly_review_delivery")
         state_change_job = scheduler.get_job("state_change_coach")
         longitudinal_job = scheduler.get_job("longitudinal_analysis")
+        trend_narratives_job = scheduler.get_job("trend_narratives")
         monitoring_job = scheduler.get_job("evening_monitoring_alerts")
         assert hive_job is not None
         assert wake_job is not None
@@ -754,6 +757,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
         assert weekly_review_job is not None
         assert state_change_job is not None
         assert longitudinal_job is not None
+        assert trend_narratives_job is not None
         assert monitoring_job is not None
         assert str(hive_job.trigger) == "interval[0:15:00]"
         # The fixed 06:30 morning cron was replaced by a 15-min wake-check poll
@@ -768,6 +772,7 @@ def test_create_scheduler_registers_environment_jobs() -> None:
         assert "day_of_week='sun', hour='18', minute='0'" in str(weekly_review_job.trigger)
         assert "hour='11', minute='45'" in str(state_change_job.trigger)
         assert "hour='12', minute='15'" in str(longitudinal_job.trigger)
+        assert "hour='12', minute='30'" in str(trend_narratives_job.trigger)
         assert "hour='19-22', minute='0,15,30,45'" in str(monitoring_job.trigger)
         assert hive_job.coalesce is True
         assert wake_job.coalesce is True
@@ -797,6 +802,54 @@ def test_create_scheduler_registers_environment_jobs() -> None:
     finally:
         if scheduler.running:
             scheduler.shutdown(wait=False)
+
+
+@pytest.mark.asyncio
+async def test_trend_narratives_runs_both_buckets_and_keeps_existing_periods_free(
+    db_conn: AsyncConnection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from src import scheduler as scheduler_module
+    from src.services.trends import TrendsService
+
+    player_id = uuid.uuid4()
+    factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    monkeypatch.setattr(scheduler_module, "AsyncSessionLocal", factory)
+    async with factory() as session:
+        session.add(
+            Profile(
+                id=player_id,
+                display_name="Scheduled trends",
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+        session.add(Sleep(user_id=player_id, calendar_date=date(2026, 9, 18), score=76))
+        await session.commit()
+
+    narrative_run = AsyncMock(
+        side_effect=[
+            SimpleNamespace(generated=True, status="generated"),
+            SimpleNamespace(generated=False, status="existing"),
+        ]
+    )
+    monkeypatch.setattr(TrendsService, "narrative_run", narrative_run)
+    monkeypatch.setattr(scheduler_module, "_profile_today", lambda _player: date(2026, 9, 18))
+
+    result = await run_trend_narratives()
+
+    assert result.status is JobStatus.succeeded
+    assert result.counters == {
+        "profiles": 1,
+        "generated": 1,
+        "existing": 1,
+        "insufficient_history": 0,
+    }
+    assert [call.kwargs["bucket"] for call in narrative_run.await_args_list] == ["month", "season"]
 
 
 # ---------------------------------------------------------------------------

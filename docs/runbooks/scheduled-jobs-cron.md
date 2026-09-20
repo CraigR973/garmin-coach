@@ -46,6 +46,7 @@ Run each job from an external scheduler via the single-job runner:
 | `weekly-review` | Sunday 18:00 London  | `0 18 * * 0`  ⚠       |
 | `state-change`  | 11:45 London         | `45 11 * * *`  ⚠       |
 | `longitudinal-analysis` | daily collector; monthly submit | `15 12 * * *`  ⚠ |
+| `trend-narratives` | daily current month + season | `30 12 * * *`  ⚠ |
 | `evening-nudge` | 20:00 London         | `0 20 * * *`  ⚠        |
 | `evening-alerts`| 19–22 London, /15    | `*/15 19-22 * * *`  ⚠  |
 | `fan-control`   | every 15 min         | `*/15 * * * *`         |

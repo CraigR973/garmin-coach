@@ -60,6 +60,7 @@ MAX_AGE: dict[str, timedelta] = {
     "evening-nudge": timedelta(days=2),
     "evening-alerts": timedelta(days=2),
     "longitudinal-analysis": timedelta(days=2),
+    "trend-narratives": timedelta(days=2),
     # Several times a day.
     "autopush": timedelta(days=1),
     # Weekly, Sunday 18:00 local.
