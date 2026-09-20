@@ -1,0 +1,14 @@
+# Dedicated Railway Cron config for Batch 266's durable trend-narrative runner.
+#
+# Railway cron expressions are UTC.  It runs at both possible UTC instants for
+# 12:30 Europe/London, while the London-time guard executes the job exactly once
+# across BST/GMT transitions.
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+cronSchedule = "30 11,12 * * *"
+restartPolicyType = "never"
+startCommand = "if [ \"$(TZ=Europe/London date +%H%M)\" = 1230 ]; then python -m src.run_scheduled trend-narratives; else echo trend-narratives-skipped-outside-1230-Europe-London; fi"

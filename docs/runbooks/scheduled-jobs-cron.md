@@ -126,14 +126,15 @@ happen?". `tests/test_metric_baseline_refresh.py` pins all three.
 ### What is actually configured in production (verified 2026-08-26)
 
 `railway status --json` on the `garmin-coach` production environment returns
-exactly two services:
+these services:
 
 | service | cron schedule | start command | what runs |
 |---|---|---|---|
 | `api` | *none* | *none* (Dockerfile web entrypoint) | every job, via in-process APScheduler |
 | `weekly-review` | `0 17,18 * * 0` | London-hour-guarded `python -m src.run_scheduled weekly-review` | that one job, durably |
+| `trend-narratives` | `30 11,12 * * *` | London-minute-guarded `python -m src.run_scheduled trend-narratives` | current month + season narratives, durably |
 
-So **`weekly-review` is the only job with a durable external path.** Everything
+So **`weekly-review` and `trend-narratives` have durable external paths.** Everything
 else — `baseline-refresh` included — fires only while the `api` container is
 awake, which is the reliability caveat this whole runbook exists for. The API
 service runs one replica with `restartPolicyType=ON_FAILURE` and no App
@@ -178,6 +179,20 @@ scheduled service status plus each execution's exit and logs.
 Keep the API's in-process scheduler enabled while only this one external job is
 provisioned. The weekly review's PostgreSQL advisory lock plus review/message/
 push idempotency make an APScheduler/cron overlap safe.
+
+#### Production trend-narratives service (Batch 266)
+
+The `trend-narratives` service uses its own checked-in
+`railway-trend-narratives.toml`, so its run-to-completion command cannot be
+replaced by the API service's web entrypoint. It runs at `30 11,12 * * *` UTC;
+the London-minute guard permits only `12:30` Europe/London, once through both
+BST and GMT. It references the API's database, Anthropic, Sentry and VAPID
+variables, has no public domain and uses `restartPolicyType=NEVER`.
+
+Keep the API's in-process scheduler enabled. A transaction-scoped PostgreSQL
+advisory lock covers each profile/bucket/period paid call, so an overlap with
+the durable runner returns `in_progress` and retries on the next daily run
+instead of generating twice.
 
 Every real APScheduler invocation and every external-runner invocation now
 records one operator-only `coach.job_runs` row with its cadence window,
