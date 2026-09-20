@@ -6,33 +6,20 @@
 
 ## Now
 
-**2026-09-19 — Batch 266 implementation is ready for its full gate; production
-promotion is blocked on Craig's explicit hosting decision.** Decision **#337**
-selects the bounded scheduler-owned writer: 12:30 Europe/London checks both
-current Trend buckets per active sleep-bearing profile, calls no model until the
-comparison is eligible, and costs nothing after a per-bucket/per-window narrative
-exists. Page views remain read-only. The report now distinguishes a current-period
-old-version row (`bump_withdrew_current_surface`) from a normal new period with no
-row at any version (`current_period_is_unwritten`). The twelve historical rows
-remain as records.
+**2026-09-20 — Batch 266 shipped.** Decision **#337**'s bounded writer runs both
+current Trend buckets at 12:30 Europe/London. Page views remain read-only, and a
+transaction-scoped per-profile/bucket/period lock prevents an APScheduler and
+Railway-cron overlap from paying twice. The report now distinguishes a
+current-period prompt withdrawal from an ordinary newly unwritten period; the
+twelve historical rows remain records.
 
-**The code is on `feat/batch-266-trends-scheduler`; no migration or prompt bump.**
-Backend: **1,368 passed / 443 expected PostgreSQL skips**; focused scheduler,
-artifact-report and runner tests passed locally; Ruff, format and mypy are clean.
-The full shared/web run completed its shared suite and advanced to the web build,
-but the desktop command session was terminated before a final build/lint result;
-rerun that gate before push.
+**Production:** Railway `trend-narratives` is a no-domain, `NEVER`-restart cron
+service scheduled at both UTC DST candidates with a London-time guard. It shares
+only the API variables needed for database, Anthropic, Sentry and failure push.
+The API health endpoint serves exact SHA `1b21ffb`; CI and deploy-freshness both
+passed. No migration or prompt-version bump occurred.
 
-**Blocker: durable scheduling needs a new Railway cron service.** Production's
-API may sleep and only `weekly-review` has an independent clock. The required
-`trend-narratives` service would run the existing external entry point at 12:30
-London, sharing the production API's required variables. This is a hosting change
-and is explicitly not automatic under `AGENTS.md`; do not create it without
-Craig's instruction.
-
-**Next:** rerun `pnpm -r test`, web build/lint and the complete local gate; commit
-and push the branch; then, if Craig approves the cron service, create and verify
-it before automatic close-out.
+**Next:** begin the next planned batch only after a fresh `/batch-start` audit.
 
 ## Prior current-state snapshots
 
@@ -845,6 +832,15 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**2026-09-20 — Batch 266 shipped.** Decision #337's scheduler-owned Trend
+writer is on `main` at `1b21ffb`; current month and season writes run only at
+12:30 Europe/London through the `trend-narratives` Railway cron service, with a
+per-period advisory lock across the paid call. The current-period-aware orphan
+report keeps a real prompt withdrawal separate from a normal new-period gap, and
+the twelve historical rows remain. Final CI and production deploy freshness
+passed; Railway health served the exact SHA. The first live cron execution is
+operational monitoring, not a close-out gate.
 
 **2026-09-19 — Batch 266 started.** Decision #337 takes the scheduled,
 idempotent current-month/current-season writer over page-open generation; the
