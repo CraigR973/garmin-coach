@@ -14,8 +14,8 @@ from datetime import date, timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
+from sqlalchemy import func, select, text
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession
 
 from src.models.coaching import (
     DAILY_METRIC_PHASE_MORNING,
@@ -388,28 +388,35 @@ async def test_narrative_run_generates_and_is_idempotent(db_conn: AsyncConnectio
 @pytest.mark.asyncio
 async def test_narrative_run_skips_when_another_runner_holds_its_period_lock(
     db_conn: AsyncConnection,
+    db_engine: AsyncEngine,
 ) -> None:
     user_id = uuid.uuid4()
     await _seed_profile(db_conn, user_id)
     await _seed_two_julys(db_conn, user_id)
+    # A second connection cannot see this test fixture's auto-begun transaction
+    # until it commits.  The unique profile keeps this committed setup isolated.
+    await db_conn.commit()
 
-    async with AsyncSession(bind=db_conn, expire_on_commit=False) as holder:
-        lock_scope = f"trend-narrative:{user_id}:{BUCKET_MONTH}:2026-07-01"
-        assert await holder.scalar(
-            select(func.pg_try_advisory_xact_lock(func.hashtext(lock_scope)))
-        )
-        async with AsyncSession(bind=db_conn, expire_on_commit=False) as contender:
-            user = await contender.get(Profile, user_id)
-            assert user is not None
-            client = FakeReviewClient()
-            result = await TrendsService(contender).narrative_run(
-                user, bucket=BUCKET_MONTH, as_of=AS_OF, client=client
+    lock_scope = f"trend-narrative:{user_id}:{BUCKET_MONTH}:2026-07-01"
+    async with db_engine.connect() as holder_conn, db_engine.connect() as contender_conn:
+        await holder_conn.execute(text("SET search_path TO coach, public"))
+        await contender_conn.execute(text("SET search_path TO coach, public"))
+        async with AsyncSession(bind=holder_conn, expire_on_commit=False) as holder:
+            assert await holder.scalar(
+                select(func.pg_try_advisory_xact_lock(func.hashtext(lock_scope)))
             )
+            async with AsyncSession(bind=contender_conn, expire_on_commit=False) as contender:
+                user = await contender.get(Profile, user_id)
+                assert user is not None
+                client = FakeReviewClient()
+                result = await TrendsService(contender).narrative_run(
+                    user, bucket=BUCKET_MONTH, as_of=AS_OF, client=client
+                )
 
-            assert result.generated is False
-            assert result.status == "in_progress"
-            assert client.calls == []
-        await holder.rollback()
+                assert result.generated is False
+                assert result.status == "in_progress"
+                assert client.calls == []
+            await holder.rollback()
 
 
 @pytest.mark.asyncio
