@@ -147,10 +147,27 @@ from src.services.sleep_scoring import (
 )
 from src.services.standing_habits import SECTION as STANDING_HABITS_SECTION
 from src.services.training_week import TrainingWeekService
-from src.services.verdict_scaling import AMBER_POWER_CAP_PCT, ENDURANCE_PRESCRIPTION_PCT
+from src.services.verdict_scaling import (
+    AMBER_POWER_CAP_PCT,
+    ENDURANCE_PRESCRIPTION_PCT,
+    blocks_red_vo2,
+)
 from src.services.workload_budget import workload_slot
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
+
+
+def _requires_bike_rest(verdict: Mapping[str, Any]) -> bool:
+    """Batch 277.3 — the acute rail has escalated to "off the bike today"."""
+    acute = verdict.get("acutePhysiology")
+    return isinstance(acute, dict) and acute.get("requiresBikeRest") is True
+
+
+def _normalize_verdict_status(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    return {"green": "Green", "amber": "Amber", "red": "Red"}.get(value.strip().lower())
+
 
 # Batch 64 (#137): the packet now carries the user's most recent corrections so
 # the read can acknowledge/adjust when Mark has told it it was wrong.
@@ -748,6 +765,37 @@ class MorningAnalysisService:
                     end_date=subject_date + timedelta(days=CHRONIC_DELOAD_WINDOW_DAYS - 1),
                     protected_weekdays=PROTECTED_WEEKDAYS,
                 )
+            # Batch 277.3: the app must not tell Mark to stay off the bike and
+            # hand him a ride in the same breath. On 22 Sep 2026 this packet
+            # carried acutePhysiology.requiresBikeRest = true *and* a swap
+            # bringing Saturday's session forward onto that day; he read the two
+            # in seconds and said so. The acute rail is the app's own escalation
+            # and the more conservative of the two, so it wins. Moving the hard
+            # session away without bringing anything forward would be better
+            # still, but SwapSuggestion is a pairwise swap by construction — that
+            # is a separate change, deliberately not made here.
+            if swap is not None and _requires_bike_rest(verdict):
+                log.info(
+                    "swap suggestion suppressed by acute bike-rest escalation",
+                    profile_id=str(player.id),
+                    subject_date=subject_date.isoformat(),
+                    swap_bring_forward=str(swap.bring_forward_workout_id),
+                )
+                swap = None
+            # Batch 277.2: never offer a swap the delivery rail will then refuse.
+            # The bring-forward candidate is chosen for being *easier*, but easier
+            # is not the same test the push gate applies, and on 22 Sep the two
+            # disagreed. Ask the gate directly rather than inferring.
+            if swap is not None and await self._swap_blocked_by_red(
+                player, swap, subject_date=subject_date, verdict_status=verdict.get("status")
+            ):
+                log.info(
+                    "swap suggestion withheld — bring-forward blocked on a Red day",
+                    profile_id=str(player.id),
+                    subject_date=subject_date.isoformat(),
+                    swap_bring_forward=str(swap.bring_forward_workout_id),
+                )
+                swap = None
             if swap is not None:
                 verdict["swapSuggestion"] = swap.to_packet()
                 verdict["planAdjustments"] = [
@@ -1280,6 +1328,42 @@ class MorningAnalysisService:
         # settled rows it was an apples-to-oranges comparison biased toward a
         # lower floor.
         return [(row.calendar_date, row.readiness_score) for row in prefer_morning(rows)]
+
+    async def _swap_blocked_by_red(
+        self,
+        player: Profile,
+        swap: Any,
+        *,
+        subject_date: date,
+        verdict_status: Any,
+    ) -> bool:
+        """Would the rail refuse the session this swap brings forward? (Batch 277.2)
+
+        The bring-forward candidate is chosen for being *easier* than the hard
+        session it displaces, which is not the test ``blocks_red_vo2`` applies. On
+        22 Sep 2026 the two disagreed: the app offered ``Z2 + Neuromuscular`` and
+        then refused to deliver it, because its ``6 × 12s @185%`` block read as
+        VO2. Batch 277.1 fixes that classification; this asks the gate directly so
+        the suggestion and the rail can never drift apart again.
+
+        Non-deliverable candidates (a walk, a strength session) raise out of the
+        IR builder and are treated as unblocked — they were never going to the
+        rail.
+        """
+        from fastapi import HTTPException
+
+        from src.services.workout_delivery import build_structured_workout_ir
+
+        if _normalize_verdict_status(verdict_status) != "Red":
+            return False
+        workout = await self.session.get(PlannedWorkout, swap.bring_forward_workout_id)
+        if workout is None:
+            return False
+        try:
+            ir = build_structured_workout_ir(workout)
+        except HTTPException:
+            return False
+        return blocks_red_vo2("Red", ir)
 
     async def _acute_physiology_history(
         self,

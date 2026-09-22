@@ -70,6 +70,33 @@ RED_DURATION_SCALE = 0.5
 RED_ENDURANCE_DURATION_SCALE = 0.70
 ZONE_DROP_PCT = 13  # one training zone is ~13 percentage points of FTP
 HIT_FLOOR_PCT = 106  # VO2/anaerobic work begins around 106% FTP
+
+# Batch 277 — intensity alone does not make a step VO2 work, and this **amends
+# Decision #301**, which deliberately kept the safety gate blind to the
+# distinction its own classifier draws ("this distinction is intentionally not a
+# safety distinction"). Craig reversed that on 2026-09-22 after it blocked a swap
+# the app had itself recommended.
+#
+# A 12-second effort at 185% FTP with nearly three minutes of recovery is
+# *alactic*: phosphocreatine dominates to roughly 10-15 s, and a work:recovery
+# ratio that long means full resynthesis between efforts, so it accumulates
+# neither aerobic nor autonomic load. A Red morning driven by suppressed HRV is
+# an argument against sustained aerobic strain, not against brief neuromuscular
+# efforts — which is why coaches keep them *in* recovery weeks. Mark's own 22 Sep
+# ride is the measurement: 58 min, average 176 W (~63% FTP), **max heart rate
+# 125**, on a session whose sprints peaked at 517 W.
+#
+# The boundary is the one Decision #301 already chose for classification, derived
+# independently here from the same production gap: his sprints are 12s/168s
+# (1:14); the shortest genuine VO2 format he rides is 30s/30s @130% (1:1), then
+# 40s/20s @125% (2:1). Nothing in the plan falls between them.
+#
+# Both conditions are required and the direction of doubt is deliberate: a short
+# effort with *short* recovery (a 15s/15s set) is still VO2 work and still
+# blocked. Letting a genuine VO2 set through on a Red day is the dangerous
+# failure; blocking a sprint session is the annoying one.
+ALACTIC_MAX_WORK_SEC = 20
+ALACTIC_MIN_RECOVERY_RATIO = 5.0
 AMBER_POWER_CAP_PCT = 94  # Amber removes HIT: cap at the top of Sweet Spot
 RECOVERY_CAP_PCT = 60  # Red easy-spin ceiling — guarantees no VO2
 MIN_POWER_PCT = 45
@@ -91,13 +118,51 @@ def _step_power(step: dict[str, Any]) -> int:
     return max(int(step.get("powerStartPct", 0)), int(step.get("powerEndPct", 0)))
 
 
+def _is_alactic_sprint(step: dict[str, Any], following: dict[str, Any] | None) -> bool:
+    """A short maximal effort with long recovery — neuromuscular, not aerobic.
+
+    Both conditions are required. A step whose duration is unknown, or which is
+    not followed by a long enough recovery, is **not** exempted.
+    """
+    duration = step.get("durationSec")
+    if not isinstance(duration, int | float) or duration <= 0:
+        return False
+    if duration > ALACTIC_MAX_WORK_SEC:
+        return False
+    if not isinstance(following, dict):
+        return False
+    recovery = following.get("durationSec")
+    if not isinstance(recovery, int | float):
+        return False
+    # The next step must actually be recovery. Two hard efforts back to back are
+    # a VO2 set however short each one is.
+    if _step_power(following) >= HIT_FLOOR_PCT:
+        return False
+    return recovery >= ALACTIC_MIN_RECOVERY_RATIO * duration
+
+
 def ir_has_vo2(ir: dict[str, Any] | None) -> bool:
-    """True when any step in a structured-workout IR reaches VO2/anaerobic
-    intensity (>= ``HIT_FLOOR_PCT`` of FTP)."""
+    """True when any step in a structured-workout IR is VO2/anaerobic work.
+
+    Batch 277 (amending Decision #301): a step must reach ``HIT_FLOOR_PCT``
+    **and** last long enough to be an aerobic stimulus. Before this, intensity
+    alone decided it, so the app classified Mark's ``6 × 12s @185%`` block as VO2
+    and refused to deliver the Zone-2 session it had itself recommended he swap
+    in. The Red-never-VO2 guarantee (Decision #61) is unchanged for everything
+    that is actually VO2 work.
+    """
     steps = ir.get("steps") if isinstance(ir, dict) else None
     if not isinstance(steps, list):
         return False
-    return any(isinstance(step, dict) and _step_power(step) >= HIT_FLOOR_PCT for step in steps)
+    typed = [step if isinstance(step, dict) else {} for step in steps]
+    for index, step in enumerate(typed):
+        if _step_power(step) < HIT_FLOOR_PCT:
+            continue
+        following = typed[index + 1] if index + 1 < len(typed) else None
+        if _is_alactic_sprint(step, following):
+            continue
+        return True
+    return False
 
 
 def ir_is_endurance(ir: dict[str, Any] | None) -> bool:

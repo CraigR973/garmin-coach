@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal, Protocol, TypedDict
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 from fastapi import HTTPException, status
@@ -453,6 +454,29 @@ class WorkoutDeliveryService:
         )
         return _normalize_verdict(analysis.verdict) if analysis else None
 
+    async def _day_is_over(self, user_id: uuid.UUID, subject_date: date) -> bool:
+        """Has ``subject_date`` already finished in the user's own timezone?
+
+        Batch 277: the Red-never-VO2 guarantee exists to stop a hard session
+        being *delivered for someone to ride*. A day that is over cannot be
+        ridden, so re-slotting it is bookkeeping, and refusing that only stops
+        the record matching what actually happened. This module already holds the
+        principle one method below — "an approved, pushed, failed or deleted
+        proposal is a record of something that happened and is never rewritten".
+
+        On 22 Sep 2026 Mark rode a session the app would not deliver, and the
+        correction to his plan could not be made afterwards because this gate
+        refused the past date as if it were a future one.
+        """
+        timezone_name = await self.session.scalar(
+            select(Profile.timezone).where(Profile.id == user_id)
+        )
+        try:
+            timezone = ZoneInfo(str(timezone_name or "UTC"))
+        except ZoneInfoNotFoundError:
+            timezone = ZoneInfo("UTC")
+        return subject_date < datetime.now(timezone).date()
+
     async def _assert_safe_for_rail(
         self,
         *,
@@ -460,8 +484,14 @@ class WorkoutDeliveryService:
         subject_date: date,
         ir: dict[str, Any],
     ) -> str | None:
-        """Put Red-never-VO2 at the final Zwift boundary (Batch 243)."""
+        """Put Red-never-VO2 at the final Zwift boundary (Batch 243).
+
+        Batch 277: the gate applies to a day that can still be ridden. A past
+        date is a record, not a delivery — see :meth:`_day_is_over`.
+        """
         verdict = await self._morning_verdict_for(user_id, subject_date)
+        if await self._day_is_over(user_id, subject_date):
+            return verdict
         if blocks_red_vo2(verdict, ir):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,

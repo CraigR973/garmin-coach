@@ -684,9 +684,16 @@ async def test_create_event_delivers_baseline_without_approval(db_conn: AsyncCon
 async def test_red_vo2_is_blocked_inside_create_and_push_rails(
     db_conn: AsyncConnection,
 ) -> None:
-    """Batch 243: callers cannot bypass Red-never-VO2 by missing their own check."""
+    """Batch 243: callers cannot bypass Red-never-VO2 by missing their own check.
+
+    Batch 277: the date is **relative and in the future**, and must stay that
+    way. The guarantee is about delivering a session for someone to ride, so it
+    no longer applies to a day that is over — and this fixture was previously
+    pinned to 2026-07-22, which had become the past. A hard-coded future date
+    would quietly stop testing anything the moment it went by.
+    """
     user_id, workout_id = uuid.uuid4(), uuid.uuid4()
-    workout_date = date(2026, 7, 22)
+    workout_date = date.today() + timedelta(days=3)
     await _seed_bike_workout(
         db_conn,
         user_id,
@@ -729,7 +736,7 @@ async def test_red_vo2_is_blocked_inside_create_and_push_rails(
 @pytest.mark.asyncio
 async def test_red_vo2_is_blocked_inside_replace_rail(db_conn: AsyncConnection) -> None:
     user_id, workout_id = uuid.uuid4(), uuid.uuid4()
-    workout_date = date(2026, 7, 22)
+    workout_date = date.today() + timedelta(days=3)  # future: see the create/push rail test
     await _seed_bike_workout(
         db_conn,
         user_id,

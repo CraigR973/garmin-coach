@@ -420,17 +420,42 @@ def test_red_still_substitutes_recovery_for_anything_harder_than_zone_two() -> N
         assert adjusted["adjustment"]["enduranceHold"] is False
 
 
-def test_red_vo2_on_a_mostly_easy_ride_is_still_blocked_at_the_push_gate() -> None:
-    """The 2026-08-01 shape: a Zone-2 ride with a 185% sprint set. The endurance
-    allowance must not become a route for VO2 onto a Red day."""
+def test_a_sprint_set_on_an_easy_ride_is_not_vo2_but_a_real_vo2_block_still_is() -> None:
+    """Batch 277, amending Decision #301 (Craig, 2026-09-22).
+
+    The 2026-08-01 shape is a Zone-2 ride with a ``6 × 12s @185%`` sprint set.
+    #301 deliberately had the safety gate treat that as VO2, and on 22 Sep 2026
+    it blocked a swap the app had itself recommended — Mark's ride that day
+    averaged 176 W with a **max heart rate of 125**, which is not a VO2 session
+    by any reading. Alactic work is now exempt.
+
+    The half of #301's intent that survives is asserted underneath: the endurance
+    allowance must still not become a route for *genuine* VO2 onto a Red day.
+    """
     base = build_structured_workout_ir(
         _planned_workout(ENDURANCE_WITH_SPRINTS_STRUCTURED), ftp_watts=280
     )
-    assert ir_has_vo2(base) is True
-    assert blocks_red_vo2("Red", base) is True
+    assert ir_has_vo2(base) is False
+    assert blocks_red_vo2("Red", base) is False
 
-    adjusted = adjust_ir_for_verdict(base, "Red")
+    # Same ride, but the short sprints replaced by a real VO2 block. Still barred.
+    with_real_vo2 = {
+        **base,
+        "steps": [
+            *base["steps"],
+            {"label": "VO2 work 1/5", "durationSec": 150, "powerStartPct": 119, "powerEndPct": 119},
+            {
+                "label": "VO2 recovery 1/5",
+                "durationSec": 150,
+                "powerStartPct": 60,
+                "powerEndPct": 60,
+            },
+        ],
+    }
+    assert ir_has_vo2(with_real_vo2) is True
+    assert blocks_red_vo2("Red", with_real_vo2) is True
 
+    adjusted = adjust_ir_for_verdict(with_real_vo2, "Red")
     assert ir_has_vo2(adjusted) is False
     assert blocks_red_vo2("Red", adjusted) is False
 
