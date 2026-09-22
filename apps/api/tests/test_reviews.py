@@ -187,18 +187,34 @@ def test_rollup_adherence_counts_only_captured() -> None:
 
 def test_rollup_flags_thermal_disruption_nights() -> None:
     thermal = [
-        ReviewThermalNight(day=WEEK_START, indoor_peak_c=18.0, overnight_low_c=8.0),
         ReviewThermalNight(
-            day=WEEK_START + timedelta(days=1), indoor_peak_c=21.0, overnight_low_c=9.0
+            day=WEEK_START,
+            indoor_peak_c=18.0,
+            outdoor_overnight_low_c=8.0,
+            indoor_window_source="sleep",
         ),
         ReviewThermalNight(
-            day=WEEK_START + timedelta(days=2), indoor_peak_c=20.0, overnight_low_c=10.0
+            day=WEEK_START + timedelta(days=1),
+            indoor_peak_c=21.0,
+            outdoor_overnight_low_c=9.0,
+            indoor_window_source="sleep",
+        ),
+        ReviewThermalNight(
+            day=WEEK_START + timedelta(days=2),
+            indoor_peak_c=20.0,
+            outdoor_overnight_low_c=10.0,
+            indoor_window_source="night_fallback",
         ),
     ]
     rollup = _rollup([], thermal=thermal)
     assert rollup.thermal.nights == 3
     assert rollup.thermal.disruption_nights == 2  # 21.0 and 20.0 both >= 20.0
     assert rollup.thermal.avg_indoor_peak_c == pytest.approx(19.7, abs=0.05)
+    # Batch 268: the outdoor low is named as outdoor, and a night measured only
+    # against the clock is counted apart from one measured against his sleep.
+    assert rollup.thermal.avg_outdoor_overnight_low_c == pytest.approx(9.0, abs=0.05)
+    assert rollup.thermal.nights_from_sleep_window == 2
+    assert rollup.thermal.nights_from_clock_fallback == 1
 
 
 def test_rollup_trend_increasing_and_insufficient() -> None:

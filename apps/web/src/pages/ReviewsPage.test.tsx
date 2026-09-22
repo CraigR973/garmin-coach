@@ -89,7 +89,17 @@ function envelope(period: 'weekly' | 'monthly', withReview: boolean) {
           zeroInterpretation: null,
         },
         verdicts: { green: 4, amber: 2, red: 1, total: 7 },
-        thermal: { nights: 7, avgIndoorPeakC: 19.2, avgOvernightLowC: 9.1, disruptionNights: 1 },
+        thermal: {
+          nights: 7,
+          avgIndoorPeakC: 19.2,
+          avgOutdoorOvernightLowC: 9.1,
+          disruptionNights: 1,
+          indoorPeakSource: {
+            sleepWindowNights: 7,
+            clockFallbackNights: 0,
+            meaning: 'Indoor peaks are measured over the hours Mark was recorded asleep.',
+          },
+        },
       },
       strength: {
         trend: 'stable',

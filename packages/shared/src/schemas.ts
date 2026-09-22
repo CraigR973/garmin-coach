@@ -1802,9 +1802,19 @@ export const reviewRollupSchema = z.object({
   }),
   thermal: z.object({
     nights: z.number().int(),
+    // Indoor peaks are measured over the hours Mark was recorded asleep
+    // (Batch 268). Before that they were 24-hour maxima, so an afternoon in an
+    // empty house was reported to him as his bedroom.
     avgIndoorPeakC: z.number().nullable(),
-    avgOvernightLowC: z.number().nullable(),
+    // Outdoor. Was `avgOvernightLowC`, which the 20 Sep 2026 review narrated as
+    // his bedroom; the key now says which side of the window it came from.
+    avgOutdoorOvernightLowC: z.number().nullable(),
     disruptionNights: z.number().int(),
+    indoorPeakSource: z.object({
+      sleepWindowNights: z.number().int(),
+      clockFallbackNights: z.number().int(),
+      meaning: z.string(),
+    }),
   }),
 });
 
