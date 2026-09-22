@@ -6,6 +6,41 @@
 
 ## Now
 
+**2026-09-22 — Batch 267 shipped.** Decision **#338**: a credentialed Garmin
+email+password login is now refused unless `sys.stdin.isatty()`, **before the
+first network call**, because its MFA challenge emails Mark a verification code
+that nobody can type in a container. A transient refusal
+(`GarminConnectTooManyRequestsError`, `GarminConnectConnectionError`,
+`TimeoutError`, `ConnectionError`) raises the new `GarminTransientError` and is
+retried instead of being mistaken for an expired token, the silent
+`except Exception` around the token-blob login now logs its cause, a genuine
+expiry emits `garmin_reauth_required` naming `GARMIN_TOKENSTORE_B64`, and the
+activity poll got the `backoff=2.0` every other Garmin retry site already had.
+
+**Production:** PR #299 / squash `f40382f`. The `main` merge first had to absorb
+a `docs/phase-batches.md` conflict with Batch 266's close-out; all 16 CI checks
+then passed on both waves. Railway direct and Vercel same-origin `/api/v1/health`
+both serve exact `f40382f0a35c4fef7e281ca72566ea569d8486f6`, web `/` is 200 and
+protected `/api/v1/daily-loop` is 401 through both paths. Smoke-checked **on the
+deployed image** via `railway ssh`: `_interactive_mfa_available()` is `False` in
+the container, a Garmin 429 classifies transient, and an ordinary error does not.
+No migration, no prompt-version bump.
+
+**Gotcha — 267.5 is deliberately NOT done.** `GARMIN_EMAIL` and `GARMIN_PASSWORD`
+remain deleted from the Railway `api` service (removed 2026-09-20 as a stop-gap).
+Restoring them is now safe — the code is the protection rather than the missing
+variable — but it is a credential change and stays Craig's call. Until then a
+genuinely expired token blob stops at "credentials are not configured".
+
+**Next:** Batches **268–270** are authored and grouped as **M** in
+`docs/phase-batches.md` (2026-09-22 section) from Mark's 09-18/19/21 feedback —
+the weekly review's daytime-contaminated bedroom peak, the HRV Red that fires on
+a moved Garmin floor, and the Red cluster that counts that artifact as strain.
+**Craig has not authorised the group run.** 269.3 is Mark-facing copy needing his
+sign-off, and 268 wants to land before the next weekly review on Sunday 27 Sep.
+
+## Prior current-state snapshots
+
 **2026-09-20 — Batch 266 shipped.** Decision **#337**'s bounded writer runs both
 current Trend buckets at 12:30 Europe/London. Page views remain read-only, and a
 transaction-scoped per-profile/bucket/period lock prevents an APScheduler and
@@ -21,7 +56,6 @@ passed. No migration or prompt-version bump occurred.
 
 **Next:** begin the next planned batch only after a fresh `/batch-start` audit.
 
-## Prior current-state snapshots
 
 **2026-09-17 — Batch 264 SHIPPED.** PR #295 / merge `a3d81a4`, Decision
 **#335**. A change agreed in
@@ -832,6 +866,21 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**2026-09-22 — Batch 267 shipped.** PR #299 / squash `f40382f`, Decision #338.
+Mark received three unrequested "Garmin verification code" emails on 20 Sep in
+66 seconds; none of the three logins could have completed, because `_read_mfa_code`
+is `input()` and the API container has no stdin. The trigger was Garmin 429-ing
+the Railway IP, which `login()` read as an expired token and escalated to a
+password login. The credentialed path is now refused off a TTY before the first
+network call, transient refusals raise `GarminTransientError` and are retried,
+token-blob rejections log their cause, and the activity poll backs off. Landing
+it required merging `main` to clear a ledger conflict left by Batch 266's
+close-out; CI then went 16/16 on both waves and local gates were clean (1,372
+passed / 443 expected PostgreSQL skips, ruff check + format, mypy). Production
+verified on `f40382f` through Railway and Vercel, with the guard itself checked
+inside the running container. **267.5 not done and left to Craig:** restoring
+`GARMIN_EMAIL`/`GARMIN_PASSWORD` to Railway is a credential change.
 
 **2026-09-20 — Batch 266 shipped.** Decision #337's scheduler-owned Trend
 writer is on `main` at `1b21ffb`; current month and season writes run only at

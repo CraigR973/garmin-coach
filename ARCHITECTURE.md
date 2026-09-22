@@ -33,7 +33,7 @@ living, editable state** so he never writes one again.
 
 | Source | Library/API | Auth | Notes |
 |---|---|---|---|
-| **Garmin** | `garminconnect` (unofficial) | email+pw, garth token cache (~1yr, no re-MFA) | Full coverage incl. Performance Condition (`directPerformanceCondition`) + Stamina (`directAvailable/PotentialStamina`) in activity time-series |
+| **Garmin** | `garminconnect` (unofficial) | garth token cache (`GARMIN_TOKENSTORE_B64`, ~1yr). **Headless operation is token-only since Batch 267 (#338):** a credentialed email+pw login is refused unless `sys.stdin.isatty()`, because its MFA challenge emails Mark a code nobody can type in a container. Re-mint from a TTY. | Full coverage incl. Performance Condition (`directPerformanceCondition`) + Stamina (`directAvailable/PotentialStamina`) in activity time-series |
 | **Hive** | `pyhiveapi` (sync) | email+pw, account uses AWS Cognito **SMS_MFA** | Live indoor temp via `API(token).getAll()` → `parsed[i].props.temperature`. Headless operation resumes from a cached Cognito refresh token (`HIVE_TOKENSTORE_B64`) via `REFRESH_TOKEN_AUTH`; seed once with `scripts/bootstrap_hive_tokenstore.py` (DECISIONS #59). |
 | **Weather** | Open-Meteo | none (keyless) | KA1 2SD = Kilmarnock, **lat 55.6045, long -4.5249**. `past_days` + `wind_speed_unit=mph` gives daily high/low + overnight low/wind |
 
