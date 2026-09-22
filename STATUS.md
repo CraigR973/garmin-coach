@@ -44,13 +44,20 @@ reads.** The fixture now carries the real series from 28 Aug and says why.
 `no_movement`, so the two genuine Reds are untouched. Unit and production values
 now agree to the decimal.
 
-**Next in R1: Batch 269**, then 270. 269 now has its foundation: gate the
-unconditional HRV Red on `is_band_artifact()` (**not** on `_acute_physiology_rail`
-— see the corrected row), and make the overnight reading primary in
-`_hrv_below_baseline`, which currently prefers `hrv_weekly_avg_ms`. Both changes
-are needed; neither alone covers both 18 and 19 Sep. **269.5 is Mark-facing copy
-and needs Craig's sign-off before it ships**, and a prompt bump is likely, which
-puts 269 in group R3 rather than R1 — **R1 therefore ends after Batch 270.**
+**Next, and last in R1: Batch 270** — the Red-cluster classifier. It consumes
+271's `is_band_artifact()` directly (the leaf is pure, so `chronic_patterns` can
+call it with the rows it already loads) and it does **not** depend on 269, which
+was corrected at review: 271 owns the artifact definition and 269 and 270 are
+siblings that both consume it.
+
+**Batch 269 is in R3, not R1**, because 269.5 is Mark-facing copy needing Craig's
+sign-off and a prompt bump is likely — a bump withdraws every stored analysis at
+the old version and the regeneration spend sits outside automatic close-out. Its
+foundation is now in place: gate the unconditional HRV Red on `is_band_artifact()`
+(**not** on `_acute_physiology_rail` — see the corrected row) and make the
+overnight reading primary in `_hrv_below_baseline`, which currently prefers
+`hrv_weekly_avg_ms`. Both changes are needed; neither alone covers both 18 and
+19 Sep.
 
 **Gotcha — the Red-never-VO2 guarantee is delivery-time only.** Every
 `blocks_red_vo2` call site is a propose/approve/push path; nothing retracts a
