@@ -40,7 +40,6 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, cast
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -76,6 +75,7 @@ from src.services.daily_metric_phase import (
     index_morning_by_date,
     index_post_activity_by_date,
 )
+from src.services.night_thermal import NightIndoorPeak, night_indoor_peaks
 from src.services.personal_baselines import baseline_band_packet
 from src.services.reviews import (
     AnthropicReviewClient,
@@ -819,7 +819,7 @@ class TrendsService:
         metrics = await self._rows(DailyMetric, player.id, start, end)
         sleeps = await self._rows(Sleep, player.id, start, end)
         weather = await self._rows(WeatherDaily, player.id, start, end)
-        indoor = await self._indoor_peaks(player.id, start, end, player.timezone)
+        indoor = await self._indoor_peaks(player.id, start, end, player.timezone, sleeps)
 
         # Morning rows (Batch 205): a trend line Mark reads back must be the
         # series his briefs were built from, not the end-of-day one.
@@ -852,7 +852,7 @@ class TrendsService:
                     resting_hr_bpm=metric.resting_heart_rate_bpm if metric else None,
                     vo2max=_as_float(vo2max_row.vo2max) if vo2max_row else None,
                     avg_spo2_pct=_as_float(sleep.average_spo2_pct) if sleep else None,
-                    indoor_peak_c=indoor.get(day),
+                    indoor_peak_c=indoor[day].peak_c if day in indoor else None,
                     overnight_low_c=_as_float(weather_row.overnight_low_c) if weather_row else None,
                 )
             )
@@ -881,13 +881,23 @@ class TrendsService:
         return list(rows)
 
     async def _indoor_peaks(
-        self, user_id: uuid.UUID, start: date, end: date, timezone_name: str
-    ) -> dict[date, float]:
-        """Peak indoor temperature per local night, keyed by the wake date."""
-        try:
-            tz = ZoneInfo(timezone_name)
-        except ZoneInfoNotFoundError:
-            tz = ZoneInfo("UTC")
+        self,
+        user_id: uuid.UUID,
+        start: date,
+        end: date,
+        timezone_name: str,
+        sleeps: Sequence[Sleep],
+    ) -> dict[date, NightIndoorPeak]:
+        """Peak indoor temperature per local night, keyed by the wake date.
+
+        Batch 268: this and ``ReviewService._temperature_peaks`` were the same
+        function twice, and both attributed any reading after 18:00 local to the
+        next night with no sleep-window filter at all. The windowing now lives in
+        ``night_thermal`` so the two cannot drift apart again.
+        """
+        # The earliest a night can start is 21:30 local on ``start - 1`` and the
+        # latest it can end is 09:00 local on ``end``, so these bounds already
+        # cover every window and need no change.
         win_start = datetime.combine(start - timedelta(days=1), datetime.min.time())
         win_end = datetime.combine(end, datetime.max.time())
         rows = (
@@ -905,18 +915,9 @@ class TrendsService:
             .scalars()
             .all()
         )
-        peaks: dict[date, float] = {}
-        for row in rows:
-            local = row.captured_at_utc.replace(tzinfo=UTC).astimezone(tz)
-            wake_date = (
-                local.date() + timedelta(days=1) if local.hour >= _EVENING_HOUR else local.date()
-            )
-            if not (start <= wake_date <= end):
-                continue
-            current = peaks.get(wake_date)
-            if current is None or row.temperature_c > current:
-                peaks[wake_date] = row.temperature_c
-        return peaks
+        return night_indoor_peaks(
+            list(rows), sleeps, start=start, end=end, timezone_name=timezone_name
+        )
 
     async def _data_quality_guardrails(self, user_id: uuid.UUID) -> list[dict[str, Any]]:
         section = await self.session.scalar(

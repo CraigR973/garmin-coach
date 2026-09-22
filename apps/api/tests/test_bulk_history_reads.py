@@ -309,11 +309,18 @@ async def test_weekly_review_temperature_peaks_stay_correct_without_the_payload(
     ]
     session = RecordingSession({TemperatureReading: rows})
     peaks = await ReviewService(session)._temperature_peaks(  # type: ignore[arg-type]
-        user_id, date(2026, 8, 20), date(2026, 8, 20), "Europe/London"
+        user_id, date(2026, 8, 20), date(2026, 8, 20), "Europe/London", []
     )
-    assert peaks == {date(2026, 8, 20): 21.5}
+    # Batch 268: the 23:00 UTC reading is 00:00 local and inside the night; the
+    # 20:00 UTC one is 21:00 local and is not, so it no longer contributes.
+    assert peaks[date(2026, 8, 20)].peak_c == 21.5
+    assert peaks[date(2026, 8, 20)].sample_count == 1
+    assert peaks[date(2026, 8, 20)].window_source == "night_fallback"
     for sql in sql_for(session, TemperatureReading):
         assert "raw_payload" not in sql
+    # The shared night-window leaf is pure and must not have issued a lookup of
+    # its own: the caller hands it the sleep rows it already loaded.
+    assert not sql_for(session, Sleep)
 
 
 async def test_trends_indoor_peaks_and_sleep_window_drop_the_payload() -> None:
@@ -322,7 +329,7 @@ async def test_trends_indoor_peaks_and_sleep_window_drop_the_payload() -> None:
     user_id = uuid.uuid4()
     session = RecordingSession()
     service = TrendsService(session)  # type: ignore[arg-type]
-    await service._indoor_peaks(user_id, date(2026, 8, 1), date(2026, 8, 30), "Europe/London")
+    await service._indoor_peaks(user_id, date(2026, 8, 1), date(2026, 8, 30), "Europe/London", [])
     await service._rows(Sleep, user_id, date(2026, 8, 1), date(2026, 8, 30))
     await service._rows(DailyMetric, user_id, date(2026, 8, 1), date(2026, 8, 30))
 

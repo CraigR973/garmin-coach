@@ -74,6 +74,7 @@ from src.services.daily_metric_phase import (
 from src.services.delivered_verdict import delivered_verdicts
 from src.services.generation_requests import GenerationRequestInProgress
 from src.services.insights import EarlyWarningResult, FtpDriftResult, InsightsService
+from src.services.night_thermal import NightIndoorPeak, night_indoor_peaks
 from src.services.personal_baselines import baseline_band_packet, serialize_training_schedule
 from src.services.prompt_metadata import prompt_system_hash
 from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
@@ -224,7 +225,14 @@ class ReviewAdherence:
 class ReviewThermalNight:
     day: date
     indoor_peak_c: float | None = None
-    overnight_low_c: float | None = None
+    # Batch 268: this is ``weather_daily.overnight_low_c`` — the *outdoor* low,
+    # which the 20 Sep review narrated as Mark's bedroom ("avg overnight low
+    # 12.6 °C" against real bedroom lows of 17.1–18.6 °C). The name now says
+    # which side of the window it was measured on.
+    outdoor_overnight_low_c: float | None = None
+    # ``"sleep"`` when the peak is bounded by the hours he was recorded asleep,
+    # ``"night_fallback"`` when only the 21:30–09:00 clock window was available.
+    indoor_window_source: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -294,8 +302,14 @@ class VerdictRollup:
 class ThermalRollup:
     nights: int
     avg_indoor_peak_c: float | None
-    avg_overnight_low_c: float | None
+    # Outdoor. See ``ReviewThermalNight.outdoor_overnight_low_c``.
+    avg_outdoor_overnight_low_c: float | None
     disruption_nights: int
+    # How many of ``nights`` were measured over the real sleep window, and how
+    # many fell back to the clock. A rollup that cannot say this invites the
+    # narrative to treat a fallback night as a measured one.
+    nights_from_sleep_window: int
+    nights_from_clock_fallback: int
 
 
 @dataclass(frozen=True)
@@ -489,11 +503,15 @@ def compute_review_rollup(
     thermal_rollup = ThermalRollup(
         nights=len(thermal),
         avg_indoor_peak_c=_avg([t.indoor_peak_c for t in thermal]),
-        avg_overnight_low_c=_avg([t.overnight_low_c for t in thermal]),
+        avg_outdoor_overnight_low_c=_avg([t.outdoor_overnight_low_c for t in thermal]),
         disruption_nights=sum(
             1
             for t in thermal
             if t.indoor_peak_c is not None and t.indoor_peak_c >= thermal_disruption_c
+        ),
+        nights_from_sleep_window=sum(1 for t in thermal if t.indoor_window_source == "sleep"),
+        nights_from_clock_fallback=sum(
+            1 for t in thermal if t.indoor_window_source == "night_fallback"
         ),
     )
 
@@ -808,7 +826,9 @@ class ReviewService:
         adherence_rows = await self._adherence(player.id, period_start, period_end)
         planned_count = await self._planned_count(player.id, period_start, period_end)
         weather = await self._weather(player.id, period_start, period_end)
-        temps = await self._temperature_peaks(player.id, period_start, period_end, player.timezone)
+        temps = await self._temperature_peaks(
+            player.id, period_start, period_end, player.timezone, sleeps
+        )
 
         # Batch 205: a review describes the days as Mark was told them, so the
         # recovery readings are the wake rows; Body Battery charge below is a
@@ -879,8 +899,9 @@ class ReviewService:
         thermal_nights = [
             ReviewThermalNight(
                 day=day,
-                indoor_peak_c=temps.get(day),
-                overnight_low_c=weather_low_by_date.get(day),
+                indoor_peak_c=temps[day].peak_c if day in temps else None,
+                outdoor_overnight_low_c=weather_low_by_date.get(day),
+                indoor_window_source=temps[day].window_source if day in temps else None,
             )
             for day in sorted(set(temps) | set(weather_low_by_date))
         ]
@@ -1024,16 +1045,26 @@ class ReviewService:
         return list(rows)
 
     async def _temperature_peaks(
-        self, user_id: uuid.UUID, start: date, end: date, timezone_name: str
-    ) -> dict[date, float]:
-        """Peak indoor temperature per local night, keyed by the wake date."""
-        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+        self,
+        user_id: uuid.UUID,
+        start: date,
+        end: date,
+        timezone_name: str,
+        sleeps: Sequence[Sleep],
+    ) -> dict[date, NightIndoorPeak]:
+        """Peak indoor temperature per local night, keyed by the wake date.
 
-        try:
-            tz = ZoneInfo(timezone_name)
-        except ZoneInfoNotFoundError:
-            tz = ZoneInfo("UTC")
-        # Cover the overnight windows feeding each in-range wake date.
+        Batch 268: this used to attribute every reading before 18:00 local to
+        that day and everything after to the next, with no sleep-window filter at
+        all — so an afternoon in an empty house was reported to Mark as his
+        bedroom. The windowing now lives in ``night_thermal`` and is shared with
+        ``TrendService._indoor_peaks``, which carried a byte-for-byte copy of the
+        same defect.
+        """
+        # Cover the overnight windows feeding each in-range wake date. The
+        # earliest a night can start is 21:30 local on ``start - 1``, and the
+        # latest it can end is 09:00 local on ``end``, so these bounds are
+        # already wide enough and need no change.
         win_start = datetime.combine(start - timedelta(days=1), datetime.min.time())
         win_end = datetime.combine(end, datetime.max.time())
         rows = (
@@ -1051,17 +1082,9 @@ class ReviewService:
             .scalars()
             .all()
         )
-        peaks: dict[date, float] = {}
-        for row in rows:
-            local = row.captured_at_utc.replace(tzinfo=UTC).astimezone(tz)
-            # An evening/overnight reading is attributed to the next morning's date.
-            wake_date = local.date() + timedelta(days=1) if local.hour >= 18 else local.date()
-            if not (start <= wake_date <= end):
-                continue
-            current = peaks.get(wake_date)
-            if current is None or row.temperature_c > current:
-                peaks[wake_date] = row.temperature_c
-        return peaks
+        return night_indoor_peaks(
+            list(rows), sleeps, start=start, end=end, timezone_name=timezone_name
+        )
 
     async def _metric_baselines(self, user_id: uuid.UUID) -> list[MetricBaseline]:
         rows = (
@@ -1280,8 +1303,22 @@ def rollup_packet(rollup: ReviewRollup) -> dict[str, Any]:
         "thermal": {
             "nights": rollup.thermal.nights,
             "avgIndoorPeakC": rollup.thermal.avg_indoor_peak_c,
-            "avgOvernightLowC": rollup.thermal.avg_overnight_low_c,
+            # Batch 268: was ``avgOvernightLowC``, which the 20 Sep review
+            # narrated as Mark's bedroom. It is the weather station's figure and
+            # the key now says so, because a packet field name is not a word for
+            # Mark (Batch 230's follow-up is the precedent).
+            "avgOutdoorOvernightLowC": rollup.thermal.avg_outdoor_overnight_low_c,
             "disruptionNights": rollup.thermal.disruption_nights,
+            "indoorPeakSource": {
+                "sleepWindowNights": rollup.thermal.nights_from_sleep_window,
+                "clockFallbackNights": rollup.thermal.nights_from_clock_fallback,
+                "meaning": (
+                    "Indoor peaks are measured over the hours Mark was recorded asleep. "
+                    "Where no sleep row existed the 21:30-09:00 clock window was used "
+                    "instead, and those nights are counted separately. "
+                    "avgOutdoorOvernightLowC is the outdoor weather low, not the bedroom."
+                ),
+            },
         },
     }
 
