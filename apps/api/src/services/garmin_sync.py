@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import os
+import sys
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -11,6 +12,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import structlog
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +24,8 @@ from src.models.coaching import (
     DailyMetric,
     Sleep,
 )
+
+log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 JsonDict = dict[str, Any]
 JsonList = list[Any]
@@ -48,6 +52,18 @@ class GarminCredentialsError(GarminSyncError):
 
 class GarminLoginError(GarminSyncError):
     """Raised when Garmin login fails without exposing credentials."""
+
+
+class GarminTransientError(GarminSyncError):
+    """Raised when Garmin refuses a login for a reason a retry can clear.
+
+    Batch 267 separates this from ``GarminLoginError`` because the two demand
+    opposite responses: a rate limit or a dropped connection wants the same
+    credentials tried again later, while a rejected token wants new ones. Before
+    the split, ``login`` read every failure as the second kind, so Garmin
+    429-ing the Railway IP on 2026-09-20 escalated to a password login and sent
+    Mark three MFA codes for an account nobody was signing into.
+    """
 
 
 @dataclass(frozen=True)
@@ -142,7 +158,13 @@ class GarminConnectClient:
                 client.login(self.credentials.tokenstore_b64)
                 self._client = client
                 return client
-            except Exception:
+            except Exception as exc:
+                _raise_if_transient(exc, source="token_blob")
+                log.warning(
+                    "garmin token blob rejected",
+                    source="token_blob",
+                    error_class=type(exc).__name__,
+                )
                 if not self.credentials.email or not self.credentials.password:
                     raise GarminLoginError(
                         "Garmin token blob failed and credentials are not configured; "
@@ -152,14 +174,40 @@ class GarminConnectClient:
         try:
             client = Garmin()
             client.login(tokenstore)
-        except Exception:
+        except Exception as exc:
+            _raise_if_transient(exc, source="token_file")
+            log.warning(
+                "garmin token file rejected",
+                source="token_file",
+                error_class=type(exc).__name__,
+            )
             client = self._fresh_login(Garmin, tokenstore)
 
         self._client = client
         return client
 
     def _fresh_login(self, garmin_cls: Any, tokenstore: str) -> Any:
+        """Log in with email + password, which Garmin answers with an MFA challenge.
+
+        Batch 267 refuses to start this off a TTY, before the first network call.
+        ``prompt_mfa`` can only be answered by a human at a keyboard, so in a
+        container the challenge is unanswerable — but Garmin has already emailed
+        the code by the time we find that out. Failing here costs a sync that was
+        failing anyway; not failing here costs Mark an unrequested security email
+        for every attempt, three of them on 2026-09-20.
+        """
         self.credentials.validate()
+        if not _interactive_mfa_available():
+            log.error(
+                "garmin_reauth_required",
+                reason="mfa_unanswerable_without_tty",
+                tokenstore=tokenstore,
+            )
+            raise GarminLoginError(
+                "Garmin token login failed and a credentialed login cannot run here: "
+                "its MFA challenge needs a terminal to answer. Re-mint "
+                "GARMIN_TOKENSTORE_B64 from a TTY."
+            )
         try:
             params = inspect.signature(garmin_cls.__init__).parameters
             if "prompt_mfa" in params:
@@ -684,6 +732,52 @@ def parse_activity_timeseries_fields(details: Mapping[str, Any]) -> list[JsonDic
 
 def _read_mfa_code() -> str:
     return input("Garmin two-factor code: ").strip()
+
+
+def _interactive_mfa_available() -> bool:
+    """True only where a human can type the code ``_read_mfa_code`` asks for.
+
+    The deployed container has no stdin, so ``input()`` raises ``EOFError`` and
+    the prompt string itself lands in the logs — which is how the 2026-09-20
+    incident is legible at all.
+    """
+    try:
+        return sys.stdin is not None and sys.stdin.isatty()
+    except (AttributeError, ValueError):
+        return False
+
+
+def _is_transient_login_failure(exc: BaseException) -> bool:
+    """True when Garmin refused for a reason that retrying can clear.
+
+    Deliberately narrow: anything not listed here is treated as a real rejection,
+    so a genuinely dead token still reaches the re-auth path.
+    """
+    if isinstance(exc, TimeoutError | ConnectionError):
+        return True
+    try:
+        from garminconnect.exceptions import (  # type: ignore[import-untyped, unused-ignore]
+            GarminConnectConnectionError,
+            GarminConnectTooManyRequestsError,
+        )
+    except ImportError:  # pragma: no cover - exercised only in missing envs
+        return False
+    return isinstance(exc, GarminConnectTooManyRequestsError | GarminConnectConnectionError)
+
+
+def _raise_if_transient(exc: BaseException, *, source: str) -> None:
+    """Re-raise a retryable refusal so it is never mistaken for an expired token."""
+    if not _is_transient_login_failure(exc):
+        return
+    log.warning(
+        "garmin login refused transiently",
+        source=source,
+        error_class=type(exc).__name__,
+    )
+    raise GarminTransientError(
+        f"Garmin refused the {source} login transiently "
+        f"({type(exc).__name__}); retry rather than re-authenticate."
+    ) from exc
 
 
 def _apply_fields(instance: Any, fields: Mapping[str, Any]) -> None:

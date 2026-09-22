@@ -1369,7 +1369,8 @@ async def run_garmin_activity_poll() -> JobResult:
                 today = _profile_today(profile)
                 start_date = today - timedelta(days=3)
                 payloads = await _retry_sync(
-                    lambda: client.fetch_activity_payloads(start_date, today)
+                    lambda: client.fetch_activity_payloads(start_date, today),
+                    backoff=2.0,
                 )
                 sync_result = await sync_service.sync_activities(
                     profile.id,
