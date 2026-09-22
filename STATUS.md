@@ -26,24 +26,61 @@ deployed image** via `railway ssh`: `_interactive_mfa_available()` is `False` in
 the container, a Garmin 429 classifies transient, and an ordinary error does not.
 No migration, no prompt-version bump.
 
+**Next — nine batches authored and unstarted, none begun. All eight of the
+original rows were reviewed against `main` and against production on 22 Sep
+before any was started, and four of them were wrong; the ledger is amended and
+the corrections are recorded in `docs/phase-batches.md` under "Corrections made
+at review, 2026-09-22 — before any code".** Every headline figure in both
+sections reproduced exactly — the two thermal weeks, the 45→46→45 HRV band
+movement, 18 Sep's Red, 21/22 Sep's genuine Reds. What was wrong was what the
+rows told the build to do:
+
+- **269 rewritten.** It named `_acute_physiology_rail` as the corroboration gate,
+  contradicting 271.3. The rail is an *acute* detector, so gating Red behind it
+  would collapse "ease the day" into `requiresBikeRest` (the see-your-GP
+  escalation) and make gradual HRV suppression structurally undetectable. 271's
+  signal is the gate. It also missed the root cause: `_hrv_below_baseline` reads
+  the seven-day average as *primary*, which is why 18 Sep was Red on a 48 ms
+  night. Both changes are now required — verified that neither alone covers both
+  18 and 19 Sep.
+- **268.3's premise was false.** Corrected peaks do reach the threshold: 21 Sep
+  hit 20.51 °C on the real 21:00–07:00 window. Threshold stays 20.0; the
+  justification is withdrawn and 268.4 gains the positive fixture it lacked.
+- **275.1 would have shipped an invalid comparator.** `GROUP_THRESHOLD = 3.0` is
+  in sleep points; 3 ms is inside Mark's HRV noise, and there is no polarity
+  field. New 275.2 requires a per-metric threshold, direction and a
+  variance-aware statistic first.
+- **272 narrowed** to cross-surface agreement only (its plausibility checks moved
+  to 268.5, where they belong). **274 split** — it now records a dispute and
+  alerts Craig; the suppression half is new **Batch 276**, deferred until 273 has
+  been in front of Mark and 274 has real contest records to scope from.
+
+**Group M** (268 → 271 → 269 → 270) then **N** (272 → 273 → 274). **268 has a
+hard deadline of Sunday 27 Sep** (next weekly review); **270's practical value
+expires Saturday 26 Sep** when the artifact days age out of the rolling window.
+275 is in no group and is the one worth showing Mark first. **Craig has not
+authorised any of it to run.** 269.5, 273.2, 274 and 275.4 all carry Mark-facing
+copy or UI needing his sign-off.
+
+**Clinical context 270 must not discard.** Mark's seven-day HRV average fell
+49 → 43 ms across 10–22 Sep, monotonically — while resting HR stayed flat 43–45,
+respiration 11–12, SpO2 96–97, sleep 74–95, and acute load *halved* 630 → 305.
+Not overreaching, not illness, so suppressing 18/19 Sep is defensible — but 270.4
+now requires the decline to be recorded rather than silently discounted.
+
+**Gotcha — the Red-never-VO2 guarantee is delivery-time only.** Every
+`blocks_red_vo2` call site is a propose/approve/push path; nothing retracts a
+session already on the device. Week 10's `VO₂ (5 × 2:30 @ 119%)` was pushed to
+intervals.icu event `121350317` on 17 Sep. 22 Sep is Red, so the app would refuse
+to deliver it today — but it delivered it five days ago and it is still on his
+device with the plan row active and `planned`. Not a batch; recorded so it is not
+rediscovered as a surprise.
+
 **Gotcha — 267.5 is deliberately NOT done.** `GARMIN_EMAIL` and `GARMIN_PASSWORD`
 remain deleted from the Railway `api` service (removed 2026-09-20 as a stop-gap).
 Restoring them is now safe — the code is the protection rather than the missing
 variable — but it is a credential change and stays Craig's call. Until then a
 genuinely expired token blob stops at "credentials are not configured".
-
-**Next:** Eight batches are authored and unstarted, none of them begun.
-**Group M** (268 → **271** → 269 → 270) fixes what Mark found in his 09-18/19/21
-wave: the weekly review's daytime-contaminated bedroom peak, a vendor-threshold
-movement detector, the HRV Red that fires on a moved Garmin floor, and the Red
-cluster that counts that artifact as strain. **Group N** (272 → 273 → 274) is the
-proactive half — a pre-publication consistency gate, provenance on derived
-figures, and a dispute that actually suppresses a bad input. **275** is in no
-group and is the one worth showing Mark first: it opens the experiment evaluator
-to his own hypotheses. Both sections are in `docs/phase-batches.md` dated
-2026-09-22. **Craig has not authorised any of it to run.** 269.3, 273.2, 274 and
-275.3 all carry Mark-facing copy or UI needing his sign-off, and 268 wants to
-land before the next weekly review on Sunday 27 Sep.
 
 ## Prior current-state snapshots
 
@@ -873,6 +910,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-22** — Reviewed batches 268-275 against `main` and production before any was started. Every headline figure reproduced; four rows were wrong about what to build. 269 rewritten (acute rail struck as the gate, weekly-average primacy added as the root cause), 268.3's false premise withdrawn and a positive fixture added, 275 gains a statistics precondition, 272 narrowed to cross-surface agreement, 274 split with its suppression half becoming new Batch 276. Review kept at `docs/reviews/2026-09-22-batches-268-275-review.md`.
 **2026-09-22 — Batch 267 shipped.** PR #299 / squash `f40382f`, Decision #338.
 Mark received three unrequested "Garmin verification code" emails on 20 Sep in
 66 seconds; none of the three logins could have completed, because `_read_mfa_code`
