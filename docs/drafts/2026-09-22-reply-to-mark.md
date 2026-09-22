@@ -1,7 +1,7 @@
 # Draft reply to Mark — 22 Sep 2026
 
-**Status: DRAFT. Craig signs off before this goes to Mark.** Mark-facing copy is
-explicit on this project (`AGENTS.md`).
+**Status: SIGNED OFF by Craig, 2026-09-22.** Content approved as written.
+Delivery is Craig's — this has not been sent from the app.
 
 Tone note: he has raised the HRV point three days running and been agreed with
 each time without anything changing. The first thing this needs to do is tell him
@@ -78,3 +78,5 @@ dishonest to lump them together.
 4. **The strength session.** He also noted today's session was the daily
    bodyweight workout, not the dumbbells the plan showed. That is the same
    mis-recording in a second place and the draft does not mention it.
+   *(Craig, 2026-09-22: folded into Batch 277.4 as a second covered case. The
+   draft is unchanged — it stays about the bike, which is what he pressed on.)*
