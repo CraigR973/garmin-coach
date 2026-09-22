@@ -32,12 +32,18 @@ Restoring them is now safe — the code is the protection rather than the missin
 variable — but it is a credential change and stays Craig's call. Until then a
 genuinely expired token blob stops at "credentials are not configured".
 
-**Next:** Batches **268–270** are authored and grouped as **M** in
-`docs/phase-batches.md` (2026-09-22 section) from Mark's 09-18/19/21 feedback —
-the weekly review's daytime-contaminated bedroom peak, the HRV Red that fires on
-a moved Garmin floor, and the Red cluster that counts that artifact as strain.
-**Craig has not authorised the group run.** 269.3 is Mark-facing copy needing his
-sign-off, and 268 wants to land before the next weekly review on Sunday 27 Sep.
+**Next:** Eight batches are authored and unstarted, none of them begun.
+**Group M** (268 → **271** → 269 → 270) fixes what Mark found in his 09-18/19/21
+wave: the weekly review's daytime-contaminated bedroom peak, a vendor-threshold
+movement detector, the HRV Red that fires on a moved Garmin floor, and the Red
+cluster that counts that artifact as strain. **Group N** (272 → 273 → 274) is the
+proactive half — a pre-publication consistency gate, provenance on derived
+figures, and a dispute that actually suppresses a bad input. **275** is in no
+group and is the one worth showing Mark first: it opens the experiment evaluator
+to his own hypotheses. Both sections are in `docs/phase-batches.md` dated
+2026-09-22. **Craig has not authorised any of it to run.** 269.3, 273.2, 274 and
+275.3 all carry Mark-facing copy or UI needing his sign-off, and 268 wants to
+land before the next weekly review on Sunday 27 Sep.
 
 ## Prior current-state snapshots
 
