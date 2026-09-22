@@ -6,6 +6,71 @@
 
 ## Now
 
+**2026-09-22 — Batch 268 shipped, first of group R1.** Decision **#339**: the
+indoor overnight peak is now measured over the hours Mark was recorded asleep.
+`ReviewService._temperature_peaks` and `TrendService._indoor_peaks` were the same
+function twice — every reading in the period, anything from 18:00 local pushed to
+the next morning, keep the maximum, no sleep filter anywhere — so an afternoon in
+an empty house was reported to him as his bedroom. New `services/night_thermal.py`
+composes the two definitions that already existed (`bedroom_overnight.night_window`,
+21:30→09:00 local, narrowed to `sleep_start_utc..sleep_end_utc` when a sleep row
+exists) and **intersects** rather than replaces, so a long sleep row cannot drag
+daytime back in. It is pure and adds no query: both callers already load their
+sleep rows under `without_sleep_raw_payload()`.
+
+**Production:** PR #300 / squash `6bc6a2b`. All 16 CI checks green on both waves;
+**PostgreSQL CI 1823 passed / 0 skipped** against a local 1380 passed / 443
+expected skips. Railway direct and Vercel same-origin `/api/v1/health` both serve
+exact `6bc6a2b08be25350ea618b21b635ef1973ca712e`, web `/` is 200, protected
+daily-loop 401 through both paths. **No migration. No prompt bump** — the review
+`SYSTEM_PROMPT` names no thermal field and is byte-identical, so nothing was
+withdrawn and the batch stayed out of the regeneration-spend gate.
+
+**Smoke, read-only, through the real rollup on Mark's own data:** 7–13 Sep went
+`7 of 7 @ avg 20.9` → **`0 of 7 @ avg 18.8`**; 14–20 Sep went `5 of 7 @ avg 20.5`
+→ **`0 of 7 @ avg 18.8`**; 15–21 Sep reports **1 of 7** — the genuine 21 Sep
+night at 20.25 °C. All 21 nights `sleepWindowNights=7 / clockFallbackNights=0`.
+`avgOvernightLowC` is now `avgOutdoorOvernightLowC`, because the 20 Sep review
+narrated the weather station's 12.6 °C as his bedroom.
+
+**Three spec facts were wrong and were corrected before any code.** The row said
+to reuse "the window `coach_sections.py:302` derives"; that line emits only the
+*label*, and the real definition is `night_window()` plus `thermal_review`'s sleep
+narrowing. 268.3's justification was false — it claimed corrected peaks never
+approach 20 °C, when 21 Sep reaches 20.25. And the authoring review's 20.51 °C
+came from an invented 21:00–07:00 window plus a timezone conversion that treated
+naive `captured_at_utc` as London rather than UTC. **Re-run with the conversion
+the code uses, the old rule reproduces both stored review packets to the decimal**
+— which is what makes the test fixtures evidence rather than guesses.
+
+**Next in R1: Batch 271**, then 269, then 270. Two things already verified for 271
+that its row does not mention: `_acute_physiology_history`
+(`morning_analysis.py:1284`) already filters `phase == morning`, so 271.1's
+phase-pinning requirement is satisfied *if* the detector reads through that
+loader — but it uses `load_only(calendar_date, hrv_last_night_avg_ms,
+resting_heart_rate_bpm, raiseload=True)`, so **`hrv_baseline_low_ms` /
+`hrv_baseline_high_ms` are not loaded and accessing them raises**. The projection
+must be widened by those two columns, deliberately, and that loader is **not**
+covered by Batch 235's egress guard test — add it when widening. Also confirmed
+for 271.2: `metric_baselines` genuinely holds our own `hrv_7_day_avg_ms` (median
+47.0, IQR 45–49, SD 2.16, 84 samples), which is a different thing from Garmin's
+supplied floor and must be named as such.
+
+**Gotcha — the Red-never-VO2 guarantee is delivery-time only.** Every
+`blocks_red_vo2` call site is a propose/approve/push path; nothing retracts a
+session already on the device. Week 10's `VO₂ (5 × 2:30 @ 119%)` was pushed to
+intervals.icu event `121350317` on 17 Sep. 22 Sep is Red, so the app would refuse
+to deliver it today — but it delivered it five days ago and it is still on his
+device with the plan row active and `planned`. Not a batch; recorded so it is not
+rediscovered as a surprise.
+
+**Gotcha — 267.5 is deliberately NOT done.** `GARMIN_EMAIL` and `GARMIN_PASSWORD`
+remain deleted from the Railway `api` service (removed 2026-09-20 as a stop-gap).
+Restoring them is now safe — the code is the protection rather than the missing
+variable — but it is a credential change and stays Craig's call.
+
+## Prior current-state snapshots
+
 **2026-09-22 — Batch 267 shipped.** Decision **#338**: a credentialed Garmin
 email+password login is now refused unless `sys.stdin.isatty()`, **before the
 first network call**, because its MFA challenge emails Mark a verification code
@@ -94,8 +159,6 @@ remain deleted from the Railway `api` service (removed 2026-09-20 as a stop-gap)
 Restoring them is now safe — the code is the protection rather than the missing
 variable — but it is a credential change and stays Craig's call. Until then a
 genuinely expired token blob stops at "credentials are not configured".
-
-## Prior current-state snapshots
 
 **2026-09-20 — Batch 266 shipped.** Decision **#337**'s bounded writer runs both
 current Trend buckets at 12:30 Europe/London. Page views remain read-only, and a
@@ -923,6 +986,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-22** — Batch 268 shipped (PR #300, `6bc6a2b`, Decision #339): the weekly review's and Trends' bedroom peak is measured over the sleep window, not a 24-hour maximum. Production smoke on Mark's own data: 7 of 7 → 0 of 7 and 5 of 7 → 0 of 7 on the two weeks he disputed, with the one genuine warm night (21 Sep, 20.25 °C) still counted. First of group R1.
 - **2026-09-22** — Reviewed batches 268-275 against `main` and production before any was started. Every headline figure reproduced; four rows were wrong about what to build. 269 rewritten (acute rail struck as the gate, weekly-average primacy added as the root cause), 268.3's false premise withdrawn and a positive fixture added, 275 gains a statistics precondition, 272 narrowed to cross-surface agreement, 274 split with its suppression half becoming new Batch 276. Review kept at `docs/reviews/2026-09-22-batches-268-275-review.md`.
 **2026-09-22 — Batch 267 shipped.** PR #299 / squash `f40382f`, Decision #338.
 Mark received three unrequested "Garmin verification code" emails on 20 Sep in
