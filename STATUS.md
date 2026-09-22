@@ -6,6 +6,63 @@
 
 ## Now
 
+**2026-09-22 (evening) — Batch 277 authored from Mark's check-in notes, and it is
+the most urgent open row. Group R1 shipped earlier the same day (268, 271, 270).**
+
+**Mark filed four points today and every one is true.** He was told to take the
+day off the bike and, in the same brief, offered a swap bringing a ride forward
+onto that day. He accepted it; the app refused to execute it. He rode the session
+anyway, and the plan then recorded him as completing the **VO₂ he did not do**.
+
+**Reproduced in production before authoring.** Driving the real `swap_day` raised
+`409: Red verdict blocks VO2 delivery to Zwift` from `_assert_safe_for_rail`
+(`workout_delivery.py:466`) via `move_event`. It is the **incoming** session that
+trips it: Saturday's `Z2 + Neuromuscular` carries `6 × 12s @185%`, and
+`ir_has_vo2` (`verdict_scaling.py:94`) flags any step ≥ `HIT_FLOOR_PCT = 106`
+**with no duration term at all**. So the app proposed a swap its own gate
+refuses. The Garmin activity confirms what he rode: 58 min, avg 176 W (~63% FTP),
+**max 517 W** (185% of 280 W is 518), **max HR 125**.
+
+**⚠️ The 22 Sep data correction was attempted and rolled back — read this before
+retrying.** The real swap rail hit the same 409. Because `move_event` calls
+intervals.icu *before* the second leg's assertion, event `121350317` (the VO₂)
+had already moved to 26 Sep, leaving the calendar and database diverged. **Both
+were restored to a byte-identical before-state and verified** (event back on
+2026-09-22; plan row back to `completed`). **Do not retry the correction against
+the unfixed gate** — 277.5 covers it, and only after 277.1 lands.
+
+**Batch 277 (Planned, 🔴, group R5) covers all of it:** a duration term for
+`ir_has_vo2`; the swap suggestion consulting the delivery gate; resolving
+`requiresBikeRest` against a bring-forward; a failed swap no longer letting the
+wrong session be recorded as done; and the 22 Sep correction. **277 outranks R2
+and R3** — it is the only open batch describing something wrong in production
+right now, and it writes a false record into his training history each time it
+fires.
+
+**Draft reply to Mark at `docs/drafts/2026-09-22-reply-to-mark.md`, awaiting
+Craig's sign-off.** It tells him what actually changed today, admits the two
+faults not yet fixed, and declines to call today's Red an artifact — his
+overnight HRV was 39 ms against a steady floor, which is his own reading.
+
+**Also noted, not yet specced:** his 10:16 note says today's strength session was
+the daily bodyweight workout, not the dumbbells the plan showed — the same
+mis-recording in a second place.
+
+**Shipped earlier today — group R1 complete.** 268 (PR #300 / `6bc6a2b`, #339),
+271 (PR #301 / `ca1be72` + #302 / `db22e86`, #340), 270 (PR #303 / `34476ec`,
+#341). No migration or prompt bump in any. Production verified on each merge SHA.
+The two weeks Mark disputed now read 0 of 7 rather than 7 of 7 and 5 of 7; the
+18/19 Sep band artifact is detected; the 21 Sep cluster counts 1 against a
+threshold of 2 so the rearrange proposal no longer fires.
+
+**Gotcha — the Red-never-VO2 guarantee is delivery-time only.** Nothing retracts
+a session already pushed. Today's VO₂ event went to his device on 17 Sep.
+
+**Gotcha — 267.5 is deliberately NOT done.** `GARMIN_EMAIL`/`GARMIN_PASSWORD`
+remain deleted from Railway; restoring them is safe now but stays Craig's call.
+
+## Prior current-state snapshots
+
 **2026-09-22 — Group R1 complete. Batches 268, 271 and 270 all shipped and
 verified in production.** Between them they close the wave Mark raised on
 18/19/21 September, in which he was right on every point and the app could only
@@ -63,8 +120,6 @@ intervals.icu event `121350317` on 17 Sep and is still there on a Red morning.
 **Gotcha — 267.5 is deliberately NOT done.** `GARMIN_EMAIL`/`GARMIN_PASSWORD`
 remain deleted from the Railway `api` service. Restoring them is safe now but is
 a credential change and stays Craig's call.
-
-## Prior current-state snapshots
 
 **2026-09-22 — Batch 271 shipped, second of group R1.** Decision **#340**: a
 Garmin HRV band movement is now detected deterministically. On 18 and 19 Sep
@@ -1106,6 +1161,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-22 (evening)** — Authored Batch 277 from Mark's check-in notes: the app proposed a swap its own delivery gate refuses (`ir_has_vo2` has no duration term, so `6 × 12s @185%` reads as VO₂), told him to rest and to ride in the same brief, and then recorded a VO₂ session he did not do. The 22 Sep data correction was attempted, hit the same 409, and was rolled back to a verified byte-identical before-state. Draft reply to Mark awaiting sign-off.
 - **2026-09-22** — Batch 270 shipped (PR #303, `34476ec`, Decision #341) and **group R1 is complete** (268, 271, 270). The real 21 Sep cluster now counts 1 against a threshold of 2, so the rearrange proposal that moved Mark's Tuesday VO2 no longer fires; two genuine Reds still do. No migration or prompt bump in any of the three.
 - **2026-09-22** — Batch 271 shipped (PR #301 `ca1be72` + fix-forward PR #302 `db22e86`, Decision #340): a Garmin HRV band movement is detected against a trailing reference, keyed on the floor, with the reading judged over a shorter window than the band. Production smoke emits an artifact on 18 and 19 Sep only. The first merge was wrong and the smoke caught it — a unit fixture shorter than the code's window tests a different regime than production.
 - **2026-09-22** — Batch 268 shipped (PR #300, `6bc6a2b`, Decision #339): the weekly review's and Trends' bedroom peak is measured over the sleep window, not a 24-hour maximum. Production smoke on Mark's own data: 7 of 7 → 0 of 7 and 5 of 7 → 0 of 7 on the two weeks he disputed, with the one genuine warm night (21 Sep, 20.25 °C) still counted. First of group R1.

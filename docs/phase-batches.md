@@ -4149,3 +4149,90 @@ refuse to deliver that session today — but it delivered it five days ago, the
 plan row is still active and `planned`, and the event is still on his device.
 Whether that is a gap or the intended behaviour is Craig's call; recording it
 here so it is not rediscovered as a surprise.
+
+## Post-roadmap — 2026-09-22 — The swap the app proposed and then refused (Batch 277)
+
+**Mark filed four points in his 22 Sep check-in and every one of them is true.**
+He was told to take the day off the bike and, in the same brief, offered a swap
+that brings a ride forward to that same day. He accepted the swap, and the app
+refused to execute it. He rode the session anyway, and the plan then recorded
+him as having completed a different session entirely — the VO₂ he did not do.
+
+> *"1) App contradictory today - headline is "Take today off bike" but workout
+> recommendation is to swap today's vo2 with Saturday's Z2 with neuromuscular
+> sprints? 2) As felt good decided to follow workout recommendation but app
+> wouldn't let me swap Tuesday and Saturday with message "Red verdict blocks vo2
+> delivery to zwift" 3) Therefore note this workout is Saturday Z2 with
+> neuromuscular sprints which was completed on basis of feeling good today
+> despite severity of apps view 4) still feel app is overreacting to only hrv
+> position..."*
+
+### Reproduced in production before any code
+
+**The refusal was reproduced exactly.** Driving the real `swap_day` against
+production raised `409: Red verdict blocks VO2 delivery to Zwift` from
+`WorkoutDeliveryService._assert_safe_for_rail`
+([`workout_delivery.py:466`](../apps/api/src/services/workout_delivery.py)), reached
+through `move_event` ([`workout_delivery.py:1029`](../apps/api/src/services/workout_delivery.py)).
+It is the **incoming** session that trips it, not the outgoing one: Saturday's
+`Z2 + Neuromuscular` carries `Neuromuscular sprints @185%`, a `6 x 12s / 168s @55%`
+block, and `ir_has_vo2` ([`verdict_scaling.py:94`](../apps/api/src/services/verdict_scaling.py))
+returns True for **any** step at or above `HIT_FLOOR_PCT = 106` with **no
+duration term at all** — `_step_power` reads peak percentage and nothing else.
+
+So the app proposed a swap whose incoming session its own delivery gate
+classifies as VO₂ and refuses to place on a Red day. **The swap suggestion is
+produced by `WeeklyRestructureService.swap_suggestion_for_day`
+([`weekly_restructure.py:622`](../apps/api/src/services/weekly_restructure.py)) and
+attached at [`morning_analysis.py:752`](../apps/api/src/services/morning_analysis.py);
+neither consults `blocks_red_vo2`.**
+
+**The contradiction is in one packet.** 22 Sep's stored analysis carries
+`acutePhysiology.requiresBikeRest = true` with `triggeredSignals: ["overnight_hrv"]`
+— the "take today off the bike" escalation — *and* `swapSuggestion` moving the
+VO₂ to 26 Sep while bringing `Z2 + Neuromuscular` forward to the 22nd.
+
+**A 12-second sprint is not a VO₂ interval, and the ride proves it.** His Garmin
+activity that day: 58 min, average 176 W (~63% FTP), **max 517 W** — 185% of his
+280 W FTP is 518 W — **max heart rate 125**, aerobic TE 2.7, anaerobic TE 1.4.
+Neuromuscular work is alactic, fully recovered between efforts, and carries
+little aerobic or autonomic cost; it is routinely prescribed *inside* recovery
+weeks for exactly that reason. Treating it identically to 2:30 at 119% is a
+classification error, and it is what made the app incoherent.
+
+**And the plan then recorded the wrong session as done.**
+`complete_matched_planned_workout`
+([`workout_completion.py:15`](../apps/api/src/services/workout_completion.py)) matches
+an activity to a planned row by **local date + category only**. The swap having
+failed, the only active bike row on 22 Sep was the VO₂, so his Zone-2 ride
+flipped `VO₂ (5 × 2:30 @ 119%)` to `completed`. The plan history now says he
+completed a VO₂ session on a Red day; he did not, and the VO₂ has effectively
+been consumed without being ridden. To its credit the post-workout read caught
+the inconsistency in prose — it opens *"the app's own record of it doesn't add
+up"* and withheld all five interval grades rather than scoring a Zone-2 ride
+against 119% FTP — but the record itself is still wrong and feeds adherence,
+training load and the block's VO₂ count.
+
+**The data correction was attempted on 22 Sep and had to be rolled back, which
+is itself the finding.** Running the real swap rail hit the same 409. Because
+`move_event` calls intervals.icu before the second leg's assertion, the VO₂ event
+had already moved to 26 Sep, leaving the calendar and the database diverged; both
+were restored to a byte-identical before-state and verified. **The record cannot
+be corrected until 277.1 lands** — the fix and the clean-up are the same change.
+
+**Decision numbers are assigned at `/batch-start`, not here.**
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 277 — The swap the app proposed and then refused | 🔴 High | Planned | 277.1 **Give `ir_has_vo2` a duration term.** [`verdict_scaling.py:94`](../apps/api/src/services/verdict_scaling.py) flags any step at or above `HIT_FLOOR_PCT = 106` regardless of how long it lasts, so `6 × 12s @185%` is indistinguishable from `5 × 2:30 @119%`. Require both the intensity **and** a work duration long enough to be an aerobic stimulus before a step counts as VO₂. **Decide the threshold at `/batch-start` and justify it in writing** — recommendation is on the order of 60 s, which admits every VO₂ and threshold format in Mark's plan and excludes alactic sprints, but it must be checked against the real prescriptions in `planned_workouts` before it is chosen, not assumed. **Do not weaken the Red-never-VO2 guarantee itself** — Decision #61 stands, and a genuine VO₂ set must still be refused on a Red day.<br>277.2 **Stop proposing swaps the delivery gate will refuse.** `swap_suggestion_for_day` ([`weekly_restructure.py:622`](../apps/api/src/services/weekly_restructure.py)) picks a bring-forward candidate without consulting `blocks_red_vo2`, so on a Red day it can and did offer a session that cannot be delivered. The suggestion must test the candidate against the same predicate the rail uses, and either pick a deliverable one or say plainly that no swap is available. A recommendation the app cannot carry out is worse than none.<br>277.3 **Resolve the contradiction between the acute rail and the swap.** When `acutePhysiology.requiresBikeRest` is true the brief says take the day off the bike; the swap simultaneously brought a ride forward onto that day. **Decide at `/batch-start` which wins.** Recommendation: `requiresBikeRest` suppresses any bring-forward onto that date — it is the app's own escalation and the more conservative of the two — while still allowing the hard session to be moved *away*. Record the decision either way.<br>277.4 **A failed swap must not let the wrong session be recorded as done.** `complete_matched_planned_workout` ([`workout_completion.py:15`](../apps/api/src/services/workout_completion.py)) matches on date + category alone. Where the day's planned session and the executed activity disagree materially — a Zone-2 ride at 63% FTP against a 119% VO₂ prescription — the completion must be recorded as a deviation rather than silently flipping the planned row. Reuse Batch 80's deviation-verdict path rather than inventing a second one.<br>277.5 **Correct the 22 Sep record, after 277.1 lands and not before.** The swap must apply (22 Sep → `Z2 + Neuromuscular`, completed; 26 Sep → the VO₂, planned), the intervals.icu events must follow, and the post-workout analysis must attach to the session he actually rode. **The attempt on 22 Sep was rolled back and is documented above; do not retry it against the unfixed gate.** The stored post-workout narrative describes a VO₂ session and will still be wrong prose after the pointer is corrected — **regenerating it spends real money and is Craig's call, stated in the close-out either way.**<br>277.6 Tests, each confirmed to fail against today's logic first: `6 × 12s @185%` is not VO₂ and `5 × 2:30 @119%` still is; the real 22 Sep swap (VO₂ ↔ `Z2 + Neuromuscular`) completes end to end; a swap that would bring a genuine VO₂ set onto a Red day is still refused; a `requiresBikeRest` morning offers no bring-forward; and a Zone-2 activity against a VO₂ prescription records a deviation rather than flipping the row to completed. | Stop the app recommending an action it will then refuse, stop it telling Mark to rest and to ride in the same breath, and stop a failed swap quietly writing a session he did not do into his training history. | Replaying 22 Sep: the swap the app offered completes; the brief does not simultaneously require bike rest and bring a ride forward; a genuine VO₂ set on a Red day is still blocked; and Mark's Zone-2 ride is recorded against the session he actually rode. `blocks_red_vo2`'s existing tests pass unmodified. No migration expected. No prompt bump expected for 277.1-277.4; 277.5's regeneration decision is separate and explicit. |
+
+### Where this sits
+
+| Group | Batches | Gate |
+|---|---|---|
+| **R5 — Mark is blocked today** | **277** 🔴 | None for 277.1–277.4. **277.5 touches production training data and a paid regeneration, so it stays explicit.** |
+
+**277 outranks R2 and R3.** It is the only open batch describing something that
+is wrong in production *right now*, it writes a false record into his training
+history every time it happens, and until 277.1 lands the 22 September data cannot
+be corrected at all.
