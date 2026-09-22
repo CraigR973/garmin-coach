@@ -6,6 +6,70 @@
 
 ## Now
 
+**2026-09-22 — Batch 277 shipped, and Mark's 22 Sep record is corrected.** Fourth
+batch of the day, after group R1 (268, 271, 270).
+
+**Decision #342 amends Decision #301** (Craig's call). A 12-second effort at 185%
+FTP with 168 s of recovery is alactic and is no longer VO₂ at the safety gate.
+#301 had given the *classifier* a 20 s boundary and deliberately withheld it from
+the gate — *"this distinction is intentionally not a safety distinction"* — and
+on 22 Sep that cost Mark a session: the app's own brief recommended swapping his
+VO₂ for Saturday's `Z2 + Neuromuscular`, he accepted, and the rail refused it.
+He rode it anyway at 176 W average and **max HR 125**.
+
+**Both conditions are required and doubt resolves toward blocking:** exempt only
+at ≤ 20 s **and** followed by a real recovery ≥ 5× its length. A 15s/15s set is
+still VO₂ and still blocked, as is an unknown duration, a trailing hard step, and
+two hard efforts back to back. Every genuine VO₂ format in the plan still blocks
+on Red; Decision #61 is untouched.
+
+**Three more things shipped in the same batch.** The swap suggestion now asks
+`blocks_red_vo2` directly about its bring-forward candidate instead of inferring
+deliverability from "easier". The swap is suppressed entirely when
+`acutePhysiology.requiresBikeRest` is true, so the brief can no longer say "take
+today off the bike" and hand him a ride in the same packet. And
+`_assert_safe_for_rail` no longer applies to a day that is over — it had no date
+awareness at all, which is a category error and what made the 22 Sep record
+uncorrectable.
+
+**Production:** PR #304 / squash `dad6b08`; 16/16 CI green, **PostgreSQL CI 1855
+passed / 0 skipped**. Railway and Vercel both serve exact
+`dad6b08d2895f9ee010a7906e4925c199ef55177`. No migration, no prompt bump.
+
+**CI caught one thing no local run could.** Both Red-never-VO2 rail tests pinned
+`workout_date` to 2026-07-22 — now the past — so the new carve-out correctly
+stopped the gate firing and their `pytest.raises` never triggered. The dates are
+now **relative and future**, because a fresh hard-coded future date would quietly
+stop testing anything the day it went by.
+
+**22 Sep is corrected, verified on both sides.** The plan now holds
+`Z2 + Neuromuscular` completed on 22 Sep (what he actually rode) and the VO₂
+planned on 26 Sep; intervals.icu has event `121350328` on 22 Sep and `121350317`
+on 26 Sep; the post-workout analysis points at the session he rode. **Still
+outstanding:** that analysis's *prose* still describes a VO₂ session —
+regenerating it spends real money and is Craig's call.
+
+**⚠️ Earlier the same evening, before 277 shipped, the correction was attempted
+against the unfixed gate and had to be rolled back.** `move_event` calls
+intervals.icu before the second leg's assertion, so the VO₂ event had already
+moved to 26 Sep when the 409 fired, leaving the calendar and database diverged
+for a few minutes. Both were restored to a verified byte-identical before-state
+before 277 was built. Recorded because the failure mode is real: **a partial
+swap can leave the calendar ahead of the database.**
+
+**Next: Batch 278** — carried forward from 277.4, not built.
+`complete_matched_planned_workout` matches an activity to a planned row by local
+date and category alone, which is why his Zone-2 ride flipped the VO₂ row and his
+bodyweight session flipped `Dumbbells (full-body)`. 277 removed the particular
+path that produced the bike case, so confirm it still reproduces before building.
+**R2** (275, then 273 → 274) and **R3** (269, 272) still need Craig — copy/UI and
+regeneration spend respectively. **R4** (276) stays deferred.
+
+**Mark's reply is signed off** at `docs/drafts/2026-09-22-reply-to-mark.md` and
+has **not** been sent — delivery is Craig's.
+
+## Prior current-state snapshots
+
 **2026-09-22 (evening) — Batch 277 authored from Mark's check-in notes, and it is
 the most urgent open row. Group R1 shipped earlier the same day (268, 271, 270).**
 
@@ -60,8 +124,6 @@ a session already pushed. Today's VO₂ event went to his device on 17 Sep.
 
 **Gotcha — 267.5 is deliberately NOT done.** `GARMIN_EMAIL`/`GARMIN_PASSWORD`
 remain deleted from Railway; restoring them is safe now but stays Craig's call.
-
-## Prior current-state snapshots
 
 **2026-09-22 — Group R1 complete. Batches 268, 271 and 270 all shipped and
 verified in production.** Between them they close the wave Mark raised on
@@ -1161,6 +1223,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-22 (evening)** — Batch 277 shipped (PR #304, `dad6b08`, Decision #342, amending #301): a 12-second sprint is no longer VO₂ at the safety gate, the swap no longer proposes what the rail will refuse, the brief no longer says rest-and-ride in one packet, and the gate no longer applies to a day that is over. Mark's 22 Sep record corrected and verified on both sides. 277.4 carried forward as Batch 278.
 - **2026-09-22 (evening)** — Authored Batch 277 from Mark's check-in notes: the app proposed a swap its own delivery gate refuses (`ir_has_vo2` has no duration term, so `6 × 12s @185%` reads as VO₂), told him to rest and to ride in the same brief, and then recorded a VO₂ session he did not do. The 22 Sep data correction was attempted, hit the same 409, and was rolled back to a verified byte-identical before-state. Draft reply to Mark awaiting sign-off.
 - **2026-09-22** — Batch 270 shipped (PR #303, `34476ec`, Decision #341) and **group R1 is complete** (268, 271, 270). The real 21 Sep cluster now counts 1 against a threshold of 2, so the rearrange proposal that moved Mark's Tuesday VO2 no longer fires; two genuine Reds still do. No migration or prompt bump in any of the three.
 - **2026-09-22** — Batch 271 shipped (PR #301 `ca1be72` + fix-forward PR #302 `db22e86`, Decision #340): a Garmin HRV band movement is detected against a trailing reference, keyed on the floor, with the reading judged over a shorter window than the band. Production smoke emits an artifact on 18 and 19 Sep only. The first merge was wrong and the smoke caught it — a unit fixture shorter than the code's window tests a different regime than production.
