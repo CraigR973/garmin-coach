@@ -3924,12 +3924,14 @@ evening. Every change below must leave those two Red.
 
 **Why this order.** 268 is independent and is the one Mark has raised three times
 across two surfaces; it also lands before the next weekly review on **Sunday 27
-Sep**, which is the deadline that makes it first. 269 must precede 270 because
-270.1 reuses 269's definition of a band artifact — building 270 first would mean
-writing that test twice and letting the two drift. 270 is last and is the
-smallest, but it is the only one of the three that closes Mark's actual
-complaint: 269 stops it happening again, 270 stops the two Reds already on the
-record from restructuring the week he is in now.
+Sep**, which is the deadline that makes it first. **Superseded at review, 2026-09-22:** this paragraph
+used to say 269 must precede 270, because 270.1 reused 269's definition of a band
+artifact. That is no longer true. **271 now owns the definition, and 269 and 270
+are siblings that both consume it** — neither depends on the other, and they can
+be built in either order or in parallel. 270 still operates on the Reds already
+recorded in `analyses` (270.5 forbids rewriting them), so it remains necessary
+even once 269 has shipped: 269 stops it happening again, 270 stops the two Reds
+already on the record from restructuring the week he is in now.
 
 **The artifact days age out of the rolling window on 26 Sep**, so 270's practical
 value expires that day — after which it is insurance against the next
