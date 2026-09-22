@@ -420,3 +420,34 @@ async def test_morning_overnight_temperature_rows_drop_the_payload() -> None:
     assert sql
     for statement in sql:
         assert "raw_payload" not in statement
+
+
+async def test_acute_physiology_history_pins_its_projection_and_its_phase() -> None:
+    """Batch 271 widened this loader by two columns; pin what it may carry.
+
+    Two things are asserted, and they fail for different reasons. The projection
+    must name the Garmin band (271 reads it) and must still exclude
+    ``raw_payload`` — a widening that reached the payload would restore a
+    Batch 235-class pooler transfer over an 84-day window. And the query must
+    still filter to the morning phase: ``uq_daily_metrics_user_date_phase``
+    (Batch 205) puts two rows on every date, and a recalibration detector that
+    compared a morning row against a settled one would invent a movement.
+
+    This loader was **not** covered here before Batch 271.
+    """
+    from src.services.morning_analysis import MorningAnalysisService
+
+    session = RecordingSession()
+    await MorningAnalysisService(session)._acute_physiology_history(  # type: ignore[arg-type]
+        uuid.uuid4(), date(2026, 9, 18)
+    )
+    metric_sql = sql_for(session, DailyMetric)
+    assert metric_sql
+    for sql in metric_sql:
+        assert "raw_payload" not in sql
+        assert "hrv_baseline_low_ms" in sql
+        assert "hrv_baseline_high_ms" in sql
+        assert "hrv_last_night_avg_ms" in sql
+        assert "phase" in sql
+    for sql in sql_for(session, Sleep):
+        assert "raw_payload" not in sql
