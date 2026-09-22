@@ -42,12 +42,32 @@ stopped the gate firing and their `pytest.raises` never triggered. The dates are
 now **relative and future**, because a fresh hard-coded future date would quietly
 stop testing anything the day it went by.
 
-**22 Sep is corrected, verified on both sides.** The plan now holds
-`Z2 + Neuromuscular` completed on 22 Sep (what he actually rode) and the VO₂
-planned on 26 Sep; intervals.icu has event `121350328` on 22 Sep and `121350317`
-on 26 Sep; the post-workout analysis points at the session he rode. **Still
-outstanding:** that analysis's *prose* still describes a VO₂ session —
-regenerating it spends real money and is Craig's call.
+**22 Sep is corrected, verified on both sides, and the read is regenerated.** The
+plan holds `Z2 + Neuromuscular` completed on 22 Sep (what he actually rode) and
+the VO₂ planned on 26 Sep; intervals.icu has event `121350328` on 22 Sep and
+`121350317` on 26 Sep. **The post-workout read was regenerated on Craig's
+explicit authorisation** — one Sonnet 5 call, 22,824 in / 4,040 out / 2,293
+thinking, roughly $0.16. It now opens *"Strong — fully on-target, no fade"* and
+grades **16/16 work intervals on target**, where the stale one withheld all five
+VO₂ grades and led with *"the app's own record of it doesn't add up"*. It tells
+him in as many words that the misattribution he flagged has been fixed, and
+confirms the morning's contradiction as *"a genuine internal inconsistency in
+what the app generated, not something you misread"*.
+
+**`force=True` alone does not regenerate a post-activity read.** The completed
+`GenerationRequest` short-circuits to reuse *before* `force` is consulted, and
+its identity is `{user, activity, inputVersion, promptVersion}` — none of which
+change when a plan row is corrected. The working recipe is to reset that claim
+row (status off `completed`, `analysis_id` cleared) and then call with
+`force=True`. Recorded because the next person to try this will hit the same
+silent no-op.
+
+**Two wrinkles in the regenerated prose, neither worth another paid call.** It
+says the session came "via the accepted swap … you and the app agreed on this
+morning" — the swap was *refused* that morning and applied in the evening after
+the fix, so it reads slightly revisionist to someone who was there. And it cites
+the acute personal floor (39 vs 39.6 ms) rather than Garmin's band floor of 45,
+so it uses a different number from the draft reply to Mark for the same point.
 
 **⚠️ Earlier the same evening, before 277 shipped, the correction was attempted
 against the unfixed gate and had to be rolled back.** `move_event` calls
