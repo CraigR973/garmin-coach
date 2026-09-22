@@ -38,6 +38,7 @@ from src.services.bulk_history_reads import without_sleep_raw_payload
 from src.services.daily_metric_phase import prefer_morning
 from src.services.delivered_verdict import delivered_verdicts
 from src.services.driver_levers import describe_evidence, select_lever
+from src.services.hrv_recalibration import detect_hrv_recalibration, is_band_artifact
 from src.services.insights import DriverCorrelation
 from src.services.rem_interventions import RemRotation, select_rem_interventions
 from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
@@ -56,6 +57,18 @@ ACUTE_RED_EXCLUSION_MAX_AGE_DAYS = 2
 TRAINING_DEBT_EXCLUSION_LIMIT = 1
 TRAINING_DEBT_EXCLUSION_MAX_AGE_DAYS = 2
 RED_MORNING_EXCLUSION_LIMIT = min(ACUTE_RED_EXCLUSION_LIMIT, TRAINING_DEBT_EXCLUSION_LIMIT)
+
+# Batch 270: a band artifact draws on its own budget, never on the shared one
+# above (Craig, 2026-09-22). The existing caps bound Reds where the strain was
+# real and only its *cause* was explained, so an excuse cannot make a cluster
+# vanish. A band artifact is a different thing: the strain was never there,
+# because the measurement moved and the man did not, and the two should not
+# compete for one allowance. The cap is 3 rather than unbounded because the
+# observed Garmin excursion lasted two days and a seven-day window in which
+# four or more Reds are all mis-measured is far likelier to be a fault in the
+# detector than a vendor event — that should surface as a cluster, not be
+# silently absorbed.
+BAND_ARTIFACT_EXCLUSION_LIMIT = 3
 # Garmin's acute-load reading is independent of its recovery clock. Requiring a
 # positive value means the clock alone can never make a Red disappear from the
 # cluster; the cap and age bounds below keep even corroborated debt finite.
@@ -205,6 +218,12 @@ class RedDayEvidence:
     resting_heart_rate_bpm: int | None = None
     resting_hr_ceiling_bpm: float | None = None
     check_in_reasons: tuple[str, ...] = ()
+    # Batch 270/271: Garmin's floor moved against a reading that held, so this
+    # day's Red is a measurement artifact rather than strain. Computed by the
+    # one shared detector, so this and the morning verdict's Red gate cannot
+    # disagree about what an artifact is.
+    band_artifact: bool = False
+    band_artifact_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -231,6 +250,13 @@ class RedMorningQualification:
                 "hrvFloorMs": evidence.hrv_floor_ms if evidence else None,
                 "restingHeartRateBpm": (evidence.resting_heart_rate_bpm if evidence else None),
                 "restingHrCeilingBpm": (evidence.resting_hr_ceiling_bpm if evidence else None),
+            },
+            # Batch 270: the reason is inspectable rather than inferred — the
+            # day says for itself whether Garmin's floor moved under a reading
+            # that held, and what the detector saw when it decided that.
+            "garminBandArtifact": {
+                "detected": bool(evidence.band_artifact) if evidence else False,
+                "reason": evidence.band_artifact_reason if evidence else None,
             },
             "checkInReasons": list(check_in_reasons),
             "acuteExogenousReasons": [
@@ -323,6 +349,7 @@ class ChronicActionSignal:
             "trainingDebtExclusionLimit": TRAINING_DEBT_EXCLUSION_LIMIT,
             "trainingDebtExclusionMaxAgeDays": TRAINING_DEBT_EXCLUSION_MAX_AGE_DAYS,
             "redMorningExclusionLimit": RED_MORNING_EXCLUSION_LIMIT,
+            "bandArtifactExclusionLimit": BAND_ARTIFACT_EXCLUSION_LIMIT,
             "trainingDebtCorroboratingAcuteLoadMin": (TRAINING_DEBT_CORROBORATING_ACUTE_LOAD_MIN),
             "redMorningQualifications": [
                 item.to_packet() for item in self.red_morning_qualifications
@@ -971,7 +998,15 @@ def _red_day_evidence(
     hrv_baseline = baselines.get("hrv_7_day_avg_ms")
     rhr_baseline = baselines.get("resting_heart_rate_bpm")
     evidence: dict[date, RedDayEvidence] = {}
-    for recovery_day in recovery_days:
+    ordered = sorted(recovery_days, key=lambda row: row.calendar_date)
+    for recovery_day in ordered:
+        # The 28-day RecoveryDay series already covers the detector's 14-day band
+        # reference for every day inside the 7-day cluster window, so this needs
+        # no query and no extra column.
+        recalibration = detect_hrv_recalibration(
+            recovery_day,
+            [row for row in ordered if row.calendar_date < recovery_day.calendar_date],
+        )
         texts = text_by_date.get(recovery_day.calendar_date, [])
         feel = " ".join(part for part in texts[::2] if part) or None
         notes = " ".join(part for part in texts[1::2] if part) or None
@@ -993,6 +1028,10 @@ def _red_day_evidence(
                 rhr_baseline.upper_quartile if rhr_baseline is not None else None
             ),
             check_in_reasons=classify_check_in_causes(feel, notes),
+            band_artifact=is_band_artifact(recalibration),
+            band_artifact_reason=(
+                str(recalibration.get("reason")) if is_band_artifact(recalibration) else None
+            ),
         )
     return evidence
 
@@ -1180,6 +1219,9 @@ def _chronic_action_signal(
     # veto. Work newest-first so the one available exclusion belongs to the most
     # recent still-live explanation; return the evidence in chronological order.
     red_exclusions_remaining = RED_MORNING_EXCLUSION_LIMIT
+    # Batch 270: its own budget, deliberately not the shared one — see
+    # BAND_ARTIFACT_EXCLUSION_LIMIT.
+    band_artifact_exclusions_remaining = BAND_ARTIFACT_EXCLUSION_LIMIT
     qualifications_by_date: dict[date, RedMorningQualification] = {}
     for day in reversed(red_days):
         qualification = _qualify_red_morning(
@@ -1188,6 +1230,7 @@ def _chronic_action_signal(
             as_of=as_of,
             allow_acute_exclusion=red_exclusions_remaining > 0,
             allow_training_debt_exclusion=red_exclusions_remaining > 0,
+            allow_band_artifact_exclusion=band_artifact_exclusions_remaining > 0,
         )
         qualifications_by_date[day] = qualification
         if qualification.classification in {
@@ -1195,6 +1238,8 @@ def _chronic_action_signal(
             "expected_training_debt",
         }:
             red_exclusions_remaining -= 1
+        elif qualification.classification == "garmin_band_artifact":
+            band_artifact_exclusions_remaining -= 1
     qualifications = tuple(qualifications_by_date[day] for day in red_days)
     red_count = sum(1 for item in qualifications if item.counts_toward_cluster)
 
@@ -1249,6 +1294,7 @@ def _qualify_red_morning(
     as_of: date,
     allow_acute_exclusion: bool,
     allow_training_debt_exclusion: bool,
+    allow_band_artifact_exclusion: bool = True,
 ) -> RedMorningQualification:
     if evidence is None:
         return RedMorningQualification(
@@ -1257,6 +1303,29 @@ def _qualify_red_morning(
             classification="unexplained_red",
             explanation_sources=(),
             evidence=None,
+        )
+
+    # Batch 270: a Red produced by Garmin moving its own floor against a reading
+    # that held is not strain, and it must be recognised *before* the check-in
+    # paths — otherwise a day that also happens to carry an acute tag spends one
+    # of the shared exclusions it never needed, and a day with no tag at all
+    # falls straight past every exclusion to ``systemic_markers_strained``,
+    # which is exactly what happened on 18 and 19 September.
+    if evidence.band_artifact:
+        if not allow_band_artifact_exclusion:
+            return RedMorningQualification(
+                calendar_date=calendar_date,
+                counts_toward_cluster=True,
+                classification="band_artifact_exclusion_cap_reached",
+                explanation_sources=("garmin_band_recalibration", "exclusion_cap"),
+                evidence=evidence,
+            )
+        return RedMorningQualification(
+            calendar_date=calendar_date,
+            counts_toward_cluster=False,
+            classification="garmin_band_artifact",
+            explanation_sources=("garmin_band_recalibration",),
+            evidence=evidence,
         )
 
     acute_reasons = tuple(

@@ -36,11 +36,33 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 from statistics import median
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
-from src.models.coaching import DailyMetric
+
+class HrvBandRow(Protocol):
+    """The four fields this detector reads, whatever row shape carries them.
+
+    ``DailyMetric`` satisfies it, and so does ``chronic_patterns.RecoveryDay`` —
+    which matters, because Batch 270 classifies a Red cluster from its own
+    28-day ``RecoveryDay`` series and must reach the same verdict as the morning
+    verdict does from ``DailyMetric`` rows. A structural type keeps that one
+    implementation rather than two that can drift.
+    """
+
+    @property
+    def calendar_date(self) -> date: ...
+
+    @property
+    def hrv_last_night_avg_ms(self) -> int | None: ...
+
+    @property
+    def hrv_baseline_low_ms(self) -> int | None: ...
+
+    @property
+    def hrv_baseline_high_ms(self) -> int | None: ...
+
 
 #: Trailing calendar days forming the **band's** reference. Long enough that a
 #: two-day excursion cannot move the median that is meant to detect it.
@@ -97,8 +119,8 @@ class _Series:
 
 
 def detect_hrv_recalibration(
-    daily_metric: DailyMetric | None,
-    recent_daily_metrics: Sequence[DailyMetric],
+    daily_metric: HrvBandRow | None,
+    recent_daily_metrics: Sequence[HrvBandRow],
 ) -> dict[str, Any]:
     """Has Garmin's HRV band moved under a reading that has not?
 
@@ -112,7 +134,7 @@ def detect_hrv_recalibration(
 
     subject_date = daily_metric.calendar_date
 
-    def window(days: int) -> list[DailyMetric]:
+    def window(days: int) -> list[HrvBandRow]:
         start = subject_date - timedelta(days=days)
         return [row for row in recent_daily_metrics if start <= row.calendar_date < subject_date]
 
