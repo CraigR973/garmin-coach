@@ -21,19 +21,43 @@ morning was Red anyway.
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
+from statistics import median
 
 from src.models.coaching import DailyMetric
 from src.services.hrv_recalibration import (
+    BAND_REFERENCE_WINDOW_DAYS,
     MIN_REFERENCE_SAMPLES,
+    READING_REFERENCE_WINDOW_DAYS,
     detect_hrv_recalibration,
     is_band_artifact,
 )
 
 USER_ID = uuid.uuid4()
 
-# (day, overnight, weekly, floor, ceiling)
+# (day, overnight, weekly, floor, ceiling), exactly as production holds them.
+#
+# **This series runs from 28 August deliberately, and the reason is a bug this
+# file shipped once.** The first version started on 10 September — shorter than
+# the 14-day band reference window — so every unit test silently exercised a
+# truncated history while production exercised a full one. The two disagreed:
+# unit tests said 19 September was a recalibration, production said his reading
+# had moved. The production smoke caught it, the unit suite could not have.
+# **A fixture must be at least as long as the longest window the code reads.**
 PRODUCTION_SERIES: tuple[tuple[date, int, int, int, int], ...] = (
+    (date(2026, 8, 28), 43, 49, 44, 56),
+    (date(2026, 8, 29), 48, 48, 44, 56),
+    (date(2026, 8, 30), 44, 47, 44, 56),
+    (date(2026, 8, 31), 47, 47, 44, 56),
+    (date(2026, 9, 1), 44, 46, 44, 56),
+    (date(2026, 9, 2), 50, 46, 44, 56),
+    (date(2026, 9, 3), 51, 47, 44, 56),
+    (date(2026, 9, 4), 54, 48, 44, 56),
+    (date(2026, 9, 5), 51, 49, 44, 56),
+    (date(2026, 9, 6), 49, 49, 44, 56),
+    (date(2026, 9, 7), 48, 49, 44, 56),
+    (date(2026, 9, 8), 43, 49, 44, 56),
+    (date(2026, 9, 9), 49, 49, 44, 56),
     (date(2026, 9, 10), 51, 49, 44, 56),
     (date(2026, 9, 11), 52, 49, 45, 56),
     (date(2026, 9, 12), 48, 48, 45, 56),
@@ -74,7 +98,11 @@ def _event_on(day: date) -> dict:
 
 
 def test_the_two_disputed_mornings_are_the_only_recalibrations() -> None:
-    """16-22 Sep: an artifact on 18 and 19, and on no other day."""
+    """16-22 Sep: an artifact on 18 and 19, and on no other day.
+
+    This is 271's acceptance criterion, and it is asserted over the full
+    production history rather than a truncated one - see PRODUCTION_SERIES.
+    """
     flagged = [
         day
         for day, *_ in PRODUCTION_SERIES
@@ -87,13 +115,16 @@ def test_the_eighteenth_names_the_movement_and_the_held_reading() -> None:
     event = _event_on(date(2026, 9, 18))
     assert event["status"] == "recalibrated"
     assert event["source"] == "garmin_supplied_band"
+    # Values pinned to what production returns on Mark's real rows.
     assert event["bandLow"]["currentMs"] == 46.0
-    assert event["bandLow"]["referenceMs"] == 45.0
-    assert event["bandLow"]["deltaMs"] == 1.0
-    # His reading did not merely hold, it rose — 48 ms against a trailing 45.5.
+    assert event["bandLow"]["referenceMs"] == 44.5
+    assert event["bandLow"]["deltaMs"] == 1.5
+    assert event["bandLow"]["sampleCount"] == BAND_REFERENCE_WINDOW_DAYS
+    # His reading did not merely hold, it rose — 48 ms against a trailing 44.
     assert event["overnightReading"]["currentMs"] == 48.0
-    assert event["overnightReading"]["deltaMs"] is not None
-    assert event["overnightReading"]["deltaMs"] > 0
+    assert event["overnightReading"]["referenceMs"] == 44.0
+    assert event["overnightReading"]["deltaMs"] == 4.0
+    assert event["overnightReading"]["sampleCount"] == READING_REFERENCE_WINDOW_DAYS
     assert "did not" in event["reason"]
 
 
@@ -104,10 +135,16 @@ def test_the_nineteenth_is_caught_although_the_floor_did_not_move_that_day() -> 
     19th is the second Red. This is why the comparison is against a trailing
     reference rather than against yesterday.
     """
-    assert _rows()[8].hrv_baseline_low_ms == _rows()[9].hrv_baseline_low_ms == 46
+    by_date = {row.calendar_date: row for row in _rows()}
+    assert (
+        by_date[date(2026, 9, 18)].hrv_baseline_low_ms
+        == by_date[date(2026, 9, 19)].hrv_baseline_low_ms
+        == 46
+    )
     event = _event_on(date(2026, 9, 19))
     assert event["status"] == "recalibrated"
     assert event["bandLow"]["referenceMs"] == 45.0
+    assert event["bandLow"]["deltaMs"] == 1.0
 
 
 def test_a_moved_ceiling_alone_is_not_an_artifact() -> None:
@@ -163,9 +200,49 @@ def test_a_band_that_moves_with_the_man_is_not_an_artifact() -> None:
     assert not is_band_artifact(event)
 
 
-def test_a_reading_inside_tolerance_still_counts_as_held() -> None:
-    """19 Sep sits 0.5 ms under its trailing median and must still qualify."""
+def test_a_reading_just_inside_tolerance_still_counts_as_held() -> None:
+    """The tolerance is exercised directly, not via a day that happens to sit in it.
+
+    On the real series both artifact days sit *above* their reading reference, so
+    nothing in the production data probes this boundary. A synthetic case does.
+    """
+    history = [_row(date(2026, 9, 4 + i), 46, 47, 45, 56) for i in range(14)]
+    inside = _row(date(2026, 9, 18), 44, 45, 46, 56)  # 2 ms under a median of 46
+    assert detect_hrv_recalibration(inside, history)["status"] == "recalibrated"
+
+    outside = _row(date(2026, 9, 18), 43, 45, 46, 56)  # 3 ms under
+    assert detect_hrv_recalibration(outside, history)["status"] == "band_and_reading_moved"
+
+
+def test_the_reading_reference_is_shorter_than_the_bands_and_that_is_load_bearing() -> None:
+    """A long reading window cannot fire during a drift, which is when it must.
+
+    Mark's overnight HRV declined for a fortnight while Garmin's floor stepped
+    up. Measured over 14 days his 19 September reading sits ~3 ms under its
+    median purely because of that drift, so the detector calls a genuine band
+    artifact a real deterioration and stays silent for the entire period a
+    vendor recalibration is most likely. Over 7 days the same reading is *above*
+    its median, which is the true answer to the acute question.
+    """
+    assert READING_REFERENCE_WINDOW_DAYS < BAND_REFERENCE_WINDOW_DAYS
+
     event = _event_on(date(2026, 9, 19))
-    assert event["overnightReading"]["deltaMs"] is not None
-    assert -2.0 <= event["overnightReading"]["deltaMs"] < 0
     assert event["status"] == "recalibrated"
+    assert event["readingReferenceWindowDays"] == READING_REFERENCE_WINDOW_DAYS
+    assert event["overnightReading"]["deltaMs"] is not None
+    assert event["overnightReading"]["deltaMs"] >= 0
+
+    # The same day, judged against the band's longer window, inverts.
+    rows = _rows()
+    subject = next(r for r in rows if r.calendar_date == date(2026, 9, 19))
+    long_history = [
+        r
+        for r in rows
+        if date(2026, 9, 19) - timedelta(days=BAND_REFERENCE_WINDOW_DAYS)
+        <= r.calendar_date
+        < date(2026, 9, 19)
+    ]
+    long_median = median(
+        float(r.hrv_last_night_avg_ms) for r in long_history if r.hrv_last_night_avg_ms is not None
+    )
+    assert float(subject.hrv_last_night_avg_ms or 0) < long_median - 2.0

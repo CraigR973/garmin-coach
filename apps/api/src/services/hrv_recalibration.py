@@ -42,10 +42,21 @@ from typing import Any, Literal
 
 from src.models.coaching import DailyMetric
 
-#: Trailing calendar days considered when forming the reference. Long enough to
-#: survive a short excursion, short enough that a genuine seasonal drift is
-#: absorbed rather than reported forever as a recalibration.
-REFERENCE_WINDOW_DAYS = 14
+#: Trailing calendar days forming the **band's** reference. Long enough that a
+#: two-day excursion cannot move the median that is meant to detect it.
+BAND_REFERENCE_WINDOW_DAYS = 14
+
+#: Trailing calendar days forming the **reading's** reference, and deliberately
+#: shorter. This is not a tuning preference, it is the difference between two
+#: questions. "Has the band left its usual level?" needs a long reference.
+#: "Did he deteriorate *this morning*?" is acute, and a long reference answers it
+#: wrongly whenever the metric is drifting — which is exactly when a vendor
+#: recalibrates. Measured on production: over 14 days Mark's 19 September reading
+#: sits 3 ms under its median purely because his HRV had been declining for a
+#: fortnight, so the detector called a genuine band artifact a real deterioration
+#: and would have stayed silent for the whole drift. Over 7 days the same reading
+#: is 1 ms *above* its median, which is the true answer to the acute question.
+READING_REFERENCE_WINDOW_DAYS = 7
 
 #: Below this many prior observations the answer is "unknown", never "no
 #: movement" — an absent history is not evidence of a stable band.
@@ -100,17 +111,21 @@ def detect_hrv_recalibration(
         return _event("unknown", reason="No daily metric row for the subject date.")
 
     subject_date = daily_metric.calendar_date
-    window_start = subject_date - timedelta(days=REFERENCE_WINDOW_DAYS)
-    history = [
-        row
-        for row in recent_daily_metrics
-        if row.calendar_date >= window_start and row.calendar_date < subject_date
-    ]
 
-    low = _series(daily_metric.hrv_baseline_low_ms, [r.hrv_baseline_low_ms for r in history])
-    high = _series(daily_metric.hrv_baseline_high_ms, [r.hrv_baseline_high_ms for r in history])
+    def window(days: int) -> list[DailyMetric]:
+        start = subject_date - timedelta(days=days)
+        return [row for row in recent_daily_metrics if start <= row.calendar_date < subject_date]
+
+    band_history = window(BAND_REFERENCE_WINDOW_DAYS)
+    reading_history = window(READING_REFERENCE_WINDOW_DAYS)
+
+    low = _series(daily_metric.hrv_baseline_low_ms, [r.hrv_baseline_low_ms for r in band_history])
+    high = _series(
+        daily_metric.hrv_baseline_high_ms, [r.hrv_baseline_high_ms for r in band_history]
+    )
     reading = _series(
-        daily_metric.hrv_last_night_avg_ms, [r.hrv_last_night_avg_ms for r in history]
+        daily_metric.hrv_last_night_avg_ms,
+        [r.hrv_last_night_avg_ms for r in reading_history],
     )
 
     if low.reference is None or low.sample_count < MIN_REFERENCE_SAMPLES:
@@ -213,7 +228,8 @@ def _event(
         "bandLow": _series_packet(low),
         "bandHigh": _series_packet(high),
         "overnightReading": _series_packet(reading),
-        "referenceWindowDays": REFERENCE_WINDOW_DAYS,
+        "bandReferenceWindowDays": BAND_REFERENCE_WINDOW_DAYS,
+        "readingReferenceWindowDays": READING_REFERENCE_WINDOW_DAYS,
         "minimumReferenceSamples": MIN_REFERENCE_SAMPLES,
         "readingToleranceMs": READING_TOLERANCE_MS,
     }
