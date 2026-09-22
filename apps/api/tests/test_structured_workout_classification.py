@@ -105,9 +105,14 @@ def test_all_nine_committed_neuromuscular_saturdays_stay_zone_two() -> None:
         assert classification.workout_type == "bike_endurance"
         assert classification.intensity_target == ("Endurance with short efforts up to 185% FTP")
         assert mix_bucket(classification.workout_type) == MIX_Z2
-        # Type drives accounting only. The Red safety gate still sees every
-        # 185% step in the IR and remains deliberately stricter.
-        assert blocks_red_vo2("Red", {"steps": steps}) is True
+        # Batch 277, amending Decision #301 (Craig, 2026-09-22): the safety gate
+        # now draws the same distinction the classifier does. #301 kept it
+        # deliberately stricter; on 22 Sep 2026 that blocked a swap the app had
+        # itself recommended, for a session Mark rode at 176 W average and a max
+        # heart rate of 125. Six 12-second efforts with 2:48 recovery are alactic,
+        # and a Red morning is an argument against sustained aerobic strain, not
+        # against those.
+        assert blocks_red_vo2("Red", {"steps": steps}) is False
 
 
 @pytest.mark.parametrize(
