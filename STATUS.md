@@ -6,6 +6,63 @@
 
 ## Now
 
+**2026-09-22 — Batch 271 shipped, second of group R1.** Decision **#340**: a
+Garmin HRV band movement is now detected deterministically. On 18 and 19 Sep
+Mark's verdict was Red because the supplied floor rose 45 → 46 for two days and
+came back; his own reading never deteriorated — on the 18th his overnight HRV was
+48 ms, above the raised floor, on his best night of the fortnight. The band's
+history was in our own rows and nothing read it. `services/hrv_recalibration.py`
+now makes that observation at 06:30, and publishes one signal with one predicate
+(`is_band_artifact`) so Batch 269's Red gate and Batch 270's cluster classifier
+cannot disagree about what an artifact is.
+
+**Production:** PR #301 / squash `ca1be72`, then a same-day fix-forward in
+PR #302 / squash `db22e86`. All 16 CI checks green on both waves for both;
+PostgreSQL CI **1833 passed / 0 skipped**. Railway and Vercel both serve exact
+`db22e8674a47fe1e2fdd1a8bbaef0e30f664e725`, web 200, daily-loop 401. No
+migration, no prompt bump. **This batch changes no verdict** — the event is
+published on `verdict.hrvRecalibration` and nothing consumes it yet.
+
+**Three design facts the row did not anticipate, all found by measuring.** The
+comparison must be against a trailing reference, not yesterday — the floor moves
+once but is elevated on both Reds. The trigger must key on the **floor**, not
+either band edge — Garmin moved the *ceiling* 56 → 55 on 20 Sep, which the Red
+rule never reads. **And the third was found by the production smoke after the
+first merge, which is the one to remember:** a single 14-day window for both band
+and reading makes the detector unable to fire while the metric drifts — precisely
+when a vendor recalibrates — so 19 Sep classified as a real deterioration. Band
+reference 14 days, reading reference 7.
+
+**The durable lesson from that miss:** the unit fixture started on 10 Sep, shorter
+than the 14-day window the code reads, so every test exercised a truncated
+history while production exercised a full one and the two silently disagreed. **A
+fixture must be at least as long as the longest window the code under test
+reads.** The fixture now carries the real series from 28 Aug and says why.
+
+**Production smoke on the deployed fix:** replaying 16–22 Sep emits
+`recalibrated` on 18 and 19 Sep and nothing else; 21 and 22 Sep are
+`no_movement`, so the two genuine Reds are untouched. Unit and production values
+now agree to the decimal.
+
+**Next in R1: Batch 269**, then 270. 269 now has its foundation: gate the
+unconditional HRV Red on `is_band_artifact()` (**not** on `_acute_physiology_rail`
+— see the corrected row), and make the overnight reading primary in
+`_hrv_below_baseline`, which currently prefers `hrv_weekly_avg_ms`. Both changes
+are needed; neither alone covers both 18 and 19 Sep. **269.5 is Mark-facing copy
+and needs Craig's sign-off before it ships**, and a prompt bump is likely, which
+puts 269 in group R3 rather than R1 — **R1 therefore ends after Batch 270.**
+
+**Gotcha — the Red-never-VO2 guarantee is delivery-time only.** Every
+`blocks_red_vo2` call site is a propose/approve/push path; nothing retracts a
+session already on the device. Week 10's `VO₂ (5 × 2:30 @ 119%)` was pushed to
+intervals.icu event `121350317` on 17 Sep and is still there on a Red morning.
+
+**Gotcha — 267.5 is deliberately NOT done.** `GARMIN_EMAIL`/`GARMIN_PASSWORD`
+remain deleted from the Railway `api` service. Restoring them is safe now but is
+a credential change and stays Craig's call.
+
+## Prior current-state snapshots
+
 **2026-09-22 — Batch 268 shipped, first of group R1.** Decision **#339**: the
 indoor overnight peak is now measured over the hours Mark was recorded asleep.
 `ReviewService._temperature_peaks` and `TrendService._indoor_peaks` were the same
@@ -68,8 +125,6 @@ rediscovered as a surprise.
 remain deleted from the Railway `api` service (removed 2026-09-20 as a stop-gap).
 Restoring them is now safe — the code is the protection rather than the missing
 variable — but it is a credential change and stays Craig's call.
-
-## Prior current-state snapshots
 
 **2026-09-22 — Batch 267 shipped.** Decision **#338**: a credentialed Garmin
 email+password login is now refused unless `sys.stdin.isatty()`, **before the
@@ -986,6 +1041,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-22** — Batch 271 shipped (PR #301 `ca1be72` + fix-forward PR #302 `db22e86`, Decision #340): a Garmin HRV band movement is detected against a trailing reference, keyed on the floor, with the reading judged over a shorter window than the band. Production smoke emits an artifact on 18 and 19 Sep only. The first merge was wrong and the smoke caught it — a unit fixture shorter than the code's window tests a different regime than production.
 - **2026-09-22** — Batch 268 shipped (PR #300, `6bc6a2b`, Decision #339): the weekly review's and Trends' bedroom peak is measured over the sleep window, not a 24-hour maximum. Production smoke on Mark's own data: 7 of 7 → 0 of 7 and 5 of 7 → 0 of 7 on the two weeks he disputed, with the one genuine warm night (21 Sep, 20.25 °C) still counted. First of group R1.
 - **2026-09-22** — Reviewed batches 268-275 against `main` and production before any was started. Every headline figure reproduced; four rows were wrong about what to build. 269 rewritten (acute rail struck as the gate, weekly-average primacy added as the root cause), 268.3's false premise withdrawn and a positive fixture added, 275 gains a statistics precondition, 272 narrowed to cross-surface agreement, 274 split with its suppression half becoming new Batch 276. Review kept at `docs/reviews/2026-09-22-batches-268-275-review.md`.
 **2026-09-22 — Batch 267 shipped.** PR #299 / squash `f40382f`, Decision #338.
