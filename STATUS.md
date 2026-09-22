@@ -55,12 +55,25 @@ rows told the build to do:
   alerts Craig; the suppression half is new **Batch 276**, deferred until 273 has
   been in front of Mark and 274 has real contest records to scope from.
 
-**Group M** (268 → 271 → 269 → 270) then **N** (272 → 273 → 274). **268 has a
-hard deadline of Sunday 27 Sep** (next weekly review); **270's practical value
-expires Saturday 26 Sep** when the artifact days age out of the rolling window.
-275 is in no group and is the one worth showing Mark first. **Craig has not
-authorised any of it to run.** 269.5, 273.2, 274 and 275.4 all carry Mark-facing
-copy or UI needing his sign-off.
+**Groups M and N are superseded; the batches are regrouped on the gate axis**
+(Craig, 2026-09-22), because what decides whether a batch can run unattended is
+whether it needs his judgement rather than a green gate — a group mixing gated
+and ungated rows stalls on its second row.
+
+| Group | Batches | Gate |
+|---|---|---|
+| **R1** | 268 → 271 → 270 | none — **authorised to run** |
+| **R2** | 275, then 273 → 274 | Mark-facing copy or UI |
+| **R3** | 269, 272 | prompt bump → Anthropic spend (269 also copy) |
+| **R4** | 276 | deferred until 274 has real contest records |
+
+**268 has a hard deadline of Sunday 27 Sep** (next weekly review); **270's
+practical value expires Saturday 26 Sep** when the artifact days age out of the
+rolling window. Both are in R1, which is why R1 runs first. R1's two decision
+gates (268.3 threshold, 270.3 exclusion budget) are pre-answered in the ledger so
+the run does not stall. Cross-group ordering that still binds: 271 before 269 and
+270; 268 before 272; 273 before 274 before 276. **269 and 270 are siblings, not a
+chain** — 271 owns the artifact definition and both consume it.
 
 **Clinical context 270 must not discard.** Mark's seven-day HRV average fell
 49 → 43 ms across 10–22 Sep, monotonically — while resting HR stayed flat 43–45,
