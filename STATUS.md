@@ -6,6 +6,66 @@
 
 ## Now
 
+**2026-09-22 — Group R1 complete. Batches 268, 271 and 270 all shipped and
+verified in production.** Between them they close the wave Mark raised on
+18/19/21 September, in which he was right on every point and the app could only
+agree with him.
+
+| Batch | PR / squash | Decision | What it did |
+|---|---|---|---|
+| **268** | #300 / `6bc6a2b` | #339 | The bedroom peak is measured over the night, not a 24-hour maximum |
+| **271** | #301 / `ca1be72` + #302 / `db22e86` | #340 | A Garmin band movement is detected against a trailing reference |
+| **270** | #303 / `34476ec` | #341 | A mis-measured Red no longer counts as strain in the cluster |
+
+Production serves exact `34476ec6a684a85ae7cafd9c372ee54d30cd388b` on both
+Railway direct and Vercel same-origin; web `/` 200, protected daily-loop 401.
+**No migration and no prompt bump in any of the three**, so nothing was
+withdrawn and no regeneration spend was incurred — which is what kept the whole
+group inside an unattended run.
+
+**What the three smokes proved, on Mark's own rows.** 268: the two weeks he
+disputed went `7 of 7 @ avg 20.9` → `0 of 7 @ avg 18.8` and `5 of 7 @ avg 20.5`
+→ `0 of 7 @ avg 18.8`, with the one genuinely warm night (21 Sep, 20.25 °C)
+still counted. 271: replaying 16–22 Sep emits `recalibrated` on 18 and 19 Sep
+only; 21 and 22 Sep stay `no_movement`. 270: the real 21 Sep cluster counts **1
+against a threshold of 2 — no proposal**, where today it produces one moving the
+Tuesday VO2 to Saturday; two genuine Reds still count 2 and still fire.
+
+**Six spec facts were wrong and were corrected before code, plus one caught
+after.** 268 named the wrong window helper and its threshold justification was
+false; 271 needed a trailing reference rather than a day-over-day test and had
+to key on the floor rather than either band edge; 270 needed a new branch rather
+than a change to `hrv_crashed`, and needed no new query at all. **The one that
+reached production** was 271's single 14-day window for both band and reading,
+which makes the detector unable to fire while the metric drifts — exactly when a
+vendor recalibrates. Fixed forward in PR #302.
+
+**The durable lesson from that miss, worth carrying into every later batch:** the
+unit fixture started inside the window the code reads, so it exercised a
+truncated history while production exercised a full one and the two silently
+disagreed. **A fixture must be at least as long as the longest window the code
+under test reads.** Both 271's and 270's fixtures now carry the real series from
+28 August and say why.
+
+**Next: nothing is authorised.** R1 is done. **R2** (275, then 273 → 274) and
+**R3** (269, 272) both need Craig first — R2 for Mark-facing copy and UI, R3 for
+a regeneration decision and the Anthropic spend behind a likely prompt bump.
+**R4** (276) stays deferred until 274 has real contest records. 269's foundation
+is in place: gate the unconditional HRV Red on `is_band_artifact()` (**not** on
+`_acute_physiology_rail`) and make the overnight reading primary in
+`_hrv_below_baseline`; both changes are needed, neither alone covers both days.
+
+**Gotcha — the Red-never-VO2 guarantee is delivery-time only.** Every
+`blocks_red_vo2` call site is a propose/approve/push path; nothing retracts a
+session already on the device. Week 10's `VO₂ (5 × 2:30 @ 119%)` was pushed to
+intervals.icu event `121350317` on 17 Sep and is still there on a Red morning.
+
+**Gotcha — 267.5 is deliberately NOT done.** `GARMIN_EMAIL`/`GARMIN_PASSWORD`
+remain deleted from the Railway `api` service. Restoring them is safe now but is
+a credential change and stays Craig's call.
+
+## Prior current-state snapshots
+
 **2026-09-22 — Batch 271 shipped, second of group R1.** Decision **#340**: a
 Garmin HRV band movement is now detected deterministically. On 18 and 19 Sep
 Mark's verdict was Red because the supplied floor rose 45 → 46 for two days and
@@ -67,8 +127,6 @@ intervals.icu event `121350317` on 17 Sep and is still there on a Red morning.
 **Gotcha — 267.5 is deliberately NOT done.** `GARMIN_EMAIL`/`GARMIN_PASSWORD`
 remain deleted from the Railway `api` service. Restoring them is safe now but is
 a credential change and stays Craig's call.
-
-## Prior current-state snapshots
 
 **2026-09-22 — Batch 268 shipped, first of group R1.** Decision **#339**: the
 indoor overnight peak is now measured over the hours Mark was recorded asleep.
@@ -1048,6 +1106,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-22** — Batch 270 shipped (PR #303, `34476ec`, Decision #341) and **group R1 is complete** (268, 271, 270). The real 21 Sep cluster now counts 1 against a threshold of 2, so the rearrange proposal that moved Mark's Tuesday VO2 no longer fires; two genuine Reds still do. No migration or prompt bump in any of the three.
 - **2026-09-22** — Batch 271 shipped (PR #301 `ca1be72` + fix-forward PR #302 `db22e86`, Decision #340): a Garmin HRV band movement is detected against a trailing reference, keyed on the floor, with the reading judged over a shorter window than the band. Production smoke emits an artifact on 18 and 19 Sep only. The first merge was wrong and the smoke caught it — a unit fixture shorter than the code's window tests a different regime than production.
 - **2026-09-22** — Batch 268 shipped (PR #300, `6bc6a2b`, Decision #339): the weekly review's and Trends' bedroom peak is measured over the sleep window, not a 24-hour maximum. Production smoke on Mark's own data: 7 of 7 → 0 of 7 and 5 of 7 → 0 of 7 on the two weeks he disputed, with the one genuine warm night (21 Sep, 20.25 °C) still counted. First of group R1.
 - **2026-09-22** — Reviewed batches 268-275 against `main` and production before any was started. Every headline figure reproduced; four rows were wrong about what to build. 269 rewritten (acute rail struck as the gate, weekly-average primacy added as the root cause), 268.3's false premise withdrawn and a positive fixture added, 275 gains a statistics precondition, 272 narrowed to cross-surface agreement, 274 split with its suppression half becoming new Batch 276. Review kept at `docs/reviews/2026-09-22-batches-268-275-review.md`.
