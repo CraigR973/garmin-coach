@@ -16,6 +16,7 @@ from fastapi import HTTPException
 
 from src.models.coaching import DailyMetric, ManualEntry, MetricBaseline, PlannedWorkout, Sleep
 from src.services.breathwork_brief import BreathworkBriefResult
+from src.services.hrv_recalibration import detect_hrv_recalibration
 from src.services.personal_baselines import (
     SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR,
     baseline_center,
@@ -722,6 +723,11 @@ def morning_verdict(
         recent_daily_metrics=recent_daily_metrics,
         recent_sleeps=recent_sleeps,
     )
+    # Batch 271: computed here and published, but it changes no verdict in this
+    # batch. Batch 269 gates the unconditional HRV Red on it and Batch 270
+    # classifies a Red cluster with it; both read this one signal so they cannot
+    # disagree about what an artifact is.
+    hrv_recalibration = detect_hrv_recalibration(daily_metric, recent_daily_metrics)
     resting_hr_baseline = baselines.get("resting_heart_rate_bpm")
     resting_hr_in_band = metric_within_baseline_band(
         daily_metric.resting_heart_rate_bpm if daily_metric else None,
@@ -998,6 +1004,7 @@ def morning_verdict(
         "sleepCreditCeiling": sleep_credit_ceiling,
         "cumulativeEscalation": cumulative_escalation,
         "acutePhysiology": acute_physiology,
+        "hrvRecalibration": hrv_recalibration,
         "yesterdayLoadStatus": (yesterday_load or {}).get("status"),
         "trainingLoadCap": training_load_cap,
         "dayType": "rest" if is_rest_day else "training",

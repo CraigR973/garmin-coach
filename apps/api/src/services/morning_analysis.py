@@ -1305,6 +1305,13 @@ class MorningAnalysisService:
                             DailyMetric.calendar_date,
                             DailyMetric.hrv_last_night_avg_ms,
                             DailyMetric.resting_heart_rate_bpm,
+                            # Batch 271: the Garmin-supplied band, so a threshold
+                            # movement can be measured against its own trailing
+                            # reference. Two small integers over 84 rows; the
+                            # payload columns stay excluded and ``raiseload``
+                            # still fails an accidental widening loudly.
+                            DailyMetric.hrv_baseline_low_ms,
+                            DailyMetric.hrv_baseline_high_ms,
                             raiseload=True,
                         )
                     )
