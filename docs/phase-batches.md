@@ -3819,3 +3819,118 @@ future re-mint would use. The repo has to hold the rule.
 | Batch | Tier | Status | Phases | Goal | Acceptance criteria |
 |---|---|---|---|---|---|
 | ~~Batch 267 — The login that can only email Mark a code and fail~~ | 🔴 High | Shipped | 267.1 **Never start a credentialed Garmin login where its MFA cannot be answered.** `_fresh_login` ([`garmin_sync.py:161`](../apps/api/src/services/garmin_sync.py)) wires `prompt_mfa=_read_mfa_code`, which is `input()` — unanswerable off a TTY. Guard the whole path *before* the first network call, so a deployed container cannot emit an MFA challenge at all, and raise a re-auth error naming `GARMIN_TOKENSTORE_B64` as the thing to re-mint. The local re-mint recipe runs on a TTY and must keep working unchanged.<br>267.2 **Stop treating a transient refusal as an expired token.** Both token attempts fall through to `_fresh_login` on *any* exception. Classify `GarminConnectTooManyRequestsError` and connection/timeout failures as transient and re-raise them, so `retry_sync` backs off and the next scheduled run succeeds — which is what actually happened once the escalation got out of the way. Only a genuine auth rejection may consider a fresh login.<br>267.3 **Log why the token blob was rejected.** The `except Exception:` around the b64 login at `garmin_sync.py:143` discards the reason and falls through in silence, which is why this morning's logs show the *consequence* (an MFA prompt) three times and never once show the cause. One structured `warning` with the exception class, and a distinct `error`-level `garmin_reauth_required` event for the genuine-expiry case — the Batch 141 comment already names a structured log as the signal to wire alerting to.<br>267.4 **Give the activity poll the backoff the wake check already has.** `run_garmin_activity_poll` calls `_retry_sync` with the default `backoff=1.0` — three attempts one second apart, into a rate limiter. The wake check passes `backoff=2.0`; match it.<br>267.5 **Restore the credentials to Railway once 267.1 lands**, so a TTY re-mint still has them and the protection is the code rather than a missing variable. Craig's call, stated in the close-out either way.<br>267.6 Tests, each confirmed to fail against today's logic first: a 429 from the blob login raises without ever constructing a credentialed client; an MFA-requiring login off a TTY never calls `_read_mfa_code`; a genuine auth rejection still reaches `_fresh_login` on a TTY and still redacts the password in its error; the happy-path blob login is unchanged. | Make it impossible for this app to send Mark a security code he did not ask for — and make a Garmin rate limit cost a retry rather than three alarming emails and a failed job. | Replaying the 20 Sep sequence — 429 on every login strategy — produces a transient error, a logged reason and a clean retry, with no credentialed login attempted and no MFA challenge emitted. Off a TTY, `_read_mfa_code` is unreachable. A genuinely dead token produces one `garmin_reauth_required` error naming the variable to re-mint, not a silent fallthrough. The activity poll backs off. No migration, no prompt bump. **Shipped 2026-09-22 via PR #299 / squash `f40382f`, Decision #338: all 16 CI checks green on both waves after the `main` merge resolved a `docs/phase-batches.md` conflict with Batch 266's close-out; local gate 1,372 passed / 443 expected PostgreSQL skips, ruff check + format and mypy clean. No migration, no prompt bump. 267.5 (restoring `GARMIN_EMAIL`/`GARMIN_PASSWORD` to Railway) is deliberately not done — it is a credential change and stays Craig's call.** |
+
+## Post-roadmap — 2026-09-22 — Mark's 09-18/19/21 wave: a moved goalpost and an afternoon mistaken for a bedroom (Batches 268–270)
+
+**Three days running, Mark argued that the app was reporting things that did not
+happen, and on every point he was right.** The in-app coach conceded each one in
+writing — *"a genuine reporting error"*, *"legitimate, repeat-pattern complaints
+on the app's part, and I won't pretend otherwise"* — and then had to tell him it
+could not fix any of them. That is the worst available outcome: he is correct,
+the app agrees he is correct, and nothing changes. On 21 Sep he sent the same
+complaint twice inside eleven minutes, the second time with **"This happens every
+week and has been flagged every time."**
+
+**Batch 267 is parked, unmerged, on `feat/batch-267-garmin-login`.** These three
+take 268–270 and must not reuse its number.
+
+### What is actually wrong, measured in production before any code
+
+**1. The "overnight bedroom peak" in the weekly review and in Trends is a
+24-hour peak.** `ReviewService._temperature_peaks`
+([`reviews.py:1026`](../apps/api/src/services/reviews.py)) and
+`TrendService._indoor_peaks` ([`trends.py:883`](../apps/api/src/services/trends.py))
+are the same function twice: select **every** `TemperatureReading` in the window,
+attribute anything before 18:00 local to that day and anything from 18:00 to the
+next, keep the max. There is no sleep-window filter anywhere in either. The
+correct implementation already exists one directory over — `coach_sections.py:302`
+records `windowSource: "sleep" | "night_fallback"` and is the reason the *morning
+brief's* thermal figures have never been disputed.
+
+Measured against production for the two weeks Mark contested, with
+`THERMAL_DISRUPTION_C = 20.0` ([`reviews.py:99`](../apps/api/src/services/reviews.py)):
+
+| Week | Peak as computed | Peak on the 21:00–07:00 window | Disruption nights reported | Disruption nights real |
+|---|---|---|---|---|
+| 7–13 Sep | 20.00–21.41 °C (mean **20.95**) | 17.9–19.7 °C (mean **18.9**) | **7 of 7** | **0 of 7** |
+| 14–20 Sep | 19.61–21.30 °C | max **19.58** °C | **5 of 7** | **0 of 7** |
+
+The 20 Sep review's own sentence — *"5 of 7 nights showed thermal disruption"* —
+reproduces exactly from the contaminated peaks. The bedroom has not crossed 20 °C
+on a single night in either week.
+
+**2. The same review narrated the outdoor weather low as the bedroom.** The
+packet field is `avgOvernightLowC` ([`reviews.py:1283`](../apps/api/src/services/reviews.py)),
+sourced from `weather_daily.overnight_low_c`, and the review rendered it as
+*"5 of 7 nights showed thermal disruption (avg overnight low 12.6 °C)"*. His
+actual bedroom lows those nights were 17.1–18.6 °C. This is the failure mode
+Batch 230's follow-up already named — **a packet field name is not a word for
+Mark** — recurring in a second surface.
+
+**3. Two Red mornings were produced by Garmin moving a threshold, and nothing in
+the verdict noticed.** `_hrv_below_baseline`
+([`morning_verdict.py:1174`](../apps/api/src/services/morning_verdict.py))
+compares `hrv_weekly_avg_ms` against `hrv_baseline_low_ms` — both Garmin-supplied,
+neither smoothed — and line 810 makes that plus Garmin's own `UNBALANCED` flag an
+**unconditional Red**. The production rows:
+
+| Date | Overnight HRV | Weekly avg | Garmin floor | Status | Verdict |
+|---|---|---|---|---|---|
+| 16 Sep | 44 | 47 | 45 | BALANCED | — |
+| 17 Sep | 43 | 45 | 45 | BALANCED | — |
+| **18 Sep** | **48** | 45 | **46** | UNBALANCED | **Red** |
+| **19 Sep** | 45 | 45 | **46** | UNBALANCED | **Red** |
+| 20 Sep | 46 | 45 | **45** | BALANCED | — |
+
+The floor rose for exactly two days and came back. Mark's own reading never
+deteriorated — on 18 Sep his overnight HRV was **48 ms, above the new floor**, and
+he was still Red, because `_hrv_below_baseline` prefers the weekly average. **The
+app's own smoothing layer already disagreed:** `_acute_physiology_rail` (Batch
+246) is computed at [`morning_verdict.py:718`](../apps/api/src/services/morning_verdict.py)
+and returned *clear* that morning. The Red branch never consults it.
+
+Red is not cosmetic. `blocks_red_vo2`
+([`verdict_scaling.py:170`](../apps/api/src/services/verdict_scaling.py)) makes
+Red plus a VO2 session an unconditional block.
+
+**4. The artifact then propagated into next week's plan, exactly as Mark
+predicted before it fired.** `CHRONIC_ACTION_RED_THRESHOLD = 2` over a 7-day
+window ([`chronic_patterns.py:50`](../apps/api/src/services/chronic_patterns.py)).
+On 21 Sep a `rearrange_proposal` fired on a cluster of **18, 19 and 21 Sep** and
+proposed moving Tuesday's VO2 to Saturday. Two of its three days are the band
+excursion. `_qualify_red_morning` has an exclusion mechanism, but `hrv_crashed`
+is true whenever `hrv_status in {"unbalanced", "low", "poor"}`, so a band-artifact
+Red classifies `systemic_markers_strained` and **always** counts — and
+`RED_MORNING_EXCLUSION_LIMIT = 1` means even a working exclusion could only ever
+discount one of the two. Mark declined the proposal; the VO2 stayed on the plan.
+
+**What is *not* wrong:** 21 and 22 Sep are genuine Reds — overnight HRV 37 and
+39 ms against a floor that held steady at 45, after a recorded travel/alcohol/late-meal
+evening. Every change below must leave those two Red.
+
+**Decision numbers are assigned at `/batch-start`, not here.**
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 268 — The afternoon that reports itself as a bedroom | 🔴 High | Planned | 268.1 **Give the review and trend night-peak the sleep window the morning brief already uses.** `_temperature_peaks` ([`reviews.py:1026`](../apps/api/src/services/reviews.py)) and `_indoor_peaks` ([`trends.py:883`](../apps/api/src/services/trends.py)) are byte-for-byte the same bug; fix them **once** in a shared leaf and have both call it, rather than fixing the same function twice. Reuse the window `coach_sections.py:302` derives (`windowSource: "sleep"` from the night's sleep row, `"night_fallback"` when there is none) — do not invent a third definition of "night". Carry the window source through to the rollup so a fallback night is distinguishable from a measured one.<br>268.2 **Name the outdoor field so it cannot be read as the bedroom.** `avgOvernightLowC` ([`reviews.py:1283`](../apps/api/src/services/reviews.py)) is `weather_daily.overnight_low_c`. Rename it in the packet to something that says outdoor in the key itself, and state the source in the review's data-quality contract, so the narrative cannot again present 12.6 °C as a bedroom figure. Batch 230's follow-up is the precedent to match.<br>268.3 **Decide at `/batch-start` whether `THERMAL_DISRUPTION_C = 20.0` is still the right threshold once it is measured on the real window.** On corrected peaks (17.9–19.7 °C) Mark's recent nights never approach it, so the count goes to zero and stays there — which is correct today but makes the signal untestable. Recommendation: leave the threshold at 20.0 and do not tune it in the same batch that fixes the measurement; changing both at once makes neither verifiable. Record the decision either way.<br>268.4 Tests, each confirmed to fail against today's logic first: a fixture with a 21.4 °C afternoon reading and an 18.1 °C overnight peak reports 18.1 and zero disruption nights; the real 7–13 Sep and 14–20 Sep series reproduce 0 of 7 rather than 7 of 7 and 5 of 7; a night with no sleep row still yields a peak via the documented fallback; and the renamed outdoor field is asserted present with its source. | Stop the weekly review and Trends reporting a daytime temperature as Mark's bedroom, and stop the narrative presenting the outdoor low as an indoor one — the same complaint he has now made on 13 Sep and twice on 21 Sep. | The next weekly review reports indoor peaks matching the sleep-window figures the morning brief has always shown (17–19 °C for the contested fortnight), disruption nights of 0 for both weeks, and an outdoor low that is labelled outdoor in the packet and in the prose. Both call sites read one shared window helper. No migration expected. No prompt bump expected — if the review's data-quality contract wording changes enough to require one, `closeout.md` step 10's orphan check applies. |
+| Batch 269 — A moved floor is not a worse night | 🔴 High | Planned | 269.1 **Gate the unconditional HRV Red behind the rail that already exists to smooth it.** [`morning_verdict.py:810`](../apps/api/src/services/morning_verdict.py) fires Red on `hrv_low and hrv_status in {"unbalanced", "low"}`, both of which are raw Garmin outputs. `_acute_physiology_rail` (Batch 246, computed at line 718) is the app's own 1.5-SD-below-personal-median check and returned *clear* on 18 Sep. Require corroboration from the rail before the Red branch fires. **Do not weaken the rail to achieve this** — it is the load-bearing acute check and Batches 244–246 built it deliberately.<br>269.2 **Decide at `/batch-start` what an uncorroborated unbalanced morning becomes.** With 810 gated it falls through to the existing Amber at line 826 (`hrv_status in {...} or hrv_low`), which keeps the session but eases it via `ease_amber_power_pct` and leaves `blocks_red_vo2` unfired. **Recommendation: Amber, not Green** — the reading is genuinely at the low end of his band even when the band artifact is discounted, and Amber is the honest description of that. Confirm the fall-through actually lands there for a day with good sleep rather than assuming it.<br>269.3 **Say the reason in the brief.** When the rail clears a day that the raw flags would have called Red, the verdict text must state that the Garmin floor moved and his own reading did not — this is precisely the explanation Mark had to extract by argument over three mornings. Mark-facing copy: **draft it, do not ship it unreviewed** (`AGENTS.md` keeps his copy explicit).<br>269.4 Tests, each confirmed to fail against today's logic first: **18 Sep's exact production row** (overnight 48, weekly 45, floor 46, UNBALANCED, readiness 78, rail clear) does not produce Red; **19 Sep's** likewise; **21 and 22 Sep** (overnight 37 and 39, floor 45, rail triggered) still produce Red; a day where the rail fires *and* the raw flags agree is unchanged; and `blocks_red_vo2` still blocks VO2 on every remaining Red. | Stop a Garmin baseline recalibration, on its own, cancelling Mark's hardest session of the week when his own measured recovery has not moved. | Replaying 16–22 Sep against production data yields Red on 21 and 22 Sep only. 18 and 19 Sep land Amber with a stated reason naming the floor movement. The acute rail's own thresholds are untouched and its existing tests pass unmodified. The VO2 block still fires on every genuine Red. No migration expected. Prompt bump likely for 269.3 — if so, `closeout.md` step 10's orphan check is mandatory and the regeneration decision goes in writing before the merge. |
+| Batch 270 — The cluster that counts an artifact as strain | 🟢 Mid | Planned | 270.1 **Teach `_qualify_red_morning` that a band-artifact Red is not systemic strain.** [`chronic_patterns.py:1245`](../apps/api/src/services/chronic_patterns.py) sets `hrv_crashed` from `hrv_status in {"unbalanced", "low", "poor"}` alone, so an artifact day classifies `systemic_markers_strained` and can never be excluded. Add a classification for a Red whose only trigger was a floor movement against a stable reading, reusing 269's corroboration test rather than re-deriving it — the two must not be able to disagree about what an artifact is.<br>270.2 **Resolve the exclusion cap, which currently blocks the fix.** `RED_MORNING_EXCLUSION_LIMIT = 1` ([`chronic_patterns.py:58`](../apps/api/src/services/chronic_patterns.py)) is the minimum of the acute and training-debt caps and exists so an excuse cannot make a cluster vanish. A band excursion lasted two days, so one exclusion is not enough. **Recommendation: give the artifact classification its own limit rather than raising the shared one** — the existing caps bound *explained* Reds, where the strain was real; this bounds *mis-measured* ones, where it was not, and the two should not share a budget. Justify or overrule this in writing at `/batch-start`.<br>270.3 **Do not rewrite history.** The 18/19 Sep verdict rows stay as recorded — they are the honest record of what the app said at the time, and `analyses` deliberately keeps history. This batch changes what the *cluster counter* does with them, nothing else.<br>270.4 Tests, each confirmed to fail against today's logic first: **the real 21 Sep cluster** (18, 19, 21 Sep) yields a counted total of 1 and fires no `rearrange_proposal` against `CHRONIC_ACTION_RED_THRESHOLD = 2`; two genuine Reds still fire one; an artifact Red and a genuine Red together do not; the existing acute and training-debt exclusions are unchanged and their tests pass unmodified; and `suppressed_by_plan` behaviour during a scheduled recovery block is untouched. | Stop a two-day Garmin recalibration from restructuring Mark's build week a fortnight later — the propagation he predicted in writing on 21 Sep, an hour before it fired. | Replaying 15–22 Sep against production data produces no rearrange proposal, where today it produces one that moves the Tuesday VO2 to Saturday. A genuine two-Red cluster still produces one. The packet exposes the new classification per day so the reason is inspectable rather than inferred. No migration expected. No prompt bump expected. |
+
+### Batch group — the 09-22 Mark wave
+
+| Group | Batches, in order | Theme | Pre-flight blockers |
+|---|---|---|---|
+| **M** | 268 🔴 → 269 🔴 → 270 🟢 | The figures Mark cannot reconcile, and the threshold that moved | **269.3 is Mark-facing copy and needs Craig's sign-off before it ships.** 267 is parked unmerged on `feat/batch-267-garmin-login` — branch each batch from freshly-merged `main`, never from it. |
+
+**Why this order.** 268 is independent and is the one Mark has raised three times
+across two surfaces; it also lands before the next weekly review on **Sunday 27
+Sep**, which is the deadline that makes it first. 269 must precede 270 because
+270.1 reuses 269's definition of a band artifact — building 270 first would mean
+writing that test twice and letting the two drift. 270 is last and is the
+smallest, but it is the only one of the three that closes Mark's actual
+complaint: 269 stops it happening again, 270 stops the two Reds already on the
+record from restructuring the week he is in now.
+
+**The artifact days age out of the rolling window on 26 Sep**, so 270's practical
+value expires that day — after which it is insurance against the next
+recalibration rather than a fix for this one.
