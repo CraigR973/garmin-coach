@@ -130,26 +130,52 @@ has to say which statistic was used, in a sentence, or the same argument recurs.
 
 ---
 
-## 6. Layout — the one open design question
+## 6. Layout — ✅ ANSWERED, and my first draft of this section was wrong
 
-The panel needs a home. Three options, in order of my preference:
+The draft listed three options and put **"a collapsed line under each figure,
+expanding in place"** first. **That option is not available, and not for reasons
+of taste.**
 
-1. **A collapsed "how this was worked out" line under each figure**, expanding in
-   place. Closest to where the dispute happens; costs the most layout work.
-2. **One panel per screen**, listing every covered figure on that brief or review.
-   Cheapest; the reader has to find the figure they care about.
-3. **A separate page.** Cheapest of all and almost certainly unused.
+`Markdown.tsx` is a plain `ReactMarkdown` render of the model's markdown string:
+the figures exist *only* inside generated prose, and nothing structured marks
+where they are. Anchoring an expander to a figure therefore needs one of two
+things, and 273.1 forbids both:
 
-> **Craig: pick one.** The packet shape supports all three unchanged.
+- **parse the numbers back out of the generated text** — the thing 273.1 opens by
+  ruling out, because it is fragile and breaks on every prompt change; or
+- **have the model emit markers around figures** — a prompt change, and it makes
+  provenance depend on the prose, which is the exact coupling 273.1 exists to
+  prevent.
+
+So option 1 is ruled out by the batch's own governing constraint, which I should
+have seen when drafting this section rather than ranking it first.
+
+**Decided (Craig, 2026-09-23): one panel per screen.** Concretely:
+
+- it sits **directly under the brief or review text**, not behind a tab or on
+  another page — the dispute happens while he is reading the prose;
+- headed **"How these numbers were worked out"**;
+- **collapsed by default**, so a reader who is not arguing with a number never
+  sees it;
+- **one expandable row per covered figure** that actually appears on that screen,
+  so the panel is never a list of five things when the screen shows two.
+
+A separate page was rejected for the reason given in the original draft: cheapest
+to build and almost certainly never opened.
+
+**Cost:** a rendering job against a packet that already carries the data. No API
+change, and no re-derivation, so the panel cannot drift from the number it
+explains.
 
 ---
 
 ## 7. What to do with this file
 
 1. Confirm the five covered figures (§2).
-2. Edit §3–5 copy in place, or say "fine as is".
-3. Pick a layout (§6).
-4. Then PR #308 can merge and the panel becomes a rendering job.
+2. **Edit §3–5 copy in place, or say "fine as is".** With the layout settled this
+   is the only thing left before PR #308 can merge.
+3. ~~Pick a layout (§6).~~ **Answered 2026-09-23** — one panel per screen, under
+   the prose, collapsed by default.
 
 **Batch 274 must branch from a `main` that already contains 273** —
 `batch-group.md` forbids stacking branches, so 274 has not been started.
