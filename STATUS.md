@@ -6,6 +6,50 @@
 
 ## Now
 
+**2026-09-23 (overnight run, in progress) — Batch 280 shipped. Next in the queue:
+Batch 281, then re-tiering Batch 283, then Batch 279 built to an open PR.**
+
+### Shipped tonight
+
+- **Batch 280** — coverage reads ten projected facts, not Garmin's ~40 KB daily
+  document. PR #311 / squash `65b9005`, Decision #346. Production serves `65b9005`;
+  web 200; `daily-loop` 401; the deployed image's own projection agrees with the
+  whole document on all 550 stored rows.
+
+### What 280 found, worth carrying
+
+1. **Most of the 26 GB is still flowing, and it is now free to stop.** The readers
+   that do not gate on coverage are most of the bytes: `trends._rows` reads every
+   stored row on every coach chat turn and every Trends page, then
+   `chronic_patterns`, `longitudinal_analysis` and `insights.early_warning`. None
+   reads any part of the document. They needed the coverage contract changed first;
+   280 did that. **A follow-up row is the obvious next egress batch.**
+2. **The identity-map worry that kept the document loaded everywhere was wrong.** A
+   later whole-row query fills a deferred column; only `session.get()` on a held
+   object fails. Pinned by tests in `test_bulk_history_reads.py`.
+3. **Projecting JSON server-side can be slower than shipping it.** One JSONB operator
+   per key re-reads the compressed document each time — 943 ms for 550 rows, against
+   35–78 ms for one read per row. `select_day_aggregates` is the pattern to copy.
+
+**To measure the real split later** (the coverage path now has SQL of its own).
+`pg_stat_statements` at deploy: shared range shape `-4232533755216521855` 1,332
+calls / 301,092 rows; `ORDER BY` shape `-6615400312572809332` 1,858 / 118,894; old
+whole-history baseline shape `4971521975543873471` 41 / 21,088 — that last one
+should stop growing, because the nightly rebuild now uses the projection.
+
+### Still open, unchanged
+
+- **PR #307 (Batch 275) and PR #308 (Batch 273): do not merge** — Mark-facing copy
+  Craig has not signed off. Both carry DECISIONS #344/#345 while `main` now has #346
+  after #343, so each needs a trivial `DECISIONS.md` merge when it lands.
+- **274, 282, 284** wait on 273/275. **R3 (269, 272)** needs Craig — both bump a
+  prompt version and spend real money.
+- **Mark's reply** (`docs/drafts/2026-09-22-reply-to-mark.md`) is signed off and
+  unsent — delivery is Craig's. The 22 Sep post-workout prose still describes a VO₂
+  session; regenerating it costs money and was left.
+
+## Prior current-state snapshots
+
 **2026-09-23 — Craig answered all three open questions. Both PRs now wait on one
 thing only: the Mark-facing copy.**
 
@@ -83,8 +127,6 @@ Unshipped backlog: **273, 275** (both in open PRs), then **274**, **279–284**.
 **Mark's reply is signed off** at `docs/drafts/2026-09-22-reply-to-mark.md` and has
 **not** been sent — delivery is Craig's. The 22 Sep post-workout prose still
 describes a VO₂ session; regenerating it spends real money and was left alone.
-
-## Prior current-state snapshots
 
 **2026-09-23 — overnight run finished. Two things shipped to production, two are
 sitting in open PRs waiting on Craig, and five new ledger rows are merged.**
@@ -1487,6 +1529,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-23 (overnight)** — Batch 280 shipped (PR #311, `65b9005`, Decision #346): coverage now reads ten projected facts — nine keys and one truthiness boolean — instead of Garmin's ~40 KB daily document, and the review rollup, 120-night driver window, nightly baseline rebuild and two morning lookups no longer ship it. Built as one TOAST read per row (35–78 ms; the naive per-key form took 943 ms, slower than shipping). Production before/after byte-identical; 550/550 rows agree. Corrected two premises: the identity-map reason nothing was deferred, and the assumption that the 26 GB was the coverage path — most of it is `trends` (every row, every chat turn), `chronic_patterns`, `longitudinal` and `early_warning`, now free to move.
 - **2026-09-23** — Craig answered all three open questions: one profile (Mark), so bindability is Batch 275's gate; 275.4 carried forward as **Batch 284** (PR #310, `6536529`); and the provenance panel is **one panel per screen**. The draft had ranked inline-under-each-figure first — that option is ruled out by 273.1 itself, because the figures exist only inside model-generated markdown. Both PRs now wait on the Mark-facing copy alone.
 - **2026-09-23** — Authored Batches 279–283 from "Recorded, not scheduled" (PR #309, `d08af7e`). Every figure measured rather than transcribed, and three of the five notes were stale in ways that change the build: `updated_at` is inconsistent rather than dead (four tables advance it, fourteen do not), `daily_metrics.raw_payload` is ~26 GB cumulative rather than "538 MB/day", and `activities.raw_summary` has grown from 1,033,830 rows to 1,644,984.
 - **2026-09-23** — Batch 273 built and **left in open PR #308**, not merged: every covered derived figure now carries its own derivation, on the packet and never on the prose, with a contract test that fails when one stops. The panel is deliberately unbuilt — 273.2 says to draft the copy, not ship it. Decision #345.
