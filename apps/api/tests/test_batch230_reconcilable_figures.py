@@ -33,6 +33,7 @@ from src.services.age_norms import (
     rem_sleep_pct_for_row,
     sleep_stage_band,
 )
+from src.services.daily_metric_coverage import DayAggregates
 from src.services.morning_analysis import SYSTEM_PROMPT as MORNING_SYSTEM_PROMPT
 from src.services.morning_analysis import _age_comparison, _metrics_vs_baselines
 from src.services.trends import (
@@ -520,7 +521,7 @@ def test_todays_settled_row_still_wins_over_the_closed_day() -> None:
                 )
             ],
             None,
-            day_aggregates=settled,
+            day_aggregates=DayAggregates.from_metric(settled),
             closed_day_cost={"calendarDate": "2026-08-26", "bodyBatteryDrained": 73},
         )
     }

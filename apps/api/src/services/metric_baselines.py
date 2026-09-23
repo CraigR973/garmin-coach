@@ -30,8 +30,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.coaching import DailyMetric, KnowledgeBase, MetricBaseline, Sleep
 from src.models.profile import Profile
 from src.services.age_norms import rem_sleep_pct_for_row
-from src.services.bulk_history_reads import without_sleep_raw_payload
+from src.services.bulk_history_reads import (
+    select_day_aggregates,
+    without_daily_metric_raw_payload,
+    without_sleep_raw_payload,
+)
 from src.services.daily_metric_coverage import (
+    DayAggregates,
     complete_body_battery_charged,
     complete_body_battery_drained,
 )
@@ -122,7 +127,7 @@ def sample_values(
     *,
     age: int | None = None,
     sex: str | None = None,
-    day_aggregates: DailyMetric | None = None,
+    day_aggregates: DayAggregates | None = None,
 ) -> Mapping[str, float | int | None]:
     """One day's baseline inputs keyed by ``metric_key``.
 
@@ -142,21 +147,18 @@ def sample_values(
         "readiness_score": metric.readiness_score if metric else None,
         "resting_heart_rate_bpm": resting_heart_rate,
         # Batch 205: `metric` is the wake row, but Body Battery charge is a
-        # finished local-day total. `day_aggregates` carries the settled row for
-        # the same date; without it the coverage gate would blank this metric on
-        # every historical day. Defaults to `metric` so a caller with one row
-        # keeps the old behaviour.
+        # finished local-day total. `day_aggregates` carries the settled
+        # observation for the same date; without it the coverage gate would
+        # blank this metric on every historical day. Batch 280: it is the only
+        # source — the wake row no longer carries the document its coverage is
+        # read from, so there is no fallback to `metric` to take.
         "body_battery_charge": (
-            complete_body_battery_charged(day_aggregates if day_aggregates is not None else metric)
-            if (day_aggregates is not None or metric is not None)
-            else None
+            complete_body_battery_charged(day_aggregates) if day_aggregates is not None else None
         ),
         # Batch 216: same settled-row requirement as charge — drain is the other
         # half of the same running local-day total.
         "body_battery_drain": (
-            complete_body_battery_drained(day_aggregates if day_aggregates is not None else metric)
-            if (day_aggregates is not None or metric is not None)
-            else None
+            complete_body_battery_drained(day_aggregates) if day_aggregates is not None else None
         ),
         "average_spo2_pct": sleep.average_spo2_pct if sleep else None,
         "average_respiration": sleep.average_respiration if sleep else None,
@@ -249,18 +251,35 @@ class MetricBaselineBackfillService:
             .scalars()
             .all()
         )
+        # Batch 280: the typed readings off the rows, the Body Battery coverage
+        # off a projection — this whole-history read runs nightly and used to
+        # ship every stored Garmin daily document to compute two quartiles.
         metric_rows = (
-            (await self.session.execute(select(DailyMetric).where(DailyMetric.user_id == user_id)))
+            (
+                await self.session.execute(
+                    select(DailyMetric)
+                    .options(without_daily_metric_raw_payload())
+                    .where(DailyMetric.user_id == user_id)
+                )
+            )
             .scalars()
             .all()
         )
+        day_aggregates = [
+            DayAggregates.from_row(row)
+            for row in (
+                await self.session.execute(
+                    select_day_aggregates().where(DailyMetric.user_id == user_id)
+                )
+            ).all()
+        ]
         sleep_by_date = {row.calendar_date: row for row in sleep_rows}
         # CI191-02 consequence 2: these 84-day quartiles are the personal
         # baselines the readiness floor keys off, and they are compared against a
         # morning reading. A plain `{row.calendar_date: row}` here would now pick
         # whichever phase the query happened to return last.
         metric_by_date = index_morning_by_date(metric_rows)
-        aggregate_by_date = index_day_aggregates_by_date(metric_rows)
+        aggregate_by_date = index_day_aggregates_by_date(day_aggregates)
         all_dates = sorted(set(sleep_by_date) | set(metric_by_date))
         if not all_dates:
             return []

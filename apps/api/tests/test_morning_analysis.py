@@ -36,6 +36,7 @@ from src.services.coach_sections import (
 from src.services.coach_sections import (
     training_and_activity_fields as _training_and_activity_fields,
 )
+from src.services.daily_metric_coverage import DayAggregates
 from src.services.holiday_pause import HolidayPauseService, HolidayWindow
 from src.services.morning_analysis import (
     ACWR_AMBER_CAP_THRESHOLD,
@@ -2729,7 +2730,7 @@ def test_yesterday_load_omits_partial_day_aggregates() -> None:
         raw_payload=_daily_aggregate_raw(calendar_date, "2026-07-31T08:44:00.0"),
     )
 
-    packet = _yesterday_load_packet([], [], metric)["wholeDayCost"]
+    packet = _yesterday_load_packet([], [], DayAggregates.from_metric(metric))["wholeDayCost"]
 
     assert packet["allDayStressAvg"] is None
     assert packet["bodyBatteryDrained"] is None
@@ -3735,7 +3736,10 @@ def test_complete_yesterday_drain_carries_its_baseline_and_delta() -> None:
     67 and nothing joined them.
     """
     packet = _yesterday_load_packet(
-        [], [], _closed_day_row(drained=66, stress=24.0, end=35), [_drain_baseline()]
+        [],
+        [],
+        DayAggregates.from_metric(_closed_day_row(drained=66, stress=24.0, end=35)),
+        [_drain_baseline()],
     )["wholeDayCost"]
 
     assert packet["bodyBatteryDrained"] == 66
@@ -3752,7 +3756,10 @@ def test_a_figure_with_no_stored_baseline_says_so_rather_than_comparing() -> Non
     """226.4: production holds no `stress_avg` baseline at all, so all-day stress
     must state the absence instead of arriving as an unanchored number."""
     packet = _yesterday_load_packet(
-        [], [], _closed_day_row(drained=66, stress=24.0, end=35), [_drain_baseline()]
+        [],
+        [],
+        DayAggregates.from_metric(_closed_day_row(drained=66, stress=24.0, end=35)),
+        [_drain_baseline()],
     )["wholeDayCost"]
 
     stress = packet["baselines"]["allDayStressAvg"]
@@ -3776,7 +3783,9 @@ def test_an_incomplete_yesterday_emits_neither_a_number_nor_a_comparison() -> No
         raw_payload=_daily_aggregate_raw(date(2026, 8, 24), "2026-08-24T08:44:00.0"),
     )
 
-    packet = _yesterday_load_packet([], [], partial, [_drain_baseline()])["wholeDayCost"]
+    packet = _yesterday_load_packet(
+        [], [], DayAggregates.from_metric(partial), [_drain_baseline()]
+    )["wholeDayCost"]
 
     assert packet["bodyBatteryDrained"] is None
     assert packet["baselines"] == {}
