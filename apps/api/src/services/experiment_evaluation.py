@@ -793,11 +793,12 @@ def group_compare_metric(criteria: dict[str, Any]) -> ComparableMetric | None:
 
 
 def binds_to_an_evaluator(criteria: dict[str, Any] | None) -> bool:
-    """Can this experiment ever be evaluated automatically? (Batch 275.3)
+    """Can this experiment be evaluated automatically?
 
-    ``POST /api/v1/experiments`` would happily store a hypothesis that binds to
-    nothing, so the app could accept a question it could never answer and then go
-    quiet. Creation now refuses instead.
+    ``False`` is not an error — an experiment with no criteria at all is tracked
+    manually and concluded from Mark's own observations, which is a supported
+    path and has been since Batch 22. See :func:`failed_binding_attempt` for the
+    case that *is* an error.
     """
     if not isinstance(criteria, dict):
         return False
@@ -809,15 +810,52 @@ def binds_to_an_evaluator(criteria: dict[str, Any] | None) -> bool:
     return _is_recovery_week_compare(criteria) and group_compare_metric(criteria) is not None
 
 
-def unbindable_criteria_detail() -> str:
-    """Why a hypothesis was refused at creation, in terms a person can act on."""
+def failed_binding_attempt(criteria: dict[str, Any] | None) -> str | None:
+    """Why criteria that *try* to bind to an evaluator do not, or ``None``.
+
+    Batch 275.3. ``POST /api/v1/experiments`` would happily store a hypothesis
+    that names a comparison the app cannot run, or a metric it cannot read, and
+    then go quiet when asked to evaluate it — the app accepting a question it can
+    never answer.
+
+    **The row proposed refusing every hypothesis that binds to no evaluator, and
+    that would have removed a capability the tracker has on purpose**: an
+    experiment with no criteria at all is a record-keeping device, evaluated as
+    ``no_evaluator`` with *"conclude it manually from your own observations"*.
+    ``test_no_evaluator_for_plain_experiment`` pins exactly that. So the refusal is
+    narrowed to a binding that was *attempted and failed*, which is the failure
+    mode 275.3 actually describes.
+    """
+    if not isinstance(criteria, dict) or not criteria:
+        return None
+    slug = criteria.get("slug")
+    if isinstance(slug, str) and slug.strip() in KNOWN_SLUGS:
+        return None
+    if criteria.get("candidateDrivers"):
+        return None
+
+    compare = criteria.get("compare")
+    metric_key = criteria.get("metric")
     metrics = ", ".join(sorted(COMPARABLE_METRICS))
-    return (
-        "This hypothesis binds to no evaluator, so the app could store it but never "
-        "answer it. Give it either a set of measurable candidate drivers "
-        '("candidateDrivers"), or a group comparison — '
-        f'"compare": "{COMPARE_RECOVERY_VS_BUILD}" with a "metric" from: {metrics}.'
-    )
+    if compare is not None:
+        if not _is_recovery_week_compare(criteria):
+            return (
+                f'"{compare}" is not a comparison this app can run. The one it can is '
+                f'"{COMPARE_RECOVERY_VS_BUILD}".'
+            )
+        if group_compare_metric(criteria) is None:
+            named = f'"{metric_key}" is not a metric' if metric_key else "no metric was named"
+            return (
+                f"A {COMPARE_RECOVERY_VS_BUILD} comparison needs a metric this app can "
+                f"read, and {named}. Choose one of: {metrics}."
+            )
+        return None
+    if metric_key is not None:
+        return (
+            f'"{metric_key}" names a metric but no comparison, so nothing would be '
+            f'compared. Add "compare": "{COMPARE_RECOVERY_VS_BUILD}".'
+        )
+    return None
 
 
 def _no_evaluator(slug: str | None) -> EvaluationResult:

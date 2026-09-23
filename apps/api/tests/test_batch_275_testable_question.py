@@ -34,6 +34,7 @@ from src.services.experiment_evaluation import (
     LabeledNight,
     binds_to_an_evaluator,
     evaluate_group_compare,
+    failed_binding_attempt,
 )
 from src.services.experiment_metrics import COMPARABLE_METRICS, comparable_metric
 from src.services.experiment_tracker import (
@@ -177,17 +178,39 @@ def test_the_four_default_experiments_are_unchanged_and_all_bindable() -> None:
 @pytest.mark.parametrize(
     "criteria",
     [
-        None,
-        {},
-        {"note": "I think caffeine after 3pm wrecks my sleep"},
-        # Names a comparison but no metric the app can read.
+        # Names a comparison the app cannot run.
+        {"compare": "phase_of_the_moon"},
+        # Names the comparison it can run, but no metric it can read.
         {"compare": "recovery_week_vs_build_week"},
         {"compare": "recovery_week_vs_build_week", "metric": "vibes"},
-        # Names a metric but no comparison.
+        # Names a metric but nothing to compare it across.
         {"metric": "hrv_last_night_avg_ms"},
     ],
 )
-def test_an_unbindable_hypothesis_is_refused(criteria: dict[str, object] | None) -> None:
+def test_a_binding_that_was_attempted_and_failed_is_refused(
+    criteria: dict[str, object],
+) -> None:
+    assert failed_binding_attempt(criteria) is not None
+    assert binds_to_an_evaluator(criteria) is False
+
+
+@pytest.mark.parametrize(
+    "criteria",
+    [
+        None,
+        {},
+        {"note": "I think caffeine after 3pm wrecks my sleep"},
+    ],
+)
+def test_an_experiment_that_attempts_no_binding_is_still_allowed(
+    criteria: dict[str, object] | None,
+) -> None:
+    """275.3 proposed refusing every hypothesis that binds to no evaluator. That
+    would delete the manually-tracked path the tracker has on purpose — an
+    experiment with no criteria is evaluated as ``no_evaluator`` with "conclude it
+    manually from your own observations", which ``test_no_evaluator_for_plain_experiment``
+    has pinned since Batch 22. The refusal is narrowed to an *attempted* binding."""
+    assert failed_binding_attempt(criteria) is None
     assert binds_to_an_evaluator(criteria) is False
 
 
@@ -202,6 +225,7 @@ def test_an_unbindable_hypothesis_is_refused(criteria: dict[str, object] | None)
 )
 def test_a_bindable_hypothesis_is_accepted(criteria: dict[str, object]) -> None:
     assert binds_to_an_evaluator(criteria) is True
+    assert failed_binding_attempt(criteria) is None
 
 
 @pytest.mark.asyncio
@@ -224,11 +248,23 @@ async def test_creating_an_unanswerable_experiment_is_refused_not_stored(
                 player,
                 title="Caffeine",
                 hypothesis="Caffeine after 3pm wrecks my sleep",
-                success_criteria={"note": "no idea how to measure this"},
+                success_criteria={
+                    "compare": "recovery_week_vs_build_week",
+                    "metric": "vibes",
+                },
                 commit=False,
             )
         assert excinfo.value.status_code == 422
-        assert "binds to no evaluator" in str(excinfo.value.detail)
+        assert "not a metric" in str(excinfo.value.detail)
+
+        # An experiment that attempts no binding is still created and tracked.
+        manual = await service.create_experiment(
+            player,
+            title="Magnesium",
+            hypothesis="Improves deep sleep",
+            commit=False,
+        )
+        assert manual.id is not None
 
         created = await service.create_experiment(
             player,
@@ -268,16 +304,18 @@ async def test_marks_recovery_week_hrv_question_is_answerable_at_all(
             [
                 PlanBlock(
                     user_id=player.id,
-                    block_number=1,
                     name="Build",
+                    version=1,
+                    sequence_index=1,
                     block_type="build",
                     start_date=end - timedelta(days=30),
                     end_date=end - timedelta(days=16),
                 ),
                 PlanBlock(
                     user_id=player.id,
-                    block_number=2,
                     name="Recovery",
+                    version=1,
+                    sequence_index=2,
                     block_type="recovery",
                     start_date=end - timedelta(days=15),
                     end_date=end,
@@ -350,16 +388,18 @@ async def test_the_daily_metrics_reader_takes_the_wake_observation(
             [
                 PlanBlock(
                     user_id=player.id,
-                    block_number=1,
                     name="Build",
+                    version=1,
+                    sequence_index=1,
                     block_type="build",
                     start_date=end - timedelta(days=30),
                     end_date=end - timedelta(days=16),
                 ),
                 PlanBlock(
                     user_id=player.id,
-                    block_number=2,
                     name="Recovery",
+                    version=1,
+                    sequence_index=2,
                     block_type="recovery",
                     start_date=end - timedelta(days=15),
                     end_date=end,
@@ -424,16 +464,18 @@ async def test_the_sleep_backed_experiment_still_reads_the_sleep_table(
             [
                 PlanBlock(
                     user_id=player.id,
-                    block_number=1,
                     name="Build",
+                    version=1,
+                    sequence_index=1,
                     block_type="build",
                     start_date=end - timedelta(days=30),
                     end_date=end - timedelta(days=16),
                 ),
                 PlanBlock(
                     user_id=player.id,
-                    block_number=2,
                     name="Recovery",
+                    version=1,
+                    sequence_index=2,
                     block_type="recovery",
                     start_date=end - timedelta(days=15),
                     end_date=end,
