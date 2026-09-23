@@ -165,6 +165,40 @@ def ir_has_vo2(ir: dict[str, Any] | None) -> bool:
     return False
 
 
+def ir_sustained_work_pct(ir: dict[str, Any] | None) -> int | None:
+    """The hardest *sustained* working step's target, as a percentage of FTP.
+
+    Batch 278: the same reading of a prescription that :func:`ir_has_vo2` takes —
+    intensity that lasts long enough to be a stimulus — but reported as a number
+    rather than a VO2 yes/no, so a caller can ask "how hard is this session meant
+    to be" of a sweet-spot or threshold prescription too.
+
+    Alactic sprints are excluded on 277's rule, which is what keeps Mark's
+    ``Z2 + Neuromuscular`` reading as the 65% endurance ride it is rather than the
+    185% session its peak suggests. ``None`` when the IR carries no steps to read.
+    """
+    steps = ir.get("steps") if isinstance(ir, dict) else None
+    if not isinstance(steps, list):
+        return None
+    typed = [step if isinstance(step, dict) else {} for step in steps]
+    working = [
+        index
+        for index, step in enumerate(typed)
+        if str(step.get("phase") or "interval") == "interval"
+    ]
+    pool = working or list(range(len(typed)))
+    hardest: int | None = None
+    for index in pool:
+        step = typed[index]
+        power = _step_power(step)
+        if power >= HIT_FLOOR_PCT:
+            following = typed[index + 1] if index + 1 < len(typed) else None
+            if _is_alactic_sprint(step, following):
+                continue
+        hardest = power if hardest is None else max(hardest, power)
+    return hardest
+
+
 def ir_is_endurance(ir: dict[str, Any] | None) -> bool:
     """True when a structured-workout IR's hardest *working* step is already Zone 2.
 

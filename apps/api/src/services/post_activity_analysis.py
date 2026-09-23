@@ -61,10 +61,10 @@ async def prepare_post_activity_read(
     if kind is None:
         raise ValueError("Activity does not have a post-workout reader")
     subject_date = _activity_local_date(activity, player.timezone)
-    planned_workout_id = await prepare_post_activity_generation(
+    match = await prepare_post_activity_generation(
         session,
         user_id=player.id,
-        activity_id=activity.id,
+        activity=activity,
         subject_date=subject_date,
         kind=kind,
         commit=commit,
@@ -72,7 +72,7 @@ async def prepare_post_activity_read(
     return PreparedPostActivityRead(
         kind=kind,
         subject_date=subject_date,
-        planned_workout_id=planned_workout_id,
+        planned_workout_id=match.planned_workout_id,
     )
 
 

@@ -157,14 +157,16 @@ class PostActivityReadRunner[ResultT](ABC):
         # Persist Batch 159's honest ``generating`` state before taking the
         # transaction-scoped paid-work lock. No commit occurs after the claim
         # until the completed/failed request state is ready.
-        matched_workout_id = await prepare_post_activity_generation(
-            self.session,
-            user_id=player.id,
-            activity_id=activity.id,
-            subject_date=subject_date,
-            kind=self.kind,
-            commit=False,
-        )
+        matched_workout_id = (
+            await prepare_post_activity_generation(
+                self.session,
+                user_id=player.id,
+                activity=activity,
+                subject_date=subject_date,
+                kind=self.kind,
+                commit=False,
+            )
+        ).planned_workout_id
         if commit:
             await self.session.commit()
         async with claim_generation_request(

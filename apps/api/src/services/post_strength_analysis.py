@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Protocol, cast
@@ -82,6 +82,11 @@ from src.services.strength_brief import (
     compute_strength_rollup,
     is_strength_activity,
 )
+from src.services.workout_categories import (
+    DAY_CATEGORY_WEIGHTS,
+    category_for_workout_type,
+)
+from src.services.workout_match import strength_material_difference
 
 PROMPT_VERSION = "post-strength-analysis-v6-2026-08-15"
 ANALYSIS_TYPE = "post_strength"
@@ -301,6 +306,10 @@ class PostStrengthAnalysisService(PostActivityReadRunner[StrengthAnalysisResult]
             },
             "consistency": _consistency_packet(rollup),
             "plannedWorkouts": [_planned_workout_packet(workout) for workout in planned_workouts],
+            # Batch 278: why this activity was, or was not, recorded against the day's
+            # strength session. Deterministic and packet-side; the prose contract is
+            # unchanged, so nothing here moves the prompt version.
+            "plannedMatch": _planned_match_packet(planned_workouts, activity),
             "activityCheckIn": _manual_entry_packet(checkin),
             "guardrails": {
                 "advisoryOnly": True,
@@ -472,6 +481,31 @@ def build_strength_user_prompt(context_packet: Mapping[str, Any]) -> str:
         "Context packet JSON:\n"
         f"{json.dumps(context_packet, ensure_ascii=True, sort_keys=True, default=str)}"
     )
+
+
+def _planned_match_packet(
+    planned_workouts: Sequence[PlannedWorkout],
+    activity: Activity,
+) -> dict[str, Any]:
+    """Whether the day's strength prescription and this activity describe one session.
+
+    Mark flagged the case himself on 22 September 2026: a ``Daily Bodyweight Workout``
+    had been recorded as the ``Dumbbells (full-body)`` session he had not done. Both
+    are ``strength_training`` of similar duration, so the only evidence is the
+    modality each side names — see :mod:`src.services.workout_match`.
+    """
+    for workout in planned_workouts:
+        if category_for_workout_type(workout.workout_type) != DAY_CATEGORY_WEIGHTS:
+            continue
+        deviation = strength_material_difference(workout, activity)
+        if deviation is None:
+            return {"materiallyDifferent": False, "plannedWorkoutId": str(workout.id)}
+        return {
+            "materiallyDifferent": True,
+            "plannedWorkoutId": str(workout.id),
+            **deviation,
+        }
+    return {"materiallyDifferent": False, "plannedWorkoutId": None}
 
 
 def _strength_activity_packet(row: Activity) -> dict[str, Any]:
