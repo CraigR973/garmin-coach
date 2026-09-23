@@ -34,6 +34,7 @@ from src.services.morning_analysis import (
 )
 from src.services.morning_inputs import morning_input_presence
 from src.services.post_workout_analysis import PostWorkoutAnalysisService
+from src.services.workout_completion import PlannedWorkoutMatch
 
 
 @dataclass
@@ -379,7 +380,7 @@ async def test_identical_post_activity_generation_calls_once(
     monkeypatch.setattr(PostWorkoutAnalysisService, "assemble_context_packet", _packet)
     monkeypatch.setattr(
         "src.services.post_activity_read_runner.prepare_post_activity_generation",
-        AsyncMock(return_value=None),
+        AsyncMock(return_value=PlannedWorkoutMatch(planned_workout_id=None)),
     )
     monkeypatch.setattr(
         "src.services.post_activity_read_runner.mark_post_activity_generation",

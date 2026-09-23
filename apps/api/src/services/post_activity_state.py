@@ -10,14 +10,17 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
-from src.models.coaching import PostActivityGenerationStatus
+from src.models.coaching import Activity, KnowledgeBase, PostActivityGenerationStatus
 from src.services.workout_categories import (
     DAY_CATEGORY_CYCLE,
     DAY_CATEGORY_FLEXIBILITY,
     DAY_CATEGORY_WALK,
     DAY_CATEGORY_WEIGHTS,
 )
-from src.services.workout_completion import complete_matched_planned_workout
+from src.services.workout_completion import (
+    PlannedWorkoutMatch,
+    complete_matched_planned_workout,
+)
 
 PostActivityKind = Literal["ride", "strength", "flexibility", "walk"]
 GenerationState = Literal["generating", "ready", "failed"]
@@ -142,34 +145,60 @@ class PostActivityGenerationStatusService:
         return row
 
 
+async def _ftp_watts(session: AsyncSession, user_id: uuid.UUID) -> int | None:
+    """The user's FTP from the knowledge base, or ``None`` when it is unset.
+
+    Returns ``None`` rather than a default on purpose: Batch 278's bike rule reads
+    executed power *against* this number, and guessing it would compare a real ride
+    to an invented denominator.
+    """
+    section = await session.scalar(
+        select(KnowledgeBase).where(
+            KnowledgeBase.user_id == user_id,
+            KnowledgeBase.section == "profile",
+            KnowledgeBase.is_active.is_(True),
+        )
+    )
+    if section is not None and isinstance(section.content, dict):
+        ftp = section.content.get("ftpWatts")
+        if isinstance(ftp, int) and ftp > 0:
+            return ftp
+    return None
+
+
 async def prepare_post_activity_generation(
     session: AsyncSession,
     *,
     user_id: uuid.UUID,
-    activity_id: uuid.UUID,
+    activity: Activity,
     subject_date: date,
     kind: PostActivityKind,
     commit: bool = False,
-) -> uuid.UUID | None:
-    """Complete/link the matching planned session and mark its read in flight."""
+) -> PlannedWorkoutMatch:
+    """Complete/link the matching planned session and mark its read in flight.
 
-    planned_workout_id = await complete_matched_planned_workout(
+    Batch 278: the match can now come back *unlinked* with a deviation, when the
+    activity describes a materially different session from the one on the plan.
+    """
+
+    match = await complete_matched_planned_workout(
         session,
         user_id=user_id,
         subject_date=subject_date,
         category=_CATEGORY_BY_KIND[kind],
-        activity_id=activity_id,
+        activity=activity,
+        ftp_watts=await _ftp_watts(session, user_id),
     )
     await PostActivityGenerationStatusService(session).mark(
         user_id=user_id,
-        activity_id=activity_id,
-        planned_workout_id=planned_workout_id,
+        activity_id=activity.id,
+        planned_workout_id=match.planned_workout_id,
         subject_date=subject_date,
         analysis_type=ANALYSIS_TYPE_BY_KIND[kind],
         status=STATUS_GENERATING,
         commit=commit,
     )
-    return planned_workout_id
+    return match
 
 
 async def mark_post_activity_generation(
