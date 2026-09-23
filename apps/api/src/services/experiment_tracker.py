@@ -208,6 +208,23 @@ class ExperimentTrackerService:
         start_date: date | None = None,
         commit: bool = True,
     ) -> Experiment:
+        # Batch 275.3: an experiment that binds to no evaluator can never be
+        # answered, and storing it silently is how the app came to accept a
+        # question it could not resolve. Imported here rather than at module scope
+        # because ``experiment_evaluation`` imports this module.
+        from fastapi import HTTPException
+        from fastapi import status as http_status
+
+        from src.services.experiment_evaluation import (
+            binds_to_an_evaluator,
+            unbindable_criteria_detail,
+        )
+
+        if not binds_to_an_evaluator(success_criteria):
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=unbindable_criteria_detail(),
+            )
         experiment = Experiment(
             user_id=player.id,
             title=title,

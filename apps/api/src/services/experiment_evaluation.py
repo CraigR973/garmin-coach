@@ -46,13 +46,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import (
     Analysis,
+    DailyMetric,
     Experiment,
     PlanBlock,
     Sleep,
     WeatherDaily,
 )
 from src.models.profile import Profile
-from src.services.bulk_history_reads import without_sleep_raw_payload
+from src.services.bulk_history_reads import (
+    daily_metric_reading_columns,
+    without_sleep_raw_payload,
+)
+from src.services.daily_metric_phase import prefer_morning
+from src.services.experiment_metrics import (
+    COMPARABLE_METRICS,
+    DEFAULT_METRIC_KEY,
+    SOURCE_DAILY_METRICS,
+    ComparableMetric,
+    comparable_metric,
+    metric_value,
+)
 from src.services.experiment_tracker import SLUG_REM_INTERVENTION
 from src.services.insights import (
     BEDROOM_DRIVER_KEYS,
@@ -90,6 +103,11 @@ KIND_NONE = "none"
 SLUG_COLLAGEN = "collagen"
 SLUG_RECOVERY_WEEK = "recovery_week_disruption"
 SLUG_EARLY_WAKING = "early_waking_0400"
+#: Every slug ``evaluate`` dispatches on. A hypothesis naming one of these is
+#: bindable by definition; anything else has to say how it should be compared.
+KNOWN_SLUGS = frozenset(
+    {SLUG_COLLAGEN, SLUG_RECOVERY_WEEK, SLUG_EARLY_WAKING, SLUG_REM_INTERVENTION}
+)
 
 # --- gate (collagen) ----------------------------------------------------------
 GATE_DEFAULT_NIGHTS = 7
@@ -621,16 +639,27 @@ def evaluate_group_compare(
     nights: Sequence[LabeledNight],
     *,
     slug: str | None = SLUG_RECOVERY_WEEK,
+    metric: ComparableMetric | None = None,
     min_per_group: int = GROUP_MIN_PER_GROUP,
-    threshold: float = GROUP_THRESHOLD,
+    threshold: float | None = None,
 ) -> EvaluationResult:
-    """Recovery-week disruption: is sleep worse on recovery-week nights?
+    """Recovery weeks vs build weeks, on whichever metric the experiment names.
 
-    Before/after-style comparison of mean age-adjusted sleep on recovery-week vs
-    build-week nights (labelled from ``plan_blocks``). Recovery being meaningfully
-    lower than build (by ``threshold`` points) recommends ``supported``; meaningfully
-    higher recommends ``refuted``; a gap inside the threshold is ``inconclusive``.
+    Batch 275 (Decision #344) makes this generic over the metric rather than over
+    the *value* alone. ``metric`` supplies the threshold **in its own units** and
+    the direction it points, both of which used to be assumed: the threshold was a
+    single constant in age-adjusted sleep points, and "recovery lower than build"
+    was hardcoded as the worse direction, which is exactly backwards for resting
+    heart rate. ``threshold`` overrides the metric's own only when a caller has a
+    reason to.
+
+    The Welch interval gate from Batch 249 is unchanged and still binds: a gap
+    larger than the threshold is a *direction* only when the interval around it
+    stays on one side of zero. The threshold asks whether a gap is worth anything;
+    the interval asks whether it is real.
     """
+    metric = metric or COMPARABLE_METRICS[DEFAULT_METRIC_KEY]
+    threshold = metric.threshold if threshold is None else threshold
     recovery = [n.value for n in nights if n.group == "recovery" and n.value is not None]
     build = [n.value for n in nights if n.group == "build" and n.value is not None]
     if len(recovery) < min_per_group or len(build) < min_per_group:
@@ -642,7 +671,13 @@ def evaluate_group_compare(
             sample_count=len(recovery) + len(build),
             window_start=None,
             window_end=None,
-            evidence={"recoveryNights": len(recovery), "buildNights": len(build)},
+            evidence={
+                "metric": metric.key,
+                "metricLabel": metric.label,
+                "units": metric.units,
+                "recoveryNights": len(recovery),
+                "buildNights": len(build),
+            },
             reasons=[
                 f"Need ≥{min_per_group} nights in each group; have "
                 f"{len(recovery)} recovery / {len(build)} build.",
@@ -651,39 +686,39 @@ def evaluate_group_compare(
 
     recovery_mean = _mean(recovery)
     build_mean = _mean(build)
-    delta = recovery_mean - build_mean  # negative ⇒ recovery weeks worse
-    # Batch 249 (HS240-07): the same rule as the intervention arm — a gap larger
-    # than the threshold is a direction only when the interval around it stays on
-    # one side of zero.
+    delta = recovery_mean - build_mean
+    # Positive ⇒ the recovery arm is worse, whichever way this metric points.
+    worse = metric.worse_delta(recovery_mean, build_mean)
     interval = mean_difference_interval(recovery, build)
     separates = interval_excludes_zero(interval)
     phrase = _interval_phrase(interval)
+    effect = _standardised_effect(recovery, build)
+    headline = (
+        f"Recovery-week {metric.label} averages {metric.format_value(recovery_mean)} vs "
+        f"{metric.format_value(build_mean)} on build weeks "
+        f"({delta:+.1f} {metric.units}, {phrase})"
+    )
+    effect_phrase = "" if effect is None else f" Standardised effect {effect:+.2f}."
 
-    if delta <= -threshold and separates:
+    if worse >= threshold and separates:
         recommendation = RECOMMEND_SUPPORTED
-        reasons = [
-            f"Recovery-week sleep averages {recovery_mean:.1f} vs {build_mean:.1f} on "
-            f"build weeks ({delta:+.1f} points, {phrase}) — recovery weeks sleep worse.",
-        ]
-    elif delta >= threshold and separates:
+        reasons = [f"{headline} — recovery weeks are worse.{effect_phrase}"]
+    elif worse <= -threshold and separates:
         recommendation = RECOMMEND_REFUTED
-        reasons = [
-            f"Recovery-week sleep averages {recovery_mean:.1f} vs {build_mean:.1f} on "
-            f"build weeks ({delta:+.1f} points, {phrase}) — recovery weeks sleep better, "
-            "not worse.",
-        ]
-    elif abs(delta) >= threshold:
+        reasons = [f"{headline} — recovery weeks are better, not worse.{effect_phrase}"]
+    elif abs(worse) >= threshold:
         recommendation = RECOMMEND_INCONCLUSIVE
         reasons = [
-            f"Recovery vs build sleep differ by {delta:+.1f} points {phrase} — the gap "
-            "is large enough to matter but the range still includes no difference, so "
-            "this window cannot call it.",
+            f"{headline} — the gap is large enough to matter but the range still "
+            f"includes no difference, so this window cannot call it.{effect_phrase}"
         ]
     else:
         recommendation = RECOMMEND_INCONCLUSIVE
         reasons = [
-            f"Recovery vs build sleep differ by only {delta:+.1f} points {phrase} "
-            f"(<{threshold:g}) — no meaningful disruption either way.",
+            f"{headline} — under the {threshold:g} {metric.units} that would count as "
+            f"a meaningful gap for {metric.label} (0.3 of its measured "
+            f"{metric.measured_sd:g} {metric.units} night-to-night spread), so no "
+            f"meaningful difference either way.{effect_phrase}"
         ]
 
     return EvaluationResult(
@@ -695,14 +730,93 @@ def evaluate_group_compare(
         window_start=None,
         window_end=None,
         evidence={
+            "metric": metric.key,
+            "metricLabel": metric.label,
+            "units": metric.units,
+            "higherIsBetter": metric.higher_is_better,
+            "threshold": threshold,
+            "measuredSd": metric.measured_sd,
             "recoveryMean": round(recovery_mean, 2),
             "buildMean": round(build_mean, 2),
             "delta": round(delta, 2),
+            "worseByDelta": round(worse, 2),
             "deltaInterval": _rounded_interval(interval),
+            "standardisedEffect": None if effect is None else round(effect, 3),
             "recoveryNights": len(recovery),
             "buildNights": len(build),
         },
         reasons=reasons,
+    )
+
+
+def _standardised_effect(
+    recovery: Sequence[float],
+    build: Sequence[float],
+) -> float | None:
+    """Recovery-minus-build in pooled standard deviations (Hedges-free Cohen's d).
+
+    Reported alongside the interval so a reader can see the *size* of a difference
+    independently of the sample that produced it. ``None`` when either arm is too
+    small, or when neither arm varies at all and the ratio is undefined.
+    """
+    if len(recovery) < 2 or len(build) < 2:
+        return None
+    mean_r: float = float(_mean(recovery))
+    mean_b: float = float(_mean(build))
+    var_r = sum((v - mean_r) ** 2 for v in recovery) / (len(recovery) - 1)
+    var_b = sum((v - mean_b) ** 2 for v in build) / (len(build) - 1)
+    pooled: float = (
+        ((len(recovery) - 1) * var_r + (len(build) - 1) * var_b) / (len(recovery) + len(build) - 2)
+    ) ** 0.5
+    if pooled == 0:
+        return None
+    return (mean_r - mean_b) / pooled
+
+
+#: The comparison a group-compare experiment declares in ``success_criteria_json``.
+COMPARE_RECOVERY_VS_BUILD = "recovery_week_vs_build_week"
+
+
+def _is_recovery_week_compare(criteria: dict[str, Any]) -> bool:
+    compare = criteria.get("compare")
+    return isinstance(compare, str) and compare.strip() == COMPARE_RECOVERY_VS_BUILD
+
+
+def group_compare_metric(criteria: dict[str, Any]) -> ComparableMetric | None:
+    """The metric a group-compare experiment names, or ``None`` when it names none.
+
+    The four ``DEFAULT_EXPERIMENTS`` already carry ``"metric":
+    "age_adjusted_sleep_score"`` on the recovery-week row, so reading it here does
+    not change what that experiment does — it just stops the metric being assumed.
+    """
+    return comparable_metric(criteria.get("metric"))
+
+
+def binds_to_an_evaluator(criteria: dict[str, Any] | None) -> bool:
+    """Can this experiment ever be evaluated automatically? (Batch 275.3)
+
+    ``POST /api/v1/experiments`` would happily store a hypothesis that binds to
+    nothing, so the app could accept a question it could never answer and then go
+    quiet. Creation now refuses instead.
+    """
+    if not isinstance(criteria, dict):
+        return False
+    slug = criteria.get("slug")
+    if isinstance(slug, str) and slug.strip() in KNOWN_SLUGS:
+        return True
+    if criteria.get("candidateDrivers"):
+        return True
+    return _is_recovery_week_compare(criteria) and group_compare_metric(criteria) is not None
+
+
+def unbindable_criteria_detail() -> str:
+    """Why a hypothesis was refused at creation, in terms a person can act on."""
+    metrics = ", ".join(sorted(COMPARABLE_METRICS))
+    return (
+        "This hypothesis binds to no evaluator, so the app could store it but never "
+        "answer it. Give it either a set of measurable candidate drivers "
+        '("candidateDrivers"), or a group comparison — '
+        f'"compare": "{COMPARE_RECOVERY_VS_BUILD}" with a "metric" from: {metrics}.'
     )
 
 
@@ -772,9 +886,19 @@ class ExperimentEvaluationService:
         if slug == SLUG_EARLY_WAKING:
             return await self._evaluate_early_waking(player, end=end)
         if slug == SLUG_RECOVERY_WEEK:
-            return await self._evaluate_recovery_week(player, end=end)
+            return await self._evaluate_recovery_week(
+                player, end=end, metric=group_compare_metric(criteria)
+            )
         if slug == SLUG_REM_INTERVENTION:
             return self._evaluate_rem_intervention(experiment, criteria)
+        # Batch 275: group-compare gains the generic route the correlation kind has
+        # had since Batch 22. Without it a user-created recovery-week question fell
+        # to ``_no_evaluator`` and could never be answered, however well specified.
+        generic_metric = group_compare_metric(criteria)
+        if generic_metric is not None and _is_recovery_week_compare(criteria):
+            return await self._evaluate_recovery_week(
+                player, end=end, metric=generic_metric, slug=slug
+            )
         if criteria.get("candidateDrivers"):
             # Generic user-created correlation experiment.
             return await self._evaluate_early_waking(player, end=end, slug=slug)
@@ -853,9 +977,25 @@ class ExperimentEvaluationService:
             unmeasured=EARLY_WAKING_UNMEASURED,
         )
 
-    async def _evaluate_recovery_week(self, player: Profile, *, end: date) -> EvaluationResult:
+    async def _evaluate_recovery_week(
+        self,
+        player: Profile,
+        *,
+        end: date,
+        metric: ComparableMetric | None = None,
+        slug: str | None = SLUG_RECOVERY_WEEK,
+    ) -> EvaluationResult:
+        """Label the window's nights recovery vs build and compare them on ``metric``.
+
+        Batch 275: the rows come from ``sleep`` **or** ``daily_metrics`` depending on
+        where the metric lives, which is what makes Mark's 19 September HRV question
+        answerable at all — HRV is a ``daily_metrics`` column and this evaluator only
+        ever read ``sleep``. ``daily_metrics`` holds up to two rows per date, so it is
+        collapsed with ``prefer_morning``: a recovery-week comparison is about the
+        reads he was actually given at wake, which is the phase that helper is for.
+        """
+        metric = metric or COMPARABLE_METRICS[DEFAULT_METRIC_KEY]
         start = end - timedelta(days=GROUP_LOOKBACK_DAYS)
-        sleeps = await self._sleep_rows(player, start=start, end=end)
         blocks = (
             (
                 await self.session.execute(
@@ -869,15 +1009,46 @@ class ExperimentEvaluationService:
             .scalars()
             .all()
         )
+        if metric.source == SOURCE_DAILY_METRICS:
+            rows: Sequence[Any] = await self._daily_metric_rows(player, start=start, end=end)
+        else:
+            rows = await self._sleep_rows(player, start=start, end=end)
         nights: list[LabeledNight] = []
-        for sleep in sleeps:
-            group = _week_group(sleep.calendar_date, blocks)
+        for row in rows:
+            group = _week_group(row.calendar_date, blocks)
             if group is None:
                 continue
             nights.append(
-                LabeledNight(day=sleep.calendar_date, value=_age_adjusted(sleep), group=group)
+                LabeledNight(
+                    day=row.calendar_date,
+                    value=metric_value(metric, row),
+                    group=group,
+                )
             )
-        return evaluate_group_compare(nights)
+        return evaluate_group_compare(nights, slug=slug, metric=metric)
+
+    async def _daily_metric_rows(
+        self, player: Profile, *, start: date, end: date
+    ) -> list[DailyMetric]:
+        rows = (
+            (
+                await self.session.execute(
+                    select(DailyMetric)
+                    .where(
+                        DailyMetric.user_id == player.id,
+                        DailyMetric.calendar_date >= start,
+                        DailyMetric.calendar_date <= end,
+                    )
+                    # A 120-day window is up to ~240 rows and this reader touches
+                    # only typed columns, so the provider blob stays on the server
+                    # (batch-verify step 6; Batches 232 and 235).
+                    .options(daily_metric_reading_columns())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return prefer_morning(rows)
 
     def _evaluate_rem_intervention(
         self,
