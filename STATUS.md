@@ -6,6 +6,98 @@
 
 ## Now
 
+**2026-09-23 — overnight run finished. Two things shipped to production, two are
+sitting in open PRs waiting on Craig, and five new ledger rows are merged.**
+
+### Shipped and live
+
+- **Batch 278** — an activity is no longer recorded as a session it was not.
+  PR #306 / squash `f671984`, Decision #343.
+- **The duplicate Batch 258 ledger row is struck.** PR #305 / squash `b2be5b0`.
+- **Batches 279–283 authored** from "Recorded, not scheduled". PR #309 / squash
+  `d08af7e`.
+
+Production serves `d08af7e6a21d391e47cc0b6bff17131b3adf2487`; web 200;
+`daily-loop` 401. **A 502 appeared for one poll during that last deploy and
+cleared on the next** — the container restarting, not a fault.
+
+### ⚠️ Two PRs are open and must NOT be merged without Craig
+
+Both gates are **Mark-facing copy he has not seen**, which `AGENTS.md` keeps
+explicit. Both are green (16/16 CI, 0 skipped).
+
+- **PR #307 — Batch 275**, "Mark's observation becomes a testable question".
+  Copy and two open decisions: `docs/drafts/2026-09-23-batch-275-copy.md`.
+- **PR #308 — Batch 273**, "Show the working". Panel copy and one open design
+  question: `docs/drafts/2026-09-23-batch-273-provenance-panel.md`.
+
+**Three things need Craig's word before either merges:**
+
+1. **275.5's recommendation is not implementable.** The row says "Mark proposes,
+   Craig confirms". **Production holds exactly one profile — Mark's — and its role
+   is `admin`**, so a role check on experiment creation would be passed by Mark and
+   restrict nobody. Built instead: the gate is **bindability, not identity**.
+   Craig to confirm, or ask for a second non-admin profile (a larger change,
+   touching auth, and not in that PR either way).
+2. **275.4 is not built** — a chat observation becoming a proposed experiment. It
+   is entirely Mark-facing, plugs into the flow 275.5 has just left open, and
+   would mean a new candidate kind, destination and apply path inside a 985-line
+   extractor. **Recommendation: carry it forward as its own row.** Scaling a batch
+   down is Craig's call, so it is flagged rather than assumed.
+3. **273.2's panel is not built** — the row's own instruction. The packet side is
+   done, so the panel is a rendering job once the copy is signed off. One design
+   question in the drafts file: does the working expand in place under each
+   figure, sit in one panel per screen, or get its own page?
+
+### Batch 278, in one paragraph
+
+`complete_matched_planned_workout` matched on local date + workout **category**
+alone, so whatever bike row sat on the date was flipped to `completed` by whatever
+bike activity arrived. The chosen row is now read against the activity. *Bike* —
+the prescription's hardest **sustained** step above Zone 2 **and** normalised power
+below **0.70** of FTP; across all 63 ride/prescription pairings since 15 Jun the 22
+genuinely-performed hard sessions sat at **0.754–0.867** and the two he did not do
+at **0.636** and **0.664**. *Strength* — the modality each side names, claimed only
+when both name one and they differ. Every rule **abstains** rather than guessing.
+Over the full history the two rules flag **six** pairings, including the one Mark
+reported at 10:16 on 22 Sep, and nothing else. **The strength prose is deliberately
+deferred** — telling Mark in the read needs prompt text, and a bump withdraws every
+stored analysis. The bike case is already covered by Batch 80's `rideDeviation`.
+
+### The new rows, and why three of the five notes were wrong
+
+Batches 279–283 were authored from notes recorded weeks ago. **Every figure was
+measured on 23 Sep, and three of the five notes turned out to be stale in ways that
+change the build:**
+
+- **279** — the note says `updated_at` is "a duplicate of `created_at`". Measured,
+  it is **inconsistent**: eight hand-set call sites make four tables advance it for
+  real (`post_activity_generation_status` is 91 of 91 later, median +20.4 s) while
+  `manual_entries` is 223 of 223 *earlier*. A column that works on four tables out
+  of eighteen is worse than one that works nowhere, and it flips the recommended
+  fix from backfill to no-backfill.
+- **280** — filed as "538 MB/day"; the figure that matters is the cumulative
+  **26 GB** over 92 days, which makes it the largest unprojected read left.
+- **281** — 1,033,830 rows / ~4.9 GB is now **1,644,984 rows / ~7.3 GB**.
+
+`pg_stat_statements` was last reset 2026-06-22, so those cumulative figures cover
+**92 days 15 h**, and the bytes are `rows × average uncompressed row size` — an
+upper bound, not measured egress. The rows say so.
+
+### Next
+
+**Batch 274 has not been started and must not be** until 273 is on `main` —
+`batch-group.md` forbids stacking branches. After that: 276 still needs 274 plus a
+real contest record. **R3** (269, 272) still needs Craig — both bump a prompt
+version and that spends real money. Batches **279–283** are now the unshipped
+backlog; 280 → 281 is a natural pair and 282 should land after 273.
+
+**Mark's reply is signed off** at `docs/drafts/2026-09-22-reply-to-mark.md` and has
+**not** been sent — delivery is Craig's. The 22 Sep post-workout prose still
+describes a VO₂ session; regenerating it spends real money and was left alone.
+
+## Prior current-state snapshots
+
 **2026-09-23 — overnight run: Batch 278 shipped, plus a ledger fix.** Both merged
 to `main` and verified in production.
 
@@ -79,7 +171,6 @@ version and that spends real money.
 **Mark's reply is signed off** at `docs/drafts/2026-09-22-reply-to-mark.md` and has
 **not** been sent — delivery is Craig's.
 
-## Prior current-state snapshots
 
 **2026-09-22 — Batch 277 shipped, and Mark's 22 Sep record is corrected.** Fourth
 batch of the day, after group R1 (268, 271, 270).
@@ -1317,6 +1408,9 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-23** — Authored Batches 279–283 from "Recorded, not scheduled" (PR #309, `d08af7e`). Every figure measured rather than transcribed, and three of the five notes were stale in ways that change the build: `updated_at` is inconsistent rather than dead (four tables advance it, fourteen do not), `daily_metrics.raw_payload` is ~26 GB cumulative rather than "538 MB/day", and `activities.raw_summary` has grown from 1,033,830 rows to 1,644,984.
+- **2026-09-23** — Batch 273 built and **left in open PR #308**, not merged: every covered derived figure now carries its own derivation, on the packet and never on the prose, with a contract test that fails when one stops. The panel is deliberately unbuilt — 273.2 says to draft the copy, not ship it. Decision #345.
+- **2026-09-23** — Batch 275 built and **left in open PR #307**, not merged: each metric carries its own threshold (0.3 of its measured SD) and its own direction, and a hypothesis that tries to bind to an evaluator and fails is refused at creation. Two departures from the row need Craig: 275.5's permission model is not implementable in a single-profile install, and 275.4 is not built. Decision #344.
 - **2026-09-23** — Batch 278 shipped (PR #306, `f671984`, Decision #343): an activity that materially contradicts the planned session no longer completes it. The bike rule is the prescription's hardest *sustained* step above Zone 2 plus normalised power below 0.70 — calibrated on all 63 ride/prescription pairings since 15 Jun, where 22 genuine hard sessions sat at 0.754–0.867 of FTP and the two he did not do at 0.636 and 0.664. The strength rule is the modality each side names, claimed only when both name one and they differ. Every rule abstains rather than guessing. 1876 passed / 0 skipped in CI; no migration, no prompt bump. Strength *prose* deferred — it needs a prompt bump.
 - **2026-09-23** — Struck the duplicate Batch 258 ledger row (PR #305, `b2be5b0`). The ledger carried 258 twice in one table; the unstruck `Planned` copy is the row a future `/batch-start` would have rebuilt. Docs only.
 - **2026-09-22 (evening)** — Batch 277 shipped (PR #304, `dad6b08`, Decision #342, amending #301): a 12-second sprint is no longer VO₂ at the safety gate, the swap no longer proposes what the rail will refuse, the brief no longer says rest-and-ride in one packet, and the gate no longer applies to a day that is over. Mark's 22 Sep record corrected and verified on both sides. 277.4 carried forward as Batch 278.
