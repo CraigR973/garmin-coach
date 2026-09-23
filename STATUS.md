@@ -6,6 +6,86 @@
 
 ## Now
 
+**2026-09-23 — Craig answered all three open questions. Both PRs now wait on one
+thing only: the Mark-facing copy.**
+
+### The three answers, recorded
+
+1. **One profile, and it is Mark.** So Batch 275's gate is **bindability, not
+   identity** — an experiment is gated by whether it can be answered, not by who
+   asked. There is no second profile to hang a two-person flow on, and a role
+   check would be permanently decorative. 275.5 is settled. Recorded on PR #307
+   (`d9d1d2d`).
+2. **275.4 carried forward.** Now **Batch 284**, merged to `main` (PR #310, squash
+   `6536529`). With the permission question settled it is specified against a
+   fixed flow rather than a provisional one.
+3. **The provenance panel: one panel per screen** — under the brief/review text,
+   headed "How these numbers were worked out", collapsed by default, one
+   expandable row per covered figure on that screen. Recorded on PR #308
+   (`7b870e7`).
+
+**⚠️ My own draft was wrong on question 3 and the correction is worth carrying.**
+It ranked *"a collapsed line under each figure, expanding in place"* first. That
+option is **not available**: `Markdown.tsx` is a plain `ReactMarkdown` render of
+the model's markdown string, so figures exist only inside generated prose with
+nothing structured marking where they are. Anchoring an expander to one needs
+either parsing numbers back out of the text — which 273.1 opens by ruling out — or
+having the model emit markers, which is a prompt change and makes provenance
+depend on the prose, the exact coupling 273.1 exists to prevent. **Ruled out by the
+batch's own governing constraint, not by taste.**
+
+### Open PRs — still DO NOT MERGE, and now for one reason each
+
+Both green (16/16 CI, 0 skipped). The only remaining gate on each is **copy Mark
+has not seen**, which `AGENTS.md` keeps explicit.
+
+- **PR #307 — Batch 275.** Outstanding: §5 of
+  `docs/drafts/2026-09-23-batch-275-copy.md` (four coach lines). Everything else
+  in that file is answered.
+- **PR #308 — Batch 273.** Outstanding: §3–5 of
+  `docs/drafts/2026-09-23-batch-273-provenance-panel.md` (three panel drafts), plus
+  a yes/no on the five covered figures in §2. Layout settled.
+
+**"Fine as is" on either unblocks that merge immediately.** 273's panel then
+becomes a rendering job against a packet that already carries the data.
+
+### Shipped today
+
+`main` is `6536529476b99970b46a97f08fc58db0da3bf5a7`; production serves it; web 200.
+
+- **Batch 278** — an activity is no longer recorded as a session it was not. PR
+  #306 / `f671984`, Decision #343.
+- **Duplicate Batch 258 ledger row struck.** PR #305 / `b2be5b0`.
+- **Batches 279–283 authored** from "Recorded, not scheduled". PR #309 /
+  `d08af7e`. Three of the five notes were stale in ways that change the build —
+  see the snapshot below.
+- **Batch 284 authored.** PR #310 / `6536529`.
+
+### One finding from authoring 284 that is worth acting on early
+
+**`conversation_learning_proposals` is empty in production — zero rows of any
+status.** The confirm-before-apply pattern 284 reuses has **never been exercised
+against Mark's real data**; Batch 257 built it and it has sat idle. So 284 is not
+"reuse a proven pattern", it is "be the first real user of one". The row says to
+drive the existing `learned_context` path against production once before building
+a second destination on top of it.
+
+### Next
+
+**Batch 274 still must not start** until 273 is on `main` — `batch-group.md`
+forbids stacking branches. **284 depends on 275** landing first. 276 needs 274
+plus a real contest record. **R3** (269, 272) still needs Craig — both bump a
+prompt version and spend real money.
+
+Unshipped backlog: **273, 275** (both in open PRs), then **274**, **279–284**.
+280 → 281 is a natural pair; 282 should land after 273.
+
+**Mark's reply is signed off** at `docs/drafts/2026-09-22-reply-to-mark.md` and has
+**not** been sent — delivery is Craig's. The 22 Sep post-workout prose still
+describes a VO₂ session; regenerating it spends real money and was left alone.
+
+## Prior current-state snapshots
+
 **2026-09-23 — overnight run finished. Two things shipped to production, two are
 sitting in open PRs waiting on Craig, and five new ledger rows are merged.**
 
@@ -96,7 +176,6 @@ backlog; 280 → 281 is a natural pair and 282 should land after 273.
 **not** been sent — delivery is Craig's. The 22 Sep post-workout prose still
 describes a VO₂ session; regenerating it spends real money and was left alone.
 
-## Prior current-state snapshots
 
 **2026-09-23 — overnight run: Batch 278 shipped, plus a ledger fix.** Both merged
 to `main` and verified in production.
@@ -1408,6 +1487,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-23** — Craig answered all three open questions: one profile (Mark), so bindability is Batch 275's gate; 275.4 carried forward as **Batch 284** (PR #310, `6536529`); and the provenance panel is **one panel per screen**. The draft had ranked inline-under-each-figure first — that option is ruled out by 273.1 itself, because the figures exist only inside model-generated markdown. Both PRs now wait on the Mark-facing copy alone.
 - **2026-09-23** — Authored Batches 279–283 from "Recorded, not scheduled" (PR #309, `d08af7e`). Every figure measured rather than transcribed, and three of the five notes were stale in ways that change the build: `updated_at` is inconsistent rather than dead (four tables advance it, fourteen do not), `daily_metrics.raw_payload` is ~26 GB cumulative rather than "538 MB/day", and `activities.raw_summary` has grown from 1,033,830 rows to 1,644,984.
 - **2026-09-23** — Batch 273 built and **left in open PR #308**, not merged: every covered derived figure now carries its own derivation, on the packet and never on the prose, with a contract test that fails when one stops. The panel is deliberately unbuilt — 273.2 says to draft the copy, not ship it. Decision #345.
 - **2026-09-23** — Batch 275 built and **left in open PR #307**, not merged: each metric carries its own threshold (0.3 of its measured SD) and its own direction, and a hypothesis that tries to bind to an evaluator and fails is refused at creation. Two departures from the row need Craig: 275.5's permission model is not implementable in a single-profile install, and 275.4 is not built. Decision #344.
