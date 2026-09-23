@@ -6,6 +6,81 @@
 
 ## Now
 
+**2026-09-23 — overnight run: Batch 278 shipped, plus a ledger fix.** Both merged
+to `main` and verified in production.
+
+**Batch 278 — an activity is no longer recorded as a session it was not.**
+`complete_matched_planned_workout` matched on local date + workout **category**
+alone, with no test that the two described the same session, so whatever bike row
+sat on the date was flipped to `completed` by whatever bike activity arrived. The
+chosen row is now read against the activity, and a materially different one is
+left alone.
+
+**278.2's decision is recorded as Decision #343, and the two cases take different
+evidence.** *Bike* — the prescription's hardest **sustained** step above Zone 2
+**and** the ride's normalised power below `EXECUTED_ENDURANCE_CEILING = 0.70`.
+Measured across all **63** ride/prescription pairings since 15 Jun: the 22
+genuinely-performed hard sessions sat at **0.754–0.867** of FTP, the two he did
+not do at **0.636** and **0.664**. The threshold sits *below* that gap's midpoint
+on purpose — failing to catch a mismatch leaves today's behaviour, while a false
+positive refuses to record a session he really did. Whole-ride average and peak
+power cannot do this: the 22 Sep ride peaked at **517 W**, higher than any genuine
+VO₂ session in the plan, because of its 12-second sprints. *Strength* — the
+modality each side names, claimed only when **both** name one and they differ.
+`Recovery Morning Routine` (86 of his 134 strength activities) names none and is
+left alone, because the app cannot tell what he did in one.
+
+**278.3 was confirmed before building.** Batch 277 removed the swap failure that
+*produced* the 22 Sep bike case, so the row is right in production today and the
+matcher is not — the prescription and the ride both classify as `cycle`, which is
+the entire test. It is the general defect, not a live incident.
+
+**Every rule abstains rather than guessing**, and abstaining reproduces today's
+behaviour exactly: a missing normalised power, an unset FTP, or a prescription
+written as prose (`VO₂ (see prescription)`, the 8 Jul row) all yield no claim.
+Over the full production history the two rules flag **six** pairings — the two
+bike mismatches and four `Daily Bodyweight Workout` days including the one Mark
+reported — and nothing else.
+
+**A deviating read no longer links to the planned row**, so every surface asking
+"has this planned session got a read?" answers no, which is true. Where a
+bodyweight *and* a dumbbell activity landed on one dumbbell row (31 Aug, 9 Sep,
+14 Sep), the dumbbell one now claims it and the bodyweight one does not.
+
+**It prevents the wrong record; it does not correct one already written.** The
+matcher never *un*-flips a row an earlier run completed.
+
+**Production:** PR #306 / squash `f671984`; 16/16 CI green on both waves,
+**PostgreSQL CI 1876 passed / 0 skipped**. Railway and Vercel both serve exact
+`f671984c3fcadef7f3b424ca7e42f95538c18edd`. No migration, no prompt bump. A
+`railway run` smoke drove the merged rules against Mark's real 22 Sep rows at the
+live FTP of 280 — both defects caught, both correct sessions still matched,
+nothing committed.
+
+**Deliberately deferred, and it is the one thing 278 does not do:** telling Mark
+in the *strength* read that his bodyweight session was not the dumbbell one needs
+prompt text, and a prompt-version bump withdraws every stored analysis at the old
+version. The packet carries a deterministic `plannedMatch` so the record exists
+and is inspectable; the prose half waits for a batch that is allowed to bump. The
+**bike** case needs nothing — Batch 80's `rideDeviation` already covers it.
+
+**Also shipped: the duplicate Batch 258 ledger row is struck** (PR #305, squash
+`b2be5b0`). The ledger carried 258 twice in one table — a struck `Shipped` row and
+an unstruck `Planned` one carrying the full spec, which is the row a future
+`/batch-start` would have rebuilt. Docs only.
+
+**Next: Batch 275**, then 273 — both **PR-only**, because their gate is copy Mark
+has not seen and `AGENTS.md` keeps his copy explicit. 275.2 is binding: no generic
+comparator without a per-metric threshold, a direction field and a variance-aware
+statistic. **Batch 274 must not start until 273 is on `main`** — `batch-group.md`
+forbids stacking branches. **R3** (269, 272) still needs Craig: both bump a prompt
+version and that spends real money.
+
+**Mark's reply is signed off** at `docs/drafts/2026-09-22-reply-to-mark.md` and has
+**not** been sent — delivery is Craig's.
+
+## Prior current-state snapshots
+
 **2026-09-22 — Batch 277 shipped, and Mark's 22 Sep record is corrected.** Fourth
 batch of the day, after group R1 (268, 271, 270).
 
@@ -88,7 +163,6 @@ regeneration spend respectively. **R4** (276) stays deferred.
 **Mark's reply is signed off** at `docs/drafts/2026-09-22-reply-to-mark.md` and
 has **not** been sent — delivery is Craig's.
 
-## Prior current-state snapshots
 
 **2026-09-22 (evening) — Batch 277 authored from Mark's check-in notes, and it is
 the most urgent open row. Group R1 shipped earlier the same day (268, 271, 270).**
@@ -1243,6 +1317,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-23** — Batch 278 shipped (PR #306, `f671984`, Decision #343): an activity that materially contradicts the planned session no longer completes it. The bike rule is the prescription's hardest *sustained* step above Zone 2 plus normalised power below 0.70 — calibrated on all 63 ride/prescription pairings since 15 Jun, where 22 genuine hard sessions sat at 0.754–0.867 of FTP and the two he did not do at 0.636 and 0.664. The strength rule is the modality each side names, claimed only when both name one and they differ. Every rule abstains rather than guessing. 1876 passed / 0 skipped in CI; no migration, no prompt bump. Strength *prose* deferred — it needs a prompt bump.
+- **2026-09-23** — Struck the duplicate Batch 258 ledger row (PR #305, `b2be5b0`). The ledger carried 258 twice in one table; the unstruck `Planned` copy is the row a future `/batch-start` would have rebuilt. Docs only.
 - **2026-09-22 (evening)** — Batch 277 shipped (PR #304, `dad6b08`, Decision #342, amending #301): a 12-second sprint is no longer VO₂ at the safety gate, the swap no longer proposes what the rail will refuse, the brief no longer says rest-and-ride in one packet, and the gate no longer applies to a day that is over. Mark's 22 Sep record corrected and verified on both sides. 277.4 carried forward as Batch 278.
 - **2026-09-22 (evening)** — Authored Batch 277 from Mark's check-in notes: the app proposed a swap its own delivery gate refuses (`ir_has_vo2` has no duration term, so `6 × 12s @185%` reads as VO₂), told him to rest and to ride in the same brief, and then recorded a VO₂ session he did not do. The 22 Sep data correction was attempted, hit the same 409, and was rolled back to a verified byte-identical before-state. Draft reply to Mark awaiting sign-off.
 - **2026-09-22** — Batch 270 shipped (PR #303, `34476ec`, Decision #341) and **group R1 is complete** (268, 271, 270). The real 21 Sep cluster now counts 1 against a threshold of 2, so the rearrange proposal that moved Mark's Tuesday VO2 no longer fires; two genuine Reds still do. No migration or prompt bump in any of the three.
