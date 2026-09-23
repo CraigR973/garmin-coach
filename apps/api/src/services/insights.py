@@ -55,11 +55,13 @@ from src.services.bedroom_overnight import (
 )
 from src.services.bulk_history_reads import (
     fan_series_columns,
+    select_day_aggregates,
     temperature_series_columns,
+    without_daily_metric_raw_payload,
     without_sleep_raw_payload,
 )
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
-from src.services.daily_metric_coverage import complete_stress_avg
+from src.services.daily_metric_coverage import DayAggregates, complete_stress_avg
 from src.services.daily_metric_phase import (
     index_day_aggregates_by_date,
     index_morning_by_date,
@@ -916,17 +918,17 @@ class InsightsService:
     async def _driver_records(
         self, player: Profile, *, start: date, end: date
     ) -> list[dict[str, float | None]]:
-        # Batch 231: one day earlier than the window, because
-        # ``prev_day_stress_avg`` reads the settled aggregate of the day *before*
-        # each wake date. The extra row feeds that lookup only — the recovery
-        # readings below are filtered back to the window so the set of correlated
-        # days is unchanged.
+        # Batch 280: the recovery readings are typed columns, so Garmin's ~40 KB
+        # daily document stays in the database; the stress average that needs
+        # its coverage facts is read from the projection below.
         metric_rows = (
             (
                 await self.session.execute(
-                    select(DailyMetric).where(
+                    select(DailyMetric)
+                    .options(without_daily_metric_raw_payload())
+                    .where(
                         DailyMetric.user_id == player.id,
-                        DailyMetric.calendar_date >= start - timedelta(days=1),
+                        DailyMetric.calendar_date >= start,
                         DailyMetric.calendar_date <= end,
                     )
                 )
@@ -934,6 +936,22 @@ class InsightsService:
             .scalars()
             .all()
         )
+        # Batch 231: one day earlier than the window, because
+        # ``prev_day_stress_avg`` reads the settled aggregate of the day *before*
+        # each wake date. The extra row feeds that lookup only, so the set of
+        # correlated days is unchanged.
+        day_aggregates = [
+            DayAggregates.from_row(row)
+            for row in (
+                await self.session.execute(
+                    select_day_aggregates().where(
+                        DailyMetric.user_id == player.id,
+                        DailyMetric.calendar_date >= start - timedelta(days=1),
+                        DailyMetric.calendar_date <= end,
+                    )
+                )
+            ).all()
+        ]
         sleeps = (
             (
                 await self.session.execute(
@@ -978,10 +996,8 @@ class InsightsService:
         )
         # Batch 205: recovery readings come from the wake row, the local-day
         # stress average from the settled one.
-        metric_by_date = index_morning_by_date(
-            [row for row in metric_rows if row.calendar_date >= start]
-        )
-        aggregate_by_date = index_day_aggregates_by_date(metric_rows)
+        metric_by_date = index_morning_by_date(metric_rows)
+        aggregate_by_date = index_day_aggregates_by_date(day_aggregates)
         sleep_by_date = {s.calendar_date: s for s in sleeps}
         weather_by_date = {w.calendar_date: w for w in weather}
         bedroom_by_date = await bedroom_driver_values_by_date(

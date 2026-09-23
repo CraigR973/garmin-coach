@@ -44,7 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database import AsyncSessionLocal
 from src.models.coaching import DAILY_METRIC_PHASE_SETTLED, DailyMetric
 from src.models.profile import Profile
-from src.services.daily_metric_coverage import daily_aggregate_coverage
+from src.services.daily_metric_coverage import CoverageSource, daily_aggregate_coverage
 from src.services.garmin_sync import (
     GarminConnectClient,
     GarminSyncService,
@@ -188,7 +188,10 @@ async def run_backfill(
         try:
             payloads = await _retry(lambda: client.fetch_daily_payloads(day))
             metric_fields = parse_daily_metric_fields(day, payloads)
-            coverage = daily_aggregate_coverage(day, metric_fields.get("raw_payload"))
+            # The document is in hand before it is stored, so read the facts from it.
+            coverage = daily_aggregate_coverage(
+                day, CoverageSource.from_document(metric_fields.get("raw_payload"))
+            )
             if require_complete_daily and coverage.status != "complete":
                 raise ValueError(
                     "daily aggregate window is not complete "

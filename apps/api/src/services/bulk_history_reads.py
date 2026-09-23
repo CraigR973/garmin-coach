@@ -45,19 +45,34 @@ Both pass ``raiseload=True``. An unloaded attribute would otherwise emit a lazy
 SELECT, which under an async session fails as ``MissingGreenlet`` far from the
 cause; this way an unforeseen reader raises immediately, naming the attribute.
 
-**Deferring is safe only where nothing in the same session reads the column**,
-because SQLAlchemy's identity map hands a later query the object it already
-holds. That is why ``daily_metrics.raw_payload`` is *not* deferred anywhere:
-``daily_metric_coverage`` reads it to decide whether a stress or Body Battery
-aggregate covers the whole local day, and ``morning_analysis`` reads it in the
-same session that builds the chronic-pattern window. Reducing that one needs the
-coverage contract to change first.
+**What the identity map does with a deferred column** — measured on SQLAlchemy
+2.0.51 for Batch 280, correcting what this paragraph used to claim. A later
+query that selects the whole row *does* fill in a column an earlier query
+deferred on the same object: SQLAlchemy populates the unloaded attributes of an
+object it already holds. What fails is reaching the column *without* such a
+query — ``session.get()`` on an object already in the identity map, or an object
+handed on from the deferred read. So a deferred read is safe beside a whole-row
+reader in the same session as long as that reader issues its own query.
+``test_bulk_history_reads`` pins the behaviour, so an upgrade that changes it
+fails CI rather than a coaching path.
+
+``daily_metrics.raw_payload`` (Batch 280). The coverage readers no longer need
+it: :func:`select_day_aggregates` projects the ten facts a coverage decision is
+made from (``daily_metric_coverage.COVERAGE_FACTS``) server-side, and the typed
+reads beside it defer the document with :func:`without_daily_metric_raw_payload`.
+Every other full ``select(DailyMetric)`` still ships the document; the Batch 280
+ledger row names each one and what it costs.
 """
 
 from __future__ import annotations
 
+from typing import Any
+
+from sqlalchemy import Numeric, Select, case, cast, false, func, literal_column, select, true
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import defer, load_only
 from sqlalchemy.orm.interfaces import ORMOption
+from sqlalchemy.sql.elements import ColumnElement, Label
 
 from src.models.coaching import (
     ActivityTimeSeries,
@@ -67,13 +82,16 @@ from src.models.coaching import (
     TemperatureReading,
     WeatherDaily,
 )
+from src.services.daily_metric_coverage import COVERAGE_FACTS, CoverageFact
 
 __all__ = [
     "activity_timeseries_columns",
     "daily_metric_reading_columns",
     "fan_series_columns",
+    "select_day_aggregates",
     "temperature_series_columns",
     "weather_summary_columns",
+    "without_daily_metric_raw_payload",
     "without_sleep_raw_payload",
 ]
 
@@ -95,6 +113,94 @@ def without_sleep_raw_payload() -> ORMOption:
     fetches its single night by date and shares a session with none of these.
     """
     return defer(Sleep.raw_payload, raiseload=True)
+
+
+def without_daily_metric_raw_payload() -> ORMOption:
+    """Load a ``DailyMetric`` row without Garmin's ~40 KB daily document (Batch 280).
+
+    For the typed reads that sit beside :func:`select_day_aggregates`: the
+    recovery readings come off the row, the coverage facts off the projection,
+    and the document stays in the database.
+    """
+    return defer(DailyMetric.raw_payload, raiseload=True)
+
+
+def select_day_aggregates() -> Select[Any]:
+    """The running local-day totals and their coverage facts, projected (Batch 280).
+
+    One row per observation: ``calendar_date``, ``phase``, the four aggregate
+    columns, and the ten :data:`~src.services.daily_metric_coverage.COVERAGE_FACTS`
+    labelled by field name — about two hundred bytes in place of a forty-kilobyte
+    document. Callers add their own ``where``/``order_by``/``limit`` and build
+    each result with ``DayAggregates.from_row``.
+
+    **The document is read once per row, and the shape of the SQL is what makes
+    that true.** Every JSONB operator applied to the stored column fetches and
+    decompresses the whole TOASTed document again, so writing the ten facts
+    against ``daily_metrics.raw_payload`` directly costs sixteen reads a row —
+    943 ms for Mark's 550 rows, measured on production on 2026-09-23, which is
+    slower than shipping the documents (345-359 ms to render them as text).
+    Instead a ``LATERAL`` subquery reads the document once into memory and every
+    fact is taken from that copy: 35-78 ms for the same rows across runs.
+    ``OFFSET 0`` stops the planner folding the subquery back into sixteen reads,
+    and ``|| '{}'`` hands back the document already read into memory —
+    PostgreSQL returns the non-empty operand of an empty concatenation as is.
+    Unlike ``jsonb_to_record``, which would also read it once, it cannot raise on
+    a document whose root is not an object, so the projection is as total as
+    ``CoverageSource.from_document``.
+    """
+    document = (
+        select(
+            DailyMetric.raw_payload.op("||", return_type=JSONB)(
+                literal_column("'{}'::jsonb", type_=JSONB)
+            ).label("document")
+        )
+        .correlate(DailyMetric)
+        .offset(0)
+        .lateral("coverage_document")
+    )
+    return (
+        select(
+            DailyMetric.calendar_date,
+            DailyMetric.phase,
+            DailyMetric.stress_avg,
+            DailyMetric.body_battery_charged,
+            DailyMetric.body_battery_drained,
+            DailyMetric.body_battery_end,
+            *(_coverage_fact(document.c.document, fact) for fact in COVERAGE_FACTS),
+        )
+        .select_from(DailyMetric)
+        .join(document, true())
+    )
+
+
+def _coverage_fact(document: ColumnElement[Any], fact: CoverageFact) -> Label[Any]:
+    """One coverage fact, read in SQL exactly as ``CoverageSource.from_document`` reads it.
+
+    ``#>`` / ``#>>`` return NULL for a missing key, for a section that is not an
+    object, and (``#>>``) for a JSON null — the same three cases the Python side
+    reads as ``None``.
+    """
+    element = document[(fact.section, fact.key)]
+    text: ColumnElement[Any] = element.astext
+    kind = func.jsonb_typeof(element)
+    if fact.kind == "reported":
+        return text.is_not(None).label(fact.field)
+    if fact.kind == "text":
+        return case({"string": text}, value=kind).label(fact.field)
+    # ``truthy``: Python's ``bool()`` over every JSON type, so the boolean says
+    # what the array test said without shipping — or inventing — the array.
+    return case(
+        {
+            "array": func.jsonb_array_length(element) > 0,
+            "object": text != "{}",
+            "string": text != "",
+            "number": cast(text, Numeric) != 0,
+            "boolean": text == "true",
+        },
+        value=kind,
+        else_=false(),
+    ).label(fact.field)
 
 
 def temperature_series_columns() -> ORMOption:
