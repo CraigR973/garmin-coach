@@ -6,8 +6,8 @@
 
 ## Now
 
-**2026-09-23 (overnight run, in progress) — Batch 280 shipped. Next in the queue:
-Batch 281, then re-tiering Batch 283, then Batch 279 built to an open PR.**
+**2026-09-24 (overnight run, in progress) — Batches 280 and 281 shipped. Next in the
+queue: re-tiering Batch 283, then Batch 279 built to an open PR.**
 
 ### Shipped tonight
 
@@ -15,6 +15,20 @@ Batch 281, then re-tiering Batch 283, then Batch 279 built to an open PR.**
   document. PR #311 / squash `65b9005`, Decision #346. Production serves `65b9005`;
   web 200; `daily-loop` 401; the deployed image's own projection agrees with the
   whole document on all 550 stored rows.
+- **Batch 281** — activity loaders leave Garmin's ~4.6 KB `raw_summary` behind
+  unless their objects reach a reader of it. PR #312 / squash `9a75138`, Decision
+  #347. Production serves `9a75138`; the deployed image's smoke on a real ride
+  (23 Sep) shows the check-in path hands the ride read a whole row.
+
+### What 281 found, worth carrying
+
+- **The ride read takes the summary off the object it is handed**, so two loaders
+  must stay whole, not one: its own pending-ride query and
+  `DailyLoopService._activity`, whose object the check-in route's `session.get`
+  receives from the identity map. Deferring `_activity` would have broken every
+  ride check-in. A static test now classifies every `select(Activity)`.
+- The deferred loaders were **96.6%** of the 1.65M payload-carrying activity rows
+  (~7.6 GB over 92 days).
 
 ### What 280 found, worth carrying
 
@@ -1529,6 +1543,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-24 (overnight)** — Batch 281 shipped (PR #312, `9a75138`, Decision #347): 23 activity loaders defer `raw_summary` with `raiseload`, ranked by rows returned (the 120-night driver read and the walking/breathwork/strength windows were 1.55M of 1.65M rows); three keep the whole row because their objects reach a summary reader — the ride read's own pending query, `DailyLoopService._activity` (handed to the ride read through the check-in route's `session.get`) and the sync upsert. `post_workout_analysis` unchanged. Production before/after byte-identical across 23 entry points; CI 1914 passed, 0 skipped.
 - **2026-09-23 (overnight)** — Batch 280 shipped (PR #311, `65b9005`, Decision #346): coverage now reads ten projected facts — nine keys and one truthiness boolean — instead of Garmin's ~40 KB daily document, and the review rollup, 120-night driver window, nightly baseline rebuild and two morning lookups no longer ship it. Built as one TOAST read per row (35–78 ms; the naive per-key form took 943 ms, slower than shipping). Production before/after byte-identical; 550/550 rows agree. Corrected two premises: the identity-map reason nothing was deferred, and the assumption that the 26 GB was the coverage path — most of it is `trends` (every row, every chat turn), `chronic_patterns`, `longitudinal` and `early_warning`, now free to move.
 - **2026-09-23** — Craig answered all three open questions: one profile (Mark), so bindability is Batch 275's gate; 275.4 carried forward as **Batch 284** (PR #310, `6536529`); and the provenance panel is **one panel per screen**. The draft had ranked inline-under-each-figure first — that option is ruled out by 273.1 itself, because the figures exist only inside model-generated markdown. Both PRs now wait on the Mark-facing copy alone.
 - **2026-09-23** — Authored Batches 279–283 from "Recorded, not scheduled" (PR #309, `d08af7e`). Every figure measured rather than transcribed, and three of the five notes were stale in ways that change the build: `updated_at` is inconsistent rather than dead (four tables advance it, fourteen do not), `daily_metrics.raw_payload` is ~26 GB cumulative rather than "538 MB/day", and `activities.raw_summary` has grown from 1,033,830 rows to 1,644,984.
