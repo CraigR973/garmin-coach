@@ -7,7 +7,7 @@ from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, Stri
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.models.base import Base, UUIDPrimaryKeyMixin
+from src.models.base import Base, UUIDPrimaryKeyMixin, updated_at_column
 
 
 class ActorType(StrEnum):
@@ -51,9 +51,9 @@ class NotificationPreferences(Base):
     quiet_hours_end: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=False), nullable=True
     )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=False), nullable=False, server_default="now()"
-    )
+    # Declared on a bare ``Base`` (no ``created_at``), so it takes the column
+    # itself rather than the mixin — the same meaning either way (Batch 279).
+    updated_at: Mapped[datetime] = updated_at_column()
 
 
 class AuditLog(Base, UUIDPrimaryKeyMixin):

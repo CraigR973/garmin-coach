@@ -76,10 +76,11 @@ def unincorporated_nights(
     keeps a brand-new profile honest without a special case: one night of history
     and no baselines is a lag of 1, not a missing job.
 
-    Deliberately derived from ``window_end_date`` and **not** ``updated_at``:
-    ``UpdatedAtMixin`` declares ``updated_at`` with ``server_default`` and no
-    ``onupdate``, and no migration adds a trigger, so it never advances on UPDATE.
-    A staleness check keyed on it would read every row as permanently fresh.
+    Deliberately derived from ``window_end_date`` and **not** ``updated_at``.
+    Until Batch 279 ``updated_at`` never advanced on this table, so a staleness
+    check keyed on it read every row as permanently fresh; it now records the
+    last write, but the question here is which nights the baselines cover, and
+    only the window answers that.
     """
 
     if newest_sleep_date is None:
