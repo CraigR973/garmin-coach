@@ -214,6 +214,7 @@ def test_the_bulk_read_module_names_the_models_it_governs() -> None:
         "daily_metrics",
         "temperature_readings",
         "analyses",
+        "activities",
     }
     verify = (REPO / "docs" / "agent-commands" / "batch-verify.md").read_text(encoding="utf-8")
     assert "bulk_history_reads" in verify

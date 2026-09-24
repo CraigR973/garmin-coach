@@ -735,6 +735,11 @@ class DailyLoopService:
         subject_date: date,
         timezone_name: str,
     ) -> Activity | None:
+        # Loaded whole on purpose (Batch 281): the check-in route's
+        # ``session.get(Activity, ...)`` receives this object from the identity
+        # map and hands it to the ride read, which grades intervals on
+        # ``raw_summary['activitySplits']``. Deferring the summary here would
+        # make that read raise.
         activity = (
             (
                 await self.session.execute(
