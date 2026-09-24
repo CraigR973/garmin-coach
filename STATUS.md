@@ -22,9 +22,9 @@ wait on Mark's wording.**
    regression test): the result line now reads `(-6.6 ms, range -10.0 to -3.1)`.
    Production already doubles them whenever a sleep-score comparison finds a
    difference, and merging #307 fixes that too. PR #308 shows Mark nothing new: its
-   panel isn't built, so Part 2 is what the panel will say. **#308 conflicts with
-   main** (15 commits behind), so its pull-request CI can't run until main is merged
-   in. #307 has been brought up to date.
+   panel isn't built, so Part 2 is what the panel will say. **Both PRs are up to date
+   with main** (merged in 24 Sep) and green on all 16 checks, so either can merge the
+   moment Mark signs off.
 
 **Storage, done 24 Sep (Decision #349).** Retention is on: the first purge removed
 505,135 samples from 603 activities that started before 26 Jun, and from now the 03:40
@@ -1563,6 +1563,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-24** — PRs #307 and #308 updated from main (each had one DECISIONS conflict, both appended) and green on all 16 checks. mcu_app's STATUS now records where its v1 data went (Gotcha 30, `acf5b19`, deployed and healthy).
 - **2026-09-24** — Storage cleared on Craig's go (Decision #349). Retention enabled; the first purge, run by hand in the deployed container, removed 505,135 samples from 603 activities (exactly the dry-run count), and autovacuum cleared them a minute later. The old `mcu_app` v1 schema in `public` (27 tables, 3 with rows) was dumped and checked against the live counts, then dropped: 472.4 → 448.5 MB. PR #307's doubled brackets fixed on its branch (`d4437cf`). Corrected ARCHITECTURE's stale note that `updated_at` never advances.
 - **2026-09-24** — Batch 279 merged on Craig's go (PR #314, `0904f4b`, Decision #348); production verified on the exact SHA and the deployed image stamps `updated_at` on all 18 tables. Wrote the wording sign-off sheet for PRs #307/#308 (`docs/drafts/2026-09-24-wording-sign-off.md`) — it adds #307's real Mark-facing text (the Experiments-page result lines), which the earlier draft missed, and found a doubled-bracket defect in them. Storage measured: `activity_timeseries` is 378 MB of 472 MB.
 - **2026-09-24 (overnight)** — Authored Batches 285–286 and struck three stale notes (PR #315, `2d95c41`): the tool loop, SDK adoption and Sonnet 5 had already shipped (257/260/261, 257, 233). 285 is Batch 280's named follow-up — the four windows still shipping the daily document, now separable in `pg_stat_statements`; 286 is response compression (12.4–17.7 MB/day of uncompressed JSON). Run finished: 280 and 281 shipped, 283 re-tiered, 279 in PR #314 for Craig.
