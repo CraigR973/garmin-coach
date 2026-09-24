@@ -48,8 +48,7 @@ WHOLE_ROW_LOADERS = {
         "the identity map and hands it to the ride read"
     ),
     "services/garmin_sync.py:GarminSyncService.sync_activities": (
-        "carries raw_summary['activitySplits'] forward when an optional splits "
-        "fetch is missing"
+        "carries raw_summary['activitySplits'] forward when an optional splits fetch is missing"
     ),
 }
 
@@ -90,7 +89,7 @@ def _qualified_scope(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> str:
 
 
 def _defers_summary(select_call: ast.Call, parents: dict[ast.AST, ast.AST]) -> bool:
-    """True when the ``select(Activity)`` is immediately ``.options(without_activity_raw_summary())``."""
+    """True when ``select(Activity)`` is directly ``.options(without_activity_raw_summary())``."""
     attribute = parents.get(select_call)
     if not (isinstance(attribute, ast.Attribute) and attribute.attr == "options"):
         return False
@@ -108,11 +107,13 @@ def test_every_activity_loader_is_classified() -> None:
     loaders = _activity_loaders()
     whole = {key for key, defers in loaders.items() if not defers}
 
-    assert whole == set(WHOLE_ROW_LOADERS), (
+    unexpected = sorted(whole - set(WHOLE_ROW_LOADERS))
+    missing = sorted(set(WHOLE_ROW_LOADERS) - whole)
+    assert not unexpected and not missing, (
         "A select(Activity) either defers the summary with "
         "without_activity_raw_summary() or is added to WHOLE_ROW_LOADERS with the "
-        f"reason it reads raw_summary. Unexpected whole rows: {sorted(whole - set(WHOLE_ROW_LOADERS))}; "
-        f"expected whole but deferred: {sorted(set(WHOLE_ROW_LOADERS) - whole)}"
+        f"reason it reads raw_summary. Unexpected whole rows: {unexpected}; "
+        f"expected whole but deferred: {missing}"
     )
     # Not vacuous: the scan sees the deferred loaders too (23, plus the 3 whole, at Batch 281).
     assert sum(loaders.values()) >= 20
