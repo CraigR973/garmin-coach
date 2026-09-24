@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import Activity
 from src.models.profile import Profile
+from src.services.bulk_history_reads import without_activity_raw_summary
 
 WINDOW_4W_DAYS = 28
 WINDOW_12W_DAYS = 84
@@ -148,6 +149,7 @@ class WalkingBriefService:
             (
                 await self.session.execute(
                     select(Activity)
+                    .options(without_activity_raw_summary())
                     .where(
                         Activity.user_id == player.id,
                         Activity.activity_type == "walking",

@@ -85,7 +85,11 @@ from src.models.profile import Profile
 from src.services.analysis_currentness import manual_entry_input_version
 from src.services.bedroom_overnight import night_window
 from src.services.body_metrics import resolve_effective_vo2max, resolve_effective_weight_kg
-from src.services.bulk_history_reads import temperature_series_columns, without_sleep_raw_payload
+from src.services.bulk_history_reads import (
+    temperature_series_columns,
+    without_activity_raw_summary,
+    without_sleep_raw_payload,
+)
 from src.services.coach_sections import (
     activity_state as _activity_state_shape,
 )
@@ -764,6 +768,7 @@ class ChatContextService:
             (
                 await self.session.execute(
                     select(Activity)
+                    .options(without_activity_raw_summary())
                     .where(Activity.user_id == user_id, Activity.start_utc >= start_utc)
                     .order_by(desc(Activity.start_utc))
                     .limit(RECENT_ACTIVITY_LIMIT)
@@ -918,6 +923,7 @@ class ChatContextService:
             (
                 await self.session.execute(
                     select(Activity)
+                    .options(without_activity_raw_summary())
                     .where(Activity.user_id == user_id, Activity.created_at > since_utc)
                     .order_by(desc(Activity.created_at))
                     .limit(SINCE_READ_EVENT_LIMIT)

@@ -61,12 +61,15 @@ from src.services.anthropic_text import (
     generate_anthropic_text,
 )
 from src.services.bulk_history_reads import (
+    select_day_aggregates,
     temperature_series_columns,
+    without_activity_raw_summary,
+    without_daily_metric_raw_payload,
     without_sleep_raw_payload,
 )
 from src.services.coach_policy import RECORDED_DATA_HONESTY_RULE
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
-from src.services.daily_metric_coverage import complete_body_battery_charged
+from src.services.daily_metric_coverage import DayAggregates, complete_body_battery_charged
 from src.services.daily_metric_phase import (
     index_day_aggregates_by_date,
     index_morning_by_date,
@@ -818,6 +821,7 @@ class ReviewService:
         period_end: date,
     ) -> ReviewRollup:
         metrics = await self._daily_metrics(player.id, period_start, period_end)
+        day_aggregates = await self._day_aggregates(player.id, period_start, period_end)
         sleeps = await self._sleeps(player.id, period_start, period_end)
         verdicts = await self._verdicts(
             player.id, period_start, period_end, timezone_name=player.timezone
@@ -834,7 +838,7 @@ class ReviewService:
         # recovery readings are the wake rows; Body Battery charge below is a
         # finished local-day total and comes from the settled row instead.
         metric_by_date = index_morning_by_date(metrics)
-        aggregate_by_date = index_day_aggregates_by_date(metrics)
+        aggregate_by_date = index_day_aggregates_by_date(day_aggregates)
         sleep_by_date = {s.calendar_date: s for s in sleeps}
         all_days = sorted(set(metric_by_date) | set(sleep_by_date) | set(verdicts))
         profile_age, profile_sex = await self._profile_age_sex(player.id)
@@ -918,11 +922,18 @@ class ReviewService:
         )
 
     async def _daily_metrics(self, user_id: uuid.UUID, start: date, end: date) -> list[DailyMetric]:
-        """Every observation in the window; the caller splits them by phase."""
+        """Every observation in the window; the caller splits them by phase.
+
+        Batch 280: the recovery readings are typed columns, so Garmin's ~40 KB
+        daily document stays in the database. Body Battery charge, which needs
+        the document's coverage facts, comes from :meth:`_day_aggregates`.
+        """
         rows = (
             (
                 await self.session.execute(
-                    select(DailyMetric).where(
+                    select(DailyMetric)
+                    .options(without_daily_metric_raw_payload())
+                    .where(
                         DailyMetric.user_id == user_id,
                         DailyMetric.calendar_date >= start,
                         DailyMetric.calendar_date <= end,
@@ -933,6 +944,21 @@ class ReviewService:
             .all()
         )
         return list(rows)
+
+    async def _day_aggregates(
+        self, user_id: uuid.UUID, start: date, end: date
+    ) -> list[DayAggregates]:
+        """The window's running local-day totals with their coverage, projected (Batch 280)."""
+        rows = (
+            await self.session.execute(
+                select_day_aggregates().where(
+                    DailyMetric.user_id == user_id,
+                    DailyMetric.calendar_date >= start,
+                    DailyMetric.calendar_date <= end,
+                )
+            )
+        ).all()
+        return [DayAggregates.from_row(row) for row in rows]
 
     async def _sleeps(self, user_id: uuid.UUID, start: date, end: date) -> list[Sleep]:
         rows = (
@@ -982,7 +1008,9 @@ class ReviewService:
         rows = (
             (
                 await self.session.execute(
-                    select(Activity).where(
+                    select(Activity)
+                    .options(without_activity_raw_summary())
+                    .where(
                         Activity.user_id == user_id,
                         Activity.start_utc >= start_dt,
                         Activity.start_utc < end_dt,

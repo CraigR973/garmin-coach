@@ -51,7 +51,11 @@ from src.services.anthropic_text import (
 from src.services.bedroom_overnight import night_window
 from src.services.body_metrics import resolve_effective_vo2max, resolve_effective_weight_kg
 from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
-from src.services.bulk_history_reads import temperature_series_columns
+from src.services.bulk_history_reads import (
+    select_day_aggregates,
+    temperature_series_columns,
+    without_activity_raw_summary,
+)
 from src.services.chronic_patterns import (
     CHRONIC_DELOAD_WINDOW_DAYS,
     ChronicPatternSuggestionService,
@@ -82,12 +86,12 @@ from src.services.coach_sections import (
 )
 from src.services.coaching_state import CoachingStateService
 from src.services.daily_metric_coverage import (
+    DayAggregates,
     complete_body_battery_charged,
     complete_body_battery_drained,
     complete_body_battery_end,
     complete_stress_avg,
     coverage_packet,
-    daily_aggregate_coverage,
     morning_body_battery_charged,
 )
 from src.services.daily_metric_phase import (
@@ -1117,26 +1121,28 @@ class MorningAnalysisService:
 
     async def _day_aggregate_metric(
         self, user_id: uuid.UUID, subject_date: date
-    ) -> DailyMetric | None:
-        """The settled observation for ``subject_date``, if one exists yet.
+    ) -> DayAggregates | None:
+        """The settled observation's aggregates for ``subject_date``, if one exists yet.
 
         Batch 216: Body Battery charge/drain and stress are running local-day
         totals, not point-in-time readings — a morning wake row can never carry
         a complete one (``daily_metric_coverage``). Mirrors the ``day_aggregates``
-        parameter ``sample_values`` already uses for the same reason.
+        parameter ``sample_values`` already uses for the same reason. Batch 280:
+        projected, because the aggregates and their coverage facts are all this
+        read is for.
         """
-        return cast(
-            DailyMetric | None,
-            await self.session.scalar(
-                select(DailyMetric)
+        row = (
+            await self.session.execute(
+                select_day_aggregates()
                 .where(
                     DailyMetric.user_id == user_id,
                     DailyMetric.calendar_date == subject_date,
                     DailyMetric.phase == DAILY_METRIC_PHASE_SETTLED,
                 )
                 .limit(1)
-            ),
-        )
+            )
+        ).first()
+        return DayAggregates.from_row(row) if row is not None else None
 
     async def _sleep(self, user_id: uuid.UUID, subject_date: date) -> Sleep | None:
         return cast(
@@ -1194,6 +1200,7 @@ class MorningAnalysisService:
             (
                 await self.session.execute(
                     select(Activity)
+                    .options(without_activity_raw_summary())
                     .where(
                         Activity.user_id == user_id,
                         Activity.activity_type == "walking",
@@ -1233,6 +1240,7 @@ class MorningAnalysisService:
             (
                 await self.session.execute(
                     select(Activity)
+                    .options(without_activity_raw_summary())
                     .where(
                         Activity.user_id == user_id,
                         Activity.start_utc >= lower_bound,
@@ -1247,21 +1255,22 @@ class MorningAnalysisService:
         # Deliberately settled, not morning (Batch 205): this packet answers
         # "what did yesterday cost", which is a whole-day question. Yesterday's
         # wake reading predates yesterday's session entirely, so it is the one
-        # place the closed-day observation is the honest input.
-        daily_metric = cast(
-            DailyMetric | None,
-            await self.session.scalar(
-                select(DailyMetric)
+        # place the closed-day observation is the honest input. Batch 280: the
+        # aggregates and their coverage are all it reads, so they are projected.
+        aggregate_row = (
+            await self.session.execute(
+                select_day_aggregates()
                 .where(
                     DailyMetric.user_id == user_id,
                     DailyMetric.calendar_date == yesterday,
                 )
                 .order_by(settled_first_order())
                 .limit(1)
-            ),
-        )
+            )
+        ).first()
+        day_aggregates = DayAggregates.from_row(aggregate_row) if aggregate_row else None
         if not activities:
-            return _yesterday_load_packet([], [], daily_metric, baselines)
+            return _yesterday_load_packet([], [], day_aggregates, baselines)
 
         activity_ids = [activity.id for activity in activities]
         analyses = list(
@@ -1278,7 +1287,7 @@ class MorningAnalysisService:
             .scalars()
             .all()
         )
-        return _yesterday_load_packet(activities, analyses, daily_metric, baselines)
+        return _yesterday_load_packet(activities, analyses, day_aggregates, baselines)
 
     async def _metric_baselines(self, user_id: uuid.UUID) -> list[MetricBaseline]:
         rows = (
@@ -1781,7 +1790,7 @@ def _metrics_vs_baselines(
     sleep: Sleep | None,
     baselines: Sequence[MetricBaseline],
     age_adjusted_sleep_score: int | None,
-    day_aggregates: DailyMetric | None = None,
+    day_aggregates: DayAggregates | None = None,
     age_comparison: Mapping[str, Any] | None = None,
     closed_day_cost: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
@@ -1796,8 +1805,10 @@ def _metrics_vs_baselines(
         if day_aggregates is not None and day_aggregates.phase == DAILY_METRIC_PHASE_SETTLED
         else None
     )
+    # The wake row is loaded whole for fitness age and the training fields, so
+    # its coverage facts are read from the document already in memory (Batch 280).
     morning_battery_source = (
-        daily_metric
+        DayAggregates.from_metric(daily_metric)
         if settled_battery_source is None
         and daily_metric is not None
         and daily_metric.phase == DAILY_METRIC_PHASE_MORNING
@@ -2179,28 +2190,24 @@ def _whole_day_cost_baselines(
 def _yesterday_load_packet(
     activities: Sequence[Activity],
     analyses: Sequence[Analysis],
-    daily_metric: DailyMetric | None = None,
+    day_aggregates: DayAggregates | None = None,
     baselines: Sequence[MetricBaseline] = (),
 ) -> dict[str, Any]:
-    coverage = (
-        daily_aggregate_coverage(daily_metric.calendar_date, daily_metric.raw_payload)
-        if daily_metric is not None
-        else None
-    )
+    coverage = day_aggregates.coverage if day_aggregates is not None else None
     cost_values: dict[str, float | int | None] = {
         "allDayStressAvg": (
-            complete_stress_avg(daily_metric) if daily_metric is not None else None
+            complete_stress_avg(day_aggregates) if day_aggregates is not None else None
         ),
         "bodyBatteryDrained": (
-            complete_body_battery_drained(daily_metric) if daily_metric is not None else None
+            complete_body_battery_drained(day_aggregates) if day_aggregates is not None else None
         ),
         "bodyBatteryEnd": (
-            complete_body_battery_end(daily_metric) if daily_metric is not None else None
+            complete_body_battery_end(day_aggregates) if day_aggregates is not None else None
         ),
     }
     whole_day_cost: dict[str, Any] = {
         "calendarDate": (
-            daily_metric.calendar_date.isoformat() if daily_metric is not None else None
+            day_aggregates.calendar_date.isoformat() if day_aggregates is not None else None
         ),
         "allDayStressAvg": cost_values["allDayStressAvg"],
         "bodyBatteryDrained": cost_values["bodyBatteryDrained"],

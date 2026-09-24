@@ -442,6 +442,8 @@ class GarminSyncService:
             activity_id = activity_fields.get("garmin_activity_id")
             if activity_id is None:
                 continue
+            # Whole row on purpose (Batch 281): the splits carry-forward below
+            # reads ``raw_summary``, and this lookup returns one row a call.
             result = await self.session.execute(
                 select(Activity).where(
                     Activity.user_id == user_id,

@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.coaching import Activity, Analysis, PlannedWorkout
 from src.models.profile import Profile
 from src.services.activity_dates import activity_local_date as _activity_local_date
+from src.services.bulk_history_reads import without_activity_raw_summary
 from src.services.coach_policy import source_basis
 
 ACTION_AUDIT_TYPES = frozenset(
@@ -171,6 +172,7 @@ class TrainingWeekService:
             (
                 await self.session.execute(
                     select(Activity)
+                    .options(without_activity_raw_summary())
                     .where(
                         Activity.user_id == user_id,
                         Activity.start_utc >= start_utc,

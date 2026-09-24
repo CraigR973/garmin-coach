@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import Activity, KnowledgeBase, TemperatureReading, WeatherDaily
 from src.services.activity_dates import activity_local_date
+from src.services.bulk_history_reads import without_activity_raw_summary
 
 
 async def load_activities(
@@ -46,6 +47,7 @@ async def load_activities(
         (
             await session.execute(
                 select(Activity)
+                .options(without_activity_raw_summary())
                 .where(
                     Activity.user_id == user_id,
                     Activity.start_utc >= day_start - timedelta(days=1),

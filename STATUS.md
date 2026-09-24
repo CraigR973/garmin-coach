@@ -6,6 +6,246 @@
 
 ## Now
 
+**2026-09-24 — overnight run finished, then Craig merged Batch 279. Three batches
+shipped to production today (280, 281, 279), one row was re-tiered, and two new rows
+are authored. PRs #307 and #308 wait on Mark's wording.**
+
+### Needs Craig
+
+1. **Mark's wording sign-off** — one sheet, ready to forward:
+   `docs/drafts/2026-09-24-wording-sign-off.md`. Part 1 is Batch 275 (PR #307),
+   Part 2 is Batch 273 (PR #308). Two corrections to what the drafts implied:
+   **PR #307's Mark-facing text is the Experiments-page result lines (Part 1a)**,
+   which the old draft never showed; the four chat lines (Part 1c) are for Batch 284,
+   not #307. And **#307 doubles its brackets** — `(−6.6 ms, (range …))` — a one-line
+   fix to make before it merges. PR #308 shows Mark nothing new: its panel isn't
+   built, so Part 2 is what the panel will say.
+2. **Database storage — 472 MB of 500 MB.** `activity_timeseries` (per-sample
+   workout streams) is **378 MB**: 234 MB of rows, of which **80 MB is `raw_metrics`
+   JSON nothing reads**, plus 144 MB of indexes. **70% of its rows (505k) come from
+   activities older than 90 days** — the retention purge you declined on 2 Sep. A
+   further **24 MB is another app's movie tables** in `public` (`movie_credits`,
+   `movies`, `collection_items`). Deleting rows frees space for reuse and stops the
+   growth; the reported size only falls after `VACUUM FULL`. Headroom is about a
+   month.
+
+**Gotcha: the dev Mac's disk was full on 24 Sep** (20 MB free of 112 GB) — writes
+fail with `ENOSPC`. Free space before the next session.
+
+### Shipped
+
+| Item | PR | Squash |
+|---|---|---|
+| **Batch 280** — coverage reads ten projected facts, not the 40 KB daily document | #311 | `65b9005` |
+| **Batch 281** — activity loaders leave the 4.6 KB summary behind unless a reader needs it | #312 | `9a75138` |
+| **Batch 283 re-tiered** 🔴 High → 🟢 Low (Mark is the only profile) | #313 | `4062bb9` |
+| **Batches 285–286 authored**; three stale notes struck | #315 | `2d95c41` |
+| **Batch 279** — `updated_at` is the app's clock at the row's last write (merged on Craig's go, 24 Sep) | #314 | `0904f4b` |
+
+Every merge was verified in production on its exact SHA (Railway and Vercel
+same-origin health, web 200, `daily-loop` 401), and each batch also passed a smoke run
+inside the deployed container: 280's projection agreed with the whole document on all
+550 rows; 281's check-in path handed the ride read a whole row on a real 23 Sep ride.
+
+### Worth carrying
+
+- **Most of the 26 GB is still flowing** — `trends` reads every stored daily row on
+  every chat turn, plus `chronic_patterns`, `longitudinal` and `early_warning`. None
+  reads the document. **Batch 285 is that follow-up**; re-measure over a full day first
+  (the coverage path now has its own SQL, so the split is visible).
+- **Projecting JSON server-side can be slower than shipping it.** One operator per key
+  re-reads the TOASTed document each time (943 ms for 550 rows); `select_day_aggregates`
+  reads it once (35–78 ms). Copy that shape.
+- **The identity map fills a deferred column on a later whole-row query**; only
+  `session.get()` on a held object, or an object passed on, fails. Pinned by tests.
+- **The ride read takes `raw_summary` off the object it is handed**, so
+  `DailyLoopService._activity` must stay whole — deferring it would break every ride
+  check-in. A static test now classifies every `select(Activity)`.
+- **`profiles` has had an `updated_at` trigger since migration 001** — the ledger said
+  there was none.
+
+### Next
+
+**Batch 285** (egress follow-up), then **286** (response compression). 274, 282 and 284
+wait on 273/275; 276 needs 274 plus a real contest record; **R3 (269, 272)** needs Craig
+— both bump a prompt version and spend money. **Next DECISIONS number: #349** (#344/#345
+are held by PRs #307/#308, #348 by PR #314).
+
+**Mark's reply** (`docs/drafts/2026-09-22-reply-to-mark.md`) is signed off and unsent —
+Craig's. The 22 Sep post-workout prose still describes a VO₂ session; regenerating it
+spends money and was left.
+
+## Prior current-state snapshots
+
+**2026-09-23 — Craig answered all three open questions. Both PRs now wait on one
+thing only: the Mark-facing copy.**
+
+### The three answers, recorded
+
+1. **One profile, and it is Mark.** So Batch 275's gate is **bindability, not
+   identity** — an experiment is gated by whether it can be answered, not by who
+   asked. There is no second profile to hang a two-person flow on, and a role
+   check would be permanently decorative. 275.5 is settled. Recorded on PR #307
+   (`d9d1d2d`).
+2. **275.4 carried forward.** Now **Batch 284**, merged to `main` (PR #310, squash
+   `6536529`). With the permission question settled it is specified against a
+   fixed flow rather than a provisional one.
+3. **The provenance panel: one panel per screen** — under the brief/review text,
+   headed "How these numbers were worked out", collapsed by default, one
+   expandable row per covered figure on that screen. Recorded on PR #308
+   (`7b870e7`).
+
+**⚠️ My own draft was wrong on question 3 and the correction is worth carrying.**
+It ranked *"a collapsed line under each figure, expanding in place"* first. That
+option is **not available**: `Markdown.tsx` is a plain `ReactMarkdown` render of
+the model's markdown string, so figures exist only inside generated prose with
+nothing structured marking where they are. Anchoring an expander to one needs
+either parsing numbers back out of the text — which 273.1 opens by ruling out — or
+having the model emit markers, which is a prompt change and makes provenance
+depend on the prose, the exact coupling 273.1 exists to prevent. **Ruled out by the
+batch's own governing constraint, not by taste.**
+
+### Open PRs — still DO NOT MERGE, and now for one reason each
+
+Both green (16/16 CI, 0 skipped). The only remaining gate on each is **copy Mark
+has not seen**, which `AGENTS.md` keeps explicit.
+
+- **PR #307 — Batch 275.** Outstanding: §5 of
+  `docs/drafts/2026-09-23-batch-275-copy.md` (four coach lines). Everything else
+  in that file is answered.
+- **PR #308 — Batch 273.** Outstanding: §3–5 of
+  `docs/drafts/2026-09-23-batch-273-provenance-panel.md` (three panel drafts), plus
+  a yes/no on the five covered figures in §2. Layout settled.
+
+**"Fine as is" on either unblocks that merge immediately.** 273's panel then
+becomes a rendering job against a packet that already carries the data.
+
+### Shipped today
+
+`main` is `6536529476b99970b46a97f08fc58db0da3bf5a7`; production serves it; web 200.
+
+- **Batch 278** — an activity is no longer recorded as a session it was not. PR
+  #306 / `f671984`, Decision #343.
+- **Duplicate Batch 258 ledger row struck.** PR #305 / `b2be5b0`.
+- **Batches 279–283 authored** from "Recorded, not scheduled". PR #309 /
+  `d08af7e`. Three of the five notes were stale in ways that change the build —
+  see the snapshot below.
+- **Batch 284 authored.** PR #310 / `6536529`.
+
+### One finding from authoring 284 that is worth acting on early
+
+**`conversation_learning_proposals` is empty in production — zero rows of any
+status.** The confirm-before-apply pattern 284 reuses has **never been exercised
+against Mark's real data**; Batch 257 built it and it has sat idle. So 284 is not
+"reuse a proven pattern", it is "be the first real user of one". The row says to
+drive the existing `learned_context` path against production once before building
+a second destination on top of it.
+
+### Next
+
+**Batch 274 still must not start** until 273 is on `main` — `batch-group.md`
+forbids stacking branches. **284 depends on 275** landing first. 276 needs 274
+plus a real contest record. **R3** (269, 272) still needs Craig — both bump a
+prompt version and spend real money.
+
+Unshipped backlog: **273, 275** (both in open PRs), then **274**, **279–284**.
+280 → 281 is a natural pair; 282 should land after 273.
+
+**Mark's reply is signed off** at `docs/drafts/2026-09-22-reply-to-mark.md` and has
+**not** been sent — delivery is Craig's. The 22 Sep post-workout prose still
+describes a VO₂ session; regenerating it spends real money and was left alone.
+
+**2026-09-23 — overnight run finished. Two things shipped to production, two are
+sitting in open PRs waiting on Craig, and five new ledger rows are merged.**
+
+### Shipped and live
+
+- **Batch 278** — an activity is no longer recorded as a session it was not.
+  PR #306 / squash `f671984`, Decision #343.
+- **The duplicate Batch 258 ledger row is struck.** PR #305 / squash `b2be5b0`.
+- **Batches 279–283 authored** from "Recorded, not scheduled". PR #309 / squash
+  `d08af7e`.
+
+Production serves `d08af7e6a21d391e47cc0b6bff17131b3adf2487`; web 200;
+`daily-loop` 401. **A 502 appeared for one poll during that last deploy and
+cleared on the next** — the container restarting, not a fault.
+
+### ⚠️ Two PRs are open and must NOT be merged without Craig
+
+Both gates are **Mark-facing copy he has not seen**, which `AGENTS.md` keeps
+explicit. Both are green (16/16 CI, 0 skipped).
+
+- **PR #307 — Batch 275**, "Mark's observation becomes a testable question".
+  Copy and two open decisions: `docs/drafts/2026-09-23-batch-275-copy.md`.
+- **PR #308 — Batch 273**, "Show the working". Panel copy and one open design
+  question: `docs/drafts/2026-09-23-batch-273-provenance-panel.md`.
+
+**Three things need Craig's word before either merges:**
+
+1. **275.5's recommendation is not implementable.** The row says "Mark proposes,
+   Craig confirms". **Production holds exactly one profile — Mark's — and its role
+   is `admin`**, so a role check on experiment creation would be passed by Mark and
+   restrict nobody. Built instead: the gate is **bindability, not identity**.
+   Craig to confirm, or ask for a second non-admin profile (a larger change,
+   touching auth, and not in that PR either way).
+2. **275.4 is not built** — a chat observation becoming a proposed experiment. It
+   is entirely Mark-facing, plugs into the flow 275.5 has just left open, and
+   would mean a new candidate kind, destination and apply path inside a 985-line
+   extractor. **Recommendation: carry it forward as its own row.** Scaling a batch
+   down is Craig's call, so it is flagged rather than assumed.
+3. **273.2's panel is not built** — the row's own instruction. The packet side is
+   done, so the panel is a rendering job once the copy is signed off. One design
+   question in the drafts file: does the working expand in place under each
+   figure, sit in one panel per screen, or get its own page?
+
+### Batch 278, in one paragraph
+
+`complete_matched_planned_workout` matched on local date + workout **category**
+alone, so whatever bike row sat on the date was flipped to `completed` by whatever
+bike activity arrived. The chosen row is now read against the activity. *Bike* —
+the prescription's hardest **sustained** step above Zone 2 **and** normalised power
+below **0.70** of FTP; across all 63 ride/prescription pairings since 15 Jun the 22
+genuinely-performed hard sessions sat at **0.754–0.867** and the two he did not do
+at **0.636** and **0.664**. *Strength* — the modality each side names, claimed only
+when both name one and they differ. Every rule **abstains** rather than guessing.
+Over the full history the two rules flag **six** pairings, including the one Mark
+reported at 10:16 on 22 Sep, and nothing else. **The strength prose is deliberately
+deferred** — telling Mark in the read needs prompt text, and a bump withdraws every
+stored analysis. The bike case is already covered by Batch 80's `rideDeviation`.
+
+### The new rows, and why three of the five notes were wrong
+
+Batches 279–283 were authored from notes recorded weeks ago. **Every figure was
+measured on 23 Sep, and three of the five notes turned out to be stale in ways that
+change the build:**
+
+- **279** — the note says `updated_at` is "a duplicate of `created_at`". Measured,
+  it is **inconsistent**: eight hand-set call sites make four tables advance it for
+  real (`post_activity_generation_status` is 91 of 91 later, median +20.4 s) while
+  `manual_entries` is 223 of 223 *earlier*. A column that works on four tables out
+  of eighteen is worse than one that works nowhere, and it flips the recommended
+  fix from backfill to no-backfill.
+- **280** — filed as "538 MB/day"; the figure that matters is the cumulative
+  **26 GB** over 92 days, which makes it the largest unprojected read left.
+- **281** — 1,033,830 rows / ~4.9 GB is now **1,644,984 rows / ~7.3 GB**.
+
+`pg_stat_statements` was last reset 2026-06-22, so those cumulative figures cover
+**92 days 15 h**, and the bytes are `rows × average uncompressed row size` — an
+upper bound, not measured egress. The rows say so.
+
+### Next
+
+**Batch 274 has not been started and must not be** until 273 is on `main` —
+`batch-group.md` forbids stacking branches. After that: 276 still needs 274 plus a
+real contest record. **R3** (269, 272) still needs Craig — both bump a prompt
+version and that spends real money. Batches **279–283** are now the unshipped
+backlog; 280 → 281 is a natural pair and 282 should land after 273.
+
+**Mark's reply is signed off** at `docs/drafts/2026-09-22-reply-to-mark.md` and has
+**not** been sent — delivery is Craig's. The 22 Sep post-workout prose still
+describes a VO₂ session; regenerating it spends real money and was left alone.
+
+
 **2026-09-23 — overnight run: Batch 278 shipped, plus a ledger fix.** Both merged
 to `main` and verified in production.
 
@@ -79,7 +319,6 @@ version and that spends real money.
 **Mark's reply is signed off** at `docs/drafts/2026-09-22-reply-to-mark.md` and has
 **not** been sent — delivery is Craig's.
 
-## Prior current-state snapshots
 
 **2026-09-22 — Batch 277 shipped, and Mark's 22 Sep record is corrected.** Fourth
 batch of the day, after group R1 (268, 271, 270).
@@ -1317,6 +1556,16 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-24** — Batch 279 merged on Craig's go (PR #314, `0904f4b`, Decision #348); production verified on the exact SHA and the deployed image stamps `updated_at` on all 18 tables. Wrote the wording sign-off sheet for PRs #307/#308 (`docs/drafts/2026-09-24-wording-sign-off.md`) — it adds #307's real Mark-facing text (the Experiments-page result lines), which the earlier draft missed, and found a doubled-bracket defect in them. Storage measured: `activity_timeseries` is 378 MB of 472 MB.
+- **2026-09-24 (overnight)** — Authored Batches 285–286 and struck three stale notes (PR #315, `2d95c41`): the tool loop, SDK adoption and Sonnet 5 had already shipped (257/260/261, 257, 233). 285 is Batch 280's named follow-up — the four windows still shipping the daily document, now separable in `pg_stat_statements`; 286 is response compression (12.4–17.7 MB/day of uncompressed JSON). Run finished: 280 and 281 shipped, 283 re-tiered, 279 in PR #314 for Craig.
+- **2026-09-24 (overnight)** — Batch 279 built and **left in open PR #314**, not merged: `updated_at` now means the application's clock at the row's last write on all 18 tables (one definition, `updated_at_column`), stamped on insert and every SQLAlchemy UPDATE, explicit values still winning, not backfilled. **No migration** — `onupdate` is written into the UPDATE, not the schema; the row's "migration required" was wrong, as were "no trigger" (profiles has one) and "16 read sites" (8 reads + 8 writes, and a missed 9th writer). Audit: no live defect, five latent. CI 1919 passed, 0 skipped.
+- **2026-09-24 (overnight)** — Re-tiered Batch 283 from 🔴 High to 🟢 Low (PR #313, `4062bb9`): Craig confirmed one profile, Mark, so protecting a second profile from inheriting his Garmin history is conditional on one ever being added. Row and measurements kept; trigger written down.
+- **2026-09-24 (overnight)** — Batch 281 shipped (PR #312, `9a75138`, Decision #347): 23 activity loaders defer `raw_summary` with `raiseload`, ranked by rows returned (the 120-night driver read and the walking/breathwork/strength windows were 1.55M of 1.65M rows); three keep the whole row because their objects reach a summary reader — the ride read's own pending query, `DailyLoopService._activity` (handed to the ride read through the check-in route's `session.get`) and the sync upsert. `post_workout_analysis` unchanged. Production before/after byte-identical across 23 entry points; CI 1914 passed, 0 skipped.
+- **2026-09-23 (overnight)** — Batch 280 shipped (PR #311, `65b9005`, Decision #346): coverage now reads ten projected facts — nine keys and one truthiness boolean — instead of Garmin's ~40 KB daily document, and the review rollup, 120-night driver window, nightly baseline rebuild and two morning lookups no longer ship it. Built as one TOAST read per row (35–78 ms; the naive per-key form took 943 ms, slower than shipping). Production before/after byte-identical; 550/550 rows agree. Corrected two premises: the identity-map reason nothing was deferred, and the assumption that the 26 GB was the coverage path — most of it is `trends` (every row, every chat turn), `chronic_patterns`, `longitudinal` and `early_warning`, now free to move.
+- **2026-09-23** — Craig answered all three open questions: one profile (Mark), so bindability is Batch 275's gate; 275.4 carried forward as **Batch 284** (PR #310, `6536529`); and the provenance panel is **one panel per screen**. The draft had ranked inline-under-each-figure first — that option is ruled out by 273.1 itself, because the figures exist only inside model-generated markdown. Both PRs now wait on the Mark-facing copy alone.
+- **2026-09-23** — Authored Batches 279–283 from "Recorded, not scheduled" (PR #309, `d08af7e`). Every figure measured rather than transcribed, and three of the five notes were stale in ways that change the build: `updated_at` is inconsistent rather than dead (four tables advance it, fourteen do not), `daily_metrics.raw_payload` is ~26 GB cumulative rather than "538 MB/day", and `activities.raw_summary` has grown from 1,033,830 rows to 1,644,984.
+- **2026-09-23** — Batch 273 built and **left in open PR #308**, not merged: every covered derived figure now carries its own derivation, on the packet and never on the prose, with a contract test that fails when one stops. The panel is deliberately unbuilt — 273.2 says to draft the copy, not ship it. Decision #345.
+- **2026-09-23** — Batch 275 built and **left in open PR #307**, not merged: each metric carries its own threshold (0.3 of its measured SD) and its own direction, and a hypothesis that tries to bind to an evaluator and fails is refused at creation. Two departures from the row need Craig: 275.5's permission model is not implementable in a single-profile install, and 275.4 is not built. Decision #344.
 - **2026-09-23** — Batch 278 shipped (PR #306, `f671984`, Decision #343): an activity that materially contradicts the planned session no longer completes it. The bike rule is the prescription's hardest *sustained* step above Zone 2 plus normalised power below 0.70 — calibrated on all 63 ride/prescription pairings since 15 Jun, where 22 genuine hard sessions sat at 0.754–0.867 of FTP and the two he did not do at 0.636 and 0.664. The strength rule is the modality each side names, claimed only when both name one and they differ. Every rule abstains rather than guessing. 1876 passed / 0 skipped in CI; no migration, no prompt bump. Strength *prose* deferred — it needs a prompt bump.
 - **2026-09-23** — Struck the duplicate Batch 258 ledger row (PR #305, `b2be5b0`). The ledger carried 258 twice in one table; the unstruck `Planned` copy is the row a future `/batch-start` would have rebuilt. Docs only.
 - **2026-09-22 (evening)** — Batch 277 shipped (PR #304, `dad6b08`, Decision #342, amending #301): a 12-second sprint is no longer VO₂ at the safety gate, the swap no longer proposes what the rail will refuse, the brief no longer says rest-and-ride in one packet, and the gate no longer applies to a day that is over. Mark's 22 Sep record corrected and verified on both sides. 277.4 carried forward as Batch 278.

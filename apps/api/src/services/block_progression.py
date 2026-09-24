@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import Activity, Analysis, ManualEntry, PlanBlock, PlannedWorkout
 from src.models.profile import Profile
+from src.services.bulk_history_reads import without_activity_raw_summary
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
 from src.services.delivered_verdict import delivered_verdicts
 from src.services.insights import InsightsService
@@ -445,7 +446,9 @@ class BlockProgressionService:
         rows = (
             (
                 await self.session.execute(
-                    select(Activity).where(
+                    select(Activity)
+                    .options(without_activity_raw_summary())
+                    .where(
                         Activity.user_id == user_id,
                         Activity.start_utc >= start_dt,
                         Activity.start_utc < end_dt,

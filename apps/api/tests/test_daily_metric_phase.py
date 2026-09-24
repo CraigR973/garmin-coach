@@ -29,6 +29,7 @@ from src.models.coaching import (
 )
 from src.models.coaching import DailyMetric, MetricBaseline, Sleep
 from src.models.profile import Profile, UserRole
+from src.services.daily_metric_coverage import DayAggregates
 from src.services.daily_metric_phase import (
     index_day_aggregates_by_date,
     index_morning_by_date,
@@ -373,7 +374,9 @@ def test_sample_values_blanks_body_battery_from_a_partial_wake_row() -> None:
 
     Handed only the wake row, the charge figure is correctly refused — which is
     exactly what would have happened to every historical day had the baselines
-    simply switched to morning rows wholesale.
+    simply switched to morning rows wholesale. Batch 280 made the aggregates an
+    explicit argument, so "only the wake row" now means passing the wake row's
+    own aggregates, and the gate still refuses them.
     """
     morning = DailyMetric(
         user_id=uuid.uuid4(),
@@ -402,8 +405,15 @@ def test_sample_values_blanks_body_battery_from_a_partial_wake_row() -> None:
         },
     )
 
+    wake_aggregates = DayAggregates.from_metric(morning)
+    settled_aggregates = DayAggregates.from_metric(settled)
     assert sample_values(None, morning)["body_battery_charge"] is None
-    assert sample_values(None, morning, day_aggregates=settled)["body_battery_charge"] == 62
+    assert (
+        sample_values(None, morning, day_aggregates=wake_aggregates)["body_battery_charge"] is None
+    )
+    assert (
+        sample_values(None, morning, day_aggregates=settled_aggregates)["body_battery_charge"] == 62
+    )
 
 
 @pytest.mark.asyncio
