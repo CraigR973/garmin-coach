@@ -48,6 +48,9 @@ and that is still an explicit decision.
 | **Batch 279** — `updated_at` is the app's clock at the row's last write (merged on Craig's go, 24 Sep) | #314 | `0904f4b` |
 | **Retention on** — first purge 505,135 samples / 603 activities, verified; nightly at 03:40 UTC | Railway var | deploy `df58fb4c` |
 | **Old movie app tables moved out** — archived, checked, dropped: 472.4 → 448.5 MB | — | — |
+| **Audit rows 236–241 struck** — PR #268 had committed all 7 reports; block-end dates aligned (last VO₂ 13 Oct, last day 18 Oct) | #316 | `e1187d9` |
+| **CI tests the versions production runs** — runtime packages constrained to `requirements.lock`; SQLAlchemy 2.1.0 (released 24 Sep) had turned mypy red on untouched code | #318 | `6d4f95b` |
+| **Batch 283** — a profile receives Garmin data only from the account it names | #317 | `c23d2ff` |
 
 Every merge was verified in production on its exact SHA (Railway and Vercel
 same-origin health, web 200, `daily-loop` 401), and each batch also passed a smoke run
@@ -1563,6 +1566,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-24 (evening)** — Batch 283 shipped (PR #317, `c23d2ff`, Decision #350): Garmin data reaches a profile only if the profile names a Garmin account and no document names another; the owner is read from ids Garmin already puts in its documents (no extra Garmin call). Verified on production before and after the merge. CI had gone red on untouched code because SQLAlchemy 2.1.0 was released that afternoon and CI installed it unpinned — PR #318 (`6d4f95b`) constrains CI to `requirements.lock`, which production already runs. Also: audit rows 236–241 struck (PR #316, `e1187d9`); Sentry's quota is back (a probe was accepted, event `8f12fb81…`); Batch 286's premise measured false — Railway's edge already gzips or zstd-compresses every reply over ~256 bytes for mainstream browsers, including through Vercel.
 - **2026-09-24** — PRs #307 and #308 updated from main (each had one DECISIONS conflict, both appended) and green on all 16 checks. mcu_app's STATUS now records where its v1 data went (Gotcha 30, `acf5b19`, deployed and healthy).
 - **2026-09-24** — Storage cleared on Craig's go (Decision #349). Retention enabled; the first purge, run by hand in the deployed container, removed 505,135 samples from 603 activities (exactly the dry-run count), and autovacuum cleared them a minute later. The old `mcu_app` v1 schema in `public` (27 tables, 3 with rows) was dumped and checked against the live counts, then dropped: 472.4 → 448.5 MB. PR #307's doubled brackets fixed on its branch (`d4437cf`). Corrected ARCHITECTURE's stale note that `updated_at` never advances.
 - **2026-09-24** — Batch 279 merged on Craig's go (PR #314, `0904f4b`, Decision #348); production verified on the exact SHA and the deployed image stamps `updated_at` on all 18 tables. Wrote the wording sign-off sheet for PRs #307/#308 (`docs/drafts/2026-09-24-wording-sign-off.md`) — it adds #307's real Mark-facing text (the Experiments-page result lines), which the earlier draft missed, and found a doubled-bracket defect in them. Storage measured: `activity_timeseries` is 378 MB of 472 MB.
