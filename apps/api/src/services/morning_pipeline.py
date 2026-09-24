@@ -76,6 +76,7 @@ from src.services.environment_sync import (
     WeatherRequest,
 )
 from src.services.executable_coaching import ExecutableCoachingService
+from src.services.garmin_identity import GarminIdentityMismatch, garmin_account
 from src.services.garmin_sync import (
     GarminConnectClient,
     GarminDailyPayloads,
@@ -161,6 +162,19 @@ class MorningInputResult:
     daily_metrics: int = 0
     sleep: int = 0
     failures: int = 0
+    #: Batch 283: profiles skipped because they name no Garmin account.
+    garmin_unbound: int = 0
+    #: Batch 283: profiles refused because Garmin returned another account's data.
+    garmin_identity_mismatch: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class GarminDailySyncResult:
+    daily_metrics: int = 0
+    sleep: int = 0
+    failures: int = 0
+    garmin_unbound: int = 0
+    garmin_identity_mismatch: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,13 +230,18 @@ async def sync_garmin_daily(
     profiles: list[Profile],
     *,
     client: GarminConnectClient | None = None,
-) -> tuple[int, int, int]:
+) -> GarminDailySyncResult:
     """Sync today plus the last three closed Garmin days (429-safe).
 
-    Returns ``(daily_metrics_synced, sleep_synced, failures)``. The fetch is wrapped in an
-    exponential-backoff retry so a transient Garmin 429 is survived. Each date
-    is isolated, so one failed historical fetch cannot block today's inputs or
-    another date's self-heal. Each successful date commits independently.
+    The fetch is wrapped in an exponential-backoff retry so a transient Garmin
+    429 is survived. Each date is isolated, so one failed historical fetch cannot
+    block today's inputs or another date's self-heal. Each successful date
+    commits independently.
+
+    Batch 283: a profile that names no Garmin account is skipped before any
+    Garmin call, and a profile whose data names another account is failed on the
+    first date that shows it — the remaining dates would only fetch the same
+    wrong account again.
 
     This loop is where CI191-02 came from: Garmin returns a closed day's *final*
     training readiness, so the D-1..D-3 pass used to overwrite the wake snapshot
@@ -231,13 +250,15 @@ async def sync_garmin_daily(
     re-sync still self-heals a missed morning without rewriting history.
     """
     if not profiles:
-        return (0, 0, 0)
+        return GarminDailySyncResult()
 
     client = client or GarminConnectClient()
     sync_service = GarminSyncService(session)
     daily_synced = 0
     sleep_synced = 0
     failures = 0
+    unbound = 0
+    mismatched = 0
     for profile in profiles:
         await restore_after_rollback(session, profile)
         # Batch 242 (CR236-01): hoisted before the *date* loop, not just before
@@ -245,6 +266,14 @@ async def sync_garmin_daily(
         # would otherwise expire the instance that date N+1 reads inside its
         # own try — and the resulting MissingGreenlet escapes the handler.
         profile_id = profile.id
+        if garmin_account(profile) is None:
+            unbound += 1
+            log.warning(
+                "garmin daily sync skipped",
+                reason="no_garmin_account",
+                profile_id=str(profile_id),
+            )
+            continue
         today = profile_today(profile)
         for offset in range(4):
             subject_date = today - timedelta(days=offset)
@@ -273,6 +302,19 @@ async def sync_garmin_daily(
                     sleep_synced += result.sleep_synced
                 else:
                     failures += 1
+            except GarminIdentityMismatch as exc:
+                failures += 1
+                mismatched += 1
+                await session.rollback()
+                log.error(
+                    "garmin daily sync refused",
+                    reason="garmin_identity_mismatch",
+                    profile_id=str(profile_id),
+                    subject_date=subject_date.isoformat(),
+                    expected=exc.expected,
+                    found=sorted(exc.found),
+                )
+                break
             except Exception:
                 failures += 1
                 await session.rollback()
@@ -281,7 +323,13 @@ async def sync_garmin_daily(
                     profile_id=str(profile_id),
                     subject_date=subject_date.isoformat(),
                 )
-    return (daily_synced, sleep_synced, failures)
+    return GarminDailySyncResult(
+        daily_metrics=daily_synced,
+        sleep=sleep_synced,
+        failures=failures,
+        garmin_unbound=unbound,
+        garmin_identity_mismatch=mismatched,
+    )
 
 
 class MorningBriefPipeline:
@@ -371,19 +419,19 @@ class MorningBriefPipeline:
                     profile_id=str(profile_id),
                 )
 
-        daily_metrics_synced, sleep_synced, garmin_failures = await sync_garmin_daily(
-            session, profiles, client=garmin_client
-        )
-        failures += garmin_failures
+        garmin = await sync_garmin_daily(session, profiles, client=garmin_client)
+        failures += garmin.failures
         # Keep a guarded phase boundary even though successful dates commit
         # independently; this catches a driver-level failure before analysis begins.
         if not await commit_step(session, step="garmin_phase"):
             failures += 1
         return MorningInputResult(
             weather_days=weather_days,
-            daily_metrics=daily_metrics_synced,
-            sleep=sleep_synced,
+            daily_metrics=garmin.daily_metrics,
+            sleep=garmin.sleep,
             failures=failures,
+            garmin_unbound=garmin.garmin_unbound,
+            garmin_identity_mismatch=garmin.garmin_identity_mismatch,
         )
 
     # -- wake trigger ---------------------------------------------------------

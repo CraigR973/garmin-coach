@@ -24,6 +24,13 @@ from src.models.coaching import (
     DailyMetric,
     Sleep,
 )
+from src.models.profile import Profile
+from src.services.garmin_identity import (
+    activity_owner_ids,
+    assert_owned_by,
+    daily_owner_ids,
+    garmin_account,
+)
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -369,6 +376,17 @@ class GarminSyncService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def _expect_owner(self, user_id: uuid.UUID, found: set[int], *, source: str) -> None:
+        """Batch 283: write only data from the Garmin account this profile names.
+
+        Enforced here, at the only two writers of Garmin data, so a caller that
+        skips the jobs' own pre-fetch check still cannot fill a profile with
+        another account's history. ``session.get`` is answered from the identity
+        map on every job path, which has already loaded the profile.
+        """
+        profile = await self.session.get(Profile, user_id)
+        assert_owned_by(garmin_account(profile), found, source=source)
+
     async def sync_daily(
         self,
         user_id: uuid.UUID,
@@ -389,6 +407,7 @@ class GarminSyncService:
         """
         if phase not in DAILY_METRIC_PHASES:
             raise ValueError(f"unknown daily-metric phase: {phase!r}")
+        await self._expect_owner(user_id, daily_owner_ids(payloads), source="daily")
         metric_fields = parse_daily_metric_fields(calendar_date, payloads)
         sleep_fields = parse_sleep_fields(payloads.sleep)
         daily_count = 0
@@ -434,6 +453,11 @@ class GarminSyncService:
         *,
         commit: bool = True,
     ) -> GarminSyncResult:
+        # Checked across the whole batch before the first write, so a refused
+        # batch leaves nothing half-applied in the caller's transaction.
+        await self._expect_owner(
+            user_id, activity_owner_ids(payloads.summaries), source="activities"
+        )
         activity_count = 0
         sample_count = 0
 
