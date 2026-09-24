@@ -23,6 +23,7 @@ from src.garmin_history_backfill import (
 )
 from src.models.coaching import DailyMetric, Sleep
 from src.models.profile import Profile, UserRole
+from src.seeds import MARK_GARMIN_USER_PROFILE_PK
 from src.services.garmin_sync import GarminActivityPayloads, GarminDailyPayloads
 
 # ---------------------------------------------------------------------------
@@ -174,6 +175,7 @@ async def _seed_profile(db_conn: AsyncConnection, user_id: uuid.UUID) -> None:
             Profile(
                 id=user_id,
                 display_name="Backfill Test",
+                garmin_user_profile_pk=MARK_GARMIN_USER_PROFILE_PK,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,

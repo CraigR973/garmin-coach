@@ -1669,6 +1669,7 @@ async def _seed_profile(db_conn: AsyncConnection, user_id: uuid.UUID) -> None:
             Profile(
                 id=user_id,
                 display_name="Wake Test",
+                garmin_user_profile_pk=MARK_GARMIN_USER_PROFILE_PK,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,

@@ -80,9 +80,11 @@ def _marks_activities() -> GarminActivityPayloads:
 
 
 def _profile(account: int | None) -> Profile:
+    profile_id = uuid.uuid4()
     return Profile(
-        id=uuid.uuid4(),
-        display_name="Identity",
+        id=profile_id,
+        # Display names are unique, and the database test seeds three at once.
+        display_name=f"Identity {profile_id.hex[:8]}",
         role=UserRole.admin,
         timezone="Europe/London",
         garmin_user_profile_pk=account,
