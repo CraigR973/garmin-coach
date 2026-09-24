@@ -6,6 +6,80 @@
 
 ## Now
 
+**2026-09-24 (evening) — Batch 283 shipped, CI now tests what production runs, and
+Mark sent a new complaint that makes Batch 269 the most useful thing left. Everything
+else waits on one reply from Craig. Batch 285 runs tomorrow from 15:28 BST, after its
+full-day measurement.**
+
+### Shipped this evening
+
+| Item | PR | Squash |
+|---|---|---|
+| **Batch 283** — a profile receives Garmin data only from the account it names | #317 | `c23d2ff` |
+| **CI installs runtime packages from `requirements.lock`** — SQLAlchemy 2.1.0 (released 24 Sep) had turned mypy red on untouched code | #318 | `6d4f95b` |
+| **Audit rows 236–241 struck**; block-end dates aligned | #316 | `e1187d9` |
+| **Batches 287–289 authored, 286 corrected, notes triaged, R3 priced** | #319 | `9860c50` |
+
+Every merge was verified on its exact SHA on Railway and Vercel, with web 200 and
+`daily-loop` 401. 283 was also proved on production before and after the merge. The
+first hourly activity poll on the new code synced Mark's 14 activities, with
+`garmin_unbound 0` and `garmin_identity_mismatch 0`.
+
+### Mark, 24 Sep 11:14–11:50 BST — read this first
+
+Three complaints in the coach, each conceded, none fixable from chat:
+1. **The strength read called 96 bpm "a notably high bump"** a day after 98 bpm was
+   "unremarkable". The packet has no usual range. → **Batch 288**.
+2. **The coach told him today's session was "unmodified"** when the morning had cut it to
+   47 minutes at 60%. An unanchored chat can't see applied adjustments. It also blamed
+   `cumulativeEscalation`, which was not applied on any day this week. → **Batch 289**.
+3. **"Over-reactive cuts."** 23 and 24 Sep were Red on the 7-day HRV average alone;
+   overnight HRV was 45 and 47, at or above the floor. **Batch 269 makes both Amber**:
+   24 Sep becomes 70 minutes at 76% instead of 47 at 60%, 23 Sep 56 minutes instead of 52.
+   Amber still cuts by a quarter, so 269 answers most of it, not all.
+
+### Needs Craig — one reply unblocks all of these
+
+1. **R3 — build 269 now** (then 272). Regeneration costs ≈ $0.07–$0.20 in total; the
+   real gate is Mark's wording: `docs/drafts/2026-09-24-wording-sign-off-part3.md`.
+   Pack: `docs/drafts/2026-09-24-r3-decision.md`.
+2. **Backup restore drill (247.3)** — a free disposable Postgres plus one Railway
+   variable, `BACKUP_RESTORE_DATABASE_URL`; paste the URL without its `?sslmode=…`
+   suffix (the async driver rejects `sslmode`).
+3. **Admin alerts / longitudinal analysis** — pointing `ADMIN_ALERT_USER_ID` at Mark is
+   refused by the code (`admin_alert_points_to_subject`). Options: a Craig-only
+   profile (needs 283's residuals closed: Hive, Dreo, workout delivery), or accept
+   Sentry as the alert route (small code change), or leave it off.
+4. **209** — keep deferred (one profile; trigger unfired).
+5. **286** — confirm withdrawal (Railway's edge already compresses).
+6. **Mark's PRs #307/#308**, then 274, 284, 282 — unchanged, on his sign-off.
+
+### Worth carrying
+
+- **CI now constrains runtime packages to the lock.** Moving to SQLAlchemy 2.1 is a
+  deliberate lock bump, and needs 8 typing fixes (`Select` type parameters); the
+  runtime passed 1,925 tests under it.
+- **Railway's edge compresses replies of 256 bytes or more** (gzip or zstd, first-listed
+  wins; a `br`-first client gets none). The egress meter counts pre-edge bytes, about
+  2× what a browser receives.
+- **Railway stops reading `railway.toml` on 1 Dec.** All three services carry
+  `RAILPACK` in their own settings; `railway config migrate`'s dry run is wrong for
+  this project. Batch 287; the apply is Craig's.
+- **Sentry's quota is back** (probe accepted 24 Sep, event `8f12fb81…`).
+- **Batch 285 baseline:** `pg_stat_statements` snapshot at 14:28 UTC 24 Sep — shared
+  range shape `-4232533755216521855` 1,346 calls / 308,816 rows; chronic `ORDER BY`
+  shape `-6615400312572809332` 1,882 / 120,204. Re-read from 14:28 UTC 25 Sep.
+- **A one-off session raises the block-end questions on Sun 18 Oct, 09:00** (task
+  `garmin-coach-block-end-questions` on Craig's desktop app; runs only while it is open).
+
+### Next
+
+**Batch 285** from 15:28 BST on 25 Sep. Then whatever Craig's reply unblocks; 288 and 289
+are ready to build on his go. **Next DECISIONS number: #351** (#344/#345 held by PRs
+#307/#308).
+
+## Prior current-state snapshots
+
 **2026-09-24 — overnight run finished, then Craig merged Batch 279 and cleared the
 storage risk. Three batches shipped to production today (280, 281, 279). Retention is
 on and the old movie app's tables are gone (472 → 448 MB of 500). PRs #307 and #308
@@ -84,8 +158,6 @@ are held by PRs #307/#308).
 **Mark's reply** (`docs/drafts/2026-09-22-reply-to-mark.md`) is signed off and unsent —
 Craig's. The 22 Sep post-workout prose still describes a VO₂ session; regenerating it
 spends money and was left.
-
-## Prior current-state snapshots
 
 **2026-09-23 — Craig answered all three open questions. Both PRs now wait on one
 thing only: the Mark-facing copy.**
@@ -1566,6 +1638,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-24 (late)** — Authored Batches 287–289 and priced R3 (PR #319, `9860c50`). 287: Railway stops reading `railway.toml` on 1 Dec, and all three services carry `RAILPACK` in their own settings; the automatic migration's dry run is wrong for this project. 288 and 289 come from Mark's 24 Sep wave: the strength read has no usual heart-rate range, and an unanchored coach cannot see the adjustment the morning applied. His main complaint (Red on the 7-day HRV average on 23 and 24 Sep) is Batch 269's, which would have made both days Amber. R3's regeneration costs ≈ $0.07–$0.20; its gate is 269.5's wording (Part 3 sheet). None of the recorded notes has fired.
 - **2026-09-24 (evening)** — Batch 283 shipped (PR #317, `c23d2ff`, Decision #350): Garmin data reaches a profile only if the profile names a Garmin account and no document names another; the owner is read from ids Garmin already puts in its documents (no extra Garmin call). Verified on production before and after the merge. CI had gone red on untouched code because SQLAlchemy 2.1.0 was released that afternoon and CI installed it unpinned — PR #318 (`6d4f95b`) constrains CI to `requirements.lock`, which production already runs. Also: audit rows 236–241 struck (PR #316, `e1187d9`); Sentry's quota is back (a probe was accepted, event `8f12fb81…`); Batch 286's premise measured false — Railway's edge already gzips or zstd-compresses every reply over ~256 bytes for mainstream browsers, including through Vercel.
 - **2026-09-24** — PRs #307 and #308 updated from main (each had one DECISIONS conflict, both appended) and green on all 16 checks. mcu_app's STATUS now records where its v1 data went (Gotcha 30, `acf5b19`, deployed and healthy).
 - **2026-09-24** — Storage cleared on Craig's go (Decision #349). Retention enabled; the first purge, run by hand in the deployed container, removed 505,135 samples from 603 activities (exactly the dry-run count), and autovacuum cleared them a minute later. The old `mcu_app` v1 schema in `public` (27 tables, 3 with rows) was dumped and checked against the live counts, then dropped: 472.4 → 448.5 MB. PR #307's doubled brackets fixed on its branch (`d4437cf`). Corrected ARCHITECTURE's stale note that `updated_at` never advances.
