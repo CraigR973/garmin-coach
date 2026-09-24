@@ -6,78 +6,71 @@
 
 ## Now
 
-**2026-09-24 (overnight run, in progress) — Batches 280 and 281 shipped, Batch 283
-re-tiered, Batch 279 built and waiting in an open PR. Now authoring new ledger rows
-from "Recorded, not scheduled".**
+**2026-09-24 — overnight run finished. Two batches shipped to production, one is built
+and waiting in a PR for Craig, one row was re-tiered, and two new rows are authored.**
 
 ### Needs Craig
 
-1. **PR #314 — Batch 279, do not merge without you.** Green (16/16, 0 skipped).
-   It makes `updated_at` mean "last application write" on all 18 tables. **The
-   finding you asked me to check: `onupdate` lives in the UPDATE statement, so the
-   fix needs no migration** — the row's "migration required" was wrong. Blast
-   radius is behavioural: every application UPDATE on 13 tables now also writes
-   `updated_at`. The eight reads were audited first: **no live defect**, five
-   latent ones (Garmin freshness on `daily_metrics`, three weather "newest row"
-   reads), all dormant and all fixed. Decision #348 explains why not a DB trigger.
-2. PR #307 (275) and PR #308 (273) — unchanged: Mark-facing copy unsigned.
+1. **PR #314 — Batch 279, `updated_at` — review before it merges.** Green (16/16,
+   pytest 1919 passed, 0 skipped). It makes `updated_at` mean "the application's clock
+   at the row's last write" on all 18 tables. **The check you asked for: SQLAlchemy's
+   `onupdate` is written into each UPDATE statement, not the schema, so the fix needs
+   no migration** — the row's "migration required" was wrong, and the compiled DDL is
+   identical before and after. The risk is behavioural: every application UPDATE on 13
+   tables now also writes the column. **Audit of the 8 reads: no live defect; five
+   latent ones** (Garmin-freshness tie-break and fallback on `daily_metrics`, three
+   weather "newest row" reads), all dormant in today's data and all fixed. Decision
+   #348 says why not a database trigger (it would overwrite the lease writers' times
+   with transaction start).
+2. **PR #307 (Batch 275) and PR #308 (Batch 273)** — unchanged: Mark-facing copy
+   unsigned. Both carry DECISIONS #344/#345 while `main` now runs #343 → #346 → #347,
+   so each needs a trivial `DECISIONS.md` merge.
+3. **Database storage, for information:** 472 MB of the 500 MB free-plan cap — about
+   28 MB of headroom, down from ~48 MB on 2 Sep. At the last fortnight's ~0.84 MB/day
+   that is about a month. The retention-purge decision is still yours and was not
+   re-asked.
 
-### Shipped tonight
+### Shipped
 
-- **Batch 280** — coverage reads ten projected facts, not Garmin's ~40 KB daily
-  document. PR #311 / squash `65b9005`, Decision #346. Production serves `65b9005`;
-  web 200; `daily-loop` 401; the deployed image's own projection agrees with the
-  whole document on all 550 stored rows.
-- **Batch 281** — activity loaders leave Garmin's ~4.6 KB `raw_summary` behind
-  unless their objects reach a reader of it. PR #312 / squash `9a75138`, Decision
-  #347. Production serves `9a75138`; the deployed image's smoke on a real ride
-  (23 Sep) shows the check-in path hands the ride read a whole row.
+| Item | PR | Squash |
+|---|---|---|
+| **Batch 280** — coverage reads ten projected facts, not the 40 KB daily document | #311 | `65b9005` |
+| **Batch 281** — activity loaders leave the 4.6 KB summary behind unless a reader needs it | #312 | `9a75138` |
+| **Batch 283 re-tiered** 🔴 High → 🟢 Low (Mark is the only profile) | #313 | `4062bb9` |
+| **Batches 285–286 authored**; three stale notes struck | #315 | `2d95c41` |
 
-- **Batch 283 re-tiered 🔴 High → 🟢 Low** (PR #313 / `4062bb9`): with Mark the only
-  profile its urgency is conditional on a second profile ever being added — build
-  it *before* one is created. Row and measurements intact.
+Every merge was verified in production on its exact SHA (Railway and Vercel
+same-origin health, web 200, `daily-loop` 401), and each batch also passed a smoke run
+inside the deployed container: 280's projection agreed with the whole document on all
+550 rows; 281's check-in path handed the ride read a whole row on a real 23 Sep ride.
 
-### What 281 found, worth carrying
+### Worth carrying
 
-- **The ride read takes the summary off the object it is handed**, so two loaders
-  must stay whole, not one: its own pending-ride query and
-  `DailyLoopService._activity`, whose object the check-in route's `session.get`
-  receives from the identity map. Deferring `_activity` would have broken every
-  ride check-in. A static test now classifies every `select(Activity)`.
-- The deferred loaders were **96.6%** of the 1.65M payload-carrying activity rows
-  (~7.6 GB over 92 days).
+- **Most of the 26 GB is still flowing** — `trends` reads every stored daily row on
+  every chat turn, plus `chronic_patterns`, `longitudinal` and `early_warning`. None
+  reads the document. **Batch 285 is that follow-up**; re-measure over a full day first
+  (the coverage path now has its own SQL, so the split is visible).
+- **Projecting JSON server-side can be slower than shipping it.** One operator per key
+  re-reads the TOASTed document each time (943 ms for 550 rows); `select_day_aggregates`
+  reads it once (35–78 ms). Copy that shape.
+- **The identity map fills a deferred column on a later whole-row query**; only
+  `session.get()` on a held object, or an object passed on, fails. Pinned by tests.
+- **The ride read takes `raw_summary` off the object it is handed**, so
+  `DailyLoopService._activity` must stay whole — deferring it would break every ride
+  check-in. A static test now classifies every `select(Activity)`.
+- **`profiles` has had an `updated_at` trigger since migration 001** — the ledger said
+  there was none.
 
-### What 280 found, worth carrying
+### Next
 
-1. **Most of the 26 GB is still flowing, and it is now free to stop.** The readers
-   that do not gate on coverage are most of the bytes: `trends._rows` reads every
-   stored row on every coach chat turn and every Trends page, then
-   `chronic_patterns`, `longitudinal_analysis` and `insights.early_warning`. None
-   reads any part of the document. They needed the coverage contract changed first;
-   280 did that. **A follow-up row is the obvious next egress batch.**
-2. **The identity-map worry that kept the document loaded everywhere was wrong.** A
-   later whole-row query fills a deferred column; only `session.get()` on a held
-   object fails. Pinned by tests in `test_bulk_history_reads.py`.
-3. **Projecting JSON server-side can be slower than shipping it.** One JSONB operator
-   per key re-reads the compressed document each time — 943 ms for 550 rows, against
-   35–78 ms for one read per row. `select_day_aggregates` is the pattern to copy.
+**Batch 285** (egress follow-up), then **286** (response compression). 274, 282 and 284
+wait on 273/275; 276 needs 274 plus a real contest record; **R3 (269, 272)** needs Craig
+— both bump a prompt version and spend money. **Next DECISIONS number: #349** (#344/#345
+are held by PRs #307/#308, #348 by PR #314).
 
-**To measure the real split later** (the coverage path now has SQL of its own).
-`pg_stat_statements` at deploy: shared range shape `-4232533755216521855` 1,332
-calls / 301,092 rows; `ORDER BY` shape `-6615400312572809332` 1,858 / 118,894; old
-whole-history baseline shape `4971521975543873471` 41 / 21,088 — that last one
-should stop growing, because the nightly rebuild now uses the projection.
-
-### Still open, unchanged
-
-- **PR #307 (Batch 275) and PR #308 (Batch 273): do not merge** — Mark-facing copy
-  Craig has not signed off. Both carry DECISIONS #344/#345 while `main` now has #346
-  after #343, so each needs a trivial `DECISIONS.md` merge when it lands.
-- **274, 282, 284** wait on 273/275. **R3 (269, 272)** needs Craig — both bump a
-  prompt version and spend real money.
-- **Mark's reply** (`docs/drafts/2026-09-22-reply-to-mark.md`) is signed off and
-  unsent — delivery is Craig's. The 22 Sep post-workout prose still describes a VO₂
-  session; regenerating it costs money and was left.
+**Mark's reply** (`docs/drafts/2026-09-22-reply-to-mark.md`) is signed off and unsent —
+Craig's. The 22 Sep post-workout prose still describes a VO₂ session; regenerating it
+spends money and was left.
 
 ## Prior current-state snapshots
 
@@ -1560,6 +1553,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-24 (overnight)** — Authored Batches 285–286 and struck three stale notes (PR #315, `2d95c41`): the tool loop, SDK adoption and Sonnet 5 had already shipped (257/260/261, 257, 233). 285 is Batch 280's named follow-up — the four windows still shipping the daily document, now separable in `pg_stat_statements`; 286 is response compression (12.4–17.7 MB/day of uncompressed JSON). Run finished: 280 and 281 shipped, 283 re-tiered, 279 in PR #314 for Craig.
 - **2026-09-24 (overnight)** — Batch 279 built and **left in open PR #314**, not merged: `updated_at` now means the application's clock at the row's last write on all 18 tables (one definition, `updated_at_column`), stamped on insert and every SQLAlchemy UPDATE, explicit values still winning, not backfilled. **No migration** — `onupdate` is written into the UPDATE, not the schema; the row's "migration required" was wrong, as were "no trigger" (profiles has one) and "16 read sites" (8 reads + 8 writes, and a missed 9th writer). Audit: no live defect, five latent. CI 1919 passed, 0 skipped.
 - **2026-09-24 (overnight)** — Re-tiered Batch 283 from 🔴 High to 🟢 Low (PR #313, `4062bb9`): Craig confirmed one profile, Mark, so protecting a second profile from inheriting his Garmin history is conditional on one ever being added. Row and measurements kept; trigger written down.
 - **2026-09-24 (overnight)** — Batch 281 shipped (PR #312, `9a75138`, Decision #347): 23 activity loaders defer `raw_summary` with `raiseload`, ranked by rows returned (the 120-night driver read and the walking/breathwork/strength windows were 1.55M of 1.65M rows); three keep the whole row because their objects reach a summary reader — the ride read's own pending query, `DailyLoopService._activity` (handed to the ride read through the check-in route's `session.get`) and the sync upsert. `post_workout_analysis` unchanged. Production before/after byte-identical across 23 entry points; CI 1914 passed, 0 skipped.
