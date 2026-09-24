@@ -6,9 +6,10 @@
 
 ## Now
 
-**2026-09-24 — overnight run finished, then Craig merged Batch 279. Three batches
-shipped to production today (280, 281, 279), one row was re-tiered, and two new rows
-are authored. PRs #307 and #308 wait on Mark's wording.**
+**2026-09-24 — overnight run finished, then Craig merged Batch 279 and cleared the
+storage risk. Three batches shipped to production today (280, 281, 279). Retention is
+on and the old movie app's tables are gone (472 → 448 MB of 500). PRs #307 and #308
+wait on Mark's wording.**
 
 ### Needs Craig
 
@@ -17,20 +18,24 @@ are authored. PRs #307 and #308 wait on Mark's wording.**
    Part 2 is Batch 273 (PR #308). Two corrections to what the drafts implied:
    **PR #307's Mark-facing text is the Experiments-page result lines (Part 1a)**,
    which the old draft never showed; the four chat lines (Part 1c) are for Batch 284,
-   not #307. And **#307 doubles its brackets** — `(−6.6 ms, (range …))` — a one-line
-   fix to make before it merges. PR #308 shows Mark nothing new: its panel isn't
-   built, so Part 2 is what the panel will say.
-2. **Database storage — 472 MB of 500 MB.** `activity_timeseries` (per-sample
-   workout streams) is **378 MB**: 234 MB of rows, of which **80 MB is `raw_metrics`
-   JSON nothing reads**, plus 144 MB of indexes. **70% of its rows (505k) come from
-   activities older than 90 days** — the retention purge you declined on 2 Sep. A
-   further **24 MB is another app's movie tables** in `public` (`movie_credits`,
-   `movies`, `collection_items`). Deleting rows frees space for reuse and stops the
-   growth; the reported size only falls after `VACUUM FULL`. Headroom is about a
-   month.
+   not #307. **#307's doubled brackets are fixed on its branch** (`d4437cf`, with a
+   regression test): the result line now reads `(-6.6 ms, range -10.0 to -3.1)`.
+   Production already doubles them whenever a sleep-score comparison finds a
+   difference, and merging #307 fixes that too. PR #308 shows Mark nothing new: its
+   panel isn't built, so Part 2 is what the panel will say. **#308 conflicts with
+   main** (15 commits behind), so its pull-request CI can't run until main is merged
+   in. #307 has been brought up to date.
 
-**Gotcha: the dev Mac's disk was full on 24 Sep** (20 MB free of 112 GB) — writes
-fail with `ENOSPC`. Free space before the next session.
+**Storage, done 24 Sep (Decision #349).** Retention is on: the first purge removed
+505,135 samples from 603 activities that started before 26 Jun, and from now the 03:40
+UTC job removes each activity's samples once it is 90 days old. Written reads and
+activity summaries are untouched. Purged samples can be re-fetched from Garmin with
+`garmin_history_backfill`, until the next night's purge. The old `mcu_app` v1 tables in
+`public` were archived to
+`~/garmin-coach-snapshots/2026-09-24-mcu-v1-public-schema/` and dropped. The database
+is **448.5 MB of 500**. It stays there, because deleting doesn't shrink files, but
+new samples now reuse the freed space. Only `VACUUM FULL` would lower the figure,
+and that is still an explicit decision.
 
 ### Shipped
 
@@ -41,6 +46,8 @@ fail with `ENOSPC`. Free space before the next session.
 | **Batch 283 re-tiered** 🔴 High → 🟢 Low (Mark is the only profile) | #313 | `4062bb9` |
 | **Batches 285–286 authored**; three stale notes struck | #315 | `2d95c41` |
 | **Batch 279** — `updated_at` is the app's clock at the row's last write (merged on Craig's go, 24 Sep) | #314 | `0904f4b` |
+| **Retention on** — first purge 505,135 samples / 603 activities, verified; nightly at 03:40 UTC | Railway var | deploy `df58fb4c` |
+| **Old movie app tables moved out** — archived, checked, dropped: 472.4 → 448.5 MB | — | — |
 
 Every merge was verified in production on its exact SHA (Railway and Vercel
 same-origin health, web 200, `daily-loop` 401), and each batch also passed a smoke run
@@ -68,8 +75,8 @@ inside the deployed container: 280's projection agreed with the whole document o
 
 **Batch 285** (egress follow-up), then **286** (response compression). 274, 282 and 284
 wait on 273/275; 276 needs 274 plus a real contest record; **R3 (269, 272)** needs Craig
-— both bump a prompt version and spend money. **Next DECISIONS number: #349** (#344/#345
-are held by PRs #307/#308, #348 by PR #314).
+— both bump a prompt version and spend money. **Next DECISIONS number: #350** (#344/#345
+are held by PRs #307/#308).
 
 **Mark's reply** (`docs/drafts/2026-09-22-reply-to-mark.md`) is signed off and unsent —
 Craig's. The 22 Sep post-workout prose still describes a VO₂ session; regenerating it
@@ -1556,6 +1563,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-24** — Storage cleared on Craig's go (Decision #349). Retention enabled; the first purge, run by hand in the deployed container, removed 505,135 samples from 603 activities (exactly the dry-run count), and autovacuum cleared them a minute later. The old `mcu_app` v1 schema in `public` (27 tables, 3 with rows) was dumped and checked against the live counts, then dropped: 472.4 → 448.5 MB. PR #307's doubled brackets fixed on its branch (`d4437cf`). Corrected ARCHITECTURE's stale note that `updated_at` never advances.
 - **2026-09-24** — Batch 279 merged on Craig's go (PR #314, `0904f4b`, Decision #348); production verified on the exact SHA and the deployed image stamps `updated_at` on all 18 tables. Wrote the wording sign-off sheet for PRs #307/#308 (`docs/drafts/2026-09-24-wording-sign-off.md`) — it adds #307's real Mark-facing text (the Experiments-page result lines), which the earlier draft missed, and found a doubled-bracket defect in them. Storage measured: `activity_timeseries` is 378 MB of 472 MB.
 - **2026-09-24 (overnight)** — Authored Batches 285–286 and struck three stale notes (PR #315, `2d95c41`): the tool loop, SDK adoption and Sonnet 5 had already shipped (257/260/261, 257, 233). 285 is Batch 280's named follow-up — the four windows still shipping the daily document, now separable in `pg_stat_statements`; 286 is response compression (12.4–17.7 MB/day of uncompressed JSON). Run finished: 280 and 281 shipped, 283 re-tiered, 279 in PR #314 for Craig.
 - **2026-09-24 (overnight)** — Batch 279 built and **left in open PR #314**, not merged: `updated_at` now means the application's clock at the row's last write on all 18 tables (one definition, `updated_at_column`), stamped on insert and every SQLAlchemy UPDATE, explicit values still winning, not backfilled. **No migration** — `onupdate` is written into the UPDATE, not the schema; the row's "migration required" was wrong, as were "no trigger" (profiles has one) and "16 read sites" (8 reads + 8 writes, and a missed 9th writer). Audit: no live defect, five latent. CI 1919 passed, 0 skipped.
