@@ -107,6 +107,12 @@ from src.services.fan_control import (
     decide_fan_action,
     loop_phase,
 )
+from src.services.garmin_identity import (
+    GarminIdentityMismatch,
+    assert_owned_by,
+    garmin_account,
+    sleep_owner_ids,
+)
 from src.services.garmin_sync import (
     GarminConnectClient,
     GarminSyncService,
@@ -1129,6 +1135,8 @@ async def run_wake_nudge() -> JobResult:
             "daily_metrics": inputs.daily_metrics,
             "sleep": inputs.sleep,
             "nudges_sent": nudges_sent,
+            "garmin_unbound": inputs.garmin_unbound,
+            "garmin_identity_mismatch": inputs.garmin_identity_mismatch,
             "failed": failures,
         }
         if failures:
@@ -1209,6 +1217,8 @@ async def run_morning_weather_sync() -> JobResult:
             "brief_ready_pushes": brief_ready_pushes,
             "drivers_cached": drivers_cached,
             "inputs_not_ready": inputs_not_ready,
+            "garmin_unbound": inputs.garmin_unbound,
+            "garmin_identity_mismatch": inputs.garmin_identity_mismatch,
             "failed": failures,
         }
         if failures:
@@ -1245,7 +1255,14 @@ async def run_wake_check() -> JobResult:
             fired = 0
             waiting = 0
             napped = 0
+            unbound = 0
+            mismatched = 0
             for profile in profiles:
+                # Batch 283: a profile that names no Garmin account is never polled.
+                account = garmin_account(profile)
+                if account is None:
+                    unbound += 1
+                    continue
                 now_local = _profile_now(profile)
                 # Cheap window gate first — no Garmin call outside the window.
                 if not (WINDOW_START <= now_local.time() <= WINDOW_END):
@@ -1275,6 +1292,19 @@ async def run_wake_check() -> JobResult:
                 except Exception:
                     failures += 1
                     log.exception("wake check sleep fetch failed", profile_id=str(profile.id))
+                    continue
+                try:
+                    assert_owned_by(account, sleep_owner_ids(sleep_payload), source="wake_sleep")
+                except GarminIdentityMismatch as exc:
+                    failures += 1
+                    mismatched += 1
+                    log.error(
+                        "wake check refused",
+                        reason="garmin_identity_mismatch",
+                        profile_id=str(profile.id),
+                        expected=exc.expected,
+                        found=sorted(exc.found),
+                    )
                     continue
 
                 sleep = SleepReading.from_sleep_fields(parse_sleep_fields(sleep_payload))
@@ -1310,6 +1340,8 @@ async def run_wake_check() -> JobResult:
             fired=fired,
             waiting=waiting,
             napped=napped,
+            garmin_unbound=unbound,
+            garmin_identity_mismatch=mismatched,
             failed=failures,
         )
         # Once wake is stable, sync all inputs and fire the "good morning" nudge —
@@ -1324,6 +1356,8 @@ async def run_wake_check() -> JobResult:
             "fired": fired,
             "waiting": waiting,
             "napped": napped,
+            "garmin_unbound": unbound,
+            "garmin_identity_mismatch": mismatched,
             "failed": failures,
         }
         if failures:
@@ -1364,19 +1398,43 @@ async def run_garmin_activity_poll() -> JobResult:
             activities_synced = 0
             timeseries_synced = 0
             checkin_nudges = 0
+            unbound = 0
+            mismatched = 0
 
             for profile in profiles:
+                # Batch 283: a profile that names no Garmin account is never polled.
+                if garmin_account(profile) is None:
+                    unbound += 1
+                    log.warning(
+                        "garmin activity poll skipped profile",
+                        reason="no_garmin_account",
+                        profile_id=str(profile.id),
+                    )
+                    continue
                 today = _profile_today(profile)
                 start_date = today - timedelta(days=3)
                 payloads = await _retry_sync(
                     lambda: client.fetch_activity_payloads(start_date, today),
                     backoff=2.0,
                 )
-                sync_result = await sync_service.sync_activities(
-                    profile.id,
-                    payloads,
-                    commit=False,
-                )
+                try:
+                    # The check runs before the first write, so a refusal leaves
+                    # this shared transaction exactly as the previous profile left it.
+                    sync_result = await sync_service.sync_activities(
+                        profile.id,
+                        payloads,
+                        commit=False,
+                    )
+                except GarminIdentityMismatch as exc:
+                    mismatched += 1
+                    log.error(
+                        "garmin activity poll refused",
+                        reason="garmin_identity_mismatch",
+                        profile_id=str(profile.id),
+                        expected=exc.expected,
+                        found=sorted(exc.found),
+                    )
+                    continue
                 activities_synced += sync_result.activities_synced
                 timeseries_synced += sync_result.timeseries_samples_synced
 
@@ -1411,13 +1469,20 @@ async def run_garmin_activity_poll() -> JobResult:
             activities=activities_synced,
             timeseries_samples=timeseries_synced,
             checkin_nudges=checkin_nudges,
+            garmin_unbound=unbound,
+            garmin_identity_mismatch=mismatched,
         )
-        return JobResult.succeeded(
-            profiles=len(profiles),
-            activities=activities_synced,
-            timeseries_samples=timeseries_synced,
-            checkin_nudges=checkin_nudges,
-        )
+        counters = {
+            "profiles": len(profiles),
+            "activities": activities_synced,
+            "timeseries_samples": timeseries_synced,
+            "checkin_nudges": checkin_nudges,
+            "garmin_unbound": unbound,
+            "garmin_identity_mismatch": mismatched,
+        }
+        if mismatched:
+            return JobResult.degraded("garmin_identity_mismatch", **counters)
+        return JobResult.succeeded(**counters)
     except Exception:
         log.exception("garmin activity poll failed")
         return JobResult.failed("activity_poll_failed")
