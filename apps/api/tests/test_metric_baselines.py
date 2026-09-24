@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 
 from src.models.coaching import DailyMetric, MetricBaseline, Sleep
 from src.models.profile import Profile, UserRole
+from src.services.daily_metric_coverage import DayAggregates
 from src.services.metric_baselines import (
     DB_HISTORY_SOURCE,
     MetricBaselineBackfillService,
@@ -122,8 +123,12 @@ def test_compute_metric_baselines_includes_body_battery_drain() -> None:
 
 
 def test_sample_values_sources_body_battery_drain_from_day_aggregates() -> None:
-    """Batch 216: drain is the sibling of charge — same settled-row requirement,
-    same fallback-to-metric behaviour when no settled row exists yet."""
+    """Batch 216: drain is the sibling of charge — same settled-row requirement.
+
+    Batch 280 removed the fallback to the wake row: the aggregates are an
+    explicit argument, because the wake row no longer carries the document its
+    coverage is read from. No aggregates, no figure.
+    """
     user_id = uuid.uuid4()
     day = date(2026, 8, 19)
     morning_metric = DailyMetric(
@@ -151,13 +156,17 @@ def test_sample_values_sources_body_battery_drain_from_day_aggregates() -> None:
         },
     )
 
+    settled = DayAggregates.from_metric(settled_metric)
     assert sample_values(None, morning_metric)["body_battery_drain"] is None
     assert (
-        sample_values(None, morning_metric, day_aggregates=settled_metric)["body_battery_drain"]
-        == 64
+        sample_values(
+            None, morning_metric, day_aggregates=DayAggregates.from_metric(morning_metric)
+        )["body_battery_drain"]
+        is None
     )
-    # No settled row yet -> falls back to the metric passed in, same as charge.
-    assert sample_values(None, settled_metric)["body_battery_drain"] == 64
+    assert sample_values(None, morning_metric, day_aggregates=settled)["body_battery_drain"] == 64
+    # No aggregates passed -> no figure; nothing falls back to the metric row.
+    assert sample_values(None, settled_metric)["body_battery_drain"] is None
 
 
 def test_sample_values_recomputes_age_adjusted_sleep_when_profile_context_exists() -> None:
@@ -301,7 +310,11 @@ def test_metrics_vs_baselines_body_battery_reads_settled_row_not_morning_row() -
     rows = {
         row["metricKey"]: row
         for row in _metrics_vs_baselines(
-            morning_row, None, baselines, None, day_aggregates=settled_row
+            morning_row,
+            None,
+            baselines,
+            None,
+            day_aggregates=DayAggregates.from_metric(settled_row),
         )
     }
     assert rows["body_battery_charge"]["currentValue"] == 80
@@ -349,7 +362,11 @@ def test_metrics_vs_baselines_recovery_reads_stay_on_morning_row_with_settled_ro
     rows = {
         row["metricKey"]: row
         for row in _metrics_vs_baselines(
-            morning_row, None, baselines, None, day_aggregates=settled_row
+            morning_row,
+            None,
+            baselines,
+            None,
+            day_aggregates=DayAggregates.from_metric(settled_row),
         )
     }
     assert rows["readiness_score"]["currentValue"] == 68

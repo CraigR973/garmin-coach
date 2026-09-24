@@ -859,9 +859,12 @@ class TrendsService:
         return samples
 
     async def _rows(self, model: Any, user_id: uuid.UUID, start: date, end: date) -> list[Any]:
-        # Only ``Sleep`` carries a payload worth leaving behind; the option is
-        # per-model rather than blanket so ``daily_metrics.raw_payload``, which
-        # ``daily_metric_coverage`` still reads, keeps loading (2026-08-30 egress incident).
+        # Per-model rather than blanket (2026-08-30 egress incident). Batch 280
+        # moved coverage off ``daily_metrics.raw_payload``, so nothing here needs
+        # the document any more — trends reads four typed columns — but this
+        # read still ships it. It is named as the largest remaining reader in the
+        # Batch 280 ledger row and left for a batch of its own rather than swept
+        # in unmeasured.
         options = [without_sleep_raw_payload()] if model is Sleep else []
         rows = (
             (

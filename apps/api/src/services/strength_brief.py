@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import Activity
 from src.models.profile import Profile
+from src.services.bulk_history_reads import without_activity_raw_summary
 
 # ---------------------------------------------------------------------------
 # Rolling window sizes
@@ -212,6 +213,7 @@ class StrengthBriefService:
             (
                 await self.session.execute(
                     select(Activity)
+                    .options(without_activity_raw_summary())
                     .where(
                         Activity.user_id == player.id,
                         Activity.exclude_from_recovery.is_(True),

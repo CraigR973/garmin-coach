@@ -32,6 +32,7 @@ from src.services.anthropic_text import (
     configured_thinking,
     generate_anthropic_text,
 )
+from src.services.bulk_history_reads import without_activity_raw_summary
 from src.services.bulk_post_activity_lookups import (
     generation_statuses_by_activity,
     latest_analyses_by_activity,
@@ -267,6 +268,7 @@ class PostFlexibilityAnalysisService(PostActivityReadRunner[FlexibilityAnalysisR
             (
                 await self.session.execute(
                     select(Activity)
+                    .options(without_activity_raw_summary())
                     .where(Activity.user_id == user_id, Activity.start_utc >= lower_bound)
                     .order_by(Activity.start_utc.asc())
                 )
@@ -547,6 +549,7 @@ class PostFlexibilityAnalysisService(PostActivityReadRunner[FlexibilityAnalysisR
             (
                 await self.session.execute(
                     select(Activity)
+                    .options(without_activity_raw_summary())
                     .where(Activity.user_id == user_id, Activity.start_utc >= lower_bound)
                     .order_by(Activity.start_utc.asc())
                 )

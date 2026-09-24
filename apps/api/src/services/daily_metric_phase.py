@@ -36,6 +36,7 @@ call site; neither moves the recovery reads on the same date.
 
 from collections.abc import Iterable
 from datetime import date
+from typing import Protocol
 
 from sqlalchemy import Case, case
 
@@ -46,6 +47,7 @@ from src.models.coaching import (
 )
 
 __all__ = [
+    "PhasedObservation",
     "index_day_aggregates_by_date",
     "index_morning_by_date",
     "index_post_activity_by_date",
@@ -57,8 +59,26 @@ __all__ = [
 ]
 
 
-def _collapse(rows: Iterable[DailyMetric], preferred: str) -> list[DailyMetric]:
-    chosen: dict[date, DailyMetric] = {}
+class PhasedObservation(Protocol):
+    """Anything that says which day it observed and in which phase.
+
+    ``DailyMetric`` satisfies it, and so does the projected
+    ``daily_metric_coverage.DayAggregates`` (Batch 280) — which is why the
+    collapse is structural: the coverage readers now index a projection rather
+    than whole rows, and must pick the same observation per date that they did.
+    """
+
+    @property
+    def calendar_date(self) -> date: ...
+
+    @property
+    def phase(self) -> str: ...
+
+
+def _collapse[ObservationT: PhasedObservation](
+    rows: Iterable[ObservationT], preferred: str
+) -> list[ObservationT]:
+    chosen: dict[date, ObservationT] = {}
     for row in rows:
         current = chosen.get(row.calendar_date)
         if current is None or (row.phase == preferred and current.phase != preferred):
@@ -66,27 +86,37 @@ def _collapse(rows: Iterable[DailyMetric], preferred: str) -> list[DailyMetric]:
     return [chosen[day] for day in sorted(chosen)]
 
 
-def prefer_morning(rows: Iterable[DailyMetric]) -> list[DailyMetric]:
+def prefer_morning[ObservationT: PhasedObservation](
+    rows: Iterable[ObservationT],
+) -> list[ObservationT]:
     """One row per date, ascending — the wake observation wherever one exists."""
     return _collapse(rows, DAILY_METRIC_PHASE_MORNING)
 
 
-def prefer_settled(rows: Iterable[DailyMetric]) -> list[DailyMetric]:
+def prefer_settled[ObservationT: PhasedObservation](
+    rows: Iterable[ObservationT],
+) -> list[ObservationT]:
     """One row per date, ascending — the closed-day observation where one exists."""
     return _collapse(rows, DAILY_METRIC_PHASE_SETTLED)
 
 
-def index_morning_by_date(rows: Iterable[DailyMetric]) -> dict[date, DailyMetric]:
+def index_morning_by_date[ObservationT: PhasedObservation](
+    rows: Iterable[ObservationT],
+) -> dict[date, ObservationT]:
     """``{calendar_date: wake observation}``, replacing an ambiguous dict comprehension."""
     return {row.calendar_date: row for row in prefer_morning(rows)}
 
 
-def index_settled_by_date(rows: Iterable[DailyMetric]) -> dict[date, DailyMetric]:
+def index_settled_by_date[ObservationT: PhasedObservation](
+    rows: Iterable[ObservationT],
+) -> dict[date, ObservationT]:
     """``{calendar_date: closed-day observation}``."""
     return {row.calendar_date: row for row in prefer_settled(rows)}
 
 
-def index_day_aggregates_by_date(rows: Iterable[DailyMetric]) -> dict[date, DailyMetric]:
+def index_day_aggregates_by_date[ObservationT: PhasedObservation](
+    rows: Iterable[ObservationT],
+) -> dict[date, ObservationT]:
     """``{calendar_date: the row whose local-day aggregates are finished}``.
 
     A field-level exception to "morning for retrospection", not a change of mind
@@ -101,7 +131,9 @@ def index_day_aggregates_by_date(rows: Iterable[DailyMetric]) -> dict[date, Dail
     return index_settled_by_date(rows)
 
 
-def index_post_activity_by_date(rows: Iterable[DailyMetric]) -> dict[date, DailyMetric]:
+def index_post_activity_by_date[ObservationT: PhasedObservation](
+    rows: Iterable[ObservationT],
+) -> dict[date, ObservationT]:
     """``{calendar_date: the row that can hold a post-activity reading}``.
 
     The mirror image of :func:`index_day_aggregates_by_date`, and a field-level

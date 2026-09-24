@@ -24,6 +24,7 @@ from src.models.coaching import (
     WorkoutDeliveryProposal,
 )
 from src.models.profile import Profile
+from src.services.bulk_history_reads import without_activity_raw_summary
 from src.services.verdict_scaling import _normalize_verdict, blocks_red_vo2
 
 DEFAULT_FTP_WATTS = 280
@@ -780,6 +781,7 @@ class WorkoutDeliveryService:
             (
                 await self.session.execute(
                     select(Activity)
+                    .options(without_activity_raw_summary())
                     .where(
                         Activity.user_id == user_id,
                         Activity.start_utc >= datetime.combine(start_date, datetime.min.time()),

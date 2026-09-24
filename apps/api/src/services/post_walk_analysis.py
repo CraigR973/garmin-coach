@@ -34,7 +34,10 @@ from src.services.anthropic_text import (
     configured_thinking,
     generate_anthropic_text,
 )
-from src.services.bulk_history_reads import activity_timeseries_columns
+from src.services.bulk_history_reads import (
+    activity_timeseries_columns,
+    without_activity_raw_summary,
+)
 from src.services.bulk_post_activity_lookups import (
     generation_statuses_by_activity,
     latest_analyses_by_activity,
@@ -187,6 +190,7 @@ class PostWalkAnalysisService(PostActivityReadRunner[WalkAnalysisResult]):
             (
                 await self.session.execute(
                     select(Activity)
+                    .options(without_activity_raw_summary())
                     .where(
                         Activity.user_id == user_id,
                         Activity.activity_type == "walking",
@@ -463,6 +467,7 @@ class PostWalkAnalysisService(PostActivityReadRunner[WalkAnalysisResult]):
             (
                 await self.session.execute(
                     select(Activity)
+                    .options(without_activity_raw_summary())
                     .where(
                         Activity.user_id == user_id,
                         Activity.activity_type == "walking",

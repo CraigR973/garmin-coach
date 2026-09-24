@@ -50,7 +50,7 @@ from src.services.anthropic_text import (
     configured_effort,
     configured_thinking,
 )
-from src.services.bulk_history_reads import without_sleep_raw_payload
+from src.services.bulk_history_reads import without_activity_raw_summary, without_sleep_raw_payload
 from src.services.coach_policy import RECORDED_DATA_HONESTY_RULE
 from src.services.experiment_tracker import ExperimentTrackerService
 from src.services.generation_requests import (
@@ -752,7 +752,9 @@ class LongitudinalAnalysisService:
         activities = list(
             (
                 await self.session.execute(
-                    select(Activity).where(
+                    select(Activity)
+                    .options(without_activity_raw_summary())
+                    .where(
                         Activity.user_id == player.id,
                         Activity.start_utc >= activity_start_utc,
                         Activity.start_utc < activity_end_utc,

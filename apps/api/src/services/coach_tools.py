@@ -69,6 +69,7 @@ from src.services.bulk_history_reads import (
     daily_metric_reading_columns,
     temperature_series_columns,
     weather_summary_columns,
+    without_activity_raw_summary,
     without_sleep_raw_payload,
 )
 from src.services.chat_context import day_start_utc, local_date
@@ -290,7 +291,10 @@ class CoachToolbox:
         if activity_type is not None:
             criteria.append(Activity.activity_type == activity_type)
         rows, row_cap_exceeded = await self._capped_rows(
-            select(Activity).where(*criteria).order_by(desc(Activity.start_utc))
+            select(Activity)
+            .options(without_activity_raw_summary())
+            .where(*criteria)
+            .order_by(desc(Activity.start_utc))
         )
         return _result(
             [activity_state(row, lambda moment: local_date(moment, zone)) for row in rows],
