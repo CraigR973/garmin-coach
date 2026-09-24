@@ -6,29 +6,31 @@
 
 ## Now
 
-**2026-09-24 — overnight run finished. Two batches shipped to production, one is built
-and waiting in a PR for Craig, one row was re-tiered, and two new rows are authored.**
+**2026-09-24 — overnight run finished, then Craig merged Batch 279. Three batches
+shipped to production today (280, 281, 279), one row was re-tiered, and two new rows
+are authored. PRs #307 and #308 wait on Mark's wording.**
 
 ### Needs Craig
 
-1. **PR #314 — Batch 279, `updated_at` — review before it merges.** Green (16/16,
-   pytest 1919 passed, 0 skipped). It makes `updated_at` mean "the application's clock
-   at the row's last write" on all 18 tables. **The check you asked for: SQLAlchemy's
-   `onupdate` is written into each UPDATE statement, not the schema, so the fix needs
-   no migration** — the row's "migration required" was wrong, and the compiled DDL is
-   identical before and after. The risk is behavioural: every application UPDATE on 13
-   tables now also writes the column. **Audit of the 8 reads: no live defect; five
-   latent ones** (Garmin-freshness tie-break and fallback on `daily_metrics`, three
-   weather "newest row" reads), all dormant in today's data and all fixed. Decision
-   #348 says why not a database trigger (it would overwrite the lease writers' times
-   with transaction start).
-2. **PR #307 (Batch 275) and PR #308 (Batch 273)** — unchanged: Mark-facing copy
-   unsigned. Both carry DECISIONS #344/#345 while `main` now runs #343 → #346 → #347,
-   so each needs a trivial `DECISIONS.md` merge.
-3. **Database storage, for information:** 472 MB of the 500 MB free-plan cap — about
-   28 MB of headroom, down from ~48 MB on 2 Sep. At the last fortnight's ~0.84 MB/day
-   that is about a month. The retention-purge decision is still yours and was not
-   re-asked.
+1. **Mark's wording sign-off** — one sheet, ready to forward:
+   `docs/drafts/2026-09-24-wording-sign-off.md`. Part 1 is Batch 275 (PR #307),
+   Part 2 is Batch 273 (PR #308). Two corrections to what the drafts implied:
+   **PR #307's Mark-facing text is the Experiments-page result lines (Part 1a)**,
+   which the old draft never showed; the four chat lines (Part 1c) are for Batch 284,
+   not #307. And **#307 doubles its brackets** — `(−6.6 ms, (range …))` — a one-line
+   fix to make before it merges. PR #308 shows Mark nothing new: its panel isn't
+   built, so Part 2 is what the panel will say.
+2. **Database storage — 472 MB of 500 MB.** `activity_timeseries` (per-sample
+   workout streams) is **378 MB**: 234 MB of rows, of which **80 MB is `raw_metrics`
+   JSON nothing reads**, plus 144 MB of indexes. **70% of its rows (505k) come from
+   activities older than 90 days** — the retention purge you declined on 2 Sep. A
+   further **24 MB is another app's movie tables** in `public` (`movie_credits`,
+   `movies`, `collection_items`). Deleting rows frees space for reuse and stops the
+   growth; the reported size only falls after `VACUUM FULL`. Headroom is about a
+   month.
+
+**Gotcha: the dev Mac's disk was full on 24 Sep** (20 MB free of 112 GB) — writes
+fail with `ENOSPC`. Free space before the next session.
 
 ### Shipped
 
@@ -38,6 +40,7 @@ and waiting in a PR for Craig, one row was re-tiered, and two new rows are autho
 | **Batch 281** — activity loaders leave the 4.6 KB summary behind unless a reader needs it | #312 | `9a75138` |
 | **Batch 283 re-tiered** 🔴 High → 🟢 Low (Mark is the only profile) | #313 | `4062bb9` |
 | **Batches 285–286 authored**; three stale notes struck | #315 | `2d95c41` |
+| **Batch 279** — `updated_at` is the app's clock at the row's last write (merged on Craig's go, 24 Sep) | #314 | `0904f4b` |
 
 Every merge was verified in production on its exact SHA (Railway and Vercel
 same-origin health, web 200, `daily-loop` 401), and each batch also passed a smoke run
@@ -1553,6 +1556,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-24** — Batch 279 merged on Craig's go (PR #314, `0904f4b`, Decision #348); production verified on the exact SHA and the deployed image stamps `updated_at` on all 18 tables. Wrote the wording sign-off sheet for PRs #307/#308 (`docs/drafts/2026-09-24-wording-sign-off.md`) — it adds #307's real Mark-facing text (the Experiments-page result lines), which the earlier draft missed, and found a doubled-bracket defect in them. Storage measured: `activity_timeseries` is 378 MB of 472 MB.
 - **2026-09-24 (overnight)** — Authored Batches 285–286 and struck three stale notes (PR #315, `2d95c41`): the tool loop, SDK adoption and Sonnet 5 had already shipped (257/260/261, 257, 233). 285 is Batch 280's named follow-up — the four windows still shipping the daily document, now separable in `pg_stat_statements`; 286 is response compression (12.4–17.7 MB/day of uncompressed JSON). Run finished: 280 and 281 shipped, 283 re-tiered, 279 in PR #314 for Craig.
 - **2026-09-24 (overnight)** — Batch 279 built and **left in open PR #314**, not merged: `updated_at` now means the application's clock at the row's last write on all 18 tables (one definition, `updated_at_column`), stamped on insert and every SQLAlchemy UPDATE, explicit values still winning, not backfilled. **No migration** — `onupdate` is written into the UPDATE, not the schema; the row's "migration required" was wrong, as were "no trigger" (profiles has one) and "16 read sites" (8 reads + 8 writes, and a missed 9th writer). Audit: no live defect, five latent. CI 1919 passed, 0 skipped.
 - **2026-09-24 (overnight)** — Re-tiered Batch 283 from 🔴 High to 🟢 Low (PR #313, `4062bb9`): Craig confirmed one profile, Mark, so protecting a second profile from inheriting his Garmin history is conditional on one ever being added. Row and measurements kept; trigger written down.
