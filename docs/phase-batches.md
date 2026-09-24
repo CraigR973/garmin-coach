@@ -4043,7 +4043,7 @@ the run was never really a group. These four are drawn on that axis instead.
 |---|---|---|---|
 | **R1 — nothing gates it** | 268 🔴 → 271 🔴 → 270 🟢 | Nothing. No Mark-facing copy, no UI, no prompt bump, no migration, no spend, no destructive operation. | **Runnable now** via `/batch-group R1`. 268.3 and 270.3 are both pre-answered below, so no decision gate remains. |
 | **R2 — Mark-facing copy or UI** | 275 🟢 · then 273 🔴 → 274 🟢 | 275.4, 273.2 and 274 are copy or UI Mark has not seen. `AGENTS.md` keeps his copy explicit. | Craig signs off the drafts. **Draft each at its own `/batch-start`, not in advance** — 273's panel copy written before 273's provenance shape exists is guesswork. 275 is first because it is additive and reads as the app getting better at answering him. |
-| **R3 — copy *and* Anthropic spend** | 269 🔴 · 272 🔴 | A prompt bump is likely on both, and a bump withdraws every stored analysis at the old version. 269 additionally carries brief copy. | A written regeneration decision **and** Craig's authorisation to spend. Both sit outside automatic close-out by `AGENTS.md`, so neither can ride a group run. **Written 2026-09-24:** `docs/drafts/2026-09-24-r3-decision.md` — regeneration costs ≈ $0.07–$0.20 in total (morning self-heals, reviews withdraw nothing, trends regenerate at the next 12:30 run), so the real gate is 269.5's wording; 269 alone would have made 23 and 24 Sep Amber instead of Red. |
+| **R3 — copy *and* Anthropic spend** | 269 🔴 · 272 🔴 | A prompt bump is likely on both, and a bump withdraws every stored analysis at the old version. 269 additionally carries brief copy. | A written regeneration decision **and** Craig's authorisation to spend. Both sit outside automatic close-out by `AGENTS.md`, so neither can ride a group run. **Written 2026-09-24:** `docs/drafts/2026-09-24-r3-decision.md` — regeneration costs ≈ $0.07–$0.20 in total (morning self-heals, reviews withdraw nothing, trends regenerate at the next 12:30 run), so the real gate is 269.5's wording; 269 alone would have made 23 and 24 Sep Amber instead of Red (today's sweet spot 70 minutes at 76% instead of 47 at 60%; Wednesday's Z2 56 minutes instead of 52). |
 | **R4 — deferred on evidence** | 276 🟢 | 276.4 requires real contest records from 274 to scope from. | 274 shipped, and Mark has actually contested something. "He contested nothing, so this does not run" is a valid outcome. |
 
 **Cross-group ordering that still binds, whatever order the groups run in:**
@@ -4388,10 +4388,14 @@ each and said it could change none of them.
    (45). His overnight HRV was 45 and 47, readiness 79 and 67, recovery time 1 minute,
    resting HR 45. The Red cut Wednesday's Z2 from 75 to 52 minutes and today's 3 × 20 sweet
    spot from 94 minutes at full power to 47 minutes at 60%. **Batch 269's overnight-first
-   rule makes both days Amber** — eased, not cut. 21 and 22 Sep (overnight 37 and 39, under
-   both floors) stay Red. So this complaint is Batch 269's, which waits in R3. His wider
-   point — whether a Red should be weighed against recovery time and load ratio when they
-   disagree — is a coaching-policy question, recorded for Craig rather than built.
+   rule makes both days Amber.** That matters a lot for the sweet spot — Amber's rules give
+   70 minutes with the work at 76% instead of 47 at 60% — and little for the Z2 (56 minutes
+   instead of 52), because **Amber still cuts duration by a quarter and drops one zone**.
+   21 and 22 Sep (overnight 37 and 39, under both floors) stay Red. So 269, waiting in R3,
+   answers most of the complaint but not all of it. His wider point — whether a day whose
+   only negative is an HRV reading near the floor should be cut at all, when recovery time
+   and load ratio say he is under-trained — is a coaching-policy question, recorded for
+   Craig rather than built.
 
 | Batch | Tier | Status | Phases | Goal | Acceptance criteria |
 |---|---|---|---|---|---|
