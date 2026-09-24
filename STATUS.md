@@ -6,8 +6,21 @@
 
 ## Now
 
-**2026-09-24 (overnight run, in progress) — Batches 280 and 281 shipped. Next in the
-queue: re-tiering Batch 283, then Batch 279 built to an open PR.**
+**2026-09-24 (overnight run, in progress) — Batches 280 and 281 shipped, Batch 283
+re-tiered, Batch 279 built and waiting in an open PR. Now authoring new ledger rows
+from "Recorded, not scheduled".**
+
+### Needs Craig
+
+1. **PR #314 — Batch 279, do not merge without you.** Green (16/16, 0 skipped).
+   It makes `updated_at` mean "last application write" on all 18 tables. **The
+   finding you asked me to check: `onupdate` lives in the UPDATE statement, so the
+   fix needs no migration** — the row's "migration required" was wrong. Blast
+   radius is behavioural: every application UPDATE on 13 tables now also writes
+   `updated_at`. The eight reads were audited first: **no live defect**, five
+   latent ones (Garmin freshness on `daily_metrics`, three weather "newest row"
+   reads), all dormant and all fixed. Decision #348 explains why not a DB trigger.
+2. PR #307 (275) and PR #308 (273) — unchanged: Mark-facing copy unsigned.
 
 ### Shipped tonight
 
@@ -19,6 +32,10 @@ queue: re-tiering Batch 283, then Batch 279 built to an open PR.**
   unless their objects reach a reader of it. PR #312 / squash `9a75138`, Decision
   #347. Production serves `9a75138`; the deployed image's smoke on a real ride
   (23 Sep) shows the check-in path hands the ride read a whole row.
+
+- **Batch 283 re-tiered 🔴 High → 🟢 Low** (PR #313 / `4062bb9`): with Mark the only
+  profile its urgency is conditional on a second profile ever being added — build
+  it *before* one is created. Row and measurements intact.
 
 ### What 281 found, worth carrying
 
@@ -1543,6 +1560,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-24 (overnight)** — Batch 279 built and **left in open PR #314**, not merged: `updated_at` now means the application's clock at the row's last write on all 18 tables (one definition, `updated_at_column`), stamped on insert and every SQLAlchemy UPDATE, explicit values still winning, not backfilled. **No migration** — `onupdate` is written into the UPDATE, not the schema; the row's "migration required" was wrong, as were "no trigger" (profiles has one) and "16 read sites" (8 reads + 8 writes, and a missed 9th writer). Audit: no live defect, five latent. CI 1919 passed, 0 skipped.
+- **2026-09-24 (overnight)** — Re-tiered Batch 283 from 🔴 High to 🟢 Low (PR #313, `4062bb9`): Craig confirmed one profile, Mark, so protecting a second profile from inheriting his Garmin history is conditional on one ever being added. Row and measurements kept; trigger written down.
 - **2026-09-24 (overnight)** — Batch 281 shipped (PR #312, `9a75138`, Decision #347): 23 activity loaders defer `raw_summary` with `raiseload`, ranked by rows returned (the 120-night driver read and the walking/breathwork/strength windows were 1.55M of 1.65M rows); three keep the whole row because their objects reach a summary reader — the ride read's own pending query, `DailyLoopService._activity` (handed to the ride read through the check-in route's `session.get`) and the sync upsert. `post_workout_analysis` unchanged. Production before/after byte-identical across 23 entry points; CI 1914 passed, 0 skipped.
 - **2026-09-23 (overnight)** — Batch 280 shipped (PR #311, `65b9005`, Decision #346): coverage now reads ten projected facts — nine keys and one truthiness boolean — instead of Garmin's ~40 KB daily document, and the review rollup, 120-night driver window, nightly baseline rebuild and two morning lookups no longer ship it. Built as one TOAST read per row (35–78 ms; the naive per-key form took 943 ms, slower than shipping). Production before/after byte-identical; 550/550 rows agree. Corrected two premises: the identity-map reason nothing was deferred, and the assumption that the 26 GB was the coverage path — most of it is `trends` (every row, every chat turn), `chronic_patterns`, `longitudinal` and `early_warning`, now free to move.
 - **2026-09-23** — Craig answered all three open questions: one profile (Mark), so bindability is Batch 275's gate; 275.4 carried forward as **Batch 284** (PR #310, `6536529`); and the provenance panel is **one panel per screen**. The draft had ranked inline-under-each-figure first — that option is ruled out by 273.1 itself, because the figures exist only inside model-generated markdown. Both PRs now wait on the Mark-facing copy alone.
