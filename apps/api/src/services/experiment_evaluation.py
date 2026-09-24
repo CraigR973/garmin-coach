@@ -415,11 +415,16 @@ def _rounded_interval(interval: tuple[float, float] | None) -> list[float] | Non
     return [round(interval[0], 2), round(interval[1], 2)]
 
 
-def _interval_phrase(interval: tuple[float, float] | None) -> str:
+def _interval_words(interval: tuple[float, float] | None) -> str:
     """The range the window still allows, in words rather than notation."""
     if interval is None:
-        return "(too few nights to give a range)"
-    return f"(range {interval[0]:+.1f} to {interval[1]:+.1f})"
+        return "too few nights to give a range"
+    return f"range {interval[0]:+.1f} to {interval[1]:+.1f}"
+
+
+def _interval_phrase(interval: tuple[float, float] | None) -> str:
+    """_interval_words in its own brackets, for a sentence that has none open."""
+    return f"({_interval_words(interval)})"
 
 
 @dataclass(frozen=True)
@@ -691,12 +696,13 @@ def evaluate_group_compare(
     worse = metric.worse_delta(recovery_mean, build_mean)
     interval = mean_difference_interval(recovery, build)
     separates = interval_excludes_zero(interval)
-    phrase = _interval_phrase(interval)
     effect = _standardised_effect(recovery, build)
+    # The range goes inside the delta's brackets as bare words: the bracketed
+    # phrase here printed "(-6.6 ms, (range -10.0 to -3.1))".
     headline = (
         f"Recovery-week {metric.label} averages {metric.format_value(recovery_mean)} vs "
         f"{metric.format_value(build_mean)} on build weeks "
-        f"({delta:+.1f} {metric.units}, {phrase})"
+        f"({delta:+.1f} {metric.units}, {_interval_words(interval)})"
     )
     effect_phrase = "" if effect is None else f" Standardised effect {effect:+.2f}."
 

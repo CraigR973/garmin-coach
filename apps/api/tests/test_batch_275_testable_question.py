@@ -14,6 +14,7 @@ measured dispersion rather than from round numbers.
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date, timedelta
 
@@ -86,6 +87,23 @@ def test_a_real_hrv_drop_that_separates_from_zero_is_supported() -> None:
     assert result.recommendation == RECOMMEND_SUPPORTED
     assert result.evidence["standardisedEffect"] is not None
     assert "ms" in result.reasons[0]
+
+
+def test_the_headline_keeps_the_range_inside_its_one_pair_of_brackets() -> None:
+    """Mark reads this line on the Experiments page. The range used to arrive in
+    brackets of its own inside the delta's, printing "(-6.0 ms, (range ...))"."""
+    supported = evaluate_group_compare(
+        _nights([41.0, 42.0, 41.0, 42.0, 41.0, 42.0, 41.0], [47.0] * 7), metric=HRV
+    )
+    inconclusive = evaluate_group_compare(_nights(HRV_RECOVERY, HRV_BUILD), metric=HRV)
+    assert supported.recommendation == RECOMMEND_SUPPORTED
+    assert inconclusive.recommendation == RECOMMEND_INCONCLUSIVE
+    for result in (supported, inconclusive):
+        reason = result.reasons[0]
+        assert "((" not in reason and "))" not in reason, reason
+        assert re.search(
+            r"on build weeks \([+-]\d+\.\d ms, range [+-]\d+\.\d to [+-]\d+\.\d\) — ", reason
+        ), reason
 
 
 def test_each_metric_carries_its_own_threshold_in_its_own_units() -> None:
