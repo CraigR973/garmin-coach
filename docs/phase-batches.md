@@ -2467,7 +2467,11 @@ as worse than a missing one. Any fix must split them rather than lifting the gat
 Authored here so the reasoning survives, each with the trigger that would make it due. **None
 of these is blocked; all are deliberately deferred on value-per-batch at a 1–2-user scale.**
 
-* **Tool use / the agent loop (Claude can verify its own inputs).** The full fix for
+* **~~Tool use / the agent loop (Claude can verify its own inputs).~~ Done — struck
+  2026-09-24 after checking the code.** Batch 257 (Decision #328) built the tool loop on the
+  Anthropic SDK, Batch 260 (Decision #332) added the past-thermal, recovery and prescription
+  lookups, and Batch 261 bounded the loop with one deadline per answer; the tools live in
+  `CoachToolbox` (`services/coach_tools.py`). Original wording follows. The full fix for
   "disconnected": read-only tools — `get_interval_detail`, `get_planned_week`,
   `get_metric_baseline`, `explain_tag` — so that when Mark says "*not sure where you're
   getting this from*" the coach can go and look, and tell him the app is wrong. Requires
@@ -2487,13 +2491,20 @@ of these is blocked; all are deliberately deferred on value-per-batch at a 1–2
   just a different word. A model reads "*more awake as felt cold from drafts*" correctly.
   **Trigger:** a second over-match reaching Mark after 212, or Batch 220 proving out, since
   the analyst run is already reading his notes longitudinally and is the natural home for it.
-* **Anthropic SDK adoption.** Would replace the hand-rolled `classify_anthropic_error` with
+* **~~Anthropic SDK adoption.~~ Done — struck 2026-09-24.** Batch 257 adopted the SDK
+  everywhere, not only for chat (Decision #328, superseding #47's SDK clause): `AsyncAnthropic`
+  in `services/anthropic_text.py`, `anthropic>=1.4.0`, with the classified error taxonomy and
+  shared-deadline retry kept as the app's own. Original wording follows. Would replace the hand-rolled `classify_anthropic_error` with
   typed exceptions, and unlock structured outputs (`output_config.format` — Batch 143 existed
   to fix a chat/post-workout JSON-500 that the current join-the-text-blocks approach makes
   possible by design) and streaming (Batch 144's "orphaned generating spinner" is the UX
   streaming removes; the client is non-streaming on a 60 s timeout). **Trigger:** the tools
   work, which needs it anyway — or a third JSON-parse defect.
-* **Model review — `claude-sonnet-4-6` → Sonnet 5.** A dated decision (paid API chosen for
+* **~~Model review — `claude-sonnet-4-6` → Sonnet 5.~~ Done — struck 2026-09-24.** Batch 233
+  moved every call site to `claude-sonnet-5` on 2026-08-31 (PR #267, Decision #312), including
+  the adaptive-thinking and `max_tokens` consequences this note predicted; `config.py` reads
+  `anthropic_model = "claude-sonnet-5"`. The *next* model review has no trigger recorded yet.
+  Original wording follows. A dated decision (paid API chosen for
   health-data privacy; "keep Sonnet 4.6, revisit ~Sept 2026") now nearly due. Sonnet 5 is
   materially better on agentic work at the same tier. **Not a drop-in:** adaptive thinking is
   on by default, non-default sampling parameters are rejected, and the tokenizer produces
@@ -2522,7 +2533,12 @@ of these is blocked; all are deliberately deferred on value-per-batch at a 1–2
   is a natural fit for the existing `experiments` lifecycle. **Trigger:** Batch 219/220
   proving the logging and findings rails work — these should be *tested* on Mark, not
   asserted at him.
-* **Widen the findings-to-state channel.** Batch 220.7 opens it for analyst findings only.
+* **Widen the findings-to-state channel.** *Re-checked 2026-09-24: most of this is now built
+  or specced.* Chat → knowledge base shipped as Batch 151 (learn durably from any chat);
+  analyst findings → state as Batch 220.7; a disputed figure → a recorded dispute is Batch 274
+  and → a suppressed input Batch 276; a chat observation → a bound experiment is Batch 284.
+  **The residual is a post-workout read's conclusion**, which still has no route to state.
+  Original wording follows. Batch 220.7 opens it for analyst findings only.
   The general form is that any Claude conclusion — from chat, from a post-workout read —
   can become an experiment, a data-quality flag, or a KB entry rather than prose that dies.
   Without this, the coach can be argued into agreement and change nothing, which is its own
@@ -2742,6 +2758,8 @@ Batch 227 was right to leave Batch 61 alone, and this row does the same.
   away — but the two systems will keep producing differently-worded verdicts on the same night,
   and that is worth watching rather than fixing. **Trigger:** Mark asking why the app and his
   watch disagree about a night, which is the same question that produced Batches 225 and 229.
+  *Re-checked 2026-09-24: not fired* — none of his chat messages since 2026-08-26 pairs REM
+  with his watch, Garmin, or a disagreement.
 
 ## Post-roadmap — 2026-08-26/27 — Mark's 08-26 wave: the figures he cannot reconcile, and the lever the data did not choose (Batches 230–231)
 
@@ -4314,3 +4332,25 @@ confirm-before-apply pattern 284 reuses has never actually been exercised.
 | Batch | Tier | Status | Phases | Goal | Acceptance criteria |
 |---|---|---|---|---|---|
 | Batch 284 — What Mark says in passing becomes a question with a comparator | 🟢 Mid | Planned | 284.1 **Reuse `conversation_learning_proposals`; do not invent a second confirm-before-apply pattern.** The table already carries the whole shape: `kind`, **`destination` (`String(80)`, `server_default="learned_context"`)**, `statement`, `evidence_json`, a per-user unique `fingerprint`, `status`, `reviewed_statement`, `reviewed_by_profile_id`, `reviewed_at_utc` ([`models/coaching.py:651`](../apps/api/src/models/coaching.py)). **`destination` is a column with a default and exactly one value in the code today**, so a second destination needs **no migration** — it needs the value to stop being hardcoded. It is written once (`conversation_learning.py:700`, `destination=LEARNED_CONTEXT_SECTION`), typed `Literal["learned_context"]` at `conversation_learning.py:133`, named as the only allowed destination inside the extraction prompt itself (`conversation_learning.py:92`), and surfaced to the client at `routers/coaching_state.py:179`. All five move together or none do.<br>284.2 **A fifth kind, and it is the one that has to carry a comparator.** Today's four are `fact`, `preference`, `terminology`, `recurring_theme` (`conversation_learning.py:58–61`), with `LearningKind` a closed `Literal`. A proposed experiment is not a memory: it is inert until someone decides, and it must arrive **already bound** — a metric from `COMPARABLE_METRICS`, a comparison, and a stated sample requirement — or it is the "inconclusive, n too small" problem Batch 275 exists to stop, re-entering through a friendlier door. **An unbindable candidate is discarded at extraction, not stored**, which is the same rule 275.3 applies at creation.<br>284.3 **The surface exists and should be extended, not duplicated.** `GET /api/v1/coaching-state/learning`, `POST …/learning/distill` (paid, already behind `@paid_generation_limit`) and `PATCH …/learning/{id}` are live. An experiment proposal is another row in the same list with another destination. **Decide at `/batch-start` whether accepting one creates the `Experiment` immediately or only marks it accepted** — recommendation: create it, because a proposal that is accepted and then does nothing is the powerlessness Batch 273 and 274 are about.<br>284.4 **The extraction prompt changes, and its blast radius must be stated rather than assumed.** `PROMPT_VERSION = "conversation-learning-v2-2026-09-04"` is written into each proposal's `evidence_json` (`conversation_learning.py:693`), **not** onto an `Analysis` row, so a bump here **does not withdraw any stored analysis** — the failure mode `closeout.md` guards. What it does affect is pending proposals extracted at the old version. Say in the close-out what happens to them; there were **0 pending rows in production on 2026-09-23**, so today the answer is "nothing". Re-check rather than assume at build time.<br>284.4b **The table is not merely free of pending rows — it is empty, and that changes the risk.** `conversation_learning_proposals` holds **zero rows of any status** in production (measured 2026-09-23), so the confirm-before-apply pattern this batch reuses has **never been exercised against Mark's real data**: no proposal has ever been created, accepted or rejected. Batch 257 built it and it has sat idle since. So 284 is not "reuse a proven pattern", it is "be the first real user of one". **Drive the existing `learned_context` path against production once before building a second destination on top of it** — an extraction that produces nothing, or a `PATCH` that 409s when it should not, is far cheaper to find now than through a new code path.<br>284.5 **Depends on Batch 275.** `COMPARABLE_METRICS`, `binds_to_an_evaluator`, `failed_binding_attempt` and `COMPARE_RECOVERY_VS_BUILD` all arrive with it. **Land after 275 is on `main`**, and do not stack the branch.<br>284.6 **Mark-facing copy: draft it, do not ship it unreviewed.** §5a of `docs/drafts/2026-09-23-batch-275-copy.md` already drafts the line the coach says when it can test something — that draft is the starting point, and it needs Craig before it reaches Mark.<br>284.7 Tests, each confirmed to fail against today's logic first: an observation that binds to a metric and a comparison becomes a **pending** proposal and changes nothing until decided; an observation that binds to nothing is **discarded at extraction rather than stored**; accepting a proposal creates an experiment whose criteria pass `binds_to_an_evaluator`; the four existing kinds and their `learned_context` destination are byte-for-byte unchanged; and a proposal cannot be decided twice (the existing `STATUS_PENDING` 409 still holds for the new destination). | Give Mark's own pattern-spotting the shortest honest path from "I've noticed this" to a question with a comparator attached — without letting an unanswerable question in through a friendlier door than the one 275.3 just closed. | Something Mark says in chat becomes a proposed experiment that is already bound to an evaluator and states how many nights it needs, sitting inert until an explicit decision. An unbindable observation is never stored. The four existing memory kinds are untouched. **No migration** — `destination` already exists. **A prompt bump is expected** on the extractor, and the close-out must state what it does to pending proposals rather than assume. |
+
+
+## Post-roadmap — 2026-09-24 — Authored from "Recorded, not scheduled" (second pass)
+
+The overnight run of 2026-09-23/24 read every unstruck note again. **Three were already done**
+and are now struck with where they landed — the tool loop (Batches 257/260/261), SDK adoption
+(257) and the move to Sonnet 5 (233). **One is mostly built or specced** (widening the
+findings-to-state channel; the residual is a post-workout read's conclusion). **Four stay
+recorded** because their triggers have not fired or are dated: the REM disagreement (re-checked,
+not fired), the egress meter (its trigger — a new quota event, or a second app on the quota — is
+not visible from here, which is the note's own point), the two cooling notes (they wait on
+a judgement about Batch 220's temperature finding), and the next-block VO₂ and recovery-week
+questions (dated 2026-10-13 and 2026-10-18). Two rows follow: **285** is Batch 280's own named
+follow-up, and **286** is the one note whose trigger was simply "its own batch".
+
+**Every figure below was measured against current code or production on 2026-09-24.**
+Decision numbers are assigned at `/batch-start`, not here.
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 285 — The four windows that still ship the daily document | 🟢 Mid | Planned | 285.1 **What Batch 280 made measurable.** Since 280 the coverage path has SQL of its own, so what still ships `daily_metrics.raw_payload` (40,722 B a row uncompressed; 552 rows) is now separable in `pg_stat_statements`. First window after 280 deployed — 2026-09-23 22:16 to 2026-09-24 08:15 UTC, overnight plus one morning brief: the shared range shape `-4232533755216521855` grew by **2 calls / 1,100 rows** (550 a call — the whole-history readers), chronic's `ORDER BY` shape `-6615400312572809332` by **13 calls / 705 rows** (~54 a call), while the coverage path's projections answered in about 5,000 rows of ~200 B (~1 MB). Over the 92 days before 280 the `ORDER BY` shape alone returned 119,599 rows ≈ **4.9 GB**. **Re-measure over at least one full day at `/batch-start`**: chat and Trends run in the daytime, and one overnight is not a rate.<br>285.2 **Four windows, each already proved per site in Batch 280, none reading the document:** `trends._rows(DailyMetric)` — an 800-day lookback, so every stored row, on every coach chat turn (`chat_context._trends`) and every Trends page — reading `hrv_last_night_avg_ms`, `readiness_score`, `resting_heart_rate_bpm`, `vo2max`; `longitudinal_analysis.assemble_nights` — the whole sleep history — reading `readiness_score`, `hrv_last_night_avg_ms`, `body_battery_charged`, `stress_avg`, `body_battery_drained`; `chronic_patterns` — 28 days — whose `_recovery_day` reads ten typed fields; `insights.early_warning` — 5 days — reading `hrv_last_night_avg_ms` and `readiness_score`. Each defers the document with `bulk_history_reads.without_daily_metric_raw_payload()`.<br>285.3 **The identity-map question is answered — re-verify it rather than assume it.** Batch 280 established and pinned that a later whole-row query fills a deferred column. The two readers that need the document — the morning wake row (fitness age, training fields) and chat's `_daily_metric_on` — each issue their own whole-row query, so a window deferred earlier in the same session cannot starve them. Confirm both still do at build.<br>285.4 **Flip the pin that says it stays.** `test_trends_indoor_peaks_and_sleep_window_drop_the_payload` asserts the trends read still ships the document, "left for a measured batch of its own" — this is that batch. One recording-session contract test per window, the 280 pattern.<br>285.5 **Recorded, not fixed:** `longitudinal_analysis` reads the prior day's `stress_avg` and `body_battery_drained` off the settled row without the coverage gate — the only aggregate reader left outside `daily_metric_coverage`. All 457 settled rows have complete windows today (measured), so no value is wrong; say so in the close-out rather than widen the batch. | Take the largest remaining daily-document reads — every stored row on every chat turn — off the wire, now that nothing about coverage stands in the way. | All four windows defer the document and each has a contract test; the trends pin is flipped; production before/after output is byte-identical across the four (Batch 280's method); `pg_stat_statements` shows both payload-carrying shapes stop growing. No migration. No prompt bump. |
+| Batch 286 — Nothing the API sends is compressed | 🟢 Mid | Planned | 286.1 **Measured 2026-09-24.** No compression anywhere in `apps/api/src` (no `GZipMiddleware`) and nothing in `vercel.json`; the egress-budget job's own counters show the API serving **12.4–17.7 MB a day of uncompressed JSON** over the last 15 days (`http_response_bytes_today`). Vercel compresses what it serves itself — `/assets/index-*.js` returns `content-encoding: br` — but `/api/*` is a rewrite to Railway, and **whether the edge compresses a proxied body cannot be measured without an authenticated response**: every unauthenticated route returns 64 bytes or fewer. Compressing at the origin is correct either way (an edge does not re-encode an encoded body), so this sizes the benefit rather than gating the build; Craig can settle it with one `curl` against his own device session if it matters.<br>286.2 **The meter moves with it — decide, don't drift.** `EgressBudgetMiddleware` counts `Content-Length`. Middleware order decides whether it then counts compressed or uncompressed bytes; the 2026-08-31 egress-meter note already asks that it be read as "HTTP response bytes". Choose which it reports, keep the counter's name honest, and test it.<br>286.3 Starlette's `GZipMiddleware` with a minimum size, `Vary: Accept-Encoding`, security headers intact.<br>286.4 Tests: a large JSON body is compressed when the client asks and not otherwise; the meter reports what it says; health and 401 bodies are unaffected. | Mark's phone downloads each API response compressed. | `/api/*` bodies over the threshold arrive with `content-encoding` on Railway direct and through Vercel; the meter's meaning is stated and tested; no other behaviour changes. No migration. No prompt bump. |
