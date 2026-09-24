@@ -57,6 +57,7 @@ from src.services.bulk_history_reads import (
     fan_series_columns,
     select_day_aggregates,
     temperature_series_columns,
+    without_activity_raw_summary,
     without_daily_metric_raw_payload,
     without_sleep_raw_payload,
 )
@@ -813,6 +814,7 @@ class InsightsService:
             (
                 await self.session.execute(
                     select(Activity)
+                    .options(without_activity_raw_summary())
                     .where(
                         Activity.user_id == player.id,
                         Activity.avg_power_watts.is_not(None),
@@ -983,7 +985,9 @@ class InsightsService:
         activities = (
             (
                 await self.session.execute(
-                    select(Activity).where(
+                    select(Activity)
+                    .options(without_activity_raw_summary())
+                    .where(
                         Activity.user_id == player.id,
                         Activity.training_load.is_not(None),
                         Activity.start_utc

@@ -14,6 +14,7 @@ from src.models.coaching import Activity, ManualEntry, PlanBlock, PlannedWorkout
 from src.models.profile import Profile
 from src.services.activity_dates import activity_local_date as _local_activity_date
 from src.services.activity_dates import timezone_or_utc
+from src.services.bulk_history_reads import without_activity_raw_summary
 from src.services.executable_coaching import (
     WORKOUT_STATUS_SKIPPED,
     ExecutableCoachingService,
@@ -670,6 +671,7 @@ class PlanActionService:
             (
                 await self.session.execute(
                     select(Activity)
+                    .options(without_activity_raw_summary())
                     .where(
                         Activity.user_id == user_id,
                         Activity.start_utc >= start_utc,

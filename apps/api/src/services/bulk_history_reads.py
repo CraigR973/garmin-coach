@@ -32,7 +32,9 @@ travel in the other direction — database to application.
 The two shapes below are deliberate and different:
 
 * :func:`without_sleep_raw_payload` **defers** one column, so callers keep real
-  ``Sleep`` objects and every existing calculation is untouched.
+  ``Sleep`` objects and every existing calculation is untouched;
+  :func:`without_activity_raw_summary` does the same for ``activities`` (Batch
+  281), except on the loaders that feed the ride read.
 * :func:`temperature_series_columns` / :func:`fan_series_columns` **project**,
   because those readers want two or three columns out of the row and the
   payload is the rest of it.
@@ -75,6 +77,7 @@ from sqlalchemy.orm.interfaces import ORMOption
 from sqlalchemy.sql.elements import ColumnElement, Label
 
 from src.models.coaching import (
+    Activity,
     ActivityTimeSeries,
     DailyMetric,
     FanStateReading,
@@ -91,6 +94,7 @@ __all__ = [
     "select_day_aggregates",
     "temperature_series_columns",
     "weather_summary_columns",
+    "without_activity_raw_summary",
     "without_daily_metric_raw_payload",
     "without_sleep_raw_payload",
 ]
@@ -101,7 +105,14 @@ __all__ = [
 #: and it is still the default way to read a row in this codebase (Batch 253,
 #: CR236-13). ``batch-verify`` asks the question once per batch so it is checked
 #: rather than remembered.
-JSONB_CARRYING_MODELS = ("sleep", "daily_metrics", "temperature_readings", "analyses")
+JSONB_CARRYING_MODELS = (
+    "sleep",
+    "daily_metrics",
+    "temperature_readings",
+    "analyses",
+    # Batch 281: ~4.6 KB of Garmin summary per row, 7.3 GB of reads in 92 days.
+    "activities",
+)
 
 
 def without_sleep_raw_payload() -> ORMOption:
@@ -123,6 +134,27 @@ def without_daily_metric_raw_payload() -> ORMOption:
     and the document stays in the database.
     """
     return defer(DailyMetric.raw_payload, raiseload=True)
+
+
+def without_activity_raw_summary() -> ORMOption:
+    """Load an ``Activity`` row without Garmin's ~4.6 KB activity summary (Batch 281).
+
+    ``activities.raw_summary`` is read in exactly two places, and every other
+    loader takes typed columns only:
+
+    * ``garmin_sync`` carries ``activitySplits`` forward on an upsert, from a
+      row it loads by ``garmin_activity_id`` itself.
+    * the ride read (``post_workout_analysis``) grades intervals on
+      ``activitySplits.lapDTOs`` — from the object it is *handed*. So the two
+      loaders that hand it one keep the whole row: its own
+      ``pending_ride_activities``, and ``DailyLoopService._activity``, whose
+      object the check-in route's ``session.get`` receives from the identity map.
+
+    Deferred rather than projected, so callers keep real ``Activity`` objects
+    and every calculation over them is untouched; ``raiseload`` makes a reader
+    that does need the summary fail at the attribute, not in a lazy load.
+    """
+    return defer(Activity.raw_summary, raiseload=True)
 
 
 def select_day_aggregates() -> Select[Any]:

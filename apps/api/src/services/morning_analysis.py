@@ -51,7 +51,11 @@ from src.services.anthropic_text import (
 from src.services.bedroom_overnight import night_window
 from src.services.body_metrics import resolve_effective_vo2max, resolve_effective_weight_kg
 from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
-from src.services.bulk_history_reads import select_day_aggregates, temperature_series_columns
+from src.services.bulk_history_reads import (
+    select_day_aggregates,
+    temperature_series_columns,
+    without_activity_raw_summary,
+)
 from src.services.chronic_patterns import (
     CHRONIC_DELOAD_WINDOW_DAYS,
     ChronicPatternSuggestionService,
@@ -1196,6 +1200,7 @@ class MorningAnalysisService:
             (
                 await self.session.execute(
                     select(Activity)
+                    .options(without_activity_raw_summary())
                     .where(
                         Activity.user_id == user_id,
                         Activity.activity_type == "walking",
@@ -1235,6 +1240,7 @@ class MorningAnalysisService:
             (
                 await self.session.execute(
                     select(Activity)
+                    .options(without_activity_raw_summary())
                     .where(
                         Activity.user_id == user_id,
                         Activity.start_utc >= lower_bound,

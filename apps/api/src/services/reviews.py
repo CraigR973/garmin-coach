@@ -63,6 +63,7 @@ from src.services.anthropic_text import (
 from src.services.bulk_history_reads import (
     select_day_aggregates,
     temperature_series_columns,
+    without_activity_raw_summary,
     without_daily_metric_raw_payload,
     without_sleep_raw_payload,
 )
@@ -1007,7 +1008,9 @@ class ReviewService:
         rows = (
             (
                 await self.session.execute(
-                    select(Activity).where(
+                    select(Activity)
+                    .options(without_activity_raw_summary())
+                    .where(
                         Activity.user_id == user_id,
                         Activity.start_utc >= start_dt,
                         Activity.start_utc < end_dt,
