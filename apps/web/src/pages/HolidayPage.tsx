@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { holidayEnvelopeSchema, pauseEnvelopeSchema, resumeEnvelopeSchema } from '@coach/shared';
+import { resumeMessage } from '@/lib/holidayMessages';
 import { CalendarOff, CheckCircle2, PlayCircle, Umbrella } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/PageHeader';
@@ -62,9 +63,7 @@ export function HolidayPage() {
     },
     onSuccess: async (data) => {
       await invalidate();
-      toast.success(
-        `Welcome back! ${data.data.continuationLabel} block generated for your return week.`,
-      );
+      toast.success(resumeMessage(data.data.restoredCount ?? 0, data.data.cancelled ?? false));
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : 'Failed to resume plan'),
