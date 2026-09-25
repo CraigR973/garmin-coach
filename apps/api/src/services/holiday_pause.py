@@ -1,14 +1,22 @@
-"""Holiday pause/resume — Batch 15.
+"""Holiday pause/resume — Batch 15, reworked by Batch 290.
 
-A holiday window is treated as a recovery-week equivalent:
-  * Planned workouts during the window are versioned as ``status='skipped'``
-    with ``source='holiday_pause'``.
-  * On return, block continuation follows the 2121 rule:
-      - pre-holiday Build1 → first week back continues as Build2
-      - pre-holiday Build2 → first week back repeats Build1
+A holiday window is treated as a recovery-week equivalent: planned workouts
+inside it are versioned as ``status='skipped'`` with ``source='holiday_pause'``.
 
-Build1/Build2 is determined from the plan block's ``sequence_index`` in the
-seeded 2121 slate: (S-1) % 3 == 0 → Build1; (S-1) % 3 == 1 → Build2.
+**A holiday ends by itself (Batch 290).** A window is running on a day only if
+it has not been closed by hand *and* that day is on or before its end date — see
+:meth:`HolidayWindow.is_active_on`. Before this, a window stayed "active" until
+someone pressed Resume, so Mark's 12-16 Jul 2026 holiday was still active in
+September and the app refused to let him enter a new one.
+
+**Resume means "I'm back early", and it never rewrites the plan.** It closes the
+window at the day Mark returns (or removes it if the holiday had not started) and
+restores the sessions the pause skipped from that day on. Batch 15 also
+regenerated the first build week after the holiday from the app's generic 2121
+templates; every active planned session is now Mark's own imported plan or his
+edits of it, so that step could only overwrite what he wrote — and because it
+keyed on the window's original dates, resuming a stale window would have rewritten
+a week he had already ridden. It is removed (Decision #351).
 
 Storage: a ``knowledge_base`` row with ``section='holiday_windows'`` holds the
 window history as ``{"windows": [{startDate, endDate, pausedAtUtc, resumedAtUtc}]}``.
@@ -27,9 +35,9 @@ from fastapi import HTTPException, status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.coaching import KnowledgeBase, PlanBlock, PlannedWorkout
+from src.models.coaching import KnowledgeBase, PlannedWorkout
 from src.models.profile import Profile
-from src.services.coaching_state import _block_templates
+from src.services.profile_clock import profile_today
 
 KB_SECTION = "holiday_windows"
 HOLIDAY_PAUSE_SOURCE = "holiday_pause"
@@ -66,9 +74,14 @@ class HolidayWindow:
             "resumedAtUtc": self.resumed_at_utc.isoformat() if self.resumed_at_utc else None,
         }
 
-    @property
-    def is_active(self) -> bool:
-        return self.resumed_at_utc is None
+    def is_active_on(self, day: date) -> bool:
+        """True while the holiday is running on ``day``.
+
+        It has not been closed by hand, and ``day`` is on or before its end date.
+        There is deliberately no date-free "is active": that property is what let
+        a July holiday stay active into September.
+        """
+        return self.resumed_at_utc is None and day <= self.end_date
 
 
 def holiday_windows_covering_date(
@@ -107,7 +120,7 @@ def active_holiday_window_for_date(
         (
             window
             for window in reversed(holiday_windows_covering_date(windows, subject_date))
-            if window.is_active
+            if window.is_active_on(subject_date)
         ),
         None,
     )
@@ -121,7 +134,7 @@ def overnight_away_window_for_date(
         (
             window
             for window in reversed(holiday_windows_away_overnight(windows, subject_date))
-            if window.is_active
+            if window.is_active_on(subject_date)
         ),
         None,
     )
@@ -136,8 +149,10 @@ class PauseResult:
 @dataclass
 class ResumeResult:
     window: HolidayWindow
-    continuation_label: str
-    regenerated_count: int
+    #: Sessions the pause had skipped, from the return day on, that are back.
+    restored_count: int
+    #: The holiday had not started, so it was removed rather than shortened.
+    cancelled: bool = False
 
 
 def is_build1(sequence_index: int) -> bool:
@@ -147,27 +162,6 @@ def is_build1(sequence_index: int) -> bool:
     (1,2), (4,5), (7,8), (10,11).  (S-1) % 3 == 0 → Build1; == 1 → Build2.
     """
     return (sequence_index - 1) % 3 == 0
-
-
-def continuation_label(sequence_index: int, block_type: str) -> str:
-    """Human-readable label for the first post-holiday training block."""
-    if block_type != "build":
-        return "Build1"
-    return "Build2" if is_build1(sequence_index) else "Build1"
-
-
-def continuation_week_number(sequence_index: int, block_type: str) -> int:
-    """Template week number to use when regenerating the first post-holiday week.
-
-    Build1 pre-holiday → continue to Build2 (week S+1).
-    Build2 pre-holiday → repeat Build1 (week S-1).
-    Non-build → fall back to week 1 template.
-    """
-    if block_type != "build":
-        return 1
-    if is_build1(sequence_index):
-        return sequence_index + 1
-    return max(sequence_index - 1, 1)
 
 
 class HolidayPauseService:
@@ -196,9 +190,13 @@ class HolidayPauseService:
         _, windows = await self._load_kb(user.id)
         return windows
 
-    async def get_active_window(self, user: Profile) -> HolidayWindow | None:
+    async def get_active_window(
+        self, user: Profile, *, today: date | None = None
+    ) -> HolidayWindow | None:
+        """The holiday running today, in Mark's own timezone, if there is one."""
         windows = await self.get_windows(user)
-        return next((w for w in reversed(windows) if w.is_active), None)
+        day = today or profile_today(user)
+        return next((w for w in reversed(windows) if w.is_active_on(day)), None)
 
     async def get_active_window_for_date(
         self, user: Profile, subject_date: date
@@ -252,7 +250,14 @@ class HolidayPauseService:
     # Pause
     # ------------------------------------------------------------------
 
-    async def pause(self, user: Profile, start_date: date, end_date: date) -> PauseResult:
+    async def pause(
+        self,
+        user: Profile,
+        start_date: date,
+        end_date: date,
+        *,
+        today: date | None = None,
+    ) -> PauseResult:
         if start_date > end_date:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -260,7 +265,8 @@ class HolidayPauseService:
             )
 
         existing, windows = await self._load_kb(user.id)
-        if any(w.is_active for w in windows):
+        day = today or profile_today(user)
+        if any(w.is_active_on(day) for w in windows):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A holiday is already active; resume it before pausing again",
@@ -322,75 +328,64 @@ class HolidayPauseService:
     # Resume
     # ------------------------------------------------------------------
 
-    async def resume(self, user: Profile) -> ResumeResult:
+    async def resume(
+        self,
+        user: Profile,
+        *,
+        today: date | None = None,
+        now_utc: datetime | None = None,
+    ) -> ResumeResult:
+        """Mark is back early: close the window at his return and restore his plan.
+
+        The window is shortened to end the day before he returns, so a later read
+        of those days does not think he was away; if he returns on or before its
+        first day it is removed, because the holiday never happened. The sessions
+        the pause skipped from his return day to the original end come back as they
+        were planned. Nothing outside the holiday is touched.
+        """
         existing, windows = await self._load_kb(user.id)
+        day = today or profile_today(user)
         try:
-            active_idx, window = next((i, w) for i, w in enumerate(windows) if w.is_active)
+            active_idx, window = next((i, w) for i, w in enumerate(windows) if w.is_active_on(day))
         except StopIteration:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="No active holiday window to resume from",
             )
 
-        window.resumed_at_utc = _utcnow()
-        windows[active_idx] = window
+        original_end = window.end_date
+        window.resumed_at_utc = now_utc or _utcnow()
+        cancelled = day <= window.start_date
+        if cancelled:
+            windows.pop(active_idx)
+        else:
+            window.end_date = min(window.end_date, day - timedelta(days=1))
+            windows[active_idx] = window
         await self._save_kb(user, windows, existing)
 
-        label = "Build1"
-        regenerated: list[PlannedWorkout] = []
-
-        pre_block = await self.session.scalar(
-            select(PlanBlock)
-            .where(
-                PlanBlock.user_id == user.id,
-                PlanBlock.end_date < window.start_date,
-                PlanBlock.block_type == "build",
-            )
-            .order_by(PlanBlock.end_date.desc())
-        )
-
-        if pre_block is not None and pre_block.sequence_index is not None:
-            seq = pre_block.sequence_index
-            label = continuation_label(seq, "build")
-            week_num = continuation_week_number(seq, "build")
-
-            post_block = await self.session.scalar(
-                select(PlanBlock)
-                .where(
-                    PlanBlock.user_id == user.id,
-                    PlanBlock.start_date >= window.end_date,
-                    PlanBlock.block_type == "build",
-                )
-                .order_by(PlanBlock.start_date.asc())
-            )
-
-            if post_block is not None:
-                regenerated = await self._regenerate_block(user.id, post_block, week_num)
-
+        restored = await self._restore_skipped(user.id, day, original_end)
         await self.session.commit()
-        return ResumeResult(
-            window=window,
-            continuation_label=label,
-            regenerated_count=len(regenerated),
-        )
+        return ResumeResult(window=window, restored_count=len(restored), cancelled=cancelled)
 
-    async def _regenerate_block(
-        self,
-        user_id: uuid.UUID,
-        block: PlanBlock,
-        week_number: int,
+    async def _restore_skipped(
+        self, user_id: uuid.UUID, from_date: date, to_date: date
     ) -> list[PlannedWorkout]:
-        """Regenerate a build block's planned workouts using the continuation template."""
-        templates = _block_templates("build", week_number)
+        """Bring back the sessions the pause skipped between two dates, inclusive.
 
-        existing = (
+        Only rows the pause itself wrote (``source='holiday_pause'``, still skipped)
+        are touched; each is versioned back to a planned session with the same
+        content, the version-as-slot convention the pause used.
+        """
+        skipped = (
             (
                 await self.session.execute(
                     select(PlannedWorkout).where(
                         PlannedWorkout.user_id == user_id,
-                        PlannedWorkout.workout_date >= block.start_date,
-                        PlannedWorkout.workout_date <= block.end_date,
+                        PlannedWorkout.workout_date >= from_date,
+                        PlannedWorkout.workout_date <= to_date,
                         PlannedWorkout.is_active.is_(True),
+                        PlannedWorkout.source == HOLIDAY_PAUSE_SOURCE,
+                        PlannedWorkout.status == "skipped",
                     )
                 )
             )
@@ -398,29 +393,23 @@ class HolidayPauseService:
             .all()
         )
 
-        max_versions: dict[date, int] = {w.workout_date: w.version for w in existing}
-        for w in existing:
+        restored: list[PlannedWorkout] = []
+        for w in skipped:
             w.is_active = False
-
-        new_workouts: list[PlannedWorkout] = []
-        for template in templates:
-            workout_date = block.start_date + timedelta(days=template.day_offset)
-            current_v = max_versions.get(workout_date, 0)
-            new_w = PlannedWorkout(
+            back = PlannedWorkout(
                 user_id=user_id,
-                plan_block_id=block.id,
-                workout_date=workout_date,
-                version=current_v + 1,
-                title=template.title,
-                workout_type=template.workout_type,
+                plan_block_id=w.plan_block_id,
+                workout_date=w.workout_date,
+                version=w.version + 1,
+                title=w.title,
+                workout_type=w.workout_type,
                 status="planned",
                 is_active=True,
-                planned_duration_min=template.planned_duration_min,
-                intensity_target=template.intensity_target,
-                structured_workout=template.structured_workout,
+                planned_duration_min=w.planned_duration_min,
+                intensity_target=w.intensity_target,
+                structured_workout=w.structured_workout,
                 source=HOLIDAY_RESUME_SOURCE,
             )
-            self.session.add(new_w)
-            new_workouts.append(new_w)
-
-        return new_workouts
+            self.session.add(back)
+            restored.append(back)
+        return restored

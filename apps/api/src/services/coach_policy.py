@@ -452,7 +452,7 @@ INTERNAL_SOURCE_BASIS: dict[str, str] = {
     "interval_editor": "edited in the app's interval editor",
     "reset_week": "eased to a recovery week",
     "holiday_pause": "marked skipped because it falls inside a holiday window",
-    "holiday_resume": "rebuilt when the holiday window ended",
+    "holiday_resume": "restored when you came back early from a holiday",
     "block_generator_lock": "written when a generated training block was locked in",
     "batch_5_seed": "set up when the app was first configured",
     # Stored knowledge-base sections.

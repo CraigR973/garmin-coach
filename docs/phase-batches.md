@@ -4432,3 +4432,15 @@ authored from them.** Rows 287–289 come from today's measurements, not from th
   space clears it: `VACUUM FULL` needs the live copy's size free and cannot fit this close
   to the cap, and dump/truncate/reload is destructive. Measure the post-retention growth
   rate for a week before deciding anything.
+
+
+## Post-roadmap — 2026-09-25 — Mark could not set his holiday (Batch 290)
+
+Mark, on WhatsApp, 25 Sep: he went to set a holiday, found one "from July" still there,
+could not add another, and was not sure whether pressing Resume would "mess it up". It
+would have. Measured before any code, and the stale window closed the same morning on
+Craig's go (Decision #351).
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 290 — A holiday ends by itself, and Resume never rewrites the plan | 🟢 Mid | Planned | 290.1 **Measured 2026-09-25.** The only holiday record in production held one window, 12–16 Jul 2026, entered 10 Jul, `resumedAtUtc` null. A window was active until someone pressed Resume, and nothing ended one by itself — although the holiday screen promises "when you're back, it picks your plan up in the right place automatically". So `pause()` refused a new holiday with 409.<br>290.2 **Resume would have rewritten a ridden week.** `resume()` took the first build block starting on or after the window's end (20–26 Jul) and replaced its active sessions with generic 2121 template rows marked `planned`. Every active session in production is Mark's own imported plan or his edits of it; none is app-generated.<br>290.3 **A holiday runs until its end date, then ends by itself** — `is_active_on(day)`: not closed by hand, and the day is on or before the end date, in Mark's own timezone. Remove the date-free `is_active`.<br>290.4 **Resume means "back early".** Shorten the window to the day before he returns, or remove it if the holiday had not started; restore the sessions the pause skipped from his return day on; touch nothing else. Remove the template regeneration.<br>290.5 **Keep the API compatible across a deploy in either order** (Railway before Vercel or after): add `restoredCount`/`cancelled`; keep `continuationLabel`/`regeneratedCount`, deprecated.<br>290.6 Tests, each confirmed to fail against today's logic first: a window past its end date is not active and a new holiday can be set (the production case); Resume on an ended window is refused and changes no session; Resume mid-holiday restores from the return day only and leaves the week after untouched; Resume before the start cancels the holiday and restores everything. | Mark can always set a holiday, and neither the app nor the Resume button can ever rewrite his training weeks. | The July case reproduces as "no active holiday"; a new holiday can be set once the last one has ended; Resume restores only the skipped sessions from the return day and never writes outside the holiday. No migration, no prompt bump. **Resume confirmation wording approved by Craig, 25 Sep:** "Welcome back — your plan is back on, with 3 sessions restored." (without the clause when nothing is restored). |
