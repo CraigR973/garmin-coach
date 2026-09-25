@@ -177,7 +177,18 @@ async def test_generate_and_store_post_strength_analysis_is_lean_and_idempotent(
         assert packet["knowledgeBase"]["analysisRules"]["dataQualityRules"]["rules"]
         assert packet["knowledgeBase"]["analysisRules"]["coachingProtocol"]
         assert packet["activity"]["activityName"] == "Strength maintenance"
-        assert packet["heartRateReview"]["avgAboveRestingBpm"] == 51
+        # Batch 288: no resting-HR yardstick; the one comparison is his own range,
+        # and a first session of a workout has none yet.
+        assert "avgAboveRestingBpm" not in packet["heartRateReview"]
+        assert "restingHeartRateBpm" not in packet["heartRateReview"]
+        assert packet["heartRateReview"]["avgHeartRateBpm"] == 96
+        assert packet["heartRateReview"]["maxHeartRateBpm"] == 131
+        usual = packet["heartRateReview"]["usualRange"]
+        assert usual["sessionsInRange"] == 0
+        assert usual["averageHeartRate"]["classification"] == "no_usual_range"
+        assert usual["peakHeartRate"]["classification"] == "no_usual_range"
+        assert "read_heart_rate_only_against_his_usual_range" in packet["prompt"]["outputRules"]
+        assert "flag_unusually_high_heart_rate_when_present" not in packet["prompt"]["outputRules"]
         assert packet["consistency"]["sessions4w"] == 1
         assert packet["consistency"]["trend"] == "insufficient_data"
         assert packet["plannedWorkouts"][0]["workoutType"] == "strength"
@@ -368,3 +379,92 @@ async def test_pending_strength_bulk_lookup_has_bounded_queries_for_multi_activi
 
     assert [activity.id for activity in pending] == [pending_id]
     assert len(statements) <= 4
+
+
+@pytest.mark.asyncio
+async def test_the_packet_reads_heart_rate_against_his_own_range_for_the_workout(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 288: 24 Sep's 84/96 against his ten earlier Daily Bodyweight sessions.
+
+    The earlier sessions are his real ones; a weekly session peaking at 109 and a
+    later session the same evening must not enter the range, and neither must the
+    session being read.
+    """
+
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    earlier = [
+        (datetime(2026, 9, 8, 7, 48), 86, 97),
+        (datetime(2026, 9, 9, 7, 53), 82, 93),
+        (datetime(2026, 9, 10, 7, 44), 81, 92),
+        (datetime(2026, 9, 14, 8, 6), 90, 100),
+        (datetime(2026, 9, 15, 8, 55), 83, 95),
+        (datetime(2026, 9, 17, 8, 46), 84, 94),
+        (datetime(2026, 9, 18, 8, 47), 83, 94),
+        (datetime(2026, 9, 20, 9, 6), 85, 100),
+        (datetime(2026, 9, 22, 8, 9), 86, 96),
+        (datetime(2026, 9, 23, 8, 1), 86, 98),
+    ]
+
+    async with session_factory() as session:
+        player = Profile(
+            id=user_id,
+            display_name="Strength Range",
+            role=UserRole.admin,
+            timezone="Europe/London",
+            is_active=True,
+        )
+        session.add(player)
+        await session.flush()
+
+        def _strength(garmin_id: int, name: str, start: datetime, avg: int, peak: int) -> Activity:
+            return Activity(
+                user_id=user_id,
+                garmin_activity_id=garmin_id,
+                activity_name=name,
+                activity_type="strength_training",
+                start_utc=start,
+                duration_sec=600,
+                avg_heart_rate_bpm=avg,
+                max_heart_rate_bpm=peak,
+                exclude_from_recovery=True,
+                raw_summary={},
+            )
+
+        session.add_all(
+            [
+                _strength(990_000 + index, "Daily Bodyweight Workout", start, avg, peak)
+                for index, (start, avg, peak) in enumerate(earlier)
+            ]
+        )
+        session.add(
+            _strength(990_100, "Weekly Bodyweight Workout", datetime(2026, 9, 19, 7, 50), 91, 109)
+        )
+        session.add(
+            _strength(990_101, "Daily Bodyweight Workout", datetime(2026, 9, 24, 18, 0), 120, 150)
+        )
+        today = _strength(990_200, "Daily Bodyweight Workout", datetime(2026, 9, 24, 8, 12), 84, 96)
+        session.add(today)
+        await session.commit()
+
+        packet = await PostStrengthAnalysisService(session).assemble_strength_packet(player, today)
+
+    usual = packet["heartRateReview"]["usualRange"]
+    assert usual["workoutName"] == "Daily Bodyweight Workout"
+    assert usual["sessionsInRange"] == 10
+    assert usual["averageHeartRate"]["classification"] == "within_usual"
+    assert (
+        usual["averageHeartRate"]["usualLowBpm"],
+        usual["averageHeartRate"]["usualHighBpm"],
+    ) == (
+        81,
+        90,
+    )
+    assert usual["peakHeartRate"]["classification"] == "within_usual"
+    assert (usual["peakHeartRate"]["usualLowBpm"], usual["peakHeartRate"]["usualHighBpm"]) == (
+        92,
+        100,
+    )
+    # The consistency read still counts every strength session, not just this workout.
+    assert packet["consistency"]["sessions4w"] == 13
