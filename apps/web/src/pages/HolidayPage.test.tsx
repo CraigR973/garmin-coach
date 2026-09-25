@@ -161,11 +161,9 @@ describe('HolidayPage', () => {
     });
   });
 
-  it('words the resume message for none, one and a cancelled holiday', () => {
-    expect(resumeMessage(0, false)).toBe('Welcome back — your plan is back on.');
-    expect(resumeMessage(1, false)).toBe(
-      'Welcome back — your plan is back on, with 1 session restored.',
-    );
-    expect(resumeMessage(4, true)).toBe('Holiday cancelled — your plan is back as it was.');
+  it('uses the approved resume wording for none, one and several sessions', () => {
+    expect(resumeMessage(0)).toBe('Welcome back — your plan is back on.');
+    expect(resumeMessage(1)).toBe('Welcome back — your plan is back on, with 1 session restored.');
+    expect(resumeMessage(3)).toBe('Welcome back — your plan is back on, with 3 sessions restored.');
   });
 });

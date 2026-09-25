@@ -63,7 +63,7 @@ export function HolidayPage() {
     },
     onSuccess: async (data) => {
       await invalidate();
-      toast.success(resumeMessage(data.data.restoredCount ?? 0, data.data.cancelled ?? false));
+      toast.success(resumeMessage(data.data.restoredCount ?? 0));
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : 'Failed to resume plan'),
