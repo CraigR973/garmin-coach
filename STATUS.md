@@ -6,6 +6,60 @@
 
 ## Now
 
+**2026-09-25 — Mark couldn't set his holiday. It's fixed and live (Batch 290), and all
+remaining work is grouped G1–G5 (approved by Craig). G1 runs next, in a new session.**
+
+### Shipped today
+
+| Item | PR | Squash |
+|---|---|---|
+| **Stale July holiday closed** — the 12–16 Jul window had never been resumed and blocked a new one; closed through the versioned writer (holiday record v2), 0 sessions touched | — | — |
+| **Batch 290** — a holiday ends by itself; Resume restores skipped sessions and never rewrites the plan | #320 | `a087daa` |
+
+Verified on production at `a087daa` (Railway and Vercel health, web 200, 401 boundary),
+plus a read-only smoke in the deployed container: no active holiday, a new one would be
+accepted, and his week view still marks 12–16 Jul "Holiday".
+
+### The remaining work — see "Batch groups — the remaining work" in the ledger
+
+| Group | Batches | Gate |
+|---|---|---|
+| **G1** | 288 → 289 → 285 → 287 (to the apply) | None. 285 not before 14:28 UTC 25 Sep. |
+| **G2** | #307 → #308 → 273 panel → 284 → 282 → 274 (stops for Mark's wording) | Pre-answered by Craig, 25 Sep. |
+| **G3** | 269 (graded) → 272 | Mark's answers to the question in today's reply, then his OK on 269's revised wording. |
+| **G4** | 291 admin alerts via Sentry → backup drill → 287 apply | Craig: Neon database + `BACKUP_RESTORE_DATABASE_URL`; the apply. |
+| **G5** | 276 · 18 Oct questions · storage decision | Time. |
+
+### Needs Craig
+
+1. **Send Mark today's reply:** `docs/drafts/2026-09-25-reply-to-mark.md` (supersedes the
+   22 Sep and 24 Sep drafts). His answers unblock G3.
+2. **Create a free Neon database** and set `BACKUP_RESTORE_DATABASE_URL` on the Railway
+   `api` service, without the `?sslmode=…` suffix (the async driver rejects `sslmode`).
+3. **Later:** 287's `railway config apply`, once G1 has produced the saved plan. Deadline 1 Dec.
+
+### Worth carrying
+
+- **Batch 285's baseline** — `pg_stat_statements` at 14:28 UTC 24 Sep: shared range shape
+  `-4232533755216521855` 1,346 calls / 308,816 rows; chronic `ORDER BY` shape
+  `-6615400312572809332` 1,882 / 120,204. Re-read from 14:28 UTC 25 Sep.
+- **CI constrains runtime packages to `requirements.lock`** (PR #318). Moving to
+  SQLAlchemy 2.1 is a deliberate lock bump that needs 8 typing fixes.
+- **Railway's edge compresses replies ≥ 256 bytes** (gzip/zstd, first listed wins).
+- **Railway stops reading `railway.toml` on 1 Dec**; all three services carry `RAILPACK`
+  in their own settings; `railway config migrate`'s dry run is wrong for this project.
+- **`gh pr edit` fails on this repo** (GraphQL "Projects (classic)" deprecation). Edit PR
+  bodies with `gh api -X PATCH repos/CraigR973/garmin-coach/pulls/<n> --input body.json`.
+- **A one-off session raises the block-end questions on Sun 18 Oct, 09:00** (desktop app
+  task `garmin-coach-block-end-questions`).
+
+### Next
+
+**G1**, started from a new session with the prompt Craig was given. **Next DECISIONS
+number: #352** (#344/#345 held by PRs #307/#308; 291 takes its number at `/batch-start`).
+
+## Prior current-state snapshots
+
 **2026-09-24 (evening) — Batch 283 shipped, CI now tests what production runs, and
 Mark sent a new complaint that makes Batch 269 the most useful thing left. Everything
 else waits on one reply from Craig. Batch 285 runs tomorrow from 15:28 BST, after its
@@ -77,8 +131,6 @@ Three complaints in the coach, each conceded, none fixable from chat:
 **Batch 285** from 15:28 BST on 25 Sep. Then whatever Craig's reply unblocks; 288 and 289
 are ready to build on his go. **Next DECISIONS number: #351** (#344/#345 held by PRs
 #307/#308).
-
-## Prior current-state snapshots
 
 **2026-09-24 — overnight run finished, then Craig merged Batch 279 and cleared the
 storage risk. Three batches shipped to production today (280, 281, 279). Retention is
@@ -1638,6 +1690,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-25** — Mark could not set a holiday: his 12–16 Jul window had never been resumed and nothing ended one by itself; pressing Resume would have rewritten 20–26 Jul from templates. Closed the window through the versioned writer on Craig's go, then shipped Batch 290 (PR #320, `a087daa`, Decision #351): holidays end by themselves, Resume restores skipped sessions only, the template regeneration is gone, and the week view marks every covered day. Remaining work grouped G1–G5 and approved; Batch 291 (admin alerts via Sentry) authored; 286 withdrawn; 209 deferred; today's reply to Mark saved as a draft.
 - **2026-09-24 (late)** — Authored Batches 287–289 and priced R3 (PR #319, `9860c50`). 287: Railway stops reading `railway.toml` on 1 Dec, and all three services carry `RAILPACK` in their own settings; the automatic migration's dry run is wrong for this project. 288 and 289 come from Mark's 24 Sep wave: the strength read has no usual heart-rate range, and an unanchored coach cannot see the adjustment the morning applied. His main complaint (Red on the 7-day HRV average on 23 and 24 Sep) is Batch 269's, which would have made both days Amber. R3's regeneration costs ≈ $0.07–$0.20; its gate is 269.5's wording (Part 3 sheet). None of the recorded notes has fired.
 - **2026-09-24 (evening)** — Batch 283 shipped (PR #317, `c23d2ff`, Decision #350): Garmin data reaches a profile only if the profile names a Garmin account and no document names another; the owner is read from ids Garmin already puts in its documents (no extra Garmin call). Verified on production before and after the merge. CI had gone red on untouched code because SQLAlchemy 2.1.0 was released that afternoon and CI installed it unpinned — PR #318 (`6d4f95b`) constrains CI to `requirements.lock`, which production already runs. Also: audit rows 236–241 struck (PR #316, `e1187d9`); Sentry's quota is back (a probe was accepted, event `8f12fb81…`); Batch 286's premise measured false — Railway's edge already gzips or zstd-compresses every reply over ~256 bytes for mainstream browsers, including through Vercel.
 - **2026-09-24** — PRs #307 and #308 updated from main (each had one DECISIONS conflict, both appended) and green on all 16 checks. mcu_app's STATUS now records where its v1 data went (Gotcha 30, `acf5b19`, deployed and healthy).
