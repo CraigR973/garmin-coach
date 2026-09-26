@@ -42,6 +42,25 @@ Notes:
 - The Dockerfile command runs `alembic upgrade head` before uvicorn starts.
 - If startup/migrations fail, the new container never passes healthcheck and the previous deployment should keep serving.
 
+### Railway configuration as code (Batch 287)
+
+Railway stops reading `railway.toml` on 1 Dec 2026. `.railway/railway.ts` states
+the same settings in each service's own configuration: the Dockerfile builder on
+`api`, `weekly-review` and `trend-narratives`, and on `api` the
+`/api/v1/health` check (300 s), `ON_FAILURE` × 3 and `sleepApplication: false`.
+Railway reads that file **only when `railway config apply` runs**, never during
+a deploy, so until the apply has run and been verified, `railway.toml` stays
+authoritative — do not delete it. The apply is Craig's.
+
+Two rules once it is applied:
+
+- Change a Railway setting in `.railway/railway.ts`, not in the console, then
+  `railway config plan` and `railway config apply`. The file manages the whole
+  project, and a whole-project apply can delete a resource it omits; the plan's
+  "to destroy" count must be 0.
+- Planning needs Node 22.6+ and the SDK pinned in `.railway/package.json`
+  (`npm ci --prefix .railway`). See `.railway/README.md`.
+
 ## Frontend Deploy
 
 For frontend code/config changes, push/merge to `main`. Vercel builds from the repo-root project with root `vercel.json`.
