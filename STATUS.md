@@ -6,64 +6,89 @@
 
 ## Now
 
-**2026-09-26 — G1 is running: Batches 288, 289 and 285 are live (the strength read compares
-heart rate with Mark's own range; the coach sees each session as the morning left it; four
-history reads stopped shipping Garmin's daily document); 287 follows, to the apply.**
+**2026-09-26 — G1 is done to the apply. Batches 288, 289 and 285 are live and verified on
+production; 287's Railway file is merged with a saved plan, and `railway config apply` is
+Craig's (deadline 1 Dec). One new finding needs a decision: a no-bike Red day still offers
+an eased ride.**
 
 ### Shipped 25–26 Sep
 
 | Item | PR | Squash |
 |---|---|---|
+| **Batch 287** (to the apply) — `.railway/railway.ts`: Dockerfile builder ×3; on `api` the health check, `ON_FAILURE` ×3, `sleepApplication` false. Saved plan 0 add / 4 change / 0 destroy | #327 | `b0930ec` |
 | **Batch 285** — trends, longitudinal, chronic and early warning leave Garmin's daily document behind (~250 MB a day); byte-identical on production | #326 | `d42004a` |
-| **Batch 289 sizing fix** — the budget comment and test record the untrimmed sizes (no behaviour change) | #324 | `3e3e9de` |
-| **Batch 289** — the coach's block carries the last seven mornings: each session as planned, what the morning did to it, whether he approved the cut, and the rules that fired; chat prompt v16 adds "the record decides" | #323 | `54c9005` |
-| **Batch 288** — a strength read compares heart rate with his own last 10 sessions of the same workout; 22–24 Sep replay as within usual | #322 | `c5e9d0a` |
-| **Stale July holiday closed** — the 12–16 Jul window had never been resumed and blocked a new one; closed through the versioned writer (holiday record v2), 0 sessions touched | — | — |
-| **Batch 290** — a holiday ends by itself; Resume restores skipped sessions and never rewrites the plan | #320 | `a087daa` |
+| **Batch 289 sizing fix** — records the untrimmed block sizes (no behaviour change) | #324 | `3e3e9de` |
+| **Batch 289** — the coach sees the last seven mornings: each session as planned, what the morning did to it, whether he approved the cut, the rules that fired; chat prompt v16 adds "the record decides" | #323 | `54c9005` |
+| **Batch 288** — the strength read compares heart rate with his own last 10 sessions of the same workout; 22–24 Sep replay as within usual | #322 | `c5e9d0a` |
+| **Batch 290** — a holiday ends by itself; Resume restores skipped sessions only (25 Sep) | #320 | `a087daa` |
 
-Verified on production at `a087daa` (Railway and Vercel health, web 200, 401 boundary),
-plus a read-only smoke in the deployed container: no active holiday, a new one would be
-accepted, and his week view still marks 12–16 Jul "Holiday".
+Every merge was verified on its exact SHA (Railway and Vercel health, web 200, `daily-loop`
+401), with a read-only smoke in the deployed image for each batch. No Anthropic spend: 288's
+self-healing bump regenerated nothing (no strength session since).
+
+### Needs Craig
+
+1. **Apply 287** from an up-to-date `main`, with Node 22.6+: `npm ci --prefix .railway`, then
+   `railway config plan --detailed-exit-code --verbose` (expect 0 add / 4 change / 0 destroy —
+   the saved plan is in PR #327), then `railway config apply`. Then a session verifies it
+   and removes `railway.toml` in its own PR (G4).
+2. **A no-bike Red day still offers an eased ride.** On 26 Sep the brief said "Take today off
+   the bike" while the rail proposed an eased Long Z2 (`regenerate_for_verdict` ignores
+   `requiresBikeRest`), so Home can show Approve & upload beside that headline. A task chip
+   is raised; it changes what Mark is offered on a Red day, so it is your call.
+3. **Mark has not entered his holiday.** He told the coach on 25 Sep he is away for 10 days
+   from Sun 27 Sep; only the closed July window is stored. Without it the app keeps
+   prescribing and briefing while he is away.
+4. **Carried:** send Mark the 25 Sep reply (`docs/drafts/2026-09-25-reply-to-mark.md`) if not
+   yet sent; create the free Neon database and set `BACKUP_RESTORE_DATABASE_URL` (no
+   `?sslmode=…`).
 
 ### The remaining work — see "Batch groups — the remaining work" in the ledger
 
 | Group | Batches | Gate |
 |---|---|---|
-| **G1** | 288 → 289 → 285 → 287 (to the apply) | None. 285 not before 14:28 UTC 25 Sep. |
-| **G2** | #307 → #308 → 273 panel → 284 → 282 → 274 (stops for Mark's wording) | Pre-answered by Craig, 25 Sep. |
-| **G3** | 269 (graded) → 272 | Mark's answers to the question in today's reply, then his OK on 269's revised wording. |
-| **G4** | 291 admin alerts via Sentry → backup drill → 287 apply | Craig: Neon database + `BACKUP_RESTORE_DATABASE_URL`; the apply. |
+| **G1** | ~~288 → 289 → 285~~ → 287 (merged; the apply is G4's) | Done. |
+| **G2** | #307 → #308 → 273 panel → 284 → 282 → 274 (stops for Mark's wording) | Needs a separate go. |
+| **G3** | 269 (graded) → 272 | Mark's answers, then his OK on 269's wording. |
+| **G4** | 291 admin alerts via Sentry → backup drill → 287 apply → remove `railway.toml` | Craig: Neon + `BACKUP_RESTORE_DATABASE_URL`; the apply. |
 | **G5** | 276 · 18 Oct questions · storage decision | Time. |
-
-### Needs Craig
-
-1. **Send Mark today's reply:** `docs/drafts/2026-09-25-reply-to-mark.md` (supersedes the
-   22 Sep and 24 Sep drafts). His answers unblock G3.
-2. **Create a free Neon database** and set `BACKUP_RESTORE_DATABASE_URL` on the Railway
-   `api` service, without the `?sslmode=…` suffix (the async driver rejects `sslmode`).
-3. **Later:** 287's `railway config apply`, once G1 has produced the saved plan. Deadline 1 Dec.
 
 ### Worth carrying
 
-- **Batch 285's baseline** — `pg_stat_statements` at 14:28 UTC 24 Sep: shared range shape
-  `-4232533755216521855` 1,346 calls / 308,816 rows; chronic `ORDER BY` shape
-  `-6615400312572809332` 1,882 / 120,204. Re-read from 14:28 UTC 25 Sep.
-- **CI constrains runtime packages to `requirements.lock`** (PR #318). Moving to
-  SQLAlchemy 2.1 is a deliberate lock bump that needs 8 typing fixes.
-- **Railway's edge compresses replies ≥ 256 bytes** (gzip/zstd, first listed wins).
-- **Railway stops reading `railway.toml` on 1 Dec**; all three services carry `RAILPACK`
-  in their own settings; `railway config migrate`'s dry run is wrong for this project.
-- **`gh pr edit` fails on this repo** (GraphQL "Projects (classic)" deprecation). Edit PR
-  bodies with `gh api -X PATCH repos/CraigR973/garmin-coach/pulls/<n> --input body.json`.
-- **A one-off session raises the block-end questions on Sun 18 Oct, 09:00** (desktop app
-  task `garmin-coach-block-end-questions`).
+- **285's proof point:** the two document-carrying shapes (`-4232533755216521855`,
+  `-6615400312572809332`) stood at 1,414 / 323,664 and 1,957 / 124,363 from the merge
+  (16:11 UTC 26 Sep) through 16:23; the document-free shapes that replace them are
+  `3471477757687582136` and `3410471597921870722`. **Re-read after a day of Mark's use**: the
+  old two should not move.
+- **The first live strength read under v7** comes with Mark's next strength session.
+- **Measure the chat block untrimmed.** The trimmer hides the true size: 289's 52,256 was a
+  trimmed figure; untrimmed, 24 Sep replays at 55,502 (budget now 60,000).
+- **CI's push wave runs only on `feat/`, `fix/`, `chore/`, `claude/` branches**; a `perf/`
+  branch gets only the PR wave (285 had to be re-opened as #326).
+- **A pytest job failing in ~9 s with `toomanyrequests`** is Docker Hub's pull limit, not the
+  tests: `gh run rerun <run-id> --failed`.
+- **Railway plan/apply need Node 22.6+ and `npm ci --prefix .railway`.** Launched from another
+  program (not a shell), the SDK's version check reads `$_`; set `_` to the railway binary.
+- **CI constrains runtime packages to `requirements.lock`** (PR #318); **`gh pr edit` fails**
+  (use `gh api -X PATCH …/pulls/<n> --input body.json`); **a one-off session raises the
+  block-end questions on Sun 18 Oct, 09:00**.
 
 ### Next
 
-**G1 continues: 287 to the apply.** **Next DECISIONS number: #355**
+G1 is complete to the apply. **G2 needs a separate go.** Next DECISIONS number: **#356**
 (#344/#345 held by PRs #307/#308; 291 takes its number at `/batch-start`).
 
 ## Prior current-state snapshots
+
+**2026-09-25 — Mark couldn't set his holiday. It's fixed and live (Batch 290), and all
+remaining work is grouped G1–G5 (approved by Craig). G1 runs next, in a new session.**
+
+Batch 290 (PR #320, `a087daa`) was verified on production (Railway and Vercel health, web
+200, 401 boundary), plus a read-only smoke in the deployed container: no active holiday, a
+new one would be accepted, and his week view still marks 12–16 Jul "Holiday". The stale
+12–16 Jul window was closed that morning through the versioned writer (holiday record v2),
+0 sessions touched. Batch 285's baseline was `pg_stat_statements` at 14:28 UTC 24 Sep:
+shared range shape 1,346 calls / 308,816 rows; chronic `ORDER BY` shape 1,882 / 120,204.
 
 **2026-09-24 (evening) — Batch 283 shipped, CI now tests what production runs, and
 Mark sent a new complaint that makes Batch 269 the most useful thing left. Everything
@@ -1695,6 +1720,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-26 (evening)** — G1 finished to the apply. Batch 287 merged (PR #327, `b0930ec`, Decision #355): `.railway/railway.ts` imported with `railway config pull` and edited (Dockerfile builder ×3; `api` health check, `ON_FAILURE` ×3, `sleepApplication` false; whole-project file, all four resources listed). Saved plan 0 add / 4 change / 0 destroy; unchanged after the merge, and the live settings still say `RAILPACK`, so Railway did not read `.railway/`. Planning needs Node 22.6+ and Railway's TypeScript SDK, pinned in `.railway/package.json`. Stopped before `railway config apply` (Craig's). Also found: Mark has not entered his 27 Sep holiday.
 - **2026-09-26 (afternoon)** — Batch 285 shipped (PR #326, `d42004a`, Decision #354): trends, the longitudinal nights, the chronic window and the early warning defer `daily_metrics.raw_payload`. Measured first over 49 h (the two shapes were returning ~5,400 and ~880 document rows a day, ~250 MB); proved byte-identical on production before merging; 45 → 0 statements shipping the document; the two readers that need it still load it. First opened as #325 on a `perf/` branch, which the CI push trigger does not cover. Also: PR #324 (`3e3e9de`) corrected 289's recorded block sizes (untrimmed 55,502 on the 24 Sep replay, not 52,256).
 - **2026-09-26** — Batch 289 shipped (PR #323, `54c9005`, Decision #353): the coach's block gains `recentMornings` — for today and the six days before it, each session as planned, what the morning did to it, whether the cut reached his device, and the rules that fired. Corrected at `/batch-start`: a cut is only an offer until he approves it (19 Sep's never was), no-bike mornings carry no adjustment, and `plannedWorkPowerPct` is the hardest interval. The morning packets are projected, never loaded whole; the block budget moves 55,000 → 60,000 (ordinary blocks 50.8–51.2k, 24 Sep replayed 55.5k untrimmed); chat prompt v16 adds Craig's "the record decides" rule. Verified in the deployed image on `54c9005`. Found, not built: on 26 Sep the rail proposed an eased Long Z2 on a morning that said no bike (task chip raised).
 - **2026-09-25/26** — Batch 288 shipped (PR #322, `c5e9d0a`, Decision #352): the post-strength packet carries `heartRateReview.usualRange` — the lowest to the highest of his last 10 sessions of the same workout within 12 weeks, at least 5 needed — and the prompt describes heart rate only through that classification; resting HR left the packet. Rule chosen by replaying all 136 stored strength sessions. Verified on production at the exact SHA; the deployed image classifies the real 22, 23 and 24 Sep sessions as within usual. The v6→v7 bump (SELF_HEAL) regenerated nothing: no strength session since the deploy.
