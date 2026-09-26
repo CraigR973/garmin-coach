@@ -855,10 +855,13 @@ class InsightsService:
     ) -> EarlyWarningResult:
         end = as_of or date.today()
         start = end - timedelta(days=window_days - 1)
+        # Batch 285: HRV and readiness only; the document stays behind.
         metrics = prefer_morning(
             (
                 await self.session.execute(
-                    select(DailyMetric).where(
+                    select(DailyMetric)
+                    .options(without_daily_metric_raw_payload())
+                    .where(
                         DailyMetric.user_id == player.id,
                         DailyMetric.calendar_date >= start,
                         DailyMetric.calendar_date <= end,

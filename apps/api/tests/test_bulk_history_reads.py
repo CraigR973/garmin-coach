@@ -295,6 +295,8 @@ async def test_early_warning_reads_no_sleep_raw_payload() -> None:
     )
     for sql in sql_for(session, Sleep):
         assert "raw_payload" not in sql
+    # Batch 285: HRV and readiness over five days; the document stays behind.
+    _assert_leaves_the_daily_document_behind(session)
 
 
 async def test_weekly_review_temperature_peaks_stay_correct_without_the_payload() -> None:
@@ -347,10 +349,11 @@ async def test_trends_indoor_peaks_and_sleep_window_drop_the_payload() -> None:
         assert "raw_payload" not in sql
     for sql in sql_for(session, Sleep):
         assert "raw_payload" not in sql
-    # Same generic loader, opposite decision: the daily-metric payload stays.
-    # Not for coverage any more (Batch 280) — trends reads four typed columns —
-    # but left for a measured batch of its own rather than swept in here.
-    assert any(selects_whole_daily_payload(sql) for sql in sql_for(session, DailyMetric))
+    # Batch 285 flips what this line pinned: the same generic loader now leaves
+    # the daily document behind too. Trends reads four typed columns, every
+    # stored row, on every coach question — the largest reader of the document
+    # left after Batch 280.
+    _assert_leaves_the_daily_document_behind(session)
 
 
 async def test_experiment_evaluation_sleep_rows_drop_the_payload() -> None:
@@ -384,7 +387,10 @@ async def test_experiment_loop_night_contexts_drop_the_payload() -> None:
 async def test_longitudinal_whole_history_read_drops_the_payload() -> None:
     from src.services.longitudinal_analysis import LongitudinalAnalysisService
 
-    session = RecordingSession()
+    # One stored night, so the read goes on past its "no history" early return
+    # to the daily-metric window.
+    night = Sleep(user_id=uuid.uuid4(), calendar_date=date(2026, 8, 1), raw_payload={})
+    session = RecordingSession({Sleep: [night]})
     await LongitudinalAnalysisService(session).assemble_nights(  # type: ignore[arg-type]
         _profile(), as_of_date=date(2026, 8, 30)
     )
@@ -392,6 +398,8 @@ async def test_longitudinal_whole_history_read_drops_the_payload() -> None:
     assert sleep_sql
     for sql in sleep_sql:
         assert "raw_payload" not in sql
+    # Batch 285: the whole daily history, for five typed fields.
+    _assert_leaves_the_daily_document_behind(session)
 
 
 async def test_nightly_baseline_rebuild_drops_the_sleep_payload() -> None:
@@ -556,6 +564,42 @@ async def test_nightly_baseline_rebuild_leaves_the_daily_document_behind() -> No
         uuid.uuid4(), window_days=84, as_of=date(2026, 9, 22)
     )
     _assert_leaves_the_daily_document_behind(session)
+
+
+async def test_chronic_pattern_window_leaves_the_daily_document_behind() -> None:
+    """Batch 285: 28 mornings for ten typed fields, on every morning read."""
+    from src.services.chronic_patterns import ChronicPatternSuggestionService
+
+    session = RecordingSession()
+    await ChronicPatternSuggestionService(session).suggestions(  # type: ignore[arg-type]
+        _profile(), as_of=date(2026, 9, 22), driver_outcomes={}
+    )
+    _assert_leaves_the_daily_document_behind(session)
+
+
+async def test_the_two_document_readers_still_fetch_their_own_row() -> None:
+    """285.3: the windows above defer the document; these two need it.
+
+    The morning's wake row (fitness age, training fields) and the coach's view of
+    today (training fields) read Garmin's daily document. Each issues its own
+    whole-row query, and on SQLAlchemy 2.0 a whole-row query fills a column an
+    earlier read in the same session deferred (pinned below). If either ever
+    relied on an object a deferred window had already loaded, it would raise.
+    """
+    from src.services.chat_context import ChatContextService
+    from src.services.morning_analysis import MorningAnalysisService
+
+    session = RecordingSession()
+    await MorningAnalysisService(session)._daily_metric(  # type: ignore[arg-type]
+        uuid.uuid4(), date(2026, 9, 26)
+    )
+    await ChatContextService(session)._daily_metric_on(  # type: ignore[arg-type]
+        uuid.uuid4(), date(2026, 9, 26)
+    )
+    metric_sql = sql_for(session, DailyMetric)
+    assert len(metric_sql) == 2
+    for sql in metric_sql:
+        assert selects_whole_daily_payload(sql), sql
 
 
 async def test_morning_aggregate_reads_leave_the_daily_document_behind() -> None:
