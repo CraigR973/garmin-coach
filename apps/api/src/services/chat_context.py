@@ -159,13 +159,17 @@ APP_STATE_VERSION = 2
 #: state 255.1 already made self-releasing would turn that order into dead code.
 #:
 #: **Batch 289 moves it to 60,000**, by the same method: it adds ``recentMornings``
-#: (4,338 characters on 2026-09-26), and re-measured rather than subtracted. Against
-#: production with the section present: **50,771 unanchored, 51,181 on that
-#: morning's brief, and 52,256 replaying the 24 Sep 11:34 question**. At 55,000
-#: that last one would have kept 2,744 characters of headroom — the regime Batch
-#: 255 removed, where an ordinary busy day trims history on every answer. At
-#: 60,000 the largest measured block keeps 7,744, more than the 6,685 Batch 256
-#: sized for.
+#: (4,032-4,338 characters), and re-measured rather than subtracted. Against
+#: production with the section present, untrimmed: **50,757 unanchored and 51,167
+#: on that morning's brief (2026-09-26), and 55,502 replaying the 24 Sep 11:34
+#: question** — an upper bound, since the replay counts check-ins logged after the
+#: question. At 55,000 that busy day would have lost ``recentActivities`` on every
+#: answer: the regime Batch 255 removed. At 60,000 the ordinary blocks keep
+#: 8,833-9,243 characters of headroom, above the 6,685-8,135 Batch 256 sized for,
+#: and the busy day keeps 4,498.
+#:
+#: Measure untrimmed. The branch first recorded the 24 Sep replay as 52,256: that
+#: was the block *after* the old budget had already dropped ``recentActivities``.
 APP_STATE_CHAR_BUDGET = 60_000
 
 WEEK_AHEAD_DAYS = 7

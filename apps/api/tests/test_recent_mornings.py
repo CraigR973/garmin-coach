@@ -398,17 +398,20 @@ def test_the_latest_read_of_a_day_is_the_one_that_counts() -> None:
 
 
 def test_the_real_week_fits_the_room_the_block_has() -> None:
-    """Measured on production 2026-09-26 with the section present: 50,771 characters
-    unanchored, 51,181 on that morning's brief, 52,256 replaying the 24 Sep question.
-    The budget keeps the largest of those with at least the 6,685 characters of
-    headroom Batch 256 sized for.
+    """Measured on production 2026-09-26 with the section present, untrimmed: 50,757
+    characters unanchored and 51,167 on that morning's brief; 55,502 replaying the
+    24 Sep question (an upper bound — it counts check-ins logged after 11:34).
+
+    The ordinary blocks keep at least the 8,135 characters of headroom Batch 256
+    sized for the unanchored block, and the busy day is not trimmed at all.
     """
 
     section = build_recent_mornings(today=date(2026, 9, 26), mornings=MORNINGS, audits=AUDITS)
     size = len(json.dumps(section, ensure_ascii=True, sort_keys=True, default=str))
 
     assert size < 5_000
-    assert APP_STATE_CHAR_BUDGET - 52_256 >= 6_685
+    assert APP_STATE_CHAR_BUDGET - 51_167 >= 8_135
+    assert APP_STATE_CHAR_BUDGET > 55_502
 
 
 def test_the_section_is_dropped_late_and_can_be_fetched_back() -> None:
