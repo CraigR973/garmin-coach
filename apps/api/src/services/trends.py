@@ -65,6 +65,7 @@ from src.services.age_norms import (
 )
 from src.services.bulk_history_reads import (
     temperature_series_columns,
+    without_daily_metric_raw_payload,
     without_sleep_raw_payload,
 )
 from src.services.coach_policy import (
@@ -859,13 +860,19 @@ class TrendsService:
         return samples
 
     async def _rows(self, model: Any, user_id: uuid.UUID, start: date, end: date) -> list[Any]:
-        # Per-model rather than blanket (2026-08-30 egress incident). Batch 280
-        # moved coverage off ``daily_metrics.raw_payload``, so nothing here needs
-        # the document any more — trends reads four typed columns — but this
-        # read still ships it. It is named as the largest remaining reader in the
-        # Batch 280 ledger row and left for a batch of its own rather than swept
-        # in unmeasured.
-        options = [without_sleep_raw_payload()] if model is Sleep else []
+        # Per-model rather than blanket (2026-08-30 egress incident). Batch 285:
+        # the daily document leaves too. Trends reads four typed columns — HRV,
+        # readiness, resting heart rate and VO2 max — and nothing here needs the
+        # document since Batch 280 moved coverage off it. This read covers every
+        # stored row (an 800-day lookback) on every coach question and every
+        # Trends page, so it was the largest remaining reader of ``raw_payload``.
+        options = (
+            [without_sleep_raw_payload()]
+            if model is Sleep
+            else [without_daily_metric_raw_payload()]
+            if model is DailyMetric
+            else []
+        )
         rows = (
             (
                 await self.session.execute(

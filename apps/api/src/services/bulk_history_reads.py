@@ -62,8 +62,13 @@ fails CI rather than a coaching path.
 it: :func:`select_day_aggregates` projects the ten facts a coverage decision is
 made from (``daily_metric_coverage.COVERAGE_FACTS``) server-side, and the typed
 reads beside it defer the document with :func:`without_daily_metric_raw_payload`.
-Every other full ``select(DailyMetric)`` still ships the document; the Batch 280
-ledger row names each one and what it costs.
+Batch 285 did the same for the four history windows that still shipped it —
+trends (every stored row, on every coach question and Trends page), the
+longitudinal nights, the chronic-pattern window and the early warning — none of
+which reads the document. What still loads it is one row at a time: the
+morning's wake row and the coach's view of today (both read the training fields
+out of it, each with its own query), the Garmin writers, and single-row lookups
+that take the whole row by habit.
 """
 
 from __future__ import annotations

@@ -50,7 +50,11 @@ from src.services.anthropic_text import (
     configured_effort,
     configured_thinking,
 )
-from src.services.bulk_history_reads import without_activity_raw_summary, without_sleep_raw_payload
+from src.services.bulk_history_reads import (
+    without_activity_raw_summary,
+    without_daily_metric_raw_payload,
+    without_sleep_raw_payload,
+)
 from src.services.coach_policy import RECORDED_DATA_HONESTY_RULE
 from src.services.experiment_tracker import ExperimentTrackerService
 from src.services.generation_requests import (
@@ -708,10 +712,15 @@ class LongitudinalAnalysisService:
             .astimezone(UTC)
             .replace(tzinfo=None)
         )
+        # Batch 285: the whole history, for five typed fields (readiness, HRV and
+        # Body Battery charged off the wake row; stress and Body Battery drained off
+        # the prior day's settled row). The document stays behind.
         metrics = list(
             (
                 await self.session.execute(
-                    select(DailyMetric).where(
+                    select(DailyMetric)
+                    .options(without_daily_metric_raw_payload())
+                    .where(
                         DailyMetric.user_id == player.id,
                         DailyMetric.calendar_date >= start - timedelta(days=1),
                         DailyMetric.calendar_date <= as_of_date,
