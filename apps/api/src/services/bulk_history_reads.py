@@ -79,6 +79,7 @@ from sqlalchemy.sql.elements import ColumnElement, Label
 from src.models.coaching import (
     Activity,
     ActivityTimeSeries,
+    Analysis,
     DailyMetric,
     FanStateReading,
     Sleep,
@@ -92,6 +93,7 @@ __all__ = [
     "daily_metric_reading_columns",
     "fan_series_columns",
     "select_day_aggregates",
+    "select_morning_calls",
     "temperature_series_columns",
     "weather_summary_columns",
     "without_activity_raw_summary",
@@ -203,6 +205,50 @@ def select_day_aggregates() -> Select[Any]:
         )
         .select_from(DailyMetric)
         .join(document, true())
+    )
+
+
+def select_morning_calls() -> Select[Any]:
+    """What a stored morning read decided about its day, projected (Batch 289).
+
+    One row per stored ``morning`` analysis: ``subject_date``,
+    ``generated_at_utc``, the typed ``verdict``, and five fields of the read's
+    frozen packet — the verdict's ``reasons``, its ``verdictAdjustment``, whether
+    an acute signal ruled out riding (``requiresBikeRest``), ``restDay`` and the
+    ``plannedWorkouts`` the morning saw. About a kilobyte a row, against a packet
+    that averages **64,812 characters** (measured 2026-09-26); the coach asks for
+    seven of them on every question, so loading them whole would ship ~450 KB a
+    turn to read eight fields. Callers add their own ``where``/``order_by``.
+
+    The packet is read once per row by the same ``LATERAL`` + ``OFFSET 0`` shape
+    as :func:`select_day_aggregates`, for the same reason: every JSONB operator
+    applied to the stored column re-reads the TOASTed document.
+    """
+    document = (
+        select(
+            Analysis.context_packet.op("||", return_type=JSONB)(
+                literal_column("'{}'::jsonb", type_=JSONB)
+            ).label("document")
+        )
+        .correlate(Analysis)
+        .offset(0)
+        .lateral("morning_document")
+    )
+    packet = document.c.document
+    return (
+        select(
+            Analysis.subject_date,
+            Analysis.generated_at_utc,
+            Analysis.verdict,
+            packet[("verdict", "reasons")].label("reasons"),
+            packet[("verdict", "verdictAdjustment")].label("verdict_adjustment"),
+            packet[("verdict", "acutePhysiology", "requiresBikeRest")].label("requires_bike_rest"),
+            packet[("restDay",)].label("rest_day"),
+            packet[("plannedWorkouts",)].label("planned_workouts"),
+        )
+        .select_from(Analysis)
+        .join(document, true())
+        .where(Analysis.analysis_type == "morning")
     )
 
 

@@ -97,8 +97,8 @@ MAX_ROWS = 40
 #: overflow within this valid range is reported, never treated as an absence.
 MAX_SPAN_DAYS = 120
 
-#: Serialized-character ceiling for one tool result. The block itself is ~48,000
-#: characters (``APP_STATE_CHAR_BUDGET`` is 55,000), and a tool result is added
+#: Serialized-character ceiling for one tool result. The block itself is ~51,000
+#: characters (``APP_STATE_CHAR_BUDGET`` is 60,000), and a tool result is added
 #: to that rather than replacing any of it, so a fetch has to stay small enough
 #: that using one never costs more context than it supplies.
 MAX_RESULT_CHARS = 12_000

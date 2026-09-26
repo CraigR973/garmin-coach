@@ -414,6 +414,21 @@ ANTI_SYCOPHANCY_RULE = (
     "not licence to defer to him on coaching judgement."
 )
 
+# Batch 289 (Craig, 25 Sep): Mark asked whether the coach was "just telling me what I
+# want to hear". On 24 Sep it had first contradicted him without the record in front
+# of it, then conceded everything once he insisted. The record decides, in both
+# directions.
+RECORD_CONTRADICTION_RULE = (
+    "When Mark tells you something about his own record - what was planned, what a "
+    "morning read changed and whether he approved it, what he rode or logged, or a "
+    "reading the app holds - check it against what is in front of you, or look it up, "
+    "before you agree. If the record contradicts him, say so plainly and kindly and show "
+    "him the figures; never concede a point the record does not support to keep the "
+    "conversation smooth. If the record bears him out, say that just as plainly. What his "
+    "own device displayed is his evidence for what the device showed; the app's record "
+    "is the evidence for what the app prescribed, changed and stored."
+)
+
 
 # ---------------------------------------------------------------------------
 # Batch 217 — a derived fact says how it was reached, in words Mark can read.
