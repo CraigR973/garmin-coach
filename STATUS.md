@@ -6,14 +6,16 @@
 
 ## Now
 
-**2026-09-26 — G1 is running: Batches 288 and 289 are live (the strength read compares
-heart rate with Mark's own range; the coach sees each session as the morning left it and
-whether he approved the cut); 285 and 287 follow.**
+**2026-09-26 — G1 is running: Batches 288, 289 and 285 are live (the strength read compares
+heart rate with Mark's own range; the coach sees each session as the morning left it; four
+history reads stopped shipping Garmin's daily document); 287 follows, to the apply.**
 
 ### Shipped 25–26 Sep
 
 | Item | PR | Squash |
 |---|---|---|
+| **Batch 285** — trends, longitudinal, chronic and early warning leave Garmin's daily document behind (~250 MB a day); byte-identical on production | #326 | `d42004a` |
+| **Batch 289 sizing fix** — the budget comment and test record the untrimmed sizes (no behaviour change) | #324 | `3e3e9de` |
 | **Batch 289** — the coach's block carries the last seven mornings: each session as planned, what the morning did to it, whether he approved the cut, and the rules that fired; chat prompt v16 adds "the record decides" | #323 | `54c9005` |
 | **Batch 288** — a strength read compares heart rate with his own last 10 sessions of the same workout; 22–24 Sep replay as within usual | #322 | `c5e9d0a` |
 | **Stale July holiday closed** — the 12–16 Jul window had never been resumed and blocked a new one; closed through the versioned writer (holiday record v2), 0 sessions touched | — | — |
@@ -58,7 +60,7 @@ accepted, and his week view still marks 12–16 Jul "Holiday".
 
 ### Next
 
-**G1 continues: 285, then 287 to the apply.** **Next DECISIONS number: #354**
+**G1 continues: 287 to the apply.** **Next DECISIONS number: #355**
 (#344/#345 held by PRs #307/#308; 291 takes its number at `/batch-start`).
 
 ## Prior current-state snapshots
@@ -1693,6 +1695,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-26 (afternoon)** — Batch 285 shipped (PR #326, `d42004a`, Decision #354): trends, the longitudinal nights, the chronic window and the early warning defer `daily_metrics.raw_payload`. Measured first over 49 h (the two shapes were returning ~5,400 and ~880 document rows a day, ~250 MB); proved byte-identical on production before merging; 45 → 0 statements shipping the document; the two readers that need it still load it. First opened as #325 on a `perf/` branch, which the CI push trigger does not cover. Also: PR #324 (`3e3e9de`) corrected 289's recorded block sizes (untrimmed 55,502 on the 24 Sep replay, not 52,256).
 - **2026-09-26** — Batch 289 shipped (PR #323, `54c9005`, Decision #353): the coach's block gains `recentMornings` — for today and the six days before it, each session as planned, what the morning did to it, whether the cut reached his device, and the rules that fired. Corrected at `/batch-start`: a cut is only an offer until he approves it (19 Sep's never was), no-bike mornings carry no adjustment, and `plannedWorkPowerPct` is the hardest interval. The morning packets are projected, never loaded whole; the block budget moves 55,000 → 60,000 (ordinary blocks 50.8–51.2k, 24 Sep replayed 55.5k untrimmed); chat prompt v16 adds Craig's "the record decides" rule. Verified in the deployed image on `54c9005`. Found, not built: on 26 Sep the rail proposed an eased Long Z2 on a morning that said no bike (task chip raised).
 - **2026-09-25/26** — Batch 288 shipped (PR #322, `c5e9d0a`, Decision #352): the post-strength packet carries `heartRateReview.usualRange` — the lowest to the highest of his last 10 sessions of the same workout within 12 weeks, at least 5 needed — and the prompt describes heart rate only through that classification; resting HR left the packet. Rule chosen by replaying all 136 stored strength sessions. Verified on production at the exact SHA; the deployed image classifies the real 22, 23 and 24 Sep sessions as within usual. The v6→v7 bump (SELF_HEAL) regenerated nothing: no strength session since the deploy.
 - **2026-09-25** — Mark could not set a holiday: his 12–16 Jul window had never been resumed and nothing ended one by itself; pressing Resume would have rewritten 20–26 Jul from templates. Closed the window through the versioned writer on Craig's go, then shipped Batch 290 (PR #320, `a087daa`, Decision #351): holidays end by themselves, Resume restores skipped sessions only, the template regeneration is gone, and the week view marks every covered day. Remaining work grouped G1–G5 and approved; Batch 291 (admin alerts via Sentry) authored; 286 withdrawn; 209 deferred; today's reply to Mark saved as a draft.
