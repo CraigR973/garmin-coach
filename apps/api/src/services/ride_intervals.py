@@ -41,6 +41,15 @@ from collections.abc import Mapping, Sequence
 from statistics import median
 from typing import Any, Protocol
 
+from src.services.provenance import (
+    FIGURE_INTERVAL_GRADING,
+    Provenance,
+    provenance_packet,
+)
+from src.services.provenance import (
+    window as provenance_window,
+)
+
 # A steady interval step at/below this %FTP target sitting between efforts is a
 # recovery valley, not a work interval — its power is described, never graded.
 RECOVERY_CEILING_PCT = 60
@@ -342,6 +351,42 @@ def summarize_execution(
         "boundarySourceNote": _boundary_source_note(boundary_source),
         "clockSource": clock_source,
         "pausedSec": paused_sec,
+        # Batch 273: the basis a grade was reached on, beside the grade. On 8 Sep
+        # Mark checked five "under" calls against Garmin and found every one above
+        # 350 W at its peak - both readings were right, because grading a sustained
+        # effort uses its held average and he was reading its peak. A panel that
+        # says which statistic was used settles that without an argument.
+        "provenance": provenance_packet(
+            [
+                Provenance(
+                    figure=FIGURE_INTERVAL_GRADING,
+                    label="work intervals on target",
+                    value=on,
+                    units="intervals",
+                    rule=(
+                        "a sustained effort is graded on the average power it held "
+                        "across its window, not its peak; a short effort is graded on "
+                        "its peak and can never be 'over'; an interval that recorded "
+                        "below an adjacent recovery is a segmentation failure and its "
+                        "grade is withheld rather than counted"
+                    ),
+                    window=provenance_window(
+                        kind=boundary_source,
+                        label=_boundary_source_note(boundary_source),
+                    ),
+                    sources={
+                        "table": "activity_timeseries via the planned workout IR",
+                        "workIntervals": len(work),
+                        "onTarget": on,
+                        "over": over,
+                        "under": under,
+                        "ungraded": len(withheld),
+                        "clockSource": clock_source,
+                        "pausedSec": paused_sec,
+                    },
+                )
+            ]
+        ),
     }
     if withheld:
         result["ungradedNote"] = UNGRADED_INTERVAL_NOTE

@@ -34,7 +34,7 @@ import hashlib
 import json
 import uuid
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Protocol, cast
 
@@ -80,6 +80,18 @@ from src.services.insights import EarlyWarningResult, FtpDriftResult, InsightsSe
 from src.services.night_thermal import NightIndoorPeak, night_indoor_peaks
 from src.services.personal_baselines import baseline_band_packet, serialize_training_schedule
 from src.services.prompt_metadata import prompt_system_hash
+from src.services.provenance import (
+    FIGURE_REVIEW_AVG_PEAK,
+    FIGURE_REVIEW_DISRUPTION_NIGHTS,
+    Provenance,
+    provenance_packet,
+)
+from src.services.provenance import (
+    threshold as provenance_threshold,
+)
+from src.services.provenance import (
+    window as provenance_window,
+)
 from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
 from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
 from src.services.training_week import TrainingWeekService
@@ -313,6 +325,10 @@ class ThermalRollup:
     # narrative to treat a fallback night as a measured one.
     nights_from_sleep_window: int
     nights_from_clock_fallback: int
+    # Batch 273: the working behind the two figures Mark disputed on 7-13 Sep -
+    # the average peak and the disruption count - carried beside them rather than
+    # reconstructed from the narrative.
+    provenance: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -503,18 +519,75 @@ def compute_review_rollup(
             red += 1
     verdicts = VerdictRollup(green=green, amber=amber, red=red, total=green + amber + red)
 
+    measured_peaks = [t.indoor_peak_c for t in thermal if t.indoor_peak_c is not None]
+    avg_indoor_peak_c = _avg([t.indoor_peak_c for t in thermal])
+    disruption_nights = sum(1 for peak in measured_peaks if peak >= thermal_disruption_c)
+    nights_from_sleep_window = sum(1 for t in thermal if t.indoor_window_source == "sleep")
+    nights_from_clock_fallback = sum(
+        1 for t in thermal if t.indoor_window_source == "night_fallback"
+    )
+    thermal_window = provenance_window(
+        kind=(
+            "sleep"
+            if nights_from_clock_fallback == 0
+            else "mixed"
+            if nights_from_sleep_window
+            else "night_fallback"
+        ),
+        start=period_start,
+        end=period_end,
+        label=(
+            f"{nights_from_sleep_window} night(s) measured over his real sleep window, "
+            f"{nights_from_clock_fallback} over a clock fallback"
+        ),
+    )
+    thermal_sources = {
+        "table": "temperature_readings via night_indoor_peaks",
+        "nightsInPeriod": len(thermal),
+        "nightsWithAPeak": len(measured_peaks),
+        "nightsFromSleepWindow": nights_from_sleep_window,
+        "nightsFromClockFallback": nights_from_clock_fallback,
+    }
     thermal_rollup = ThermalRollup(
         nights=len(thermal),
-        avg_indoor_peak_c=_avg([t.indoor_peak_c for t in thermal]),
+        avg_indoor_peak_c=avg_indoor_peak_c,
         avg_outdoor_overnight_low_c=_avg([t.outdoor_overnight_low_c for t in thermal]),
-        disruption_nights=sum(
-            1
-            for t in thermal
-            if t.indoor_peak_c is not None and t.indoor_peak_c >= thermal_disruption_c
-        ),
-        nights_from_sleep_window=sum(1 for t in thermal if t.indoor_window_source == "sleep"),
-        nights_from_clock_fallback=sum(
-            1 for t in thermal if t.indoor_window_source == "night_fallback"
+        disruption_nights=disruption_nights,
+        nights_from_sleep_window=nights_from_sleep_window,
+        nights_from_clock_fallback=nights_from_clock_fallback,
+        provenance=provenance_packet(
+            [
+                Provenance(
+                    figure=FIGURE_REVIEW_AVG_PEAK,
+                    label="average bedroom peak this period",
+                    value=avg_indoor_peak_c,
+                    units="°C",
+                    rule=(
+                        "the mean of each night's highest reading; a night with no "
+                        "readings is absent rather than counted as cold"
+                    ),
+                    window=thermal_window,
+                    sources=thermal_sources,
+                ),
+                Provenance(
+                    figure=FIGURE_REVIEW_DISRUPTION_NIGHTS,
+                    label="nights the bedroom was warm enough to disrupt sleep",
+                    value=disruption_nights,
+                    units="nights",
+                    rule=(
+                        "a night counts when its peak reaches the threshold; nights "
+                        "without a measured peak cannot count either way"
+                    ),
+                    window=thermal_window,
+                    sources=thermal_sources,
+                    threshold=provenance_threshold(
+                        name="thermal disruption",
+                        compared_against=thermal_disruption_c,
+                        units="°C",
+                        source="reviews.THERMAL_DISRUPTION_C",
+                    ),
+                ),
+            ]
         ),
     )
 
