@@ -348,6 +348,7 @@ async def _make_read(
     subject_date: date = TODAY,
     generated_at_utc: datetime = READ_AT,
     output_markdown: str = "Green today.",
+    verdict: str = "Green",
 ) -> Analysis:
     analysis = Analysis(
         id=uuid.uuid4(),
@@ -356,7 +357,7 @@ async def _make_read(
         subject_date=subject_date,
         generated_at_utc=generated_at_utc,
         prompt_version="morning-x",
-        verdict="Green",
+        verdict=verdict,
         context_packet=context_packet or {},
         output_markdown=output_markdown,
         raw_response={},
@@ -1306,3 +1307,146 @@ async def test_no_reading_yet_today_is_a_null_not_a_missing_section(
 
 def test_origin_kinds_match_the_client_schema() -> None:
     assert set(ORIGIN_KINDS) == KNOWN_CLIENT_ORIGIN_KINDS
+
+
+@pytest.mark.asyncio
+async def test_the_24_sep_question_sees_the_session_the_morning_left(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 289: replay 24 Sep, 11:34 BST, asked from Home with no read behind it.
+
+    The morning had cut the sweet spot from 94 minutes to 47 with the hardest
+    interval at 60%, and Mark had approved that at 09:00. The coach said the
+    session was "unmodified". The block now carries the cut, its reason and the
+    approval — and nothing written after the question, so a replay is honest.
+    """
+    asked_at = datetime(2026, 9, 24, 10, 34, 7)
+    day = date(2026, 9, 24)
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        workout_id = str(uuid.uuid4())
+        await _make_read(
+            session,
+            user.id,
+            subject_date=day,
+            generated_at_utc=datetime(2026, 9, 24, 7, 41, 26),
+            verdict="Red",
+            context_packet={
+                "verdict": {
+                    "status": "Red",
+                    "reasons": ["HRV is below baseline and marked low/unbalanced."],
+                    "verdictAdjustment": {
+                        "changed": True,
+                        "plannedWorkoutId": workout_id,
+                        "plannedDurationMin": 94,
+                        "adjustedDurationMin": 47,
+                        "plannedWorkPowerPct": 100,
+                        "adjustedWorkPowerPct": 60,
+                        "removedHit": False,
+                    },
+                    "acutePhysiology": {"requiresBikeRest": False},
+                    "cumulativeEscalation": {"applied": False},
+                },
+                "restDay": {"isRestDay": False, "insideHolidayWindow": False},
+                "plannedWorkouts": [
+                    {
+                        "id": workout_id,
+                        "title": "Sweet Spot (3 × 20 min @ 89%)",
+                        "workoutType": "bike_sweet_spot",
+                        "intensityTarget": "Sweet Spot ~89% FTP",
+                        "plannedDurationMin": 94,
+                        "basis": "imported from your training plan",
+                    }
+                ],
+            },
+        )
+        for analysis_type, at, tag in (
+            ("workout_proposed", datetime(2026, 9, 24, 7, 41, 27), f"red-regen:{workout_id}:v1"),
+            ("workout_pushed", datetime(2026, 9, 24, 8, 0, 49), f"approve:{workout_id}:v1"),
+        ):
+            await _make_read(
+                session,
+                user.id,
+                analysis_type=analysis_type,
+                subject_date=day,
+                generated_at_utc=at,
+                context_packet={"tag": tag, "plannedWorkoutId": workout_id},
+                output_markdown="audit",
+            )
+
+        context = await ChatContextService(session).build(
+            user, None, asked_at_utc=asked_at, origin=CoachOrigin(kind="home")
+        )
+
+    state = context.app_state
+    today_entry = state["recentMornings"]["days"][0]
+    assert today_entry["date"] == "2026-09-24"
+    assert today_entry["verdict"] == "Red"
+    assert today_entry["reasons"] == ["HRV is below baseline and marked low/unbalanced."]
+    (session_entry,) = today_entry["sessions"]
+    assert session_entry["morningCall"] == "adjusted"
+    assert session_entry["planned"]["durationMin"] == 94
+    assert session_entry["adjusted"] == {"durationMin": 47, "hardestIntervalPctFtp": 60}
+    assert session_entry["onHisDevice"] == "approved_and_uploaded"
+    assert session_entry["approvedAtUtc"] == "2026-09-24T08:00:49Z"
+    assert "recentMornings" in state["today"]["plannedWorkoutsMeaning"]
+    assert [day["morningRead"] for day in state["recentMornings"]["days"][1:]] == [False] * 6
+    assert app_state_length(state) <= APP_STATE_CHAR_BUDGET
+
+
+@pytest.mark.asyncio
+async def test_a_record_written_after_the_question_is_not_in_its_block(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 289: both reads are bounded by the question's own time."""
+    asked_at = datetime(2026, 9, 24, 7, 50)
+    day = date(2026, 9, 24)
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        workout_id = str(uuid.uuid4())
+        await _make_read(
+            session,
+            user.id,
+            subject_date=day,
+            generated_at_utc=datetime(2026, 9, 24, 7, 41, 26),
+            context_packet={
+                "verdict": {
+                    "status": "Red",
+                    "reasons": ["HRV is below baseline and marked low/unbalanced."],
+                    "verdictAdjustment": {
+                        "changed": True,
+                        "plannedWorkoutId": workout_id,
+                        "plannedDurationMin": 94,
+                        "adjustedDurationMin": 47,
+                        "plannedWorkPowerPct": 100,
+                        "adjustedWorkPowerPct": 60,
+                    },
+                },
+                "plannedWorkouts": [
+                    {"id": workout_id, "title": "Sweet Spot", "workoutType": "bike_sweet_spot"}
+                ],
+            },
+        )
+        for analysis_type, at, tag in (
+            ("workout_proposed", datetime(2026, 9, 24, 7, 41, 27), f"red-regen:{workout_id}:v1"),
+            ("workout_pushed", datetime(2026, 9, 24, 8, 0, 49), f"approve:{workout_id}:v1"),
+        ):
+            await _make_read(
+                session,
+                user.id,
+                analysis_type=analysis_type,
+                subject_date=day,
+                generated_at_utc=at,
+                context_packet={"tag": tag},
+                output_markdown="audit",
+            )
+
+        context = await ChatContextService(session).build(
+            user, None, asked_at_utc=asked_at, origin=CoachOrigin(kind="home")
+        )
+
+    (session_entry,) = context.app_state["recentMornings"]["days"][0]["sessions"]
+    # At 08:50 BST the cut had been offered and not yet approved.
+    assert session_entry["onHisDevice"] == "offered_not_approved"
