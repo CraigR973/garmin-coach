@@ -6,13 +6,14 @@
 
 ## Now
 
-**2026-09-25 — Mark couldn't set his holiday. It's fixed and live (Batch 290), and all
-remaining work is grouped G1–G5 (approved by Craig). G1 runs next, in a new session.**
+**2026-09-26 — G1 is running: Batch 288 is live (the strength read now compares heart
+rate with Mark's own range for the workout); 289, 285 and 287 follow in order.**
 
-### Shipped today
+### Shipped 25–26 Sep
 
 | Item | PR | Squash |
 |---|---|---|
+| **Batch 288** — a strength read compares heart rate with his own last 10 sessions of the same workout; 22–24 Sep replay as within usual | #322 | `c5e9d0a` |
 | **Stale July holiday closed** — the 12–16 Jul window had never been resumed and blocked a new one; closed through the versioned writer (holiday record v2), 0 sessions touched | — | — |
 | **Batch 290** — a holiday ends by itself; Resume restores skipped sessions and never rewrites the plan | #320 | `a087daa` |
 
@@ -55,8 +56,8 @@ accepted, and his week view still marks 12–16 Jul "Holiday".
 
 ### Next
 
-**G1**, started from a new session with the prompt Craig was given. **Next DECISIONS
-number: #352** (#344/#345 held by PRs #307/#308; 291 takes its number at `/batch-start`).
+**G1 continues: 289, then 285, then 287 to the apply.** **Next DECISIONS number: #353**
+(#344/#345 held by PRs #307/#308; 291 takes its number at `/batch-start`).
 
 ## Prior current-state snapshots
 
@@ -1690,6 +1691,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-25/26** — Batch 288 shipped (PR #322, `c5e9d0a`, Decision #352): the post-strength packet carries `heartRateReview.usualRange` — the lowest to the highest of his last 10 sessions of the same workout within 12 weeks, at least 5 needed — and the prompt describes heart rate only through that classification; resting HR left the packet. Rule chosen by replaying all 136 stored strength sessions. Verified on production at the exact SHA; the deployed image classifies the real 22, 23 and 24 Sep sessions as within usual. The v6→v7 bump (SELF_HEAL) regenerated nothing: no strength session since the deploy.
 - **2026-09-25** — Mark could not set a holiday: his 12–16 Jul window had never been resumed and nothing ended one by itself; pressing Resume would have rewritten 20–26 Jul from templates. Closed the window through the versioned writer on Craig's go, then shipped Batch 290 (PR #320, `a087daa`, Decision #351): holidays end by themselves, Resume restores skipped sessions only, the template regeneration is gone, and the week view marks every covered day. Remaining work grouped G1–G5 and approved; Batch 291 (admin alerts via Sentry) authored; 286 withdrawn; 209 deferred; today's reply to Mark saved as a draft.
 - **2026-09-24 (late)** — Authored Batches 287–289 and priced R3 (PR #319, `9860c50`). 287: Railway stops reading `railway.toml` on 1 Dec, and all three services carry `RAILPACK` in their own settings; the automatic migration's dry run is wrong for this project. 288 and 289 come from Mark's 24 Sep wave: the strength read has no usual heart-rate range, and an unanchored coach cannot see the adjustment the morning applied. His main complaint (Red on the 7-day HRV average on 23 and 24 Sep) is Batch 269's, which would have made both days Amber. R3's regeneration costs ≈ $0.07–$0.20; its gate is 269.5's wording (Part 3 sheet). None of the recorded notes has fired.
 - **2026-09-24 (evening)** — Batch 283 shipped (PR #317, `c23d2ff`, Decision #350): Garmin data reaches a profile only if the profile names a Garmin account and no document names another; the owner is read from ids Garmin already puts in its documents (no extra Garmin call). Verified on production before and after the merge. CI had gone red on untouched code because SQLAlchemy 2.1.0 was released that afternoon and CI installed it unpinned — PR #318 (`6d4f95b`) constrains CI to `requirements.lock`, which production already runs. Also: audit rows 236–241 struck (PR #316, `e1187d9`); Sentry's quota is back (a probe was accepted, event `8f12fb81…`); Batch 286's premise measured false — Railway's edge already gzips or zstd-compresses every reply over ~256 bytes for mainstream browsers, including through Vercel.
