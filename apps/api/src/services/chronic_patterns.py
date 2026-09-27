@@ -34,7 +34,10 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile
 from src.services.age_norms import build_age_comparison
-from src.services.bulk_history_reads import without_sleep_raw_payload
+from src.services.bulk_history_reads import (
+    without_daily_metric_raw_payload,
+    without_sleep_raw_payload,
+)
 from src.services.daily_metric_phase import prefer_morning
 from src.services.delivered_verdict import delivered_verdicts
 from src.services.driver_levers import describe_evidence, select_lever
@@ -643,10 +646,12 @@ class ChronicPatternSuggestionService:
         # clock, that exclusion ran backwards: the harder Mark trained, the more
         # that day's training inflated the debt, and the likelier his Red was
         # excused as expected.
+        # Batch 285: ``_recovery_day`` reads ten typed fields; the document stays behind.
         metric_rows = prefer_morning(
             (
                 await self.session.execute(
                     select(DailyMetric)
+                    .options(without_daily_metric_raw_payload())
                     .where(
                         DailyMetric.user_id == player.id,
                         DailyMetric.calendar_date >= start,

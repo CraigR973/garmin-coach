@@ -1641,6 +1641,12 @@ export const pauseEnvelopeSchema = z.object({
 export const resumeEnvelopeSchema = z.object({
   data: z.object({
     window: holidayWindowSchema,
+    // Batch 290: resume restores the sessions the pause skipped from the return
+    // day on. Optional so this build still parses an API that predates it.
+    restoredCount: z.number().int().optional(),
+    cancelled: z.boolean().optional(),
+    // Deprecated (Batch 290): resume no longer regenerates a block; the API sends
+    // "Your plan" and 0 so an older web build still parses the response.
     continuationLabel: z.string().min(1),
     regeneratedCount: z.number().int(),
   }),

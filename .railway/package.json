@@ -1,0 +1,11 @@
+{
+  "name": "garmin-coach-railway-config",
+  "private": true,
+  "description": "Pins Railway's TypeScript SDK for `railway config plan` / `apply` (Batch 287). Not part of the pnpm workspace.",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "dependencies": {
+    "railway": "3.11.0"
+  }
+}

@@ -1,7 +1,8 @@
 # Draft reply to Mark — 22 Sep 2026
 
-**Status: SIGNED OFF by Craig, 2026-09-22.** Content approved as written.
-Delivery is Craig's — this has not been sent from the app.
+**Status: SUPERSEDED 2026-09-25** by `2026-09-25-reply-to-mark.md`. Most of what it
+reports as unfixed has since shipped (Batches 277, 278). Signed off by Craig on
+2026-09-22 and never sent.
 
 Tone note: he has raised the HRV point three days running and been agreed with
 each time without anything changing. The first thing this needs to do is tell him

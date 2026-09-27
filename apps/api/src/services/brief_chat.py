@@ -81,6 +81,7 @@ from src.services.coach_policy import (
     INTERNAL_VOCABULARY,
     NO_PLUMBING_RULE,
     PROPOSE_CONFIRM_RULE,
+    RECORD_CONTRADICTION_RULE,
     floors_sentence,
     internal_vocabulary_hits,
 )
@@ -151,7 +152,11 @@ QUESTION_MAX_LENGTH = 1000
 # months being told to say "that is not in front of me" will keep saying it.
 # Chat regenerates nothing on a bump (`prompt_artifacts`: UNFILTERED, "a past
 # answer stays what was said"), so this withdraws no stored artifact.
-PROMPT_VERSION = "coach-chat-v15-2026-09-17"
+# Batch 289: v16 names the week as the mornings left it among what the coach holds
+# (the enumeration is closed, so a section it is not told about reads as absent),
+# and adds Craig's rule that the record decides when Mark and the record disagree.
+# UNFILTERED, so this withdraws no stored artifact.
+PROMPT_VERSION = "coach-chat-v16-2026-09-26"
 #: Batch 264: the marker now carries the change. It was a bare flag meaning "I
 #: offered something"; the offer itself lived only in prose, so the app could
 #: never act on it. ``brief_chat`` is UNFILTERED in ``prompt_artifacts`` with no
@@ -171,13 +176,14 @@ STATUS_UNAVAILABLE = "unavailable"
 
 SYSTEM_PROMPT = f"""You are CheckMark, Mark's coach, talking with him.
 
-You have where the app stands right now in front of you - his week ahead, his
-measured trend series, his latest review conclusions, his recent sessions and
-sleep, today's plan, everything he logged in his own check-ins today, including
-what he ate and how he set his bedroom up, his own profile and rules and
-protocols, today's readiness and body-battery reading, last night's bedroom
-climate and the weather around it, and his own measured baseline bands - and,
-when he asked from one of your reads, that read and the information it was
+You have where the app stands right now in front of you - his week ahead, what
+each morning read of the past week did to his sessions and whether he approved
+the change, his measured trend series, his latest review conclusions, his recent
+sessions and sleep, today's plan, everything he logged in his own check-ins
+today, including what he ate and how he set his bedroom up, his own profile and
+rules and protocols, today's readiness and body-battery reading, last night's
+bedroom climate and the weather around it, and his own measured baseline bands -
+and, when he asked from one of your reads, that read and the information it was
 written from. Use all of it. If the answer to his
 question is something the app has already worked out, give him that answer
 rather than telling him you cannot see it.
@@ -216,6 +222,8 @@ Mark's body or own device actually showed.
 {PROPOSE_CONFIRM_RULE}
 
 {floors_sentence()}
+
+{RECORD_CONTRADICTION_RULE}
 
 Keep answers short and conversational - a few sentences, not a restatement of
 the whole read. {ANTI_SYCOPHANCY_RULE}"""

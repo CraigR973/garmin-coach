@@ -45,6 +45,7 @@ from src.database import AsyncSessionLocal
 from src.models.coaching import DAILY_METRIC_PHASE_SETTLED, DailyMetric
 from src.models.profile import Profile
 from src.services.daily_metric_coverage import CoverageSource, daily_aggregate_coverage
+from src.services.garmin_identity import assert_owned_by, garmin_account
 from src.services.garmin_sync import (
     GarminConnectClient,
     GarminSyncService,
@@ -174,7 +175,14 @@ async def run_backfill(
     require_complete_daily: bool = False,
     log_fn: Callable[[str], None] = print,
 ) -> BackfillSummary:
-    """Backfill daily metrics/sleep (per day) and activities (per month chunk)."""
+    """Backfill daily metrics/sleep (per day) and activities (per month chunk).
+
+    Batch 283: refuses up front, before any Garmin call, for a profile that names
+    no Garmin account — the configured token would otherwise fill it with whoever's
+    history that token opens. A document naming a different account is refused per
+    day or chunk by the sync service itself.
+    """
+    assert_owned_by(garmin_account(profile), set(), source="backfill")
     summary = BackfillSummary(start=start, end=end)
     sync_service = GarminSyncService(session)
 

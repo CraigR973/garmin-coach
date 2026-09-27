@@ -112,6 +112,7 @@ from src.services.daily_metric_phase import morning_first_order
 from src.services.holiday_pause import HolidayPauseService, holiday_windows_covering_date
 from src.services.interval_workout_editor import IntervalEditorSnapshot, editable_snapshot_for
 from src.services.personal_baselines import baseline_band_packet
+from src.services.recent_mornings import load_recent_mornings
 from src.services.reviews import ANALYSIS_TYPE_MONTHLY, ANALYSIS_TYPE_WEEKLY
 from src.services.structured_workout_builder import is_indoor_bike_workout
 from src.services.training_week import ACTION_AUDIT_TYPES, TrainingWeekService
@@ -129,7 +130,7 @@ from src.services.workout_categories import is_bike_workout_type
 APP_STATE_KEY = "appState"
 APP_STATE_VERSION = 2
 
-#: Serialized-character ceiling for the whole app-state block, ~13.75k tokens.
+#: Serialized-character ceiling for the whole app-state block, ~15k tokens.
 #:
 #: Measured, twice now, against Mark's real data rather than estimated. Batch
 #: 255 found the previous comment ("a full block measures ~22k characters, so
@@ -156,7 +157,20 @@ APP_STATE_VERSION = 2
 #: ``latestReviews`` intact. That is precisely the behaviour Batch 255 built
 #: :data:`_SINCE_READ_TRIM_ORDER` to produce, and sizing above 57,093 to spare a
 #: state 255.1 already made self-releasing would turn that order into dead code.
-APP_STATE_CHAR_BUDGET = 55_000
+#:
+#: **Batch 289 moves it to 60,000**, by the same method: it adds ``recentMornings``
+#: (4,032-4,338 characters), and re-measured rather than subtracted. Against
+#: production with the section present, untrimmed: **50,757 unanchored and 51,167
+#: on that morning's brief (2026-09-26), and 55,502 replaying the 24 Sep 11:34
+#: question** — an upper bound, since the replay counts check-ins logged after the
+#: question. At 55,000 that busy day would have lost ``recentActivities`` on every
+#: answer: the regime Batch 255 removed. At 60,000 the ordinary blocks keep
+#: 8,833-9,243 characters of headroom, above the 6,685-8,135 Batch 256 sized for,
+#: and the busy day keeps 4,498.
+#:
+#: Measure untrimmed. The branch first recorded the 24 Sep replay as 52,256: that
+#: was the block *after* the old budget had already dropped ``recentActivities``.
+APP_STATE_CHAR_BUDGET = 60_000
 
 WEEK_AHEAD_DAYS = 7
 TREND_BUCKET = BUCKET_MONTH
@@ -217,6 +231,15 @@ _BASELINE_BAND_KEYS = frozenset(
         "hrv_7_day_avg_ms",
         "resting_heart_rate_bpm",
     }
+)
+
+#: Batch 289. ``plannedWorkouts`` are the plan's rows, and on 24 Sep the coach read
+#: them as the whole truth: it called a session "unmodified" that the morning had
+#: cut to half and Mark had approved.
+TODAY_PLANNED_WORKOUTS_MEANING = (
+    "Today's sessions as planned. What this morning's read did to them, and whether "
+    "Mark approved the change, is in recentMornings - check there before saying a "
+    "session is unchanged."
 )
 
 PERSONAL_BASELINES_MEANING = (
@@ -289,7 +312,19 @@ class CoachOrigin:
 #: against 677, 767 and 993. Dropping today's readiness, last night's bedroom or
 #: his own bands would cost a load-bearing fact for a rounding error, so those
 #: three are undroppable for the same reason ``today`` is.
-_DROP_ORDER = ("recentActivities", "latestReviews", "sleepHistory", "knowledgeBase")
+#:
+#: Batch 289 adds ``recentMornings`` — what each of the last seven mornings did to
+#: its sessions and whether Mark approved it, about 4,000 characters — after
+#: sleep history and before the knowledge base. It is what his "you cut my week"
+#: questions turn on, so it outlasts the history sections; a dropped copy is
+#: named, and the read behind each day can be fetched back with ``get_read``.
+_DROP_ORDER = (
+    "recentActivities",
+    "latestReviews",
+    "sleepHistory",
+    "recentMornings",
+    "knowledgeBase",
+)
 
 #: ``sinceThisRead``'s unbounded lists, trimmed oldest-first *before* any whole
 #: section drops (Batch 255).
@@ -331,6 +366,7 @@ _FETCHABLE_OMISSIONS = {
     "recentActivities": "get_activities",
     "latestReviews": "get_read",
     "sleepHistory": "get_sleep_nights",
+    "recentMornings": "get_read",
     "sinceThisRead.activitiesIngestedSinceRead(oldest)": "get_activities",
     "sinceThisRead.newerReadsSinceRead(oldest)": "get_read",
     "sinceThisRead.checkInsSinceRead(oldest)": "get_check_ins",
@@ -437,6 +473,9 @@ class ChatContextService:
             window_kind="week_ahead_from_today",
         )
         today_check_ins = await self._check_ins_on(player.id, local_today)
+        recent_mornings = await load_recent_mornings(
+            self.session, player.id, today=local_today, as_of_utc=asked_at_utc
+        )
         trends = await self._trends(player, local_today)
         reviews = await self._latest_reviews(player.id)
         activities = await self._recent_activities(player.id, local_today, player.timezone)
@@ -479,6 +518,7 @@ class ChatContextService:
             "today": {
                 "localDate": local_today.isoformat(),
                 "plannedWorkouts": [_planned_workout_state(row) for row in today_workouts],
+                "plannedWorkoutsMeaning": TODAY_PLANNED_WORKOUTS_MEANING,
                 "bodyMetrics": {
                     "weightKg": weight_kg,
                     "weightAsOfDate": (
@@ -507,6 +547,8 @@ class ChatContextService:
                 ),
             },
             "weekAhead": week_ahead,
+            # Batch 289: the week as the mornings left it, beside the week as planned.
+            "recentMornings": recent_mornings,
             "trends": trends,
             "latestReviews": reviews,
             "recentActivities": activities,
