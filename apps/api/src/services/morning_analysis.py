@@ -85,6 +85,12 @@ from src.services.coach_sections import (
     thermal_review as _thermal_review,
 )
 from src.services.coaching_state import CoachingStateService
+from src.services.cross_surface_agreement import (
+    CROSS_SURFACE_AGREEMENT_RULE,
+    alert_disagreements,
+    evaluate_agreement,
+    morning_bedroom_check,
+)
 from src.services.daily_metric_coverage import (
     DayAggregates,
     complete_body_battery_charged,
@@ -265,7 +271,10 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # Batch 269: verdict.hrvGradedResponse is new, and HRV_GRADED_RESPONSE_RULE tells the
 # read to lead a hold morning with his own measured recovery. Self-healing again, so
 # the bump withdraws nothing; the next generation writes v48.
-PROMPT_VERSION = "morning-analysis-v48-2026-09-27"
+# Batch 272: the packet gained crossSurfaceAgreement and the prompt embeds
+# CROSS_SURFACE_AGREEMENT_RULE, shared verbatim with the review and Trends.
+# Self-healing, so nothing is withdrawn; the next generation writes v49.
+PROMPT_VERSION = "morning-analysis-v49-2026-09-27"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -393,6 +402,7 @@ its denominator is the figure Mark cannot reconcile against his watch. {PACKET_F
 {METRIC_STATEMENT_RULE}
 {CHRONIC_DRIVER_RULE}
 {HRV_GRADED_RESPONSE_RULE}
+{CROSS_SURFACE_AGREEMENT_RULE}
 Read REM against metricsVsBaselines.rem_sleep_pct, whose own basis field says
 which total it is a percentage of, and whose ageFrame carries the band; the two
 frames describe one night, so never present them as two measurements of it.
@@ -978,6 +988,18 @@ class MorningAnalysisService:
                 thermal_review=thermal_review_for_output,
                 weather=weather,
             ),
+            # Batch 272: the brief's bedroom peak against the night calculation the
+            # weekly review and Trends use, from the readings loaded above. Nothing is
+            # checked on a holiday morning, when the brief states no peak.
+            "crossSurfaceAgreement": evaluate_agreement(
+                morning_bedroom_check(
+                    thermal_review_for_output,
+                    temperature_rows,
+                    sleep,
+                    subject_date=subject_date,
+                    timezone_name=player.timezone,
+                )
+            ),
             "verdict": verdict,
             "prompt": prompt_packet,
         }
@@ -1057,6 +1079,12 @@ class MorningAnalysisService:
                     return MorningAnalysisResult(analysis=existing, generated=False)
 
             context_packet = await self.assemble_context_packet(player, subject_date)
+            alert_disagreements(
+                context_packet.get("crossSurfaceAgreement"),
+                surface="morning_brief",
+                user_id=player.id,
+                subject=subject_date.isoformat(),
+            )
             stamp_generation_identity(
                 context_packet,
                 request_identity=request_identity,

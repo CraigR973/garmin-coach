@@ -31,6 +31,7 @@ available, so this needs no widening of anybody's query and no new egress.
 
 from __future__ import annotations
 
+from bisect import bisect_left, bisect_right
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -79,6 +80,15 @@ def night_indoor_peaks(
     """
     tz = _zone(timezone_name)
     sleep_by_wake_date = {row.calendar_date: row for row in sleeps}
+    # Sorted once and sliced per night by binary search (Batch 272). Scanning every
+    # reading once per night cost about 5 s over the 800-day window Trends and every
+    # coach chat turn load (9,413 readings, 801 nights, measured 27 Sep 2026).
+    readings = sorted(
+        (_naive_utc(row.captured_at_utc), float(row.temperature_c))
+        for row in temperature_rows
+        if row.temperature_c is not None
+    )
+    stamps = [moment for moment, _ in readings]
 
     peaks: dict[date, NightIndoorPeak] = {}
     wake_date = start
@@ -98,10 +108,10 @@ def night_indoor_peaks(
                 source = "sleep"
 
         values = [
-            float(row.temperature_c)
-            for row in temperature_rows
-            if row.temperature_c is not None
-            and window_start <= _naive_utc(row.captured_at_utc) <= window_end
+            celsius
+            for _, celsius in readings[
+                bisect_left(stamps, window_start) : bisect_right(stamps, window_end)
+            ]
         ]
         if values:
             peaks[wake_date] = NightIndoorPeak(
