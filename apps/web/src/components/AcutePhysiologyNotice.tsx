@@ -1,22 +1,48 @@
 import type { AcutePhysiology } from '@coach/shared';
-import { ShieldAlert } from 'lucide-react';
+import { Info, ShieldAlert } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface AcutePhysiologyNoticeProps {
   boundary: AcutePhysiology | null | undefined;
 }
 
+type NoticeLevel = 'rest' | 'watch' | 'ease';
+
+// Batch 293: the heading follows the most serious signal. A small rise in resting
+// heart rate explains an Amber cap in plain words, so it reads as information, not
+// an alert.
+const HEADINGS: Record<NoticeLevel, string> = {
+  rest: 'Why this needs rest',
+  watch: 'A pattern worth checking',
+  ease: 'Why today is capped',
+};
+
+function noticeLevel(boundary: AcutePhysiology): NoticeLevel {
+  const levels = boundary.escalations.flatMap((escalation) =>
+    escalation.level ? [escalation.level] : [],
+  );
+  // A packet stored before Batch 293 carries no levels: read it as it always was.
+  if (levels.length === 0) return boundary.requiresBikeRest === true ? 'rest' : 'watch';
+  if (levels.includes('rest')) return 'rest';
+  if (levels.includes('watch')) return 'watch';
+  return 'ease';
+}
+
 export function AcutePhysiologyNotice({ boundary }: AcutePhysiologyNoticeProps) {
   const escalations = boundary?.escalations ?? [];
-  if (escalations.length === 0) return null;
+  if (!boundary || escalations.length === 0) return null;
 
-  const requiresBikeRest = boundary?.requiresBikeRest === true;
+  const level = noticeLevel(boundary);
+  const Icon = level === 'ease' ? Info : ShieldAlert;
   return (
-    <Card className="border-amber-500/35 bg-amber-500/[0.06]" role="alert">
+    <Card
+      className="border-amber-500/35 bg-amber-500/[0.06]"
+      role={level === 'ease' ? 'status' : 'alert'}
+    >
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <ShieldAlert className="h-5 w-5 text-amber-600 dark:text-amber-300" aria-hidden />
-          {requiresBikeRest ? 'Why this needs rest' : 'A pattern worth checking'}
+          <Icon className="h-5 w-5 text-amber-600 dark:text-amber-300" aria-hidden />
+          {HEADINGS[level]}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm leading-6 text-text-secondary">

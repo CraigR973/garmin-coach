@@ -6,11 +6,57 @@
 
 ## Now
 
-**2026-09-27 (in progress) — Mark's holiday is in, 27 Sep–6 Oct, entered through the app's own
-code after Batch 292 fixed the bug that stopped it saving.** Craig's go on 27 Sep covers: the
-holiday, Batch 293 (the resting-heart-rate warning, stopping for Mark's wording), G2, and a fresh
-reply to Mark. This block is rewritten at the end of the run; the 26 Sep block below is still
-accurate apart from its item 3 (the holiday), which is done.
+**2026-09-27 — Mark's holiday is in, and G2 is done to its stop: six things shipped to
+production, two PRs wait only on Mark's wording, and one message to him is ready to send.**
+
+Mark flew out on 27 Sep. His holiday runs 27 Sep–6 Oct. It was entered through the app's own
+code once Batch 292 fixed the bug that stopped it saving: 10 sessions skipped, 7–8 Oct untouched.
+
+### Shipped 27 Sep
+
+| Item | PR | Squash |
+|---|---|---|
+| **Batch 292** — a holiday can pause a day with two sessions (the pause wrote a slot the other session held) | #328 | `5d88d45` |
+| **Batch 275** — a metric declares its threshold and direction; Mark's "HRV drops in recovery weeks" now tests **supported** on his data | #307 | `2c94f20` |
+| **CI** — PostgreSQL from the runner image; the public ECR mirror was refusing a third of pulls | #331 | `b1a9261` |
+| **Batch 273** — packet working, then the "How these numbers were worked out" panel (brief, review, rides) | #308, #332 | `395da9a`, `7d8e252` |
+| **Batch 284** — something Mark says in chat can become a proposed experiment, bound at extraction | #333 | `1f28415` |
+| **Batch 282** — one computed statement of where REM sits, carried by the brief and Trends | #334 | `9c6d48c` |
+
+Every merge was verified on its exact SHA (Railway and Vercel health, web 200, `daily-loop` 401),
+with a read-only smoke in the deployed container. **Anthropic spend: about $0.07**, the two Trends
+narratives 282's bump withdrew, pre-approved by Craig on 25 Sep.
+
+### Waiting on Mark (both green, both synced with `main`)
+
+- **PR #330 — Batch 293**: the resting-heart-rate warning scales with the rise; a morning that
+  says rest offers no ride. The lines are in the 27 Sep reply.
+- **PR #335 — Batch 274**: "This looks wrong" on a figure's working, and "I disagree with today's
+  call" on the brief. Wording sheet on its branch: `docs/drafts/2026-09-27-batch-274-wording.md`.
+
+### Needs Craig
+
+1. **Send Mark the 27 Sep reply** (`docs/drafts/2026-09-27-reply-to-mark.md`). It confirms the holiday,
+   answers his ease-back question, asks him to OK 293's lines and carries the G3 question (269).
+   Nothing has gone to him since before 22 Sep. Then the short 274 message (the sheet above).
+2. **When Mark says yes:** merge #330 and #335. A session re-syncs, verifies and closes each out.
+3. **Carried:** the Railway apply (287) before mid-November; the free Neon database and
+   `BACKUP_RESTORE_DATABASE_URL` for the backup drill (G4).
+4. **The chat-experiment extractor has never run in production.** Its schema was checked free,
+   and a first run costs about $0.03–0.10: Mark's own "Look for new memories" tap, or Craig's go.
+
+### Worth carrying
+
+- **Zwift still lists the ten paused sessions.** A holiday pause never deletes pushed deliveries
+  (recorded, not scheduled, 27 Sep). Mark is told to ignore them.
+- **CI no longer pulls a Postgres image**: it starts the runner's own PostgreSQL 16 (#331). A
+  `toomanyrequests` failure should not recur. If CI's Postgres version moves, the step prints it.
+- **282's covered set is REM alone, by measurement**: the other "claim" keys mean different things
+  on each surface (`DEFERRED_CLAIM_KEYS`). Add a metric only with a second surface that states it.
+- **Production runs `claude-sonnet-5`** (config default; no override on Railway), not Sonnet 4.6.
+- **Next DECISIONS number: #362** (#357 held by PR #330, #361 by PR #335).
+
+## Prior current-state snapshots
 
 **2026-09-26 — G1 is done to the apply. Batches 288, 289 and 285 are live and verified on
 production; 287's Railway file is merged with a saved plan, and `railway config apply` is
@@ -83,8 +129,6 @@ self-healing bump regenerated nothing (no strength session since).
 
 G1 is complete to the apply. **G2 needs a separate go.** Next DECISIONS number: **#356**
 (#344/#345 held by PRs #307/#308; 291 takes its number at `/batch-start`).
-
-## Prior current-state snapshots
 
 **2026-09-25 — Mark couldn't set his holiday. It's fixed and live (Batch 290), and all
 remaining work is grouped G1–G5 (approved by Craig). G1 runs next, in a new session.**
@@ -1726,6 +1770,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-27** — G2 step 6: Batch 274 built (PR #335, Decision #361) and stopped for Mark's wording: contests and dissents recorded in an additive table, changing nothing, with a source-level boundary test for Batch 276. PR #330 (293) re-synced with `main` and green. Handoff written.
 - **2026-09-27** — G2 step 5: Batch 282 shipped (PR #334, `9c6d48c`, Decision #360). One computed statement of where REM sits (age band and his own range), carried by the brief and Trends and stated by both prompts. The measured scope is REM only; the other "claim" keys differ in meaning across surfaces and are recorded as deferred. The morning bump self-heals and withdrew nothing. The Trends bump blanked September and autumn, so both were regenerated for about $0.07, as pre-approved.
 - **2026-09-27** — G2 step 4: Batch 284 shipped (PR #333, `1f28415`, Decision #359). Something Mark says can become a proposed experiment on the Coach memory page, bound at extraction and created when he accepts. The extractor has still never run in production. Its schema was verified free with `count_tokens`, and a first run would cost about $0.03–0.10 (Mark's tap, or Craig's go).
 - **2026-09-27** — G2 step 3: Batch 273.2 shipped (PR #332, `7d8e252`, Decision #358). "How these numbers were worked out" now sits collapsed under the brief, the weekly review and each ride read. The review API had never serialised the thermal working, and now does. Batch 273 is struck.
