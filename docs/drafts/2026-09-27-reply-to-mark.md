@@ -1,47 +1,72 @@
-# Reply to Mark — 27 Sep 2026
+# Reply to Mark — 27 Sep 2026 (final)
 
-**Status:** drafted 27 Sep for Craig to send, ready to paste. It supersedes the unsent
-22 Sep and 25 Sep drafts. Nothing has been sent to Mark since before 22 Sep, so it carries
-what is still live from both. What it asks him:
-- OK the two resting-heart-rate lines and the heading (Batch 293 merges only after this)
-- answer the Batch 269 question (group G3)
+**Status:** ready for Craig to paste. **This is the only message to send.** It replaces the
+earlier 27 Sep version of this file, the unsent 22 and 25 Sep drafts, and the separate
+274 wording message (`2026-09-27-batch-274-wording.md`). Mark is on holiday, so Craig had
+every decision made on his behalf; this message tells him what changed rather than
+asking him, and invites him to say if he'd have chosen differently.
 
-274's new wording will follow in a separate, shorter message when G2 reaches it.
-
-Facts checked on 27 Sep: the holiday record, the plan for 7–18 Oct, the 26–27 Sep
-resting-heart-rate readings, and the ledger status of every fix it names.
+Facts checked on 27 Sep against production: the holiday record, the plan for 7–18 Oct,
+his 18–26 Sep readings replayed through the new rules, and every fix it names is live.
 
 ---
 
-Mark — sorry it's been quiet from me. Here's where things are, starting with your holiday.
+Mark, sorry it's been quiet from me. Enjoy the holiday. Nothing here needs anything from
+you; it's so you know what's changed while you're away.
 
-**Your holiday is in: Sun 27 Sep to Tue 6 Oct.** Your sessions are paused, the morning check treats those days as rest, and it ends by itself, so there's nothing to press when you're back. If you're home early, press Resume on the Holiday page and the rest of your sessions come back. Zwift may still list the paused sessions; just ignore them. (Setting it turned up a bug: a day with two sessions, like a Saturday, stopped a holiday saving. That's fixed too.)
+**Your holiday is in: Sun 27 Sep to Tue 6 Oct.** Your sessions are paused and the morning
+check treats those days as rest. It ends by itself, so there's nothing to press when you're
+back. If you're home early, press Resume on the Holiday page. Zwift may still list the paused
+sessions; just ignore them. There's no weekly review while you're away; they start again
+on Sun 11 Oct.
 
-**Easing back in.** The app doesn't ease you back in automatically, but your plan does. You miss the block's last hard week and come back to a lighter one: Z2 on Wed 7 Oct, a single 30-minute sweet spot on the Thursday, then the taper to 18 Oct. The morning check still reacts to how you actually come back.
+**Easing back in.** Your plan does it for you: you miss the block's last hard week and come
+back to a lighter one: Z2 on Wed 7 Oct, a single 30-minute sweet spot on the Thursday, then
+the taper to 18 Oct. The morning check still reacts to how you actually come back.
 
-**This morning's wording: you're right.** That "infection… see your GP" note isn't the coach. It's a fixed line in the app, and it said exactly the same thing for a 2–3 bpm rise as for a big jump. I'm changing it so that:
+**The cuts: you were right, and it's changed.** On days like 23 Sep, where the only thing
+wrong was Garmin's 7-day HRV average sitting just under its floor, or Garmin moving the
+floor itself, the app now keeps your full session. The day stays Green, with one line:
+hold the targets rather than push past them. If something else agrees (resting heart rate
+up, low readiness, a poor night, or you feeling rough), the day eases to Amber rather than
+being halved. Only a night that genuinely drops below the floor still goes Red. On your last
+fortnight that would have meant:
 
-- A small rise (two mornings just above your usual) keeps the Amber cap, under the heading "Why today is capped", and says: "Your resting heart rate is 47 this morning against a usual 44 — a little above your usual range, as it was yesterday. Small rises like this usually come from travel, a short night, a busy week or a hard day before. On its own it caps today at Amber: an eased session, not a day off the bike."
-- Only a big jump (7 bpm or more) says rest: "Your resting heart rate is 52 this morning against a usual 44 — a rise of 8 bpm. A jump that size can come from a short night, alcohol, dehydration or a hard day, and sometimes from your body fighting something off. Take today off the bike. If you also feel unwell, rest until it settles, and see your GP if it doesn't."
+- 18, 19 and 23 Sep: your full sessions
+- 24 Sep: eased, not halved (a fair night's sleep as well)
+- 26 Sep: eased, not halved (resting heart rate up too)
+- 21, 22 and 25 Sep: still Red (overnight HRV genuinely under the floor)
 
-Are you happy with those, or would you rather a small rise showed nothing at all?
+**This morning's heart-rate wording: you were right about that too.** A small rise now shows
+a calm note headed "Why today is capped", saying these usually come from travel, a short
+night, a busy week or a hard day. Only a jump of 7 bpm or more says take the day off the
+bike, and the GP line only applies if you also feel unwell.
 
-**The cuts.** You were right about 23 and 24 Sep as well. The only thing wrong was Garmin's 7-day HRV average sitting a point under its floor. Your overnight readings, resting heart rate and recovery time were all normal. I'm changing it so the size of any cut depends on how far off your numbers are, and on whether more than one of them agrees. How much is your call.
+**Your HRV hunch holds up.** The app can now test the kind of pattern you spotted. On your
+own data, your overnight HRV averaged 45.3 ms in recovery weeks against 48.1 in build
+weeks. When you're back, tap "Look for new memories" on the Coach memory page and it
+should offer to start that as a proper experiment.
 
-On a day like that (7-day HRV just under the floor, everything else normal), would you want:
-a) the full session as planned
-b) the full session, capped at the top of its zone
-c) a shorter, easier day
+**New, for when a number looks wrong.** Under the brief, the weekly review and each ride
+there's now a collapsed "How these numbers were worked out". Open it and you'll see how
+each figure was reached, with a "This looks wrong" link that sends your note straight to
+me. On the brief there's also "I disagree with today's call". Neither changes anything by
+itself; they're recorded, and your disagreements show in your weekly review.
 
-And which of these should be enough on its own to ease a hard session: resting heart rate up, low readiness, a poor night's sleep, or you feeling rough?
+**The app now checks itself.** Before it writes a brief, review or trend read, it checks
+that its different screens agree on the same number, like the bedroom temperature that was
+out by 2 degrees for a fortnight. If they ever disagree, the read will say so instead of
+picking one, and it's flagged for me to look at.
 
 **Fixed since you raised them:**
 - The strength read compares your heart rate with your own last 10 sessions of that workout.
 - The coach sees each session as the morning left it, so no more "unmodified" when it had been cut.
 - 12-second sprints no longer count as VO₂.
 - A ride is no longer logged as a session you didn't do.
-- When Garmin moves its HRV floor under a reading that held, the app now notices and says so.
+- REM is now described the same way on the brief and on Trends.
 
-**Light reset** is the deload button you asked for in July. It turns the rest of that week's rides into steady Zone 2 at 65% FTP, keeps your strength sessions, updates Zwift, and tells the app the lighter load is on purpose. "Restore week" puts the week back as it was.
+**Light reset** is the deload button you asked for in July. It turns the rest of that week's
+rides into steady Zone 2 at 65% FTP, keeps your strength sessions, updates Zwift, and tells
+the app the lighter load is on purpose. "Restore week" puts the week back as it was.
 
-No rush on any of it. Enjoy the holiday.
+If you'd have made any of those calls differently, just say and I'll change it.

@@ -6,56 +6,60 @@
 
 ## Now
 
-**2026-09-27 — Mark's holiday is in, and G2 is done to its stop: six things shipped to
-production, two PRs wait only on Mark's wording, and one message to him is ready to send.**
+**2026-09-27 (evening) — G3 is done: Batches 269 and 272 shipped, with Mark's answers and
+wording decided on his behalf (Craig: "make the best decisions on Mark's behalf"; Mark is on
+holiday 27 Sep–6 Oct). One message to Mark is ready. Nothing else needs Craig today.**
 
-Mark flew out on 27 Sep. His holiday runs 27 Sep–6 Oct. It was entered through the app's own
-code once Batch 292 fixed the bug that stopped it saving: 10 sessions skipped, 7–8 Oct untouched.
-
-### Shipped 27 Sep
+### Shipped 27 Sep (each verified on its exact SHA: Railway and Vercel health, web 200, `daily-loop` 401, read-only smoke)
 
 | Item | PR | Squash |
 |---|---|---|
-| **Batch 292** — a holiday can pause a day with two sessions (the pause wrote a slot the other session held) | #328 | `5d88d45` |
-| **Batch 275** — a metric declares its threshold and direction; Mark's "HRV drops in recovery weeks" now tests **supported** on his data | #307 | `2c94f20` |
-| **CI** — PostgreSQL from the runner image; the public ECR mirror was refusing a third of pulls | #331 | `b1a9261` |
-| **Batch 273** — packet working, then the "How these numbers were worked out" panel (brief, review, rides) | #308, #332 | `395da9a`, `7d8e252` |
-| **Batch 284** — something Mark says in chat can become a proposed experiment, bound at extraction | #333 | `1f28415` |
-| **Batch 282** — one computed statement of where REM sits, carried by the brief and Trends | #334 | `9c6d48c` |
+| **292** — a holiday can pause a day with two sessions; Mark's holiday entered | #328 | `5d88d45` |
+| **275** — his "HRV drops in recovery weeks" tests **supported** (45.3 vs 48.1 ms) | #307 | `2c94f20` |
+| **CI** — the runner's own PostgreSQL 16 | #331 | `b1a9261` |
+| **273** — packet working, then "How these numbers were worked out" | #308, #332 | `395da9a`, `7d8e252` |
+| **284** — something said in chat can become a proposed experiment | #333 | `1f28415` |
+| **282** — one statement of where REM sits, on the brief and Trends | #334 | `9c6d48c` |
+| **293** — a small resting-HR rise is a calm Amber, not an illness warning | #330 | `344936f` |
+| **274** — "This looks wrong" and "I disagree with today's call", recorded, changing nothing | #335 | `dac3098` |
+| **269** — a lagging 7-day HRV average or a moved floor holds the session instead of Red | #336 | `8f50590` |
+| **272** — the app checks its own figures against each other before a paid read | #337 | `2456884` |
 
-Every merge was verified on its exact SHA (Railway and Vercel health, web 200, `daily-loop` 401),
-with a read-only smoke in the deployed container. **Anthropic spend: about $0.07**, the two Trends
-narratives 282's bump withdrew, pre-approved by Craig on 25 Sep.
+**Anthropic spend today: about $0.15**, the Trends month and season narratives twice (282's and
+272's version-filtered bumps). Everything else self-heals or is read unfiltered.
 
-### Decided on Mark's behalf (Craig, 27 Sep: "make the best decisions on Mark's behalf")
+### How the verdict treats HRV now (Batch 269, Decision #362)
 
-- **Batch 293 shipped** (PR #330, `344936f`): a small resting-heart-rate rise keeps its Amber cap
-  with a calm note, only a 7 bpm jump says rest, and a rest morning offers no ride.
-- **Batch 274 shipped** (PR #335, `dac3098`): "This looks wrong" and "I disagree with today's call",
-  recorded and changing nothing. Migration 032 is live.
-- **G3 next**: Mark's two 25 Sep questions are answered on his behalf in the ledger (Batch 269).
+- **Hold (Green, full session, "hold the targets"):** Garmin's 7-day average under its floor, or
+  Garmin moved the floor, while last night's reading is at or above it and nothing else disagrees.
+- **Ease (Amber):** the same, plus resting HR above his usual range, readiness below it or
+  Low/Poor, a low check-in, or a sleep/load/acute ceiling. Garmin's own "Low" status eases too.
+- **Red:** last night's own reading under the floor as well, and no floor movement.
+- Replayed on every morning since 21 Jun: 8 change, all towards less cutting.
 
 ### Needs Craig
 
-1. **Send Mark the 27 Sep reply** (`docs/drafts/2026-09-27-reply-to-mark.md`). It confirms the holiday,
-   answers his ease-back question, asks him to OK 293's lines and carries the G3 question (269).
-   Nothing has gone to him since before 22 Sep. Then the short 274 message (the sheet above).
-2. **When Mark says yes:** merge #330 and #335. A session re-syncs, verifies and closes each out.
-3. **Carried:** the Railway apply (287) before mid-November; the free Neon database and
-   `BACKUP_RESTORE_DATABASE_URL` for the backup drill (G4).
-4. **The chat-experiment extractor has never run in production.** Its schema was checked free,
-   and a first run costs about $0.03–0.10: Mark's own "Look for new memories" tap, or Craig's go.
+1. **Send Mark `docs/drafts/2026-09-27-reply-to-mark.md`.** It is the only message: it replaces the
+   earlier 27 Sep version, the 22/25 Sep drafts and the separate 274 wording message. It tells him
+   what changed rather than asking.
+2. **Carried (G4):** the Railway apply (287) before mid-November; a free Neon database and
+   `BACKUP_RESTORE_DATABASE_URL` for the backup drill; 291 (admin alerts via Sentry) is buildable.
+3. **The chat-experiment extractor has never run in production.** Its first paid run (≈ $0.03–0.10)
+   is Mark's own "Look for new memories" tap; the message tells him about it.
 
 ### Worth carrying
 
-- **Zwift still lists the ten paused sessions.** A holiday pause never deletes pushed deliveries
-  (recorded, not scheduled, 27 Sep). Mark is told to ignore them.
-- **CI no longer pulls a Postgres image**: it starts the runner's own PostgreSQL 16 (#331). A
-  `toomanyrequests` failure should not recur. If CI's Postgres version moves, the step prints it.
-- **282's covered set is REM alone, by measurement**: the other "claim" keys mean different things
-  on each surface (`DEFERRED_CLAIM_KEYS`). Add a metric only with a second surface that states it.
-- **Production runs `claude-sonnet-5`** (config default; no override on Railway), not Sonnet 4.6.
-- **Next DECISIONS number: #362** (#357 held by PR #330, #361 by PR #335).
+- **The 21–27 Sep weekly review was skipped** (`holiday_away`): the job skips when its Sunday falls
+  in a holiday. Reviews resume Sun 11 Oct. A review of that week by hand would cost ≈ $0.05; not done.
+- **The cross-surface gate is quiet today, by design.** Production's three recent weeks, six Trends
+  windows and seven mornings agree (largest gap 0.05 °C). It fires on the real pre-268 figures.
+- **Batch 268's night calculation cost 4.9 s per coach chat turn** (800-day window); fixed in 272
+  (0.03 s, identical output). Chat and Trends should feel faster.
+- **A path-limited `git stash push -- <path>` deletes untracked files** on this Mac's git 2.16.
+- **`railway ssh` hung this evening**; smokes ran through `railway run` on the merged commit.
+- **Zwift still lists the ten paused holiday sessions** (recorded, not scheduled).
+- **Next DECISIONS number: #364.** Next groups: G4 (Craig's hands), G5 (time-gated: 276 about two
+  weeks after 273/274 went live, the block-end questions on 18 Oct, the storage decision).
 
 ## Prior current-state snapshots
 
@@ -1771,6 +1775,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-27** — G3 step 2: Batch 272 shipped (PR #337, `2456884`, Decision #363). Before every paid brief, review and Trends read, the app checks the figures two surfaces both derive (first pair: the bedroom peak) and marks, never blocks, any that disagree; alerts are error-level logs to Sentry. Quiet on production today; fires on the real pre-268 figures. Found by timing it: Batch 268's night calculation cost 4.9 s per chat turn, now 0.03 s. Trends month and season regenerated at v12 (≈ $0.08). G3 done; one message to Mark ready. Handoff written.
 - **2026-09-27** — G3 step 1: Batch 269 shipped (PR #336, `8f50590`, Decision #362). A morning whose only mark is Garmin's weekly HRV signal now holds the session (Green, targets held) instead of going Red; the same-day Red needs last night's own reading under the floor. Re-verification found the row's overnight-first swap would have cut 10 Green days, so it gates only the Red. Replayed on every morning since 21 Jun: 8 change, all towards less cutting. Morning prompt v48 self-heals; nothing spent.
 - **2026-09-27** — Craig: "make the best decisions on Mark's behalf" (Mark on holiday). Batches 293 (PR #330, `344936f`) and 274 (PR #335, `dac3098`) signed off and shipped. Each was verified on its exact SHA; 293 was smoked on 26–27 Sep's real rows; 274's migration 032 is live with RLS. G3 next.
 - **2026-09-27** — G2 step 6: Batch 274 built (PR #335, Decision #361) and stopped for Mark's wording: contests and dissents recorded in an additive table, changing nothing, with a source-level boundary test for Batch 276. PR #330 (293) re-synced with `main` and green. Handoff written.

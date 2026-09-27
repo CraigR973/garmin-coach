@@ -1,6 +1,6 @@
 # Batch 274 — wording for Mark to OK
 
-**Status: signed off by Craig on Mark's behalf, 27 Sep** (Mark on holiday); "Send to Craig" kept. Built in PR #335. It is a
+**Status: signed off by Craig on Mark's behalf, 27 Sep** (Mark on holiday); "Send to Craig" kept. Built in PR #335. **Its message is SUPERSEDED: the 27 Sep reply now carries it; do not send this one.** It was a
 short second message for Craig to send after the 27 Sep reply; the reply already asks
 about the resting-heart-rate lines (Batch 293). "Fine as is", or say what to change.
 
