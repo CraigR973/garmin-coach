@@ -358,6 +358,8 @@ export const conversationLearningKindSchema = z.enum([
   'preference',
   'terminology',
   'recurring_theme',
+  // Batch 284: something Mark said that the app can test, not a memory.
+  'experiment',
 ]);
 
 export const conversationLearningEvidenceSchema = z.object({
@@ -372,9 +374,21 @@ export const conversationLearningEvidenceSchema = z.object({
 export const conversationLearningProposalSchema = z.object({
   id: z.string().uuid(),
   kind: conversationLearningKindSchema,
-  destination: z.literal('learned_context'),
+  destination: z.enum(['learned_context', 'experiments']),
   statement: z.string().min(5).max(500),
   evidence: z.array(conversationLearningEvidenceSchema).min(1),
+  // Batch 284: what a proposed experiment would compare; null for a memory.
+  experiment: z
+    .object({
+      compare: z.string(),
+      metric: z.string(),
+      metricLabel: z.string(),
+      higherIsBetter: z.boolean(),
+      nightsPerGroup: z.number().int().positive(),
+      evidenceCount: z.number().int().nonnegative(),
+    })
+    .nullable()
+    .optional(),
   status: z.enum(['pending', 'accepted', 'rejected']),
   reviewedStatement: z.string().nullable(),
   reviewedAtUtc: isoDateTimeSchema.nullable(),
