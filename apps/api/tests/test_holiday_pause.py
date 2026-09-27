@@ -439,3 +439,105 @@ async def test_resume_without_active_holiday_raises(db_conn: AsyncConnection) ->
         with pytest.raises(HTTPException) as exc_info:
             await service.resume(user)
         assert exc_info.value.status_code == 404
+
+
+# ----------------------------------------------------------
+# Batch 292 — a holiday can pause a day with two sessions
+# ----------------------------------------------------------
+
+
+def _slot(
+    user_id: uuid.UUID,
+    workout_date: date,
+    version: int,
+    title: str,
+    workout_type: str,
+    *,
+    is_active: bool = True,
+) -> PlannedWorkout:
+    row = _planned(user_id, workout_date, workout_type)
+    row.version = version
+    row.title = title
+    row.is_active = is_active
+    return row
+
+
+async def _active_on(session: AsyncSession, user_id: uuid.UUID, day: date) -> list[PlannedWorkout]:
+    return list(
+        (
+            await session.execute(
+                select(PlannedWorkout)
+                .where(
+                    PlannedWorkout.user_id == user_id,
+                    PlannedWorkout.workout_date == day,
+                    PlannedWorkout.is_active.is_(True),
+                )
+                .order_by(PlannedWorkout.version)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_holiday_can_pause_and_resume_a_day_with_two_sessions(
+    db_conn: AsyncConnection,
+) -> None:
+    """Production, 27 Sep 2026: pausing 27 Sep-6 Oct failed on Sat 3 Oct.
+
+    ``version`` is a slot shared by every session on a day, so 3 Oct's
+    Z2 + Neuromuscular is v1 and its Bodyweight v2. Writing the skipped copy of
+    v1 at "its own version + 1" took Bodyweight's slot and broke
+    ``uq_planned_workouts_user_date_version``; the whole pause rolled back. A day
+    an earlier edit versioned (26 Sep carried v1-v4, two of them inactive) must
+    also land above its highest slot, not above the active row's.
+    """
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    saturday = HOLIDAY_START + timedelta(days=5)  # Sat 18 Jul
+    edited = HOLIDAY_START + timedelta(days=2)  # Wed 15 Jul
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add_all(
+            [
+                _slot(user_id, saturday, 1, "Z2 + Neuromuscular", "bike_endurance"),
+                _slot(user_id, saturday, 2, "Bodyweight", "strength_maintenance"),
+                _slot(user_id, edited, 1, "Z2 (moved away)", "bike_endurance", is_active=False),
+                _slot(user_id, edited, 2, "Sweet Spot", "bike_sweet_spot"),
+                _slot(user_id, edited, 3, "Sweet Spot (eased)", "bike_sweet_spot", is_active=False),
+            ]
+        )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        result = await HolidayPauseService(session).pause(
+            user, HOLIDAY_START, HOLIDAY_END, today=date(2026, 7, 10)
+        )
+        assert result.skipped_count == 3
+
+        paused_saturday = await _active_on(session, user_id, saturday)
+        assert [(w.version, w.title, w.status, w.source) for w in paused_saturday] == [
+            (3, "Z2 + Neuromuscular", "skipped", HOLIDAY_PAUSE_SOURCE),
+            (4, "Bodyweight", "skipped", HOLIDAY_PAUSE_SOURCE),
+        ]
+        paused_edited = await _active_on(session, user_id, edited)
+        assert [(w.version, w.title, w.status) for w in paused_edited] == [
+            (4, "Sweet Spot", "skipped"),
+        ]
+
+    back = saturday - timedelta(days=1)  # home on Fri 17 Jul
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        resumed = await HolidayPauseService(session).resume(user, today=back)
+        assert resumed.restored_count == 2
+
+        restored_saturday = await _active_on(session, user_id, saturday)
+        assert [(w.version, w.title, w.status, w.source) for w in restored_saturday] == [
+            (5, "Z2 + Neuromuscular", "planned", HOLIDAY_RESUME_SOURCE),
+            (6, "Bodyweight", "planned", HOLIDAY_RESUME_SOURCE),
+        ]
+        still_away = await _active_on(session, user_id, edited)
+        assert [(w.version, w.status) for w in still_away] == [(4, "skipped")]
