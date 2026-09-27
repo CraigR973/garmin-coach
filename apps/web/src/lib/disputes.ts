@@ -7,7 +7,7 @@ import { apiFetch } from '@/lib/api';
  * a contested figure from the stored read, so the client sends only which read,
  * which figure, and why.
  *
- * Mark-facing wording, pending his OK (docs/drafts/2026-09-27-batch-274-wording.md).
+ * Mark-facing wording, signed off by Craig on Mark's behalf on 27 Sep 2026.
  */
 export const FIGURE_CONTEST_COPY: DisputeFormCopy = {
   trigger: 'This looks wrong',
