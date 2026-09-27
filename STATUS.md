@@ -27,12 +27,13 @@ Every merge was verified on its exact SHA (Railway and Vercel health, web 200, `
 with a read-only smoke in the deployed container. **Anthropic spend: about $0.07**, the two Trends
 narratives 282's bump withdrew, pre-approved by Craig on 25 Sep.
 
-### Waiting on Mark (both green, both synced with `main`)
+### Decided on Mark's behalf (Craig, 27 Sep: "make the best decisions on Mark's behalf")
 
-- **PR #330 — Batch 293**: the resting-heart-rate warning scales with the rise; a morning that
-  says rest offers no ride. The lines are in the 27 Sep reply.
-- **PR #335 — Batch 274**: "This looks wrong" on a figure's working, and "I disagree with today's
-  call" on the brief. Wording sheet on its branch: `docs/drafts/2026-09-27-batch-274-wording.md`.
+- **Batch 293 shipped** (PR #330, `344936f`): a small resting-heart-rate rise keeps its Amber cap
+  with a calm note, only a 7 bpm jump says rest, and a rest morning offers no ride.
+- **Batch 274 shipped** (PR #335, `dac3098`): "This looks wrong" and "I disagree with today's call",
+  recorded and changing nothing. Migration 032 is live.
+- **G3 next**: Mark's two 25 Sep questions are answered on his behalf in the ledger (Batch 269).
 
 ### Needs Craig
 
@@ -1770,6 +1771,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-27** — Craig: "make the best decisions on Mark's behalf" (Mark on holiday). Batches 293 (PR #330, `344936f`) and 274 (PR #335, `dac3098`) signed off and shipped. Each was verified on its exact SHA; 293 was smoked on 26–27 Sep's real rows; 274's migration 032 is live with RLS. G3 next.
 - **2026-09-27** — G2 step 6: Batch 274 built (PR #335, Decision #361) and stopped for Mark's wording: contests and dissents recorded in an additive table, changing nothing, with a source-level boundary test for Batch 276. PR #330 (293) re-synced with `main` and green. Handoff written.
 - **2026-09-27** — G2 step 5: Batch 282 shipped (PR #334, `9c6d48c`, Decision #360). One computed statement of where REM sits (age band and his own range), carried by the brief and Trends and stated by both prompts. The measured scope is REM only; the other "claim" keys differ in meaning across surfaces and are recorded as deferred. The morning bump self-heals and withdrew nothing. The Trends bump blanked September and autumn, so both were regenerated for about $0.07, as pre-approved.
 - **2026-09-27** — G2 step 4: Batch 284 shipped (PR #333, `1f28415`, Decision #359). Something Mark says can become a proposed experiment on the Coach memory page, bound at extraction and created when he accepts. The extractor has still never run in production. Its schema was verified free with `count_tokens`, and a first run would cost about $0.03–0.10 (Mark's tap, or Craig's go).
