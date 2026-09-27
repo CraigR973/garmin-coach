@@ -42,8 +42,9 @@ holiday 27 Sep–6 Oct). One message to Mark is ready. Nothing else needs Craig 
 1. **Send Mark `docs/drafts/2026-09-27-reply-to-mark.md`.** It is the only message: it replaces the
    earlier 27 Sep version, the 22/25 Sep drafts and the separate 274 wording message. It tells him
    what changed rather than asking.
-2. **Carried (G4):** the Railway apply (287) before mid-November; a free Neon database and
-   `BACKUP_RESTORE_DATABASE_URL` for the backup drill; 291 (admin alerts via Sentry) is buildable.
+2. **Carried (G4):** a free Neon database and `BACKUP_RESTORE_DATABASE_URL` for the backup drill;
+   291 (admin alerts via Sentry) is buildable. **287 is done** (applied 27 Sep on Craig's go,
+   `railway.toml` removed; see below).
 3. **The chat-experiment extractor has never run in production.** Its first paid run (≈ $0.03–0.10)
    is Mark's own "Look for new memories" tap; the message tells him about it.
 
@@ -58,8 +59,13 @@ holiday 27 Sep–6 Oct). One message to Mark is ready. Nothing else needs Craig 
 - **A path-limited `git stash push -- <path>` deletes untracked files** on this Mac's git 2.16.
 - **`railway ssh` hung this evening**; smokes ran through `railway run` on the merged commit.
 - **Zwift still lists the ten paused holiday sessions** (recorded, not scheduled).
-- **Next DECISIONS number: #364.** Next groups: G4 (Craig's hands), G5 (time-gated: 276 about two
-  weeks after 273/274 went live, the block-end questions on 18 Oct, the storage decision).
+- **Railway now builds from each service's own settings** (`.railway/railway.ts`, applied 27 Sep;
+  no `railway.toml`). Every `railway config plan` shows one change on `api` (two default values
+  Railway stores as unset) and that is expected. Check the crons' first scheduled runs on the new
+  deployments: `trend-narratives` 28 Sep 12:30 London, `weekly-review` 4 Oct (a holiday skip).
+- **The API had been allowed to sleep** (`sleepApplication: true`) until the 287 apply turned it off.
+- **Next DECISIONS number: #365.** Next groups: G4's rest (Craig's hands), G5 (time-gated: 276 about
+  two weeks after 273/274 went live, the block-end questions on 18 Oct, the storage decision).
 
 ## Prior current-state snapshots
 
@@ -1775,6 +1781,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-27** — Batch 287 finished on Craig's go: `railway config apply` ran with the pinned plan (0 add / 4 change / 0 destroy, identical to the saved one) and turned off the API's sleeping, which had been on. `railway.toml` removed (PR #338, `fbf4b67`, Decision #364). The first deploy without it built all three services from the Dockerfile, ran alembic and passed exact-SHA health. The crons' first scheduled runs on it are still to observe (28 Sep and 4 Oct).
 - **2026-09-27** — G3 step 2: Batch 272 shipped (PR #337, `2456884`, Decision #363). Before every paid brief, review and Trends read, the app checks the figures two surfaces both derive (first pair: the bedroom peak) and marks, never blocks, any that disagree; alerts are error-level logs to Sentry. Quiet on production today; fires on the real pre-268 figures. Found by timing it: Batch 268's night calculation cost 4.9 s per chat turn, now 0.03 s. Trends month and season regenerated at v12 (≈ $0.08). G3 done; one message to Mark ready. Handoff written.
 - **2026-09-27** — G3 step 1: Batch 269 shipped (PR #336, `8f50590`, Decision #362). A morning whose only mark is Garmin's weekly HRV signal now holds the session (Green, targets held) instead of going Red; the same-day Red needs last night's own reading under the floor. Re-verification found the row's overnight-first swap would have cut 10 Green days, so it gates only the Red. Replayed on every morning since 21 Jun: 8 change, all towards less cutting. Morning prompt v48 self-heals; nothing spent.
 - **2026-09-27** — Craig: "make the best decisions on Mark's behalf" (Mark on holiday). Batches 293 (PR #330, `344936f`) and 274 (PR #335, `dac3098`) signed off and shipped. Each was verified on its exact SHA; 293 was smoked on 26–27 Sep's real rows; 274's migration 032 is live with RLS. G3 next.
