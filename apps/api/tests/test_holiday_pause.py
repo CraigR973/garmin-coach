@@ -30,6 +30,7 @@ from src.services.holiday_pause import (
     holiday_windows_covering_date,
     is_build1,
     overnight_away_window_for_date,
+    slots_above_each_day,
 )
 
 # ---------------------------------------------------------------------------
@@ -67,6 +68,34 @@ def test_a_holiday_runs_until_its_end_date_and_then_ends_by_itself() -> None:
         resumed_at_utc=datetime(2026, 7, 14, 8, 0),
     )
     assert not closed.is_active_on(date(2026, 7, 14))
+
+
+def test_new_rows_take_the_days_highest_slot_not_their_own_version_plus_one() -> None:
+    """Batch 292: on 3 Oct 2026 Z2 + Neuromuscular (v1) + 1 was Bodyweight's slot."""
+    user_id = uuid.uuid4()
+    saturday, wednesday, friday = date(2026, 10, 3), date(2026, 9, 30), date(2026, 10, 2)
+
+    def row(day: date, version: int, title: str) -> PlannedWorkout:
+        return PlannedWorkout(
+            user_id=user_id, workout_date=day, version=version, title=title, is_active=True
+        )
+
+    bodyweight = row(saturday, 2, "Bodyweight")
+    ride = row(saturday, 1, "Z2 + Neuromuscular")
+    sweet_spot = row(wednesday, 2, "Sweet Spot")
+    lone = row(friday, 1, "Z2")
+    pairs = slots_above_each_day(
+        [bodyweight, sweet_spot, ride, lone],
+        # Wednesday's v3 is an inactive earlier edit; Friday is missing from the
+        # map, so its own version is the floor.
+        {saturday: 2, wednesday: 3},
+    )
+    assert [(w.title, slot) for w, slot in pairs] == [
+        ("Sweet Spot", 4),
+        ("Z2", 2),
+        ("Z2 + Neuromuscular", 3),
+        ("Bodyweight", 4),
+    ]
 
 
 def test_holiday_date_helpers_keep_history_but_only_active_window_means_away() -> None:
@@ -439,3 +468,105 @@ async def test_resume_without_active_holiday_raises(db_conn: AsyncConnection) ->
         with pytest.raises(HTTPException) as exc_info:
             await service.resume(user)
         assert exc_info.value.status_code == 404
+
+
+# ----------------------------------------------------------
+# Batch 292 — a holiday can pause a day with two sessions
+# ----------------------------------------------------------
+
+
+def _slot(
+    user_id: uuid.UUID,
+    workout_date: date,
+    version: int,
+    title: str,
+    workout_type: str,
+    *,
+    is_active: bool = True,
+) -> PlannedWorkout:
+    row = _planned(user_id, workout_date, workout_type)
+    row.version = version
+    row.title = title
+    row.is_active = is_active
+    return row
+
+
+async def _active_on(session: AsyncSession, user_id: uuid.UUID, day: date) -> list[PlannedWorkout]:
+    return list(
+        (
+            await session.execute(
+                select(PlannedWorkout)
+                .where(
+                    PlannedWorkout.user_id == user_id,
+                    PlannedWorkout.workout_date == day,
+                    PlannedWorkout.is_active.is_(True),
+                )
+                .order_by(PlannedWorkout.version)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_holiday_can_pause_and_resume_a_day_with_two_sessions(
+    db_conn: AsyncConnection,
+) -> None:
+    """Production, 27 Sep 2026: pausing 27 Sep-6 Oct failed on Sat 3 Oct.
+
+    ``version`` is a slot shared by every session on a day, so 3 Oct's
+    Z2 + Neuromuscular is v1 and its Bodyweight v2. Writing the skipped copy of
+    v1 at "its own version + 1" took Bodyweight's slot and broke
+    ``uq_planned_workouts_user_date_version``; the whole pause rolled back. A day
+    an earlier edit versioned (26 Sep carried v1-v4, two of them inactive) must
+    also land above its highest slot, not above the active row's.
+    """
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    saturday = HOLIDAY_START + timedelta(days=5)  # Sat 18 Jul
+    edited = HOLIDAY_START + timedelta(days=2)  # Wed 15 Jul
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add_all(
+            [
+                _slot(user_id, saturday, 1, "Z2 + Neuromuscular", "bike_endurance"),
+                _slot(user_id, saturday, 2, "Bodyweight", "strength_maintenance"),
+                _slot(user_id, edited, 1, "Z2 (moved away)", "bike_endurance", is_active=False),
+                _slot(user_id, edited, 2, "Sweet Spot", "bike_sweet_spot"),
+                _slot(user_id, edited, 3, "Sweet Spot (eased)", "bike_sweet_spot", is_active=False),
+            ]
+        )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        result = await HolidayPauseService(session).pause(
+            user, HOLIDAY_START, HOLIDAY_END, today=date(2026, 7, 10)
+        )
+        assert result.skipped_count == 3
+
+        paused_saturday = await _active_on(session, user_id, saturday)
+        assert [(w.version, w.title, w.status, w.source) for w in paused_saturday] == [
+            (3, "Z2 + Neuromuscular", "skipped", HOLIDAY_PAUSE_SOURCE),
+            (4, "Bodyweight", "skipped", HOLIDAY_PAUSE_SOURCE),
+        ]
+        paused_edited = await _active_on(session, user_id, edited)
+        assert [(w.version, w.title, w.status) for w in paused_edited] == [
+            (4, "Sweet Spot", "skipped"),
+        ]
+
+    back = saturday - timedelta(days=1)  # home on Fri 17 Jul
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        resumed = await HolidayPauseService(session).resume(user, today=back)
+        assert resumed.restored_count == 2
+
+        restored_saturday = await _active_on(session, user_id, saturday)
+        assert [(w.version, w.title, w.status, w.source) for w in restored_saturday] == [
+            (5, "Z2 + Neuromuscular", "planned", HOLIDAY_RESUME_SOURCE),
+            (6, "Bodyweight", "planned", HOLIDAY_RESUME_SOURCE),
+        ]
+        still_away = await _active_on(session, user_id, edited)
+        assert [(w.version, w.status) for w in still_away] == [(4, "skipped")]
