@@ -6,6 +6,12 @@
 
 ## Now
 
+**2026-09-27 (in progress) — Mark's holiday is in, 27 Sep–6 Oct, entered through the app's own
+code after Batch 292 fixed the bug that stopped it saving.** Craig's go on 27 Sep covers: the
+holiday, Batch 293 (the resting-heart-rate warning, stopping for Mark's wording), G2, and a fresh
+reply to Mark. This block is rewritten at the end of the run; the 26 Sep block below is still
+accurate apart from its item 3 (the holiday), which is done.
+
 **2026-09-26 — G1 is done to the apply. Batches 288, 289 and 285 are live and verified on
 production; 287's Railway file is merged with a saved plan, and `railway config apply` is
 Craig's (deadline 1 Dec). One new finding needs a decision: a no-bike Red day still offers
@@ -1720,6 +1726,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-27** — Batch 292 shipped (PR #328, `5d88d45`, Decision #356). Entering Mark's holiday (27 Sep–6 Oct, Craig's go) through `HolidayPauseService.pause` failed on production at Sat 3 Oct and rolled back: the pause and Resume wrote each new row at the session's own `version + 1`, which on a two-session day is the other session's slot. Both now take the day's highest slot + 1, like every other plan writer. The new DB test failed first in CI with the production error (1 failed / 1,968 passed), then passed. After the deploy the holiday was entered through the shipped code in the production container: holiday record v3, 10 sessions skipped, 7–8 Oct untouched. Recorded, not scheduled: the pause leaves already-pushed sessions on Zwift's calendar (7 of the 10). Also found on 27 Sep: Mark objected to the resting-heart-rate notice's illness and GP wording over a 2–3 bpm rise, and the same mild trigger is what set 26 Sep's off-the-bike flag. That is Batch 293.
 - **2026-09-26 (evening)** — G1 finished to the apply. Batch 287 merged (PR #327, `b0930ec`, Decision #355): `.railway/railway.ts` imported with `railway config pull` and edited (Dockerfile builder ×3; `api` health check, `ON_FAILURE` ×3, `sleepApplication` false; whole-project file, all four resources listed). Saved plan 0 add / 4 change / 0 destroy; unchanged after the merge, and the live settings still say `RAILPACK`, so Railway did not read `.railway/`. Planning needs Node 22.6+ and Railway's TypeScript SDK, pinned in `.railway/package.json`. Stopped before `railway config apply` (Craig's). Also found: Mark has not entered his 27 Sep holiday.
 - **2026-09-26 (afternoon)** — Batch 285 shipped (PR #326, `d42004a`, Decision #354): trends, the longitudinal nights, the chronic window and the early warning defer `daily_metrics.raw_payload`. Measured first over 49 h (the two shapes were returning ~5,400 and ~880 document rows a day, ~250 MB); proved byte-identical on production before merging; 45 → 0 statements shipping the document; the two readers that need it still load it. First opened as #325 on a `perf/` branch, which the CI push trigger does not cover. Also: PR #324 (`3e3e9de`) corrected 289's recorded block sizes (untrimmed 55,502 on the 24 Sep replay, not 52,256).
 - **2026-09-26** — Batch 289 shipped (PR #323, `54c9005`, Decision #353): the coach's block gains `recentMornings` — for today and the six days before it, each session as planned, what the morning did to it, whether the cut reached his device, and the rules that fired. Corrected at `/batch-start`: a cut is only an offer until he approves it (19 Sep's never was), no-bike mornings carry no adjustment, and `plannedWorkPowerPct` is the hardest interval. The morning packets are projected, never loaded whole; the block budget moves 55,000 → 60,000 (ordinary blocks 50.8–51.2k, 24 Sep replayed 55.5k untrimmed); chat prompt v16 adds Craig's "the record decides" rule. Verified in the deployed image on `54c9005`. Found, not built: on 26 Sep the rail proposed an eased Long Z2 on a morning that said no bike (task chip raised).
