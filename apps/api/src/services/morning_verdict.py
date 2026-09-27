@@ -313,40 +313,42 @@ def _rhr_rail(
     reason = None
     escalation = None
     if triggered and current is not None and median_value is not None:
-        window_start, window_end = _baseline_dates(baseline)
-        window = (
-            f"{window_start} to {window_end}"
-            if window_start is not None and window_end is not None
-            else "in your personal baseline window"
-        )
+        # Batch 293: the two paths are graded. Decision #318 asked for proportionate
+        # copy on the milder one, but only its opening sentence got it; both shared an
+        # illness list, "take today off the bike" and "see your GP". On 27 Sep 2026,
+        # a 47 after a 46 against a usual 44, Mark accepted the cap and objected to
+        # the illness talk. Only a jump of RESTING_HR_ABSOLUTE_DELTA_BPM or more now
+        # rests the bike, and its GP line is conditional on feeling unwell.
+        # Mark-facing wording, signed off by Craig on Mark's behalf on 27 Sep 2026.
         if absolute_delta:
             reason = (
                 f"Resting heart rate sets an Amber ceiling: {current} bpm is "
                 f"{_number(delta)} bpm above the personal median of {_number(median_value)}."
             )
-            opening = (
+            escalation = (
                 f"Your resting heart rate is {current} this morning against a usual "
-                f"{_number(median_value)} across {window} — a rise of {_number(delta)} bpm."
+                f"{_number(median_value)} — a rise of {_number(delta)} bpm. A jump that size "
+                "can come from a short night, alcohol, dehydration or a hard day, and "
+                "sometimes from your body fighting something off. Take today off the bike. "
+                "If you also feel unwell, rest until it settles, and see your GP if it doesn't."
             )
         else:
             reason = (
                 "Resting heart rate sets an Amber ceiling: it has been above the "
                 f"personal upper quartile of {_number(upper_quartile)} bpm for two mornings."
             )
-            opening = (
+            escalation = (
                 f"Your resting heart rate is {current} this morning against a usual "
-                f"{_number(median_value)} across {window}, and it has been above your "
-                f"usual upper quartile of {_number(upper_quartile)} for two mornings."
+                f"{_number(median_value)} — a little above your usual range, as it was "
+                "yesterday. Small rises like this usually come from travel, a short night, "
+                "a busy week or a hard day before. On its own it caps today at Amber: an "
+                "eased session, not a day off the bike."
             )
-        escalation = (
-            f"{opening} In practice that usually means one of: an infection starting, "
-            "dehydration, alcohol, or simply being run down. Training hard through it "
-            "tends to make it worse. Take today off the bike, and if you feel unwell "
-            "alongside it, see your GP rather than just resting."
-        )
     return {
         "triggered": triggered,
         "verdictImpact": "amber_cap",
+        # Batch 293: only the large jump takes Mark off the bike.
+        "requiresBikeRest": absolute_delta,
         "trigger": trigger,
         "currentBpm": current,
         "priorBpm": prior_value,
@@ -422,6 +424,7 @@ def _hrv_rail(
     return {
         "triggered": triggered,
         "verdictImpact": "amber_cap",
+        "requiresBikeRest": triggered,
         "currentMs": current,
         "baselineMedianMs": median_value,
         "baselineStddevMs": round(stddev_value, 2) if stddev_value is not None else None,
@@ -641,6 +644,19 @@ def _oxygen_respiration_rail(
     }
 
 
+def _escalation_level(signal: Mapping[str, Any]) -> str:
+    """How serious a notice is, which sets the heading the app shows (Batch 293).
+
+    ``rest`` takes Mark off the bike; ``watch`` is surveillance that changes no
+    training; ``ease`` explains an Amber cap in plain words.
+    """
+    if signal.get("requiresBikeRest") is True:
+        return "rest"
+    if signal.get("verdictImpact") == "surveillance_only":
+        return "watch"
+    return "ease"
+
+
 def _acute_physiology_rail(
     *,
     daily_metric: DailyMetric | None,
@@ -674,7 +690,7 @@ def _acute_physiology_rail(
         if signal["triggered"]
     ]
     escalations = [
-        {"kind": name, "message": signal["escalation"]}
+        {"kind": name, "level": _escalation_level(signal), "message": signal["escalation"]}
         for name, signal in (
             ("resting_heart_rate", rhr),
             ("overnight_hrv", hrv),
@@ -689,7 +705,7 @@ def _acute_physiology_rail(
         "standingLine": MEDICAL_BOUNDARY_STANDING_LINE,
         "dataSufficiency": data_sufficiency,
         "triggeredSignals": triggered_signals,
-        "requiresBikeRest": bool(rhr["triggered"] or hrv["triggered"]),
+        "requiresBikeRest": bool(rhr["requiresBikeRest"] or hrv["requiresBikeRest"]),
         "restingHeartRate": rhr,
         "overnightHrv": hrv,
         "oxygenRespiration": oxygen_respiration,

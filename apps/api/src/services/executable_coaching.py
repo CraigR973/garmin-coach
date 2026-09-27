@@ -197,6 +197,14 @@ def apply_manual_override_to_ir(
     return adjusted
 
 
+def _morning_requires_bike_rest(analysis: Analysis) -> bool:
+    """The stored morning's acute rail has said "take today off the bike" (Batch 293)."""
+    packet = analysis.context_packet if isinstance(analysis.context_packet, dict) else {}
+    verdict = packet.get("verdict")
+    acute = verdict.get("acutePhysiology") if isinstance(verdict, dict) else None
+    return isinstance(acute, dict) and acute.get("requiresBikeRest") is True
+
+
 class ExecutableCoachingService:
     def __init__(
         self,
@@ -239,6 +247,18 @@ class ExecutableCoachingService:
         """
         verdict = self._verdict_status(analysis)
         if verdict not in {"Amber", "Red"}:
+            return []
+        # Batch 293: a morning that has told Mark to take today off the bike offers
+        # no ride. On 26 Sep 2026 this path proposed a red_substitution beside that
+        # headline; the swap suggestion already deferred to the flag (Batch 277.3).
+        # A session already on his device stays put (Craig, 25 Sep).
+        if _morning_requires_bike_rest(analysis):
+            log.info(
+                "verdict regeneration withheld: the morning says off the bike",
+                user_id=str(player.id),
+                subject_date=subject_date.isoformat(),
+                verdict=verdict,
+            )
             return []
 
         created: list[WorkoutDeliveryProposal] = []
