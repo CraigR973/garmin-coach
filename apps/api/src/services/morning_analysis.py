@@ -262,7 +262,10 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # Batch 282: METRIC_STATEMENT_RULE (shared verbatim with Trends) now makes the brief
 # state metricStatements' one conclusion about REM, and the packet gained that list.
 # Self-healing, so a bump withdraws nothing; the next generation writes v47.
-PROMPT_VERSION = "morning-analysis-v47-2026-09-27"
+# Batch 269: verdict.hrvGradedResponse is new, and HRV_GRADED_RESPONSE_RULE tells the
+# read to lead a hold morning with his own measured recovery. Self-healing again, so
+# the bump withdraws nothing; the next generation writes v48.
+PROMPT_VERSION = "morning-analysis-v48-2026-09-27"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -275,6 +278,23 @@ own plain words. Never call it the strongest lever, the cause, or a proven fix,
 and never name a driver the packet did not select — when driver is absent, say
 the data does not yet point at a single lever rather than nominating one
 yourself."""
+
+# Batch 269: a hold morning used to be a Red, and the read must not narrate the new
+# result as a cut. The numbers lead because on 18 and 23 Sep his own recovery was the
+# stronger argument and the brief buried it behind the vendor's flag.
+HRV_GRADED_RESPONSE_RULE = """verdict.hrvGradedResponse says how today's HRV evidence
+was graded, and it is deterministic. When its tier is `hold`, the only mark against
+the day is Garmin's weekly HRV signal: his own overnight reading is at or above
+Garmin's floor, or Garmin moved the floor under a reading that held, and nothing
+else disagrees. Lead with his own measured recovery and its numbers: last night's
+HRV against the floor, then the other signals that agree. Say plainly that the
+session stands as planned and that he should hold its targets rather than push past
+them, and only then give the mechanism: Garmin's 7-day average still lagging under
+its floor, or, when concern is `floor_moved`, the movement verdict.hrvRecalibration
+records. Never call a hold morning cut, eased or cautious because of HRV. When its
+tier is `ease`, name what made the HRV flag an eased day rather than a hold: the
+entries in corroboratingSignals, the ceiling named by heldBackBy, or Garmin's own
+status when it is Low or Poor rather than Unbalanced."""
 
 SYSTEM_PROMPT = f"""You are CheckMark, a private daily endurance and sleep coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
@@ -372,6 +392,7 @@ its denominator is the figure Mark cannot reconcile against his watch. {PACKET_F
 {REM_FRAMING_RULE}
 {METRIC_STATEMENT_RULE}
 {CHRONIC_DRIVER_RULE}
+{HRV_GRADED_RESPONSE_RULE}
 Read REM against metricsVsBaselines.rem_sleep_pct, whose own basis field says
 which total it is a percentage of, and whose ageFrame carries the band; the two
 frames describe one night, so never present them as two measurements of it.

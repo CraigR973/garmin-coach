@@ -1,6 +1,8 @@
 # Wording to sign off — Part 3: when a Red becomes an Amber
 
-Nothing here is live yet. "Fine as is", or say what you'd change.
+**Status: SUPERSEDED 27 Sep** by `2026-09-27-batch-269-wording.md`. Mark's G3 answers,
+made on his behalf, turned this Amber into a hold (full session, targets held, Green).
+Never sent.
 
 ---
 
