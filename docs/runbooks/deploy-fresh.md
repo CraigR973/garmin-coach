@@ -60,7 +60,10 @@ Required setup:
 
 1. Create a Railway project/service for the API.
 2. Set service Root Directory to the repo root.
-3. Use the repo-root `railway.toml`; it pins the Dockerfile builder.
+3. State the services' settings in `.railway/railway.ts` and apply them with
+   `railway config apply` (Node 22.6+ and `npm ci --prefix .railway` first; see
+   `.railway/README.md`). It pins the Dockerfile builder, the health check and the
+   restart policy. There is no `railway.toml`: Railway stops reading it on 1 Dec 2026.
 4. Set environment variables:
    - `DATABASE_URL`: Supabase session-mode pooler URL on port `5432`
    - `FRONTEND_ORIGIN`

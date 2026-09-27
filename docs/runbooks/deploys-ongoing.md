@@ -44,15 +44,15 @@ Notes:
 
 ### Railway configuration as code (Batch 287)
 
-Railway stops reading `railway.toml` on 1 Dec 2026. `.railway/railway.ts` states
-the same settings in each service's own configuration: the Dockerfile builder on
-`api`, `weekly-review` and `trend-narratives`, and on `api` the
-`/api/v1/health` check (300 s), `ON_FAILURE` × 3 and `sleepApplication: false`.
-Railway reads that file **only when `railway config apply` runs**, never during
-a deploy, so until the apply has run and been verified, `railway.toml` stays
-authoritative — do not delete it. The apply is Craig's.
+`.railway/railway.ts` holds Railway's settings in each service's own
+configuration: the Dockerfile builder on `api`, `weekly-review` and
+`trend-narratives`, and on `api` the `/api/v1/health` check (300 s),
+`ON_FAILURE` × 3 and `sleepApplication: false`. It was applied on 27 Sep 2026
+and `railway.toml` was removed the same day (Railway stops reading it on
+1 Dec 2026). Railway reads the file **only when `railway config apply` runs**,
+never during a deploy.
 
-Two rules once it is applied:
+Three rules:
 
 - Change a Railway setting in `.railway/railway.ts`, not in the console, then
   `railway config plan` and `railway config apply`. The file manages the whole
@@ -60,6 +60,9 @@ Two rules once it is applied:
   "to destroy" count must be 0.
 - Planning needs Node 22.6+ and the SDK pinned in `.railway/package.json`
   (`npm ci --prefix .railway`). See `.railway/README.md`.
+- Every plan shows one change on `api` (`restartPolicyType` and
+  `sleepApplication`) because Railway stores default values as unset. It is
+  expected; `.railway/README.md` has the evidence that both are in effect.
 
 ## Frontend Deploy
 
