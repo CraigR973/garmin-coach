@@ -49,6 +49,17 @@ from src.models.coaching import (
 from src.services.coach_policy import source_basis
 from src.services.learned_context import learned_context_packet
 from src.services.personal_baselines import serialize_training_schedule
+from src.services.provenance import (
+    FIGURE_BEDROOM_PEAK,
+    Provenance,
+    provenance_packet,
+)
+from src.services.provenance import (
+    threshold as provenance_threshold,
+)
+from src.services.provenance import (
+    window as provenance_window,
+)
 
 
 def _dt(value: datetime | None) -> str | None:
@@ -297,9 +308,59 @@ def thermal_review(
     if weather and weather.overnight_wind_gust_mph and weather.overnight_wind_gust_mph >= 30:
         flags.append("wind_disruption_watch")
 
+    window_source = "sleep" if has_sleep_window else "night_fallback"
     return {
         "sampleCount": len(values),
-        "windowSource": "sleep" if has_sleep_window else "night_fallback",
+        "windowSource": window_source,
+        # Batch 273: the working behind the peak, beside the peak. The 7-13 Sep
+        # argument was about a 21.4 C "overnight" reading that was an afternoon
+        # sample; a panel that names its window and its row count makes that
+        # visible without any prior knowledge of the bug.
+        "provenance": provenance_packet(
+            [
+                Provenance(
+                    figure=FIGURE_BEDROOM_PEAK,
+                    label="bedroom peak overnight",
+                    value=peak,
+                    units="°C",
+                    rule=(
+                        "the highest reading inside the window, from readings taken "
+                        "between sleep onset and wake"
+                        if has_sleep_window
+                        else "the highest reading inside the window — no sleep times "
+                        "were recorded, so the window is the clock fallback and may "
+                        "include hours he was awake"
+                    ),
+                    window=provenance_window(
+                        kind=window_source,
+                        start=sleep_start if has_sleep_window else None,
+                        end=sleep_end if has_sleep_window else None,
+                        label=(
+                            "the night he actually slept"
+                            if has_sleep_window
+                            else "a clock window, not his sleep"
+                        ),
+                    ),
+                    sources={
+                        "table": "temperature_readings",
+                        "rowsInWindow": len(values),
+                        "rowsAvailable": len(all_rows),
+                        "firstReadingUtc": (
+                            asleep_rows[0].captured_at_utc.isoformat() if asleep_rows else None
+                        ),
+                        "lastReadingUtc": (
+                            asleep_rows[-1].captured_at_utc.isoformat() if asleep_rows else None
+                        ),
+                    },
+                    threshold=provenance_threshold(
+                        name="thermal disruption",
+                        compared_against=threshold_high,
+                        units="°C",
+                        source="knowledge_base.sleep_protocol.thermalDisruptionThresholdC.high",
+                    ),
+                )
+            ]
+        ),
         "indoorPeakC": peak,
         "indoorLowC": low,
         "indoorLastC": last,

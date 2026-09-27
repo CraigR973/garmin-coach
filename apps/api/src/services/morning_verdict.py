@@ -23,6 +23,17 @@ from src.services.personal_baselines import (
     effective_readiness_floor,
     metric_within_baseline_band,
 )
+from src.services.provenance import (
+    FIGURE_HRV_ACUTE_FLOOR,
+    Provenance,
+    provenance_packet,
+)
+from src.services.provenance import (
+    threshold as provenance_threshold,
+)
+from src.services.provenance import (
+    window as provenance_window,
+)
 from src.services.sleep_history import SPO2_HRV_RELIABLE_FROM
 from src.services.verdict_scaling import (
     AMBER_POWER_CAP_PCT,
@@ -426,6 +437,50 @@ def _hrv_rail(
         },
         "reason": reason,
         "escalation": escalation,
+        # Batch 273: this rail has published its own working since Batch 122 -
+        # median, spread, sample count, window, and the thresholds block. It was
+        # provenance without a shape or a surface. Adapt it into the common one
+        # rather than recomputing it, so the panel and the rail cannot disagree.
+        "provenance": provenance_packet(
+            [
+                Provenance(
+                    figure=FIGURE_HRV_ACUTE_FLOOR,
+                    label="acute personal HRV floor",
+                    value=round(threshold, 2) if threshold is not None else None,
+                    units="ms",
+                    rule=(
+                        f"his own median over the window, minus "
+                        f"{HRV_ACUTE_DROP_STDDEVS} standard deviations of it — a personal "
+                        "floor, not a population band, and not Garmin's"
+                    ),
+                    window=provenance_window(
+                        kind="rolling_days",
+                        start=observations[0][0] if observations else None,
+                        end=observations[-1][0] if observations else None,
+                        label=(
+                            f"the {ACUTE_BASELINE_WINDOW_DAYS} days before this morning, "
+                            f"excluding it, and nothing before "
+                            f"{SPO2_HRV_RELIABLE_FROM.isoformat()} when the readings "
+                            "were not reliable"
+                        ),
+                    ),
+                    sources={
+                        "table": "daily_metrics.hrv_last_night_avg_ms",
+                        "nightsUsed": len(values),
+                        "minimumNightsRequired": ACUTE_BASELINE_MIN_SAMPLES,
+                        "medianMs": median_value,
+                        "stddevMs": round(stddev_value, 2) if stddev_value is not None else None,
+                        "enoughHistory": enough_history,
+                    },
+                    threshold=provenance_threshold(
+                        name="this morning's reading against the floor",
+                        compared_against=current,
+                        units="ms",
+                        source="daily_metrics.hrv_last_night_avg_ms for this morning",
+                    ),
+                )
+            ]
+        ),
     }
 
 
