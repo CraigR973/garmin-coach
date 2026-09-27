@@ -116,6 +116,7 @@ from src.services.insights import InsightsService
 from src.services.learned_context import (
     LEARNED_CONTEXT_PROMPT_GUARDRAIL,
 )
+from src.services.metric_statements import METRIC_STATEMENT_RULE, metric_statements_packet
 from src.services.morning_inputs import (
     morning_input_presence,
     morning_packet_input_presence,
@@ -258,7 +259,10 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # which is an instruction v44 never carried; and ageComparison gained
 # sleepBandBasis and remMeasurementBasis, so the packet changed underneath it too.
 # A v44 brief was written under neither.
-PROMPT_VERSION = "morning-analysis-v46-2026-09-04"
+# Batch 282: METRIC_STATEMENT_RULE (shared verbatim with Trends) now makes the brief
+# state metricStatements' one conclusion about REM, and the packet gained that list.
+# Self-healing, so a bump withdraws nothing; the next generation writes v47.
+PROMPT_VERSION = "morning-analysis-v47-2026-09-27"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -366,6 +370,7 @@ on **every** stage percentage you give, not once per read — a percentage witho
 its denominator is the figure Mark cannot reconcile against his watch. {PACKET_FIELD_NAMES_RULE}
 {SLEEP_STAGE_MINUTES_RULE}
 {REM_FRAMING_RULE}
+{METRIC_STATEMENT_RULE}
 {CHRONIC_DRIVER_RULE}
 Read REM against metricsVsBaselines.rem_sleep_pct, whose own basis field says
 which total it is a percentage of, and whose ageFrame carries the band; the two
@@ -942,6 +947,10 @@ class MorningAnalysisService:
             "yesterdayLoad": yesterday_load,
             "metricsVsBaselines": metrics_table,
             "ageComparison": age_comparison,
+            # Batch 282: the one statement of where each covered figure sits, built
+            # by the function Trends uses too, so the two reads cannot conclude
+            # differently about the same figure.
+            "metricStatements": _metric_statements(sleep, knowledge_base, baselines),
             "chronicSuggestions": chronic_result.to_dict(),
             "experimentLoop": experiment_loop_packet,
             "environment": environment_section(
@@ -1739,6 +1748,22 @@ def _baseline_comparison(baseline: MetricBaseline, current: float | int | None) 
         "upperQuartile": baseline.upper_quartile_value,
         "sampleCount": baseline.sample_count,
     }
+
+
+def _metric_statements(
+    sleep: Sleep | None,
+    knowledge_base: Mapping[str, Any],
+    baselines: Sequence[MetricBaseline],
+) -> list[dict[str, Any]]:
+    """Last night's covered figures, stated by ``metric_statements`` (Batch 282)."""
+    profile = knowledge_base.get("profile", {})
+    profile = profile if isinstance(profile, Mapping) else {}
+    return metric_statements_packet(
+        {"rem_sleep_pct": rem_sleep_pct_for_row(sleep) if sleep is not None else None},
+        age=profile.get("age"),
+        sex=profile.get("sex"),
+        baselines=baselines,
+    )
 
 
 def _rem_age_frame(age_comparison: Mapping[str, Any] | None) -> dict[str, Any] | None:

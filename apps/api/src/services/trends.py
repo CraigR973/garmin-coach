@@ -76,6 +76,7 @@ from src.services.daily_metric_phase import (
     index_morning_by_date,
     index_post_activity_by_date,
 )
+from src.services.metric_statements import METRIC_STATEMENT_RULE, metric_statements_packet
 from src.services.night_thermal import NightIndoorPeak, night_indoor_peaks
 from src.services.personal_baselines import baseline_band_packet
 from src.services.reviews import (
@@ -117,9 +118,13 @@ ANALYSIS_TYPE_SEASONAL = "seasonal_trend"
 # constant nine hours after Batch 225.5 had regenerated the narrative to correct a
 # false VO2 max story, and left Mark's Trends page empty on the surface his
 # complaint came from. Closeout drives the real lookup, not a version comparison.
+# Batch 282: METRIC_STATEMENT_RULE (shared verbatim with the morning brief) now makes
+# the read state metricStatements' one conclusion about REM, and the packet gained
+# that list. The read filters on these versions, so the close-out regenerates the
+# current month and season narratives rather than leaving the page blank.
 PROMPT_VERSION_BY_BUCKET = {
-    BUCKET_MONTH: "trends-month-v10-2026-09-04",
-    BUCKET_SEASON: "trends-season-v10-2026-09-04",
+    BUCKET_MONTH: "trends-month-v11-2026-09-27",
+    BUCKET_SEASON: "trends-season-v11-2026-09-27",
 }
 
 # Indoor reading at/after this local hour belongs to the *next* morning's night.
@@ -136,7 +141,7 @@ Never mention left/right power balance. Treat SpO2 and HRV before the reliabilit
 cutoff as excluded. When sample counts are low or a prior-year window is missing, \
 say "insufficient history" plainly rather than inventing a trend. Interpret \
 readiness, HRV, resting HR, and REM against personalBaselines before using \
-alarming language. {REM_FRAMING_RULE} \
+alarming language. {REM_FRAMING_RULE} {METRIC_STATEMENT_RULE} \
 REM's band numbers are in remAgeBand; remAgeBand.basis says which total \
 every REM percentage in this packet is a share of — state that total in your own \
 plain words whenever you give a percentage — and remAgeBand.bandBasis and \
@@ -502,6 +507,25 @@ def compute_year_on_year(
 # ---------------------------------------------------------------------------
 
 
+def _window_metric_statements(
+    windows: Sequence[TrendWindow],
+    target_key: str,
+    *,
+    age: int | None,
+    sex: str | None,
+    baselines: Sequence[MetricBaseline],
+) -> list[dict[str, Any]]:
+    """The narrated period's covered figures, stated by ``metric_statements`` (282)."""
+    window = next((candidate for candidate in windows if candidate.key == target_key), None)
+    summary = window.metrics.get("rem_sleep_pct") if window is not None else None
+    return metric_statements_packet(
+        {"rem_sleep_pct": summary.mean if summary is not None else None},
+        age=age,
+        sex=sex,
+        baselines=baselines,
+    )
+
+
 def _metric_summary_json(summary: MetricSummary) -> dict[str, Any]:
     return {
         "metricKey": summary.metric_key,
@@ -644,6 +668,7 @@ class TrendsService:
         subject_date = window_start_date(bucket, target_key)
         guardrails = await self._data_quality_guardrails(player.id)
         baselines = await self._metric_baselines(player.id)
+        age, sex = await self._profile_age_sex(player.id)
         packet = _build_packet(
             player=player,
             bucket=bucket,
@@ -652,6 +677,9 @@ class TrendsService:
             guardrails=guardrails,
             baselines=baselines,
             rem_age_band=await self._rem_age_band(player.id),
+            metric_statements=_window_metric_statements(
+                windows, target_key, age=age, sex=sex, baselines=baselines
+            ),
         )
         latest = await self.latest_narrative(player.id, bucket, subject_date)
         return NarrativePreview(
@@ -943,6 +971,23 @@ class TrendsService:
                 return [rule for rule in rules if isinstance(rule, dict)]
         return []
 
+    async def _profile_age_sex(self, user_id: uuid.UUID) -> tuple[int | None, str | None]:
+        """The stored profile's age and sex, as the morning read resolves them."""
+        section = await self.session.scalar(
+            select(KnowledgeBase).where(
+                KnowledgeBase.user_id == user_id,
+                KnowledgeBase.section == "profile",
+                KnowledgeBase.is_active.is_(True),
+            )
+        )
+        content = section.content if section and isinstance(section.content, dict) else {}
+        age = content.get("age")
+        sex = content.get("sex")
+        return (
+            int(age) if isinstance(age, int | float) else None,
+            sex if isinstance(sex, str) else None,
+        )
+
     async def _rem_age_band(self, user_id: uuid.UUID) -> dict[str, Any] | None:
         """The healthy REM range for this user's age band, or ``None`` if unknown.
 
@@ -1010,6 +1055,7 @@ def _build_packet(
     baselines: Sequence[MetricBaseline] = (),
     rem_age_band: dict[str, Any] | None = None,
     recent_window_count: int = 6,
+    metric_statements: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return {
         "packetType": "seasonal_trend",
@@ -1044,6 +1090,9 @@ def _build_packet(
         # at a number the packet does not contain, which is how "median 12.55% in
         # March" got invented in the first place.
         "remAgeBand": rem_age_band,
+        # Batch 282: the one statement of where the period's covered figures sit,
+        # built by the function the morning brief uses too.
+        "metricStatements": metric_statements or [],
         "dataQualityGuardrails": guardrails,
         "prompt": {
             "version": PROMPT_VERSION_BY_BUCKET[bucket],
