@@ -466,6 +466,10 @@ def _hrv_rail(
                     ),
                     sources={
                         "table": "daily_metrics.hrv_last_night_avg_ms",
+                        # Batch 273.2: the panel states the window and the multiplier
+                        # from the packet rather than hardcoding the rail's constants.
+                        "windowDays": ACUTE_BASELINE_WINDOW_DAYS,
+                        "stddevsBelowMedian": HRV_ACUTE_DROP_STDDEVS,
                         "nightsUsed": len(values),
                         "minimumNightsRequired": ACUTE_BASELINE_MIN_SAMPLES,
                         "medianMs": median_value,

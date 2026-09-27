@@ -1410,6 +1410,11 @@ def rollup_packet(rollup: ReviewRollup) -> dict[str, Any]:
             # Mark (Batch 230's follow-up is the precedent).
             "avgOutdoorOvernightLowC": rollup.thermal.avg_outdoor_overnight_low_c,
             "disruptionNights": rollup.thermal.disruption_nights,
+            # Batch 273.2: the working behind the two thermal figures, so the review
+            # screen's "How these numbers were worked out" panel can show it. Built
+            # by Batch 273 and never serialised, so neither the panel nor the model
+            # could see it.
+            "provenance": rollup.thermal.provenance,
             "indoorPeakSource": {
                 "sleepWindowNights": rollup.thermal.nights_from_sleep_window,
                 "clockFallbackNights": rollup.thermal.nights_from_clock_fallback,

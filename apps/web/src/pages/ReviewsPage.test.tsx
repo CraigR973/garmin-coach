@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
@@ -168,6 +168,42 @@ describe('ReviewsPage', () => {
     });
 
     expect(await screen.findByText(/Sleep improving across the week/)).toBeTruthy();
+  });
+
+  it('explains the bedroom figures under the written review (Batch 273.2)', async () => {
+    const withWorking = envelope('weekly', true);
+    (withWorking.data.rollup.thermal as Record<string, unknown>).provenance = [
+      {
+        figure: 'review.thermal.disruptionNights',
+        label: 'nights the bedroom was warm enough to disrupt sleep',
+        value: 1,
+        units: 'nights',
+        rule: 'a night counts when its peak reaches the threshold',
+        window: { kind: 'sleep', startUtc: '2026-06-22', endUtc: '2026-06-28', label: null },
+        sources: { nightsInPeriod: 7, nightsWithAPeak: 7, nightsFromSleepWindow: 7, nightsFromClockFallback: 0 },
+        threshold: { name: 'thermal disruption', comparedAgainst: 20, units: '°C', source: null },
+      },
+    ];
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/api/v1/reviews/weekly'
+        ? Promise.resolve(withWorking)
+        : Promise.reject(new Error(`Unexpected request: ${path}`)),
+    );
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ReviewsPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const panel = await screen.findByTestId('provenance-panel');
+    expect(within(panel).getByText('Nights warm enough to disrupt sleep — 1')).toBeTruthy();
+    expect(within(panel).getByText(/7 of the 7 in this period/)).toBeTruthy();
+    expect(screen.getByText(/Sleep improving across the week/).compareDocumentPosition(panel)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
 
   it('switches to the monthly period', async () => {
