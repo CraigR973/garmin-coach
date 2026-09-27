@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date, timedelta
 
@@ -217,16 +218,20 @@ def test_rhr_absolute_delta_boundary_is_inclusive_and_copy_is_pinned() -> None:
     below_boundary = _complete_verdict(daily_metric=_metric(resting_hr=50))
 
     escalation = at_boundary["acutePhysiology"]["escalations"][0]
+    # Batch 293: the GP line is conditional on feeling unwell, and only a jump
+    # this size carries it. Wording pending Mark's OK (2026-09-27 reply draft).
     assert escalation == {
         "kind": "resting_heart_rate",
+        "level": "rest",
         "message": (
-            "Your resting heart rate is 51 this morning against a usual 44 across "
-            "2026-06-10 to 2026-09-01 — a rise of 7 bpm. In practice that usually means "
-            "one of: an infection starting, dehydration, alcohol, or simply being run "
-            "down. Training hard through it tends to make it worse. Take today off the "
-            "bike, and if you feel unwell alongside it, see your GP rather than just resting."
+            "Your resting heart rate is 51 this morning against a usual 44 — a rise of "
+            "7 bpm. A jump that size can come from a short night, alcohol, dehydration or "
+            "a hard day, and sometimes from your body fighting something off. Take today "
+            "off the bike. If you also feel unwell, rest until it settles, and see your GP "
+            "if it doesn't."
         ),
     }
+    assert at_boundary["acutePhysiology"]["restingHeartRate"]["requiresBikeRest"] is True
     assert below_boundary["status"] == "Green"
     assert below_boundary["acutePhysiology"]["restingHeartRate"]["triggered"] is False
 
@@ -240,7 +245,8 @@ def test_rhr_two_consecutive_mornings_above_q3_uses_proportionate_path() -> None
     rhr = verdict["acutePhysiology"]["restingHeartRate"]
     assert rhr["trigger"] == "consecutive_q3"
     assert rhr["priorBpm"] == 46
-    assert "above your usual upper quartile of 45 for two mornings" in rhr["escalation"]
+    assert rhr["requiresBikeRest"] is False
+    assert "a little above your usual range, as it was yesterday" in rhr["escalation"]
 
     one_high_morning = _complete_verdict(
         daily_metric=current,
@@ -248,6 +254,44 @@ def test_rhr_two_consecutive_mornings_above_q3_uses_proportionate_path() -> None
     )
     assert one_high_morning["status"] == "Green"
     assert one_high_morning["acutePhysiology"]["restingHeartRate"]["triggered"] is False
+
+
+def test_a_small_rise_caps_at_amber_without_rest_or_illness_talk() -> None:
+    """Batch 293 — 27 Sep 2026: 47 bpm after 46, against a median of 44 and a quartile of 45.
+
+    Mark accepted the cap and called the illness and GP talk "totally over the top
+    when there are clear and obvious explanations". Decision #318 had asked for
+    proportionate copy on this path; only the opening sentence got it, and the path
+    also set the off-the-bike flag that put "take today off the bike" beside an eased
+    ride on 26 Sep.
+    """
+    verdict = _complete_verdict(
+        daily_metric=_metric(resting_hr=47),
+        recent_daily_metrics=[_metric(resting_hr=46, day=TODAY - timedelta(days=1))],
+        planned_workouts=[_bike_workout()],
+    )
+
+    acute = verdict["acutePhysiology"]
+    assert verdict["status"] == "Amber"
+    assert "acute_resting_heart_rate_amber_cap" in verdict["safetyRulesApplied"]
+    assert acute["triggeredSignals"] == ["resting_heart_rate"]
+    assert acute["requiresBikeRest"] is False
+    assert acute["escalations"] == [
+        {
+            "kind": "resting_heart_rate",
+            "level": "ease",
+            "message": (
+                "Your resting heart rate is 47 this morning against a usual 44 — a little "
+                "above your usual range, as it was yesterday. Small rises like this usually "
+                "come from travel, a short night, a busy week or a hard day before. On its "
+                "own it caps today at Amber: an eased session, not a day off the bike."
+            ),
+        }
+    ]
+    assert not re.search(
+        r"\b(infection|illness|ill|unwell|gp|doctor)\b", acute["escalations"][0]["message"], re.I
+    )
+    assert not any("off the bike" in adjustment for adjustment in verdict["planAdjustments"])
 
 
 def test_last_night_hrv_collapse_is_an_independent_amber_cap() -> None:
@@ -271,6 +315,8 @@ def test_last_night_hrv_collapse_is_an_independent_amber_cap() -> None:
     assert hrv["baselineSampleCount"] == 21
     assert "2026-08-12 to 2026-09-01" in hrv["escalation"]
     assert verdict["acutePhysiology"]["requiresBikeRest"] is True
+    assert hrv["requiresBikeRest"] is True
+    assert verdict["acutePhysiology"]["escalations"][0]["level"] == "rest"
     assert "acute_overnight_hrv_amber_cap" in verdict["safetyRulesApplied"]
 
 
@@ -285,6 +331,7 @@ def test_average_spo2_surveillance_has_gp_route_without_rest_or_diagnosis() -> N
     assert verdict["acutePhysiology"]["escalations"] == [
         {
             "kind": "oxygen_respiration",
+            "level": "watch",
             "message": (
                 "Your watch estimated overnight oxygen saturation at an average of 89% "
                 "last night against a usual 96% from 2026-06-10 to 2026-09-01, and your "

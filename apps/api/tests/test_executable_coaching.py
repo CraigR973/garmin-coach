@@ -941,6 +941,73 @@ async def test_regenerate_for_verdict_skips_non_amber(db_conn: AsyncConnection) 
 
 
 @pytest.mark.asyncio
+async def test_regenerate_for_verdict_offers_no_ride_when_the_morning_says_rest(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 293 — 26 Sep 2026: the morning said "take today off the bike", and this
+    path still proposed a red_substitution for the Long Z2, so Home could offer
+    Approve & upload beside that headline. The swap suggestion already deferred to the
+    flag (Batch 277.3); this is the last place that did not."""
+    user_id = uuid.uuid4()
+    subject = date(2026, 9, 26)
+    await _seed_profile(db_conn, user_id)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            PlannedWorkout(
+                id=uuid.uuid4(),
+                user_id=user_id,
+                workout_date=subject,
+                version=1,
+                title="VO2 Max 30/30",
+                workout_type="bike_vo2",
+                status="planned",
+                is_active=True,
+                planned_duration_min=60,
+                intensity_target="105-110% FTP",
+                structured_workout=VO2_STRUCTURED,
+                source="test",
+            )
+        )
+        await session.commit()
+
+    def red_morning(*, requires_bike_rest: bool) -> Analysis:
+        return Analysis(
+            user_id=user_id,
+            analysis_type="morning",
+            subject_date=subject,
+            generated_at_utc=datetime(2026, 9, 26, 7, 41),
+            prompt_version="morning-analysis-test",
+            verdict="Red",
+            context_packet={
+                "verdict": {
+                    "status": "Red",
+                    "acutePhysiology": {"requiresBikeRest": requires_bike_rest},
+                }
+            },
+            output_markdown="Red verdict",
+            raw_response={},
+        )
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session)
+
+        withheld = await service.regenerate_for_verdict(
+            user, subject, analysis=red_morning(requires_bike_rest=True)
+        )
+        assert withheld == []
+        assert (await session.execute(select(WorkoutDeliveryProposal))).scalars().all() == []
+
+        # The same Red morning without the flag still offers the easy substitute.
+        offered = await service.regenerate_for_verdict(
+            user, subject, analysis=red_morning(requires_bike_rest=False)
+        )
+        assert len(offered) == 1
+        assert offered[0].structured_workout_ir["origin"] == "red_substitution"
+
+
+@pytest.mark.asyncio
 async def test_chronic_deload_proposes_seven_day_window_and_preserves_acute_precedence(
     db_conn: AsyncConnection,
 ) -> None:
