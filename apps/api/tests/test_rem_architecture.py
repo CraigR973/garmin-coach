@@ -291,9 +291,9 @@ def test_both_prompts_that_embed_the_rule_moved_their_version() -> None:
     from src.services.morning_analysis import PROMPT_VERSION
     from src.services.trends import PROMPT_VERSION_BY_BUCKET
 
-    assert PROMPT_VERSION.startswith("morning-analysis-v48")
-    assert PROMPT_VERSION_BY_BUCKET["month"].startswith("trends-month-v11")
-    assert PROMPT_VERSION_BY_BUCKET["season"].startswith("trends-season-v11")
+    assert PROMPT_VERSION.startswith("morning-analysis-v49")
+    assert PROMPT_VERSION_BY_BUCKET["month"].startswith("trends-month-v12")
+    assert PROMPT_VERSION_BY_BUCKET["season"].startswith("trends-season-v12")
 
 
 def test_the_trends_packet_can_back_every_sentence_its_prompt_demands() -> None:

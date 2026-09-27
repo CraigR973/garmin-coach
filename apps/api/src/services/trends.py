@@ -72,6 +72,14 @@ from src.services.coach_policy import (
     PACKET_FIELD_NAMES_RULE,
     RECORDED_DATA_HONESTY_RULE,
 )
+from src.services.cross_surface_agreement import (
+    CROSS_SURFACE_AGREEMENT_RULE,
+    AgreementCheck,
+    alert_disagreements,
+    brief_night_peaks,
+    evaluate_agreement,
+    period_bedroom_check,
+)
 from src.services.daily_metric_phase import (
     index_morning_by_date,
     index_post_activity_by_date,
@@ -122,9 +130,12 @@ ANALYSIS_TYPE_SEASONAL = "seasonal_trend"
 # the read state metricStatements' one conclusion about REM, and the packet gained
 # that list. The read filters on these versions, so the close-out regenerates the
 # current month and season narratives rather than leaving the page blank.
+# Batch 272: the packet gained crossSurfaceAgreement and the prompt embeds
+# CROSS_SURFACE_AGREEMENT_RULE; the read filters on these versions, so the close-out
+# regenerates the current month and season narratives again.
 PROMPT_VERSION_BY_BUCKET = {
-    BUCKET_MONTH: "trends-month-v11-2026-09-27",
-    BUCKET_SEASON: "trends-season-v11-2026-09-27",
+    BUCKET_MONTH: "trends-month-v12-2026-09-27",
+    BUCKET_SEASON: "trends-season-v12-2026-09-27",
 }
 
 # Indoor reading at/after this local hour belongs to the *next* morning's night.
@@ -152,7 +163,8 @@ is unavailable rather than recalling one. \
 Every year-on-year claim must cite the currentMean -> priorMean or \
 priorMean -> currentMean numbers plus both sample counts; every seasonal claim \
 must cite the window labels and sampleDays or metric sampleCount. If a metric \
-has status insufficient_history, describe the data gap instead of a change."""
+has status insufficient_history, describe the data gap instead of a change.
+{CROSS_SURFACE_AGREEMENT_RULE}"""
 
 # Metric registry: stable order + display labels for every tracked metric.
 METRICS: tuple[tuple[str, str], ...] = (
@@ -263,6 +275,9 @@ class TrendSample:
     avg_spo2_pct: float | None = None
     indoor_peak_c: float | None = None
     overnight_low_c: float | None = None
+    # Batch 272: the brief's own peak for the same night, for the cross-surface check
+    # only. Not in METRICS, so no summary or packet figure is built from it.
+    indoor_peak_brief_c: float | None = None
 
 
 @dataclass(frozen=True)
@@ -526,6 +541,51 @@ def _window_metric_statements(
     )
 
 
+#: How many windows the packet shows in ``recentWindows``.
+RECENT_WINDOW_COUNT = 6
+
+
+def bedroom_window_checks(
+    samples: Sequence[TrendSample],
+    windows: Sequence[TrendWindow],
+    comparison: YearOnYearComparison,
+    *,
+    recent_window_count: int = RECENT_WINDOW_COUNT,
+) -> list[AgreementCheck]:
+    """Each shown window's bedroom peak against the brief's own peaks (Batch 272).
+
+    Only the windows the packet shows are checked, and each check names every field
+    that rests on that window's figure, the year-on-year means included.
+    """
+    checks: list[AgreementCheck] = []
+    for window in list(windows)[-recent_window_count:]:
+        summary = window.metrics.get("indoor_peak_c")
+        in_window = [sample for sample in samples if window.start <= sample.day <= window.end]
+        figures = [f"recentWindows[{window.key}].indoor_peak_c.mean"]
+        if window.key == comparison.current_key:
+            figures.append("yearOnYear.indoor_peak_c.currentMean")
+        if window.key == comparison.prior_key:
+            figures.append("yearOnYear.indoor_peak_c.priorMean")
+        check = period_bedroom_check(
+            figures=figures,
+            scope=window.label,
+            stated=summary.mean if summary is not None else None,
+            shared_nights={
+                sample.day: sample.indoor_peak_c
+                for sample in in_window
+                if sample.indoor_peak_c is not None
+            },
+            brief_nights={
+                sample.day: sample.indoor_peak_brief_c
+                for sample in in_window
+                if sample.indoor_peak_brief_c is not None
+            },
+        )
+        if check is not None:
+            checks.append(check)
+    return checks
+
+
 def _metric_summary_json(summary: MetricSummary) -> dict[str, Any]:
     return {
         "metricKey": summary.metric_key,
@@ -662,7 +722,9 @@ class TrendsService:
         if bucket not in VALID_BUCKETS:
             raise ValueError(f"Unknown trend bucket: {bucket!r}")
         end = as_of or date.today()
-        windows = await self._windows(player, bucket=bucket, as_of=end, lookback_days=lookback_days)
+        samples, windows = await self._samples_and_windows(
+            player, bucket=bucket, as_of=end, lookback_days=lookback_days
+        )
         target_key = window_key(bucket, end)
         comparison = compute_year_on_year(windows, bucket=bucket, target_key=target_key)
         subject_date = window_start_date(bucket, target_key)
@@ -679,6 +741,9 @@ class TrendsService:
             rem_age_band=await self._rem_age_band(player.id),
             metric_statements=_window_metric_statements(
                 windows, target_key, age=age, sex=sex, baselines=baselines
+            ),
+            cross_surface_agreement=evaluate_agreement(
+                bedroom_window_checks(samples, windows, comparison)
             ),
         )
         latest = await self.latest_narrative(player.id, bucket, subject_date)
@@ -755,6 +820,12 @@ class TrendsService:
                     status="existing",
                 )
 
+        alert_disagreements(
+            preview.packet.get("crossSurfaceAgreement"),
+            surface=f"trends_{bucket}",
+            user_id=player.id,
+            subject=preview.subject_date.isoformat(),
+        )
         user_prompt = build_trend_user_prompt(preview.packet)
         review_client = client or AnthropicReviewClient(system_prompt=TREND_SYSTEM_PROMPT)
         async with workload_slot(workload="anthropic", user_id=player.id):
@@ -840,15 +911,30 @@ class TrendsService:
         as_of: date,
         lookback_days: int,
     ) -> list[TrendWindow]:
+        _, windows = await self._samples_and_windows(
+            player, bucket=bucket, as_of=as_of, lookback_days=lookback_days
+        )
+        return windows
+
+    async def _samples_and_windows(
+        self,
+        player: Profile,
+        *,
+        bucket: str,
+        as_of: date,
+        lookback_days: int,
+    ) -> tuple[list[TrendSample], list[TrendWindow]]:
         start = as_of - timedelta(days=lookback_days)
         samples = await self._load_samples(player, start=start, end=as_of)
-        return compute_trend_windows(samples, bucket=bucket)
+        return samples, compute_trend_windows(samples, bucket=bucket)
 
     async def _load_samples(self, player: Profile, *, start: date, end: date) -> list[TrendSample]:
         metrics = await self._rows(DailyMetric, player.id, start, end)
         sleeps = await self._rows(Sleep, player.id, start, end)
         weather = await self._rows(WeatherDaily, player.id, start, end)
-        indoor = await self._indoor_peaks(player.id, start, end, player.timezone, sleeps)
+        indoor, indoor_brief = await self._indoor_peaks(
+            player.id, start, end, player.timezone, sleeps
+        )
 
         # Morning rows (Batch 205): a trend line Mark reads back must be the
         # series his briefs were built from, not the end-of-day one.
@@ -883,6 +969,7 @@ class TrendsService:
                     avg_spo2_pct=_as_float(sleep.average_spo2_pct) if sleep else None,
                     indoor_peak_c=indoor[day].peak_c if day in indoor else None,
                     overnight_low_c=_as_float(weather_row.overnight_low_c) if weather_row else None,
+                    indoor_peak_brief_c=indoor_brief.get(day),
                 )
             )
         return samples
@@ -925,13 +1012,16 @@ class TrendsService:
         end: date,
         timezone_name: str,
         sleeps: Sequence[Sleep],
-    ) -> dict[date, NightIndoorPeak]:
+    ) -> tuple[dict[date, NightIndoorPeak], dict[date, float]]:
         """Peak indoor temperature per local night, keyed by the wake date.
 
         Batch 268: this and ``ReviewService._temperature_peaks`` were the same
         function twice, and both attributed any reading after 18:00 local to the
         next night with no sleep-window filter at all. The windowing now lives in
         ``night_thermal`` so the two cannot drift apart again.
+
+        Batch 272: the second map is the brief's own peak for each night, from the
+        same rows, so the cross-surface check needs no query of its own.
         """
         # The earliest a night can start is 21:30 local on ``start - 1`` and the
         # latest it can end is 09:00 local on ``end``, so these bounds already
@@ -953,8 +1043,13 @@ class TrendsService:
             .scalars()
             .all()
         )
-        return night_indoor_peaks(
-            list(rows), sleeps, start=start, end=end, timezone_name=timezone_name
+        return (
+            night_indoor_peaks(
+                list(rows), sleeps, start=start, end=end, timezone_name=timezone_name
+            ),
+            brief_night_peaks(
+                list(rows), sleeps, start=start, end=end, timezone_name=timezone_name
+            ),
         )
 
     async def _data_quality_guardrails(self, user_id: uuid.UUID) -> list[dict[str, Any]]:
@@ -1054,8 +1149,9 @@ def _build_packet(
     guardrails: list[dict[str, Any]],
     baselines: Sequence[MetricBaseline] = (),
     rem_age_band: dict[str, Any] | None = None,
-    recent_window_count: int = 6,
+    recent_window_count: int = RECENT_WINDOW_COUNT,
     metric_statements: list[dict[str, Any]] | None = None,
+    cross_surface_agreement: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "packetType": "seasonal_trend",
@@ -1069,6 +1165,13 @@ def _build_packet(
         },
         "yearOnYear": year_on_year_json(comparison),
         "recentWindows": [window_json(w) for w in list(windows)[-recent_window_count:]],
+        # Batch 272: the windows' bedroom peaks checked against the brief's own peaks
+        # for the same nights. The prompt treats a failed figure as unreliable.
+        "crossSurfaceAgreement": (
+            cross_surface_agreement
+            if cross_surface_agreement is not None
+            else evaluate_agreement([])
+        ),
         # Batch 230: `rem_sleep_pct` was missing from this set while the prompt
         # told the model to interpret REM against personalBaselines, so the v6
         # August narrative cited "median 12.55% in March" — simply the highest

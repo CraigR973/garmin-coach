@@ -320,7 +320,7 @@ async def test_weekly_review_temperature_peaks_stay_correct_without_the_payload(
         ),
     ]
     session = RecordingSession({TemperatureReading: rows})
-    peaks = await ReviewService(session)._temperature_peaks(  # type: ignore[arg-type]
+    peaks, brief_peaks = await ReviewService(session)._temperature_peaks(  # type: ignore[arg-type]
         user_id, date(2026, 8, 20), date(2026, 8, 20), "Europe/London", []
     )
     # Batch 268: the 23:00 UTC reading is 00:00 local and inside the night; the
@@ -328,6 +328,9 @@ async def test_weekly_review_temperature_peaks_stay_correct_without_the_payload(
     assert peaks[date(2026, 8, 20)].peak_c == 21.5
     assert peaks[date(2026, 8, 20)].sample_count == 1
     assert peaks[date(2026, 8, 20)].window_source == "night_fallback"
+    # Batch 272: the brief's own peak for the night comes from the same rows, with
+    # no read of its own, and agrees.
+    assert brief_peaks == {date(2026, 8, 20): 21.5}
     for sql in sql_for(session, TemperatureReading):
         assert "raw_payload" not in sql
     # The shared night-window leaf is pure and must not have issued a lookup of

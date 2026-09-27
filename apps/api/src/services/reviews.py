@@ -34,7 +34,7 @@ import hashlib
 import json
 import uuid
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Protocol, cast
 
@@ -68,6 +68,13 @@ from src.services.bulk_history_reads import (
     without_sleep_raw_payload,
 )
 from src.services.coach_policy import RECORDED_DATA_HONESTY_RULE
+from src.services.cross_surface_agreement import (
+    CROSS_SURFACE_AGREEMENT_RULE,
+    alert_disagreements,
+    brief_night_peaks,
+    evaluate_agreement,
+    period_bedroom_check,
+)
 from src.services.daily_loop import ANALYSIS_TYPE_MORNING
 from src.services.daily_metric_coverage import DayAggregates, complete_body_battery_charged
 from src.services.daily_metric_phase import (
@@ -98,7 +105,9 @@ from src.services.training_week import TrainingWeekService
 from src.services.week_ahead import WeekAheadService
 from src.services.workload_budget import workload_slot
 
-PROMPT_VERSION = "reviews-v8-2026-09-18"
+# Batch 272: the packet gained crossSurfaceAgreement and the prompt embeds
+# CROSS_SURFACE_AGREEMENT_RULE. Reviews are read unfiltered, so nothing is withdrawn.
+PROMPT_VERSION = "reviews-v9-2026-09-27"
 PACKET_VERSION = 3
 
 PERIOD_WEEKLY = "weekly"
@@ -158,7 +167,9 @@ explanatory only: never \
 directly propose, approve, move, skip, or change a workout, and never alter the \
 deterministic Green/Amber/Red verdict or safety floors. When trainingWeekSoFar \
 is absent, use the deterministic rollup for history and still never reconstruct \
-it from trainingSchedule."""
+it from trainingSchedule.
+
+{CROSS_SURFACE_AGREEMENT_RULE}"""
 
 
 class ReviewError(RuntimeError):
@@ -343,6 +354,10 @@ class ReviewRollup:
     adherence: AdherenceRollup
     verdicts: VerdictRollup
     thermal: ThermalRollup
+    # Batch 272: the pre-publication check of the rollup's figures against the same
+    # quantities derived the brief's way. Filled by ``ReviewService``, which holds the
+    # rows; the pure rollup has nothing to compare against.
+    cross_surface_agreement: dict[str, Any] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -839,6 +854,12 @@ class ReviewService:
         ):
             return ReviewRunResult(preview=preview, review=preview.latest_review, generated=False)
 
+        alert_disagreements(
+            preview.packet.get("crossSurfaceAgreement"),
+            surface=f"{period}_review",
+            user_id=player.id,
+            subject=preview.period_start.isoformat(),
+        )
         user_prompt = build_review_user_prompt(preview.packet)
         review_client = client or AnthropicReviewClient()
         async with workload_slot(workload="anthropic", user_id=player.id):
@@ -903,7 +924,7 @@ class ReviewService:
         adherence_rows = await self._adherence(player.id, period_start, period_end)
         planned_count = await self._planned_count(player.id, period_start, period_end)
         weather = await self._weather(player.id, period_start, period_end)
-        temps = await self._temperature_peaks(
+        temps, brief_temps = await self._temperature_peaks(
             player.id, period_start, period_end, player.timezone, sleeps
         )
 
@@ -983,7 +1004,7 @@ class ReviewService:
             for day in sorted(set(temps) | set(weather_low_by_date))
         ]
 
-        return compute_review_rollup(
+        rollup = compute_review_rollup(
             days,
             review_activities,
             review_adherence,
@@ -992,6 +1013,19 @@ class ReviewService:
             period_start=period_start,
             period_end=period_end,
             planned_count=planned_count,
+        )
+        # Batch 272: the stated average bedroom peak against the brief's own peaks for
+        # the same nights, derived from the readings already loaded above.
+        bedroom = period_bedroom_check(
+            figures=("rollup.thermal.avgIndoorPeakC", "rollup.thermal.disruptionNights"),
+            scope=f"{period_start.isoformat()} to {period_end.isoformat()}",
+            stated=rollup.thermal.avg_indoor_peak_c,
+            shared_nights={day: peak.peak_c for day, peak in temps.items()},
+            brief_nights=brief_temps,
+        )
+        return replace(
+            rollup,
+            cross_surface_agreement=evaluate_agreement([bedroom] if bedroom else []),
         )
 
     async def _daily_metrics(self, user_id: uuid.UUID, start: date, end: date) -> list[DailyMetric]:
@@ -1152,7 +1186,7 @@ class ReviewService:
         end: date,
         timezone_name: str,
         sleeps: Sequence[Sleep],
-    ) -> dict[date, NightIndoorPeak]:
+    ) -> tuple[dict[date, NightIndoorPeak], dict[date, float]]:
         """Peak indoor temperature per local night, keyed by the wake date.
 
         Batch 268: this used to attribute every reading before 18:00 local to
@@ -1161,6 +1195,9 @@ class ReviewService:
         bedroom. The windowing now lives in ``night_thermal`` and is shared with
         ``TrendService._indoor_peaks``, which carried a byte-for-byte copy of the
         same defect.
+
+        Batch 272: the second map is the brief's own peak for each night, from the
+        same rows, so the cross-surface check needs no query of its own.
         """
         # Cover the overnight windows feeding each in-range wake date. The
         # earliest a night can start is 21:30 local on ``start - 1``, and the
@@ -1183,8 +1220,13 @@ class ReviewService:
             .scalars()
             .all()
         )
-        return night_indoor_peaks(
-            list(rows), sleeps, start=start, end=end, timezone_name=timezone_name
+        return (
+            night_indoor_peaks(
+                list(rows), sleeps, start=start, end=end, timezone_name=timezone_name
+            ),
+            brief_night_peaks(
+                list(rows), sleeps, start=start, end=end, timezone_name=timezone_name
+            ),
         )
 
     async def _metric_baselines(self, user_id: uuid.UUID) -> list[MetricBaseline]:
@@ -1281,6 +1323,9 @@ def _build_packet(
             "timezone": player.timezone,
         },
         "rollup": rollup_packet(rollup),
+        # Batch 272: every figure checked against its other derivation, and which
+        # ones failed. The prompt treats a failed figure as unreliable.
+        "crossSurfaceAgreement": rollup.cross_surface_agreement,
         "personalBaselines": baseline_band_packet(
             baselines,
             keys={
