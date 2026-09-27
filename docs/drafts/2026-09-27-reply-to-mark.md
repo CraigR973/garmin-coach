@@ -21,7 +21,7 @@ Mark — sorry it's been quiet from me. Here's where things are, starting with y
 
 **This morning's wording: you're right.** That "infection… see your GP" note isn't the coach. It's a fixed line in the app, and it said exactly the same thing for a 2–3 bpm rise as for a big jump. I'm changing it so that:
 
-- A small rise (two mornings just above your usual) keeps the Amber cap, under the heading "Why today is capped", and says: "Your resting heart rate is 47 this morning against a usual 44 — a little above your usual range for a second morning running. Small rises like this usually come from travel, a short night, a busy week or a hard day before. On its own it caps today at Amber: an eased session, not a day off the bike."
+- A small rise (two mornings just above your usual) keeps the Amber cap, under the heading "Why today is capped", and says: "Your resting heart rate is 47 this morning against a usual 44 — a little above your usual range, as it was yesterday. Small rises like this usually come from travel, a short night, a busy week or a hard day before. On its own it caps today at Amber: an eased session, not a day off the bike."
 - Only a big jump (7 bpm or more) says rest: "Your resting heart rate is 52 this morning against a usual 44 — a rise of 8 bpm. A jump that size can come from a short night, alcohol, dehydration or a hard day, and sometimes from your body fighting something off. Take today off the bike. If you also feel unwell, rest until it settles, and see your GP if it doesn't."
 
 Are you happy with those, or would you rather a small rise showed nothing at all?
