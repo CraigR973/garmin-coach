@@ -319,7 +319,7 @@ def _rhr_rail(
         # a 47 after a 46 against a usual 44, Mark accepted the cap and objected to
         # the illness talk. Only a jump of RESTING_HR_ABSOLUTE_DELTA_BPM or more now
         # rests the bike, and its GP line is conditional on feeling unwell.
-        # Mark-facing wording, pending his OK (docs/drafts/2026-09-27-reply-to-mark.md).
+        # Mark-facing wording, signed off by Craig on Mark's behalf on 27 Sep 2026.
         if absolute_delta:
             reason = (
                 f"Resting heart rate sets an Amber ceiling: {current} bpm is "

@@ -219,7 +219,7 @@ def test_rhr_absolute_delta_boundary_is_inclusive_and_copy_is_pinned() -> None:
 
     escalation = at_boundary["acutePhysiology"]["escalations"][0]
     # Batch 293: the GP line is conditional on feeling unwell, and only a jump
-    # this size carries it. Wording pending Mark's OK (2026-09-27 reply draft).
+    # this size carries it. Wording signed off by Craig on Mark's behalf, 27 Sep.
     assert escalation == {
         "kind": "resting_heart_rate",
         "level": "rest",
