@@ -31,6 +31,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiFetch } from '@/lib/api';
+import { experimentOffer } from '@/lib/experimentOffer';
 import { cn } from '@/lib/utils';
 
 type CoachingState = typeof coachingStateSchema._type;
@@ -322,12 +323,23 @@ export function CoachStatePage() {
       return conversationLearningEnvelopeSchema.parse(response);
     },
     onSuccess: async (_response, variables) => {
+      const isExperiment = variables.proposal.destination === 'experiments';
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: LEARNING_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: READ_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: ADMIN_QUERY_KEY }),
+        // Batch 284: accepting a proposed experiment creates it.
+        ...(isExperiment ? [queryClient.invalidateQueries({ queryKey: ['experiments'] })] : []),
       ]);
-      toast.success(variables.decision === 'accept' ? 'Memory accepted' : 'Memory rejected');
+      toast.success(
+        variables.decision === 'accept'
+          ? isExperiment
+            ? 'Experiment started'
+            : 'Memory accepted'
+          : isExperiment
+            ? 'Proposal rejected'
+            : 'Memory rejected',
+      );
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'Could not review memory');
@@ -528,6 +540,9 @@ export function CoachStatePage() {
                   <p className="rounded-md border border-border bg-surface px-3 py-3 text-sm text-text-primary">
                     {proposal.statement}
                   </p>
+                  {proposal.experiment ? (
+                    <p className="text-sm leading-6 text-text-secondary">{experimentOffer(proposal.experiment)}</p>
+                  ) : null}
                   <div className="space-y-1 text-xs text-text-secondary">
                     {proposal.evidence.map((evidence) => (
                       <p key={`${proposal.id}-${evidence.sourceId}`}>
@@ -542,7 +557,7 @@ export function CoachStatePage() {
                       disabled={reviewLearningMutation.isPending}
                     >
                       <Check className="h-4 w-4" aria-hidden />
-                      Accept memory
+                      {proposal.experiment ? 'Start this experiment' : 'Accept memory'}
                     </Button>
                     <Button
                       type="button"
@@ -555,8 +570,9 @@ export function CoachStatePage() {
                     </Button>
                   </div>
                   <p className="text-xs text-text-secondary">
-                    The wording is locked to its evidence. If it is not right, reject it and correct the source in a
-                    later chat or note.
+                    {proposal.experiment
+                      ? 'Starting it adds it to your Experiments page.'
+                      : 'The wording is locked to its evidence. If it is not right, reject it and correct the source in a later chat or note.'}
                   </p>
                 </div>
               ))}
