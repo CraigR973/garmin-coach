@@ -349,4 +349,88 @@ describe('CoachStatePage', () => {
       );
     });
   });
+
+  it('offers something Mark said as a test, and starts it when he says so (Batch 284)', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({
+      player: {
+        id: '11111111-1111-4111-8111-111111111111',
+        displayName: 'Mark',
+        role: 'player',
+        timezone: 'Europe/London',
+      },
+    });
+    const experimentProposal = {
+      id: '88888888-8888-4888-8888-888888888888',
+      kind: 'experiment',
+      destination: 'experiments',
+      statement: "Mark's overnight HRV drops in his recovery weeks.",
+      evidence: [
+        {
+          sourceId: 'chat:a',
+          sourceType: 'chat',
+          sourceDate: '2026-09-19',
+          analysisId: null,
+          analysisType: null,
+          quote: 'my HRV drops in recovery weeks',
+        },
+        {
+          sourceId: 'checkin:b',
+          sourceType: 'checkin_note',
+          sourceDate: '2026-09-12',
+          analysisId: null,
+          analysisType: null,
+          quote: 'HRV down again in the recovery week',
+        },
+      ],
+      status: 'pending',
+      reviewedStatement: null,
+      reviewedAtUtc: null,
+      createdAtUtc: '2026-09-20T09:00:00Z',
+      experiment: {
+        compare: 'recovery_week_vs_build_week',
+        metric: 'hrv_last_night_avg_ms',
+        metricLabel: 'overnight HRV',
+        higherIsBetter: true,
+        nightsPerGroup: 7,
+        evidenceCount: 2,
+      },
+    };
+    apiFetchMock.mockImplementation((path: string, options?: RequestInit) => {
+      if (path === '/api/v1/coach-memory') return Promise.resolve(coachMemoryResponse);
+      if (path === '/api/v1/coach-memory/learning') {
+        return Promise.resolve({
+          ...learningResponse,
+          data: { createdCount: 0, proposals: [experimentProposal] },
+        });
+      }
+      if (
+        path === '/api/v1/coach-memory/learning/88888888-8888-4888-8888-888888888888' &&
+        options?.method === 'PATCH'
+      ) {
+        return Promise.resolve({ ...learningResponse, data: { createdCount: 0, proposals: [] } });
+      }
+      throw new Error(`Unexpected path ${path}`);
+    });
+
+    renderPage();
+
+    expect(
+      await screen.findByText(
+        "You've said that a few times now, and it's the kind of thing we can actually test rather than argue about. " +
+          "I can set it up as a proper side-by-side: your recovery weeks against your build weeks, on overnight HRV. " +
+          "It needs seven nights in each before it'll say anything — that's one full week an arm, because anything " +
+          'shorter compares a week against a different part of the same cycle.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /accept memory/i })).toBeNull();
+    await user.click(screen.getByRole('button', { name: /start this experiment/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/coach-memory/learning/88888888-8888-4888-8888-888888888888',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ decision: 'accept' }) }),
+      );
+    });
+  });
 });

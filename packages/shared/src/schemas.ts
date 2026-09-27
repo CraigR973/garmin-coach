@@ -358,6 +358,8 @@ export const conversationLearningKindSchema = z.enum([
   'preference',
   'terminology',
   'recurring_theme',
+  // Batch 284: something Mark said that the app can test, not a memory.
+  'experiment',
 ]);
 
 export const conversationLearningEvidenceSchema = z.object({
@@ -372,9 +374,21 @@ export const conversationLearningEvidenceSchema = z.object({
 export const conversationLearningProposalSchema = z.object({
   id: z.string().uuid(),
   kind: conversationLearningKindSchema,
-  destination: z.literal('learned_context'),
+  destination: z.enum(['learned_context', 'experiments']),
   statement: z.string().min(5).max(500),
   evidence: z.array(conversationLearningEvidenceSchema).min(1),
+  // Batch 284: what a proposed experiment would compare; null for a memory.
+  experiment: z
+    .object({
+      compare: z.string(),
+      metric: z.string(),
+      metricLabel: z.string(),
+      higherIsBetter: z.boolean(),
+      nightsPerGroup: z.number().int().positive(),
+      evidenceCount: z.number().int().nonnegative(),
+    })
+    .nullable()
+    .optional(),
   status: z.enum(['pending', 'accepted', 'rejected']),
   reviewedStatement: z.string().nullable(),
   reviewedAtUtc: isoDateTimeSchema.nullable(),
@@ -1091,6 +1105,38 @@ export const todayActionSchema = z.object({
 });
 export type TodayAction = z.infer<typeof todayActionSchema>;
 
+// Batch 273: the working behind one derived figure (`services/provenance.py`),
+// rendered by the "How these numbers were worked out" panel (273.2). Envelopes
+// carry provenance as `unknown[]` and the panel parses each entry on its own, so
+// one malformed entry drops a row rather than breaking the page.
+export const provenanceEntrySchema = z.object({
+  figure: z.string().min(1),
+  label: z.string(),
+  value: z.number().nullable(),
+  units: z.string().nullable().optional(),
+  rule: z.string(),
+  window: z
+    .object({
+      kind: z.string(),
+      startUtc: z.string().nullable().optional(),
+      endUtc: z.string().nullable().optional(),
+      label: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+  sources: z.record(z.unknown()).default({}),
+  threshold: z
+    .object({
+      name: z.string(),
+      comparedAgainst: z.number().nullable(),
+      units: z.string().nullable().optional(),
+      source: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+});
+export type ProvenanceEntry = z.infer<typeof provenanceEntrySchema>;
+
 export const acutePhysiologySchema = z.object({
   status: z.enum(['clear', 'triggered', 'insufficient_data']).optional(),
   standingLine: z.string().min(1).optional(),
@@ -1114,6 +1160,8 @@ export const acutePhysiologySchema = z.object({
       }),
     )
     .default([]),
+  // Batch 273.2: only the working is read here; the rest of the rail stays server-side.
+  overnightHrv: z.object({ provenance: z.array(z.unknown()).default([]) }).optional(),
 });
 export type AcutePhysiology = z.infer<typeof acutePhysiologySchema>;
 
@@ -1824,6 +1872,8 @@ export const reviewRollupSchema = z.object({
       clockFallbackNights: z.number().int(),
       meaning: z.string(),
     }),
+    // Batch 273.2: the working behind avgIndoorPeakC and disruptionNights.
+    provenance: z.array(z.unknown()).default([]),
   }),
 });
 

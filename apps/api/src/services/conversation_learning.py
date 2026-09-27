@@ -22,7 +22,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal, Protocol
 
 from fastapi import HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +31,7 @@ from src.models.coaching import (
     Analysis,
     BriefMessage,
     ConversationLearningProposal,
+    Experiment,
     Feedback,
     KnowledgeBase,
     ManualEntry,
@@ -46,6 +47,15 @@ from src.services.bulk_post_activity_lookups import (
     latest_analyses_by_activity,
     latest_morning_analyses_by_date,
 )
+from src.services.experiment_evaluation import (
+    COMPARE_RECOVERY_VS_BUILD,
+    binds_to_an_evaluator,
+    failed_binding_attempt,
+    group_compare_metric,
+)
+from src.services.experiment_metrics import COMPARABLE_METRICS
+from src.services.experiment_tracker import STATUS_ACTIVE, ExperimentTrackerService
+from src.services.profile_clock import profile_today
 from src.services.workload_budget import workload_slot
 
 LEARNED_CONTEXT_SECTION = "learned_context"
@@ -53,25 +63,42 @@ SOURCE_WINDOW_DAYS = 30
 MAX_SOURCES = 60
 MAX_CANDIDATES = 12
 MAX_STATEMENT_LENGTH = 500
-PROMPT_VERSION = "conversation-learning-v2-2026-09-04"
+# Batch 284 bumped v2 -> v3 for the experiment kind. The version lives only in
+# each proposal's evidence_json, never on an Analysis row, so no stored read is
+# withdrawn; production held no proposal of any status when it changed.
+PROMPT_VERSION = "conversation-learning-v3-2026-09-27"
 
 KIND_FACT = "fact"
 KIND_PREFERENCE = "preference"
 KIND_TERMINOLOGY = "terminology"
 KIND_RECURRING_THEME = "recurring_theme"
-LearningKind = Literal["fact", "preference", "terminology", "recurring_theme"]
+# Batch 284: a testable observation. Not a memory: inert until decided, bound to an
+# evaluator at extraction, and created as an experiment when accepted.
+KIND_EXPERIMENT = "experiment"
+LearningKind = Literal["fact", "preference", "terminology", "recurring_theme", "experiment"]
+MEMORY_KINDS = frozenset({KIND_FACT, KIND_PREFERENCE, KIND_TERMINOLOGY, KIND_RECURRING_THEME})
+EXPERIMENTS_DESTINATION = "experiments"
+LearningDestination = Literal["learned_context", "experiments"]
+
+#: The metric keys the structured output may name (an ``enum`` in its schema).
+_METRIC_ENUM: list[JsonValue] = [key for key in sorted(COMPARABLE_METRICS)]
+_METRIC_CHOICES = "\n".join(
+    f"- {metric.key}: {metric.label}" for metric in COMPARABLE_METRICS.values()
+)
 
 STATUS_PENDING = "pending"
 STATUS_ACCEPTED = "accepted"
 STATUS_REJECTED = "rejected"
 
-SYSTEM_PROMPT = """You distil durable, user-confirmable memory for CheckMark,
+SYSTEM_PROMPT = (
+    """You distil durable, user-confirmable memory for CheckMark,
 Mark's private fitness and sleep coach.
 
 Return strict JSON only:
-{"candidates":[{"kind":"fact|preference|terminology|recurring_theme",
+{"candidates":[{"kind":"fact|preference|terminology|recurring_theme|experiment",
 "statement":"one concise third-person statement",
-"destination":"learned_context",
+"destination":"learned_context|experiments",
+"experiment":null,
 "evidence":[{"source_id":"an exact supplied source id",
 "quote":"a short verbatim quote from that source"}]}]}
 
@@ -89,8 +116,23 @@ Never extract a desired verdict, pressure to reassure, coaching thresholds,
 Green/Amber/Red rules, Red/VO2 rules, data-quality/reliability rules, power-meter
 rules, or instructions to ignore objective data. Never infer beyond the supplied
 user-authored text. Every candidate needs at least one exact, verbatim evidence
-quote. The only allowed destination is learned_context. If nothing qualifies,
-return {"candidates":[]}."""
+quote. The four memory kinds go to destination learned_context with experiment
+null.
+
+One more kind is not a memory. An experiment is a claim the user himself makes
+about how his recovery weeks differ from his build weeks on something the app
+measures, such as "my HRV drops in recovery weeks". Give it kind experiment,
+destination experiments, and experiment
+{"compare":"recovery_week_vs_build_week","metric":"<one key below>"}.
+The metrics it can compare are:
+"""
+    + _METRIC_CHOICES
+    + """
+Propose one only when the user says it in the supplied text, never one he did not
+describe, and never for anything these metrics cannot measure; leave such a claim
+out. Its statement says what he expects, in the third person. If nothing
+qualifies, return {"candidates":[]}."""
+)
 
 
 class ConversationLearningError(Exception):
@@ -125,13 +167,35 @@ class ExtractedEvidence(BaseModel):
     quote: str = Field(min_length=1, max_length=300)
 
 
+class ExtractedExperiment(BaseModel):
+    """The comparator an experiment candidate is bound to (Batch 284).
+
+    ``compare`` admits the one comparison the app can run; ``metric`` is
+    constrained in the output schema to the metrics it can read, and re-checked in
+    :func:`filter_candidates` so a binding that cannot be evaluated never lands.
+    """
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    compare: Literal["recovery_week_vs_build_week"]
+    metric: str = Field(
+        min_length=1,
+        max_length=80,
+        json_schema_extra={"enum": _METRIC_ENUM},
+    )
+
+    def criteria(self) -> dict[str, Any]:
+        return {"compare": self.compare, "metric": self.metric}
+
+
 class ExtractedCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     kind: LearningKind
     statement: str = Field(min_length=5, max_length=MAX_STATEMENT_LENGTH)
-    destination: Literal["learned_context"]
+    destination: LearningDestination
     evidence: list[ExtractedEvidence] = Field(min_length=1, max_length=4)
+    experiment: ExtractedExperiment | None = None
 
 
 class ExtractionEnvelope(BaseModel):
@@ -343,12 +407,7 @@ def statement_is_durable(statement: str, *, kind: str) -> bool:
     also re-validates immutable proposal wording at acceptance.
     """
     cleaned = statement.strip()
-    if kind not in {
-        KIND_FACT,
-        KIND_PREFERENCE,
-        KIND_TERMINOLOGY,
-        KIND_RECURRING_THEME,
-    }:
+    if kind not in MEMORY_KINDS and kind != KIND_EXPERIMENT:
         return False
     if len(cleaned) < 5 or len(cleaned) > MAX_STATEMENT_LENGTH:
         return False
@@ -390,6 +449,21 @@ def _quote_is_verbatim(quote: str, source_text: str) -> bool:
     return bool(normalised_quote) and normalised_quote in _normalise(source_text)
 
 
+def is_routed_and_bound(candidate: ExtractedCandidate) -> bool:
+    """Memory goes to learned_context unbound; a test goes to experiments bound.
+
+    Batch 284: an experiment candidate must arrive already bound to an evaluator, or
+    it is discarded here rather than stored - the rule Batch 275.3 applies at
+    creation, not re-admitted through a friendlier door.
+    """
+    if candidate.kind == KIND_EXPERIMENT:
+        if candidate.destination != EXPERIMENTS_DESTINATION or candidate.experiment is None:
+            return False
+        criteria = candidate.experiment.criteria()
+        return binds_to_an_evaluator(criteria) and failed_binding_attempt(criteria) is None
+    return candidate.destination == LEARNED_CONTEXT_SECTION and candidate.experiment is None
+
+
 def filter_candidates(
     envelope: ExtractionEnvelope,
     *,
@@ -403,6 +477,8 @@ def filter_candidates(
     seen: set[str] = set()
 
     for candidate in envelope.candidates:
+        if not is_routed_and_bound(candidate):
+            continue
         if not statement_is_durable(candidate.statement, kind=candidate.kind):
             continue
         if not statement_is_supported(
@@ -451,16 +527,40 @@ def _fingerprint(
     prompt_version: str = PROMPT_VERSION,
 ) -> str:
     evidence_ids = sorted({evidence.source_id for evidence in candidate.evidence})
-    payload = json.dumps(
-        {
-            "kind": candidate.kind,
-            "statement": _normalise(candidate.statement),
-            "evidence_ids": evidence_ids,
-            "prompt_version": prompt_version,
-        },
-        sort_keys=True,
-    )
+    fields: dict[str, Any] = {
+        "kind": candidate.kind,
+        "statement": _normalise(candidate.statement),
+        "evidence_ids": evidence_ids,
+        "prompt_version": prompt_version,
+    }
+    if candidate.experiment is not None:
+        fields["experiment"] = candidate.experiment.criteria()
+    payload = json.dumps(fields, sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _comparison_key(criteria: dict[str, Any]) -> tuple[str, str] | None:
+    if criteria.get("compare") != COMPARE_RECOVERY_VS_BUILD:
+        return None
+    metric = group_compare_metric(criteria)
+    return (COMPARE_RECOVERY_VS_BUILD, metric.key) if metric is not None else None
+
+
+def proposal_experiment(row: ConversationLearningProposal) -> dict[str, Any] | None:
+    """The comparator an experiment proposal carries, or ``None`` (Batch 284).
+
+    Every evidence item carries the same binding; one that disagrees, or is
+    missing, makes the proposal unreadable rather than silently picking one.
+    """
+    if row.kind != KIND_EXPERIMENT or not isinstance(row.evidence_json, list):
+        return None
+    bindings = [item.get("experiment") for item in row.evidence_json if isinstance(item, dict)]
+    if not bindings or any(not isinstance(binding, dict) for binding in bindings):
+        return None
+    first = bindings[0]
+    if any(binding != first for binding in bindings[1:]):
+        return None
+    return dict(first) if isinstance(first, dict) else None
 
 
 class ConversationLearningService:
@@ -636,6 +736,30 @@ class ConversationLearningService:
             ],
         ]
 
+    async def _comparisons_under_test(self, user_id: uuid.UUID) -> set[tuple[str, str]]:
+        """Recovery-vs-build comparisons an active experiment already runs (Batch 284).
+
+        Offering Mark a test he is already running is noise; the default
+        recovery-week experiment compares age-adjusted sleep this way.
+        """
+        rows = (
+            (
+                await self.session.execute(
+                    select(Experiment.success_criteria_json).where(
+                        Experiment.user_id == user_id,
+                        Experiment.status == STATUS_ACTIVE,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return {
+            key
+            for criteria in rows
+            if isinstance(criteria, dict) and (key := _comparison_key(criteria)) is not None
+        }
+
     async def distill(
         self,
         player: Profile,
@@ -659,6 +783,13 @@ class ConversationLearningService:
             sources=sources,
             existing_statements=existing_statements,
         )
+        under_test = await self._comparisons_under_test(player.id)
+        candidates = [
+            candidate
+            for candidate in candidates
+            if candidate.experiment is None
+            or _comparison_key(candidate.experiment.criteria()) not in under_test
+        ]
         if not candidates:
             return []
 
@@ -692,12 +823,19 @@ class ConversationLearningService:
                         "analysisType": source.analysis_type,
                         "promptVersion": PROMPT_VERSION,
                         "quote": evidence.quote.strip(),
+                        # Batch 284: the comparator travels with each piece of
+                        # evidence, so the table needs no new column.
+                        **(
+                            {"experiment": candidate.experiment.criteria()}
+                            if candidate.experiment is not None
+                            else {}
+                        ),
                     }
                 )
             row = ConversationLearningProposal(
                 user_id=player.id,
                 kind=candidate.kind,
-                destination=LEARNED_CONTEXT_SECTION,
+                destination=candidate.destination,
                 statement=candidate.statement.strip(),
                 evidence_json=evidence_json,
                 fingerprint=fingerprint,
@@ -879,6 +1017,7 @@ class ConversationLearningService:
                     "statement": row.statement,
                     "destination": row.destination,
                     "evidence": [item.model_dump() for item in evidence],
+                    "experiment": proposal_experiment(row),
                 }
             )
         except ValidationError:
@@ -936,6 +1075,9 @@ class ConversationLearningService:
                     "not support the memory. Reject it and create a fresh proposal."
                 ),
             )
+        if row.kind == KIND_EXPERIMENT:
+            return await self._start_experiment(player, row, reviewed=reviewed, now=now)
+
         row.reviewed_by_profile_id = player.id
         row.reviewed_at_utc = now
         row.updated_at = now
@@ -980,6 +1122,53 @@ class ConversationLearningService:
                 updated_by_profile_id=player.id,
             )
         )
+        await self.session.commit()
+        await self.session.refresh(row)
+        return row
+
+    async def _start_experiment(
+        self,
+        player: Profile,
+        row: ConversationLearningProposal,
+        *,
+        reviewed: str,
+        now: datetime,
+    ) -> ConversationLearningProposal:
+        """Accepting a proposed experiment creates it at once (Craig, 25 Sep 2026).
+
+        A proposal that is accepted and then does nothing is the powerlessness
+        Batches 273 and 274 are about. Memory is never touched on this path.
+        """
+        binding = proposal_experiment(row)
+        key = _comparison_key(binding) if binding is not None else None
+        metric = group_compare_metric(binding) if binding is not None else None
+        if binding is None or key is None or metric is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="This proposal no longer names a comparison the app can run.",
+            )
+        if key in await self._comparisons_under_test(player.id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="You're already testing this one.",
+            )
+        await ExperimentTrackerService(self.session).create_experiment(
+            player,
+            title=f"Recovery weeks against build weeks: {metric.label}",
+            hypothesis=reviewed,
+            success_criteria={
+                **binding,
+                "origin": "conversation_learning",
+                "proposalId": str(row.id),
+            },
+            start_date=profile_today(player),
+            commit=False,
+        )
+        row.reviewed_by_profile_id = player.id
+        row.reviewed_at_utc = now
+        row.updated_at = now
+        row.status = STATUS_ACCEPTED
+        row.reviewed_statement = reviewed
         await self.session.commit()
         await self.session.refresh(row)
         return row

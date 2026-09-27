@@ -644,6 +644,22 @@ def classify_sleep_stage(
     return tone
 
 
+def describe_sleep_stage(
+    metric_key: str, value: float, age: int | None, sex: Sex | str | None
+) -> tuple[Tone, str] | None:
+    """Band tone *and* descriptor for a sleep-stage ``value`` (Batch 282).
+
+    The same judgement :func:`classify_sleep_stage` makes, with the words the stage
+    table shows, so ``metric_statements`` states a figure against its band exactly as
+    the table describes it rather than re-deriving a second verdict.
+    """
+    band = sleep_stage_band(metric_key, age, sex)
+    norm = _NORMS.get(metric_key)
+    if band is None or norm is None:
+        return None
+    return _classify_band(value, band[0], band[1], norm.better)
+
+
 def _build_rows(
     *,
     candidates: dict[str, float | None],

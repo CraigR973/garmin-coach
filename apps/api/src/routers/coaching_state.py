@@ -26,7 +26,9 @@ from src.services.coaching_state import CoachingStateService
 from src.services.conversation_learning import (
     ConversationLearningError,
     ConversationLearningService,
+    proposal_experiment,
 )
+from src.services.experiment_evaluation import GROUP_MIN_PER_GROUP, group_compare_metric
 
 router = APIRouter(prefix="/api/v1/admin/coaching-state", tags=["coaching-state"])
 read_router = APIRouter(prefix="/api/v1/coach-memory", tags=["coach-memory"])
@@ -114,6 +116,17 @@ class CoachingStateEnvelope(BaseModel):
     errors: list[ApiError]
 
 
+class ProposedExperimentOut(BaseModel):
+    """What a proposed experiment would compare, for its card (Batch 284)."""
+
+    compare: str
+    metric: str
+    metricLabel: str
+    higherIsBetter: bool
+    nightsPerGroup: int
+    evidenceCount: int
+
+
 class LearningProposalOut(BaseModel):
     id: str
     kind: str
@@ -124,6 +137,7 @@ class LearningProposalOut(BaseModel):
     reviewedStatement: str | None
     reviewedAtUtc: str | None
     createdAtUtc: str
+    experiment: ProposedExperimentOut | None = None
 
 
 class LearningProposalListData(BaseModel):
@@ -172,6 +186,23 @@ def _serialize_plan_block(record: PlanBlock) -> PlanBlockOut:
     )
 
 
+def _proposed_experiment(record: ConversationLearningProposal) -> ProposedExperimentOut | None:
+    binding = proposal_experiment(record)
+    metric = group_compare_metric(binding) if binding is not None else None
+    if binding is None or metric is None:
+        return None
+    return ProposedExperimentOut(
+        compare=str(binding.get("compare")),
+        metric=metric.key,
+        metricLabel=metric.label,
+        higherIsBetter=metric.higher_is_better,
+        nightsPerGroup=GROUP_MIN_PER_GROUP,
+        evidenceCount=len(
+            {item.get("sourceId") for item in record.evidence_json if isinstance(item, dict)}
+        ),
+    )
+
+
 def _serialize_learning_proposal(record: ConversationLearningProposal) -> LearningProposalOut:
     return LearningProposalOut(
         id=str(record.id),
@@ -185,6 +216,7 @@ def _serialize_learning_proposal(record: ConversationLearningProposal) -> Learni
             record.reviewed_at_utc.isoformat() + "Z" if record.reviewed_at_utc else None
         ),
         createdAtUtc=record.created_at.isoformat() + "Z",
+        experiment=_proposed_experiment(record),
     )
 
 
