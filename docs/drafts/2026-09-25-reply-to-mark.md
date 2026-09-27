@@ -1,6 +1,6 @@
 # Reply to Mark — 25 Sep 2026
 
-**Status:** drafted 25 Sep for Craig to send. It answers Mark's WhatsApp messages of
+**Status: SUPERSEDED 2026-09-27** by `2026-09-27-reply-to-mark.md`, never sent. Drafted 25 Sep for Craig to send. It answers Mark's WhatsApp messages of
 25 Sep (the holiday he couldn't set, the "Light reset" button, and the over-cutting). It
 supersedes the 22 Sep draft and the 24 Sep chat draft, whose fixes have since shipped or
 changed. The question at the end sets Batch 269's thresholds (group G3).
