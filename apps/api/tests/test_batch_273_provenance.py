@@ -294,3 +294,49 @@ def test_each_covered_figure_key_is_addressable_in_the_packet(figure: str) -> No
     """A figure key is a path a reader can follow, not an opaque id."""
     assert "." in figure, f"{figure} should read as section.figureName"
     assert figure == figure.strip()
+
+
+# -- 273.2: what the panel reads ------------------------------------------------
+
+
+def test_the_review_serialises_its_thermal_working_for_the_panel() -> None:
+    """273.2: Batch 273 put the working on the rollup but ``rollup_packet`` never
+    serialised it, so the review screen had nothing to render and the review model
+    never saw it."""
+    from src.services.reviews import ReviewThermalNight, compute_review_rollup, rollup_packet
+
+    thermal = [
+        ReviewThermalNight(
+            day=date(2026, 9, 7) + timedelta(days=i),
+            indoor_peak_c=18.8,
+            outdoor_overnight_low_c=11.0,
+            indoor_window_source="sleep",
+        )
+        for i in range(7)
+    ]
+    rollup = compute_review_rollup(
+        [],
+        [],
+        [],
+        thermal,
+        period="week",
+        period_start=date(2026, 9, 7),
+        period_end=date(2026, 9, 13),
+        planned_count=0,
+    )
+    packet = rollup_packet(rollup)
+    assert packet["thermal"]["provenance"] == rollup.thermal.provenance
+    assert covered_figures(packet["thermal"]["provenance"]) == {
+        FIGURE_REVIEW_AVG_PEAK,
+        FIGURE_REVIEW_DISRUPTION_NIGHTS,
+    }
+
+
+def test_the_hrv_floor_states_its_window_length_and_multiplier() -> None:
+    """273.2: the panel says "the 84 days before this morning" and "minus 1.5
+    standard deviations" from the packet, not from constants copied into the web."""
+    from src.services.morning_verdict import ACUTE_BASELINE_WINDOW_DAYS, HRV_ACUTE_DROP_STDDEVS
+
+    sources = _hrv_provenance()[0]["sources"]
+    assert sources["windowDays"] == ACUTE_BASELINE_WINDOW_DAYS == 84
+    assert sources["stddevsBelowMedian"] == HRV_ACUTE_DROP_STDDEVS == 1.5

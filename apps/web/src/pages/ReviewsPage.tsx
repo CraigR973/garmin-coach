@@ -5,6 +5,7 @@ import { Activity, BedDouble, Dumbbell, FileText, HeartPulse, Sparkles } from 'l
 import { toast } from 'sonner';
 import { FeedbackControl } from '@/components/FeedbackControl';
 import { Markdown } from '@/components/Markdown';
+import { ProvenancePanel } from '@/components/ProvenancePanel';
 import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -235,6 +236,7 @@ function ReviewBody({
           {review ? (
             <div className="space-y-3 rounded-xl border border-border bg-bg px-4 py-3">
               <Markdown>{review.markdown}</Markdown>
+              <ProvenancePanel sources={[rollup.thermal.provenance]} />
               <FeedbackControl
                 analysisId={review.analysisId}
                 kind="summary"

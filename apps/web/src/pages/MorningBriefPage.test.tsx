@@ -155,6 +155,49 @@ describe('morning brief page', () => {
     expect(screen.getByRole('button', { name: /listen to brief/i })).toBeTruthy();
   });
 
+  it('shows how the numbers were worked out under the coach read, collapsed (Batch 273.2)', async () => {
+    const withWorking = structuredClone(snapshot);
+    withWorking.data.morningAnalysis!.thermalReview = {
+      indoorPeakC: 19.1,
+      provenance: [
+        {
+          figure: 'environment.thermalReview.indoorPeakC',
+          label: 'bedroom peak overnight',
+          value: 19.1,
+          units: '°C',
+          rule: 'the highest reading inside the window, from readings taken between sleep onset and wake',
+          window: { kind: 'sleep', startUtc: '2026-06-19T21:00:00', endUtc: '2026-06-20T05:00:00', label: null },
+          sources: { rowsInWindow: 16, firstReadingUtc: '2026-06-19T21:05:00' },
+          threshold: { name: 'thermal disruption', comparedAgainst: 20, units: '°C', source: null },
+        },
+      ],
+    };
+    apiFetchMock.mockImplementation(() => Promise.resolve(withWorking));
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter>
+          <MorningBriefPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const panel = await screen.findByTestId('provenance-panel');
+    expect(panel.hasAttribute('open')).toBe(false);
+    expect(within(panel).getByText('How these numbers were worked out')).toBeTruthy();
+    expect(within(panel).getByText('Bedroom peak overnight — 19.1 °C')).toBeTruthy();
+    expect(within(panel).getByText(/22:00 → 06:00 — the night you actually slept/)).toBeTruthy();
+    // It sits under the coach's prose, not above it.
+    expect(screen.getByText('Rested and ready.').compareDocumentPosition(panel)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it('shows no working panel for a brief stored before the working existed (Batch 273.2)', async () => {
+    renderWithQuery(<MorningBriefPage />);
+    expect(await screen.findByText('Coach read')).toBeTruthy();
+    expect(screen.queryByTestId('provenance-panel')).toBeNull();
+  });
+
   it('puts the deterministic verdict before the supporting brief detail (Batch 244)', async () => {
     renderWithQuery(<MorningBriefPage />);
 

@@ -7,6 +7,7 @@ import { BriefPendingCta } from '@/components/BriefPendingCta';
 import { StaleDataNotice } from '@/components/EmptyState';
 import { useRegisterCoachAnchor } from '@/contexts/CoachAnchorContext';
 import { Markdown } from '@/components/Markdown';
+import { ProvenancePanel } from '@/components/ProvenancePanel';
 import { MetricComparisonTable } from '@/components/MetricComparisonTable';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -142,8 +143,15 @@ export function MorningBriefPage() {
                 <BriefListenControls markdown={analysis.outputMarkdown} hostedTtsConsent={data.hostedTtsConsent} />
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               <Markdown>{analysis.outputMarkdown}</Markdown>
+              <ProvenancePanel
+                sources={[
+                  analysis.thermalReview?.provenance,
+                  analysis.acutePhysiology?.overnightHrv?.provenance,
+                ]}
+                timeZone={data.timezone}
+              />
             </CardContent>
           </Card>
           <MedicalBoundaryFooter boundary={analysis.acutePhysiology} />

@@ -45,6 +45,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Markdown } from '@/components/Markdown';
+import { ProvenancePanel } from '@/components/ProvenancePanel';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
@@ -1889,6 +1890,7 @@ function CompletedRideRead({
           <div className="mt-3 space-y-4">
             <Markdown>{analysis.outputMarkdown}</Markdown>
             <RideIntervalTable intervals={analysis.intervals ?? []} />
+            <ProvenancePanel sources={[analysis.execution?.provenance]} />
             <FeedbackControl analysisId={analysis.id} kind="summary" feedback={analysis.feedback ?? null} />
           </div>
         ) : null}
@@ -2052,6 +2054,7 @@ function PostRideBody({
     generatedAtUtc: string;
     outputMarkdown: string;
     intervals?: RideIntervalRow[];
+    execution?: Record<string, unknown>;
     recoveryDecision?: { excluded?: boolean } | null;
     postRideCheckIn?: RideCheckInValue;
     feedback?: RideAnalysis['feedback'];
@@ -2079,6 +2082,7 @@ function PostRideBody({
             <Markdown>{item.outputMarkdown}</Markdown>
           </div>
           <RideIntervalTable intervals={item.intervals ?? []} />
+          <ProvenancePanel sources={[item.execution?.provenance]} />
           <FeedbackControl analysisId={item.id} kind="summary" feedback={item.feedback ?? null} />
         </div>
       ))}
