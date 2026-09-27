@@ -1,4 +1,4 @@
-# The backend image is built from the repo root (see railway.toml + Dockerfile)
+# The backend image is built from the repo root (see .railway/railway.ts + Dockerfile)
 # so the build context can include /migrations. Keep that context lean: the
 # Dockerfile only needs apps/api/{requirements.txt,src,alembic.ini} + migrations/.
 

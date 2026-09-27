@@ -1,9 +1,8 @@
 // Railway's configuration for garmin-coach, as code (Batch 287).
 //
-// Railway stops reading railway.toml on 1 Dec 2026. All three services carry
-// RAILPACK in their own settings; the repo-root Dockerfile is used today only
-// because railway.toml overrides it, and the API's health check and restart
-// policy come only from that file. This states them here instead.
+// Railway stops reading railway.toml on 1 Dec 2026, so the Dockerfile builder,
+// the API's health check and its restart policy, which only that file used to
+// supply, are stated here. Applied on 27 Sep 2026, when railway.toml was removed.
 //
 // Imported with `railway config pull`, so every variable is preserve(): the
 // value stays in Railway and none enters the repo. Railway does not read this
