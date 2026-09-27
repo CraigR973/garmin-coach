@@ -1,6 +1,6 @@
 # Batch 274 — wording for Mark to OK
 
-**Status:** built in PR #TBD and waiting on this sheet. Nothing here is live. It is a
+**Status:** built in PR #335 and waiting on this sheet. Nothing here is live. It is a
 short second message for Craig to send after the 27 Sep reply; the reply already asks
 about the resting-heart-rate lines (Batch 293). "Fine as is", or say what to change.
 
