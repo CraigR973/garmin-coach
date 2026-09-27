@@ -146,7 +146,8 @@ def test_both_prompts_carry_the_one_rule_and_moved_their_versions() -> None:
     assert METRIC_STATEMENT_RULE in TREND_SYSTEM_PROMPT
     # The wording each model is given changed, so no stored read written without it
     # is served as current: the brief self-heals, Trends is regenerated at close-out.
-    assert MORNING_PROMPT_VERSION == "morning-analysis-v47-2026-09-27"
+    # (Batch 269 moved the brief on again, to v48.)
+    assert MORNING_PROMPT_VERSION == "morning-analysis-v48-2026-09-27"
     assert PROMPT_VERSION_BY_BUCKET[BUCKET_MONTH] == "trends-month-v11-2026-09-27"
     assert PROMPT_VERSION_BY_BUCKET["season"] == "trends-season-v11-2026-09-27"
 

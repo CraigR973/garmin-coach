@@ -16,7 +16,7 @@ from fastapi import HTTPException
 
 from src.models.coaching import DailyMetric, ManualEntry, MetricBaseline, PlannedWorkout, Sleep
 from src.services.breathwork_brief import BreathworkBriefResult
-from src.services.hrv_recalibration import detect_hrv_recalibration
+from src.services.hrv_recalibration import detect_hrv_recalibration, is_band_artifact
 from src.services.personal_baselines import (
     SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR,
     baseline_center,
@@ -75,6 +75,18 @@ MEDICAL_BOUNDARY_STANDING_LINE = (
     "actually feel — if those two disagree, trust yourself."
 )
 INSUFFICIENT_DATA_MESSAGE = "Insufficient data to judge today."
+
+# Batch 269: a graded response to Garmin's HRV signal. The same-day Red needs last
+# night's own reading under the floor, and a morning whose only mark is Garmin's
+# weekly signal holds the session instead of cutting it. The chat block and the
+# recent-mornings surfaces quote the Red reason, so its wording is unchanged.
+HRV_RED_REASON = "HRV is below baseline and marked low/unbalanced."
+HRV_EASE_REASON = "HRV is not cleanly in range."
+HRV_HOLD_PLAN_LINE = "Hold the prescribed targets rather than pushing past the top of each zone."
+HRV_CONCERN_OVERNIGHT_BELOW_FLOOR = "overnight_below_floor"
+HRV_CONCERN_FLOOR_MOVED = "floor_moved"
+HRV_CONCERN_WEEKLY_BELOW_FLOOR = "weekly_average_below_floor"
+HRV_CONCERN_GARMIN_STATUS = "garmin_status"
 
 
 def _coerce_int(value: Any) -> int | None:
@@ -798,11 +810,28 @@ def morning_verdict(
         recent_daily_metrics=recent_daily_metrics,
         recent_sleeps=recent_sleeps,
     )
-    # Batch 271: computed here and published, but it changes no verdict in this
-    # batch. Batch 269 gates the unconditional HRV Red on it and Batch 270
+    # Batch 271's signal. Batch 269 gates the HRV Red on it below and Batch 270
     # classifies a Red cluster with it; both read this one signal so they cannot
     # disagree about what an artifact is.
     hrv_recalibration = detect_hrv_recalibration(daily_metric, recent_daily_metrics)
+    band_artifact = is_band_artifact(hrv_recalibration)
+    overnight_below_floor = _overnight_below_floor(daily_metric)
+    hrv_graded_response: dict[str, Any] = {
+        "tier": None,
+        "concern": None,
+        "garminStatus": hrv_status,
+        "overnightMs": daily_metric.hrv_last_night_avg_ms if daily_metric else None,
+        "weeklyAvgMs": daily_metric.hrv_weekly_avg_ms if daily_metric else None,
+        "floorMs": daily_metric.hrv_baseline_low_ms if daily_metric else None,
+        "overnightBelowFloor": (
+            overnight_below_floor
+            if daily_metric is not None and daily_metric.hrv_last_night_avg_ms is not None
+            else None
+        ),
+        "floorMoved": band_artifact,
+        "corroboratingSignals": [],
+        "heldBackBy": None,
+    }
     resting_hr_baseline = baselines.get("resting_heart_rate_bpm")
     resting_hr_in_band = metric_within_baseline_band(
         daily_metric.resting_heart_rate_bpm if daily_metric else None,
@@ -888,9 +917,19 @@ def morning_verdict(
     if age_adjusted_sleep_score is not None and age_adjusted_sleep_score < 60:
         status = "Red"
         reasons.append("Age-adjusted sleep is below 60.")
-    elif hrv_low and hrv_status in {"unbalanced", "low"}:
+    elif (
+        hrv_low
+        and overnight_below_floor
+        and hrv_status in {"unbalanced", "low"}
+        and not band_artifact
+    ):
+        # Batch 269: Garmin's flag is its 7-day average against its band, so the
+        # same-day Red also needs last night's own reading under the floor, and
+        # never fires when Garmin moved the floor under a reading that held.
         status = "Red"
-        reasons.append("HRV is below baseline and marked low/unbalanced.")
+        reasons.append(HRV_RED_REASON)
+        hrv_graded_response["tier"] = "red"
+        hrv_graded_response["concern"] = HRV_CONCERN_OVERNIGHT_BELOW_FLOOR
     elif readiness_level == "poor":
         status = "Amber"
     elif readiness_level == "low" and readiness_interpretation != "load_driven":
@@ -905,8 +944,39 @@ def morning_verdict(
         status = "Amber"
         reasons.append("Age-adjusted sleep is below the 74+ green target.")
     elif hrv_status in {"unbalanced", "low", "poor"} or hrv_low:
-        status = "Amber"
-        reasons.append("HRV is not cleanly in range.")
+        hold_concern = _hrv_hold_concern(
+            hrv_low=hrv_low,
+            overnight_below_floor=overnight_below_floor,
+            band_artifact=band_artifact,
+        )
+        corroborating = _hrv_corroborating_signals(
+            daily_metric=daily_metric,
+            readiness_level=readiness_level,
+            readiness_baseline=baselines.get("readiness_score"),
+            resting_hr_elevated=resting_hr_elevated,
+            subjective_score=subjective_score,
+        )
+        hrv_graded_response["concern"] = hold_concern or (
+            HRV_CONCERN_OVERNIGHT_BELOW_FLOOR
+            if overnight_below_floor
+            else HRV_CONCERN_GARMIN_STATUS
+        )
+        hrv_graded_response["corroboratingSignals"] = corroborating
+        # Batch 269: the hold is for Garmin's mildest flag only. Its Low is a week
+        # well under the band, which still eases the day.
+        if (
+            daily_metric is not None
+            and hold_concern is not None
+            and hrv_status == "unbalanced"
+            and not corroborating
+        ):
+            status = "Green"
+            reasons.append(_hrv_hold_reason(hold_concern, daily_metric, hrv_recalibration))
+            hrv_graded_response["tier"] = "hold"
+        else:
+            status = "Amber"
+            reasons.append(HRV_EASE_REASON)
+            hrv_graded_response["tier"] = "ease"
     elif subjective_score is not None and subjective_score < 5:
         status = "Amber"
         reasons.append("Subjective score is below 5.")
@@ -1004,6 +1074,24 @@ def morning_verdict(
             training_load_cap["applied"] = True
         reasons.extend(training_load_cap["reasons"])
     training_load_cap["statusBeforeCap"] = status_before_load_cap
+    # Batch 269: a hold only stands if nothing after the ladder capped the day. When
+    # a ceiling did, the HRV flag still cut nothing on its own, and the packet names
+    # the ceiling that did.
+    if hrv_graded_response["tier"] == "hold" and status != "Green":
+        hrv_graded_response["tier"] = "ease"
+        hrv_graded_response["heldBackBy"] = next(
+            (
+                name
+                for name, applied in (
+                    ("sleep_credit_ceiling", sleep_credit_ceiling["applied"]),
+                    ("acute_physiology_cap", acute_physiology["verdictCapApplied"]),
+                    ("missing_data_floor", acute_physiology["missingDataFloorApplied"]),
+                    ("training_load_cap", training_load_cap["applied"]),
+                )
+                if applied
+            ),
+            None,
+        )
     baseline_trend_reason = readiness_trend.get("reason")
     if readiness_trend.get("triggered") and isinstance(baseline_trend_reason, str):
         reasons.append(baseline_trend_reason)
@@ -1017,6 +1105,7 @@ def morning_verdict(
             status,
             planned_workouts,
             is_rest_day=is_rest_day,
+            hold_targets=hrv_graded_response["tier"] == "hold",
         )
     if status != "Green" and yesterday_hard and not is_rest_day:
         plan_adjustments.append(
@@ -1080,6 +1169,7 @@ def morning_verdict(
         "cumulativeEscalation": cumulative_escalation,
         "acutePhysiology": acute_physiology,
         "hrvRecalibration": hrv_recalibration,
+        "hrvGradedResponse": hrv_graded_response,
         "yesterdayLoadStatus": (yesterday_load or {}).get("status"),
         "trainingLoadCap": training_load_cap,
         "dayType": "rest" if is_rest_day else "training",
@@ -1142,6 +1232,7 @@ def _plan_adjustments(
     planned_workouts: Sequence[PlannedWorkout],
     *,
     is_rest_day: bool = False,
+    hold_targets: bool = False,
 ) -> list[str]:
     live_workouts = [
         workout for workout in planned_workouts if workout.status not in {"completed", "skipped"}
@@ -1157,6 +1248,8 @@ def _plan_adjustments(
         ]
     elif status == "Green":
         adjustments = ["Proceed with the planned workout if warm-up confirms readiness."]
+        if hold_targets:
+            adjustments.append(HRV_HOLD_PLAN_LINE)
     elif status == "Amber":
         ride_adjustment = _verdict_adjustment_packet(status, planned_workouts)
         categories = {category_for_workout_type(workout.workout_type) for workout in live_workouts}
@@ -1254,11 +1347,114 @@ def _soft_sleep_recovery_override(
 
 
 def _hrv_below_baseline(daily_metric: DailyMetric | None) -> bool:
+    """Garmin's own comparison: the 7-day average against Garmin's band.
+
+    Batch 269 left this reading the weekly average on purpose. Garmin's band is a
+    band for the 7-day average, and one night swings several ms around it: reading
+    last night's value here instead, as the batch row first proposed, would have
+    cut 10 of Mark's 43 Green days between 1 Jul and 26 Sep 2026, every one on a
+    balanced week. Last night's reading decides only the same-day Red
+    (``_overnight_below_floor``).
+    """
     if daily_metric is None:
         return False
     value = daily_metric.hrv_weekly_avg_ms or daily_metric.hrv_last_night_avg_ms
     low = daily_metric.hrv_baseline_low_ms
     return value is not None and low is not None and value < low
+
+
+def _overnight_below_floor(daily_metric: DailyMetric | None) -> bool:
+    """Is last night's own reading under Garmin's floor? (Batch 269.1)
+
+    The same-day Red reads this morning's measurement, not last week's average. With
+    no overnight reading it falls back to the average, so a missing measurement can
+    never clear a morning the old rule would have cut.
+    """
+    if daily_metric is None:
+        return False
+    value = daily_metric.hrv_last_night_avg_ms
+    if value is None:
+        value = daily_metric.hrv_weekly_avg_ms
+    low = daily_metric.hrv_baseline_low_ms
+    return value is not None and low is not None and value < low
+
+
+def _hrv_hold_concern(
+    *,
+    hrv_low: bool,
+    overnight_below_floor: bool,
+    band_artifact: bool,
+) -> str | None:
+    """Why Garmin flagged a week that last night's reading does not support.
+
+    ``None`` when last night's reading supports the flag, or when the flag is not
+    about the floor at all: those mornings ease as they always did.
+    """
+    if band_artifact:
+        return HRV_CONCERN_FLOOR_MOVED
+    if hrv_low and not overnight_below_floor:
+        return HRV_CONCERN_WEEKLY_BELOW_FLOOR
+    return None
+
+
+def _hrv_corroborating_signals(
+    *,
+    daily_metric: DailyMetric | None,
+    readiness_level: str | None,
+    readiness_baseline: MetricBaseline | None,
+    resting_hr_elevated: bool,
+    subjective_score: int | None,
+) -> list[str]:
+    """What else disagrees with last night's reading this morning (Batch 269).
+
+    These are the signals that may ease a session on their own (Mark's G3 answer,
+    made on his behalf on 27 Sep 2026): resting heart rate above his usual range,
+    readiness below it or Garmin's Low or Poor, and a low check-in. Any one of them
+    beside an HRV flag makes the morning Amber rather than a hold. Sleep is not
+    listed because it already decides the day before this rule (under 74
+    age-adjusted) or caps it after (the Batch 170 credit ceiling).
+    """
+    signals: list[str] = []
+    if resting_hr_elevated:
+        signals.append("resting_heart_rate_above_usual")
+    readiness_score = daily_metric.readiness_score if daily_metric is not None else None
+    usual_low = (
+        readiness_baseline.lower_quartile_value
+        if readiness_baseline is not None and _baseline_ready(readiness_baseline)
+        else None
+    )
+    if readiness_level in {"low", "poor"} or (
+        readiness_score is not None
+        and usual_low is not None
+        and float(readiness_score) < float(usual_low)
+    ):
+        signals.append("readiness_below_usual")
+    if subjective_score is not None and subjective_score < 5:
+        signals.append("check_in_low")
+    return signals
+
+
+def _hrv_hold_reason(
+    concern: str,
+    daily_metric: DailyMetric,
+    recalibration: Mapping[str, Any],
+) -> str:
+    overnight = _number(daily_metric.hrv_last_night_avg_ms)
+    floor = _number(daily_metric.hrv_baseline_low_ms)
+    if concern == HRV_CONCERN_FLOOR_MOVED:
+        band_low = recalibration.get("bandLow")
+        usual = band_low.get("referenceMs") if isinstance(band_low, Mapping) else None
+        return (
+            f"Garmin moved its HRV floor to {floor} ms from a usual {_number(usual)} ms "
+            f"while last night's reading held at {overnight} ms, and no other signal "
+            "disagrees, so the moved floor alone does not cut the session."
+        )
+    return (
+        f"Garmin's 7-day HRV average ({_number(daily_metric.hrv_weekly_avg_ms)} ms) is "
+        f"under its {floor} ms floor, but last night's own reading ({overnight} ms) is "
+        "not, and no other signal disagrees, so the HRV flag alone does not cut the "
+        "session."
+    )
 
 
 def subjective_score_label(score: int | None) -> str | None:
