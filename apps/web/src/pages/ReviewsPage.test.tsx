@@ -206,6 +206,40 @@ describe('ReviewsPage', () => {
     );
   });
 
+  it('lists the days Mark disagreed with, where he reads the week (Batch 274)', async () => {
+    const withDissent = envelope('weekly', true);
+    (withDissent.data as Record<string, unknown>).dissents = [
+      {
+        id: '66666666-6666-4666-8666-666666666666',
+        kind: 'verdict',
+        analysisId: '22222222-2222-4222-8222-222222222222',
+        subjectDate: '2026-06-24',
+        figure: null,
+        label: null,
+        verdict: 'Red',
+        reason: 'HRV was a point under a floor Garmin had moved.',
+        createdAtUtc: '2026-06-24T08:00:00Z',
+      },
+    ];
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/api/v1/reviews/weekly'
+        ? Promise.resolve(withDissent)
+        : Promise.reject(new Error(`Unexpected request: ${path}`)),
+    );
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ReviewsPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const list = await screen.findByLabelText('Days you disagreed with');
+    expect(within(list).getByText(/HRV was a point under a floor Garmin had moved/)).toBeTruthy();
+    expect(within(list).getByText(/Red/)).toBeTruthy();
+  });
+
   it('switches to the monthly period', async () => {
     apiFetchMock.mockImplementation((path: string) => {
       if (path === '/api/v1/reviews/weekly') return Promise.resolve(envelope('weekly', false));

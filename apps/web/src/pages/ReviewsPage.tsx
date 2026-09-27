@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { FeedbackControl } from '@/components/FeedbackControl';
 import { Markdown } from '@/components/Markdown';
 import { ProvenancePanel } from '@/components/ProvenancePanel';
+import { friendlyDate } from '@/lib/dailyFlow';
 import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -145,7 +146,7 @@ function ReviewBody({
   generating: boolean;
   onGenerate: () => void;
 }) {
-  const { rollup, strength, insights, review } = data;
+  const { rollup, strength, insights, review, dissents } = data;
   const planSourceNote = rollup.adherence.zeroInterpretation;
   const strengthSourceNote = strength.zeroInterpretation ?? strength.trendReason;
 
@@ -236,12 +237,29 @@ function ReviewBody({
           {review ? (
             <div className="space-y-3 rounded-xl border border-border bg-bg px-4 py-3">
               <Markdown>{review.markdown}</Markdown>
-              <ProvenancePanel sources={[rollup.thermal.provenance]} />
+              <ProvenancePanel sources={[rollup.thermal.provenance]} analysisId={review.analysisId} />
               <FeedbackControl
                 analysisId={review.analysisId}
                 kind="summary"
                 feedback={review.feedback ?? null}
               />
+            </div>
+          ) : null}
+          {dissents.length > 0 ? (
+            // Batch 274: the days he disagreed with the verdict, where he reads the week.
+            <div className="space-y-2 rounded-xl border border-border bg-bg px-4 py-3" aria-label="Days you disagreed with">
+              <p className="text-sm font-medium text-text-primary">Days you disagreed with</p>
+              <ul className="space-y-1.5 text-sm leading-6 text-text-secondary">
+                {dissents.map((dissent) => (
+                  <li key={dissent.id}>
+                    <span className="font-medium text-text-primary">
+                      {friendlyDate(dissent.subjectDate)}
+                      {dissent.verdict ? ` — ${dissent.verdict}` : ''}:
+                    </span>{' '}
+                    “{dissent.reason}”
+                  </li>
+                ))}
+              </ul>
             </div>
           ) : null}
           <div className="flex justify-end">

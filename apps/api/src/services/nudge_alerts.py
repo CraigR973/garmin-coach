@@ -294,6 +294,38 @@ def build_admin_generation_alert_plan(
     )
 
 
+def build_admin_contest_alert_plan(
+    *,
+    dispute_id: uuid.UUID,
+    label: str,
+    value: object,
+    units: str | None,
+    subject_date: date,
+    reason: str,
+) -> NotificationPlan:
+    """Batch 274: Mark contested a figure. A bug report from the only user.
+
+    One push per contest (the tag carries its id), so two contests on one day are
+    two reports, not one.
+    """
+    figure = f"{value} {units}".strip() if value is not None else "no value"
+    quoted = reason if len(reason) <= 140 else reason[:137].rstrip() + "…"
+    return NotificationPlan(
+        analysis_type=ANALYSIS_TYPE_ADMIN_ALERT,
+        tag=f"admin-figure-contest-{dispute_id}",
+        title="Mark contested a figure",
+        body=f"{label} ({figure}) on {subject_date.isoformat()}: “{quoted}”",
+        severity="warning",
+        data={"url": "/", "kind": "admin_alert", "disputeId": str(dispute_id)},
+        context={
+            "subjectDate": subject_date.isoformat(),
+            "disputeId": str(dispute_id),
+            "label": label,
+            "rule": "admin_figure_contest",
+        },
+    )
+
+
 def build_analysis_push_plan(analysis: Analysis, *, kind: str) -> NotificationPlan | None:
     """A one-per-activity push announcing a fresh post-workout read (Batch 45).
 
@@ -727,6 +759,62 @@ class NudgeAlertService:
             )
         except Exception:
             log.exception("admin generation alert push failed", reason=reason)
+            return False
+
+    async def notify_admin_figure_contest(
+        self,
+        *,
+        dispute_id: uuid.UUID,
+        label: str,
+        value: object,
+        units: str | None,
+        subject_date: date,
+        reason: str,
+        now_utc: datetime | None = None,
+        commit: bool = True,
+    ) -> bool:
+        """Batch 274: tell Craig that Mark contested a figure.
+
+        Routed as Batch 141 routes a failed generation. The ``error``-level log event
+        always fires and reaches Sentry; the push reaches the profile named by
+        ``settings.admin_alert_user_id`` only when one is set, and production has
+        none, so the push half is dormant until it is (Batch 291 makes Sentry the
+        operator route). Best-effort: never raises, so it cannot lose the record.
+        """
+        log.error(
+            "figure_contest_admin_alert",
+            dispute_id=str(dispute_id),
+            label=label,
+            subject_date=subject_date.isoformat(),
+        )
+        raw_admin_id = settings.admin_alert_user_id.strip()
+        if not raw_admin_id:
+            return False
+        try:
+            admin_id = uuid.UUID(raw_admin_id)
+        except ValueError:
+            log.warning("admin_alert_user_id is not a valid uuid", value=raw_admin_id)
+            return False
+        try:
+            admin = await self.session.get(Profile, admin_id)
+            if admin is None or not admin.is_active or admin.deleted_at is not None:
+                return False
+            return await self._send_once(
+                admin,
+                build_admin_contest_alert_plan(
+                    dispute_id=dispute_id,
+                    label=label,
+                    value=value,
+                    units=units,
+                    subject_date=subject_date,
+                    reason=reason,
+                ),
+                subject_date=subject_date,
+                commit=commit,
+                now_utc=now_utc or datetime.now(UTC),
+            )
+        except Exception:
+            log.exception("admin figure contest push failed", dispute_id=str(dispute_id))
             return False
 
     async def push_workout_analysis(

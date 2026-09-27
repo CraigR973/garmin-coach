@@ -163,3 +163,30 @@ def covered_figures(packet_provenance: list[dict[str, Any]] | None) -> set[str]:
         for entry in packet_provenance
         if isinstance(entry, dict) and entry.get("figure")
     }
+
+
+def find_provenance(packet: Any, figure: str) -> dict[str, Any] | None:
+    """The provenance entry a stored read carries for ``figure``, wherever it sits.
+
+    Batch 274: a contest snapshots the working the app *showed*, so it reads the
+    stored packet rather than trusting the client. The entry lives in a different
+    place on each read (the brief's thermal review and HRV rail, the review's thermal
+    rollup, the ride's execution), so the search walks the packet instead of naming
+    paths that would each go stale.
+    """
+    if isinstance(packet, dict):
+        entries = packet.get("provenance")
+        if isinstance(entries, list):
+            for entry in entries:
+                if isinstance(entry, dict) and entry.get("figure") == figure:
+                    return dict(entry)
+        for value in packet.values():
+            found = find_provenance(value, figure)
+            if found is not None:
+                return found
+    elif isinstance(packet, list):
+        for value in packet:
+            found = find_provenance(value, figure)
+            if found is not None:
+                return found
+    return None

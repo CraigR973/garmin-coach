@@ -1886,6 +1886,27 @@ export const storedReviewSchema = z.object({
   feedback: feedbackSchema.nullable().optional(),
 });
 
+// Batch 274: Mark's disputes. A contest names a figure and keeps the working the
+// app showed; a dissent records his disagreement with a day's verdict.
+export const disputeSchema = z.object({
+  id: z.string().uuid(),
+  kind: z.enum(['figure', 'verdict']),
+  analysisId: z.string().uuid().nullable(),
+  subjectDate: isoDateSchema,
+  figure: z.string().nullable(),
+  label: z.string().nullable(),
+  verdict: z.string().nullable(),
+  reason: z.string(),
+  createdAtUtc: isoDateTimeSchema,
+});
+export type Dispute = z.infer<typeof disputeSchema>;
+
+export const disputeEnvelopeSchema = z.object({
+  data: disputeSchema,
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
+
 export const reviewEnvelopeSchema = z.object({
   data: z.object({
     period: reviewPeriodSchema,
@@ -1908,6 +1929,8 @@ export const reviewEnvelopeSchema = z.object({
       earlyWarningFired: z.boolean(),
     }),
     review: storedReviewSchema.nullable(),
+    // Batch 274: the days in this period Mark disagreed with the verdict.
+    dissents: z.array(disputeSchema).default([]),
   }),
   meta: apiMetaSchema,
   errors: z.array(apiErrorSchema),

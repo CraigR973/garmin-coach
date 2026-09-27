@@ -27,6 +27,7 @@ from src.routers import (
     coach_chat,
     coaching_state,
     daily_loop,
+    disputes,
     experiments,
     fan,
     feedback,
@@ -153,6 +154,7 @@ app.include_router(strength_brief.router)
 app.include_router(walking_brief.router)
 app.include_router(breathwork_brief.router)
 app.include_router(reviews.router)
+app.include_router(disputes.router)
 app.include_router(trends.router)
 app.include_router(handover.router)
 app.include_router(tts.router)
