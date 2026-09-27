@@ -198,6 +198,49 @@ describe('morning brief page', () => {
     expect(screen.queryByTestId('provenance-panel')).toBeNull();
   });
 
+  it("records a disagreement with today's call without changing it (Batch 274)", async () => {
+    const user = userEvent.setup();
+    apiFetchMock.mockImplementation((path: string, options?: RequestInit) => {
+      if (path === '/api/v1/disputes/verdicts' && options?.method === 'POST') {
+        return Promise.resolve({
+          data: {
+            id: '66666666-6666-4666-8666-666666666666',
+            kind: 'verdict',
+            analysisId: '22222222-2222-4222-8222-222222222222',
+            subjectDate: '2026-06-20',
+            figure: null,
+            label: null,
+            verdict: 'Green',
+            reason: 'I felt rough.',
+            createdAtUtc: '2026-06-20T08:00:00Z',
+          },
+          meta: { generatedAtUtc: '2026-06-20T08:00:00Z' },
+          errors: [],
+        });
+      }
+      return Promise.resolve(snapshot);
+    });
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter>
+          <MorningBriefPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: "I disagree with today's call" }));
+    await user.type(screen.getByRole('textbox'), 'I felt rough.');
+    await user.click(screen.getByRole('button', { name: 'Record it' }));
+
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/disputes/verdicts', {
+      method: 'POST',
+      body: JSON.stringify({ subjectDate: '2026-06-20', reason: 'I felt rough.' }),
+    });
+    expect(
+      await screen.findByText("Recorded. It won't change today's call, and it will show in your weekly review."),
+    ).toBeTruthy();
+  });
+
   it('puts the deterministic verdict before the supporting brief detail (Batch 244)', async () => {
     renderWithQuery(<MorningBriefPage />);
 

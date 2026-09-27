@@ -32,6 +32,7 @@ CLASSES_WITH_UPDATED_AT = {
     "BriefGenerationStatus",
     "ConversationLearningProposal",
     "DailyMetric",
+    "Dispute",
     "Experiment",
     "GarminWorkoutDelivery",
     "GenerationRequest",

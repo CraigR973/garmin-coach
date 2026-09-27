@@ -785,3 +785,32 @@ class PostActivityGenerationStatus(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     analysis_type: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+
+class Dispute(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
+    """Mark's disagreement, recorded rather than lost in chat (Batch 274).
+
+    ``kind='figure'``: he contested a derived figure. ``snapshot`` holds the
+    working the app showed him (its Batch 273 provenance entry), looked up from the
+    read's stored packet on the server, never taken from the client.
+    ``kind='verdict'``: he dissented from a day's verdict. ``snapshot`` holds the
+    verdict as it stood.
+
+    **Recording changes nothing.** No rollup, verdict, VO2 block or chronic cluster
+    reads this table; suppression is Batch 276, and a test pins that boundary.
+    """
+
+    __tablename__ = "disputes"
+    __table_args__ = (Index("ix_disputes_user_subject_date", "user_id", "subject_date"),)
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    analysis_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("analyses.id", ondelete="SET NULL"), nullable=True
+    )
+    subject_date: Mapped[date] = mapped_column(Date, nullable=False)
+    figure: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)

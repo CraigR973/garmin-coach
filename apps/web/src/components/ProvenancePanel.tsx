@@ -1,10 +1,15 @@
 import { ChevronDown } from 'lucide-react';
+import { DisputeForm } from '@/components/DisputeForm';
+import { contestFigure, FIGURE_CONTEST_COPY } from '@/lib/disputes';
 import { describeProvenance, provenanceEntries, type ProvenanceRow } from '@/lib/provenance';
 
 interface ProvenancePanelProps {
   /** Raw provenance lists from the packet(s) behind this screen, in display order. */
   sources: unknown[];
   timeZone?: string;
+  /** The stored read these figures belong to. With it, each row can be contested
+   *  (Batch 274); without it the panel only explains. */
+  analysisId?: string | null;
 }
 
 /**
@@ -16,7 +21,7 @@ interface ProvenancePanelProps {
  * expander under each figure was ruled out because the figures exist only inside
  * model-written markdown (273.1).
  */
-export function ProvenancePanel({ sources, timeZone }: ProvenancePanelProps) {
+export function ProvenancePanel({ sources, timeZone, analysisId }: ProvenancePanelProps) {
   const rows = sources
     .flatMap((raw) => provenanceEntries(raw))
     .map((entry) => describeProvenance(entry, timeZone))
@@ -42,6 +47,16 @@ export function ProvenancePanel({ sources, timeZone }: ProvenancePanelProps) {
             </ul>
             {row.warning ? (
               <p className="mt-2 text-sm leading-6 text-amber-700 dark:text-amber-300">⚠️ {row.warning}</p>
+            ) : null}
+            {analysisId ? (
+              <div className="mt-3">
+                <DisputeForm
+                  copy={FIGURE_CONTEST_COPY}
+                  onSubmit={async (reason) => {
+                    await contestFigure(analysisId, row.figure, reason);
+                  }}
+                />
+              </div>
             ) : null}
           </details>
         ))}

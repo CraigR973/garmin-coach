@@ -1890,7 +1890,7 @@ function CompletedRideRead({
           <div className="mt-3 space-y-4">
             <Markdown>{analysis.outputMarkdown}</Markdown>
             <RideIntervalTable intervals={analysis.intervals ?? []} />
-            <ProvenancePanel sources={[analysis.execution?.provenance]} />
+            <ProvenancePanel sources={[analysis.execution?.provenance]} analysisId={analysis.id} />
             <FeedbackControl analysisId={analysis.id} kind="summary" feedback={analysis.feedback ?? null} />
           </div>
         ) : null}
@@ -2082,7 +2082,7 @@ function PostRideBody({
             <Markdown>{item.outputMarkdown}</Markdown>
           </div>
           <RideIntervalTable intervals={item.intervals ?? []} />
-          <ProvenancePanel sources={[item.execution?.provenance]} />
+          <ProvenancePanel sources={[item.execution?.provenance]} analysisId={item.id} />
           <FeedbackControl analysisId={item.id} kind="summary" feedback={item.feedback ?? null} />
         </div>
       ))}

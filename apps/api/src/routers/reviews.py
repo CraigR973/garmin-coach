@@ -25,7 +25,9 @@ from src.database import get_db
 from src.models.coaching import Analysis
 from src.models.profile import Profile
 from src.rate_limit import paid_generation_limit
+from src.routers.disputes import DisputeOut, serialize_dispute
 from src.routers.feedback import FeedbackOut, serialize_feedback
+from src.services.disputes import KIND_VERDICT, DisputeService
 from src.services.feedback import FeedbackService
 from src.services.reviews import (
     VALID_PERIODS,
@@ -85,6 +87,9 @@ class ReviewData(BaseModel):
     strength: StrengthSummary
     insights: InsightSummary
     review: StoredReview | None
+    # Batch 274: the days in this period Mark disagreed with the verdict, so
+    # repeated justified dissent is visible where he reads the week.
+    dissents: list[DisputeOut] = []
 
 
 class ReviewEnvelope(BaseModel):
@@ -116,10 +121,18 @@ async def _review_feedback(
     return serialize_feedback(row) if row is not None else None
 
 
+async def _dissents(db: AsyncSession, player: Profile, preview: ReviewPreview) -> list[DisputeOut]:
+    rows = await DisputeService(db).between(
+        player.id, preview.period_start, preview.period_end, kind=KIND_VERDICT
+    )
+    return [serialize_dispute(row) for row in rows]
+
+
 def _data(
     preview: ReviewPreview,
     review: Analysis | None,
     review_feedback: FeedbackOut | None = None,
+    dissents: list[DisputeOut] | None = None,
 ) -> ReviewData:
     return ReviewData(
         period=preview.period,
@@ -150,6 +163,7 @@ def _data(
             earlyWarningFired=preview.early_warning.fired,
         ),
         review=_stored_review(review, review_feedback),
+        dissents=dissents or [],
     )
 
 
@@ -174,7 +188,7 @@ async def get_review(
     preview = await service.preview(player, period, as_of=as_of)
     feedback = await _review_feedback(db, player, preview.latest_review)
     return ReviewEnvelope(
-        data=_data(preview, preview.latest_review, feedback),
+        data=_data(preview, preview.latest_review, feedback, await _dissents(db, player, preview)),
         meta=ApiMeta(generatedAtUtc=_generated_at()),
         errors=[],
     )
@@ -202,7 +216,12 @@ async def run_review(
         )
     feedback = await _review_feedback(db, player, result.review)
     return ReviewEnvelope(
-        data=_data(result.preview, result.review, feedback),
+        data=_data(
+            result.preview,
+            result.review,
+            feedback,
+            await _dissents(db, player, result.preview),
+        ),
         meta=ApiMeta(generatedAtUtc=_generated_at()),
         errors=[],
     )

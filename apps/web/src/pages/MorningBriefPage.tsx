@@ -7,6 +7,7 @@ import { BriefPendingCta } from '@/components/BriefPendingCta';
 import { StaleDataNotice } from '@/components/EmptyState';
 import { useRegisterCoachAnchor } from '@/contexts/CoachAnchorContext';
 import { Markdown } from '@/components/Markdown';
+import { DisputeForm } from '@/components/DisputeForm';
 import { ProvenancePanel } from '@/components/ProvenancePanel';
 import { MetricComparisonTable } from '@/components/MetricComparisonTable';
 import { PageHeader } from '@/components/PageHeader';
@@ -20,6 +21,7 @@ import { useDailyLoopFreshness } from '@/hooks/useDailyLoopFreshness';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { markBriefReviewed } from '@/lib/briefReview';
 import { friendlyDate, writtenAt } from '@/lib/dailyFlow';
+import { dissentFromVerdict, VERDICT_DISSENT_COPY } from '@/lib/disputes';
 
 export function MorningBriefPage() {
   const query = useDailyLoop();
@@ -113,6 +115,15 @@ export function MorningBriefPage() {
               (requiresBikeRest ? 'An acute recovery signal rules out riding today.' : undefined)
             }
           />
+          {/* Batch 274: disagreement is recorded beside the day and changes nothing. */}
+          <div className="px-1">
+            <DisputeForm
+              copy={VERDICT_DISSENT_COPY}
+              onSubmit={async (reason) => {
+                await dissentFromVerdict(data.subjectDate, reason);
+              }}
+            />
+          </div>
           <AcutePhysiologyNotice boundary={analysis.acutePhysiology} />
           <TodayActions actions={analysis.todayActions} workouts={data.plannedWorkouts} />
           <Card>
@@ -151,6 +162,7 @@ export function MorningBriefPage() {
                   analysis.acutePhysiology?.overnightHrv?.provenance,
                 ]}
                 timeZone={data.timezone}
+                analysisId={analysis.id}
               />
             </CardContent>
           </Card>
