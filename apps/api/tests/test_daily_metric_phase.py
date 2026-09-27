@@ -29,6 +29,7 @@ from src.models.coaching import (
 )
 from src.models.coaching import DailyMetric, MetricBaseline, Sleep
 from src.models.profile import Profile, UserRole
+from src.seeds import MARK_GARMIN_USER_PROFILE_PK
 from src.services.daily_metric_coverage import DayAggregates
 from src.services.daily_metric_phase import (
     index_day_aggregates_by_date,
@@ -166,6 +167,7 @@ async def test_the_closed_day_resync_does_not_mutate_the_wake_row(
             Profile(
                 id=user_id,
                 display_name="Phase split",
+                garmin_user_profile_pk=MARK_GARMIN_USER_PROFILE_PK,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,
@@ -222,6 +224,7 @@ async def test_a_second_wake_sync_of_the_same_day_still_updates_in_place(
             Profile(
                 id=user_id,
                 display_name="Wake idempotence",
+                garmin_user_profile_pk=MARK_GARMIN_USER_PROFILE_PK,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,

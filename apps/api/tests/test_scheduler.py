@@ -48,12 +48,14 @@ from src.scheduler import (
     run_weekly_review_delivery,
     run_workout_autopush,
 )
+from src.seeds import MARK_GARMIN_USER_PROFILE_PK
 from src.services.anthropic_text import AnthropicApiError
 from src.services.dreo_fan import DreoFanError, DreoFanState
 from src.services.generation_requests import GenerationRequestInProgress
 from src.services.job_runs import JobResult, JobStatus
 from src.services.morning_inputs import MorningInputPresence
 from src.services.morning_pipeline import (
+    GarminDailySyncResult,
     MorningInputResult,
 )
 from src.services.morning_pipeline import (
@@ -75,6 +77,9 @@ _SLEEP_END = datetime(2026, 6, 24, 7, 0)  # UTC-naive, == 08:00 BST
 def _profile(timezone: str = "Europe/London") -> MagicMock:
     profile = MagicMock()
     profile.id = uuid.uuid4()
+    # Batch 283: bound to the account the Garmin fixtures belong to, or every
+    # Garmin job would (correctly) skip it as naming no account.
+    profile.garmin_user_profile_pk = MARK_GARMIN_USER_PROFILE_PK
     profile.timezone = timezone
     profile.latitude = None
     profile.longitude = None
@@ -876,10 +881,10 @@ async def test_sync_garmin_daily_syncs_metrics_and_sleep() -> None:
         patch("src.services.morning_pipeline.GarminSyncService", return_value=sync_service),
         patch("src.services.morning_pipeline.profile_today", return_value=today),
     ):
-        daily, sleep, failures = await _sync_garmin_daily(session, profiles, client=client)
+        result = await _sync_garmin_daily(session, profiles, client=client)
 
-    assert (daily, sleep) == (8, 8)
-    assert failures == 0
+    assert (result.daily_metrics, result.sleep) == (8, 8)
+    assert result.failures == 0
     assert client.fetch_daily_payloads.call_count == 8
     assert sync_service.sync_daily.await_count == 8
     expected_dates = [today - timedelta(days=offset) for offset in range(4)]
@@ -918,11 +923,11 @@ async def test_sync_garmin_daily_isolates_profile_failure() -> None:
         patch("src.services.morning_pipeline.GarminSyncService", return_value=sync_service),
         patch("src.services.morning_pipeline.profile_today", return_value=date(2026, 8, 2)),
     ):
-        daily, sleep, failures = await _sync_garmin_daily(session, [bad, good], client=client)
+        result = await _sync_garmin_daily(session, [bad, good], client=client)
 
     # The failing profile contributes nothing; the healthy one still syncs.
-    assert (daily, sleep) == (4, 4)
-    assert failures == 4
+    assert (result.daily_metrics, result.sleep) == (4, 4)
+    assert result.failures == 4
     assert session.rollback.await_count == 4
     assert sync_service.sync_daily.await_count == 8
 
@@ -954,9 +959,9 @@ async def test_poisoned_garmin_step_recovers_session_for_verdict(
             patch("src.services.morning_pipeline.GarminSyncService", return_value=sync_service),
             patch("src.services.morning_pipeline.profile_today", return_value=date(2026, 8, 15)),
         ):
-            daily, sleep, failures = await _sync_garmin_daily(session, [profile], client=client)
+            result = await _sync_garmin_daily(session, [profile], client=client)
 
-        assert (daily, sleep, failures) == (3, 3, 1)
+        assert (result.daily_metrics, result.sleep, result.failures) == (3, 3, 1)
         # This is the transaction state the morning-analysis query inherits.
         # Without the caught-step rollback it raises PendingRollbackError.
         assert await session.scalar(text("SELECT 1")) == 1
@@ -968,7 +973,7 @@ async def test_sync_garmin_daily_no_profiles_skips_client() -> None:
     session = AsyncMock()
     with patch("src.services.morning_pipeline.GarminConnectClient") as client_cls:
         result = await _sync_garmin_daily(session, [])
-    assert result == (0, 0, 0)
+    assert result == GarminDailySyncResult()
     client_cls.assert_not_called()
 
 
@@ -999,9 +1004,9 @@ async def test_morning_weather_sync_runs_daily_sync_before_analysis() -> None:
 
     async def fake_daily_sync(
         _session: object, _profiles: object, **_k: object
-    ) -> tuple[int, int, int]:
+    ) -> GarminDailySyncResult:
         calls.append("garmin_daily")
-        return (1, 1, 0)
+        return GarminDailySyncResult(daily_metrics=1, sleep=1)
 
     analysis_service = MagicMock()
 
@@ -1582,6 +1587,37 @@ async def test_wake_check_no_active_profiles_skips() -> None:
 
 
 @pytest.mark.asyncio
+async def test_wake_check_never_polls_a_profile_that_names_no_garmin_account() -> None:
+    """Batch 283: no Garmin call, no wake record, and the skip is counted."""
+    unbound = _profile()
+    unbound.garmin_user_profile_pk = None
+    with _wake_patches(profiles=[unbound], now=_local(8, 25)) as m:
+        result = await run_wake_check()
+
+    assert m.client.calls == 0
+    m.record.assert_not_awaited()
+    assert result.counters["garmin_unbound"] == 1
+    assert result.counters["failed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_wake_check_refuses_sleep_that_belongs_to_another_account() -> None:
+    """Batch 283: Mark's night must not decide another profile's morning."""
+    other = _profile()
+    other.garmin_user_profile_pk = 1234567
+    marks_sleep = {"dailySleepDTO": {"userProfilePK": MARK_GARMIN_USER_PROFILE_PK}}
+    with _wake_patches(profiles=[other], now=_local(8, 25), client=_FakeGarmin(marks_sleep)) as m:
+        result = await run_wake_check()
+
+    assert m.client.calls == 1
+    m.is_ready.assert_not_called()
+    m.record.assert_not_awaited()
+    m.morning_sync.assert_not_awaited()
+    assert result.status is JobStatus.degraded
+    assert result.counters["garmin_identity_mismatch"] == 1
+
+
+@pytest.mark.asyncio
 async def test_wake_check_sleep_fetch_failure_is_isolated() -> None:
     """A Garmin failure is logged and skipped — no decision, no fire, no crash."""
     failing = _FakeGarmin(None, raise_on_fetch=True)
@@ -1633,6 +1669,7 @@ async def _seed_profile(db_conn: AsyncConnection, user_id: uuid.UUID) -> None:
             Profile(
                 id=user_id,
                 display_name="Wake Test",
+                garmin_user_profile_pk=MARK_GARMIN_USER_PROFILE_PK,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,

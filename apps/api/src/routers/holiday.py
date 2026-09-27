@@ -8,7 +8,7 @@ Surfaces:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth import CurrentUser
 from src.database import get_db
 from src.services.holiday_pause import HolidayPauseService, HolidayWindow
+from src.services.profile_clock import profile_today
 
 router = APIRouter(prefix="/api/v1/holiday", tags=["holiday"])
 
@@ -66,6 +67,13 @@ class PauseEnvelope(BaseModel):
 
 class ResumeData(BaseModel):
     window: WindowOut
+    #: Sessions the pause had skipped, from the return day on, that are back.
+    restoredCount: int
+    #: The holiday had not started, so it was removed rather than shortened.
+    cancelled: bool
+    #: Deprecated (Batch 290): resume no longer regenerates a block. Kept, always
+    #: "Your plan" and 0, so a web build older than this API still parses it
+    #: during a deploy where Railway lands before Vercel.
     continuationLabel: str
     regeneratedCount: int
 
@@ -81,13 +89,13 @@ class PauseInput(BaseModel):
     endDate: str
 
 
-def _window_out(w: HolidayWindow) -> WindowOut:
+def _window_out(w: HolidayWindow, today: date) -> WindowOut:
     return WindowOut(
         startDate=w.start_date.isoformat(),
         endDate=w.end_date.isoformat(),
         pausedAtUtc=w.paused_at_utc.isoformat(),
         resumedAtUtc=w.resumed_at_utc.isoformat() if w.resumed_at_utc else None,
-        isActive=w.is_active,
+        isActive=w.is_active_on(today),
     )
 
 
@@ -98,7 +106,8 @@ async def get_holiday_windows(
 ) -> HolidayEnvelope:
     service = HolidayPauseService(db)
     windows = await service.get_windows(player)
-    outs = [_window_out(w) for w in windows]
+    today = profile_today(player)
+    outs = [_window_out(w, today) for w in windows]
     active = next((o for o in reversed(outs) if o.isActive), None)
     return HolidayEnvelope(
         data=HolidayData(windows=outs, activeWindow=active),
@@ -122,7 +131,10 @@ async def pause_plan(
         end_date=date.fromisoformat(body.endDate),
     )
     return PauseEnvelope(
-        data=PauseData(window=_window_out(result.window), skippedCount=result.skipped_count),
+        data=PauseData(
+            window=_window_out(result.window, profile_today(player)),
+            skippedCount=result.skipped_count,
+        ),
         meta=ApiMeta(generatedAtUtc=_generated_at()),
         errors=[],
     )
@@ -137,9 +149,11 @@ async def resume_plan(
     result = await service.resume(player)
     return ResumeEnvelope(
         data=ResumeData(
-            window=_window_out(result.window),
-            continuationLabel=result.continuation_label,
-            regeneratedCount=result.regenerated_count,
+            window=_window_out(result.window, profile_today(player)),
+            restoredCount=result.restored_count,
+            cancelled=result.cancelled,
+            continuationLabel="Your plan",
+            regeneratedCount=0,
         ),
         meta=ApiMeta(generatedAtUtc=_generated_at()),
         errors=[],

@@ -32,7 +32,6 @@ from src.config import settings
 from src.models.coaching import (
     Activity,
     Analysis,
-    DailyMetric,
     KnowledgeBase,
     ManualEntry,
     PlannedWorkout,
@@ -54,9 +53,8 @@ from src.services.bulk_post_activity_lookups import (
     latest_analyses_by_activity,
     latest_checkins_by_activity,
 )
-from src.services.coach_policy import RECORDED_DATA_HONESTY_RULE
+from src.services.coach_policy import PACKET_FIELD_NAMES_RULE, RECORDED_DATA_HONESTY_RULE
 from src.services.coaching_state import CoachingStateService
-from src.services.daily_metric_phase import morning_first_order
 from src.services.learned_context import (
     LEARNED_CONTEXT_PROMPT_GUARDRAIL,
     learned_context_packet,
@@ -83,13 +81,17 @@ from src.services.strength_brief import (
     compute_strength_rollup,
     is_strength_activity,
 )
+from src.services.strength_heart_rate import (
+    StrengthHeartRateSample,
+    usual_range_review,
+)
 from src.services.workout_categories import (
     DAY_CATEGORY_WEIGHTS,
     category_for_workout_type,
 )
 from src.services.workout_match import strength_material_difference
 
-PROMPT_VERSION = "post-strength-analysis-v6-2026-08-15"
+PROMPT_VERSION = "post-strength-analysis-v7-2026-09-25"
 ANALYSIS_TYPE = "post_strength"
 
 SYSTEM_PROMPT = f"""You are CheckMark, a private strength and conditioning coach.
@@ -99,11 +101,26 @@ State any clock times in Mark's local timezone and never use UTC.
 Use only the supplied context packet. Follow every data-quality guardrail.
 {RECORDED_DATA_HONESTY_RULE}
 Return concise markdown that acknowledges the strength session, reads frequency
-and consistency against the recent trend, notes whether heart rate was unusually
-high for a strength session, and gives one light next step. This is advisory
-only: the session was recorded on a wrist heart-rate monitor, so do not make
-cycling recovery decisions from it, and do not discuss power, FTP, cadence,
-stamina, Performance Condition, Training Effect, or zones.
+and consistency against the recent trend, reads heart rate against his own usual
+range for this workout, and gives one light next step. This is advisory only: the
+session was recorded on a wrist heart-rate monitor, so do not make cycling recovery
+decisions from it, and do not discuss power, FTP, cadence, stamina, Performance
+Condition, Training Effect, or zones.
+Describe heart rate only through `heartRateReview.usualRange`, which compares this
+session with his own earlier sessions of the same workout, separately for the
+average and the peak:
+- `within_usual`: say it sat within his usual range for this workout, quoting the
+  range and how many sessions it covers.
+- `above_usual` or `below_usual`: say it sat above or below that range and by how
+  many bpm (`bpmOutsideUsual`). One reading outside his range on a wrist sensor is
+  not a concern on its own.
+- `no_usual_range`: give the figure and say there are not yet enough earlier
+  sessions of this workout to compare it with.
+- `no_reading`: say the session recorded no value.
+Never call his heart rate high, low, elevated, notable, modest or unremarkable on
+your own reading, and never judge it against resting heart rate, age, the session's
+effort or other workouts.
+{PACKET_FIELD_NAMES_RULE}
 If the activity check-in notes contain a question, answer it directly using only
 the supplied packet; say when the available data cannot support an answer."""
 SYSTEM_PROMPT = "\n\n".join((SYSTEM_PROMPT, LEARNED_CONTEXT_PROMPT_GUARDRAIL))
@@ -269,13 +286,11 @@ class PostStrengthAnalysisService(PostActivityReadRunner[StrengthAnalysisResult]
         kb_rows = await self._active_knowledge_base(player.id)
         knowledge_base = {row.section: row.content for row in kb_rows}
         planned_workouts = await self._planned_workouts(player.id, subject_date)
-        daily_metric = await self._daily_metric(player.id, subject_date)
         checkin = await self._activity_checkin(player.id, activity.id)
-        sessions = await self._strength_sessions(player.id, as_of=subject_date)
-        rollup = compute_strength_rollup(sessions, as_of_date=subject_date)
-
-        resting_hr = daily_metric.resting_heart_rate_bpm if daily_metric else None
-        avg_hr = activity.avg_heart_rate_bpm
+        strength_rows = await self._strength_rows(player.id, as_of=subject_date)
+        rollup = compute_strength_rollup(
+            [_strength_session(row) for row in strength_rows], as_of_date=subject_date
+        )
         return {
             "packetType": "post_strength_analysis",
             "packetVersion": 1,
@@ -295,13 +310,17 @@ class PostStrengthAnalysisService(PostActivityReadRunner[StrengthAnalysisResult]
                 "learnedContext": learned_context_packet(knowledge_base),
             },
             "activity": _strength_activity_packet(activity),
+            # Batch 288: the only yardstick the read may use is his own range for
+            # this workout. Resting heart rate and the gap to it are gone from the
+            # packet — the 24 Sep read called a usual session "a notably high relative
+            # bump" off that gap, which had been larger on the day it called modest.
             "heartRateReview": {
-                "restingHeartRateBpm": resting_hr,
-                "avgHeartRateBpm": avg_hr,
-                "avgAboveRestingBpm": (avg_hr - resting_hr)
-                if avg_hr is not None and resting_hr is not None
-                else None,
+                "avgHeartRateBpm": activity.avg_heart_rate_bpm,
                 "maxHeartRateBpm": activity.max_heart_rate_bpm,
+                "usualRange": usual_range_review(
+                    _heart_rate_sample(activity),
+                    [_heart_rate_sample(row) for row in strength_rows],
+                ),
                 "wristHeartRateNote": (
                     "Strength heart rate is wrist-based and excluded from recovery decisions (#49)."
                 ),
@@ -324,7 +343,7 @@ class PostStrengthAnalysisService(PostActivityReadRunner[StrengthAnalysisResult]
                 "outputRules": [
                     "acknowledge_strength_session",
                     "read_frequency_and_trend",
-                    "flag_unusually_high_heart_rate_when_present",
+                    "read_heart_rate_only_against_his_usual_range",
                     "give_one_light_next_step",
                     "do_not_discuss_power_or_zones",
                     "do_not_make_recovery_decisions",
@@ -411,21 +430,6 @@ class PostStrengthAnalysisService(PostActivityReadRunner[StrengthAnalysisResult]
         )
         return list(rows)
 
-    async def _daily_metric(self, user_id: uuid.UUID, subject_date: date) -> DailyMetric | None:
-        """The wake observation, matching that morning's read (Batch 205)."""
-        return cast(
-            DailyMetric | None,
-            await self.session.scalar(
-                select(DailyMetric)
-                .where(
-                    DailyMetric.user_id == user_id,
-                    DailyMetric.calendar_date == subject_date,
-                )
-                .order_by(morning_first_order())
-                .limit(1)
-            ),
-        )
-
     async def _activity_checkin(
         self, user_id: uuid.UUID, activity_id: uuid.UUID
     ) -> ManualEntry | None:
@@ -442,12 +446,13 @@ class PostStrengthAnalysisService(PostActivityReadRunner[StrengthAnalysisResult]
             ),
         )
 
-    async def _strength_sessions(
+    async def _strength_rows(
         self,
         user_id: uuid.UUID,
         *,
         as_of: date,
-    ) -> list[StrengthSession]:
+    ) -> list[Activity]:
+        """Every strength session in the 12-week window, for the rollup and the HR range."""
         start = as_of - timedelta(days=WINDOW_12W_DAYS)
         lower_bound = datetime(start.year, start.month, start.day)
         rows = (
@@ -462,20 +467,28 @@ class PostStrengthAnalysisService(PostActivityReadRunner[StrengthAnalysisResult]
             .scalars()
             .all()
         )
-        return [
-            StrengthSession(
-                activity_id=row.id,
-                activity_name=row.activity_name,
-                activity_type=row.activity_type,
-                session_date=row.start_utc.date(),
-                duration_min=(
-                    round(row.duration_sec / 60) if row.duration_sec is not None else None
-                ),
-                training_load=(float(row.training_load) if row.training_load is not None else None),
-            )
-            for row in rows
-            if row.start_utc.date() <= as_of and is_strength_activity(row)
-        ]
+        return [row for row in rows if row.start_utc.date() <= as_of and is_strength_activity(row)]
+
+
+def _strength_session(row: Activity) -> StrengthSession:
+    return StrengthSession(
+        activity_id=row.id,
+        activity_name=row.activity_name,
+        activity_type=row.activity_type,
+        session_date=row.start_utc.date(),
+        duration_min=(round(row.duration_sec / 60) if row.duration_sec is not None else None),
+        training_load=(float(row.training_load) if row.training_load is not None else None),
+    )
+
+
+def _heart_rate_sample(row: Activity) -> StrengthHeartRateSample:
+    return StrengthHeartRateSample(
+        activity_id=row.id,
+        activity_name=row.activity_name,
+        start_utc=row.start_utc,
+        avg_heart_rate_bpm=row.avg_heart_rate_bpm,
+        max_heart_rate_bpm=row.max_heart_rate_bpm,
+    )
 
 
 def build_strength_user_prompt(context_packet: Mapping[str, Any]) -> str:

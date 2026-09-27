@@ -36,6 +36,7 @@ from src.services.coach_policy import (
     FLOORS,
     PROMPT_FLOOR_AUDIT_EXEMPTIONS,
     READ_PROMPT_FLOORS,
+    RECORD_CONTRADICTION_RULE,
     missing_floors,
 )
 from src.services.interval_workout_editor import editable_snapshot_for
@@ -141,7 +142,7 @@ class _Date:
 
 def test_brief_chat_prompt_allows_labelled_general_science_lane() -> None:
     """Batch 175's lane survives Batch 179's rewrite of the surface."""
-    assert PROMPT_VERSION == "coach-chat-v15-2026-09-17"
+    assert PROMPT_VERSION == "coach-chat-v16-2026-09-26"
     assert "never invent his" in FLAT_PROMPT
     assert "You may answer general, non-personalized endurance-training science" in FLAT_PROMPT
     assert 'Label those answers with "General principle:"' in FLAT_PROMPT
@@ -218,6 +219,34 @@ def test_prompt_names_the_four_sections_batch_256_added() -> None:
     assert "today's readiness and body-battery reading" in FLAT_PROMPT
     assert "last night's bedroom climate and the weather around it" in FLAT_PROMPT
     assert "his own measured baseline bands" in FLAT_PROMPT
+
+
+def test_prompt_names_the_week_as_the_mornings_left_it() -> None:
+    """Batch 289: the same closed-list rule, applied to the section it adds.
+
+    On 24 Sep the coach told Mark a session the morning had halved was
+    "unmodified". The block now carries each recent morning's cut and whether he
+    approved it; a section the enumeration does not name reads as one the coach
+    does not have.
+    """
+    assert "what each morning read of the past week did to his sessions" in FLAT_PROMPT
+    assert "whether he approved the change" in FLAT_PROMPT
+
+
+def test_the_record_decides_when_mark_and_the_record_disagree() -> None:
+    """Batch 289 (Craig, 25 Sep): Mark asked whether the coach was just telling him
+    what he wanted to hear. It had contradicted him without the record, then conceded
+    everything once he insisted. The rule runs in both directions.
+    """
+    assert RECORD_CONTRADICTION_RULE in SYSTEM_PROMPT
+    rule = " ".join(RECORD_CONTRADICTION_RULE.split())
+    assert "before you agree" in rule
+    assert "If the record contradicts him, say so plainly and kindly" in rule
+    assert "never concede a point the record does not support" in rule
+    assert "If the record bears him out, say that just as plainly" in rule
+    # What his own device displayed stays his evidence for the device (#181).
+    assert "What his own device displayed is his evidence" in rule
+    assert internal_vocabulary_hits(rule) == ()
 
 
 def test_prompt_guards_the_learned_memory_it_now_carries() -> None:

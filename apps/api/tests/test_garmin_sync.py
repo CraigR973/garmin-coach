@@ -17,6 +17,7 @@ from src.models.coaching import (
 )
 from src.models.coaching import Activity, ActivityTimeSeries, DailyMetric, Sleep
 from src.models.profile import Profile, UserRole
+from src.seeds import MARK_GARMIN_USER_PROFILE_PK
 from src.services.garmin_sync import (
     GarminActivityPayloads,
     GarminConnectClient,
@@ -408,6 +409,7 @@ async def test_garmin_sync_upserts_without_duplicate_rows(db_conn: AsyncConnecti
             Profile(
                 id=user_id,
                 display_name="Garmin Sync Test",
+                garmin_user_profile_pk=MARK_GARMIN_USER_PROFILE_PK,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,
@@ -499,6 +501,7 @@ async def test_completed_july_31_resync_settles_beside_the_wake_snapshot(
             Profile(
                 id=user_id,
                 display_name="July 31 daily repair",
+                garmin_user_profile_pk=MARK_GARMIN_USER_PROFILE_PK,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,
@@ -569,6 +572,7 @@ async def test_sync_activities_strips_raw_metrics_for_high_volume_types(
             Profile(
                 id=user_id,
                 display_name="Strip Test",
+                garmin_user_profile_pk=MARK_GARMIN_USER_PROFILE_PK,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,
@@ -624,6 +628,7 @@ async def test_sync_activities_keeps_captured_splits_in_raw_summary(
             Profile(
                 id=user_id,
                 display_name="Lap Capture Test",
+                garmin_user_profile_pk=MARK_GARMIN_USER_PROFILE_PK,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,
@@ -681,6 +686,7 @@ async def test_repeat_poll_leaves_stored_samples_untouched(db_conn: AsyncConnect
             Profile(
                 id=user_id,
                 display_name="Repeat Poll Test",
+                garmin_user_profile_pk=MARK_GARMIN_USER_PROFILE_PK,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,
@@ -748,6 +754,7 @@ async def test_details_payload_without_samples_does_not_wipe_stored_stream(
             Profile(
                 id=user_id,
                 display_name="Thin Details Test",
+                garmin_user_profile_pk=MARK_GARMIN_USER_PROFILE_PK,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,
@@ -819,6 +826,7 @@ async def test_extended_session_rewrites_despite_equal_sample_count(
             Profile(
                 id=user_id,
                 display_name="Extended Session Test",
+                garmin_user_profile_pk=MARK_GARMIN_USER_PROFILE_PK,
                 role=UserRole.admin,
                 timezone="Europe/London",
                 is_active=True,

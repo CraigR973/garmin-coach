@@ -233,7 +233,7 @@ def _holiday_context(
             {
                 "startDate": window.start_date.isoformat(),
                 "endDate": window.end_date.isoformat(),
-                "isActive": window.is_active,
+                "isActive": window.is_active_on(subject_date),
             }
             for window in windows
         ],

@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
+import { resumeMessage } from '@/lib/holidayMessages';
 import { HolidayPage } from './HolidayPage';
 
 const apiFetchMock = vi.fn();
@@ -74,8 +75,10 @@ const resumeResponse = {
       resumedAtUtc: '2026-07-22T06:00:00',
       isActive: false,
     },
-    continuationLabel: 'Build2',
-    regeneratedCount: 5,
+    restoredCount: 3,
+    cancelled: false,
+    continuationLabel: 'Your plan',
+    regeneratedCount: 0,
   },
   meta: { generatedAtUtc: '2026-07-22T06:00:00Z' },
   errors: [],
@@ -135,7 +138,7 @@ describe('HolidayPage', () => {
     expect(screen.getByRole('button', { name: /Resume plan/ })).toBeTruthy();
   });
 
-  it('resumes the plan and shows continuation label in toast', async () => {
+  it('resumes the plan and says how many sessions came back (Batch 290)', async () => {
     const { toast } = await import('sonner');
     const user = userEvent.setup();
 
@@ -153,8 +156,14 @@ describe('HolidayPage', () => {
 
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith(
-        expect.stringContaining('Build2'),
+        'Welcome back — your plan is back on, with 3 sessions restored.',
       );
     });
+  });
+
+  it('uses the approved resume wording for none, one and several sessions', () => {
+    expect(resumeMessage(0)).toBe('Welcome back — your plan is back on.');
+    expect(resumeMessage(1)).toBe('Welcome back — your plan is back on, with 1 session restored.');
+    expect(resumeMessage(3)).toBe('Welcome back — your plan is back on, with 3 sessions restored.');
   });
 });

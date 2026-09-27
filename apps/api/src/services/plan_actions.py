@@ -19,7 +19,7 @@ from src.services.executable_coaching import (
     WORKOUT_STATUS_SKIPPED,
     ExecutableCoachingService,
 )
-from src.services.holiday_pause import HolidayPauseService
+from src.services.holiday_pause import HolidayPauseService, holiday_windows_covering_date
 from src.services.plan_periodisation import BLOCK_SEQUENCE
 from src.services.structured_workout_builder import (
     BuiltCustomBikeWorkout,
@@ -631,16 +631,17 @@ class PlanActionService:
             .scalars()
             .all()
         )
-        holiday_window = await HolidayPauseService(self.session).get_active_window(player)
+        # Any holiday covering the day, finished ones included (Batch 290): a week
+        # the app shows from the past must still read "Holiday" on the days he was
+        # away. Keying on the *active* window only worked while nothing ended a
+        # holiday by itself; once one does, past holiday days would lose the label.
+        holiday_windows = await HolidayPauseService(self.session).get_windows(player)
 
         def block_for(day: date) -> PlanBlock | None:
             return next((b for b in blocks if b.start_date <= day <= b.end_date), None)
 
         def is_holiday(day: date) -> bool:
-            return (
-                holiday_window is not None
-                and holiday_window.start_date <= day <= holiday_window.end_date
-            )
+            return bool(holiday_windows_covering_date(holiday_windows, day))
 
         def is_reset(block: PlanBlock | None) -> bool:
             return _block_has_active_reset(block)
