@@ -1107,6 +1107,9 @@ export const acutePhysiologySchema = z.object({
     .array(
       z.object({
         kind: z.enum(['resting_heart_rate', 'overnight_hrv', 'oxygen_respiration']),
+        // Batch 293: rest takes Mark off the bike, watch is surveillance, ease explains
+        // an Amber cap. Absent on packets stored before it.
+        level: z.enum(['rest', 'watch', 'ease']).optional(),
         message: z.string().min(1),
       }),
     )
