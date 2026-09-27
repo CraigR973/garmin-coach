@@ -26,13 +26,13 @@ No migration required (mirrors the Batch 14 no-migration pattern).
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import KnowledgeBase, PlannedWorkout
@@ -155,6 +155,29 @@ class ResumeResult:
     cancelled: bool = False
 
 
+def slots_above_each_day(
+    workouts: Sequence[PlannedWorkout], highest_by_date: Mapping[date, int]
+) -> list[tuple[PlannedWorkout, int]]:
+    """Pair each session with the ``version`` its new row takes (Batch 292).
+
+    ``version`` is a slot per user and day, shared by every session on that day
+    and unique across active and inactive rows alike
+    (``uq_planned_workouts_user_date_version``). A new row therefore takes the
+    day's highest slot + 1, as every other plan writer does, and never "its own
+    version + 1": on a two-session day that is the other session's slot. It is
+    how pausing Mark's 27 Sep-6 Oct 2026 holiday failed on Sat 3 Oct, where
+    Z2 + Neuromuscular is v1 and Bodyweight v2. A day's sessions keep their order.
+    """
+    next_slot: dict[date, int] = {}
+    pairs: list[tuple[PlannedWorkout, int]] = []
+    for workout in sorted(workouts, key=lambda w: (w.workout_date, w.version)):
+        day = workout.workout_date
+        slot = next_slot.get(day, max(highest_by_date.get(day, 0), workout.version) + 1)
+        next_slot[day] = slot + 1
+        pairs.append((workout, slot))
+    return pairs
+
+
 def is_build1(sequence_index: int) -> bool:
     """True if this build block is the first in its 2121 build pair.
 
@@ -185,6 +208,21 @@ class HolidayPauseService:
         if row is None:
             return None, []
         return row, [HolidayWindow.from_dict(w) for w in row.content.get("windows", [])]
+
+    async def _highest_slots(
+        self, user_id: uuid.UUID, from_date: date, to_date: date
+    ) -> dict[date, int]:
+        """Each day's highest ``version``, counting rows that are no longer active."""
+        result = await self.session.execute(
+            select(PlannedWorkout.workout_date, func.max(PlannedWorkout.version))
+            .where(
+                PlannedWorkout.user_id == user_id,
+                PlannedWorkout.workout_date >= from_date,
+                PlannedWorkout.workout_date <= to_date,
+            )
+            .group_by(PlannedWorkout.workout_date)
+        )
+        return {day: highest for day, highest in result.tuples()}
 
     async def get_windows(self, user: Profile) -> list[HolidayWindow]:
         _, windows = await self._load_kb(user.id)
@@ -302,14 +340,15 @@ class HolidayPauseService:
             .all()
         )
 
+        highest = await self._highest_slots(user_id, start_date, end_date)
         new_versions: list[PlannedWorkout] = []
-        for w in active:
+        for w, slot in slots_above_each_day(active, highest):
             w.is_active = False
             skipped = PlannedWorkout(
                 user_id=user_id,
                 plan_block_id=w.plan_block_id,
                 workout_date=w.workout_date,
-                version=w.version + 1,
+                version=slot,
                 title=w.title,
                 workout_type=w.workout_type,
                 status="skipped",
@@ -393,14 +432,15 @@ class HolidayPauseService:
             .all()
         )
 
+        highest = await self._highest_slots(user_id, from_date, to_date)
         restored: list[PlannedWorkout] = []
-        for w in skipped:
+        for w, slot in slots_above_each_day(skipped, highest):
             w.is_active = False
             back = PlannedWorkout(
                 user_id=user_id,
                 plan_block_id=w.plan_block_id,
                 workout_date=w.workout_date,
-                version=w.version + 1,
+                version=slot,
                 title=w.title,
                 workout_type=w.workout_type,
                 status="planned",

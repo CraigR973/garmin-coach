@@ -30,6 +30,7 @@ from src.services.holiday_pause import (
     holiday_windows_covering_date,
     is_build1,
     overnight_away_window_for_date,
+    slots_above_each_day,
 )
 
 # ---------------------------------------------------------------------------
@@ -67,6 +68,34 @@ def test_a_holiday_runs_until_its_end_date_and_then_ends_by_itself() -> None:
         resumed_at_utc=datetime(2026, 7, 14, 8, 0),
     )
     assert not closed.is_active_on(date(2026, 7, 14))
+
+
+def test_new_rows_take_the_days_highest_slot_not_their_own_version_plus_one() -> None:
+    """Batch 292: on 3 Oct 2026 Z2 + Neuromuscular (v1) + 1 was Bodyweight's slot."""
+    user_id = uuid.uuid4()
+    saturday, wednesday, friday = date(2026, 10, 3), date(2026, 9, 30), date(2026, 10, 2)
+
+    def row(day: date, version: int, title: str) -> PlannedWorkout:
+        return PlannedWorkout(
+            user_id=user_id, workout_date=day, version=version, title=title, is_active=True
+        )
+
+    bodyweight = row(saturday, 2, "Bodyweight")
+    ride = row(saturday, 1, "Z2 + Neuromuscular")
+    sweet_spot = row(wednesday, 2, "Sweet Spot")
+    lone = row(friday, 1, "Z2")
+    pairs = slots_above_each_day(
+        [bodyweight, sweet_spot, ride, lone],
+        # Wednesday's v3 is an inactive earlier edit; Friday is missing from the
+        # map, so its own version is the floor.
+        {saturday: 2, wednesday: 3},
+    )
+    assert [(w.title, slot) for w, slot in pairs] == [
+        ("Sweet Spot", 4),
+        ("Z2", 2),
+        ("Z2 + Neuromuscular", 3),
+        ("Bodyweight", 4),
+    ]
 
 
 def test_holiday_date_helpers_keep_history_but_only_active_window_means_away() -> None:
