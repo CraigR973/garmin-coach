@@ -9,16 +9,19 @@
 **2026-09-28 — The graded verdict is specced as group G6 (Batches 294–297). Nothing is built
 yet. Craig asked whether Claude should compute the morning verdict. Decided instead: the
 colour stays deterministic, the rules grade the evidence, and Claude reads Mark's words. The
-review came first (`docs/reviews/verdict-grading-review-2026-09-28.md`: go, with six changes).**
+review came first (`docs/reviews/verdict-grading-review-2026-09-28.md`: go, with six changes).
+Settled by Craig the same day: no clinician check; a cold is Red; no two-week shadow before
+the switch; and 297 takes over the two-Reds keyword matching. G6 runs back to back in a new
+session.**
 
 ### What G6 does (ledger: "The verdict grades the evidence")
 
 | Batch | What | Gate |
 |---|---|---|
-| **294** | A symptom question at check-in, with fever and heart floors; the overnight-HRV alarm stops sending him off the bike on noise | Wording (Craig on Mark's behalf), an optional clinician check, the go for migration `033` |
+| **294** | A symptom question at check-in, with fever and heart floors; the overnight-HRV alarm stops sending him off the bike on noise | Wording (Craig on Mark's behalf), the go for migration `033` |
 | **295** | The graded verdict built beside the ladder; the replay tool; shadow by replay | None |
-| **296** | The colour switches to the graded verdict; a mild concern moves or holds a session | 14 non-holiday shadow mornings (about 21 Oct), Mark has seen the replay, copy |
-| **297** | Claude reads the notes; its flags only add caution | Craig labels the eval; the go for spend and the migration |
+| **296** | The colour switches to the graded verdict; a mild concern moves or holds a session | Craig reviews the replay on Mark's behalf; copy |
+| **297** | Claude reads the notes; its flags only add caution; the two-Reds rule stops keyword matching | Craig labels the eval; the go for spend and the migration |
 
 ### Why, in numbers (28 Sep, read-only)
 
@@ -32,10 +35,12 @@ review came first (`docs/reviews/verdict-grading-review-2026-09-28.md`: go, with
 
 ### Needs Craig
 
-1. **The go for 294**, ideally so it lands before Mark's first ride back on 7 Oct:
-   - sign the wording off on Mark's behalf
-   - say whether a clinician checks the floors
-   - approve migration `033` at `/batch-start`
+1. **Run G6 in a new session** (`/batch-group G6`), aiming for 294–296 before Mark's first
+   ride back on 7 Oct. It stops for:
+   - your sign-off of 294's wording, on Mark's behalf
+   - your go for migration `033`
+   - your review of 295's replay report before 296 switches
+   - your labels on 297's eval set, and the go for its spend and migration
 2. **Carried from 27 Sep:**
    - send Mark `docs/drafts/2026-09-27-reply-to-mark.md`
    - G4: a free Neon database and `BACKUP_RESTORE_DATABASE_URL` (291 is buildable)
@@ -45,6 +50,9 @@ review came first (`docs/reviews/verdict-grading-review-2026-09-28.md`: go, with
 
 - **Until 294 ships, the overnight-HRV alarm can still say "off the bike" on noise**, about one
   morning in twelve. Mark is on holiday until 6 Oct, so no ride is affected before 7 Oct.
+- **From 7 to 20 Oct the old ladder runs beside the graded verdict** (after 296). List every
+  disagreement here, and look at any morning where the graded colour is two steps less
+  cautious the same day.
 - 27 Sep's "Worth carrying" (below) still stands.
 - **Next DECISIONS number: #365.** G4's rest and G5 are unchanged.
 
@@ -1823,6 +1831,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-28** — G6 decisions settled by Craig: no clinician check; a cold is Red on the endurance path; no two-week shadow (the ladder runs beside the graded verdict 7–20 Oct instead, and Craig reviews the replay on Mark's behalf); 297 absorbs "Claude replaces regex classification". Authoring merged as PR #339 (`2cac23f`).
 - **2026-09-28** — Authored G6, Batches 294–297 (the graded verdict), on Craig's go, after a review through four lenses (`docs/reviews/verdict-grading-review-2026-09-28.md`). Craig asked whether Claude should compute the verdict. Decided: the colour stays deterministic, the rules grade the evidence across independent domains, and Claude only reads Mark's notes (its flags only add caution). Measured read-only: the overnight-HRV off-the-bike alarm fires on 6 of 75 mornings (3 by under 1 ms); readiness tracks sleep and recovery time (r 0.69, −0.72); feel tracks his physiology (r 0.4–0.6). Nothing built.
 - **2026-09-27** — Batch 287 finished on Craig's go: `railway config apply` ran with the pinned plan (0 add / 4 change / 0 destroy, identical to the saved one) and turned off the API's sleeping, which had been on. `railway.toml` removed (PR #338, `fbf4b67`, Decision #364). The first deploy without it built all three services from the Dockerfile, ran alembic and passed exact-SHA health. The crons' first scheduled runs on it are still to observe (28 Sep and 4 Oct).
 - **2026-09-27** — G3 step 2: Batch 272 shipped (PR #337, `2456884`, Decision #363). Before every paid brief, review and Trends read, the app checks the figures two surfaces both derive (first pair: the bedroom peak) and marks, never blocks, any that disagree; alerts are error-level logs to Sentry. Quiet on production today; fires on the real pre-268 figures. Found by timing it: Batch 268's night calculation cost 4.9 s per chat turn, now 0.03 s. Trends month and season regenerated at v12 (≈ $0.08). G3 done; one message to Mark ready. Handoff written.
