@@ -6,6 +6,50 @@
 
 ## Now
 
+**2026-09-28 — The graded verdict is specced as group G6 (Batches 294–297). Nothing is built
+yet. Craig asked whether Claude should compute the morning verdict. Decided instead: the
+colour stays deterministic, the rules grade the evidence, and Claude reads Mark's words. The
+review came first (`docs/reviews/verdict-grading-review-2026-09-28.md`: go, with six changes).**
+
+### What G6 does (ledger: "The verdict grades the evidence")
+
+| Batch | What | Gate |
+|---|---|---|
+| **294** | A symptom question at check-in, with fever and heart floors; the overnight-HRV alarm stops sending him off the bike on noise | Wording (Craig on Mark's behalf), an optional clinician check, the go for migration `033` |
+| **295** | The graded verdict built beside the ladder; the replay tool; shadow by replay | None |
+| **296** | The colour switches to the graded verdict; a mild concern moves or holds a session | 14 non-holiday shadow mornings (about 21 Oct), Mark has seen the replay, copy |
+| **297** | Claude reads the notes; its flags only add caution | Craig labels the eval; the go for spend and the migration |
+
+### Why, in numbers (28 Sep, read-only)
+
+- **Reds:** 21 of 98 mornings since 21 Jun were Red.
+- **The overnight-HRV alarm:**
+  - It would have said "off the bike" on 6 of 75 mornings, 3 of them by under 1 ms.
+  - At an illness-grade line it would have fired once.
+- **Readiness** is mostly his sleep and recovery time (r 0.69 and −0.72).
+- **His feel** tracks his physiology (r 0.4–0.6).
+- **Symptoms:** in 75 morning notes he has never reported one, and nothing asks.
+
+### Needs Craig
+
+1. **The go for 294**, ideally so it lands before Mark's first ride back on 7 Oct:
+   - sign the wording off on Mark's behalf
+   - say whether a clinician checks the floors
+   - approve migration `033` at `/batch-start`
+2. **Carried from 27 Sep:**
+   - send Mark `docs/drafts/2026-09-27-reply-to-mark.md`
+   - G4: a free Neon database and `BACKUP_RESTORE_DATABASE_URL` (291 is buildable)
+   - the chat-experiment extractor's first paid run is Mark's own tap
+
+### Worth carrying
+
+- **Until 294 ships, the overnight-HRV alarm can still say "off the bike" on noise**, about one
+  morning in twelve. Mark is on holiday until 6 Oct, so no ride is affected before 7 Oct.
+- 27 Sep's "Worth carrying" (below) still stands.
+- **Next DECISIONS number: #365.** G4's rest and G5 are unchanged.
+
+## Prior current-state snapshots
+
 **2026-09-27 (evening) — G3 is done: Batches 269 and 272 shipped, with Mark's answers and
 wording decided on his behalf (Craig: "make the best decisions on Mark's behalf"; Mark is on
 holiday 27 Sep–6 Oct). One message to Mark is ready. Nothing else needs Craig today.**
@@ -66,8 +110,6 @@ holiday 27 Sep–6 Oct). One message to Mark is ready. Nothing else needs Craig 
 - **The API had been allowed to sleep** (`sleepApplication: true`) until the 287 apply turned it off.
 - **Next DECISIONS number: #365.** Next groups: G4's rest (Craig's hands), G5 (time-gated: 276 about
   two weeks after 273/274 went live, the block-end questions on 18 Oct, the storage decision).
-
-## Prior current-state snapshots
 
 **2026-09-26 — G1 is done to the apply. Batches 288, 289 and 285 are live and verified on
 production; 287's Railway file is merged with a saved plan, and `railway config apply` is
@@ -1781,6 +1823,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-28** — Authored G6, Batches 294–297 (the graded verdict), on Craig's go, after a review through four lenses (`docs/reviews/verdict-grading-review-2026-09-28.md`). Craig asked whether Claude should compute the verdict. Decided: the colour stays deterministic, the rules grade the evidence across independent domains, and Claude only reads Mark's notes (its flags only add caution). Measured read-only: the overnight-HRV off-the-bike alarm fires on 6 of 75 mornings (3 by under 1 ms); readiness tracks sleep and recovery time (r 0.69, −0.72); feel tracks his physiology (r 0.4–0.6). Nothing built.
 - **2026-09-27** — Batch 287 finished on Craig's go: `railway config apply` ran with the pinned plan (0 add / 4 change / 0 destroy, identical to the saved one) and turned off the API's sleeping, which had been on. `railway.toml` removed (PR #338, `fbf4b67`, Decision #364). The first deploy without it built all three services from the Dockerfile, ran alembic and passed exact-SHA health. The crons' first scheduled runs on it are still to observe (28 Sep and 4 Oct).
 - **2026-09-27** — G3 step 2: Batch 272 shipped (PR #337, `2456884`, Decision #363). Before every paid brief, review and Trends read, the app checks the figures two surfaces both derive (first pair: the bedroom peak) and marks, never blocks, any that disagree; alerts are error-level logs to Sentry. Quiet on production today; fires on the real pre-268 figures. Found by timing it: Batch 268's night calculation cost 4.9 s per chat turn, now 0.03 s. Trends month and season regenerated at v12 (≈ $0.08). G3 done; one message to Mark ready. Handoff written.
 - **2026-09-27** — G3 step 1: Batch 269 shipped (PR #336, `8f50590`, Decision #362). A morning whose only mark is Garmin's weekly HRV signal now holds the session (Green, targets held) instead of going Red; the same-day Red needs last night's own reading under the floor. Re-verification found the row's overnight-first swap would have cut 10 Green days, so it gates only the Red. Replayed on every morning since 21 Jun: 8 change, all towards less cutting. Morning prompt v48 self-heals; nothing spent.
