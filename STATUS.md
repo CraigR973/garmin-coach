@@ -6,39 +6,39 @@
 
 ## Now
 
-**2026-09-29 — G6 step 1 of 4: Batch 294 shipped (PR #341, `9443867`, Decision #365). The
-check-in asks "Any symptoms today?"; chest-or-heart and fever answers mean no training of any
-kind, a head cold means Red on the easy path. The overnight-HRV alarm keeps its Amber cap but
-says "off the bike" only at an illness-grade drop: 1 of 75 replayed mornings instead of 6.
-Batch 295 (the graded verdict, built beside the ladder, with its replay report) is next in the
-same session.**
+**2026-09-29 — G6 step 2 of 4: Batch 295 shipped (PR #342, `6987317`, Decision #366). The
+graded verdict exists beside the ladder and nothing live reads it. Its replay of all 99
+stored mornings is committed (`docs/reviews/verdict-replay-2026-09-29.md`): Red falls from 13
+on today's ladder to 4, and no floor is weakened. The group now stops for Craig's review of
+that report, on Mark's behalf, before 296 switches the colour.**
 
 ### What G6 does (ledger: "The verdict grades the evidence")
 
 | Batch | What | Gate |
 |---|---|---|
-| ~~294~~ | Shipped 29 Sep: symptom question and floors, calmer HRV alarm | Done: migration `033` live, wording signed off |
-| **295** | The graded verdict built beside the ladder; the replay tool; shadow by replay | None |
-| **296** | The colour switches to the graded verdict; a mild concern moves or holds a session | Craig reviews the replay on Mark's behalf; copy |
+| ~~294~~ | Shipped 29 Sep: symptom question and floors, calmer HRV alarm | Done |
+| ~~295~~ | Shipped 29 Sep: the graded verdict beside the ladder, the replay tool and report | Done |
+| **296** | The colour switches to the graded verdict; a mild concern moves or holds a session | **Now: Craig reviews the replay report; then the copy** |
 | **297** | Claude reads the notes; its flags only add caution; the two-Reds rule stops keyword matching | Craig labels the eval; the go for spend and the migration |
 
 ### Needs Craig
 
-1. **Nothing for 295.** The group stops next at 296: your review of 295's replay report.
-2. **Carried from 27 Sep:**
-   - send Mark `docs/drafts/2026-09-27-reply-to-mark.md`
-   - G4: a free Neon database and `BACKUP_RESTORE_DATABASE_URL` (291 is buildable)
-   - the chat-experiment extractor's first paid run is Mark's own tap
+1. **Review the replay report on Mark's behalf** and say go (or change a line) for 296 to
+   switch the colour. The eight calls made in the build are listed at its top.
+2. **296's wording** (`docs/drafts/2026-09-29-batch-296-wording.md` once 296 starts) — it can
+   be signed off at the same time.
+3. **Carried from 27 Sep:** send Mark `docs/drafts/2026-09-27-reply-to-mark.md`; G4's free Neon
+   database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment extractor's first paid run.
 
 ### Worth carrying
 
-- **The symptom question is live but unanswered:** 0 stored answers. Mark is on holiday until
-  6 Oct; his first check-in back is the first real answer.
+- **Mark's first two weeks back are W12 CONSOLIDATION and W13 TAPER.** Under the graded
+  verdict a mild or marked concern holds the session in those weeks.
 - **From 7 to 20 Oct the old ladder runs beside the graded verdict** (after 296). List every
   disagreement here, and look at any morning where the graded colour is two steps less
-  cautious the same day.
-- 27 Sep's "Worth carrying" (below) still stands.
-- **Next DECISIONS number: #366.** G4's rest and G5 are unchanged.
+  cautious the same day. `scripts/replay_verdicts.py --start --end` lists them.
+- **The symptom question is live but unanswered** (0 answers; Mark away until 6 Oct).
+- 27 Sep's "Worth carrying" (below) still stands. **Next DECISIONS number: #367.**
 
 ## Prior current-state snapshots
 
@@ -1815,6 +1815,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-29** — G6 step 2: Batch 295 shipped (PR #342, `6987317`, Decision #366). `services/verdict_grading.py` rates autonomic, sleep, load and subjective evidence against Mark's own normal and combines them across domains after 294's floors. Readiness only confirms, Garmin's band is not read, and every line is in one table. `services/verdict_replay.py` + `scripts/replay_verdicts.py` replay any stored morning from the inputs it saw, beside today's ladder. 99 mornings: Red 13 → 4, Green-held 5 → 23, no floor weakened. On the six mornings it would have eased or moved a hard session he rode 58% of intervals on target, against 72% otherwise. Nothing live changed. CI 16/16 green (2,162 tests, 0 skipped); Railway and Vercel served `6987317`; web 200; `daily-loop` 401; the merged replay ran read-only on production.
 - **2026-09-29** — G6 step 1: Batch 294 shipped (PR #341, `9443867`, Decision #365). "Any symptoms today?" on the check-in (migration `033`, Craig's go); chest-or-heart and fever answers set Red with no training of any kind, a head cold Red on the easy path, and every consumer of the bike-rest flag honours it. The overnight-HRV rail rests the bike only at 2.5 SD or 30% under his median, or with a second sign: 6 of 75 replayed mornings become 1 (16 Jul). Wording signed off by Craig on Mark's behalf. Re-verified at `/batch-start`: every figure held; three corrections recorded in the ledger. CI 16/16 green (2,124 tests, 0 skipped); Railway and Vercel served `9443867`; web 200; `daily-loop` 401. Production smoke, read-only: 033 applied, 16 Jul still rests, 21 and 22 Sep cap without bike rest, 23 Sep Green; the v50 bump self-heals and blanks nothing.
 - **2026-09-28** — G6 decisions settled by Craig: no clinician check; a cold is Red on the endurance path; no two-week shadow (the ladder runs beside the graded verdict 7–20 Oct instead, and Craig reviews the replay on Mark's behalf); 297 absorbs "Claude replaces regex classification". Authoring merged as PR #339 (`2cac23f`).
 - **2026-09-28** — Authored G6, Batches 294–297 (the graded verdict), on Craig's go, after a review through four lenses (`docs/reviews/verdict-grading-review-2026-09-28.md`). Craig asked whether Claude should compute the verdict. Decided: the colour stays deterministic, the rules grade the evidence across independent domains, and Claude only reads Mark's notes (its flags only add caution). Measured read-only: the overnight-HRV off-the-bike alarm fires on 6 of 75 mornings (3 by under 1 ms); readiness tracks sleep and recovery time (r 0.69, −0.72); feel tracks his physiology (r 0.4–0.6). Nothing built.
