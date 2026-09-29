@@ -21,6 +21,7 @@ in ``morning_analysis``, and nothing here writes.
 
 from collections.abc import Iterable
 from datetime import UTC, date, datetime, time
+from typing import Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from src.models.coaching import Analysis
@@ -30,7 +31,18 @@ from src.services.wake_detection import WINDOW_END
 #: this is the latest a stored row can still be the read Mark woke up to.
 MORNING_READ_CUTOFF: time = WINDOW_END
 
-__all__ = ["MORNING_READ_CUTOFF", "delivered_verdicts"]
+__all__ = ["MORNING_READ_CUTOFF", "delivered_rows", "delivered_verdicts"]
+
+
+class _MorningRow(Protocol):
+    @property
+    def subject_date(self) -> date: ...
+
+    @property
+    def generated_at_utc(self) -> datetime: ...
+
+    @property
+    def created_at(self) -> datetime: ...
 
 
 def _local_time(value: datetime, timezone_name: str) -> time:
@@ -41,24 +53,23 @@ def _local_time(value: datetime, timezone_name: str) -> time:
     return value.replace(tzinfo=UTC).astimezone(zone).time()
 
 
-def delivered_verdicts(
-    rows: Iterable[Analysis],
-    *,
-    timezone_name: str,
-) -> dict[date, str | None]:
-    """``{subject_date: the verdict that date's morning read actually carried}``.
+def delivered_rows[RowT: _MorningRow](
+    rows: Iterable[RowT], *, timezone_name: str
+) -> dict[date, RowT]:
+    """``{subject_date: the morning read Mark was actually given}``.
 
-    ``rows`` are morning analyses in any order; only ``subject_date``,
-    ``generated_at_utc``, ``created_at`` and ``verdict`` are read. A date whose
+    ``rows`` are morning analyses (or projections of them) in any order; only
+    ``subject_date``, ``generated_at_utc`` and ``created_at`` are read. A date whose
     every read falls after the cutoff — a morning missed entirely and generated
     late — keeps its *earliest* read, which is the closest thing to the one Mark
-    was given, rather than dropping out of the window.
+    was given, rather than dropping out of the window. Batch 295's replay reads the
+    same rule, so the colour it calls "shown" is the one this module counts.
     """
-    by_date: dict[date, list[Analysis]] = {}
+    by_date: dict[date, list[RowT]] = {}
     for row in rows:
         by_date.setdefault(row.subject_date, []).append(row)
 
-    delivered: dict[date, str | None] = {}
+    delivered: dict[date, RowT] = {}
     for subject_date, day_rows in by_date.items():
         day_rows.sort(key=lambda row: (row.generated_at_utc, row.created_at))
         in_window = [
@@ -66,6 +77,17 @@ def delivered_verdicts(
             for row in day_rows
             if _local_time(row.generated_at_utc, timezone_name) <= MORNING_READ_CUTOFF
         ]
-        chosen = in_window[-1] if in_window else day_rows[0]
-        delivered[subject_date] = chosen.verdict
+        delivered[subject_date] = in_window[-1] if in_window else day_rows[0]
     return delivered
+
+
+def delivered_verdicts(
+    rows: Iterable[Analysis],
+    *,
+    timezone_name: str,
+) -> dict[date, str | None]:
+    """``{subject_date: the verdict that date's morning read actually carried}``."""
+    return {
+        subject_date: row.verdict
+        for subject_date, row in delivered_rows(rows, timezone_name=timezone_name).items()
+    }
