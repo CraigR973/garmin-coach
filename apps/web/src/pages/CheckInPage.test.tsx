@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -102,6 +102,85 @@ describe('CheckInPage', () => {
       ([path, opts]) => path === '/api/v1/daily-loop/2026-06-20/manual-entry' && opts?.method === 'PUT',
     ) as [string, { body: string }];
     expect(JSON.parse(options.body)).toMatchObject({ subjectiveScore: 8, feel: 'slept well' });
+  });
+
+  it('asks about symptoms with None preselected, and sends the answer he taps (Batch 294)', async () => {
+    apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
+      if (options?.method === 'PUT') return Promise.resolve(snapshot);
+      if (path === '/api/v1/daily-loop') return Promise.resolve(snapshot);
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <CheckInPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const group = await screen.findByRole('radiogroup', { name: 'Any symptoms today?' });
+    const options = within(group).getAllByRole('radio');
+    expect(options.map((option) => option.textContent)).toEqual([
+      'None',
+      'Head coldRunny or blocked nose, sneezing, sore throat',
+      'Fever or achesA temperature, aching muscles, or a chesty cough',
+      'Chest or heartChest pain or tightness, a racing or irregular heartbeat, or feeling faint',
+    ]);
+    expect(within(group).getByRole('radio', { name: 'None' }).getAttribute('aria-checked')).toBe(
+      'true',
+    );
+
+    await user.click(within(group).getByRole('radio', { name: /Head cold/ }));
+    expect(
+      within(group).getByRole('radio', { name: /Head cold/ }).getAttribute('aria-checked'),
+    ).toBe('true');
+    await user.click(screen.getByRole('button', { name: /get today's brief/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/daily-loop/2026-06-20/manual-entry',
+        expect.objectContaining({ method: 'PUT' }),
+      );
+    });
+    const [, options2] = apiFetchMock.mock.calls.find(
+      ([path, opts]) => path === '/api/v1/daily-loop/2026-06-20/manual-entry' && opts?.method === 'PUT',
+    ) as [string, { body: string }];
+    expect(JSON.parse(options2.body)).toMatchObject({ symptoms: 'head_cold' });
+  });
+
+  it('seeds the symptom answer from the stored check-in (Batch 294)', async () => {
+    const stored = {
+      ...snapshot,
+      data: {
+        ...snapshot.data,
+        manualEntry: {
+          id: '8a2c4b36-5a8c-4e0b-a7a4-0c6f1b2d3e4f',
+          userId: '1b6c7a8e-2d3f-4a5b-8c9d-0e1f2a3b4c5d',
+          entryDate: '2026-06-20',
+          entryAtUtc: '2026-06-20T06:30:00Z',
+          actualWorkoutJson: {},
+          supplementsJson: {},
+          foodJson: {},
+          symptoms: 'fever_aches',
+        },
+      },
+    };
+    apiFetchMock.mockImplementation(() => Promise.resolve(stored));
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <CheckInPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const group = await screen.findByRole('radiogroup', { name: 'Any symptoms today?' });
+    await waitFor(() => {
+      expect(
+        within(group).getByRole('radio', { name: /Fever or aches/ }).getAttribute('aria-checked'),
+      ).toBe('true');
+    });
   });
 
   it("captures last night's bedding, windows, blind and pre-cool setup", async () => {

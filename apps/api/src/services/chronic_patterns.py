@@ -46,6 +46,7 @@ from src.services.insights import DriverCorrelation
 from src.services.rem_interventions import RemRotation, select_rem_interventions
 from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
 from src.services.standing_habits import complied_intervention_ids
+from src.services.symptom_check import ILLNESS_SYMPTOM_ANSWERS, SYMPTOM_LABELS
 
 WINDOW_DAYS = 28
 MIN_OBSERVED_NIGHTS = 21
@@ -305,7 +306,7 @@ class RecordedTrainingContext:
     start_date: date
     end_date: date
     reason: str
-    source: Literal["holiday_plan", "morning_check_in"]
+    source: Literal["holiday_plan", "morning_check_in", "symptom_answer"]
     matched_text: str | None = None
 
     def to_packet(self) -> dict[str, Any]:
@@ -318,6 +319,10 @@ class RecordedTrainingContext:
         if self.source == "morning_check_in":
             packet["matchedText"] = self.matched_text
             packet["basis"] = "phrase matched in the check-in note"
+        elif self.source == "symptom_answer":
+            # Batch 294: a tap, not a phrase, so there is nothing to mis-read.
+            packet["matchedText"] = self.matched_text
+            packet["basis"] = "his answer to the check-in's symptom question"
         return packet
 
 
@@ -949,6 +954,15 @@ def classify_check_in_causes(feel: str | None, notes: str | None) -> tuple[str, 
     return tuple(cause for cause, _ in classify_check_in_cause_matches(feel, notes))
 
 
+def _with_answered_illness(reasons: tuple[str, ...], *, answered: bool) -> tuple[str, ...]:
+    """Add ``illness`` for a tapped symptom answer, keeping the vocabulary's order."""
+
+    if not answered or "illness" in reasons:
+        return reasons
+    order = tuple(_CHECK_IN_CAUSE_PATTERNS)
+    return tuple(sorted((*reasons, "illness"), key=order.index))
+
+
 def _first_non_negated_match(text: str, pattern: str) -> str | None:
     """The first occurrence of ``pattern`` not preceded by a negation, or ``None``."""
     for match in re.finditer(pattern, text):
@@ -970,6 +984,21 @@ def _check_in_training_context(
 ) -> list[RecordedTrainingContext]:
     recorded: list[RecordedTrainingContext] = []
     seen: set[tuple[date, str]] = set()
+    # Batch 294: a tapped cold, fever or chest infection is the day's illness record
+    # before any phrase is, so a note matching "illness" the same day adds nothing.
+    for row in manual_rows:
+        if row.symptoms not in ILLNESS_SYMPTOM_ANSWERS or (row.entry_date, "illness") in seen:
+            continue
+        seen.add((row.entry_date, "illness"))
+        recorded.append(
+            RecordedTrainingContext(
+                start_date=row.entry_date,
+                end_date=row.entry_date,
+                reason="illness",
+                source="symptom_answer",
+                matched_text=SYMPTOM_LABELS[str(row.symptoms)],
+            )
+        )
     for row in manual_rows:
         for cause, matched in classify_check_in_cause_matches(row.feel, row.notes):
             key = (row.entry_date, cause)
@@ -995,10 +1024,15 @@ def _red_day_evidence(
     baselines: Mapping[str, BaselineBand],
 ) -> dict[date, RedDayEvidence]:
     text_by_date: dict[date, list[str | None]] = {}
+    # Batch 294: a symptom answer counts as the ``illness`` cause, inside Batch 194's
+    # bounds like a written one (newest only, two days, never beside strained HRV/RHR).
+    illness_answered: set[date] = set()
     for manual_row in manual_rows:
         text_by_date.setdefault(manual_row.entry_date, []).extend(
             (manual_row.feel, manual_row.notes)
         )
+        if manual_row.symptoms in ILLNESS_SYMPTOM_ANSWERS:
+            illness_answered.add(manual_row.entry_date)
 
     hrv_baseline = baselines.get("hrv_7_day_avg_ms")
     rhr_baseline = baselines.get("resting_heart_rate_bpm")
@@ -1032,7 +1066,10 @@ def _red_day_evidence(
             resting_hr_ceiling_bpm=(
                 rhr_baseline.upper_quartile if rhr_baseline is not None else None
             ),
-            check_in_reasons=classify_check_in_causes(feel, notes),
+            check_in_reasons=_with_answered_illness(
+                classify_check_in_causes(feel, notes),
+                answered=recovery_day.calendar_date in illness_answered,
+            ),
             band_artifact=is_band_artifact(recalibration),
             band_artifact_reason=(
                 str(recalibration.get("reason")) if is_band_artifact(recalibration) else None

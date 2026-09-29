@@ -377,7 +377,8 @@ def test_every_paid_read_is_told_what_an_unreliable_figure_means() -> None:
         assert CROSS_SURFACE_AGREEMENT_RULE in prompt
     # A changed instruction moves each version. The brief self-heals and reviews are
     # read unfiltered; Trends filters, so the close-out regenerates its narratives.
-    assert MORNING_PROMPT_VERSION == "morning-analysis-v49-2026-09-27"
+    # (Batch 294 moved the brief on again, to v50.)
+    assert MORNING_PROMPT_VERSION == "morning-analysis-v50-2026-09-28"
     assert REVIEW_PROMPT_VERSION == "reviews-v9-2026-09-27"
     assert PROMPT_VERSION_BY_BUCKET[BUCKET_MONTH] == "trends-month-v12-2026-09-27"
     assert PROMPT_VERSION_BY_BUCKET["season"] == "trends-season-v12-2026-09-27"

@@ -62,6 +62,9 @@ class ManualEntryBody(BaseModel):
     # Same compatibility rule as sleep setup: omission preserves a response saved
     # by a newer client, while an explicit object replaces this wake-date answer.
     remInterventionFeedbackJson: RemInterventionFeedbackBody | None = None
+    # Batch 294: "Any symptoms today?". Same compatibility rule again: an older client
+    # omits it and the stored answer stands; the current client always sends one.
+    symptoms: Literal["none", "head_cold", "fever_aches", "chest_heart"] | None = None
     notes: str | None = None
 
 
@@ -99,6 +102,7 @@ class ManualEntryOut(BaseModel):
     foodJson: dict[str, Any]
     sleepSetupJson: dict[str, Any]
     remInterventionFeedbackJson: dict[str, Any] | None
+    symptoms: str | None = None
     notes: str | None
 
 

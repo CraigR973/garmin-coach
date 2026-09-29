@@ -1,7 +1,8 @@
 # Batch 294 — the symptom question, its notices, and the calmer HRV line
 
-**Status: draft, for Craig to sign off on Mark's behalf** (Mark is on holiday until 6 Oct).
-No clinician check (Craig, 28 Sep). Batch 294 does not merge until this is signed off.
+**Status: signed off by Craig on Mark's behalf, 28 Sep** (Mark is on holiday until 6 Oct),
+as drafted, with the five decisions below. No clinician check (Craig, 28 Sep). Built in the
+Batch 294 PR.
 
 Example figures are Mark's own: 22 Sep (39 ms against a usual 47 ms) and 16 Jul (33 ms
 against 48 ms).

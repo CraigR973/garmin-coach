@@ -180,6 +180,11 @@ export const remInterventionFeedbackSchema = z.object({
   responses: z.array(remInterventionResponseSchema).max(2).default([]),
 });
 
+// Batch 294: the morning check-in's "Any symptoms today?". Null or absent means he
+// was not asked or did not answer, which is never read as 'none'.
+export const symptomAnswerSchema = z.enum(['none', 'head_cold', 'fever_aches', 'chest_heart']);
+export type SymptomAnswer = z.infer<typeof symptomAnswerSchema>;
+
 export const manualEntrySchema = z.object({
   id: z.string().uuid(),
   userId: z.string().uuid(),
@@ -199,6 +204,7 @@ export const manualEntrySchema = z.object({
   foodJson: jsonObjectSchema.default({}),
   sleepSetupJson: sleepSetupSchema.optional(),
   remInterventionFeedbackJson: remInterventionFeedbackSchema.nullable().optional(),
+  symptoms: symptomAnswerSchema.nullable().optional(),
   notes: z.string().nullable().optional(),
 });
 
@@ -212,6 +218,7 @@ export const manualEntryInputSchema = z.object({
   foodJson: jsonObjectSchema.default({}),
   sleepSetupJson: sleepSetupSchema.optional(),
   remInterventionFeedbackJson: remInterventionFeedbackSchema.optional(),
+  symptoms: symptomAnswerSchema.optional(),
   notes: z.string().nullable().optional(),
 });
 
@@ -1141,6 +1148,8 @@ export const acutePhysiologySchema = z.object({
   status: z.enum(['clear', 'triggered', 'insufficient_data']).optional(),
   standingLine: z.string().min(1).optional(),
   requiresBikeRest: z.boolean().optional(),
+  // Batch 294: a reported symptom rules out training of any kind, not only the bike.
+  requiresTrainingRest: z.boolean().optional(),
   triggeredSignals: z.array(z.string()).default([]),
   dataSufficiency: z
     .object({
@@ -1152,7 +1161,9 @@ export const acutePhysiologySchema = z.object({
   escalations: z
     .array(
       z.object({
-        kind: z.enum(['resting_heart_rate', 'overnight_hrv', 'oxygen_respiration']),
+        // Batch 294 added 'symptoms'. Any string parses, so a signal added on the server
+        // first never breaks the page that reads it.
+        kind: z.string().min(1),
         // Batch 293: rest takes Mark off the bike, watch is surveillance, ease explains
         // an Amber cap. Absent on packets stored before it.
         level: z.enum(['rest', 'watch', 'ease']).optional(),

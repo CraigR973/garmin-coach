@@ -338,6 +338,10 @@ class ManualEntry(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
         Index("ix_manual_entries_user_date", "user_id", "entry_date"),
         Index("ix_manual_entries_planned_workout", "planned_workout_id"),
         Index("ix_manual_entries_activity", "activity_id"),
+        CheckConstraint(
+            "symptoms IS NULL OR symptoms IN ('none', 'head_cold', 'fever_aches', 'chest_heart')",
+            name="ck_manual_entries_symptoms",
+        ),
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -371,6 +375,9 @@ class ManualEntry(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     rem_intervention_feedback_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict
     )
+    # Batch 294: his answer to "Any symptoms today?" (``services.symptom_check``).
+    # NULL means he was not asked or did not answer, which is never read as "none".
+    symptoms: Mapped[str | None] = mapped_column(String(16), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 

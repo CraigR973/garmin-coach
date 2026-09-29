@@ -623,6 +623,7 @@ async def test_manual_entry_and_adherence_upserts_persist(db_conn: AsyncConnecti
                             },
                         ],
                     },
+                    "symptoms": "head_cold",
                     "notes": "Slept better than expected.",
                 },
             )
@@ -679,6 +680,10 @@ async def test_manual_entry_and_adherence_upserts_persist(db_conn: AsyncConnecti
 
     assert manual_entry.subjective_score == 7
     assert manual_entry.food_json["summary"] == "oats"
+    # Batch 294: an older client omits the symptom answer, and the stored one stands.
+    assert manual_entry.symptoms == "head_cold"
+    assert manual_response.json()["data"]["manualEntry"]["symptoms"] == "head_cold"
+    assert legacy_response.json()["data"]["manualEntry"]["symptoms"] == "head_cold"
     assert manual_entry.sleep_setup_json == {
         "beddingWeight": "thin_cover",
         "windowCount": 2,

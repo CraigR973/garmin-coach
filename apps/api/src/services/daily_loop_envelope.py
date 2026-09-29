@@ -222,6 +222,7 @@ def _serialize_manual_entry(entry: ManualEntry | None) -> ManualEntryOut | None:
         foodJson=entry.food_json,
         sleepSetupJson=entry.sleep_setup_json,
         remInterventionFeedbackJson=(entry.rem_intervention_feedback_json or None),
+        symptoms=entry.symptoms,
         notes=entry.notes,
     )
 

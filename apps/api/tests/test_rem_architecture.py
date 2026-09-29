@@ -291,7 +291,7 @@ def test_both_prompts_that_embed_the_rule_moved_their_version() -> None:
     from src.services.morning_analysis import PROMPT_VERSION
     from src.services.trends import PROMPT_VERSION_BY_BUCKET
 
-    assert PROMPT_VERSION.startswith("morning-analysis-v49")
+    assert PROMPT_VERSION.startswith("morning-analysis-v50")
     assert PROMPT_VERSION_BY_BUCKET["month"].startswith("trends-month-v12")
     assert PROMPT_VERSION_BY_BUCKET["season"].startswith("trends-season-v12")
 

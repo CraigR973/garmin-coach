@@ -331,9 +331,10 @@ def test_nights_that_genuinely_fell_stay_red(day: date) -> None:
     assert HRV_RED_REASON in verdict["reasons"]
     assert verdict["hrvGradedResponse"]["tier"] == "red"
     assert verdict["hrvGradedResponse"]["concern"] == "overnight_below_floor"
-    # The acute rail is untouched: a night this far down still means rest.
+    # The acute rail still caps the day. Whether it also rests the bike is Batch 294's
+    # illness-grade line, judged on the full 84-night history this fixture does not
+    # carry (see test_batch_294_symptom_floors).
     assert verdict["acutePhysiology"]["overnightHrv"]["triggered"] is True
-    assert verdict["acutePhysiology"]["requiresBikeRest"] is True
 
 
 def test_a_dip_under_a_floor_that_held_stays_red() -> None:
@@ -452,5 +453,5 @@ def test_the_brief_is_told_to_lead_with_his_own_recovery() -> None:
     assert "hold" in HRV_GRADED_RESPONSE_RULE
     # The model is given new wording, so no stored brief written without it is
     # served as current; the morning read self-heals, so nothing is regenerated.
-    # (Batch 272 moved it on again, to v49.)
-    assert PROMPT_VERSION == "morning-analysis-v49-2026-09-27"
+    # (Batch 272 moved it on again, to v49; Batch 294 to v50.)
+    assert PROMPT_VERSION == "morning-analysis-v50-2026-09-28"
