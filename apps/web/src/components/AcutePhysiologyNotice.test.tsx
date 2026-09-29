@@ -77,6 +77,29 @@ describe('AcutePhysiologyNotice (Batch 293)', () => {
     expect(within(screen.getByRole('alert')).getByText('A pattern worth checking')).toBeTruthy();
   });
 
+  it('shows a head cold beside an HRV rest under the rest heading, and the two agree (Batch 294)', () => {
+    const cold =
+      "You've told me you have a head cold — symptoms above the neck. Easy riding at most today.";
+    const hrv = 'Your overnight HRV is 39 ms this morning against a usual 47 ms. Take today off the bike.';
+    render(
+      <AcutePhysiologyNotice
+        boundary={boundary({
+          requiresBikeRest: true,
+          triggeredSignals: ['symptoms', 'overnight_hrv'],
+          escalations: [
+            { kind: 'symptoms', level: 'ease', message: cold },
+            { kind: 'overnight_hrv', level: 'rest', message: hrv },
+          ],
+        })}
+      />,
+    );
+
+    const alert = screen.getByRole('alert');
+    expect(within(alert).getByText('Why this needs rest')).toBeTruthy();
+    expect(within(alert).getByText(cold)).toBeTruthy();
+    expect(within(alert).getByText(hrv)).toBeTruthy();
+  });
+
   it('shows nothing when no signal escalated', () => {
     const { container } = render(<AcutePhysiologyNotice boundary={boundary({})} />);
     expect(container.innerHTML).toBe('');

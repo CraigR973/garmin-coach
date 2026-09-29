@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Activity, BedDouble, ClipboardCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AcutePhysiologyNotice, MedicalBoundaryFooter } from '@/components/AcutePhysiologyNotice';
+import { restHeadline } from '@/lib/restHeadline';
 import { BriefListenControls } from '@/components/BriefListenControls';
 import { BriefPendingCta } from '@/components/BriefPendingCta';
 import { StaleDataNotice } from '@/components/EmptyState';
@@ -79,7 +80,7 @@ export function MorningBriefPage() {
     analysis?.acutePhysiology?.dataSufficiency?.status === 'insufficient_data'
       ? (analysis.acutePhysiology.dataSufficiency.message ?? undefined)
       : undefined;
-  const requiresBikeRest = analysis?.acutePhysiology?.requiresBikeRest === true;
+  const rest = restHeadline(analysis?.acutePhysiology);
 
   return (
     <div className="space-y-5">
@@ -109,11 +110,8 @@ export function MorningBriefPage() {
         <>
           <VerdictHero
             verdict={analysis.verdict}
-            label={requiresBikeRest ? 'Take today off the bike' : undefined}
-            line={
-              dataSufficiencyLine ??
-              (requiresBikeRest ? 'An acute recovery signal rules out riding today.' : undefined)
-            }
+            label={rest?.label}
+            line={dataSufficiencyLine ?? rest?.line}
           />
           {/* Batch 274: disagreement is recorded beside the day and changes nothing. */}
           <div className="px-1">

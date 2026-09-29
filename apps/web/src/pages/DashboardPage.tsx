@@ -29,6 +29,7 @@ import {
 } from '@coach/shared';
 import { toast } from 'sonner';
 import { AcutePhysiologyNotice } from '@/components/AcutePhysiologyNotice';
+import { restHeadline } from '@/lib/restHeadline';
 import type { AgeComparison, MetricBaselineRow } from '@/components/MetricComparisonTable';
 import { QuickAddSheet } from '@/components/QuickAddSheet';
 import { IntervalWorkoutEditor } from '@/components/IntervalWorkoutEditor';
@@ -772,21 +773,16 @@ export function DashboardPage() {
         <VerdictHero
           verdict={analysis.verdict}
           dateLabel={friendlyDate(daily.subjectDate)}
-          label={
-            analysis.acutePhysiology?.requiresBikeRest === true
-              ? 'Take today off the bike'
-              : undefined
-          }
+          label={restHeadline(analysis.acutePhysiology)?.label}
           line={
             dataSufficiencyLine ??
-            (analysis.acutePhysiology?.requiresBikeRest === true
-              ? 'An acute recovery signal rules out riding today.'
-              : personalStatusLine(
-                  analysis.verdict,
-                  player?.displayName,
-                  undefined,
-                  dayState.isRest || holiday.isActive,
-                ))
+            restHeadline(analysis.acutePhysiology)?.line ??
+            personalStatusLine(
+              analysis.verdict,
+              player?.displayName,
+              undefined,
+              dayState.isRest || holiday.isActive,
+            )
           }
           recap={morningFeelRecap(daily.manualEntry ?? null)}
         />

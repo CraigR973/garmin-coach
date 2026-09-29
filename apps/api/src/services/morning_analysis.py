@@ -274,7 +274,11 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # Batch 272: the packet gained crossSurfaceAgreement and the prompt embeds
 # CROSS_SURFACE_AGREEMENT_RULE, shared verbatim with the review and Trends.
 # Self-healing, so nothing is withdrawn; the next generation writes v49.
-PROMPT_VERSION = "morning-analysis-v49-2026-09-27"
+# Batch 294: the packet gained his symptom answer (manualEntries[].symptoms,
+# acutePhysiology.symptoms and requiresTrainingRest) and the overnight-HRV rail's
+# graded bike rest, and SYMPTOM_FLOOR_RULE tells the read what they mean.
+# Self-healing, so nothing is withdrawn; the next generation writes v50.
+PROMPT_VERSION = "morning-analysis-v50-2026-09-28"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -304,6 +308,24 @@ records. Never call a hold morning cut, eased or cautious because of HRV. When i
 tier is `ease`, name what made the HRV flag an eased day rather than a hold: the
 entries in corroboratingSignals, the ceiling named by heldBackBy, or Garmin's own
 status when it is Low or Poor rather than Unbalanced."""
+
+# Batch 294: the check-in now asks about symptoms, and three answers set a floor. The
+# app renders the notice, so the read explains around it rather than restating it,
+# and never adds medical advice of its own.
+SYMPTOM_FLOOR_RULE = """verdict.acutePhysiology.symptoms is Mark's own answer to
+the check-in question "Any symptoms today?" and the floor it set; it is deterministic
+and outranks every other rule. A head cold (above the neck) makes the day Red on the
+easy path: easy riding at most, nothing hard and no VO2. Fever, aches or a chest
+infection, and chest pain, a racing or irregular heartbeat or feeling faint, set
+acutePhysiology.requiresTrainingRest: no training of any kind, so never recommend a
+ride, strength, mobility or a training walk that day, and never suggest training
+through a symptom. The app renders the symptom notice outside your prose, including
+any advice to see a doctor: do not repeat or paraphrase it, add no medical advice of
+your own, and never diagnose. A null answer means he did not answer, which is never
+evidence that he is well. acutePhysiology.overnightHrv.requiresBikeRest is true only
+for an illness-grade drop (illnessGrade) or a capped drop that came with a second
+sign (corroboratedBy); a capped drop on its own is an eased day, not a day off the
+bike, so never call it one."""
 
 SYSTEM_PROMPT = f"""You are CheckMark, a private daily endurance and sleep coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
@@ -374,9 +396,10 @@ report: do not mention chronicAction, the recorded training context log, human
 approval, or verdictImpact anywhere in the read. Mark is never told about a
 structural signal that is not doing anything; every instruction below applies
 only when it is. When a recordedTrainingContext row does need describing, its
-matchedText is the phrase from Mark's own check-in that produced the tag — quote
-it if he questions the tag, and if the matched phrase plainly meant something
-else, say so as a recording error of ours rather than defending the tag.
+matchedText is the phrase from Mark's own check-in that produced the tag (for a
+symptom_answer row, the symptom answer he tapped) — quote it if he questions the
+tag, and if the matched phrase plainly meant something else, say so as a recording
+error of ours rather than defending the tag.
 Its redMorningQualifications state which Red mornings count and which were
 excluded. A training-load or deliberate-rest check-in is endogenous evidence and
 always counts; an acute alcohol/illness/travel explanation is bounded by the
@@ -402,6 +425,7 @@ its denominator is the figure Mark cannot reconcile against his watch. {PACKET_F
 {METRIC_STATEMENT_RULE}
 {CHRONIC_DRIVER_RULE}
 {HRV_GRADED_RESPONSE_RULE}
+{SYMPTOM_FLOOR_RULE}
 {CROSS_SURFACE_AGREEMENT_RULE}
 Read REM against metricsVsBaselines.rem_sleep_pct, whose own basis field says
 which total it is a percentage of, and whose ageFrame carries the band; the two
@@ -866,6 +890,7 @@ class MorningAnalysisService:
         # the verdict (status, swapSuggestion, weeklyMix, planAdjustments) is final.
         # Reuse the exact breathwork gate the adjustment text already uses so the
         # sleep action and the prose stay in lockstep.
+        acute_signals = _as_mapping(verdict.get("acutePhysiology"))
         recommend_breathwork = should_recommend_breathwork(
             {
                 "status": verdict.get("status"),
@@ -873,6 +898,7 @@ class MorningAnalysisService:
                 "readinessInterpretation": verdict.get("readinessInterpretation"),
                 "hrvStatus": verdict.get("hrvStatus"),
                 "hrvBelowBaseline": verdict.get("hrvBelowBaseline"),
+                "symptomsAnswer": _as_mapping(acute_signals.get("symptoms")).get("answer"),
             }
         )
         # Batch 173.3: surface the deterministic Amber/Red adjustment numbers (the
@@ -929,6 +955,7 @@ class MorningAnalysisService:
                     "respect_scheduled_recovery_block",
                     "treat_training_schedule_as_nominal_only",
                     "respect_deterministic_acute_physiology_rail",
+                    "respect_deterministic_symptom_floor",
                 ]
                 # Batch 113 (#186): holiday away means no bedroom thermal review.
                 if rule != "include_thermal_environment_review"
@@ -1663,6 +1690,8 @@ def _manual_entry_packet(row: ManualEntry) -> dict[str, Any]:
         "supplements": row.supplements_json,
         "food": row.food_json,
         "sleepSetup": row.sleep_setup_json,
+        # Batch 294: his answer to "Any symptoms today?"; null means not answered.
+        "symptoms": row.symptoms,
         "notes": row.notes,
     }
 

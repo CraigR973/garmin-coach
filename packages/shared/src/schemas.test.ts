@@ -29,6 +29,7 @@ import {
   restructureEnvelopeSchema,
   sleepSchema,
   swapSuggestionSchema,
+  symptomAnswerSchema,
   todayActionSchema,
   weatherDailySchema,
   weeklyMixBucketSchema,
@@ -1086,6 +1087,40 @@ describe('v1 shared schemas', () => {
       outputMarkdown: '**Verdict:** Green',
     });
     expect(older.acutePhysiology).toBeUndefined();
+  });
+
+  it('parses a symptom floor, and any signal kind the server adds first (Batch 294)', () => {
+    const floored = dailyLoopAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-10-08T06:30:00Z',
+      verdict: 'red',
+      promptVersion: 'morning-analysis-v50-2026-09-28',
+      outputMarkdown: '**Verdict:** Red',
+      acutePhysiology: {
+        status: 'triggered',
+        requiresBikeRest: true,
+        requiresTrainingRest: true,
+        triggeredSignals: ['symptoms'],
+        escalations: [
+          { kind: 'symptoms', level: 'rest', message: 'No training of any kind today.' },
+          { kind: 'a_signal_from_tomorrow', message: 'Parsed, not rejected.' },
+        ],
+      },
+    });
+
+    expect(floored.acutePhysiology?.requiresTrainingRest).toBe(true);
+    expect(floored.acutePhysiology?.escalations.map((item) => item.kind)).toEqual([
+      'symptoms',
+      'a_signal_from_tomorrow',
+    ]);
+  });
+
+  it('carries the symptom answer on a check-in, and refuses an unknown one (Batch 294)', () => {
+    expect(manualEntryInputSchema.parse({ symptoms: 'head_cold' }).symptoms).toBe('head_cold');
+    // An older client sends nothing, and the server keeps what it has.
+    expect(manualEntryInputSchema.parse({}).symptoms).toBeUndefined();
+    expect(() => manualEntryInputSchema.parse({ symptoms: 'flu' })).toThrow();
+    expect(symptomAnswerSchema.options).toEqual(['none', 'head_cold', 'fever_aches', 'chest_heart']);
   });
 
   it('parses a restructure preview/apply envelope (Batch 83)', () => {

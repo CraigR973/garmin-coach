@@ -135,6 +135,24 @@ describe('describeProvenance (Batch 273.2, the signed-off wording)', () => {
     ]);
   });
 
+  it('states the off-the-bike line when the read carries it (Batch 294)', () => {
+    const described = row({
+      ...hrvFloor,
+      sources: {
+        ...hrvFloor.sources,
+        illnessStddevsBelowMedian: 2.5,
+        illnessFractionBelowMedian: 0.3,
+        illnessLineMs: 34.6,
+      },
+    });
+    expect(described?.lines).toContainEqual({
+      label: 'Off the bike',
+      text:
+        'only at 34.6 ms or lower (2.5 standard deviations or 30% under your median), or below ' +
+        "the floor together with a raised resting heart rate or a symptom you've reported.",
+    });
+  });
+
   it('says interval grades are on held average power, and where the boundaries came from', () => {
     const described = row(grading);
     expect(described?.title).toBe('Work intervals on target — 11 of 16');

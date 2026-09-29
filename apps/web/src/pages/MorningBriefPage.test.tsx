@@ -291,6 +291,44 @@ describe('morning brief page', () => {
     ).toBeTruthy();
   });
 
+  it('says "No training today" when a reported symptom rules training out (Batch 294)', async () => {
+    const withFloor = structuredClone(snapshot);
+    withFloor.data.morningAnalysis!.verdict = 'red';
+    withFloor.data.morningAnalysis!.acutePhysiology = {
+      status: 'triggered',
+      standingLine:
+        "This read comes from your watch and your room sensors. It can't see how you actually feel — if those two disagree, trust yourself.",
+      requiresBikeRest: true,
+      requiresTrainingRest: true,
+      triggeredSignals: ['symptoms'],
+      dataSufficiency: { status: 'sufficient', message: null, missingRows: [] },
+      escalations: [
+        {
+          kind: 'symptoms',
+          level: 'rest',
+          message:
+            "You've told me about a fever, aches or a chest infection. Training through that adds strain your body doesn't need.",
+        },
+      ],
+    };
+    apiFetchMock.mockImplementation(() => Promise.resolve(withFloor));
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <MorningBriefPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('No training today')).toBeTruthy();
+    expect(screen.getByText("The symptoms you've reported rule out training today.")).toBeTruthy();
+    expect(screen.queryByText('Take today off the bike')).toBeNull();
+    const alert = screen.getByRole('alert');
+    expect(within(alert).getByText('Why this needs rest')).toBeTruthy();
+    expect(within(alert).getByText(/fever, aches or a chest infection/i)).toBeTruthy();
+  });
+
   it('shows the exact insufficient-data line instead of a Green interpretation (Batch 246)', async () => {
     const withBlackout = structuredClone(snapshot);
     withBlackout.data.morningAnalysis!.verdict = 'amber';

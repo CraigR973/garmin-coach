@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { dailyLoopEnvelopeSchema, manualEntryInputSchema } from '@coach/shared';
+import { dailyLoopEnvelopeSchema, manualEntryInputSchema, type SymptomAnswer } from '@coach/shared';
 import { toast } from 'sonner';
 import { CheckCircle2, Loader2 } from 'lucide-react';
 import { CollapsibleSection } from '@/components/CollapsibleSection';
@@ -15,6 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { apiFetch } from '@/lib/api';
 import { SUBJECTIVE_FEEL_OPTIONS, subjectiveFeelLabel } from '@/lib/subjectiveFeel';
+import { DEFAULT_SYMPTOM_ANSWER, SYMPTOM_OPTIONS, SYMPTOM_QUESTION } from '@/lib/symptoms';
 
 type CheckInBrief = NonNullable<
   ReturnType<typeof dailyLoopEnvelopeSchema.parse>['data']['morningAnalysis']
@@ -72,6 +73,7 @@ type ManualFormState = {
   blindPosition: string;
   preCoolStartLocal: string;
   remInterventionResponses: Record<string, 'applied' | 'not_applied' | 'unknown'>;
+  symptoms: SymptomAnswer;
   notes: string;
 };
 
@@ -89,6 +91,7 @@ function emptyManualForm(): ManualFormState {
     blindPosition: '',
     preCoolStartLocal: '',
     remInterventionResponses: {},
+    symptoms: DEFAULT_SYMPTOM_ANSWER,
     notes: '',
   };
 }
@@ -203,6 +206,7 @@ export function CheckInPage() {
       remInterventionResponses: Object.fromEntries(
         (remCheckIn?.interventions ?? []).map((item) => [item.id, item.status]),
       ),
+      symptoms: manualEntry?.symptoms ?? DEFAULT_SYMPTOM_ANSWER,
       notes: manualEntry?.notes ?? '',
     });
   }, [query.data]);
@@ -288,6 +292,7 @@ export function CheckInPage() {
               })),
             }
           : undefined,
+        symptoms: manualForm.symptoms,
         notes: manualForm.notes || null,
       });
       const response = await apiFetch<unknown>(`/api/v1/daily-loop/${data.subjectDate}/manual-entry`, {
@@ -333,6 +338,11 @@ export function CheckInPage() {
 
   function setSubjectiveScore(value: string) {
     setManual('subjectiveScore', normalizeSubjectiveScore(value));
+  }
+
+  function setSymptoms(value: SymptomAnswer) {
+    dirtyRef.current = true;
+    setManualForm((current) => ({ ...current, symptoms: value }));
   }
 
   function toggleChip(chip: (typeof QUICK_CHIPS)[number]) {
@@ -437,6 +447,32 @@ export function CheckInPage() {
                     onClick={() => setSubjectiveScore(String(option.value))}
                   >
                     {option.label}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+          {/* Batch 294: the colour never asked about symptoms. Three of these answers set
+              a floor on the server that no other signal can override. */}
+          <div className="space-y-2">
+            <Label id="symptoms-question">{SYMPTOM_QUESTION}</Label>
+            <div role="radiogroup" aria-labelledby="symptoms-question" className="grid gap-2">
+              {SYMPTOM_OPTIONS.map((option) => {
+                const selected = manualForm.symptoms === option.value;
+                return (
+                  <Button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    variant={selected ? 'default' : 'outline'}
+                    className="h-auto w-full flex-col items-start gap-0.5 whitespace-normal px-3 py-2 text-left"
+                    onClick={() => setSymptoms(option.value)}
+                  >
+                    <span className="font-medium">{option.label}</span>
+                    {option.detail ? (
+                      <span className="text-xs font-normal opacity-80">{option.detail}</span>
+                    ) : null}
                   </Button>
                 );
               })}

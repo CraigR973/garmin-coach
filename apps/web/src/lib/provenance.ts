@@ -170,6 +170,20 @@ function hrvFloor(entry: ProvenanceEntry): ProvenanceRow | null {
       `${spread !== null ? spread : 1.5} standard deviations of it. ` +
       "This is your own floor, not a population band and not Garmin's.",
   });
+  // Batch 294: below the floor the day is capped; this is the line that rests the bike.
+  // A read stored before it carries no line, and shows no row.
+  const illnessLine = count(entry.sources, 'illnessLineMs');
+  const illnessSpread = count(entry.sources, 'illnessStddevsBelowMedian');
+  const illnessFraction = count(entry.sources, 'illnessFractionBelowMedian');
+  if (illnessLine !== null && illnessSpread !== null && illnessFraction !== null) {
+    lines.push({
+      label: 'Off the bike',
+      text:
+        `only at ${oneDecimal(illnessLine)} ms or lower (${illnessSpread} standard deviations ` +
+        `or ${Math.round(illnessFraction * 100)}% under your median), or below the floor ` +
+        "together with a raised resting heart rate or a symptom you've reported.",
+    });
+  }
   const morning = entry.threshold?.comparedAgainst;
   if (typeof morning === 'number') {
     const relation =

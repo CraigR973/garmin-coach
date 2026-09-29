@@ -35,6 +35,13 @@ from src.services.provenance import (
     window as provenance_window,
 )
 from src.services.sleep_history import SPO2_HRV_RELIABLE_FROM
+from src.services.symptom_check import (
+    SYMPTOM_FLOORS,
+    SYMPTOMS_CHEST_HEART,
+    latest_symptom_answer,
+    reports_symptoms,
+    symptom_signal,
+)
 from src.services.verdict_scaling import (
     AMBER_POWER_CAP_PCT,
     companion_session_present,
@@ -64,6 +71,13 @@ ACUTE_BASELINE_WINDOW_DAYS = 84
 ACUTE_BASELINE_MIN_SAMPLES = 21
 RESTING_HR_ABSOLUTE_DELTA_BPM = 7.0
 HRV_ACUTE_DROP_STDDEVS = 1.5
+# Batch 294: the 1.5 SD floor caps the day at Amber; only an illness-grade drop takes
+# Mark off the bike on its own. At 1.5 SD the rail fired on 6 of his 75 eligible
+# mornings (8%), three of them by under 1 ms; at 2.5 SD or 30% under his median it
+# fires once, on 16 Jul 2026 (33 ms against 48). Batch 240's finding, which the rail
+# answered, was a 60-70% overnight collapse, not a 17% dip.
+HRV_ILLNESS_DROP_STDDEVS = 2.5
+HRV_ILLNESS_DROP_FRACTION = 0.30
 AVERAGE_SPO2_ALERT_THRESHOLD_PCT = 92.0
 SPO2_NADIR_ALERT_THRESHOLD_PCT = 88.0
 SPO2_NADIR_WINDOW_DAYS = 3
@@ -380,10 +394,32 @@ def _rhr_rail(
     }
 
 
+def _hrv_corroboration_clause(corroborated_by: Sequence[str], symptom_answer: str | None) -> str:
+    """How the off-the-bike HRV notice names the second sign (Batch 294).
+
+    A reported symptom is named before a resting-heart-rate rise when both came with
+    the dip, because it is the one Mark gave the app himself.
+    """
+    floor = SYMPTOM_FLOORS.get(symptom_answer) if symptom_answer is not None else None
+    if "symptom_answer" in corroborated_by and floor is not None:
+        return floor.corroboration
+    return "your resting heart rate is up as well"
+
+
 def _hrv_rail(
     daily_metric: DailyMetric | None,
     recent_daily_metrics: Sequence[DailyMetric],
+    *,
+    corroborated_by: Sequence[str] = (),
+    symptom_answer: str | None = None,
 ) -> dict[str, Any]:
+    """Last night's HRV against Mark's own 84-day history (Batch 246, graded in 294).
+
+    Below his median minus 1.5 SD the day is capped at Amber. It rests the bike only
+    at an illness-grade drop (at least 2.5 SD or 30% under the median), or when the
+    capped drop comes with a second sign: the resting-heart-rate rail, or a symptom
+    he reported. ``corroborated_by`` names those signs; the caller decides them.
+    """
     current = daily_metric.hrv_last_night_avg_ms if daily_metric else None
     subject_date = daily_metric.calendar_date if daily_metric else None
     window_start = (
@@ -411,7 +447,24 @@ def _hrv_rail(
         if median_value is not None and stddev_value is not None
         else None
     )
-    triggered = bool(current is not None and threshold is not None and float(current) < threshold)
+    illness_line = (
+        max(
+            median_value - HRV_ILLNESS_DROP_STDDEVS * stddev_value,
+            median_value * (1 - HRV_ILLNESS_DROP_FRACTION),
+        )
+        if median_value is not None and stddev_value is not None
+        else None
+    )
+    illness_grade = bool(
+        current is not None and illness_line is not None and float(current) <= illness_line
+    )
+    # An illness-grade drop always caps too, even when a wide spread puts the 30% line
+    # above the 1.5 SD floor.
+    triggered = illness_grade or bool(
+        current is not None and threshold is not None and float(current) < threshold
+    )
+    corroboration = list(corroborated_by) if triggered else []
+    requires_bike_rest = illness_grade or bool(triggered and corroboration)
     reason = None
     escalation = None
     if triggered and current is not None and median_value is not None:
@@ -424,19 +477,42 @@ def _hrv_rail(
             f"Overnight HRV sets an Amber ceiling: {current} ms is below the acute "
             f"personal floor of {_number(threshold)} ms."
         )
-        escalation = (
-            f"Your overnight HRV is {current} ms this morning against a usual "
-            f"{_number(median_value)} ms{history_window} — a drop that size in a single "
-            "night is unusual "
-            "for you. It usually means one of: an infection starting, a heavy drink, a "
-            "badly broken night, or real stress carried into sleep. Training hard through "
-            "it tends to deepen it. Take today off the bike, and if you feel unwell "
-            "alongside it, see your GP rather than just resting."
-        )
+        # Mark-facing wording, signed off by Craig on Mark's behalf on 28 Sep 2026
+        # (docs/drafts/2026-09-28-batch-294-wording.md). The illness-grade line is the
+        # one this rail has always written.
+        if illness_grade:
+            escalation = (
+                f"Your overnight HRV is {current} ms this morning against a usual "
+                f"{_number(median_value)} ms{history_window} — a drop that size in a single "
+                "night is unusual "
+                "for you. It usually means one of: an infection starting, a heavy drink, a "
+                "badly broken night, or real stress carried into sleep. Training hard through "
+                "it tends to deepen it. Take today off the bike, and if you feel unwell "
+                "alongside it, see your GP rather than just resting."
+            )
+        elif requires_bike_rest:
+            escalation = (
+                f"Your overnight HRV is {current} ms this morning against a usual "
+                f"{_number(median_value)} ms, and "
+                f"{_hrv_corroboration_clause(corroboration, symptom_answer)}. Either on its "
+                "own would only cap the day; together they are worth respecting. Take today "
+                "off the bike. If you feel unwell, rest until it settles, and see your GP if "
+                "it doesn't."
+            )
+        else:
+            escalation = (
+                f"Your overnight HRV is {current} ms this morning against a usual "
+                f"{_number(median_value)} ms — lower than most nights for you. Dips like "
+                "this usually come from a short night, a drink, a busy week or a hard day "
+                "before. On its own it caps today at Amber: an eased session, not a day off "
+                "the bike."
+            )
     return {
         "triggered": triggered,
         "verdictImpact": "amber_cap",
-        "requiresBikeRest": triggered,
+        "requiresBikeRest": requires_bike_rest,
+        "illnessGrade": illness_grade,
+        "corroboratedBy": corroboration,
         "currentMs": current,
         "baselineMedianMs": median_value,
         "baselineStddevMs": round(stddev_value, 2) if stddev_value is not None else None,
@@ -444,8 +520,11 @@ def _hrv_rail(
         "baselineWindowStartDate": observations[0][0].isoformat() if observations else None,
         "baselineWindowEndDate": observations[-1][0].isoformat() if observations else None,
         "acuteFloorMs": round(threshold, 2) if threshold is not None else None,
+        "illnessLineMs": round(illness_line, 2) if illness_line is not None else None,
         "thresholds": {
             "stddevsBelowMedianExclusive": HRV_ACUTE_DROP_STDDEVS,
+            "illnessStddevsBelowMedianInclusive": HRV_ILLNESS_DROP_STDDEVS,
+            "illnessFractionBelowMedianInclusive": HRV_ILLNESS_DROP_FRACTION,
             "windowDays": ACUTE_BASELINE_WINDOW_DAYS,
             "minimumBaselineSamples": ACUTE_BASELINE_MIN_SAMPLES,
             "reliabilityStartDate": SPO2_HRV_RELIABLE_FROM.isoformat(),
@@ -466,7 +545,11 @@ def _hrv_rail(
                     rule=(
                         f"his own median over the window, minus "
                         f"{HRV_ACUTE_DROP_STDDEVS} standard deviations of it — a personal "
-                        "floor, not a population band, and not Garmin's"
+                        "floor, not a population band, and not Garmin's. Below it the day "
+                        "is capped at Amber; it rests the bike only at "
+                        f"{HRV_ILLNESS_DROP_STDDEVS} standard deviations or "
+                        f"{HRV_ILLNESS_DROP_FRACTION:.0%} under the median, or below the "
+                        "floor alongside a raised resting heart rate or a reported symptom"
                     ),
                     window=provenance_window(
                         kind="rolling_days",
@@ -485,6 +568,13 @@ def _hrv_rail(
                         # from the packet rather than hardcoding the rail's constants.
                         "windowDays": ACUTE_BASELINE_WINDOW_DAYS,
                         "stddevsBelowMedian": HRV_ACUTE_DROP_STDDEVS,
+                        # Batch 294: the off-the-bike line, stated so the panel can
+                        # word it without copying the constants.
+                        "illnessStddevsBelowMedian": HRV_ILLNESS_DROP_STDDEVS,
+                        "illnessFractionBelowMedian": HRV_ILLNESS_DROP_FRACTION,
+                        "illnessLineMs": (
+                            round(illness_line, 2) if illness_line is not None else None
+                        ),
                         "nightsUsed": len(values),
                         "minimumNightsRequired": ACUTE_BASELINE_MIN_SAMPLES,
                         "medianMs": median_value,
@@ -676,13 +766,29 @@ def _acute_physiology_rail(
     baselines: Mapping[str, MetricBaseline],
     recent_daily_metrics: Sequence[DailyMetric],
     recent_sleeps: Sequence[Sleep],
+    symptom_answer: str | None = None,
 ) -> dict[str, Any]:
+    # Batch 294: the symptom answer is a medical floor, and a second sign for the HRV
+    # dip. It leads the notices because it is the one Mark gave the app himself.
+    symptoms = symptom_signal(symptom_answer)
     rhr = _rhr_rail(
         daily_metric,
         baselines.get("resting_heart_rate_bpm"),
         recent_daily_metrics,
     )
-    hrv = _hrv_rail(daily_metric, recent_daily_metrics)
+    hrv = _hrv_rail(
+        daily_metric,
+        recent_daily_metrics,
+        corroborated_by=[
+            name
+            for name, present in (
+                ("resting_heart_rate", rhr["triggered"]),
+                ("symptom_answer", reports_symptoms(symptom_answer)),
+            )
+            if present
+        ],
+        symptom_answer=symptom_answer,
+    )
     oxygen_respiration = _oxygen_respiration_rail(sleep, baselines, recent_sleeps)
     missing_rows = [
         name for name, row in (("daily_metric", daily_metric), ("sleep", sleep)) if row is None
@@ -692,22 +798,16 @@ def _acute_physiology_rail(
         "message": INSUFFICIENT_DATA_MESSAGE if missing_rows else None,
         "missingRows": missing_rows,
     }
-    triggered_signals = [
-        name
-        for name, signal in (
-            ("resting_heart_rate", rhr),
-            ("overnight_hrv", hrv),
-            ("oxygen_respiration", oxygen_respiration),
-        )
-        if signal["triggered"]
-    ]
+    signals = (
+        ("symptoms", symptoms),
+        ("resting_heart_rate", rhr),
+        ("overnight_hrv", hrv),
+        ("oxygen_respiration", oxygen_respiration),
+    )
+    triggered_signals = [name for name, signal in signals if signal["triggered"]]
     escalations = [
         {"kind": name, "level": _escalation_level(signal), "message": signal["escalation"]}
-        for name, signal in (
-            ("resting_heart_rate", rhr),
-            ("overnight_hrv", hrv),
-            ("oxygen_respiration", oxygen_respiration),
-        )
+        for name, signal in signals
         if signal["triggered"] and isinstance(signal["escalation"], str)
     ]
     return {
@@ -717,7 +817,12 @@ def _acute_physiology_rail(
         "standingLine": MEDICAL_BOUNDARY_STANDING_LINE,
         "dataSufficiency": data_sufficiency,
         "triggeredSignals": triggered_signals,
-        "requiresBikeRest": bool(rhr["requiresBikeRest"] or hrv["requiresBikeRest"]),
+        "requiresBikeRest": bool(
+            symptoms["requiresBikeRest"] or rhr["requiresBikeRest"] or hrv["requiresBikeRest"]
+        ),
+        # Batch 294: no training of any kind — every session type, not only the bike.
+        "requiresTrainingRest": bool(symptoms["requiresTrainingRest"]),
+        "symptoms": symptoms,
         "restingHeartRate": rhr,
         "overnightHrv": hrv,
         "oxygenRespiration": oxygen_respiration,
@@ -797,6 +902,7 @@ def morning_verdict(
     enforce_data_sufficiency: bool = False,
 ) -> dict[str, Any]:
     subjective_score = _latest_subjective_score(manual_entries)
+    symptom_answer = latest_symptom_answer(manual_entries)
     hrv_status = _lower(daily_metric.hrv_status if daily_metric else None) or _lower(
         sleep.hrv_status if sleep else None
     )
@@ -809,6 +915,7 @@ def morning_verdict(
         baselines=baselines,
         recent_daily_metrics=recent_daily_metrics,
         recent_sleeps=recent_sleeps,
+        symptom_answer=symptom_answer,
     )
     # Batch 271's signal. Batch 269 gates the HRV Red on it below and Batch 270
     # classifies a Red cluster with it; both read this one signal so they cannot
@@ -1074,6 +1181,14 @@ def morning_verdict(
             training_load_cap["applied"] = True
         reasons.extend(training_load_cap["reasons"])
     training_load_cap["statusBeforeCap"] = status_before_load_cap
+    # Batch 294: a symptom floor outranks every rung of the ladder. No other signal can
+    # override it, so it is applied last and its reason reads first.
+    symptom_floor = acute_physiology["symptoms"]
+    symptom_floor["statusBeforeFloor"] = status
+    symptom_floor["applied"] = bool(symptom_floor["triggered"])
+    if symptom_floor["applied"]:
+        status = "Red"
+        reasons.insert(0, str(symptom_floor["reason"]))
     # Batch 269: a hold only stands if nothing after the ladder capped the day. When
     # a ceiling did, the HRV flag still cut nothing on its own, and the packet names
     # the ceiling that did.
@@ -1083,6 +1198,7 @@ def morning_verdict(
             (
                 name
                 for name, applied in (
+                    ("symptom_floor", symptom_floor["applied"]),
                     ("sleep_credit_ceiling", sleep_credit_ceiling["applied"]),
                     ("acute_physiology_cap", acute_physiology["verdictCapApplied"]),
                     ("missing_data_floor", acute_physiology["missingDataFloorApplied"]),
@@ -1096,7 +1212,11 @@ def morning_verdict(
     if readiness_trend.get("triggered") and isinstance(baseline_trend_reason, str):
         reasons.append(baseline_trend_reason)
 
-    if acute_physiology["requiresBikeRest"] and not is_rest_day:
+    requires_training_rest = bool(acute_physiology["requiresTrainingRest"])
+    requires_bike_rest = bool(acute_physiology["requiresBikeRest"])
+    if requires_training_rest and not is_rest_day:
+        plan_adjustments = [str(symptom_floor["planLine"])]
+    elif requires_bike_rest and not is_rest_day:
         plan_adjustments = [
             "Take today off the bike; do not substitute an eased ride for the acute signal."
         ]
@@ -1107,11 +1227,13 @@ def morning_verdict(
             is_rest_day=is_rest_day,
             hold_targets=hrv_graded_response["tier"] == "hold",
         )
-    if status != "Green" and yesterday_hard and not is_rest_day:
+    if status != "Green" and yesterday_hard and not is_rest_day and not requires_training_rest:
         plan_adjustments.append(
             "Treat yesterday's hard session as extra context for easing today's work."
         )
-    if status == "Red" and has_vo2:
+    # Batch 294: on a morning that has already taken him off the bike, "a very easy
+    # spin" contradicts the line above it. Red-never-VO2 is still recorded below.
+    if status == "Red" and has_vo2 and not requires_bike_rest:
         plan_adjustments.append("Replace VO2 with rest, mobility, or a very easy spin.")
     breathwork_signal = {
         "status": status,
@@ -1119,6 +1241,7 @@ def morning_verdict(
         "readinessInterpretation": readiness_interpretation,
         "hrvStatus": hrv_status,
         "hrvBelowBaseline": hrv_low,
+        "symptomsAnswer": symptom_answer,
     }
     if should_recommend_breathwork(breathwork_signal):
         plan_adjustments.append(
@@ -1136,6 +1259,10 @@ def morning_verdict(
         )
     if cumulative_escalation["applied"]:
         safety_rules.append("poor_readiness_cumulative_red")
+    if symptom_floor["applied"]:
+        safety_rules.append(
+            "symptom_no_training_floor" if requires_training_rest else "symptom_easy_riding_floor"
+        )
     if acute_physiology["restingHeartRate"]["triggered"]:
         safety_rules.append("acute_resting_heart_rate_amber_cap")
     if acute_physiology["overnightHrv"]["triggered"]:
@@ -1182,6 +1309,10 @@ def morning_verdict(
 
 
 def should_recommend_breathwork(signal: Mapping[str, Any]) -> bool:
+    # Batch 294: a chest-or-heart morning is for a doctor, not a breathing drill
+    # (Craig, on Mark's behalf, 28 Sep 2026).
+    if signal.get("symptomsAnswer") == SYMPTOMS_CHEST_HEART:
+        return False
     status = str(signal.get("status") or "").lower()
     readiness_level = str(signal.get("readinessLevel") or "").lower()
     readiness_interpretation = signal.get("readinessInterpretation")

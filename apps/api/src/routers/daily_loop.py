@@ -117,6 +117,7 @@ async def upsert_manual_entry(
             if body.remInterventionFeedbackJson is not None
             else None
         ),
+        symptoms=body.symptoms,
         notes=body.notes,
     )
     # Batch 97: keep the check-in as the primary generate trigger, but move the

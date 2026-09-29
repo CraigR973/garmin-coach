@@ -313,11 +313,24 @@ def test_last_night_hrv_collapse_is_an_independent_amber_cap() -> None:
     assert hrv["baselineStddevMs"] == 3.9
     assert hrv["acuteFloorMs"] == 41.14
     assert hrv["baselineSampleCount"] == 21
-    assert "2026-08-12 to 2026-09-01" in hrv["escalation"]
-    assert verdict["acutePhysiology"]["requiresBikeRest"] is True
-    assert hrv["requiresBikeRest"] is True
-    assert verdict["acutePhysiology"]["escalations"][0]["level"] == "rest"
+    # Batch 294: 41 against 47 is 1.5 SD and 13% down, under the illness-grade line
+    # (37.24 ms here), so it caps the day without taking him off the bike.
+    assert hrv["illnessLineMs"] == 37.24
+    assert hrv["illnessGrade"] is False
+    assert verdict["acutePhysiology"]["requiresBikeRest"] is False
+    assert hrv["requiresBikeRest"] is False
+    assert verdict["acutePhysiology"]["escalations"][0]["level"] == "ease"
     assert "acute_overnight_hrv_amber_cap" in verdict["safetyRulesApplied"]
+
+    illness_grade = _complete_verdict(
+        daily_metric=_metric(last_night_hrv=37),
+        recent_daily_metrics=history,
+    )
+    rail = illness_grade["acutePhysiology"]["overnightHrv"]
+    assert rail["illnessGrade"] is True
+    assert illness_grade["acutePhysiology"]["requiresBikeRest"] is True
+    assert "2026-08-12 to 2026-09-01" in rail["escalation"]
+    assert illness_grade["acutePhysiology"]["escalations"][0]["level"] == "rest"
 
 
 def test_average_spo2_surveillance_has_gp_route_without_rest_or_diagnosis() -> None:

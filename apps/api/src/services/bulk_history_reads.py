@@ -217,9 +217,10 @@ def select_morning_calls() -> Select[Any]:
     """What a stored morning read decided about its day, projected (Batch 289).
 
     One row per stored ``morning`` analysis: ``subject_date``,
-    ``generated_at_utc``, the typed ``verdict``, and five fields of the read's
+    ``generated_at_utc``, the typed ``verdict``, and six fields of the read's
     frozen packet — the verdict's ``reasons``, its ``verdictAdjustment``, whether
-    an acute signal ruled out riding (``requiresBikeRest``), ``restDay`` and the
+    an acute signal ruled out riding (``requiresBikeRest``) or a symptom ruled out
+    training of any kind (``requiresTrainingRest``, Batch 294), ``restDay`` and the
     ``plannedWorkouts`` the morning saw. About a kilobyte a row, against a packet
     that averages **64,812 characters** (measured 2026-09-26); the coach asks for
     seven of them on every question, so loading them whole would ship ~450 KB a
@@ -248,6 +249,10 @@ def select_morning_calls() -> Select[Any]:
             packet[("verdict", "reasons")].label("reasons"),
             packet[("verdict", "verdictAdjustment")].label("verdict_adjustment"),
             packet[("verdict", "acutePhysiology", "requiresBikeRest")].label("requires_bike_rest"),
+            # Batch 294: a symptom floor that ruled out training of any kind.
+            packet[("verdict", "acutePhysiology", "requiresTrainingRest")].label(
+                "requires_training_rest"
+            ),
             packet[("restDay",)].label("rest_day"),
             packet[("plannedWorkouts",)].label("planned_workouts"),
         )
