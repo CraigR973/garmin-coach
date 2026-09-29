@@ -6,41 +6,25 @@
 
 ## Now
 
-**2026-09-28 — The graded verdict is specced as group G6 (Batches 294–297). Nothing is built
-yet. Craig asked whether Claude should compute the morning verdict. Decided instead: the
-colour stays deterministic, the rules grade the evidence, and Claude reads Mark's words. The
-review came first (`docs/reviews/verdict-grading-review-2026-09-28.md`: go, with six changes).
-Settled by Craig the same day: no clinician check; a cold is Red; no two-week shadow before
-the switch; and 297 takes over the two-Reds keyword matching. G6 runs back to back in a new
-session.**
+**2026-09-29 — G6 step 1 of 4: Batch 294 shipped (PR #341, `9443867`, Decision #365). The
+check-in asks "Any symptoms today?"; chest-or-heart and fever answers mean no training of any
+kind, a head cold means Red on the easy path. The overnight-HRV alarm keeps its Amber cap but
+says "off the bike" only at an illness-grade drop: 1 of 75 replayed mornings instead of 6.
+Batch 295 (the graded verdict, built beside the ladder, with its replay report) is next in the
+same session.**
 
 ### What G6 does (ledger: "The verdict grades the evidence")
 
 | Batch | What | Gate |
 |---|---|---|
-| **294** | A symptom question at check-in, with fever and heart floors; the overnight-HRV alarm stops sending him off the bike on noise | Wording (Craig on Mark's behalf), the go for migration `033` |
+| ~~294~~ | Shipped 29 Sep: symptom question and floors, calmer HRV alarm | Done: migration `033` live, wording signed off |
 | **295** | The graded verdict built beside the ladder; the replay tool; shadow by replay | None |
 | **296** | The colour switches to the graded verdict; a mild concern moves or holds a session | Craig reviews the replay on Mark's behalf; copy |
 | **297** | Claude reads the notes; its flags only add caution; the two-Reds rule stops keyword matching | Craig labels the eval; the go for spend and the migration |
 
-### Why, in numbers (28 Sep, read-only)
-
-- **Reds:** 21 of 98 mornings since 21 Jun were Red.
-- **The overnight-HRV alarm:**
-  - It would have said "off the bike" on 6 of 75 mornings, 3 of them by under 1 ms.
-  - At an illness-grade line it would have fired once.
-- **Readiness** is mostly his sleep and recovery time (r 0.69 and −0.72).
-- **His feel** tracks his physiology (r 0.4–0.6).
-- **Symptoms:** in 75 morning notes he has never reported one, and nothing asks.
-
 ### Needs Craig
 
-1. **Run G6 in a new session** (`/batch-group G6`), aiming for 294–296 before Mark's first
-   ride back on 7 Oct. It stops for:
-   - your sign-off of 294's wording, on Mark's behalf
-   - your go for migration `033`
-   - your review of 295's replay report before 296 switches
-   - your labels on 297's eval set, and the go for its spend and migration
+1. **Nothing for 295.** The group stops next at 296: your review of 295's replay report.
 2. **Carried from 27 Sep:**
    - send Mark `docs/drafts/2026-09-27-reply-to-mark.md`
    - G4: a free Neon database and `BACKUP_RESTORE_DATABASE_URL` (291 is buildable)
@@ -48,13 +32,13 @@ session.**
 
 ### Worth carrying
 
-- **Until 294 ships, the overnight-HRV alarm can still say "off the bike" on noise**, about one
-  morning in twelve. Mark is on holiday until 6 Oct, so no ride is affected before 7 Oct.
+- **The symptom question is live but unanswered:** 0 stored answers. Mark is on holiday until
+  6 Oct; his first check-in back is the first real answer.
 - **From 7 to 20 Oct the old ladder runs beside the graded verdict** (after 296). List every
   disagreement here, and look at any morning where the graded colour is two steps less
   cautious the same day.
 - 27 Sep's "Worth carrying" (below) still stands.
-- **Next DECISIONS number: #365.** G4's rest and G5 are unchanged.
+- **Next DECISIONS number: #366.** G4's rest and G5 are unchanged.
 
 ## Prior current-state snapshots
 
@@ -1831,6 +1815,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-29** — G6 step 1: Batch 294 shipped (PR #341, `9443867`, Decision #365). "Any symptoms today?" on the check-in (migration `033`, Craig's go); chest-or-heart and fever answers set Red with no training of any kind, a head cold Red on the easy path, and every consumer of the bike-rest flag honours it. The overnight-HRV rail rests the bike only at 2.5 SD or 30% under his median, or with a second sign: 6 of 75 replayed mornings become 1 (16 Jul). Wording signed off by Craig on Mark's behalf. Re-verified at `/batch-start`: every figure held; three corrections recorded in the ledger. CI 16/16 green (2,124 tests, 0 skipped); Railway and Vercel served `9443867`; web 200; `daily-loop` 401. Production smoke, read-only: 033 applied, 16 Jul still rests, 21 and 22 Sep cap without bike rest, 23 Sep Green; the v50 bump self-heals and blanks nothing.
 - **2026-09-28** — G6 decisions settled by Craig: no clinician check; a cold is Red on the endurance path; no two-week shadow (the ladder runs beside the graded verdict 7–20 Oct instead, and Craig reviews the replay on Mark's behalf); 297 absorbs "Claude replaces regex classification". Authoring merged as PR #339 (`2cac23f`).
 - **2026-09-28** — Authored G6, Batches 294–297 (the graded verdict), on Craig's go, after a review through four lenses (`docs/reviews/verdict-grading-review-2026-09-28.md`). Craig asked whether Claude should compute the verdict. Decided: the colour stays deterministic, the rules grade the evidence across independent domains, and Claude only reads Mark's notes (its flags only add caution). Measured read-only: the overnight-HRV off-the-bike alarm fires on 6 of 75 mornings (3 by under 1 ms); readiness tracks sleep and recovery time (r 0.69, −0.72); feel tracks his physiology (r 0.4–0.6). Nothing built.
 - **2026-09-27** — Batch 287 finished on Craig's go: `railway config apply` ran with the pinned plan (0 add / 4 change / 0 destroy, identical to the saved one) and turned off the API's sleeping, which had been on. `railway.toml` removed (PR #338, `fbf4b67`, Decision #364). The first deploy without it built all three services from the Dockerfile, ran alembic and passed exact-SHA health. The crons' first scheduled runs on it are still to observe (28 Sep and 4 Oct).
