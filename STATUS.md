@@ -6,11 +6,10 @@
 
 ## Now
 
-**2026-09-29 — G6 step 2 of 4: Batch 295 shipped (PR #342, `6987317`, Decision #366). The
-graded verdict exists beside the ladder and nothing live reads it. Its replay of all 99
-stored mornings is committed (`docs/reviews/verdict-replay-2026-09-29.md`): Red falls from 13
-on today's ladder to 4, and no floor is weakened. The group now stops for Craig's review of
-that report, on Mark's behalf, before 296 switches the colour.**
+**2026-09-30 — G6 step 3 of 4: Batch 296 shipped (PR #343, `42ea8f9`, Decision #367). Mark's
+colour now comes from the graded verdict. The old ladder runs beside it, logged but never
+shown, and from 7 to 20 Oct every disagreement is listed below. Next is 297, which stops
+first for Craig to label the eval set.**
 
 ### What G6 does (ledger: "The verdict grades the evidence")
 
@@ -18,27 +17,55 @@ that report, on Mark's behalf, before 296 switches the colour.**
 |---|---|---|
 | ~~294~~ | Shipped 29 Sep: symptom question and floors, calmer HRV alarm | Done |
 | ~~295~~ | Shipped 29 Sep: the graded verdict beside the ladder, the replay tool and report | Done |
-| **296** | The colour switches to the graded verdict; a mild concern moves or holds a session | **Now: Craig reviews the replay report; then the copy** |
-| **297** | Claude reads the notes; its flags only add caution; the two-Reds rule stops keyword matching | Craig labels the eval; the go for spend and the migration |
+| ~~296~~ | Shipped 30 Sep: the colour comes from the graded verdict | Done |
+| **297** | Claude reads the notes; its flags only add caution; the two-Reds rule stops keyword matching | **Now: Craig labels the eval set**; then the go for spend and the migration |
+
+### The side-by-side, 7–20 Oct (296.2)
+
+- **List the disagreements** with the read-only replay, from the repo root:
+  `PYTHONPATH=apps/api railway run --service api apps/api/.venv/bin/python scripts/replay_verdicts.py --start 2026-10-07 --end 2026-10-20`.
+  Its "Every changed morning" section is the list; copy each into the table below.
+- **Its "Replay reproduces production" line should read N of N.** A drift means production
+  and the replay saw different inputs for that morning; look at it the same day.
+- **A ladder-Red, graded-Green morning** logs `verdict_graded_two_steps_less_cautious` at
+  error level (Sentry). Review it that day.
+- After 20 Oct, delete the ladder in its own PR.
+
+| Date | Ladder → graded | Why |
+|---|---|---|
+| — | none yet (the first graded morning is his next check-in) | — |
+
+### Rollback
+
+Set the Railway variable `VERDICT_ENGINE=ladder` on the `api` service (Craig's: a hosting
+change). The redeploy restores the ladder's colour, packet, v50 prompt and delivery exactly,
+and the next generation of the day heals the read back to v50.
 
 ### Needs Craig
 
-1. **Review the replay report on Mark's behalf** and say go (or change a line) for 296 to
-   switch the colour. The eight calls made in the build are listed at its top.
-2. **296's wording** (`docs/drafts/2026-09-29-batch-296-wording.md` once 296 starts) — it can
-   be signed off at the same time.
-3. **Carried from 27 Sep:** send Mark `docs/drafts/2026-09-27-reply-to-mark.md`; G4's free Neon
+1. **The GitHub repo `CraigR973/garmin-coach` is public** (found 30 Sep; no decision records
+   it). Mark's health data is already in it: 295's replay fixture
+   (`apps/api/tests/fixtures/verdict_replay_2026_09.json`, 164 days of his metrics and
+   sleep, 73 check-in scores), the replay report, and figures throughout these docs.
+   297's eval would add his verbatim notes, so nothing of that kind is committed until
+   Craig decides: make the repo private (a settings change; CI minutes then count against
+   the account's monthly Actions allowance), or keep it public and keep his data out of it.
+2. **297's eval set:** label Mark's 56 real morning notes (the row said about 75; there
+   are 56) and about 40 hard cases. I prepare the sheet at `/batch-start 297`.
+3. **Then 297's two goes:** the paid eval run (a few dollars) and the new table's migration.
+4. **Carried from 27 Sep:** send Mark `docs/drafts/2026-09-27-reply-to-mark.md`; G4's free Neon
    database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment extractor's first paid run.
 
 ### Worth carrying
 
-- **Mark's first two weeks back are W12 CONSOLIDATION and W13 TAPER.** Under the graded
-  verdict a mild or marked concern holds the session in those weeks.
-- **From 7 to 20 Oct the old ladder runs beside the graded verdict** (after 296). List every
-  disagreement here, and look at any morning where the graded colour is two steps less
-  cautious the same day. `scripts/replay_verdicts.py --start --end` lists them.
-- **The symptom question is live but unanswered** (0 answers; Mark away until 6 Oct).
-- 27 Sep's "Worth carrying" (below) still stands. **Next DECISIONS number: #367.**
+- **Mark's first two weeks back are W12 CONSOLIDATION (5–11 Oct) and W13 TAPER (12–18
+  Oct).** A mild or marked concern holds the session there: "This is a planned recovery
+  week, so today's session stays as planned: hold the targets."
+- **Mark is checking in from his holiday** (27 and 30 Sep), so the graded colour reaches
+  him from his next check-in, not first on 7 Oct. The holiday keeps those days rest days.
+- **The symptom question has its first answer:** "None", on 30 Sep.
+- **Anthropic spend for 296: none.** No regeneration; the smoke assembled packets only.
+- 27 Sep's "Worth carrying" (below) still stands. **Next DECISIONS number: #368.**
 
 ## Prior current-state snapshots
 
@@ -1815,6 +1842,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-30** — G6 step 3: Batch 296 shipped (PR #343, `42ea8f9`, Decision #367). Mark's colour comes from the graded verdict behind `settings.verdict_engine`; `VERDICT_ENGINE=ladder` restores the ladder exactly (its v50 prompt pinned by SHA-256). The ladder's colour is logged every morning, never packeted, with an error-level event when it is Red and Mark is shown Green. Graded Amber eases only work above 75% FTP at full length; a held Green offers the swap for a hard session; recovery-class weeks hold. The graded packet drops 15 ladder fields; old packets read as the ladder. Morning v51 and chat v17 carry the `graded_verdict` Floor; the weekly review (v10) gains `keySessions` and `cautiousDays`; nothing regenerated. Home and the brief say "Good to go — hold your targets". 16/16 checks green (2,187 tests, 0 skipped); Railway and Vercel served `42ea8f9`; web 200; `daily-loop` 401. The smoke assembled Mark's real 7, 21, 22, 24, 25 and 26 Sep on the deployed engine, 6 of 6 matching the replay report, with no model call.
 - **2026-09-29** — G6 step 2: Batch 295 shipped (PR #342, `6987317`, Decision #366). `services/verdict_grading.py` rates autonomic, sleep, load and subjective evidence against Mark's own normal and combines them across domains after 294's floors. Readiness only confirms, Garmin's band is not read, and every line is in one table. `services/verdict_replay.py` + `scripts/replay_verdicts.py` replay any stored morning from the inputs it saw, beside today's ladder. 99 mornings: Red 13 → 4, Green-held 5 → 23, no floor weakened. On the six mornings it would have eased or moved a hard session he rode 58% of intervals on target, against 72% otherwise. Nothing live changed. CI 16/16 green (2,162 tests, 0 skipped); Railway and Vercel served `6987317`; web 200; `daily-loop` 401; the merged replay ran read-only on production.
 - **2026-09-29** — G6 step 1: Batch 294 shipped (PR #341, `9443867`, Decision #365). "Any symptoms today?" on the check-in (migration `033`, Craig's go); chest-or-heart and fever answers set Red with no training of any kind, a head cold Red on the easy path, and every consumer of the bike-rest flag honours it. The overnight-HRV rail rests the bike only at 2.5 SD or 30% under his median, or with a second sign: 6 of 75 replayed mornings become 1 (16 Jul). Wording signed off by Craig on Mark's behalf. Re-verified at `/batch-start`: every figure held; three corrections recorded in the ledger. CI 16/16 green (2,124 tests, 0 skipped); Railway and Vercel served `9443867`; web 200; `daily-loop` 401. Production smoke, read-only: 033 applied, 16 Jul still rests, 21 and 22 Sep cap without bike rest, 23 Sep Green; the v50 bump self-heals and blanks nothing.
 - **2026-09-28** — G6 decisions settled by Craig: no clinician check; a cold is Red on the endurance path; no two-week shadow (the ladder runs beside the graded verdict 7–20 Oct instead, and Craig reviews the replay on Mark's behalf); 297 absorbs "Claude replaces regex classification". Authoring merged as PR #339 (`2cac23f`).
