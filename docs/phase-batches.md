@@ -4639,10 +4639,9 @@ Re-measured on production, read-only. The public repository changes what the bat
 builds, so it waits on Craig with the migration and the labels.
 
 - **The repository is public** (`CraigR973/garmin-coach`, since 20 Jun; no forks). 297.4's
-  eval fixture would commit Mark's verbatim notes, which mention his drinking, his
-  digestion and where he is on holiday. Until Craig decides, nothing of his is committed:
-  with a public repository CI can replay only the hand-written cases, and the real notes
-  are evaluated in the paid run alone.
+  eval fixture would commit all 56 of Mark's verbatim morning notes. Until Craig decides,
+  none is committed: with a public repository CI can replay only the hand-written cases,
+  and the real notes are evaluated in the paid run alone.
 - **56 of 77 morning check-ins carry notes** (median 171 characters), not 54 of 75. Mark has
   checked in twice from his holiday. No check-in has ever been edited after creation, so
   "one reading per check-in version" is one per check-in row, keyed by a hash of the
