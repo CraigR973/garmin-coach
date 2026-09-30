@@ -329,6 +329,59 @@ describe('morning brief page', () => {
     expect(within(alert).getByText(/fever, aches or a chest infection/i)).toBeTruthy();
   });
 
+  it('shows the held headline when the graded verdict holds the targets (Batch 296)', async () => {
+    const held = structuredClone(snapshot);
+    held.data.morningAnalysis!.verdictEngine = 'graded';
+    held.data.morningAnalysis!.verdictHeld = true;
+    apiFetchMock.mockImplementation(() => Promise.resolve(held));
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <MorningBriefPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('Good to go — hold your targets')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'One thing is a little off: ride as planned, and hold your targets rather than pushing past them.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('eases only the hard work on a graded Amber, and keeps the old line for a ladder read (Batch 296)', async () => {
+    const graded = structuredClone(snapshot);
+    graded.data.morningAnalysis!.verdict = 'amber';
+    graded.data.morningAnalysis!.verdictEngine = 'graded';
+    apiFetchMock.mockImplementation(() => Promise.resolve(graded));
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { unmount } = render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <MorningBriefPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText('Ease the hard work; easy riding stays as planned.')).toBeTruthy();
+    unmount();
+
+    // A read stored before the switch carries no engine: the ladder's line stands.
+    const ladder = structuredClone(snapshot);
+    ladder.data.morningAnalysis!.verdict = 'amber';
+    apiFetchMock.mockImplementation(() => Promise.resolve(ladder));
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter>
+          <MorningBriefPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText('Ease back — shorter, and drop the hard stuff.')).toBeTruthy();
+    expect(screen.queryByText('Ease the hard work; easy riding stays as planned.')).toBeNull();
+  });
+
   it('shows the exact insufficient-data line instead of a Green interpretation (Batch 246)', async () => {
     const withBlackout = structuredClone(snapshot);
     withBlackout.data.morningAnalysis!.verdict = 'amber';

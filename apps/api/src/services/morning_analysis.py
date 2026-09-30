@@ -30,6 +30,7 @@ from src.models.coaching import (
     KnowledgeBase,
     ManualEntry,
     MetricBaseline,
+    PlanBlock,
     PlannedWorkout,
     Sleep,
     TemperatureReading,
@@ -136,9 +137,12 @@ from src.services.morning_verdict import (  # noqa: F401 — compatibility re-ex
     ACWR_AMBER_CAP_THRESHOLD,
     ACWR_LOAD_DRIVEN_MAX,
     RECOVERY_TIME_AMBER_CAP_MIN,
+    _breathwork_recommendation,
     _plan_adjustments,
     _todays_bike_workout,
     _verdict_adjustment_packet,
+    graded_verdict_adjustment_packet,
+    graded_verdict_packet,
     should_recommend_breathwork,
     subjective_score_label,
 )
@@ -158,6 +162,13 @@ from src.services.sleep_scoring import (
 )
 from src.services.standing_habits import SECTION as STANDING_HABITS_SECTION
 from src.services.training_week import TrainingWeekService
+from src.services.verdict_grading import (
+    ENGINE_GRADED,
+    GradedVerdict,
+    build_grading_inputs,
+    grade,
+    readiness_lower_quartile,
+)
 from src.services.verdict_scaling import (
     AMBER_POWER_CAP_PCT,
     ENDURANCE_PRESCRIPTION_PCT,
@@ -166,6 +177,55 @@ from src.services.verdict_scaling import (
 from src.services.workload_budget import workload_slot
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
+
+
+#: The graded verdict's history window: his usual total sleep and feel (Batch 296).
+HISTORY_WINDOW_DAYS = 84
+_STATUS_RANK = {"Green": 0, "Amber": 1, "Red": 2}
+
+
+def _log_verdict_engines(
+    player: Profile, subject_date: date, *, ladder_status: str, graded: GradedVerdict
+) -> None:
+    """Both colours, every morning, in the logs and never in the packet (296.2).
+
+    From 7 to 20 Oct 2026 the ladder runs beside the graded verdict and every
+    disagreement is listed in STATUS.md. A morning where the graded colour Mark is
+    shown is two steps less cautious than the ladder's (ladder Red, graded Green) is
+    an error-level event, so it reaches Sentry and is reviewed that day.
+    """
+    fields = {
+        "profile_id": str(player.id),
+        "subject_date": subject_date.isoformat(),
+        "engine": VERDICT_ENGINE,
+        "ladder": ladder_status,
+        "graded": graded.label,
+    }
+    log.info("verdict_engines_compared", agree=ladder_status == graded.status, **fields)
+    less_cautious = _STATUS_RANK.get(ladder_status, 0) - _STATUS_RANK.get(graded.status, 0)
+    if VERDICT_ENGINE == ENGINE_GRADED and less_cautious >= 2:
+        log.error("verdict_graded_two_steps_less_cautious", **fields)
+
+
+def _graded_breathwork_line(
+    ladder: Mapping[str, Any],
+    graded: GradedVerdict,
+    breathwork_brief: BreathworkBriefResult | None,
+    age_adjusted_sleep_score: int | None,
+) -> str | None:
+    """The ladder's breathwork suggestion, gated on the graded colour instead."""
+    symptoms = ladder["acutePhysiology"].get("symptoms")
+    signal = {
+        "status": graded.status,
+        "readinessLevel": ladder.get("readinessLevel"),
+        "readinessInterpretation": None,
+        "hrvStatus": ladder.get("hrvStatus"),
+        "hrvBelowBaseline": ladder.get("hrvBelowBaseline"),
+        "symptomsAnswer": symptoms.get("answer") if isinstance(symptoms, Mapping) else None,
+    }
+    if not should_recommend_breathwork(signal):
+        return None
+    return _breathwork_recommendation(breathwork_brief, age_adjusted_sleep_score)
 
 
 def _requires_bike_rest(verdict: Mapping[str, Any]) -> bool:
@@ -278,7 +338,14 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # acutePhysiology.symptoms and requiresTrainingRest) and the overnight-HRV rail's
 # graded bike rest, and SYMPTOM_FLOOR_RULE tells the read what they mean.
 # Self-healing, so nothing is withdrawn; the next generation writes v50.
-PROMPT_VERSION = "morning-analysis-v50-2026-09-28"
+# Batch 296: the colour comes from the graded verdict (settings.verdict_engine), and
+# the brief is told what it is: GRADED_SYSTEM_PROMPT replaces the ladder's own rules
+# (the readiness, load, soft-sleep, credit-ceiling, escalation and HRV-hold rules) with
+# GRADED_VERDICT_RULE, and says how the graded Amber changes a ride. The ladder keeps
+# its v50 prompt for the one-setting rollback, so flipping back restores its output
+# exactly. Self-healing, so nothing is withdrawn; the next generation writes v51.
+LADDER_PROMPT_VERSION = "morning-analysis-v50-2026-09-28"
+GRADED_PROMPT_VERSION = "morning-analysis-v51-2026-09-29"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -552,6 +619,115 @@ restate them as a duplicated checklist or a generic "Actions" header. Follow the
 packet-derived section order; reference a Today action in prose only where the
 reasoning needs it."""
 SYSTEM_PROMPT = "\n\n".join((SYSTEM_PROMPT, LEARNED_CONTEXT_PROMPT_GUARDRAIL))
+LADDER_SYSTEM_PROMPT = SYSTEM_PROMPT
+
+# Batch 296: what the graded packet means. The clause "never soften, argue down or
+# re-derive its colour" is the graded_verdict floor (coach_policy).
+GRADED_VERDICT_RULE = """verdict.graded is the deterministic graded verdict: verdict.status
+is its colour and verdict.engine says so. It rates four domains against Mark's own
+normal, each none, mild or marked: autonomic (his HRV this week and last night, and his
+resting heart rate), sleep (the score and total sleep), load (the load ratio, recovery
+time and yesterday's load) and how he feels. It combines them: Red for two marked or a
+Rough check-in, Amber for one marked or two mild, Green with the targets held
+(verdict.held) for one mild, and Green otherwise. The floors in verdict.acutePhysiology
+come first. Explain the graded verdict by his own numbers and the domains it flags and
+never soften, argue down or re-derive its colour. Lead with his numbers and the domains that
+are off, as verdict.graded.domains records them, then the mechanism, and never count a
+domain the packet does not flag. Readiness only ever confirms a domain, and Garmin's HRV
+status and band are context, never the reason for the colour. verdict.graded.actions
+says what happens to each session: move_or_hold (move it to a better day this week if
+verdict.swapSuggestion offers one, otherwise ride it with the targets held), ease_hard
+(the hard intervals eased a zone at full length, Zone 2 unchanged), hold_targets (a
+planned recovery week: the session stays as planned, targets held), recovery and
+shortened_zone2 (Red), and as_planned. On a held morning say plainly that the session
+stands and that he should hold its targets rather than push past them, and never call
+it cut, eased or cautious."""
+
+# Each pair is one ladder rule and what the graded prompt says instead. A replacement
+# that no longer matches fails at import, so the two prompts cannot drift silently.
+_GRADED_PROMPT_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+    (
+        """VO2 work on a Red verdict. When Garmin readiness is Low, call it load-driven only
+if the packet explicitly says recovery signals justify that interpretation; when
+readiness is Poor, keep the day cautious.""",
+        """VO2 work on a Red verdict.""",
+    ),
+    (
+        """Use acuteChronicLoadRatio (acute:chronic training load; ~0.8-1.3 is balanced,
+>=1.5 triggers the deterministic high-load cap), chronicTrainingLoad,
+trainingLoadBalance, recoveryTimeMin, and intensityMinutes to explain the load
+read alongside the recovery signals. When verdict.trainingLoadCap applies,
+explain its deterministic Amber ceiling and never soften or argue it down; load
+is not a model-controlled override of the verdict.""",
+        """Use acuteChronicLoadRatio (acute:chronic training load; ~0.8-1.3 is balanced),
+chronicTrainingLoad, trainingLoadBalance, recoveryTimeMin, and intensityMinutes to
+explain the load read alongside the recovery signals; the graded verdict's load domain
+has already rated them.""",
+    ),
+    (
+        """grant permission to train. verdict.readinessEffectiveFloor applies the absolute
+readiness anchor to any soft-sleep recovery override.
+When the packet marks a soft-sleep recovery override, explain that measured
+HRV/RHR/readiness plus the current check-in held a mediocre sleep night without
+pretending the sleep was good. Explain verdict.sleepCreditCeiling and never soften
+or argue down its deterministic Red/Green ceiling. It records both boundary
+crossings caused by age credit. A raw Garmin score below 60
+may be lifted to Amber by age adjustment but can never reach Green; a raw score
+below 74 that reaches the Green line needs the complete recorded recovery and
+check-in bundle. Explain the frozen result. The model is not the judge. When
+verdict.cumulativeEscalation
+applies, state plainly that Poor readiness
+plus another negative recovery signal makes the day Red and never soften or argue
+down that deterministic escalation. Missing HRV and absent""",
+        """grant permission to train. When verdict.graded.ageCreditGuardApplied is true,
+age credit alone would have made the day Green, so it stays Amber: say so plainly and
+never argue it. Missing HRV and absent""",
+    ),
+    (HRV_GRADED_RESPONSE_RULE, GRADED_VERDICT_RULE),
+    (
+        """defending it. The correction still never overrides the Red floor, the soft-sleep
+rule, Poor-readiness caution, Red-never-VO2, the recorded plan/completion state,
+or the deterministic verdict""",
+        """defending it. The correction still never overrides the floors, Red-never-VO2,
+the recorded plan/completion state, or the deterministic verdict""",
+    ),
+    (
+        """rather than soften. Offer softening the ride only as the fallback for when the
+week can't be rearranged.""",
+        """rather than soften. Offer softening the ride only as the fallback for when the
+week can't be rearranged; on a held morning (verdict.held) the fallback is to ride it as
+planned with its targets held, not to soften it.""",
+    ),
+    (
+        """or duration. When verdictAdjustment.keptAsEndurance is true the ride stays a""",
+        """or duration. When verdictAdjustment.graded is true on an Amber morning, only the
+hard intervals were eased a zone and the ride keeps its full length, Zone 2 unchanged:
+say so, and never call it shortened. When verdictAdjustment.keptAsEndurance is true the
+ride stays a""",
+    ),
+    (
+        """what is needed to answer, say so plainly rather than guessing. Answering a question
+never overrides the Red floor, the soft-sleep rule, the Poor-readiness caution, or
+Red-never-VO2.""",
+        """what is needed to answer, say so plainly rather than guessing. Answering a question
+never overrides the graded colour, a floor, or Red-never-VO2.""",
+    ),
+)
+
+
+def _graded_system_prompt(ladder_prompt: str) -> str:
+    prompt = ladder_prompt
+    for ladder_rule, graded_rule in _GRADED_PROMPT_REPLACEMENTS:
+        if prompt.count(ladder_rule) != 1:
+            raise RuntimeError(f"graded prompt: ladder rule not found once: {ladder_rule[:60]!r}")
+        prompt = prompt.replace(ladder_rule, graded_rule)
+    return prompt
+
+
+GRADED_SYSTEM_PROMPT = _graded_system_prompt(LADDER_SYSTEM_PROMPT)
+VERDICT_ENGINE = settings.verdict_engine
+PROMPT_VERSION = GRADED_PROMPT_VERSION if VERDICT_ENGINE == ENGINE_GRADED else LADDER_PROMPT_VERSION
+SYSTEM_PROMPT = GRADED_SYSTEM_PROMPT if VERDICT_ENGINE == ENGINE_GRADED else LADDER_SYSTEM_PROMPT
 
 
 class MorningAnalysisError(RuntimeError):
@@ -739,6 +915,35 @@ class MorningAnalysisService:
             recent_sleeps=recent_sleeps,
             enforce_data_sufficiency=True,
         )
+        # Batch 296: the graded verdict, from the same rows and the ladder's own acute
+        # rail. Both engines run every morning; settings.verdict_engine picks the one
+        # that sets the colour, and the other's colour is logged, never packeted.
+        graded = await self._graded_verdict(
+            player.id,
+            subject_date,
+            ladder=verdict,
+            daily_metric=daily_metric,
+            sleep=sleep,
+            age_adjusted_sleep_score=age_adjusted_sleep_score,
+            planned_workouts=planned_workouts,
+            baselines=baseline_rows,
+            training_load=_training_load_signal(daily_metric_packet),
+            yesterday_load=yesterday_load,
+            rest_day=rest_day,
+            recent_daily_metrics=recent_daily_metrics,
+        )
+        _log_verdict_engines(
+            player, subject_date, ladder_status=str(verdict["status"]), graded=graded
+        )
+        if VERDICT_ENGINE == ENGINE_GRADED:
+            verdict = graded_verdict_packet(
+                verdict,
+                graded,
+                planned_workouts,
+                breathwork_line=_graded_breathwork_line(
+                    verdict, graded, breathwork_brief, age_adjusted_sleep_score
+                ),
+            )
         # Batch 221: persist the exact REM library selection before it is shown,
         # then reuse that immutable weekly assignment on every surface. The
         # current cached driver report is the same evidence Daily Loop uses.
@@ -805,7 +1010,15 @@ class MorningAnalysisService:
         # module graph acyclic (weekly_restructure pulls in daily_loop).
         swap = None
         chronic_action = verdict.get("chronicAction")
-        acute_swap = verdict.get("status") in {"Amber", "Red"} and not rest_day["isRestDay"]
+        if VERDICT_ENGINE == ENGINE_GRADED:
+            # Batch 296: a swap is offered when a session's action would move or change
+            # it; a held easy day and a recovery-week hold offer none.
+            acute_swap = not rest_day["isRestDay"] and any(
+                action.action in {"move_or_hold", "ease_hard", "recovery", "shortened_zone2"}
+                for action in graded.actions
+            )
+        else:
+            acute_swap = verdict.get("status") in {"Amber", "Red"} and not rest_day["isRestDay"]
         cluster_swap = (
             isinstance(chronic_action, Mapping)
             and chronic_action.get("triggered") is True
@@ -913,9 +1126,13 @@ class MorningAnalysisService:
         actionable_workouts = (
             [] if rest_day["isRestDay"] or requires_bike_rest else planned_workouts
         )
-        verdict["verdictAdjustment"] = _verdict_adjustment_packet(
-            str(verdict.get("status") or ""),
-            actionable_workouts,
+        verdict["verdictAdjustment"] = (
+            graded_verdict_adjustment_packet(graded, actionable_workouts)
+            if VERDICT_ENGINE == ENGINE_GRADED
+            else _verdict_adjustment_packet(
+                str(verdict.get("status") or ""),
+                actionable_workouts,
+            )
         )
         verdict["todayActions"] = build_today_actions(
             verdict=verdict,
@@ -956,6 +1173,11 @@ class MorningAnalysisService:
                     "treat_training_schedule_as_nominal_only",
                     "respect_deterministic_acute_physiology_rail",
                     "respect_deterministic_symptom_floor",
+                    *(
+                        ["lead_with_graded_domains_and_his_numbers"]
+                        if VERDICT_ENGINE == ENGINE_GRADED
+                        else []
+                    ),
                 ]
                 # Batch 113 (#186): holiday away means no bedroom thermal review.
                 if rule != "include_thermal_environment_review"
@@ -1531,6 +1753,114 @@ class MorningAnalysisService:
         )
         return daily_metrics, sleeps
 
+    async def _graded_verdict(
+        self,
+        user_id: uuid.UUID,
+        subject_date: date,
+        *,
+        ladder: Mapping[str, Any],
+        daily_metric: DailyMetric | None,
+        sleep: Sleep | None,
+        age_adjusted_sleep_score: int | None,
+        planned_workouts: Sequence[PlannedWorkout],
+        baselines: Mapping[str, MetricBaseline],
+        training_load: Mapping[str, Any],
+        yesterday_load: Mapping[str, Any],
+        rest_day: Mapping[str, Any],
+        recent_daily_metrics: Sequence[DailyMetric],
+    ) -> GradedVerdict:
+        """The graded verdict for this morning (Batch 296).
+
+        Built by ``build_grading_inputs``, as the replay builds it, from this morning's
+        readings and rows dated before it: his HRV nights (the acute rail's own wake
+        rows), his total sleep and morning feel over 84 days, and the plan blocks.
+        """
+        window_start = subject_date - timedelta(days=HISTORY_WINDOW_DAYS)
+        sleep_rows = (
+            await self.session.execute(
+                select(Sleep.calendar_date, Sleep.duration_sec).where(
+                    Sleep.user_id == user_id,
+                    Sleep.calendar_date >= window_start,
+                    Sleep.calendar_date < subject_date,
+                )
+            )
+        ).all()
+        feel_rows = (
+            await self.session.execute(
+                select(
+                    ManualEntry.entry_date, ManualEntry.entry_at_utc, ManualEntry.subjective_score
+                )
+                .where(
+                    ManualEntry.user_id == user_id,
+                    ManualEntry.entry_date >= window_start,
+                    ManualEntry.entry_date < subject_date,
+                    ManualEntry.planned_workout_id.is_(None),
+                    ManualEntry.activity_id.is_(None),
+                    ManualEntry.subjective_score.is_not(None),
+                )
+                .order_by(ManualEntry.entry_date, ManualEntry.entry_at_utc)
+            )
+        ).all()
+        blocks = (
+            (
+                await self.session.execute(
+                    select(PlanBlock).where(
+                        PlanBlock.user_id == user_id,
+                        PlanBlock.start_date <= subject_date,
+                        PlanBlock.end_date >= window_start,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return grade(
+            build_grading_inputs(
+                subject_date=subject_date,
+                acute=ladder["acutePhysiology"],
+                last_night_hrv_ms=(
+                    float(daily_metric.hrv_last_night_avg_ms)
+                    if daily_metric is not None and daily_metric.hrv_last_night_avg_ms is not None
+                    else None
+                ),
+                hrv_history={
+                    row.calendar_date: float(row.hrv_last_night_avg_ms)
+                    for row in recent_daily_metrics
+                    if row.hrv_last_night_avg_ms is not None
+                },
+                sleep_score_raw=sleep.score if sleep is not None else None,
+                sleep_score_age_adjusted=age_adjusted_sleep_score,
+                sleep_minutes=(
+                    sleep.duration_sec / 60 if sleep is not None and sleep.duration_sec else None
+                ),
+                sleep_minutes_history={
+                    row.calendar_date: row.duration_sec / 60
+                    for row in sleep_rows
+                    if row.duration_sec
+                },
+                acwr=_coerce_float(training_load.get("acuteChronicLoadRatio")),
+                recovery_time_min=_coerce_float(training_load.get("recoveryTimeMin")),
+                yesterday_load=(
+                    str(yesterday_load["status"])
+                    if yesterday_load.get("status") is not None
+                    else None
+                ),
+                feel=_coerce_int(ladder.get("subjectiveScore")),
+                # The newest scored morning check-in of each day, as the verdict reads it.
+                feel_history={row.entry_date: int(row.subjective_score) for row in feel_rows},
+                readiness_level=daily_metric.readiness_level if daily_metric else None,
+                readiness_score=(
+                    float(daily_metric.readiness_score)
+                    if daily_metric is not None and daily_metric.readiness_score is not None
+                    else None
+                ),
+                readiness_lower_quartile=readiness_lower_quartile(baselines.get("readiness_score")),
+                planned_workouts=planned_workouts,
+                rest_day=bool(rest_day.get("isRestDay")),
+                blocks=blocks,
+            )
+        )
+
     async def _weather(self, user_id: uuid.UUID, subject_date: date) -> WeatherDaily | None:
         return cast(
             WeatherDaily | None,
@@ -2102,6 +2432,12 @@ _THERMAL_WARM_FLAGS = frozenset(
 
 
 def _eased_ride_detail(status: str, adjustment: Mapping[str, Any] | None = None) -> str:
+    # Batch 296: the graded Amber eases only the hard work and keeps the full length.
+    # Wording signed off by Craig on Mark's behalf, 29 Sep 2026.
+    if isinstance(adjustment, Mapping) and adjustment.get("graded") is True and status == "Amber":
+        adjusted_power = adjustment.get("adjustedWorkPowerPct")
+        if isinstance(adjusted_power, int):
+            return f"Ease the hard intervals to ~{adjusted_power}% FTP — full length."
     if isinstance(adjustment, Mapping):
         adjusted_min = adjustment.get("adjustedDurationMin")
         adjusted_power = adjustment.get("adjustedWorkPowerPct")
@@ -2195,20 +2531,24 @@ def build_today_actions(
         and chronic_action.get("triggered") is True
         and chronic_action.get("kind") == "deload_proposal"
     )
-    if status in {"Amber", "Red"} or chronic_deload:
+    # Batch 296: under the graded verdict a ride is changed only when its session action
+    # says so, so there is an eased ride to approve only when the packet carries one.
+    graded = verdict.get("engine") == "graded"
+    eased = status in {"Amber", "Red"} and (
+        not graded or verdict.get("verdictAdjustment") is not None
+    )
+    if eased or chronic_deload:
         ride = _todays_bike_workout(planned_workouts)
         if ride is not None:
             actions.append(
                 {
                     "kind": "approve_ride",
                     "title": (
-                        "Approve today's eased ride"
-                        if status in {"Amber", "Red"}
-                        else "Approve today's deload ride"
+                        "Approve today's eased ride" if eased else "Approve today's deload ride"
                     ),
                     "detail": (
                         _eased_ride_detail(status, verdict.get("verdictAdjustment"))
-                        if status in {"Amber", "Red"}
+                        if eased
                         else "Sustained recovery strain: cut duration 25%, drop a zone, no HIT/VO2."
                     ),
                     "plannedWorkoutId": str(ride.id),

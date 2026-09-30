@@ -126,6 +126,10 @@ class AnalysisOut(BaseModel):
     todayActions: list[dict[str, Any]] = []
     acutePhysiology: dict[str, Any] = Field(default_factory=dict)
     feedback: FeedbackOut | None = None
+    # Batch 296: which engine set the colour, and whether a Green is Green with the
+    # targets held. A read stored before the switch has no engine and is not held.
+    verdictEngine: str | None = None
+    verdictHeld: bool = False
 
 
 class PostWorkoutAnalysisOut(BaseModel):

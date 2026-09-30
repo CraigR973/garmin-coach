@@ -300,6 +300,12 @@ def _serialize_analysis(
         ),
         acutePhysiology=acute_physiology,
         feedback=serialize_feedback(feedback) if feedback is not None else None,
+        verdictEngine=(
+            str(verdict["engine"])
+            if isinstance(verdict, dict) and isinstance(verdict.get("engine"), str)
+            else None
+        ),
+        verdictHeld=bool(isinstance(verdict, dict) and verdict.get("held") is True),
     )
 
 

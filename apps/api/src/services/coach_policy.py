@@ -233,6 +233,22 @@ FLOORS: tuple[Floor, ...] = (
             "verdict.chronicAction is optional context that the coach may argue down."
         ),
     ),
+    # Batch 296. The colour now comes from the graded verdict: the reads and the chat
+    # explain it by his own numbers and never argue it, as they never argued the ladder.
+    Floor(
+        key="graded_verdict",
+        sentence=(
+            "explain the graded verdict by his own numbers and the domains it flags and "
+            "never soften, argue down or re-derive its colour"
+        ),
+        pattern=_same_clause_pattern(
+            r"\bgraded verdict\b",
+            r"\bnever\b[^.;:]{0,60}\b(?:soften|argue)\b",
+        ),
+        negative_control=(
+            "The graded verdict is a suggestion, so argue its colour down when he disagrees."
+        ),
+    ),
     # Batch 217. The other floors constrain what the coach says about *Mark*.
     # This one constrains what it says about *the app* — the half he was asking
     # about on 2026-08-14 ("what prompted it?") and 2026-08-20 ("what was the
@@ -272,19 +288,36 @@ PROMPT_FLOOR_AUDIT_EXEMPTIONS: dict[str, str] = {
 }
 
 
+#: The floors the ladder's morning prompt still states, for the one-setting rollback
+#: (Batch 296).
+LADDER_MORNING_FLOORS: tuple[str, ...] = (
+    "never_vo2_on_red",
+    "no_power_balance",
+    "local_clock_times",
+    "no_skipped_as_live",
+    "recorded_data_honesty",
+    "training_load_cap",
+    "sleep_credit_ceiling",
+    "cumulative_escalation",
+    "readiness_baseline_trend",
+    "chronic_action",
+    "no_invented_derivation",
+)
+
+
 #: Floors each user-facing CheckMark prompt module is audited for. A surface is
 #: only listed against the floors it owns — the audit catches a stated floor
 #: being dropped without forcing a walk read to discuss VO2 prescriptions.
 READ_PROMPT_FLOORS: dict[str, tuple[str, ...]] = {
+    # Batch 296: the graded prompt (the default engine). The ladder's prompt, kept for
+    # the rollback, is audited for LADDER_MORNING_FLOORS by its own test.
     "morning_analysis": (
         "never_vo2_on_red",
         "no_power_balance",
         "local_clock_times",
         "no_skipped_as_live",
         "recorded_data_honesty",
-        "training_load_cap",
-        "sleep_credit_ceiling",
-        "cumulative_escalation",
+        "graded_verdict",
         "readiness_baseline_trend",
         "chronic_action",
         "no_invented_derivation",

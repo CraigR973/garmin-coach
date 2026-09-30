@@ -10,8 +10,8 @@ Three kinds of test:
 * **Invariants over an exhaustive grid** (295.8): a worse input never gives a better
   colour; floors always hold; missing data never gives Red; no VO2 on Red; identical
   inputs give identical output.
-* **The boundary.** Nothing live reads the engine yet: no packet, prompt or verdict
-  changes in this batch.
+* **The boundary** this batch shipped with (nothing live read the engine) ended with
+  Batch 296, which switches the colour; its tests pin the new boundary.
 """
 
 from __future__ import annotations
@@ -46,7 +46,6 @@ from src.services.verdict_grading import (
 from src.services.verdict_replay import MorningRead, replay_morning
 
 FIXTURE = Path(__file__).parent / "fixtures" / "verdict_replay_2026_09.json"
-API_ROOT = Path(__file__).resolve().parents[1]
 DAY = date(2026, 10, 7)
 
 # -- the fixture days -------------------------------------------------------------------
@@ -508,25 +507,6 @@ def test_session_classification() -> None:
     assert (Z2.is_hard, Z2.is_key) == (False, False)
     assert (long_ride.is_hard, long_ride.is_key) == (False, True)
     assert (strength.is_bike, strength.is_key) == (False, False)
-
-
-# -- the boundary: nothing live reads the engine in this batch --------------------------
-
-
-@pytest.mark.parametrize(
-    "module",
-    [
-        "src/services/morning_analysis.py",
-        "src/services/morning_verdict.py",
-        "src/services/executable_coaching.py",
-        "src/services/daily_loop_envelope.py",
-        "src/routers/daily_loop.py",
-    ],
-)
-def test_no_live_path_reads_the_graded_verdict_yet(module: str) -> None:
-    source = (API_ROOT / module).read_text()
-    assert "verdict_grading" not in source
-    assert "verdict_replay" not in source
 
 
 # -- the report and the loading queries ---------------------------------------------------

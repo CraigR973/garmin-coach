@@ -23,6 +23,8 @@ Batch 13 turns the daily verdict into an *acted-on* workout (Decision #30):
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from math import ceil
 from typing import TYPE_CHECKING, Any
@@ -50,6 +52,12 @@ from src.services.structured_workout_builder import (
     classify_bike_workout_steps,
     is_indoor_bike_workout,
     is_outdoor_bike_workout,
+)
+from src.services.verdict_grading import (
+    ENGINE_GRADED,
+    ride_transform,
+    stored_actions,
+    stored_engine,
 )
 from src.services.verdict_scaling import (
     MIN_POWER_PCT,
@@ -205,6 +213,50 @@ def _morning_requires_bike_rest(analysis: Analysis) -> bool:
     return isinstance(acute, dict) and acute.get("requiresBikeRest") is True
 
 
+@dataclass(frozen=True, slots=True)
+class MorningContext:
+    """What the stored morning read decided, for the delivery rail (Batch 296)."""
+
+    status: str | None
+    graded: bool = False
+    actions: Mapping[str, str] = field(default_factory=dict)
+
+    def transform_for(self, workout: PlannedWorkout) -> str | None:
+        return ride_transform(
+            self.status, graded=self.graded, action=self.actions.get(str(workout.id))
+        )
+
+
+def morning_ir(
+    base_ir: dict[str, Any],
+    context: MorningContext,
+    workout: PlannedWorkout,
+    *,
+    companion_session: bool,
+) -> dict[str, Any]:
+    """The ride the morning read prescribes, from the one scaling rule.
+
+    The ladder's path is unchanged: every ride on an Amber or Red morning takes the
+    verdict's transform. Under the graded verdict a ride changes only when its
+    session action says so; a held or moved session is ridden as planned.
+    """
+    transform = context.transform_for(workout)
+    if transform is None and not context.graded:
+        return adjust_ir_for_verdict(base_ir, context.status, companion_session=companion_session)
+    if transform is None:
+        unchanged = dict(base_ir)
+        unchanged["origin"] = "as_planned"
+        unchanged["adjustment"] = {
+            "verdict": context.status or "Unknown",
+            "changed": False,
+            "graded": True,
+        }
+        return unchanged
+    return adjust_ir_for_verdict(
+        base_ir, transform, companion_session=companion_session, graded=context.graded
+    )
+
+
 class ExecutableCoachingService:
     def __init__(
         self,
@@ -261,9 +313,20 @@ class ExecutableCoachingService:
             )
             return []
 
+        # Batch 296: under the graded verdict a ride is proposed only when its session
+        # action changes it; a held or moved session keeps the plan, and an Amber
+        # morning leaves a Zone 2 ride alone.
+        context = MorningContext(
+            status=verdict,
+            graded=stored_engine(analysis.context_packet) == ENGINE_GRADED,
+            actions=stored_actions(analysis.context_packet),
+        )
         created: list[WorkoutDeliveryProposal] = []
         for workout in await self._deliverable_bike_workouts(player.id, subject_date):
-            tag = _regen_tag(workout, verdict)
+            transform = context.transform_for(workout)
+            if transform is None:
+                continue
+            tag = _regen_tag(workout, transform)
             if await self._already_recorded(player.id, AUDIT_TYPE_PROPOSED, tag, subject_date):
                 continue
             if await self._deliberately_acted(player.id, workout):
@@ -273,11 +336,15 @@ class ExecutableCoachingService:
                 base_ir = build_structured_workout_ir(workout, ftp_watts=ftp_watts)
             except HTTPException:
                 continue  # malformed/non-deliverable workout — skip safely
-            adjusted = adjust_ir_for_verdict(
+            adjusted = morning_ir(
                 base_ir,
-                verdict,
+                context,
+                workout,
                 companion_session=await self._companion_session(player.id, workout),
             )
+            adjustment = adjusted.get("adjustment")
+            if isinstance(adjustment, dict) and adjustment.get("changed") is False:
+                continue
             proposal = await self.rail.propose_from_ir(
                 player=player, workout=workout, ir=adjusted, commit=False
             )
@@ -288,7 +355,7 @@ class ExecutableCoachingService:
                 tag=tag,
                 subject_date=subject_date,
                 verdict=verdict,
-                summary=f"{verdict} regeneration proposed for {workout.title}.",
+                summary=f"{transform} regeneration proposed for {workout.title}.",
             )
             created.append(proposal)
 
@@ -556,13 +623,15 @@ class ExecutableCoachingService:
                 detail="This workout has already been sent to Zwift",
             )
 
-        verdict = await self._morning_verdict_for(player.id, workout.workout_date)
+        context = await self._morning_context_for(player.id, workout.workout_date)
+        verdict = context.status
         if override_requested or proposal is None:
             ftp_watts = await self.rail._ftp_watts(player.id)
             base_ir = build_structured_workout_ir(workout, ftp_watts=ftp_watts)
-            ir = adjust_ir_for_verdict(
+            ir = morning_ir(
                 base_ir,
-                verdict,
+                context,
+                workout,
                 companion_session=await self._companion_session(player.id, workout),
             )
             if override_requested:
@@ -727,14 +796,11 @@ class ExecutableCoachingService:
                 proposal_id=str(failure.id),
             )
             return None
-        verdict = await self._morning_verdict_for(player.id, workout.workout_date)
+        context = await self._morning_context_for(player.id, workout.workout_date)
+        verdict = context.status
         companion = await self._companion_session(player.id, workout)
-        if verdict in {"Amber", "Red"}:
-            delivery_ir = adjust_ir_for_verdict(
-                base_ir,
-                verdict,
-                companion_session=companion,
-            )
+        if context.transform_for(workout) is not None:
+            delivery_ir = morning_ir(base_ir, context, workout, companion_session=companion)
         else:
             delivery_ir = dict(base_ir)
             delivery_ir["origin"] = "as_planned"
@@ -1688,6 +1754,26 @@ class ExecutableCoachingService:
         return any(
             isinstance(row.context_packet, dict) and row.context_packet.get("tag") == tag
             for row in rows
+        )
+
+    async def _morning_context_for(self, user_id: uuid.UUID, subject_date: date) -> MorningContext:
+        """The latest stored morning read for a date: colour, engine and actions."""
+        analysis = await self.session.scalar(
+            select(Analysis)
+            .where(
+                Analysis.user_id == user_id,
+                Analysis.analysis_type == ANALYSIS_TYPE_MORNING,
+                Analysis.subject_date == subject_date,
+            )
+            .order_by(Analysis.generated_at_utc.desc(), Analysis.created_at.desc())
+            .limit(1)
+        )
+        if analysis is None:
+            return MorningContext(status=None)
+        return MorningContext(
+            status=_normalize_verdict(analysis.verdict),
+            graded=stored_engine(analysis.context_packet) == ENGINE_GRADED,
+            actions=stored_actions(analysis.context_packet),
         )
 
     async def _morning_verdict_for(self, user_id: uuid.UUID, subject_date: date) -> str | None:

@@ -77,6 +77,7 @@ def interval_editor_snapshot(
     *,
     verdict: str | None = None,
     companion_session: bool = False,
+    graded: bool = False,
 ) -> IntervalEditorSnapshot:
     """Map one planned workout source to Mark's Current/Change-to table.
 
@@ -136,6 +137,7 @@ def interval_editor_snapshot(
             intensity_target,
             verdict=verdict,
             companion_session=companion_session,
+            graded=graded,
         ),
     )
 
@@ -147,6 +149,7 @@ def verdict_adjusted_block(
     *,
     verdict: str | None,
     companion_session: bool = False,
+    graded: bool = False,
 ) -> EditableIntervalBlock | None:
     """Today's verdict adjustment, expressed as an editable block.
 
@@ -168,6 +171,7 @@ def verdict_adjusted_block(
         base_ir,
         verdict,
         companion_session=companion_session,
+        graded=graded,
     )
     adjustment = transformed.get("adjustment")
     if not isinstance(adjustment, dict) or adjustment.get("changed") is not True:
@@ -211,6 +215,7 @@ def verdict_adjusted_block(
                     base_ir,
                     verdict,
                     companion_session=companion_session,
+                    graded=graded,
                 ),
             ),
             cadence_rpm=block.work.cadence_rpm,
@@ -224,6 +229,7 @@ def verdict_adjusted_block(
                     base_ir,
                     verdict,
                     companion_session=companion_session,
+                    graded=graded,
                 ),
             ),
             cadence_rpm=block.rest.cadence_rpm,

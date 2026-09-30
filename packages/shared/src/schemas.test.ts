@@ -858,6 +858,30 @@ describe('v1 shared schemas', () => {
     expect(withoutSwap.swapSuggestion ?? null).toBeNull();
   });
 
+  it('reads which engine set the colour, and a read stored before the switch as not held (Batch 296)', () => {
+    const graded = dailyLoopAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-10-07T06:30:00Z',
+      verdict: 'green',
+      promptVersion: 'morning-analysis-v51-2026-09-29',
+      outputMarkdown: '**Verdict:** Green',
+      verdictEngine: 'graded',
+      verdictHeld: true,
+    });
+    expect(graded.verdictEngine).toBe('graded');
+    expect(graded.verdictHeld).toBe(true);
+
+    const beforeTheSwitch = dailyLoopAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-09-27T06:30:00Z',
+      verdict: 'amber',
+      promptVersion: 'morning-analysis-v50-2026-09-28',
+      outputMarkdown: '**Verdict:** Amber',
+    });
+    expect(beforeTheSwitch.verdictEngine ?? null).toBeNull();
+    expect(beforeTheSwitch.verdictHeld ?? false).toBe(false);
+  });
+
   it('parses a weekly mix with a re-patch shortfall and keeps it optional (Batch 70)', () => {
     const mix = weeklyMixSchema.parse({
       weekStart: '2026-07-06',

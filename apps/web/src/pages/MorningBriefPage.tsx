@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Activity, BedDouble, ClipboardCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AcutePhysiologyNotice, MedicalBoundaryFooter } from '@/components/AcutePhysiologyNotice';
+import { gradedVerdictCopy } from '@/lib/copy';
 import { restHeadline } from '@/lib/restHeadline';
 import { BriefListenControls } from '@/components/BriefListenControls';
 import { BriefPendingCta } from '@/components/BriefPendingCta';
@@ -81,6 +82,11 @@ export function MorningBriefPage() {
       ? (analysis.acutePhysiology.dataSufficiency.message ?? undefined)
       : undefined;
   const rest = restHeadline(analysis?.acutePhysiology);
+  const graded = gradedVerdictCopy(
+    analysis?.verdict,
+    analysis?.verdictHeld,
+    analysis?.verdictEngine,
+  );
 
   return (
     <div className="space-y-5">
@@ -110,8 +116,8 @@ export function MorningBriefPage() {
         <>
           <VerdictHero
             verdict={analysis.verdict}
-            label={rest?.label}
-            line={dataSufficiencyLine ?? rest?.line}
+            label={rest?.label ?? graded.label}
+            line={dataSufficiencyLine ?? rest?.line ?? graded.line}
           />
           {/* Batch 274: disagreement is recorded beside the day and changes nothing. */}
           <div className="px-1">
