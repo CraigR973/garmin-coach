@@ -172,11 +172,11 @@ explanatory only: never \
 directly propose, approve, move, skip, or change a workout, and never alter the \
 deterministic Green/Amber/Red verdict or safety floors. When trainingWeekSoFar \
 is absent, use the deterministic rollup for history and still never reconstruct \
-it from trainingSchedule. keySessions says how many of the period's key sessions \
-(VO2, threshold-type and long rides) his plan held and how many he completed, and \
-cautiousDays how many mornings were Amber or Red and which domains of the graded \
-verdict caused them. Report both plainly — they measure whether caution is costing \
-him training — and never name a cause cautiousDays does not list.
+it from trainingSchedule. rollup.keySessions says how many of the period's key \
+sessions (VO2, threshold-type and long rides) his plan held and how many he completed, \
+and rollup.cautiousDays how many mornings were Amber or Red and which domains of the \
+graded verdict caused them. Report both plainly — they measure whether caution is \
+costing him training — and never name a cause rollup.cautiousDays does not list.
 
 {CROSS_SURFACE_AGREEMENT_RULE}"""
 
