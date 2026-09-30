@@ -65,6 +65,7 @@ from src.services.morning_analysis import (
     build_today_actions,
     subjective_score_label,
 )
+from src.services.morning_verdict import GRADED_EASE_HARD_LINE
 from src.services.personal_baselines import (
     BASELINE_TREND_WINDOW_DAYS,
     READINESS_TREND_DECLINE_POINTS,
@@ -405,7 +406,10 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
         assert packet["environment"]["weather"]["overnightRelativeHumidityMeanPct"] == 82.0
         assert packet["verdict"]["subjectiveLabel"] == "OK"
         assert packet["verdict"]["status"] == "Amber"
-        assert packet["verdict"]["readinessInterpretation"] is None
+        # Batch 296: the graded verdict sets the colour, and its packet drops the
+        # ladder's own working (readinessInterpretation among it).
+        assert packet["verdict"]["engine"] == "graded"
+        assert "readinessInterpretation" not in packet["verdict"]
         assert packet["verdict"]["readinessBaselineTrend"]["status"] == "insufficient_data"
         assert packet["verdict"]["hasVo2WorkoutToday"] is True
         assert len(packet["experimentLoop"]["experiments"]) == 4
@@ -1030,9 +1034,10 @@ async def test_amber_morning_leads_with_week_swap_and_keeps_softening(
     assert approve["plannedWorkoutId"] == swap["hardWorkoutId"]
 
     adjustments = verdict["planAdjustments"]
-    # The swap leads; softening stays available as the explicit fallback.
+    # The swap leads; softening stays available as the explicit fallback. Batch 296:
+    # under the graded verdict an Amber eases the hard work at full length.
     assert "move vo2 max 30/30 from thursday to saturday" in adjustments[0].lower()
-    assert any("cut the bike to" in item.lower() for item in adjustments[1:])
+    assert GRADED_EASE_HARD_LINE in adjustments[1:]
 
     # Batch 70 (#143): the same cautious morning reports the week's mix and, because
     # today's dropped VO2 can move to Saturday, frames it as re-patched — not lost.

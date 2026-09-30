@@ -777,7 +777,11 @@ async def test_production_stores_the_graded_colour_and_the_replay_reproduces_it(
 async def test_flipping_the_setting_back_restores_the_ladders_packet(
     db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # What a restart with VERDICT_ENGINE=ladder sets at import (proven above in a
+    # subprocess): the engine and the prompt it selects.
     monkeypatch.setattr(morning_analysis_module, "VERDICT_ENGINE", ENGINE_LADDER)
+    monkeypatch.setattr(morning_analysis_module, "PROMPT_VERSION", LADDER_PROMPT_VERSION)
+    monkeypatch.setattr(morning_analysis_module, "SYSTEM_PROMPT", LADDER_SYSTEM_PROMPT)
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     user_id = uuid.uuid4()
     day = date(2026, 9, 7)
