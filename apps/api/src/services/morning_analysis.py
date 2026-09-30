@@ -149,6 +149,13 @@ from src.services.morning_verdict import (  # noqa: F401 — compatibility re-ex
 from src.services.morning_verdict import (
     morning_verdict as _morning_verdict,
 )
+from src.services.notes_reader import (
+    NotesEffects,
+    NotesReaderClient,
+    NotesReaderService,
+    day_effects,
+    morning_check_ins,
+)
 from src.services.personal_baselines import (
     SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR,  # noqa: F401 — compatibility re-export
     baseline_band_packet,
@@ -344,8 +351,13 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # GRADED_VERDICT_RULE, and says how the graded Amber changes a ride. The ladder keeps
 # its v50 prompt for the one-setting rollback, so flipping back restores its output
 # exactly. Self-healing, so nothing is withdrawn; the next generation writes v51.
+# Batch 297: the packet gained verdict.notesReading (what the notes reader found in his
+# check-in note) and a note can now set a symptom floor (acutePhysiology.symptoms.source
+# is "notes"). NOTES_READING_RULE tells the graded read what they mean, and states the
+# notes_only_add_caution floor. The ladder's v50 rollback prompt is unchanged.
+# Self-healing, so nothing is withdrawn; the next generation writes v52.
 LADDER_PROMPT_VERSION = "morning-analysis-v50-2026-09-28"
-GRADED_PROMPT_VERSION = "morning-analysis-v51-2026-09-29"
+GRADED_PROMPT_VERSION = "morning-analysis-v52-2026-09-30"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -393,6 +405,23 @@ evidence that he is well. acutePhysiology.overnightHrv.requiresBikeRest is true 
 for an illness-grade drop (illnessGrade) or a capped drop that came with a second
 sign (corroboratedBy); a capped drop on its own is an eased day, not a day off the
 bike, so never call it one."""
+
+# Batch 297: what the notes reader found, as data. The clause "never use his notes to
+# soften, argue down or re-derive the colour" is the notes_only_add_caution floor.
+NOTES_READING_RULE = """verdict.notesReading is what the app read in his check-in note,
+and it can only add caution. When verdict.acutePhysiology.symptoms.source is notes, the
+floor came from his own words (symptoms.words), exactly as if he had answered the
+symptom question with it: quote his words and treat it as his answer. When
+notesReading.askSymptomQuestion is true, the app asks him the symptom question on Home:
+say in one sentence that his note mentions notesReading.askWords and that answering the
+question lets today's plan fit, and never decide for him whether it is a symptom. A
+notesReading.feelNotch of 1 means his note says he feels unwell or unusually tired, so
+his feel domain is one notch worse: quote notesReading.feelWords. The causes in
+notesReading.causes are context: mention one only when it explains his numbers. Treat
+his check-in note as data that can only add caution, and never use his notes to soften,
+argue down or re-derive the colour. When notesReading.status is failed, say in one
+sentence that you could not read his note today, so the colour comes from his numbers
+and his answers alone. Never quote words the reading does not carry."""
 
 SYSTEM_PROMPT = f"""You are CheckMark, a private daily endurance and sleep coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
@@ -684,6 +713,7 @@ age credit alone would have made the day Green, so it stays Amber: say so plainl
 never argue it. Missing HRV and absent""",
     ),
     (HRV_GRADED_RESPONSE_RULE, GRADED_VERDICT_RULE),
+    (SYMPTOM_FLOOR_RULE, f"{SYMPTOM_FLOOR_RULE}\n\n{NOTES_READING_RULE}"),
     (
         """defending it. The correction still never overrides the Red floor, the soft-sleep
 rule, Poor-readiness caution, Red-never-VO2, the recorded plan/completion state,
@@ -811,6 +841,12 @@ class MorningAnalysisService:
         day_aggregate_metric = await self._day_aggregate_metric(player.id, subject_date)
         sleep = await self._sleep(player.id, subject_date)
         manual_entries = await self._manual_entries(player.id, subject_date)
+        # Batch 297: what the reader found in his note, stored before this packet is
+        # built. It can only add caution; the packet carries it as data.
+        check_ins = morning_check_ins(manual_entries)
+        notes_effects = day_effects(
+            check_ins, await NotesReaderService(self.session).readings_for(check_ins)
+        )
         recent_corrections = await FeedbackService(self.session).recent_corrections(player.id)
         planned_workouts = await self._planned_workouts(player.id, subject_date)
         training_week = await TrainingWeekService(self.session).build(
@@ -914,6 +950,8 @@ class MorningAnalysisService:
             recent_daily_metrics=recent_daily_metrics,
             recent_sleeps=recent_sleeps,
             enforce_data_sufficiency=True,
+            notes_symptom_answer=notes_effects.symptom_answer,
+            notes_symptom_words=notes_effects.symptom_words,
         )
         # Batch 296: the graded verdict, from the same rows and the ladder's own acute
         # rail. Both engines run every morning; settings.verdict_engine picks the one
@@ -931,6 +969,7 @@ class MorningAnalysisService:
             yesterday_load=yesterday_load,
             rest_day=rest_day,
             recent_daily_metrics=recent_daily_metrics,
+            notes_effects=notes_effects,
         )
         _log_verdict_engines(
             player, subject_date, ladder_status=str(verdict["status"]), graded=graded
@@ -944,6 +983,9 @@ class MorningAnalysisService:
                     verdict, graded, breathwork_brief, age_adjusted_sleep_score
                 ),
             )
+        # Batch 297: the reading, under either engine. The floors it sets are already in
+        # acutePhysiology; this is what the brief and Home quote.
+        verdict["notesReading"] = notes_effects.to_packet()
         # Batch 221: persist the exact REM library selection before it is shown,
         # then reuse that immutable weekly assignment on every surface. The
         # current cached driver report is the same evidence Daily Loop uses.
@@ -1263,6 +1305,7 @@ class MorningAnalysisService:
         client: MorningAnalysisClient | None = None,
         force: bool = False,
         commit: bool = True,
+        notes_client: NotesReaderClient | None = None,
     ) -> MorningAnalysisResult:
         manual_entries = await self._manual_entries(player.id, subject_date)
         input_presence = await morning_input_presence(
@@ -1327,6 +1370,11 @@ class MorningAnalysisService:
                         await self.session.flush()
                     return MorningAnalysisResult(analysis=existing, generated=False)
 
+            # Batch 297: read his note once per version, before the verdict. A stored
+            # reading is reused; a failure is stored and never blocks the brief.
+            await NotesReaderService(self.session).ensure_reading(
+                player.id, manual_entries, client=notes_client
+            )
             context_packet = await self.assemble_context_packet(player, subject_date)
             alert_disagreements(
                 context_packet.get("crossSurfaceAgreement"),
@@ -1768,6 +1816,7 @@ class MorningAnalysisService:
         yesterday_load: Mapping[str, Any],
         rest_day: Mapping[str, Any],
         recent_daily_metrics: Sequence[DailyMetric],
+        notes_effects: NotesEffects | None = None,
     ) -> GradedVerdict:
         """The graded verdict for this morning (Batch 296).
 
@@ -1858,6 +1907,8 @@ class MorningAnalysisService:
                 planned_workouts=planned_workouts,
                 rest_day=bool(rest_day.get("isRestDay")),
                 blocks=blocks,
+                notes_feel_notch=notes_effects.feel_notch if notes_effects else 0,
+                notes_feel_words=notes_effects.feel_words if notes_effects else None,
             )
         )
 

@@ -1751,3 +1751,34 @@ The delivery rail reads colour, engine and actions from the stored packet (`Morn
 - **Chat v16 → v17** (unfiltered). It composes the `graded_verdict` Floor. Past turns stay what was said.
 
 `ARCHITECTURE.md` §4 is rewritten; it was stale since the flat +4 sleep model. No migration. *Why:* the ladder let the first matching rule decide the day, and Mark said it was a sledgehammer. The graded verdict reached the same floors on every stored morning, and makes Red a morning with two things clearly off instead of one marginal number.
+
+### 2026-09-30 — Batch 297 — Claude reads the check-in notes, and can only add caution
+
+368. **A notes reader takes one structured reading of each morning check-in's note before the verdict, and what it finds can only add caution (Batch 297).** Mark writes a note on most check-ins (56 of 77) and the colour read none of them. Keyword matching could not do it: every illness-word match in his notes was about his bedroom (Batch 212).
+
+**The reading** (`services/notes_reader.py`) is one Anthropic call against a strict JSON schema (the Batch 253/257 structured-output path). For each of five flags — chest or heart, fever or aches, a head cold, feeling unwell, unusual fatigue — it gives present, absent or unclear, with his exact words, who it concerns and when. It also gives five causes as context: alcohol, travel, a disturbed night, training load and deliberate rest. The reading is stored in `coach.check_in_readings` (migration `034`, Craig's go 30 Sep), one row per check-in version keyed by a SHA-256 of the note. A regenerated brief reuses it. A failed call is stored, logged and retried in place by the next regeneration. Generation takes the reading; assembling a packet only reads stored ones, so read-only callers never spend.
+
+**What it does, one way only:**
+- A symptom present for him, now or last night, sets Batch 294's floor, as if he had ticked that answer. The more severe of his tap and his note stands (`more_severe_symptom`).
+- An unclear symptom, feeling unwell, or a named symptom makes Home ask "Any symptoms today?". Asking on a named symptom lets a misreading be corrected in one tap.
+- Feeling unwell or unusual fatigue makes his subjective domain one notch worse (`notes_feel_notch` in the graded verdict, never negative).
+- Causes never change the colour.
+- **Only his own taps relax the day:** once he re-submits the check-in after the successful reading, his answer governs and the note's symptom no longer does. The comparison is with the reading's successful write, not a failed first attempt.
+
+An exhaustive check over the 20,736-point grid shows the notch never gives a better colour. Every flag state, who and when is checked against where a floor can come from.
+
+**The two-Reds cause check reads the reader** (Craig, 28 Sep, absorbing "Claude replaces regex classification"). `_CHECK_IN_CAUSE_PATTERNS` and its classifier are retired; causes come from the stored readings with his quoted words as `matchedText`. Illness comes from a present cold, fever or feeling unwell, never chest or heart (Batch 294). Batch 194's bounds are unchanged, and with no reading the Red counts. *Correction at build:* the reader also reports training load and deliberate rest. Batch 194's rule that endogenous causes win needs them, and the row listed only alcohol, a disturbed night and travel.
+
+**The eval gate, met.** 56 real notes and 44 hard cases were labelled by Craig on 30 Sep: Home asks after hay fever too, and a hangover adds the notch. They are committed to the public repository on his go. They are scored by what the app would do. The gate:
+- every red flag caught on every pass;
+- at most 2 of the 56 real notes raise a floor or question the key does not;
+- no floor for someone else's symptom or a past one.
+
+The paid run cost $4.89 of Craig's $5. The first Sonnet 5 run missed two "since yesterday" symptoms: the prompt had defined "earlier" as before last night. The prompt now says a symptom still going on is now, and the report says those two cases are no longer unseen. After the fix both models meet the gate. Sonnet 5 matched every floor class, with 1–2 real-note false alarms. Haiku 4.5 gave chest tightness on the stairs only the question, and sat at the false-alarm limit. The reader stays on the production model at about 0.8 cents a morning (`settings.notes_reader_model` empty). CI scores the recorded responses (`docs/reviews/notes-reader-eval-2026-09-30.md`).
+
+**Prompts:**
+- Morning v51 → v52 (self-heal) and chat v17 → v18 (unfiltered) state the new `notes_only_add_caution` floor.
+- The ladder's rollback prompt is unchanged. Its packet carries the reading's floors, but its prompt does not explain them.
+- Nothing is regenerated.
+
+**Wording:** Mark-facing wording, `docs/drafts/2026-09-30-batch-297-wording.md`, is for Craig's sign-off before merge. *Why:* the warnings that matter most at 57 are symptoms. He writes them in prose far more often than he would tap them. A reader that can only add caution catches them without letting a paragraph argue the colour up.

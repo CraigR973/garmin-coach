@@ -356,6 +356,10 @@ class GradingInputs:
     readiness_lower_quartile: float | None = None
     sessions: tuple[PlannedSession, ...] = ()
     rest_day: bool = False
+    #: Batch 297: his check-in note says he feels unwell or unusually tired, so the
+    #: subjective domain is one notch worse than his feel alone. Never negative.
+    notes_feel_notch: int = 0
+    notes_feel_words: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -731,6 +735,25 @@ def _feel(inputs: GradingInputs) -> SignalReading:
     return _reading(DOMAIN_SUBJECTIVE, "feel", rating, feel, f"He said {feel}.", reference)
 
 
+_NOTCH_UP: Final[dict[str, Rating]] = {"none": "mild", "mild": "marked", "marked": "marked"}
+
+
+def _notes_feel(inputs: GradingInputs, feel_rating: Rating) -> SignalReading:
+    """His note, one notch worse than his feel alone, and never better (Batch 297)."""
+
+    if inputs.notes_feel_notch <= 0:
+        return _reading(DOMAIN_SUBJECTIVE, "notes_feel", "none", None, "No note of feeling worse.")
+    words = inputs.notes_feel_words or "he feels unwell or unusually tired"
+    return _reading(
+        DOMAIN_SUBJECTIVE,
+        "notes_feel",
+        _NOTCH_UP[feel_rating],
+        None,
+        f'His note: "{words}".',
+        "one notch worse than his feel alone",
+    )
+
+
 def _readiness_low(inputs: GradingInputs) -> bool:
     level = (inputs.readiness_level or "").lower()
     if level in {"low", "poor"}:
@@ -753,7 +776,7 @@ def _signals(inputs: GradingInputs) -> dict[str, tuple[SignalReading, ...]]:
         ),
         DOMAIN_SLEEP: (_sleep_duration(inputs),),
         DOMAIN_LOAD: _load(inputs),
-        DOMAIN_SUBJECTIVE: (_feel(inputs),),
+        DOMAIN_SUBJECTIVE: (feel := _feel(inputs), _notes_feel(inputs, feel.rating)),
     }
 
 
@@ -911,6 +934,8 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
             "readinessLowerQuartile": inputs.readiness_lower_quartile,
             "inRecoveryWeek": inputs.in_recovery_week,
             "recoveryClassBlock": inputs.recovery_class_block,
+            "notesFeelNotch": inputs.notes_feel_notch,
+            "notesFeelWords": inputs.notes_feel_words,
         },
     )
     return replace(verdict, actions=session_actions(verdict, inputs))
@@ -969,6 +994,10 @@ def mark_facing_phrase(signal: SignalReading) -> str:
         return "yesterday was a hard day"
     if signal.signal == "feel":
         return "you said you feel well below par" if marked else "you said you feel a bit below par"
+    if signal.signal == "notes_feel":
+        # Batch 297: his own words from the check-in note.
+        words = signal.reason.removeprefix("His note: ").rstrip(".")
+        return f"you wrote {words}"
     return signal.reason
 
 
@@ -1239,6 +1268,8 @@ def build_grading_inputs(
     planned_workouts: Sequence[Any],
     rest_day: bool,
     blocks: Sequence[_Block],
+    notes_feel_notch: int = 0,
+    notes_feel_words: str | None = None,
 ) -> GradingInputs:
     """One morning's inputs, from its own readings and the rows dated before it.
 
@@ -1289,6 +1320,8 @@ def build_grading_inputs(
         readiness_lower_quartile=readiness_lower_quartile,
         sessions=tuple(classify_planned_workout(workout) for workout in live),
         rest_day=rest_day,
+        notes_feel_notch=max(0, min(1, notes_feel_notch)),
+        notes_feel_words=notes_feel_words,
     )
 
 

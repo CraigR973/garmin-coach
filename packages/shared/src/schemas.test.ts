@@ -882,6 +882,30 @@ describe('v1 shared schemas', () => {
     expect(beforeTheSwitch.verdictHeld ?? false).toBe(false);
   });
 
+  it('reads the notes ask, and a read stored before the reader asks nothing (Batch 297)', () => {
+    const asking = dailyLoopAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-10-07T06:30:00Z',
+      verdict: 'green',
+      promptVersion: 'morning-analysis-v52-2026-09-30',
+      outputMarkdown: '**Verdict:** Green',
+      notesAsk: true,
+      notesAskWords: 'heartburn kept me awake',
+      notesReadingStatus: 'read',
+    });
+    expect(asking.notesAsk).toBe(true);
+    expect(asking.notesAskWords).toBe('heartburn kept me awake');
+
+    const before = dailyLoopAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-09-30T06:30:00Z',
+      verdict: 'green',
+      promptVersion: 'morning-analysis-v51-2026-09-29',
+      outputMarkdown: '**Verdict:** Green',
+    });
+    expect(before.notesAsk ?? false).toBe(false);
+  });
+
   it('parses a weekly mix with a re-patch shortfall and keeps it optional (Batch 70)', () => {
     const mix = weeklyMixSchema.parse({
       weekStart: '2026-07-06',

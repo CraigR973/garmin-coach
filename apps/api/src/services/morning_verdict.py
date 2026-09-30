@@ -39,6 +39,7 @@ from src.services.symptom_check import (
     SYMPTOM_FLOORS,
     SYMPTOMS_CHEST_HEART,
     latest_symptom_answer,
+    more_severe_symptom,
     reports_symptoms,
     symptom_signal,
 )
@@ -768,10 +769,16 @@ def _acute_physiology_rail(
     recent_daily_metrics: Sequence[DailyMetric],
     recent_sleeps: Sequence[Sleep],
     symptom_answer: str | None = None,
+    symptom_source: str | None = None,
+    symptom_words: str | None = None,
 ) -> dict[str, Any]:
     # Batch 294: the symptom answer is a medical floor, and a second sign for the HRV
     # dip. It leads the notices because it is the one Mark gave the app himself.
     symptoms = symptom_signal(symptom_answer)
+    # Batch 297: where the answer came from — his tap, or his note read by the reader —
+    # and, for a note, his words.
+    symptoms["source"] = symptom_source if symptom_answer is not None else None
+    symptoms["words"] = symptom_words if symptom_source == "notes" else None
     rhr = _rhr_rail(
         daily_metric,
         baselines.get("resting_heart_rate_bpm"),
@@ -901,9 +908,21 @@ def morning_verdict(
     recent_daily_metrics: Sequence[DailyMetric] = (),
     recent_sleeps: Sequence[Sleep] = (),
     enforce_data_sufficiency: bool = False,
+    notes_symptom_answer: str | None = None,
+    notes_symptom_words: str | None = None,
 ) -> dict[str, Any]:
     subjective_score = _latest_subjective_score(manual_entries)
-    symptom_answer = latest_symptom_answer(manual_entries)
+    tapped_answer = latest_symptom_answer(manual_entries)
+    # Batch 297: a symptom his note names sets the same floor as answering with it.
+    # The more severe of the two stands, so the note can only add caution.
+    symptom_answer = more_severe_symptom(tapped_answer, notes_symptom_answer)
+    symptom_source = (
+        "notes"
+        if notes_symptom_answer is not None
+        and symptom_answer == notes_symptom_answer
+        and symptom_answer != tapped_answer
+        else "answer"
+    )
     hrv_status = _lower(daily_metric.hrv_status if daily_metric else None) or _lower(
         sleep.hrv_status if sleep else None
     )
@@ -917,6 +936,8 @@ def morning_verdict(
         recent_daily_metrics=recent_daily_metrics,
         recent_sleeps=recent_sleeps,
         symptom_answer=symptom_answer,
+        symptom_source=symptom_source,
+        symptom_words=notes_symptom_words,
     )
     # Batch 271's signal. Batch 269 gates the HRV Red on it below and Batch 270
     # classifies a Red cluster with it; both read this one signal so they cannot

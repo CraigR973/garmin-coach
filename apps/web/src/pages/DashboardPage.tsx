@@ -78,6 +78,7 @@ import {
   sleepQualifierLabel,
 } from '@/lib/dailyFlow';
 import { gradedVerdictCopy, greetingForNow, personalStatusLine, verdictLabel } from '@/lib/copy';
+import { NotesAskCard } from '@/components/NotesAskCard';
 import { dayStateForWorkouts, workoutTypeLabel, type DayCategory } from '@/lib/workoutCategories';
 import { actionSection, nextAction, type NextAction } from '@/lib/homeActions';
 import { hasReviewedSleep } from '@/lib/sleepReview';
@@ -798,6 +799,9 @@ export function DashboardPage() {
       )}
 
       {analysis ? <AcutePhysiologyNotice boundary={analysis.acutePhysiology} /> : null}
+      {analysis ? (
+        <NotesAskCard ask={analysis.notesAsk} words={analysis.notesAskWords} />
+      ) : null}
 
       {/* Batch 96: an unviewed brief outranks every action card, including the
           thermal/plan nudges inside TodayActions. */}

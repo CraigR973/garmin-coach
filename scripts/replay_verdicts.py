@@ -27,11 +27,16 @@ from src.services.verdict_replay import VerdictReplayService, render_markdown
 async def main(start: date | None, end: date | None, out: Path | None) -> None:
     async with AsyncSessionLocal() as session:
         player = await session.scalar(
-            select(Profile).where(Profile.is_active.is_(True)).order_by(Profile.created_at).limit(1)
+            select(Profile)
+            .where(Profile.is_active.is_(True))
+            .order_by(Profile.created_at)
+            .limit(1)
         )
         if player is None:
             raise SystemExit("no active profile")
-        report = await VerdictReplayService(session).replay(player, start=start, end=end)
+        report = await VerdictReplayService(session).replay(
+            player, start=start, end=end
+        )
         await session.rollback()
     generated = datetime.now(UTC).strftime("Generated %-d %b %Y %H:%M UTC")
     text = render_markdown(report, generated=generated)

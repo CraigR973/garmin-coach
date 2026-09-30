@@ -30,6 +30,8 @@ from src.models.base import Base, UpdatedAtMixin
 CLASSES_WITH_UPDATED_AT = {
     "Activity",
     "BriefGenerationStatus",
+    # Batch 297: a failed reading is retried in place, so it is written twice.
+    "CheckInReading",
     "ConversationLearningProposal",
     "DailyMetric",
     "Dispute",

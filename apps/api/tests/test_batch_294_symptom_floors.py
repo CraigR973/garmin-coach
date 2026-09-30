@@ -699,7 +699,7 @@ def test_the_brief_is_told_what_the_floors_mean_and_the_version_moved() -> None:
     assert "never evidence that he is well" in rule
     # A self-healing bump: the next generation writes v50 and nothing is withdrawn.
     # (Batch 296 moved it on again, to v51; the graded prompt keeps the rule.)
-    assert PROMPT_VERSION == "morning-analysis-v51-2026-09-29"
+    assert PROMPT_VERSION == "morning-analysis-v52-2026-09-30"
 
 
 # -- the delivery rail (Postgres; CI is its first run) ----------------------------------
