@@ -1,7 +1,7 @@
 # Batch 297 — what Mark sees when the app reads his check-in note
 
-**Status: draft, for Craig to sign off on Mark's behalf** (Mark is away until 6 Oct).
-Batch 297 does not merge until this is signed off.
+**Status: signed off by Craig on Mark's behalf, 30 Sep 2026** (Mark is away until 6 Oct).
+This is the copy that ships with Batch 297.
 
 The app now reads his morning note once, the way he wrote it. What it finds can only
 make the day more cautious. His own answers are the only thing that can make it less.
