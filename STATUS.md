@@ -65,7 +65,7 @@ and the next generation of the day heals the read back to v50.
   him from his next check-in, not first on 7 Oct. The holiday keeps those days rest days.
 - **The symptom question has its first answer:** "None", on 30 Sep.
 - **Anthropic spend for 296: none.** No regeneration; the smoke assembled packets only.
-- 27 Sep's "Worth carrying" (below) still stands. **Next DECISIONS number: #368.**
+- 27 Sep's "Worth carrying" (below) still stands. **Next DECISIONS number: #369** (#368 is 297's).
 
 ## Prior current-state snapshots
 
