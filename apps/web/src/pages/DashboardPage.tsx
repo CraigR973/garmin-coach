@@ -77,7 +77,7 @@ import {
   remContextShort,
   sleepQualifierLabel,
 } from '@/lib/dailyFlow';
-import { greetingForNow, personalStatusLine, verdictLabel } from '@/lib/copy';
+import { gradedVerdictCopy, greetingForNow, personalStatusLine, verdictLabel } from '@/lib/copy';
 import { dayStateForWorkouts, workoutTypeLabel, type DayCategory } from '@/lib/workoutCategories';
 import { actionSection, nextAction, type NextAction } from '@/lib/homeActions';
 import { hasReviewedSleep } from '@/lib/sleepReview';
@@ -773,7 +773,10 @@ export function DashboardPage() {
         <VerdictHero
           verdict={analysis.verdict}
           dateLabel={friendlyDate(daily.subjectDate)}
-          label={restHeadline(analysis.acutePhysiology)?.label}
+          label={
+            restHeadline(analysis.acutePhysiology)?.label ??
+            gradedVerdictCopy(analysis.verdict, analysis.verdictHeld, analysis.verdictEngine).label
+          }
           line={
             dataSufficiencyLine ??
             restHeadline(analysis.acutePhysiology)?.line ??
@@ -782,6 +785,7 @@ export function DashboardPage() {
               player?.displayName,
               undefined,
               dayState.isRest || holiday.isActive,
+              analysis.verdictHeld === true,
             )
           }
           recap={morningFeelRecap(daily.manualEntry ?? null)}

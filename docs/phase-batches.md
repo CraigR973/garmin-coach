@@ -4604,6 +4604,35 @@ open questions and the calls made in the build are listed for Craig's review bef
   one-morning rise of 4–6 bpm is not a floor. The graded verdict still rates that rise
   mild or marked. The invariant grid treats size and persistence as separate inputs.
 
+### Corrections made at `/batch-start 296` (2026-09-29), before any code
+
+Re-verified against the code and production. Only the packet correction changes what the
+batch builds.
+
+- **The packet sheds 15 ladder fields, not 4.** Besides `sleepCreditCeiling`,
+  `cumulativeEscalation`, `hrvGradedResponse` and `trainingLoadCap`, the ladder's packet
+  carries its own working for rungs the graded verdict does not have: readiness
+  interpretation, load-driven eligibility, positive-evidence flags, resting-HR baseline
+  flags, the readiness floors, the soft-sleep override and HRV recalibration. Left in, the
+  brief would narrate a rule that did not decide the day. The list is
+  `LADDER_ONLY_FIELDS`.
+- **"Version the packet" is an `engine` field, not a version number.** A packet without it
+  reads as the ladder everywhere (`stored_engine`), so no reader needs a version table and
+  every morning stored before the switch still renders.
+- **The consumers named in 296.4 all read the stored colour** (`Analysis.verdict`, written
+  from the packet's status), so they follow the switch without change. The swap trigger
+  keyed on Amber or Red; it now keys on the session actions, so a held Green with a hard
+  session offers the move and an Amber day of Zone 2 only offers none. The two-Reds
+  thresholds were checked against the replay: the ladder had 9 pairs of Reds inside a week
+  over 99 mornings, the graded verdict 1 (1 and 7 Aug). They are kept.
+- **After the switch the replay must read what production used.** Recomputing the acute
+  rail with today's code, or the readiness quartile from as-of rows, could drift from a
+  graded morning's stored colour. The graded packet therefore stores its references, and
+  the report states whether the replay reproduces each graded morning.
+- **Confirmed:** `blocks_red_vo2` is the VO₂ gate; `ARCHITECTURE.md` §4 still said Amber is
+  sleep 60–69; no migration; production error logs reach Sentry (`SENTRY_DSN_BACKEND`
+  set), so the two-steps-less-cautious alert has somewhere to land.
+
 ### Batch group — G6, the graded verdict (2026-09-28)
 
 Authored on Craig's go, 2026-09-28. Runs with `docs/agent-commands/batch-group.md`:

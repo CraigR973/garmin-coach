@@ -1,4 +1,5 @@
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -209,6 +210,12 @@ class Settings(BaseSettings):
     # app ``admin`` role — the primary user holds that role, and an ops alert must
     # never land on his phone. Set this to Craig's own seeded profile id in prod.
     admin_alert_user_id: str = ""
+    # Batch 296: which engine sets the morning colour. ``graded`` rates independent
+    # domains against Mark's own normal (services/verdict_grading.py); ``ladder`` is
+    # the rule ladder it replaced, kept until 20 Oct 2026 as the one-setting rollback.
+    # Either way the other engine runs beside it, and its colour is logged, never put
+    # in the packet. Read once at start-up, like every setting.
+    verdict_engine: Literal["ladder", "graded"] = "graded"
     # Batch 144: how long a brief-generation status row may sit at ``generating``
     # before the daily-loop envelope treats it as a ``failed``/``stale`` generation.
     # A task orphaned by a process restart or a hung Anthropic call never flips the

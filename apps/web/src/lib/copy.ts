@@ -14,6 +14,25 @@ export const verdictCopy: Record<Verdict, { label: string; line: string }> = {
   red: { label: 'Rest or substitute', line: 'Your body needs recovery today.' },
 };
 
+/** Batch 296: the headline when the colour came from the graded verdict. Green with
+ *  the targets held has its own headline, and the graded Amber eases only the hard
+ *  work. Signed off by Craig on Mark's behalf, 29 Sep 2026. A read the ladder decided
+ *  keeps the defaults above. */
+export const HELD_LABEL = 'Good to go — hold your targets';
+export const HELD_LINE =
+  'One thing is a little off: ride as planned, and hold your targets rather than pushing past them.';
+export const GRADED_AMBER_LINE = 'Ease the hard work; easy riding stays as planned.';
+
+export function gradedVerdictCopy(
+  verdict: string | null | undefined,
+  held: boolean | null | undefined,
+  engine: string | null | undefined,
+): { label?: string; line?: string } {
+  if (verdict === 'green' && held === true) return { label: HELD_LABEL, line: HELD_LINE };
+  if (verdict === 'amber' && engine === 'graded') return { line: GRADED_AMBER_LINE };
+  return {};
+}
+
 export function verdictLabel(verdict: string | null | undefined): string {
   if (verdict === 'green' || verdict === 'amber' || verdict === 'red') {
     return verdictCopy[verdict].label;
@@ -57,6 +76,7 @@ export function personalStatusLine(
   displayName?: string | null,
   date = new Date(),
   isRestOrHoliday = false,
+  held = false,
 ): string {
   const greeting = `${greetingForNow(date)}${displayName ? `, ${displayName}` : ''}.`;
 
@@ -64,6 +84,9 @@ export function personalStatusLine(
     return `${greeting} Today's a rest day — recovery is the plan, not training.`;
   }
 
+  if (verdict === 'green' && held) {
+    return `${greeting} Ride as planned ${timeContextForNow(date)}, and hold your targets.`;
+  }
   if (verdict === 'green') {
     return `${greeting} You're good to go ${timeContextForNow(date)}.`;
   }

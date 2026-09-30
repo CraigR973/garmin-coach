@@ -1194,6 +1194,10 @@ export const dailyLoopAnalysisSchema = z.object({
   todayActions: z.array(todayActionSchema).default([]),
   acutePhysiology: acutePhysiologySchema.optional(),
   feedback: feedbackSchema.nullable().optional(),
+  // Batch 296: which engine set the colour, and Green with the targets held. Absent on
+  // a read stored before the switch, which reads as the ladder and not held.
+  verdictEngine: z.string().nullable().optional(),
+  verdictHeld: z.boolean().optional(),
 });
 
 export const rideIntervalSchema = z.object({

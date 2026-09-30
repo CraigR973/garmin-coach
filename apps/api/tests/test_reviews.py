@@ -484,7 +484,15 @@ async def test_preview_assembles_rollup_and_never_writes(db_conn: AsyncConnectio
             "do not describe this as strength training stopped"
             in preview.packet["strengthBrief"]["zeroInterpretation"]
         )
-        assert REVIEW_PROMPT_VERSION.startswith("reviews-v9")
+        assert REVIEW_PROMPT_VERSION.startswith("reviews-v10")
+        # Batch 296.6: whether caution is costing him training. Mornings stored before
+        # the switch carry no engine, so their cautious days count as the ladder's.
+        rollup = preview.packet["rollup"]
+        assert set(rollup["keySessions"]) == {"planned", "completed", "byKind", "meaning"}
+        assert rollup["cautiousDays"]["total"] == 3
+        assert rollup["cautiousDays"]["heldDays"] == 0
+        assert rollup["cautiousDays"]["byCause"] == {"ladder": 3}
+        assert "rollup.keySessions" in REVIEW_SYSTEM_PROMPT
         assert "**Bottom line:**" in REVIEW_SYSTEM_PROMPT
         assert "never announce" in REVIEW_SYSTEM_PROMPT
         assert "usual routine only" in REVIEW_SYSTEM_PROMPT

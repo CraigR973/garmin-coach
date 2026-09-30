@@ -301,6 +301,18 @@ def ease_amber_power_pct(power_pct: int) -> int:
     return min(dropped, AMBER_POWER_CAP_PCT)
 
 
+def ease_graded_amber_power_pct(power_pct: int) -> int:
+    """The graded verdict's Amber: only the hard work eases (Batch 296).
+
+    A step at or below the endurance ceiling is Zone 2 and keeps its prescription;
+    anything harder drops a zone by the same rule as the ladder's Amber
+    (:func:`ease_amber_power_pct`), so VO2 still ends at the top of Sweet Spot.
+    """
+    if power_pct <= ENDURANCE_CEILING_PCT:
+        return power_pct
+    return ease_amber_power_pct(power_pct)
+
+
 def _adjust_step(
     step: dict[str, Any],
     *,
@@ -607,6 +619,7 @@ def adjust_ir_for_verdict(
     verdict: str | None,
     *,
     companion_session: bool = False,
+    graded: bool = False,
 ) -> dict[str, Any]:
     """Return a verdict-adjusted copy of a structured-workout IR.
 
@@ -631,10 +644,23 @@ def adjust_ir_for_verdict(
     steps = [s for s in raw_steps if isinstance(s, dict)] if isinstance(raw_steps, list) else []
     original_name = str(base_ir.get("name") or "Workout")
 
-    if status == "Amber":
+    if status == "Amber" and graded:
+        # Batch 296: the graded verdict's Amber eases only the hard work and keeps
+        # the session at full length, Zone 2 untouched. A ride with no step above
+        # the endurance ceiling is therefore not changed at all.
+        if not any(_step_power(step) > ENDURANCE_CEILING_PCT for step in steps):
+            unchanged = dict(base_ir)
+            unchanged["origin"] = "as_planned"
+            unchanged["adjustment"] = {"verdict": status, "changed": False, "graded": True}
+            return unchanged
+        duration_scale = 1.0
+        power_cap = AMBER_POWER_CAP_PCT
+        ease: Callable[[int], int] | None = ease_graded_amber_power_pct
+        origin, name_prefix = "graded_amber_ease", "Hard work eased"
+    elif status == "Amber":
         duration_scale = amber_duration_scale(companion_session=companion_session)
         power_cap = AMBER_POWER_CAP_PCT
-        ease: Callable[[int], int] | None = ease_amber_power_pct
+        ease = ease_amber_power_pct
         origin, name_prefix = "amber_regeneration", "Amber-adjusted"
     elif status == "Red":
         duration_scale = red_duration_scale(base_ir, companion_session=companion_session)
@@ -694,6 +720,8 @@ def adjust_ir_for_verdict(
     }
     if status in {"Amber", "Red"}:
         adjusted["adjustment"]["companionSession"] = companion_session
+    if graded:
+        adjusted["adjustment"]["graded"] = True
     return adjusted
 
 
@@ -762,6 +790,7 @@ def verdict_power_pct(
     verdict: str | None,
     *,
     companion_session: bool = False,
+    graded: bool = False,
 ) -> int:
     """One working interval's intensity after the verdict adjustment.
 
@@ -769,6 +798,8 @@ def verdict_power_pct(
     delivery transform cannot drift apart on intensity either.
     """
     status = _normalize_verdict(verdict)
+    if status == "Amber" and graded:
+        return _clamp_power(ease_graded_amber_power_pct(power_pct), AMBER_POWER_CAP_PCT)
     if status == "Amber":
         return _clamp_power(ease_amber_power_pct(power_pct), AMBER_POWER_CAP_PCT)
     if status == "Red":
@@ -831,6 +862,7 @@ def summarize_verdict_adjustment(
     verdict: str | None,
     *,
     companion_session: bool = False,
+    graded: bool = False,
 ) -> dict[str, Any] | None:
     """The deterministic Amber/Red adjustment, summarised for the morning packet.
 
@@ -850,7 +882,15 @@ def summarize_verdict_adjustment(
     if not base_steps:
         return None
 
-    adjusted = adjust_ir_for_verdict(base_ir, status, companion_session=companion_session)
+    adjusted = adjust_ir_for_verdict(
+        base_ir, status, companion_session=companion_session, graded=graded
+    )
+    if (
+        isinstance(adjusted.get("adjustment"), dict)
+        and adjusted["adjustment"].get("changed") is False
+    ):
+        # Batch 296: the graded Amber leaves a Zone 2 ride exactly as planned.
+        return None
     adjusted_steps = [s for s in adjusted.get("steps", []) if isinstance(s, dict)]
     base_primary = _primary_work_step(base_steps)
     adjusted_primary = _primary_work_step(adjusted_steps)
@@ -893,4 +933,6 @@ def summarize_verdict_adjustment(
     }
     if status in {"Amber", "Red"}:
         summary["companionSession"] = companion_session
+    if graded:
+        summary["graded"] = True
     return summary

@@ -40,10 +40,11 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
-from typing import Any, Final, Literal
+from typing import Any, Final, Literal, Protocol
 
 from fastapi import HTTPException
 
+from src.services.sleep_history import SPO2_HRV_RELIABLE_FROM
 from src.services.verdict_scaling import ir_has_vo2, ir_is_endurance
 from src.services.workout_categories import is_bike_workout_type
 from src.services.workout_delivery import build_structured_workout_ir
@@ -365,6 +366,9 @@ class SignalReading:
     value: float | None
     reference: str | None
     reason: str
+    #: His usual for this signal (his HRV normal, his resting-HR median), for the
+    #: Mark-facing phrase. ``None`` where the phrase needs no comparison.
+    usual: float | None = None
 
     def to_packet(self) -> dict[str, Any]:
         return {
@@ -427,6 +431,11 @@ class GradedVerdict:
     age_credit_guard_applied: bool = False
     missing_data_floor_applied: bool = False
     actions: tuple[SessionAction, ...] = field(default_factory=tuple)
+    #: The Mark-facing line saying why today is this colour (Batch 296).
+    summary: str = ""
+    #: What the stored rows cannot give back later: the replay reads these from a
+    #: graded packet so it reproduces production exactly (Batch 296).
+    references: Mapping[str, Any] = field(default_factory=dict)
 
     def domain(self, name: str) -> DomainRating:
         return next(item for item in self.domains if item.domain == name)
@@ -445,7 +454,9 @@ class GradedVerdict:
             "missingDataFloorApplied": self.missing_data_floor_applied,
             "domains": [item.to_packet() for item in self.domains],
             "reasons": list(self.reasons),
+            "summary": self.summary,
             "actions": [item.to_packet() for item in self.actions],
+            "references": dict(self.references),
         }
 
 
@@ -463,6 +474,7 @@ def _reading(
     value: float | None,
     reason: str,
     reference: str | None = None,
+    usual: float | None = None,
 ) -> SignalReading:
     return SignalReading(
         domain=domain,
@@ -471,6 +483,7 @@ def _reading(
         value=round(value, 2) if value is not None else None,
         reference=reference,
         reason=reason,
+        usual=round(usual, 2) if usual is not None else None,
     )
 
 
@@ -546,7 +559,9 @@ def _hrv_week(inputs: GradingInputs) -> SignalReading:
     else:
         rating = "none"
         reason = f"7-day HRV {week_mean:.1f} ms is within {basis} range."
-    return _reading(DOMAIN_AUTONOMIC, "hrv_7_day", rating, week_mean, reason, reference)
+    return _reading(
+        DOMAIN_AUTONOMIC, "hrv_7_day", rating, week_mean, reason, reference, usual=centre
+    )
 
 
 def _hrv_overnight(acute: Mapping[str, Any]) -> SignalReading:
@@ -564,6 +579,7 @@ def _hrv_overnight(acute: Mapping[str, Any]) -> SignalReading:
             f"Last night's HRV {_n(current)} ms is an illness-grade drop "
             f"(at or under {_n(rail.get('illnessLineMs'))} ms).",
             f"his median {_n(rail.get('baselineMedianMs'))} ms",
+            usual=_as_float(rail.get("baselineMedianMs")),
         )
     if rail.get("triggered") is True:
         # One low night is noise more often than not: at 1.5 SD it fired on 6 of 75
@@ -575,6 +591,7 @@ def _hrv_overnight(acute: Mapping[str, Any]) -> SignalReading:
             current,
             f"Last night's HRV {_n(current)} ms is under his acute floor of {_n(floor)} ms.",
             f"his median {_n(rail.get('baselineMedianMs'))} ms",
+            usual=_as_float(rail.get("baselineMedianMs")),
         )
     return _reading(
         DOMAIN_AUTONOMIC, "hrv_overnight", "none", current, "Last night's HRV is not low."
@@ -586,6 +603,7 @@ def _resting_hr(acute: Mapping[str, Any]) -> SignalReading:
     current = _as_float(rail.get("currentBpm"))
     delta = _as_float(rail.get("deltaFromMedianBpm"))
     median_bpm = rail.get("baselineMedianBpm")
+    usual = _as_float(median_bpm)
     reference = f"his median {_n(median_bpm)} bpm" if median_bpm is not None else None
     if rail.get("trigger") == "absolute_delta" or (
         delta is not None and delta >= _t("resting_hr_rise_marked_bpm")
@@ -597,15 +615,17 @@ def _resting_hr(acute: Mapping[str, Any]) -> SignalReading:
             current,
             f"Resting heart rate {_n(current)} bpm is {_n(delta)} bpm over his median.",
             reference,
+            usual=usual,
         )
     if rail.get("trigger") == "consecutive_q3":
         return _reading(
             DOMAIN_AUTONOMIC,
-            "resting_hr",
+            "resting_hr_two_mornings",
             "mild",
             current,
             f"Resting heart rate {_n(current)} bpm has been above his usual range two mornings.",
             reference,
+            usual=usual,
         )
     if delta is not None and delta >= _t("resting_hr_rise_mild_bpm"):
         return _reading(
@@ -615,6 +635,7 @@ def _resting_hr(acute: Mapping[str, Any]) -> SignalReading:
             current,
             f"Resting heart rate {_n(current)} bpm is {_n(delta)} bpm over his median.",
             reference,
+            usual=usual,
         )
     return _reading(DOMAIN_AUTONOMIC, "resting_hr", "none", current, "Resting heart rate is usual.")
 
@@ -818,9 +839,8 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
         if inputs.sleep_score_raw is not None
         else inputs.sleep_score_age_adjusted
     )
-    raw_status, _ = _combine(
-        _domains(signals, sleep_score=raw_score, readiness_low=readiness_low), rough=rough
-    )
+    raw_domains = _domains(signals, sleep_score=raw_score, readiness_low=readiness_low)
+    raw_status, _ = _combine(raw_domains, rough=rough)
     guard = status == "Green" and raw_status == "Amber"
     if guard:
         status, held = "Amber", False
@@ -884,8 +904,110 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
         rough_check_in=rough,
         age_credit_guard_applied=guard,
         missing_data_floor_applied=missing_floor,
+        # When the guard holds the day at Amber, the raw-score pass is the one that
+        # explains it: the fair night is one of the things that is off.
+        summary=mark_facing_summary(raw_domains if guard else domains, rough=rough),
+        references={
+            "readinessLowerQuartile": inputs.readiness_lower_quartile,
+            "inRecoveryWeek": inputs.in_recovery_week,
+            "recoveryClassBlock": inputs.recovery_class_block,
+        },
     )
     return replace(verdict, actions=session_actions(verdict, inputs))
+
+
+# -- the Mark-facing words (Batch 296) ----------------------------------------------------
+#
+# Signed off by Craig on Mark's behalf on 29 Sep 2026
+# (docs/drafts/2026-09-29-batch-296-wording.md). They lead with his own numbers.
+
+_COUNT_WORDS: Final = ("One", "Two", "Three", "Four")
+
+
+def _trim(value: float | None, places: int = 2) -> str:
+    """``1.35`` and ``1.6``, not ``1.60``."""
+
+    if value is None:
+        return "unknown"
+    text = f"{value:.{places}f}".rstrip("0").rstrip(".")
+    return text or "0"
+
+
+def mark_facing_phrase(signal: SignalReading) -> str:
+    """One signal, in Mark's words, with his numbers."""
+
+    marked = signal.rating == "marked"
+    value, usual = signal.value, signal.usual
+    if signal.signal == "hrv_7_day":
+        lead = "well below" if marked else "below"
+        return (
+            f"your HRV has been {lead} your usual this week "
+            f"({_n(round(value) if value is not None else None)} ms against "
+            f"{_n(round(usual) if usual is not None else None)})"
+        )
+    if signal.signal == "hrv_overnight":
+        lead = "dropped sharply" if marked else "was low"
+        return f"your HRV {lead} last night ({_n(value)} ms against a usual {_n(usual)})"
+    if signal.signal == "resting_hr_two_mornings":
+        return "your resting heart rate has been a little up two mornings running"
+    if signal.signal == "resting_hr":
+        rise = value - usual if value is not None and usual is not None else None
+        return f"your resting heart rate is up {_n(rise)} bpm"
+    if signal.signal == "sleep_score":
+        quality = "a very poor" if marked else "a fair"
+        return f"{quality} night's sleep (score {_n(value)})"
+    if signal.signal == "total_sleep":
+        length = "a very short" if marked else "a short"
+        hours = value / 60 if value is not None else None
+        return f"{length} night ({_trim(hours, 1)} hours)"
+    if signal.signal == "acwr":
+        pace = "climbing fast" if marked else "climbing"
+        return f"your training load is {pace} (ratio {_trim(value)})"
+    if signal.signal == "recovery_time":
+        return f"{_n(round(value) if value is not None else None)} hours of recovery still to go"
+    if signal.signal == "yesterday_load":
+        return "yesterday was a hard day"
+    if signal.signal == "feel":
+        return "you said you feel well below par" if marked else "you said you feel a bit below par"
+    return signal.reason
+
+
+def _domain_phrase(item: DomainRating) -> str:
+    worst = max(item.signals, key=lambda signal: RATING_ORDER[signal.rating])
+    phrase = mark_facing_phrase(worst)
+    return f"{phrase} (your readiness agrees)" if item.confirmed_by_readiness else phrase
+
+
+def _join(phrases: Sequence[str]) -> str:
+    if len(phrases) <= 1:
+        return "".join(phrases)
+    return ", ".join(phrases[:-1]) + ", and " + phrases[-1]
+
+
+def _count(number: int) -> str:
+    return _COUNT_WORDS[number - 1] if 0 < number <= len(_COUNT_WORDS) else str(number)
+
+
+def mark_facing_summary(domains: Sequence[DomainRating], *, rough: bool) -> str:
+    """Why today is this colour, in one line that leads with his own numbers."""
+
+    if rough:
+        return "You said you feel rough."
+    marked = [_domain_phrase(item) for item in domains if item.rating == "marked"]
+    mild = [_domain_phrase(item) for item in domains if item.rating == "mild"]
+    if not marked and not mild:
+        return "Your numbers are all within your usual range."
+    if not marked:
+        noun = "thing is" if len(mild) == 1 else "things are"
+        return f"{_count(len(mild))} {noun} a little off: {_join(mild)}."
+    if not mild:
+        noun = "thing is" if len(marked) == 1 else "things are"
+        return f"{_count(len(marked))} {noun} clearly off: {_join(marked)}."
+    noun = "thing is" if len(marked) == 1 else "things are"
+    return (
+        f"{_count(len(marked))} {noun} clearly off, and {_count(len(mild)).lower()} a little "
+        f"off: {_join(marked + mild)}."
+    )
 
 
 # -- the session-aware actions (295.5): computed and reported, not applied ---------------
@@ -990,3 +1112,190 @@ def classify_planned_workout(workout: Any) -> PlannedSession:
         planned_minutes=getattr(workout, "planned_duration_min", None),
         ir=ir,
     )
+
+
+# -- reading a stored morning (Batch 296) ------------------------------------------------
+
+#: The engine that set a stored morning's colour. Absent on every packet written
+#: before Batch 296, which the ladder decided.
+ENGINE_LADDER: Final = "ladder"
+ENGINE_GRADED: Final = "graded"
+
+#: Actions that change a ride, and the verdict transform each one takes.
+RIDE_TRANSFORMS: Final[dict[str, str]] = {
+    "ease_hard": "Amber",
+    "recovery": "Red",
+    "shortened_zone2": "Red",
+}
+
+
+def stored_engine(packet: Any) -> str:
+    """Which engine decided a stored morning packet's colour."""
+
+    verdict = packet.get("verdict") if isinstance(packet, Mapping) else None
+    engine = verdict.get("engine") if isinstance(verdict, Mapping) else None
+    return ENGINE_GRADED if engine == ENGINE_GRADED else ENGINE_LADDER
+
+
+def stored_actions(packet: Any) -> dict[str, str]:
+    """``{planned workout id: action}`` from a graded morning packet, else empty."""
+
+    verdict = packet.get("verdict") if isinstance(packet, Mapping) else None
+    graded = verdict.get("graded") if isinstance(verdict, Mapping) else None
+    actions = graded.get("actions") if isinstance(graded, Mapping) else None
+    if not isinstance(actions, list):
+        return {}
+    return {
+        str(item["plannedWorkoutId"]): str(item["action"])
+        for item in actions
+        if isinstance(item, Mapping)
+        and item.get("plannedWorkoutId") is not None
+        and isinstance(item.get("action"), str)
+    }
+
+
+def ride_transform(
+    status: str | None,
+    *,
+    graded: bool,
+    action: str | None,
+) -> str | None:
+    """The verdict transform a ride takes this morning, or ``None`` for as planned.
+
+    The ladder transforms every ride on an Amber or Red morning. The graded verdict
+    transforms a ride only when its session action changes it: a held or moved
+    session, and a Zone 2 ride on an Amber morning, are ridden as planned. A ride the
+    morning packet did not see falls back to the colour.
+    """
+    if status not in {"Amber", "Red"}:
+        return None
+    if not graded:
+        return status
+    if action is None:
+        return status
+    return RIDE_TRANSFORMS.get(action)
+
+
+# -- the inputs, built one way for the live morning and the replay (Batch 296) -----------
+
+#: Block types whose nights form his recovery-week HRV normal (Batch 275's grouping).
+RECOVERY_WEEK_TYPES: Final = ("recovery", "rest", "taper")
+#: Block types in which the plan is already light, so mild and marked hold the session
+#: (the app's recovery-class blocks since Batch 182).
+RECOVERY_CLASS_TYPES: Final = ("recovery", "rest", "taper", "consolidation")
+LIVE_SESSION_EXCLUDED: Final = frozenset({"completed", "skipped"})
+
+
+class _Block(Protocol):
+    start_date: date
+    end_date: date
+    block_type: str | None
+
+
+def block_flags(day: date, blocks: Sequence[_Block]) -> tuple[bool, bool]:
+    """(in a recovery or taper week, in a recovery-class block)."""
+
+    for block in blocks:
+        if block.start_date <= day <= block.end_date:
+            block_type = (block.block_type or "").lower()
+            return (
+                any(kind in block_type for kind in RECOVERY_WEEK_TYPES),
+                any(kind in block_type for kind in RECOVERY_CLASS_TYPES),
+            )
+    return False, False
+
+
+def recovery_week_nights(blocks: Sequence[_Block]) -> frozenset[date]:
+    nights: set[date] = set()
+    for block in blocks:
+        block_type = (block.block_type or "").lower()
+        if not any(kind in block_type for kind in RECOVERY_WEEK_TYPES):
+            continue
+        day = block.start_date
+        while day <= block.end_date:
+            nights.add(day)
+            day += timedelta(days=1)
+    return frozenset(nights)
+
+
+def build_grading_inputs(
+    *,
+    subject_date: date,
+    acute: Mapping[str, Any],
+    last_night_hrv_ms: float | None,
+    hrv_history: Mapping[date, float],
+    sleep_score_raw: int | None,
+    sleep_score_age_adjusted: int | None,
+    sleep_minutes: float | None,
+    sleep_minutes_history: Mapping[date, float],
+    acwr: float | None,
+    recovery_time_min: float | None,
+    yesterday_load: str | None,
+    feel: int | None,
+    feel_history: Mapping[date, int],
+    readiness_level: str | None,
+    readiness_score: float | None,
+    readiness_lower_quartile: float | None,
+    planned_workouts: Sequence[Any],
+    rest_day: bool,
+    blocks: Sequence[_Block],
+) -> GradingInputs:
+    """One morning's inputs, from its own readings and the rows dated before it.
+
+    The live morning and the replay both call this, so the colour production shows
+    and the colour the replay computes can only differ if the rows themselves did.
+    """
+
+    day = subject_date
+    nights = [
+        (night, float(value))
+        for night, value in hrv_history.items()
+        if SPO2_HRV_RELIABLE_FROM <= night < day and value is not None
+    ]
+    if last_night_hrv_ms is not None:
+        nights.append((day, float(last_night_hrv_ms)))
+    sleep_window = day - timedelta(days=int(_t("sleep_duration_window_days")))
+    feel_window = day - timedelta(days=int(_t("feel_window_days")))
+    in_recovery_week, recovery_class = block_flags(day, blocks)
+    live = [
+        workout
+        for workout in planned_workouts
+        if getattr(workout, "status", None) not in LIVE_SESSION_EXCLUDED
+    ]
+    return GradingInputs(
+        subject_date=day,
+        acute=acute,
+        hrv_nights=tuple(sorted(nights)),
+        recovery_week_nights=recovery_week_nights(blocks),
+        in_recovery_week=in_recovery_week,
+        recovery_class_block=recovery_class,
+        sleep_score_raw=sleep_score_raw,
+        sleep_score_age_adjusted=sleep_score_age_adjusted,
+        sleep_minutes=sleep_minutes,
+        sleep_minutes_history=tuple(
+            minutes
+            for night, minutes in sorted(sleep_minutes_history.items())
+            if sleep_window <= night < day and minutes
+        ),
+        acwr=acwr,
+        recovery_time_min=recovery_time_min,
+        yesterday_load=yesterday_load,
+        feel=feel,
+        feel_history=tuple(
+            score for night, score in sorted(feel_history.items()) if feel_window <= night < day
+        ),
+        readiness_level=readiness_level,
+        readiness_score=readiness_score,
+        readiness_lower_quartile=readiness_lower_quartile,
+        sessions=tuple(classify_planned_workout(workout) for workout in live),
+        rest_day=rest_day,
+    )
+
+
+def readiness_lower_quartile(baseline: Any) -> float | None:
+    """His usual readiness floor, once the baseline holds enough mornings."""
+
+    if baseline is None or getattr(baseline, "sample_count", 0) < _t("hrv_baseline_min_nights"):
+        return None
+    value = getattr(baseline, "lower_quartile_value", None)
+    return float(value) if value is not None else None

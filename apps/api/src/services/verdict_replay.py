@@ -27,7 +27,7 @@ from __future__ import annotations
 import uuid
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from statistics import mean, median
 from typing import Any
@@ -54,7 +54,6 @@ from src.services.delivered_verdict import delivered_rows
 from src.services.morning_verdict import morning_verdict
 from src.services.sleep_history import (
     BASELINE_SPECS,
-    SPO2_HRV_RELIABLE_FROM,
     BaselineSample,
     compute_metric_baselines,
 )
@@ -67,10 +66,11 @@ from src.services.verdict_grading import (
     DOMAINS,
     THRESHOLDS,
     GradedVerdict,
-    GradingInputs,
     PlannedSession,
-    classify_planned_workout,
+    block_flags,
+    build_grading_inputs,
     grade,
+    readiness_lower_quartile,
 )
 
 #: The ladder's cut on an Amber morning, for the old-action column.
@@ -78,10 +78,6 @@ ACTION_AMBER_CUT = "amber_cut"
 
 #: History the replay reads before the first morning it replays.
 HISTORY_DAYS = 84
-#: Block types whose nights form his recovery-week HRV normal (Batch 275's grouping).
-RECOVERY_WEEK_TYPES = ("recovery", "rest", "taper")
-#: Block types in which the plan is already light, so mild and marked hold the session.
-RECOVERY_CLASS_TYPES = ("recovery", "rest", "taper", "consolidation")
 #: The ladder's own baselines, rebuilt as of each morning.
 LADDER_BASELINE_KEYS = (
     "resting_heart_rate_bpm",
@@ -89,7 +85,6 @@ LADDER_BASELINE_KEYS = (
     "average_spo2_pct",
     "average_respiration",
 )
-LIVE_SESSION_EXCLUDED = frozenset({"completed", "skipped"})
 HARD_WORKOUT_TYPES = frozenset({"bike_vo2", "bike_sweet_spot", "bike_threshold"})
 
 
@@ -110,6 +105,11 @@ class MorningRead:
     rest_day: Any
     readiness_trend: Any
     age_adjusted: Any
+    #: Batch 296: a graded morning's own engine, acute rail, held flag and references.
+    engine: Any = None
+    acute: Any = None
+    held: Any = None
+    references: Any = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,6 +126,22 @@ class ReplayedMorning:
     old_actions: tuple[str, ...]
     rest_day: bool
     recovery_class_block: bool
+    shown_held: bool = False
+    #: Batch 296: the engine that decided the shown colour ("graded" after the switch).
+    shown_engine: str | None = None
+    #: The ladder's full packet for the morning, as production would have built it.
+    ladder_packet: Mapping[str, Any] = field(default_factory=dict, compare=False, repr=False)
+
+    @property
+    def reproduces_production(self) -> bool | None:
+        """For a graded morning, whether the replay gives back exactly what Mark saw."""
+        if self.shown_engine != "graded":
+            return None
+        return self.shown_label == self.graded_label
+
+    @property
+    def shown_label(self) -> str | None:
+        return "Green (held)" if self.shown_held and self.shown == "Green" else self.shown
 
     @property
     def changed(self) -> bool:
@@ -241,6 +257,10 @@ class VerdictReplayService:
                 packet[("restDay",)].label("rest_day"),
                 packet[("verdict", "readinessBaselineTrend")].label("readiness_trend"),
                 packet[("verdict", "ageAdjustedSleepScore")].label("age_adjusted"),
+                packet[("verdict", "engine")].label("engine"),
+                packet[("verdict", "acutePhysiology")].label("acute"),
+                packet[("verdict", "held")].label("held"),
+                packet[("verdict", "graded", "references")].label("references"),
             )
             .select_from(Analysis)
             .join(document, true())
@@ -266,6 +286,10 @@ class VerdictReplayService:
                 rest_day=row.rest_day,
                 readiness_trend=row.readiness_trend,
                 age_adjusted=row.age_adjusted,
+                engine=row.engine,
+                acute=row.acute,
+                held=row.held,
+                references=row.references,
             )
             for row in rows
         ]
@@ -495,45 +519,40 @@ def replay_morning(
         recent_sleeps=recent_sleeps,
         enforce_data_sufficiency=True,
     )
-    acute = ladder["acutePhysiology"]
-    live = [workout for workout in planned if workout.status not in LIVE_SESSION_EXCLUDED]
-    sessions = tuple(classify_planned_workout(workout) for workout in live)
-    is_rest_day = bool(rest_day.get("isRestDay"))
-    in_recovery_week, recovery_class = _block_flags(day, blocks)
-    hrv_nights = tuple(
-        sorted(
-            [
-                (d, float(row.hrv_last_night_avg_ms))
-                for d, row in metrics.items()
-                if d < day and d >= SPO2_HRV_RELIABLE_FROM and row.hrv_last_night_avg_ms is not None
-            ]
-            + (
-                [(day, float(daily_metric.hrv_last_night_avg_ms))]
-                if daily_metric is not None and daily_metric.hrv_last_night_avg_ms is not None
-                else []
-            )
-        )
+    # Batch 296: a morning the graded verdict decided is replayed from production's own
+    # acute rail and readiness reference, so the replay reproduces it exactly. Before
+    # the switch the stored rail was the older code's, so today's is recomputed.
+    graded_morning = read.engine == "graded"
+    acute = (
+        read.acute
+        if graded_morning and isinstance(read.acute, Mapping)
+        else ladder["acutePhysiology"]
     )
-    sleep_window = day - timedelta(days=int(THRESHOLDS["sleep_duration_window_days"].value))
-    feel_window = day - timedelta(days=int(THRESHOLDS["feel_window_days"].value))
+    references = read.references if isinstance(read.references, Mapping) else {}
+    is_rest_day = bool(rest_day.get("isRestDay"))
+    _, recovery_class = block_flags(day, blocks)
     readiness_baseline = baselines.get("readiness_score")
-    inputs = GradingInputs(
+    inputs = build_grading_inputs(
         subject_date=day,
         acute=acute,
-        hrv_nights=hrv_nights,
-        recovery_week_nights=_recovery_week_nights(blocks),
-        in_recovery_week=in_recovery_week,
-        recovery_class_block=recovery_class,
+        last_night_hrv_ms=(
+            float(daily_metric.hrv_last_night_avg_ms)
+            if daily_metric is not None and daily_metric.hrv_last_night_avg_ms is not None
+            else None
+        ),
+        hrv_history={
+            d: float(row.hrv_last_night_avg_ms)
+            for d, row in metrics.items()
+            if row.hrv_last_night_avg_ms is not None
+        },
         sleep_score_raw=sleep.score if sleep is not None else None,
         sleep_score_age_adjusted=age_adjusted,
         sleep_minutes=(
             sleep.duration_sec / 60 if sleep is not None and sleep.duration_sec else None
         ),
-        sleep_minutes_history=tuple(
-            row.duration_sec / 60
-            for d, row in sleeps.items()
-            if sleep_window <= d < day and row.duration_sec
-        ),
+        sleep_minutes_history={
+            d: row.duration_sec / 60 for d, row in sleeps.items() if row.duration_sec
+        },
         acwr=_float(dm.get("acuteChronicLoadRatio")),
         recovery_time_min=_float(dm.get("recoveryTimeMin")),
         yesterday_load=(
@@ -543,7 +562,7 @@ def replay_morning(
             else None
         ),
         feel=_int(ladder.get("subjectiveScore")),
-        feel_history=tuple(score for d, score in feels.items() if feel_window <= d < day),
+        feel_history=feels,
         readiness_level=daily_metric.readiness_level if daily_metric else None,
         readiness_score=(
             float(daily_metric.readiness_score)
@@ -551,14 +570,30 @@ def replay_morning(
             else None
         ),
         readiness_lower_quartile=(
-            readiness_baseline.lower_quartile_value
-            if readiness_baseline is not None
-            and readiness_baseline.sample_count >= THRESHOLDS["hrv_baseline_min_nights"].value
-            else None
+            _float(references.get("readinessLowerQuartile"))
+            if graded_morning
+            else readiness_lower_quartile(readiness_baseline)
         ),
-        sessions=sessions,
+        planned_workouts=planned,
         rest_day=is_rest_day,
+        blocks=blocks,
     )
+    if graded_morning:
+        # The plan blocks can be edited after the morning; the flags it was graded
+        # with are stored beside the colour.
+        stored_week = references.get("inRecoveryWeek")
+        stored_block = references.get("recoveryClassBlock")
+        inputs = replace(
+            inputs,
+            in_recovery_week=(
+                stored_week if isinstance(stored_week, bool) else inputs.in_recovery_week
+            ),
+            recovery_class_block=(
+                stored_block if isinstance(stored_block, bool) else inputs.recovery_class_block
+            ),
+        )
+        recovery_class = inputs.recovery_class_block
+    sessions = inputs.sessions
     graded = grade(inputs)
     hold = (
         isinstance(ladder.get("hrvGradedResponse"), Mapping)
@@ -567,6 +602,8 @@ def replay_morning(
     return ReplayedMorning(
         subject_date=day,
         shown=_normal(read.verdict),
+        shown_held=read.held is True,
+        shown_engine=read.engine if isinstance(read.engine, str) else None,
         ladder=str(ladder["status"]),
         ladder_reasons=tuple(str(reason) for reason in ladder.get("reasons", [])),
         ladder_bike_rest=acute.get("requiresBikeRest") is True,
@@ -590,6 +627,7 @@ def replay_morning(
         ),
         rest_day=is_rest_day,
         recovery_class_block=recovery_class,
+        ladder_packet=ladder,
     )
 
 
@@ -770,32 +808,6 @@ def _as_of_baselines(
     return baselines
 
 
-def _block_flags(day: date, blocks: Sequence[PlanBlock]) -> tuple[bool, bool]:
-    """(in a recovery or taper week, in a recovery-class block)."""
-
-    for block in blocks:
-        if block.start_date <= day <= block.end_date:
-            block_type = (block.block_type or "").lower()
-            return (
-                any(kind in block_type for kind in RECOVERY_WEEK_TYPES),
-                any(kind in block_type for kind in RECOVERY_CLASS_TYPES),
-            )
-    return False, False
-
-
-def _recovery_week_nights(blocks: Sequence[PlanBlock]) -> frozenset[date]:
-    nights: set[date] = set()
-    for block in blocks:
-        block_type = (block.block_type or "").lower()
-        if not any(kind in block_type for kind in RECOVERY_WEEK_TYPES):
-            continue
-        day = block.start_date
-        while day <= block.end_date:
-            nights.add(day)
-            day += timedelta(days=1)
-    return frozenset(nights)
-
-
 def _ladder_action(
     status: str,
     session: PlannedSession,
@@ -911,17 +923,29 @@ def render_markdown(report: ReplayReport, *, generated: str) -> str:
     add(f"# Graded verdict replay, {report.start:%-d %b} – {report.end:%-d %b %Y}")
     add("")
     add(
-        f"{generated} · Batch 295 · read-only replay of {len(mornings)} stored mornings "
+        f"{generated} · read-only replay of {len(mornings)} stored mornings "
         "through today's ladder and the graded verdict, each from the inputs it saw."
     )
     add("")
     add("## Totals")
     add("")
-    add(f"- **Shown to Mark:** {_counts([m.shown for m in mornings])}")
+    add(f"- **Shown to Mark:** {_counts([m.shown_label for m in mornings])}")
     add(f"- **Today's ladder:** {_counts([m.ladder_label for m in mornings])}")
     add(f"- **Graded:** {_counts([m.graded_label for m in mornings])}")
     changed = [m for m in mornings if m.changed]
     add(f"- **Changed (ladder → graded):** {len(changed)} of {len(mornings)} mornings")
+    graded_mornings = [m for m in mornings if m.reproduces_production is not None]
+    if graded_mornings:
+        drifted = [m for m in graded_mornings if not m.reproduces_production]
+        add(
+            f"- **Replay reproduces production:** {len(graded_mornings) - len(drifted)} of "
+            f"{len(graded_mornings)} graded mornings"
+            + (
+                " — DRIFTED on " + ", ".join(f"{m.subject_date:%-d %b}" for m in drifted)
+                if drifted
+                else ""
+            )
+        )
     rate = red_rate(report)
     add(f"- **Red rate, graded:** {rate:.0%} ({sum(m.graded.status == 'Red' for m in mornings)})")
     violations = floor_violations(report)
@@ -1009,7 +1033,7 @@ def render_markdown(report: ReplayReport, *, generated: str) -> str:
     for m in mornings:
         ratings = [_SHORT[m.graded.domain(d).rating] for d in DOMAINS]
         add(
-            f"| {m.subject_date:%-d %b} | {m.shown or '–'} | {m.ladder_label} | "
+            f"| {m.subject_date:%-d %b} | {m.shown_label or '–'} | {m.ladder_label} | "
             f"{m.graded_label} | " + " | ".join(ratings) + f" | {m.graded.floor or ''} |"
         )
     add("")

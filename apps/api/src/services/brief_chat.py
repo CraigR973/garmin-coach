@@ -156,7 +156,9 @@ QUESTION_MAX_LENGTH = 1000
 # (the enumeration is closed, so a section it is not told about reads as absent),
 # and adds Craig's rule that the record decides when Mark and the record disagree.
 # UNFILTERED, so this withdraws no stored artifact.
-PROMPT_VERSION = "coach-chat-v16-2026-09-26"
+# Batch 296: v17 composes the new graded_verdict floor, so the coach explains the
+# graded colour by his own numbers and never argues it. UNFILTERED: nothing withdrawn.
+PROMPT_VERSION = "coach-chat-v17-2026-09-29"
 #: Batch 264: the marker now carries the change. It was a bare flag meaning "I
 #: offered something"; the offer itself lived only in prose, so the app could
 #: never act on it. ``brief_chat`` is UNFILTERED in ``prompt_artifacts`` with no

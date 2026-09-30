@@ -42,6 +42,7 @@ from src.services.symptom_check import (
     reports_symptoms,
     symptom_signal,
 )
+from src.services.verdict_grading import ride_transform
 from src.services.verdict_scaling import (
     AMBER_POWER_CAP_PCT,
     companion_session_present,
@@ -1610,3 +1611,221 @@ def subjective_score_label(score: int | None) -> str | None:
 
 def _lower(value: str | None) -> str | None:
     return value.lower() if value else None
+
+
+# -- the graded verdict's packet (Batch 296) ---------------------------------------------
+#
+# The colour comes from ``services.verdict_grading`` when ``settings.verdict_engine`` is
+# ``graded``. The ladder above still runs first: its acute rail supplies the floors, and
+# its own colour is logged beside the graded one, never put in the packet (which is
+# serialised into the prompt). Mark-facing lines signed off by Craig on Mark's behalf on
+# 29 Sep 2026 (docs/drafts/2026-09-29-batch-296-wording.md).
+
+GRADED_MOVE_LINE = (
+    "Move {title} to a better day this week if there is one; otherwise ride it and hold "
+    "the targets."
+)
+GRADED_EASE_HARD_LINE = "Ease the hard intervals a zone; the rest of the session stays as planned."
+GRADED_ZONE_TWO_LINE = "Keep your Zone 2 ride at full length."
+GRADED_RECOVERY_WEEK_LINE = (
+    "This is a planned recovery week, so today's session stays as planned: hold the targets."
+)
+BIKE_REST_PLAN_LINE = (
+    "Take today off the bike; do not substitute an eased ride for the acute signal."
+)
+
+#: The ladder's own working, which a graded packet does not carry. Each explains a rung
+#: the graded verdict does not have; left in, the brief would narrate a rule that did
+#: not decide the day.
+LADDER_ONLY_FIELDS = (
+    "readinessInterpretation",
+    "loadDrivenEligibility",
+    "positiveSubjectiveEvidence",
+    "positiveHrvEvidence",
+    "restingHeartRateWithinBaseline",
+    "restingHeartRateElevated",
+    "readinessBaselineCenter",
+    "readinessAbsoluteFloor",
+    "readinessEffectiveFloor",
+    "softSleepRecoveryOverride",
+    "sleepCreditCeiling",
+    "cumulativeEscalation",
+    "hrvRecalibration",
+    "hrvGradedResponse",
+    "trainingLoadCap",
+)
+
+
+def graded_plan_adjustments(
+    graded: Any,
+    planned_workouts: Sequence[PlannedWorkout],
+    *,
+    is_rest_day: bool,
+    acute: Mapping[str, Any],
+    has_vo2: bool,
+) -> list[str]:
+    """The day's plan lines under the graded verdict, one per session action."""
+
+    live = [
+        workout for workout in planned_workouts if workout.status not in {"completed", "skipped"}
+    ]
+    raw_symptoms = acute.get("symptoms")
+    symptoms: Mapping[str, Any] = raw_symptoms if isinstance(raw_symptoms, Mapping) else {}
+    if acute.get("requiresTrainingRest") is True and not is_rest_day:
+        return [str(symptoms.get("planLine") or BIKE_REST_PLAN_LINE)]
+    if acute.get("requiresBikeRest") is True and not is_rest_day:
+        return [BIKE_REST_PLAN_LINE]
+    if is_rest_day or not planned_workouts or not live:
+        return _plan_adjustments(graded.status, planned_workouts, is_rest_day=is_rest_day)
+    if graded.status == "Red":
+        red_lines = _plan_adjustments("Red", planned_workouts)
+        if has_vo2:
+            red_lines.append("Replace VO2 with rest, mobility, or a very easy spin.")
+        return red_lines
+
+    actions = {action.session_id: action.action for action in graded.actions}
+    lines: list[str] = []
+    other_categories: set[str] = set()
+    for workout in live:
+        action = actions.get(str(workout.id))
+        if action == "hold_targets":
+            line = GRADED_RECOVERY_WEEK_LINE
+        elif action == "move_or_hold":
+            line = GRADED_MOVE_LINE.format(title=workout.title or "the hard session")
+        elif action == "ease_hard":
+            line = GRADED_EASE_HARD_LINE
+        elif graded.status == "Amber" and is_bike_workout_type(workout.workout_type):
+            line = GRADED_ZONE_TWO_LINE
+        else:
+            if graded.status == "Amber":
+                other_categories.add(category_for_workout_type(workout.workout_type))
+            continue
+        if line not in lines:
+            lines.append(line)
+    # Amber's session-specific lines for the sessions that are not rides (Batch 243).
+    if DAY_CATEGORY_WEIGHTS in other_categories:
+        lines.append("Keep strength submaximal: reduce the sets and stop well short of failure.")
+    if DAY_CATEGORY_FLEXIBILITY in other_categories:
+        lines.append(
+            "Keep mobility gentle and symptom-led; shorten it if it stops feeling restorative."
+        )
+    if DAY_CATEGORY_WALK in other_categories:
+        lines.append(
+            "Keep the walk easy and conversational; shorten it rather than turning it into "
+            "training."
+        )
+    if not lines:
+        lines.append("Proceed with the planned workout if warm-up confirms readiness.")
+    if graded.held and GRADED_RECOVERY_WEEK_LINE not in lines:
+        lines.append(HRV_HOLD_PLAN_LINE)
+    if any(_is_reset_week_workout(workout) for workout in live):
+        lines.insert(
+            0,
+            "This week is an intended light reset; judge the reduced cycling load as planned "
+            "deload, not missed load.",
+        )
+    return lines
+
+
+def graded_verdict_packet(
+    ladder: Mapping[str, Any],
+    graded: Any,
+    planned_workouts: Sequence[PlannedWorkout],
+    *,
+    breathwork_line: str | None,
+) -> dict[str, Any]:
+    """The ladder's packet, with the colour, reasons and plan the graded verdict set.
+
+    Kept: the acute rail and its floors, the readiness trend warning, the check-in, the
+    rest-day context and the VO2 flag. Removed: the ladder's own working
+    (:data:`LADDER_ONLY_FIELDS`). Added: ``engine``, ``held`` and ``graded``.
+    """
+
+    acute = ladder["acutePhysiology"]
+    is_rest_day = bool(ladder.get("isRestDay"))
+    has_vo2 = bool(ladder.get("hasVo2WorkoutToday"))
+    status = graded.status
+    reasons: list[str] = []
+    raw_symptoms = acute.get("symptoms")
+    symptoms: Mapping[str, Any] = raw_symptoms if isinstance(raw_symptoms, Mapping) else {}
+    if symptoms.get("triggered") is True and isinstance(symptoms.get("reason"), str):
+        reasons.append(str(symptoms["reason"]))
+    reasons.append(graded.summary)
+    if graded.missing_data_floor_applied:
+        reasons.append(INSUFFICIENT_DATA_MESSAGE)
+    trend = ladder.get("readinessBaselineTrend")
+    if (
+        isinstance(trend, Mapping)
+        and trend.get("triggered")
+        and isinstance(trend.get("reason"), str)
+    ):
+        reasons.append(str(trend["reason"]))
+
+    plan = graded_plan_adjustments(
+        graded, planned_workouts, is_rest_day=is_rest_day, acute=acute, has_vo2=has_vo2
+    )
+    if breathwork_line is not None:
+        plan.append(breathwork_line)
+
+    safety = ["graded_verdict"]
+    if symptoms.get("triggered") is True:
+        safety.append(
+            "symptom_no_training_floor"
+            if acute.get("requiresTrainingRest") is True
+            else "symptom_easy_riding_floor"
+        )
+    if acute.get("requiresBikeRest") is True:
+        safety.append("bike_rest_floor")
+    oxygen = acute.get("oxygenRespiration")
+    if isinstance(oxygen, Mapping) and oxygen.get("triggered") is True:
+        safety.append("oxygen_respiration_surveillance")
+    if graded.missing_data_floor_applied:
+        safety.append("missing_data_amber_floor")
+    if status == "Red" and has_vo2:
+        safety.append("red_never_vo2")
+
+    packet = {key: value for key, value in ladder.items() if key not in LADDER_ONLY_FIELDS}
+    packet.update(
+        {
+            "engine": "graded",
+            "status": status,
+            "held": graded.held,
+            "reasons": reasons,
+            "planAdjustments": plan,
+            "safetyRulesApplied": safety,
+            "graded": graded.to_packet(),
+        }
+    )
+    return packet
+
+
+def graded_verdict_adjustment_packet(
+    graded: Any, planned_workouts: Sequence[PlannedWorkout]
+) -> dict[str, Any] | None:
+    """Today's ride change under the graded verdict, for the packet (Batch 296).
+
+    The same transform the delivery rail applies (``morning_ir``), so the brief quotes
+    the ride Mark would be sent. ``None`` when the session action leaves the ride as
+    planned: a held or moved session, or a Zone 2 ride on an Amber morning.
+    """
+
+    ride = _todays_bike_workout(planned_workouts)
+    if ride is None:
+        return None
+    action = next((item.action for item in graded.actions if item.session_id == str(ride.id)), None)
+    transform = ride_transform(graded.status, graded=True, action=action)
+    if transform is None:
+        return None
+    try:
+        base_ir = build_structured_workout_ir(ride)
+    except HTTPException:
+        return None
+    companion = companion_session_present(
+        workout.status for workout in planned_workouts if workout.id != ride.id
+    )
+    summary = summarize_verdict_adjustment(
+        base_ir, transform, companion_session=companion, graded=True
+    )
+    if summary is None:
+        return None
+    return {**summary, "plannedWorkoutId": str(ride.id)}

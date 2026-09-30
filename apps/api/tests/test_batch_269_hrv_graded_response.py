@@ -48,6 +48,7 @@ from src.models.coaching import (
 from src.services.hrv_recalibration import is_band_artifact
 from src.services.morning_analysis import (
     HRV_GRADED_RESPONSE_RULE,
+    LADDER_SYSTEM_PROMPT,
     PROMPT_VERSION,
     SYSTEM_PROMPT,
 )
@@ -449,9 +450,12 @@ def test_a_hold_day_keeps_its_vo2_session() -> None:
 
 
 def test_the_brief_is_told_to_lead_with_his_own_recovery() -> None:
-    assert HRV_GRADED_RESPONSE_RULE in SYSTEM_PROMPT
+    # Batch 296: the graded verdict replaces the hold rule; the ladder's prompt keeps it
+    # for the one-setting rollback.
+    assert HRV_GRADED_RESPONSE_RULE in LADDER_SYSTEM_PROMPT
+    assert HRV_GRADED_RESPONSE_RULE not in SYSTEM_PROMPT
     assert "hold" in HRV_GRADED_RESPONSE_RULE
     # The model is given new wording, so no stored brief written without it is
     # served as current; the morning read self-heals, so nothing is regenerated.
-    # (Batch 272 moved it on again, to v49; Batch 294 to v50.)
-    assert PROMPT_VERSION == "morning-analysis-v50-2026-09-28"
+    # (Batch 272 moved it on again, to v49; Batch 294 to v50; Batch 296 to v51.)
+    assert PROMPT_VERSION == "morning-analysis-v51-2026-09-29"

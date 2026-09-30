@@ -41,6 +41,7 @@ from src.services.holiday_pause import HolidayPauseService, HolidayWindow
 from src.services.morning_analysis import (
     ACWR_AMBER_CAP_THRESHOLD,
     ACWR_LOAD_DRIVEN_MAX,
+    LADDER_SYSTEM_PROMPT,
     PROMPT_VERSION,
     RECOVERY_TIME_AMBER_CAP_MIN,
     SYSTEM_PROMPT,
@@ -64,6 +65,7 @@ from src.services.morning_analysis import (
     build_today_actions,
     subjective_score_label,
 )
+from src.services.morning_verdict import GRADED_EASE_HARD_LINE
 from src.services.personal_baselines import (
     BASELINE_TREND_WINDOW_DAYS,
     READINESS_TREND_DECLINE_POINTS,
@@ -404,7 +406,10 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
         assert packet["environment"]["weather"]["overnightRelativeHumidityMeanPct"] == 82.0
         assert packet["verdict"]["subjectiveLabel"] == "OK"
         assert packet["verdict"]["status"] == "Amber"
-        assert packet["verdict"]["readinessInterpretation"] is None
+        # Batch 296: the graded verdict sets the colour, and its packet drops the
+        # ladder's own working (readinessInterpretation among it).
+        assert packet["verdict"]["engine"] == "graded"
+        assert "readinessInterpretation" not in packet["verdict"]
         assert packet["verdict"]["readinessBaselineTrend"]["status"] == "insufficient_data"
         assert packet["verdict"]["hasVo2WorkoutToday"] is True
         assert len(packet["experimentLoop"]["experiments"]) == 4
@@ -1029,9 +1034,10 @@ async def test_amber_morning_leads_with_week_swap_and_keeps_softening(
     assert approve["plannedWorkoutId"] == swap["hardWorkoutId"]
 
     adjustments = verdict["planAdjustments"]
-    # The swap leads; softening stays available as the explicit fallback.
+    # The swap leads; softening stays available as the explicit fallback. Batch 296:
+    # under the graded verdict an Amber eases the hard work at full length.
     assert "move vo2 max 30/30 from thursday to saturday" in adjustments[0].lower()
-    assert any("cut the bike to" in item.lower() for item in adjustments[1:])
+    assert GRADED_EASE_HARD_LINE in adjustments[1:]
 
     # Batch 70 (#143): the same cautious morning reports the week's mix and, because
     # today's dropped VO2 can move to Saturday, frames it as re-patched — not lost.
@@ -1625,7 +1631,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v50")
+    assert PROMPT_VERSION.startswith("morning-analysis-v51")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
@@ -1653,26 +1659,30 @@ def test_prompt_grounds_week_history_in_execution_not_nominal_schedule() -> None
 
 
 def test_prompt_treats_the_training_load_cap_as_deterministic() -> None:
-    assert ">=1.5 triggers the deterministic high-load cap" in SYSTEM_PROMPT
-    assert "When verdict.trainingLoadCap applies" in SYSTEM_PROMPT
-    assert "never soften or argue it down" in SYSTEM_PROMPT
-    assert "model-controlled override" in SYSTEM_PROMPT
+    # Batch 296: the ladder's rules live in its own prompt, kept for the rollback.
+    assert ">=1.5 triggers the deterministic high-load cap" in LADDER_SYSTEM_PROMPT
+    assert "When verdict.trainingLoadCap applies" in LADDER_SYSTEM_PROMPT
+    assert "never soften or argue it down" in LADDER_SYSTEM_PROMPT
+    assert "model-controlled override" in LADDER_SYSTEM_PROMPT
+    assert "trainingLoadCap" not in SYSTEM_PROMPT
 
 
 def test_prompt_keeps_batch_170_verdict_rules_deterministic() -> None:
-    assert "verdict.sleepCreditCeiling" in SYSTEM_PROMPT
-    assert "raw Garmin score below 60" in SYSTEM_PROMPT
-    assert "verdict.cumulativeEscalation" in SYSTEM_PROMPT
-    assert "Missing HRV and absent" in SYSTEM_PROMPT
-    assert "never describe absent data as proof" in SYSTEM_PROMPT
+    assert "verdict.sleepCreditCeiling" in LADDER_SYSTEM_PROMPT
+    assert "raw Garmin score below 60" in LADDER_SYSTEM_PROMPT
+    assert "verdict.cumulativeEscalation" in LADDER_SYSTEM_PROMPT
+    for prompt in (LADDER_SYSTEM_PROMPT, SYSTEM_PROMPT):
+        assert "Missing HRV and absent" in prompt
+        assert "never describe absent data as proof" in prompt
 
 
 def test_prompt_treats_readiness_baseline_decline_as_warning_only() -> None:
-    assert "When verdict.readinessBaselineTrend triggers" in SYSTEM_PROMPT
-    assert "never hide, soften" in SYSTEM_PROMPT
-    assert "It does not set the" in SYSTEM_PROMPT
-    assert "colour itself" in SYSTEM_PROMPT
-    assert "readinessEffectiveFloor" in SYSTEM_PROMPT
+    for prompt in (LADDER_SYSTEM_PROMPT, SYSTEM_PROMPT):
+        assert "When verdict.readinessBaselineTrend triggers" in prompt
+        assert "never hide, soften" in prompt
+        assert "It does not set the" in prompt
+        assert "colour itself" in prompt
+    assert "readinessEffectiveFloor" in LADDER_SYSTEM_PROMPT
 
 
 def test_sleep_packet_localizes_bed_wake_across_dst_and_keeps_utc() -> None:

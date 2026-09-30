@@ -33,7 +33,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Protocol, cast
@@ -81,7 +81,7 @@ from src.services.daily_metric_phase import (
     index_day_aggregates_by_date,
     index_morning_by_date,
 )
-from src.services.delivered_verdict import delivered_verdicts
+from src.services.delivered_verdict import delivered_rows
 from src.services.generation_requests import GenerationRequestInProgress
 from src.services.insights import EarlyWarningResult, FtpDriftResult, InsightsService
 from src.services.night_thermal import NightIndoorPeak, night_indoor_peaks
@@ -102,12 +102,17 @@ from src.services.provenance import (
 from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
 from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
 from src.services.training_week import TrainingWeekService
+from src.services.verdict_grading import classify_planned_workout
 from src.services.week_ahead import WeekAheadService
 from src.services.workload_budget import workload_slot
+from src.services.workout_completion import WORKOUT_STATUS_COMPLETED
 
 # Batch 272: the packet gained crossSurfaceAgreement and the prompt embeds
 # CROSS_SURFACE_AGREEMENT_RULE. Reviews are read unfiltered, so nothing is withdrawn.
-PROMPT_VERSION = "reviews-v9-2026-09-27"
+# Batch 296: the packet gained keySessions and cautiousDays, the measure of whether
+# caution is costing him training, and the prompt tells the review to report them.
+# Unfiltered again: nothing is withdrawn.
+PROMPT_VERSION = "reviews-v10-2026-09-29"
 PACKET_VERSION = 3
 
 PERIOD_WEEKLY = "weekly"
@@ -167,7 +172,11 @@ explanatory only: never \
 directly propose, approve, move, skip, or change a workout, and never alter the \
 deterministic Green/Amber/Red verdict or safety floors. When trainingWeekSoFar \
 is absent, use the deterministic rollup for history and still never reconstruct \
-it from trainingSchedule.
+it from trainingSchedule. rollup.keySessions says how many of the period's key \
+sessions (VO2, threshold-type and long rides) his plan held and how many he completed, \
+and rollup.cautiousDays how many mornings were Amber or Red and which domains of the \
+graded verdict caused them. Report both plainly — they measure whether caution is \
+costing him training — and never name a cause rollup.cautiousDays does not list.
 
 {CROSS_SURFACE_AGREEMENT_RULE}"""
 
@@ -325,6 +334,24 @@ class VerdictRollup:
 
 
 @dataclass(frozen=True)
+class KeySessionRollup:
+    """Key sessions the plan held and he completed (Batch 296.6)."""
+
+    planned: int
+    completed: int
+    by_kind: dict[str, dict[str, int]]
+
+
+@dataclass(frozen=True)
+class CautiousDayRollup:
+    """Amber and Red mornings, by what caused them (Batch 296.6)."""
+
+    cautious_days: int
+    held_days: int
+    by_cause: dict[str, int]
+
+
+@dataclass(frozen=True)
 class ThermalRollup:
     nights: int
     avg_indoor_peak_c: float | None
@@ -358,6 +385,9 @@ class ReviewRollup:
     # quantities derived the brief's way. Filled by ``ReviewService``, which holds the
     # rows; the pure rollup has nothing to compare against.
     cross_surface_agreement: dict[str, Any] = field(default_factory=dict)
+    # Batch 296.6: filled by ``ReviewService`` from the plan and the morning reads.
+    key_sessions: KeySessionRollup | None = None
+    cautious_days: CautiousDayRollup | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -618,6 +648,50 @@ def compute_review_rollup(
         verdicts=verdicts,
         thermal=thermal_rollup,
     )
+
+
+def key_session_rollup(workouts: Sequence[PlannedWorkout]) -> KeySessionRollup:
+    """Key sessions planned and completed, by kind (Batch 296.6)."""
+
+    by_kind: dict[str, dict[str, int]] = {}
+    for workout in workouts:
+        session = classify_planned_workout(workout)
+        if not session.is_key:
+            continue
+        kind = "vo2" if session.has_vo2 else "threshold" if session.is_hard else "long"
+        counts = by_kind.setdefault(kind, {"planned": 0, "completed": 0})
+        counts["planned"] += 1
+        if workout.status == WORKOUT_STATUS_COMPLETED:
+            counts["completed"] += 1
+    return KeySessionRollup(
+        planned=sum(counts["planned"] for counts in by_kind.values()),
+        completed=sum(counts["completed"] for counts in by_kind.values()),
+        by_kind=by_kind,
+    )
+
+
+def cautious_day_rollup(mornings: Iterable[Any]) -> CautiousDayRollup:
+    """Amber and Red mornings by the graded domains that caused them (Batch 296.6)."""
+
+    by_cause: dict[str, int] = {}
+    cautious = held = 0
+    for row in mornings:
+        colour = (row.verdict or "").strip().lower()
+        if colour == "green" and str(row.held).lower() == "true":
+            held += 1
+        if colour not in {"amber", "red"}:
+            continue
+        cautious += 1
+        if row.engine != "graded":
+            by_cause["ladder"] = by_cause.get("ladder", 0) + 1
+            continue
+        if row.floor:
+            by_cause["floor"] = by_cause.get("floor", 0) + 1
+        for domain in row.domains if isinstance(row.domains, list) else []:
+            if isinstance(domain, dict) and domain.get("rating") in {"mild", "marked"}:
+                name = str(domain.get("domain"))
+                by_cause[name] = by_cause.get(name, 0) + 1
+    return CautiousDayRollup(cautious_days=cautious, held_days=held, by_cause=by_cause)
 
 
 # ---------------------------------------------------------------------------
@@ -917,9 +991,10 @@ class ReviewService:
         metrics = await self._daily_metrics(player.id, period_start, period_end)
         day_aggregates = await self._day_aggregates(player.id, period_start, period_end)
         sleeps = await self._sleeps(player.id, period_start, period_end)
-        verdicts = await self._verdicts(
+        mornings = await self._morning_reads(
             player.id, period_start, period_end, timezone_name=player.timezone
         )
+        verdicts = {day: row.verdict for day, row in mornings.items()}
         activities = await self._activities(player.id, period_start, period_end)
         adherence_rows = await self._adherence(player.id, period_start, period_end)
         planned_count = await self._planned_count(player.id, period_start, period_end)
@@ -1026,6 +1101,10 @@ class ReviewService:
         return replace(
             rollup,
             cross_surface_agreement=evaluate_agreement([bedroom] if bedroom else []),
+            key_sessions=key_session_rollup(
+                await self._planned_sessions(player.id, period_start, period_end)
+            ),
+            cautious_days=cautious_day_rollup(mornings.values()),
         )
 
     async def _daily_metrics(self, user_id: uuid.UUID, start: date, end: date) -> list[DailyMetric]:
@@ -1085,29 +1164,58 @@ class ReviewService:
         )
         return list(rows)
 
-    async def _verdicts(
+    async def _morning_reads(
         self, user_id: uuid.UUID, start: date, end: date, *, timezone_name: str
-    ) -> dict[date, str | None]:
+    ) -> dict[date, Any]:
+        """The morning read Mark was given each day, projected (Batch 296).
+
+        The colour and, for a graded morning, its engine, held flag, floor and domain
+        ratings: a few hundred bytes a row rather than the whole packet.
+        """
+        packet = Analysis.context_packet
         rows = (
+            await self.session.execute(
+                select(
+                    Analysis.subject_date,
+                    Analysis.generated_at_utc,
+                    Analysis.created_at,
+                    Analysis.verdict,
+                    packet[("verdict", "engine")].as_string().label("engine"),
+                    packet[("verdict", "held")].as_string().label("held"),
+                    packet[("verdict", "graded", "floor")].as_string().label("floor"),
+                    packet[("verdict", "graded", "domains")].label("domains"),
+                )
+                .where(
+                    Analysis.user_id == user_id,
+                    Analysis.analysis_type == ANALYSIS_TYPE_MORNING,
+                    Analysis.subject_date >= start,
+                    Analysis.subject_date <= end,
+                )
+                .order_by(Analysis.generated_at_utc.asc())
+            )
+        ).all()
+        # Batch 205: the freshest row no longer wins. A review recounts the
+        # colours Mark was given that period, so an evening regeneration cannot
+        # change what the period is reported to have contained.
+        return delivered_rows(rows, timezone_name=timezone_name)
+
+    async def _planned_sessions(
+        self, user_id: uuid.UUID, start: date, end: date
+    ) -> list[PlannedWorkout]:
+        return list(
             (
                 await self.session.execute(
-                    select(Analysis)
-                    .where(
-                        Analysis.user_id == user_id,
-                        Analysis.analysis_type == ANALYSIS_TYPE_MORNING,
-                        Analysis.subject_date >= start,
-                        Analysis.subject_date <= end,
+                    select(PlannedWorkout).where(
+                        PlannedWorkout.user_id == user_id,
+                        PlannedWorkout.is_active.is_(True),
+                        PlannedWorkout.workout_date >= start,
+                        PlannedWorkout.workout_date <= end,
                     )
-                    .order_by(Analysis.generated_at_utc.asc())
                 )
             )
             .scalars()
             .all()
         )
-        # Batch 205: the freshest row no longer wins. A review recounts the
-        # colours Mark was given that period, so an evening regeneration cannot
-        # change what the period is reported to have contained.
-        return delivered_verdicts(rows, timezone_name=timezone_name)
 
     async def _activities(self, user_id: uuid.UUID, start: date, end: date) -> list[Activity]:
         start_dt = datetime(start.year, start.month, start.day)
@@ -1446,6 +1554,35 @@ def rollup_packet(rollup: ReviewRollup) -> dict[str, Any]:
             "red": rollup.verdicts.red,
             "total": rollup.verdicts.total,
         },
+        # Batch 296.6: whether caution is costing him training.
+        "keySessions": (
+            {
+                "planned": rollup.key_sessions.planned,
+                "completed": rollup.key_sessions.completed,
+                "byKind": rollup.key_sessions.by_kind,
+                "meaning": (
+                    "Key sessions are VO2, threshold-type and long rides in his plan this "
+                    "period; completed means an executed activity completed the session."
+                ),
+            }
+            if rollup.key_sessions is not None
+            else None
+        ),
+        "cautiousDays": (
+            {
+                "total": rollup.cautious_days.cautious_days,
+                "heldDays": rollup.cautious_days.held_days,
+                "byCause": rollup.cautious_days.by_cause,
+                "meaning": (
+                    "Mornings that were Amber or Red, counted once per domain of the "
+                    "graded verdict that was off; floor is a reported symptom or an "
+                    "off-the-bike signal; ladder counts mornings decided before the "
+                    "graded verdict. heldDays were Green with the targets held."
+                ),
+            }
+            if rollup.cautious_days is not None
+            else None
+        ),
         "thermal": {
             "nights": rollup.thermal.nights,
             "avgIndoorPeakC": rollup.thermal.avg_indoor_peak_c,

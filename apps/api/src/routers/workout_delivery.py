@@ -430,12 +430,16 @@ async def get_interval_editor(
     # Batch 215: the editor's pre-filled change follows the workout's own morning
     # verdict and the day's combined load, resolved here where both are reachable.
     coaching = ExecutableCoachingService(db)
-    verdict = await coaching._morning_verdict_for(player.id, workout.workout_date)
+    # Batch 296: the preset follows the session's own action under the graded verdict,
+    # so a held session opens with no pre-filled change.
+    context = await coaching._morning_context_for(player.id, workout.workout_date)
+    verdict = context.status
     snapshot = interval_editor_snapshot(
         workout.structured_workout,
         workout.intensity_target,
-        verdict=verdict,
+        verdict=context.transform_for(workout),
         companion_session=await coaching._companion_session(player.id, workout),
+        graded=context.graded,
     )
     return IntervalEditorEnvelope(
         data=_interval_editor_data(workout.id, snapshot, verdict),
