@@ -16,6 +16,7 @@ from src.models.coaching import (
     DAILY_METRIC_PHASE_SETTLED,
     Activity,
     Analysis,
+    CheckInReading,
     DailyMetric,
     ManualEntry,
     MetricBaseline,
@@ -66,6 +67,7 @@ from src.services.morning_analysis import (
     subjective_score_label,
 )
 from src.services.morning_verdict import GRADED_EASE_HARD_LINE
+from src.services.notes_reader import notes_hash
 from src.services.personal_baselines import (
     BASELINE_TREND_WINDOW_DAYS,
     READINESS_TREND_DECLINE_POINTS,
@@ -661,7 +663,8 @@ async def test_morning_packet_real_0731_0801_reds_now_both_count(
                     output_markdown="Red.",
                     raw_response={},
                 ),
-                ManualEntry(
+                friday_entry := ManualEntry(
+                    id=uuid.uuid4(),
                     user_id=user_id,
                     entry_date=friday,
                     entry_at_utc=datetime(2026, 7, 31, 7, 30),
@@ -671,13 +674,28 @@ async def test_morning_packet_real_0731_0801_reds_now_both_count(
                         "3 day training load."
                     ),
                 ),
-                ManualEntry(
+                saturday_entry := ManualEntry(
+                    id=uuid.uuid4(),
                     user_id=user_id,
                     entry_date=subject_date,
                     entry_at_utc=datetime(2026, 8, 1, 8, 44),
                     subjective_score=3,
                     feel="Have a bit of a hangover today",
                     notes="Was out last night drinking, around 13 UK units.",
+                ),
+            ]
+        )
+        await session.flush()
+        # Batch 297: the causes come from the notes reader's stored readings.
+        session.add_all(
+            [
+                _stored_reading(
+                    friday_entry,
+                    training_load=("now", "harder day's training yesterday"),
+                ),
+                _stored_reading(
+                    saturday_entry,
+                    alcohol=("last_night", "out last night drinking, around 13 UK units"),
                 ),
             ]
         )
@@ -706,7 +724,7 @@ async def test_morning_packet_real_0731_0801_reds_now_both_count(
     assert check_in_rows, "expected at least one check-in-derived context row"
     for item in check_in_rows:
         assert item["matchedText"], f"{item['reason']} row carries no matched phrase"
-        assert item["basis"] == "phrase matched in the check-in note"
+        assert item["basis"] == "his words in the check-in note, as the notes reader quoted them"
 
 
 @pytest.mark.asyncio
@@ -1843,6 +1861,31 @@ def test_system_prompt_states_time_in_bed_and_asleep_without_re_subtracting_awak
     assert "time in bed from sleep.timeinbedmin" in normalized
     assert "time asleep from sleep.timeasleepmin" in normalized
     assert "never subtract awake time from it" in normalized
+
+
+def _stored_reading(entry: ManualEntry, **causes: tuple[str, str]) -> CheckInReading:
+    """A stored notes reading (Batch 297): every flag absent, the given causes present."""
+    absent_flag = {"state": "absent", "who": "unknown", "when": "unknown", "words": ""}
+    absent_cause = {"state": "absent", "when": "unknown", "words": ""}
+    reading: dict[str, Any] = {
+        name: dict(absent_flag)
+        for name in ("chest_heart", "fever_aches", "head_cold", "unwell", "fatigue")
+    }
+    for name in ("alcohol", "travel", "disturbed_night", "training_load", "deliberate_rest"):
+        when, words = causes.get(name, ("", ""))
+        reading[name] = (
+            {"state": "present", "when": when, "words": words} if words else dict(absent_cause)
+        )
+    return CheckInReading(
+        user_id=entry.user_id,
+        manual_entry_id=entry.id,
+        notes_sha256=notes_hash(entry.notes) or "",
+        status="read",
+        reading=reading,
+        model_name="claude-test",
+        prompt_version="notes-reader-test",
+        created_at=entry.entry_at_utc + timedelta(minutes=1),
+    )
 
 
 def _temperature(at: datetime, value: float) -> TemperatureReading:

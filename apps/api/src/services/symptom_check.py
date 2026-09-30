@@ -135,6 +135,24 @@ SYMPTOM_FLOORS: Final[dict[str, SymptomFloor]] = {
 }
 
 
+#: How serious each answer is, for choosing between his tap and his note (Batch 297).
+SYMPTOM_SEVERITY: Final[dict[str, int]] = {
+    SYMPTOMS_NONE: 0,
+    SYMPTOMS_HEAD_COLD: 1,
+    SYMPTOMS_FEVER_ACHES: 2,
+    SYMPTOMS_CHEST_HEART: 3,
+}
+
+
+def more_severe_symptom(first: str | None, second: str | None) -> str | None:
+    """The more serious of two answers; an answer outranks none at all."""
+
+    candidates = [answer for answer in (first, second) if answer in SYMPTOM_SEVERITY]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda answer: SYMPTOM_SEVERITY[answer])
+
+
 class _HasSymptoms(Protocol):
     symptoms: str | None
 

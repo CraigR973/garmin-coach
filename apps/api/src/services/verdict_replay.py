@@ -499,7 +499,19 @@ def replay_morning(
     baselines = _as_of_baselines(day, baseline_metrics or metrics, sleeps)
     dm = read.daily_metrics if isinstance(read.daily_metrics, Mapping) else {}
     age_adjusted = _int(read.age_adjusted)
+    # Batch 297: a symptom his note supplied, as the stored rail recorded it.
+    stored_acute = read.acute if isinstance(read.acute, Mapping) else {}
+    stored_symptoms = stored_acute.get("symptoms")
+    notes_symptom = (
+        stored_symptoms
+        if isinstance(stored_symptoms, Mapping) and stored_symptoms.get("source") == "notes"
+        else {}
+    )
     ladder = morning_verdict(
+        notes_symptom_answer=(
+            str(notes_symptom["answer"]) if notes_symptom.get("answer") else None
+        ),
+        notes_symptom_words=(str(notes_symptom["words"]) if notes_symptom.get("words") else None),
         daily_metric=daily_metric,
         sleep=sleep,
         age_adjusted_sleep_score=age_adjusted,
@@ -577,6 +589,12 @@ def replay_morning(
         planned_workouts=planned,
         rest_day=is_rest_day,
         blocks=blocks,
+        notes_feel_notch=(int(references.get("notesFeelNotch") or 0) if graded_morning else 0),
+        notes_feel_words=(
+            str(references["notesFeelWords"])
+            if graded_morning and references.get("notesFeelWords")
+            else None
+        ),
     )
     if graded_morning:
         # The plan blocks can be edited after the morning; the flags it was graded

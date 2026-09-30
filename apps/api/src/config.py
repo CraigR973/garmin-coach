@@ -142,6 +142,11 @@ class Settings(BaseSettings):
     # is ever raised, measure a real chat turn before assuming this ceiling holds.
     anthropic_chat_max_tokens: int = 4096
     anthropic_learning_max_tokens: int = 4096
+    # Batch 297: the check-in notes reader. Empty means the production model; the eval
+    # (scripts/run_notes_eval.py) decides whether a cheaper one catches symptoms as
+    # reliably. Its answer is a small strict JSON object, so 4096 leaves room to think.
+    notes_reader_model: str = ""
+    notes_reader_max_tokens: int = 4096
     # Batch 233.3. ``adaptive`` lets the model decide how much to think, steered by
     # ``anthropic_effort``; ``disabled`` restores Sonnet 4.6's behaviour byte-for-byte
     # if a live morning ever regresses. This is a safe place to experiment because

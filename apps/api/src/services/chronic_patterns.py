@@ -12,7 +12,6 @@ restructure services own action behind the existing approval rails.
 from __future__ import annotations
 
 import math
-import re
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -24,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import (
     Analysis,
+    CheckInReading,
     DailyMetric,
     KnowledgeBase,
     ManualEntry,
@@ -43,6 +43,7 @@ from src.services.delivered_verdict import delivered_verdicts
 from src.services.driver_levers import describe_evidence, select_lever
 from src.services.hrv_recalibration import detect_hrv_recalibration, is_band_artifact
 from src.services.insights import DriverCorrelation
+from src.services.notes_reader import NotesReaderService, notes_hash
 from src.services.rem_interventions import RemRotation, select_rem_interventions
 from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
 from src.services.standing_habits import complied_intervention_ids
@@ -84,66 +85,73 @@ _HEALTHY_HRV_STATES = frozenset({"balanced", "stable", "optimal", "normal"})
 _ACUTE_EXOGENOUS_CHECK_IN_CAUSES = frozenset({"alcohol", "illness", "travel"})
 _ENDOGENOUS_TRAINING_CHECK_IN_CAUSES = frozenset({"deliberate_rest", "training_load"})
 
-# Batch 212: these patterns read Mark's own prose, so an over-broad one does not
-# merely mis-label — an acute tag can excuse a Red morning from the chronic
-# cluster (``_ACUTE_EXOGENOUS_CHECK_IN_CAUSES`` above, applied at
-# ``_qualify_red_morning``). Two families carried an over-match:
-#
-#   * **illness/cold.** ``\b(?:head|chest\s+)?cold\b`` made the whole qualifier
-#     optional, so the bare word matched. Mark writes about his bedroom nightly,
-#     and on 2026-08-14 ("*felt cold from drafts*") and 2026-08-15 ("*too cold*")
-#     both notes classified as ``illness``. The same expression was also broken in
-#     the direction it intended: only ``chest`` carried ``\s+``, so "head cold"
-#     never matched that branch and reached the tag through the bare word instead.
-#     A cold is now only a cold when the phrasing says so.
-#   * **alcohol/drinking.** ``\bdrank\b``/``\bdrinking\b`` match "drinking plenty
-#     of water" — hydration is the single most likely neighbouring subject in a
-#     recovery note. Both now decline an explicit non-alcoholic object.
-#
-# The other three families are multi-word and specific ("rest day", "jet lag",
-# "back-to-back"); they were audited at the same time and left unchanged.
-# Every pattern here needs a negative control in the test-suite.
-_CHECK_IN_CAUSE_PATTERNS: dict[str, tuple[str, ...]] = {
-    "alcohol": (
-        r"\bhangover\b",
-        r"\balcohol\b",
-        r"\bdr(?:ank|inking)\b(?!\s+(?:a\s+)?(?:lots?\s+of\s+|plenty\s+of\s+|more\s+)?"
-        r"(?:water|fluids?|tea|coffee|juice|squash|milk|electrolytes?))",
-        r"\b\d+(?:\.\d+)?\s*(?:uk\s+)?units?\b",
-    ),
-    "illness": (
-        r"\bunwell\b",
-        r"\bill(?:ness)?\b",
-        r"\bsick\b(?!\s+of\b)",
-        r"\bflu\b",
-        r"\binfection\b",
-        # A qualifier is required: "head cold" is illness, "felt cold" is weather.
-        r"\b(?:head|chest|streaming|stinking|heavy)\s+cold\b",
-        r"\b(?:got|have|had|caught|catching|coming\s+down\s+with)\s+a\s+cold\b",
-    ),
-    "travel": (
-        r"\bholiday\b",
-        r"\btravell?(?:ing|ed)?\b",
-        r"\baway (?:from home|overnight|on holiday)\b",
-        r"\bjet\s*lag\b",
-        r"\bdifferent bed\b",
-    ),
-    "deliberate_rest": (
-        r"\btraining break\b",
-        r"\brest day\b",
-        r"\brecovery week\b",
-        r"\bdeload\b",
-        r"\bdeliberate(?:ly)? rest\b",
-    ),
-    "training_load": (
-        r"\btraining load\b",
-        r"\bcumulative\b.{0,24}\btraining\b",
-        r"\bhard(?:er)? day(?:'s)? training\b",
-        r"\bhard(?:er)? training\b",
-        r"\bback[- ]to[- ]back\b",
-        r"\b(?:three|3)[- ]day\b.{0,24}\b(?:block|load|training)\b",
-    ),
-}
+# Batch 297: the causes come from the notes reader (``services.notes_reader``), not
+# regular expressions. Batch 212 showed why patterns could not do the job: a bare
+# "cold" about his bedroom tagged illness on 14 and 15 Aug, and an acute tag can
+# excuse a Red morning from the chronic cluster (``_qualify_red_morning``). Batch
+# 194's bounds are unchanged: only acute alcohol, illness or travel may excuse a Red,
+# only when HRV and resting HR do not contradict it, only the newest, for two days.
+# With no reading, no cause is found and the Red counts.
+CHECK_IN_CAUSE_ORDER: tuple[str, ...] = (
+    "alcohol",
+    "illness",
+    "travel",
+    "deliberate_rest",
+    "training_load",
+)
+#: The reader's symptom flags that count as the ``illness`` cause. A chest-or-heart
+#: symptom is not an illness excuse (Batch 294).
+_ILLNESS_FLAGS: tuple[str, ...] = ("fever_aches", "head_cold", "unwell")
+
+
+def reading_causes(reading: Mapping[str, Any]) -> tuple[tuple[str, str], ...]:
+    """``(cause, his words)`` from one stored reading, in the cause order. Pure.
+
+    Acute causes count only for now or last night; the endogenous ones (a recovery
+    week, training load) count unless the note places them before last night.
+    """
+
+    def flag(name: str) -> Mapping[str, Any]:
+        value = reading.get(name)
+        return value if isinstance(value, Mapping) else {}
+
+    found: dict[str, str] = {}
+    for name in ("alcohol", "travel"):
+        item = flag(name)
+        if item.get("state") == "present" and item.get("when") in {"now", "last_night"}:
+            found[name] = str(item.get("words") or "")
+    for name in _ILLNESS_FLAGS:
+        item = flag(name)
+        if (
+            item.get("state") == "present"
+            and item.get("who") == "him"
+            and item.get("when") in {"now", "last_night"}
+            and "illness" not in found
+        ):
+            found["illness"] = str(item.get("words") or "")
+    for name in ("deliberate_rest", "training_load"):
+        item = flag(name)
+        if item.get("state") == "present" and item.get("when") != "earlier":
+            found[name] = str(item.get("words") or "")
+    return tuple((cause, found[cause]) for cause in CHECK_IN_CAUSE_ORDER if cause in found)
+
+
+def _current_readings(
+    manual_rows: Sequence[ManualEntry], readings: Sequence[CheckInReading]
+) -> dict[uuid.UUID, Mapping[str, Any]]:
+    """Each check-in's reading of the note it carries now, when one was read."""
+
+    by_key = {
+        (row.manual_entry_id, row.notes_sha256): row for row in readings if row.status == "read"
+    }
+    current: dict[uuid.UUID, Mapping[str, Any]] = {}
+    for entry in manual_rows:
+        digest = notes_hash(entry.notes)
+        stored = by_key.get((entry.id, digest)) if digest is not None else None
+        if stored is not None:
+            current[entry.id] = stored.reading or {}
+    return current
+
 
 _RECOVERY_ACTION_METRICS = frozenset(
     {"readiness_score", "hrv_7_day_avg_ms", "resting_heart_rate_bpm"}
@@ -318,7 +326,8 @@ class RecordedTrainingContext:
         }
         if self.source == "morning_check_in":
             packet["matchedText"] = self.matched_text
-            packet["basis"] = "phrase matched in the check-in note"
+            # Batch 297: the notes reader's quote of his note, not a pattern match.
+            packet["basis"] = "his words in the check-in note, as the notes reader quoted them"
         elif self.source == "symptom_answer":
             # Batch 294: a tap, not a phrase, so there is nothing to mis-read.
             packet["matchedText"] = self.matched_text
@@ -673,6 +682,7 @@ class ChronicPatternSuggestionService:
         sex = _profile_sex(profile_section)
         baseline_bands = await self._baselines(player.id)
         manual_rows = await self._manual_entries(player.id, start=start, end=as_of)
+        readings = await NotesReaderService(self.session).readings_for(manual_rows)
         recent_verdicts = await self._recent_verdicts(
             player.id, as_of=as_of, timezone_name=player.timezone
         )
@@ -696,6 +706,7 @@ class ChronicPatternSuggestionService:
                 recovery_days,
                 manual_rows=manual_rows,
                 baselines=baseline_bands,
+                readings=readings,
             ),
             scheduled_recovery_blocks=await self._scheduled_recovery_blocks(player.id, as_of=as_of),
             recorded_training_context=await self._recorded_training_context(
@@ -703,6 +714,7 @@ class ChronicPatternSuggestionService:
                 start=start,
                 end=as_of,
                 manual_rows=manual_rows,
+                readings=readings,
             ),
             rem_rotation=rem_rotation,
         )
@@ -767,8 +779,9 @@ class ChronicPatternSuggestionService:
         start: date,
         end: date,
         manual_rows: Sequence[ManualEntry],
+        readings: Sequence[CheckInReading] = (),
     ) -> list[RecordedTrainingContext]:
-        recorded = _check_in_training_context(manual_rows)
+        recorded = _check_in_training_context(manual_rows, readings)
         row = await self.session.scalar(
             select(KnowledgeBase).where(
                 KnowledgeBase.user_id == user_id,
@@ -917,70 +930,17 @@ def _recovery_day(row: DailyMetric) -> RecoveryDay:
     )
 
 
-def classify_check_in_cause_matches(
-    feel: str | None, notes: str | None
-) -> tuple[tuple[str, str], ...]:
-    """``(cause, matched phrase)`` pairs for Mark's free-text explanation.
-
-    The single source of truth for check-in classification;
-    :func:`classify_check_in_causes` is the cause-only view of the same walk. The
-    matched phrase is what makes a tag explainable downstream (Batch 212) — the
-    engine keeps consuming bare causes exactly as before.
-    """
-
-    text = " ".join(part.strip() for part in (feel, notes) if part and part.strip()).lower()
-    if not text:
-        return ()
-    found: list[tuple[str, str]] = []
-    for cause, patterns in _CHECK_IN_CAUSE_PATTERNS.items():
-        for pattern in patterns:
-            matched = _first_non_negated_match(text, pattern)
-            if matched is not None:
-                found.append((cause, matched))
-                break
-    return tuple(found)
-
-
-def classify_check_in_causes(feel: str | None, notes: str | None) -> tuple[str, ...]:
-    """Turn Mark's persisted free-text explanation into narrow acute-cause tags.
-
-    This is deliberately a deterministic vocabulary rather than an LLM read: the
-    tags can qualify chronic escalation, so the same text must produce the same
-    result on every run. Unknown wording stays unknown and therefore cannot make a
-    Red disappear. A small negation check avoids treating phrases such as "no
-    alcohol" as an explanation.
-    """
-
-    return tuple(cause for cause, _ in classify_check_in_cause_matches(feel, notes))
-
-
 def _with_answered_illness(reasons: tuple[str, ...], *, answered: bool) -> tuple[str, ...]:
     """Add ``illness`` for a tapped symptom answer, keeping the vocabulary's order."""
 
     if not answered or "illness" in reasons:
         return reasons
-    order = tuple(_CHECK_IN_CAUSE_PATTERNS)
-    return tuple(sorted((*reasons, "illness"), key=order.index))
-
-
-def _first_non_negated_match(text: str, pattern: str) -> str | None:
-    """The first occurrence of ``pattern`` not preceded by a negation, or ``None``."""
-    for match in re.finditer(pattern, text):
-        prefix = text[max(0, match.start() - 18) : match.start()]
-        if not re.search(
-            r"(?:\bno|\bnot|\bwithout|\bdidn['’]?t)(?:\s+\w+){0,2}\s+$",
-            prefix,
-        ):
-            return match.group(0)
-    return None
-
-
-def _non_negated_match(text: str, pattern: str) -> bool:
-    return _first_non_negated_match(text, pattern) is not None
+    return tuple(sorted((*reasons, "illness"), key=CHECK_IN_CAUSE_ORDER.index))
 
 
 def _check_in_training_context(
     manual_rows: Sequence[ManualEntry],
+    readings: Sequence[CheckInReading] = (),
 ) -> list[RecordedTrainingContext]:
     recorded: list[RecordedTrainingContext] = []
     seen: set[tuple[date, str]] = set()
@@ -999,8 +959,12 @@ def _check_in_training_context(
                 matched_text=SYMPTOM_LABELS[str(row.symptoms)],
             )
         )
+    current = _current_readings(manual_rows, readings)
     for row in manual_rows:
-        for cause, matched in classify_check_in_cause_matches(row.feel, row.notes):
+        reading = current.get(row.id)
+        if reading is None:
+            continue
+        for cause, matched in reading_causes(reading):
             key = (row.entry_date, cause)
             if key in seen:
                 continue
@@ -1022,15 +986,21 @@ def _red_day_evidence(
     *,
     manual_rows: Sequence[ManualEntry],
     baselines: Mapping[str, BaselineBand],
+    readings: Sequence[CheckInReading] = (),
 ) -> dict[date, RedDayEvidence]:
-    text_by_date: dict[date, list[str | None]] = {}
+    # Batch 297: the causes each day's notes carry, from the reader's stored readings.
+    causes_by_date: dict[date, list[str]] = {}
+    current = _current_readings(manual_rows, readings)
     # Batch 294: a symptom answer counts as the ``illness`` cause, inside Batch 194's
     # bounds like a written one (newest only, two days, never beside strained HRV/RHR).
     illness_answered: set[date] = set()
     for manual_row in manual_rows:
-        text_by_date.setdefault(manual_row.entry_date, []).extend(
-            (manual_row.feel, manual_row.notes)
-        )
+        reading = current.get(manual_row.id)
+        if reading is not None:
+            day_causes = causes_by_date.setdefault(manual_row.entry_date, [])
+            day_causes.extend(
+                cause for cause, _ in reading_causes(reading) if cause not in day_causes
+            )
         if manual_row.symptoms in ILLNESS_SYMPTOM_ANSWERS:
             illness_answered.add(manual_row.entry_date)
 
@@ -1046,9 +1016,6 @@ def _red_day_evidence(
             recovery_day,
             [row for row in ordered if row.calendar_date < recovery_day.calendar_date],
         )
-        texts = text_by_date.get(recovery_day.calendar_date, [])
-        feel = " ".join(part for part in texts[::2] if part) or None
-        notes = " ".join(part for part in texts[1::2] if part) or None
         evidence[recovery_day.calendar_date] = RedDayEvidence(
             calendar_date=recovery_day.calendar_date,
             recovery_time_min=recovery_day.recovery_time_min,
@@ -1067,7 +1034,12 @@ def _red_day_evidence(
                 rhr_baseline.upper_quartile if rhr_baseline is not None else None
             ),
             check_in_reasons=_with_answered_illness(
-                classify_check_in_causes(feel, notes),
+                tuple(
+                    sorted(
+                        causes_by_date.get(recovery_day.calendar_date, []),
+                        key=CHECK_IN_CAUSE_ORDER.index,
+                    )
+                ),
                 answered=recovery_day.calendar_date in illness_answered,
             ),
             band_artifact=is_band_artifact(recalibration),

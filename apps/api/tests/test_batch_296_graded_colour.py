@@ -212,6 +212,8 @@ def test_a_graded_packet_carries_none_of_the_ladders_working(
         "readinessLowerQuartile",
         "inRecoveryWeek",
         "recoveryClassBlock",
+        "notesFeelNotch",
+        "notesFeelWords",
     }
     assert "graded_verdict" in packet["safetyRulesApplied"]
 

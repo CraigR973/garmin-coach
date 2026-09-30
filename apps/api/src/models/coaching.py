@@ -821,3 +821,37 @@ class Dispute(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     figure: Mapped[str | None] = mapped_column(String(120), nullable=True)
     snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class CheckInReading(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
+    """What Claude read in one morning check-in's notes (Batch 297).
+
+    One row per check-in version: the check-in row, and a SHA-256 of the notes it
+    read, so an edited note is read again and a regenerated brief reuses the
+    reading. ``status='failed'`` records a call that did not return a reading; the
+    next regeneration retries it in place. ``reading`` holds the flags, each
+    present, absent or unclear, with his words, who and when. The flags can only
+    add caution (``services.notes_reader``).
+    """
+
+    __tablename__ = "check_in_readings"
+    __table_args__ = (
+        UniqueConstraint(
+            "manual_entry_id", "notes_sha256", name="uq_check_in_readings_entry_notes"
+        ),
+        Index("ix_check_in_readings_user_created", "user_id", "created_at"),
+        CheckConstraint("status IN ('read', 'failed')", name="ck_check_in_readings_status"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    manual_entry_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("manual_entries.id", ondelete="CASCADE"), nullable=False
+    )
+    notes_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    reading: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    model_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    prompt_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    error: Mapped[str | None] = mapped_column(String(300), nullable=True)

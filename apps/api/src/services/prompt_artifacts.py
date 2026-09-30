@@ -126,6 +126,13 @@ PROMPT_ARTIFACTS: tuple[PromptArtifact, ...] = (
         (),
         "Writes learned-context candidates, not a rendered artifact.",
     ),
+    PromptArtifact(
+        "notes_reader",
+        RegenerationContract.UNFILTERED,
+        (),
+        "Batch 297: a stored reading is reused for its note whatever version wrote it, "
+        "so a bump withdraws nothing; an edited note is read again.",
+    ),
     # -- deterministic: no model, no prompt, historical name --------------------
     PromptArtifact("executable_coaching", RegenerationContract.DETERMINISTIC),
     PromptArtifact("nudge_alerts", RegenerationContract.DETERMINISTIC),

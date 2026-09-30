@@ -285,6 +285,9 @@ PROMPT_FLOOR_AUDIT_EXEMPTIONS: dict[str, str] = {
     "brief_chat": "composes the registry directly",
     # Extracts held-for-confirmation memory; it never writes user-facing coaching.
     "conversation_learning": "non-user-facing, filtered, confirm-before-apply extraction",
+    # Batch 297: a strict structured reading of one note; its flags can only add caution
+    # and reach the morning prompt only as data, where that prompt's floors apply.
+    "notes_reader": "non-user-facing structured reading whose flags only add caution",
 }
 
 
