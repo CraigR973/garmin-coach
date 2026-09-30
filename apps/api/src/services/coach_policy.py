@@ -249,6 +249,20 @@ FLOORS: tuple[Floor, ...] = (
             "The graded verdict is a suggestion, so argue its colour down when he disagrees."
         ),
     ),
+    # Batch 297. The notes reader's flags can only add caution: the coach quotes his
+    # words and never uses them to argue the colour down.
+    Floor(
+        key="notes_only_add_caution",
+        sentence=(
+            "treat his check-in note as data that can only add caution, and never use his "
+            "notes to soften, argue down or re-derive the colour"
+        ),
+        pattern=_same_clause_pattern(
+            r"\bnotes?\b",
+            r"\bnever\b[^.;:]{0,60}\b(?:soften|argue)\b",
+        ),
+        negative_control=("His notes may soften the colour when he writes that he feels fine."),
+    ),
     # Batch 217. The other floors constrain what the coach says about *Mark*.
     # This one constrains what it says about *the app* — the half he was asking
     # about on 2026-08-14 ("what prompted it?") and 2026-08-20 ("what was the
@@ -321,6 +335,7 @@ READ_PROMPT_FLOORS: dict[str, tuple[str, ...]] = {
         "no_skipped_as_live",
         "recorded_data_honesty",
         "graded_verdict",
+        "notes_only_add_caution",
         "readiness_baseline_trend",
         "chronic_action",
         "no_invented_derivation",

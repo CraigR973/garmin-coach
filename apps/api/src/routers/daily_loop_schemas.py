@@ -130,6 +130,10 @@ class AnalysisOut(BaseModel):
     # targets held. A read stored before the switch has no engine and is not held.
     verdictEngine: str | None = None
     verdictHeld: bool = False
+    # Batch 297: his note may name a symptom, so Home asks the symptom question.
+    notesAsk: bool = False
+    notesAskWords: str | None = None
+    notesReadingStatus: str | None = None
 
 
 class PostWorkoutAnalysisOut(BaseModel):

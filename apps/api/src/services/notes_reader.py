@@ -145,8 +145,10 @@ it without saying it. When unsure about chest_heart, fever_aches or head_cold, a
 unclear, never present.
 who: him when it is about Mark; someone_else when it is about another person (his \
 wife, a grandson, a friend, colleagues); unknown when you cannot tell.
-when: now (this morning or today), last_night, earlier (before last night, including \
-anything past or resolved, such as "had a cold three weeks ago"), unknown.
+when: now when it is still going on this morning, however long ago it started \
+("since yesterday", "for three days"); last_night when it was only in the night; \
+earlier only when it is over, or was before last night and he does not say it \
+continues ("had a cold three weeks ago", "years ago"); unknown when you cannot tell.
 words: the shortest exact words from the note that show it, copied verbatim. Empty \
 when the state is absent.
 
@@ -351,7 +353,9 @@ def day_effects(
             model_name=stored.model_name,
             prompt_version=stored.prompt_version,
         )
-    answered = _answered_after(noted.entry_at_utc, stored.created_at)
+    # When the successful reading was written: a retried row keeps the failed
+    # attempt's created_at, so a check-in between the two must not count as an answer.
+    answered = _answered_after(noted.entry_at_utc, stored.updated_at or stored.created_at)
     effects = reading_effects(stored.reading or {}, answered_after_reading=answered)
     return replace(effects, model_name=stored.model_name, prompt_version=stored.prompt_version)
 
@@ -391,6 +395,8 @@ class AnthropicNotesReaderClient:
         self.thinking = configured_thinking() if use_configured_reasoning else thinking
         self.effort = configured_effort() if use_configured_reasoning else effort
         self.last_model_name: str | None = None
+        #: The last call's token usage, for the eval's cost ledger.
+        self.last_usage: dict[str, Any] = {}
 
     async def read(self, notes: str) -> dict[str, Any]:
         if not self.api_key:
@@ -407,6 +413,8 @@ class AnthropicNotesReaderClient:
             output_schema=anthropic_schema(NotesReading),
         )
         self.last_model_name = result.model_name
+        usage = result.raw_response.get("usage")
+        self.last_usage = dict(usage) if isinstance(usage, Mapping) else {}
         return parse_reading(result.output_markdown)
 
 

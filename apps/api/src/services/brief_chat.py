@@ -158,7 +158,10 @@ QUESTION_MAX_LENGTH = 1000
 # UNFILTERED, so this withdraws no stored artifact.
 # Batch 296: v17 composes the new graded_verdict floor, so the coach explains the
 # graded colour by his own numbers and never argues it. UNFILTERED: nothing withdrawn.
-PROMPT_VERSION = "coach-chat-v17-2026-09-29"
+# Batch 297: v18 composes the new notes_only_add_caution floor, so the coach quotes
+# what his note said and never uses it to argue the colour down. UNFILTERED: nothing
+# withdrawn.
+PROMPT_VERSION = "coach-chat-v18-2026-09-30"
 #: Batch 264: the marker now carries the change. It was a bare flag meaning "I
 #: offered something"; the offer itself lived only in prose, so the app could
 #: never act on it. ``brief_chat`` is UNFILTERED in ``prompt_artifacts`` with no

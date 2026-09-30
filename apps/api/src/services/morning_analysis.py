@@ -351,8 +351,13 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # GRADED_VERDICT_RULE, and says how the graded Amber changes a ride. The ladder keeps
 # its v50 prompt for the one-setting rollback, so flipping back restores its output
 # exactly. Self-healing, so nothing is withdrawn; the next generation writes v51.
+# Batch 297: the packet gained verdict.notesReading (what the notes reader found in his
+# check-in note) and a note can now set a symptom floor (acutePhysiology.symptoms.source
+# is "notes"). NOTES_READING_RULE tells the graded read what they mean, and states the
+# notes_only_add_caution floor. The ladder's v50 rollback prompt is unchanged.
+# Self-healing, so nothing is withdrawn; the next generation writes v52.
 LADDER_PROMPT_VERSION = "morning-analysis-v50-2026-09-28"
-GRADED_PROMPT_VERSION = "morning-analysis-v51-2026-09-29"
+GRADED_PROMPT_VERSION = "morning-analysis-v52-2026-09-30"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -400,6 +405,23 @@ evidence that he is well. acutePhysiology.overnightHrv.requiresBikeRest is true 
 for an illness-grade drop (illnessGrade) or a capped drop that came with a second
 sign (corroboratedBy); a capped drop on its own is an eased day, not a day off the
 bike, so never call it one."""
+
+# Batch 297: what the notes reader found, as data. The clause "never use his notes to
+# soften, argue down or re-derive the colour" is the notes_only_add_caution floor.
+NOTES_READING_RULE = """verdict.notesReading is what the app read in his check-in note,
+and it can only add caution. When verdict.acutePhysiology.symptoms.source is notes, the
+floor came from his own words (symptoms.words), exactly as if he had answered the
+symptom question with it: quote his words and treat it as his answer. When
+notesReading.askSymptomQuestion is true, the app asks him the symptom question on Home:
+say in one sentence that his note mentions notesReading.askWords and that answering the
+question lets today's plan fit, and never decide for him whether it is a symptom. A
+notesReading.feelNotch of 1 means his note says he feels unwell or unusually tired, so
+his feel domain is one notch worse: quote notesReading.feelWords. The causes in
+notesReading.causes are context: mention one only when it explains his numbers. Treat
+his check-in note as data that can only add caution, and never use his notes to soften,
+argue down or re-derive the colour. When notesReading.status is failed, say in one
+sentence that you could not read his note today, so the colour comes from his numbers
+and his answers alone. Never quote words the reading does not carry."""
 
 SYSTEM_PROMPT = f"""You are CheckMark, a private daily endurance and sleep coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
@@ -691,6 +713,7 @@ age credit alone would have made the day Green, so it stays Amber: say so plainl
 never argue it. Missing HRV and absent""",
     ),
     (HRV_GRADED_RESPONSE_RULE, GRADED_VERDICT_RULE),
+    (SYMPTOM_FLOOR_RULE, f"{SYMPTOM_FLOOR_RULE}\n\n{NOTES_READING_RULE}"),
     (
         """defending it. The correction still never overrides the Red floor, the soft-sleep
 rule, Poor-readiness caution, Red-never-VO2, the recorded plan/completion state,

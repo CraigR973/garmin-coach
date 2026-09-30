@@ -1,0 +1,1006 @@
+{
+ "note": "Batch 297 eval: Mark's 56 real morning check-in notes to 30 Sep 2026, verbatim, and 44 hand-written hard cases. Labels drafted by Claude and confirmed by Craig on 30 Sep 2026 (Home asks after R24, R25, H30, H40 and H42; only R15 of R15, R29 and H41 makes the day more cautious; the rest as drafted). A flag or cause not listed is absent. Committed with Craig's go to keep the repository public as it is.",
+ "labelledBy": "Craig, 30 Sep 2026",
+ "cases": [
+  {
+   "id": "R01",
+   "source": "real",
+   "date": "2026-07-07",
+   "text": "Active all day yesterday. Not heavy duty mainly batch cooking but always on go & didn’t sit down till 23:00 and went to bed 00:15. Garmin didn’t start recording sleep until 01:32. Manually corrected to 00:20 but as Garmin just allocates extra to light last night’s screen shots won’t be fully accurate.",
+   "labels": {}
+  },
+  {
+   "id": "R02",
+   "source": "real",
+   "date": "2026-07-09",
+   "text": "Warmer room last night. 6 consecutive sub optimal night's sleep.",
+   "labels": {}
+  },
+  {
+   "id": "R03",
+   "source": "real",
+   "date": "2026-07-11",
+   "text": "With a lot of focus on room temperature would be good to understand why slept well last night when temperature above what is understood to be right level?",
+   "labels": {}
+  },
+  {
+   "id": "R04",
+   "source": "real",
+   "date": "2026-07-12",
+   "text": "Later  in bed.",
+   "labels": {}
+  },
+  {
+   "id": "R05",
+   "source": "real",
+   "date": "2026-07-19",
+   "text": "Heavier later dinner of Chinese takeaway and later bedtime probably impacted sleep",
+   "labels": {}
+  },
+  {
+   "id": "R06",
+   "source": "real",
+   "date": "2026-07-20",
+   "text": "Garmin watch didn't start recording sleep until 01:27 as sometimes happens in error. Manually edited to right time of 00 :15 but note it just allocates extra 1 hour 12 minutes to light sleep and doesn't adjust anything else so sleep stages will be wrong.",
+   "labels": {}
+  },
+  {
+   "id": "R07",
+   "source": "real",
+   "date": "2026-07-21",
+   "text": "Last night's poor sleep and restlessness is pretty inexplicable to me. Only thing I did differently was evening snack as below.",
+   "labels": {}
+  },
+  {
+   "id": "R08",
+   "source": "real",
+   "date": "2026-07-22",
+   "text": "A few awakenings last night. I think cause was misjudging outside conditions and left windows opened which created a draf. Despite this feel better than expected this morning.",
+   "labels": {}
+  },
+  {
+   "id": "R09",
+   "source": "real",
+   "date": "2026-07-23",
+   "text": "Note watch once again misread sleep noting this starting at 01:37. I've manually corrected this to 00:20 but again garmin allocates the extra 1 HR 17 mins to light sleep so all figures are skewed and score likely incorrect.",
+   "labels": {}
+  },
+  {
+   "id": "R10",
+   "source": "real",
+   "date": "2026-07-24",
+   "text": "A bit more restless night which is the norm for me after harder workout.",
+   "labels": {}
+  },
+  {
+   "id": "R11",
+   "source": "real",
+   "date": "2026-07-26",
+   "text": "Feel pretty good today and probably best for a few weeks. Interesting to me that this is after returning to a normal and harder weeks training after 3 lighter weeks.",
+   "labels": {}
+  },
+  {
+   "id": "R12",
+   "source": "real",
+   "date": "2026-07-28",
+   "text": "Feel cooling room to a low of 17.3 last night vs 16.5 the night before made a big difference.",
+   "labels": {}
+  },
+  {
+   "id": "R13",
+   "source": "real",
+   "date": "2026-07-29",
+   "text": "Bit more disrupted sleep last night but suspect due to having more windows open wider and fan on low as struggled to cool room last night and overnight forecast temp was higher. My suspicion is while room itself not to cold the ventilation was and whilst did directly notice a draft think this may have affected sleep quality.",
+   "labels": {}
+  },
+  {
+   "id": "R14",
+   "source": "real",
+   "date": "2026-07-31",
+   "text": "Didn't ferl like as good a night's sleep as recent nights and more disrupted presumably due to a harder day's training yesterday and cumulative 3 day training load.",
+   "labels": {}
+  },
+  {
+   "id": "R15",
+   "source": "real",
+   "date": "2026-08-01",
+   "text": "Was out last night drinking. I virtually never drink alcohol now and had 13 uk units last night and had poor sleep and feel the effects this morning.",
+   "labels": {
+    "unwell": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    },
+    "alcohol": {
+     "state": "present",
+     "when": "last_night"
+    }
+   }
+  },
+  {
+   "id": "R16",
+   "source": "real",
+   "date": "2026-08-04",
+   "text": "Note as sometimes happens garmin watch started recording sleep starting at wrong time (01:03 instead of 00:23). I've manually adjusted this but as all it does is allocate missing 40 mins to light sleep then it's breakdown of last night's sleep stages will be flawed.",
+   "labels": {}
+  },
+  {
+   "id": "R17",
+   "source": "real",
+   "date": "2026-08-07",
+   "text": "Note that very unusually for me  when I very rarely drink alcohol, I had a second social event in a week yesterday and was out from 13:00 to 23:00. We ate a large 3 course meal around 15:00 and I ate a supermarket chicken and bacon sandwich at 22:15. I did try to limit my drinking having 4 bottles of beer (6.4 units of alcohol) and alternated these with bottles of peroni 0% beer. The key point is my poor sleep last night has a clear reason and not a surprise albeit I'm disappointed it was as bad as last Friday night when I had half as much alcohol yesterday.",
+   "labels": {
+    "alcohol": {
+     "state": "present",
+     "when": "last_night"
+    }
+   }
+  },
+  {
+   "id": "R18",
+   "source": "real",
+   "date": "2026-08-09",
+   "text": "After a fairly active day yesterday with a couple of hours gardening and supermarket shop in addition to recorded exercise was pretty tired by time went to bed. Also note as usual for a Saturday night overate with a Chinese takeaway.",
+   "labels": {}
+  },
+  {
+   "id": "R19",
+   "source": "real",
+   "date": "2026-08-11",
+   "text": "Note Garmin watch originally stopped recording sleep at 07:36 but I didn't actually get up until 08:05. Manually corrected but as always additional 29 mins just allocated to light which won't be correct and skews sleep stages.",
+   "labels": {}
+  },
+  {
+   "id": "R20",
+   "source": "real",
+   "date": "2026-08-12",
+   "text": "Warmer day yesterday so started aggressively cooling bedroom at 18:30 with all windows wide open and two fans and temp was lowest I could reach.",
+   "labels": {}
+  },
+  {
+   "id": "R21",
+   "source": "real",
+   "date": "2026-08-13",
+   "text": "To me the last 2 night's poorer sleep virtually categorically prove that the biggest factor affecting my sleep is overnight temperature.",
+   "labels": {}
+  },
+  {
+   "id": "R22",
+   "source": "real",
+   "date": "2026-08-14",
+   "text": "Tried sleeping with just single sheet rather than quilt which made big difference and experiment worked with very good sleep up until 05:45. Only downside was weather changed and with windows open and just sheet meant more awake from this time as felt cold from drafts.",
+   "labels": {}
+  },
+  {
+   "id": "R23",
+   "source": "real",
+   "date": "2026-08-15",
+   "text": "Did good job cooling room to 17° but tried experiment of sleeping just with thin quilt cover instead of quilt again. Also kept one window on each side of room open 10cm with blind out from windowsill. This backfired as too cold and at 02:50 had to change to quilt. Not sure if due to temp or draught as wind was at angle cold air coming more directly into room.",
+   "labels": {}
+  },
+  {
+   "id": "R24",
+   "source": "real",
+   "date": "2026-08-16",
+   "text": "Note I had a takeaway fish and chips for dinner that didn't agree with me and while sleep recorded as starting at 01:56 was in bed at 00:00. I wasn't asleep all this time but did have at least 75 minutes sleep including some good deep in there but haven't adjusted garmin sleep as will all just be allocated to light.",
+   "labels": {
+    "unwell": {
+     "state": "present",
+     "who": "him",
+     "when": "last_night"
+    }
+   }
+  },
+  {
+   "id": "R25",
+   "source": "real",
+   "date": "2026-08-17",
+   "text": "Gut better after impact of Saturday takeaway fish and chip dinner but still not back to normal.",
+   "labels": {
+    "unwell": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "R26",
+   "source": "real",
+   "date": "2026-08-18",
+   "text": "Active day yesterday. Nothing heavy but a lot of time on feet batch cooking in kitchen.",
+   "labels": {}
+  },
+  {
+   "id": "R27",
+   "source": "real",
+   "date": "2026-08-21",
+   "text": "Slept well but did feel like a higher number of wakenings than usual. Slept well but did feel like a higher number of wakenings than usual.",
+   "labels": {}
+  },
+  {
+   "id": "R28",
+   "source": "real",
+   "date": "2026-08-22",
+   "text": "Switching bodyweight workout to first thing rather than waiting until after workout has made a significant difference. It took me from feeling tired to good and felt much better than doing it around 17:00 post cycling workout.",
+   "labels": {}
+  },
+  {
+   "id": "R29",
+   "source": "real",
+   "date": "2026-08-23",
+   "text": "Last night's sleep didn't feel as good as recent nights. I think however biggest reason was overeating a Chinese takeaway meal for dinner which was much more than I normally eat and 90 minutes later at 19:00. More Tired at first this morning but feel better after first day of doing a mini version of bodyweight workout (3 reps of each exercise instead of 10) which I plan to do daily now (and progressively increase no. of reps weekly).",
+   "labels": {}
+  },
+  {
+   "id": "R30",
+   "source": "real",
+   "date": "2026-08-24",
+   "text": "Note later to bed last night as at concert but feel good. Early days but Definitely feel the new 7 minute 3x3 7 minute bodyweight workout first thing (which will progress by 1 rep weekly) is making me more energised and less tired.",
+   "labels": {}
+  },
+  {
+   "id": "R31",
+   "source": "real",
+   "date": "2026-08-26",
+   "text": "Slept felt not quite as good but still OK. A typical post vo2 workout sleep.",
+   "labels": {}
+  },
+  {
+   "id": "R32",
+   "source": "real",
+   "date": "2026-08-27",
+   "text": "That's a couple of consecutive nights where I've still been doing chores and not sat down to nearer 22:00 which I suspect has probably impacted my sleep slightly.",
+   "labels": {}
+  },
+  {
+   "id": "R33",
+   "source": "real",
+   "date": "2026-08-28",
+   "text": "I feel chose wrong day for Yesterday's experiment of doing chores before workout and it backfired especially as a harder workout and temp was higher at 25° later in day. Compounded by going out to cinema at night which also meant no time for stretching or breathing exercises.",
+   "labels": {}
+  },
+  {
+   "id": "R34",
+   "source": "real",
+   "date": "2026-08-29",
+   "text": "Note re \"last night's set up\" window openings and blinds are overnight set up - all windows and blinds are opened fully during pre-coolNote re \"last night's set up\" window openings and blinds are overnight set up - all windows and blinds are opened fully during pre-cool",
+   "labels": {}
+  },
+  {
+   "id": "R35",
+   "source": "real",
+   "date": "2026-08-30",
+   "text": "Dinner & drinks last night - overate with 9-10 units alcohol 17:15 - 22:15. Definitely big impact on sleep but note watch only recorded  from 04:04. Corrected to 00:00 but e.g. sleep stages, body battery charge, overnight hrv etc only record from 04:04 so inaccurate (albeit even if correct worse than normal).",
+   "labels": {
+    "alcohol": {
+     "state": "present",
+     "when": "last_night"
+    }
+   }
+  },
+  {
+   "id": "R36",
+   "source": "real",
+   "date": "2026-08-31",
+   "text": "Note window's in \"Last night's set up\" was overnight not during pre cool",
+   "labels": {}
+  },
+  {
+   "id": "R37",
+   "source": "real",
+   "date": "2026-09-01",
+   "text": "Last night to me confirmed difficulty of balancing overnight bedroom conditions as although had temp ok even small window openings did create drafts which felt impacted sleep. With cooler outside temps going to try for next few nights getting room to 17° then sealing.",
+   "labels": {}
+  },
+  {
+   "id": "R38",
+   "source": "real",
+   "date": "2026-09-02",
+   "text": "Note unusual issue with garmin sleep recording where sleep stages don't add up to time in bed. Looking further there was 20 mins period around 06:00 where it didn't record anything at all, not even awake. Interestingly in this 20 mins was still recording HR but not hrv.",
+   "labels": {}
+  },
+  {
+   "id": "R39",
+   "source": "real",
+   "date": "2026-09-03",
+   "text": "Bit later in bed last night",
+   "labels": {}
+  },
+  {
+   "id": "R40",
+   "source": "real",
+   "date": "2026-09-05",
+   "text": "Watch incorrectly recorded sleep starting at 01:25 when actually 00:10. Manually corrected but with 00:10 to 01:25 all allocated to Light ght stages will be incorrect. Ironically whilst sleep felt ok during night wouldn't say it felt exceptional and would love to know why rem was so good so can replicate in future. Also note window openings noted below are for overnight not pre cool.",
+   "labels": {}
+  },
+  {
+   "id": "R41",
+   "source": "real",
+   "date": "2026-09-06",
+   "text": "Window openings in last night's set up was overnight not during pre cool",
+   "labels": {}
+  },
+  {
+   "id": "R42",
+   "source": "real",
+   "date": "2026-09-07",
+   "text": "Busier night last night meaning didn't get to do breathing, flexibility workout or to sit down and later in bed which suspect are reasons for poor sleep.",
+   "labels": {}
+  },
+  {
+   "id": "R43",
+   "source": "real",
+   "date": "2026-09-08",
+   "text": "Window openings in last night's set up is overnight not pre cool.",
+   "labels": {}
+  },
+  {
+   "id": "R44",
+   "source": "real",
+   "date": "2026-09-09",
+   "text": "Again windows in \"Last night's set up\" was overnight not during pre cool.",
+   "labels": {}
+  },
+  {
+   "id": "R45",
+   "source": "real",
+   "date": "2026-09-13",
+   "text": "I had 2 beers last night (4.6 units alcohol) and even an amount as little as this looks like it affected my sleep, HRV, rhr and garmin stress.",
+   "labels": {
+    "alcohol": {
+     "state": "present",
+     "when": "last_night"
+    }
+   }
+  },
+  {
+   "id": "R46",
+   "source": "real",
+   "date": "2026-09-15",
+   "text": "Outside temp higher last night which meant temp at bedtime was lowest possible. Also had windows open to keep temp down but felt drafts possibly impacted sleep.",
+   "labels": {}
+  },
+  {
+   "id": "R47",
+   "source": "real",
+   "date": "2026-09-16",
+   "text": "Felt like a poorer more disrupted sleep than the garmin sleep score suggests. Also later in bed last night.",
+   "labels": {}
+  },
+  {
+   "id": "R48",
+   "source": "real",
+   "date": "2026-09-18",
+   "text": "I see hrv gone unbalanced in this regard however note 7 day average is same 45 as yesterday but garmin has raised floor from 45 to 46. In saying this I can see my 7 day average had dropped recently and wonder if this fits current recovery week impact theory?",
+   "labels": {}
+  },
+  {
+   "id": "R49",
+   "source": "real",
+   "date": "2026-09-19",
+   "text": "As discussed yesterday tried precooling room to 18 rather than 17°. Note was in bed at 11:50 but got woken just after falling asleep and took me a while to get back to sleep. Re unbalanced hrv and recovery week impact - This recovery week (week 9) 7 day hrv dropped from 47 to 44 after being 48  for 5 weeks since last recovery week starting 03/08. Last recovery week it dropped to 44 after being 50 week before. Recovery week before that (02/06) dropped from 54 to 44 - surely a pattern and confirmation of theory on impact of recovery week?",
+   "labels": {
+    "disturbed_night": {
+     "state": "present",
+     "when": "last_night"
+    }
+   }
+  },
+  {
+   "id": "R50",
+   "source": "real",
+   "date": "2026-09-20",
+   "text": "Important to note Garmin has now lowered floor for hrv band back to 45 after raising it to 46 for previous 2 days. This totally confirms the point I've made over last 2 days that whilst my 7 day average hrv has been totally steady at 45 you've recorded 2 red days because garmin inexplicably moved this floor for 2 days which is an overreaction and flawed.",
+   "labels": {}
+  },
+  {
+   "id": "R51",
+   "source": "real",
+   "date": "2026-09-21",
+   "text": "1) Watch didn't start recording sleep until 02:07 whereas actually asleep at 00:35. Corrected manually but garmin just allocates the extra 92 mins to light sleep and doesn't include this in many of the metrics.\n2) HRV lower as expected as away from home last night with later and larger meal than normal and 3.2 units alcohol.\n3) As away from home no temp data for hotel room stayed in with data app has being for home bedroom. Would say hotel room was warmer than home.",
+   "labels": {
+    "travel": {
+     "state": "present",
+     "when": "last_night"
+    },
+    "alcohol": {
+     "state": "present",
+     "when": "last_night"
+    }
+   }
+  },
+  {
+   "id": "R52",
+   "source": "real",
+   "date": "2026-09-22",
+   "text": "Still suspect there will be an overreaction to the recent red nights when 2 of these were caused by garmin inexplicably moving hrv band floor up for 2 days, a recovery week lowering hrv and one night away from home with late heavy meal and some alcohol and important to say feel absolutely fine today.",
+   "labels": {
+    "alcohol": {
+     "state": "present",
+     "when": "earlier"
+    },
+    "travel": {
+     "state": "present",
+     "when": "earlier"
+    }
+   }
+  },
+  {
+   "id": "R53",
+   "source": "real",
+   "date": "2026-09-23",
+   "text": "Important to note that 1) hrv starting to rise after night away where ate more and later than normal for 2 days and had a poor night's sleep. 2) Still feel too much emphasis being placed on hrv status especially when floor of balanced band has moved from 44 to 45 10 Sept (and inexplicably had 2 days at 46 18th & 19th) leading directly to red days app is factoring in.",
+   "labels": {
+    "travel": {
+     "state": "present",
+     "when": "earlier"
+    }
+   }
+  },
+  {
+   "id": "R54",
+   "source": "real",
+   "date": "2026-09-24",
+   "text": "Didn't feel like quite as good a night's sleep last night as recently.",
+   "labels": {}
+  },
+  {
+   "id": "R55",
+   "source": "real",
+   "date": "2026-09-27",
+   "text": "Note last night exceptional as up at 03:00 to leave for holiday flight.",
+   "labels": {
+    "travel": {
+     "state": "present",
+     "when": "now"
+    },
+    "disturbed_night": {
+     "state": "present",
+     "when": "last_night"
+    }
+   }
+  },
+  {
+   "id": "R56",
+   "source": "real",
+   "date": "2026-09-30",
+   "text": "Note on holiday in Spain just now where temp was 30° yesterday and 25° through night which sure would have had impact but feel had decent sleep last night despite this and feel ok today. No sleep set up data added as away from home and can't do any and nite room temp data app has is for home not here.",
+   "labels": {
+    "travel": {
+     "state": "present",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "H01",
+   "source": "hard",
+   "date": null,
+   "text": "Woke with a sore throat and a runny nose, think I'm coming down with a cold.",
+   "labels": {
+    "head_cold": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "H02",
+   "source": "hard",
+   "date": null,
+   "text": "Bit of a head cold today, blocked nose and sneezing, otherwise fine.",
+   "labels": {
+    "head_cold": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "H03",
+   "source": "hard",
+   "date": null,
+   "text": "Shivery and achy all over this morning; took my temperature and it's 38.2.",
+   "labels": {
+    "fever_aches": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "H04",
+   "source": "hard",
+   "date": null,
+   "text": "Chesty cough since yesterday and I'm coughing up green phlegm.",
+   "labels": {
+    "fever_aches": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "H05",
+   "source": "hard",
+   "date": null,
+   "text": "Hot and cold sweats overnight and my muscles ache.",
+   "labels": {
+    "fever_aches": {
+     "state": "present",
+     "who": "him",
+     "when": "last_night"
+    }
+   }
+  },
+  {
+   "id": "H06",
+   "source": "hard",
+   "date": null,
+   "text": "My heart was racing and fluttering in bed last night for about ten minutes.",
+   "labels": {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "last_night"
+    }
+   }
+  },
+  {
+   "id": "H07",
+   "source": "hard",
+   "date": null,
+   "text": "Tight feeling across my chest walking up the stairs this morning.",
+   "labels": {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "H08",
+   "source": "hard",
+   "date": null,
+   "text": "Felt dizzy and light-headed when I stood up and nearly fainted.",
+   "labels": {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "H09",
+   "source": "hard",
+   "date": null,
+   "text": "Heart felt like it was skipping beats on and off during the evening.",
+   "labels": {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "last_night"
+    }
+   }
+  },
+  {
+   "id": "H10",
+   "source": "hard",
+   "date": null,
+   "text": "Streaming cold and I feel rotten.",
+   "labels": {
+    "head_cold": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    },
+    "unwell": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "H11",
+   "source": "hard",
+   "date": null,
+   "text": "Nauseous this morning with stomach cramps.",
+   "labels": {
+    "unwell": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "H12",
+   "source": "hard",
+   "date": null,
+   "text": "Legs feel like lead this morning, heavier than after any normal session.",
+   "labels": {
+    "fatigue": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "H13",
+   "source": "hard",
+   "date": null,
+   "text": "Absolutely wiped out today for no obvious reason.",
+   "labels": {
+    "fatigue": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "H14",
+   "source": "hard",
+   "date": null,
+   "text": "Throat a bit scratchy, but it might just be the dry air from the hotel air-con.",
+   "labels": {
+    "head_cold": {
+     "state": "unclear",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "H15",
+   "source": "hard",
+   "date": null,
+   "text": "Feel a bit off today and can't put my finger on why.",
+   "labels": {
+    "unwell": {
+     "state": "unclear",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "H16",
+   "source": "hard",
+   "date": null,
+   "text": "Slight tickle in my chest, probably nothing.",
+   "labels": {
+    "fever_aches": {
+     "state": "unclear",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "H17",
+   "source": "hard",
+   "date": null,
+   "text": "No cold symptoms at all, even though everyone around me seems to have one.",
+   "labels": {
+    "head_cold": {
+     "state": "present",
+     "who": "someone_else",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "H18",
+   "source": "hard",
+   "date": null,
+   "text": "No chest pain or anything like that, just stiff from the gardening.",
+   "labels": {}
+  },
+  {
+   "id": "H19",
+   "source": "hard",
+   "date": null,
+   "text": "Not ill, just tired after the late night.",
+   "labels": {
+    "disturbed_night": {
+     "state": "present",
+     "when": "last_night"
+    }
+   }
+  },
+  {
+   "id": "H20",
+   "source": "hard",
+   "date": null,
+   "text": "Heart rate has settled and no palpitations since I cut out the caffeine.",
+   "labels": {}
+  },
+  {
+   "id": "H21",
+   "source": "hard",
+   "date": null,
+   "text": "Feel fine, no aches or pains.",
+   "labels": {}
+  },
+  {
+   "id": "H22",
+   "source": "hard",
+   "date": null,
+   "text": "My wife has come down with a nasty cold, so I'm sleeping in the spare room.",
+   "labels": {
+    "head_cold": {
+     "state": "present",
+     "who": "someone_else",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "H23",
+   "source": "hard",
+   "date": null,
+   "text": "Our grandson had a fever at the weekend and we looked after him.",
+   "labels": {
+    "fever_aches": {
+     "state": "present",
+     "who": "someone_else",
+     "when": "earlier"
+    }
+   }
+  },
+  {
+   "id": "H24",
+   "source": "hard",
+   "date": null,
+   "text": "A friend at the club had chest pains on the ride and was taken to hospital. Shook me up.",
+   "labels": {
+    "chest_heart": {
+     "state": "present",
+     "who": "someone_else",
+     "when": "earlier"
+    }
+   }
+  },
+  {
+   "id": "H25",
+   "source": "hard",
+   "date": null,
+   "text": "Half the office is off with flu.",
+   "labels": {
+    "fever_aches": {
+     "state": "present",
+     "who": "someone_else",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "H26",
+   "source": "hard",
+   "date": null,
+   "text": "Had a cold three weeks ago and I'm fully over it now.",
+   "labels": {
+    "head_cold": {
+     "state": "present",
+     "who": "him",
+     "when": "earlier"
+    }
+   }
+  },
+  {
+   "id": "H27",
+   "source": "hard",
+   "date": null,
+   "text": "Last month's chest infection took a while to clear, but I feel back to normal.",
+   "labels": {
+    "fever_aches": {
+     "state": "present",
+     "who": "him",
+     "when": "earlier"
+    }
+   }
+  },
+  {
+   "id": "H28",
+   "source": "hard",
+   "date": null,
+   "text": "Years ago I had an irregular heartbeat checked and it was fine.",
+   "labels": {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "earlier"
+    }
+   }
+  },
+  {
+   "id": "H29",
+   "source": "hard",
+   "date": null,
+   "text": "Room was too cold at 16° and I woke up shivering at 4am.",
+   "labels": {
+    "disturbed_night": {
+     "state": "present",
+     "when": "last_night"
+    }
+   }
+  },
+  {
+   "id": "H30",
+   "source": "hard",
+   "date": null,
+   "text": "Think I caught a chill from the window being open all night.",
+   "labels": {
+    "head_cold": {
+     "state": "unclear",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "H31",
+   "source": "hard",
+   "date": null,
+   "text": "Cold draught from the window again; I need to sort the seal.",
+   "labels": {}
+  },
+  {
+   "id": "H32",
+   "source": "hard",
+   "date": null,
+   "text": "The room temperature hit 22° by 3am.",
+   "labels": {}
+  },
+  {
+   "id": "H33",
+   "source": "hard",
+   "date": null,
+   "text": "Resting heart rate up 3 bpm after the beers, as expected.",
+   "labels": {
+    "alcohol": {
+     "state": "present",
+     "when": "last_night"
+    }
+   }
+  },
+  {
+   "id": "H34",
+   "source": "hard",
+   "date": null,
+   "text": "Garmin shows my heart rate spiked to 90 in the night, probably when I got up for the loo.",
+   "labels": {}
+  },
+  {
+   "id": "H35",
+   "source": "hard",
+   "date": null,
+   "text": "My heart-rate zones on Zwift look off; I think my max HR needs updating.",
+   "labels": {}
+  },
+  {
+   "id": "H36",
+   "source": "hard",
+   "date": null,
+   "text": "HRV low and resting HR high again. Is this overtraining?",
+   "labels": {}
+  },
+  {
+   "id": "H37",
+   "source": "hard",
+   "date": null,
+   "text": "Late one at a wedding: about 8 units and bed at 1am.",
+   "labels": {
+    "alcohol": {
+     "state": "present",
+     "when": "last_night"
+    },
+    "disturbed_night": {
+     "state": "present",
+     "when": "last_night"
+    }
+   }
+  },
+  {
+   "id": "H38",
+   "source": "hard",
+   "date": null,
+   "text": "Flew back yesterday and slept badly in the hotel the night before.",
+   "labels": {
+    "travel": {
+     "state": "present",
+     "when": "last_night"
+    },
+    "disturbed_night": {
+     "state": "present",
+     "when": "earlier"
+    }
+   }
+  },
+  {
+   "id": "H39",
+   "source": "hard",
+   "date": null,
+   "text": "Neighbour's alarm went off at 3am and I couldn't get back to sleep.",
+   "labels": {
+    "disturbed_night": {
+     "state": "present",
+     "when": "last_night"
+    }
+   }
+  },
+  {
+   "id": "H40",
+   "source": "hard",
+   "date": null,
+   "text": "Big curry late last night and heartburn kept me awake.",
+   "labels": {
+    "chest_heart": {
+     "state": "unclear",
+     "who": "him",
+     "when": "last_night"
+    },
+    "disturbed_night": {
+     "state": "present",
+     "when": "last_night"
+    }
+   }
+  },
+  {
+   "id": "H41",
+   "source": "hard",
+   "date": null,
+   "text": "Legs heavy after yesterday's VO2, as usual.",
+   "labels": {}
+  },
+  {
+   "id": "H42",
+   "source": "hard",
+   "date": null,
+   "text": "Hay fever is bad today, sneezing a lot.",
+   "labels": {
+    "head_cold": {
+     "state": "unclear",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "H43",
+   "source": "hard",
+   "date": null,
+   "text": "Sore throat since yesterday but I feel fine in myself.",
+   "labels": {
+    "head_cold": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "H44",
+   "source": "hard",
+   "date": null,
+   "text": "My wife's cold seems to have reached me: sniffly this morning.",
+   "labels": {
+    "head_cold": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  }
+ ]
+}

@@ -268,6 +268,8 @@ def _serialize_analysis(
         **acute_physiology,
         "standingLine": MEDICAL_BOUNDARY_STANDING_LINE,
     }
+    # Batch 297: what the notes reader found; absent on a read stored before it.
+    notes = verdict.get("notesReading") if isinstance(verdict, dict) else None
     return AnalysisOut(
         id=str(analysis.id),
         generatedAtUtc=_dt(analysis.generated_at_utc) or "",
@@ -306,6 +308,17 @@ def _serialize_analysis(
             else None
         ),
         verdictHeld=bool(isinstance(verdict, dict) and verdict.get("held") is True),
+        notesAsk=bool(isinstance(notes, dict) and notes.get("askSymptomQuestion") is True),
+        notesAskWords=(
+            str(notes["askWords"])
+            if isinstance(notes, dict) and isinstance(notes.get("askWords"), str)
+            else None
+        ),
+        notesReadingStatus=(
+            str(notes["status"])
+            if isinstance(notes, dict) and isinstance(notes.get("status"), str)
+            else None
+        ),
     )
 
 

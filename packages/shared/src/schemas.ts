@@ -1198,6 +1198,11 @@ export const dailyLoopAnalysisSchema = z.object({
   // a read stored before the switch, which reads as the ladder and not held.
   verdictEngine: z.string().nullable().optional(),
   verdictHeld: z.boolean().optional(),
+  // Batch 297: his check-in note may name a symptom, so Home asks the symptom question.
+  // Absent on a read stored before the notes reader.
+  notesAsk: z.boolean().optional(),
+  notesAskWords: z.string().nullable().optional(),
+  notesReadingStatus: z.string().nullable().optional(),
 });
 
 export const rideIntervalSchema = z.object({
