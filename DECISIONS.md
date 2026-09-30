@@ -1781,4 +1781,4 @@ The paid run cost $4.89 of Craig's $5. The first Sonnet 5 run missed two "since 
 - The ladder's rollback prompt is unchanged. Its packet carries the reading's floors, but its prompt does not explain them.
 - Nothing is regenerated.
 
-**Wording:** Mark-facing wording, `docs/drafts/2026-09-30-batch-297-wording.md`, is for Craig's sign-off before merge. *Why:* the warnings that matter most at 57 are symptoms. He writes them in prose far more often than he would tap them. A reader that can only add caution catches them without letting a paragraph argue the colour up.
+**Wording:** Craig signed off the Mark-facing wording in `docs/drafts/2026-09-30-batch-297-wording.md` on Mark's behalf before PR #344 merged. *Why:* the warnings that matter most at 57 are symptoms. He writes them in prose far more often than he would tap them. A reader that can only add caution catches them without letting a paragraph argue the colour up.

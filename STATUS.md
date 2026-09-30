@@ -6,10 +6,9 @@
 
 ## Now
 
-**2026-09-30 — G6 step 3 of 4: Batch 296 shipped (PR #343, `42ea8f9`, Decision #367). Mark's
-colour now comes from the graded verdict. The old ladder runs beside it, logged but never
-shown, and from 7 to 20 Oct every disagreement is listed below. Next is 297, which stops
-first for Craig to label the eval set.**
+**2026-09-30 — G6 complete: Batches 294–297 are shipped. Mark's colour grades independent
+evidence, keeps the symptom floors, and now reads his note once before the verdict; that
+reading can only add caution. The old ladder still runs beside it from 7 to 20 Oct.**
 
 ### What G6 does (ledger: "The verdict grades the evidence")
 
@@ -18,7 +17,7 @@ first for Craig to label the eval set.**
 | ~~294~~ | Shipped 29 Sep: symptom question and floors, calmer HRV alarm | Done |
 | ~~295~~ | Shipped 29 Sep: the graded verdict beside the ladder, the replay tool and report | Done |
 | ~~296~~ | Shipped 30 Sep: the colour comes from the graded verdict | Done |
-| **297** | Claude reads the notes; its flags only add caution; the two-Reds rule stops keyword matching | **Now: Craig labels the eval set**; then the go for spend and the migration |
+| ~~297~~ | Shipped 30 Sep: Claude reads the notes; its flags only add caution; the two-Reds rule stops keyword matching | Done |
 
 ### The side-by-side, 7–20 Oct (296.2)
 
@@ -43,17 +42,9 @@ and the next generation of the day heals the read back to v50.
 
 ### Needs Craig
 
-1. **The GitHub repo `CraigR973/garmin-coach` is public** (found 30 Sep; no decision records
-   it). Mark's health data is already in it: 295's replay fixture
-   (`apps/api/tests/fixtures/verdict_replay_2026_09.json`, 164 days of his metrics and
-   sleep, 73 check-in scores), the replay report, and figures throughout these docs.
-   297's eval would add his verbatim notes, so nothing of that kind is committed until
-   Craig decides: make the repo private (a settings change; CI minutes then count against
-   the account's monthly Actions allowance), or keep it public and keep his data out of it.
-2. **297's eval set:** label Mark's 56 real morning notes (the row said about 75; there
-   are 56) and about 40 hard cases. I prepare the sheet at `/batch-start 297`.
-3. **Then 297's two goes:** the paid eval run (a few dollars) and the new table's migration.
-4. **Carried from 27 Sep:** send Mark `docs/drafts/2026-09-27-reply-to-mark.md`; G4's free Neon
+1. **From 7 to 20 Oct:** review every ladder-versus-graded disagreement in the table above;
+   the replay command is read-only. Delete the ladder after 20 Oct in its own PR.
+2. **Carried from 27 Sep:** send Mark `docs/drafts/2026-09-27-reply-to-mark.md`; G4's free Neon
    database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment extractor's first paid run.
 
 ### Worth carrying
@@ -64,7 +55,12 @@ and the next generation of the day heals the read back to v50.
 - **Mark is checking in from his holiday** (27 and 30 Sep), so the graded colour reaches
   him from his next check-in, not first on 7 Oct. The holiday keeps those days rest days.
 - **The symptom question has its first answer:** "None", on 30 Sep.
-- **Anthropic spend for 296: none.** No regeneration; the smoke assembled packets only.
+- **Batch 297's eval cost $4.89.** Sonnet 5 stays in production at about 0.8 cents per noted
+  morning. Close-out spent nothing: morning v52 self-heals, chat v18 and the notes reader are
+  unfiltered, and the real production lookup showed no blank surface.
+- **The first real note reading is pending Mark's next morning generation.** Migration `034`
+  is live with zero rows, as expected; the first generation writes and reuses one row for that
+  version of his note.
 - 27 Sep's "Worth carrying" (below) still stands. **Next DECISIONS number: #369** (#368 is 297's).
 
 ## Prior current-state snapshots
@@ -1842,6 +1838,18 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-09-30** — G6 step 4 and the group shipped: Batch 297 merged as PR #344 / `34f583d`
+  (Decision #368), with Craig's wording sign-off on Mark's behalf. One Sonnet 5 structured
+  read per check-in-note version can only add caution; stored reads are reused, failed reads
+  retry, and the two-Reds cause check no longer uses regex. The 56-real-note + 44-hard-case
+  eval met its gate after one prompt correction and cost $4.89; production remains Sonnet 5
+  at about 0.8 cents per noted morning. Morning v52 self-heals; chat v18 and notes-reader v1
+  are unfiltered; nothing regenerated. The security gate surfaced seven new upstream
+  advisories during close-out, cleared by the hashed-lock refresh in `3d9cc98`. Final branch
+  waves, main CI (2,196 PostgreSQL tests) and exact-SHA freshness passed. Production serves
+  `34f583d`: readiness db ok, web 200, protected daily-loop 401 direct/proxied, migration
+  `034` applied, its 11-column table has RLS + all constraints, and zero reading rows before
+  Mark's next morning generation. G6's 7–20 Oct ladder comparison remains the follow-up.
 - **2026-09-30** — G6 step 3: Batch 296 shipped (PR #343, `42ea8f9`, Decision #367). Mark's colour comes from the graded verdict behind `settings.verdict_engine`; `VERDICT_ENGINE=ladder` restores the ladder exactly (its v50 prompt pinned by SHA-256). The ladder's colour is logged every morning, never packeted, with an error-level event when it is Red and Mark is shown Green. Graded Amber eases only work above 75% FTP at full length; a held Green offers the swap for a hard session; recovery-class weeks hold. The graded packet drops 15 ladder fields; old packets read as the ladder. Morning v51 and chat v17 carry the `graded_verdict` Floor; the weekly review (v10) gains `keySessions` and `cautiousDays`; nothing regenerated. Home and the brief say "Good to go — hold your targets". 16/16 checks green (2,187 tests, 0 skipped); Railway and Vercel served `42ea8f9`; web 200; `daily-loop` 401. The smoke assembled Mark's real 7, 21, 22, 24, 25 and 26 Sep on the deployed engine, 6 of 6 matching the replay report, with no model call.
 - **2026-09-29** — G6 step 2: Batch 295 shipped (PR #342, `6987317`, Decision #366). `services/verdict_grading.py` rates autonomic, sleep, load and subjective evidence against Mark's own normal and combines them across domains after 294's floors. Readiness only confirms, Garmin's band is not read, and every line is in one table. `services/verdict_replay.py` + `scripts/replay_verdicts.py` replay any stored morning from the inputs it saw, beside today's ladder. 99 mornings: Red 13 → 4, Green-held 5 → 23, no floor weakened. On the six mornings it would have eased or moved a hard session he rode 58% of intervals on target, against 72% otherwise. Nothing live changed. CI 16/16 green (2,162 tests, 0 skipped); Railway and Vercel served `6987317`; web 200; `daily-loop` 401; the merged replay ran read-only on production.
 - **2026-09-29** — G6 step 1: Batch 294 shipped (PR #341, `9443867`, Decision #365). "Any symptoms today?" on the check-in (migration `033`, Craig's go); chest-or-heart and fever answers set Red with no training of any kind, a head cold Red on the easy path, and every consumer of the bike-rest flag honours it. The overnight-HRV rail rests the bike only at 2.5 SD or 30% under his median, or with a second sign: 6 of 75 replayed mornings become 1 (16 Jul). Wording signed off by Craig on Mark's behalf. Re-verified at `/batch-start`: every figure held; three corrections recorded in the ledger. CI 16/16 green (2,124 tests, 0 skipped); Railway and Vercel served `9443867`; web 200; `daily-loop` 401. Production smoke, read-only: 033 applied, 16 Jul still rests, 21 and 22 Sep cap without bike rest, 23 Sep Green; the v50 bump self-heals and blanks nothing.
