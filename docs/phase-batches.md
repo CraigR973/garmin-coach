@@ -4668,6 +4668,21 @@ builds, so it waits on Craig with the migration and the labels.
   every `coach` table.
 - **Reds are rarer since 296** (4 in 99 replayed mornings), so the two-Reds cause check
   runs less often. It is still built as specified.
+- **Found during the build (30 Sep):**
+  - **The reader also reports training load and deliberate rest.** Batch 194's rule that
+    an endogenous cause wins needs them, and 297.1 listed only alcohol, a disturbed night
+    and travel. Retiring the patterns without them would have let an acute excuse
+    retire a training-driven Red.
+  - **"Only his own taps can relax the day" needs a mechanism.** The check-in is one row
+    a day, updated in place, and "None" is preselected, so a tap in the same submission
+    cannot outrank the note. A note's symptom therefore applies until he re-submits the
+    check-in after the reading. The comparison is with the reading's successful write:
+    a retried row keeps its failed attempt's `created_at`.
+  - **The eval's first run missed two "since yesterday" symptoms**, because the prompt
+    defined "earlier" as before last night. The prompt was revised once, and the
+    report says those two cases are no longer unseen.
+  - **Cost, measured:** 0.8 cents a morning on Sonnet 5 with the app's reasoning
+    settings, 0.3 on Haiku 4.5. The row said about half a cent.
 
 ### Batch group — G6, the graded verdict (2026-09-28)
 
