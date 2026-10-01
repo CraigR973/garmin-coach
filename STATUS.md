@@ -29,6 +29,9 @@ first. The graded colour went live on Mark's 1 Oct check-in (Amber on a holiday 
    (Batch 300, amending #366/#367).
 3. The HRV persistence rule applies from now on only; no past morning is rewritten (Batch 304).
 4. **No message to Mark.** Neither the 27 Sep nor the 1 Oct reply draft is sent.
+5. In a light week an Amber made of two mild concerns holds the session (Batch 300).
+6. Batch 298 rewrites the knowledge base's Amber constraint in production (his go).
+7. **G7a is held for now;** Craig will start it in another session.
 
 ### G7 — the 1 Oct review (ledger: "The 1 Oct review")
 
@@ -63,8 +66,8 @@ runs and costs about 0.8 cents a noted morning; the v50 prompt does not explain 
 
 ### Needs Craig
 
-1. **Go or no-go on G7a** (301, 298, 299, 300) if they are to land before 7 Oct; 300 must
-   land before Thu 8 Oct's sweet spot.
+1. **Start G7a** (301, 298, 299, 300) in another session: `/batch-group G7a`. To land before
+   7 Oct, and 300 before Thu 8 Oct's sweet spot.
 2. **From 7 to 20 Oct:** review every ladder-versus-graded disagreement in the table above.
 3. **Carried:** G4's free Neon database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment
    extractor's first paid run (Mark's own "Look for new memories" tap).
