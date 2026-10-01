@@ -28,7 +28,7 @@ database.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
@@ -38,6 +38,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import PlannedWorkout
 from src.models.profile import Profile
+from src.services.verdict_grading import (
+    ACTION_EASE_HARD,
+    ACTION_NO_TRAINING,
+    ACTION_OFF_THE_BIKE,
+    ACTION_RECOVERY,
+    ACTION_SHORTENED_Z2,
+)
 from src.services.weekly_restructure import (
     CATEGORY_ENDURANCE,
     CATEGORY_RECOVERY,
@@ -81,6 +88,13 @@ _CATEGORY_TO_BUCKET = {
     CATEGORY_RECOVERY: MIX_Z2,
 }
 
+#: Batch 299: the graded actions that take today's hard session out of the week. A Red
+#: morning's recovery spin or shortened ride, and the floors' days off, drop it. An eased
+#: session (``ease_hard``) is eased, not lost, and a held or moved one stands.
+DROPPING_ACTIONS: frozenset[str] = frozenset(
+    {ACTION_RECOVERY, ACTION_SHORTENED_Z2, ACTION_OFF_THE_BIKE, ACTION_NO_TRAINING}
+)
+
 
 def bucket_label(bucket: str) -> str:
     return _BUCKET_LABELS.get(bucket, bucket)
@@ -109,6 +123,8 @@ class MixSession:
     completed: bool
     skipped: bool = False
     version: int = 1
+    #: Batch 299: the planned workout's id, which the graded verdict's actions are keyed by.
+    workout_id: str | None = None
 
     @property
     def bucket(self) -> str | None:
@@ -178,11 +194,29 @@ class MixShortfall:
 
 
 @dataclass(frozen=True)
+class MixEased:
+    """Today's hard session, eased a zone at full length: still in the week (Batch 299).
+
+    Under the graded verdict an Amber eases the hard intervals a zone and keeps the
+    ride's full length, so the session still counts toward the week's mix. The ladder
+    called that "a session short this week" beside a plan line that kept the session.
+    """
+
+    bucket: str
+    label: str
+    message: str
+
+    def to_packet(self) -> dict[str, Any]:
+        return {"bucket": self.bucket, "label": self.label, "message": self.message}
+
+
+@dataclass(frozen=True)
 class WeeklyMix:
     week_start: date
     subject_date: date
     buckets: list[MixBucketStatus]
     shortfall: MixShortfall | None = None
+    eased: MixEased | None = None
 
     def bucket(self, name: str) -> MixBucketStatus | None:
         return next((b for b in self.buckets if b.bucket == name), None)
@@ -192,16 +226,23 @@ class WeeklyMix:
         return [b for b in self.buckets if b.at_risk]
 
     def plan_adjustments(self) -> list[str]:
-        """The verdict text this mix contributes (the shortfall message, if any)."""
-        return [self.shortfall.message] if self.shortfall else []
+        """The verdict text this mix contributes: the shortfall or the eased line, if any."""
+        if self.shortfall:
+            return [self.shortfall.message]
+        return [self.eased.message] if self.eased else []
 
     def to_packet(self) -> dict[str, Any]:
-        return {
+        packet: dict[str, Any] = {
             "weekStart": self.week_start.isoformat(),
             "subjectDate": self.subject_date.isoformat(),
             "buckets": [b.to_packet() for b in self.buckets],
             "shortfall": self.shortfall.to_packet() if self.shortfall else None,
         }
+        # Batch 299: present only on a graded morning that eased today's hard session,
+        # so a ladder packet keeps its shape.
+        if self.eased is not None:
+            packet["eased"] = self.eased.to_packet()
+        return packet
 
 
 def _dedupe_by_date(
@@ -398,6 +439,79 @@ def build_shortfall(
     )
 
 
+def build_eased(bucket: str) -> MixEased:
+    """The line for a hard session eased a zone at full length (Batch 299).
+
+    Mark-facing wording, signed off by Craig on Mark's behalf on 1 Oct 2026
+    (``docs/drafts/2026-10-01-batch-298-wording.md``, section 6).
+    """
+    label = bucket_label(bucket)
+    return MixEased(
+        bucket=bucket,
+        label=label,
+        message=(
+            f"Today's {label} session is eased, not lost: its hard intervals drop a zone and "
+            "it keeps its full length."
+        ),
+    )
+
+
+def mix_for_verdict(
+    sessions: Sequence[MixSession],
+    items: Sequence[WeekItem],
+    *,
+    subject_date: date,
+    verdict_status: str,
+    swap: SwapSuggestion | None,
+    protected_weekdays: frozenset[int] = PROTECTED_WEEKDAYS,
+    suppress_today_easing: bool = False,
+    session_actions: Mapping[str, str] | None = None,
+) -> WeeklyMix:
+    """The week's mix as the morning verdict carries it, from the week already read.
+
+    Pure: :meth:`WeeklyMixService.summarize_for_verdict` reads the week and hands it
+    here. ``session_actions`` are the graded verdict's actions for today's sessions,
+    keyed by planned workout id, and ``None`` under the ladder (Batch 299).
+    """
+    eased_bucket = None
+    kept_bucket = None
+    if not suppress_today_easing:
+        eased_bucket = _eased_bucket(
+            sessions,
+            subject_date=subject_date,
+            verdict_status=verdict_status,
+            actions=session_actions,
+        )
+        if eased_bucket is None:
+            kept_bucket = _kept_eased_bucket(
+                sessions,
+                subject_date=subject_date,
+                verdict_status=verdict_status,
+                actions=session_actions,
+            )
+    mix = summarize_weekly_mix(sessions, subject_date=subject_date, eased_bucket=eased_bucket)
+    if kept_bucket is not None:
+        return WeeklyMix(
+            week_start=mix.week_start,
+            subject_date=mix.subject_date,
+            buckets=mix.buckets,
+            eased=build_eased(kept_bucket),
+        )
+    if eased_bucket is None:
+        return mix
+
+    repatch = swap or plan_swap_first(
+        items, subject_date=subject_date, protected_weekdays=protected_weekdays
+    )
+    shortfall = build_shortfall(eased_bucket=eased_bucket, swap=repatch)
+    return WeeklyMix(
+        week_start=mix.week_start,
+        subject_date=mix.subject_date,
+        buckets=mix.buckets,
+        shortfall=shortfall,
+    )
+
+
 class WeeklyMixService:
     """Assemble the weekly-mix packet the morning verdict carries."""
 
@@ -431,6 +545,7 @@ class WeeklyMixService:
                 completed=w.status == WORKOUT_STATUS_COMPLETED,
                 skipped=w.status == WORKOUT_STATUS_SKIPPED,
                 version=w.version,
+                workout_id=str(w.id),
             )
             for w in workouts
             if w.workout_type.startswith("bike_")
@@ -455,8 +570,9 @@ class WeeklyMixService:
         swap: SwapSuggestion | None,
         protected_weekdays: frozenset[int] = PROTECTED_WEEKDAYS,
         suppress_today_easing: bool = False,
+        session_actions: Mapping[str, str] | None = None,
     ) -> WeeklyMix:
-        """Compute the week's mix and, on a cautious morning that eases today's
+        """Compute the week's mix and, on a cautious morning that drops today's
         hard bike session, the re-patch/"not this week" shortfall.
 
         ``swap`` is the swap-first suggestion the morning packet already computed
@@ -468,29 +584,33 @@ class WeeklyMixService:
         ``suppress_today_easing`` is the Batch 98 rest-day guard: the weekly
         accounting remains visible, but a paused holiday session cannot become a
         readiness-driven shortfall or re-patch suggestion.
+
+        ``session_actions`` (Batch 299) are the graded verdict's actions, so a held,
+        moved or eased session is not counted as lost; ``None`` reads as the ladder.
         """
         week_start = subject_date - timedelta(days=subject_date.weekday())
         sessions, items = await self._week_sessions(player, week_start)
-
-        eased_bucket = None
-        if not suppress_today_easing:
-            eased_bucket = _eased_bucket(
-                sessions, subject_date=subject_date, verdict_status=verdict_status
-            )
-        mix = summarize_weekly_mix(sessions, subject_date=subject_date, eased_bucket=eased_bucket)
-        if eased_bucket is None:
-            return mix
-
-        repatch = swap or plan_swap_first(
-            items, subject_date=subject_date, protected_weekdays=protected_weekdays
+        return mix_for_verdict(
+            sessions,
+            items,
+            subject_date=subject_date,
+            verdict_status=verdict_status,
+            swap=swap,
+            protected_weekdays=protected_weekdays,
+            suppress_today_easing=suppress_today_easing,
+            session_actions=session_actions,
         )
-        shortfall = build_shortfall(eased_bucket=eased_bucket, swap=repatch)
-        return WeeklyMix(
-            week_start=mix.week_start,
-            subject_date=mix.subject_date,
-            buckets=mix.buckets,
-            shortfall=shortfall,
-        )
+
+
+def _today_hard(sessions: Sequence[MixSession], *, subject_date: date) -> list[MixSession]:
+    """Today's as-yet-uncompleted hard bike sessions (a ridden one isn't being dropped)."""
+    return [
+        session
+        for session in sessions
+        if session.workout_date == subject_date
+        and not session.completed
+        and session.bucket in HARD_BUCKETS
+    ]
 
 
 def _eased_bucket(
@@ -498,20 +618,43 @@ def _eased_bucket(
     *,
     subject_date: date,
     verdict_status: str,
+    actions: Mapping[str, str] | None = None,
 ) -> str | None:
-    """The hard bucket whose today session the verdict is easing, if any.
+    """The hard bucket whose today session the verdict drops, if any.
 
-    Only an Amber/Red morning eases a session, and only an as-yet-uncompleted
+    Only an Amber/Red morning drops a session, and only an as-yet-uncompleted
     hard bike session on ``subject_date`` counts (a session already ridden isn't
     being dropped).
+
+    Batch 299: under the ladder (``actions`` is ``None``) any Amber or Red drops it,
+    as before. Under the graded verdict only an action that takes it out of the week
+    does (:data:`DROPPING_ACTIONS`): a held, moved or eased session stays in the week,
+    and a session without an action (skipped, or added after the morning) is not
+    counted as dropped.
     """
     if verdict_status not in {"Amber", "Red"}:
         return None
-    for session in sessions:
-        if (
-            session.workout_date == subject_date
-            and not session.completed
-            and session.bucket in HARD_BUCKETS
-        ):
+    for session in _today_hard(sessions, subject_date=subject_date):
+        if actions is None or actions.get(session.workout_id or "") in DROPPING_ACTIONS:
+            return session.bucket
+    return None
+
+
+def _kept_eased_bucket(
+    sessions: Sequence[MixSession],
+    *,
+    subject_date: date,
+    verdict_status: str,
+    actions: Mapping[str, str] | None,
+) -> str | None:
+    """The hard bucket whose today session the graded verdict eases but keeps (Batch 299).
+
+    ``ease_hard`` drops the hard intervals a zone at full length, so the session still
+    counts toward the week. The ladder (``actions`` is ``None``) has no such action.
+    """
+    if actions is None or verdict_status not in {"Amber", "Red"}:
+        return None
+    for session in _today_hard(sessions, subject_date=subject_date):
+        if actions.get(session.workout_id or "") == ACTION_EASE_HARD:
             return session.bucket
     return None

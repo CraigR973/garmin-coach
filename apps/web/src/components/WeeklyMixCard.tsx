@@ -25,6 +25,9 @@ export function WeeklyMixCard({
   const buckets = mix.buckets ?? [];
   if (buckets.length === 0) return null;
   const shortfall = mix.shortfall ?? null;
+  // Batch 299: an eased session is still in the week; its note takes the shortfall's
+  // place, since the two never come together.
+  const note = shortfall?.message ?? mix.eased?.message ?? null;
   // A pre-217 stored read carries no basis; the disclosure disappears rather
   // than rendering an empty shell.
   const bases = buckets.flatMap((bucket) =>
@@ -74,9 +77,7 @@ export function WeeklyMixCard({
           </ul>
         </details>
       ) : null}
-      {showShortfall && shortfall ? (
-        <p className="mt-2 text-xs text-text-secondary">{shortfall.message}</p>
-      ) : null}
+      {showShortfall && note ? <p className="mt-2 text-xs text-text-secondary">{note}</p> : null}
     </div>
   );
 }

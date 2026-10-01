@@ -368,7 +368,7 @@ def test_the_ladder_rail_keeps_its_words_for_the_rollback() -> None:
 
 
 def test_the_graded_prompt_carries_neither_ladder_line_and_the_ladder_keeps_both() -> None:
-    assert GRADED_PROMPT_VERSION == "morning-analysis-v53-2026-10-01"
+    assert GRADED_PROMPT_VERSION == "morning-analysis-v54-2026-10-01"
     assert LADDER_PROMPT_VERSION == "morning-analysis-v50-2026-09-28"
     for ladder_line in (
         "argue down an RHR/HRV Amber cap",

@@ -362,8 +362,13 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # acute rail carries the graded words and drops the ladder's cap bookkeeping. The
 # ladder's v50 rollback prompt is unchanged. Self-healing, so nothing is withdrawn and
 # nothing is regenerated: the next generation of any morning writes v53.
+# Batch 299: under the graded verdict verdict.weeklyMix.shortfall means today's hard
+# session is dropped (a recovery spin, a shortened ride or a day off the bike), not
+# eased, and verdict.weeklyMix.eased is new: eased a zone at full length, still in the
+# week. The ladder's v50 is unchanged. Self-healing again: nothing is withdrawn and
+# nothing is regenerated; the next generation of any morning writes v54.
 LADDER_PROMPT_VERSION = "morning-analysis-v50-2026-09-28"
-GRADED_PROMPT_VERSION = "morning-analysis-v53-2026-10-01"
+GRADED_PROMPT_VERSION = "morning-analysis-v54-2026-10-01"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -772,6 +777,16 @@ Red-never-VO2.""",
         """what is needed to answer, say so plainly rather than guessing. Answering a question
 never overrides the graded colour, a floor, or Red-never-VO2.""",
     ),
+    # Batch 299: the weekly mix follows each session's graded action. A shortfall now
+    # means today's hard session is dropped, and an eased session is still in the week.
+    (
+        """When verdict.weeklyMix.shortfall is present, today's hard session is being eased:""",
+        """When verdict.weeklyMix.eased is present, today's hard session still counts toward
+the week's mix: eased a zone at full length, or moved if he takes verdict.swapSuggestion.
+Say it is not lost, and never call the week a session short. A held session adds nothing
+to the mix. When verdict.weeklyMix.shortfall is present, today's hard session is dropped
+(a recovery spin, a shortened ride or a day off the bike):""",
+    ),
 )
 
 
@@ -1164,6 +1179,13 @@ class MorningAnalysisService:
             verdict_status=str(verdict.get("status") or ""),
             swap=swap if swap is not None and swap.subject_date == subject_date else None,
             suppress_today_easing=bool(rest_day["isRestDay"]),
+            # Batch 299: under the graded verdict the mix reads each session's action,
+            # so a held, moved or eased session is never "a session short".
+            session_actions=(
+                {action.session_id: action.action for action in graded.actions if action.session_id}
+                if VERDICT_ENGINE == ENGINE_GRADED
+                else None
+            ),
         )
         verdict["weeklyMix"] = weekly_mix.to_packet()
         existing_adjustments = verdict.get("planAdjustments", [])

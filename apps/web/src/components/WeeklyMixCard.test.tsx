@@ -56,6 +56,31 @@ describe('WeeklyMixCard', () => {
     expect(screen.getByText(/No VO2 session this week/)).not.toBeNull();
   });
 
+  // Batch 299: under the graded verdict an Amber eases today's hard intervals a zone at
+  // full length, so the session is still in the week. Signed off by Craig on Mark's
+  // behalf, 1 Oct 2026.
+  it('renders the eased line on the Plan page, and no shortfall beside it', () => {
+    const eased =
+      "Today's Sweet Spot session is eased, not lost: its hard intervals drop a zone and it keeps its full length.";
+    const mix: WeeklyMix = {
+      ...baseMix,
+      eased: { bucket: 'sweet_spot', label: 'Sweet Spot', message: eased },
+    };
+    render(<WeeklyMixCard mix={mix} showShortfall />);
+    expect(screen.getByText(eased)).not.toBeNull();
+    expect(screen.queryByText(/session short|No Sweet Spot session/)).toBeNull();
+    expect(screen.queryByText(/→/)).toBeNull();
+  });
+
+  it('keeps the eased line off Home, as it does the shortfall', () => {
+    const mix: WeeklyMix = {
+      ...baseMix,
+      eased: { bucket: 'sweet_spot', label: 'Sweet Spot', message: 'eased, not lost' },
+    };
+    render(<WeeklyMixCard mix={mix} />);
+    expect(screen.queryByText(/eased, not lost/)).toBeNull();
+  });
+
   it('renders nothing when there are no bike sessions in the week', () => {
     const { container } = render(<WeeklyMixCard mix={{ ...baseMix, buckets: [] }} />);
     expect(container.firstChild).toBeNull();

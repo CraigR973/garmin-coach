@@ -1202,6 +1202,27 @@ def stored_actions(packet: Any) -> dict[str, str]:
     }
 
 
+def stored_rest_day(packet: Any) -> bool:
+    """Was a stored morning a rest day: a holiday, or every session skipped? (Batch 299)"""
+
+    rest_day = packet.get("restDay") if isinstance(packet, Mapping) else None
+    if isinstance(rest_day, Mapping) and isinstance(rest_day.get("isRestDay"), bool):
+        return bool(rest_day["isRestDay"])
+    verdict = packet.get("verdict") if isinstance(packet, Mapping) else None
+    return isinstance(verdict, Mapping) and verdict.get("isRestDay") is True
+
+
+def stored_seen_workouts(packet: Any) -> frozenset[str]:
+    """The planned workout ids a stored morning packet saw (Batch 299)."""
+
+    planned = packet.get("plannedWorkouts") if isinstance(packet, Mapping) else None
+    if not isinstance(planned, list):
+        return frozenset()
+    return frozenset(
+        str(item["id"]) for item in planned if isinstance(item, Mapping) and item.get("id")
+    )
+
+
 def ride_transform(
     status: str | None,
     *,

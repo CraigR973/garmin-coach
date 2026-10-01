@@ -4827,6 +4827,36 @@ stored mornings, and 1 Oct's stored packet was read. None changes what the batch
   v52 brief, so nothing was regenerated. Production's `training_plan` is now v3
   (`batch_298_graded_amber`); v2 is kept, inactive.
 
+### Corrections made at `/batch-start 299` (2026-10-01), before any code
+
+Every fact in 299.1 was re-checked against `main` after 298 merged and against production,
+read-only. None changes what the batch builds; three gaps are filled.
+
+- **Confirmed.** `_eased_bucket` (`services/weekly_mix.py:496-517`) treats any Amber or Red as
+  dropping today's uncompleted hard session. On 1 Oct at 08:10:14 the rail proposed an eased
+  "Sweet Spot (3 × 18 min @ 89%)" (graded Amber transform, intervals capped at 94%, full
+  length), still `proposed`, on a session the holiday had paused (`status: skipped`, v2,
+  source `holiday_pause`). The stored morning was a holiday rest day with no session actions
+  and no shortfall. The line numbers had moved: `ride_transform` is now
+  `services/verdict_grading.py:1205-1224`, `_deliverable_bike_workouts`
+  `services/executable_coaching.py:1637-1645`.
+- **Gap: the floors' actions.** 299.2 names `recovery` and `shortened_zone2` as the actions that
+  drop a hard session. `off_the_bike` and `no_training` drop it too, so they keep today's
+  shortfall: the floors are unchanged. A session with no action (skipped, or added after the
+  morning) adds no line under the graded verdict.
+- **Gap: which engine the rail's guards cover.** A rest-day morning and a skipped or
+  completed session get no proposal under **both** engines: the ladder's own plan line on such
+  a day says "keep paused or skipped sessions paused". The ladder's colour transform for a
+  live session on a training day is unchanged.
+- **Gap: where "never fall back to the colour" applies.** Only to the morning's proposals.
+  Home's same-day send and push-on-plan-set keep the colour for a ride without an action,
+  because there Mark has chosen to ride and the colour is the more cautious default.
+- **299.4 applies.** The graded prompt's weekly-mix sentence says a shortfall means today's
+  hard session "is being eased"; under the graded verdict it now means dropped, and the new
+  eased line needs a sentence of its own. Morning v53 → v54 (graded only); the ladder's v50
+  is unchanged.
+- **Wording:** the eased line was signed off at 298's start (the draft's §6).
+
 ### Batch group — G7, the 1 Oct review (2026-10-01)
 
 Authored on Craig's decision of 1 Oct that every batch is written up before any is built.
