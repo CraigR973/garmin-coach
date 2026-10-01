@@ -1057,15 +1057,16 @@ async def test_amber_morning_leads_with_week_swap_and_keeps_softening(
     assert "move vo2 max 30/30 from thursday to saturday" in adjustments[0].lower()
     assert GRADED_EASE_HARD_LINE in adjustments[1:]
 
-    # Batch 70 (#143): the same cautious morning reports the week's mix and, because
-    # today's dropped VO2 can move to Saturday, frames it as re-patched — not lost.
+    # Batch 70 (#143): the same cautious morning reports the week's mix. Batch 299:
+    # under the graded verdict an Amber eases today's VO2 a zone at full length, so it
+    # still counts toward the week: eased, not lost, and never "a session short".
     mix = verdict["weeklyMix"]
-    assert mix["shortfall"]["bucket"] == "vo2"
-    assert mix["shortfall"]["repatched"] is True
-    assert mix["shortfall"]["moveToWeekday"] == "Saturday"
+    assert mix["shortfall"] is None
+    assert mix["eased"]["bucket"] == "vo2"
+    assert mix["eased"]["message"] in adjustments
     vo2_bucket = next(bucket for bucket in mix["buckets"] if bucket["bucket"] == "vo2")
-    assert vo2_bucket["target"] == 1 and vo2_bucket["atRisk"] is True
-    assert any("short this week" in item.lower() for item in adjustments)
+    assert vo2_bucket["target"] == 1 and vo2_bucket["atRisk"] is False
+    assert not any("short this week" in item.lower() for item in adjustments)
 
     # The KB records the swap-first coaching preference (66.1).
     protocol = next(
@@ -1433,14 +1434,39 @@ async def test_morning_packet_falls_back_to_static_vo2max_with_no_reading_on_fil
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("feel", "expected_status"),
+    [
+        pytest.param(3, "Red", id="red_drops_it"),
+        pytest.param(None, "Amber", id="amber_eases_it"),
+    ],
+)
 async def test_cautious_morning_says_no_vo2_this_week_when_it_cannot_be_repatched(
     db_conn: AsyncConnection,
+    feel: int | None,
+    expected_status: str,
 ) -> None:
     """Batch 70 (#143): a readiness-dropped VO2 with no sound later slot is not
-    silently lost — the verdict states plainly it won't be made up this week."""
+    silently lost — the verdict states plainly it won't be made up this week.
+
+    Batch 299: under the graded verdict only a morning that drops the session says so.
+    A Red (here a Rough check-in) replaces it with a recovery spin. An Amber eases it a
+    zone at full length, so it still counts and the week is never called short."""
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     user_id = uuid.uuid4()
     subject_date = date(2026, 1, 2)  # Friday — VO2 today, no later bike day this week
+    check_ins = (
+        [
+            ManualEntry(
+                user_id=user_id,
+                entry_date=subject_date,
+                entry_at_utc=datetime(2026, 1, 2, 6, 15),
+                subjective_score=feel,
+            )
+        ]
+        if feel is not None
+        else []
+    )
 
     async with session_factory() as session:
         player = Profile(
@@ -1489,6 +1515,7 @@ async def test_cautious_morning_says_no_vo2_this_week_when_it_cannot_be_repatche
                     structured_workout={"format": "bike"},
                     source="test",
                 ),
+                *check_ins,
             ]
         )
         await session.commit()
@@ -1496,12 +1523,21 @@ async def test_cautious_morning_says_no_vo2_this_week_when_it_cannot_be_repatche
         packet = await MorningAnalysisService(session).assemble_context_packet(player, subject_date)
 
     verdict = packet["verdict"]
-    assert verdict["status"] in {"Amber", "Red"}
+    assert verdict["status"] == expected_status
     assert "swapSuggestion" not in verdict  # no sound later slot to swap into
-    shortfall = verdict["weeklyMix"]["shortfall"]
-    assert shortfall["bucket"] == "vo2"
-    assert shortfall["repatched"] is False
-    assert any("no vo2 session this week" in item.lower() for item in verdict["planAdjustments"])
+    mix = verdict["weeklyMix"]
+    adjustments = verdict["planAdjustments"]
+    says_no_vo2 = any("no vo2 session this week" in item.lower() for item in adjustments)
+    if expected_status == "Red":
+        assert mix["shortfall"]["bucket"] == "vo2"
+        assert mix["shortfall"]["repatched"] is False
+        assert "eased" not in mix
+        assert says_no_vo2
+    else:
+        assert mix["shortfall"] is None
+        assert mix["eased"]["bucket"] == "vo2"
+        assert mix["eased"]["message"] in adjustments
+        assert not says_no_vo2
 
 
 def test_red_verdict_never_keeps_vo2() -> None:
