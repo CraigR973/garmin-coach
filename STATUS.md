@@ -6,6 +6,90 @@
 
 ## Now
 
+**2026-10-01 — The 1 Oct review of Batches 268–297 is done, and its remediation is written
+up as Batches 298–308 (group G7). Nothing is built yet: Craig wants every batch written up
+first. The graded colour went live on Mark's 1 Oct check-in (Amber on a holiday rest day).**
+
+### What the review found (`docs/reviews/2026-10-01-batches-268-297-review.md`)
+
+- **The engine is sound:** 102 mornings replayed, 1 of 1 graded mornings reproduced, no floor
+  weakened, Red 13 → 4. Six reverted fixes each failed a test.
+- **The words around it are not:** the old rules' "caps today at Amber" notice still ships on
+  graded mornings (it did on 1 Oct), and a W12/W13 Amber says "Take it easier", "stays as
+  planned" and "a Sweet Spot session short" at once.
+- **The safety floors depend on the paid brief:** in an Anthropic outage a "Chest or heart"
+  answer shows no 999/111/GP advice.
+- **On HRV the engine now errs slightly lenient** against the trials it cites: a week-long dip
+  stays "a little off".
+
+### Craig's decisions, 1 Oct
+
+1. Every batch is written up before any is built. Nothing in G7 starts without his go.
+2. In a light week only a mild concern holds the session; a marked one eases the hard work
+   (Batch 300, amending #366/#367).
+3. The HRV persistence rule applies from now on only; no past morning is rewritten (Batch 304).
+4. **No message to Mark.** Neither the 27 Sep nor the 1 Oct reply draft is sent.
+5. In a light week an Amber made of two mild concerns holds the session (Batch 300).
+6. Batch 298 rewrites the knowledge base's Amber constraint in production (his go).
+7. **G7a is held for now;** Craig will start it in another session.
+
+### G7 — the 1 Oct review (ledger: "The 1 Oct review")
+
+| Group | Batches | Gate |
+|---|---|---|
+| G7a, before 7 Oct | 309 → 301 → 298 → 299 → 300 | Craig's go; 298/300 wording; 300 before Thu 8 Oct |
+| G7b | 302 → 303 → 307 | 302's storage shape; 303's migration and eval re-run (~$2–5) |
+| G7c, not before 20 Oct | 304 → 305 → 306 → 308 | 305/306 decisions; 308 after the side-by-side review |
+
+Batch 291's row is corrected in place (its alert list).
+
+### The side-by-side, 7–20 Oct (296.2)
+
+- **List the disagreements** with the read-only replay, from the repo root:
+  `PYTHONPATH=apps/api railway run --service api apps/api/.venv/bin/python scripts/replay_verdicts.py --start 2026-10-07 --end 2026-10-20`.
+  Its "Every changed morning" section is the list; copy each into the table below.
+- **Its "Replay reproduces production" line should read N of N.** On 1 Oct it read 1 of 1.
+- **A ladder-Red, graded-Green morning** logs `verdict_graded_two_steps_less_cautious` at
+  error level (Sentry). Whether Sentry emails Craig is unverified (291 unbuilt).
+- After 20 Oct, delete the ladder in its own PR (now Batch 308, after 304–306).
+
+| Date | Ladder → graded | Why |
+|---|---|---|
+| 1 Oct | Amber → Amber (agree) | Holiday rest day; one low HRV night and "a bit more tired" in his note |
+
+### Rollback
+
+Set the Railway variable `VERDICT_ENGINE=ladder` on the `api` service (Craig's: a hosting
+change). The redeploy restores the ladder's colour, its v50 prompt (byte-identical) and its
+delivery. Since 297 the ladder's packet also carries `notesReading`, and the notes reader still
+runs and costs about 0.8 cents a noted morning; the v50 prompt does not explain it.
+
+### Needs Craig
+
+1. **Start G7a** (309, 301, 298, 299, 300) in another session: `/batch-group G7a`. To land before
+   7 Oct, and 300 before Thu 8 Oct's sweet spot.
+2. **From 7 to 20 Oct:** review every ladder-versus-graded disagreement in the table above.
+3. **Carried:** G4's free Neon database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment
+   extractor's first paid run (Mark's own "Look for new memories" tap).
+
+### Worth carrying
+
+- **Vercel can no longer build the web app** (found 1 Oct on PR #345): Node 20.x is
+  discontinued there. Production keeps its last good build and the API is unaffected, but no
+  web change deploys until Batch 309 moves the web to Node 24. It runs first in G7a.
+- **The first graded morning (1 Oct) showed the old cap wording** in its notice and brief, and
+  the delivery rail proposed an eased version of the holiday-skipped Sweet Spot (still
+  `proposed`). Each Amber or Red holiday morning to 6 Oct can do the same (Batch 299).
+- **The first real note reading** (1 Oct): fatigue present ("a bit more tired"), one notch;
+  2,345 tokens in, 301 out (≈0.8 cents).
+- **Mark's first two weeks back are W12 CONSOLIDATION (5–11 Oct) and W13 TAPER (12–18
+  Oct).** Until Batch 300 ships, a mild or marked concern holds every session there.
+- **The database is at 453 MB of the 500 MB free-plan cap**; `egress-budget` reports
+  `storage_critical` every 15 minutes. Up about 5 MB a week since 24 Sep.
+- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #369.**
+
+## Prior current-state snapshots
+
 **2026-09-30 — G6 complete: Batches 294–297 are shipped. Mark's colour grades independent
 evidence, keeps the symptom floors, and now reads his note once before the verdict; that
 reading can only add caution. The old ladder still runs beside it from 7 to 20 Oct.**
@@ -63,7 +147,6 @@ and the next generation of the day heals the read back to v50.
   version of his note.
 - 27 Sep's "Worth carrying" (below) still stands. **Next DECISIONS number: #369** (#368 is 297's).
 
-## Prior current-state snapshots
 
 **2026-09-27 (evening) — G3 is done: Batches 269 and 272 shipped, with Mark's answers and
 wording decided on his behalf (Craig: "make the best decisions on Mark's behalf"; Mark is on
@@ -1838,6 +1921,14 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-01** — Review of Batches 268–297 (`docs/reviews/2026-10-01-batches-268-297-review.md`),
+  read-only, led by how the graded colour is worked out: engine sound and reproducible (102
+  mornings, 1 of 1 graded reproduced); old cap wording still ships beside it; the safety
+  floors depend on the paid brief; a persistent HRV dip never escalates. Craig's answers: write
+  every batch up first; light weeks hold only on a mild concern; the persistence rule from now
+  on only; no message to Mark. Authored Batches 298–308 and group G7; corrected 291's alert
+  list; marked both reply drafts not to be sent. No code, production or hosting change; no paid
+  call.
 - **2026-09-30** — G6 step 4 and the group shipped: Batch 297 merged as PR #344 / `34f583d`
   (Decision #368), with Craig's wording sign-off on Mark's behalf. One Sonnet 5 structured
   read per check-in-note version can only add caution; stored reads are reused, failed reads

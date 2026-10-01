@@ -1,5 +1,9 @@
 # Reply to Mark — 27 Sep 2026 (final)
 
+> **Not to be sent (Craig, 1 Oct 2026): Mark does not need a message.** Several claims
+> below are no longer true since Batches 294–297; see
+> `docs/reviews/2026-10-01-batches-268-297-review.md`, "Mark-facing words".
+
 **Status:** ready for Craig to paste. **This is the only message to send.** It replaces the
 earlier 27 Sep version of this file, the unsent 22 and 25 Sep drafts, and the separate
 274 wording message (`2026-09-27-batch-274-wording.md`). Mark is on holiday, so Craig had
