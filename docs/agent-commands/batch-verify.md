@@ -16,9 +16,9 @@ Verify that a completed batch meets its acceptance criteria before closeout.
    - Backend: `PYTHONPATH=/Users/craigrobinson/garmin-coach/apps/api /Users/craigrobinson/garmin-coach/apps/api/.venv/bin/python -m pytest`
    - Backend lint: `PYTHONPATH=/Users/craigrobinson/garmin-coach/apps/api /Users/craigrobinson/garmin-coach/apps/api/.venv/bin/python -m ruff check /Users/craigrobinson/garmin-coach/apps/api`
    - Backend type check: `PYTHONPATH=/Users/craigrobinson/garmin-coach/apps/api /Users/craigrobinson/garmin-coach/apps/api/.venv/bin/python -m mypy /Users/craigrobinson/garmin-coach/apps/api/src`
-   - Frontend: `PATH="$HOME/.nvm/versions/node/v20.20.2/bin:$PATH" pnpm --dir /Users/craigrobinson/garmin-coach/apps/web test`
-   - Frontend build: `PATH="$HOME/.nvm/versions/node/v20.20.2/bin:$PATH" pnpm --dir /Users/craigrobinson/garmin-coach/apps/web build`
-   - Frontend lint: `PATH="$HOME/.nvm/versions/node/v20.20.2/bin:$PATH" pnpm --dir /Users/craigrobinson/garmin-coach/apps/web lint`
+   - Frontend: `PATH="$HOME/.nvm/versions/node/v24.21.0/bin:$PATH" pnpm --dir /Users/craigrobinson/garmin-coach/apps/web test`
+   - Frontend build: `PATH="$HOME/.nvm/versions/node/v24.21.0/bin:$PATH" pnpm --dir /Users/craigrobinson/garmin-coach/apps/web build`
+   - Frontend lint: `PATH="$HOME/.nvm/versions/node/v24.21.0/bin:$PATH" pnpm --dir /Users/craigrobinson/garmin-coach/apps/web lint`
 5. For frontend-visible batches, inspect the Vercel preview or local app in a
    browser and record what was checked.
 6. **Ask the JSONB question once, here, rather than remembering it.** For every
