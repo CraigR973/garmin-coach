@@ -98,9 +98,9 @@ W13_SWEET_SPOT_PRIMER: dict[str, Any] = {
 W12_Z2: dict[str, Any] = {
     "format": "bike",
     "steps": [
-        {"ramp": [50, 65], "label": "Warm-up ramp", "minutes": 10},
-        {"label": "Zone 2 @68%", "target": "68%", "minutes": 40, "cadenceRpm": 88},
-        {"ramp": [60, 45], "label": "Cool-down ramp", "minutes": 10},
+        {"ramp": [55, 80], "label": "Warm-up ramp 55→80%", "minutes": 10},
+        {"label": "Z2 @65%", "target": "65%", "minutes": 40},
+        {"ramp": [60, 40], "label": "Cool-down ramp", "minutes": 10},
     ],
 }
 
