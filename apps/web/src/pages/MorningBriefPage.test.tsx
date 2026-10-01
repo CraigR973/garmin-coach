@@ -148,6 +148,30 @@ beforeEach(() => {
   localStorage.clear();
 });
 
+/** A morning with a ride on it, so the hero speaks to the session (a day with no
+ *  session is a rest day, whose line is the rest day's since Batch 298). */
+function withRide(envelope: DailyLoopEnvelope): DailyLoopEnvelope {
+  envelope.data.plannedWorkouts = [
+    {
+      id: '55555555-5555-4555-8555-555555555555',
+      userId: '11111111-1111-4111-8111-111111111111',
+      planBlockId: null,
+      workoutDate: '2026-06-20',
+      version: 1,
+      title: 'Sweet Spot',
+      workoutType: 'bike_sweet_spot',
+      status: 'planned',
+      isActive: true,
+      plannedDurationMin: 60,
+      intensityTarget: '88-90% FTP',
+      structuredWorkout: {},
+      source: 'seed',
+      adherence: null,
+    },
+  ];
+  return envelope;
+}
+
 describe('morning brief page', () => {
   it('renders the full morning brief page', async () => {
     renderWithQuery(<MorningBriefPage />);
@@ -331,7 +355,7 @@ describe('morning brief page', () => {
   });
 
   it('shows the held headline when the graded verdict holds the targets (Batch 296)', async () => {
-    const held = structuredClone(snapshot);
+    const held = withRide(structuredClone(snapshot));
     held.data.morningAnalysis!.verdictEngine = 'graded';
     held.data.morningAnalysis!.verdictHeld = true;
     apiFetchMock.mockImplementation(() => Promise.resolve(held));
@@ -352,8 +376,55 @@ describe('morning brief page', () => {
     ).toBeTruthy();
   });
 
+  // Batch 298: one story. Wording signed off by Craig on Mark's behalf, 1 Oct 2026.
+  it('says the session stands on a light-week Amber, naming the week (Batch 298)', async () => {
+    const lightWeek = withRide(structuredClone(snapshot));
+    lightWeek.data.morningAnalysis!.verdict = 'amber';
+    lightWeek.data.morningAnalysis!.verdictEngine = 'graded';
+    lightWeek.data.morningAnalysis!.verdictLightWeekHold = 'consolidation';
+    apiFetchMock.mockImplementation(() => Promise.resolve(lightWeek));
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <MorningBriefPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('Ride as planned — hold your targets')).toBeTruthy();
+    expect(
+      screen.getByText(
+        "It's your consolidation week, so today's session stays as planned: hold your targets.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Ease the hard work; easy riding stays as planned.')).toBeNull();
+  });
+
+  it('says what Home says on a rest or holiday day, as on 1 Oct (Batch 298)', async () => {
+    // 1 Oct: a graded Amber on a holiday rest day. Home said the day was for recovery
+    // and the brief said "Ease the hard work".
+    const holiday = structuredClone(snapshot);
+    holiday.data.morningAnalysis!.verdict = 'amber';
+    holiday.data.morningAnalysis!.verdictEngine = 'graded';
+    apiFetchMock.mockImplementation(() => Promise.resolve(holiday));
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <MorningBriefPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(
+      await screen.findByText("Today's a rest day — recovery is the plan, not training."),
+    ).toBeTruthy();
+    expect(screen.queryByText('Ease the hard work; easy riding stays as planned.')).toBeNull();
+  });
+
   it('eases only the hard work on a graded Amber, and keeps the old line for a ladder read (Batch 296)', async () => {
-    const graded = structuredClone(snapshot);
+    const graded = withRide(structuredClone(snapshot));
     graded.data.morningAnalysis!.verdict = 'amber';
     graded.data.morningAnalysis!.verdictEngine = 'graded';
     apiFetchMock.mockImplementation(() => Promise.resolve(graded));
@@ -369,7 +440,7 @@ describe('morning brief page', () => {
     unmount();
 
     // A read stored before the switch carries no engine: the ladder's line stands.
-    const ladder = structuredClone(snapshot);
+    const ladder = withRide(structuredClone(snapshot));
     ladder.data.morningAnalysis!.verdict = 'amber';
     apiFetchMock.mockImplementation(() => Promise.resolve(ladder));
     render(

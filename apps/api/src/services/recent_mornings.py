@@ -52,6 +52,8 @@ RECENT_MORNINGS_DAYS = 7
 
 MORNING_CALL_UNCHANGED = "unchanged"
 MORNING_CALL_ADJUSTED = "adjusted"
+#: Batch 298: the session stood, ridden with its targets held.
+MORNING_CALL_HELD = "held"
 MORNING_CALL_NO_BIKE = "no_bike_advised"
 MORNING_CALL_NO_TRAINING = "no_training_advised"
 
@@ -78,8 +80,15 @@ RECENT_MORNINGS_MEANING = (
     "device), or whether no adjusted version was offered at all. `reasons` are the rules "
     "that fired that morning, in the app's words: quote them, and never name a rule that is "
     "not listed. `morningRead` false means no morning read was written that day, so "
-    "nothing was adjusted. Check here before telling Mark a session was unchanged."
+    "nothing was adjusted. Check here before telling Mark a session was unchanged. "
+    "`held` true on a day means the morning was Green with the targets held (one thing a "
+    "little off): never call it plain Green. A session's `gradedAction` is what the graded "
+    "verdict did to it; `morningCall` `held` means it stood with its targets held, a mild "
+    "concern or a planned light week, never just `unchanged`."
 )
+
+#: The graded actions that keep a session as planned with its targets held.
+_HELD_ACTIONS = frozenset({"hold_targets", "move_or_hold"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +105,9 @@ class MorningCall:
     planned_workouts: Any
     # Batch 294: absent on reads stored before it, which never ruled out training.
     requires_training_rest: Any = None
+    # Batch 298: absent on reads stored before the graded verdict set the colour.
+    held: Any = None
+    graded_actions: Any = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,6 +157,8 @@ def _day(call: MorningCall, audits: Sequence[DeliveryAudit]) -> dict[str, Any]:
         entry["noBikeAdvised"] = True
     if no_training:
         entry["noTrainingAdvised"] = True
+    if call.held is True:
+        entry["held"] = True
     if rest_day.get("isRestDay") is True:
         entry["restDay"] = True
         if isinstance(rest_day.get("reason"), str):
@@ -152,6 +166,13 @@ def _day(call: MorningCall, audits: Sequence[DeliveryAudit]) -> dict[str, Any]:
     if rest_day.get("insideHolidayWindow") is True:
         entry["onHoliday"] = True
     adjustment = call.verdict_adjustment if isinstance(call.verdict_adjustment, Mapping) else None
+    graded_actions = {
+        str(item["plannedWorkoutId"]): str(item["action"])
+        for item in _list(call.graded_actions)
+        if isinstance(item, Mapping)
+        and isinstance(item.get("plannedWorkoutId"), str)
+        and isinstance(item.get("action"), str)
+    }
     entry["sessions"] = [
         _session(
             workout,
@@ -159,6 +180,7 @@ def _day(call: MorningCall, audits: Sequence[DeliveryAudit]) -> dict[str, Any]:
             no_bike=no_bike,
             no_training=no_training,
             audits=audits,
+            graded_action=graded_actions.get(str(workout.get("id"))),
         )
         for workout in _list(call.planned_workouts)
         if isinstance(workout, Mapping)
@@ -173,6 +195,7 @@ def _session(
     no_bike: bool,
     audits: Sequence[DeliveryAudit],
     no_training: bool = False,
+    graded_action: str | None = None,
 ) -> dict[str, Any]:
     workout_id = workout.get("id")
     session: dict[str, Any] = {
@@ -209,8 +232,12 @@ def _session(
         if isinstance(workout_id, str) and _offered_at(workout_id, audits) is not None:
             session["easedVersionOffered"] = True
             session.update(_on_his_device(workout_id, audits))
+    elif graded_action in _HELD_ACTIONS:
+        session["morningCall"] = MORNING_CALL_HELD
     else:
         session["morningCall"] = MORNING_CALL_UNCHANGED
+    if graded_action is not None:
+        session["gradedAction"] = graded_action
     return session
 
 
@@ -297,6 +324,8 @@ async def load_recent_mornings(
                 requires_training_rest=row.requires_training_rest,
                 rest_day=row.rest_day,
                 planned_workouts=row.planned_workouts,
+                held=row.held,
+                graded_actions=row.graded_actions,
             )
             for row in morning_rows
         ],

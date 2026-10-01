@@ -48,6 +48,8 @@ from src.services.chronic_patterns import (
 )
 from src.services.executable_coaching import ExecutableCoachingService
 from src.services.morning_analysis import (
+    GRADED_SYMPTOM_FLOOR_RULE,
+    LADDER_SYSTEM_PROMPT,
     PROMPT_VERSION,
     SYMPTOM_FLOOR_RULE,
     SYSTEM_PROMPT,
@@ -693,13 +695,17 @@ def test_a_chest_or_heart_answer_is_not_an_illness_excuse() -> None:
 
 
 def test_the_brief_is_told_what_the_floors_mean_and_the_version_moved() -> None:
-    assert SYMPTOM_FLOOR_RULE in SYSTEM_PROMPT
-    rule = " ".join(SYMPTOM_FLOOR_RULE.split())
-    assert "requiresTrainingRest" in rule
-    assert "never evidence that he is well" in rule
+    # The ladder's rollback prompt keeps the rule verbatim; since Batch 298 the graded
+    # prompt carries it with its last sentence in the graded verdict's words.
+    assert SYMPTOM_FLOOR_RULE in LADDER_SYSTEM_PROMPT
+    assert GRADED_SYMPTOM_FLOOR_RULE in SYSTEM_PROMPT
+    for text in (SYMPTOM_FLOOR_RULE, GRADED_SYMPTOM_FLOOR_RULE):
+        rule = " ".join(text.split())
+        assert "requiresTrainingRest" in rule
+        assert "never evidence that he is well" in rule
     # A self-healing bump: the next generation writes v50 and nothing is withdrawn.
-    # (Batch 296 moved it on again, to v51; the graded prompt keeps the rule.)
-    assert PROMPT_VERSION == "morning-analysis-v52-2026-09-30"
+    # (Batch 296 moved it on again, to v51; Batch 298 to v53.)
+    assert PROMPT_VERSION == "morning-analysis-v53-2026-10-01"
 
 
 # -- the delivery rail (Postgres; CI is its first run) ----------------------------------

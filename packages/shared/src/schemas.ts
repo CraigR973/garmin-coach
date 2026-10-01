@@ -1173,6 +1173,9 @@ export const acutePhysiologySchema = z.object({
     .default([]),
   // Batch 273.2: only the working is read here; the rest of the rail stays server-side.
   overnightHrv: z.object({ provenance: z.array(z.unknown()).default([]) }).optional(),
+  // Batch 298: the notices carry the graded verdict's words, so a single mild sign is
+  // headed "Counted in today's call" rather than "Why today is capped".
+  gradedWording: z.boolean().optional(),
 });
 export type AcutePhysiology = z.infer<typeof acutePhysiologySchema>;
 
@@ -1198,6 +1201,9 @@ export const dailyLoopAnalysisSchema = z.object({
   // a read stored before the switch, which reads as the ladder and not held.
   verdictEngine: z.string().nullable().optional(),
   verdictHeld: z.boolean().optional(),
+  // Batch 298: the light week ("consolidation", "taper", …) the graded verdict held
+  // today's session in, so the headline says the session stands.
+  verdictLightWeekHold: z.string().nullable().optional(),
   // Batch 297: his check-in note may name a symptom, so Home asks the symptom question.
   // Absent on a read stored before the notes reader.
   notesAsk: z.boolean().optional(),

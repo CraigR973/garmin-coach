@@ -270,6 +270,7 @@ def _serialize_analysis(
     }
     # Batch 297: what the notes reader found; absent on a read stored before it.
     notes = verdict.get("notesReading") if isinstance(verdict, dict) else None
+    light_week_hold = _light_week_hold(verdict)
     return AnalysisOut(
         id=str(analysis.id),
         generatedAtUtc=_dt(analysis.generated_at_utc) or "",
@@ -308,6 +309,7 @@ def _serialize_analysis(
             else None
         ),
         verdictHeld=bool(isinstance(verdict, dict) and verdict.get("held") is True),
+        verdictLightWeekHold=light_week_hold,
         notesAsk=bool(isinstance(notes, dict) and notes.get("askSymptomQuestion") is True),
         notesAskWords=(
             str(notes["askWords"])
@@ -320,6 +322,26 @@ def _serialize_analysis(
             else None
         ),
     )
+
+
+def _light_week_hold(verdict: Any) -> str | None:
+    """The light week's name when the graded verdict held today's session in it.
+
+    Batch 298: in W12 and W13 a concern holds the session, and Home said "Take it a bit
+    easier" beside a plan line that kept it. A packet stored before the week was named
+    gives ``None``, and the hero keeps its usual words.
+    """
+
+    graded = verdict.get("graded") if isinstance(verdict, dict) else None
+    if not isinstance(graded, dict):
+        return None
+    references = graded.get("references")
+    week = references.get("lightWeek") if isinstance(references, dict) else None
+    actions = graded.get("actions")
+    held = isinstance(actions, list) and any(
+        isinstance(item, dict) and item.get("action") == "hold_targets" for item in actions
+    )
+    return week if held and isinstance(week, str) else None
 
 
 def _serialize_post_workout_analysis(
