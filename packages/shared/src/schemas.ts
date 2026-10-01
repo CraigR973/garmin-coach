@@ -1089,11 +1089,22 @@ export const weeklyMixShortfallSchema = z.object({
 });
 export type WeeklyMixShortfall = z.infer<typeof weeklyMixShortfallSchema>;
 
+// Batch 299: under the graded verdict an Amber eases today's hard intervals a zone at
+// full length, so the session is still in the week: "eased, not lost". Absent on a
+// ladder read and on any read stored before it.
+export const weeklyMixEasedSchema = z.object({
+  bucket: z.string(),
+  label: z.string(),
+  message: z.string(),
+});
+export type WeeklyMixEased = z.infer<typeof weeklyMixEasedSchema>;
+
 export const weeklyMixSchema = z.object({
   weekStart: z.string(),
   subjectDate: z.string().optional(),
   buckets: z.array(weeklyMixBucketSchema).default([]),
   shortfall: weeklyMixShortfallSchema.nullable().optional(),
+  eased: weeklyMixEasedSchema.nullable().optional(),
 });
 export type WeeklyMix = z.infer<typeof weeklyMixSchema>;
 

@@ -58,6 +58,8 @@ from src.services.verdict_grading import (
     ride_transform,
     stored_actions,
     stored_engine,
+    stored_rest_day,
+    stored_seen_workouts,
 )
 from src.services.verdict_scaling import (
     MIN_POWER_PCT,
@@ -220,11 +222,32 @@ class MorningContext:
     status: str | None
     graded: bool = False
     actions: Mapping[str, str] = field(default_factory=dict)
+    #: Batch 299: the rides the stored packet saw, and whether the morning was a rest day.
+    seen: frozenset[str] = frozenset()
+    rest_day: bool = False
 
     def transform_for(self, workout: PlannedWorkout) -> str | None:
         return ride_transform(
             self.status, graded=self.graded, action=self.actions.get(str(workout.id))
         )
+
+    def proposal_for(self, workout: PlannedWorkout) -> str | None:
+        """The transform the morning offers this ride as a proposal, or ``None`` (Batch 299).
+
+        A rest-day morning (a holiday, or every session skipped) offers no ride, and a
+        skipped or completed session gets none: on 1 Oct 2026 a holiday morning
+        proposed an eased version of the Sweet Spot the holiday had paused. Under the
+        graded verdict a ride the packet saw changes only by its own action, so with
+        none it gets nothing rather than the colour. A ride the packet never saw (added
+        after the morning) still takes the colour, as :meth:`transform_for` does.
+        Both guards hold under the ladder too; its colour transform is unchanged.
+        """
+        if self.rest_day or workout.status in {WORKOUT_STATUS_SKIPPED, WORKOUT_STATUS_COMPLETED}:
+            return None
+        workout_id = str(workout.id)
+        if self.graded and workout_id in self.seen and workout_id not in self.actions:
+            return None
+        return self.transform_for(workout)
 
 
 def morning_ir(
@@ -320,10 +343,21 @@ class ExecutableCoachingService:
             status=verdict,
             graded=stored_engine(analysis.context_packet) == ENGINE_GRADED,
             actions=stored_actions(analysis.context_packet),
+            seen=stored_seen_workouts(analysis.context_packet),
+            rest_day=stored_rest_day(analysis.context_packet),
         )
+        # Batch 299: a rest-day morning offers no ride, whatever its colour.
+        if context.rest_day:
+            log.info(
+                "verdict regeneration withheld: the morning is a rest day",
+                user_id=str(player.id),
+                subject_date=subject_date.isoformat(),
+                verdict=verdict,
+            )
+            return []
         created: list[WorkoutDeliveryProposal] = []
         for workout in await self._deliverable_bike_workouts(player.id, subject_date):
-            transform = context.transform_for(workout)
+            transform = context.proposal_for(workout)
             if transform is None:
                 continue
             tag = _regen_tag(workout, transform)

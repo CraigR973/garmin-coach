@@ -948,6 +948,24 @@ describe('v1 shared schemas', () => {
     expect(withoutMix.weeklyMix ?? null).toBeNull();
   });
 
+  it('parses the eased line, and a mix without it (Batch 299)', () => {
+    const base = {
+      weekStart: '2026-10-05',
+      subjectDate: '2026-10-08',
+      buckets: [
+        { bucket: 'sweet_spot', label: 'Sweet Spot', target: 1, done: 0, due: 1, atRisk: false },
+      ],
+      shortfall: null,
+    };
+    const eased = weeklyMixSchema.parse({
+      ...base,
+      eased: { bucket: 'sweet_spot', label: 'Sweet Spot', message: 'eased, not lost' },
+    });
+    expect(eased.eased?.message).toBe('eased, not lost');
+    // A ladder read, and every read stored before 299, carries no `eased` key.
+    expect(weeklyMixSchema.parse(base).eased ?? null).toBeNull();
+  });
+
   it('carries a bucket basis and stays optional for a pre-217 stored read (Batch 217)', () => {
     const explained = weeklyMixBucketSchema.parse({
       bucket: 'vo2',
