@@ -1,3 +1,4 @@
+import { SymptomNotice } from '@/components/AcutePhysiologyNotice';
 import { BriefFailedCta } from '@/components/BriefFailedCta';
 import { BriefGeneratingCta } from '@/components/BriefGeneratingCta';
 import { GoodMorningCta } from '@/components/GoodMorningCta';
@@ -35,12 +36,21 @@ export function briefPendingState(daily: DailyLoopData): BriefPendingState {
 /** The hero slot for a day whose brief does not exist yet, in any of its three states. */
 export function BriefPendingCta({ daily }: { daily: DailyLoopData }) {
   const dateLabel = friendlyDate(daily.subjectDate);
-  switch (briefPendingState(daily)) {
-    case 'failed':
-      return <BriefFailedCta dateLabel={dateLabel} />;
-    case 'generating':
-      return <BriefGeneratingCta dateLabel={dateLabel} />;
-    default:
-      return <GoodMorningCta dateLabel={dateLabel} overnightDataReady={overnightDataReady(daily)} />;
+  const state = briefPendingState(daily);
+  if (state === 'not-checked-in') {
+    return <GoodMorningCta dateLabel={dateLabel} overnightDataReady={overnightDataReady(daily)} />;
   }
+  return (
+    <>
+      {state === 'failed' ? (
+        <BriefFailedCta dateLabel={dateLabel} />
+      ) : (
+        <BriefGeneratingCta dateLabel={dateLabel} />
+      )}
+      {/* Batch 301: the medical notice his saved answer sets, where a written morning
+          would show it. It no longer waits on the paid brief, which in an Anthropic
+          outage never comes. */}
+      <SymptomNotice answer={daily.manualEntry?.symptoms} />
+    </>
+  );
 }

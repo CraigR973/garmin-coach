@@ -4775,6 +4775,22 @@ changes what the batch builds.
   `docs/agent-commands/batch-verify.md`, `docs/runbooks/deploy-fresh.md`, `apps/web/dev.sh`,
   the brand README) move with the pins. Dated design notes are left as written.
 
+### Corrections made at `/batch-start 301` (2026-10-01), before any code
+
+Every fact in 301.1 was re-checked against `main` after 309 merged. None changes what the
+batch builds.
+
+- **Confirmed.** The morning is stored only after `analysis_client.generate` returns
+  (`services/morning_analysis.py:1373-1431`); `BriefFailedCta` shows no notice; the check-in's
+  symptom question shows nothing on selection (`CheckInPage.tsx:455-480`).
+- **The saved answer is already on Home.** The daily loop's `manualEntry` is the morning
+  check-in (no workout or activity link) and carries `symptoms`, so 301.3 needs no envelope
+  field.
+- **Added at build:** the notice also shows while the brief is being written, not only after
+  it failed; the same words, so no new wording. Recorded in Decision #370.
+- **Left for 302:** in an outage the Today card still shows the day's plan beside a
+  no-training notice, and a symptom found only in his note is not shown before a brief.
+
 ### Batch group — G7, the 1 Oct review (2026-10-01)
 
 Authored on Craig's decision of 1 Oct that every batch is written up before any is built.

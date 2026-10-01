@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
-import { act, render, screen, within } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DailyLoopEnvelope } from '@/hooks/useDailyLoop';
+import { SYMPTOM_NOTICES } from '@/lib/symptoms';
 import { MorningBriefPage } from './MorningBriefPage';
 
 const apiFetchMock = vi.fn();
@@ -572,6 +573,72 @@ describe('morning brief page', () => {
 
     expect(await screen.findByText(/writing your brief/i)).toBeTruthy();
     expect(screen.queryByText(/couldn.t finish your brief/i)).toBeNull();
+  });
+
+  // Batch 301: the 999, 111 and GP notices lived only in the stored morning, which is
+  // written only after the paid brief succeeds. In an Anthropic outage (21 Jul, 31 Aug)
+  // a "Chest or heart" answer showed "Couldn't finish your brief" and nothing else.
+  function renderBriefPage() {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <MorningBriefPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  it('shows the chest notice beside a failed brief when his check-in reported it (Batch 301)', async () => {
+    apiFetchMock.mockImplementation(() =>
+      Promise.resolve(
+        withoutBrief({
+          briefGeneration: { status: 'failed', reason: 'billing' },
+          manualEntry: { ...checkedIn, symptoms: 'chest_heart' },
+        }),
+      ),
+    );
+    renderBriefPage();
+
+    expect(await screen.findByText(/couldn.t finish your brief/i)).toBeTruthy();
+    const notice = screen.getByText(SYMPTOM_NOTICES.chest_heart.notice).closest('[role="alert"]');
+    expect(notice).not.toBeNull();
+    expect(within(notice as HTMLElement).getByText('Why this needs rest')).toBeTruthy();
+    expect(screen.getByRole('link', { name: /try again/i })).toBeTruthy();
+  });
+
+  it('shows the fever notice while the brief is still being written (Batch 301)', async () => {
+    apiFetchMock.mockImplementation(() =>
+      Promise.resolve(
+        withoutBrief({
+          briefGeneration: { status: 'generating', reason: null },
+          manualEntry: { ...checkedIn, symptoms: 'fever_aches' },
+        }),
+      ),
+    );
+    renderBriefPage();
+
+    expect(await screen.findByText(/writing your brief/i)).toBeTruthy();
+    expect(screen.getByText(SYMPTOM_NOTICES.fever_aches.notice)).toBeTruthy();
+  });
+
+  it('shows no notice beside a failed brief when he answered None or was not asked (Batch 301)', async () => {
+    for (const symptoms of ['none', null] as const) {
+      apiFetchMock.mockImplementation(() =>
+        Promise.resolve(
+          withoutBrief({
+            briefGeneration: { status: 'failed', reason: 'billing' },
+            manualEntry: { ...checkedIn, symptoms },
+          }),
+        ),
+      );
+      renderBriefPage();
+
+      expect(await screen.findByText(/couldn.t finish your brief/i)).toBeTruthy();
+      expect(screen.queryByText('Why this needs rest')).toBeNull();
+      expect(screen.queryByText('Why today is capped')).toBeNull();
+      cleanup();
+    }
   });
 
   it('invites a check-in when he has not said good morning yet', async () => {

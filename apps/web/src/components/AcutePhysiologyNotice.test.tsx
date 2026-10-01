@@ -1,7 +1,8 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { AcutePhysiology } from '@coach/shared';
-import { AcutePhysiologyNotice } from './AcutePhysiologyNotice';
+import { SYMPTOM_NOTICES } from '@/lib/symptoms';
+import { AcutePhysiologyNotice, SymptomNotice } from './AcutePhysiologyNotice';
 
 const SMALL_RISE =
   'Your resting heart rate is 47 this morning against a usual 44 — a little above your usual range, as it was yesterday.';
@@ -103,5 +104,38 @@ describe('AcutePhysiologyNotice (Batch 293)', () => {
   it('shows nothing when no signal escalated', () => {
     const { container } = render(<AcutePhysiologyNotice boundary={boundary({})} />);
     expect(container.innerHTML).toBe('');
+  });
+});
+
+describe('SymptomNotice (Batch 301)', () => {
+  it('shows a chest answer as an alert, under the rest heading, in the server\'s words', () => {
+    render(<SymptomNotice answer="chest_heart" />);
+
+    const alert = screen.getByRole('alert');
+    expect(within(alert).getByText('Why this needs rest')).toBeTruthy();
+    expect(within(alert).getByText(SYMPTOM_NOTICES.chest_heart.notice)).toBeTruthy();
+    expect(SYMPTOM_NOTICES.chest_heart.notice).toContain('call 999');
+  });
+
+  it('shows a fever as an alert and a head cold as information, as Home does', () => {
+    const { unmount } = render(<SymptomNotice answer="fever_aches" />);
+    expect(
+      within(screen.getByRole('alert')).getByText(SYMPTOM_NOTICES.fever_aches.notice),
+    ).toBeTruthy();
+    unmount();
+
+    render(<SymptomNotice answer="head_cold" />);
+    const status = screen.getByRole('status');
+    expect(within(status).getByText('Why today is capped')).toBeTruthy();
+    expect(within(status).getByText(SYMPTOM_NOTICES.head_cold.notice)).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('shows nothing for None or for no answer', () => {
+    for (const answer of ['none', null, undefined] as const) {
+      const { container, unmount } = render(<SymptomNotice answer={answer} />);
+      expect(container.innerHTML).toBe('');
+      unmount();
+    }
   });
 });

@@ -1,0 +1,14 @@
+{
+  "head_cold": {
+    "level": "ease",
+    "notice": "You've told me you have a head cold — symptoms above the neck. Easy riding at most today, and only if you feel up to it: nothing hard, no intervals and no VO₂. If it moves below the neck — a fever, aches or a chesty cough — stop training until you're clear."
+  },
+  "fever_aches": {
+    "level": "rest",
+    "notice": "You've told me about a fever, aches or a chest infection. Training through that adds strain your body doesn't need and usually makes it last longer, so no training of any kind until the symptoms have gone. When you're clear, build back gradually: a few easy days before anything hard."
+  },
+  "chest_heart": {
+    "level": "rest",
+    "notice": "You've told me about chest pain, a racing or irregular heartbeat, or feeling faint. That needs a doctor's view before any training, so no training of any kind today. Speak to your GP or call 111 today. If you have chest pain right now, call 999."
+  }
+}
