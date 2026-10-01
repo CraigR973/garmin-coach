@@ -6,9 +6,9 @@
 
 ## Now
 
-**2026-10-01 — The 1 Oct review of Batches 268–297 is done, and its remediation is written
-up as Batches 298–308 (group G7). Nothing is built yet: Craig wants every batch written up
-first. The graded colour went live on Mark's 1 Oct check-in (Amber on a holiday rest day).**
+**2026-10-01 (evening) — G7a is running (`/batch-group G7a`, Craig's go). Batch 309 shipped:
+the web builds on Node 24 and deploys again. Next: 301 → 298 → 299 → 300. The graded colour
+went live on Mark's 1 Oct check-in (Amber on a holiday rest day).**
 
 ### What the review found (`docs/reviews/2026-10-01-batches-268-297-review.md`)
 
@@ -31,13 +31,13 @@ first. The graded colour went live on Mark's 1 Oct check-in (Amber on a holiday 
 4. **No message to Mark.** Neither the 27 Sep nor the 1 Oct reply draft is sent.
 5. In a light week an Amber made of two mild concerns holds the session (Batch 300).
 6. Batch 298 rewrites the knowledge base's Amber constraint in production (his go).
-7. **G7a is held for now;** Craig will start it in another session.
+7. **G7a was held, then started** the same evening with `/batch-group G7a`.
 
 ### G7 — the 1 Oct review (ledger: "The 1 Oct review")
 
 | Group | Batches | Gate |
 |---|---|---|
-| G7a, before 7 Oct | 309 → 301 → 298 → 299 → 300 | Craig's go; 298/300 wording; 300 before Thu 8 Oct |
+| G7a, before 7 Oct | ~~309~~ → 301 → 298 → 299 → 300 | 298/300 wording; 300 before Thu 8 Oct |
 | G7b | 302 → 303 → 307 | 302's storage shape; 303's migration and eval re-run (~$2–5) |
 | G7c, not before 20 Oct | 304 → 305 → 306 → 308 | 305/306 decisions; 308 after the side-by-side review |
 
@@ -66,17 +66,18 @@ runs and costs about 0.8 cents a noted morning; the v50 prompt does not explain 
 
 ### Needs Craig
 
-1. **Start G7a** (309, 301, 298, 299, 300) in another session: `/batch-group G7a`. To land before
-   7 Oct, and 300 before Thu 8 Oct's sweet spot.
+1. **G7a is running.** 298's and 300's Mark-facing wording comes to you at 298's start. The
+   Vercel project's own Node setting still reads 20.x; `engines` overrides it, so changing it
+   is tidiness only (a hosting change, yours).
 2. **From 7 to 20 Oct:** review every ladder-versus-graded disagreement in the table above.
 3. **Carried:** G4's free Neon database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment
    extractor's first paid run (Mark's own "Look for new memories" tap).
 
 ### Worth carrying
 
-- **Vercel can no longer build the web app** (found 1 Oct on PR #345): Node 20.x is
-  discontinued there. Production keeps its last good build and the API is unaffected, but no
-  web change deploys until Batch 309 moves the web to Node 24. It runs first in G7a.
+- **The web builds on Node 24 (Batch 309, PR #346, `8e0dafd`).** Vercel had refused every
+  build since 1 Oct 09:26, production included; production now serves `8e0dafd`'s build and
+  its service worker activates. Local web gates use `~/.nvm/versions/node/v24.21.0/bin`.
 - **The first graded morning (1 Oct) showed the old cap wording** in its notice and brief, and
   the delivery rail proposed an eased version of the holiday-skipped Sweet Spot (still
   `proposed`). Each Amber or Red holiday morning to 6 Oct can do the same (Batch 299).
@@ -86,7 +87,7 @@ runs and costs about 0.8 cents a noted morning; the v50 prompt does not explain 
   Oct).** Until Batch 300 ships, a mild or marked concern holds every session there.
 - **The database is at 453 MB of the 500 MB free-plan cap**; `egress-budget` reports
   `storage_critical` every 15 minutes. Up about 5 MB a week since 24 Sep.
-- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #369.**
+- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #370.**
 
 ## Prior current-state snapshots
 
@@ -1921,6 +1922,12 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-01** — G7a started (`/batch-group G7a`). Batch 309 shipped as PR #346 / `8e0dafd`
+  (Decision #369): root `engines.node` 24.x, `.nvmrc` 24 and CI's three Node jobs on 24, with a
+  test pinning them together; the Node 24 build is byte-identical to Node 20's. CI 16 of 16 on
+  both waves; production on `8e0dafd` (Railway and Vercel health, web 200, `daily-loop` 401,
+  service worker activated). Vercel's project setting still reads 20.x and is overridden; left
+  for Craig. No prompt, migration or production-data change; no paid call.
 - **2026-10-01** — Review of Batches 268–297 (`docs/reviews/2026-10-01-batches-268-297-review.md`),
   read-only, led by how the graded colour is worked out: engine sound and reproducible (102
   mornings, 1 of 1 graded reproduced); old cap wording still ships beside it; the safety
