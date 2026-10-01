@@ -6,7 +6,7 @@ Provision Garmin Coach from zero without rediscovering the Phase 0b traps.
 
 Use repo-root commands with absolute paths; do not rely on system Node or Python.
 
-- Node: `~/.nvm/versions/node/v20.20.2/bin/node`
+- Node: `~/.nvm/versions/node/v24.21.0/bin/node` (Node 24 since Batch 309; Vercel discontinued 20.x)
 - pnpm: `pnpm@9.15.0`
 - Python: `~/.local/bin/python3.12`
 - CLIs: `gh`, `supabase`, `railway`, `vercel`
@@ -18,7 +18,7 @@ brew install gh supabase/tap/supabase railway
 pnpm add -g vercel
 ```
 
-If `vercel` resolves through system Node v14, run it through the Node 20 environment or install it under the Node 20 prefix.
+If `vercel` resolves through system Node v14, run it through an nvm Node (the CLI itself runs on 20 or 24) or install it under that prefix.
 
 ## Supabase
 
@@ -88,7 +88,7 @@ Current live project:
 
 - URL: `https://garmin-coach-one.vercel.app`
 - Config: repo-root `vercel.json`
-- Node: pinned through root `package.json` `engines.node = "20.x"`
+- Node: pinned through root `package.json` `engines.node = "24.x"` (Batch 309), which overrides the project's own Node setting
 
 Required setup:
 

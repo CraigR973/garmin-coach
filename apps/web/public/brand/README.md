@@ -21,10 +21,10 @@ gauge as the readiness verdict. "Mark" is also the user (DECISIONS #89).
 
 **Do not hand-edit these SVGs or the PNGs.** All assets are generated from
 `apps/web/generate-icons.mjs`, which defines the master art (geometry, palette,
-glow, arc) in one place. After any tweak, regenerate with Node 20:
+glow, arc) in one place. After any tweak, regenerate with Node 24:
 
 ```
-~/.nvm/versions/node/v20.20.2/bin/node apps/web/generate-icons.mjs
+~/.nvm/versions/node/v24.21.0/bin/node apps/web/generate-icons.mjs
 ```
 
 (The default `node` on this machine is v14 and cannot run the resvg rasterizer.)

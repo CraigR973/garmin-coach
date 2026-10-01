@@ -4752,6 +4752,29 @@ R4 → 304–306, R5 → 307 and 291's correction. Decision numbers are assigned
 | Batch 308 — The ladder goes | 🟢 Mid | Planned | 308.1 Planned since Batch 296.2: after the 7–20 Oct side-by-side, and Craig's review of every disagreement listed in `STATUS.md`, delete the ladder's colour path, its v50 prompt and the `VERDICT_ENGINE` setting in their own PR. The acute rail, its floors and the symptom floors stay; they are the graded verdict's floors.<br>308.2 Re-verify at `/batch-start` what still reads ladder-only fields or `stored_engine` for pre-switch packets; stored mornings are never rewritten.<br>308.3 Tests: a pre-switch packet still renders; the replay still reads old mornings. | One colour engine. | No ladder colour path in the code; old mornings still render and replay. **After 20 Oct and after 304–306**, so the rollback exists while the graded colour changes. |
 | Batch 309 — The web builds on Node 24 | 🔴 High | Planned | 309.1 **Found 2026-10-01 while merging the review (PR #345).** Vercel refused the preview build: "Node.js Version \"20.x\" is discontinued and must be upgraded. Please set \"engines\": { \"node\": \"24.x\" }" (deployment `dpl_4SpXmpxeAiZD3Jxxind5HzZQ8wmq`, *observed*). PR #344's build passed on 30 Sep. The root `package.json` pins `"node": "20.x"`, `.nvmrc` says 20, and CI's web jobs run Node 20 (`.github/workflows/ci.yml:154`, `:174`, `:202`). **Until this ships no web change can deploy**, including 301 and 298; production keeps serving the last good build, and the API is unaffected (the deploy-freshness check reads the API's SHA through Vercel's rewrite).<br>309.2 Move the root `engines`, `.nvmrc` and CI's web jobs to Node 24 together, so CI builds what Vercel builds.<br>309.3 Prove the web build, lint, `pnpm -r test` and the PWA service worker (vite-plugin-pwa/workbox, which broke under Node 18) on Node 24 locally and in CI; compare the built asset list with the current production build.<br>309.4 Check the Vercel project's own Node setting (the build log says it changed from 20.x to unset) and state it in the close-out; changing it is a hosting change and Craig's.<br>309.5 Verify production after the merge: the web serves the new build, `/` 200, the service worker registers, the health SHA matches. | The web app can deploy again. | A green Vercel preview and production build on Node 24; CI on Node 24; the PWA works on the deployed build. No app behaviour change. **Blocks every web batch, so it runs first in G7a.** |
 
+### Corrections made at `/batch-start 309` (2026-10-01), before any code
+
+Every fact in 309.1 was re-checked against the repository and Vercel's API, read-only. None
+changes what the batch builds.
+
+- **Confirmed.** The root `engines.node` was `20.x`, `.nvmrc` 20, and CI ran Node 20 at
+  `ci.yml:154` (web build), `:174` (web and shared tests) and `:202` (the dependency audit's
+  `pnpm install`). Every build since 1 Oct 09:26 failed with the discontinuation message,
+  **production included**: `main`'s own build of `2dd88ab` failed, so production serves
+  `495ffa1`'s build of 30 Sep 21:27. The web code is identical between the two, so nothing is
+  missing from production.
+- **309.4's fact was wrong.** The Vercel project's own Node setting still reads
+  `nodeVersion: "20.x"` in the project API; it is not unset. The build log's "changed from
+  20.x to ''" line is the build cache's key. `engines.node` overrides the project setting, so
+  the batch needs no hosting change; moving the setting to 24.x is tidier and Craig's.
+- **"Compare the built asset list with the current production build" needs a qualifier.**
+  Production's builds carry `VITE_SENTRY_DSN` and `VITE_VAPID_PUBLIC_KEY`, so the app chunk's
+  hash differs from any local build. The comparison that holds is the chunk names (73, all
+  matching production) and a byte-for-byte comparison of the Node 20 and Node 24 local builds.
+- **Added to 309.2:** the living instructions that say Node 20 (`AGENTS.md`,
+  `docs/agent-commands/batch-verify.md`, `docs/runbooks/deploy-fresh.md`, `apps/web/dev.sh`,
+  the brand README) move with the pins. Dated design notes are left as written.
+
 ### Batch group — G7, the 1 Oct review (2026-10-01)
 
 Authored on Craig's decision of 1 Oct that every batch is written up before any is built.
