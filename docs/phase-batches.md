@@ -4869,6 +4869,43 @@ read-only. None changes what the batch builds; three gaps are filled.
   They now assert the graded reading through the real packet: an Amber eases the VO2 and says
   so; a Red (a Rough check-in) still says "No VO2 session this week". No source change.
 
+### Corrections made at `/batch-start 300` (2026-10-01), before any code
+
+Every fact in 300.1 was re-checked against `main` after 299 merged and against production,
+read-only. One is corrected and two gaps are filled; none changes what the batch builds.
+
+- **Confirmed.** `_session_action` held every bike session in a recovery-class block on an
+  Amber or held morning (the row's line numbers had moved; after this batch the rule is at
+  `services/verdict_grading.py:1115` and the block types at `:1274`). W12 is `consolidation` (5–11 Oct) and W13 `taper` (12–18 Oct). Thu 8 Oct is
+  "Sweet Spot (1 × 30 min @ 89%)", 58 minutes; the primers are Tue 13 Oct "VO₂ Primer
+  (3 × 1 min @ 120%)" and Thu 15 Oct "Sweet Spot Primer (1 × 12 min @ 89%)". All three
+  classify as hard. W12's Monday and Tuesday sessions are skipped by the holiday.
+- **Corrected: "the rule changes no stored morning".** Replayed over the 102 stored mornings,
+  no light-week morning has a marked domain and a hard session, as the row says. One has a
+  marked domain and a Zone 2 ride: 4 Jul (consolidation, a very poor night, "Light Aerobic
+  Spin"). Under 300.2 its action reads as planned where it read held: the same ride at full
+  length, under the ordinary Amber words. So 300.5's replay line is: no colour changes, no
+  hard session's action changes, and one Zone 2 label changes.
+- **Gap: which sleep score counts as marked.** The engine rates sleep on the age-adjusted
+  score and again on Garmin's own, and the second keeps the day Amber when the credit alone
+  would make it Green. A domain marked on either counts, so a night Garmin scores under 60
+  eases whatever the credit (his credit is 0, 4 or 8 points; 30 Aug was 57 lifted to 61).
+  Counting only the pass that set the colour would hold that night once a second mild concern
+  joined it, a worse morning with a less cautious action.
+- **Gap: a Zone 2 ride on a clearly-off morning in a light week** is as planned with the
+  ordinary Amber words ("Keep your Zone 2 ride at full length."), not the hold: 300.2 and the
+  wording draft's §7 both say a clearly-off morning reads as in any other week.
+- **300.4 and the prompt.** No prompt change: `GRADED_VERDICT_RULE` says what `hold_targets`
+  means, not when it applies, and production's Amber constraint already reads "a mild concern
+  holds the session" (298).
+- **300.5, "each confirmed to fail first".** The tests of what changes failed on `main` (the
+  sweet spot easing, the Zone 2 line, the age-credit cases, the ordinary Amber words, his three
+  real sessions). The tests of what must not change (one mild holds, two mild hold, Red, the
+  floors, outside a light week) pass before and after by construction; each was instead shown
+  to fail against a wrong rule (every Amber easing; the age-adjusted score alone; the
+  colour-setting pass alone).
+- **Wording:** no new words; signed off at 298's start (the draft's §7).
+
 ### Batch group — G7, the 1 Oct review (2026-10-01)
 
 Authored on Craig's decision of 1 Oct that every batch is written up before any is built.

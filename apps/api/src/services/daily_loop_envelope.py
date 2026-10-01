@@ -329,7 +329,9 @@ def _light_week_hold(verdict: Any) -> str | None:
 
     Batch 298: in W12 and W13 a concern holds the session, and Home said "Take it a bit
     easier" beside a plan line that kept it. A packet stored before the week was named
-    gives ``None``, and the hero keeps its usual words.
+    gives ``None``, and the hero keeps its usual words. Since Batch 300 only a mild
+    concern holds it: a clearly-off morning carries no ``hold_targets`` action, so it
+    gives ``None`` and reads as any other Amber.
     """
 
     graded = verdict.get("graded") if isinstance(verdict, dict) else None
