@@ -1,5 +1,8 @@
 # Reply to Mark — 1 Oct 2026 (draft, replaces the 27 Sep version)
 
+> **Not to be sent (Craig, 1 Oct 2026): Mark does not need a message.** Kept only as an
+> accurate plain-English account of how the colour works on 1 Oct.
+
 **Status:** draft for Craig. **Not sent.** It replaces
 `docs/drafts/2026-09-27-reply-to-mark.md`, which predates Batches 294–297 and is no longer
 true in several places (listed in `docs/reviews/2026-10-01-batches-268-297-review.md`,
