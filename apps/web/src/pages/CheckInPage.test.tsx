@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SYMPTOM_NOTICES } from '@/lib/symptoms';
 import { CheckInPage } from './CheckInPage';
 
 const apiFetchMock = vi.fn();
@@ -181,6 +182,80 @@ describe('CheckInPage', () => {
         within(group).getByRole('radio', { name: /Fever or aches/ }).getAttribute('aria-checked'),
       ).toBe('true');
     });
+  });
+
+  it("shows the answer's medical notice the moment he picks it, before any save or brief (Batch 301)", async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/api/v1/daily-loop') return Promise.resolve(snapshot);
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <CheckInPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const group = await screen.findByRole('radiogroup', { name: 'Any symptoms today?' });
+    // None is preselected, and an ordinary morning shows nothing.
+    expect(screen.queryByText('Why this needs rest')).toBeNull();
+    expect(screen.queryByText('Why today is capped')).toBeNull();
+
+    await user.click(within(group).getByRole('radio', { name: /Chest or heart/ }));
+    const chest = screen.getByText(SYMPTOM_NOTICES.chest_heart.notice).closest('[role="alert"]');
+    expect(chest).not.toBeNull();
+    expect(within(chest as HTMLElement).getByText('Why this needs rest')).toBeTruthy();
+
+    await user.click(within(group).getByRole('radio', { name: /Fever or aches/ }));
+    expect(
+      screen.getByText(SYMPTOM_NOTICES.fever_aches.notice).closest('[role="alert"]'),
+    ).not.toBeNull();
+    expect(screen.queryByText(SYMPTOM_NOTICES.chest_heart.notice)).toBeNull();
+
+    await user.click(within(group).getByRole('radio', { name: /Head cold/ }));
+    const cold = screen.getByText(SYMPTOM_NOTICES.head_cold.notice).closest('[role="status"]');
+    expect(cold).not.toBeNull();
+    expect(within(cold as HTMLElement).getByText('Why today is capped')).toBeTruthy();
+
+    await user.click(within(group).getByRole('radio', { name: 'None' }));
+    expect(screen.queryByText(SYMPTOM_NOTICES.head_cold.notice)).toBeNull();
+    expect(screen.queryByText('Why today is capped')).toBeNull();
+
+    // The advice needed no save and no brief: nothing but the daily loop was fetched.
+    expect(apiFetchMock.mock.calls.every(([path]) => path === '/api/v1/daily-loop')).toBe(true);
+  });
+
+  it('shows the notice for an answer he saved earlier, as when he comes back to try again (Batch 301)', async () => {
+    const stored = {
+      ...snapshot,
+      data: {
+        ...snapshot.data,
+        briefGeneration: { status: 'failed', reason: 'billing' },
+        manualEntry: {
+          id: '8a2c4b36-5a8c-4e0b-a7a4-0c6f1b2d3e4f',
+          userId: '1b6c7a8e-2d3f-4a5b-8c9d-0e1f2a3b4c5d',
+          entryDate: '2026-06-20',
+          entryAtUtc: '2026-06-20T06:30:00Z',
+          actualWorkoutJson: {},
+          supplementsJson: {},
+          foodJson: {},
+          symptoms: 'chest_heart',
+        },
+      },
+    };
+    apiFetchMock.mockImplementation(() => Promise.resolve(stored));
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <CheckInPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText(/couldn't finish your brief/i)).toBeTruthy();
+    expect(await screen.findByText(SYMPTOM_NOTICES.chest_heart.notice)).toBeTruthy();
   });
 
   it("captures last night's bedding, windows, blind and pre-cool setup", async () => {

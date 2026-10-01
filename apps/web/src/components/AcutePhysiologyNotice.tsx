@@ -1,6 +1,7 @@
-import type { AcutePhysiology } from '@coach/shared';
+import type { AcutePhysiology, SymptomAnswer } from '@coach/shared';
 import { Info, ShieldAlert } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { symptomNotice } from '@/lib/symptoms';
 
 interface AcutePhysiologyNoticeProps {
   boundary: AcutePhysiology | null | undefined;
@@ -28,11 +29,14 @@ function noticeLevel(boundary: AcutePhysiology): NoticeLevel {
   return 'ease';
 }
 
-export function AcutePhysiologyNotice({ boundary }: AcutePhysiologyNoticeProps) {
-  const escalations = boundary?.escalations ?? [];
-  if (!boundary || escalations.length === 0) return null;
-
-  const level = noticeLevel(boundary);
+/** The notice card itself: one heading for its most serious level, then each message. */
+function NoticeCard({
+  level,
+  messages,
+}: {
+  level: NoticeLevel;
+  messages: ReadonlyArray<{ key: string; text: string }>;
+}) {
   const Icon = level === 'ease' ? Info : ShieldAlert;
   return (
     <Card
@@ -46,12 +50,39 @@ export function AcutePhysiologyNotice({ boundary }: AcutePhysiologyNoticeProps) 
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm leading-6 text-text-secondary">
-        {escalations.map((escalation) => (
-          <p key={escalation.kind}>{escalation.message}</p>
+        {messages.map((message) => (
+          <p key={message.key}>{message.text}</p>
         ))}
       </CardContent>
     </Card>
   );
+}
+
+export function AcutePhysiologyNotice({ boundary }: AcutePhysiologyNoticeProps) {
+  const escalations = boundary?.escalations ?? [];
+  if (!boundary || escalations.length === 0) return null;
+
+  return (
+    <NoticeCard
+      level={noticeLevel(boundary)}
+      messages={escalations.map((escalation) => ({
+        key: escalation.kind,
+        text: escalation.message,
+      }))}
+    />
+  );
+}
+
+/** Batch 301: a reported symptom's notice before, or without, a written brief.
+ *
+ *  The same card, heading and words Home shows on a written morning, so the advice
+ *  does not wait for the paid brief: on the check-in the moment he picks the answer,
+ *  and on Home and the brief page while today's brief is being written or after it
+ *  failed. Renders nothing for None or for no answer. */
+export function SymptomNotice({ answer }: { answer: SymptomAnswer | null | undefined }) {
+  const notice = symptomNotice(answer);
+  if (!notice) return null;
+  return <NoticeCard level={notice.level} messages={[{ key: 'symptoms', text: notice.notice }]} />;
 }
 
 export function MedicalBoundaryFooter({ boundary }: AcutePhysiologyNoticeProps) {

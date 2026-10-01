@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { dailyLoopEnvelopeSchema, manualEntryInputSchema, type SymptomAnswer } from '@coach/shared';
 import { toast } from 'sonner';
 import { CheckCircle2, Loader2 } from 'lucide-react';
+import { SymptomNotice } from '@/components/AcutePhysiologyNotice';
 import { CollapsibleSection } from '@/components/CollapsibleSection';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -477,6 +478,9 @@ export function CheckInPage() {
                 );
               })}
             </div>
+            {/* Batch 301: the answer's medical notice at once, not only after the paid
+                brief is written — in an Anthropic outage it never would be. */}
+            <SymptomNotice answer={manualForm.symptoms} />
           </div>
           <div className="space-y-2">
             <Label>Anything to flag?</Label>
