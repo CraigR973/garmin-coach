@@ -6,9 +6,10 @@
 
 ## Now
 
-**2026-10-01 (evening) — G7a is running (`/batch-group G7a`, Craig's go). Batch 309 shipped:
-the web builds on Node 24 and deploys again. Next: 301 → 298 → 299 → 300. The graded colour
-went live on Mark's 1 Oct check-in (Amber on a holiday rest day).**
+**2026-10-01 (evening) — G7a is running (`/batch-group G7a`, Craig's go). Shipped: 309 (the
+web builds on Node 24 and deploys again) and 301 (the medical notices show on the check-in and
+beside a failed brief). Next: 298 → 299 → 300. The graded colour went live on Mark's 1 Oct
+check-in (Amber on a holiday rest day).**
 
 ### What the review found (`docs/reviews/2026-10-01-batches-268-297-review.md`)
 
@@ -18,7 +19,8 @@ went live on Mark's 1 Oct check-in (Amber on a holiday rest day).**
   graded mornings (it did on 1 Oct), and a W12/W13 Amber says "Take it easier", "stays as
   planned" and "a Sweet Spot session short" at once.
 - **The safety floors depend on the paid brief:** in an Anthropic outage a "Chest or heart"
-  answer shows no 999/111/GP advice.
+  answer showed no 999/111/GP advice. Batch 301 now shows the tapped answer's notice without
+  the brief; the colour, plan lines and actions still need it (Batch 302).
 - **On HRV the engine now errs slightly lenient** against the trials it cites: a week-long dip
   stays "a little off".
 
@@ -37,7 +39,7 @@ went live on Mark's 1 Oct check-in (Amber on a holiday rest day).**
 
 | Group | Batches | Gate |
 |---|---|---|
-| G7a, before 7 Oct | ~~309~~ → 301 → 298 → 299 → 300 | 298/300 wording; 300 before Thu 8 Oct |
+| G7a, before 7 Oct | ~~309~~ → ~~301~~ → 298 → 299 → 300 | 298/300 wording; 300 before Thu 8 Oct |
 | G7b | 302 → 303 → 307 | 302's storage shape; 303's migration and eval re-run (~$2–5) |
 | G7c, not before 20 Oct | 304 → 305 → 306 → 308 | 305/306 decisions; 308 after the side-by-side review |
 
@@ -87,7 +89,7 @@ runs and costs about 0.8 cents a noted morning; the v50 prompt does not explain 
   Oct).** Until Batch 300 ships, a mild or marked concern holds every session there.
 - **The database is at 453 MB of the 500 MB free-plan cap**; `egress-budget` reports
   `storage_critical` every 15 minutes. Up about 5 MB a week since 24 Sep.
-- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #370.**
+- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #371.**
 
 ## Prior current-state snapshots
 
@@ -1922,6 +1924,13 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-01** — Batch 301 shipped as PR #347 / `a8f2cec` (Decision #370): picking Chest or
+  heart, Fever or aches or Head cold on the check-in shows that answer's notice at once, and Home
+  and `/brief` show the saved answer's notice under "Couldn't finish your brief" or "Writing your
+  brief". The words are a JSON copy of the acute rail's, pinned by a parity test. CI 16 of 16 on
+  both waves; production on `a8f2cec` (health, web 200, `daily-loop` 401; the check-in, Home and
+  brief bundles load the 999 notice). Checked in a local browser against a mock API. No API,
+  prompt, migration or production-data change; no paid call.
 - **2026-10-01** — G7a started (`/batch-group G7a`). Batch 309 shipped as PR #346 / `8e0dafd`
   (Decision #369): root `engines.node` 24.x, `.nvmrc` 24 and CI's three Node jobs on 24, with a
   test pinning them together; the Node 24 build is byte-identical to Node 20's. CI 16 of 16 on
