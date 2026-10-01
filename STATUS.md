@@ -8,9 +8,10 @@
 
 **2026-10-01 (evening) — G7a is running (`/batch-group G7a`, Craig's go). Shipped: 309 (the
 web builds on Node 24 and deploys again), 301 (the medical notices show on the check-in and
-beside a failed brief) and 298 (the words follow the graded verdict: no "cap" notice, one Amber
-line, the light week named). Next: 299 → 300. The graded colour went live on Mark's 1 Oct
-check-in (Amber on a holiday rest day).**
+beside a failed brief), 298 (the words follow the graded verdict: no "cap" notice, one Amber
+line, the light week named) and 299 (the weekly mix and the ride offered follow each session's
+action: an eased session is "eased, not lost", and a rest day offers no ride). Next: 300. The
+graded colour went live on Mark's 1 Oct check-in (Amber on a holiday rest day).**
 
 ### What the review found (`docs/reviews/2026-10-01-batches-268-297-review.md`)
 
@@ -19,7 +20,7 @@ check-in (Amber on a holiday rest day).**
 - **The words around it were not:** the old rules' "caps today at Amber" notice shipped on
   graded mornings (it did on 1 Oct), and a W12/W13 Amber said "Take it easier", "stays as
   planned" and "a Sweet Spot session short" at once. Batch 298 fixed the notice, the Amber line
-  and the light-week hold; the "session short" line is Batch 299's.
+  and the light-week hold; Batch 299 fixed the "session short" line.
 - **The safety floors depend on the paid brief:** in an Anthropic outage a "Chest or heart"
   answer showed no 999/111/GP advice. Batch 301 now shows the tapped answer's notice without
   the brief; the colour, plan lines and actions still need it (Batch 302).
@@ -41,7 +42,7 @@ check-in (Amber on a holiday rest day).**
 
 | Group | Batches | Gate |
 |---|---|---|
-| G7a, before 7 Oct | ~~309~~ → ~~301~~ → ~~298~~ → 299 → 300 | Wording signed off; 300 before Thu 8 Oct |
+| G7a, before 7 Oct | ~~309~~ → ~~301~~ → ~~298~~ → ~~299~~ → 300 | Wording signed off; 300 before Thu 8 Oct |
 | G7b | 302 → 303 → 307 | 302's storage shape; 303's migration and eval re-run (~$2–5) |
 | G7c, not before 20 Oct | 304 → 305 → 306 → 308 | 305/306 decisions; 308 after the side-by-side review |
 
@@ -87,9 +88,13 @@ v50 brief reads constraints the ladder does not follow.
   build since 1 Oct 09:26, production included; production now serves `8e0dafd`'s build and
   its service worker activates. Local web gates use `~/.nvm/versions/node/v24.21.0/bin`.
 - **1 Oct's stored brief keeps the old cap wording** (v52; stored mornings are never
-  rewritten). The next morning written is v53, with the graded words. The delivery rail's
-  eased version of the holiday-skipped Sweet Spot is still `proposed`; each Amber or Red
-  holiday morning to 6 Oct can propose another until Batch 299 ships.
+  rewritten). The next morning written is v54, with the graded words and the mix read by
+  action. The delivery rail's eased version of the holiday-skipped Sweet Spot (proposal
+  `c3c90d1b`) is still `proposed` and unpushed; the scheduler's stale-proposal sweep expires
+  it. Since Batch 299 a rest-day morning proposes nothing, so no holiday morning adds another.
+- **A batch that changes what a packet says must grep the Postgres-backed tests for the old
+  words before pushing.** They skip on this Mac, so 299's first CI run failed on two Batch 70
+  tests in `test_morning_analysis.py` that still expected "a VO2 session short" on an Amber.
 - **Production's `training_plan` is v3 since Batch 298** (`batch_298_graded_amber`): the Amber
   and Red constraints state the graded verdict. v2 is kept, inactive.
 - **The first real note reading** (1 Oct): fatigue present ("a bit more tired"), one notch;
@@ -98,7 +103,7 @@ v50 brief reads constraints the ladder does not follow.
   Oct).** Until Batch 300 ships, a mild or marked concern holds every session there.
 - **The database is at 453 MB of the 500 MB free-plan cap**; `egress-budget` reports
   `storage_critical` every 15 minutes. Up about 5 MB a week since 24 Sep.
-- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #372.**
+- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #373.**
 
 ## Prior current-state snapshots
 
@@ -1933,6 +1938,23 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-01** — Batch 299 shipped as PR #349 / `3539ee8` (Decision #372): under the graded
+  verdict the weekly mix reads each session's action, so only a dropped session (a Red recovery
+  spin or shortened ride, or a floor's day off) is "a session short"; an eased one reads
+  "Today's Sweet Spot session is eased, not lost: its hard intervals drop a zone and it keeps
+  its full length." and still counts; a held or moved one adds no line. The rail offers no ride
+  on a rest-day morning or for a skipped or completed session (both engines), and never the
+  colour for a ride the graded morning saw. Morning prompt v53 → v54 (graded only); Home's real
+  lookup still serves 29 Sep to 1 Oct's stored briefs, nothing regenerated ($0). Read-only on
+  production through the merged code: 1 Oct's stored morning is a rest day and offers the
+  skipped Sweet Spot nothing (it offered the Amber version before); of the 6 stored mornings
+  that told Mark he was a session short, replayed under the graded actions 3 read "eased, not
+  lost" and 3 say nothing (held Green), and across all 102 the mix says dropped on 1, eased on
+  4, nothing on 97. **The first CI run was red:** two Postgres-backed Batch 70 tests still
+  expected the colour reading and skip locally; fixed in the tests, no source change. Then CI
+  16 of 16 on both waves (2,241 passed, 0 skipped) and green on `main`; production on `3539ee8`
+  (health on both, web 200, `daily-loop` 401, the deployed image reports v54, the web bundle
+  reads `eased`). No migration; no production write; no paid call.
 - **2026-10-01** — Batch 298 shipped as PR #348 / `8d49201` (Decision #371): under the graded
   verdict a low HRV night or two mornings of raised resting heart rate is "one thing a little
   off, and today's call already counts it", headed "Counted in today's call"; the graded packet
