@@ -37,7 +37,7 @@ first. The graded colour went live on Mark's 1 Oct check-in (Amber on a holiday 
 
 | Group | Batches | Gate |
 |---|---|---|
-| G7a, before 7 Oct | 301 → 298 → 299 → 300 | Craig's go; 298/300 wording; 300 before Thu 8 Oct |
+| G7a, before 7 Oct | 309 → 301 → 298 → 299 → 300 | Craig's go; 298/300 wording; 300 before Thu 8 Oct |
 | G7b | 302 → 303 → 307 | 302's storage shape; 303's migration and eval re-run (~$2–5) |
 | G7c, not before 20 Oct | 304 → 305 → 306 → 308 | 305/306 decisions; 308 after the side-by-side review |
 
@@ -66,7 +66,7 @@ runs and costs about 0.8 cents a noted morning; the v50 prompt does not explain 
 
 ### Needs Craig
 
-1. **Start G7a** (301, 298, 299, 300) in another session: `/batch-group G7a`. To land before
+1. **Start G7a** (309, 301, 298, 299, 300) in another session: `/batch-group G7a`. To land before
    7 Oct, and 300 before Thu 8 Oct's sweet spot.
 2. **From 7 to 20 Oct:** review every ladder-versus-graded disagreement in the table above.
 3. **Carried:** G4's free Neon database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment
@@ -74,6 +74,9 @@ runs and costs about 0.8 cents a noted morning; the v50 prompt does not explain 
 
 ### Worth carrying
 
+- **Vercel can no longer build the web app** (found 1 Oct on PR #345): Node 20.x is
+  discontinued there. Production keeps its last good build and the API is unaffected, but no
+  web change deploys until Batch 309 moves the web to Node 24. It runs first in G7a.
 - **The first graded morning (1 Oct) showed the old cap wording** in its notice and brief, and
   the delivery rail proposed an eased version of the holiday-skipped Sweet Spot (still
   `proposed`). Each Amber or Red holiday morning to 6 Oct can do the same (Batch 299).
