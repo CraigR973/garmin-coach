@@ -7,17 +7,19 @@
 ## Now
 
 **2026-10-01 (evening) — G7a is running (`/batch-group G7a`, Craig's go). Shipped: 309 (the
-web builds on Node 24 and deploys again) and 301 (the medical notices show on the check-in and
-beside a failed brief). Next: 298 → 299 → 300. The graded colour went live on Mark's 1 Oct
+web builds on Node 24 and deploys again), 301 (the medical notices show on the check-in and
+beside a failed brief) and 298 (the words follow the graded verdict: no "cap" notice, one Amber
+line, the light week named). Next: 299 → 300. The graded colour went live on Mark's 1 Oct
 check-in (Amber on a holiday rest day).**
 
 ### What the review found (`docs/reviews/2026-10-01-batches-268-297-review.md`)
 
 - **The engine is sound:** 102 mornings replayed, 1 of 1 graded mornings reproduced, no floor
   weakened, Red 13 → 4. Six reverted fixes each failed a test.
-- **The words around it are not:** the old rules' "caps today at Amber" notice still ships on
-  graded mornings (it did on 1 Oct), and a W12/W13 Amber says "Take it easier", "stays as
-  planned" and "a Sweet Spot session short" at once.
+- **The words around it were not:** the old rules' "caps today at Amber" notice shipped on
+  graded mornings (it did on 1 Oct), and a W12/W13 Amber said "Take it easier", "stays as
+  planned" and "a Sweet Spot session short" at once. Batch 298 fixed the notice, the Amber line
+  and the light-week hold; the "session short" line is Batch 299's.
 - **The safety floors depend on the paid brief:** in an Anthropic outage a "Chest or heart"
   answer showed no 999/111/GP advice. Batch 301 now shows the tapped answer's notice without
   the brief; the colour, plan lines and actions still need it (Batch 302).
@@ -39,7 +41,7 @@ check-in (Amber on a holiday rest day).**
 
 | Group | Batches | Gate |
 |---|---|---|
-| G7a, before 7 Oct | ~~309~~ → ~~301~~ → 298 → 299 → 300 | 298/300 wording; 300 before Thu 8 Oct |
+| G7a, before 7 Oct | ~~309~~ → ~~301~~ → ~~298~~ → 299 → 300 | Wording signed off; 300 before Thu 8 Oct |
 | G7b | 302 → 303 → 307 | 302's storage shape; 303's migration and eval re-run (~$2–5) |
 | G7c, not before 20 Oct | 304 → 305 → 306 → 308 | 305/306 decisions; 308 after the side-by-side review |
 
@@ -64,13 +66,17 @@ Batch 291's row is corrected in place (its alert list).
 Set the Railway variable `VERDICT_ENGINE=ladder` on the `api` service (Craig's: a hosting
 change). The redeploy restores the ladder's colour, its v50 prompt (byte-identical) and its
 delivery. Since 297 the ladder's packet also carries `notesReading`, and the notes reader still
-runs and costs about 0.8 cents a noted morning; the v50 prompt does not explain it.
+runs and costs about 0.8 cents a noted morning; the v50 prompt does not explain it. **Since 298
+the knowledge base states the graded Amber and Red** (`training_plan` v3): a rollback should
+also write v2's content back as a new version through `update_knowledge_base_section`, or the
+v50 brief reads constraints the ladder does not follow.
 
 ### Needs Craig
 
-1. **G7a is running.** 298's and 300's Mark-facing wording comes to you at 298's start. The
-   Vercel project's own Node setting still reads 20.x; `engines` overrides it, so changing it
-   is tidiness only (a hosting change, yours).
+1. **G7a is running.** The Mark-facing wording for 298, 299 and 300 was signed off at 298's
+   start (`docs/drafts/2026-10-01-batch-298-wording.md`). The Vercel project's own Node setting
+   still reads 20.x; `engines` overrides it, so changing it is tidiness only (a hosting change,
+   yours).
 2. **From 7 to 20 Oct:** review every ladder-versus-graded disagreement in the table above.
 3. **Carried:** G4's free Neon database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment
    extractor's first paid run (Mark's own "Look for new memories" tap).
@@ -80,16 +86,19 @@ runs and costs about 0.8 cents a noted morning; the v50 prompt does not explain 
 - **The web builds on Node 24 (Batch 309, PR #346, `8e0dafd`).** Vercel had refused every
   build since 1 Oct 09:26, production included; production now serves `8e0dafd`'s build and
   its service worker activates. Local web gates use `~/.nvm/versions/node/v24.21.0/bin`.
-- **The first graded morning (1 Oct) showed the old cap wording** in its notice and brief, and
-  the delivery rail proposed an eased version of the holiday-skipped Sweet Spot (still
-  `proposed`). Each Amber or Red holiday morning to 6 Oct can do the same (Batch 299).
+- **1 Oct's stored brief keeps the old cap wording** (v52; stored mornings are never
+  rewritten). The next morning written is v53, with the graded words. The delivery rail's
+  eased version of the holiday-skipped Sweet Spot is still `proposed`; each Amber or Red
+  holiday morning to 6 Oct can propose another until Batch 299 ships.
+- **Production's `training_plan` is v3 since Batch 298** (`batch_298_graded_amber`): the Amber
+  and Red constraints state the graded verdict. v2 is kept, inactive.
 - **The first real note reading** (1 Oct): fatigue present ("a bit more tired"), one notch;
   2,345 tokens in, 301 out (≈0.8 cents).
 - **Mark's first two weeks back are W12 CONSOLIDATION (5–11 Oct) and W13 TAPER (12–18
   Oct).** Until Batch 300 ships, a mild or marked concern holds every session there.
 - **The database is at 453 MB of the 500 MB free-plan cap**; `egress-budget` reports
   `storage_critical` every 15 minutes. Up about 5 MB a week since 24 Sep.
-- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #371.**
+- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #372.**
 
 ## Prior current-state snapshots
 
@@ -1924,6 +1933,18 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-01** — Batch 298 shipped as PR #348 / `8d49201` (Decision #371): under the graded
+  verdict a low HRV night or two mornings of raised resting heart rate is "one thing a little
+  off, and today's call already counts it", headed "Counted in today's call"; the graded packet
+  drops the ladder's cap bookkeeping; Home and `/brief` share one Amber line and the brief
+  follows Home on rest days; a light-week hold names the week; "you're still recovering from
+  yesterday's hard session"; `recentMornings` carries `held` and each session's action. Morning
+  prompt v52 → v53 (graded only); Home's real lookup still serves 1 Oct's v52 brief, nothing
+  regenerated ($0). Production's `training_plan` rewritten to v3 by read-modify-write (Craig's
+  go). Replay of 102 production mornings: cap wording on 0 under the graded packet (15 under
+  the ladder's words). CI 16 of 16 on both waves and green on `main`; production on `8d49201`
+  (health on both, web 200, `daily-loop` 401, the deployed image reports v53, the web bundle
+  carries the new heading and light-week lines). No migration; no paid call.
 - **2026-10-01** — Batch 301 shipped as PR #347 / `a8f2cec` (Decision #370): picking Chest or
   heart, Fever or aches or Head cold on the check-in shows that answer's notice at once, and Home
   and `/brief` show the saved answer's notice under "Couldn't finish your brief" or "Writing your
