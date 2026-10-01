@@ -7,6 +7,7 @@ supply already-loaded rows and receive a deterministic packet.
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
 from statistics import median, pstdev
@@ -305,6 +306,72 @@ def _prior_daily_metric(
     return next((row for row in recent_daily_metrics if row.calendar_date == prior_date), None)
 
 
+# -- the acute notices' words ------------------------------------------------------
+#
+# The ladder's words are Batch 293's and 294's, signed off by Craig on Mark's behalf on
+# 27 and 28 Sep 2026. Batch 298 gives the graded verdict its own closing sentence for a
+# signal that is one thing a little off, signed off on 1 Oct 2026
+# (docs/drafts/2026-10-01-batch-298-wording.md). The rails always write the ladder's
+# words, which the rollback restores byte for byte; ``graded_acute_physiology`` rewrites
+# a graded packet's copy.
+
+LADDER_MILD_SIGNAL_CLOSING = (
+    "On its own it caps today at Amber: an eased session, not a day off the bike."
+)
+GRADED_MILD_SIGNAL_CLOSING = (
+    "On its own it is one thing a little off, and today's call already counts it: not a "
+    "day off the bike."
+)
+LADDER_EITHER_ALONE_CLAUSE = "Either on its own would only cap the day;"
+GRADED_EITHER_ALONE_CLAUSE = "Either on its own would only be a little off;"
+LADDER_BELOW_FLOOR = "Below it the day is capped at Amber"
+GRADED_BELOW_FLOOR = "Below it last night counts as one thing a little off in the graded verdict"
+
+
+def _rhr_mild_notice(current: Any, median_value: Any, closing: str) -> str:
+    """Two mornings a little above his usual range (Batch 293)."""
+    return (
+        f"Your resting heart rate is {current} this morning against a usual "
+        f"{_number(median_value)} — a little above your usual range, as it was "
+        "yesterday. Small rises like this usually come from travel, a short night, "
+        f"a busy week or a hard day before. {closing}"
+    )
+
+
+def _hrv_mild_notice(current: Any, median_value: Any, closing: str) -> str:
+    """A low night under his acute floor, on its own (Batch 294)."""
+    return (
+        f"Your overnight HRV is {current} ms this morning against a usual "
+        f"{_number(median_value)} ms — lower than most nights for you. Dips like "
+        "this usually come from a short night, a drink, a busy week or a hard day "
+        f"before. {closing}"
+    )
+
+
+def _hrv_corroborated_notice(
+    current: Any, median_value: Any, second_sign: str, either_alone: str
+) -> str:
+    """A low night with a second sign, which rests the bike (Batch 294)."""
+    return (
+        f"Your overnight HRV is {current} ms this morning against a usual "
+        f"{_number(median_value)} ms, and {second_sign}. {either_alone} together they "
+        "are worth respecting. Take today off the bike. If you feel unwell, rest until "
+        "it settles, and see your GP if it doesn't."
+    )
+
+
+def _hrv_floor_rule(below_floor: str) -> str:
+    """The acute HRV floor's rule, for the model and the working (Batches 273, 294)."""
+    return (
+        f"his own median over the window, minus "
+        f"{HRV_ACUTE_DROP_STDDEVS} standard deviations of it — a personal "
+        f"floor, not a population band, and not Garmin's. {below_floor}; it rests the "
+        f"bike only at {HRV_ILLNESS_DROP_STDDEVS} standard deviations or "
+        f"{HRV_ILLNESS_DROP_FRACTION:.0%} under the median, or below the "
+        "floor alongside a raised resting heart rate or a reported symptom"
+    )
+
+
 def _rhr_rail(
     daily_metric: DailyMetric | None,
     baseline: MetricBaseline | None,
@@ -365,13 +432,7 @@ def _rhr_rail(
                 "Resting heart rate sets an Amber ceiling: it has been above the "
                 f"personal upper quartile of {_number(upper_quartile)} bpm for two mornings."
             )
-            escalation = (
-                f"Your resting heart rate is {current} this morning against a usual "
-                f"{_number(median_value)} — a little above your usual range, as it was "
-                "yesterday. Small rises like this usually come from travel, a short night, "
-                "a busy week or a hard day before. On its own it caps today at Amber: an "
-                "eased session, not a day off the bike."
-            )
+            escalation = _rhr_mild_notice(current, median_value, LADDER_MILD_SIGNAL_CLOSING)
     return {
         "triggered": triggered,
         "verdictImpact": "amber_cap",
@@ -493,22 +554,14 @@ def _hrv_rail(
                 "alongside it, see your GP rather than just resting."
             )
         elif requires_bike_rest:
-            escalation = (
-                f"Your overnight HRV is {current} ms this morning against a usual "
-                f"{_number(median_value)} ms, and "
-                f"{_hrv_corroboration_clause(corroboration, symptom_answer)}. Either on its "
-                "own would only cap the day; together they are worth respecting. Take today "
-                "off the bike. If you feel unwell, rest until it settles, and see your GP if "
-                "it doesn't."
+            escalation = _hrv_corroborated_notice(
+                current,
+                median_value,
+                _hrv_corroboration_clause(corroboration, symptom_answer),
+                LADDER_EITHER_ALONE_CLAUSE,
             )
         else:
-            escalation = (
-                f"Your overnight HRV is {current} ms this morning against a usual "
-                f"{_number(median_value)} ms — lower than most nights for you. Dips like "
-                "this usually come from a short night, a drink, a busy week or a hard day "
-                "before. On its own it caps today at Amber: an eased session, not a day off "
-                "the bike."
-            )
+            escalation = _hrv_mild_notice(current, median_value, LADDER_MILD_SIGNAL_CLOSING)
     return {
         "triggered": triggered,
         "verdictImpact": "amber_cap",
@@ -544,15 +597,7 @@ def _hrv_rail(
                     label="acute personal HRV floor",
                     value=round(threshold, 2) if threshold is not None else None,
                     units="ms",
-                    rule=(
-                        f"his own median over the window, minus "
-                        f"{HRV_ACUTE_DROP_STDDEVS} standard deviations of it — a personal "
-                        "floor, not a population band, and not Garmin's. Below it the day "
-                        "is capped at Amber; it rests the bike only at "
-                        f"{HRV_ILLNESS_DROP_STDDEVS} standard deviations or "
-                        f"{HRV_ILLNESS_DROP_FRACTION:.0%} under the median, or below the "
-                        "floor alongside a raised resting heart rate or a reported symptom"
-                    ),
+                    rule=_hrv_floor_rule(LADDER_BELOW_FLOOR),
                     window=provenance_window(
                         kind="rolling_days",
                         start=observations[0][0] if observations else None,
@@ -1648,9 +1693,12 @@ GRADED_MOVE_LINE = (
 )
 GRADED_EASE_HARD_LINE = "Ease the hard intervals a zone; the rest of the session stays as planned."
 GRADED_ZONE_TWO_LINE = "Keep your Zone 2 ride at full length."
-GRADED_RECOVERY_WEEK_LINE = (
-    "This is a planned recovery week, so today's session stays as planned: hold the targets."
+#: Batch 298: the week is named as his plan names it (signed off 1 Oct 2026); W12 is a
+#: consolidation week and W13 a taper, and both were "a planned recovery week".
+GRADED_LIGHT_WEEK_LINE = (
+    "This is your planned {week} week, so today's session stays as planned: hold the targets."
 )
+GRADED_RECOVERY_WEEK_LINE = GRADED_LIGHT_WEEK_LINE.format(week="recovery")
 BIKE_REST_PLAN_LINE = (
     "Take today off the bike; do not substitute an eased ride for the acute signal."
 )
@@ -1705,12 +1753,16 @@ def graded_plan_adjustments(
         return red_lines
 
     actions = {action.session_id: action.action for action in graded.actions}
+    light_week = graded.references.get("lightWeek") if graded.references else None
+    hold_line = GRADED_LIGHT_WEEK_LINE.format(
+        week=light_week if isinstance(light_week, str) else "recovery"
+    )
     lines: list[str] = []
     other_categories: set[str] = set()
     for workout in live:
         action = actions.get(str(workout.id))
         if action == "hold_targets":
-            line = GRADED_RECOVERY_WEEK_LINE
+            line = hold_line
         elif action == "move_or_hold":
             line = GRADED_MOVE_LINE.format(title=workout.title or "the hard session")
         elif action == "ease_hard":
@@ -1737,7 +1789,7 @@ def graded_plan_adjustments(
         )
     if not lines:
         lines.append("Proceed with the planned workout if warm-up confirms readiness.")
-    if graded.held and GRADED_RECOVERY_WEEK_LINE not in lines:
+    if graded.held and hold_line not in lines:
         lines.append(HRV_HOLD_PLAN_LINE)
     if any(_is_reset_week_workout(workout) for workout in live):
         lines.insert(
@@ -1806,6 +1858,7 @@ def graded_verdict_packet(
         safety.append("red_never_vo2")
 
     packet = {key: value for key, value in ladder.items() if key not in LADDER_ONLY_FIELDS}
+    packet["acutePhysiology"] = graded_acute_physiology(acute)
     packet.update(
         {
             "engine": "graded",
@@ -1818,6 +1871,113 @@ def graded_verdict_packet(
         }
     )
     return packet
+
+
+#: The ladder's own working inside the acute rail. Each records what the ladder's cap
+#: did to the ladder's colour, so a graded packet carrying them would put the ladder's
+#: colour in front of the model (Decision #367 says it never enters the packet).
+LADDER_ONLY_ACUTE_FIELDS = (
+    "statusBeforeCap",
+    "statusAfterCap",
+    "verdictCapApplied",
+    "missingDataFloorApplied",
+)
+
+#: What an acute signal does under the graded verdict: one domain signal, rated there.
+GRADED_SIGNAL_IMPACT = "graded_domain_signal"
+
+
+def graded_acute_physiology(acute: Mapping[str, Any]) -> dict[str, Any]:
+    """The acute rail as a graded packet carries it (Batch 298).
+
+    The rail writes the ladder's words: a low HRV night or two mornings of raised
+    resting heart rate "caps today at Amber". The graded verdict rates either as one
+    thing a little off and may show Green with the targets held, so on 1 Oct the notice
+    and the brief told Mark the day was capped while the reason said two things were a
+    little off. This copy says what the graded verdict did. The floors, levels, numbers
+    and the off-the-bike and GP lines are unchanged apart from the one clause that
+    called a single sign a cap. The ladder's packet is not touched.
+    """
+
+    out = copy.deepcopy(dict(acute))
+    for key in LADDER_ONLY_ACUTE_FIELDS:
+        out.pop(key, None)
+    symptoms = out.get("symptoms")
+    if isinstance(symptoms, dict):
+        symptoms.pop("statusBeforeFloor", None)
+    messages: dict[str, str] = {}
+
+    rhr = out.get("restingHeartRate")
+    if isinstance(rhr, dict):
+        rhr["verdictImpact"] = GRADED_SIGNAL_IMPACT
+        if rhr.get("triggered") is True:
+            current, median_value = rhr.get("currentBpm"), rhr.get("baselineMedianBpm")
+            if rhr.get("trigger") == "absolute_delta":
+                rhr["reason"] = (
+                    f"Resting heart rate {current} bpm is "
+                    f"{_number(rhr.get('deltaFromMedianBpm'))} bpm above the personal median "
+                    f"of {_number(median_value)}."
+                )
+            else:
+                rhr["reason"] = (
+                    "Resting heart rate has been above the personal upper quartile of "
+                    f"{_number(rhr.get('baselineUpperQuartileBpm'))} bpm for two mornings: "
+                    "one thing a little off."
+                )
+                rhr["escalation"] = _rhr_mild_notice(
+                    current, median_value, GRADED_MILD_SIGNAL_CLOSING
+                )
+            if isinstance(rhr.get("escalation"), str):
+                messages["resting_heart_rate"] = rhr["escalation"]
+
+    hrv = out.get("overnightHrv")
+    if isinstance(hrv, dict):
+        hrv["verdictImpact"] = GRADED_SIGNAL_IMPACT
+        if hrv.get("triggered") is True:
+            current, median_value = hrv.get("currentMs"), hrv.get("baselineMedianMs")
+            if hrv.get("illnessGrade") is True:
+                hrv["reason"] = (
+                    f"Overnight HRV {current} ms is an illness-grade drop, at or under "
+                    f"{_number(hrv.get('illnessLineMs'))} ms."
+                )
+            else:
+                hrv["reason"] = (
+                    f"Overnight HRV {current} ms is below the acute personal floor of "
+                    f"{_number(hrv.get('acuteFloorMs'))} ms."
+                )
+                raw_symptoms = out.get("symptoms")
+                answer = raw_symptoms.get("answer") if isinstance(raw_symptoms, dict) else None
+                corroborated = [str(sign) for sign in hrv.get("corroboratedBy") or []]
+                hrv["escalation"] = (
+                    _hrv_corroborated_notice(
+                        current,
+                        median_value,
+                        _hrv_corroboration_clause(
+                            corroborated, answer if isinstance(answer, str) else None
+                        ),
+                        GRADED_EITHER_ALONE_CLAUSE,
+                    )
+                    if hrv.get("requiresBikeRest") is True
+                    else _hrv_mild_notice(current, median_value, GRADED_MILD_SIGNAL_CLOSING)
+                )
+            if isinstance(hrv.get("escalation"), str):
+                messages["overnight_hrv"] = hrv["escalation"]
+        for entry in hrv.get("provenance") or []:
+            if isinstance(entry, dict) and entry.get("figure") == FIGURE_HRV_ACUTE_FLOOR:
+                entry["rule"] = _hrv_floor_rule(GRADED_BELOW_FLOOR)
+
+    out["escalations"] = [
+        {
+            **escalation,
+            "message": messages.get(str(escalation.get("kind")), escalation.get("message")),
+        }
+        if isinstance(escalation, dict)
+        else escalation
+        for escalation in out.get("escalations") or []
+    ]
+    # The app heads a single mild sign "Counted in today's call" only on these words.
+    out["gradedWording"] = True
+    return out
 
 
 def graded_verdict_adjustment_packet(

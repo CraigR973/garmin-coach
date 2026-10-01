@@ -168,6 +168,20 @@ def _standing_habits_content() -> dict[str, Any]:
     return standing_habits_content()
 
 
+#: Batch 298: the knowledge base stated the ladder's Amber, which the brief reads.
+LADDER_AMBER_CONSTRAINT = "Amber days cut duration 20-30 percent and remove HIT."
+LADDER_RED_CONSTRAINT = "Red days substitute recovery or rest and never keep VO2."
+TRAINING_PLAN_AMBER_CONSTRAINT = (
+    "Amber days ease the hard intervals a zone and keep the ride's full length; Zone 2 rides "
+    "stay as planned. In a consolidation, taper or recovery week a mild concern holds the "
+    "session, targets held."
+)
+TRAINING_PLAN_RED_CONSTRAINT = (
+    "Red days turn hard sessions into an easy recovery spin and keep Zone 2 rides, shorter; "
+    "never VO2."
+)
+
+
 def _training_plan_content(cycle_start: date) -> dict[str, Any]:
     return {
         "framework": "13-week 2121",
@@ -195,10 +209,13 @@ def _training_plan_content(cycle_start: date) -> dict[str, Any]:
             "lateBuild": "Ronnestad 30/15 from around Week 7 onward",
             "ergMode": "off",
         },
+        # Batch 298: the Amber and Red lines say what the graded verdict does (signed off
+        # by Craig on Mark's behalf, 1 Oct 2026). A fresh seed only: a live row changes by
+        # read-modify-write through ``update_knowledge_base_section``.
         "constraints": [
             "Never stack VO2 and sweet spot back-to-back when fatigue is high.",
-            "Amber days cut duration 20-30 percent and remove HIT.",
-            "Red days substitute recovery or rest and never keep VO2.",
+            TRAINING_PLAN_AMBER_CONSTRAINT,
+            TRAINING_PLAN_RED_CONSTRAINT,
         ],
         "delivery": {
             "rail": "intervals.icu to Zwift",

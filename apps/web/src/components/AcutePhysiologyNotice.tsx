@@ -18,6 +18,21 @@ const HEADINGS: Record<NoticeLevel, string> = {
   ease: 'Why today is capped',
 };
 
+// Batch 298: under the graded verdict a low HRV night or two mornings of raised resting
+// heart rate is one thing a little off, already counted in the colour, not a cap. A head
+// cold still caps the day, so it keeps the heading above. Signed off 1 Oct 2026.
+export const GRADED_EASE_HEADING = "Counted in today's call";
+
+function heading(boundary: AcutePhysiology, level: NoticeLevel): string {
+  const symptomEases = boundary.escalations.some(
+    (escalation) => escalation.kind === 'symptoms' && escalation.level === 'ease',
+  );
+  if (level === 'ease' && boundary.gradedWording === true && !symptomEases) {
+    return GRADED_EASE_HEADING;
+  }
+  return HEADINGS[level];
+}
+
 function noticeLevel(boundary: AcutePhysiology): NoticeLevel {
   const levels = boundary.escalations.flatMap((escalation) =>
     escalation.level ? [escalation.level] : [],
@@ -32,9 +47,11 @@ function noticeLevel(boundary: AcutePhysiology): NoticeLevel {
 /** The notice card itself: one heading for its most serious level, then each message. */
 function NoticeCard({
   level,
+  title = HEADINGS[level],
   messages,
 }: {
   level: NoticeLevel;
+  title?: string;
   messages: ReadonlyArray<{ key: string; text: string }>;
 }) {
   const Icon = level === 'ease' ? Info : ShieldAlert;
@@ -46,7 +63,7 @@ function NoticeCard({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Icon className="h-5 w-5 text-amber-600 dark:text-amber-300" aria-hidden />
-          {HEADINGS[level]}
+          {title}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm leading-6 text-text-secondary">
@@ -62,9 +79,11 @@ export function AcutePhysiologyNotice({ boundary }: AcutePhysiologyNoticeProps) 
   const escalations = boundary?.escalations ?? [];
   if (!boundary || escalations.length === 0) return null;
 
+  const level = noticeLevel(boundary);
   return (
     <NoticeCard
-      level={noticeLevel(boundary)}
+      level={level}
+      title={heading(boundary, level)}
       messages={escalations.map((escalation) => ({
         key: escalation.kind,
         text: escalation.message,

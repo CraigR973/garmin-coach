@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Activity, BedDouble, ClipboardCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AcutePhysiologyNotice, MedicalBoundaryFooter } from '@/components/AcutePhysiologyNotice';
-import { gradedVerdictCopy } from '@/lib/copy';
+import { gradedVerdictCopy, REST_DAY_LINE } from '@/lib/copy';
 import { restHeadline } from '@/lib/restHeadline';
 import { BriefListenControls } from '@/components/BriefListenControls';
 import { BriefPendingCta } from '@/components/BriefPendingCta';
@@ -23,6 +23,7 @@ import { useDailyLoopFreshness } from '@/hooks/useDailyLoopFreshness';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { markBriefReviewed } from '@/lib/briefReview';
 import { friendlyDate, writtenAt } from '@/lib/dailyFlow';
+import { dayStateForWorkouts } from '@/lib/workoutCategories';
 import { dissentFromVerdict, VERDICT_DISSENT_COPY } from '@/lib/disputes';
 
 export function MorningBriefPage() {
@@ -86,7 +87,11 @@ export function MorningBriefPage() {
     analysis?.verdict,
     analysis?.verdictHeld,
     analysis?.verdictEngine,
+    analysis?.verdictLightWeekHold,
   );
+  // Batch 298: on a rest or holiday day the brief says what Home says. On 1 Oct's
+  // holiday it said "Ease the hard work" while Home said the day was for recovery.
+  const restOrHoliday = dayStateForWorkouts(data.plannedWorkouts).isRest || data.holiday.isActive;
 
   return (
     <div className="space-y-5">
@@ -117,7 +122,7 @@ export function MorningBriefPage() {
           <VerdictHero
             verdict={analysis.verdict}
             label={rest?.label ?? graded.label}
-            line={dataSufficiencyLine ?? rest?.line ?? graded.line}
+            line={dataSufficiencyLine ?? rest?.line ?? (restOrHoliday ? REST_DAY_LINE : graded.line)}
           />
           {/* Batch 274: disagreement is recorded beside the day and changes nothing. */}
           <div className="px-1">

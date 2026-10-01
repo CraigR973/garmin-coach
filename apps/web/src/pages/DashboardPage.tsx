@@ -776,7 +776,12 @@ export function DashboardPage() {
           dateLabel={friendlyDate(daily.subjectDate)}
           label={
             restHeadline(analysis.acutePhysiology)?.label ??
-            gradedVerdictCopy(analysis.verdict, analysis.verdictHeld, analysis.verdictEngine).label
+            gradedVerdictCopy(
+              analysis.verdict,
+              analysis.verdictHeld,
+              analysis.verdictEngine,
+              analysis.verdictLightWeekHold,
+            ).label
           }
           line={
             dataSufficiencyLine ??
@@ -787,6 +792,7 @@ export function DashboardPage() {
               undefined,
               dayState.isRest || holiday.isActive,
               analysis.verdictHeld === true,
+              { engine: analysis.verdictEngine, lightWeekHold: analysis.verdictLightWeekHold },
             )
           }
           recap={morningFeelRecap(daily.manualEntry ?? null)}

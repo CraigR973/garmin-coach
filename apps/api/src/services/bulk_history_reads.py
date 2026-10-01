@@ -217,11 +217,12 @@ def select_morning_calls() -> Select[Any]:
     """What a stored morning read decided about its day, projected (Batch 289).
 
     One row per stored ``morning`` analysis: ``subject_date``,
-    ``generated_at_utc``, the typed ``verdict``, and six fields of the read's
+    ``generated_at_utc``, the typed ``verdict``, and eight fields of the read's
     frozen packet — the verdict's ``reasons``, its ``verdictAdjustment``, whether
     an acute signal ruled out riding (``requiresBikeRest``) or a symptom ruled out
-    training of any kind (``requiresTrainingRest``, Batch 294), ``restDay`` and the
-    ``plannedWorkouts`` the morning saw. About a kilobyte a row, against a packet
+    training of any kind (``requiresTrainingRest``, Batch 294), ``restDay``, the
+    ``plannedWorkouts`` the morning saw, and since Batch 298 whether it was ``held``
+    and the graded verdict's per-session ``actions``. About a kilobyte a row, against a packet
     that averages **64,812 characters** (measured 2026-09-26); the coach asks for
     seven of them on every question, so loading them whole would ship ~450 KB a
     turn to read eight fields. Callers add their own ``where``/``order_by``.
@@ -255,6 +256,9 @@ def select_morning_calls() -> Select[Any]:
             ),
             packet[("restDay",)].label("rest_day"),
             packet[("plannedWorkouts",)].label("planned_workouts"),
+            # Batch 298: a held morning, and what the graded verdict did to each session.
+            packet[("verdict", "held")].label("held"),
+            packet[("verdict", "graded", "actions")].label("graded_actions"),
         )
         .select_from(Analysis)
         .join(document, true())

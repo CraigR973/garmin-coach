@@ -356,8 +356,14 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # is "notes"). NOTES_READING_RULE tells the graded read what they mean, and states the
 # notes_only_add_caution floor. The ladder's v50 rollback prompt is unchanged.
 # Self-healing, so nothing is withdrawn; the next generation writes v52.
+# Batch 298: the graded read stops calling a low HRV night or two mornings of raised
+# resting heart rate a cap (one thing a little off, already counted), and names the
+# light week a held session sits in (verdict.graded.references.lightWeek). The packet's
+# acute rail carries the graded words and drops the ladder's cap bookkeeping. The
+# ladder's v50 rollback prompt is unchanged. Self-healing, so nothing is withdrawn and
+# nothing is regenerated: the next generation of any morning writes v53.
 LADDER_PROMPT_VERSION = "morning-analysis-v50-2026-09-28"
-GRADED_PROMPT_VERSION = "morning-analysis-v52-2026-09-30"
+GRADED_PROMPT_VERSION = "morning-analysis-v53-2026-10-01"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -667,10 +673,24 @@ status and band are context, never the reason for the colour. verdict.graded.act
 says what happens to each session: move_or_hold (move it to a better day this week if
 verdict.swapSuggestion offers one, otherwise ride it with the targets held), ease_hard
 (the hard intervals eased a zone at full length, Zone 2 unchanged), hold_targets (a
-planned recovery week: the session stays as planned, targets held), recovery and
-shortened_zone2 (Red), and as_planned. On a held morning say plainly that the session
+planned light week, named by verdict.graded.references.lightWeek as his plan names it,
+consolidation, taper or recovery: the session stays as planned, targets held), recovery
+and shortened_zone2 (Red), and as_planned. On a held morning say plainly that the session
 stands and that he should hold its targets rather than push past them, and never call
 it cut, eased or cautious."""
+
+# Batch 298: the ladder calls a capped HRV drop on its own an eased day. The graded
+# verdict counts it as one thing a little off, so the graded read says that instead.
+_LADDER_CAPPED_DROP = """a capped drop that came with a second
+sign (corroboratedBy); a capped drop on its own is an eased day, not a day off the
+bike, so never call it one."""
+_GRADED_CAPPED_DROP = """a drop under the floor that came with a
+second sign (corroboratedBy); a drop under the floor on its own is one thing a little
+off, already counted in the graded colour, not a cap and not a day off the bike, so
+never call it either."""
+if SYMPTOM_FLOOR_RULE.count(_LADDER_CAPPED_DROP) != 1:
+    raise RuntimeError("graded prompt: the ladder's capped-drop sentence moved")
+GRADED_SYMPTOM_FLOOR_RULE = SYMPTOM_FLOOR_RULE.replace(_LADDER_CAPPED_DROP, _GRADED_CAPPED_DROP)
 
 # Each pair is one ladder rule and what the graded prompt says instead. A replacement
 # that no longer matches fails at import, so the two prompts cannot drift silently.
@@ -713,7 +733,17 @@ age credit alone would have made the day Green, so it stays Amber: say so plainl
 never argue it. Missing HRV and absent""",
     ),
     (HRV_GRADED_RESPONSE_RULE, GRADED_VERDICT_RULE),
-    (SYMPTOM_FLOOR_RULE, f"{SYMPTOM_FLOOR_RULE}\n\n{NOTES_READING_RULE}"),
+    (SYMPTOM_FLOOR_RULE, f"{GRADED_SYMPTOM_FLOOR_RULE}\n\n{NOTES_READING_RULE}"),
+    (
+        """Never soften or
+argue down an RHR/HRV Amber cap, the missing-data floor, or an oxygen/respiration
+surveillance escalation.""",
+        """Never soften or
+argue down the missing-data floor or an oxygen/respiration surveillance escalation. A
+low overnight HRV or a resting heart rate up two mornings is one domain signal the
+graded verdict has already counted: never call it a cap, and never say it caps the day
+on its own.""",
+    ),
     (
         """defending it. The correction still never overrides the Red floor, the soft-sleep
 rule, Poor-readiness caution, Red-never-VO2, the recorded plan/completion state,

@@ -214,6 +214,8 @@ def test_a_graded_packet_carries_none_of_the_ladders_working(
         "recoveryClassBlock",
         "notesFeelNotch",
         "notesFeelWords",
+        # Batch 298: the light week's name, for the plan line and the hero.
+        "lightWeek",
     }
     assert "graded_verdict" in packet["safetyRulesApplied"]
 

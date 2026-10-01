@@ -4791,6 +4791,35 @@ batch builds.
 - **Left for 302:** in an outage the Today card still shows the day's plan beside a
   no-training notice, and a symptom found only in his note is not shown before a brief.
 
+### Corrections made at `/batch-start 298` (2026-10-01), before any code
+
+Every count in 298.1 was re-measured with the read-only replay over production's 102
+stored mornings, and 1 Oct's stored packet was read. None changes what the batch builds.
+
+- **Confirmed.** Under the graded verdict 15 of 102 mornings would carry an ease-level
+  notice saying "caps today at Amber" (9 resting heart rate, 6 HRV), 5 of them Green with
+  the targets held (23, 24 Jun, 22 Jul, 22, 26 Sep). 1 Oct's stored notice said it beside
+  "Two things are a little off". "Yesterday was a hard day" is mild on 17 of 102. The
+  knowledge base's active `training_plan` (v2) says "Amber days cut duration 20-30 percent
+  and remove HIT". The line numbers had moved a little; the facts had not.
+- **Found: the graded packet carried the ladder's colour.** Its acute rail kept
+  `statusBeforeCap` ("Green" on 1 Oct), `statusAfterCap` ("Amber"), `verdictCapApplied`,
+  `missingDataFloorApplied`, `symptoms.statusBeforeFloor` and `verdictImpact: "amber_cap"`,
+  although Decision #367 says the ladder's colour never enters the packet. Nothing reads
+  them after the ladder; the graded packet now drops them.
+- **The off-the-bike notice also said "cap".** "Either on its own would only cap the day"
+  becomes "…would only be a little off" under the graded verdict. The row said rest notices
+  stay unchanged; Craig signed this clause off on 1 Oct, and the GP line is unchanged.
+- **The brief page disagreed with Home on rest days.** On 1 Oct's holiday Home said the day
+  was for recovery and the brief said "Ease the hard work". It is part of "one Amber line",
+  so the brief page now follows Home on a rest or holiday day.
+- **The chat prompt carries neither ladder line** (298.3's check), so chat stays at v18.
+- **The web's HRV-floor working words its own rule** and never showed the server's "capped
+  at Amber"; the server's rule text is the model's, and changes with the rest.
+- **Wording:** signed off by Craig on Mark's behalf on 1 Oct, as drafted
+  (`docs/drafts/2026-10-01-batch-298-wording.md`), including 299's eased-session line and
+  300's "no new words", so 299 and 300 need no further sign-off.
+
 ### Batch group — G7, the 1 Oct review (2026-10-01)
 
 Authored on Craig's decision of 1 Oct that every batch is written up before any is built.

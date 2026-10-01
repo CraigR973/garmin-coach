@@ -601,13 +601,24 @@ def replay_morning(
         # with are stored beside the colour.
         stored_week = references.get("inRecoveryWeek")
         stored_block = references.get("recoveryClassBlock")
+        restored_block = (
+            stored_block if isinstance(stored_block, bool) else inputs.recovery_class_block
+        )
+        stored_light = references.get("lightWeek")
         inputs = replace(
             inputs,
             in_recovery_week=(
                 stored_week if isinstance(stored_week, bool) else inputs.in_recovery_week
             ),
-            recovery_class_block=(
-                stored_block if isinstance(stored_block, bool) else inputs.recovery_class_block
+            recovery_class_block=restored_block,
+            # Batch 298: the week's name it was graded with; a morning stored before it
+            # carries none, so the name follows the restored flag.
+            light_week=(
+                stored_light
+                if isinstance(stored_light, str)
+                else inputs.light_week
+                if restored_block and "lightWeek" not in references
+                else None
             ),
         )
         recovery_class = inputs.recovery_class_block

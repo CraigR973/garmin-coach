@@ -340,6 +340,9 @@ class GradingInputs:
     in_recovery_week: bool = False
     #: Is this morning inside a recovery, taper or consolidation block? (actions hold)
     recovery_class_block: bool = False
+    #: Batch 298: that block's kind as his plan names it ("consolidation", "taper",
+    #: "recovery" or "rest"), so the words name the week he is in. ``None`` outside one.
+    light_week: str | None = None
     sleep_score_raw: int | None = None
     sleep_score_age_adjusted: int | None = None
     sleep_minutes: float | None = None
@@ -704,7 +707,11 @@ def _load(inputs: GradingInputs) -> tuple[SignalReading, ...]:
             "yesterday_load",
             "mild" if hard_yesterday else "none",
             None,
-            "Yesterday was a hard day." if hard_yesterday else "Yesterday was not hard.",
+            (
+                "Yesterday's training was hard, and he is still recovering from it."
+                if hard_yesterday
+                else "Yesterday was not hard."
+            ),
         )
     )
     return tuple(readings)
@@ -934,6 +941,8 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
             "readinessLowerQuartile": inputs.readiness_lower_quartile,
             "inRecoveryWeek": inputs.in_recovery_week,
             "recoveryClassBlock": inputs.recovery_class_block,
+            # Batch 298: the light week's name, for the plan line and the hero.
+            "lightWeek": inputs.light_week,
             "notesFeelNotch": inputs.notes_feel_notch,
             "notesFeelWords": inputs.notes_feel_words,
         },
@@ -991,7 +1000,9 @@ def mark_facing_phrase(signal: SignalReading) -> str:
     if signal.signal == "recovery_time":
         return f"{_n(round(value) if value is not None else None)} hours of recovery still to go"
     if signal.signal == "yesterday_load":
-        return "yesterday was a hard day"
+        # Batch 298: "yesterday was a hard day" read as criticism of a session his own
+        # plan set. What is off is the recovery, not the day (signed off 1 Oct 2026).
+        return "you're still recovering from yesterday's hard session"
     if signal.signal == "feel":
         return "you said you feel well below par" if marked else "you said you feel a bit below par"
     if signal.signal == "notes_feel":
@@ -1049,7 +1060,9 @@ def session_actions(verdict: GradedVerdict, inputs: GradingInputs) -> tuple[Sess
         return ()
     actions: list[SessionAction] = []
     for session in inputs.sessions:
-        action, detail = _session_action(verdict, session, inputs.recovery_class_block)
+        action, detail = _session_action(
+            verdict, session, inputs.recovery_class_block, inputs.light_week
+        )
         actions.append(
             SessionAction(
                 session_id=session.id,
@@ -1065,7 +1078,10 @@ def session_actions(verdict: GradedVerdict, inputs: GradingInputs) -> tuple[Sess
 
 
 def _session_action(
-    verdict: GradedVerdict, session: PlannedSession, recovery_class_block: bool
+    verdict: GradedVerdict,
+    session: PlannedSession,
+    recovery_class_block: bool,
+    light_week: str | None = None,
 ) -> tuple[str, str]:
     if verdict.floor == FLOOR_NO_TRAINING:
         return ACTION_NO_TRAINING, "No training of any kind today."
@@ -1078,7 +1094,10 @@ def _session_action(
             return ACTION_RECOVERY, "Red: an easy recovery spin instead."
         return ACTION_SHORTENED_Z2, "Red: Zone 2 kept, shorter."
     if recovery_class_block and (verdict.status == "Amber" or verdict.held):
-        return ACTION_HOLD_TARGETS, "A planned recovery week is already light: hold the session."
+        return (
+            ACTION_HOLD_TARGETS,
+            f"A planned {light_week or 'recovery'} week is already light: hold the session.",
+        )
     if verdict.status == "Amber":
         if session.is_hard:
             return ACTION_EASE_HARD, "Amber: hard work eased a zone."
@@ -1234,6 +1253,24 @@ def block_flags(day: date, blocks: Sequence[_Block]) -> tuple[bool, bool]:
     return False, False
 
 
+#: The order a light week's name is read in, most specific first (Batch 298).
+LIGHT_WEEK_NAMES: Final = ("consolidation", "taper", "recovery", "rest")
+
+
+def light_week_name(day: date, blocks: Sequence[_Block]) -> str | None:
+    """The kind of light week ``day`` sits in, as his plan names it, or ``None``.
+
+    Batch 298: every light week was "a planned recovery week" in the words, W12's
+    consolidation included. The words now name the week the plan does.
+    """
+
+    for block in blocks:
+        if block.start_date <= day <= block.end_date:
+            block_type = (block.block_type or "").lower()
+            return next((name for name in LIGHT_WEEK_NAMES if name in block_type), None)
+    return None
+
+
 def recovery_week_nights(blocks: Sequence[_Block]) -> frozenset[date]:
     nights: set[date] = set()
     for block in blocks:
@@ -1300,6 +1337,7 @@ def build_grading_inputs(
         recovery_week_nights=recovery_week_nights(blocks),
         in_recovery_week=in_recovery_week,
         recovery_class_block=recovery_class,
+        light_week=light_week_name(day, blocks) if recovery_class else None,
         sleep_score_raw=sleep_score_raw,
         sleep_score_age_adjusted=sleep_score_age_adjusted,
         sleep_minutes=sleep_minutes,

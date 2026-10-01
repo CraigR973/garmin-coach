@@ -23,11 +23,44 @@ export const HELD_LINE =
   'One thing is a little off: ride as planned, and hold your targets rather than pushing past them.';
 export const GRADED_AMBER_LINE = 'Ease the hard work; easy riding stays as planned.';
 
+/** Batch 298: in a light week (W12 consolidation, W13 taper) a concern holds the
+ *  session, and Home said "Take it a bit easier" beside a plan line that kept it. The
+ *  headline now says the session stands, and names the week as his plan does. Signed
+ *  off by Craig on Mark's behalf, 1 Oct 2026. */
+export const LIGHT_WEEK_AMBER_LABEL = 'Ride as planned — hold your targets';
+export function lightWeekHoldLine(week: string): string {
+  return `It's your ${week} week, so today's session stays as planned: hold your targets.`;
+}
+
+/** The line on a rest or holiday day, on Home and (since Batch 298) the brief page. */
+export const REST_DAY_LINE = "Today's a rest day — recovery is the plan, not training.";
+
+function lightWeekHolds(
+  verdict: string | null | undefined,
+  held: boolean | null | undefined,
+  engine: string | null | undefined,
+  lightWeekHold: string | null | undefined,
+): lightWeekHold is string {
+  return (
+    typeof lightWeekHold === 'string' &&
+    lightWeekHold.length > 0 &&
+    engine === 'graded' &&
+    (verdict === 'amber' || (verdict === 'green' && held === true))
+  );
+}
+
 export function gradedVerdictCopy(
   verdict: string | null | undefined,
   held: boolean | null | undefined,
   engine: string | null | undefined,
+  lightWeekHold?: string | null,
 ): { label?: string; line?: string } {
+  if (lightWeekHolds(verdict, held, engine, lightWeekHold)) {
+    return {
+      label: verdict === 'amber' ? LIGHT_WEEK_AMBER_LABEL : HELD_LABEL,
+      line: lightWeekHoldLine(lightWeekHold),
+    };
+  }
   if (verdict === 'green' && held === true) return { label: HELD_LABEL, line: HELD_LINE };
   if (verdict === 'amber' && engine === 'graded') return { line: GRADED_AMBER_LINE };
   return {};
@@ -77,11 +110,20 @@ export function personalStatusLine(
   date = new Date(),
   isRestOrHoliday = false,
   held = false,
+  graded: { engine?: string | null; lightWeekHold?: string | null } = {},
 ): string {
   const greeting = `${greetingForNow(date)}${displayName ? `, ${displayName}` : ''}.`;
 
   if (isRestOrHoliday) {
-    return `${greeting} Today's a rest day — recovery is the plan, not training.`;
+    return `${greeting} ${REST_DAY_LINE}`;
+  }
+
+  // Batch 298: the same words as the brief page and the plan line.
+  if (lightWeekHolds(verdict, held, graded.engine, graded.lightWeekHold)) {
+    return `${greeting} ${lightWeekHoldLine(graded.lightWeekHold)}`;
+  }
+  if (verdict === 'amber' && graded.engine === 'graded') {
+    return `${greeting} Ease the hard work ${timeContextForNow(date)}; easy riding stays as planned.`;
   }
 
   if (verdict === 'green' && held) {
