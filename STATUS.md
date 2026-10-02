@@ -6,15 +6,16 @@
 
 ## Now
 
-**2026-10-02 (evening) — G7b: 302 and 303 are shipped; 307 is next and has no gate of its
-own. 302: the morning is stored when it is graded and its brief is written into it, so a
-failed brief costs the prose only. 303: the floors no longer lapse quietly. The two mornings
-after a fever are easy days back; a possible chest or heart mention in his note eases the
-hard session until he answers; Home's question is answered on Home in one tap, and only that
-answer relaxes a note's symptom; "Chest or heart" covers unusual breathlessness. G7a is
-complete (309, 301, 298, 299, 300). The graded colour went live on Mark's 1 Oct check-in
-(Amber on a holiday rest day). Neither 302's stored-first flow nor anything in 303 has yet
-run on a real morning: the first is Mark's next check-in or 3 Oct's sync.**
+**2026-10-02 (evening) — G7b is complete: 302, 303 and 307 are shipped. 302: the morning is
+stored when it is graded and its brief is written into it, so a failed brief costs the prose
+only. 303: the floors no longer lapse quietly (two easy mornings after a fever; a possible
+chest or heart mention eases the hard session until he answers; Home's question is answered
+on Home in one tap, and only that answer relaxes a note's symptom; "Chest or heart" covers
+unusual breathlessness). 307: the note reader's eval is tied to the prompt it tested, and a
+note read under an earlier prompt is read again. G7a is complete too. Next: G7c (304 → 305
+→ 306 → 308), not before 20 Oct, after the taper and Craig's review of the 7–20 Oct
+ladder-versus-graded disagreements. Neither 302's stored-first flow nor anything in 303 has
+yet run on a real morning: the first is Mark's next check-in or 3 Oct's sync.**
 
 ### What the review found (`docs/reviews/2026-10-01-batches-268-297-review.md`)
 
@@ -52,7 +53,7 @@ run on a real morning: the first is Mark's next check-in or 3 Oct's sync.**
 | Group | Batches | Gate |
 |---|---|---|
 | G7a, before 7 Oct | ~~309~~ → ~~301~~ → ~~298~~ → ~~299~~ → ~~300~~ | Complete, 2 Oct |
-| G7b | ~~302~~ → ~~303~~ → 307 | None: 307's held-out cases were scored on 303's run |
+| G7b | ~~302~~ → ~~303~~ → ~~307~~ | Complete, 2 Oct |
 | G7c, not before 20 Oct | 304 → 305 → 306 → 308 | 305/306 decisions; 308 after the side-by-side review |
 
 Batch 291's row is corrected in place (its alert list).
@@ -87,7 +88,9 @@ v50 brief reads constraints the ladder does not follow.
 
 ### Needs Craig
 
-1. **Nothing in G7b is waiting on you.** 307 has no gate: no migration, no spend, no wording.
+1. **G7b is complete, and nothing is waiting on you until G7c.** G7c is not before 20 Oct
+   and needs your answers for 305 and 306, and your review of the 7–20 Oct disagreements
+   before 308.
 2. **Decisions made on your behalf in Batch 303 (Decision #375), each overrulable.** A chest
    question lifts the colour to Amber only when a hard session is planned; otherwise Home
    only asks. Home asks only about something more serious than the answer he tapped. A week
@@ -128,6 +131,12 @@ v50 brief reads constraints the ladder does not follow.
 - **A client cached from before 303 still opens the check-in from Home's question.** Saving
   there no longer answers it, so the note's floor stands until the app updates itself (on
   the next launch, or the update banner). That is the cautious way to fail.
+- **The reader's eval is tied to its prompt (Batch 307, PR #353, `e2e1509`).** Rewording
+  `SYSTEM_PROMPT`, or moving its version, fails CI until the eval is re-run and its recording
+  replaced (`test_batch_307_eval_pinning.py`; the message gives the command). That is by
+  design and costs about $2.25 a run, your go. A note read under an earlier prompt is read
+  again when its morning is next graded; after such a re-read Home may ask its question
+  again, because his earlier answer is older than the new reading.
 - **The reader's eval, re-run for prompt v2:** Sonnet 5, two passes, $2.23; 22 of 22 red
   flags; real-note false alarms R29 and R35, as under v1, so still no margin. One held-out
   note (X07, a stitch in his side) raised a chest question on one pass of two, which since
@@ -189,7 +198,7 @@ v50 brief reads constraints the ladder does not follow.
   minutes). One or two mild concerns hold the session, with the week named.
 - **The database is at 453 MB of the 500 MB free-plan cap**; `egress-budget` reports
   `storage_critical` every 15 minutes. Up about 5 MB a week since 24 Sep.
-- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #376.**
+- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #377.**
 
 ## Prior current-state snapshots
 
@@ -2024,6 +2033,17 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-02 (evening)** — Batch 307 shipped as PR #353 / `e2e1509` (Decision #376), and
+  **G7b is complete.** A paid run of the notes reader's eval records a SHA-256 of the prompt
+  beside its version, and CI fails, with the instruction to re-run, unless the production
+  model's recording carries today's of both; the report scores only such recordings. The
+  2 Oct recording was stamped with today's hash, the reader being unchanged since that run.
+  A reading stored under an earlier prompt is read again, in place, when its morning is next
+  graded, and a failed re-read keeps the reading it had. The ten held-out notes were scored
+  on 303's run. CI 16 of 16 on both waves (2,361 passed, 0 skipped) and green on `main`;
+  production on `e2e1509`, sending the prompt the eval recorded (hash `91945b356ba3`). Smoke on
+  his one real reading, rolled back, no model call. No migration, no prompt change, no spend.
+  Next: G7c, not before 20 Oct.
 - **2026-10-02 (evening)** — Batch 303 shipped as PR #352 / `8fdbe43` (Decision #375), the
   second of G7b. What follows a symptom is a floor of its own, the weakest: a hard session
   becomes the recovery spin and the day is at least Amber, never Red for it. It applies on
