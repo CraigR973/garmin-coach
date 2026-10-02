@@ -260,6 +260,17 @@ class NotesEffects:
         }
 
 
+def prompt_sha256() -> str:
+    """A SHA-256 of the system prompt the reader sends (Batch 307).
+
+    The eval's paid recording carries it, so CI can tell a recording made for these
+    words from one made for earlier ones. Read at call time: a test that rewords the
+    prompt must see the reworded hash.
+    """
+
+    return hashlib.sha256(SYSTEM_PROMPT.encode("utf-8")).hexdigest()
+
+
 def notes_hash(notes: str | None) -> str | None:
     """The version of a note: a SHA-256 of its trimmed text, or None when empty."""
 
@@ -517,6 +528,12 @@ class NotesReaderService:
         is retried in place. Without an API key and no injected client the reader is
         not run, and the day reports ``not_read``. Never raises for the model's sake:
         a failure is stored, logged and left for the next regeneration.
+
+        Batch 307: "already stored" means stored under today's prompt. A reading made
+        under an earlier prompt is read again, in place, the next time its morning is
+        graded, because the new prompt may read what the old one could not (v2 reads
+        breathlessness; v1 did not). A re-read that fails keeps the reading it had:
+        losing a good reading to a failed call would take its floor away with it.
         """
 
         check_ins = morning_check_ins(manual_entries)
@@ -531,8 +548,11 @@ class NotesReaderService:
                 CheckInReading.notes_sha256 == digest,
             )
         )
-        if existing is not None and existing.status == STATUS_READ:
+        current = existing is not None and existing.prompt_version == PROMPT_VERSION
+        if existing is not None and existing.status == STATUS_READ and current:
             return existing
+        # A good reading from an earlier prompt, kept if the re-read fails.
+        fallback = existing is not None and existing.status == STATUS_READ
         if client is None:
             if not settings.anthropic_api_key:
                 return existing
@@ -548,6 +568,15 @@ class NotesReaderService:
         try:
             reading = await client.read(str(noted.notes))
         except Exception as exc:  # noqa: BLE001 — a failed reading must never block the brief
+            if fallback:
+                log.warning(
+                    "notes_rereading_failed",
+                    user_id=str(user_id),
+                    manual_entry_id=str(noted.id),
+                    kept_prompt_version=row.prompt_version,
+                    error=f"{type(exc).__name__}: {exc}"[:300],
+                )
+                return row
             row.status = STATUS_FAILED
             row.reading = {}
             row.error = f"{type(exc).__name__}: {exc}"[:300]

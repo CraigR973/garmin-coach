@@ -1,6 +1,7 @@
 {
  "model": "claude-sonnet-5",
  "promptVersion": "notes-reader-v2-2026-10-02",
+ "promptSha256": "91945b356ba3cd788e2a3a21a1b278cdc1c66b937c4c8795c8c293b16a5c3121",
  "reasoning": "configured",
  "passes": 2,
  "recordedAt": "2026-10-02T14:56:46Z",

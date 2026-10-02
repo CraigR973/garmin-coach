@@ -1,6 +1,6 @@
 # Notes reader eval
 
-Generated 2 Oct 2026 16:53 UTC · 125 cases: 56 of Mark's real morning notes, 59 hand-written hard cases, and 10 held out (written after the prompt was frozen). Labelled by Craig, 30 Sep 2026 (R01-R56, H01-H44) and 2 Oct 2026 (B01-B15, X01-X10).
+Generated 2 Oct 2026 17:34 UTC · 125 cases: 56 of Mark's real morning notes, 59 hand-written hard cases, and 10 held out (written after the prompt was frozen). Labelled by Craig, 30 Sep 2026 (R01-R56, H01-H44) and 2 Oct 2026 (B01-B15, X01-X10).
 
 **The gate:** every red-flag case caught on every pass (a floor, or at least the question); at most 2 of the 56 real notes raise a floor or a question the key does not; no floor for someone else's symptom or a past one.
 
@@ -20,6 +20,7 @@ Red-flag cases (22): H01, H02, H03, H04, H05, H06, H07, H08, H09, H10, H43, H44,
 
 ## claude-sonnet-5 (configured reasoning)
 
+- **Prompt:** `notes-reader-v2-2026-10-02`, SHA-256 `91945b356ba3`
 - **Gate:** met
 - **Passes:** 2
 - **Red flags caught:** 22 of 22, 22 of 22
