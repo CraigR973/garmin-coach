@@ -5119,6 +5119,31 @@ until Craig's go: the batch carries a migration, a paid eval and Mark-facing wor
   next morning stays an ordinary day and the batch keeps to its written scope. Go on the
   migration, on the paid eval capped at $5, and on the wording as drafted, the 999 clause
   included (`docs/drafts/2026-10-02-batch-303-wording.md`; its §5 is not built).
+- **Added at build, each overrulable (Decision #375).** A chest question lifts the colour to
+  Amber only when a hard session is planned; with none it changes nothing and Home only
+  asks. Its reason under the colour is the card's own signed-off sentence. Home asks only
+  about something more serious than the answer he tapped. A week swap is withheld where it
+  would undo the easing (onto another easy day back, for a hard session, or while the chest
+  question is open). The easy ride is the existing recovery spin: half length, capped at 60%
+  FTP. The answer route records an answer for any day that has a check-in and regrades only
+  today. The ladder is given neither easing, so `VERDICT_ENGINE=ladder` turns both off. A
+  failed tap shows the app's existing "Could not make that change".
+- **303.6, the eval, met.** Sonnet 5, two passes, $2.23 (625,964 tokens in, 98,252 out), plus
+  a 2-cent smoke: $2.25 of the $5. 125 cases: the 100, 15 on breathlessness (B01-B15) and 10
+  held out (X01-X10), all 25 confirmed by Craig before the run. Red flags 22 of 22 on both
+  passes; floor class exact 21 and 22 of 22 (B03, woken gasping, was a question on one pass);
+  real-note false alarms 1 and 2 (R29, R35, as under v1); no floor for someone else or the
+  past; no failed reading. His two real notes about breathing exercises (R33, R42) stayed
+  quiet on both passes. **Held out: 9 and 10 of 10 as keyed.** X07, a stitch in his side,
+  raised a chest question on one pass; the prompt was not changed to fit it
+  (`docs/reviews/notes-reader-eval-2026-10-02.md`).
+- **303.7, "each confirmed to fail first".** Each fix was reverted in turn and a test failed:
+  23 backend, 11 web. The tests of the new functions cannot run on `main`; the old contract
+  is what `main`'s own test pinned (`test_a_check_in_after_the_reading_is_his_answer`, now
+  rewritten).
+- **Seen in a browser** (local build, mocked server, no production contact): the card with
+  its four answers; a tap of None sends one request, saves nothing, and Home regrades to
+  Green; a tap of Chest or heart shows the notice at once and Home regrades to Red.
 
 ### Batch group — G7, the 1 Oct review (2026-10-01)
 
