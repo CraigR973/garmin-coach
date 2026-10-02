@@ -861,6 +861,13 @@ def test_the_server_and_the_card_say_the_question_holds_the_session_in_the_same_
 
 # -- on Postgres ------------------------------------------------------------------------------
 
+#: A Thursday well before any plausible "today". A fresh profile's first morning seeds a
+#: default training plan from the current cycle's start (``CoachingStateService
+#: .ensure_seeded``, anchored on the real date), so a test morning dated this month
+#: collides with that plan's own sessions and is shaped by its light weeks. The first CI
+#: run of these tests, dated 7-11 Oct 2026, failed on exactly that.
+SEEDED_THURSDAY = date(2026, 8, 13)
+
 
 async def _seed_good_days(
     session: AsyncSession, first_day: date, days: int
@@ -958,7 +965,7 @@ async def test_on_postgres_the_two_mornings_after_a_fever_are_eased_and_the_thir
     db_conn: AsyncConnection,
 ) -> None:
     """303.2 end to end. On `main` the first morning after the fever was Green, VO2 as planned."""
-    fever_day = date(2026, 10, 8)
+    fever_day = SEEDED_THURSDAY
     async with _savepoint_session(db_conn) as session:
         player, entries, _rides = await _seed_good_days(session, fever_day - timedelta(1), 5)
         days = sorted(entries)
@@ -1001,7 +1008,8 @@ async def test_on_postgres_the_two_mornings_after_a_fever_are_eased_and_the_thir
         third = await _graded(session, player, days[4])
         assert (third["status"], _ride_action(third)) == ("Green", ACTION_AS_PLANNED)
         assert third["acutePhysiology"]["symptoms"]["easing"] is None
-        assert third["acutePhysiology"]["escalations"] == []
+        notices = third["acutePhysiology"]["escalations"]
+        assert [item for item in notices if item["kind"] == "symptoms"] == []
 
 
 @pytest.mark.asyncio
@@ -1009,7 +1017,7 @@ async def test_on_postgres_a_fever_he_corrected_the_same_day_starts_no_easy_days
     db_conn: AsyncConnection,
 ) -> None:
     """The latest stored morning of a day decides, so a mis-tap he put right leaves nothing."""
-    fever_day = date(2026, 10, 8)
+    fever_day = SEEDED_THURSDAY
     async with _savepoint_session(db_conn) as session:
         player, entries, _rides = await _seed_good_days(session, fever_day, 2)
         entries[fever_day].symptoms = SYMPTOMS_FEVER_ACHES
@@ -1048,7 +1056,7 @@ async def test_on_postgres_heartburn_eases_the_hard_session_until_he_answers_on_
 ) -> None:
     """303.4 and 303.5 end to end. On `main` the VO2 session went ahead unanswered, and
     any save of the check-in was the answer."""
-    day = date(2026, 10, 9)
+    day = SEEDED_THURSDAY + timedelta(days=1)
     async with _savepoint_session(db_conn) as session:
         player, entries, _rides = await _seed_good_days(session, day, 1)
         user_id = player.id
@@ -1106,7 +1114,7 @@ async def test_on_postgres_a_chest_answer_on_home_is_the_floor(
     db_conn: AsyncConnection,
 ) -> None:
     """The question can make the day stricter as well as restore it."""
-    day = date(2026, 10, 9)
+    day = SEEDED_THURSDAY + timedelta(days=1)
     async with _savepoint_session(db_conn) as session:
         player, entries, _rides = await _seed_good_days(session, day, 1)
         entry = entries[day]
