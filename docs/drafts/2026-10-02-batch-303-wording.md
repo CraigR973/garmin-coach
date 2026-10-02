@@ -1,8 +1,9 @@
 # Batch 303: the words for the medical follow-through
 
-**Status: proposed, for Craig to sign off on Mark's behalf** (Mark is away until 6 Oct; no
-message to Mark). No clinician check (decided 28 Sep). Covers every new or changed
-Mark-facing line in Batch 303. Nothing here is built until it is signed off.
+**Status: signed off by Craig on Mark's behalf, 2 Oct 2026, as drafted, with the four
+decisions at the end** (Mark is away until 6 Oct; no message to Mark). No clinician check
+(decided 28 Sep). Covers every new or changed Mark-facing line in Batch 303. §5 was not
+chosen and is not built.
 
 Each new line follows something Mark himself tapped or wrote, says so, and is undone by one
 tap. That is the bar his 27 Sep message set ("talk of illness and infection and gp's is
@@ -83,9 +84,13 @@ once, as the check-in does (Batch 301). A tapped "None" restores the day.
 The card no longer asks when his own answer already covers what the note says (a note of
 "sore throat" beside a tapped "Head cold").
 
-## 5. After a chest or heart report (only if Craig chooses it)
+## 5. After a chest or heart report: not chosen, not built
 
-New. From the morning after he reports chest or heart symptoms, a hard session stays an easy
+**Craig, 2 Oct: no change.** The morning after a chest or heart report stays an ordinary
+day, as it is now, and Batch 303 keeps to its written scope. The lines below are kept as the
+record of what was offered.
+
+From the morning after he reports chest or heart symptoms, a hard session stays an easy
 ride until he says a doctor has cleared him. Asked on Home each morning until then.
 
 | | Proposed |
@@ -104,17 +109,17 @@ ride until he says a doctor has cleared him. Asked on Home each morning until th
   Two rules keep it quiet on ordinary mornings: his breathing exercises are not a symptom,
   and breathing hard during or just after a hard effort is not a symptom. When unsure it
   answers unclear, which asks (and, for the chest, eases the hard session until he answers).
-- **The morning brief's prompt (v55)** is told the three new facts (the easy days back, the
-  easing until he answers, the wait for a doctor's clearance) so the written brief says what
-  the screen says. It still adds no medical advice of its own.
+- **The morning brief's prompt (v55)** is told the two new facts (the easy days back, and the
+  easing until he answers) so the written brief says what the screen says. It still adds no
+  medical advice of its own.
 
-## For Craig to decide
+## Decided by Craig, 2 Oct
 
-1. **How many easy mornings after a fever?** Recommended: two (the row's figure).
-2. **An unclear chest mention, until he answers.** Recommended: the hard session becomes an
-   easy ride (§4). One tap of "None" restores it.
-3. **After a chest or heart report.** Recommended: §5, hard sessions stay easy until he taps
-   "A doctor has cleared me". The alternatives are two easy mornings as after a fever, or no
-   change (an ordinary day the next morning).
-4. **"Struggling to breathe … call 999" (§2).** Recommended: add it. It is the one new piece
-   of medical advice in the batch.
+1. **Two easy mornings after a fever.**
+2. **An unclear chest mention eases the hard session until he answers** (§4). One tap of
+   "None" restores it.
+3. **After a chest or heart report: no change.** §5 is not built.
+4. **"Struggling to breathe … call 999" (§2) is added,** with the rest of the wording as
+   drafted.
+
+Also his, the same day: the additive migration (035) and the paid eval re-run, capped at $5.

@@ -5114,7 +5114,11 @@ until Craig's go: the batch carries a migration, a paid eval and Mark-facing wor
 - **Prompts.** The reader goes to v2 (the paid eval). The morning prompt goes from v54 to v55
   to name the new facts, and the chat prompt follows if it carries the same rule; what is
   regenerated is decided in writing at close-out (expected: nothing).
-- **Wording:** drafted for sign-off in `docs/drafts/2026-10-02-batch-303-wording.md`.
+- **Decided by Craig, 2 Oct.** Two easy mornings after a fever. An unclear chest mention
+  eases the hard session until he answers. **After a chest or heart report: no change**; the
+  next morning stays an ordinary day and the batch keeps to its written scope. Go on the
+  migration, on the paid eval capped at $5, and on the wording as drafted, the 999 clause
+  included (`docs/drafts/2026-10-02-batch-303-wording.md`; its §5 is not built).
 
 ### Batch group — G7, the 1 Oct review (2026-10-01)
 
