@@ -914,8 +914,9 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
         reasons.append("An acute signal rules out riding today.")
     # Batch 303: what follows a symptom. An easy day back after a fever is at least
     # Amber whatever is planned; an unanswered chest question eases a hard session and
-    # otherwise only asks, so with none planned it changes nothing. Neither is Red.
-    easing = _easing(acute) if symptom_floor is None else None
+    # otherwise only asks, so with none planned it changes nothing. Neither is Red. A
+    # stricter floor today outranks it: "easy riding only" is not said beside "no riding".
+    easing = _easing(acute) if symptom_floor is None and not bike_rest else None
     easing_kind: str | None = None
     easing_reason: str | None = None
     if easing is not None and (

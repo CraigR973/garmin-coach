@@ -97,6 +97,7 @@ from src.services.post_activity_analysis import (
 from src.services.sleep_projection import SleepProjectionResult
 from src.services.sleep_projection_context import SleepProjectionContextService
 from src.services.strength_brief import StrengthBriefResult
+from src.services.symptom_check import EASING_CHEST_QUESTION
 from src.services.verdict_grading import FLOOR_HARD_WORK_TO_EASY
 from src.services.walking_brief import WalkingBriefResult
 from src.services.workout_categories import (
@@ -332,8 +333,10 @@ def _chest_question_eases(verdict: Any) -> bool:
     """Is Home's question holding today's hard session at an easy ride? (Batch 303)
 
     True when his note may mean a chest or heart symptom, he has not answered, and the
-    stored morning swapped a hard session for an easy spin. With no hard session
-    planned nothing was eased, and the card keeps its ordinary line.
+    stored morning swapped a hard session for an easy spin because of it. With no hard
+    session planned nothing was eased; on an easy day back after a fever the session is
+    eased whatever he answers. In both the card keeps its ordinary line, because
+    answering would not bring the session back.
     """
     if not isinstance(verdict, dict):
         return False
@@ -345,6 +348,7 @@ def _chest_question_eases(verdict: Any) -> bool:
         and notes.get("chestQuestion") is True
         and isinstance(graded, dict)
         and graded.get("floor") == FLOOR_HARD_WORK_TO_EASY
+        and graded.get("easing") == EASING_CHEST_QUESTION
     )
 
 

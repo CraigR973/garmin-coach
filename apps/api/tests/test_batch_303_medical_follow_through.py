@@ -415,6 +415,9 @@ def test_off_the_bike_outranks_the_easy_day_back() -> None:
     )
     assert verdict.floor == FLOOR_BIKE_REST
     assert ACTION_RECOVERY not in _actions(verdict)
+    # "Easy riding only" is not said beside "no riding": the stricter floor is the reason.
+    assert verdict.easing is None
+    assert _fever_return()["reason"] not in verdict.reasons
 
 
 def test_a_light_week_does_not_hold_a_hard_session_on_an_easy_day_back() -> None:
@@ -774,7 +777,13 @@ def test_the_brief_is_told_what_follows_a_symptom_and_the_version_moved() -> Non
 # -- Home: the card knows whether the question is holding the session -----------------------
 
 
-def _stored_morning(*, ask: bool, chest_question: bool, floor: str | None) -> Analysis:
+def _stored_morning(
+    *,
+    ask: bool,
+    chest_question: bool,
+    floor: str | None,
+    easing: str | None = EASING_CHEST_QUESTION,
+) -> Analysis:
     return Analysis(
         id=uuid.uuid4(),
         user_id=uuid.uuid4(),
@@ -790,7 +799,7 @@ def _stored_morning(*, ask: bool, chest_question: bool, floor: str | None) -> An
             "verdict": {
                 "engine": "graded",
                 "status": "Amber",
-                "graded": {"floor": floor},
+                "graded": {"floor": floor, "easing": easing if floor else None},
                 "notesReading": {
                     "status": "read",
                     "askSymptomQuestion": ask,
@@ -814,9 +823,25 @@ def test_home_is_told_when_the_question_is_holding_the_hard_session() -> None:
     assert asks is not None and (asks.notesAsk, asks.notesAskEases) == (True, False)
     # A sore throat on an easy day back: eased, but not by this question.
     other = _serialize_analysis(
-        _stored_morning(ask=True, chest_question=False, floor=FLOOR_HARD_WORK_TO_EASY)
+        _stored_morning(
+            ask=True,
+            chest_question=False,
+            floor=FLOOR_HARD_WORK_TO_EASY,
+            easing=EASING_FEVER_RETURN,
+        )
     )
     assert other is not None and other.notesAskEases is False
+    # Heartburn on an easy day back: the session is eased whatever he answers, so the card
+    # does not promise that answering brings it back.
+    both = _serialize_analysis(
+        _stored_morning(
+            ask=True,
+            chest_question=True,
+            floor=FLOOR_HARD_WORK_TO_EASY,
+            easing=EASING_FEVER_RETURN,
+        )
+    )
+    assert both is not None and (both.notesAsk, both.notesAskEases) == (True, False)
     # Answered: the card is gone, so it says nothing.
     done = _stored_morning(ask=False, chest_question=False, floor=FLOOR_HARD_WORK_TO_EASY)
     assert _chest_question_eases(done.context_packet["verdict"]) is False

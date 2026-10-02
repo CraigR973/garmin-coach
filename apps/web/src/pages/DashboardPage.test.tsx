@@ -672,6 +672,85 @@ describe('DashboardPage', () => {
     ).toBe(false);
   });
 
+  it('asks the symptom question on Home and answers it in one tap, for today (Batch 303)', async () => {
+    const asking: DailyLoopEnvelope = structuredClone(baseSnapshot);
+    Object.assign(asking.data.morningAnalysis!, {
+      verdict: 'amber',
+      notesAsk: true,
+      notesAskWords: 'heartburn',
+      notesAskEases: true,
+    });
+    renderPage(asking);
+    const base = apiFetchMock.getMockImplementation()!;
+    apiFetchMock.mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/api/v1/daily-loop/2026-06-20/symptom-answer') return Promise.resolve(asking);
+      return base(path, init);
+    });
+
+    const question = await screen.findByRole('group', { name: 'Any symptoms today?' });
+    // Home is told the question is holding the hard session, and says so.
+    expect(
+      screen.getByText(
+        'Your note mentions “heartburn”. Until you answer, today’s hard session is an easy ride.',
+      ),
+    ).toBeTruthy();
+
+    await userEvent.setup().click(within(question).getByRole('button', { name: /^None/ }));
+
+    // The answer goes to the day Home is showing, as an answer and not a save.
+    await waitFor(() =>
+      expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/daily-loop/2026-06-20/symptom-answer', {
+        method: 'POST',
+        body: JSON.stringify({ answer: 'none' }),
+      }),
+    );
+    expect(
+      apiFetchMock.mock.calls.some(
+        ([path, init]) => String(path).includes('/manual-entry') || init?.method === 'PUT',
+      ),
+    ).toBe(false);
+    expect(await screen.findByText('Thanks. Updating today’s call.')).toBeTruthy();
+  });
+
+  it('asks afresh when the regraded morning has a question of its own (Batch 303)', async () => {
+    // He answers, and the morning that comes back asks again (a note he rewrote, say).
+    // The card belongs to one stored morning, so the new question is not shown as answered.
+    const asking: DailyLoopEnvelope = structuredClone(baseSnapshot);
+    Object.assign(asking.data.morningAnalysis!, { notesAsk: true, notesAskWords: 'heartburn' });
+    const askingAgain: DailyLoopEnvelope = structuredClone(asking);
+    Object.assign(askingAgain.data.morningAnalysis!, {
+      id: '99999999-9999-4999-8999-999999999999',
+      notesAskWords: 'a bit of a temperature',
+    });
+    renderPage(asking);
+    const base = apiFetchMock.getMockImplementation()!;
+    let answered = false;
+    apiFetchMock.mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/api/v1/daily-loop/2026-06-20/symptom-answer') {
+        answered = true;
+        return Promise.resolve(asking);
+      }
+      if (path === '/api/v1/daily-loop' && answered) return Promise.resolve(askingAgain);
+      return base(path, init);
+    });
+
+    const question = await screen.findByRole('group', { name: 'Any symptoms today?' });
+    await userEvent.setup().click(within(question).getByRole('button', { name: /^None/ }));
+    expect(await screen.findByText('Thanks. Updating today’s call.')).toBeTruthy();
+
+    // Three seconds later Home finds the regraded morning, and its question.
+    await waitFor(
+      () => expect(screen.getByText(/Your note mentions “a bit of a temperature”/)).toBeTruthy(),
+      { timeout: 6000 },
+    );
+    const again = screen.getByRole('group', { name: 'Any symptoms today?' });
+    for (const button of within(again).getAllByRole('button')) {
+      expect((button as HTMLButtonElement).disabled).toBe(false);
+      expect(button.getAttribute('aria-pressed')).toBe('false');
+    }
+    expect(screen.queryByText('Thanks. Updating today’s call.')).toBeNull();
+  }, 10_000);
+
   it('says his note was not read on a morning graded without it (Batch 302)', async () => {
     renderPage(
       gradedSnapshot('failed', (snapshot) => {

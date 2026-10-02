@@ -815,6 +815,9 @@ export function DashboardPage() {
       {analysis ? <AcutePhysiologyNotice boundary={analysis.acutePhysiology} /> : null}
       {analysis ? (
         <NotesAskCard
+          // One card per stored morning: an answer given to this morning's question is
+          // not carried to the next one's (a note he rewrites asks again).
+          key={analysis.id}
           ask={analysis.notesAsk}
           words={analysis.notesAskWords}
           eases={analysis.notesAskEases}
