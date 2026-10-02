@@ -1,13 +1,13 @@
 {
  "model": "claude-sonnet-5",
- "promptVersion": "notes-reader-v1-2026-09-30",
+ "promptVersion": "notes-reader-v2-2026-10-02",
  "reasoning": "configured",
  "passes": 2,
- "recordedAt": "2026-09-30T20:01:38Z",
+ "recordedAt": "2026-10-02T14:56:46Z",
  "usage": {
-  "inputTokens": 462204,
-  "outputTokens": 79532,
-  "costUsd": 1.7197
+  "inputTokens": 625964,
+  "outputTokens": 98252,
+  "costUsd": 2.2344
  },
  "cases": {
   "R01": [
@@ -169,9 +169,9 @@
      "words": ""
     },
     "disturbed_night": {
-     "state": "present",
-     "when": "last_night",
-     "words": "6 consecutive sub optimal night's sleep"
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
     },
     "training_load": {
      "state": "absent",
@@ -226,9 +226,9 @@
      "words": ""
     },
     "disturbed_night": {
-     "state": "absent",
-     "when": "unknown",
-     "words": ""
+     "state": "present",
+     "when": "now",
+     "words": "6 consecutive sub optimal night's sleep"
     },
     "training_load": {
      "state": "absent",
@@ -519,7 +519,7 @@
     "disturbed_night": {
      "state": "present",
      "when": "last_night",
-     "words": "later bedtime probably impacted sleep"
+     "words": "Heavier later dinner of Chinese takeaway and later bedtime probably impacted sleep"
     },
     "training_load": {
      "state": "absent",
@@ -750,8 +750,8 @@
     },
     "disturbed_night": {
      "state": "absent",
-     "when": "unknown",
-     "words": ""
+     "when": "last_night",
+     "words": "poor sleep and restlessness"
     },
     "training_load": {
      "state": "absent",
@@ -806,7 +806,7 @@
      "words": ""
     },
     "disturbed_night": {
-     "state": "present",
+     "state": "absent",
      "when": "last_night",
      "words": "Last night's poor sleep and restlessness"
     },
@@ -924,7 +924,7 @@
     "disturbed_night": {
      "state": "present",
      "when": "last_night",
-     "words": "A few awakenings last night. I think cause was misjudging outside conditions and left windows opened which created a draf"
+     "words": "A few awakenings last night"
     },
     "training_load": {
      "state": "absent",
@@ -1097,14 +1097,14 @@
      "words": ""
     },
     "disturbed_night": {
-     "state": "present",
-     "when": "last_night",
-     "words": "A bit more restless night"
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
     },
     "training_load": {
      "state": "present",
-     "when": "earlier",
-     "words": "the norm for me after harder workout"
+     "when": "now",
+     "words": "A bit more restless night which is the norm for me after harder workout."
     },
     "deliberate_rest": {
      "state": "absent",
@@ -1154,14 +1154,14 @@
      "words": ""
     },
     "disturbed_night": {
-     "state": "present",
-     "when": "last_night",
-     "words": "A bit more restless night"
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
     },
     "training_load": {
      "state": "present",
-     "when": "earlier",
-     "words": "the norm for me after harder workout"
+     "when": "now",
+     "words": "more restless night which is the norm for me after harder workout"
     },
     "deliberate_rest": {
      "state": "absent",
@@ -1223,7 +1223,7 @@
      "words": "returning to a normal and harder weeks training after 3 lighter weeks"
     },
     "deliberate_rest": {
-     "state": "absent",
+     "state": "present",
      "when": "earlier",
      "words": "3 lighter weeks"
     }
@@ -1280,9 +1280,9 @@
      "words": "returning to a normal and harder weeks training after 3 lighter weeks"
     },
     "deliberate_rest": {
-     "state": "present",
-     "when": "earlier",
-     "words": "3 lighter weeks"
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
     }
    }
   ],
@@ -1504,7 +1504,7 @@
     "disturbed_night": {
      "state": "present",
      "when": "last_night",
-     "words": "Bit more disrupted sleep last night but suspect due to having more windows open wider and fan on low as struggled to cool room last night"
+     "words": "Bit more disrupted sleep last night"
     },
     "training_load": {
      "state": "absent",
@@ -1561,14 +1561,14 @@
      "words": ""
     },
     "disturbed_night": {
-     "state": "present",
-     "when": "last_night",
-     "words": "didn't feel like as good a night's sleep as recent nights and more disrupted"
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
     },
     "training_load": {
      "state": "present",
-     "when": "now",
-     "words": "harder day's training yesterday and cumulative 3 day training load"
+     "when": "earlier",
+     "words": "a harder day's training yesterday and cumulative 3 day training load"
     },
     "deliberate_rest": {
      "state": "absent",
@@ -1625,7 +1625,7 @@
     "training_load": {
      "state": "present",
      "when": "earlier",
-     "words": "harder day's training yesterday and cumulative 3 day training load"
+     "words": "presumably due to a harder day's training yesterday and cumulative 3 day training load"
     },
     "deliberate_rest": {
      "state": "absent",
@@ -1669,7 +1669,7 @@
     "alcohol": {
      "state": "present",
      "when": "last_night",
-     "words": "Was out last night drinking. I virtually never drink alcohol now and had 13 uk units last night"
+     "words": "had 13 uk units last night"
     },
     "travel": {
      "state": "absent",
@@ -1677,9 +1677,9 @@
      "words": ""
     },
     "disturbed_night": {
-     "state": "present",
-     "when": "last_night",
-     "words": "had poor sleep"
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
     },
     "training_load": {
      "state": "absent",
@@ -1726,7 +1726,7 @@
     "alcohol": {
      "state": "present",
      "when": "last_night",
-     "words": "had 13 uk units last night"
+     "words": "Was out last night drinking...had 13 uk units last night"
     },
     "travel": {
      "state": "absent",
@@ -1734,9 +1734,9 @@
      "words": ""
     },
     "disturbed_night": {
-     "state": "present",
-     "when": "last_night",
-     "words": "had poor sleep"
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
     },
     "training_load": {
      "state": "absent",
@@ -1901,7 +1901,7 @@
     "alcohol": {
      "state": "present",
      "when": "last_night",
-     "words": "4 bottles of beer (6.4 units of alcohol)"
+     "words": "I had 4 bottles of beer (6.4 units of alcohol)"
     },
     "travel": {
      "state": "absent",
@@ -1958,7 +1958,7 @@
     "alcohol": {
      "state": "present",
      "when": "last_night",
-     "words": "had 4 bottles of beer (6.4 units of alcohol)"
+     "words": "4 bottles of beer (6.4 units of alcohol)"
     },
     "travel": {
      "state": "absent",
@@ -1966,9 +1966,9 @@
      "words": ""
     },
     "disturbed_night": {
-     "state": "present",
-     "when": "last_night",
-     "words": "my poor sleep last night has a clear reason"
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
     },
     "training_load": {
      "state": "absent",
@@ -2030,9 +2030,9 @@
      "words": ""
     },
     "training_load": {
-     "state": "absent",
-     "when": "unknown",
-     "words": ""
+     "state": "present",
+     "when": "last_night",
+     "words": "After a fairly active day yesterday with a couple of hours gardening and supermarket shop in addition to recorded exercise was pretty tired by time went to bed"
     },
     "deliberate_rest": {
      "state": "absent",
@@ -2069,7 +2069,7 @@
      "state": "absent",
      "who": "him",
      "when": "last_night",
-     "words": "was pretty tired by time went to bed"
+     "words": "pretty tired by time went to bed"
     },
     "alcohol": {
      "state": "absent",
@@ -2547,8 +2547,8 @@
     },
     "disturbed_night": {
      "state": "present",
-     "when": "last_night",
-     "words": "felt cold from drafts"
+     "when": "now",
+     "words": "more awake from this time as felt cold from drafts"
     },
     "training_load": {
      "state": "absent",
@@ -2605,9 +2605,9 @@
      "words": ""
     },
     "disturbed_night": {
-     "state": "present",
-     "when": "last_night",
-     "words": "too cold and at 02:50 had to change to quilt"
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
     },
     "training_load": {
      "state": "absent",
@@ -2664,7 +2664,7 @@
     "disturbed_night": {
      "state": "present",
      "when": "last_night",
-     "words": "at 02:50 had to change to quilt"
+     "words": "too cold and at 02:50 had to change to quilt"
     },
     "training_load": {
      "state": "absent",
@@ -2701,7 +2701,7 @@
     "unwell": {
      "state": "present",
      "who": "him",
-     "when": "last_night",
+     "when": "now",
      "words": "takeaway fish and chips for dinner that didn't agree with me"
     },
     "fatigue": {
@@ -2721,9 +2721,9 @@
      "words": ""
     },
     "disturbed_night": {
-     "state": "present",
-     "when": "last_night",
-     "words": "was in bed at 00:00. I wasn't asleep all this time but did have at least 75 minutes sleep"
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
     },
     "training_load": {
      "state": "absent",
@@ -2818,7 +2818,7 @@
      "state": "present",
      "who": "him",
      "when": "now",
-     "words": "Gut better after impact of Saturday takeaway fish and chip dinner but still not back to normal"
+     "words": "Gut better after impact of Saturday takeaway fish and chip dinner but still not back to normal."
     },
     "fatigue": {
      "state": "absent",
@@ -3069,9 +3069,9 @@
      "words": ""
     },
     "disturbed_night": {
-     "state": "absent",
-     "when": "unknown",
-     "words": ""
+     "state": "present",
+     "when": "last_night",
+     "words": "did feel like a higher number of wakenings than usual"
     },
     "training_load": {
      "state": "absent",
@@ -3169,9 +3169,9 @@
      "words": ""
     },
     "fatigue": {
-     "state": "absent",
+     "state": "unclear",
      "who": "him",
-     "when": "earlier",
+     "when": "unknown",
      "words": "feeling tired"
     },
     "alcohol": {
@@ -3229,7 +3229,7 @@
      "state": "absent",
      "who": "him",
      "when": "earlier",
-     "words": "feeling tired"
+     "words": "feeling tired to good"
     },
     "alcohol": {
      "state": "absent",
@@ -3279,10 +3279,10 @@
      "words": ""
     },
     "unwell": {
-     "state": "unclear",
-     "who": "him",
-     "when": "last_night",
-     "words": "overeating a Chinese takeaway meal for dinner which was much more than I normally eat"
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
     },
     "fatigue": {
      "state": "present",
@@ -3358,9 +3358,9 @@
      "words": ""
     },
     "disturbed_night": {
-     "state": "present",
-     "when": "last_night",
-     "words": "Last night's sleep didn't feel as good as recent nights"
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
     },
     "training_load": {
      "state": "absent",
@@ -3476,7 +3476,7 @@
     "disturbed_night": {
      "state": "present",
      "when": "last_night",
-     "words": "Note later to bed last night as at concert"
+     "words": "later to bed last night as at concert"
     },
     "training_load": {
      "state": "absent",
@@ -3539,7 +3539,7 @@
     },
     "training_load": {
      "state": "present",
-     "when": "last_night",
+     "when": "now",
      "words": "A typical post vo2 workout sleep"
     },
     "deliberate_rest": {
@@ -3596,7 +3596,7 @@
     },
     "training_load": {
      "state": "present",
-     "when": "earlier",
+     "when": "now",
      "words": "A typical post vo2 workout sleep."
     },
     "deliberate_rest": {
@@ -3707,8 +3707,8 @@
     },
     "disturbed_night": {
      "state": "present",
-     "when": "last_night",
-     "words": "still been doing chores and not sat down to nearer 22:00 which I suspect has probably impacted my sleep slightly"
+     "when": "now",
+     "words": "I've still been doing chores and not sat down to nearer 22:00 which I suspect has probably impacted my sleep slightly"
     },
     "training_load": {
      "state": "absent",
@@ -3771,7 +3771,7 @@
     },
     "training_load": {
      "state": "present",
-     "when": "now",
+     "when": "earlier",
      "words": "especially as a harder workout"
     },
     "deliberate_rest": {
@@ -3800,10 +3800,10 @@
      "words": ""
     },
     "unwell": {
-     "state": "unclear",
-     "who": "him",
-     "when": "earlier",
-     "words": "backfired"
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
     },
     "fatigue": {
      "state": "absent",
@@ -3822,9 +3822,9 @@
      "words": ""
     },
     "disturbed_night": {
-     "state": "present",
-     "when": "earlier",
-     "words": "going out to cinema at night which also meant no time for stretching or breathing exercises"
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
     },
     "training_load": {
      "state": "present",
@@ -3975,10 +3975,10 @@
      "words": ""
     },
     "unwell": {
-     "state": "absent",
-     "who": "unknown",
-     "when": "unknown",
-     "words": ""
+     "state": "present",
+     "who": "him",
+     "when": "last_night",
+     "words": "overate with 9-10 units alcohol"
     },
     "fatigue": {
      "state": "absent",
@@ -3997,9 +3997,9 @@
      "words": ""
     },
     "disturbed_night": {
-     "state": "absent",
-     "when": "unknown",
-     "words": ""
+     "state": "present",
+     "when": "last_night",
+     "words": "Definitely big impact on sleep"
     },
     "training_load": {
      "state": "absent",
@@ -4034,8 +4034,8 @@
     "unwell": {
      "state": "present",
      "who": "him",
-     "when": "now",
-     "words": "overate"
+     "when": "last_night",
+     "words": "overate with 9-10 units alcohol"
     },
     "fatigue": {
      "state": "absent",
@@ -4046,7 +4046,7 @@
     "alcohol": {
      "state": "present",
      "when": "last_night",
-     "words": "drinks last night - overate with 9-10 units alcohol 17:15 - 22:15"
+     "words": "9-10 units alcohol 17:15 - 22:15"
     },
     "travel": {
      "state": "absent",
@@ -4231,7 +4231,7 @@
     "disturbed_night": {
      "state": "present",
      "when": "last_night",
-     "words": "even small window openings did create drafts which felt impacted sleep"
+     "words": "small window openings did create drafts which felt impacted sleep"
     },
     "training_load": {
      "state": "absent",
@@ -4518,9 +4518,9 @@
      "words": ""
     },
     "disturbed_night": {
-     "state": "absent",
-     "when": "unknown",
-     "words": ""
+     "state": "present",
+     "when": "last_night",
+     "words": "Bit later in bed last night"
     },
     "training_load": {
      "state": "absent",
@@ -4868,7 +4868,7 @@
     "disturbed_night": {
      "state": "present",
      "when": "last_night",
-     "words": "Busier night last night meaning didn't get to do breathing, flexibility workout or to sit down and later in bed which suspect are reasons for poor sleep."
+     "words": "Busier night last night meaning didn't get to do breathing, flexibility workout or to sit down and later in bed which suspect are reasons for poor sleep"
     },
     "training_load": {
      "state": "absent",
@@ -5389,9 +5389,9 @@
      "words": ""
     },
     "disturbed_night": {
-     "state": "absent",
-     "when": "unknown",
-     "words": ""
+     "state": "present",
+     "when": "last_night",
+     "words": "poorer more disrupted sleep than the garmin sleep score suggests. Also later in bed last night."
     },
     "training_load": {
      "state": "absent",
@@ -5517,7 +5517,7 @@
     "deliberate_rest": {
      "state": "present",
      "when": "now",
-     "words": "current recovery week"
+     "words": "current recovery week impact theory"
     }
    },
    {
@@ -5574,7 +5574,7 @@
     "deliberate_rest": {
      "state": "present",
      "when": "now",
-     "words": "current recovery week impact theory"
+     "words": "recovery week impact theory"
     }
    }
   ],
@@ -5683,9 +5683,9 @@
      "words": "got woken just after falling asleep and took me a while to get back to sleep"
     },
     "training_load": {
-     "state": "absent",
-     "when": "unknown",
-     "words": ""
+     "state": "present",
+     "when": "earlier",
+     "words": "recovery week impact"
     },
     "deliberate_rest": {
      "state": "present",
@@ -5980,8 +5980,8 @@
     },
     "deliberate_rest": {
      "state": "present",
-     "when": "unknown",
-     "words": "a recovery week"
+     "when": "now",
+     "words": "a recovery week lowering hrv"
     }
    },
    {
@@ -6011,18 +6011,18 @@
     },
     "fatigue": {
      "state": "absent",
-     "who": "unknown",
-     "when": "unknown",
-     "words": ""
+     "who": "him",
+     "when": "now",
+     "words": "feel absolutely fine today"
     },
     "alcohol": {
      "state": "present",
-     "when": "last_night",
+     "when": "earlier",
      "words": "some alcohol"
     },
     "travel": {
      "state": "present",
-     "when": "last_night",
+     "when": "earlier",
      "words": "one night away from home"
     },
     "disturbed_night": {
@@ -6032,13 +6032,13 @@
     },
     "training_load": {
      "state": "present",
-     "when": "earlier",
+     "when": "unknown",
      "words": "a recovery week lowering hrv"
     },
     "deliberate_rest": {
      "state": "present",
-     "when": "earlier",
-     "words": "a recovery week"
+     "when": "unknown",
+     "words": "recovery week"
     }
    }
   ],
@@ -6139,11 +6139,11 @@
     "travel": {
      "state": "present",
      "when": "earlier",
-     "words": "night away"
+     "words": "night away where ate more and later than normal for 2 days"
     },
     "disturbed_night": {
      "state": "present",
-     "when": "last_night",
+     "when": "earlier",
      "words": "had a poor night's sleep"
     },
     "training_load": {
@@ -6202,8 +6202,8 @@
     },
     "disturbed_night": {
      "state": "absent",
-     "when": "unknown",
-     "words": ""
+     "when": "last_night",
+     "words": "Didn't feel like quite as good a night's sleep last night as recently."
     },
     "training_load": {
      "state": "absent",
@@ -6371,7 +6371,7 @@
     "travel": {
      "state": "present",
      "when": "now",
-     "words": "leave for holiday flight"
+     "words": "up at 03:00 to leave for holiday flight"
     },
     "disturbed_night": {
      "state": "present",
@@ -6435,7 +6435,7 @@
     "disturbed_night": {
      "state": "absent",
      "when": "unknown",
-     "words": "feel had decent sleep last night"
+     "words": ""
     },
     "training_load": {
      "state": "absent",
@@ -6487,7 +6487,7 @@
     "travel": {
      "state": "present",
      "when": "now",
-     "words": "on holiday in Spain"
+     "words": "on holiday in Spain just now"
     },
     "disturbed_night": {
      "state": "absent",
@@ -6524,7 +6524,7 @@
      "state": "present",
      "who": "him",
      "when": "now",
-     "words": "sore throat and a runny nose"
+     "words": "sore throat and a runny nose, think I'm coming down with a cold"
     },
     "unwell": {
      "state": "absent",
@@ -6581,7 +6581,7 @@
      "state": "present",
      "who": "him",
      "when": "now",
-     "words": "sore throat and a runny nose"
+     "words": "sore throat and a runny nose, think I'm coming down with a cold"
     },
     "unwell": {
      "state": "absent",
@@ -6626,13 +6626,13 @@
    {
     "chest_heart": {
      "state": "absent",
-     "who": "unknown",
+     "who": "him",
      "when": "unknown",
      "words": ""
     },
     "fever_aches": {
      "state": "absent",
-     "who": "unknown",
+     "who": "him",
      "when": "unknown",
      "words": ""
     },
@@ -6644,13 +6644,13 @@
     },
     "unwell": {
      "state": "absent",
-     "who": "unknown",
+     "who": "him",
      "when": "unknown",
      "words": ""
     },
     "fatigue": {
      "state": "absent",
-     "who": "unknown",
+     "who": "him",
      "when": "unknown",
      "words": ""
     },
@@ -6923,7 +6923,7 @@
      "state": "present",
      "who": "him",
      "when": "now",
-     "words": "Chesty cough since yesterday and I'm coughing up green phlegm"
+     "words": "Chesty cough since yesterday and I'm coughing up green phlegm."
     },
     "head_cold": {
      "state": "absent",
@@ -7149,7 +7149,7 @@
      "state": "present",
      "who": "him",
      "when": "last_night",
-     "words": "heart was racing and fluttering in bed last night"
+     "words": "My heart was racing and fluttering in bed last night"
     },
     "fever_aches": {
      "state": "absent",
@@ -7208,7 +7208,7 @@
      "state": "present",
      "who": "him",
      "when": "now",
-     "words": "Tight feeling across my chest walking up the stairs this morning."
+     "words": "Tight feeling across my chest walking up the stairs this morning"
     },
     "fever_aches": {
      "state": "absent",
@@ -7265,7 +7265,7 @@
      "state": "present",
      "who": "him",
      "when": "now",
-     "words": "Tight feeling across my chest walking up the stairs this morning."
+     "words": "Tight feeling across my chest walking up the stairs"
     },
     "fever_aches": {
      "state": "absent",
@@ -7324,7 +7324,7 @@
      "state": "present",
      "who": "him",
      "when": "now",
-     "words": "Felt dizzy and light-headed when I stood up and nearly fainted"
+     "words": "Felt dizzy and light-headed when I stood up and nearly fainted."
     },
     "fever_aches": {
      "state": "absent",
@@ -7574,7 +7574,7 @@
      "state": "present",
      "who": "him",
      "when": "now",
-     "words": "feel rotten"
+     "words": "I feel rotten"
     },
     "fatigue": {
      "state": "absent",
@@ -7631,7 +7631,7 @@
      "state": "present",
      "who": "him",
      "when": "now",
-     "words": "feel rotten"
+     "words": "I feel rotten"
     },
     "fatigue": {
      "state": "absent",
@@ -7690,7 +7690,7 @@
      "state": "present",
      "who": "him",
      "when": "now",
-     "words": "Nauseous this morning with stomach cramps"
+     "words": "Nauseous this morning with stomach cramps."
     },
     "fatigue": {
      "state": "absent",
@@ -7830,9 +7830,9 @@
      "words": ""
     },
     "training_load": {
-     "state": "present",
+     "state": "absent",
      "when": "unknown",
-     "words": "heavier than after any normal session"
+     "words": ""
     },
     "deliberate_rest": {
      "state": "absent",
@@ -7887,9 +7887,9 @@
      "words": ""
     },
     "training_load": {
-     "state": "absent",
+     "state": "present",
      "when": "unknown",
-     "words": ""
+     "words": "heavier than after any normal session"
     },
     "deliberate_rest": {
      "state": "absent",
@@ -7985,7 +7985,7 @@
      "state": "present",
      "who": "him",
      "when": "now",
-     "words": "Absolutely wiped out today"
+     "words": "Absolutely wiped out today for no obvious reason."
     },
     "alcohol": {
      "state": "absent",
@@ -8032,7 +8032,7 @@
      "state": "unclear",
      "who": "him",
      "when": "now",
-     "words": "Throat a bit scratchy, but it might just be the dry air from the hotel air-con"
+     "words": "Throat a bit scratchy"
     },
     "unwell": {
      "state": "absent",
@@ -8089,7 +8089,7 @@
      "state": "unclear",
      "who": "him",
      "when": "now",
-     "words": "Throat a bit scratchy"
+     "words": "Throat a bit scratchy, but it might just be the dry air from the hotel air-con."
     },
     "unwell": {
      "state": "absent",
@@ -8154,7 +8154,7 @@
      "state": "present",
      "who": "him",
      "when": "now",
-     "words": "Feel a bit off today"
+     "words": "Feel a bit off today and can't put my finger on why"
     },
     "fatigue": {
      "state": "absent",
@@ -8255,10 +8255,10 @@
      "words": "Slight tickle in my chest"
     },
     "fever_aches": {
-     "state": "unclear",
-     "who": "him",
-     "when": "now",
-     "words": "Slight tickle in my chest"
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
     },
     "head_cold": {
      "state": "absent",
@@ -8306,16 +8306,16 @@
    },
    {
     "chest_heart": {
-     "state": "absent",
-     "who": "unknown",
-     "when": "unknown",
-     "words": ""
-    },
-    "fever_aches": {
      "state": "unclear",
      "who": "him",
      "when": "now",
      "words": "Slight tickle in my chest"
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
     },
     "head_cold": {
      "state": "absent",
@@ -8379,7 +8379,7 @@
     "head_cold": {
      "state": "absent",
      "who": "him",
-     "when": "now",
+     "when": "unknown",
      "words": "No cold symptoms at all"
     },
     "unwell": {
@@ -8436,7 +8436,7 @@
     "head_cold": {
      "state": "absent",
      "who": "him",
-     "when": "unknown",
+     "when": "now",
      "words": "No cold symptoms at all"
     },
     "unwell": {
@@ -8482,9 +8482,9 @@
    {
     "chest_heart": {
      "state": "absent",
-     "who": "him",
+     "who": "unknown",
      "when": "unknown",
-     "words": "No chest pain"
+     "words": ""
     },
     "fever_aches": {
      "state": "absent",
@@ -8639,7 +8639,7 @@
     "disturbed_night": {
      "state": "present",
      "when": "last_night",
-     "words": "the late night"
+     "words": "late night"
     },
     "training_load": {
      "state": "absent",
@@ -8673,15 +8673,15 @@
     },
     "unwell": {
      "state": "absent",
-     "who": "him",
-     "when": "now",
-     "words": "Not ill"
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
     },
     "fatigue": {
      "state": "absent",
      "who": "him",
      "when": "now",
-     "words": "just tired after the late night"
+     "words": "tired after the late night"
     },
     "alcohol": {
      "state": "absent",
@@ -8715,8 +8715,8 @@
     "chest_heart": {
      "state": "absent",
      "who": "him",
-     "when": "unknown",
-     "words": "no palpitations"
+     "when": "now",
+     "words": ""
     },
     "fever_aches": {
      "state": "absent",
@@ -8773,7 +8773,7 @@
      "state": "absent",
      "who": "him",
      "when": "unknown",
-     "words": "no palpitations"
+     "words": ""
     },
     "fever_aches": {
      "state": "absent",
@@ -8830,31 +8830,31 @@
    {
     "chest_heart": {
      "state": "absent",
-     "who": "unknown",
+     "who": "him",
      "when": "unknown",
      "words": ""
     },
     "fever_aches": {
      "state": "absent",
-     "who": "unknown",
+     "who": "him",
      "when": "unknown",
-     "words": "no aches or pains"
+     "words": ""
     },
     "head_cold": {
      "state": "absent",
-     "who": "unknown",
+     "who": "him",
      "when": "unknown",
      "words": ""
     },
     "unwell": {
      "state": "absent",
      "who": "him",
-     "when": "now",
-     "words": "Feel fine"
+     "when": "unknown",
+     "words": ""
     },
     "fatigue": {
      "state": "absent",
-     "who": "unknown",
+     "who": "him",
      "when": "unknown",
      "words": ""
     },
@@ -8960,7 +8960,7 @@
      "state": "present",
      "who": "someone_else",
      "when": "now",
-     "words": "come down with a nasty cold"
+     "words": "My wife has come down with a nasty cold"
     },
     "unwell": {
      "state": "absent",
@@ -8985,9 +8985,9 @@
      "words": ""
     },
     "disturbed_night": {
-     "state": "absent",
-     "when": "unknown",
-     "words": ""
+     "state": "present",
+     "when": "now",
+     "words": "I'm sleeping in the spare room"
     },
     "training_load": {
      "state": "absent",
@@ -9070,7 +9070,7 @@
      "state": "present",
      "who": "someone_else",
      "when": "earlier",
-     "words": "Our grandson had a fever at the weekend"
+     "words": "grandson had a fever at the weekend"
     },
     "head_cold": {
      "state": "absent",
@@ -9127,7 +9127,7 @@
      "state": "present",
      "who": "someone_else",
      "when": "earlier",
-     "words": "Our grandson had a fever at the weekend"
+     "words": "grandson had a fever at the weekend"
     },
     "head_cold": {
      "state": "absent",
@@ -9179,7 +9179,7 @@
     "chest_heart": {
      "state": "present",
      "who": "someone_else",
-     "when": "now",
+     "when": "earlier",
      "words": "chest pains"
     },
     "fever_aches": {
@@ -9237,7 +9237,7 @@
      "state": "present",
      "who": "someone_else",
      "when": "now",
-     "words": "chest pains on the ride"
+     "words": "chest pains"
     },
     "fever_aches": {
      "state": "absent",
@@ -9299,10 +9299,10 @@
      "words": ""
     },
     "fever_aches": {
-     "state": "absent",
-     "who": "unknown",
-     "when": "unknown",
-     "words": ""
+     "state": "present",
+     "who": "someone_else",
+     "when": "now",
+     "words": "Half the office is off with flu."
     },
     "head_cold": {
      "state": "absent",
@@ -9421,10 +9421,10 @@
      "words": ""
     },
     "head_cold": {
-     "state": "absent",
+     "state": "present",
      "who": "him",
      "when": "earlier",
-     "words": "Had a cold three weeks ago"
+     "words": "Had a cold three weeks ago and I'm fully over it now."
     },
     "unwell": {
      "state": "absent",
@@ -9641,10 +9641,10 @@
   "H28": [
    {
     "chest_heart": {
-     "state": "present",
+     "state": "absent",
      "who": "him",
      "when": "earlier",
-     "words": "irregular heartbeat"
+     "words": ""
     },
     "fever_aches": {
      "state": "absent",
@@ -9698,10 +9698,10 @@
    },
    {
     "chest_heart": {
-     "state": "present",
+     "state": "absent",
      "who": "him",
      "when": "earlier",
-     "words": "irregular heartbeat"
+     "words": "Years ago I had an irregular heartbeat checked and it was fine."
     },
     "fever_aches": {
      "state": "absent",
@@ -9856,7 +9856,7 @@
     "disturbed_night": {
      "state": "present",
      "when": "last_night",
-     "words": "Room was too cold at 16° and I woke up shivering at 4am."
+     "words": "woke up shivering at 4am"
     },
     "training_load": {
      "state": "absent",
@@ -10309,8 +10309,8 @@
     },
     "alcohol": {
      "state": "present",
-     "when": "unknown",
-     "words": "the beers"
+     "when": "last_night",
+     "words": "after the beers"
     },
     "travel": {
      "state": "absent",
@@ -10377,9 +10377,9 @@
      "words": ""
     },
     "disturbed_night": {
-     "state": "present",
-     "when": "last_night",
-     "words": "got up for the loo"
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
     },
     "training_load": {
      "state": "absent",
@@ -10614,9 +10614,9 @@
      "words": ""
     },
     "training_load": {
-     "state": "absent",
+     "state": "present",
      "when": "unknown",
-     "words": ""
+     "words": "Is this overtraining?"
     },
     "deliberate_rest": {
      "state": "absent",
@@ -10671,9 +10671,9 @@
      "words": ""
     },
     "training_load": {
-     "state": "absent",
+     "state": "present",
      "when": "unknown",
-     "words": ""
+     "words": "Is this overtraining?"
     },
     "deliberate_rest": {
      "state": "absent",
@@ -10717,7 +10717,7 @@
     "alcohol": {
      "state": "present",
      "when": "last_night",
-     "words": "about 8 units"
+     "words": "about 8 units and bed at 1am"
     },
     "travel": {
      "state": "absent",
@@ -10725,9 +10725,9 @@
      "words": ""
     },
     "disturbed_night": {
-     "state": "absent",
-     "when": "unknown",
-     "words": ""
+     "state": "present",
+     "when": "last_night",
+     "words": "bed at 1am"
     },
     "training_load": {
      "state": "absent",
@@ -11016,7 +11016,7 @@
     "disturbed_night": {
      "state": "present",
      "when": "last_night",
-     "words": "Neighbour's alarm went off at 3am and I couldn't get back to sleep"
+     "words": "Neighbour's alarm went off at 3am and I couldn't get back to sleep."
     },
     "training_load": {
      "state": "absent",
@@ -11176,7 +11176,7 @@
      "state": "absent",
      "who": "him",
      "when": "now",
-     "words": "Legs heavy after yesterday's VO2, as usual"
+     "words": "Legs heavy after yesterday's VO2, as usual."
     },
     "alcohol": {
      "state": "absent",
@@ -11196,7 +11196,7 @@
     "training_load": {
      "state": "present",
      "when": "earlier",
-     "words": "Legs heavy after yesterday's VO2"
+     "words": "after yesterday's VO2"
     },
     "deliberate_rest": {
      "state": "absent",
@@ -11233,7 +11233,7 @@
      "state": "absent",
      "who": "him",
      "when": "now",
-     "words": "Legs heavy after yesterday's VO2, as usual."
+     "words": "Legs heavy after yesterday's VO2, as usual"
     },
     "alcohol": {
      "state": "absent",
@@ -11570,6 +11570,2906 @@
      "who": "him",
      "when": "now",
      "words": "sniffly this morning"
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "B01": [
+   {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "now",
+     "words": "Unusually short of breath just walking to the shops this morning"
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "now",
+     "words": "Unusually short of breath just walking to the shops this morning"
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "B02": [
+   {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "now",
+     "words": "Got breathless climbing the stairs, which never normally happens"
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "now",
+     "words": "Got breathless climbing the stairs, which never normally happens."
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "B03": [
+   {
+    "chest_heart": {
+     "state": "unclear",
+     "who": "him",
+     "when": "last_night",
+     "words": "Woke in the night gasping and struggling to get my breath for a few minutes."
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "last_night",
+     "words": "gasping and struggling to get my breath"
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "present",
+     "when": "last_night",
+     "words": "Woke in the night gasping and struggling to get my breath"
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "B04": [
+   {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "now",
+     "words": "Far more out of breath than the effort warranted on yesterday's easy Zone 2 spin, and still a bit puffed sitting here this morning"
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "now",
+     "words": "still a bit puffed sitting here this morning"
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "B05": [
+   {
+    "chest_heart": {
+     "state": "unclear",
+     "who": "him",
+     "when": "now",
+     "words": "A bit short of breath this morning"
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "unclear",
+     "who": "him",
+     "when": "now",
+     "words": "A bit short of breath this morning, not sure why."
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "B06": [
+   {
+    "chest_heart": {
+     "state": "unclear",
+     "who": "him",
+     "when": "now",
+     "words": "Breathing has felt a bit laboured since yesterday"
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "unclear",
+     "who": "him",
+     "when": "now",
+     "words": "Breathing has felt a bit laboured since yesterday"
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "B07": [
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "him",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "him",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "him",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "him",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "him",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "present",
+     "when": "last_night",
+     "words": "Breathing hard on the last two VO2 efforts yesterday, as you'd expect at 120%."
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "present",
+     "when": "last_night",
+     "words": "Breathing hard on the last two VO2 efforts yesterday, as you'd expect at 120%."
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "B08": [
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "him",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "him",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "him",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "him",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "him",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "B09": [
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "B10": [
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "present",
+     "when": "now",
+     "words": "a good hard effort"
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "him",
+     "when": "now",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "present",
+     "when": "now",
+     "words": "a good hard effort"
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "B11": [
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "present",
+     "who": "him",
+     "when": "last_night",
+     "words": "Blocked nose so I was breathing through my mouth all night."
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "present",
+     "who": "him",
+     "when": "last_night",
+     "words": "Blocked nose so I was breathing through my mouth all night"
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "present",
+     "when": "last_night",
+     "words": "breathing through my mouth all night"
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "B12": [
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "B13": [
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "B14": [
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "him",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "present",
+     "who": "someone_else",
+     "when": "earlier",
+     "words": "got very breathless on the hill walk yesterday"
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "B15": [
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "him",
+     "when": "earlier",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "him",
+     "when": "earlier",
+     "words": "last month's chest infection, but that has all cleared"
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "earlier",
+     "words": "Was breathless with last month's chest infection"
+    },
+    "fever_aches": {
+     "state": "present",
+     "who": "him",
+     "when": "earlier",
+     "words": "last month's chest infection"
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "X01": [
+   {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "now",
+     "words": "Palpitations again this morning after my coffee, lasted a minute or so"
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "now",
+     "words": "Palpitations again this morning after my coffee, lasted a minute or so"
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "X02": [
+   {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "now",
+     "words": "Came over all faint in the shower and had to sit down."
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "now",
+     "words": "Came over all faint in the shower and had to sit down"
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "X03": [
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "present",
+     "who": "him",
+     "when": "now",
+     "words": "Temperature of 37.9 last night with aching joints, only a bit better this morning"
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "present",
+     "who": "him",
+     "when": "now",
+     "words": "Temperature of 37.9 last night with aching joints, only a bit better this morning."
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "X04": [
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "present",
+     "who": "him",
+     "when": "now",
+     "words": "Nose has been running like a tap since Sunday."
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "present",
+     "who": "him",
+     "when": "now",
+     "words": "Nose has been running like a tap since Sunday."
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "X05": [
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "present",
+     "who": "him",
+     "when": "now",
+     "words": "Sore throat woke me at 3 and it's still raw now"
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "present",
+     "when": "last_night",
+     "words": "Sore throat woke me at 3"
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "present",
+     "who": "him",
+     "when": "now",
+     "words": "Sore throat woke me at 3 and it's still raw now."
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "X06": [
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "present",
+     "who": "someone_else",
+     "when": "last_night",
+     "words": "The dog had a stomach bug"
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "present",
+     "when": "last_night",
+     "words": "kept us up half the night"
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "present",
+     "when": "last_night",
+     "words": "kept us up half the night"
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "X07": [
+   {
+    "chest_heart": {
+     "state": "unclear",
+     "who": "him",
+     "when": "now",
+     "words": "Stitch in my side on the walk, gone within a minute."
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "X08": [
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "X09": [
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   }
+  ],
+  "X10": [
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "unclear",
+     "who": "him",
+     "when": "now",
+     "words": "A bit sniffly, think it's the dust from sanding the floor."
+    },
+    "unwell": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fatigue": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "alcohol": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "travel": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "disturbed_night": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "training_load": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    },
+    "deliberate_rest": {
+     "state": "absent",
+     "when": "unknown",
+     "words": ""
+    }
+   },
+   {
+    "chest_heart": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "fever_aches": {
+     "state": "absent",
+     "who": "unknown",
+     "when": "unknown",
+     "words": ""
+    },
+    "head_cold": {
+     "state": "unclear",
+     "who": "him",
+     "when": "now",
+     "words": "A bit sniffly, think it's the dust from sanding the floor."
     },
     "unwell": {
      "state": "absent",

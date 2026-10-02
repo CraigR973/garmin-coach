@@ -4,7 +4,11 @@ import symptomNotices from './symptomNotices.json';
 /** Batch 294: the morning check-in's "Any symptoms today?", in the order it is shown.
  *  The wording was signed off by Craig on Mark's behalf on 28 Sep 2026
  *  (docs/drafts/2026-09-28-batch-294-wording.md). The server decides what each answer
- *  does to the day (`services/symptom_check.py`); this file only words the question. */
+ *  does to the day (`services/symptom_check.py`); this file only words the question.
+ *
+ *  Batch 303: "Chest or heart" also covers unusual breathlessness (signed off 2 Oct 2026,
+ *  docs/drafts/2026-10-02-batch-303-wording.md). The same four answers now answer Home's
+ *  question in one tap (`components/NotesAskCard.tsx`). */
 export const SYMPTOM_QUESTION = 'Any symptoms today?';
 
 export const SYMPTOM_OPTIONS: ReadonlyArray<{
@@ -22,7 +26,8 @@ export const SYMPTOM_OPTIONS: ReadonlyArray<{
   {
     value: 'chest_heart',
     label: 'Chest or heart',
-    detail: 'Chest pain or tightness, a racing or irregular heartbeat, or feeling faint',
+    detail:
+      'Chest pain or tightness, a racing or irregular heartbeat, feeling faint, or unusual breathlessness',
   },
 ];
 

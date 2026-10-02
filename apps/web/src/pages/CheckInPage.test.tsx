@@ -126,7 +126,8 @@ describe('CheckInPage', () => {
       'None',
       'Head coldRunny or blocked nose, sneezing, sore throat',
       'Fever or achesA temperature, aching muscles, or a chesty cough',
-      'Chest or heartChest pain or tightness, a racing or irregular heartbeat, or feeling faint',
+      // Batch 303: the answer also covers unusual breathlessness.
+      'Chest or heartChest pain or tightness, a racing or irregular heartbeat, feeling faint, or unusual breathlessness',
     ]);
     expect(within(group).getByRole('radio', { name: 'None' }).getAttribute('aria-checked')).toBe(
       'true',

@@ -16,9 +16,15 @@ and retried in place by the next regeneration.
 * causes (alcohol, travel, a disturbed night, training load, deliberate rest) are
   context, and feed only the two-Reds cause check (Batch 194's bounds).
 
-Only his own taps relax the day: once he re-submits the check-in after the reading,
-his answer to the symptom question governs and the note's symptom no longer does. The
-flags reach the model only as data inside the packet.
+Only his own answer relaxes the day, and since Batch 303 only an explicit one: a tap on
+Home's question, recorded on the check-in as ``symptoms_answered_at_utc``. Saving the
+check-in again is not an answer. It used to be, and with None preselected any later
+save, to add his breakfast say, quietly dropped a symptom his note had named.
+
+Batch 303 also makes two mentions do more than ask. Breathlessness that is unusual for
+him is a chest-or-heart flag (reader prompt v2). And a possible chest or heart mention,
+one the reader will not call his and present, eases today's hard session until he
+answers (``chest_question``). The flags reach the model only as data inside the packet.
 """
 
 from __future__ import annotations
@@ -46,6 +52,7 @@ from src.services.anthropic_text import (
     generate_anthropic_text,
 )
 from src.services.symptom_check import (
+    SYMPTOM_SEVERITY,
     SYMPTOMS_CHEST_HEART,
     SYMPTOMS_FEVER_ACHES,
     SYMPTOMS_HEAD_COLD,
@@ -53,7 +60,7 @@ from src.services.symptom_check import (
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
-PROMPT_VERSION = "notes-reader-v1-2026-09-30"
+PROMPT_VERSION = "notes-reader-v2-2026-10-02"
 
 STATUS_READ: Final = "read"
 STATUS_FAILED: Final = "failed"
@@ -82,6 +89,12 @@ CAUSES: Final = (
 
 #: A flag or cause counts for today only when it is his, and now or last night.
 CURRENT: Final = frozenset({"now", "last_night"})
+
+#: Batch 303: how serious a mention is, against the answer he tapped. Home asks only
+#: about something more serious than he has already told it; feeling unwell sits
+#: between no symptom and a head cold. An unanswered question ranks below "None".
+_UNWELL_SEVERITY: Final = 0.5
+_UNANSWERED_SEVERITY: Final = -1.0
 
 State = Literal["present", "absent", "unclear"]
 Who = Literal["him", "someone_else", "unknown"]
@@ -130,7 +143,9 @@ For each flag give a state, who it concerns, when, and his exact words.
 
 Flags:
 - chest_heart: chest pain or tightness, a racing, fluttering, pounding or skipping \
-heartbeat he felt, feeling faint, dizzy or light-headed.
+heartbeat he felt, feeling faint, dizzy or light-headed, or breathlessness that is \
+unusual for him: short of breath at rest, on light effort such as the stairs or a \
+walk, or far more than the effort explains.
 - fever_aches: a fever or high temperature he took or felt, shivers or sweats from \
 illness, aching all over, a chesty cough or a chest infection.
 - head_cold: a cold above the neck: sore or scratchy throat, runny or blocked nose, \
@@ -160,6 +175,12 @@ himself: head_cold unclear.
 - Numbers are not symptoms. Heart rate, resting HR, HRV, zones, Garmin, Zwift or any \
 figure is data talk: absent for chest_heart.
 - Heartburn or indigestion, however it is described: chest_heart unclear.
+- Breathing is not a symptom when it is his routine or his training. His breathing \
+exercises or breathwork, done or missed, and breathing hard, panting or being out of \
+breath during or just after a hard effort (intervals, a climb, a sprint, a race) are \
+absent for chest_heart. A blocked nose that makes it hard to breathe is head_cold.
+- Breathlessness he mentions without saying how hard he was working, or cannot \
+explain: chest_heart unclear.
 - Hay fever or an allergy with sneezing: head_cold unclear.
 - A scratchy throat he puts down to dry air or air-conditioning: head_cold unclear.
 - fatigue is absent for ordinary tiredness: at bedtime, after a late night, tiredness \
@@ -197,8 +218,12 @@ class NotesEffects:
     feel_notch: int = 0
     feel_words: str | None = None
     causes: tuple[CauseFound, ...] = ()
-    #: He re-submitted the check-in after the reading: his own answer governs.
+    #: He answered Home's question after the reading: his own answer governs.
     answered_after_reading: bool = False
+    #: Batch 303: his note may mean a chest or heart symptom and he has not answered,
+    #: so today's hard session is an easy ride until he does.
+    chest_question: bool = False
+    chest_question_words: str | None = None
     model_name: str | None = None
     prompt_version: str | None = None
     flags: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
@@ -210,8 +235,11 @@ class NotesEffects:
                 "What the app read in his check-in note. It can only add caution: a "
                 "symptom he wrote sets the same floor as answering the symptom question, "
                 "an unclear one makes Home ask him, and feeling unwell or unusually "
-                "tired makes his subjective domain one notch worse. Causes are context "
-                "and never soften the day. Only his own taps relax it."
+                "tired makes his subjective domain one notch worse. A possible chest or "
+                "heart mention also eases today's hard session until he answers "
+                "(chestQuestion). Causes are context and never soften the day. Only his "
+                "own answer to Home's question relaxes it; saving the check-in again does "
+                "not."
             ),
             "symptomFromNotes": self.symptom_answer,
             "symptomWords": self.symptom_words,
@@ -220,6 +248,8 @@ class NotesEffects:
             "feelNotch": self.feel_notch,
             "feelWords": self.feel_words,
             "answeredAfterReading": self.answered_after_reading,
+            "chestQuestion": self.chest_question,
+            "chestQuestionWords": self.chest_question_words,
             "causes": [
                 {"cause": item.cause, "when": item.when, "words": item.words}
                 for item in self.causes
@@ -257,33 +287,52 @@ def reading_effects(
     reading: Mapping[str, Any],
     *,
     answered_after_reading: bool = False,
+    tapped_answer: str | None = None,
 ) -> NotesEffects:
     """The one-way effects of one stored reading. Pure.
 
-    ``answered_after_reading`` is True when he re-submitted the check-in after the
-    note was read: his own answer to the symptom question then governs, so the note's
-    symptom sets no floor and Home does not ask again. Unwell and fatigue still make
-    the subjective domain worse while the note stands, because they are his words
-    about how he feels rather than an answer he has since given.
+    ``answered_after_reading`` is True when he answered Home's question after the note
+    was read: his own answer then governs, so the note's symptom sets no floor and Home
+    does not ask again. Unwell and fatigue still make the subjective domain worse while
+    the note stands, because they are his words about how he feels rather than an
+    answer he has since given.
+
+    ``tapped_answer`` (Batch 303) is what he answered on the check-in itself. Home asks
+    only about a mention more serious than that: a note of "sore throat" beside a
+    tapped "Head cold" has nothing left to ask. The floor is unaffected; the more
+    severe of his tap and his note still stands (``morning_verdict``).
     """
 
+    tapped_severity = SYMPTOM_SEVERITY.get(tapped_answer or "", _UNANSWERED_SEVERITY)
     symptom_answer: str | None = None
     symptom_words: str | None = None
     ask = False
     ask_words: str | None = None
+    chest_question = False
+    chest_question_words: str | None = None
     for name in SYMPTOM_FLAGS:
         flag = _flag(reading, name)
         state = flag.get("state")
         words = str(flag.get("words") or "") or None
+        asks = SYMPTOM_SEVERITY[name] > tapped_severity
         if state == "present" and _his_and_current(flag):
             # The floor applies, and Home asks too, so his own answer can relax it.
             if symptom_answer is None:
                 symptom_answer, symptom_words = name, words
-            ask, ask_words = True, ask_words or words
+            if asks:
+                ask, ask_words = True, ask_words or words
         elif state in {"present", "unclear"} and _maybe_his_and_current(flag):
-            ask, ask_words = True, ask_words or words
+            if asks:
+                ask, ask_words = True, ask_words or words
+                if name == SYMPTOMS_CHEST_HEART:
+                    # Not enough for the floor, too much to ride hard on unasked.
+                    chest_question, chest_question_words = True, words
     unwell = _flag(reading, FLAG_UNWELL)
-    if unwell.get("state") in {"present", "unclear"} and _maybe_his_and_current(unwell):
+    if (
+        unwell.get("state") in {"present", "unclear"}
+        and _maybe_his_and_current(unwell)
+        and _UNWELL_SEVERITY > tapped_severity
+    ):
         ask, ask_words = True, ask_words or (str(unwell.get("words") or "") or None)
 
     feel_notch = 0
@@ -307,6 +356,8 @@ def reading_effects(
         symptom_answer = symptom_words = None
         ask = False
         ask_words = None
+        chest_question = False
+        chest_question_words = None
     return NotesEffects(
         status=STATUS_READ,
         symptom_answer=symptom_answer,
@@ -317,6 +368,8 @@ def reading_effects(
         feel_words=feel_words,
         causes=causes,
         answered_after_reading=answered_after_reading,
+        chest_question=chest_question,
+        chest_question_words=chest_question_words,
         flags={name: dict(_flag(reading, name)) for name in (*FLAGS, *CAUSES)},
     )
 
@@ -354,14 +407,23 @@ def day_effects(
             prompt_version=stored.prompt_version,
         )
     # When the successful reading was written: a retried row keeps the failed
-    # attempt's created_at, so a check-in between the two must not count as an answer.
-    answered = _answered_after(noted.entry_at_utc, stored.updated_at or stored.created_at)
-    effects = reading_effects(stored.reading or {}, answered_after_reading=answered)
+    # attempt's created_at, so an answer between the two must not count.
+    #
+    # Batch 303: only his answer to Home's question counts, which the check-in records
+    # as symptoms_answered_at_utc. Until then the time of his last save stood in for
+    # it: 9 of his 78 morning check-ins were saved again later the same day, and with
+    # None preselected each such save would have dropped a symptom his note had named.
+    answered = _answered_after(
+        noted.symptoms_answered_at_utc, stored.updated_at or stored.created_at
+    )
+    effects = reading_effects(
+        stored.reading or {}, answered_after_reading=answered, tapped_answer=noted.symptoms
+    )
     return replace(effects, model_name=stored.model_name, prompt_version=stored.prompt_version)
 
 
-def _answered_after(entry_at: datetime | None, read_at: datetime | None) -> bool:
-    return entry_at is not None and read_at is not None and entry_at > read_at
+def _answered_after(answered_at: datetime | None, read_at: datetime | None) -> bool:
+    return answered_at is not None and read_at is not None and answered_at > read_at
 
 
 class NotesReaderError(RuntimeError):

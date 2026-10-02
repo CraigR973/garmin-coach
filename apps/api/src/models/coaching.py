@@ -378,6 +378,11 @@ class ManualEntry(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     # Batch 294: his answer to "Any symptoms today?" (``services.symptom_check``).
     # NULL means he was not asked or did not answer, which is never read as "none".
     symptoms: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Batch 303: when he answered Home's question about a symptom his note may name.
+    # Only this relaxes what the note set; saving the check-in again never moves it.
+    symptoms_answered_at_utc: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 

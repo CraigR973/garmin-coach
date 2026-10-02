@@ -68,6 +68,12 @@ class ManualEntryBody(BaseModel):
     notes: str | None = None
 
 
+class SymptomAnswerBody(BaseModel):
+    """Batch 303: his answer to Home's symptom question. One of the check-in's four."""
+
+    answer: Literal["none", "head_cold", "fever_aches", "chest_heart"]
+
+
 class AdherenceBody(BaseModel):
     status: str
     rpe: float | None = None
@@ -136,6 +142,9 @@ class AnalysisOut(BaseModel):
     # Batch 297: his note may name a symptom, so Home asks the symptom question.
     notesAsk: bool = False
     notesAskWords: str | None = None
+    # Batch 303: the question is about a possible chest or heart symptom and today's
+    # hard session is an easy ride until he answers, so the card says so.
+    notesAskEases: bool = False
     notesReadingStatus: str | None = None
     # Batch 302: when the brief itself was written. ``generatedAtUtc`` is when the
     # morning was graded and first shown, which can be hours earlier after an outage.

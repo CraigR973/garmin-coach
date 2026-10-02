@@ -187,11 +187,19 @@ from src.services.sleep_scoring import (
     age_adjusted_sleep_score as compute_age_adjusted_sleep_score,
 )
 from src.services.standing_habits import SECTION as STANDING_HABITS_SECTION
+from src.services.symptom_check import (
+    EASING_CHEST_QUESTION,
+    ILLNESS_RETURN_MORNINGS,
+    chest_question_easing,
+    fever_return_easing,
+    illness_return,
+)
 from src.services.training_week import TrainingWeekService
 from src.services.verdict_grading import (
     ENGINE_GRADED,
     GradedVerdict,
     build_grading_inputs,
+    classify_planned_workout,
     grade,
     readiness_lower_quartile,
 )
@@ -386,8 +394,14 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # eased, and verdict.weeklyMix.eased is new: eased a zone at full length, still in the
 # week. The ladder's v50 is unchanged. Self-healing again: nothing is withdrawn and
 # nothing is regenerated; the next generation of any morning writes v54.
+# Batch 303: the graded read is told what follows a symptom (SYMPTOM_FOLLOW_THROUGH_RULE):
+# an easy day back after a fever, and a hard session eased until he answers a possible
+# chest or heart mention. On both the hard session is swapped for an easy spin while the
+# colour is not Red, which no earlier rule described. The ladder's v50 is unchanged, and
+# under it neither easing is applied. Self-healing: nothing is withdrawn and nothing is
+# regenerated; the next generation of any morning writes v55.
 LADDER_PROMPT_VERSION = "morning-analysis-v50-2026-09-28"
-GRADED_PROMPT_VERSION = "morning-analysis-v54-2026-10-01"
+GRADED_PROMPT_VERSION = "morning-analysis-v55-2026-10-02"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -452,6 +466,23 @@ his check-in note as data that can only add caution, and never use his notes to 
 argue down or re-derive the colour. When notesReading.status is failed, say in one
 sentence that you could not read his note today, so the colour comes from his numbers
 and his answers alone. Never quote words the reading does not carry."""
+
+# Batch 303: what follows a symptom. Graded prompt only; the ladder applies neither.
+SYMPTOM_FOLLOW_THROUGH_RULE = """verdict.acutePhysiology.symptoms.easing, when present,
+is what follows a symptom on a morning with no floor of its own, and verdict.graded.easing
+says the app applied it: today's hard session is swapped for an easy spin (its session
+action is recovery, and verdict.verdictAdjustment carries that spin's figures) although
+the colour is not Red. Never call the day Red for it, and never describe that session as
+merely eased a zone. Kind fever_return is an easy day back after a fever he reported on
+easing.reportedOn, day easing.day of easing.of: say so in one sentence, in the app's own
+words (easing.reason). The app renders the notice outside your prose, so do not repeat
+it. Kind chest_question means his note may mention a chest or heart symptom
+(easing.words) and the app is waiting for his answer on Home: say in one sentence that
+the hard session is an easy ride until he answers, and never decide for him whether it
+is a symptom. When symptoms.easing is present but verdict.graded.easing is null, no hard
+session is planned and nothing was eased: mention only the question. The chest or heart
+answer also covers unusual breathlessness, as symptoms.label says. Add no medical advice
+of your own."""
 
 SYSTEM_PROMPT = f"""You are CheckMark, a private daily endurance and sleep coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
@@ -757,7 +788,10 @@ age credit alone would have made the day Green, so it stays Amber: say so plainl
 never argue it. Missing HRV and absent""",
     ),
     (HRV_GRADED_RESPONSE_RULE, GRADED_VERDICT_RULE),
-    (SYMPTOM_FLOOR_RULE, f"{GRADED_SYMPTOM_FLOOR_RULE}\n\n{NOTES_READING_RULE}"),
+    (
+        SYMPTOM_FLOOR_RULE,
+        f"{GRADED_SYMPTOM_FLOOR_RULE}\n\n{NOTES_READING_RULE}\n\n{SYMPTOM_FOLLOW_THROUGH_RULE}",
+    ),
     (
         """Never soften or
 argue down an RHR/HRV Amber cap, the missing-data floor, or an oxygen/respiration
@@ -955,6 +989,15 @@ class MorningAnalysisService:
         notes_effects = day_effects(
             check_ins, await NotesReaderService(self.session).readings_for(check_ins)
         )
+        # Batch 303: what follows a symptom. The easy days back are read from the stored
+        # mornings, so a fever named only in his note counts and an answer he corrected
+        # the same day does not; a possible chest or heart mention comes from today's
+        # reading. The ladder applies neither, so its rollback path is given neither.
+        symptom_easing = (
+            await self._symptom_easing(player.id, subject_date, notes_effects)
+            if VERDICT_ENGINE == ENGINE_GRADED
+            else None
+        )
         recent_corrections = await FeedbackService(self.session).recent_corrections(player.id)
         planned_workouts = await self._planned_workouts(player.id, subject_date)
         training_week = await TrainingWeekService(self.session).build(
@@ -1060,6 +1103,7 @@ class MorningAnalysisService:
             enforce_data_sufficiency=True,
             notes_symptom_answer=notes_effects.symptom_answer,
             notes_symptom_words=notes_effects.symptom_words,
+            symptom_easing=symptom_easing,
         )
         # Batch 296: the graded verdict, from the same rows and the ladder's own acute
         # rail. Both engines run every morning; settings.verdict_engine picks the one
@@ -1221,6 +1265,18 @@ class MorningAnalysisService:
                     profile_id=str(player.id),
                     subject_date=subject_date.isoformat(),
                     swap_bring_forward=str(swap.bring_forward_workout_id),
+                )
+                swap = None
+            # Batch 303: what follows a symptom comes before a rearranged week.
+            if swap is not None and await self._swap_blocked_by_easing(
+                swap, graded=graded, easing=symptom_easing
+            ):
+                log.info(
+                    "swap suggestion withheld — hard work is eased after a symptom",
+                    profile_id=str(player.id),
+                    subject_date=subject_date.isoformat(),
+                    easing=graded.easing,
+                    swap_move_to=swap.move_to_date.isoformat(),
                 )
                 swap = None
             if swap is not None:
@@ -1953,6 +2009,29 @@ class MorningAnalysisService:
             return False
         return blocks_red_vo2("Red", ir)
 
+    async def _swap_blocked_by_easing(
+        self, swap: Any, *, graded: GradedVerdict, easing: Mapping[str, Any] | None
+    ) -> bool:
+        """Would this swap undo what follows a symptom? (Batch 303)
+
+        While a possible chest or heart mention is unanswered, the question is the next
+        step, not a rearranged week. On an easy day back after a fever the hard session
+        may move, but not onto another easy day back, where it would be eased again,
+        and not in exchange for a session that is itself hard work today. A session the
+        IR builder cannot read is not a ride, so it is not hard work.
+        """
+        if graded.easing is None or not isinstance(easing, Mapping):
+            return False
+        if graded.easing == EASING_CHEST_QUESTION:
+            return True
+        reported_on, easy_days = easing.get("reportedOn"), easing.get("of")
+        if isinstance(reported_on, str) and isinstance(easy_days, int):
+            last_easy_day = date.fromisoformat(reported_on) + timedelta(days=easy_days)
+            if swap.move_to_date <= last_easy_day:
+                return True
+        workout = await self.session.get(PlannedWorkout, swap.bring_forward_workout_id)
+        return workout is not None and classify_planned_workout(workout).is_hard
+
     async def _acute_physiology_history(
         self,
         user_id: uuid.UUID,
@@ -2024,6 +2103,49 @@ class MorningAnalysisService:
             .all()
         )
         return daily_metrics, sleeps
+
+    async def _symptom_easing(
+        self, user_id: uuid.UUID, subject_date: date, notes_effects: NotesEffects
+    ) -> dict[str, Any] | None:
+        """What follows a symptom this morning, or ``None`` (Batch 303).
+
+        The easy days back after a fever come first: they carry a notice and hold
+        whatever is planned. A possible chest or heart mention he has not answered is
+        the other. Only the symptoms part of each stored packet is read.
+        """
+        symptoms = Analysis.context_packet[("verdict", "acutePhysiology", "symptoms")]
+        rows = (
+            await self.session.execute(
+                select(Analysis.subject_date, symptoms.label("symptoms"))
+                .where(
+                    Analysis.user_id == user_id,
+                    Analysis.analysis_type == ANALYSIS_TYPE,
+                    Analysis.subject_date >= subject_date - timedelta(days=ILLNESS_RETURN_MORNINGS),
+                    Analysis.subject_date < subject_date,
+                )
+                .order_by(
+                    Analysis.subject_date,
+                    desc(Analysis.generated_at_utc),
+                    desc(Analysis.created_at),
+                )
+            )
+        ).all()
+        floor_answers: dict[date, str | None] = {}
+        for row in rows:
+            # The latest stored morning of each day decides, as it does everywhere.
+            if row.subject_date in floor_answers:
+                continue
+            stored = row.symptoms if isinstance(row.symptoms, Mapping) else {}
+            answer = stored.get("answer")
+            floor_answers[row.subject_date] = (
+                answer if stored.get("triggered") is True and isinstance(answer, str) else None
+            )
+        window = illness_return(subject_date, floor_answers)
+        if window is not None:
+            return fever_return_easing(window)
+        if notes_effects.chest_question:
+            return chest_question_easing(notes_effects.chest_question_words)
+        return None
 
     async def _graded_verdict(
         self,
@@ -2707,6 +2829,13 @@ _THERMAL_WARM_FLAGS = frozenset(
 
 
 def _eased_ride_detail(status: str, adjustment: Mapping[str, Any] | None = None) -> str:
+    # Batch 303: describe the ride by the change made to it, not by the day's colour.
+    # They were always the same until an easy day back after a fever, or an open chest
+    # question, swapped a hard session for the easy spin on an Amber morning: the line
+    # then read "Ease the hard intervals to ~60% FTP — full length" for a halved spin.
+    transform = adjustment.get("verdict") if isinstance(adjustment, Mapping) else None
+    if transform in {"Amber", "Red"}:
+        status = str(transform)
     # Batch 296: the graded Amber eases only the hard work and keeps the full length.
     # Wording signed off by Craig on Mark's behalf, 29 Sep 2026.
     if isinstance(adjustment, Mapping) and adjustment.get("graded") is True and status == "Amber":

@@ -256,9 +256,12 @@ def test_the_day_reads_its_newest_noted_check_in() -> None:
     assert stale.status == STATUS_NOT_READ
 
 
-def test_a_check_in_after_the_reading_is_his_answer() -> None:
+def test_his_answer_to_homes_question_after_the_reading_is_his_answer() -> None:
+    # Batch 303: until then a check-in saved after the reading was "his answer". The
+    # answer now has a time of its own (tests/test_batch_303_medical_follow_through.py).
     read_at = datetime(2026, 10, 7, 7, 0)
-    entry = _entry("Sore throat.", read_at + timedelta(minutes=30))
+    entry = _entry("Sore throat.", read_at - timedelta(minutes=1))
+    entry.symptoms_answered_at_utc = read_at + timedelta(minutes=30)
     effects = day_effects(
         [entry], [_stored(entry, STATUS_READ, _reading(head_cold=_flag("present")), read_at)]
     )
@@ -354,7 +357,8 @@ def test_the_production_models_recorded_responses_meet_the_gate() -> None:
     assert len(scores) >= 2
     assert gate_failures(scores) == []
     for score in scores:
-        assert len(score.red_flags) == 12
+        # 12 at Batch 297; Batch 303 added 5 on breathlessness and 5 held out.
+        assert len(score.red_flags) == 22
         assert score.failed_readings == []
 
 
@@ -369,7 +373,8 @@ def test_every_recorded_response_still_fits_the_schema() -> None:
 
 def test_the_eval_cases_are_the_ones_craig_labelled() -> None:
     cases = load_cases(EVAL_CASES)
-    assert len(cases) == 100
+    # 100 at Batch 297; Batch 303 added B01-B15 and the held-out X01-X10 (Craig, 2 Oct).
+    assert len(cases) == 125
     assert sum(case.source == "real" for case in cases) == 56
     by_id = {case.id: case for case in cases}
     # Craig, 30 Sep: Home asks after hay fever too.
@@ -490,9 +495,19 @@ async def test_a_failed_reading_is_stored_retried_and_leaves_the_colour_alone(
         assert packet["verdict"]["status"] == "Red"
         assert packet["verdict"]["notesReading"]["askSymptomQuestion"] is True
 
-        # He answers after the reading: his own tap now governs, and relaxes the floor.
+        # He saves the check-in again after the reading, None still selected. Since
+        # Batch 303 that is not an answer: the note's floor stands and Home still asks.
+        later = datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=5)
         entry.symptoms = "none"
-        entry.entry_at_utc = datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=5)
+        entry.entry_at_utc = later
+        await session.commit()
+        resaved = await MorningAnalysisService(session).assemble_context_packet(player, day)
+        assert resaved["verdict"]["acutePhysiology"]["symptoms"]["answer"] == "head_cold"
+        assert resaved["verdict"]["notesReading"]["answeredAfterReading"] is False
+        assert resaved["verdict"]["notesReading"]["askSymptomQuestion"] is True
+
+        # He answers Home's question: his own answer now governs, and relaxes the floor.
+        entry.symptoms_answered_at_utc = later + timedelta(minutes=1)
         await session.commit()
         relaxed = await MorningAnalysisService(session).assemble_context_packet(player, day)
         assert relaxed["verdict"]["acutePhysiology"]["symptoms"]["answer"] == "none"
@@ -500,9 +515,11 @@ async def test_a_failed_reading_is_stored_retried_and_leaves_the_colour_alone(
         assert relaxed["verdict"]["notesReading"]["askSymptomQuestion"] is False
 
 
-def test_a_check_in_between_a_failed_read_and_its_retry_is_not_an_answer() -> None:
+def test_an_answer_between_a_failed_read_and_its_retry_is_not_an_answer() -> None:
     failed_at = datetime(2026, 10, 7, 7, 0)
-    entry = _entry("Sore throat.", failed_at + timedelta(minutes=10))
+    entry = _entry("Sore throat.", failed_at - timedelta(minutes=1))
+    # Batch 303: his answer to Home's question, given before the note was ever read.
+    entry.symptoms_answered_at_utc = failed_at + timedelta(minutes=10)
     retried = _stored(entry, STATUS_READ, _reading(head_cold=_flag("present")), failed_at)
     retried.updated_at = failed_at + timedelta(minutes=20)
     effects = day_effects([entry], [retried])

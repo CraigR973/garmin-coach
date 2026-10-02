@@ -906,6 +906,32 @@ describe('v1 shared schemas', () => {
     expect(before.notesAsk ?? false).toBe(false);
   });
 
+  it('reads whether the question is holding the hard session, and its absence (Batch 303)', () => {
+    const holding = dailyLoopAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-10-09T06:30:00Z',
+      verdict: 'amber',
+      promptVersion: 'morning-analysis-v55-2026-10-02',
+      outputMarkdown: '',
+      notesAsk: true,
+      notesAskWords: 'heartburn',
+      notesAskEases: true,
+    });
+    expect(holding.notesAskEases).toBe(true);
+
+    // A morning stored before the batch, or served by an older API, carries no such field.
+    const before = dailyLoopAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-10-01T06:30:00Z',
+      verdict: 'amber',
+      promptVersion: 'morning-analysis-v54-2026-10-01',
+      outputMarkdown: '**Verdict:** Amber',
+      notesAsk: true,
+      notesAskWords: 'heartburn',
+    });
+    expect(before.notesAskEases ?? false).toBe(false);
+  });
+
   it('reads a morning stored without its brief, and a brief with its own time (Batch 302)', () => {
     const graded = dailyLoopAnalysisSchema.parse({
       id: rowId,

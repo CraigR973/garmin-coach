@@ -422,7 +422,9 @@ async def test_the_failure_reason_comes_from_a_type_test_not_a_duck_type() -> No
 def test_the_daily_loop_router_is_transport_only() -> None:
     """1,747 lines holding 45 DTOs, a 261-line ``_envelope``, a Dreo fan client
     wrapper and a background generation task — around four routes. Batch 302 added
-    the fifth: the brief's retry, which is a route so that it need not be a save."""
+    the fifth: the brief's retry, which is a route so that it need not be a save.
+    Batch 303 added the sixth for the same reason: his answer to Home's symptom
+    question, which a save of the check-in used to stand in for."""
     tree = _router_ast()
     classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
     functions = [
@@ -437,7 +439,7 @@ def test_the_daily_loop_router_is_transport_only() -> None:
         for dec in getattr(node, "decorator_list", [])
         if ast.unparse(dec).startswith("router.")
     )
-    assert routes == 5
+    assert routes == 6
 
 
 @pytest.mark.asyncio

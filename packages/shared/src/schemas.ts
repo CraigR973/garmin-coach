@@ -1219,6 +1219,9 @@ export const dailyLoopAnalysisSchema = z.object({
   // Absent on a read stored before the notes reader.
   notesAsk: z.boolean().optional(),
   notesAskWords: z.string().nullable().optional(),
+  // Batch 303: the question is about a possible chest or heart symptom and today's hard
+  // session is an easy ride until he answers, so the card says so. Absent before it.
+  notesAskEases: z.boolean().optional(),
   notesReadingStatus: z.string().nullable().optional(),
   // Batch 302: when the brief itself was written. `generatedAtUtc` is when the morning
   // was graded and first shown, which after an outage can be hours earlier. Absent on a
