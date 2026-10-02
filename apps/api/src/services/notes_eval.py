@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final
 
+from src.services import notes_reader
 from src.services.notes_reader import (
     CAUSES,
     FLAGS,
@@ -42,6 +43,41 @@ SOURCE_REAL: Final = "real"
 SOURCE_HARD: Final = "hard"
 #: Written after the prompt was frozen and never used to change it (Batch 307.3).
 SOURCE_HELD_OUT: Final = "held_out"
+
+
+#: What to do when a recording no longer answers the reader's prompt (Batch 307).
+RERUN_THE_EVAL: Final = (
+    "Re-run the eval on the production model, which is paid and needs Craig's go: "
+    "PYTHONPATH=apps/api railway run --service api apps/api/.venv/bin/python "
+    "scripts/run_notes_eval.py run --model <model> --passes 2 --budget 4, then "
+    "scripts/run_notes_eval.py report."
+)
+
+
+def stale_recording_reason(recording: Mapping[str, Any]) -> str | None:
+    """Why a recording no longer answers the prompt the reader sends, or ``None``.
+
+    A recording is paid evidence about one prompt. CI scored it whatever the prompt had
+    since become, so a reworded prompt passed on evidence gathered for the old words
+    (Batch 307). It is current only when it was made under today's prompt version and
+    today's prompt text, by hash; a recording from before the batch carries no hash.
+    """
+
+    version = recording.get("promptVersion")
+    if version != notes_reader.PROMPT_VERSION:
+        return (
+            f"The recording was made under {version}, and the reader now sends "
+            f"{notes_reader.PROMPT_VERSION}."
+        )
+    recorded_hash = recording.get("promptSha256")
+    if not isinstance(recorded_hash, str):
+        return "The recording carries no prompt hash, so it cannot be tied to a prompt."
+    if recorded_hash != notes_reader.prompt_sha256():
+        return (
+            f"The reader's prompt text has changed since the recording was made under "
+            f"{version}, without a new version."
+        )
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,6 +310,10 @@ def render_report(
         usage = recording.get("usage") or {}
         add(f"## {recording.get('model')} ({recording.get('reasoning', 'configured')} reasoning)")
         add("")
+        add(
+            f"- **Prompt:** `{recording.get('promptVersion')}`, SHA-256 "
+            f"`{str(recording.get('promptSha256') or 'not recorded')[:12]}`"
+        )
         add(f"- **Gate:** {'met' if not failures else 'NOT MET'}")
         for failure in failures:
             add(f"  - {failure}")

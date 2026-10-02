@@ -34,8 +34,13 @@ from src.services.notes_eval import (
     recorded_passes,
     render_report,
     score_pass,
+    stale_recording_reason,
 )
-from src.services.notes_reader import PROMPT_VERSION, AnthropicNotesReaderClient
+from src.services.notes_reader import (
+    PROMPT_VERSION,
+    AnthropicNotesReaderClient,
+    prompt_sha256,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "apps/api/tests/fixtures/notes_eval_2026_09.json"
@@ -124,6 +129,8 @@ async def run(
     recording = {
         "model": model,
         "promptVersion": PROMPT_VERSION,
+        # Batch 307: the words this run was sent, so CI can tell when they change.
+        "promptSha256": prompt_sha256(),
         "reasoning": reasoning,
         "passes": done,
         "recordedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -149,7 +156,7 @@ def report() -> None:
         recording = json.loads(path.read_text(encoding="utf-8"))
         # Batch 303: a recording answers the prompt it was made under. One made under
         # an earlier prompt is named in the report, not scored against today's cases.
-        if recording.get("promptVersion") != PROMPT_VERSION:
+        if stale_recording_reason(recording) is not None:
             not_rerun.append(recording)
             continue
         runs.append(
