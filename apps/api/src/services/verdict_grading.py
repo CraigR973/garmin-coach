@@ -947,7 +947,11 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
             "notesFeelWords": inputs.notes_feel_words,
         },
     )
-    return replace(verdict, actions=session_actions(verdict, inputs))
+    # Batch 300: a light week holds the session only when nothing is clearly off. A
+    # domain marked on Garmin's own sleep score counts even where the age credit lifts
+    # it, so the credit is never the only thing between easing and holding.
+    clearly_off = any(item.rating == "marked" for item in (*domains, *raw_domains))
+    return replace(verdict, actions=session_actions(verdict, inputs, clearly_off=clearly_off))
 
 
 # -- the Mark-facing words (Batch 296) ----------------------------------------------------
@@ -1053,15 +1057,25 @@ def mark_facing_summary(domains: Sequence[DomainRating], *, rough: bool) -> str:
 # -- the session-aware actions (295.5): computed and reported, not applied ---------------
 
 
-def session_actions(verdict: GradedVerdict, inputs: GradingInputs) -> tuple[SessionAction, ...]:
-    """What the graded verdict would do to each live session today."""
+def session_actions(
+    verdict: GradedVerdict, inputs: GradingInputs, *, clearly_off: bool
+) -> tuple[SessionAction, ...]:
+    """What the graded verdict would do to each live session today.
+
+    ``clearly_off`` is whether any domain is marked, on the age-adjusted sleep score or
+    on Garmin's own (Batch 300): a light week holds the session only when it is not.
+    """
 
     if inputs.rest_day:
         return ()
     actions: list[SessionAction] = []
     for session in inputs.sessions:
         action, detail = _session_action(
-            verdict, session, inputs.recovery_class_block, inputs.light_week
+            verdict,
+            session,
+            inputs.recovery_class_block,
+            inputs.light_week,
+            clearly_off=clearly_off,
         )
         actions.append(
             SessionAction(
@@ -1082,6 +1096,8 @@ def _session_action(
     session: PlannedSession,
     recovery_class_block: bool,
     light_week: str | None = None,
+    *,
+    clearly_off: bool = False,
 ) -> tuple[str, str]:
     if verdict.floor == FLOOR_NO_TRAINING:
         return ACTION_NO_TRAINING, "No training of any kind today."
@@ -1093,7 +1109,10 @@ def _session_action(
         if session.is_hard:
             return ACTION_RECOVERY, "Red: an easy recovery spin instead."
         return ACTION_SHORTENED_Z2, "Red: Zone 2 kept, shorter."
-    if recovery_class_block and (verdict.status == "Amber" or verdict.held):
+    # Batch 300 (Craig, 1 Oct 2026): a light week holds the session on a mild concern,
+    # and on an Amber made of two. A marked domain takes the ordinary action below, as
+    # in any other week: W12's sweet spot is not ridden in full after a sub-60 night.
+    if recovery_class_block and not clearly_off and (verdict.status == "Amber" or verdict.held):
         return (
             ACTION_HOLD_TARGETS,
             f"A planned {light_week or 'recovery'} week is already light: hold the session.",
@@ -1249,8 +1268,9 @@ def ride_transform(
 
 #: Block types whose nights form his recovery-week HRV normal (Batch 275's grouping).
 RECOVERY_WEEK_TYPES: Final = ("recovery", "rest", "taper")
-#: Block types in which the plan is already light, so mild and marked hold the session
-#: (the app's recovery-class blocks since Batch 182).
+#: Block types in which the plan is already light, so a mild concern holds the session
+#: (the app's recovery-class blocks since Batch 182). Since Batch 300 a marked one eases
+#: the hard work as in any other week.
 RECOVERY_CLASS_TYPES: Final = ("recovery", "rest", "taper", "consolidation")
 LIVE_SESSION_EXCLUDED: Final = frozenset({"completed", "skipped"})
 
