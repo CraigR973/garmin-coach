@@ -5000,8 +5000,23 @@ reader list is completed, and three findings change how the batch is built.
   ingested his Garmin data before (24 Aug, deleted the next day). So the smoke is the read-only route the row
   allows: the deployed code grades his stored inputs inside a transaction that is rolled back,
   never on his morning.
-- **Wording:** drafted for Craig's sign-off on Mark's behalf
+- **Wording:** signed off by Craig on Mark's behalf on 2 Oct, as drafted, with the push
   (`docs/drafts/2026-10-02-batch-302-wording.md`).
+- **Added at build, each overrulable (Decision #374).** `morningAnalysis` still means a
+  written brief and a morning without one travels as `gradedMorning`, so an older client
+  reads it as no brief yet. A stored morning graded on today's inputs stands on a retry, so
+  the brief is written from the packet Mark was shown. Home and the brief page re-read the
+  day every 5 seconds while a brief is on its way. The brief page shows when the brief was
+  written, not when the morning was graded. No retry is offered for a day that is over.
+- **302.5, "nothing is charged twice".** Proved on PostgreSQL in CI: a failed brief, then Try
+  again, costs one notes reading and one brief, and a third identical run costs nothing.
+- **Each fix was reverted in turn and a test failed:** 11 backend, 9 web. The tests of the
+  new functions cannot run on `main`; the old contract is what `main`'s own two tests pinned.
+- **Found by CI, not locally.** Five Postgres-backed tests in `test_executable_coaching.py`
+  drive the check-in ladder through a stand-in morning service that still had the single
+  generate step. They skip on this Mac, so the first CI run failed on them (5 failed, 2,307
+  passed, the batch's seven Postgres tests among the passes). The stand-in now grades, then
+  writes. No source change.
 
 ### Batch group — G7, the 1 Oct review (2026-10-01)
 
