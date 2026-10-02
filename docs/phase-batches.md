@@ -5180,6 +5180,35 @@ until Craig's go: the batch carries a migration, a paid eval and Mark-facing wor
 - **Not yet seen on a real morning:** he has never reported a symptom, and no note has named
   one.
 
+### Corrections made at `/batch-start 307` (2026-10-02), before any code
+
+Every fact in 307.1 was re-checked against `main` after Batch 303 merged. Two of its four
+facts were changed by 303, which was built first as the row's own sequencing asks; the goal
+stands and the batch is smaller for it. No gate: no migration, no spend, no Mark-facing word.
+
+- **Corrected: CI now checks the prompt version, and still not the prompt's text.** Batch 303
+  added a test that the production model's recording carries today's `PROMPT_VERSION`
+  (`tests/test_batch_303_medical_follow_through.py`). A reworded prompt under the same version
+  still passes on the old evidence, which is the case 307.2's SHA-256 closes. The recording
+  made on 2 Oct carries no hash; the prompt has not changed since it was made, so the hash of
+  today's prompt is stamped into it rather than paying for a second run.
+- **Corrected: there is a held-out set.** 307.3 is done: ten notes (X01-X10), written after
+  the v2 prompt was frozen and confirmed by Craig, were scored on 303's paid run. Every
+  held-out red flag was caught on both passes; one quiet note (X07, a stitch in his side)
+  raised a chest question on one pass of two. The prompt was not changed to fit it.
+- **Confirmed.** None of his 56 real notes reports a chest, fever or cold symptom.
+- **Confirmed.** A stored reading is reused whatever prompt read it
+  (`services/notes_reader.py`, `ensure_reading`: `existing.status == STATUS_READ`).
+  Production holds one reading (1 Oct, under v1); that morning is over and is not regraded.
+- **307.4, the cost of re-reading.** A reading made under an earlier prompt is read again, in
+  place, the next time its morning is graded: about 0.8 cents, once per prompt change, and
+  only for a morning that is graded again. His answer to Home's question does not survive
+  the re-read (it is compared with when the reading was written), so Home may ask again
+  after a prompt change on the same day: the cautious way round, and rare.
+- **Not pinned, and said so:** the output schema and the reasoning settings. A recorded
+  response that no longer fits the schema already fails its own test; the thinking and effort
+  the paid run used come from production's settings and are not recorded.
+
 ### Batch group — G7, the 1 Oct review (2026-10-01)
 
 Authored on Craig's decision of 1 Oct that every batch is written up before any is built.
