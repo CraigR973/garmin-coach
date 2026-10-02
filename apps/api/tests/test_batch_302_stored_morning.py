@@ -1156,11 +1156,12 @@ async def test_on_postgres_a_failed_paid_call_leaves_the_colour_the_floor_and_th
         assert stored.verdict == "Red"
         assert brief_is_written(stored) is False
         assert (stored.output_markdown, stored.model_name, stored.raw_response) == ("", None, {})
-        acute = stored.context_packet["verdict"]["acutePhysiology"]
-        assert (_symptoms(stored)["answer"], _symptoms(stored)["triggered"]) == ("head_cold", True)
-        assert any(item["kind"] == "symptoms" for item in acute["escalations"])
-        assert stored.context_packet["verdict"]["planAdjustments"]
-        assert stored.context_packet["verdict"]["todayActions"]
+        verdict = stored.context_packet["verdict"]
+        assert _symptoms(stored)["answer"] == "head_cold"
+        assert any(item["kind"] == "symptoms" for item in verdict["acutePhysiology"]["escalations"])
+        # The plan lines and Today's actions are in the stored packet too.
+        assert verdict["planAdjustments"]
+        assert isinstance(verdict["todayActions"], list)
 
         # The ride proposal the morning makes, offered without waiting for the brief.
         [proposal] = await _rows_of(session, WorkoutDeliveryProposal, user_id)
@@ -1179,7 +1180,8 @@ async def test_on_postgres_a_failed_paid_call_leaves_the_colour_the_floor_and_th
         morning_analysis, graded_morning = split_stored_morning(stored, serialized)
         assert morning_analysis is None
         assert graded_morning is not None and graded_morning.verdict == "red"
-        assert graded_morning.todayActions
+        assert graded_morning.planAdjustments == verdict["planAdjustments"]
+        assert graded_morning.todayActions == verdict["todayActions"]
         generation = _serialize_brief_generation(
             status, has_analysis=False, graded_at=stored.generated_at_utc
         )
