@@ -137,6 +137,10 @@ class AnalysisOut(BaseModel):
     notesAsk: bool = False
     notesAskWords: str | None = None
     notesReadingStatus: str | None = None
+    # Batch 302: when the brief itself was written. ``generatedAtUtc`` is when the
+    # morning was graded and first shown, which can be hours earlier after an outage.
+    # Absent on a brief stored before the batch, and on a morning with no brief.
+    briefWrittenAtUtc: str | None = None
 
 
 class PostWorkoutAnalysisOut(BaseModel):
@@ -509,6 +513,11 @@ class DailyLoopData(BaseModel):
     holiday: HolidayStateOut
     hostedTtsConsent: bool
     morningAnalysis: AnalysisOut | None
+    # Batch 302: today's morning as graded, while its brief is being written or after
+    # it failed. The colour, notices, plan lines and Today's actions, with
+    # ``outputMarkdown`` empty. ``morningAnalysis`` stays "a written brief", so a
+    # cached older client reads such a morning as it always did: no brief yet.
+    gradedMorning: AnalysisOut | None = None
     briefGeneration: BriefGenerationStatusOut | None
     dailyMetrics: DailyMetricOut | None
     sleep: SleepOut | None

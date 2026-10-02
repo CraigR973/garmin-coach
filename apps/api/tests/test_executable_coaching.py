@@ -38,7 +38,7 @@ from src.services.executable_coaching import (
 )
 from src.services.garmin_sync import GarminScheduledWorkout
 from src.services.interval_workout_editor import EditableIntervalBlock, IntervalLeg
-from src.services.morning_analysis import MorningAnalysisResult
+from src.services.morning_analysis import GradedMorning, MorningAnalysisResult
 from src.services.morning_inputs import MorningInputPresence
 from src.services.morning_pipeline import CHECKIN_POLICY, MorningBriefPipeline
 from src.services.verdict_scaling import (
@@ -1892,8 +1892,10 @@ class _StubMorningService:
     from the (separately covered) morning-analysis engine.
 
     ``latest_analysis`` returns the verdict already stored at wake; the packet's
-    ``new_status`` is what the subjective read now produces; ``generate_and_store``
-    records how many times the model would have been re-run.
+    ``new_status`` is what the subjective read now produces. Since Batch 302 the
+    morning is graded and stored first (``grade_and_store``) and its brief written
+    into it (``write_brief``), which records how many times the model would have
+    been re-run.
     """
 
     def __init__(
@@ -1906,6 +1908,7 @@ class _StubMorningService:
         self.session = session
         self._stored = stored
         self._new_status = new_status
+        self._graded: Analysis | None = None
         self.generate_calls = 0
 
     async def latest_analysis(self, user_id: uuid.UUID, subject_date: date) -> Analysis | None:
@@ -1916,20 +1919,34 @@ class _StubMorningService:
     ) -> dict[str, object]:
         return {"verdict": {"status": self._new_status}}
 
-    async def generate_and_store(
+    async def grade_and_store(
+        self,
+        player: Profile,
+        subject_date: date,
+        *,
+        force: bool = False,
+        notes_client: object | None = None,
+    ) -> GradedMorning:
+        analysis = _morning_analysis(player.id, subject_date, self._new_status)
+        analysis.output_markdown = ""  # stored before its brief is written
+        self.session.add(analysis)
+        await self.session.commit()
+        self._graded = analysis
+        return GradedMorning(analysis=analysis, graded=True)
+
+    async def write_brief(
         self,
         player: Profile,
         subject_date: date,
         *,
         client: object | None = None,
-        force: bool = False,
         commit: bool = True,
     ) -> MorningAnalysisResult:
         self.generate_calls += 1
-        analysis = _morning_analysis(player.id, subject_date, self._new_status)
-        self.session.add(analysis)
+        assert self._graded is not None
+        self._graded.output_markdown = f"{self._new_status} verdict"
         await self.session.flush()
-        return MorningAnalysisResult(analysis=analysis, generated=True)
+        return MorningAnalysisResult(analysis=self._graded, generated=True)
 
 
 @contextmanager

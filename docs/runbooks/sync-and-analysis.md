@@ -114,7 +114,9 @@ The 06:30 Europe/London job runs weather sync first, then triggers morning analy
 | Symptom | Cause | Recovery |
 |---|---|---|
 | `morning weather sync failed` | Open-Meteo unreachable | No action needed; Open-Meteo is keyless and usually recovers within minutes. Analysis will generate the next morning when the job runs again |
-| `morning analysis failed` in log (per-profile) | `ANTHROPIC_API_KEY` missing or invalid, or Claude API error | Verify `ANTHROPIC_API_KEY` in Railway env; check Anthropic status page |
+| `morning analysis failed` with `stage: "brief"` (per-profile) | `ANTHROPIC_API_KEY` missing or invalid, or Claude API error. Since Batch 302 the morning itself is stored: Home shows the colour, the notices and the plan, with "Couldn't finish your written brief" | Verify `ANTHROPIC_API_KEY` in Railway env; check Anthropic status page. "Try again" in the app, or the 11:00 job, writes the brief into the stored morning |
+| `morning analysis failed` with `stage: "grade"` | The morning could not be graded or stored (a database or packet error), so there is no colour: Home shows "Couldn't finish your brief" | Read the traceback on that line |
+| `morning brief follow-through failed` with `stage: "ride_changes"` | The ride proposals failed after the morning was stored. On the check-in path no brief is written over them | Read the traceback; "Try again" re-runs the proposals and the brief |
 | `morning analysis failed` with `no_daily_metrics` | Garmin sync has not run yet for today | Wait for the next hourly Garmin poll or run a manual trigger |
 | Analysis `analyses_existing: 1` in log | Analysis already generated for today | Expected; the 06:30 job is idempotent |
 

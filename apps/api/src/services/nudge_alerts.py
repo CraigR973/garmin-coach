@@ -34,6 +34,7 @@ ANALYSIS_TYPE_EVENING_NUDGE = "evening_nudge"
 ANALYSIS_TYPE_THERMAL_ALERT = "thermal_alert"
 ANALYSIS_TYPE_STALE_SOURCE_ALERT = "stale_source_alert"
 ANALYSIS_TYPE_BRIEF_READY = "brief_ready_push"
+ANALYSIS_TYPE_CALL_READY = "call_ready_push"
 ANALYSIS_TYPE_ANALYSIS_PUSH = "analysis_push"
 ANALYSIS_TYPE_GOOD_MORNING = "good_morning_nudge"
 ANALYSIS_TYPE_WORKOUT_CHECKIN = "workout_checkin_nudge"
@@ -220,6 +221,35 @@ def build_brief_ready_plan(analysis: Analysis, subject_date: date) -> Notificati
             "subjectDate": subject_date.isoformat(),
             "status": status,
             "rule": "brief_ready",
+        },
+    )
+
+
+#: Batch 302: the body when a stored morning carries no reason to quote. The words are
+#: the check-in page's, signed off by Craig on Mark's behalf on 2 Oct 2026.
+CALL_READY_FALLBACK_BODY = "Today's call and your plan are ready on Home."
+
+
+def build_call_ready_plan(analysis: Analysis, subject_date: date) -> NotificationPlan:
+    """A one-per-day push for a morning whose brief did not finish (Batch 302).
+
+    The colour, the notices and the plan are stored before the paid call, so on an
+    outage morning there is something to open even though "Today's brief is ready"
+    cannot be sent. Its own tag: a brief written later that day still announces
+    itself. The body is the verdict's first reason, as the brief-ready push uses it.
+    """
+    status = (analysis.verdict or "").strip()
+    return NotificationPlan(
+        analysis_type=ANALYSIS_TYPE_CALL_READY,
+        tag=f"call-ready-{subject_date.isoformat()}",
+        title="Today's call is ready",
+        body=_verdict_headline(analysis) or CALL_READY_FALLBACK_BODY,
+        severity=status.lower() if status else "info",
+        data={"url": "/", "kind": "call_ready", "status": status},
+        context={
+            "subjectDate": subject_date.isoformat(),
+            "status": status,
+            "rule": "call_ready",
         },
     )
 
@@ -680,6 +710,29 @@ class NudgeAlertService:
         generates the brief first is the one that sends the notification.
         """
         plan = build_brief_ready_plan(analysis, subject_date)
+        return await self._send_once(
+            profile,
+            plan,
+            subject_date=subject_date,
+            commit=commit,
+            now_utc=now_utc or datetime.now(UTC),
+        )
+
+    async def push_call_ready(
+        self,
+        profile: Profile,
+        analysis: Analysis,
+        *,
+        subject_date: date,
+        now_utc: datetime | None = None,
+        commit: bool = True,
+    ) -> bool:
+        """Push "Today's call is ready" once, for a morning stored without its brief.
+
+        Batch 302. Idempotent per (profile, subject_date) via the
+        ``call-ready-{date}`` tag, so a retry that fails again never notifies twice.
+        """
+        plan = build_call_ready_plan(analysis, subject_date)
         return await self._send_once(
             profile,
             plan,

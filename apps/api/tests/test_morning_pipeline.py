@@ -74,6 +74,34 @@ def _ready() -> AsyncMock:
     return AsyncMock(return_value=MorningInputPresence(daily_metrics=True, sleep=True))
 
 
+def _morning(*, written: bool = False) -> MagicMock:
+    """The morning service since Batch 302: grade and store, then write the brief."""
+    morning = MagicMock()
+    morning.grade_and_store = AsyncMock(
+        return_value=MagicMock(written=written, analysis=MagicMock(name="graded morning"))
+    )
+    morning.write_brief = AsyncMock(
+        return_value=MagicMock(generated=True, analysis=MagicMock(name="written brief"))
+    )
+    return morning
+
+
+def _status() -> MagicMock:
+    return MagicMock(
+        mark_generating=AsyncMock(return_value=MagicMock()),
+        mark_ready=AsyncMock(return_value=MagicMock()),
+        mark_failed=AsyncMock(return_value=MagicMock()),
+    )
+
+
+def _nudges() -> MagicMock:
+    return MagicMock(
+        push_brief_ready=AsyncMock(return_value=True),
+        push_call_ready=AsyncMock(return_value=True),
+        notify_admin_generation_failure=AsyncMock(return_value=True),
+    )
+
+
 # ---------------------------------------------------------------------------
 # All three triggers run one pipeline
 # ---------------------------------------------------------------------------
@@ -150,33 +178,33 @@ def test_each_trigger_declares_its_transaction_contract() -> None:
 
 
 @pytest.mark.asyncio
-async def test_terminal_commit_aborts_the_whole_run_when_a_later_step_fails() -> None:
-    """The check-in's contract: the brief and its consequences are one artifact, so
-    a failed proposal step must not leave a half-written brief behind."""
+async def test_a_failed_ride_change_ends_the_check_in_run_before_the_brief() -> None:
+    """The check-in's contract since Batch 302: the graded morning is stored first, and
+    a failed proposal step ends the run there. No brief is written over proposals that
+    did not land; the colour stays, with the failure recorded under it."""
     profile = _profile()
     session = AsyncMock()
-    morning = MagicMock()
-    morning.generate_and_store = AsyncMock(
-        return_value=MagicMock(generated=True, analysis=MagicMock())
-    )
+    morning = _morning()
     coaching = MagicMock()
     coaching.regenerate_for_verdict = AsyncMock(side_effect=RuntimeError("boom"))
-    status = MagicMock()
-    status.mark_failed = AsyncMock(return_value=MagicMock())
-    status.mark_ready = AsyncMock(return_value=MagicMock())
+    status = _status()
+    nudges = _nudges()
 
     with patch("src.services.morning_pipeline.morning_input_presence", _ready()):
         pipeline = MorningBriefPipeline(session, policy=CHECKIN_POLICY, morning_service=morning)
         pipeline.coaching = coaching
         pipeline.status = status
-        pipeline.nudges = MagicMock(notify_admin_generation_failure=AsyncMock(return_value=True))
+        pipeline.nudges = nudges
         outcome = await pipeline.generate_brief(profile, date(2026, 9, 3))
 
     assert outcome.failures == 1
+    morning.grade_and_store.assert_awaited_once()  # the morning is stored, and stays
+    morning.write_brief.assert_not_awaited()  # no brief over failed proposals
     session.rollback.assert_awaited()
-    session.commit.assert_not_awaited()  # nothing half-written
     status.mark_ready.assert_not_awaited()
     status.mark_failed.assert_awaited_once()
+    nudges.push_brief_ready.assert_not_awaited()
+    nudges.push_call_ready.assert_awaited_once()  # he is told the colour is there
 
 
 @pytest.mark.asyncio
@@ -185,15 +213,11 @@ async def test_per_step_commit_isolates_a_failed_step_and_continues() -> None:
     not cost this profile the rest of the ladder — nor another profile its inputs."""
     profile = _profile()
     session = AsyncMock()
-    morning = MagicMock()
-    morning.generate_and_store = AsyncMock(
-        return_value=MagicMock(generated=True, analysis=MagicMock())
-    )
+    morning = _morning()
     coaching = MagicMock()
     coaching.regenerate_for_verdict = AsyncMock(side_effect=RuntimeError("boom"))
     coaching.propose_chronic_deload = AsyncMock(return_value=[MagicMock()])
-    nudges = MagicMock()
-    nudges.push_brief_ready = AsyncMock(return_value=True)
+    nudges = _nudges()
     insights = MagicMock()
     insights.record_drivers = AsyncMock(return_value=MagicMock(record_count=1))
 
@@ -202,12 +226,13 @@ async def test_per_step_commit_isolates_a_failed_step_and_continues() -> None:
         pipeline.coaching = coaching
         pipeline.nudges = nudges
         pipeline.insights = insights
-        pipeline.status = MagicMock(mark_ready=AsyncMock(), mark_failed=AsyncMock())
+        pipeline.status = _status()
         outcome = await pipeline.generate_brief(profile)
 
     assert outcome.failures == 1  # the one bad step, and only that one
     assert outcome.proposals_regenerated == 0
     assert outcome.chronic_deload_proposals == 1  # the ladder continued
+    morning.write_brief.assert_awaited_once()  # ... through to the brief
     assert outcome.brief_ready_pushes == 1
     assert outcome.drivers_cached == 1
 
@@ -228,22 +253,26 @@ async def test_a_backstop_failure_now_reaches_mark_and_the_operator() -> None:
     """
     profile = _profile()
     session = AsyncMock()
-    morning = MagicMock()
-    morning.generate_and_store = AsyncMock(side_effect=RuntimeError("anthropic down"))
-    status = MagicMock(mark_failed=AsyncMock(return_value=MagicMock()))
-    alert = AsyncMock(return_value=True)
+    morning = _morning()
+    morning.write_brief = AsyncMock(side_effect=RuntimeError("anthropic down"))
+    coaching = MagicMock()
+    coaching.regenerate_for_verdict = AsyncMock(return_value=[])
+    coaching.propose_chronic_deload = AsyncMock(return_value=[])
+    status = _status()
+    nudges = _nudges()
 
     with patch("src.services.morning_pipeline.morning_input_presence", _ready()):
         pipeline = MorningBriefPipeline(session, policy=BACKSTOP_POLICY, morning_service=morning)
+        pipeline.coaching = coaching
         pipeline.status = status
-        pipeline.nudges = MagicMock(notify_admin_generation_failure=alert)
+        pipeline.nudges = nudges
         outcome = await pipeline.generate_brief(profile, date(2026, 9, 3))
 
     assert outcome.failures == 1
     status.mark_failed.assert_awaited_once_with(
         profile.id, date(2026, 9, 3), reason="other", commit=True
     )
-    alert.assert_awaited_once()
+    nudges.notify_admin_generation_failure.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -275,9 +304,9 @@ async def test_an_in_flight_holder_is_still_never_recorded_as_a_failure() -> Non
     """Batch 232.1, now in one handler instead of two with two different bodies."""
     profile = _profile()
     session = AsyncMock()
-    morning = MagicMock()
-    morning.generate_and_store = AsyncMock(side_effect=GenerationRequestInProgress())
-    status = MagicMock(mark=AsyncMock(), mark_failed=AsyncMock(), mark_ready=AsyncMock())
+    morning = _morning()
+    morning.grade_and_store = AsyncMock(side_effect=GenerationRequestInProgress())
+    status = _status()
 
     with patch("src.services.morning_pipeline.morning_input_presence", _ready()):
         pipeline = MorningBriefPipeline(session, policy=BACKSTOP_POLICY, morning_service=morning)
@@ -286,6 +315,8 @@ async def test_an_in_flight_holder_is_still_never_recorded_as_a_failure() -> Non
 
     assert outcome.deferred is True
     assert outcome.failures == 0
+    # No status write of any kind: the holder writes the real outcome.
+    status.mark_generating.assert_not_awaited()
     status.mark_failed.assert_not_awaited()
     status.mark_ready.assert_not_awaited()
 
@@ -390,7 +421,8 @@ async def test_the_failure_reason_comes_from_a_type_test_not_a_duck_type() -> No
 
 def test_the_daily_loop_router_is_transport_only() -> None:
     """1,747 lines holding 45 DTOs, a 261-line ``_envelope``, a Dreo fan client
-    wrapper and a background generation task — around four routes."""
+    wrapper and a background generation task — around four routes. Batch 302 added
+    the fifth: the brief's retry, which is a route so that it need not be a save."""
     tree = _router_ast()
     classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
     functions = [
@@ -405,7 +437,7 @@ def test_the_daily_loop_router_is_transport_only() -> None:
         for dec in getattr(node, "decorator_list", [])
         if ast.unparse(dec).startswith("router.")
     )
-    assert routes == 4
+    assert routes == 5
 
 
 @pytest.mark.asyncio

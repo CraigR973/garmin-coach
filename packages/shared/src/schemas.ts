@@ -1220,6 +1220,10 @@ export const dailyLoopAnalysisSchema = z.object({
   notesAsk: z.boolean().optional(),
   notesAskWords: z.string().nullable().optional(),
   notesReadingStatus: z.string().nullable().optional(),
+  // Batch 302: when the brief itself was written. `generatedAtUtc` is when the morning
+  // was graded and first shown, which after an outage can be hours earlier. Absent on a
+  // brief stored before the batch, and on a morning with no brief.
+  briefWrittenAtUtc: isoDateTimeSchema.nullable().optional(),
 });
 
 export const rideIntervalSchema = z.object({
@@ -1516,6 +1520,11 @@ export const dailyLoopSchema = z.object({
   // (the default) means the brief only ever reads aloud on-device (#179/#184).
   hostedTtsConsent: z.boolean(),
   morningAnalysis: dailyLoopAnalysisSchema.nullable(),
+  // Batch 302: today's morning as graded, while its brief is being written or after it
+  // failed: the colour, the notices, the plan lines and Today's actions, with
+  // `outputMarkdown` empty. `morningAnalysis` stays "a written brief", so a payload
+  // from before the batch, and a client from before it, both read as they always did.
+  gradedMorning: dailyLoopAnalysisSchema.nullable().optional(),
   // Batch 141: the state of today's brief generation, so the app can show an
   // honest, retryable error instead of an endless "Writing your brief" when a
   // generation fails (e.g. the 2026-07-21 Anthropic credit outage). Optional +

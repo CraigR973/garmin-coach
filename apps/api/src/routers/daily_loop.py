@@ -1,4 +1,4 @@
-"""Transport for ``/api/v1/daily-loop`` — four routes and nothing else.
+"""Transport for ``/api/v1/daily-loop`` — five routes and nothing else.
 
 Batch 251 (CR236-09) moved the 45 response models to ``daily_loop_schemas``, the
 envelope assembly and the Dreo fan serialization to ``services/daily_loop_envelope``,
@@ -36,7 +36,7 @@ from src.services.brief_generation_status import (
 from src.services.daily_loop import DailyLoopService
 from src.services.daily_loop_envelope import build_envelope, local_today
 from src.services.generation_requests import GenerationRequestInProgress
-from src.services.morning_pipeline import run_checkin_brief
+from src.services.morning_pipeline import run_brief_retry, run_checkin_brief
 from src.services.nudge_alerts import NudgeAlertService
 from src.services.post_activity_analysis import (
     generate_post_activity_read,
@@ -131,6 +131,34 @@ async def upsert_manual_entry(
         await BriefGenerationStatusService(db).mark_generating(player.id, subject_date, commit=True)
         background_tasks.add_task(_generate_brief_after_checkin, player.id, subject_date)
     snapshot = await service.get_snapshot(player, subject_date=subject_date)
+    return await build_envelope(player, snapshot, db)
+
+
+async def _retry_brief(user_id: uuid.UUID, subject_date: date) -> None:
+    """The retry trigger, one line deep: the name the background task runs under."""
+    await run_brief_retry(user_id, subject_date)
+
+
+@router.post("/{subject_date}/brief/retry", response_model=DailyLoopEnvelope)
+@paid_generation_limit
+async def retry_morning_brief(
+    subject_date: date,
+    request: Request,
+    player: CurrentUser,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+) -> DailyLoopEnvelope:
+    """Try today's brief again without saving the check-in again (Batch 302).
+
+    "Try again" used to be a second save of the check-in. A save is an answer: it
+    moves the check-in's timestamp past a stored note reading, after which the
+    preselected "None" governs and a symptom found in his note is dropped. This
+    route starts the same run and writes nothing of his.
+    """
+    if subject_date == local_today(player.timezone):
+        await BriefGenerationStatusService(db).mark_generating(player.id, subject_date, commit=True)
+        background_tasks.add_task(_retry_brief, player.id, subject_date)
+    snapshot = await DailyLoopService(db).get_snapshot(player, subject_date=subject_date)
     return await build_envelope(player, snapshot, db)
 
 

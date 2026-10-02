@@ -198,42 +198,47 @@ def manual_entry_generation_version(entry: ManualEntry | None) -> str | None:
 
     if entry is None:
         return None
-    return _identity(
-        {
-            "plannedWorkoutId": str(entry.planned_workout_id) if entry.planned_workout_id else None,
-            "activityId": str(entry.activity_id) if entry.activity_id else None,
-            "plannedWorkoutVersion": str(entry.planned_workout_version)
-            if entry.planned_workout_version is not None
-            else None,
-            "bpSystolic": str(entry.bp_systolic) if entry.bp_systolic is not None else None,
-            "bpDiastolic": str(entry.bp_diastolic) if entry.bp_diastolic is not None else None,
-            "subjectiveScore": str(entry.subjective_score)
-            if entry.subjective_score is not None
-            else None,
-            "rpe": str(entry.rpe) if entry.rpe is not None else None,
-            "feel": entry.feel,
-            "adherenceStatus": entry.adherence_status,
-            "actualWorkout": json.dumps(
-                entry.actual_workout_json or {},
-                ensure_ascii=True,
-                sort_keys=True,
-                separators=(",", ":"),
-            ),
-            "supplements": json.dumps(
-                entry.supplements_json or {},
-                ensure_ascii=True,
-                sort_keys=True,
-                separators=(",", ":"),
-            ),
-            "food": json.dumps(
-                entry.food_json or {},
-                ensure_ascii=True,
-                sort_keys=True,
-                separators=(",", ":"),
-            ),
-            "notes": entry.notes,
-        }
-    )
+    parts: dict[str, str | None] = {
+        "plannedWorkoutId": str(entry.planned_workout_id) if entry.planned_workout_id else None,
+        "activityId": str(entry.activity_id) if entry.activity_id else None,
+        "plannedWorkoutVersion": str(entry.planned_workout_version)
+        if entry.planned_workout_version is not None
+        else None,
+        "bpSystolic": str(entry.bp_systolic) if entry.bp_systolic is not None else None,
+        "bpDiastolic": str(entry.bp_diastolic) if entry.bp_diastolic is not None else None,
+        "subjectiveScore": str(entry.subjective_score)
+        if entry.subjective_score is not None
+        else None,
+        "rpe": str(entry.rpe) if entry.rpe is not None else None,
+        "feel": entry.feel,
+        "adherenceStatus": entry.adherence_status,
+        "actualWorkout": json.dumps(
+            entry.actual_workout_json or {},
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+        "supplements": json.dumps(
+            entry.supplements_json or {},
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+        "food": json.dumps(
+            entry.food_json or {},
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+        "notes": entry.notes,
+    }
+    # Batch 302: his symptom answer sets a floor (Batch 294), so a changed answer is
+    # a changed input. It was not hashed, so re-saving a check-in with only a new
+    # answer shared the stored brief's identity and regraded nothing. Left out when
+    # unanswered, so an activity check-in's identity is what it was.
+    if entry.symptoms is not None:
+        parts["symptoms"] = entry.symptoms
+    return _identity(parts)
 
 
 def stamp_generation_identity(
@@ -338,6 +343,31 @@ async def _record_claim_failure(
     await session.flush()
 
 
+def morning_lease_scope(user_id: uuid.UUID, subject_date: date) -> str:
+    """The one artifact scope every morning generation for a user and date serializes on."""
+
+    return f"morning:{user_id}:{subject_date.isoformat()}"
+
+
+async def acquire_artifact_scope(session: AsyncSession, lease_scope: str) -> None:
+    """Take an artifact scope's transaction lock, or say at once that it is held.
+
+    The same non-blocking lock :func:`claim_generation_request` takes, under the same
+    key, for work on that artifact that is not itself the paid call. Batch 302 grades
+    and stores the morning in a transaction of its own, before the claim that covers
+    the brief; that transaction takes the scope here, so two workers never grade the
+    same morning at once or pay twice for one note reading. A caller that cannot have
+    the scope gets ``GenerationRequestInProgress`` in milliseconds and never waits
+    (Batch 232.1).
+    """
+
+    acquired: bool | None = await session.scalar(
+        select(func.pg_try_advisory_xact_lock(_advisory_key(lease_scope)))
+    )
+    if not acquired:
+        raise GenerationRequestInProgress()
+
+
 @asynccontextmanager
 async def claim_generation_request(
     session: AsyncSession,
@@ -379,12 +409,7 @@ async def claim_generation_request(
     milliseconds instead of two minutes, and never by being cancelled.
     """
 
-    advisory_key = _advisory_key(lease_scope or request_identity)
-    acquired: bool | None = await session.scalar(
-        select(func.pg_try_advisory_xact_lock(advisory_key))
-    )
-    if not acquired:
-        raise GenerationRequestInProgress()
+    await acquire_artifact_scope(session, lease_scope or request_identity)
     now = _utcnow()
     statement = (
         insert(GenerationRequest)

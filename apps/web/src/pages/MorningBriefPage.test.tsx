@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import { act, cleanup, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DailyLoopEnvelope } from '@/hooks/useDailyLoop';
 import { SYMPTOM_NOTICES } from '@/lib/symptoms';
 import { MorningBriefPage } from './MorningBriefPage';
@@ -710,6 +710,144 @@ describe('morning brief page', () => {
       expect(screen.queryByText('Why today is capped')).toBeNull();
       cleanup();
     }
+  });
+
+  describe('a morning stored without its brief (Batch 302)', () => {
+    // The fixture's day has to be today: only today's brief can be tried again.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-06-20T09:00:00'));
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    // Batch 302: the morning is stored before its brief is written, so the page the
+    // brief-ready push opens shows the colour, the notice, Today's actions and the
+    // metrics with or without the prose. On `main` it showed one failure card.
+    type Morning = NonNullable<DailyLoopEnvelope['data']['morningAnalysis']>;
+
+    function gradedMorning(overrides: Partial<Morning> = {}): Morning {
+      return {
+        ...snapshot.data.morningAnalysis!,
+        verdict: 'red' as const,
+        modelName: null,
+        outputMarkdown: '',
+        todayActions: [{ kind: 'thermal' as const, title: 'Pre-cool the bedroom', href: '/sleep' }],
+        acutePhysiology: {
+          status: 'triggered',
+          standingLine:
+            "This read comes from your watch and your room sensors. It can't see how you actually feel — if those two disagree, trust yourself.",
+          requiresBikeRest: true,
+          requiresTrainingRest: true,
+          triggeredSignals: ['symptoms'],
+          dataSufficiency: { status: 'sufficient' as const, message: null, missingRows: [] },
+          escalations: [
+            {
+              kind: 'symptoms',
+              level: 'rest' as const,
+              message: SYMPTOM_NOTICES.chest_heart.notice,
+            },
+          ],
+        },
+        ...overrides,
+      };
+    }
+
+    it('shows the colour, the notice and the actions when the brief did not finish (Batch 302)', async () => {
+      apiFetchMock.mockImplementation(() =>
+        Promise.resolve(
+          withoutBrief({
+            gradedMorning: gradedMorning(),
+            briefGeneration: { status: 'failed', reason: 'billing' },
+            manualEntry: { ...checkedIn, symptoms: 'chest_heart' },
+          }),
+        ),
+      );
+      renderBriefPage();
+
+      const hero = await screen.findByRole('region', { name: "Today's verdict" });
+      expect(within(hero).getByText('No training today')).toBeTruthy();
+      expect(screen.getByText(SYMPTOM_NOTICES.chest_heart.notice)).toBeTruthy();
+      expect(within(screen.getByTestId('today-actions')).getByText('Pre-cool the bedroom')).toBeTruthy();
+      expect(screen.getByText("Last night's metrics")).toBeTruthy();
+      // Only the written brief is missing, and the card says so.
+      expect(screen.queryByText('Coach read')).toBeNull();
+      expect(screen.queryByRole('button', { name: /listen to brief/i })).toBeNull();
+      const card = screen.getByRole('status', { name: 'Written brief did not finish' });
+      expect(card.textContent).toContain("Couldn't finish your written brief");
+      expect(within(card).getByRole('button', { name: 'Try again' })).toBeTruthy();
+      // The old card stood in the colour's place; it is for a morning with none.
+      expect(screen.queryByRole('region', { name: 'Brief generation failed' })).toBeNull();
+      // Opening the page did not mark a brief as read: there is none.
+      expect(localStorage.getItem('coach_brief_reviewed_date')).toBeNull();
+    });
+
+    it('shows the colour while the brief is being written, and says his note was not read (Batch 302)', async () => {
+      apiFetchMock.mockImplementation(() =>
+        Promise.resolve(
+          withoutBrief({
+            gradedMorning: gradedMorning({ notesReadingStatus: 'failed' }),
+            briefGeneration: { status: 'generating', reason: null },
+            manualEntry: checkedIn,
+          }),
+        ),
+      );
+      renderBriefPage();
+
+      expect(await screen.findByRole('region', { name: "Today's verdict" })).toBeTruthy();
+      const card = screen.getByRole('status', { name: 'Writing your brief' });
+      expect(card.textContent).toContain(
+        "Today's call and your plan are ready above. The written brief lands in a moment.",
+      );
+      expect(card.textContent).toContain("I couldn't read your note this morning");
+      expect(within(card).queryByRole('button')).toBeNull();
+      expect(screen.queryByText('Coach read')).toBeNull();
+    });
+
+    it('tries again from the brief page without saving a check-in (Batch 302)', async () => {
+      const failed = withoutBrief({
+        gradedMorning: gradedMorning(),
+        briefGeneration: { status: 'failed', reason: 'billing' },
+        manualEntry: checkedIn,
+      });
+      const writing = withoutBrief({
+        gradedMorning: gradedMorning(),
+        briefGeneration: { status: 'generating', reason: null },
+        manualEntry: checkedIn,
+      });
+      let retried = false;
+      apiFetchMock.mockImplementation((path: string) => {
+        if (path === '/api/v1/daily-loop/2026-06-20/brief/retry') retried = true;
+        return Promise.resolve(retried ? writing : failed);
+      });
+      renderBriefPage();
+
+      const card = await screen.findByRole('status', { name: 'Written brief did not finish' });
+      await userEvent.setup().click(within(card).getByRole('button', { name: 'Try again' }));
+
+      expect(await screen.findByRole('status', { name: 'Writing your brief' })).toBeTruthy();
+      expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/daily-loop/2026-06-20/brief/retry', {
+        method: 'POST',
+      });
+      expect(
+        apiFetchMock.mock.calls.some(([path]) => String(path).includes('/manual-entry')),
+      ).toBe(false);
+    });
+
+    it('says when the brief itself was written, not when the morning was graded (Batch 302)', async () => {
+      // Graded at 07:35 local and written at 18:07 after an outage: the coach read
+      // carries its own time.
+      const lateBrief = JSON.parse(JSON.stringify(snapshot)) as DailyLoopEnvelope;
+      lateBrief.data.morningAnalysis!.briefWrittenAtUtc = '2026-06-20T17:07:00Z';
+      apiFetchMock.mockImplementation(() => Promise.resolve(lateBrief));
+      renderBriefPage();
+
+      expect(await screen.findByText('Coach read')).toBeTruthy();
+      expect(screen.getByText(/18:07/)).toBeTruthy();
+      expect(screen.queryByText(/07:35/)).toBeNull();
+    });
   });
 
   it('invites a check-in when he has not said good morning yet', async () => {

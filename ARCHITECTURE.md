@@ -230,13 +230,19 @@ Assembles a context packet (KB + DB data + rolling trend + plan) and calls Claud
 
       ```
       rows + check-in
+        → notes reading (stored)
         → morning_verdict (the ladder + the acute rail)
         → verdict_grading.grade (floors from that rail)
-        → graded_verdict_packet ─→ prompt v51, Home, brief
+        → graded_verdict_packet
         │   (the ladder's colour: logged only, 7–20 Oct)
-        → Analysis.verdict = graded colour
+        → morning row stored, prose empty          ← commit 1 (Batch 302)
+        │   Analysis.verdict = graded colour → Home (gradedMorning)
         → rail: MorningContext(status, engine, actions)
+        │   ride proposals · chronic deload        ← commit 2
         → VO₂ gate · two-Reds · swaps · weekly mix · reviews
+        → paid brief, from the stored packet
+            ✓ prose filled into the row · ready    ← commit 3
+            ✗ the row stands · "Today's call is ready" · Try again
       ```
     - **Rollback:** the Railway variable `VERDICT_ENGINE=ladder` restores the ladder's colour, packet, v50 prompt and delivery exactly (Craig's hosting change). A packet stored before the switch has no `engine` and reads as the ladder everywhere. `scripts/replay_verdicts.py` replays any window through both engines and states whether it reproduces what production showed.
     - **The ladder it replaced** (DECISIONS #14, #129, #135, #248–#253, #282, #293, #319, #362) let the first matching rung decide the day, so one marginal signal could make a morning Red (21 of 98 before Batch 295). It runs beside the graded verdict, logged but never packeted, until it is deleted in its own PR after 20 Oct 2026. The bullets below record its history.
@@ -254,6 +260,7 @@ Assembles a context packet (KB + DB data + rolling trend + plan) and calls Claud
   - Batch 298 / DECISIONS #371 **makes the words follow the graded verdict.** The acute rails still write the ladder's words, for the rollback; `graded_acute_physiology` rewrites a graded packet's copy so a low HRV night or two mornings of raised resting heart rate is "one thing a little off, and today's call already counts it", never a cap, and drops the ladder's colour bookkeeping from the rail. `light_week_name` names the block a held session sits in (`verdict.graded.references.lightWeek`), which the plan line and the envelope's `verdictLightWeekHold` use; Home and the brief share one Amber line and the brief follows Home on rest days; `recentMornings` carries `held` and each session's `gradedAction`. Morning prompt v53 (graded only). Shipped via PR #348 / squash `8d49201`; production's `training_plan` constraints rewritten to v3 by read-modify-write; exact-SHA freshness verified.
   - Batch 299 / DECISIONS #372 **makes the weekly mix and the delivery rail follow the session actions.** `mix_for_verdict` drops today's hard session from the week only on an action that takes it out (`recovery`, `shortened_zone2`, `off_the_bike`, `no_training`); `ease_hard` reads "eased, not lost" (`weeklyMix.eased`) and still counts. `MorningContext.proposal_for` offers no ride on a rest-day morning or for a skipped or completed session (both engines), and under the graded verdict never offers the colour for a ride the morning saw. Morning prompt v54 (graded only). Shipped via PR #349 / squash `3539ee8`; exact-SHA freshness verified.
   - Batch 300 / DECISIONS #373 **holds a light-week session only on a mild concern.** In a consolidation, taper, recovery or rest block `_session_action` returns `hold_targets` for a held Green or an Amber of two mild concerns; a domain marked on the age-adjusted sleep score or on Garmin's own takes the ordinary action (`ease_hard`, Zone 2 as planned), so the age credit never decides between easing and holding. Red and the floors are unchanged. No new words, no prompt change. Shipped via PR #350 / squash `422c07b`; exact-SHA freshness verified.
+  - Batch 302 / DECISIONS #374 **stores the morning before its brief is written.** The `morning` row is written when the morning is graded, with its prose empty, and the brief is written into it: grade and store, then the ride proposals, then the paid call, each its own transaction (`MorningAnalysisService.grade_and_store` / `write_brief`, `services/morning_pipeline.py`). A failed call costs the prose only; before this it rolled back the colour, the floors, the plan lines and the proposals with it. Every reader of the colour reads the row as before; `services/graded_morning.brief_is_written` is the test the two prose readers ask. The envelope carries a morning without its brief as `gradedMorning`, Home and the brief page show it as soon as it is graded, "Try again" is `POST /daily-loop/{date}/brief/retry` and saves nothing, and the symptom answer joins the generation identity. No migration, no prompt change.
 - **Post-workout:** performance (power/HR/zones/cadence/PC/stamina/TE) · Mark's post-ride check-in
   (RPE / legs / feel / niggles, when present) · workout rating · guided recovery protocol (specific,
   timed) · impact on tomorrow. For a **structured** ride, execution is graded **per work interval**
@@ -525,7 +532,10 @@ query, index, or migration work.
 - `garmin_workout_deliveries` (outdoor-ride Garmin Connect delivery per slot,
   keyed by user+date: Garmin workout/schedule ids, uploaded payload, IR snapshot,
   status + `last_error` — Batch 78, kept separate from the intervals rail)
-- `analyses` (stored Claude outputs and experiment-assignment/evaluation provenance) ·
+- `analyses` (stored Claude outputs and experiment-assignment/evaluation provenance; since
+  Batch 302 a `morning` row is stored when the morning is graded, with `output_markdown`
+  empty until its brief is written into it, and `raw_response.briefWrittenAtUtc` holds the
+  brief's own time) ·
   `experiments` (tracked hypotheses; four standing experiments after Batch 221, with source-owned
   forward nightly observations and immutable weekly REM assignments) · `knowledge_base`
 - `conversation_learning_proposals` (migration `021`, Batch 151): user-scoped,
@@ -534,7 +544,7 @@ query, index, or migration work.
   explicit reviewer/timestamp. Pending/rejected rows never enter analysis
   packets; acceptance copies the reviewed statement into a new active version
   of `knowledge_base.section='learned_context'`
-- `brief_generation_status` (per-`(user, subject_date)` morning-brief generation state — `generating`/`ready`/`failed` + a classified `reason` such as `billing`; migration `020`, Batch 141) surfaced on the daily-loop envelope so a failed generation resolves to a retryable error instead of an endless "Writing your brief" spinner, and a billing-classed failure alerts the operator (DECISIONS #220). Batch 144: a `generating` row orphaned past `settings.brief_generation_stale_after_minutes` (default 12 min) reads as `failed`/`stale` at envelope-serialization time — a read-time derivation off `updated_at`, no writer/migration/scheduler — with a mirrored 12-min client max-wait cap, so a stuck/orphaned generation can never spin forever (DECISIONS #223)
+- `brief_generation_status` (per-`(user, subject_date)` morning-brief generation state — `generating`/`ready`/`failed` + a classified `reason` such as `billing`; migration `020`, Batch 141) surfaced on the daily-loop envelope so a failed generation resolves to a retryable error instead of an endless "Writing your brief" spinner, and a billing-classed failure alerts the operator (DECISIONS #220). Batch 144: a `generating` row orphaned past `settings.brief_generation_stale_after_minutes` (default 12 min) reads as `failed`/`stale` at envelope-serialization time — a read-time derivation off `updated_at`, no writer/migration/scheduler — with a mirrored 12-min client max-wait cap, so a stuck/orphaned generation can never spin forever (DECISIONS #223). Batch 302: a written brief is what makes the day `ready`; for a morning stored without one the row says whether a brief is on its way, and a row that does not describe that morning is read from the morning's own age (DECISIONS #374)
 - `job_runs` (migration `027`, Batch 195): operator-only invocation evidence
   carrying the cadence window, start/finish, succeeded/skipped/degraded/failed
   status, stable reason and integer counters. It has RLS but no authenticated
@@ -552,7 +562,10 @@ query, index, or migration work.
   completed `analyses.id`. Artifact-scoped PostgreSQL advisory locks serialize
   same-day/same-activity work before the paid boundary; the request identity
   coalesces identical retries while changed substantive input or prompt versions
-  create a new `analyses` row, preserving Decision #219's history contract.
+  create a new `analyses` row, preserving Decision #219's history contract. Since
+  Batch 302 the morning's claim covers only its brief: the row is graded and stored
+  first, under the same artifact scope, and the claim is the stored morning's own
+  identity. The check-in's symptom answer is part of that identity.
 
 Seed `sleep`/`daily_metrics` with his **84-night backfill** (`12 Weeks Sleep Data` xlsx, 24 Mar–15 Jun; trust all cols except Duration).
 

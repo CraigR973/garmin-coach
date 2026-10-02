@@ -52,6 +52,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { VerdictHero } from '@/components/VerdictHero';
 import { BriefPendingCta } from '@/components/BriefPendingCta';
+import { BriefStatusCard } from '@/components/BriefStatusCard';
 import { FeedbackControl } from '@/components/FeedbackControl';
 import { SleepSnapshotBody } from '@/components/SleepSnapshotBody';
 import { SleepPrepBody } from '@/components/SleepPrepBody';
@@ -64,6 +65,7 @@ import { isBikeWorkout, useDailyPhase } from '@/hooks/useDailyPhase';
 import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
 import { useDailyLoopFreshness } from '@/hooks/useDailyLoopFreshness';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useRetryBrief } from '@/hooks/useRetryBrief';
 import { useRegisterCoachAnchor } from '@/contexts/CoachAnchorContext';
 import { apiFetch } from '@/lib/api';
 import { postWorkoutReadFailure } from '@/lib/postWorkoutRead';
@@ -81,6 +83,7 @@ import { gradedVerdictCopy, greetingForNow, personalStatusLine, verdictLabel } f
 import { NotesAskCard } from '@/components/NotesAskCard';
 import { dayStateForWorkouts, workoutTypeLabel, type DayCategory } from '@/lib/workoutCategories';
 import { actionSection, nextAction, type NextAction } from '@/lib/homeActions';
+import { briefState, noteUnread, storedMorning } from '@/lib/storedMorning';
 import { hasReviewedSleep } from '@/lib/sleepReview';
 import { hasReviewedBrief } from '@/lib/briefReview';
 import { hasSeenWalkRead, markWalkReadSeen } from '@/lib/walkRead';
@@ -282,6 +285,7 @@ export function DashboardPage() {
     queryFn: () => fetchQuickAddOptions(quickAddTarget!.category),
     enabled: quickAddTarget !== null,
   });
+  const retryBrief = useRetryBrief();
   const approveMutation = useMutation({
     mutationFn: ({ workoutId }: { workoutId: string }) =>
       apiFetch(`/api/v1/workout-delivery/planned-workouts/${workoutId}/approve-adjustment`, {
@@ -493,7 +497,11 @@ export function DashboardPage() {
   const holiday = daily.holiday;
   const awayTonight = holiday.awayTonight ?? false;
   const holidayEndDate = holiday.activeWindow?.endDate ?? null;
-  const analysis = daily.morningAnalysis;
+  // Batch 302: the colour, the notices, the plan lines and Today's actions come from
+  // the stored morning, which exists before its brief is written and when it did not
+  // finish. `brief` says where the written brief is.
+  const analysis = storedMorning(daily);
+  const brief = briefState(daily);
   const dataSufficiencyLine =
     analysis?.acutePhysiology?.dataSufficiency?.status === 'insufficient_data'
       ? (analysis.acutePhysiology.dataSufficiency.message ?? undefined)
@@ -603,7 +611,7 @@ export function DashboardPage() {
   const visibleOrder = analysis == null ? order.filter((key) => key !== 'lastNight') : order;
   // Batch 54: the lead section stays prominent; the rest recede under "More detail".
   const { lead, detail } = splitPrimaryDetail(visibleOrder, primary);
-  const hasUnreadBriefCta = Boolean(analysis && !hasReviewedBrief(daily.subjectDate));
+  const hasUnreadBriefCta = brief === 'written' && !hasReviewedBrief(daily.subjectDate);
   const hasVisibleTodayActions = Boolean(
     analysis && visibleTodayActions(analysis.todayActions, todaysWorkouts).length > 0,
   );
@@ -646,7 +654,7 @@ export function DashboardPage() {
             morningBriefLink="/brief"
             holiday={{ isActive: holiday.isActive, endDate: holidayEndDate }}
           />
-          {analysis?.id ? (
+          {brief === 'written' && analysis?.id ? (
             <div className="rounded-xl border border-dashed border-border bg-bg/60 px-4 py-3">
               <FeedbackControl
                 analysisId={analysis.id}
@@ -812,6 +820,17 @@ export function DashboardPage() {
       {/* Batch 96: an unviewed brief outranks every action card, including the
           thermal/plan nudges inside TodayActions. */}
       {hasUnreadBriefCta ? <UnviewedBriefCta /> : null}
+
+      {/* Batch 302: the morning is stored and shown above; this says where its written
+          brief is. "Try again" asks only for the brief and saves nothing of his. */}
+      {brief === 'writing' || brief === 'failed' ? (
+        <BriefStatusCard
+          state={brief}
+          noteUnread={noteUnread(analysis)}
+          onRetry={isStale ? undefined : () => retryBrief.mutate(daily.subjectDate)}
+          retrying={retryBrief.isPending}
+        />
+      ) : null}
 
       {/* Batch 86: the day's actions lead — workout adjustment first-class and
           tappable-to-approve, plus swap/sleep/thermal — above the reasoning the

@@ -1,6 +1,7 @@
 import type { DailyLoopData } from '@/hooks/useDailyLoop';
 import { isBikeWorkout } from '@/hooks/useDailyPhase';
 import type { HomeSectionKey } from '@/lib/homeSections';
+import { storedMorning } from '@/lib/storedMorning';
 
 /**
  * The single "what needs Mark next" action for Home (Batch 50 — action-first).
@@ -150,7 +151,9 @@ export function nextAction(
   },
 ): NextAction {
   if (isMorning) {
-    if (data.morningAnalysis == null) {
+    // Batch 302: a morning stored without its brief is still a morning he has checked
+    // in for, so the strip no longer asks him to say good morning beside its colour.
+    if (storedMorning(data) == null) {
       return {
         key: 'say-good-morning',
         label: overnightDataReady(data) ? 'Say good morning' : 'Sync overnight data',

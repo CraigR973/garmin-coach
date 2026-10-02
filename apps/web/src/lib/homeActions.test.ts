@@ -14,6 +14,7 @@ type DataOverrides = Partial<{
   manualEntry: unknown;
   sleepProjection: { tone: string } | null;
   morningAnalysis: unknown;
+  gradedMorning: unknown;
   dailyMetrics: unknown;
   sleep: unknown;
   holiday: {
@@ -44,6 +45,24 @@ function makeData(overrides: DataOverrides = {}): DailyLoopData {
 }
 
 const bikeChanged = { workoutType: 'bike_tempo', delivery: { changed: true } };
+
+describe('the morning ladder and a morning stored without its brief (Batch 302)', () => {
+  const morning = { isEvening: false, isMorning: true, hasReviewedSleep: true };
+
+  it('asks him to say good morning only while no morning is stored', () => {
+    expect(nextAction(makeData(), morning).key).toBe('say-good-morning');
+  });
+
+  it('stops asking once the morning is graded, though its brief is not written', () => {
+    // On `main` this read "Say good morning" beside the colour: only a written brief
+    // counted as a morning.
+    const graded = makeData({ gradedMorning: { id: 'morning-1', verdict: 'red' } });
+    expect(nextAction(graded, morning).key).not.toBe('say-good-morning');
+    expect(nextAction(makeData({ morningAnalysis: { id: 'morning-1' } }), morning).key).not.toBe(
+      'say-good-morning',
+    );
+  });
+});
 
 describe('nextAction priority ladder', () => {
   it('1. surfaces a pending coach change on a bike session, expanding Today', () => {

@@ -6,6 +6,7 @@ import { gradedVerdictCopy, REST_DAY_LINE } from '@/lib/copy';
 import { restHeadline } from '@/lib/restHeadline';
 import { BriefListenControls } from '@/components/BriefListenControls';
 import { BriefPendingCta } from '@/components/BriefPendingCta';
+import { BriefStatusCard } from '@/components/BriefStatusCard';
 import { StaleDataNotice } from '@/components/EmptyState';
 import { useRegisterCoachAnchor } from '@/contexts/CoachAnchorContext';
 import { Markdown } from '@/components/Markdown';
@@ -20,9 +21,11 @@ import { TodayActions } from '@/components/TodayActions';
 import { VerdictHero } from '@/components/VerdictHero';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
 import { useDailyLoopFreshness } from '@/hooks/useDailyLoopFreshness';
+import { useRetryBrief } from '@/hooks/useRetryBrief';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { markBriefReviewed } from '@/lib/briefReview';
 import { friendlyDate, writtenAt } from '@/lib/dailyFlow';
+import { briefState, noteUnread, storedMorning } from '@/lib/storedMorning';
 import { dayStateForWorkouts } from '@/lib/workoutCategories';
 import { dissentFromVerdict, VERDICT_DISSENT_COPY } from '@/lib/disputes';
 
@@ -49,7 +52,10 @@ export function MorningBriefPage() {
   // standing on the brief still arrives attached to it. Registered above the
   // loading/error early returns so the hook count never changes between
   // renders.
-  useRegisterCoachAnchor(query.data?.data.morningAnalysis?.id);
+  // Batch 302: a morning stored without its brief anchors too; the coach is told
+  // its brief did not finish rather than handed an empty one.
+  useRegisterCoachAnchor(storedMorning(query.data?.data)?.id);
+  const retry = useRetryBrief();
 
   if (query.isLoading) {
     return (
@@ -77,7 +83,10 @@ export function MorningBriefPage() {
   }
 
   const data = query.data.data;
-  const analysis = data.morningAnalysis;
+  // Batch 302: the colour, the notices and Today's actions come from the stored
+  // morning, which exists before its brief is written and when it did not finish.
+  const analysis = storedMorning(data);
+  const brief = briefState(data);
   const dataSufficiencyLine =
     analysis?.acutePhysiology?.dataSufficiency?.status === 'insufficient_data'
       ? (analysis.acutePhysiology.dataSufficiency.message ?? undefined)
@@ -149,32 +158,46 @@ export function MorningBriefPage() {
               />
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="h-4 w-4 text-primary" aria-hidden />
-                Coach read
-              </CardTitle>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <CardDescription>
-                  {writtenAt(analysis.generatedAtUtc, { timeZone: data.timezone }) ??
-                    'Not synced'}
-                </CardDescription>
-                <BriefListenControls markdown={analysis.outputMarkdown} hostedTtsConsent={data.hostedTtsConsent} />
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Markdown>{analysis.outputMarkdown}</Markdown>
-              <ProvenancePanel
-                sources={[
-                  analysis.thermalReview?.provenance,
-                  analysis.acutePhysiology?.overnightHrv?.provenance,
-                ]}
-                timeZone={data.timezone}
-                analysisId={analysis.id}
-              />
-            </CardContent>
-          </Card>
+          {brief === 'written' ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-primary" aria-hidden />
+                  Coach read
+                </CardTitle>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <CardDescription>
+                    {/* Batch 302: when the brief was written, which after an outage can be
+                        hours after the morning was graded. */}
+                    {writtenAt(analysis.briefWrittenAtUtc ?? analysis.generatedAtUtc, {
+                      timeZone: data.timezone,
+                    }) ?? 'Not synced'}
+                  </CardDescription>
+                  <BriefListenControls markdown={analysis.outputMarkdown} hostedTtsConsent={data.hostedTtsConsent} />
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Markdown>{analysis.outputMarkdown}</Markdown>
+                <ProvenancePanel
+                  sources={[
+                    analysis.thermalReview?.provenance,
+                    analysis.acutePhysiology?.overnightHrv?.provenance,
+                  ]}
+                  timeZone={data.timezone}
+                  analysisId={analysis.id}
+                />
+              </CardContent>
+            </Card>
+          ) : (
+            // Batch 302: the colour and the plan above are complete; only the written
+            // brief is missing, and this says where it is.
+            <BriefStatusCard
+              state={brief === 'failed' ? 'failed' : 'writing'}
+              noteUnread={noteUnread(analysis)}
+              onRetry={freshness.isStale ? undefined : () => retry.mutate(data.subjectDate)}
+              retrying={retry.isPending}
+            />
+          )}
           <MedicalBoundaryFooter boundary={analysis.acutePhysiology} />
         </>
       ) : (

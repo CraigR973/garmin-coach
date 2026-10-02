@@ -810,6 +810,11 @@ async def test_checkin_background_syncs_before_generating(
 
     generated_analysis = MagicMock()
 
+    # Batch 302: the morning is graded and stored, then its brief is written.
+    async def grade(*args: object, **kwargs: object) -> MagicMock:
+        events.append("grade")
+        return MagicMock(analysis=MagicMock(), written=False)
+
     async def generate(*args: object, **kwargs: object) -> MagicMock:
         events.append("generate")
         return MagicMock(analysis=generated_analysis, generated=True)
@@ -828,7 +833,8 @@ async def test_checkin_background_syncs_before_generating(
         lambda profile: datetime(2026, 1, 1, 8, 0, tzinfo=UTC),
     )
     monkeypatch.setattr(morning_pipeline.MorningBriefPipeline, "sync_inputs", sync_inputs)
-    monkeypatch.setattr(MorningAnalysisService, "generate_and_store", generate)
+    monkeypatch.setattr(MorningAnalysisService, "grade_and_store", grade)
+    monkeypatch.setattr(MorningAnalysisService, "write_brief", generate)
     # Batch 251: the check-in ladder is the pipeline's now, so the two coaching
     # steps that used to sit *inside* the patched generate call are visible here.
     # They have their own tests (test_executable_coaching); this one is about the
@@ -846,7 +852,7 @@ async def test_checkin_background_syncs_before_generating(
 
     await daily_loop_router._generate_brief_after_checkin(user_id, subject_date)
 
-    assert events == ["sync", "generate", "notify"]
+    assert events == ["sync", "grade", "generate", "notify"]
     async with session_factory() as session:
         status = await session.scalar(
             select(BriefGenerationStatus).where(
@@ -879,6 +885,7 @@ async def test_checkin_background_never_generates_when_sync_lands_no_inputs(
         await session.commit()
 
     sync_inputs = AsyncMock(return_value=None)
+    grade = AsyncMock()
     generate = AsyncMock()
     notify = AsyncMock(return_value=True)
     mark_failed = AsyncMock(return_value=MagicMock())
@@ -889,7 +896,8 @@ async def test_checkin_background_never_generates_when_sync_lands_no_inputs(
         lambda profile: datetime(2026, 1, 1, 8, 0, tzinfo=UTC),
     )
     monkeypatch.setattr(morning_pipeline.MorningBriefPipeline, "sync_inputs", sync_inputs)
-    monkeypatch.setattr(MorningAnalysisService, "generate_and_store", generate)
+    monkeypatch.setattr(MorningAnalysisService, "grade_and_store", grade)
+    monkeypatch.setattr(MorningAnalysisService, "write_brief", generate)
     monkeypatch.setattr(
         "src.services.morning_pipeline.NudgeAlertService.push_brief_ready",
         notify,
@@ -903,6 +911,7 @@ async def test_checkin_background_never_generates_when_sync_lands_no_inputs(
     await daily_loop_router._generate_brief_after_checkin(user_id, subject_date)
 
     sync_inputs.assert_awaited_once()
+    grade.assert_not_awaited()
     generate.assert_not_awaited()
     notify.assert_not_awaited()
     mark_failed.assert_awaited_once_with(
@@ -978,7 +987,7 @@ async def test_checkin_background_leaves_an_in_flight_generation_alone(
         lambda profile: datetime(2026, 1, 1, 8, 0, tzinfo=UTC),
     )
     monkeypatch.setattr(morning_pipeline.MorningBriefPipeline, "sync_inputs", sync_inputs)
-    monkeypatch.setattr(MorningAnalysisService, "generate_and_store", refuse)
+    monkeypatch.setattr(MorningAnalysisService, "grade_and_store", refuse)
     monkeypatch.setattr(
         "src.services.morning_pipeline.NudgeAlertService.push_brief_ready",
         notify,
@@ -1757,10 +1766,26 @@ async def test_checkin_background_alerts_on_any_anthropic_reason_not_just_billin
         "morning_input_presence",
         AsyncMock(return_value=MagicMock(ready_for_read=lambda **_kw: True)),
     )
+    # Batch 302: the morning is graded and stored first; the paid call is the brief.
     monkeypatch.setattr(
         MorningAnalysisService,
-        "generate_and_store",
+        "grade_and_store",
+        AsyncMock(return_value=MagicMock(analysis=MagicMock(), written=False)),
+    )
+    monkeypatch.setattr(
+        MorningAnalysisService,
+        "write_brief",
         AsyncMock(side_effect=AnthropicApiError("timed out", reason="timeout", status_code=0)),
+    )
+    monkeypatch.setattr(
+        ExecutableCoachingService, "regenerate_for_verdict", AsyncMock(return_value=[])
+    )
+    monkeypatch.setattr(
+        ExecutableCoachingService, "propose_chronic_deload", AsyncMock(return_value=[])
+    )
+    call_ready = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        "src.services.morning_pipeline.NudgeAlertService.push_call_ready", call_ready
     )
     monkeypatch.setattr(
         morning_pipeline.BriefGenerationStatusService,
@@ -1776,6 +1801,8 @@ async def test_checkin_background_alerts_on_any_anthropic_reason_not_just_billin
 
     alert.assert_awaited_once()
     assert alert.await_args.kwargs["reason"] == "timeout"
+    # The colour is stored, so he is told it is there.
+    call_ready.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -1803,7 +1830,7 @@ async def test_checkin_background_does_not_alert_when_his_watch_has_not_synced(
     monkeypatch.setattr(
         morning_pipeline.MorningBriefPipeline, "sync_inputs", AsyncMock(return_value=None)
     )
-    monkeypatch.setattr(MorningAnalysisService, "generate_and_store", AsyncMock())
+    monkeypatch.setattr(MorningAnalysisService, "grade_and_store", AsyncMock())
     monkeypatch.setattr(
         morning_pipeline.BriefGenerationStatusService,
         "mark_failed",
