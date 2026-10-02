@@ -4917,6 +4917,81 @@ read-only. One is corrected and two gaps are filled; none changes what the batch
 - **The replay, 102 production mornings, before and after:** 0 colours change, 0 domain
   ratings change, 0 hard sessions change action, 1 Zone 2 label changes (4 Jul, above).
 
+### Corrections made at `/batch-start 302` (2026-10-02), before any code
+
+Every fact in 302.1 was re-checked against `main` at `f5de506` (the commit production
+serves) and against production, read-only. The goal stands. One fact is corrected, the
+reader list is completed, and three findings change how the batch is built.
+
+- **Confirmed.** The morning row is written only after `analysis_client.generate` returns
+  (`services/morning_analysis.py:1446`; the row at `:1462-1476`; `generate_and_store` is now
+  `:1352-1483`). On the check-in path the whole run is one transaction, so a failed call rolls
+  back everything in it (`services/morning_pipeline.py:541-560`). The colour, the floors, the
+  plan lines and Today's actions are all in the packet `assemble_context_packet` returns before
+  the call. With no stored morning the delivery rail has nothing to read, a session pushed in
+  advance stays as planned (Decision #319: "Green or no read stays `as_planned`"), and the
+  VO₂ gate passes (`blocks_red_vo2(None, …)` is false).
+- **Corrected: one outage has cost Mark a morning, not two.** On 21 Jul he checked in at 08:35
+  UTC and the morning row was written at 18:07 UTC, 9 h 32 min later, on a day the ladder
+  called Red. On 31 Aug the brief was written at 07:29 UTC, before the spend cap bound, and 1
+  Sep's at 08:25 after it reset: the cap has not yet met a morning. Both wordings classify as
+  `billing` since Batch 248, so 302.5's two tests stand as written.
+- **302.3's reader list, completed.** Nineteen queries read the stored morning by type. All
+  read the colour or the packet; none reads the prose: Home's snapshot, the generator's own
+  latest-row lookup (also the wake nudge's guard), the delivery rail's two lookups, the rail's
+  VO₂ gate, weekly restructure's recent verdicts, the chronic Red cluster, block progression,
+  the trend days in insights, reviews, the state-change coach (two), verdict disputes, the
+  post-workout read, recent mornings, conversation learning, the replay, the sleep calendar
+  and the coach's newer-reads list. The prose has two server readers, the anchored chat's
+  "What you wrote in that read" (`services/brief_chat.py:875`) and the coach's read tool
+  (`services/coach_tools.py:429`), and on the web the brief card, Listen and feedback.
+- **Corrected: a failed brief discards the notes reading too.** `ensure_reading` only flushes
+  inside the generation's transaction (`services/notes_reader.py:508-514`), so the rollback
+  takes the reading with it and Try again pays for it again. 302.5's "Retry fills the prose
+  without a second notes reading" needs the reading committed with the stored morning.
+- **Found: once the reading is kept, Try again would clear a symptom found in his note.** Try
+  again re-saves the check-in (`CheckInPage.tsx:760`), which moves `entry_at_utc`; a reading
+  written before that then counts as answered and the preselected None governs
+  (`notes_reader.py:356-364`). On `main` the discarded reading is redone after the re-save, so
+  the floor stands: 303.1(d)'s "including Try again after a failed brief" is not true today,
+  and keeping the reading would make it true. **So Retry becomes its own request, which
+  re-saves nothing.** A re-save after a written brief still clears it; that is 303.5.
+- **Found: an earlier written brief hides a later failed one.** A check-in re-saved after a
+  brief exists (say, now answering "Chest or heart") regenerates. If that call fails, Home
+  serves the earlier brief as ready (`services/daily_loop_envelope.py:741-742`) with its
+  colour and no notice: Batch 301's notice shows only where no brief exists. Storing the newer
+  morning first, with the latest row winning, closes it.
+- **Found: in a full outage his note is not read either.** The notes reader is an Anthropic
+  call. The stored colour is then graded without his note, and nothing on screen says so: the
+  envelope carries `notesReadingStatus`, no surface reads it, and the written brief was the
+  only place the app said it (the prompt's rule since Batch 297). The morning without prose
+  needs that sentence.
+- **Two tests pin the contract this batch changes on purpose:**
+  `test_generate_and_store_does_not_persist_truncated_morning_analysis` (a failed call stores
+  no morning row) and `test_terminal_commit_aborts_the_whole_run_when_a_later_step_fails` (the
+  brief and its consequences are one artifact, Batch 251). Both are rewritten to the new
+  contract: the graded morning and its ride changes are stored first, and the written brief is
+  a second step that can fail alone.
+- **Never recorded: a failed generation request.** `generation_requests` holds 168 completed
+  rows and no failed one, because the failure handler's own write is rolled back with the run.
+  Nothing reads the failed state; noted, not changed.
+- **Storage (302.2's open question), measured.** `analyses` is 8.7 MB of the database's 433
+  MB (`pg_database_size` on 2 Oct; STATUS carries 453 MB); a morning packet stores at about
+  29 KB and Mark has 111 morning rows over 102 days. `analyses.output_markdown` is `NOT NULL`. The monthly
+  longitudinal analyst (Batch 220) already stores a row with empty prose and completes it in
+  place (`services/longitudinal_analysis.py:952-972`, `:1061-1092`). **Recommended: the
+  morning row itself**, written before the paid call with the prose empty and filled in when
+  it arrives: no migration, every colour reader above works unchanged, and filling in place
+  stores nothing extra. A record of its own would need all nineteen readers to learn a second
+  source, where a missed one silently leaves an outage morning out of a safety rule, and about
+  0.9 MB a month for a second copy of each packet. **Awaiting Craig's go.**
+- **The production smoke.** Production has one profile, Mark's, and a second profile there has
+  ingested his Garmin data before (24 Aug, deleted the next day). So the smoke is the read-only route the row
+  allows: the deployed code grades his stored inputs inside a transaction that is rolled back,
+  never on his morning.
+- **Wording:** drafted for Craig's sign-off on Mark's behalf
+  (`docs/drafts/2026-10-02-batch-302-wording.md`).
+
 ### Batch group — G7, the 1 Oct review (2026-10-01)
 
 Authored on Craig's decision of 1 Oct that every batch is written up before any is built.
