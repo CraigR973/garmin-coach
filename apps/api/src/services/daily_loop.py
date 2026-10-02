@@ -282,6 +282,32 @@ class DailyLoopService:
         await self.session.refresh(entry)
         return entry
 
+    async def answer_symptom_question(
+        self,
+        player: Profile,
+        *,
+        subject_date: date,
+        answer: str,
+    ) -> ManualEntry:
+        """Record his answer to Home's symptom question, and nothing else (Batch 303).
+
+        Home asks when his check-in note may name a symptom, and only this answer
+        relaxes what the note set (``services.notes_reader.day_effects``). It is not a
+        save of the check-in: ``entry_at_utc`` and everything he wrote stay as they
+        are, and the answer carries its own time.
+        """
+        entry = await self._manual_entry(player.id, subject_date)
+        if entry is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No check-in for this date to answer the symptom question for",
+            )
+        entry.symptoms = answer
+        entry.symptoms_answered_at_utc = _utcnow()
+        await self.session.commit()
+        await self.session.refresh(entry)
+        return entry
+
     async def upsert_post_ride_checkin(
         self,
         player: Profile,

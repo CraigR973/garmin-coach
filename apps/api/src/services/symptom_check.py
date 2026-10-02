@@ -18,15 +18,23 @@ a floor that no other signal can override. A floor is for harm, not performance
 
 A morning with no check-in has no answer, and no answer is never read as "None".
 
+Batch 303 adds what follows a symptom, so a floor does not quietly lapse. The two
+mornings after a fever-or-aches floor are easy days back, and a note that may mean a
+chest or heart symptom eases the hard session until he answers: on both, the day is
+not Red, and a hard session becomes an easy ride (:func:`fever_return_easing`,
+:func:`chest_question_easing`). "Chest or heart" also covers unusual breathlessness.
+
 This module is pure: callers pass rows already loaded. The Mark-facing notices were
 signed off by Craig on Mark's behalf on 28 Sep 2026
-(``docs/drafts/2026-09-28-batch-294-wording.md``), with no clinician check (Craig).
+(``docs/drafts/2026-09-28-batch-294-wording.md``) and, for Batch 303, on 2 Oct 2026
+(``docs/drafts/2026-10-02-batch-303-wording.md``), with no clinician check (Craig).
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date, timedelta
 from typing import Any, Final, Protocol
 
 SYMPTOMS_NONE: Final = "none"
@@ -52,7 +60,9 @@ SYMPTOM_LABELS: Final[dict[str, str]] = {
     SYMPTOMS_NONE: "None",
     SYMPTOMS_HEAD_COLD: "A head cold, above the neck",
     SYMPTOMS_FEVER_ACHES: "Fever, aches or a chest infection",
-    SYMPTOMS_CHEST_HEART: "Chest pain, a racing or irregular heartbeat, or feeling faint",
+    SYMPTOMS_CHEST_HEART: (
+        "Chest pain, a racing or irregular heartbeat, feeling faint, or unusual breathlessness"
+    ),
 }
 
 FLOOR_NO_TRAINING_SEE_DOCTOR: Final = "no_training_see_doctor"
@@ -84,15 +94,15 @@ SYMPTOM_FLOORS: Final[dict[str, SymptomFloor]] = {
         floor=FLOOR_NO_TRAINING_SEE_DOCTOR,
         requires_training_rest=True,
         reason=(
-            "Reported chest pain, a racing or irregular heartbeat, or faintness sets a Red "
-            "floor: no training of any kind today."
+            "Reported chest pain, a racing or irregular heartbeat, faintness or unusual "
+            "breathlessness sets a Red floor: no training of any kind today."
         ),
         plan_line="No training of any kind today — not the bike, strength or mobility work.",
         notice=(
-            "You've told me about chest pain, a racing or irregular heartbeat, or feeling "
-            "faint. That needs a doctor's view before any training, so no training of any "
-            "kind today. Speak to your GP or call 111 today. If you have chest pain right "
-            "now, call 999."
+            "You've told me about chest pain, a racing or irregular heartbeat, feeling "
+            "faint, or unusual breathlessness. That needs a doctor's view before any "
+            "training, so no training of any kind today. Speak to your GP or call 111 "
+            "today. If you have chest pain or are struggling to breathe right now, call 999."
         ),
         corroboration="you've told me about chest or heart symptoms",
     ),
@@ -172,10 +182,127 @@ def latest_symptom_answer(manual_entries: Sequence[_HasSymptoms]) -> str | None:
     return None
 
 
-def symptom_signal(answer: str | None) -> dict[str, Any]:
-    """The packet's record of today's answer and the floor it set, if any."""
+# -- Batch 303: what follows a symptom ----------------------------------------------------
+
+#: The mornings after the last fever-or-aches floor on which hard work stays easy
+#: (Craig, 2 Oct 2026). The fever notice has said "a few easy days before anything
+#: hard" since Batch 294, and nothing made it so.
+ILLNESS_RETURN_MORNINGS: Final = 2
+
+#: Why today's hard session is an easy ride although nothing sets a floor today.
+EASING_FEVER_RETURN: Final = "fever_return"
+EASING_CHEST_QUESTION: Final = "chest_question"
+EASING_KINDS: Final = frozenset({EASING_FEVER_RETURN, EASING_CHEST_QUESTION})
+
+#: The plan line for a hard session on such a morning (signed off 2 Oct 2026).
+EASY_RIDING_PLAN_LINE: Final = "Easy riding only today: swap the hard session for an easy spin."
+
+_ORDINALS: Final = ("first", "second", "third")
+_COUNTS: Final = ("one", "two", "three")
+
+
+@dataclass(frozen=True, slots=True)
+class IllnessReturn:
+    """Where this morning sits in the easy days back after a fever-or-aches floor."""
+
+    reported_on: date
+    #: 1 on the morning after the last floor, 2 on the one after that.
+    day: int
+    of: int = ILLNESS_RETURN_MORNINGS
+
+
+def illness_return(
+    subject_date: date, floor_answers: Mapping[date, str | None]
+) -> IllnessReturn | None:
+    """The easy days back this morning falls in, or ``None``.
+
+    ``floor_answers`` is the symptom answer that set each recent day's floor, read from
+    that day's latest stored morning: a fever named only in his note counts, and an
+    answer he corrected the same day does not. The nearest fever day decides, so the
+    count restarts after each one. A day with no stored morning has no answer.
+    """
+
+    for offset in range(1, ILLNESS_RETURN_MORNINGS + 1):
+        day = subject_date - timedelta(days=offset)
+        if floor_answers.get(day) == SYMPTOMS_FEVER_ACHES:
+            return IllnessReturn(reported_on=day, day=offset)
+    return None
+
+
+def fever_return_easing(window: IllnessReturn) -> dict[str, Any]:
+    """The packet's record of an easy day back after a fever. The day is always named."""
+
+    weekday = window.reported_on.strftime("%A")
+    return {
+        "kind": EASING_FEVER_RETURN,
+        "reportedOn": window.reported_on.isoformat(),
+        "day": window.day,
+        "of": window.of,
+        "words": None,
+        "reason": (
+            f"Easing back after the fever you reported on {weekday}: easy riding only, "
+            f"day {window.day} of {window.of}."
+        ),
+        "planLine": EASY_RIDING_PLAN_LINE,
+        "notice": (
+            f"You told me about a fever, aches or a chest infection on {weekday}. This is "
+            f"the {_ORDINALS[window.day - 1]} of {_COUNTS[window.of - 1]} easy days back: "
+            "easy riding at most, nothing hard. If any of it comes back, tell me in your "
+            "check-in and rest."
+        ),
+    }
+
+
+def chest_question_line(words: str | None) -> str:
+    """Home's line while a possible chest or heart mention eases the hard session.
+
+    The web shows the same sentence on the question's card
+    (``apps/web/src/lib/notesAsk.ts``); a test pins the two together.
+    """
+
+    quoted = (words or "").strip()
+    lead = (
+        f"Your note mentions \u201c{quoted}\u201d."
+        if quoted
+        else "Something in your note might be a symptom."
+    )
+    return f"{lead} Until you answer, today\u2019s hard session is an easy ride."
+
+
+def chest_question_easing(words: str | None) -> dict[str, Any]:
+    """The packet's record of a possible chest or heart mention he has not yet answered.
+
+    It eases a hard session and nothing else: with none planned the day is unchanged
+    and Home only asks. There is no notice; the question's own card says it.
+    """
+
+    return {
+        "kind": EASING_CHEST_QUESTION,
+        "reportedOn": None,
+        "day": None,
+        "of": None,
+        "words": (words or "").strip() or None,
+        "reason": chest_question_line(words),
+        "planLine": EASY_RIDING_PLAN_LINE,
+        "notice": None,
+    }
+
+
+def symptom_signal(
+    answer: str | None, *, easing: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
+    """The packet's record of today's answer and the floor it set, if any.
+
+    ``easing`` (Batch 303) is what follows a symptom on a morning with no floor of its
+    own. A floor set today outranks it, so it is dropped when one is.
+    """
 
     floor = SYMPTOM_FLOORS.get(answer) if answer is not None else None
+    kept_easing = (
+        dict(easing)
+        if floor is None and easing is not None and easing.get("kind") in EASING_KINDS
+        else None
+    )
     return {
         "answer": answer,
         "answered": answer is not None,
@@ -188,6 +315,7 @@ def symptom_signal(answer: str | None) -> dict[str, Any]:
         "reason": floor.reason if floor else None,
         "planLine": floor.plan_line if floor else None,
         "escalation": floor.notice if floor else None,
+        "easing": kept_easing,
     }
 
 

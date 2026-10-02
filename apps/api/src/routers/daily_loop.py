@@ -1,4 +1,4 @@
-"""Transport for ``/api/v1/daily-loop`` — five routes and nothing else.
+"""Transport for ``/api/v1/daily-loop`` — six routes and nothing else.
 
 Batch 251 (CR236-09) moved the 45 response models to ``daily_loop_schemas``, the
 envelope assembly and the Dreo fan serialization to ``services/daily_loop_envelope``,
@@ -28,6 +28,7 @@ from src.routers.daily_loop_schemas import (
     DailyLoopEnvelope,
     ManualEntryBody,
     PostRideCheckInBody,
+    SymptomAnswerBody,
 )
 from src.services.anthropic_text import AnthropicApiError, anthropic_user_message
 from src.services.brief_generation_status import (
@@ -158,6 +159,33 @@ async def retry_morning_brief(
     if subject_date == local_today(player.timezone):
         await BriefGenerationStatusService(db).mark_generating(player.id, subject_date, commit=True)
         background_tasks.add_task(_retry_brief, player.id, subject_date)
+    snapshot = await DailyLoopService(db).get_snapshot(player, subject_date=subject_date)
+    return await build_envelope(player, snapshot, db)
+
+
+@router.post("/{subject_date}/symptom-answer", response_model=DailyLoopEnvelope)
+@paid_generation_limit
+async def answer_symptom_question(
+    subject_date: date,
+    body: SymptomAnswerBody,
+    request: Request,
+    player: CurrentUser,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+) -> DailyLoopEnvelope:
+    """Answer Home's symptom question in one tap, saving nothing else (Batch 303).
+
+    Home asks when his check-in note may name a symptom. The answer used to be "any
+    later save of the check-in", where None is preselected, so saving the form again
+    for any reason dropped the symptom. This records the answer with its own time and
+    regrades today on it, as a changed check-in does.
+    """
+    await DailyLoopService(db).answer_symptom_question(
+        player, subject_date=subject_date, answer=body.answer
+    )
+    if subject_date == local_today(player.timezone):
+        await BriefGenerationStatusService(db).mark_generating(player.id, subject_date, commit=True)
+        background_tasks.add_task(_generate_brief_after_checkin, player.id, subject_date)
     snapshot = await DailyLoopService(db).get_snapshot(player, subject_date=subject_date)
     return await build_envelope(player, snapshot, db)
 

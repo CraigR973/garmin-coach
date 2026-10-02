@@ -8,7 +8,9 @@ evidence, and this module is the engine:
 
 1. **Floors first** (Batch 294): a reported symptom, an illness-grade HRV drop, or a
    resting-heart-rate jump of 7 bpm. They come from the ladder's own acute rail, so
-   the two can never disagree about a floor.
+   the two can never disagree about a floor. Batch 303 adds the weakest floor: on an
+   easy day back after a fever, or while a possible chest or heart mention in his note
+   is unanswered, a hard session becomes an easy ride and the day is not Red.
 2. **Rate each domain** ``none``, ``mild`` or ``marked`` against Mark's own normal,
    taking the worst signal inside it:
 
@@ -45,6 +47,7 @@ from typing import Any, Final, Literal, Protocol
 from fastapi import HTTPException
 
 from src.services.sleep_history import SPO2_HRV_RELIABLE_FROM
+from src.services.symptom_check import EASING_CHEST_QUESTION, EASING_FEVER_RETURN, EASING_KINDS
 from src.services.verdict_scaling import ir_has_vo2, ir_is_endurance
 from src.services.workout_categories import is_bike_workout_type
 from src.services.workout_delivery import build_structured_workout_ir
@@ -61,6 +64,9 @@ DOMAINS: Final = (DOMAIN_AUTONOMIC, DOMAIN_SLEEP, DOMAIN_LOAD, DOMAIN_SUBJECTIVE
 FLOOR_NO_TRAINING: Final = "no_training"
 FLOOR_EASY_RIDING: Final = "easy_riding"
 FLOOR_BIKE_REST: Final = "bike_rest"
+#: Batch 303: what follows a symptom. A hard session becomes an easy ride; Zone 2,
+#: strength and mobility stay as planned; the day is at least Amber and never Red for it.
+FLOOR_HARD_WORK_TO_EASY: Final = "hard_work_to_easy"
 
 ACTION_AS_PLANNED: Final = "as_planned"
 ACTION_HOLD_TARGETS: Final = "hold_targets"
@@ -440,6 +446,10 @@ class GradedVerdict:
     actions: tuple[SessionAction, ...] = field(default_factory=tuple)
     #: The Mark-facing line saying why today is this colour (Batch 296).
     summary: str = ""
+    #: Batch 303: why the hard-work-to-easy floor applies (``fever_return`` or
+    #: ``chest_question``), and its Mark-facing reason. ``None`` when it does not.
+    easing: str | None = None
+    easing_reason: str | None = None
     #: What the stored rows cannot give back later: the replay reads these from a
     #: graded packet so it reproduces production exactly (Batch 296).
     references: Mapping[str, Any] = field(default_factory=dict)
@@ -456,6 +466,7 @@ class GradedVerdict:
             "status": self.status,
             "held": self.held,
             "floor": self.floor,
+            "easing": self.easing,
             "roughCheckIn": self.rough_check_in,
             "ageCreditGuardApplied": self.age_credit_guard_applied,
             "missingDataFloorApplied": self.missing_data_floor_applied,
@@ -850,6 +861,19 @@ def _floors(acute: Mapping[str, Any]) -> tuple[str | None, bool]:
     return symptom_floor, acute.get("requiresBikeRest") is True
 
 
+def _easing(acute: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """What follows a symptom on a morning with no symptom floor of its own (Batch 303)."""
+
+    easing = _mapping(_mapping(acute.get("symptoms")).get("easing"))
+    return easing if easing.get("kind") in EASING_KINDS else None
+
+
+def _hard_ride_today(inputs: GradingInputs) -> bool:
+    return not inputs.rest_day and any(
+        session.is_bike and session.is_hard for session in inputs.sessions
+    )
+
+
 def grade(inputs: GradingInputs) -> GradedVerdict:
     """The graded verdict for one morning. Pure and deterministic."""
 
@@ -888,6 +912,21 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
         if status == "Green":
             status, held = "Amber", False
         reasons.append("An acute signal rules out riding today.")
+    # Batch 303: what follows a symptom. An easy day back after a fever is at least
+    # Amber whatever is planned; an unanswered chest question eases a hard session and
+    # otherwise only asks, so with none planned it changes nothing. Neither is Red.
+    easing = _easing(acute) if symptom_floor is None else None
+    easing_kind: str | None = None
+    easing_reason: str | None = None
+    if easing is not None and (
+        easing.get("kind") == EASING_FEVER_RETURN or _hard_ride_today(inputs)
+    ):
+        easing_kind = str(easing["kind"])
+        easing_reason = str(easing["reason"]) if isinstance(easing.get("reason"), str) else None
+        if status == "Green":
+            status, held = "Amber", False
+        if easing_reason is not None:
+            reasons.append(easing_reason)
 
     missing = _mapping(acute.get("dataSufficiency")).get("status") == "insufficient_data"
     missing_floor = missing and status == "Green"
@@ -924,6 +963,10 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
         else FLOOR_BIKE_REST
         if bike_rest
         else symptom_floor
+        if symptom_floor is not None
+        else FLOOR_HARD_WORK_TO_EASY
+        if easing_kind is not None
+        else None
     )
     verdict = GradedVerdict(
         status=status,
@@ -937,6 +980,8 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
         # When the guard holds the day at Amber, the raw-score pass is the one that
         # explains it: the fair night is one of the things that is off.
         summary=mark_facing_summary(raw_domains if guard else domains, rough=rough),
+        easing=easing_kind,
+        easing_reason=easing_reason,
         references={
             "readinessLowerQuartile": inputs.readiness_lower_quartile,
             "inRecoveryWeek": inputs.in_recovery_week,
@@ -1109,6 +1154,16 @@ def _session_action(
         if session.is_hard:
             return ACTION_RECOVERY, "Red: an easy recovery spin instead."
         return ACTION_SHORTENED_Z2, "Red: Zone 2 kept, shorter."
+    # Batch 303: what follows a symptom outranks the light-week hold and the Amber
+    # ease. A hard session held at its targets, or eased a zone, is still hard work.
+    if verdict.floor == FLOOR_HARD_WORK_TO_EASY and session.is_hard:
+        if verdict.easing == EASING_CHEST_QUESTION:
+            return (
+                ACTION_RECOVERY,
+                "His note may mean a chest or heart symptom and he has not answered: an "
+                "easy spin instead until he does.",
+            )
+        return ACTION_RECOVERY, "An easy day back after a fever: an easy spin instead."
     # Batch 300 (Craig, 1 Oct 2026): a light week holds the session on a mild concern,
     # and on an Amber made of two. A marked domain takes the ordinary action below, as
     # in any other week: W12's sweet spot is not ridden in full after a sub-60 night.

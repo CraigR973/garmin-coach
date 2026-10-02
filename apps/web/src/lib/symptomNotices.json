@@ -9,6 +9,6 @@
   },
   "chest_heart": {
     "level": "rest",
-    "notice": "You've told me about chest pain, a racing or irregular heartbeat, or feeling faint. That needs a doctor's view before any training, so no training of any kind today. Speak to your GP or call 111 today. If you have chest pain right now, call 999."
+    "notice": "You've told me about chest pain, a racing or irregular heartbeat, feeling faint, or unusual breathlessness. That needs a doctor's view before any training, so no training of any kind today. Speak to your GP or call 111 today. If you have chest pain or are struggling to breathe right now, call 999."
   }
 }

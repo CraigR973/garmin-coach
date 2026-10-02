@@ -238,6 +238,12 @@ def manual_entry_generation_version(entry: ManualEntry | None) -> str | None:
     # unanswered, so an activity check-in's identity is what it was.
     if entry.symptoms is not None:
         parts["symptoms"] = entry.symptoms
+    # Batch 303: his answer to Home's question is an input of its own. Answering
+    # "None" to a note that named a symptom leaves the stored answer as it was, so
+    # without this the morning's identity would not move and nothing would be regraded.
+    # Left out until he answers, so every existing check-in's identity is what it was.
+    if entry.symptoms_answered_at_utc is not None:
+        parts["symptomsAnsweredAt"] = entry.symptoms_answered_at_utc.isoformat()
     return _identity(parts)
 
 

@@ -352,10 +352,13 @@ def test_chest_heart_and_fever_rule_out_training_of_any_kind(
 
 
 def test_the_notices_are_the_signed_off_words() -> None:
+    # Batch 303 (signed off 2 Oct 2026): the answer also covers unusual breathlessness,
+    # and struggling to breathe joins chest pain as a reason to call 999.
     assert SYMPTOM_FLOORS[SYMPTOMS_CHEST_HEART].notice == (
-        "You've told me about chest pain, a racing or irregular heartbeat, or feeling faint. "
-        "That needs a doctor's view before any training, so no training of any kind today. "
-        "Speak to your GP or call 111 today. If you have chest pain right now, call 999."
+        "You've told me about chest pain, a racing or irregular heartbeat, feeling faint, or "
+        "unusual breathlessness. That needs a doctor's view before any training, so no "
+        "training of any kind today. Speak to your GP or call 111 today. If you have chest "
+        "pain or are struggling to breathe right now, call 999."
     )
     assert SYMPTOM_FLOORS[SYMPTOMS_FEVER_ACHES].notice == (
         "You've told me about a fever, aches or a chest infection. Training through that adds "
@@ -705,7 +708,7 @@ def test_the_brief_is_told_what_the_floors_mean_and_the_version_moved() -> None:
         assert "never evidence that he is well" in rule
     # A self-healing bump: the next generation writes v50 and nothing is withdrawn.
     # (Batch 296 moved it on again, to v51; Batch 298 to v53.)
-    assert PROMPT_VERSION == "morning-analysis-v54-2026-10-01"
+    assert PROMPT_VERSION == "morning-analysis-v55-2026-10-02"
 
 
 # -- the delivery rail (Postgres; CI is its first run) ----------------------------------

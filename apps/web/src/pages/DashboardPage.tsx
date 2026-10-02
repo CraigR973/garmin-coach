@@ -814,7 +814,12 @@ export function DashboardPage() {
 
       {analysis ? <AcutePhysiologyNotice boundary={analysis.acutePhysiology} /> : null}
       {analysis ? (
-        <NotesAskCard ask={analysis.notesAsk} words={analysis.notesAskWords} />
+        <NotesAskCard
+          ask={analysis.notesAsk}
+          words={analysis.notesAskWords}
+          eases={analysis.notesAskEases}
+          subjectDate={daily.subjectDate}
+        />
       ) : null}
 
       {/* Batch 96: an unviewed brief outranks every action card, including the

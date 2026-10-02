@@ -256,9 +256,12 @@ def test_the_day_reads_its_newest_noted_check_in() -> None:
     assert stale.status == STATUS_NOT_READ
 
 
-def test_a_check_in_after_the_reading_is_his_answer() -> None:
+def test_his_answer_to_homes_question_after_the_reading_is_his_answer() -> None:
+    # Batch 303: until then a check-in saved after the reading was "his answer". The
+    # answer now has a time of its own (tests/test_batch_303_medical_follow_through.py).
     read_at = datetime(2026, 10, 7, 7, 0)
-    entry = _entry("Sore throat.", read_at + timedelta(minutes=30))
+    entry = _entry("Sore throat.", read_at - timedelta(minutes=1))
+    entry.symptoms_answered_at_utc = read_at + timedelta(minutes=30)
     effects = day_effects(
         [entry], [_stored(entry, STATUS_READ, _reading(head_cold=_flag("present")), read_at)]
     )
@@ -490,9 +493,19 @@ async def test_a_failed_reading_is_stored_retried_and_leaves_the_colour_alone(
         assert packet["verdict"]["status"] == "Red"
         assert packet["verdict"]["notesReading"]["askSymptomQuestion"] is True
 
-        # He answers after the reading: his own tap now governs, and relaxes the floor.
+        # He saves the check-in again after the reading, None still selected. Since
+        # Batch 303 that is not an answer: the note's floor stands and Home still asks.
+        later = datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=5)
         entry.symptoms = "none"
-        entry.entry_at_utc = datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=5)
+        entry.entry_at_utc = later
+        await session.commit()
+        resaved = await MorningAnalysisService(session).assemble_context_packet(player, day)
+        assert resaved["verdict"]["acutePhysiology"]["symptoms"]["answer"] == "head_cold"
+        assert resaved["verdict"]["notesReading"]["answeredAfterReading"] is False
+        assert resaved["verdict"]["notesReading"]["askSymptomQuestion"] is True
+
+        # He answers Home's question: his own answer now governs, and relaxes the floor.
+        entry.symptoms_answered_at_utc = later + timedelta(minutes=1)
         await session.commit()
         relaxed = await MorningAnalysisService(session).assemble_context_packet(player, day)
         assert relaxed["verdict"]["acutePhysiology"]["symptoms"]["answer"] == "none"
@@ -500,9 +513,11 @@ async def test_a_failed_reading_is_stored_retried_and_leaves_the_colour_alone(
         assert relaxed["verdict"]["notesReading"]["askSymptomQuestion"] is False
 
 
-def test_a_check_in_between_a_failed_read_and_its_retry_is_not_an_answer() -> None:
+def test_an_answer_between_a_failed_read_and_its_retry_is_not_an_answer() -> None:
     failed_at = datetime(2026, 10, 7, 7, 0)
-    entry = _entry("Sore throat.", failed_at + timedelta(minutes=10))
+    entry = _entry("Sore throat.", failed_at - timedelta(minutes=1))
+    # Batch 303: his answer to Home's question, given before the note was ever read.
+    entry.symptoms_answered_at_utc = failed_at + timedelta(minutes=10)
     retried = _stored(entry, STATUS_READ, _reading(head_cold=_flag("present")), failed_at)
     retried.updated_at = failed_at + timedelta(minutes=20)
     effects = day_effects([entry], [retried])
