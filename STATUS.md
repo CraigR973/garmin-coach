@@ -6,12 +6,14 @@
 
 ## Now
 
-**2026-10-01 (evening) — G7a is running (`/batch-group G7a`, Craig's go). Shipped: 309 (the
+**2026-10-02 (morning) — G7a is complete (`/batch-group G7a`, Craig's go). Shipped: 309 (the
 web builds on Node 24 and deploys again), 301 (the medical notices show on the check-in and
 beside a failed brief), 298 (the words follow the graded verdict: no "cap" notice, one Amber
-line, the light week named) and 299 (the weekly mix and the ride offered follow each session's
-action: an eased session is "eased, not lost", and a rest day offers no ride). Next: 300. The
-graded colour went live on Mark's 1 Oct check-in (Amber on a holiday rest day).**
+line, the light week named), 299 (the weekly mix and the ride offered follow each session's
+action: an eased session is "eased, not lost", and a rest day offers no ride) and 300 (in a
+light week only a mild concern holds the session; a clearly-off morning eases the hard work).
+Next: G7b (302 → 303 → 307), on Craig's go at each gate. The graded colour went live on Mark's
+1 Oct check-in (Amber on a holiday rest day).**
 
 ### What the review found (`docs/reviews/2026-10-01-batches-268-297-review.md`)
 
@@ -24,6 +26,8 @@ graded colour went live on Mark's 1 Oct check-in (Amber on a holiday rest day).*
 - **The safety floors depend on the paid brief:** in an Anthropic outage a "Chest or heart"
   answer showed no 999/111/GP advice. Batch 301 now shows the tapped answer's notice without
   the brief; the colour, plan lines and actions still need it (Batch 302).
+- **A light week held the session on a clearly-off morning:** W12's sweet spot would have been
+  ridden in full after a sub-60 night. Batch 300 fixed it: only a mild concern holds.
 - **On HRV the engine now errs slightly lenient** against the trials it cites: a week-long dip
   stays "a little off".
 
@@ -42,7 +46,7 @@ graded colour went live on Mark's 1 Oct check-in (Amber on a holiday rest day).*
 
 | Group | Batches | Gate |
 |---|---|---|
-| G7a, before 7 Oct | ~~309~~ → ~~301~~ → ~~298~~ → ~~299~~ → 300 | Wording signed off; 300 before Thu 8 Oct |
+| G7a, before 7 Oct | ~~309~~ → ~~301~~ → ~~298~~ → ~~299~~ → ~~300~~ | Complete, 2 Oct |
 | G7b | 302 → 303 → 307 | 302's storage shape; 303's migration and eval re-run (~$2–5) |
 | G7c, not before 20 Oct | 304 → 305 → 306 → 308 | 305/306 decisions; 308 after the side-by-side review |
 
@@ -74,12 +78,17 @@ v50 brief reads constraints the ladder does not follow.
 
 ### Needs Craig
 
-1. **G7a is running.** The Mark-facing wording for 298, 299 and 300 was signed off at 298's
-   start (`docs/drafts/2026-10-01-batch-298-wording.md`). The Vercel project's own Node setting
-   still reads 20.x; `engines` overrides it, so changing it is tidiness only (a hosting change,
-   yours).
-2. **From 7 to 20 Oct:** review every ladder-versus-graded disagreement in the table above.
-3. **Carried:** G4's free Neon database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment
+1. **G7a is complete; G7b needs your go at each gate** (302's storage shape and any migration;
+   303's migration and the paid eval re-run, about $2–5).
+2. **Two decisions made on your behalf in Batch 300 (Decision #373), each a one-line change to
+   overrule.** A domain marked on Garmin's own sleep score counts as clearly off even where the
+   age credit lifts it (Garmin's 55 lifted to 63 eases the session). And a Zone 2 ride on a
+   clearly-off light-week morning reads as any other Amber ("Keep your Zone 2 ride at full
+   length."), not as the hold; it is the same ride either way.
+3. The Vercel project's own Node setting still reads 20.x; `engines` overrides it, so changing
+   it is tidiness only (a hosting change, yours).
+4. **From 7 to 20 Oct:** review every ladder-versus-graded disagreement in the table above.
+5. **Carried:** G4's free Neon database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment
    extractor's first paid run (Mark's own "Look for new memories" tap).
 
 ### Worth carrying
@@ -100,10 +109,13 @@ v50 brief reads constraints the ladder does not follow.
 - **The first real note reading** (1 Oct): fatigue present ("a bit more tired"), one notch;
   2,345 tokens in, 301 out (≈0.8 cents).
 - **Mark's first two weeks back are W12 CONSOLIDATION (5–11 Oct) and W13 TAPER (12–18
-  Oct).** Until Batch 300 ships, a mild or marked concern holds every session there.
+  Oct).** Since Batch 300 a clearly-off morning there eases the hard session a zone at full
+  length: W12's sweet spot 1 × 30 min from 89% to 76% (58 minutes), W13's VO₂ primer 3 × 1 min
+  from 120% to 94% (30 minutes), W13's sweet spot primer 1 × 12 min from 89% to 76% (35
+  minutes). One or two mild concerns hold the session, with the week named.
 - **The database is at 453 MB of the 500 MB free-plan cap**; `egress-budget` reports
   `storage_critical` every 15 minutes. Up about 5 MB a week since 24 Sep.
-- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #373.**
+- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #374.**
 
 ## Prior current-state snapshots
 
@@ -1938,6 +1950,21 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-02** — Batch 300 shipped as PR #350 / `422c07b` (Decision #373, amending #366 and
+  #367), and **G7a is complete.** In a consolidation, taper, recovery or rest week the session
+  is held only when nothing is clearly off: a held Green, or an Amber made of two mild
+  concerns. A morning with a marked domain eases the hard work a zone at full length and leaves
+  a Zone 2 ride as planned, as in any other week; Red and the floors are unchanged. A domain
+  marked on Garmin's own sleep score counts even where the age credit lifts it (decided at
+  build). No new words and no prompt change: v54 stays. Read-only on production through the
+  merged code, on his real rows: W12's sweet spot eases from 89% to 76% over 58 minutes, W13's
+  VO₂ primer from 120% to 94% over 30, W13's sweet spot primer from 89% to 76% over 35; one or
+  two mild concerns hold each. Replay of 102 production mornings: no colour and no hard
+  session's action changes; one Zone 2 label changes (4 Jul, held → as planned, the same ride),
+  which the row had not counted. CI 16 of 16 on both waves (2,260 passed, 0 skipped) and green
+  on `main`; production on `422c07b` (health on both, web 200, `daily-loop` 401; the deployed
+  image held a 55-sleep-score light-week morning before the deploy and eases it after). No
+  migration; no production write; no paid call.
 - **2026-10-01** — Batch 299 shipped as PR #349 / `3539ee8` (Decision #372): under the graded
   verdict the weekly mix reads each session's action, so only a dropped session (a Red recovery
   spin or shortened ride, or a floor's day off) is "a session short"; an eased one reads
