@@ -21,6 +21,7 @@ the easy spin. Wording: ``docs/drafts/2026-10-02-batch-303-wording.md``.
 from __future__ import annotations
 
 import itertools
+import json
 import uuid
 from dataclasses import replace
 from datetime import date, datetime, timedelta
@@ -64,6 +65,15 @@ from src.services.morning_verdict import (
     _acute_physiology_rail,
     graded_verdict_packet,
     morning_verdict,
+)
+from src.services.notes_eval import (
+    SOURCE_HELD_OUT,
+    expected_effects,
+    gate_failures,
+    load_cases,
+    recorded_passes,
+    render_report,
+    score_pass,
 )
 from src.services.notes_reader import (
     FLAGS,
@@ -124,6 +134,9 @@ from tests.test_batch_302_stored_morning import _db_override, _savepoint_session
 
 REPO = Path(__file__).resolve().parents[3]
 DRAFT = REPO / "docs" / "drafts" / "2026-10-02-batch-303-wording.md"
+FIXTURES = Path(__file__).parent / "fixtures"
+EVAL_CASES = FIXTURES / "notes_eval_2026_09.json"
+RECORDED = FIXTURES / "notes_eval_recorded"
 WEB_NOTES_ASK = REPO / "apps" / "web" / "src" / "lib" / "notesAsk.ts"
 
 #: A Friday, so the fever in these tests was reported on a Thursday, as the draft's is.
@@ -181,6 +194,83 @@ def test_the_note_reader_is_asked_about_breathlessness_and_told_what_is_not_one(
     assert "out of breath during or just after a hard effort" in rules
     assert "A blocked nose that makes it hard to breathe is head_cold." in rules
     assert "without saying how hard he was working, or cannot explain: chest_heart unclear" in rules
+
+
+def _recorded(model: str) -> dict[str, Any]:
+    recording: dict[str, Any] = json.loads((RECORDED / f"{model}.json").read_text("utf-8"))
+    return recording
+
+
+def test_the_v2_reader_was_recorded_and_met_the_gate_on_breathlessness() -> None:
+    """303.6: the eval re-run on the production model (2 Oct 2026, $2.23), under the
+    prompt the reader now sends. Until Batch 307 pins it, this is what says so."""
+    recording = _recorded("claude-sonnet-5")
+    assert recording["promptVersion"] == PROMPT_VERSION
+    cases = load_cases(EVAL_CASES)
+    passes = recorded_passes(recording)
+    scores = [score_pass(cases, readings) for readings in passes]
+    assert len(scores) == 2
+    assert gate_failures(scores) == []
+
+    by_id = {case.id: case for case in cases}
+    for readings in passes:
+        # The new red flags: unusual breathlessness is caught, as a floor or the question.
+        for case_id in ("B01", "B02", "B03", "B04"):
+            assert expected_effects(by_id[case_id]).floor == SYMPTOMS_CHEST_HEART
+            effects = reading_effects(readings[case_id])
+            assert effects.symptom_answer == SYMPTOMS_CHEST_HEART or effects.chest_question
+        # Breathlessness he cannot explain asks, and holds the hard session meanwhile.
+        for case_id in ("B05", "B06"):
+            effects = reading_effects(readings[case_id])
+            assert (effects.symptom_answer, effects.chest_question) == (None, True)
+        # What is not a symptom stays quiet: hard efforts, his breathing exercises, a
+        # figure, someone else, and last month. His two real notes about his breathing
+        # exercises (R33, R42) are the reason the prompt says so outright.
+        for case_id in ("B07", "B08", "B09", "B10", "B12", "B13", "B14", "B15", "R33", "R42"):
+            effects = reading_effects(readings[case_id])
+            assert (effects.symptom_answer, effects.ask_symptom_question) == (None, False), case_id
+        # A blocked nose is a head cold, not his chest.
+        assert reading_effects(readings["B11"]).symptom_answer == SYMPTOMS_HEAD_COLD
+
+
+def test_the_held_out_notes_are_reported_on_their_own_and_one_false_alarm_is_on_record() -> None:
+    """307.3, brought forward so one paid run scored it. Ten notes written after the v2
+    prompt was frozen; the prompt was not changed to fit them."""
+    cases = load_cases(EVAL_CASES)
+    held_out = [case.id for case in cases if case.source == SOURCE_HELD_OUT]
+    assert held_out == [f"X{number:02d}" for number in range(1, 11)]
+    scores = [
+        score_pass(cases, readings) for readings in recorded_passes(_recorded("claude-sonnet-5"))
+    ]
+    # Every held-out red flag was caught on both passes...
+    for score in scores:
+        assert score.held_out == held_out
+        assert not set(score.missed_red_flags) & set(held_out)
+    # ...and one quiet note raised a question on one pass of two: a stitch in his side.
+    assert [score.held_out_wrong for score in scores] == [["X07"], []]
+
+
+def test_the_report_names_an_earlier_prompts_recording_without_scoring_it() -> None:
+    """Haiku 4.5 was recorded under v1 and is not the production model, so it was not
+    re-run. Scored against today's cases it would read as 25 failed readings."""
+    haiku = _recorded("claude-haiku-4-5-20251001")
+    assert haiku["promptVersion"] != PROMPT_VERSION
+    sonnet = _recorded("claude-sonnet-5")
+    cases = load_cases(EVAL_CASES)
+    scores = [score_pass(cases, readings) for readings in recorded_passes(sonnet)]
+    report = render_report(
+        cases,
+        [(sonnet, scores)],
+        generated="Generated for a test",
+        labelled_by="Craig",
+        not_rerun=[haiku],
+    )
+    assert "125 cases: 56 of Mark's real morning notes, 59 hand-written hard cases" in report
+    assert "10 held out (written after the prompt was frozen)" in report
+    assert "- **Held-out cases as keyed:** 9 of 10 ['X07']; 10 of 10" in report
+    assert "## Not re-run under this prompt" in report
+    assert "claude-haiku-4-5-20251001: recorded under `notes-reader-v1-2026-09-30`" in report
+    assert "## claude-haiku-4-5-20251001" not in report
 
 
 # -- (a) the two easy mornings after a fever ------------------------------------------------

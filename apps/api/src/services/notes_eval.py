@@ -14,6 +14,11 @@ The gate (297.4, the thresholds Craig confirmed with the labels on 30 Sep 2026):
 
 ``scripts/run_notes_eval.py`` makes the paid run and records every response; CI scores
 the recordings with this module and holds the gate. Pure: no database, no model call.
+
+Batch 303 re-ran it for the reader's v2 prompt (breathlessness joins the chest flag)
+with 15 new hard cases, and with 10 held-out cases brought forward from Batch 307.3:
+written after the prompt was frozen, never used to change it, and reported on their
+own. A held-out red flag the reader misses still fails the gate.
 """
 
 from __future__ import annotations
@@ -32,6 +37,11 @@ from src.services.notes_reader import (
 )
 
 MAX_REAL_FALSE_ALARMS: Final = 2
+
+SOURCE_REAL: Final = "real"
+SOURCE_HARD: Final = "hard"
+#: Written after the prompt was frozen and never used to change it (Batch 307.3).
+SOURCE_HELD_OUT: Final = "held_out"
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +143,9 @@ class PassScore:
     wrong_person_floors: list[str] = field(default_factory=list)
     notch_disagreements: list[str] = field(default_factory=list)
     failed_readings: list[str] = field(default_factory=list)
+    #: Held-out cases, and those where the app would not do what the key says.
+    held_out: list[str] = field(default_factory=list)
+    held_out_wrong: list[str] = field(default_factory=list)
 
 
 def score_pass(
@@ -163,6 +176,10 @@ def score_pass(
             score.wrong_person_floors.append(case.id)
         if expected.notch != observed.notch:
             score.notch_disagreements.append(case.id)
+        if case.source == SOURCE_HELD_OUT:
+            score.held_out.append(case.id)
+            if (observed.floor, observed.ask) != (expected.floor, expected.ask):
+                score.held_out_wrong.append(case.id)
     return score
 
 
@@ -213,18 +230,29 @@ def render_report(
     *,
     generated: str,
     history: Sequence[str] = (),
+    labelled_by: str = "Craig on 30 Sep 2026",
+    not_rerun: Sequence[Mapping[str, Any]] = (),
 ) -> str:
-    """The committed eval report: one section per model run, then every disagreement."""
+    """The committed eval report: one section per model run, then every disagreement.
+
+    ``not_rerun`` are recordings made under an earlier prompt. They are named, not
+    scored: their responses answer a prompt the reader no longer sends.
+    """
 
     lines: list[str] = []
     add = lines.append
-    real = sum(1 for case in cases if case.source == "real")
+    real = sum(1 for case in cases if case.source == SOURCE_REAL)
+    held_out = sum(1 for case in cases if case.source == SOURCE_HELD_OUT)
+    hard = len(cases) - real - held_out
     red = [case.id for case in cases if expected_effects(case).floor is not None]
     add("# Notes reader eval")
     add("")
+    held_out_part = (
+        f", and {held_out} held out (written after the prompt was frozen)" if held_out else ""
+    )
     add(
-        f"{generated} · Batch 297 · {len(cases)} cases: {real} of Mark's real morning notes "
-        f"and {len(cases) - real} hand-written hard cases, labelled by Craig on 30 Sep 2026."
+        f"{generated} · {len(cases)} cases: {real} of Mark's real morning notes, {hard} "
+        f"hand-written hard cases{held_out_part}. Labelled by {labelled_by}."
     )
     add("")
     add(
@@ -292,11 +320,32 @@ def render_report(
             "- **Failed readings:** "
             + "; ".join(str(len(score.failed_readings)) for score in scores)
         )
+        if any(score.held_out for score in scores):
+            add(
+                "- **Held-out cases as keyed:** "
+                + "; ".join(
+                    (
+                        f"{len(score.held_out) - len(score.held_out_wrong)} of "
+                        f"{len(score.held_out)} {score.held_out_wrong or ''}"
+                    ).strip()
+                    for score in scores
+                )
+            )
         if usage:
             add(
                 f"- **Cost:** ${float(usage.get('costUsd') or 0):.2f} "
                 f"({int(usage.get('inputTokens') or 0):,} tokens in, "
                 f"{int(usage.get('outputTokens') or 0):,} out)"
+            )
+        add("")
+    if not_rerun:
+        add("## Not re-run under this prompt")
+        add("")
+        for recording in not_rerun:
+            add(
+                f"- {recording.get('model')}: recorded under "
+                f"`{recording.get('promptVersion')}` on {recording.get('recordedAt')}, and not "
+                "scored here. It answers a prompt the reader no longer sends."
             )
         add("")
     return "\n".join(lines)

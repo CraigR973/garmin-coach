@@ -1,6 +1,6 @@
 {
- "note": "Batch 297 eval: Mark's 56 real morning check-in notes to 30 Sep 2026, verbatim, and 44 hand-written hard cases. Labels drafted by Claude and confirmed by Craig on 30 Sep 2026 (Home asks after R24, R25, H30, H40 and H42; only R15 of R15, R29 and H41 makes the day more cautious; the rest as drafted). A flag or cause not listed is absent. Committed with Craig's go to keep the repository public as it is.",
- "labelledBy": "Craig, 30 Sep 2026",
+ "note": "Batch 297 eval: Mark's 56 real morning check-in notes to 30 Sep 2026, verbatim, and 44 hand-written hard cases. Labels drafted by Claude and confirmed by Craig on 30 Sep 2026 (Home asks after R24, R25, H30, H40 and H42; only R15 of R15, R29 and H41 makes the day more cautious; the rest as drafted). A flag or cause not listed is absent. Committed with Craig's go to keep the repository public as it is. Batch 303 (2 Oct 2026) adds 15 hard cases for breathlessness (B01-B15) and, brought forward from Batch 307.3, 10 held-out cases (X01-X10) written after the v2 prompt was frozen; labels drafted by Claude and confirmed by Craig on 2 Oct 2026, as drafted.",
+ "labelledBy": "Craig, 30 Sep 2026 (R01-R56, H01-H44) and 2 Oct 2026 (B01-B15, X01-X10)",
  "cases": [
   {
    "id": "R01",
@@ -997,6 +997,287 @@
    "labels": {
     "head_cold": {
      "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "B01",
+   "source": "hard",
+   "date": null,
+   "text": "Unusually short of breath just walking to the shops this morning.",
+   "labels": {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "B02",
+   "source": "hard",
+   "date": null,
+   "text": "Got breathless climbing the stairs, which never normally happens.",
+   "labels": {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "B03",
+   "source": "hard",
+   "date": null,
+   "text": "Woke in the night gasping and struggling to get my breath for a few minutes.",
+   "labels": {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "last_night"
+    }
+   }
+  },
+  {
+   "id": "B04",
+   "source": "hard",
+   "date": null,
+   "text": "Far more out of breath than the effort warranted on yesterday's easy Zone 2 spin, and still a bit puffed sitting here this morning.",
+   "labels": {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "B05",
+   "source": "hard",
+   "date": null,
+   "text": "A bit short of breath this morning, not sure why.",
+   "labels": {
+    "chest_heart": {
+     "state": "unclear",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "B06",
+   "source": "hard",
+   "date": null,
+   "text": "Breathing has felt a bit laboured since yesterday.",
+   "labels": {
+    "chest_heart": {
+     "state": "unclear",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "B07",
+   "source": "hard",
+   "date": null,
+   "text": "Breathing hard on the last two VO2 efforts yesterday, as you'd expect at 120%.",
+   "labels": {}
+  },
+  {
+   "id": "B08",
+   "source": "hard",
+   "date": null,
+   "text": "Did my breathing exercises at 8pm and felt nicely relaxed going to bed.",
+   "labels": {}
+  },
+  {
+   "id": "B09",
+   "source": "hard",
+   "date": null,
+   "text": "Missed the breathwork again last night, too busy.",
+   "labels": {}
+  },
+  {
+   "id": "B10",
+   "source": "hard",
+   "date": null,
+   "text": "Completely out of breath at the top of the climb on Zwift, a good hard effort.",
+   "labels": {}
+  },
+  {
+   "id": "B11",
+   "source": "hard",
+   "date": null,
+   "text": "Blocked nose so I was breathing through my mouth all night.",
+   "labels": {
+    "head_cold": {
+     "state": "present",
+     "who": "him",
+     "when": "last_night"
+    }
+   }
+  },
+  {
+   "id": "B12",
+   "source": "hard",
+   "date": null,
+   "text": "Panting after the sprint finish in the race, great fun.",
+   "labels": {}
+  },
+  {
+   "id": "B13",
+   "source": "hard",
+   "date": null,
+   "text": "Garmin says my breathing rate was 14 overnight, a bit higher than usual.",
+   "labels": {}
+  },
+  {
+   "id": "B14",
+   "source": "hard",
+   "date": null,
+   "text": "My wife got very breathless on the hill walk yesterday and had to stop.",
+   "labels": {
+    "chest_heart": {
+     "state": "present",
+     "who": "someone_else",
+     "when": "earlier"
+    }
+   }
+  },
+  {
+   "id": "B15",
+   "source": "hard",
+   "date": null,
+   "text": "Was breathless with last month's chest infection, but that has all cleared.",
+   "labels": {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "earlier"
+    },
+    "fever_aches": {
+     "state": "present",
+     "who": "him",
+     "when": "earlier"
+    }
+   }
+  },
+  {
+   "id": "X01",
+   "source": "held_out",
+   "date": null,
+   "text": "Palpitations again this morning after my coffee, lasted a minute or so.",
+   "labels": {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "X02",
+   "source": "held_out",
+   "date": null,
+   "text": "Came over all faint in the shower and had to sit down.",
+   "labels": {
+    "chest_heart": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "X03",
+   "source": "held_out",
+   "date": null,
+   "text": "Temperature of 37.9 last night with aching joints, only a bit better this morning.",
+   "labels": {
+    "fever_aches": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "X04",
+   "source": "held_out",
+   "date": null,
+   "text": "Nose has been running like a tap since Sunday.",
+   "labels": {
+    "head_cold": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "X05",
+   "source": "held_out",
+   "date": null,
+   "text": "Sore throat woke me at 3 and it's still raw now.",
+   "labels": {
+    "head_cold": {
+     "state": "present",
+     "who": "him",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "X06",
+   "source": "held_out",
+   "date": null,
+   "text": "The dog had a stomach bug and kept us up half the night.",
+   "labels": {
+    "disturbed_night": {
+     "state": "present",
+     "when": "last_night"
+    }
+   }
+  },
+  {
+   "id": "X07",
+   "source": "held_out",
+   "date": null,
+   "text": "Stitch in my side on the walk, gone within a minute.",
+   "labels": {}
+  },
+  {
+   "id": "X08",
+   "source": "held_out",
+   "date": null,
+   "text": "Sweating in bed again, but the room was 23 degrees.",
+   "labels": {}
+  },
+  {
+   "id": "X09",
+   "source": "held_out",
+   "date": null,
+   "text": "My brother has just been diagnosed with atrial fibrillation, which has me thinking about my own heart.",
+   "labels": {
+    "chest_heart": {
+     "state": "present",
+     "who": "someone_else",
+     "when": "now"
+    }
+   }
+  },
+  {
+   "id": "X10",
+   "source": "held_out",
+   "date": null,
+   "text": "A bit sniffly, think it's the dust from sanding the floor.",
+   "labels": {
+    "head_cold": {
+     "state": "unclear",
      "who": "him",
      "when": "now"
     }

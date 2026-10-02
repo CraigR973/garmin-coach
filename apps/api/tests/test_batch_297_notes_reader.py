@@ -357,7 +357,8 @@ def test_the_production_models_recorded_responses_meet_the_gate() -> None:
     assert len(scores) >= 2
     assert gate_failures(scores) == []
     for score in scores:
-        assert len(score.red_flags) == 12
+        # 12 at Batch 297; Batch 303 added 5 on breathlessness and 5 held out.
+        assert len(score.red_flags) == 22
         assert score.failed_readings == []
 
 
@@ -372,7 +373,8 @@ def test_every_recorded_response_still_fits_the_schema() -> None:
 
 def test_the_eval_cases_are_the_ones_craig_labelled() -> None:
     cases = load_cases(EVAL_CASES)
-    assert len(cases) == 100
+    # 100 at Batch 297; Batch 303 added B01-B15 and the held-out X01-X10 (Craig, 2 Oct).
+    assert len(cases) == 125
     assert sum(case.source == "real" for case in cases) == 56
     by_id = {case.id: case for case in cases}
     # Craig, 30 Sep: Home asks after hay fever too.
