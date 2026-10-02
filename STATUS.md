@@ -6,15 +6,15 @@
 
 ## Now
 
-**2026-10-02 (afternoon) — G7b is running (`/batch-start G7b`, Craig's go on 302's gate).
-Shipped: 302 (the morning is stored when it is graded and its brief is written into it, so a
-failed brief costs the prose only: the colour, the medical notices, the plan lines, Today's
-actions and the ride changes stand, and "Try again" writes the brief without saving the
-check-in again). Next: 303 (medical follow-through), which waits for Craig's go on its
-migration, its paid eval re-run (about $2–5), its two decisions and its wording; then 307.
-G7a is complete (309, 301, 298, 299, 300). The graded colour went live on Mark's 1 Oct
-check-in (Amber on a holiday rest day). The stored-first flow has not yet run on a real
-morning: the first is Mark's next check-in or 3 Oct's sync.**
+**2026-10-02 (evening) — G7b: 302 and 303 are shipped; 307 is next and has no gate of its
+own. 302: the morning is stored when it is graded and its brief is written into it, so a
+failed brief costs the prose only. 303: the floors no longer lapse quietly. The two mornings
+after a fever are easy days back; a possible chest or heart mention in his note eases the
+hard session until he answers; Home's question is answered on Home in one tap, and only that
+answer relaxes a note's symptom; "Chest or heart" covers unusual breathlessness. G7a is
+complete (309, 301, 298, 299, 300). The graded colour went live on Mark's 1 Oct check-in
+(Amber on a holiday rest day). Neither 302's stored-first flow nor anything in 303 has yet
+run on a real morning: the first is Mark's next check-in or 3 Oct's sync.**
 
 ### What the review found (`docs/reviews/2026-10-01-batches-268-297-review.md`)
 
@@ -30,6 +30,9 @@ morning: the first is Mark's next check-in or 3 Oct's sync.**
   ride changes are stored before the paid call and stand when it fails.
 - **A light week held the session on a clearly-off morning:** W12's sweet spot would have been
   ridden in full after a sub-60 night. Batch 300 fixed it: only a mild concern holds.
+- **The floors lapsed quietly:** the morning after a fever was an ordinary day, a possible
+  chest mention only asked, and saving the check-in again dropped a symptom his note had
+  named. Batch 303 fixed the three and added breathlessness to "Chest or heart".
 - **On HRV the engine now errs slightly lenient** against the trials it cites: a week-long dip
   stays "a little off".
 
@@ -49,7 +52,7 @@ morning: the first is Mark's next check-in or 3 Oct's sync.**
 | Group | Batches | Gate |
 |---|---|---|
 | G7a, before 7 Oct | ~~309~~ → ~~301~~ → ~~298~~ → ~~299~~ → ~~300~~ | Complete, 2 Oct |
-| G7b | ~~302~~ → 303 → 307 | 303's migration, eval re-run (~$2–5), two decisions and wording |
+| G7b | ~~302~~ → ~~303~~ → 307 | None: 307's held-out cases were scored on 303's run |
 | G7c, not before 20 Oct | 304 → 305 → 306 → 308 | 305/306 decisions; 308 after the side-by-side review |
 
 Batch 291's row is corrected in place (its alert list).
@@ -70,6 +73,10 @@ Batch 291's row is corrected in place (its alert list).
 
 ### Rollback
 
+**Since Batch 303 the ladder applies neither easing** (the easy days back after a fever, and
+the hard session eased while a chest question is open): a rollback turns both off. Home's
+one-tap answer and the breathlessness wording stay under either engine.
+
 Set the Railway variable `VERDICT_ENGINE=ladder` on the `api` service (Craig's: a hosting
 change). The redeploy restores the ladder's colour, its v50 prompt (byte-identical) and its
 delivery. Since 297 the ladder's packet also carries `notesReading`, and the notes reader still
@@ -80,13 +87,17 @@ v50 brief reads constraints the ladder does not follow.
 
 ### Needs Craig
 
-1. **Batch 303 needs your go before it starts.** Its gates: a migration (a record of his
-   explicit answer to Home's question, 303.5); the paid eval re-run for the reader's prompt v2
-   (about $2–5, 303.6); two decisions (how many mornings the return after a fever lasts,
-   recommended two; what an unclear chest mention does until he answers, recommended: eases
-   the hard work); and its Mark-facing wording. 307's held-out cases are scored on the same
-   paid run, so they are labelled by you before it.
-2. **Decisions made on your behalf in Batch 302 (Decision #374), each overrulable.** A morning
+1. **Nothing in G7b is waiting on you.** 307 has no gate: no migration, no spend, no wording.
+2. **Decisions made on your behalf in Batch 303 (Decision #375), each overrulable.** A chest
+   question lifts the colour to Amber only when a hard session is planned; otherwise Home
+   only asks. Home asks only about something more serious than the answer he tapped. A week
+   swap is withheld where it would undo the easing. The easy ride is the existing recovery
+   spin (half length, capped at 60% FTP). The ladder is given neither easing. A stricter
+   floor on the same morning (off the bike) is the only one reported.
+3. **After a chest or heart report nothing follows (your call, 2 Oct).** The next morning is
+   an ordinary day, VO₂ included. What was offered is kept in
+   `docs/drafts/2026-10-02-batch-303-wording.md` §5.
+4. **Decisions made on your behalf in Batch 302 (Decision #374), each overrulable.** A morning
    without its brief travels as its own field (`gradedMorning`), so an older cached client
    reads it as "no brief yet". A stored morning graded on today's inputs stands on a retry, so
    the brief is written for the colour he was shown. Home and the brief page re-read the day
@@ -94,19 +105,39 @@ v50 brief reads constraints the ladder does not follow.
    written, not when the morning was graded. No retry is offered for a day that is over. The
    symptom answer now counts as a change to the check-in, so changing only that answer
    regrades the morning. The failure events keep their names and gain a `stage` field.
-3. **Two decisions made on your behalf in Batch 300 (Decision #373), each a one-line change to
+5. **Two decisions made on your behalf in Batch 300 (Decision #373), each a one-line change to
    overrule.** A domain marked on Garmin's own sleep score counts as clearly off even where the
    age credit lifts it (Garmin's 55 lifted to 63 eases the session). And a Zone 2 ride on a
    clearly-off light-week morning reads as any other Amber ("Keep your Zone 2 ride at full
    length."), not as the hold; it is the same ride either way.
-4. The Vercel project's own Node setting still reads 20.x; `engines` overrides it, so changing
+6. The Vercel project's own Node setting still reads 20.x; `engines` overrides it, so changing
    it is tidiness only (a hosting change, yours).
-5. **From 7 to 20 Oct:** review every ladder-versus-graded disagreement in the table above.
-6. **Carried:** G4's free Neon database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment
+7. **From 7 to 20 Oct:** review every ladder-versus-graded disagreement in the table above.
+8. **Carried:** G4's free Neon database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment
    extractor's first paid run (Mark's own "Look for new memories" tap).
 
 ### Worth carrying
 
+- **What follows a symptom (Batch 303, PR #352, `8fdbe43`).** The two mornings after a
+  fever-or-aches floor, and any morning with an unanswered chest question and a hard
+  session, are at least Amber with the hard session swapped for the recovery spin
+  (`verdict.graded.floor = hard_work_to_easy`, `acutePhysiology.symptoms.easing`). His
+  answers on Home: `select entry_date, symptoms, symptoms_answered_at_utc from
+  coach.manual_entries where symptoms_answered_at_utc is not null`. None of it has happened
+  on a real morning; he has never reported a symptom.
+- **A client cached from before 303 still opens the check-in from Home's question.** Saving
+  there no longer answers it, so the note's floor stands until the app updates itself (on
+  the next launch, or the update banner). That is the cautious way to fail.
+- **The reader's eval, re-run for prompt v2:** Sonnet 5, two passes, $2.23; 22 of 22 red
+  flags; real-note false alarms R29 and R35, as under v1, so still no margin. One held-out
+  note (X07, a stitch in his side) raised a chest question on one pass of two, which since
+  303 would also ease a hard session until he taps None. To re-run (paid, your go):
+  `PYTHONPATH=apps/api railway run --service api apps/api/.venv/bin/python
+  scripts/run_notes_eval.py run --model claude-sonnet-5 --passes 2 --budget 4`.
+- **A Postgres test of a morning must be dated well before today.** A fresh profile's first
+  morning seeds a default training plan from the Monday of the real current week
+  (`CoachingStateService.ensure_seeded`), so 303's two fever tests, dated 7–11 Oct, collided
+  with that plan's own sessions and failed the first CI run. They use 13 Aug now.
 - **The morning is stored before its brief (Batch 302, PR #351, `7636ec5`).** A `morning` row
   with `output_markdown = ''` is a graded morning whose brief is not written; the brief is
   filled into the same row about a minute later. On a normal morning expect the row within
@@ -158,7 +189,7 @@ v50 brief reads constraints the ladder does not follow.
   minutes). One or two mild concerns hold the session, with the week named.
 - **The database is at 453 MB of the 500 MB free-plan cap**; `egress-budget` reports
   `storage_critical` every 15 minutes. Up about 5 MB a week since 24 Sep.
-- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #375.**
+- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #376.**
 
 ## Prior current-state snapshots
 
@@ -1993,6 +2024,22 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-02 (evening)** — Batch 303 shipped as PR #352 / `8fdbe43` (Decision #375), the
+  second of G7b. What follows a symptom is a floor of its own, the weakest: a hard session
+  becomes the recovery spin and the day is at least Amber, never Red for it. It applies on
+  the two mornings after a fever-or-aches floor (read from the stored mornings) and while a
+  possible chest or heart mention in his note is unanswered (Craig's calls, with "no change"
+  after a chest or heart report). Home's question is answered on Home in one tap; the answer
+  has a time of its own (migration `035`) and only it relaxes a note's symptom, where any
+  later save of the check-in used to (he saves again on 9 mornings in 78). "Chest or heart"
+  covers unusual breathlessness, with a 999 clause for struggling to breathe; the reader's
+  prompt is v2 and its eval was re-run on Sonnet 5 for $2.23 of the $5: 22 of 22 red flags,
+  the ten held-out notes of 307.3 scored on the same run (one false question, X07). Morning
+  prompt v55, graded only; the ladder gets neither easing. CI 16 of 16 on both waves
+  (2,351 passed, 0 skipped; the first run failed two new Postgres tests dated this week)
+  and green on `main`. Production on `8fdbe43`: health on both, web 200 with the new card,
+  `daily-loop` 401, the answer route 401, migration `035` applied. Smoke inside the deployed
+  image on his 30 Sep and 1 Oct rows, rolled back. Next: 307, no gate.
 - **2026-10-02 (afternoon)** — Batch 302 shipped as PR #351 / `7636ec5` (Decision #374), the
   first of G7b. The `morning` row is stored when the morning is graded, with its prose empty,
   and the brief is written into it: grade and store, then the ride changes, then the paid
