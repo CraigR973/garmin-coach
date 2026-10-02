@@ -8,7 +8,7 @@ from typing import Any
 from unittest.mock import Mock
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 
 from src.models.coaching import (
@@ -38,6 +38,7 @@ from src.services.coach_sections import (
     training_and_activity_fields as _training_and_activity_fields,
 )
 from src.services.daily_metric_coverage import DayAggregates
+from src.services.graded_morning import brief_is_written, brief_written_at
 from src.services.holiday_pause import HolidayPauseService, HolidayWindow
 from src.services.morning_analysis import (
     ACWR_AMBER_CAP_THRESHOLD,
@@ -916,9 +917,13 @@ async def test_morning_packet_loads_holiday_window_and_suppresses_skipped_ride(
 
 
 @pytest.mark.asyncio
-async def test_generate_and_store_does_not_persist_truncated_morning_analysis(
+async def test_a_failed_brief_leaves_the_graded_morning_stored_and_a_retry_fills_it(
     db_conn: AsyncConnection,
 ) -> None:
+    """Batch 302. Until this batch the test pinned the opposite — a truncated
+    generation persisted no morning row at all — which is how an Anthropic outage
+    took the colour with the prose. The row is stored when the morning is graded;
+    a failed call leaves it without prose, and the retry writes into it."""
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     user_id = uuid.uuid4()
     subject_date = date(2026, 1, 2)
@@ -940,16 +945,29 @@ async def test_generate_and_store_does_not_persist_truncated_morning_analysis(
         with pytest.raises(MorningAnalysisError, match="max_tokens"):
             await service.generate_and_store(player, subject_date, client=RaisingMorningClient())
 
-        count = await session.scalar(
-            select(func.count())
-            .select_from(Analysis)
-            .where(
-                Analysis.user_id == user_id,
-                Analysis.analysis_type == "morning",
-                Analysis.subject_date == subject_date,
-            )
+        mornings = select(Analysis).where(
+            Analysis.user_id == user_id,
+            Analysis.analysis_type == "morning",
+            Analysis.subject_date == subject_date,
         )
-        assert count == 0
+        [stored] = (await session.execute(mornings)).scalars().all()
+        assert stored.output_markdown == ""
+        assert stored.model_name is None
+        assert stored.raw_response == {}
+        assert stored.verdict == stored.context_packet["verdict"]["status"]
+        assert brief_is_written(stored) is False
+
+        # The retry pays for one brief and writes it into the same row, from the
+        # packet the morning was graded on.
+        fake_client = FakeMorningClient()
+        retried = await service.generate_and_store(player, subject_date, client=fake_client)
+        assert retried.generated is True
+        assert retried.analysis.id == stored.id
+        assert fake_client.calls == 1
+        assert brief_is_written(retried.analysis) is True
+        assert retried.analysis.raw_response["contextVerdict"] == stored.verdict
+        assert brief_written_at(retried.analysis.raw_response) is not None
+        assert len((await session.execute(mornings)).scalars().all()) == 1
 
 
 @pytest.mark.asyncio

@@ -26,6 +26,7 @@ import { useSleepCalendarVerdicts } from '@/hooks/useSleepCalendarVerdicts';
 import { markSleepReviewed } from '@/lib/sleepReview';
 import { friendlyDate } from '@/lib/dailyFlow';
 import { overnightDataReady } from '@/lib/homeActions';
+import { storedMorning } from '@/lib/storedMorning';
 import { verdictBadgeVariant, verdictLabel } from '@/lib/copy';
 import type { AgeComparison, MetricBaselineRow } from '@/components/MetricComparisonTable';
 
@@ -57,7 +58,7 @@ export function SleepPage() {
   // review) must not pre-empt the prompt once metrics land the same day.
   useEffect(() => {
     const loaded = query.data?.data;
-    if (loaded?.morningAnalysis != null) {
+    if (loaded && storedMorning(loaded) != null) {
       markSleepReviewed(loaded.subjectDate);
     }
   }, [query.data]);
@@ -121,7 +122,8 @@ export function SleepPage() {
   }
 
   const data = query.data.data;
-  const analysis = data.morningAnalysis;
+  // Batch 302: the metrics and the verdict are in the stored morning, brief or no brief.
+  const analysis = storedMorning(data);
   const holiday = data.holiday;
   const awayTonight = holiday.awayTonight ?? false;
   const thermal = data.thermalState;
@@ -130,7 +132,7 @@ export function SleepPage() {
   const historyData = historySubjectDate === currentSubjectDate ? data : historyQuery.data?.data;
   const historyLoading = historySubjectDate !== currentSubjectDate && historyQuery.isLoading;
   const historyError = historySubjectDate !== currentSubjectDate ? historyQuery.error : null;
-  const historyAnalysis = (historyData?.morningAnalysis ?? null) as typeof analysis;
+  const historyAnalysis = storedMorning(historyData);
   const historyMetricsVsBaselines = (historyAnalysis?.metricsVsBaselines ?? []) as MetricBaselineRow[];
   const historyAgeComparison = (historyAnalysis?.ageComparison ?? null) as AgeComparison | null;
   const historyChronicSuggestions = historyData?.chronicSuggestions ?? null;
@@ -395,7 +397,7 @@ function TodaySleepLockedCard({ subjectDate }: { subjectDate: string }) {
 function HistoricalDayCard({ data }: { data: DailyLoopData | null }) {
   if (!data) return null;
 
-  const analysis = data.morningAnalysis;
+  const analysis = storedMorning(data);
   const workouts = data.plannedWorkouts ?? [];
   const readCount =
     (data.postWorkoutAnalyses?.length ?? 0) +

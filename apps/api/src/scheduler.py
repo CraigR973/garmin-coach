@@ -1178,6 +1178,7 @@ async def run_morning_weather_sync() -> JobResult:
             proposals_regenerated = 0
             chronic_deload_proposals = 0
             brief_ready_pushes = 0
+            call_ready_pushes = 0
             drivers_cached = 0
             inputs_not_ready = 0
             for profile in profiles:
@@ -1188,6 +1189,7 @@ async def run_morning_weather_sync() -> JobResult:
                 proposals_regenerated += outcome.proposals_regenerated
                 chronic_deload_proposals += outcome.chronic_deload_proposals
                 brief_ready_pushes += outcome.brief_ready_pushes
+                call_ready_pushes += outcome.call_ready_pushes
                 drivers_cached += outcome.drivers_cached
                 failures += outcome.failures
         log.info(
@@ -1201,6 +1203,7 @@ async def run_morning_weather_sync() -> JobResult:
             proposals_regenerated=proposals_regenerated,
             chronic_deload_proposals=chronic_deload_proposals,
             brief_ready_pushes=brief_ready_pushes,
+            call_ready_pushes=call_ready_pushes,
             drivers_cached=drivers_cached,
             inputs_not_ready=inputs_not_ready,
             failed=failures,
@@ -1215,6 +1218,7 @@ async def run_morning_weather_sync() -> JobResult:
             "proposals_regenerated": proposals_regenerated,
             "chronic_deload_proposals": chronic_deload_proposals,
             "brief_ready_pushes": brief_ready_pushes,
+            "call_ready_pushes": call_ready_pushes,
             "drivers_cached": drivers_cached,
             "inputs_not_ready": inputs_not_ready,
             "garmin_unbound": inputs.garmin_unbound,

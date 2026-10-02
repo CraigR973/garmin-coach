@@ -36,11 +36,28 @@ precomputes drivers           no               yes
 ============================  ===============  ===============
 
 ``CommitPolicy`` names both halves of the transaction contract on purpose: who
-commits and what a failure costs are one decision, not two. Terminal means the
-brief and its consequences are one artifact — if the proposals fail, the brief is
-not half-written, and Mark gets a retryable failure card. Per step means the
-backstop is a multi-profile loop in which one profile's bad step must not roll
-back another's good inputs.
+commits and what a failure costs are one decision, not two. Terminal means a
+failed step ends the run — if the proposals fail, no brief is written over them,
+and Mark gets a retryable failure card. Per step means the backstop is a
+multi-profile loop in which one profile's bad step must not roll back another's
+good inputs.
+
+**Batch 302: the morning is stored before its brief is written, under both
+policies.** The run is three stages, each its own transaction:
+
+1. **Grade.** The deterministic morning — colour, floors, plan lines, session
+   actions — is stored as the ``morning`` row with its prose empty, and committed.
+2. **Consequences.** The ride proposals and the chronic deload, which read only
+   that row. They no longer wait for the paid call.
+3. **Brief.** The paid call fills the prose in; the ready push and the ready
+   status commit with it.
+
+Before this the three were one transaction on the check-in path, so a failed
+Anthropic call rolled back the colour with the prose: on 21 Jul 2026 Mark had no
+colour for nine and a half hours on a Red day. Now a failure in stage 3 leaves
+stages 1 and 2 standing, and the failure card sits under the colour rather than
+in place of it. What ``TERMINAL`` still guarantees is that a later stage never
+runs over a failed earlier one.
 
 The one asymmetry that was not deliberate is now closed: a backstop generation
 failure wrote no status row, so it produced no failure card and no Retry
@@ -82,10 +99,15 @@ from src.services.garmin_sync import (
     GarminDailyPayloads,
     GarminSyncService,
 )
-from src.services.generation_requests import GenerationRequestInProgress
+from src.services.generation_requests import (
+    GenerationRequestInProgress,
+    acquire_artifact_scope,
+    morning_lease_scope,
+)
 from src.services.insights import InsightsService
 from src.services.morning_analysis import MorningAnalysisClient, MorningAnalysisService
 from src.services.morning_inputs import morning_input_presence
+from src.services.notes_reader import NotesReaderClient
 from src.services.nudge_alerts import NudgeAlertService
 from src.services.profile_clock import profile_now, profile_today
 from src.services.retry import retry_async, retry_sync
@@ -101,19 +123,22 @@ class MorningInputsNotReady(RuntimeError):
 
 
 class MorningTrigger(StrEnum):
-    """Which of the three doors this run came through."""
+    """Which door this run came through."""
 
     WAKE = "wake"
     CHECKIN = "checkin"
     BACKSTOP = "backstop"
+    #: Batch 302: "Try again" under a morning whose brief did not finish.
+    RETRY = "retry"
 
 
 class CommitPolicy(StrEnum):
     """Who owns the transaction boundary, and what a failed step costs.
 
-    ``TERMINAL`` — nothing commits until the whole run does, so a failure aborts
-    the run and leaves no half-written brief. ``PER_STEP`` — each step commits on
-    success, so a failure is isolated and the ladder continues.
+    ``TERMINAL`` — each stage commits once, at its end, and a failure ends the run
+    there: no brief is written over failed proposals. ``PER_STEP`` — each step
+    commits on success, so a failure is isolated and the ladder continues. Under
+    both, the graded morning commits before anything else does (Batch 302).
     """
 
     TERMINAL = "terminal"
@@ -139,6 +164,18 @@ class MorningBriefPolicy:
 
 CHECKIN_POLICY = MorningBriefPolicy(
     trigger=MorningTrigger.CHECKIN,
+    commit=CommitPolicy.TERMINAL,
+    force_regenerate=True,
+    allow_missing_sleep=None,
+    push_when_unchanged=True,
+    precompute_drivers=False,
+)
+
+# Batch 302: "Try again" is the check-in's run without the check-in. It re-saves
+# nothing, so it can never count as a new answer to the symptom question; a stored
+# morning graded on today's inputs stands, and only its brief is written.
+RETRY_POLICY = MorningBriefPolicy(
+    trigger=MorningTrigger.RETRY,
     commit=CommitPolicy.TERMINAL,
     force_regenerate=True,
     allow_missing_sleep=None,
@@ -195,6 +232,8 @@ class MorningBriefOutcome:
     deferred: bool = False
     inputs_not_ready: bool = False
     brief_ready_pushes: int = 0
+    #: Batch 302: "Today's call is ready", sent when the brief did not finish.
+    call_ready_pushes: int = 0
     proposals_regenerated: int = 0
     chronic_deload_proposals: int = 0
     drivers_cached: int = 0
@@ -479,6 +518,7 @@ class MorningBriefPipeline:
         subject_date: date | None = None,
         *,
         client: MorningAnalysisClient | None = None,
+        notes_client: NotesReaderClient | None = None,
     ) -> MorningBriefOutcome:
         """Generate today's brief and everything that follows from it.
 
@@ -502,41 +542,19 @@ class MorningBriefPipeline:
         if subject_date is None:
             subject_date = profile_today(profile)
 
+        # -- stage 1: grade, and store the morning before any brief is written ----
         try:
             if not await self._inputs_ready(profile, subject_date):
                 raise MorningInputsNotReady
 
-            result = await self.morning.generate_and_store(
+            morning = await self.morning.grade_and_store(
                 profile,
                 subject_date,
-                client=client,
                 force=policy.force_regenerate,
-                # The generate step commits itself under PER_STEP rather than
-                # being committed after: ``generate_and_store`` holds a
-                # transaction-scoped advisory lock across the paid call, so where
-                # that transaction ends is that service's decision to make, not
-                # this ladder's.
-                commit=policy.commit is CommitPolicy.PER_STEP,
+                notes_client=notes_client,
             )
-            outcome.analysis = result.analysis
-            outcome.generated = result.generated
-            outcome.existing = not result.generated
         except GenerationRequestInProgress:
-            # Batch 232.1: another worker already holds this artifact scope and is
-            # generating today's brief right now. That is not a failure and must
-            # not be recorded as one — the holder will write the real outcome, and
-            # marking failed here would replace a brief that is being written
-            # successfully with a retryable failure card. Leave whatever status
-            # row was found exactly as it is; Batch 144's stale-after guard is the
-            # backstop if the holder really does die.
-            await session.rollback()
-            log.info(
-                "morning analysis deferred to the in-flight holder",
-                trigger=policy.trigger.value,
-                profile_id=str(profile_id),
-                subject_date=subject_date.isoformat(),
-            )
-            outcome.deferred = True
+            await self._deferred(profile_id, subject_date, outcome)
             return outcome
         except Exception as exc:
             await session.rollback()
@@ -551,7 +569,7 @@ class MorningBriefPipeline:
                 )
             else:
                 log.exception(
-                    "morning analysis failed",
+                    "morning grading failed",
                     trigger=policy.trigger.value,
                     profile_id=str(profile_id),
                     subject_date=subject_date.isoformat(),
@@ -559,18 +577,85 @@ class MorningBriefPipeline:
             await self._record_failure(profile_id, subject_date, exc)
             return outcome
 
-        # Everything below has an analysis. Under TERMINAL a step failure aborts
-        # the run (there must be no half-written brief); under PER_STEP each step
-        # is isolated so one profile's bad step cannot cost it the rest.
-        analysis = outcome.analysis
-        assert analysis is not None
+        # Everything below has a stored morning: its colour, floors, plan lines and
+        # session actions are committed, and no later failure takes them back.
+        analysis = morning.analysis
+        outcome.analysis = analysis
+
+        # -- stage 2: what the morning does to today's rides -----------------------
+        # Deterministic, and read from the stored row alone, so it no longer waits
+        # for the paid call. Under TERMINAL a failure ends the run here: no brief is
+        # written over proposals that did not land.
         try:
+            if not morning.written:
+                # A stored morning without its brief says a brief is on its way. The
+                # check-in and the retry marked this when they were accepted; the
+                # backstop has no request to mark it from. Written only once the
+                # scope has been won, so a deferred run still writes no status.
+                await self.status.mark_generating(profile_id, subject_date, commit=True)
             outcome.proposals_regenerated = await self._step_proposals(
                 profile, subject_date, analysis, outcome
             )
             outcome.chronic_deload_proposals = await self._step_deload(
                 profile, subject_date, analysis, outcome
             )
+            if policy.commit is CommitPolicy.TERMINAL:
+                await session.commit()
+        except GenerationRequestInProgress:
+            await self._deferred(profile_id, subject_date, outcome)
+            return outcome
+        except Exception as exc:
+            await session.rollback()
+            outcome.failures += 1
+            log.exception(
+                "morning ride changes failed",
+                trigger=policy.trigger.value,
+                profile_id=str(profile_id),
+                subject_date=subject_date.isoformat(),
+            )
+            await self._record_failure(profile_id, subject_date, exc)
+            await self._push_call_ready(profile, analysis, profile_id, subject_date, outcome)
+            return outcome
+
+        # -- stage 3: the written brief --------------------------------------------
+        if morning.written:
+            outcome.existing = True
+        else:
+            try:
+                result = await self.morning.write_brief(
+                    profile,
+                    subject_date,
+                    client=client,
+                    # The brief commits itself under PER_STEP rather than being
+                    # committed after: ``write_brief`` holds a transaction-scoped
+                    # advisory lock across the paid call, so where that transaction
+                    # ends is that service's decision to make, not this ladder's.
+                    commit=policy.commit is CommitPolicy.PER_STEP,
+                )
+            except GenerationRequestInProgress:
+                await self._deferred(profile_id, subject_date, outcome)
+                return outcome
+            except Exception as exc:
+                await session.rollback()
+                outcome.failures += 1
+                log.exception(
+                    "morning brief failed; the graded morning stands",
+                    trigger=policy.trigger.value,
+                    profile_id=str(profile_id),
+                    subject_date=subject_date.isoformat(),
+                )
+                await self._record_failure(profile_id, subject_date, exc)
+                await self._push_call_ready(profile, analysis, profile_id, subject_date, outcome)
+                return outcome
+            analysis = result.analysis
+            outcome.analysis = analysis
+            outcome.generated = result.generated
+            outcome.existing = not result.generated
+
+        # The brief is written. Under TERMINAL the ready push and the ready status
+        # commit with it; under PER_STEP each step is isolated so one profile's bad
+        # step cannot cost it the rest.
+        try:
             if outcome.generated or policy.push_when_unchanged:
                 outcome.brief_ready_pushes = await self._step_push(
                     profile, subject_date, analysis, outcome
@@ -601,6 +686,26 @@ class MorningBriefPipeline:
             await pregenerate_brief_audio(profile, analysis)
         return outcome
 
+    async def _deferred(
+        self, profile_id: uuid.UUID, subject_date: date, outcome: MorningBriefOutcome
+    ) -> None:
+        """Batch 232.1: another worker already holds this artifact scope and is
+        working on today's morning right now. That is not a failure and must not be
+        recorded as one — the holder will write the real outcome, and marking failed
+        here would replace a brief that is being written successfully with a
+        retryable failure card. Leave whatever status row was found exactly as it
+        is; Batch 144's stale-after guard is the backstop if the holder really does
+        die.
+        """
+        await self.session.rollback()
+        log.info(
+            "morning analysis deferred to the in-flight holder",
+            trigger=self.policy.trigger.value,
+            profile_id=str(profile_id),
+            subject_date=subject_date.isoformat(),
+        )
+        outcome.deferred = True
+
     # -- ladder steps ---------------------------------------------------------
 
     async def _inputs_ready(self, profile: Profile, subject_date: date) -> bool:
@@ -625,6 +730,7 @@ class MorningBriefPipeline:
         outcome: MorningBriefOutcome,
     ) -> int:
         async def run() -> int:
+            await self._hold_scope(profile, subject_date)
             proposals = await self.coaching.regenerate_for_verdict(
                 profile, subject_date, analysis=analysis, commit=False
             )
@@ -642,6 +748,7 @@ class MorningBriefPipeline:
         outcome: MorningBriefOutcome,
     ) -> int:
         async def run() -> int:
+            await self._hold_scope(profile, subject_date)
             deloads = await self.coaching.propose_chronic_deload(
                 profile, subject_date, analysis=analysis, commit=False
             )
@@ -684,6 +791,17 @@ class MorningBriefPipeline:
             run, profile, subject_date, None, outcome, step="drivers precompute"
         )
 
+    async def _hold_scope(self, profile: Profile, subject_date: date) -> None:
+        """Serialize the morning's ride changes on its artifact scope (Batch 302).
+
+        While the brief and its consequences were one transaction, the claim's lock
+        covered the proposals as well. They now commit before the brief is claimed,
+        so they take the same scope for their own transaction: two runs for one
+        morning (a check-in and the backstop, a double save) cannot both propose.
+        A run that cannot have the scope defers to the one that holds it.
+        """
+        await acquire_artifact_scope(self.session, morning_lease_scope(profile.id, subject_date))
+
     async def _isolated(
         self,
         run: Callable[[], Awaitable[int]],
@@ -705,6 +823,9 @@ class MorningBriefPipeline:
             return await run()
         try:
             value = await run()
+        except GenerationRequestInProgress:
+            # Not this step's failure: another worker holds the morning (Batch 302).
+            raise
         except Exception:
             outcome.failures += 1
             await self.session.rollback()
@@ -776,6 +897,39 @@ class MorningBriefPipeline:
                 subject_date=subject_date.isoformat(),
             )
 
+    async def _push_call_ready(
+        self,
+        profile: Profile,
+        analysis: Analysis,
+        profile_id: uuid.UUID,
+        subject_date: date,
+        outcome: MorningBriefOutcome,
+    ) -> None:
+        """Batch 302: tell him the colour is there on a morning whose brief did not finish.
+
+        The check-in says "I'll notify you when your brief is ready", and on an outage
+        morning nothing came. The colour is stored now, so one push a day says so. A
+        brief written later still sends its own "Today's brief is ready".
+
+        Best-effort, as recording the failure is: it runs inside a failure handler
+        and must never raise out of it.
+        """
+        session = self.session
+        try:
+            # The handler's rollback expired both instances.
+            await restore_after_rollback(session, profile, analysis)
+            sent = await self.nudges.push_call_ready(
+                profile, analysis, subject_date=subject_date, commit=True
+            )
+            outcome.call_ready_pushes = 1 if sent else 0
+        except Exception:
+            await session.rollback()
+            log.exception(
+                "call-ready push failed",
+                profile_id=str(profile_id),
+                subject_date=subject_date.isoformat(),
+            )
+
 
 async def run_checkin_brief(user_id: uuid.UUID, subject_date: date) -> None:
     """The check-in trigger: sync, then finish today's brief off the request path.
@@ -796,5 +950,27 @@ async def run_checkin_brief(user_id: uuid.UUID, subject_date: date) -> None:
             )
             return
         pipeline = MorningBriefPipeline(session, policy=CHECKIN_POLICY)
+        await pipeline.sync_inputs([profile])
+        await pipeline.generate_brief(profile, subject_date)
+
+
+async def run_brief_retry(user_id: uuid.UUID, subject_date: date) -> None:
+    """The retry trigger: the check-in's run, without saving a check-in (Batch 302).
+
+    "Try again" used to re-save the check-in, which moved its timestamp; a note
+    reading stored before that then counted as answered, and the preselected "None"
+    governed. So a retry re-saves nothing. It syncs inputs first, as the check-in
+    does, because a morning that failed on unsynced inputs retries through here too.
+    """
+    async with AsyncSessionLocal() as session:
+        profile = await session.get(Profile, user_id)
+        if profile is None or not profile.is_active or profile.deleted_at is not None:
+            log.warning(
+                "morning brief retry skipped",
+                profile_id=str(user_id),
+                subject_date=subject_date.isoformat(),
+            )
+            return
+        pipeline = MorningBriefPipeline(session, policy=RETRY_POLICY)
         await pipeline.sync_inputs([profile])
         await pipeline.generate_brief(profile, subject_date)

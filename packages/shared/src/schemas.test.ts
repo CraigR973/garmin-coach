@@ -906,6 +906,29 @@ describe('v1 shared schemas', () => {
     expect(before.notesAsk ?? false).toBe(false);
   });
 
+  it('reads a morning stored without its brief, and a brief with its own time (Batch 302)', () => {
+    const graded = dailyLoopAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-10-07T07:01:00Z',
+      verdict: 'red',
+      promptVersion: 'morning-analysis-v54-2026-10-01',
+      outputMarkdown: '',
+      notesReadingStatus: 'failed',
+    });
+    expect(graded.outputMarkdown).toBe('');
+    expect(graded.briefWrittenAtUtc ?? null).toBeNull();
+
+    const written = dailyLoopAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-10-07T07:01:00Z',
+      verdict: 'red',
+      promptVersion: 'morning-analysis-v54-2026-10-01',
+      outputMarkdown: '**Verdict:** Red',
+      briefWrittenAtUtc: '2026-10-07T17:07:00Z',
+    });
+    expect(written.briefWrittenAtUtc).toBe('2026-10-07T17:07:00Z');
+  });
+
   it('parses a weekly mix with a re-patch shortfall and keeps it optional (Batch 70)', () => {
     const mix = weeklyMixSchema.parse({
       weekStart: '2026-07-06',

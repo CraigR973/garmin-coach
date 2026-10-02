@@ -14,7 +14,15 @@ import { controlFieldClassName, Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
+import { useRetryBrief } from '@/hooks/useRetryBrief';
 import { apiFetch } from '@/lib/api';
+import {
+  BRIEF_RETRY_LABEL,
+  BRIEF_UNWRITTEN_CHECKIN_LINE,
+  BRIEF_UNWRITTEN_TITLE,
+  BRIEF_UNWRITTEN_TOAST,
+  SEE_TODAY_LABEL,
+} from '@/lib/copy';
 import { SUBJECTIVE_FEEL_OPTIONS, subjectiveFeelLabel } from '@/lib/subjectiveFeel';
 import { DEFAULT_SYMPTOM_ANSWER, SYMPTOM_OPTIONS, SYMPTOM_QUESTION } from '@/lib/symptoms';
 
@@ -171,6 +179,9 @@ export function CheckInPage() {
   // lib/resumeRefetch.ts) must not re-seed the form over unsaved edits, or his
   // typed feel/notes are silently wiped and an empty check-in gets saved.
   const dirtyRef = useRef(false);
+  // Batch 302: is the morning stored though its brief is not written? Read by the
+  // max-wait timer, which outlives the render that armed it.
+  const colourIsStoredRef = useRef(false);
 
   const query = useQuery({
     queryKey: ['daily-loop'],
@@ -237,7 +248,12 @@ export function CheckInPage() {
     if (query.data?.data.morningAnalysis) return;
     if (query.data?.data.briefGeneration?.status === 'failed') {
       setQueuedAtMs(null);
-      toast.error("I couldn't finish your brief — tap to try again");
+      // Batch 302: when the morning itself is stored, say the colour is there.
+      toast.error(
+        query.data.data.gradedMorning != null
+          ? BRIEF_UNWRITTEN_TOAST
+          : "I couldn't finish your brief — tap to try again",
+      );
     }
   }, [queuedAtMs, query.data]);
 
@@ -254,7 +270,11 @@ export function CheckInPage() {
     const timer = window.setTimeout(() => {
       setQueuedAtMs(null);
       setWaitTimedOut(true);
-      toast.error("I couldn't finish your brief — tap to try again");
+      toast.error(
+        colourIsStoredRef.current
+          ? BRIEF_UNWRITTEN_TOAST
+          : "I couldn't finish your brief — tap to try again",
+      );
     }, remainingMs);
     return () => window.clearTimeout(timer);
   }, [queuedAtMs]);
@@ -300,12 +320,17 @@ export function CheckInPage() {
         method: 'PUT',
         body: JSON.stringify(manualPayload),
       });
-      return dailyLoopEnvelopeSchema.parse(response).data;
+      return dailyLoopEnvelopeSchema.parse(response);
     },
-    onSuccess: async (updated) => {
+    onSuccess: async (envelope) => {
+      const updated = envelope.data;
       // The form now matches what was persisted, so let the invalidation's refetch
       // re-seed it from the stored values (Batch 139).
       dirtyRef.current = false;
+      // Batch 302: the reply replaces what is on screen before the wait starts. After
+      // a failed brief the cached envelope still said "failed", and the wait ended on
+      // it the moment it began.
+      queryClient.setQueryData(['daily-loop'], envelope);
       setBrief(updated.morningAnalysis ?? null);
       setQueuedAtMs(updated.morningAnalysis ? null : Date.now());
       await queryClient.invalidateQueries({ queryKey: ['daily-loop'] });
@@ -316,6 +341,16 @@ export function CheckInPage() {
       );
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not save your check-in'),
+  });
+
+  // Batch 302: "Try again" asks only for the brief, and saves nothing. Its envelope
+  // already says a brief is on its way, so the wait starts from that and not from the
+  // failure still on screen.
+  const retryMutation = useRetryBrief({
+    onStarted: () => {
+      setWaitTimedOut(false);
+      setQueuedAtMs(Date.now());
+    },
   });
 
   const data = query.data?.data;
@@ -331,6 +366,22 @@ export function CheckInPage() {
     !briefExists && (data?.briefGeneration?.status === 'failed' || waitTimedOut);
   const waitingForBrief = queuedAtMs != null && !briefExists && !generationFailed;
   const waitingStage = waitingForBrief ? currentBriefStage(stageNowMs - queuedAtMs) : -1;
+  // Batch 302: the morning is stored though its brief failed, so the colour and the
+  // plan are on Home, and the failure says so.
+  const colourIsStored = data?.gradedMorning != null;
+  colourIsStoredRef.current = colourIsStored;
+
+  // A second save of the check-in is an answer: it moves its timestamp past a stored
+  // note reading, after which the preselected "None" governs and a symptom found in
+  // his note is dropped. So an unedited form only asks for the brief again; a form
+  // he has changed is a new check-in, and is saved.
+  function tryAgain() {
+    if (dirtyRef.current || !data) {
+      saveMutation.mutate();
+      return;
+    }
+    retryMutation.mutate(data.subjectDate);
+  }
 
   function setManual<K extends keyof ManualFormState>(key: K, value: string) {
     dirtyRef.current = true;
@@ -754,10 +805,15 @@ export function CheckInPage() {
         </div>
       ) : generationFailed ? (
         <ErrorState
-          title="Couldn't finish your brief"
-          description="Something went wrong while writing today's brief. Your check-in is saved — tap to try again."
-          retryLabel="Try again"
-          onRetry={() => saveMutation.mutate()}
+          title={colourIsStored ? BRIEF_UNWRITTEN_TITLE : "Couldn't finish your brief"}
+          description={
+            colourIsStored
+              ? BRIEF_UNWRITTEN_CHECKIN_LINE
+              : "Something went wrong while writing today's brief. Your check-in is saved — tap to try again."
+          }
+          retryLabel={BRIEF_RETRY_LABEL}
+          onRetry={tryAgain}
+          link={colourIsStored ? { label: SEE_TODAY_LABEL, to: '/' } : undefined}
         />
       ) : waitingForBrief ? (
         <Card>

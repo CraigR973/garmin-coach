@@ -89,6 +89,7 @@ from src.services.dreo_fan import (
 from src.services.environment_freshness import is_hive_temperature_fresh
 from src.services.experiment_loop import ExperimentLoopService, rotation_from_assignment
 from src.services.fan_control import describe_fan_intent
+from src.services.graded_morning import brief_is_written, brief_written_at
 from src.services.morning_verdict import MEDICAL_BOUNDARY_STANDING_LINE
 from src.services.post_activity_analysis import (
     post_activity_kind,
@@ -321,6 +322,7 @@ def _serialize_analysis(
             if isinstance(notes, dict) and isinstance(notes.get("status"), str)
             else None
         ),
+        briefWrittenAtUtc=brief_written_at(analysis.raw_response),
     )
 
 
@@ -719,27 +721,50 @@ def _is_stale_generating(row: BriefGenerationStatus, *, now: datetime | None = N
     ``updated_at`` is stamped on every ``mark_*`` (so it tracks when the row was
     last moved to ``generating``); a naive UTC datetime, matching ``now``.
     """
+    return _is_past_stale_threshold(row.updated_at, now=now)
+
+
+def _is_past_stale_threshold(since: datetime, *, now: datetime | None = None) -> bool:
     current = now if now is not None else datetime.now(UTC).replace(tzinfo=None)
     threshold = timedelta(minutes=settings.brief_generation_stale_after_minutes)
-    return current - row.updated_at > threshold
+    return current - since > threshold
 
 
 def _serialize_brief_generation(
     row: BriefGenerationStatus | None,
     *,
     has_analysis: bool,
+    graded_at: datetime | None = None,
     now: datetime | None = None,
 ) -> BriefGenerationStatusOut | None:
     """Batch 141: a real brief on the day is authoritative — a stale
-    ``generating`` / ``failed`` row never overrides an analysis that exists.
+    ``generating`` / ``failed`` row never overrides a brief that exists.
 
     Batch 144: a ``generating`` row orphaned by a process restart or a hung
     Anthropic call is never flipped to ready/failed, so without this it reads
     ``generating`` forever (the 2026-07-21 endless-spinner class). Once it is older
     than the threshold, derive a retryable ``failed``/``stale`` state — read-time
-    only, no writer/migration/scheduler (Decision #223)."""
+    only, no writer/migration/scheduler (Decision #223).
+
+    Batch 302: ``has_analysis`` means a *written* brief. A morning stored without
+    one (``graded_at`` is when it was graded) is waiting for its brief, and the
+    status row says whether that is still coming. A row that does not describe this
+    morning — none at all, ``ready`` from an earlier brief, or a failure recorded
+    before it was graded — is read from the morning's own age instead, so a process
+    that died between grading and writing cannot leave the wait open-ended."""
     if has_analysis:
         return BriefGenerationStatusOut(status="ready", reason=None)
+    if graded_at is not None:
+        describes_this_morning = row is not None and (
+            row.status == STATUS_GENERATING
+            or (row.status == STATUS_FAILED and row.updated_at >= graded_at)
+        )
+        if not describes_this_morning:
+            if _is_past_stale_threshold(graded_at, now=now):
+                return BriefGenerationStatusOut(
+                    status=STATUS_FAILED, reason=STALE_GENERATING_REASON
+                )
+            return BriefGenerationStatusOut(status=STATUS_GENERATING, reason=None)
     if row is None:
         return None
     if row.status == STATUS_GENERATING and _is_stale_generating(row, now=now):
@@ -747,16 +772,43 @@ def _serialize_brief_generation(
     return BriefGenerationStatusOut(status=row.status, reason=row.reason)
 
 
+def split_stored_morning(
+    stored: Analysis | None, serialized: AnalysisOut | None
+) -> tuple[AnalysisOut | None, AnalysisOut | None]:
+    """``(morningAnalysis, gradedMorning)`` for the latest stored morning (Batch 302).
+
+    The row is stored when the morning is graded and its brief is written into it
+    afterwards. With its brief it is ``morningAnalysis``, as it always was. Without
+    one it travels as ``gradedMorning``: the colour, the notices, the plan lines and
+    Today's actions, no prose. Keeping ``morningAnalysis`` to mean "a written brief"
+    is what lets a cached older client read such a morning correctly, as no brief yet.
+
+    The latest row decides. An earlier written brief does not stand in for a later
+    morning whose brief failed: that later morning was graded on a newer check-in.
+    """
+    if stored is None or serialized is None:
+        return None, None
+    if brief_is_written(stored):
+        return serialized, None
+    return None, serialized
+
+
 async def build_envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> DailyLoopEnvelope:
     """Turn one daily-loop snapshot into the envelope the app reads."""
     feedback_map = snapshot.feedback
-    morning_analysis = _serialize_analysis(
+    stored_morning = _serialize_analysis(
         snapshot.morning_analysis,
         feedback_map.get(snapshot.morning_analysis.id) if snapshot.morning_analysis else None,
     )
+    morning_analysis, graded_morning = split_stored_morning(
+        snapshot.morning_analysis, stored_morning
+    )
     brief_generation = _serialize_brief_generation(
         await BriefGenerationStatusService(db).get(player.id, snapshot.subject_date),
-        has_analysis=snapshot.morning_analysis is not None,
+        has_analysis=morning_analysis is not None,
+        graded_at=(
+            snapshot.morning_analysis.generated_at_utc if graded_morning is not None else None
+        ),
     )
     fresh_temperature = (
         snapshot.latest_temperature
@@ -819,7 +871,7 @@ async def build_envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -
                 checkIn=_serialize_manual_entry(snapshot.post_ride_checkins.get(activity.id)),
             )
         )
-    thermal_review = morning_analysis.thermalReview if morning_analysis is not None else {}
+    thermal_review = stored_morning.thermalReview if stored_morning is not None else {}
     fresh_temperature_c = (
         round(float(fresh_temperature.temperature_c), 1) if fresh_temperature else None
     )
@@ -913,6 +965,7 @@ async def build_envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -
             ),
             hostedTtsConsent=player.hosted_tts_consent,
             morningAnalysis=morning_analysis,
+            gradedMorning=graded_morning,
             briefGeneration=brief_generation,
             dailyMetrics=_serialize_daily_metric(snapshot.daily_metric),
             sleep=_serialize_sleep(snapshot.sleep),

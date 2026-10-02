@@ -35,6 +35,28 @@ export function lightWeekHoldLine(week: string): string {
 /** The line on a rest or holiday day, on Home and (since Batch 298) the brief page. */
 export const REST_DAY_LINE = "Today's a rest day — recovery is the plan, not training.";
 
+/** Batch 302: the morning's colour, notices and plan are stored before the paid brief
+ *  is written, so they show while it is being written and when it did not finish. These
+ *  are the only new words; everything above them reads as on any other morning. Signed
+ *  off by Craig on Mark's behalf, 2 Oct 2026
+ *  (docs/drafts/2026-10-02-batch-302-wording.md). */
+export const BRIEF_WRITING_TITLE = 'Writing your brief';
+export const BRIEF_WRITING_LINE =
+  "Today's call and your plan are ready above. The written brief lands in a moment.";
+export const BRIEF_UNWRITTEN_TITLE = "Couldn't finish your written brief";
+export const BRIEF_UNWRITTEN_LINE =
+  "Today's call and your plan above are complete without it. Your check-in is saved.";
+export const BRIEF_UNWRITTEN_CHECKIN_LINE =
+  "Today's call and your plan are ready on Home. Your check-in is saved — tap to try again.";
+export const BRIEF_UNWRITTEN_TOAST =
+  "Today's call is ready — I couldn't finish the written brief";
+export const BRIEF_RETRY_LABEL = 'Try again';
+export const SEE_TODAY_LABEL = 'See today';
+/** In a full outage the notes reader fails with the brief. The written brief is where
+ *  the app said so; a morning without one says it here. */
+export const NOTE_UNREAD_LINE =
+  "I couldn't read your note this morning, so today's call comes from your numbers and your answers alone.";
+
 function lightWeekHolds(
   verdict: string | null | undefined,
   held: boolean | null | undefined,

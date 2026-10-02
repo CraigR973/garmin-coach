@@ -1,7 +1,8 @@
 # Batch 302: the words when the morning is graded and the brief is not written
 
-**Status: draft, awaiting Craig's sign-off on Mark's behalf** (Mark is away until 6 Oct; no
-message to Mark). Covers every new Mark-facing line in Batch 302.
+**Status: signed off by Craig on Mark's behalf, 2 Oct 2026, as drafted, with the three
+decisions at the end** (Mark is away until 6 Oct; no message to Mark). Covers every new
+Mark-facing line in Batch 302.
 
 Since this batch the morning's colour, its notices, the plan lines and the ride changes are
 stored before the paid brief is written. So there are two new states on screen: the brief is
@@ -83,9 +84,8 @@ When a question is asked from a morning that has no written brief, the coach's c
 "The written brief for this morning did not finish. Mark has seen the colour, the notices and
 the plan lines, and no written read." in place of "What you wrote in that read".
 
-## Decisions for Craig
+## Decided by Craig, 2 Oct
 
-1. The lines in §1 to §4, as drafted.
-2. The push in §5: sent, or left out.
-3. If the colour is to show only when the brief fails (not while it is being written), §1 is
-   dropped and Home keeps today's "Writing your brief" card until the brief lands or fails.
+1. The lines in §1 to §4: approved as drafted.
+2. The push in §5: sent.
+3. The colour shows as soon as the morning is graded, on every morning, so §1 stands.

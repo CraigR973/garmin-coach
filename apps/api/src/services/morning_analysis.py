@@ -7,6 +7,7 @@ while callers migrate to the named module.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
@@ -109,10 +110,18 @@ from src.services.daily_metric_phase import (
 from src.services.experiment_loop import ExperimentLoopService, rotation_from_assignment
 from src.services.feedback import FeedbackService
 from src.services.generation_requests import (
+    GENERATION_IDENTITY_KEY,
+    acquire_artifact_scope,
     claim_generation_request,
     manual_entry_generation_version,
     morning_generation_identity,
+    morning_lease_scope,
     stamp_generation_identity,
+)
+from src.services.graded_morning import (
+    BRIEF_NOT_WRITTEN,
+    brief_is_written,
+    stamp_brief_written_at,
 )
 from src.services.holiday_pause import (
     HolidayPauseService,
@@ -125,6 +134,7 @@ from src.services.learned_context import (
 )
 from src.services.metric_statements import METRIC_STATEMENT_RULE, metric_statements_packet
 from src.services.morning_inputs import (
+    MorningInputPresence,
     morning_input_presence,
     morning_packet_input_presence,
 )
@@ -148,6 +158,15 @@ from src.services.morning_verdict import (  # noqa: F401 — compatibility re-ex
 )
 from src.services.morning_verdict import (
     morning_verdict as _morning_verdict,
+)
+from src.services.notes_reader import (
+    STATUS_FAILED as NOTES_STATUS_FAILED,
+)
+from src.services.notes_reader import (
+    STATUS_NOT_READ as NOTES_STATUS_NOT_READ,
+)
+from src.services.notes_reader import (
+    STATUS_READ as NOTES_STATUS_READ,
 )
 from src.services.notes_reader import (
     NotesEffects,
@@ -873,6 +892,50 @@ class MorningAnalysisResult:
     generated: bool
 
 
+@dataclass(frozen=True)
+class GradedMorning:
+    """The stored morning a brief is written into (Batch 302)."""
+
+    analysis: Analysis
+    #: This call graded the morning and stored a new row.
+    graded: bool
+
+    @property
+    def written(self) -> bool:
+        return brief_is_written(self.analysis)
+
+
+def _stored_morning_stands(
+    stored: Analysis,
+    *,
+    request_identity: str,
+    input_presence: MorningInputPresence,
+    force: bool,
+) -> bool:
+    """Is the latest stored morning still the read for this request?
+
+    Yes when it was graded on exactly these inputs under this prompt. Unforced, also
+    while its proven presence still matches: a scheduler read may alias a current
+    morning whose packet keeps the identity it was graded under.
+    """
+    packet = stored.context_packet
+    if stored.prompt_version != PROMPT_VERSION or not isinstance(packet, dict):
+        return False
+    if packet.get(GENERATION_IDENTITY_KEY) == request_identity:
+        return True
+    return not force and morning_packet_input_presence(packet) == input_presence
+
+
+def _stored_request_identity(stored: Analysis) -> str:
+    """The identity a stored morning's brief is claimed under: the one it was graded on."""
+
+    packet = stored.context_packet
+    identity = packet.get(GENERATION_IDENTITY_KEY) if isinstance(packet, dict) else None
+    if isinstance(identity, str) and identity:
+        return identity
+    return hashlib.sha256(f"morning-row:{stored.id}".encode()).hexdigest()
+
+
 class MorningAnalysisService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -1359,143 +1422,252 @@ class MorningAnalysisService:
         commit: bool = True,
         notes_client: NotesReaderClient | None = None,
     ) -> MorningAnalysisResult:
-        manual_entries = await self._manual_entries(player.id, subject_date)
+        """Grade and store the morning, then write its brief (Batch 302).
+
+        Two transactions, not one. The graded morning is committed before the paid
+        call, so a call that fails leaves the colour, the floors, the plan lines and
+        the session actions stored. ``commit`` governs the second step only: the
+        first always commits, because surviving the second is its whole purpose.
+        """
+        morning = await self.grade_and_store(
+            player, subject_date, force=force, notes_client=notes_client
+        )
+        if morning.written:
+            return MorningAnalysisResult(analysis=morning.analysis, generated=False)
+        return await self.write_brief(player, subject_date, client=client, commit=commit)
+
+    async def grade_and_store(
+        self,
+        player: Profile,
+        subject_date: date,
+        *,
+        force: bool = False,
+        notes_client: NotesReaderClient | None = None,
+    ) -> GradedMorning:
+        """Store the deterministic morning before any brief is written (Batch 302).
+
+        The morning row is written here with its prose empty: the colour, the acute
+        rail and its floors, the plan lines, Today's actions and the session actions
+        are all in the packet, and every reader of the stored morning reads this row.
+        ``write_brief`` fills the prose in afterwards.
+
+        A stored morning stands, and nothing is graded, when it was graded on these
+        inputs under this prompt (the request identity), or, unforced, while its proven
+        presence still matches. That is the rule the claim applied to a written brief
+        before this batch, now applied to the latest row whether or not its brief is
+        written. So a retry writes the brief for the morning Mark was shown: it does
+        not regrade it, read his note again or move its colour.
+
+        One exception. A morning graded while the notes reader was failing was graded
+        without his note. Until its brief is written, a retry that can now read the
+        note regrades, so a symptom he wrote is not lost to an outage.
+
+        Commits, and so releases the artifact scope, on every path.
+        """
+        user_id = player.id
+        manual_entries = await self._manual_entries(user_id, subject_date)
         input_presence = await morning_input_presence(
             self.session,
-            user_id=player.id,
+            user_id=user_id,
             subject_date=subject_date,
         )
         input_version = manual_entry_generation_version(
             manual_entries[0] if manual_entries else None
         )
         request_identity = morning_generation_identity(
-            user_id=player.id,
+            user_id=user_id,
             subject_date=subject_date,
             input_version=input_version,
             input_completeness_version=input_presence.version,
             prompt_version=PROMPT_VERSION,
         )
+        await acquire_artifact_scope(self.session, morning_lease_scope(user_id, subject_date))
+        stored = await self.latest_analysis(user_id, subject_date, fresh=True)
+        if (
+            stored is not None
+            and _stored_morning_stands(
+                stored,
+                request_identity=request_identity,
+                input_presence=input_presence,
+                force=force,
+            )
+            and (
+                brief_is_written(stored)
+                or not await self._note_read_since(stored, user_id, manual_entries, notes_client)
+            )
+        ):
+            await self.session.commit()
+            return GradedMorning(analysis=stored, graded=False)
+
+        # Batch 297: read his note once per version, before the verdict. A stored
+        # reading is reused; a failure is stored and never blocks the morning.
+        await NotesReaderService(self.session).ensure_reading(
+            user_id, manual_entries, client=notes_client
+        )
+        context_packet = await self.assemble_context_packet(player, subject_date)
+        alert_disagreements(
+            context_packet.get("crossSurfaceAgreement"),
+            surface="morning_brief",
+            user_id=user_id,
+            subject=subject_date.isoformat(),
+        )
+        stamp_generation_identity(
+            context_packet,
+            request_identity=request_identity,
+            input_version=input_version,
+            input_completeness_version=input_presence.version,
+        )
+        verdict = context_packet.get("verdict", {}).get("status")
+        analysis = Analysis(
+            user_id=user_id,
+            activity_id=None,
+            analysis_type=ANALYSIS_TYPE,
+            subject_date=subject_date,
+            generated_at_utc=_utcnow(),
+            prompt_version=PROMPT_VERSION,
+            model_name=None,
+            verdict=verdict if isinstance(verdict, str) else None,
+            context_packet=context_packet,
+            output_markdown=BRIEF_NOT_WRITTEN,
+            raw_response={},
+        )
+        self.session.add(analysis)
+        await self.session.commit()
+        return GradedMorning(analysis=analysis, graded=True)
+
+    async def write_brief(
+        self,
+        player: Profile,
+        subject_date: date,
+        *,
+        client: MorningAnalysisClient | None = None,
+        commit: bool = True,
+    ) -> MorningAnalysisResult:
+        """Write the brief into the latest stored morning, from the packet it was graded on.
+
+        The paid call and the write share one claim, as they did before Batch 302. What
+        changed is what a failure costs: the morning row is already committed, so the
+        rollback takes the prose and nothing else.
+
+        The brief is written from the stored packet, never a fresh one, so its words
+        cannot disagree with the colour Mark was already shown.
+        """
+        user_id = player.id
+        stored = await self.latest_analysis(user_id, subject_date, fresh=True)
+        if stored is None:
+            raise MorningAnalysisError("No graded morning is stored for this date.")
+        if brief_is_written(stored):
+            return MorningAnalysisResult(analysis=stored, generated=False)
         async with claim_generation_request(
             self.session,
-            user_id=player.id,
-            request_identity=request_identity,
+            user_id=user_id,
+            request_identity=_stored_request_identity(stored),
             generation_kind=ANALYSIS_TYPE,
-            lease_scope=f"morning:{player.id}:{subject_date.isoformat()}",
+            lease_scope=morning_lease_scope(user_id, subject_date),
         ) as claim:
+            # The scope is ours now. Between the read above and the lock another
+            # worker may have graded a newer morning, or written this one.
+            morning = await self.latest_analysis(user_id, subject_date, fresh=True)
+            if morning is None:  # pragma: no cover - morning rows are never deleted
+                raise MorningAnalysisError("The graded morning disappeared before its brief.")
+            if brief_is_written(morning):
+                claim.mark_completed(morning)
+                if commit:
+                    await self.session.commit()
+                else:
+                    await self.session.flush()
+                return MorningAnalysisResult(analysis=morning, generated=False)
+            if morning.prompt_version != PROMPT_VERSION:
+                # Graded by another deploy's prompt: its packet and this system prompt
+                # do not belong together. The next run regrades it.
+                raise MorningAnalysisError(
+                    "The stored morning was graded under another prompt version."
+                )
             if claim.existing_analysis is not None:
-                packet = claim.existing_analysis.context_packet
-                exact_generation = (
-                    claim.existing_analysis.prompt_version == PROMPT_VERSION
-                    and isinstance(packet, dict)
-                    and packet.get("generationIdentity") == request_identity
-                )
-                # A non-forced scheduler read may deliberately alias a current
-                # analysis into the new completeness-aware request identity. Its
-                # packet keeps the identity it was actually generated under, so
-                # accept that alias only while its proven presence still matches.
-                compatible_existing = (
-                    not force
-                    and claim.existing_analysis.prompt_version == PROMPT_VERSION
-                    and isinstance(packet, dict)
-                    and morning_packet_input_presence(packet) == input_presence
-                )
-                if exact_generation or compatible_existing:
-                    return MorningAnalysisResult(
-                        analysis=claim.existing_analysis,
-                        generated=False,
-                    )
                 claim.restart()
 
-            if not force:
-                existing = await self.latest_analysis(player.id, subject_date)
-                existing_packet = existing.context_packet if existing is not None else None
-                if (
-                    existing is not None
-                    and existing.prompt_version == PROMPT_VERSION
-                    and isinstance(existing_packet, dict)
-                    and morning_packet_input_presence(existing_packet) == input_presence
-                ):
-                    claim.mark_completed(existing)
-                    if commit:
-                        await self.session.commit()
-                    else:
-                        await self.session.flush()
-                    return MorningAnalysisResult(analysis=existing, generated=False)
-
-            # Batch 297: read his note once per version, before the verdict. A stored
-            # reading is reused; a failure is stored and never blocks the brief.
-            await NotesReaderService(self.session).ensure_reading(
-                player.id, manual_entries, client=notes_client
-            )
-            context_packet = await self.assemble_context_packet(player, subject_date)
-            alert_disagreements(
-                context_packet.get("crossSurfaceAgreement"),
-                surface="morning_brief",
-                user_id=player.id,
-                subject=subject_date.isoformat(),
-            )
-            stamp_generation_identity(
-                context_packet,
-                request_identity=request_identity,
-                input_version=input_version,
-                input_completeness_version=input_presence.version,
-            )
+            context_packet = morning.context_packet
             user_prompt = build_morning_user_prompt(context_packet)
             analysis_client = client or AnthropicMorningAnalysisClient()
-            async with workload_slot(workload="anthropic", user_id=player.id):
+            async with workload_slot(workload="anthropic", user_id=user_id):
                 generation = await analysis_client.generate(
                     context_packet=context_packet,
                     user_prompt=user_prompt,
                 )
+            if not generation.output_markdown.strip():
+                # Empty prose is how a morning without a brief is stored, so it can
+                # never be allowed to count as one.
+                raise MorningAnalysisError("The morning brief came back empty.")
             missing_sections = missing_morning_output_sections(
                 context_packet, generation.output_markdown
             )
             if missing_sections:
                 log.warning(
                     "morning_analysis_missing_required_sections",
-                    user_id=str(player.id),
+                    user_id=str(user_id),
                     subject_date=subject_date.isoformat(),
                     prompt_version=PROMPT_VERSION,
                     missing_sections=list(missing_sections),
                 )
-            verdict = context_packet.get("verdict", {}).get("status")
-            analysis = Analysis(
-                user_id=player.id,
-                activity_id=None,
-                analysis_type=ANALYSIS_TYPE,
-                subject_date=subject_date,
-                generated_at_utc=_utcnow(),
-                prompt_version=PROMPT_VERSION,
-                model_name=generation.model_name,
-                verdict=verdict if isinstance(verdict, str) else None,
-                context_packet=context_packet,
-                output_markdown=generation.output_markdown,
-                raw_response=generation.raw_response,
-            )
-            self.session.add(analysis)
+            raw_response = dict(generation.raw_response)
+            stamp_brief_written_at(raw_response)
+            morning.output_markdown = generation.output_markdown
+            morning.model_name = generation.model_name
+            morning.raw_response = raw_response
             await self.session.flush()
-            claim.mark_completed(analysis)
+            claim.mark_completed(morning)
             if commit:
                 await self.session.commit()
-                await self.session.refresh(analysis)
+                await self.session.refresh(morning)
             else:
                 await self.session.flush()
-            return MorningAnalysisResult(analysis=analysis, generated=True)
+            return MorningAnalysisResult(analysis=morning, generated=True)
 
-    async def latest_analysis(self, user_id: uuid.UUID, subject_date: date) -> Analysis | None:
-        return cast(
-            Analysis | None,
-            await self.session.scalar(
-                select(Analysis)
-                .where(
-                    Analysis.user_id == user_id,
-                    Analysis.analysis_type == ANALYSIS_TYPE,
-                    Analysis.subject_date == subject_date,
-                )
-                .order_by(desc(Analysis.generated_at_utc), desc(Analysis.created_at))
-                .limit(1)
-            ),
+    async def _note_read_since(
+        self,
+        morning: Analysis,
+        user_id: uuid.UUID,
+        manual_entries: Sequence[ManualEntry],
+        notes_client: NotesReaderClient | None,
+    ) -> bool:
+        """Can the note a stored morning could not read be read now?
+
+        Retries the reading in place, as any regeneration does. A reading that fails
+        again changes nothing, so the stored morning stands and no second row is kept.
+        """
+        packet = morning.context_packet if isinstance(morning.context_packet, dict) else {}
+        verdict = packet.get("verdict")
+        notes = verdict.get("notesReading") if isinstance(verdict, dict) else None
+        status = notes.get("status") if isinstance(notes, dict) else None
+        if status not in {NOTES_STATUS_FAILED, NOTES_STATUS_NOT_READ}:
+            return False
+        reading = await NotesReaderService(self.session).ensure_reading(
+            user_id, manual_entries, client=notes_client
         )
+        return reading is not None and reading.status == NOTES_STATUS_READ
+
+    async def latest_analysis(
+        self, user_id: uuid.UUID, subject_date: date, *, fresh: bool = False
+    ) -> Analysis | None:
+        """The latest stored morning for a date, written or not.
+
+        ``fresh`` re-reads the row over one this session already holds. A morning's
+        prose is filled in by whichever worker holds its scope, so a decision taken
+        under the lock must not be taken on a copy loaded before it.
+        """
+        statement = (
+            select(Analysis)
+            .where(
+                Analysis.user_id == user_id,
+                Analysis.analysis_type == ANALYSIS_TYPE,
+                Analysis.subject_date == subject_date,
+            )
+            .order_by(desc(Analysis.generated_at_utc), desc(Analysis.created_at))
+            .limit(1)
+        )
+        if fresh:
+            statement = statement.execution_options(populate_existing=True)
+        return cast(Analysis | None, await self.session.scalar(statement))
 
     async def _active_knowledge_base(self, user_id: uuid.UUID) -> list[KnowledgeBase]:
         rows = (

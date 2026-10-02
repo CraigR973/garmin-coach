@@ -82,6 +82,7 @@ from src.services.coach_sections import (
     thermal_review,
 )
 from src.services.daily_metric_phase import morning_first_order
+from src.services.graded_morning import brief_is_written
 from src.services.holiday_pause import HolidayPauseService, holiday_windows_covering_date
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
@@ -128,6 +129,14 @@ READABLE_ANALYSIS_TYPES = (
     "post_flexibility",
     "weekly_review",
     "monthly_review",
+)
+
+
+#: Batch 302: what the coach is told about a stored morning with no written brief.
+BRIEF_NOT_WRITTEN_MEANING = (
+    "The written brief for that morning did not finish, so there is nothing you wrote "
+    "to quote. Mark saw the colour, the notices and the plan lines that day, and no "
+    "written read. `verdict` is the colour he was shown."
 )
 
 
@@ -415,6 +424,21 @@ class CoachToolbox:
                     f"No {read_type} read exists for {subject_date.isoformat()}. That "
                     "means none was written, not that it is hidden from you."
                 ),
+            )
+        if not brief_is_written(row):
+            # Batch 302: a morning is stored when it is graded, and its brief is
+            # written into it. One whose brief never arrived has nothing to quote.
+            return _result(
+                [
+                    {
+                        "readType": row.analysis_type,
+                        "subjectDate": row.subject_date.isoformat(),
+                        "generatedAtUtc": row.generated_at_utc.isoformat() + "Z",
+                        "verdict": row.verdict,
+                        "whatYouWrote": None,
+                    }
+                ],
+                meaning=BRIEF_NOT_WRITTEN_MEANING,
             )
         # The read's *markdown*, never its ``context_packet``: the packet is tens
         # of thousands of characters of the app's own workings, and what a

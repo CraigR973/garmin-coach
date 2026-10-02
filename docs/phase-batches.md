@@ -4984,7 +4984,18 @@ reader list is completed, and three findings change how the batch is built.
   it arrives: no migration, every colour reader above works unchanged, and filling in place
   stores nothing extra. A record of its own would need all nineteen readers to learn a second
   source, where a missed one silently leaves an outage morning out of a safety rule, and about
-  0.9 MB a month for a second copy of each packet. **Awaiting Craig's go.**
+  0.9 MB a month for a second copy of each packet. **Decided by Craig, 2 Oct: the morning row
+  itself, no migration.** Also his: the colour shows as soon as the morning is graded, on
+  every morning, not only when the brief fails.
+- **Found after the go: a changed symptom answer does not regrade a morning that has a
+  brief.** The generation identity hashes the check-in's content without `symptoms`
+  (`services/generation_requests.py:196-236`, unchanged since Batch 161; Batch 294 added the
+  column). Run on the real function, a check-in answering None and the same check-in answering
+  "Chest or heart" share one identity, and an identical identity returns the stored brief
+  (`services/morning_analysis.py:1385-1406`). So after a brief exists, re-saving with a new
+  answer changes nothing on Home, in the floors or in the ride; only the check-in screen shows
+  the notice (Batch 301). This batch reuses a stored morning by that identity, so the answer
+  joins it here.
 - **The production smoke.** Production has one profile, Mark's, and a second profile there has
   ingested his Garmin data before (24 Aug, deleted the next day). So the smoke is the read-only route the row
   allows: the deployed code grades his stored inputs inside a transaction that is rolled back,

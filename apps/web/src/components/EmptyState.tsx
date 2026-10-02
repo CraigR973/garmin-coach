@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import { CloudOff, Inbox, RefreshCw, TriangleAlert } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -9,18 +10,25 @@ interface StateAction {
   onClick: () => void;
 }
 
+/** A second way on from the card, beside its recovery action: somewhere to go. */
+interface StateLink {
+  label: string;
+  to: string;
+}
+
 interface StateCardProps {
   icon: LucideIcon;
   title: string;
   description?: string;
   action?: StateAction;
+  link?: StateLink;
   className?: string;
 }
 
 /** The shared visual shell for on-brand empty/error/offline notices (Batch 55) —
  *  say what happened, then offer one clear recovery action, replacing the
  *  generic "please try again" cards scattered across Home/Sleep/Week/Check-in. */
-function StateCard({ icon: Icon, title, description, action, className }: StateCardProps) {
+function StateCard({ icon: Icon, title, description, action, link, className }: StateCardProps) {
   return (
     <Card className={cn('border-dashed', className)}>
       <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
@@ -31,10 +39,19 @@ function StateCard({ icon: Icon, title, description, action, className }: StateC
           <p className="font-medium text-text-primary">{title}</p>
           {description && <p className="text-sm text-text-secondary">{description}</p>}
         </div>
-        {action && (
-          <Button type="button" variant="outline" size="sm" onClick={action.onClick}>
-            {action.label}
-          </Button>
+        {(action || link) && (
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {action && (
+              <Button type="button" variant="outline" size="sm" onClick={action.onClick}>
+                {action.label}
+              </Button>
+            )}
+            {link && (
+              <Button asChild variant="ghost" size="sm">
+                <Link to={link.to}>{link.label}</Link>
+              </Button>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>
@@ -48,12 +65,14 @@ export function ErrorState({
   description,
   onRetry,
   retryLabel = 'Try again',
+  link,
   className,
 }: {
   title?: string;
   description?: string;
   onRetry: () => void;
   retryLabel?: string;
+  link?: StateLink;
   className?: string;
 }) {
   return (
@@ -62,6 +81,7 @@ export function ErrorState({
       title={title}
       description={description}
       action={{ label: retryLabel, onClick: onRetry }}
+      link={link}
       className={className}
     />
   );

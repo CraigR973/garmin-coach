@@ -585,6 +585,118 @@ describe('DashboardPage', () => {
     expect(screen.queryByRole('region', { name: 'Say good morning' })).toBeNull();
   });
 
+  // Batch 302: the colour, the notices, the plan lines and Today's actions are stored
+  // before the paid brief is written, so Home shows them while it is being written and
+  // when it did not finish. On `main` a morning with no brief had no colour either.
+  function gradedSnapshot(
+    status: 'generating' | 'failed',
+    mutator?: (snapshot: DailyLoopEnvelope) => void,
+  ) {
+    return buildSnapshot((snapshot) => {
+      snapshot.data.gradedMorning = {
+        ...snapshot.data.morningAnalysis!,
+        verdict: 'red',
+        modelName: null,
+        outputMarkdown: '',
+        reasons: ['A head cold: easy riding at most.'],
+        todayActions: [{ kind: 'thermal', title: 'Pre-cool the bedroom', href: '/sleep' }],
+      };
+      snapshot.data.morningAnalysis = null;
+      snapshot.data.briefGeneration = {
+        status,
+        reason: status === 'failed' ? 'billing' : null,
+      };
+      mutator?.(snapshot);
+    });
+  }
+
+  it('shows the colour and the day\'s actions while the brief is still being written (Batch 302)', async () => {
+    renderPage(gradedSnapshot('generating'));
+
+    const hero = await screen.findByRole('region', { name: "Today's verdict" });
+    expect(within(hero).getByText('Rest or substitute')).toBeTruthy();
+    const card = screen.getByRole('status', { name: 'Writing your brief' });
+    expect(card.textContent).toContain(
+      "Today's call and your plan are ready above. The written brief lands in a moment.",
+    );
+    // The actions do not wait for the brief, and there is no brief to open yet.
+    expect(within(screen.getByTestId('today-actions')).getByText('Pre-cool the bedroom')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /your morning brief is ready/i })).toBeNull();
+    // None of the three no-morning states: he has a morning.
+    expect(screen.queryByRole('region', { name: 'Generating your brief' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Say good morning' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Brief generation failed' })).toBeNull();
+  });
+
+  it('keeps the colour when the brief did not finish, and tries again without saving a check-in (Batch 302)', async () => {
+    const failed = gradedSnapshot('failed');
+    renderPage(failed);
+    const base = apiFetchMock.getMockImplementation()!;
+    let retried = false;
+    apiFetchMock.mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/api/v1/daily-loop/2026-06-20/brief/retry') {
+        retried = true;
+        return Promise.resolve(gradedSnapshot('generating'));
+      }
+      // Once the retry is accepted the server says a brief is on its way.
+      if (path === '/api/v1/daily-loop' && retried) {
+        return Promise.resolve(gradedSnapshot('generating'));
+      }
+      return base(path, init);
+    });
+
+    const hero = await screen.findByRole('region', { name: "Today's verdict" });
+    expect(within(hero).getByText('Rest or substitute')).toBeTruthy();
+    const card = screen.getByRole('status', { name: 'Written brief did not finish' });
+    expect(card.textContent).toContain("Couldn't finish your written brief");
+    expect(card.textContent).toContain(
+      "Today's call and your plan above are complete without it. Your check-in is saved.",
+    );
+    expect(screen.getByTestId('today-actions')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Brief generation failed' })).toBeNull();
+
+    await userEvent.setup().click(within(card).getByRole('button', { name: 'Try again' }));
+
+    await waitFor(() =>
+      expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/daily-loop/2026-06-20/brief/retry', {
+        method: 'POST',
+      }),
+    );
+    // The reply says a brief is on its way, and Home says so at once.
+    expect(await screen.findByRole('status', { name: 'Writing your brief' })).toBeTruthy();
+    // It asked for the brief and saved nothing of his.
+    expect(
+      apiFetchMock.mock.calls.some(
+        ([path, init]) => String(path).includes('/manual-entry') || init?.method === 'PUT',
+      ),
+    ).toBe(false);
+  });
+
+  it('says his note was not read on a morning graded without it (Batch 302)', async () => {
+    renderPage(
+      gradedSnapshot('failed', (snapshot) => {
+        snapshot.data.gradedMorning!.notesReadingStatus = 'failed';
+      }),
+    );
+
+    expect(
+      await screen.findByText(
+        "I couldn't read your note this morning, so today's call comes from your numbers and your answers alone.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it('offers no retry on a morning from an earlier day (Batch 302)', async () => {
+    renderPage(
+      gradedSnapshot('failed', (snapshot) => {
+        snapshot.data.subjectDate = '2026-06-19';
+      }),
+    );
+
+    const card = await screen.findByRole('status', { name: 'Written brief did not finish' });
+    expect(within(card).queryByRole('button', { name: 'Try again' })).toBeNull();
+  });
+
   it('keeps raw last-night sleep off Home before today\'s brief exists (Batch 95/103)', async () => {
     // Rest-day phase primary would otherwise be `lastNight` — before a brief
     // exists that would pre-empt the coached read with an un-narrated snapshot.

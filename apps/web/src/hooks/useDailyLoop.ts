@@ -1,6 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { dailyLoopEnvelopeSchema } from '@coach/shared';
 import { apiFetch } from '@/lib/api';
+import { briefOnItsWay } from '@/lib/storedMorning';
+
+/** Batch 302: how often a screen showing the day re-reads it while a brief is on its way. */
+export const BRIEF_ON_ITS_WAY_POLL_MS = 5000;
 
 export type DailyLoopEnvelope = typeof dailyLoopEnvelopeSchema._type;
 export type DailyLoopData = DailyLoopEnvelope['data'];
@@ -31,5 +35,11 @@ export function useDailyLoop(subjectDate?: string, options?: { enabled?: boolean
     queryFn: () => fetchDailyLoop(subjectDate),
     staleTime: 60_000,
     enabled: options?.enabled ?? true,
+    // Batch 302: the colour is stored a little after the check-in and the brief about a
+    // minute after that. Home and the brief page showed "Writing your brief" until he
+    // next refocused the app; they now keep looking while a brief is on its way. The
+    // server turns a wait that outlives its limit into a failure, which ends this.
+    refetchInterval: (query) =>
+      briefOnItsWay(query.state.data?.data) ? BRIEF_ON_ITS_WAY_POLL_MS : false,
   });
 }

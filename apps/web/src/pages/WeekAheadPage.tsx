@@ -44,6 +44,7 @@ import { apiFetch } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { localTodayIso } from '@/lib/dailyFlow';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
+import { storedMorning } from '@/lib/storedMorning';
 import { categoryForWorkoutType, workoutTypeLabel, type DayCategory } from '@/lib/workoutCategories';
 
 type PlanScheduleEnvelope = typeof planScheduleEnvelopeSchema._type;
@@ -142,7 +143,7 @@ export function WeekAheadPage() {
   const isAdmin = player?.role === 'admin';
   const queryClient = useQueryClient();
   const dailyLoop = useDailyLoop();
-  const weeklyMix = dailyLoop.data?.data.morningAnalysis?.weeklyMix ?? null;
+  const weeklyMix = storedMorning(dailyLoop.data?.data)?.weeklyMix ?? null;
   // Batch 138: local-today in the profile timezone, not `new Date().toISOString()`
   // (the UTC date) — during BST the UTC date rolls a day late, so the old code
   // could highlight the wrong day at the late-evening boundary.

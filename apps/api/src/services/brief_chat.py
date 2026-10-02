@@ -86,6 +86,7 @@ from src.services.coach_policy import (
     internal_vocabulary_hits,
 )
 from src.services.coach_tools import COACH_TOOLS, CoachToolbox
+from src.services.graded_morning import brief_is_written
 from src.services.interval_workout_editor import (
     MAX_POWER_PCT,
     MAX_REPEATS,
@@ -364,7 +365,21 @@ def _message_ordering() -> tuple[Any, ...]:
     )
 
 
+#: Batch 302: a morning is stored when it is graded, and a question can be asked from
+#: one whose brief never arrived. The coach is told so in place of its own words.
+BRIEF_NOT_WRITTEN_NOTE = (
+    "The written brief for this morning did not finish. Mark has seen the colour, the "
+    "notices and the plan lines, and no written read."
+)
+
+
 def _read_description(analysis: Analysis) -> str:
+    if not brief_is_written(analysis):
+        return (
+            "He asked this from this morning's call, graded for "
+            f"{analysis.subject_date.isoformat()}. "
+            "That is the starting point, not the boundary."
+        )
     label = _READ_LABELS.get(analysis.analysis_type, "a read you wrote for him")
     return (
         f"He asked this from {label}, written for {analysis.subject_date.isoformat()}. "
@@ -871,10 +886,16 @@ def _build_system_prompt_prefix(
     else:
         parts.append(_origin_description(origin, local_today=local_today))
     parts.append(_capability_instruction(adjustable_set))
-    if analysis is not None:
+    if analysis is not None and brief_is_written(analysis):
         parts.append(f"What you wrote in that read:\n{analysis.output_markdown}")
         parts.append(
             "Mark's information behind that read, as it stood when you wrote it:\n"
+            f"{_packet_json(analysis.context_packet)}"
+        )
+    elif analysis is not None:
+        parts.append(BRIEF_NOT_WRITTEN_NOTE)
+        parts.append(
+            "Mark's information behind that morning, as it stood when it was graded:\n"
             f"{_packet_json(analysis.context_packet)}"
         )
     return "\n\n".join(parts)

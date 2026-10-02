@@ -1010,11 +1010,13 @@ async def test_morning_weather_sync_runs_daily_sync_before_analysis() -> None:
 
     analysis_service = MagicMock()
 
-    async def generate(*_args: object, **_kwargs: object) -> MagicMock:
+    # Batch 302: the morning is graded and stored, then its brief is written.
+    async def grade(*_args: object, **_kwargs: object) -> MagicMock:
         calls.append("analysis")
-        return MagicMock(generated=True)
+        return MagicMock(written=False)
 
-    analysis_service.generate_and_store = AsyncMock(side_effect=generate)
+    analysis_service.grade_and_store = AsyncMock(side_effect=grade)
+    analysis_service.write_brief = AsyncMock(return_value=MagicMock(generated=True))
 
     coaching_service = MagicMock()
     coaching_service.regenerate_for_verdict = AsyncMock(return_value=[])
@@ -1058,7 +1060,10 @@ async def test_poisoned_input_step_does_not_cost_verdict() -> None:
     session = AsyncMock()
     analysis = MagicMock()
     analysis_service = MagicMock()
-    analysis_service.generate_and_store = AsyncMock(
+    analysis_service.grade_and_store = AsyncMock(
+        return_value=MagicMock(written=False, analysis=analysis)
+    )
+    analysis_service.write_brief = AsyncMock(
         return_value=MagicMock(generated=True, analysis=analysis)
     )
     coaching_service = MagicMock()
@@ -1092,9 +1097,10 @@ async def test_poisoned_input_step_does_not_cost_verdict() -> None:
     ):
         result = await run_morning_weather_sync()
 
-    analysis_service.generate_and_store.assert_awaited_once_with(
-        profile, ANY, client=None, force=False, commit=True
+    analysis_service.grade_and_store.assert_awaited_once_with(
+        profile, ANY, force=False, notes_client=None
     )
+    analysis_service.write_brief.assert_awaited_once_with(profile, ANY, client=None, commit=True)
     assert result.status == JobStatus.degraded
     assert result.counters["analyses_generated"] == 1
     assert result.counters["failed"] == 1
@@ -1105,7 +1111,8 @@ async def test_morning_backstop_holds_instead_of_generating_unsynced_read() -> N
     profile = _profile()
     session = AsyncMock()
     analysis_service = MagicMock()
-    analysis_service.generate_and_store = AsyncMock()
+    analysis_service.grade_and_store = AsyncMock()
+    analysis_service.write_brief = AsyncMock()
 
     with (
         patch("src.scheduler.AsyncSessionLocal", return_value=_morning_sync_ctx(session)),
@@ -1127,7 +1134,8 @@ async def test_morning_backstop_holds_instead_of_generating_unsynced_read() -> N
     ):
         result = await run_morning_weather_sync()
 
-    analysis_service.generate_and_store.assert_not_awaited()
+    analysis_service.grade_and_store.assert_not_awaited()
+    analysis_service.write_brief.assert_not_awaited()
     assert result.status == JobStatus.degraded
     assert result.counters["inputs_not_ready"] == 1
     assert result.counters["analyses_generated"] == 0

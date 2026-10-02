@@ -617,53 +617,112 @@ describe('CheckInPage', () => {
     expect(screen.queryByRole('button', { name: /get today's brief/i })).toBeNull();
   });
 
-  it('shows a retryable error, not an endless spinner, when generation failed (Batch 141)', async () => {
-    // The daily-loop envelope carries a failed generation (the 2026-07-21 credit
-    // outage) with no brief — pre-141 this hung on "Writing your brief" forever.
-    const failed = {
-      ...snapshot,
-      data: {
-        ...snapshot.data,
-        morningAnalysis: null,
-        briefGeneration: { status: 'failed', reason: 'billing' },
-      },
-    };
-    let putCount = 0;
+  // The daily-loop envelope carries a failed generation (the 2026-07-21 credit
+  // outage) with no brief — pre-141 this hung on "Writing your brief" forever.
+  const failed = {
+    ...snapshot,
+    data: {
+      ...snapshot.data,
+      morningAnalysis: null,
+      briefGeneration: { status: 'failed', reason: 'billing' },
+    },
+  };
+  const generating = {
+    ...failed,
+    data: { ...failed.data, briefGeneration: { status: 'generating', reason: null } },
+  };
+
+  /** The server after "Try again" is accepted: every later read says generating. */
+  function retryableServer(first: unknown = failed, after: unknown = generating) {
+    const calls = { put: 0, retry: 0 };
     apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
       if (options?.method === 'PUT') {
-        putCount += 1;
-        // A retry re-triggers generation: it goes back to "generating".
-        return Promise.resolve({
-          ...failed,
-          data: { ...failed.data, briefGeneration: { status: 'generating', reason: null } },
-        });
+        calls.put += 1;
+        return Promise.resolve(after);
       }
-      if (path === '/api/v1/daily-loop') return Promise.resolve(failed);
+      if (path === '/api/v1/daily-loop/2026-06-20/brief/retry') {
+        calls.retry += 1;
+        return Promise.resolve(after);
+      }
+      if (path === '/api/v1/daily-loop') {
+        return Promise.resolve(calls.put + calls.retry > 0 ? after : first);
+      }
       return Promise.reject(new Error(`Unexpected request: ${path}`));
     });
+    return calls;
+  }
 
-    const queryClient = new QueryClient();
-    const user = userEvent.setup();
-
+  function renderCheckIn() {
     render(
-      <QueryClientProvider client={queryClient}>
+      <QueryClientProvider client={new QueryClient()}>
         <MemoryRouter>
           <CheckInPage />
         </MemoryRouter>
       </QueryClientProvider>,
     );
+  }
+
+  it('shows a retryable error, not an endless spinner, when generation failed (Batch 141)', async () => {
+    const calls = retryableServer();
+    const user = userEvent.setup();
+    renderCheckIn();
 
     // The failure surfaces as a retryable error, and the spinner is gone.
     expect(await screen.findByText(/couldn't finish your brief/i)).toBeTruthy();
     expect(screen.queryByText('Writing your brief')).toBeNull();
 
-    // "Try again" re-triggers generation via a fresh manual-entry PUT.
+    // Batch 302: "Try again" asks only for the brief. It used to be a second save of
+    // the check-in, and a save is an answer to the symptom question.
     await user.click(screen.getByRole('button', { name: /try again/i }));
-    await waitFor(() => expect(putCount).toBe(1));
-    expect(apiFetchMock).toHaveBeenCalledWith(
-      '/api/v1/daily-loop/2026-06-20/manual-entry',
-      expect.objectContaining({ method: 'PUT' }),
-    );
+    await waitFor(() => expect(calls.retry).toBe(1));
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/daily-loop/2026-06-20/brief/retry', {
+      method: 'POST',
+    });
+    expect(calls.put).toBe(0);
+    // The wait starts from the reply, not from the failure still on screen: on `main`
+    // a retry dropped straight back to the failure card until the next refetch.
+    expect(await screen.findByText("I'll notify you when it's ready")).toBeTruthy();
+    expect(screen.queryByText(/couldn't finish your brief/i)).toBeNull();
+  });
+
+  it('saves the check-in when he has changed it before trying again (Batch 302)', async () => {
+    const calls = retryableServer();
+    const user = userEvent.setup();
+    renderCheckIn();
+
+    expect(await screen.findByText(/couldn't finish your brief/i)).toBeTruthy();
+    // A changed answer is a new check-in, and has to reach the server as one.
+    await user.click(screen.getByRole('radio', { name: /chest or heart/i }));
+    await user.click(screen.getByRole('button', { name: /try again/i }));
+
+    await waitFor(() => expect(calls.put).toBe(1));
+    expect(calls.retry).toBe(0);
+    const [, options] = apiFetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')!;
+    expect(JSON.parse(options.body).symptoms).toBe('chest_heart');
+  });
+
+  it('says the call is on Home when the morning is stored and only its brief failed (Batch 302)', async () => {
+    const graded = {
+      id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      generatedAtUtc: '2026-06-20T07:01:00Z',
+      verdict: 'red',
+      promptVersion: 'morning-analysis-v54-2026-10-01',
+      outputMarkdown: '',
+    };
+    retryableServer({ ...failed, data: { ...failed.data, gradedMorning: graded } });
+    renderCheckIn();
+
+    expect(await screen.findByText("Couldn't finish your written brief")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Today's call and your plan are ready on Home. Your check-in is saved — tap to try again.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'See today' }).getAttribute('href')).toBe('/');
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    // The older words are for a morning with no colour to show.
+    expect(screen.queryByText("Couldn't finish your brief")).toBeNull();
+    expect(screen.queryByText(/something went wrong while writing/i)).toBeNull();
   });
 
   it('resolves an orphaned generation to the retryable card past the client max-wait (Batch 144)', async () => {
