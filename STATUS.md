@@ -6,14 +6,15 @@
 
 ## Now
 
-**2026-10-02 (morning) — G7a is complete (`/batch-group G7a`, Craig's go). Shipped: 309 (the
-web builds on Node 24 and deploys again), 301 (the medical notices show on the check-in and
-beside a failed brief), 298 (the words follow the graded verdict: no "cap" notice, one Amber
-line, the light week named), 299 (the weekly mix and the ride offered follow each session's
-action: an eased session is "eased, not lost", and a rest day offers no ride) and 300 (in a
-light week only a mild concern holds the session; a clearly-off morning eases the hard work).
-Next: G7b (302 → 303 → 307), on Craig's go at each gate. The graded colour went live on Mark's
-1 Oct check-in (Amber on a holiday rest day).**
+**2026-10-02 (afternoon) — G7b is running (`/batch-start G7b`, Craig's go on 302's gate).
+Shipped: 302 (the morning is stored when it is graded and its brief is written into it, so a
+failed brief costs the prose only: the colour, the medical notices, the plan lines, Today's
+actions and the ride changes stand, and "Try again" writes the brief without saving the
+check-in again). Next: 303 (medical follow-through), which waits for Craig's go on its
+migration, its paid eval re-run (about $2–5), its two decisions and its wording; then 307.
+G7a is complete (309, 301, 298, 299, 300). The graded colour went live on Mark's 1 Oct
+check-in (Amber on a holiday rest day). The stored-first flow has not yet run on a real
+morning: the first is Mark's next check-in or 3 Oct's sync.**
 
 ### What the review found (`docs/reviews/2026-10-01-batches-268-297-review.md`)
 
@@ -25,7 +26,8 @@ Next: G7b (302 → 303 → 307), on Craig's go at each gate. The graded colour w
   and the light-week hold; Batch 299 fixed the "session short" line.
 - **The safety floors depend on the paid brief:** in an Anthropic outage a "Chest or heart"
   answer showed no 999/111/GP advice. Batch 301 now shows the tapped answer's notice without
-  the brief; the colour, plan lines and actions still need it (Batch 302).
+  the brief, and since Batch 302 the colour, the floors, the plan lines, the actions and the
+  ride changes are stored before the paid call and stand when it fails.
 - **A light week held the session on a clearly-off morning:** W12's sweet spot would have been
   ridden in full after a sub-60 night. Batch 300 fixed it: only a mild concern holds.
 - **On HRV the engine now errs slightly lenient** against the trials it cites: a week-long dip
@@ -47,7 +49,7 @@ Next: G7b (302 → 303 → 307), on Craig's go at each gate. The graded colour w
 | Group | Batches | Gate |
 |---|---|---|
 | G7a, before 7 Oct | ~~309~~ → ~~301~~ → ~~298~~ → ~~299~~ → ~~300~~ | Complete, 2 Oct |
-| G7b | 302 → 303 → 307 | 302's storage shape; 303's migration and eval re-run (~$2–5) |
+| G7b | ~~302~~ → 303 → 307 | 303's migration, eval re-run (~$2–5), two decisions and wording |
 | G7c, not before 20 Oct | 304 → 305 → 306 → 308 | 305/306 decisions; 308 after the side-by-side review |
 
 Batch 291's row is corrected in place (its alert list).
@@ -78,21 +80,62 @@ v50 brief reads constraints the ladder does not follow.
 
 ### Needs Craig
 
-1. **G7a is complete; G7b needs your go at each gate** (302's storage shape and any migration;
-   303's migration and the paid eval re-run, about $2–5).
-2. **Two decisions made on your behalf in Batch 300 (Decision #373), each a one-line change to
+1. **Batch 303 needs your go before it starts.** Its gates: a migration (a record of his
+   explicit answer to Home's question, 303.5); the paid eval re-run for the reader's prompt v2
+   (about $2–5, 303.6); two decisions (how many mornings the return after a fever lasts,
+   recommended two; what an unclear chest mention does until he answers, recommended: eases
+   the hard work); and its Mark-facing wording. 307's held-out cases are scored on the same
+   paid run, so they are labelled by you before it.
+2. **Decisions made on your behalf in Batch 302 (Decision #374), each overrulable.** A morning
+   without its brief travels as its own field (`gradedMorning`), so an older cached client
+   reads it as "no brief yet". A stored morning graded on today's inputs stands on a retry, so
+   the brief is written for the colour he was shown. Home and the brief page re-read the day
+   every 5 seconds while a brief is on its way. The brief page shows when the brief was
+   written, not when the morning was graded. No retry is offered for a day that is over. The
+   symptom answer now counts as a change to the check-in, so changing only that answer
+   regrades the morning. The failure events keep their names and gain a `stage` field.
+3. **Two decisions made on your behalf in Batch 300 (Decision #373), each a one-line change to
    overrule.** A domain marked on Garmin's own sleep score counts as clearly off even where the
    age credit lifts it (Garmin's 55 lifted to 63 eases the session). And a Zone 2 ride on a
    clearly-off light-week morning reads as any other Amber ("Keep your Zone 2 ride at full
    length."), not as the hold; it is the same ride either way.
-3. The Vercel project's own Node setting still reads 20.x; `engines` overrides it, so changing
+4. The Vercel project's own Node setting still reads 20.x; `engines` overrides it, so changing
    it is tidiness only (a hosting change, yours).
-4. **From 7 to 20 Oct:** review every ladder-versus-graded disagreement in the table above.
-5. **Carried:** G4's free Neon database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment
+5. **From 7 to 20 Oct:** review every ladder-versus-graded disagreement in the table above.
+6. **Carried:** G4's free Neon database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment
    extractor's first paid run (Mark's own "Look for new memories" tap).
 
 ### Worth carrying
 
+- **The morning is stored before its brief (Batch 302, PR #351, `7636ec5`).** A `morning` row
+  with `output_markdown = ''` is a graded morning whose brief is not written; the brief is
+  filled into the same row about a minute later. On a normal morning expect the row within
+  seconds of the check-in, Home showing the colour over "Writing your brief", then the prose.
+  A failed brief logs `morning analysis failed` with `stage: "brief"`, leaves the row, and
+  pushes "Today's call is ready"; "Try again" is `POST /api/v1/daily-loop/{date}/brief/retry`
+  and saves nothing. **Check the first real run** (Mark's next check-in or 3 Oct's sync):
+  `select generated_at_utc, length(output_markdown), raw_response->>'briefWrittenAtUtc' from
+  coach.analyses where analysis_type = 'morning' and subject_date = current_date`.
+- **Reverting Batch 302 while a morning has no prose** would leave the older code reading that
+  row as an empty brief and, on unchanged inputs, not regenerating it. A check-in re-saved
+  with any change regenerates it. On 2 Oct production holds no such row.
+- **Still open after 302:** a re-save after a written brief can clear a symptom found in his
+  note at a later regrade (303.5); the generation identity still leaves out the sleep setup
+  and the REM feedback; a check-in saved while a generation is in flight is deferred, not
+  graded. The check-in page's failed state was tested but not seen in a browser.
+- **Home and the brief page re-read the day every 5 seconds while a brief is on its way:**
+  about 1 to 2 MB of database egress a morning, against the free plan's 5.5 GB a month.
+- **A production smoke that opens a transaction runs inside the container, with a watchdog.**
+  Pipe the script in: `railway ssh --service api "echo <base64> | base64 -d | PYTHONPATH=/app
+  python -"` (12.5 seconds for 302's). The same script through `railway run` from this Mac
+  hung twice on a network stall and left a production connection idle in a transaction for
+  about 13 minutes, holding an advisory lock. Any such script starts with
+  `faulthandler.dump_traceback_later(90, exit=True)`, runs on a past date, and is followed by
+  a check that `pg_stat_activity` shows nothing idle in a transaction.
+- **A batch that renames a service method must grep the tests for hand-written stand-ins of
+  the old one.** 302 split `generate_and_store` into `grade_and_store` and `write_brief`;
+  `test_executable_coaching.py`'s stand-in class kept the old method, its Postgres tests skip
+  on this Mac, and the first CI run failed on five of them.
 - **The web builds on Node 24 (Batch 309, PR #346, `8e0dafd`).** Vercel had refused every
   build since 1 Oct 09:26, production included; production now serves `8e0dafd`'s build and
   its service worker activates. Local web gates use `~/.nvm/versions/node/v24.21.0/bin`.
@@ -115,7 +158,7 @@ v50 brief reads constraints the ladder does not follow.
   minutes). One or two mild concerns hold the session, with the week named.
 - **The database is at 453 MB of the 500 MB free-plan cap**; `egress-budget` reports
   `storage_critical` every 15 minutes. Up about 5 MB a week since 24 Sep.
-- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #374.**
+- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #375.**
 
 ## Prior current-state snapshots
 
@@ -1950,6 +1993,24 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-02 (afternoon)** — Batch 302 shipped as PR #351 / `7636ec5` (Decision #374), the
+  first of G7b. The `morning` row is stored when the morning is graded, with its prose empty,
+  and the brief is written into it: grade and store, then the ride changes, then the paid
+  call, each its own transaction. A failed call costs the prose only; before this it rolled
+  back the colour, the floors, the plan lines and the proposals (21 Jul: no colour for 9 h 32
+  min on a Red day). Storage and "shown as soon as graded" were Craig's calls (the morning row
+  itself, no migration); the wording was signed off as drafted, with a new push, "Today's call
+  is ready". "Try again" is its own route and saves nothing. Found at `/batch-start` and fixed
+  here: the symptom answer was not in the generation identity, an earlier brief hid a later
+  failed one, and a failed brief discarded the note reading. CI 16 of 16 on both waves (2,312
+  passed, 0 skipped; the first run failed on a stand-in class in five Postgres tests) and
+  green on `main`. Production on `7636ec5`: health on both, web 200 with the new chunks,
+  `daily-loop` 401, the retry route 401; a 502 for one read during the switch, as on earlier
+  deploys. Smoke inside the deployed image on 1 Oct's inputs, rolled back: Amber with no
+  prose, the stored reading reused, both billing wordings classed `billing`, the row surviving
+  the failure, the envelope and the rail reading the colour; 1 Oct keeps its one row. Today's
+  brief, written by the earlier code, reads as before. No migration, no production write, no
+  paid call, no prompt change (v54). Next: 303, on Craig's go.
 - **2026-10-02** — Batch 300 shipped as PR #350 / `422c07b` (Decision #373, amending #366 and
   #367), and **G7a is complete.** In a consolidation, taper, recovery or rest week the session
   is held only when nothing is clearly off: a held Green, or an Amber made of two mild
