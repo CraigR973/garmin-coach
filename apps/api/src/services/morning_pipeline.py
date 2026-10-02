@@ -568,8 +568,11 @@ class MorningBriefPipeline:
                     subject_date=subject_date.isoformat(),
                 )
             else:
+                # The event keeps its name across both stages it can come from: the
+                # runbook and Sentry's grouping know it. ``stage`` says which.
                 log.exception(
-                    "morning grading failed",
+                    "morning analysis failed",
+                    stage="grade",
                     trigger=policy.trigger.value,
                     profile_id=str(profile_id),
                     subject_date=subject_date.isoformat(),
@@ -608,7 +611,8 @@ class MorningBriefPipeline:
             await session.rollback()
             outcome.failures += 1
             log.exception(
-                "morning ride changes failed",
+                "morning brief follow-through failed",
+                stage="ride_changes",
                 trigger=policy.trigger.value,
                 profile_id=str(profile_id),
                 subject_date=subject_date.isoformat(),
@@ -638,8 +642,10 @@ class MorningBriefPipeline:
             except Exception as exc:
                 await session.rollback()
                 outcome.failures += 1
+                # The graded morning stands: only its written brief is missing.
                 log.exception(
-                    "morning brief failed; the graded morning stands",
+                    "morning analysis failed",
+                    stage="brief",
                     trigger=policy.trigger.value,
                     profile_id=str(profile_id),
                     subject_date=subject_date.isoformat(),
@@ -670,6 +676,7 @@ class MorningBriefPipeline:
             outcome.failures += 1
             log.exception(
                 "morning brief follow-through failed",
+                stage="after_brief",
                 trigger=policy.trigger.value,
                 profile_id=str(profile_id),
                 subject_date=subject_date.isoformat(),
