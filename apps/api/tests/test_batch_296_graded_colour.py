@@ -123,7 +123,10 @@ def fixture() -> dict[str, Any]:
 
 @pytest.fixture(scope="module")
 def replayed(fixture: dict[str, Any]) -> dict[date, Any]:
-    return _replayed(fixture)
+    # Batch 304 marks 22 Sep's HRV dip, so it is no longer held. These tests pin 296's
+    # mechanics (the held plan line, the VO2 gate, the drift report) on the mornings as
+    # they were graded when 296 shipped, so they replay them without that rule.
+    return _replayed(fixture, hrv_persistence=False)
 
 
 def _planned(fixture: dict[str, Any], day: date) -> list[PlannedWorkout]:
@@ -216,6 +219,8 @@ def test_a_graded_packet_carries_none_of_the_ladders_working(
         "notesFeelWords",
         # Batch 298: the light week's name, for the plan line and the hero.
         "lightWeek",
+        # Batch 304: whether the HRV persistence rule graded it.
+        "hrvPersistence",
     }
     assert "graded_verdict" in packet["safetyRulesApplied"]
 
