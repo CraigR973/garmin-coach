@@ -6,15 +6,22 @@
 
 ## Now
 
-**2026-10-03 — Batch 304 is shipped, and G7c is brought forward (Craig, 3 Oct).** A week-long
+**2026-10-03 (night) — Batches 304 and 305 are shipped; 306 is next, then 291 (G7c brought
+forward by Craig, 3 Oct).** 305 (live since the morning): a hard day yesterday counts only
+before a hard session, readiness confirmation is kept and labelled as deliberate extra weight,
+and a low HRV night goes off the bike with a resting-HR rise of 4 bpm, not two mornings above
+his usual range. **The first real morning under the new rules (3 Oct, a holiday rest day) was
+Red; without 304 it would have been Amber** (HRV 39 ms against 47 with the week already low,
+plus a fair night readiness confirms). No session was affected; Mark sees the Red.
+
+**Earlier, 3 Oct — Batch 304 is shipped, and G7c is brought forward (Craig, 3 Oct).** A week-long
 HRV dip now counts as clearly off: his 7-day HRV is marked once it has stayed under his smallest
 worthwhile change for three mornings running, or is under it with last night under his acute
 floor (replayed: 6 of 103 past mornings change, Red 4 → 6). Craig brought 305 (without its
 load-ratio line) and 306 forward to go live before Mark's first ride back on Wed 7 Oct, then
 291; any not live by Tue 6 Oct waits until 20 Oct, so the 7–20 Oct comparison judges one
 engine. The load-ratio line and 308 (the ladder goes) wait until after 20 Oct. **Next: 305.**
-Nothing in 302, 303 or 304 has yet run on a real morning: the first is Mark's next check-in
-(no 3 Oct morning by 08:48 UTC).
+302's stored-first flow, 304 and 305 all ran on 3 Oct's real morning (above).
 
 **Why the change of plan (3 Oct).** Craig asked whether shipping G7c now and letting Mark raise
 problems was valid. It is for a change that only adds caution (304, 306): its mistakes are a
@@ -60,7 +67,7 @@ break), where a wrong hold is invisible to him.
 |---|---|---|
 | G7a, before 7 Oct | ~~309~~ → ~~301~~ → ~~298~~ → ~~299~~ → ~~300~~ | Complete, 2 Oct |
 | G7b | ~~302~~ → ~~303~~ → ~~307~~ | Complete, 2 Oct |
-| G7c, by Tue 6 Oct | ~~304~~ → 305 (without its load-ratio line) → 306, then 291 | Craig's go, 3 Oct; one not live by 6 Oct waits until 20 Oct |
+| G7c, by Tue 6 Oct | ~~304~~ → ~~305~~ (without its load-ratio line) → 306, then 291 | Craig's go, 3 Oct; one not live by 6 Oct waits until 20 Oct |
 | After 20 Oct | 305's load-ratio line → 308 | 308 after the side-by-side review |
 
 Batch 291's row is corrected in place (its alert list).
@@ -95,11 +102,13 @@ v50 brief reads constraints the ladder does not follow.
 
 ### Needs Craig
 
-1. **305 and 306 are running now, on your 3 Oct answers.** 305: readiness confirmation kept
-   and labelled as deliberate extra weight; "yesterday was a hard day" only before a hard
-   session; the off-the-bike resting-HR corroboration needs +4 bpm. 306: the shorter ride is
-   offered in one tap. 291 follows, with a failed note reading left as a warning. You will be
-   asked to sign off 306's Mark-facing words; after 291, one Sentry alert rule is yours.
+1. **306 is running now, on your 3 Oct answers:** on a tired Amber Mark picks how to ride
+   the hard session (two buttons on Home, "Easy Zone 2" at 75% FTP or "Tempo" at 85%, full
+   length; picking neither leaves the planned session on Zwift), and a long ride is offered
+   at 75% of its length in one tap. Words signed off. 291 follows, with a failed note reading
+   left as a warning; after it, one Sentry alert rule is yours. Your call on 305 (3 Oct): the
+   4 bpm corroboration stays, though it adds an off-the-bike day where a single morning is up
+   4 bpm (once in his history, 1 Aug).
 2. **Decision #378 (yours, 3 Oct):** the JS audit's new braces advisory is a reviewed
    exception (build-time only, no fixed version yet). Revisit when a fixed braces ships.
 3. **Decisions made on your behalf in Batch 303 (Decision #375), each overrulable.** A chest
@@ -209,7 +218,7 @@ v50 brief reads constraints the ladder does not follow.
   minutes). One or two mild concerns hold the session, with the week named.
 - **The database is at 453 MB of the 500 MB free-plan cap**; `egress-budget` reports
   `storage_critical` every 15 minutes. Up about 5 MB a week since 24 Sep.
-- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #379.**
+- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #380.**
 
 ## Prior current-state snapshots
 
@@ -2044,6 +2053,14 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-03 (night)** — Batch 305 shipped as PR #355 / `7fb0fee` (Decision #379, without
+  its load-ratio line): a hard yesterday counts only before a hard session (5 past colours
+  move, all on easy days); readiness confirmation labelled as deliberate extra weight; the
+  off-the-bike corroboration is a 4 bpm rise (1 Aug gains the floor, none loses it; Craig kept
+  it). CI 16 of 16 on both waves (2,402 passed). The 3 Oct morning was the first real run of
+  302's stored-first flow, 304 and 305: brief written a minute after grading, and Red (Amber
+  without 304) on a holiday rest day. Craig chose to let Mark pick a tired morning's hard
+  session (Zone 2 or tempo) in 306.
 - **2026-10-03** — Batch 304 shipped as PR #354 / `2488163` (Decision #377): a 7-day HRV dip
   is marked once it has lasted three mornings, or comes with last night under his acute floor;
   graded mornings store `references.hrvPersistence`, so the replay reproduces mornings graded
