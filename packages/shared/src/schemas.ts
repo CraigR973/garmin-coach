@@ -1113,13 +1113,23 @@ export type WeeklyMix = z.infer<typeof weeklyMixSchema>;
 // tappable through the rail Home already uses (approve_ride -> approve-adjustment,
 // apply_swap -> swap). The structured data is durable; the visual layout is
 // deliberately swappable so the format can be tuned after Mark reacts.
+// Batch 306: on a tired morning Mark picks how to ride the hard session
+// (pick_ride -> approve-adjustment?variant=...). Until he picks, the planned
+// session stays on Zwift.
+export const todayActionChoiceSchema = z.object({
+  variant: z.enum(['zone2', 'tempo']),
+  label: z.string(),
+});
+export type TodayActionChoice = z.infer<typeof todayActionChoiceSchema>;
+
 export const todayActionSchema = z.object({
-  kind: z.enum(['approve_ride', 'apply_swap', 'sleep', 'thermal']),
+  kind: z.enum(['approve_ride', 'pick_ride', 'apply_swap', 'sleep', 'thermal']),
   title: z.string(),
   detail: z.string().nullable().optional(),
   plannedWorkoutId: z.string().uuid().nullable().optional(),
   targetDate: z.string().nullable().optional(),
   href: z.string().nullable().optional(),
+  choices: z.array(todayActionChoiceSchema).optional(),
 });
 export type TodayAction = z.infer<typeof todayActionSchema>;
 

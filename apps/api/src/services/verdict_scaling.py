@@ -106,6 +106,29 @@ ENDURANCE_CEILING_PCT = 75
 # Mark's plan-level Zone-2 anchor. This is a prescription, not a classification:
 # compromised-day work between 68% and the ceiling is brought back to this value.
 ENDURANCE_PRESCRIPTION_PCT = 67
+# Batch 306: the top of tempo, for the harder of the two ways Mark can pick to ride a
+# hard session on a tired morning.
+TEMPO_CAP_PCT = 85
+
+#: Batch 306 (Craig, 3 Oct 2026): the versions a tired Amber offers. They are not
+#: colours: each names what the ride becomes. On a tired morning Mark picks how to ride
+#: a hard session, easy Zone 2 or tempo, both at full length, and a long ride is offered
+#: at the ladder Amber's 75% of its length with the Zone 2 kept. Nothing changes unless
+#: he picks one: the planned session stays on Zwift until he approves.
+TRANSFORM_TIRED_ZONE2 = "TiredZone2"
+TRANSFORM_TIRED_TEMPO = "TiredTempo"
+TRANSFORM_SHORTER = "Shorter"
+#: ``transform: (power cap, duration scale, origin, name prefix)``.
+TIRED_TRANSFORMS: dict[str, tuple[int, float, str, str]] = {
+    TRANSFORM_TIRED_ZONE2: (ENDURANCE_CEILING_PCT, 1.0, "graded_tired_zone2", "Easy Zone 2"),
+    TRANSFORM_TIRED_TEMPO: (TEMPO_CAP_PCT, 1.0, "graded_tired_tempo", "Tempo"),
+    TRANSFORM_SHORTER: (
+        ENDURANCE_CEILING_PCT,
+        AMBER_DURATION_SCALE,
+        "graded_offer_shorter",
+        "Shorter",
+    ),
+}
 
 
 def _normalize_verdict(value: str | None) -> str | None:
@@ -639,12 +662,25 @@ def adjust_ir_for_verdict(
       substitute an easy recovery spin — half duration and every step capped at
       ``RECOVERY_CAP_PCT``, which guarantees the output can never be a VO2 push.
     """
-    status = _normalize_verdict(verdict)
+    tired = TIRED_TRANSFORMS.get(verdict or "")
+    status = verdict if tired is not None else _normalize_verdict(verdict)
     raw_steps = base_ir.get("steps")
     steps = [s for s in raw_steps if isinstance(s, dict)] if isinstance(raw_steps, list) else []
     original_name = str(base_ir.get("name") or "Workout")
 
-    if status == "Amber" and graded:
+    if tired is not None:
+        # Batch 306: a version Mark picks on a tired morning. Every step is capped, at
+        # Zone 2 or tempo for a hard session at full length, or the long ride's own
+        # Zone 2 at three quarters of its length. A ride already under the cap at full
+        # length is not changed.
+        power_cap, duration_scale, origin, name_prefix = tired
+        ease: Callable[[int], int] | None = None
+        if duration_scale == 1.0 and not any(_step_power(step) > power_cap for step in steps):
+            unchanged = dict(base_ir)
+            unchanged["origin"] = "as_planned"
+            unchanged["adjustment"] = {"verdict": status, "changed": False, "graded": True}
+            return unchanged
+    elif status == "Amber" and graded:
         # Batch 296: the graded verdict's Amber eases only the hard work and keeps
         # the session at full length, Zone 2 untouched. A ride with no step above
         # the endurance ceiling is therefore not changed at all.
@@ -655,7 +691,7 @@ def adjust_ir_for_verdict(
             return unchanged
         duration_scale = 1.0
         power_cap = AMBER_POWER_CAP_PCT
-        ease: Callable[[int], int] | None = ease_graded_amber_power_pct
+        ease = ease_graded_amber_power_pct
         origin, name_prefix = "graded_amber_ease", "Hard work eased"
     elif status == "Amber":
         duration_scale = amber_duration_scale(companion_session=companion_session)
@@ -720,7 +756,7 @@ def adjust_ir_for_verdict(
     }
     if status in {"Amber", "Red"}:
         adjusted["adjustment"]["companionSession"] = companion_session
-    if graded:
+    if graded or tired is not None:
         adjusted["adjustment"]["graded"] = True
     return adjusted
 
@@ -737,7 +773,7 @@ def kept_as_endurance(
     never call that a recovery substitution. Keying the substitution wording on
     the narrow flag made the brief contradict the ride the delivery rail builds.
     """
-    if status == "Amber":
+    if status in {"Amber", TRANSFORM_SHORTER}:
         return ir_is_endurance(base_ir)
     if status == "Red":
         return red_holds_endurance(base_ir, companion_session=companion_session)
@@ -755,7 +791,7 @@ def _holds_endurance(
     )
     primary = _primary_work_step(steps)
     already_at_anchor = primary is not None and _step_power(primary) <= ENDURANCE_PRESCRIPTION_PCT
-    if status == "Amber":
+    if status in {"Amber", TRANSFORM_SHORTER}:
         return ir_is_endurance(base_ir) and already_at_anchor
     if status == "Red":
         return (
@@ -872,8 +908,8 @@ def summarize_verdict_adjustment(
     instead of guessing. Returns ``None`` on a Green/unknown verdict or when the IR
     has no steps, and never influences the verdict or the numbers.
     """
-    status = _normalize_verdict(verdict)
-    if status not in {"Amber", "Red"}:
+    status = verdict if verdict in TIRED_TRANSFORMS else _normalize_verdict(verdict)
+    if status not in {"Amber", "Red", *TIRED_TRANSFORMS}:
         return None
     raw_steps = base_ir.get("steps")
     base_steps = (

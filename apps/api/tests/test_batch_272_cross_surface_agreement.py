@@ -378,7 +378,7 @@ def test_every_paid_read_is_told_what_an_unreliable_figure_means() -> None:
     # A changed instruction moves each version. The brief self-heals and reviews are
     # read unfiltered; Trends filters, so the close-out regenerates its narratives.
     # (Batch 294 moved the brief on again, to v50; Batch 296 to v51 and reviews to v10.)
-    assert MORNING_PROMPT_VERSION == "morning-analysis-v55-2026-10-02"
+    assert MORNING_PROMPT_VERSION == "morning-analysis-v56-2026-10-03"
     assert REVIEW_PROMPT_VERSION == "reviews-v10-2026-09-29"
     assert PROMPT_VERSION_BY_BUCKET[BUCKET_MONTH] == "trends-month-v12-2026-09-27"
     assert PROMPT_VERSION_BY_BUCKET["season"] == "trends-season-v12-2026-09-27"

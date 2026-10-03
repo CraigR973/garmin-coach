@@ -35,6 +35,7 @@ from src.services.morning_analysis import MorningAnalysisService
 from src.services.morning_verdict import (
     GRADED_EASE_HARD_LINE,
     GRADED_LIGHT_WEEK_LINE,
+    GRADED_PICK_LINE,
     GRADED_ZONE_TWO_LINE,
     graded_plan_adjustments,
 )
@@ -44,6 +45,7 @@ from src.services.verdict_grading import (
     ACTION_HOLD_TARGETS,
     ACTION_NO_TRAINING,
     ACTION_OFF_THE_BIKE,
+    ACTION_PICK_ZONE2_OR_TEMPO,
     ACTION_RECOVERY,
     ACTION_SHORTENED_Z2,
     GradedVerdict,
@@ -148,12 +150,19 @@ def _z2() -> PlannedWorkout:
 def _light(
     workouts: list[PlannedWorkout], *, block: str = "consolidation", **morning: Any
 ) -> GradingInputs:
-    """One W12 or W13 morning: the engine's grid inputs, inside a light week."""
+    """One W12 or W13 morning: the engine's grid inputs, inside a light week.
+
+    Batch 306 offers a tired morning (sleep or feel marked) Mark's pick instead of the
+    plain ease; these tests pin 300's own rule, that a marked domain takes the ordinary
+    action rather than the hold, so they grade without 306's choices. Its tests cover
+    the pick in a light week.
+    """
     return replace(
         _inputs(**morning),
         recovery_class_block=True,
         light_week=block,
         sessions=tuple(classify_planned_workout(workout) for workout in workouts),
+        tired_morning_choices=False,
     )
 
 
@@ -324,6 +333,7 @@ def test_in_a_light_week_a_worse_morning_never_takes_a_less_cautious_action() ->
             recovery_class_block=True,
             light_week="consolidation",
             sessions=session,
+            tired_morning_choices=False,  # 300's rule alone; 306's tests cover the pick
         )
         [action] = grade(inputs).actions
         grid[combo] = CAUTION[action.action]
@@ -489,8 +499,9 @@ def test_the_replayed_fixture_mornings_keep_their_colour_and_actions() -> None:
 @pytest.mark.parametrize(
     ("block_type", "expected_action"),
     [
-        pytest.param("consolidation", ACTION_EASE_HARD, id="light_week_eases"),
-        pytest.param("build", ACTION_EASE_HARD, id="build_week_eases"),
+        # Batch 306: a very poor night is a tired morning, so Mark picks how to ride it.
+        pytest.param("consolidation", ACTION_PICK_ZONE2_OR_TEMPO, id="light_week_offers_the_pick"),
+        pytest.param("build", ACTION_PICK_ZONE2_OR_TEMPO, id="build_week_offers_the_pick"),
     ],
 )
 async def test_one_very_poor_night_eases_the_hard_session_in_the_real_packet(
@@ -540,9 +551,9 @@ async def test_one_very_poor_night_eases_the_hard_session_in_the_real_packet(
         (str(hard.id), expected_action)
     ]
     lines = verdict["planAdjustments"]
-    assert GRADED_EASE_HARD_LINE in lines
+    assert GRADED_PICK_LINE.format(title=hard.title) in lines
     assert not any("stays as planned: hold the targets" in line for line in lines)
-    # Batch 299: the eased session is still in the week's mix.
-    assert verdict["weeklyMix"]["shortfall"] is None
-    assert verdict["weeklyMix"]["eased"]["message"] in lines
+    # Batch 306: neither pick keeps the hard work, so the week's mix counts it as missed.
+    assert verdict["weeklyMix"].get("eased") is None
+    assert verdict["weeklyMix"]["shortfall"]["message"] in lines
     assert _light_week_hold(verdict) is None

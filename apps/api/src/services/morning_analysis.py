@@ -196,6 +196,7 @@ from src.services.symptom_check import (
 )
 from src.services.training_week import TrainingWeekService
 from src.services.verdict_grading import (
+    ACTION_PICK_ZONE2_OR_TEMPO,
     ENGINE_GRADED,
     GradedVerdict,
     build_grading_inputs,
@@ -400,8 +401,15 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # colour is not Red, which no earlier rule described. The ladder's v50 is unchanged, and
 # under it neither easing is applied. Self-healing: nothing is withdrawn and nothing is
 # regenerated; the next generation of any morning writes v55.
+# Batch 306: on a tired morning (an Amber with sleep or how he feels clearly off) the
+# graded read is told the two new session actions: pick_zone2_or_tempo, where Mark picks
+# on Home how to ride the hard session, and offer_shorter, where a long ride is offered
+# shorter in one tap; under both the planned session stands until he picks, so the read
+# must not call the ride eased or shortened. The ladder's v50 is unchanged. Self-healing:
+# nothing is withdrawn and nothing is regenerated; the next generation of any morning
+# writes v56.
 LADDER_PROMPT_VERSION = "morning-analysis-v50-2026-09-28"
-GRADED_PROMPT_VERSION = "morning-analysis-v55-2026-10-02"
+GRADED_PROMPT_VERSION = "morning-analysis-v56-2026-10-03"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -730,9 +738,14 @@ verdict.swapSuggestion offers one, otherwise ride it with the targets held), eas
 (the hard intervals eased a zone at full length, Zone 2 unchanged), hold_targets (a
 planned light week, named by verdict.graded.references.lightWeek as his plan names it,
 consolidation, taper or recovery: the session stays as planned, targets held), recovery
-and shortened_zone2 (Red), and as_planned. On a held morning say plainly that the session
-stands and that he should hold its targets rather than push past them, and never call
-it cut, eased or cautious."""
+and shortened_zone2 (Red), pick_zone2_or_tempo (a tired morning: Mark picks on Home how to
+ride the hard session, easy Zone 2 with nothing above 75% FTP or tempo with nothing above
+85%, full length either way; until he picks, the planned session stands, so name both
+options and never say the ride is already eased), offer_shorter (a tired morning: a long
+ride is offered shorter in one tap, verdict.verdictAdjustment giving both lengths; it
+stays at full length unless he takes it, so never call it shortened), and as_planned. On
+a held morning say plainly that the session stands and that he should hold its targets
+rather than push past them, and never call it cut, eased or cautious."""
 
 # Batch 298: the ladder calls a capped HRV drop on its own an eased day. The graded
 # verdict counts it as one thing a little off, so the graded read says that instead.
@@ -1206,9 +1219,19 @@ class MorningAnalysisService:
         chronic_action = verdict.get("chronicAction")
         if VERDICT_ENGINE == ENGINE_GRADED:
             # Batch 296: a swap is offered when a session's action would move or change
-            # it; a held easy day and a recovery-week hold offer none.
+            # it; a held easy day and a recovery-week hold offer none. Batch 306: a tired
+            # morning's pick changes the hard session too, so moving it to a better day
+            # still leads (Mark's swap-first preference); the shorter long ride is only
+            # an offer and leaves the ride as planned.
             acute_swap = not rest_day["isRestDay"] and any(
-                action.action in {"move_or_hold", "ease_hard", "recovery", "shortened_zone2"}
+                action.action
+                in {
+                    "move_or_hold",
+                    "ease_hard",
+                    "recovery",
+                    "shortened_zone2",
+                    ACTION_PICK_ZONE2_OR_TEMPO,
+                }
                 for action in graded.actions
             )
         else:
@@ -2891,6 +2914,56 @@ def _thermal_action(thermal_review: Mapping[str, Any]) -> dict[str, Any] | None:
     }
 
 
+#: Batch 306: the two ways Mark can pick to ride a hard session on a tired morning, as
+#: the variants the approve endpoint takes. Signed off by Craig on his behalf, 3 Oct 2026.
+PICK_RIDE_CHOICES: tuple[dict[str, str], ...] = (
+    {"variant": "zone2", "label": "Easy Zone 2"},
+    {"variant": "tempo", "label": "Tempo"},
+)
+
+
+def _tired_choice_action(
+    verdict: Mapping[str, Any], planned_workouts: Sequence[PlannedWorkout]
+) -> dict[str, Any] | None:
+    """Home's card for a tired morning's choice, or ``None`` (Batch 306).
+
+    Until he picks, the planned session stays on Zwift: the card says so, because a
+    card he ignores must not read as a ride already eased.
+    """
+    adjustment = verdict.get("verdictAdjustment")
+    choice = adjustment.get("choice") if isinstance(adjustment, Mapping) else None
+    ride = _todays_bike_workout(planned_workouts)
+    if not isinstance(choice, Mapping) or ride is None or not isinstance(adjustment, Mapping):
+        return None
+    if choice.get("kind") == "pick":
+        name = (ride.title or "the session").split(" (", 1)[0]
+        return {
+            "kind": "pick_ride",
+            "title": f"How do you want to ride {name} today?",
+            "detail": "Same length either way. If you pick neither, the planned session "
+            "stays on Zwift.",
+            "plannedWorkoutId": str(ride.id),
+            "targetDate": None,
+            "href": None,
+            "choices": [dict(item) for item in PICK_RIDE_CHOICES],
+        }
+    if choice.get("kind") == "offer":
+        shorter = adjustment.get("adjustedDurationMin")
+        full = adjustment.get("plannedDurationMin")
+        if not isinstance(shorter, int) or not isinstance(full, int):
+            return None
+        return {
+            "kind": "approve_ride",
+            "title": "Ride a shorter version?",
+            "detail": f"{shorter} min instead of {full}, same Zone 2. Approve to upload it; "
+            "otherwise ride as planned.",
+            "plannedWorkoutId": str(ride.id),
+            "targetDate": None,
+            "href": None,
+        }
+    return None
+
+
 def build_today_actions(
     *,
     verdict: Mapping[str, Any],
@@ -2941,7 +3014,10 @@ def build_today_actions(
     eased = status in {"Amber", "Red"} and (
         not graded or verdict.get("verdictAdjustment") is not None
     )
-    if eased or chronic_deload:
+    choice_action = _tired_choice_action(verdict, planned_workouts) if graded else None
+    if choice_action is not None:
+        actions.append(choice_action)
+    elif eased or chronic_deload:
         ride = _todays_bike_workout(planned_workouts)
         if ride is not None:
             actions.append(

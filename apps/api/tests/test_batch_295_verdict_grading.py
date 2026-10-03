@@ -78,6 +78,7 @@ def _metrics(rows: list[list[Any]]) -> dict[date, DailyMetric]:
 LATER_RULES: dict[int, dict[str, bool]] = {
     304: {"hrv_persistence": False},
     305: {"yesterday_counts_on_hard_days": False},
+    306: {"tired_morning_choices": False},
 }
 
 

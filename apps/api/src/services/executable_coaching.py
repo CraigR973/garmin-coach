@@ -63,6 +63,9 @@ from src.services.verdict_grading import (
 )
 from src.services.verdict_scaling import (
     MIN_POWER_PCT,
+    TIRED_TRANSFORMS,
+    TRANSFORM_TIRED_TEMPO,
+    TRANSFORM_TIRED_ZONE2,
     _normalize_verdict,
     adjust_ir_for_chronic_deload,
     adjust_ir_for_verdict,
@@ -110,6 +113,13 @@ DONE_ADHERENCE_STATUSES = {"completed", "modified", "done", "did_something_else"
 MAX_MANUAL_POWER_PCT = 150
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
+
+
+#: Batch 306: the two ways Mark can pick to ride a hard session on a tired morning, and
+#: the origin of the pending ride that offers the pick (the easy Zone 2 version).
+PICK_VARIANT_ZONE2 = "zone2"
+PICK_VARIANT_TEMPO = "tempo"
+PICK_ORIGIN = TIRED_TRANSFORMS[TRANSFORM_TIRED_ZONE2][2]
 
 
 def _utcnow() -> datetime:
@@ -1118,11 +1128,17 @@ class ExecutableCoachingService:
         player: Profile,
         *,
         planned_workout_id: uuid.UUID,
+        variant: str | None = None,
     ) -> WorkoutDeliveryProposal:
         """Approve & upload (changes state) — replace the live Zwift event with the
         pending coach-adjusted IR. Red-never-VO2 still gates this (Decision #30/#61):
         Ignore can keep the planned session, but Approve can never push a VO2 set on
         a Red day.
+
+        Batch 306: on a tired morning the pending ride is the easy Zone 2 version and
+        Mark may pick tempo instead (``variant="tempo"``): the tempo version is built
+        from the planned session by the same transform and uploaded in its place. Only
+        a pick the morning offered can be taken.
         """
         workout = await self.rail._planned_workout(player.id, planned_workout_id)
         pending = await self._pending_adjustment(player.id, workout)
@@ -1130,6 +1146,21 @@ class ExecutableCoachingService:
             raise HTTPException(status_code=409, detail="No pending coach adjustment to approve")
         verdict = await self._morning_verdict_for(player.id, workout.workout_date)
         ir = pending.structured_workout_ir
+        if variant not in (None, PICK_VARIANT_ZONE2, PICK_VARIANT_TEMPO):
+            raise HTTPException(status_code=422, detail="Unknown ride choice")
+        if variant is not None:
+            offered = isinstance(ir, dict) and ir.get("origin") == PICK_ORIGIN
+            if not offered:
+                raise HTTPException(status_code=409, detail="This ride has no choice to make")
+            if variant == PICK_VARIANT_TEMPO:
+                ftp_watts = await self.rail._ftp_watts(player.id)
+                ir = adjust_ir_for_verdict(
+                    build_structured_workout_ir(workout, ftp_watts=ftp_watts),
+                    TRANSFORM_TIRED_TEMPO,
+                    graded=True,
+                )
+                # The proposal records the ride that was uploaded.
+                pending.structured_workout_ir = ir
         if blocks_red_vo2(verdict, ir):
             await self._record_block_if_new(player, pending)
             await self.session.commit()
@@ -1151,7 +1182,11 @@ class ExecutableCoachingService:
             analysis_type=AUDIT_TYPE_PUSHED,
             tag=f"approve:{workout.id}:v{workout.version}",
             subject_date=workout.workout_date,
-            summary=f"Approved the coach adjustment for {workout.title} and uploaded it.",
+            summary=(
+                f"Approved the coach adjustment for {workout.title}"
+                + (f" ({variant})" if variant is not None else "")
+                + " and uploaded it."
+            ),
             planned_workout_id=workout.id,
             planned_workout_version=workout.version,
             event_id=delivered.intervals_event_id,

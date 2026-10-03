@@ -42,6 +42,7 @@ from src.services.verdict_grading import (
     ACTION_EASE_HARD,
     ACTION_NO_TRAINING,
     ACTION_OFF_THE_BIKE,
+    ACTION_PICK_ZONE2_OR_TEMPO,
     ACTION_RECOVERY,
     ACTION_SHORTENED_Z2,
 )
@@ -90,9 +91,17 @@ _CATEGORY_TO_BUCKET = {
 
 #: Batch 299: the graded actions that take today's hard session out of the week. A Red
 #: morning's recovery spin or shortened ride, and the floors' days off, drop it. An eased
-#: session (``ease_hard``) is eased, not lost, and a held or moved one stands.
+#: session (``ease_hard``) is eased, not lost, and a held or moved one stands. Batch 306:
+#: on a tired morning neither of his picks (easy Zone 2, tempo) keeps the hard work, so
+#: the session counts as missed and the week's line offers to move it.
 DROPPING_ACTIONS: frozenset[str] = frozenset(
-    {ACTION_RECOVERY, ACTION_SHORTENED_Z2, ACTION_OFF_THE_BIKE, ACTION_NO_TRAINING}
+    {
+        ACTION_RECOVERY,
+        ACTION_SHORTENED_Z2,
+        ACTION_OFF_THE_BIKE,
+        ACTION_NO_TRAINING,
+        ACTION_PICK_ZONE2_OR_TEMPO,
+    }
 )
 
 

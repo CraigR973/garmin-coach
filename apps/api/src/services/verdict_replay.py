@@ -625,6 +625,8 @@ def replay_morning(
             hrv_persistence=references.get("hrvPersistence") is True,
             # Batch 305: likewise for a hard yesterday counting only before a hard session.
             yesterday_counts_on_hard_days=references.get("yesterdayCountsOnHardDays") is True,
+            # Batch 306: likewise for a tired morning's choices.
+            tired_morning_choices=references.get("tiredMorningChoices") is True,
         )
         recovery_class = inputs.recovery_class_block
     sessions = inputs.sessions

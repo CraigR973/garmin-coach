@@ -223,6 +223,8 @@ def test_a_graded_packet_carries_none_of_the_ladders_working(
         "hrvPersistence",
         # Batch 305: whether a hard yesterday counted only before a hard session.
         "yesterdayCountsOnHardDays",
+        # Batch 306: whether a tired morning offered its choices.
+        "tiredMorningChoices",
     }
     assert "graded_verdict" in packet["safetyRulesApplied"]
 
@@ -767,7 +769,8 @@ async def test_production_stores_the_graded_colour_and_the_replay_reproduces_it(
 
         context = await ExecutableCoachingService(session)._morning_context_for(user_id, day)
         assert (context.status, context.graded) == ("Amber", True)
-        assert context.actions == {str(vo2.id): "ease_hard"}
+        # Batch 306: one very poor night is a tired morning: Mark picks how to ride it.
+        assert context.actions == {str(vo2.id): "pick_zone2_or_tempo"}
         base = build_structured_workout_ir(vo2, ftp_watts=280)
         assert blocks_red_vo2(context.status, base) is False
         delivered = morning_ir(base, context, vo2, companion_session=False)
@@ -775,6 +778,7 @@ async def test_production_stores_the_graded_colour_and_the_replay_reproduces_it(
         # The brief quotes the same eased ride the rail delivers.
         assert verdict["verdictAdjustment"]["graded"] is True
         assert verdict["verdictAdjustment"]["plannedWorkoutId"] == str(vo2.id)
+        assert verdict["verdictAdjustment"]["choice"]["kind"] == "pick"
 
         report = await VerdictReplayService(session).replay(player)
 
