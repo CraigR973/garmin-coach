@@ -278,3 +278,53 @@ async def test_the_monthly_analysis_submits_with_sentry_as_the_route(
 
         assert submitted.submitted is True
         assert client.submissions == 1
+
+
+def test_an_alert_raised_in_the_job_runner_reaches_sentry() -> None:
+    """Found at 291's close-out: the job runner initialised Sentry but not logging.
+
+    Without the API's logging setup, structlog printed to stdout and Sentry saw no
+    error a job logged (0 events, measured 4 Oct 2026). A subprocess, because logging
+    and Sentry state are process-wide; the transport records instead of sending.
+    """
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script = (
+        "import sys, asyncio\n"
+        "import sentry_sdk, structlog\n"
+        "from sentry_sdk.transport import Transport\n"
+        "import src.run_scheduled as rs\n"
+        "from src.services.admin_alerts import admin_alert\n"
+        "from src.services.job_runs import JobResult\n"
+        "seen = []\n"
+        "class Capture(Transport):\n"
+        "    def capture_envelope(self, envelope):\n"
+        "        for item in envelope.items:\n"
+        "            body = item.payload.json if item.payload else None\n"
+        "            if body and body.get('level') == 'error':\n"
+        "                seen.append(body.get('tags', {}).get('admin_alert'))\n"
+        "rs.init_sentry = lambda *a, **k: sentry_sdk.init(\n"
+        "    dsn='https://public@o1.ingest.sentry.io/1', transport=Capture) or True\n"
+        "def run(coro):\n"
+        "    coro.close()\n"
+        "    admin_alert(structlog.get_logger('job'), 'probe_alert', kind='longitudinal')\n"
+        "    return JobResult.succeeded()\n"
+        "rs.asyncio.run = run\n"
+        "sys.argv = ['run_scheduled', 'hive-poll']\n"
+        "rs.main()\n"
+        "sentry_sdk.flush(2)\n"
+        "print('ALERTS', seen)\n"
+    )
+    api_root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        cwd=api_root,
+        env={**os.environ, "PYTHONPATH": str(api_root)},
+    )
+    assert result.returncode == 0, result.stderr
+    assert "ALERTS ['longitudinal']" in result.stdout, result.stdout

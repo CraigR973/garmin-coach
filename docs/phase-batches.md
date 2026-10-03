@@ -4510,6 +4510,14 @@ read-only. None changes what the batch builds; Craig answered the open question 
   $0.10-0.30 Craig approved. It submits at the job's next 12:15 London run after the deploy,
   and its temperature finding is routed onto the early-waking experiment as an audited
   observation (Batch 220).
+- **Found while preparing the production smoke, and fixed here: the job runner sent no
+  error to Sentry.** `run_scheduled` initialised Sentry (Decision #329) but never set up
+  logging, so structlog printed to stdout and Sentry's logging integration saw nothing:
+  measured locally on 4 Oct, 0 events without the setup and 1 (carrying the tag) with it.
+  Every error a cron or a manual run logged reported to nobody, the `ledger-freshness`
+  watchdog (whose only delivery is that error) and the weekly review's admin alerts
+  included. The runner now calls `configure_logging` before `init_sentry`, and a
+  subprocess test proves an alert raised in a job reaches Sentry with its tag.
 
 ## Post-roadmap — 2026-09-27 — Mark's holiday could not be entered (Batch 292)
 
