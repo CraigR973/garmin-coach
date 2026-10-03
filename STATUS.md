@@ -6,6 +6,12 @@
 
 ## Now
 
+**2026-10-04 — Batches 304, 305 and 306 are shipped; 291 is next (G7c brought forward by
+Craig, 3 Oct).** 306: on a tired Amber (sleep or feel clearly off) Mark picks on Home how to
+ride the hard session, "Easy Zone 2" (nothing above 75% FTP) or "Tempo" (nothing above 85%),
+full length either way, and a long ride is offered shorter in one tap; until he picks, the
+planned session stays on Zwift. The swap to a better day still leads.
+
 **2026-10-03 (night) — Batches 304 and 305 are shipped; 306 is next, then 291 (G7c brought
 forward by Craig, 3 Oct).** 305 (live since the morning): a hard day yesterday counts only
 before a hard session, readiness confirmation is kept and labelled as deliberate extra weight,
@@ -67,7 +73,7 @@ break), where a wrong hold is invisible to him.
 |---|---|---|
 | G7a, before 7 Oct | ~~309~~ → ~~301~~ → ~~298~~ → ~~299~~ → ~~300~~ | Complete, 2 Oct |
 | G7b | ~~302~~ → ~~303~~ → ~~307~~ | Complete, 2 Oct |
-| G7c, by Tue 6 Oct | ~~304~~ → ~~305~~ (without its load-ratio line) → 306, then 291 | Craig's go, 3 Oct; one not live by 6 Oct waits until 20 Oct |
+| G7c, by Tue 6 Oct | ~~304~~ → ~~305~~ (without its load-ratio line) → ~~306~~, then 291 | Craig's go, 3 Oct; one not live by 6 Oct waits until 20 Oct |
 | After 20 Oct | 305's load-ratio line → 308 | 308 after the side-by-side review |
 
 Batch 291's row is corrected in place (its alert list).
@@ -102,7 +108,7 @@ v50 brief reads constraints the ladder does not follow.
 
 ### Needs Craig
 
-1. **306 is running now, on your 3 Oct answers:** on a tired Amber Mark picks how to ride
+1. **306 shipped (4 Oct), on your 3 Oct answers:** on a tired Amber Mark picks how to ride
    the hard session (two buttons on Home, "Easy Zone 2" at 75% FTP or "Tempo" at 85%, full
    length; picking neither leaves the planned session on Zwift), and a long ride is offered
    at 75% of its length in one tap. Words signed off. 291 follows, with a failed note reading
@@ -218,7 +224,7 @@ v50 brief reads constraints the ladder does not follow.
   minutes). One or two mild concerns hold the session, with the week named.
 - **The database is at 453 MB of the 500 MB free-plan cap**; `egress-budget` reports
   `storage_critical` every 15 minutes. Up about 5 MB a week since 24 Sep.
-- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #380.**
+- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #381.**
 
 ## Prior current-state snapshots
 
@@ -2053,6 +2059,12 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-04** — Batch 306 shipped as PR #356 / `4b6e440` (Decision #380): a tired Amber
+  lets Mark pick easy Zone 2 or tempo for the hard session (two buttons on Home) and offers a
+  long ride shorter in one tap; nothing changes until he picks. Replayed: 4 of 104 past
+  mornings change, no colour (16 and 30 Aug offer the shorter Long Z2). CI found that the
+  pick had dropped the swap suggestion; fixed before merging. CI 16 of 16 on both waves
+  (2,425 passed). Morning prompt v56, self-healing.
 - **2026-10-03 (night)** — Batch 305 shipped as PR #355 / `7fb0fee` (Decision #379, without
   its load-ratio line): a hard yesterday counts only before a hard session (5 past colours
   move, all on easy days); readiness confirmation labelled as deliberate extra weight; the
