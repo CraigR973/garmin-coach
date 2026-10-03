@@ -1080,7 +1080,7 @@ async def test_amber_morning_leads_with_week_swap_and_keeps_softening(
     # Batch 70 (#143): the same cautious morning reports the week's mix. Batch 306:
     # neither pick keeps the VO2 work, so today's VO2 counts as missed this week.
     mix = verdict["weeklyMix"]
-    assert mix["eased"] is None
+    assert mix.get("eased") is None
     assert mix["shortfall"]["bucket"] == "vo2"
     assert mix["shortfall"]["message"] in adjustments
     vo2_bucket = next(bucket for bucket in mix["buckets"] if bucket["bucket"] == "vo2")
@@ -1456,7 +1456,9 @@ async def test_morning_packet_falls_back_to_static_vo2max_with_no_reading_on_fil
     ("feel", "expected_status"),
     [
         pytest.param(3, "Red", id="red_drops_it"),
-        pytest.param(None, "Amber", id="amber_eases_it"),
+        # Batch 306: low readiness confirming a fair night is a tired morning, so the
+        # VO2 is his pick of easy Zone 2 or tempo, and neither keeps it in the week.
+        pytest.param(None, "Amber", id="a_tired_amber_misses_it_too"),
     ],
 )
 async def test_cautious_morning_says_no_vo2_this_week_when_it_cannot_be_repatched(
@@ -1546,16 +1548,10 @@ async def test_cautious_morning_says_no_vo2_this_week_when_it_cannot_be_repatche
     mix = verdict["weeklyMix"]
     adjustments = verdict["planAdjustments"]
     says_no_vo2 = any("no vo2 session this week" in item.lower() for item in adjustments)
-    if expected_status == "Red":
-        assert mix["shortfall"]["bucket"] == "vo2"
-        assert mix["shortfall"]["repatched"] is False
-        assert "eased" not in mix
-        assert says_no_vo2
-    else:
-        assert mix["shortfall"] is None
-        assert mix["eased"]["bucket"] == "vo2"
-        assert mix["eased"]["message"] in adjustments
-        assert not says_no_vo2
+    assert mix["shortfall"]["bucket"] == "vo2"
+    assert mix["shortfall"]["repatched"] is False
+    assert "eased" not in mix
+    assert says_no_vo2
 
 
 def test_red_verdict_never_keeps_vo2() -> None:

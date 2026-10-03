@@ -554,6 +554,6 @@ async def test_one_very_poor_night_eases_the_hard_session_in_the_real_packet(
     assert GRADED_PICK_LINE.format(title=hard.title) in lines
     assert not any("stays as planned: hold the targets" in line for line in lines)
     # Batch 306: neither pick keeps the hard work, so the week's mix counts it as missed.
-    assert verdict["weeklyMix"]["eased"] is None
+    assert verdict["weeklyMix"].get("eased") is None
     assert verdict["weeklyMix"]["shortfall"]["message"] in lines
     assert _light_week_hold(verdict) is None

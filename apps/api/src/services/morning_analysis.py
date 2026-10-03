@@ -196,6 +196,7 @@ from src.services.symptom_check import (
 )
 from src.services.training_week import TrainingWeekService
 from src.services.verdict_grading import (
+    ACTION_PICK_ZONE2_OR_TEMPO,
     ENGINE_GRADED,
     GradedVerdict,
     build_grading_inputs,
@@ -1218,9 +1219,19 @@ class MorningAnalysisService:
         chronic_action = verdict.get("chronicAction")
         if VERDICT_ENGINE == ENGINE_GRADED:
             # Batch 296: a swap is offered when a session's action would move or change
-            # it; a held easy day and a recovery-week hold offer none.
+            # it; a held easy day and a recovery-week hold offer none. Batch 306: a tired
+            # morning's pick changes the hard session too, so moving it to a better day
+            # still leads (Mark's swap-first preference); the shorter long ride is only
+            # an offer and leaves the ride as planned.
             acute_swap = not rest_day["isRestDay"] and any(
-                action.action in {"move_or_hold", "ease_hard", "recovery", "shortened_zone2"}
+                action.action
+                in {
+                    "move_or_hold",
+                    "ease_hard",
+                    "recovery",
+                    "shortened_zone2",
+                    ACTION_PICK_ZONE2_OR_TEMPO,
+                }
                 for action in graded.actions
             )
         else:
