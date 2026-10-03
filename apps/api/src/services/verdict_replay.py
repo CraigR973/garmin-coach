@@ -620,6 +620,9 @@ def replay_morning(
                 if restored_block and "lightWeek" not in references
                 else None
             ),
+            # Batch 304: a morning graded before the HRV persistence rule carries no
+            # key, so it is replayed without the rule, exactly as Mark saw it.
+            hrv_persistence=references.get("hrvPersistence") is True,
         )
         recovery_class = inputs.recovery_class_block
     sessions = inputs.sessions

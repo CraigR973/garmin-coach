@@ -223,7 +223,9 @@ def fixture() -> dict[str, Any]:
 
 @pytest.fixture(scope="module")
 def replayed(fixture: dict[str, Any]) -> dict[date, Any]:
-    return _replayed(fixture)
+    # The held mornings these tests read (22 and 26 Sep) are Amber under Batch 304's HRV
+    # persistence rule, so they are replayed as they were graded when 298 shipped.
+    return _replayed(fixture, hrv_persistence=False)
 
 
 def _graded_packet(replayed: dict[date, Any], fixture: dict[str, Any], day: date) -> Any:

@@ -15,7 +15,8 @@ evidence, and this module is the engine:
    taking the worst signal inside it:
 
    * **autonomic** — last night's HRV, his 7-day HRV against his own baseline, and
-     his resting heart rate;
+     his resting heart rate. Since Batch 304 a 7-day dip is marked once it has lasted
+     three mornings, or comes with last night under his acute floor;
    * **sleep** — the sleep score and total sleep;
    * **load** — the acute:chronic ratio, Garmin's recovery time and yesterday's load;
    * **subjective** — his check-in feel against his own mean and spread.
@@ -136,16 +137,29 @@ THRESHOLDS: Final[dict[str, Threshold]] = {
             "SD of nightly HRV",
             "the smallest worthwhile change in the HRV-guided trials (Plews 2013; Javaloyes 2019)",
             "A 7-day mean more than half a standard deviation under his normal is a real "
-            "shift, not noise: mild. For him that is about 2.5 ms.",
+            "shift, not noise: mild. For him that is about 2.5 ms. Once it lasts, it is "
+            "marked (the persistence line below).",
         ),
         _threshold(
             "hrv_week_marked_sd",
             1.0,
             "SD of nightly HRV",
-            "twice the smallest worthwhile change; set from the replay",
+            "set just past his worst observed value; no trial source",
             "A week this far down is marked. His lowest 7-day mean in three months was "
-            "0.83 SD under his normal (22 Sep), so this has not fired yet; it is for a "
-            "genuinely suppressed week.",
+            "0.83 SD under his normal (22 Sep), so this line has never fired and was not "
+            "meant to: a week-long dip is marked by the persistence line instead.",
+        ),
+        _threshold(
+            "hrv_persistence_mornings",
+            3,
+            "mornings in a row",
+            "Javaloyes 2019 and Vesterinen 2016 (a 7-day mean under the smallest "
+            "worthwhile change made that day low-intensity); Kiviniemi 2007 (a 2-day fall "
+            "did too); softened by the 1 Oct review",
+            "A 7-day mean under his smallest worthwhile change on this many mornings in a "
+            "row is marked: the dip has lasted. So is one under it with last night under "
+            "his acute floor, where the week and the night agree. The trials eased the "
+            "first such morning; he moves or holds for two, then eases (Batch 304).",
         ),
         _threshold(
             "hrv_recovery_min_nights",
@@ -242,9 +256,9 @@ THRESHOLDS: Final[dict[str, Threshold]] = {
             "recovery_time_marked_hours",
             48,
             "hours",
-            "set from the replay",
+            "set just past his worst observed value; Garmin's own estimate, no trial source",
             "More than two days left is marked. His highest at wake in three months was 47 "
-            "hours, so this is for an unusual debt.",
+            "hours, so this line has never fired; it is for an unusual debt.",
         ),
         _threshold(
             "feel_window_days",
@@ -369,6 +383,10 @@ class GradingInputs:
     #: subjective domain is one notch worse than his feel alone. Never negative.
     notes_feel_notch: int = 0
     notes_feel_words: str | None = None
+    #: Batch 304: a 7-day HRV dip that has lasted rates autonomic marked. A graded
+    #: morning stored before the rule is replayed without it, so the replay gives back
+    #: exactly what Mark saw (``references.hrvPersistence``).
+    hrv_persistence: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -382,9 +400,12 @@ class SignalReading:
     #: His usual for this signal (his HRV normal, his resting-HR median), for the
     #: Mark-facing phrase. ``None`` where the phrase needs no comparison.
     usual: float | None = None
+    #: Batch 304: mornings in a row his 7-day HRV has been under his smallest worthwhile
+    #: change, on the persistent readings only.
+    streak: int | None = None
 
     def to_packet(self) -> dict[str, Any]:
-        return {
+        packet: dict[str, Any] = {
             "domain": self.domain,
             "signal": self.signal,
             "rating": self.rating,
@@ -392,6 +413,9 @@ class SignalReading:
             "reference": self.reference,
             "reason": self.reason,
         }
+        if self.streak is not None:
+            packet["streak"] = self.streak
+        return packet
 
 
 @dataclass(frozen=True, slots=True)
@@ -493,6 +517,7 @@ def _reading(
     reason: str,
     reference: str | None = None,
     usual: float | None = None,
+    streak: int | None = None,
 ) -> SignalReading:
     return SignalReading(
         domain=domain,
@@ -502,6 +527,7 @@ def _reading(
         reference=reference,
         reason=reason,
         usual=round(usual, 2) if usual is not None else None,
+        streak=streak,
     )
 
 
@@ -531,25 +557,31 @@ def _as_float(value: Any) -> float | None:
         return None
 
 
-def _hrv_week(inputs: GradingInputs) -> SignalReading:
-    """His 7-day mean HRV against his own normal (295.3)."""
+@dataclass(frozen=True, slots=True)
+class _HrvWeek:
+    """One morning's 7-day HRV against his normal, as that morning would rate it."""
 
-    day = inputs.subject_date
+    rating: Rating
+    #: The 7-day mean; ``None`` when no night falls in the week.
+    week_mean: float | None
+    #: His normal; ``None`` when there are too few nights to judge the week.
+    centre: float | None = None
+    spread: float = 0.0
+    basis: str = "his usual"
+
+
+def _hrv_week_on(inputs: GradingInputs, day: date, *, in_recovery_week: bool) -> _HrvWeek:
+    """The 7-day rating for the morning of ``day`` (295.3), from the nights up to it."""
+
     week_start = day - timedelta(days=int(_t("hrv_week_nights")) - 1)
     week = [value for night, value in inputs.hrv_nights if week_start <= night <= day]
     window_start = day - timedelta(days=int(_t("hrv_baseline_window_days")))
     baseline = [value for night, value in inputs.hrv_nights if window_start <= night < day]
     if len(week) < _t("hrv_week_min_nights") or len(baseline) < _t("hrv_baseline_min_nights"):
-        return _reading(
-            DOMAIN_AUTONOMIC,
-            "hrv_7_day",
-            "none",
-            sum(week) / len(week) if week else None,
-            "Not enough nights yet to judge his week against his normal.",
-        )
+        return _HrvWeek("none", sum(week) / len(week) if week else None)
     centre, spread = _mean_sd(baseline)
     basis = "his usual"
-    if inputs.in_recovery_week:
+    if in_recovery_week:
         recovery = [
             value
             for night, value in inputs.hrv_nights
@@ -559,26 +591,115 @@ def _hrv_week(inputs: GradingInputs) -> SignalReading:
             centre = sum(recovery) / len(recovery)
             basis = "his recovery-week usual"
     week_mean = sum(week) / len(week)
-    swc = _t("hrv_swc_sd") * spread
-    marked_line = centre - _t("hrv_week_marked_sd") * spread
-    reference = f"{basis} {centre:.1f} ms, SD {spread:.1f} ms"
-    if week_mean < marked_line:
-        rating: Rating = "marked"
+    rating: Rating
+    if week_mean < centre - _t("hrv_week_marked_sd") * spread:
+        rating = "marked"
+    elif week_mean < centre - _t("hrv_swc_sd") * spread:
+        rating = "mild"
+    else:
+        rating = "none"
+    return _HrvWeek(rating, week_mean, centre, spread, basis)
+
+
+def _hrv_streak(inputs: GradingInputs) -> int:
+    """Mornings in a row, to this one, his 7-day HRV has been under his SWC (Batch 304).
+
+    Each earlier morning is rated as it would have been that morning: its own week, its
+    own normal and its own recovery-week basis. The count stops at the first morning
+    that was within his range or had too few nights to judge.
+    """
+
+    streak = 0
+    day = inputs.subject_date
+    while True:
+        in_recovery = (
+            inputs.in_recovery_week
+            if day == inputs.subject_date
+            else day in inputs.recovery_week_nights
+        )
+        if _hrv_week_on(inputs, day, in_recovery_week=in_recovery).rating == "none":
+            return streak
+        streak += 1
+        day -= timedelta(days=1)
+
+
+def _hrv_persistent(
+    inputs: GradingInputs, *, week_mean: float, centre: float, basis: str, reference: str
+) -> SignalReading | None:
+    """A 7-day dip that has lasted, or that last night agrees with, is marked (Batch 304).
+
+    The trials the engine cites made a 7-day mean under the smallest worthwhile change a
+    low-intensity day at once (Javaloyes 2019, Vesterinen 2016), and a 2-day fall too
+    (Kiviniemi 2007). The 1 Oct review softened that to three mornings in a row, or one
+    with last night under his acute floor, which keeps it within his "at worst Amber".
+    """
+
+    streak = _hrv_streak(inputs)
+    if streak >= _t("hrv_persistence_mornings"):
+        return _reading(
+            DOMAIN_AUTONOMIC,
+            "hrv_7_day_persistent",
+            "marked",
+            week_mean,
+            f"7-day HRV {week_mean:.1f} ms has been under {basis} {centre:.1f} ms by more than "
+            f"the smallest worthwhile change for {streak} mornings in a row.",
+            reference,
+            usual=centre,
+            streak=streak,
+        )
+    rail = _mapping(inputs.acute.get("overnightHrv"))
+    if rail.get("triggered") is True:
+        current = _as_float(rail.get("currentMs"))
+        return _reading(
+            DOMAIN_AUTONOMIC,
+            "hrv_7_day_low_night",
+            "marked",
+            current,
+            f"7-day HRV {week_mean:.1f} ms is under {basis} {centre:.1f} ms by more than the "
+            f"smallest worthwhile change, and last night's {_n(current)} ms is under his acute "
+            f"floor of {_n(rail.get('acuteFloorMs'))} ms.",
+            f"his median {_n(rail.get('baselineMedianMs'))} ms",
+            usual=_as_float(rail.get("baselineMedianMs")),
+            streak=streak,
+        )
+    return None
+
+
+def _hrv_week(inputs: GradingInputs) -> SignalReading:
+    """His 7-day mean HRV against his own normal (295.3), marked once it lasts (304)."""
+
+    week = _hrv_week_on(inputs, inputs.subject_date, in_recovery_week=inputs.in_recovery_week)
+    if week.centre is None or week.week_mean is None:
+        return _reading(
+            DOMAIN_AUTONOMIC,
+            "hrv_7_day",
+            "none",
+            week.week_mean,
+            "Not enough nights yet to judge his week against his normal.",
+        )
+    centre, week_mean, basis = week.centre, week.week_mean, week.basis
+    swc = _t("hrv_swc_sd") * week.spread
+    reference = f"{basis} {centre:.1f} ms, SD {week.spread:.1f} ms"
+    if week.rating == "marked":
         reason = (
             f"7-day HRV {week_mean:.1f} ms is more than {_t('hrv_week_marked_sd'):g} SD under "
             f"{basis} {centre:.1f} ms."
         )
-    elif week_mean < centre - swc:
-        rating = "mild"
+    elif week.rating == "mild":
+        if inputs.hrv_persistence:
+            persistent = _hrv_persistent(
+                inputs, week_mean=week_mean, centre=centre, basis=basis, reference=reference
+            )
+            if persistent is not None:
+                return persistent
         reason = (
             f"7-day HRV {week_mean:.1f} ms is under {basis} {centre:.1f} ms by more than the "
             f"smallest worthwhile change ({swc:.1f} ms)."
         )
     else:
-        rating = "none"
         reason = f"7-day HRV {week_mean:.1f} ms is within {basis} range."
     return _reading(
-        DOMAIN_AUTONOMIC, "hrv_7_day", rating, week_mean, reason, reference, usual=centre
+        DOMAIN_AUTONOMIC, "hrv_7_day", week.rating, week_mean, reason, reference, usual=centre
     )
 
 
@@ -991,6 +1112,9 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
             "lightWeek": inputs.light_week,
             "notesFeelNotch": inputs.notes_feel_notch,
             "notesFeelWords": inputs.notes_feel_words,
+            # Batch 304: graded with the HRV persistence rule. A morning stored without
+            # this key was graded before it, and the replay grades it without the rule.
+            "hrvPersistence": inputs.hrv_persistence,
         },
     )
     # Batch 300: a light week holds the session only when nothing is clearly off. A
@@ -1028,6 +1152,20 @@ def mark_facing_phrase(signal: SignalReading) -> str:
             f"your HRV has been {lead} your usual this week "
             f"({_n(round(value) if value is not None else None)} ms against "
             f"{_n(round(usual) if usual is not None else None)})"
+        )
+    if signal.signal == "hrv_7_day_persistent":
+        # Batch 304: a dip that has lasted. The count is mornings of his 7-day average,
+        # not low nights, so the words name the average (signed off 3 Oct 2026).
+        return (
+            f"your 7-day HRV average has been below your usual for {_n(signal.streak)} "
+            f"mornings running "
+            f"({_n(round(value) if value is not None else None)} ms against "
+            f"{_n(round(usual) if usual is not None else None)})"
+        )
+    if signal.signal == "hrv_7_day_low_night":
+        return (
+            f"your HRV has been below your usual this week and was low again last night "
+            f"({_n(value)} ms against a usual {_n(usual)})"
         )
     if signal.signal == "hrv_overnight":
         lead = "dropped sharply" if marked else "was low"

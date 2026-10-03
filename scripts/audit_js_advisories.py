@@ -46,6 +46,17 @@ REVIEWED_ADVISORIES: dict[str, ReviewedAdvisory] = {
             "autoprefixer dev tooling, not shipped to the browser bundle."
         ),
     ),
+    "GHSA-vfj7-8cjw-p6xm": ReviewedAdvisory(
+        severity="high",
+        reason=(
+            "braces stack exhaustion on deeply nested patterns (<= 3.0.3; no fixed "
+            "version yet). Reached only through tailwindcss's build-time file globbing "
+            "(chokidar, fast-glob, micromatch), via the tailwindcss-animate plugin. The "
+            "patterns are the repo's own Tailwind content globs, never user input, and "
+            "nothing of it ships to the browser bundle. Approved by Craig, 3 Oct 2026; "
+            "revisit when a fixed braces is published."
+        ),
+    ),
 }
 
 FAIL_SEVERITIES = {"high", "critical"}
