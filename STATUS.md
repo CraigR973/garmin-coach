@@ -6,16 +6,22 @@
 
 ## Now
 
-**2026-10-02 (evening) — G7b is complete: 302, 303 and 307 are shipped. 302: the morning is
-stored when it is graded and its brief is written into it, so a failed brief costs the prose
-only. 303: the floors no longer lapse quietly (two easy mornings after a fever; a possible
-chest or heart mention eases the hard session until he answers; Home's question is answered
-on Home in one tap, and only that answer relaxes a note's symptom; "Chest or heart" covers
-unusual breathlessness). 307: the note reader's eval is tied to the prompt it tested, and a
-note read under an earlier prompt is read again. G7a is complete too. Next: G7c (304 → 305
-→ 306 → 308), not before 20 Oct, after the taper and Craig's review of the 7–20 Oct
-ladder-versus-graded disagreements. Neither 302's stored-first flow nor anything in 303 has
-yet run on a real morning: the first is Mark's next check-in or 3 Oct's sync.**
+**2026-10-03 — Batch 304 is shipped, and G7c is brought forward (Craig, 3 Oct).** A week-long
+HRV dip now counts as clearly off: his 7-day HRV is marked once it has stayed under his smallest
+worthwhile change for three mornings running, or is under it with last night under his acute
+floor (replayed: 6 of 103 past mornings change, Red 4 → 6). Craig brought 305 (without its
+load-ratio line) and 306 forward to go live before Mark's first ride back on Wed 7 Oct, then
+291; any not live by Tue 6 Oct waits until 20 Oct, so the 7–20 Oct comparison judges one
+engine. The load-ratio line and 308 (the ladder goes) wait until after 20 Oct. **Next: 305.**
+Nothing in 302, 303 or 304 has yet run on a real morning: the first is Mark's next check-in
+(no 3 Oct morning by 08:48 UTC).
+
+**Why the change of plan (3 Oct).** Craig asked whether shipping G7c now and letting Mark raise
+problems was valid. It is for a change that only adds caution (304, 306): its mistakes are a
+session eased on a day he felt fine, which he sees. It is not for one that removes caution:
+305's load-ratio line would hold a session the current line eases, and after his holiday the
+ratio is likely to run above 1.5 from about 10–12 Oct (it did for seven mornings after July's
+break), where a wrong hold is invisible to him.
 
 ### What the review found (`docs/reviews/2026-10-01-batches-268-297-review.md`)
 
@@ -54,7 +60,8 @@ yet run on a real morning: the first is Mark's next check-in or 3 Oct's sync.**
 |---|---|---|
 | G7a, before 7 Oct | ~~309~~ → ~~301~~ → ~~298~~ → ~~299~~ → ~~300~~ | Complete, 2 Oct |
 | G7b | ~~302~~ → ~~303~~ → ~~307~~ | Complete, 2 Oct |
-| G7c, not before 20 Oct | 304 → 305 → 306 → 308 | 305/306 decisions; 308 after the side-by-side review |
+| G7c, by Tue 6 Oct | ~~304~~ → 305 (without its load-ratio line) → 306, then 291 | Craig's go, 3 Oct; one not live by 6 Oct waits until 20 Oct |
+| After 20 Oct | 305's load-ratio line → 308 | 308 after the side-by-side review |
 
 Batch 291's row is corrected in place (its alert list).
 
@@ -88,19 +95,23 @@ v50 brief reads constraints the ladder does not follow.
 
 ### Needs Craig
 
-1. **G7b is complete, and nothing is waiting on you until G7c.** G7c is not before 20 Oct
-   and needs your answers for 305 and 306, and your review of the 7–20 Oct disagreements
-   before 308.
-2. **Decisions made on your behalf in Batch 303 (Decision #375), each overrulable.** A chest
+1. **305 and 306 are running now, on your 3 Oct answers.** 305: readiness confirmation kept
+   and labelled as deliberate extra weight; "yesterday was a hard day" only before a hard
+   session; the off-the-bike resting-HR corroboration needs +4 bpm. 306: the shorter ride is
+   offered in one tap. 291 follows, with a failed note reading left as a warning. You will be
+   asked to sign off 306's Mark-facing words; after 291, one Sentry alert rule is yours.
+2. **Decision #378 (yours, 3 Oct):** the JS audit's new braces advisory is a reviewed
+   exception (build-time only, no fixed version yet). Revisit when a fixed braces ships.
+3. **Decisions made on your behalf in Batch 303 (Decision #375), each overrulable.** A chest
    question lifts the colour to Amber only when a hard session is planned; otherwise Home
    only asks. Home asks only about something more serious than the answer he tapped. A week
    swap is withheld where it would undo the easing. The easy ride is the existing recovery
    spin (half length, capped at 60% FTP). The ladder is given neither easing. A stricter
    floor on the same morning (off the bike) is the only one reported.
-3. **After a chest or heart report nothing follows (your call, 2 Oct).** The next morning is
+4. **After a chest or heart report nothing follows (your call, 2 Oct).** The next morning is
    an ordinary day, VO₂ included. What was offered is kept in
    `docs/drafts/2026-10-02-batch-303-wording.md` §5.
-4. **Decisions made on your behalf in Batch 302 (Decision #374), each overrulable.** A morning
+5. **Decisions made on your behalf in Batch 302 (Decision #374), each overrulable.** A morning
    without its brief travels as its own field (`gradedMorning`), so an older cached client
    reads it as "no brief yet". A stored morning graded on today's inputs stands on a retry, so
    the brief is written for the colour he was shown. Home and the brief page re-read the day
@@ -108,15 +119,15 @@ v50 brief reads constraints the ladder does not follow.
    written, not when the morning was graded. No retry is offered for a day that is over. The
    symptom answer now counts as a change to the check-in, so changing only that answer
    regrades the morning. The failure events keep their names and gain a `stage` field.
-5. **Two decisions made on your behalf in Batch 300 (Decision #373), each a one-line change to
+6. **Two decisions made on your behalf in Batch 300 (Decision #373), each a one-line change to
    overrule.** A domain marked on Garmin's own sleep score counts as clearly off even where the
    age credit lifts it (Garmin's 55 lifted to 63 eases the session). And a Zone 2 ride on a
    clearly-off light-week morning reads as any other Amber ("Keep your Zone 2 ride at full
    length."), not as the hold; it is the same ride either way.
-6. The Vercel project's own Node setting still reads 20.x; `engines` overrides it, so changing
+7. The Vercel project's own Node setting still reads 20.x; `engines` overrides it, so changing
    it is tidiness only (a hosting change, yours).
-7. **From 7 to 20 Oct:** review every ladder-versus-graded disagreement in the table above.
-8. **Carried:** G4's free Neon database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment
+8. **From 7 to 20 Oct:** review every ladder-versus-graded disagreement in the table above.
+9. **Carried:** G4's free Neon database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment
    extractor's first paid run (Mark's own "Look for new memories" tap).
 
 ### Worth carrying
@@ -198,7 +209,7 @@ v50 brief reads constraints the ladder does not follow.
   minutes). One or two mild concerns hold the session, with the week named.
 - **The database is at 453 MB of the 500 MB free-plan cap**; `egress-budget` reports
   `storage_critical` every 15 minutes. Up about 5 MB a week since 24 Sep.
-- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #377.**
+- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #379.**
 
 ## Prior current-state snapshots
 
@@ -2033,6 +2044,14 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-03** — Batch 304 shipped as PR #354 / `2488163` (Decision #377): a 7-day HRV dip
+  is marked once it has lasted three mornings, or comes with last night under his acute floor;
+  graded mornings store `references.hrvPersistence`, so the replay reproduces mornings graded
+  before it. Replayed on production: 6 of 103 mornings change, Red 4 → 6. Mark's words signed
+  off by Craig on his behalf. CI 16 of 16 on both waves (2,385 passed); production on
+  `2488163`. **Craig brought G7c forward**: 305 (without its load-ratio line) and 306 before
+  7 Oct, then 291; the load-ratio line and 308 after 20 Oct. The JS audit's new braces
+  advisory is a reviewed exception (Decision #378, Craig's go).
 - **2026-10-02 (evening)** — Batch 307 shipped as PR #353 / `e2e1509` (Decision #376), and
   **G7b is complete.** A paid run of the notes reader's eval records a SHA-256 of the prompt
   beside its version, and CI fails, with the instruction to re-run, unless the production
