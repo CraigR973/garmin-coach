@@ -458,4 +458,4 @@ def test_the_brief_is_told_to_lead_with_his_own_recovery() -> None:
     # The model is given new wording, so no stored brief written without it is
     # served as current; the morning read self-heals, so nothing is regenerated.
     # (Batch 272 moved it on again, to v49; Batch 294 to v50; Batch 296 to v51.)
-    assert PROMPT_VERSION == "morning-analysis-v55-2026-10-02"
+    assert PROMPT_VERSION == "morning-analysis-v56-2026-10-03"

@@ -132,3 +132,58 @@ describe('TodayActions (Batch 86)', () => {
     expect(screen.queryByTestId('today-actions')).toBeNull();
   });
 });
+
+describe('TodayActions: a tired morning lets Mark pick (Batch 306)', () => {
+  const pick: TodayAction = {
+    kind: 'pick_ride',
+    title: 'How do you want to ride VO₂ today?',
+    detail: 'Same length either way. If you pick neither, the planned session stays on Zwift.',
+    plannedWorkoutId: 'w1',
+    choices: [
+      { variant: 'zone2', label: 'Easy Zone 2' },
+      { variant: 'tempo', label: 'Tempo' },
+    ],
+  };
+
+  it('offers both versions with the signed-off words', () => {
+    renderActions([pick], [ride({ workoutType: 'bike_vo2' } as Partial<TodayWorkout>)]);
+
+    expect(screen.getByTestId('pick-ride')).toBeTruthy();
+    expect(screen.getByText('How do you want to ride VO₂ today?')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Same length either way. If you pick neither, the planned session stays on Zwift.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Easy Zone 2' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Tempo' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+  });
+
+  it.each([
+    ['Easy Zone 2', 'zone2'],
+    ['Tempo', 'tempo'],
+  ])('uploads the version he picks: %s', async (label, variant) => {
+    apiFetchMock.mockResolvedValue({});
+    renderActions([pick], [ride({ workoutType: 'bike_vo2' } as Partial<TodayWorkout>)]);
+
+    await userEvent.click(screen.getByRole('button', { name: label }));
+
+    await waitFor(() =>
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        `/api/v1/workout-delivery/planned-workouts/w1/approve-adjustment?variant=${variant}`,
+        { method: 'POST' },
+      ),
+    );
+  });
+
+  it('leaves the list once he has picked', () => {
+    renderActions(
+      [pick],
+      [ride({ workoutType: 'bike_vo2', delivery: { changed: false } } as Partial<TodayWorkout>)],
+    );
+
+    expect(screen.queryByTestId('pick-ride')).toBeNull();
+    expect(screen.queryByTestId('today-actions')).toBeNull();
+  });
+});

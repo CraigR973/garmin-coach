@@ -46,9 +46,20 @@ from src.services.symptom_check import (
     reports_symptoms,
     symptom_signal,
 )
-from src.services.verdict_grading import THRESHOLDS, ride_transform
+from src.services.verdict_grading import (
+    ACTION_OFFER_SHORTER,
+    ACTION_PICK_ZONE2_OR_TEMPO,
+    THRESHOLDS,
+    ride_transform,
+)
 from src.services.verdict_scaling import (
     AMBER_POWER_CAP_PCT,
+    ENDURANCE_CEILING_PCT,
+    TEMPO_CAP_PCT,
+    TRANSFORM_SHORTER,
+    TRANSFORM_TIRED_TEMPO,
+    TRANSFORM_TIRED_ZONE2,
+    adjust_ir_for_verdict,
     companion_session_present,
     ir_has_vo2,
     summarize_verdict_adjustment,
@@ -1735,6 +1746,17 @@ GRADED_LIGHT_WEEK_LINE = (
     "This is your planned {week} week, so today's session stays as planned: hold the targets."
 )
 GRADED_RECOVERY_WEEK_LINE = GRADED_LIGHT_WEEK_LINE.format(week="recovery")
+#: Batch 306: a tired morning's choices, signed off by Craig on Mark's behalf on 3 Oct
+#: 2026. The caps are the transforms' own, so the words and the ride cannot disagree.
+GRADED_PICK_LINE = (
+    "Short on sleep or feeling flat, so pick how to ride {title} today: easy Zone 2 "
+    f"(nothing above {ENDURANCE_CEILING_PCT}% FTP) or tempo (nothing above {TEMPO_CAP_PCT}%), "
+    "full length either way."
+)
+GRADED_OFFER_SHORTER_LINE = (
+    "Keep your Zone 2 ride at full length, or ride a shorter version if you'd rather "
+    "({short} min instead of {full})."
+)
 BIKE_REST_PLAN_LINE = (
     "Take today off the bike; do not substitute an eased ride for the acute signal."
 )
@@ -1807,6 +1829,15 @@ def graded_plan_adjustments(
             # Batch 303: below Red only what follows a symptom swaps a hard session
             # for an easy spin (an easy day back after a fever, an open chest question).
             line = EASY_RIDING_PLAN_LINE
+        elif action == ACTION_PICK_ZONE2_OR_TEMPO:
+            line = GRADED_PICK_LINE.format(title=workout.title or "the hard session")
+        elif action == ACTION_OFFER_SHORTER:
+            minutes = offered_shorter_minutes(workout)
+            line = (
+                GRADED_OFFER_SHORTER_LINE.format(short=minutes[0], full=minutes[1])
+                if minutes is not None
+                else GRADED_ZONE_TWO_LINE
+            )
         elif graded.status == "Amber" and is_bike_workout_type(workout.workout_type):
             line = GRADED_ZONE_TWO_LINE
         else:
@@ -2029,6 +2060,24 @@ def graded_acute_physiology(acute: Mapping[str, Any]) -> dict[str, Any]:
     return out
 
 
+def offered_shorter_minutes(workout: PlannedWorkout) -> tuple[int, int] | None:
+    """``(shorter, full)`` minutes of the long ride a tired morning offers (Batch 306).
+
+    Read off the ride the delivery rail would upload, so the line quotes it exactly.
+    """
+    try:
+        base_ir = build_structured_workout_ir(workout)
+    except HTTPException:
+        return None
+    full = int(base_ir.get("totalDurationSec") or 0)
+    shorter = int(
+        adjust_ir_for_verdict(base_ir, TRANSFORM_SHORTER, graded=True).get("totalDurationSec") or 0
+    )
+    if full <= 0 or shorter <= 0 or shorter >= full:
+        return None
+    return round(shorter / 60), round(full / 60)
+
+
 def graded_verdict_adjustment_packet(
     graded: Any, planned_workouts: Sequence[PlannedWorkout]
 ) -> dict[str, Any] | None:
@@ -2058,4 +2107,22 @@ def graded_verdict_adjustment_packet(
     )
     if summary is None:
         return None
-    return {**summary, "plannedWorkoutId": str(ride.id)}
+    packet: dict[str, Any] = {**summary, "plannedWorkoutId": str(ride.id)}
+    # Batch 306: on a tired morning the ride is his choice, and until he makes it the
+    # planned session stands. The figures above are the version offered first.
+    if action == ACTION_PICK_ZONE2_OR_TEMPO:
+        packet["choice"] = {
+            "kind": "pick",
+            "untilPicked": "as_planned",
+            "options": [
+                {
+                    "variant": "zone2",
+                    "transform": TRANSFORM_TIRED_ZONE2,
+                    "capPct": ENDURANCE_CEILING_PCT,
+                },
+                {"variant": "tempo", "transform": TRANSFORM_TIRED_TEMPO, "capPct": TEMPO_CAP_PCT},
+            ],
+        }
+    elif action == ACTION_OFFER_SHORTER:
+        packet["choice"] = {"kind": "offer", "untilPicked": "as_planned"}
+    return packet

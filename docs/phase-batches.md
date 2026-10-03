@@ -5334,6 +5334,48 @@ read-only. Craig's 3 Oct calls (above) answer 305.2; the load-ratio line is not 
   Amber. HRV 39 ms against a usual 47 with the week already low (304's floor clause), and a
   fair night (68) that readiness confirms. No session was affected; Mark sees the Red on Home.
 
+### Corrections made at `/batch-start 306` (2026-10-03), before any code
+
+306.1 was re-checked against `main` (`ca196d0`, after 304 and 305) and production,
+read-only. One example is out of date; the batch builds what the row asks, and Craig's
+answers widen 306.2 into a choice.
+
+- **Decided by Craig, 3 Oct.** On a tired Amber, **Mark picks** how to ride the hard
+  session: two buttons on Home, "Easy Zone 2" (nothing above 75% FTP) or "Tempo" (nothing
+  above 85%), full length either way; picking neither leaves the planned session on Zwift,
+  as every eased ride already does until he approves it. The long ride is **offered**
+  shorter in one tap, at 75% of its length (306.3's open question). Words signed off on
+  his behalf: the plan line "Short on sleep or feeling flat, so pick how to ride VO2 (5 ×
+  2:30 @ 119%) today: easy Zone 2 (nothing above 75% FTP) or tempo (nothing above 85%),
+  full length either way."; the card "How do you want to ride VO2 today?" / "Same length
+  either way. If you pick neither, the planned session stays on Zwift."; the offer "Keep
+  your Zone 2 ride at full length, or ride a shorter version if you'd rather (90 min
+  instead of 120)." and its card "Ride a shorter version?" / "90 min instead of 120, same
+  Zone 2. Approve to upload it; otherwise ride as planned."
+- **Confirmed.** 16 and 30 Aug, when he asked for shorter rides, kept the Long Z2 at full
+  length under the graded Amber.
+- **Out of date: 27 Sep is no longer an example.** Since 304 it is Red, and its VO2 a
+  recovery spin, so it is not a tired Amber.
+- **Replayed on production (3 Oct), today's rules with and without 306, 104 mornings:** 4
+  change, no colour: 16 and 30 Aug's Long Z2 offered shorter; 8 Jul's VO2 and 23 Jul's
+  sweet spot offered the pick instead of eased a zone.
+- **Decided on Craig's behalf, each overrulable.** A tired morning is an Amber with sleep
+  or feel marked, on Garmin's own sleep score too (as 300 reads it) and when readiness
+  confirms a fair night. Every hard session gets the pick, sweet spot included. The easy
+  Zone 2 version is the one proposed; tempo is built from the planned session when he picks
+  it, and only on a ride that offered the pick. A pick counts the session as missed in the
+  week's mix, which then offers to move it. The long ride is the existing key long ride
+  (120 min or more). The upload toast stays "Coach's adjustment uploaded to Zwift".
+- **Red is never longer or harder than a tired Amber** (Batch 243): a Red hard session is
+  a half-length spin at 60%, a Red long ride 70% of its length; the tired versions are full
+  length at 75% or 85%, and the shorter ride 75% of its length.
+- **The prompt moves** (morning v55 to v56): the graded read is told the two actions and
+  never to call the ride eased or shortened before he picks. Self-healing: nothing is
+  withdrawn and nothing is regenerated. The ladder's v50 is unchanged.
+- **Older tests moved deliberately.** Three Postgres tests (296's one poor night, 300's
+  real packet, the morning analysis's low-readiness swap) now expect the pick; 300's own
+  tests pin its rule without 306. Ten tests pin the prompt version.
+
 ### Batch group — G7, the 1 Oct review (2026-10-01)
 
 Authored on Craig's decision of 1 Oct that every batch is written up before any is built.

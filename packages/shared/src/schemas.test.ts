@@ -1139,6 +1139,25 @@ describe('v1 shared schemas', () => {
     expect(approve.kind).toBe('approve_ride');
     expect(approve.plannedWorkoutId).toBe(rowId);
 
+    // Batch 306: a tired morning's pick carries its two versions.
+    const pick = todayActionSchema.parse({
+      kind: 'pick_ride',
+      title: 'How do you want to ride VO₂ today?',
+      plannedWorkoutId: rowId,
+      choices: [
+        { variant: 'zone2', label: 'Easy Zone 2' },
+        { variant: 'tempo', label: 'Tempo' },
+      ],
+    });
+    expect(pick.choices?.map((choice) => choice.variant)).toEqual(['zone2', 'tempo']);
+    expect(() =>
+      todayActionSchema.parse({
+        kind: 'pick_ride',
+        title: 'x',
+        choices: [{ variant: 'threshold', label: 'Threshold' }],
+      }),
+    ).toThrow();
+
     const withActions = dailyLoopAnalysisSchema.parse({
       id: rowId,
       generatedAtUtc: '2026-07-11T06:30:00Z',

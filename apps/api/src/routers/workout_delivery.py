@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, Query
@@ -515,11 +515,15 @@ async def approve_today_adjustment(
     planned_workout_id: uuid.UUID,
     player: CurrentUser,
     db: AsyncSession = Depends(get_db),
+    variant: Literal["zone2", "tempo"] | None = None,
 ) -> WorkoutDeliveryEnvelope:
     """Today card — Approve & upload: replace the live event with the coach-adjusted
-    IR. Red-never-VO2 still gates this at the delivery boundary."""
+    IR. Red-never-VO2 still gates this at the delivery boundary. Batch 306: on a tired
+    morning ``variant`` is Mark's pick, easy Zone 2 or tempo."""
     service = ExecutableCoachingService(db)
-    proposal = await service.approve_adjustment(player, planned_workout_id=planned_workout_id)
+    proposal = await service.approve_adjustment(
+        player, planned_workout_id=planned_workout_id, variant=variant
+    )
     return _envelope([proposal])
 
 

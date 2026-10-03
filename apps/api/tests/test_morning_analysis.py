@@ -67,7 +67,7 @@ from src.services.morning_analysis import (
     build_today_actions,
     subjective_score_label,
 )
-from src.services.morning_verdict import GRADED_EASE_HARD_LINE
+from src.services.morning_verdict import GRADED_PICK_LINE
 from src.services.notes_reader import notes_hash
 from src.services.personal_baselines import (
     BASELINE_TREND_WINDOW_DAYS,
@@ -1062,29 +1062,29 @@ async def test_amber_morning_leads_with_week_swap_and_keeps_softening(
     # Batch 86 (#159): the same cautious morning surfaces the deterministic Today
     # action block — the swap leads, then the eased-ride approval carrying the real
     # today-bike id so the frontend can approve through the existing rail.
+    # Batch 306: low readiness confirming a fair night is a tired morning, so after the
+    # swap Home offers the pick (easy Zone 2 or tempo) rather than one eased ride.
     actions = verdict["todayActions"]
-    assert [action["kind"] for action in actions][:2] == ["apply_swap", "approve_ride"]
+    assert [action["kind"] for action in actions][:2] == ["apply_swap", "pick_ride"]
     assert actions[0]["targetDate"] == saturday.isoformat()
     assert actions[0]["plannedWorkoutId"] == swap["hardWorkoutId"]
-    approve = next(action for action in actions if action["kind"] == "approve_ride")
-    assert approve["plannedWorkoutId"] == swap["hardWorkoutId"]
+    pick = next(action for action in actions if action["kind"] == "pick_ride")
+    assert pick["plannedWorkoutId"] == swap["hardWorkoutId"]
+    assert [choice["variant"] for choice in pick["choices"]] == ["zone2", "tempo"]
 
     adjustments = verdict["planAdjustments"]
-    # The swap leads; softening stays available as the explicit fallback. Batch 296:
-    # under the graded verdict an Amber eases the hard work at full length.
+    # The swap leads; the pick is the fallback.
     assert "move vo2 max 30/30 from thursday to saturday" in adjustments[0].lower()
-    assert GRADED_EASE_HARD_LINE in adjustments[1:]
+    assert GRADED_PICK_LINE.format(title=swap["hardTitle"]) in adjustments[1:]
 
-    # Batch 70 (#143): the same cautious morning reports the week's mix. Batch 299:
-    # under the graded verdict an Amber eases today's VO2 a zone at full length, so it
-    # still counts toward the week: eased, not lost, and never "a session short".
+    # Batch 70 (#143): the same cautious morning reports the week's mix. Batch 306:
+    # neither pick keeps the VO2 work, so today's VO2 counts as missed this week.
     mix = verdict["weeklyMix"]
-    assert mix["shortfall"] is None
-    assert mix["eased"]["bucket"] == "vo2"
-    assert mix["eased"]["message"] in adjustments
+    assert mix["eased"] is None
+    assert mix["shortfall"]["bucket"] == "vo2"
+    assert mix["shortfall"]["message"] in adjustments
     vo2_bucket = next(bucket for bucket in mix["buckets"] if bucket["bucket"] == "vo2")
-    assert vo2_bucket["target"] == 1 and vo2_bucket["atRisk"] is False
-    assert not any("short this week" in item.lower() for item in adjustments)
+    assert vo2_bucket["target"] == 1 and vo2_bucket["atRisk"] is True
 
     # The KB records the swap-first coaching preference (66.1).
     protocol = next(
@@ -1703,7 +1703,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v55")
+    assert PROMPT_VERSION.startswith("morning-analysis-v56")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT

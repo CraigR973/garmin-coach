@@ -51,7 +51,12 @@ from fastapi import HTTPException
 
 from src.services.sleep_history import SPO2_HRV_RELIABLE_FROM
 from src.services.symptom_check import EASING_CHEST_QUESTION, EASING_FEVER_RETURN, EASING_KINDS
-from src.services.verdict_scaling import ir_has_vo2, ir_is_endurance
+from src.services.verdict_scaling import (
+    TRANSFORM_SHORTER,
+    TRANSFORM_TIRED_ZONE2,
+    ir_has_vo2,
+    ir_is_endurance,
+)
 from src.services.workout_categories import is_bike_workout_type
 from src.services.workout_delivery import build_structured_workout_ir
 
@@ -79,6 +84,12 @@ ACTION_RECOVERY: Final = "recovery"
 ACTION_SHORTENED_Z2: Final = "shortened_zone2"
 ACTION_OFF_THE_BIKE: Final = "off_the_bike"
 ACTION_NO_TRAINING: Final = "no_training"
+#: Batch 306 (Craig, 3 Oct 2026): on a tired Amber (sleep or how he feels clearly off)
+#: Mark picks how to ride a hard session, easy Zone 2 or tempo, at full length, and a
+#: long ride is offered shorter in one tap. Neither changes anything until he picks:
+#: the planned session stays on Zwift.
+ACTION_PICK_ZONE2_OR_TEMPO: Final = "pick_zone2_or_tempo"
+ACTION_OFFER_SHORTER: Final = "offer_shorter"
 
 
 @dataclass(frozen=True, slots=True)
@@ -419,6 +430,9 @@ class GradingInputs:
     #: graded morning stored before the rule is replayed without it
     #: (``references.yesterdayCountsOnHardDays``).
     yesterday_counts_on_hard_days: bool = True
+    #: Batch 306: a tired Amber offers Mark his choices. A graded morning stored before
+    #: it is replayed without them (``references.tiredMorningChoices``).
+    tired_morning_choices: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -1161,13 +1175,27 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
             # Batch 305: graded with the rule that a hard yesterday counts only before a
             # hard session. A morning stored without the key was graded before it.
             "yesterdayCountsOnHardDays": inputs.yesterday_counts_on_hard_days,
+            # Batch 306: graded with a tired morning's choices.
+            "tiredMorningChoices": inputs.tired_morning_choices,
         },
     )
     # Batch 300: a light week holds the session only when nothing is clearly off. A
     # domain marked on Garmin's own sleep score counts even where the age credit lifts
     # it, so the credit is never the only thing between easing and holding.
     clearly_off = any(item.rating == "marked" for item in (*domains, *raw_domains))
-    return replace(verdict, actions=session_actions(verdict, inputs, clearly_off=clearly_off))
+    # Batch 306: a tired morning is an Amber with sleep or how he feels clearly off,
+    # on the age-adjusted sleep score or on Garmin's own, as Batch 300 reads it.
+    tired = (
+        inputs.tired_morning_choices
+        and verdict.status == "Amber"
+        and any(
+            item.rating == "marked" and item.domain in (DOMAIN_SLEEP, DOMAIN_SUBJECTIVE)
+            for item in (*domains, *raw_domains)
+        )
+    )
+    return replace(
+        verdict, actions=session_actions(verdict, inputs, clearly_off=clearly_off, tired=tired)
+    )
 
 
 # -- the Mark-facing words (Batch 296) ----------------------------------------------------
@@ -1288,12 +1316,13 @@ def mark_facing_summary(domains: Sequence[DomainRating], *, rough: bool) -> str:
 
 
 def session_actions(
-    verdict: GradedVerdict, inputs: GradingInputs, *, clearly_off: bool
+    verdict: GradedVerdict, inputs: GradingInputs, *, clearly_off: bool, tired: bool = False
 ) -> tuple[SessionAction, ...]:
     """What the graded verdict would do to each live session today.
 
     ``clearly_off`` is whether any domain is marked, on the age-adjusted sleep score or
     on Garmin's own (Batch 300): a light week holds the session only when it is not.
+    ``tired`` is whether this is an Amber with sleep or how he feels marked (Batch 306).
     """
 
     if inputs.rest_day:
@@ -1306,6 +1335,7 @@ def session_actions(
             inputs.recovery_class_block,
             inputs.light_week,
             clearly_off=clearly_off,
+            tired=tired,
         )
         actions.append(
             SessionAction(
@@ -1328,6 +1358,7 @@ def _session_action(
     light_week: str | None = None,
     *,
     clearly_off: bool = False,
+    tired: bool = False,
 ) -> tuple[str, str]:
     if verdict.floor == FLOOR_NO_TRAINING:
         return ACTION_NO_TRAINING, "No training of any kind today."
@@ -1357,6 +1388,21 @@ def _session_action(
             ACTION_HOLD_TARGETS,
             f"A planned {light_week or 'recovery'} week is already light: hold the session.",
         )
+    # Batch 306 (Craig, 3 Oct 2026): on a tired Amber he picks. A tired morning has a
+    # marked domain, so the light-week hold above has already passed it by.
+    if verdict.status == "Amber" and tired:
+        if session.is_hard:
+            return (
+                ACTION_PICK_ZONE2_OR_TEMPO,
+                "A tired morning: he picks easy Zone 2 or tempo, full length either way; "
+                "picking neither leaves the planned session.",
+            )
+        if session.is_key:
+            return (
+                ACTION_OFFER_SHORTER,
+                "A tired morning: the long ride is offered shorter in one tap; it stays "
+                "at full length unless he takes it.",
+            )
     if verdict.status == "Amber":
         if session.is_hard:
             return ACTION_EASE_HARD, "Amber: hard work eased a zone."
@@ -1433,6 +1479,10 @@ RIDE_TRANSFORMS: Final[dict[str, str]] = {
     "ease_hard": "Amber",
     "recovery": "Red",
     "shortened_zone2": "Red",
+    # Batch 306: the version offered by default. The pick's tempo version is built
+    # when he chooses it; the shorter ride stands only if he approves it.
+    ACTION_PICK_ZONE2_OR_TEMPO: TRANSFORM_TIRED_ZONE2,
+    ACTION_OFFER_SHORTER: TRANSFORM_SHORTER,
 }
 
 

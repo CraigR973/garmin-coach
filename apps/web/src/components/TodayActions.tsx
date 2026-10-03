@@ -21,6 +21,7 @@ type TodayWorkout = DailyLoopData['plannedWorkouts'][number];
 
 const ICONS: Record<TodayAction['kind'], LucideIcon> = {
   approve_ride: Bike,
+  pick_ride: Bike,
   apply_swap: ArrowLeftRight,
   sleep: MoonStar,
   thermal: Thermometer,
@@ -52,10 +53,14 @@ export function TodayActions({
   };
 
   const approveMutation = useMutation({
-    mutationFn: ({ workoutId }: { workoutId: string }) =>
-      apiFetch(`/api/v1/workout-delivery/planned-workouts/${workoutId}/approve-adjustment`, {
-        method: 'POST',
-      }),
+    // Batch 306: a tired morning's pick names the version he chose.
+    mutationFn: ({ workoutId, variant }: { workoutId: string; variant?: string }) =>
+      apiFetch(
+        `/api/v1/workout-delivery/planned-workouts/${workoutId}/approve-adjustment${
+          variant ? `?variant=${encodeURIComponent(variant)}` : ''
+        }`,
+        { method: 'POST' },
+      ),
     onSuccess: async () => {
       await invalidate();
       toast.success("Coach's adjustment uploaded to Zwift");
@@ -98,6 +103,37 @@ export function TodayActions({
             Approve
           </Button>
         </ActionRow>,
+      );
+      return;
+    }
+
+    if (action.kind === 'pick_ride') {
+      const workoutId = action.plannedWorkoutId!;
+      rows.push(
+        <li
+          key={key}
+          className="flex items-start gap-3 rounded-xl border border-border bg-bg px-3 py-3"
+          data-testid="pick-ride"
+        >
+          <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
+          <div className="min-w-0 flex-1 space-y-2">
+            <ActionText action={action} />
+            <div className="flex flex-wrap gap-2">
+              {(action.choices ?? []).map((choice) => (
+                <Button
+                  key={choice.variant}
+                  type="button"
+                  size="sm"
+                  variant={choice.variant === 'zone2' ? 'default' : 'outline'}
+                  disabled={busy}
+                  onClick={() => approveMutation.mutate({ workoutId, variant: choice.variant })}
+                >
+                  {choice.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </li>,
       );
       return;
     }
