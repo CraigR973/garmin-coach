@@ -70,6 +70,7 @@ from src.services.activity_timeseries_retention import (
     RETENTION_DAYS,
     purge_expired_timeseries,
 )
+from src.services.admin_alerts import KIND_LONGITUDINAL, admin_alert
 from src.services.anthropic_text import AnthropicApiError
 from src.services.backup import create_backup, latest_backup, restore_latest_backup
 from src.services.dreo_fan import (
@@ -268,7 +269,14 @@ async def run_longitudinal_analysis() -> JobResult:
             except Exception:
                 await session.rollback()
                 failures += 1
-                log.exception("longitudinal analysis failed", user_id=str(player_id))
+                # Batch 291: tagged for Sentry, as the billing and generation alerts are.
+                admin_alert(
+                    log,
+                    "longitudinal analysis failed",
+                    kind=KIND_LONGITUDINAL,
+                    exc_info=True,
+                    user_id=str(player_id),
+                )
 
     if failures:
         return JobResult.degraded(
@@ -2176,7 +2184,8 @@ def create_scheduler() -> AsyncIOScheduler:
     scheduler.add_job(
         # Batch 220: polling an existing Message Batch is no-spend; the submitter
         # itself is monthly-idempotent and refuses to spend until the operator
-        # billing alert has an active push recipient.
+        # billing alert has a route: since Batch 291, Sentry when no operator
+        # profile is configured, else that profile's push subscription.
         partial(run_tracked_job, "longitudinal-analysis", run_longitudinal_analysis),
         trigger="cron",
         hour=12,

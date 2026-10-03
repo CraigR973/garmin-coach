@@ -276,6 +276,8 @@ COLUMNS: tuple[str, ...] = (
 class AlertReadiness:
     ready: bool
     reason: str | None = None
+    #: Batch 291: where an alert would reach Craig, ``sentry`` or ``push``.
+    route: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -653,6 +655,11 @@ async def billing_alert_readiness(
 ) -> AlertReadiness:
     raw_id = settings.admin_alert_user_id.strip()
     if not raw_id:
+        # Batch 291 (Craig, 25 Sep 2026): with no operator profile, Sentry is the
+        # route. Every admin alert is an error-level event Sentry turns into an issue
+        # (``services.admin_alerts``), and none of them can reach Mark's phone.
+        if settings.sentry_dsn_backend:
+            return AlertReadiness(True, route="sentry")
         return AlertReadiness(False, "admin_alert_user_id_unset")
     try:
         profile_id = uuid.UUID(raw_id)
@@ -671,7 +678,7 @@ async def billing_alert_readiness(
     )
     if subscription is None:
         return AlertReadiness(False, "admin_alert_subscription_missing")
-    return AlertReadiness(True)
+    return AlertReadiness(True, route="push")
 
 
 class LongitudinalAnalysisService:

@@ -55,6 +55,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import structlog
 
 from src.models.coaching import Sleep, TemperatureReading
+from src.services.admin_alerts import KIND_CROSS_SURFACE, admin_alert
 from src.services.bedroom_overnight import night_window
 from src.services.coach_sections import thermal_review
 from src.services.night_thermal import night_indoor_peaks
@@ -241,8 +242,10 @@ def alert_disagreements(
     for finding in findings:
         stated = finding.get("stated") or {}
         reference = finding.get("reference") or {}
-        log.error(
+        admin_alert(
+            log,
             "cross_surface_disagreement",
+            kind=KIND_CROSS_SURFACE,
             surface=surface,
             user_id=str(user_id),
             subject=subject,
