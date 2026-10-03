@@ -4481,6 +4481,44 @@ produced. Batches 208, 209 and 210 are excluded (Craig).
 |---|---|---|---|---|---|
 | Batch 291 — Admin alerts reach Craig through Sentry | 🟢 Mid | Planned | 291.1 **Measured 2026-09-24/25.** Longitudinal analysis has never run: 29 skips on `admin_billing_alert_not_ready` after one crash on 25 Aug. `billing_alert_readiness` accepts only `ADMIN_ALERT_USER_ID` naming a profile other than the subject with an active push subscription, and production has one profile, Mark's — pointing it at him is refused (`admin_alert_points_to_subject`) and would also send ops alerts to his phone. `notify_admin_generation_failure`'s push half is dormant for the same reason; its `log.error` already reaches Sentry.<br>291.2 **Craig's decision (25 Sep): Sentry is the operator route.** Treat a configured `SENTRY_DSN_BACKEND` as a ready alert route when no admin profile is configured; keep the push path for a future operator profile. The Sentry error quota was confirmed available on 24 Sep (probe accepted); record that it ran out once, by 12 Sep.<br>291.3 **Every admin alert is an error-level event with a stable tag** (billing, generation failure, longitudinal, and 272's contradiction alert when it lands), so one Sentry alert rule catches them. **Corrected 2026-10-01 (the 1 Oct review):** three such events have shipped since this row was written and belong in the list: `cross_surface_disagreement` (272), `figure_contest_admin_alert` (274) and `verdict_graded_two_steps_less_cautious` (296). `notes_reading_failed` (297) logs at warning, so a notes-reader outage alone never reaches Sentry; decide at `/batch-start` whether it should. The rest of the row re-verified against the code: `billing_alert_readiness` and `admin_alert_points_to_subject` exist, longitudinal analysis still skips daily, and a spend-cap 400 classifies as billing since Batch 248. Setting that rule (new issue → email Craig) is a console step and is Craig's; say so in the close-out.<br>291.4 **First monthly longitudinal run:** measure its input with the free token counter before it submits, and state the monthly cost in the close-out (estimated $0.10–$0.30 on the Batch API).<br>291.5 Tests, each confirmed to fail against today's logic first: readiness passes with Sentry configured and no admin profile; readiness still refuses an admin profile that is the subject; the longitudinal job submits when ready; each admin alert logs at error level with its tag and pushes nothing to Mark. | Let a failure that needs Craig reach Craig, and let the monthly analyst run that has waited since August. | Longitudinal analysis runs in production; a test alert arrives in Sentry; nothing is pushed to Mark's phone. No migration, no prompt bump. |
 
+### Corrections made at `/batch-start 291` (2026-10-04), before any code
+
+291.1-291.3 were re-checked against `main` (`fd180cd`, after G7c's 304-306) and production,
+read-only. None changes what the batch builds; Craig answered the open question on 3 Oct.
+
+- **Confirmed, with a larger count.** The monthly analysis has skipped on
+  `admin_billing_alert_not_ready` every day from 26 Aug to 3 Oct, 37 runs (the row's 29),
+  after its one crash on 25 Aug. Production has `SENTRY_DSN_BACKEND` set on the `api`
+  service and no `ADMIN_ALERT_USER_ID`.
+- **Confirmed.** Every event in the corrected list already logs at error level:
+  `brief_generation_admin_alert` (billing, failed generations, and the monthly analysis's
+  API failures), `figure_contest_admin_alert`, `cross_surface_disagreement`,
+  `verdict_graded_two_steps_less_cautious`, and the monthly job's own crash. **Decided by
+  Craig, 3 Oct: `notes_reading_failed` stays a warning.**
+- **The tag.** Each is now logged through `services.admin_alerts.admin_alert`, which sets
+  the Sentry tag `admin_alert=<kind>` on an isolated scope around the module's own log
+  call, so one Sentry rule (a new issue with the tag `admin_alert`) catches all six kinds:
+  billing, generation_failure, longitudinal, cross_surface_disagreement, figure_contest and
+  verdict_less_cautious. Setting that rule is a console step and Craig's.
+- **The route.** `billing_alert_readiness` treats a configured Sentry DSN as ready when no
+  operator profile is set (`route="sentry"`), still refuses an operator profile that is the
+  subject, and keeps the push route for a future operator profile.
+- **291.4, measured before it can submit:** the first monthly request is 71,527 input
+  tokens on `claude-sonnet-5` (free token counter, 4 Oct), with the shared 24,576-token
+  output cap. At $2 / $10 per million tokens and the Batch API's half price, about $0.07 of
+  input plus up to $0.12 of output: **about $0.09-0.12 a month, $0.19 at most**, inside the
+  $0.10-0.30 Craig approved. It submits at the job's next 12:15 London run after the deploy,
+  and its temperature finding is routed onto the early-waking experiment as an audited
+  observation (Batch 220).
+- **Found while preparing the production smoke, and fixed here: the job runner sent no
+  error to Sentry.** `run_scheduled` initialised Sentry (Decision #329) but never set up
+  logging, so structlog printed to stdout and Sentry's logging integration saw nothing:
+  measured locally on 4 Oct, 0 events without the setup and 1 (carrying the tag) with it.
+  Every error a cron or a manual run logged reported to nobody, the `ledger-freshness`
+  watchdog (whose only delivery is that error) and the weekly review's admin alerts
+  included. The runner now calls `configure_logging` before `init_sentry`, and a
+  subprocess test proves an alert raised in a job reaches Sentry with its tag.
+
 ## Post-roadmap — 2026-09-27 — Mark's holiday could not be entered (Batch 292)
 
 Craig authorised entering Mark's holiday on 27 Sep: Mark told the coach on 25 Sep he is away for 10 days from Sunday, and flew out that morning. Driving the app's own pause against production failed and wrote nothing.

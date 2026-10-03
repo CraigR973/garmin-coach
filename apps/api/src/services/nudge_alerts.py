@@ -22,6 +22,11 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile
+from src.services.admin_alerts import (
+    KIND_FIGURE_CONTEST,
+    admin_alert,
+    generation_failure_kind,
+)
 from src.services.environment_freshness import HIVE_FRESHNESS_LIMIT, is_hive_temperature_fresh
 from src.services.fan_control import MAX_SPEED, ON_THRESHOLD_C
 from src.services.push_notification_service import send_notification
@@ -785,8 +790,12 @@ class NudgeAlertService:
         profile in prod. Deduped once per (operator, day) via ``_send_once``.
         Best-effort: never raises, so it can't perturb the failing generation path.
         """
-        log.error(
+        # Batch 291: tagged for Sentry, the operator route while no operator profile
+        # exists (billing outages, failed generations and the monthly analysis).
+        admin_alert(
+            log,
             "brief_generation_admin_alert",
+            kind=generation_failure_kind(reason, artifact),
             reason=reason,
             subject_date=subject_date.isoformat(),
             artifact=artifact,
@@ -834,8 +843,10 @@ class NudgeAlertService:
         none, so the push half is dormant until it is (Batch 291 makes Sentry the
         operator route). Best-effort: never raises, so it cannot lose the record.
         """
-        log.error(
+        admin_alert(
+            log,
             "figure_contest_admin_alert",
+            kind=KIND_FIGURE_CONTEST,
             dispute_id=str(dispute_id),
             label=label,
             subject_date=subject_date.isoformat(),
