@@ -472,7 +472,7 @@ FIXTURE_MORNINGS: dict[date, tuple[str, list[str]]] = {
 def test_the_replayed_fixture_mornings_keep_their_colour_and_actions() -> None:
     # 300's own rule, isolated: Batch 304's HRV persistence rule changes three of these
     # mornings, and its tests pin that.
-    replayed = _replayed(_load_fixture(), hrv_persistence=False)
+    replayed = _replayed(_load_fixture(), before=304)
 
     # Batch 304 added 21-22 Jul and 27 Sep to the fixture; this pins the mornings 300 knew.
     assert {

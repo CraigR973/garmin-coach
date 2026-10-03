@@ -623,6 +623,8 @@ def replay_morning(
             # Batch 304: a morning graded before the HRV persistence rule carries no
             # key, so it is replayed without the rule, exactly as Mark saw it.
             hrv_persistence=references.get("hrvPersistence") is True,
+            # Batch 305: likewise for a hard yesterday counting only before a hard session.
+            yesterday_counts_on_hard_days=references.get("yesterdayCountsOnHardDays") is True,
         )
         recovery_class = inputs.recovery_class_block
     sessions = inputs.sessions

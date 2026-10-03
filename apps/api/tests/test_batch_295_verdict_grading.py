@@ -73,20 +73,34 @@ def _metrics(rows: list[list[Any]]) -> dict[date, DailyMetric]:
     }
 
 
-def _graded_before_304(inputs: GradingInputs) -> Any:
-    return grade(replace(inputs, hrv_persistence=False))
+#: The graded rules added since the switch, by the batch that added them, as the
+#: ``GradingInputs`` flag that turns each off.
+LATER_RULES: dict[int, dict[str, bool]] = {
+    304: {"hrv_persistence": False},
+    305: {"yesterday_counts_on_hard_days": False},
+}
 
 
-def _replayed(fixture: Mapping[str, Any], *, hrv_persistence: bool = True) -> dict[date, Any]:
+def _replayed(fixture: Mapping[str, Any], *, before: int | None = None) -> dict[date, Any]:
     """The fixture days through ``replay_morning``.
 
     The fixture's mornings were stored before the switch, so the replay grades them
-    under today's rules. ``hrv_persistence=False`` grades them as Batches 295-303 did,
-    before Batch 304's HRV persistence rule, for the tests that pin those batches' own
-    mechanics on the mornings they were written against.
+    under today's rules. ``before=N`` grades them without the rules batch N and later
+    added, as the engine stood when that batch began, for the tests that pin earlier
+    batches' own mechanics on the mornings they were written against.
     """
-    if not hrv_persistence:
-        with patch.object(verdict_replay_module, "grade", _graded_before_304):
+    if before is not None:
+        flags = {
+            name: value
+            for batch, rules in LATER_RULES.items()
+            if batch >= before
+            for name, value in rules.items()
+        }
+
+        def graded_before(inputs: GradingInputs) -> Any:
+            return grade(replace(inputs, **flags))
+
+        with patch.object(verdict_replay_module, "grade", graded_before):
             return _replayed(fixture)
     wake = _metrics(fixture["wakeMetrics"])
     preferred = _metrics(fixture["preferredMetrics"])
@@ -147,7 +161,7 @@ def replayed() -> dict[date, Any]:
 
 @pytest.fixture(scope="module")
 def replayed_before_304() -> dict[date, Any]:
-    return _replayed(_load_fixture(), hrv_persistence=False)
+    return _replayed(_load_fixture(), before=304)
 
 
 @pytest.mark.parametrize(
