@@ -23,8 +23,10 @@ evidence, and this module is the engine:
 
    Garmin readiness mostly restates his sleep and recovery time (r 0.69 and −0.72
    over 99 mornings), so it never votes on its own: it can only confirm a mild
-   sleep or load domain into a marked one. Garmin's HRV status and band are context
-   for the brief and are not read here at all.
+   sleep or load domain into a marked one. Because it restates them, that counts the
+   same night twice, and since Batch 305 the engine says so: it is deliberate extra
+   weight (Craig, 3 Oct 2026), limited to one domain. Garmin's HRV status and band are
+   context for the brief and are not read here at all.
 3. **Combine across domains**: Red when two or more are marked or he says he feels
    Rough; Amber when one is marked or two or more are mild; Green with the targets
    held when one is mild; Green otherwise.
@@ -234,21 +236,26 @@ THRESHOLDS: Final[dict[str, Threshold]] = {
             "acwr_mild",
             1.3,
             "acute:chronic load ratio",
-            "the top of the balanced range the app already uses (Batch 201)",
-            "A ramp above the balanced range is mild.",
+            "the top of the balanced range the app already uses (Batch 201); the ratio "
+            "comes from a team-sport injury model (Gabbett 2016) and is contested "
+            "(Impellizzeri 2020), and Garmin calls up to 1.4 optimal",
+            "A ramp above the balanced range is mild. Moving it to 1.5, Garmin's 'high', "
+            "waits until after 20 Oct 2026, so it does not change his first fortnight back "
+            "from a holiday unseen (Craig, 3 Oct).",
         ),
         _threshold(
             "acwr_marked",
             1.5,
             "acute:chronic load ratio",
-            "the app's load cap (Batch 167)",
-            "A fast ramp is marked, as it caps the day at Amber today.",
+            "the app's load cap (Batch 167), where Garmin's 'high' starts; contested "
+            "evidence, as above",
+            "A fast ramp is marked, and on its own makes the day Amber.",
         ),
         _threshold(
             "recovery_time_mild_hours",
             24,
             "hours",
-            "the app's load cap (Batch 167)",
+            "Garmin's own estimate, no trial source; the line is the app's load cap (Batch 167)",
             "More than a day of Garmin recovery time left is mild: fine for an easy "
             "session, a reason to move a hard one.",
         ),
@@ -259,6 +266,27 @@ THRESHOLDS: Final[dict[str, Threshold]] = {
             "set just past his worst observed value; Garmin's own estimate, no trial source",
             "More than two days left is marked. His highest at wake in three months was 47 "
             "hours, so this line has never fired; it is for an unusual debt.",
+        ),
+        _threshold(
+            "yesterday_hard_mild",
+            1,
+            "hard day before a hard session",
+            "engineering choice, no trial source; it overlaps Garmin's recovery time",
+            "A hard day yesterday is mild only when today's session is hard too (Batch "
+            "305). Before an easy day it is the recovery his plan set, not something off. "
+            "Replayed on 3 Oct 2026 it was mild on 17 of 103 mornings; on 5 the day's "
+            "session was easy, and those now count for nothing.",
+        ),
+        _threshold(
+            "readiness_confirms_domains",
+            1,
+            "domain",
+            "deliberate extra weight (Craig, 3 Oct 2026); readiness restates his sleep "
+            "(r 0.69) and recovery time (r -0.72), so it is not independent evidence",
+            "Low readiness (Garmin's Low or Poor, or under his own lower quartile) turns "
+            "this many mild sleep or load domains marked, sleep first, and never votes on "
+            "its own. It counts that night twice on purpose; replayed on 3 Oct 2026 it "
+            "decided 3 of 103 colours (21 and 28 Aug, 4 Sep).",
         ),
         _threshold(
             "feel_window_days",
@@ -387,6 +415,10 @@ class GradingInputs:
     #: morning stored before the rule is replayed without it, so the replay gives back
     #: exactly what Mark saw (``references.hrvPersistence``).
     hrv_persistence: bool = True
+    #: Batch 305: a hard day yesterday counts only when today's session is hard. A
+    #: graded morning stored before the rule is replayed without it
+    #: (``references.yesterdayCountsOnHardDays``).
+    yesterday_counts_on_hard_days: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -832,21 +864,31 @@ def _load(inputs: GradingInputs) -> tuple[SignalReading, ...]:
         )
     else:
         readings.append(_reading(DOMAIN_LOAD, "recovery_time", "none", hours, "Recovered."))
-    hard_yesterday = (inputs.yesterday_load or "").lower() == "hard"
-    readings.append(
-        _reading(
+    readings.append(_yesterday_load(inputs))
+    return tuple(readings)
+
+
+def _yesterday_load(inputs: GradingInputs) -> SignalReading:
+    """A hard day yesterday, which counts only before a hard session (Batch 305)."""
+
+    if (inputs.yesterday_load or "").lower() != "hard":
+        return _reading(DOMAIN_LOAD, "yesterday_load", "none", None, "Yesterday was not hard.")
+    if inputs.yesterday_counts_on_hard_days and not _hard_ride_today(inputs):
+        return _reading(
             DOMAIN_LOAD,
             "yesterday_load",
-            "mild" if hard_yesterday else "none",
+            "none",
             None,
-            (
-                "Yesterday's training was hard, and he is still recovering from it."
-                if hard_yesterday
-                else "Yesterday was not hard."
-            ),
+            "Yesterday's training was hard, and today's session is easy: that is the "
+            "recovery his plan set, so it does not count against today.",
         )
+    return _reading(
+        DOMAIN_LOAD,
+        "yesterday_load",
+        "mild",
+        None,
+        "Yesterday's training was hard, and he is still recovering from it.",
     )
-    return tuple(readings)
 
 
 def _feel(inputs: GradingInputs) -> SignalReading:
@@ -932,21 +974,22 @@ def _domains(
     ratings: dict[str, Rating] = {
         name: _worst(signal.rating for signal in by_domain[name]) for name in DOMAINS
     }
-    confirmed: str | None = None
-    # Readiness never votes on its own; it confirms at most one domain it restates
-    # (sleep first, then load), so it cannot count twice.
+    confirmed: tuple[str, ...] = ()
+    # Readiness never votes on its own; it confirms a mild domain it restates (sleep
+    # first, then load). Because it restates them, a confirmed domain counts the same
+    # night twice: deliberate extra weight, limited by the table (Batch 305).
     if readiness_low:
-        confirmed = next(
-            (name for name in (DOMAIN_SLEEP, DOMAIN_LOAD) if ratings[name] == "mild"), None
-        )
-        if confirmed is not None:
-            ratings[confirmed] = "marked"
+        confirmed = tuple(name for name in (DOMAIN_SLEEP, DOMAIN_LOAD) if ratings[name] == "mild")[
+            : int(_t("readiness_confirms_domains"))
+        ]
+        for name in confirmed:
+            ratings[name] = "marked"
     return tuple(
         DomainRating(
             domain=name,
             rating=ratings[name],
             signals=by_domain[name],
-            confirmed_by_readiness=name == confirmed,
+            confirmed_by_readiness=name in confirmed,
         )
         for name in DOMAINS
     )
@@ -1115,6 +1158,9 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
             # Batch 304: graded with the HRV persistence rule. A morning stored without
             # this key was graded before it, and the replay grades it without the rule.
             "hrvPersistence": inputs.hrv_persistence,
+            # Batch 305: graded with the rule that a hard yesterday counts only before a
+            # hard session. A morning stored without the key was graded before it.
+            "yesterdayCountsOnHardDays": inputs.yesterday_counts_on_hard_days,
         },
     )
     # Batch 300: a light week holds the session only when nothing is clearly off. A

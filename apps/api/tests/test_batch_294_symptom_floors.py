@@ -540,10 +540,12 @@ def test_16_jul_still_rests_the_bike() -> None:
 
 
 def test_a_capped_dip_with_a_resting_hr_rise_rests_the_bike() -> None:
-    # Two mornings above his usual range: on its own that only caps the day (Batch 293).
-    verdict = _verdict(day=date(2026, 9, 22), resting_hr=46, prior_resting_hr=46)
+    # Batch 305: a rise of 4 bpm over his median corroborates the dip, though on its own
+    # it does not trigger the resting-HR rail at all.
+    verdict = _verdict(day=date(2026, 9, 22), resting_hr=48)
     hrv = verdict["acutePhysiology"]["overnightHrv"]
 
+    assert verdict["acutePhysiology"]["restingHeartRate"]["triggered"] is False
     assert verdict["acutePhysiology"]["restingHeartRate"]["requiresBikeRest"] is False
     assert hrv["corroboratedBy"] == ["resting_heart_rate"]
     assert hrv["requiresBikeRest"] is True

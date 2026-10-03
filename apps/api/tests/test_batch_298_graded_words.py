@@ -225,7 +225,7 @@ def fixture() -> dict[str, Any]:
 def replayed(fixture: dict[str, Any]) -> dict[date, Any]:
     # The held mornings these tests read (22 and 26 Sep) are Amber under Batch 304's HRV
     # persistence rule, so they are replayed as they were graded when 298 shipped.
-    return _replayed(fixture, hrv_persistence=False)
+    return _replayed(fixture, before=304)
 
 
 def _graded_packet(replayed: dict[date, Any], fixture: dict[str, Any], day: date) -> Any:
@@ -318,7 +318,9 @@ def _rail(*, rhr_today: int, rhr_yesterday: int, hrv_today: int) -> dict[str, An
 
 
 def test_the_off_the_bike_notice_loses_only_the_cap_clause() -> None:
-    ladder = _rail(rhr_today=47, rhr_yesterday=46, hrv_today=38)
+    # Batch 305: a rise of 4 bpm is what takes a low night off the bike with it; two
+    # mornings above his usual range (47 after 46) no longer does on its own.
+    ladder = _rail(rhr_today=48, rhr_yesterday=46, hrv_today=38)
     assert ladder["overnightHrv"]["requiresBikeRest"] is True
     assert "Either on its own would only cap the day;" in ladder["overnightHrv"]["escalation"]
 

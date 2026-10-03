@@ -46,7 +46,7 @@ from src.services.symptom_check import (
     reports_symptoms,
     symptom_signal,
 )
-from src.services.verdict_grading import ride_transform
+from src.services.verdict_grading import THRESHOLDS, ride_transform
 from src.services.verdict_scaling import (
     AMBER_POWER_CAP_PCT,
     companion_session_present,
@@ -75,6 +75,10 @@ ACWR_LOAD_DRIVEN_MAX = 1.3
 ACUTE_BASELINE_WINDOW_DAYS = 84
 ACUTE_BASELINE_MIN_SAMPLES = 21
 RESTING_HR_ABSOLUTE_DELTA_BPM = 7.0
+# Batch 305: the rise that can take a low HRV night off the bike with it. It is the
+# graded verdict's own mild line, so the two can never disagree about what "raised"
+# means; two mornings above his usual range is no longer enough on its own.
+RESTING_HR_CORROBORATION_DELTA_BPM = THRESHOLDS["resting_hr_rise_mild_bpm"].value
 HRV_ACUTE_DROP_STDDEVS = 1.5
 # Batch 294: the 1.5 SD floor caps the day at Amber; only an illness-grade drop takes
 # Mark off the bike on its own. At 1.5 SD the rail fired on 6 of his 75 eligible
@@ -459,6 +463,25 @@ def _rhr_rail(
     }
 
 
+def _rhr_corroborates(rhr: Mapping[str, Any]) -> bool:
+    """A resting-heart-rate rise big enough to take a low HRV night off the bike.
+
+    Batch 305: two mornings above his upper quartile is a real but small signal (on
+    27 Sep, 47 after 46 against a usual 44), so it no longer corroborates on its own; a
+    rise of :data:`RESTING_HR_CORROBORATION_DELTA_BPM` over his median does, once his
+    baseline is known, even on a single morning. Replayed on 3 Oct 2026, no morning lost
+    its floor and one gained it: 1 Aug, already Red, is off the bike rather than a
+    recovery spin.
+    """
+    delta = rhr.get("deltaFromMedianBpm")
+    enough_history = int(rhr.get("baselineSampleCount") or 0) >= ACUTE_BASELINE_MIN_SAMPLES
+    return (
+        enough_history
+        and isinstance(delta, int | float)
+        and float(delta) >= RESTING_HR_CORROBORATION_DELTA_BPM
+    )
+
+
 def _hrv_corroboration_clause(corroborated_by: Sequence[str], symptom_answer: str | None) -> str:
     """How the off-the-bike HRV notice names the second sign (Batch 294).
 
@@ -840,7 +863,7 @@ def _acute_physiology_rail(
         corroborated_by=[
             name
             for name, present in (
-                ("resting_heart_rate", rhr["triggered"]),
+                ("resting_heart_rate", _rhr_corroborates(rhr)),
                 ("symptom_answer", reports_symptoms(symptom_answer)),
             )
             if present

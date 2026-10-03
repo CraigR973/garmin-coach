@@ -70,7 +70,7 @@ def replayed(fixture: dict[str, Any]) -> dict[date, Any]:
 
 @pytest.fixture(scope="module")
 def before(fixture: dict[str, Any]) -> dict[date, Any]:
-    return _replayed(fixture, hrv_persistence=False)
+    return _replayed(fixture, before=304)
 
 
 def _actions(morning: Any) -> list[str]:
