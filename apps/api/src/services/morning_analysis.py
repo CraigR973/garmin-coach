@@ -38,6 +38,7 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile
+from src.services.admin_alerts import KIND_VERDICT_LESS_CAUTIOUS, admin_alert
 from src.services.age_norms import (
     REM_FRAMING_RULE,
     SLEEP_STAGE_MINUTES_RULE,
@@ -239,7 +240,9 @@ def _log_verdict_engines(
     log.info("verdict_engines_compared", agree=ladder_status == graded.status, **fields)
     less_cautious = _STATUS_RANK.get(ladder_status, 0) - _STATUS_RANK.get(graded.status, 0)
     if VERDICT_ENGINE == ENGINE_GRADED and less_cautious >= 2:
-        log.error("verdict_graded_two_steps_less_cautious", **fields)
+        admin_alert(
+            log, "verdict_graded_two_steps_less_cautious", kind=KIND_VERDICT_LESS_CAUTIOUS, **fields
+        )
 
 
 def _graded_breathwork_line(

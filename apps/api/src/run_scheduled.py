@@ -38,6 +38,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 
+from src.config import settings
+from src.logging_config import configure_logging
 from src.observability import init_sentry
 from src.scheduler import (
     run_activity_timeseries_retention,
@@ -102,6 +104,11 @@ def main() -> None:
     # cron, any manual ``railway run``, and Batch 242.5's external-only
     # ``ledger-freshness`` watchdog — reports to nobody. Verified in the deployed
     # image on 2026-09-12.
+    # Batch 291: and without the API's logging setup structlog prints to stdout
+    # and never reaches the standard logging that Sentry listens to, so every
+    # error a job logged here (the watchdog, the weekly review's admin alerts)
+    # still reported to nobody, with Sentry initialised. Found 4 Oct 2026.
+    configure_logging(settings.log_level)
     init_sentry()
     args = _build_parser().parse_args()
     result = asyncio.run(_run(args.job))
