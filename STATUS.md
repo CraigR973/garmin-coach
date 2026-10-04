@@ -6,6 +6,17 @@
 
 ## Now
 
+**2026-10-04 (evening) — Batch 313 is written up, not built (Craig: write it up, don't build
+yet).** The morning stops naming a colour to Mark. The headline says what to do today, taken
+from the engine's own per-session decisions ("Green light", "Take the edge off", "Recovery
+day"); a chip says how recovered he is (Recovered, Some fatigue, Still recovering); rest days
+lead with "Rest day"; red is kept for health warnings, and recovery and rest days are blue.
+Home, the brief, chat, the sleep calendar and the weekly review use the same words. A day with
+nothing planned inside a plan week now counts as rest (15 of the 105 stored mornings, 12 of
+them Amber or Red). No colour or ride change. Craig signed off all 17 states on Mark's behalf,
+4 Oct (`docs/drafts/2026-10-04-morning-call-wording.md`). Plan No. 2's last week ends Sun 18 Oct
+and nothing is loaded after it. Ledger: "The morning names a colour, not a call".
+
 **2026-10-04 (midday) — Batch 312 is written up, not built (Craig's go, 4 Oct; no date).**
 Every Garmin and Hive call runs on the API's event loop, so while one runs nothing else does:
 about 3 s every 15 minutes (Hive), 9 s hourly (activity poll), about 25 s on each morning sync
@@ -2121,6 +2132,13 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-04 (evening)** — Authored Batch 313, docs only, from Craig's question whether the
+  morning should move away from Green/Amber/Red and put rest days in a positive light. Drafted
+  the words for all 17 morning states as a coach would say them; Craig signed them off on
+  Mark's behalf with blue for recovery and rest, red only for health warnings, and the new
+  rest-day rule. Read-only checks: 105 stored mornings (15 empty plan-week days the engine did
+  not call rest, 12 of them Amber or Red), the brief's "Today's verdict" section, and every
+  string that names a colour to Mark. No code, no spend.
 - **2026-10-04 (midday)** — Authored Batch 312, docs only, from a session that checked Batch
   210's trigger: no pooler refusal since 30 Aug (the pooler's 24 h log, about 20,000 API log
   lines for 27 Sep–4 Oct, and the 15-minute job cadence back to 30 Aug). It found Garmin and
