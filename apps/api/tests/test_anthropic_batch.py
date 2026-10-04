@@ -39,7 +39,9 @@ class _Obj:
         for key, value in payload.items():
             setattr(self, key, value)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, mode: str = "python") -> dict[str, Any]:
+        # The SDK's own signature (Batch 291: the client asks for ``mode="json"``).
+        assert mode == "json", "the batch client must store JSON-safe values"
         return dict(self._payload)
 
 

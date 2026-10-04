@@ -135,8 +135,13 @@ class _classified:
 
 
 def _as_object(value: Any, operation: str) -> dict[str, Any]:
+    # Batch 291's close-out: the SDK's default ``to_dict`` keeps real ``datetime``s
+    # (``created_at``, ``expires_at``), which the analyses row stores as JSONB, so the
+    # first monthly submission since Batch 257 reached Anthropic and then failed to
+    # save its record (4 Oct 2026). JSON mode gives ISO strings, as the hand-rolled
+    # HTTP client before Batch 257 did.
     to_dict = getattr(value, "to_dict", None)
-    raw = to_dict() if callable(to_dict) else value
+    raw = to_dict(mode="json") if callable(to_dict) else value
     if not isinstance(raw, dict):
         raise AnthropicBatchError(f"Anthropic batch {operation} response was not an object.")
     return raw

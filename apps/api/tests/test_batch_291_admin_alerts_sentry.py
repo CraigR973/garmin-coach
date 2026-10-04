@@ -328,3 +328,40 @@ def test_an_alert_raised_in_the_job_runner_reaches_sentry() -> None:
     )
     assert result.returncode == 0, result.stderr
     assert "ALERTS ['longitudinal']" in result.stdout, result.stdout
+
+
+def test_a_provider_batch_is_stored_as_json() -> None:
+    """Found at close-out: the first monthly submission reached Anthropic, then its record
+    failed to save because the SDK's batch object kept real datetimes (4 Oct 2026)."""
+    import json
+    from datetime import UTC, datetime
+
+    from anthropic.types.messages import MessageBatch
+
+    from src.services.anthropic_batch import _as_object
+
+    batch = MessageBatch.model_validate(
+        {
+            "id": "msgbatch_test",
+            "type": "message_batch",
+            "processing_status": "in_progress",
+            "request_counts": {
+                "processing": 1,
+                "succeeded": 0,
+                "errored": 0,
+                "canceled": 0,
+                "expired": 0,
+            },
+            "created_at": datetime(2026, 10, 4, 3, 34, tzinfo=UTC),
+            "expires_at": datetime(2026, 10, 5, 3, 34, tzinfo=UTC),
+            "ended_at": None,
+            "archived_at": None,
+            "cancel_initiated_at": None,
+            "results_url": None,
+        }
+    )
+
+    stored = _as_object(batch, "create")
+
+    assert json.loads(json.dumps(stored))["created_at"].startswith("2026-10-04T03:34")
+    assert stored["id"] == "msgbatch_test"
