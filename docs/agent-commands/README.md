@@ -9,7 +9,7 @@ real procedure lives in this folder — never duplicate the steps into a wrapper
 |---|---|
 | `batch-start.md` | Start an implementation batch from `docs/phase-batches.md` |
 | `batch-verify.md` | Check a batch against acceptance criteria before closeout |
-| `closeout.md` | Explicit reviewed batch closeout: commit, CI, merge, deploy, docs, strike row |
+| `closeout.md` | Batch closeout, run automatically once the gate is green (`AGENTS.md`): commit, CI, merge, deploy, docs, strike row |
 | `batch-group.md` | Run a defined group of batches back to back, each through the full start → verify → closeout cycle |
 | `handoff.md` | End-of-session handoff: update STATUS + DECISIONS, commit |
 | `next-batch-prompt.md` | Generate a copy-ready prompt for the next batch |
