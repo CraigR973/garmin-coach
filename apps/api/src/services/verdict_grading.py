@@ -16,7 +16,9 @@ evidence, and this module is the engine:
 
    * **autonomic** — last night's HRV, his 7-day HRV against his own baseline, and
      his resting heart rate. Since Batch 304 a 7-day dip is marked once it has lasted
-     three mornings, or comes with last night under his acute floor;
+     three mornings, or comes with last night under his acute floor. Since Batch 310,
+     in the week after a holiday, a dip still catching up once his last two nights
+     are back is a little off;
    * **sleep** — the sleep score and total sleep;
    * **load** — the acute:chronic ratio, Garmin's recovery time and yesterday's load;
    * **subjective** — his check-in feel against his own mean and spread.
@@ -49,6 +51,7 @@ from typing import Any, Final, Literal, Protocol
 
 from fastapi import HTTPException
 
+from src.services.holiday_pause import HolidayWindow, holiday_windows_away_overnight
 from src.services.sleep_history import SPO2_HRV_RELIABLE_FROM
 from src.services.symptom_check import EASING_CHEST_QUESTION, EASING_FEVER_RETURN, EASING_KINDS
 from src.services.verdict_scaling import (
@@ -158,9 +161,10 @@ THRESHOLDS: Final[dict[str, Threshold]] = {
             1.0,
             "SD of nightly HRV",
             "set just past his worst observed value; no trial source",
-            "A week this far down is marked. His lowest 7-day mean in three months was "
-            "0.83 SD under his normal (22 Sep), so this line has never fired and was not "
-            "meant to: a week-long dip is marked by the persistence line instead.",
+            "A week this far down is marked. It was set past his lowest 7-day mean of his "
+            "first three months (0.83 SD under his normal, 22 Sep), and first fired on 4 Oct "
+            "2026, on his holiday's low week (41.3 ms against a line of 41.5). A week-long "
+            "dip is usually marked by the persistence line first.",
         ),
         _threshold(
             "hrv_persistence_mornings",
@@ -173,6 +177,20 @@ THRESHOLDS: Final[dict[str, Threshold]] = {
             "row is marked: the dip has lasted. So is one under it with last night under "
             "his acute floor, where the week and the night agree. The trials eased the "
             "first such morning; he moves or holds for two, then eases (Batch 304).",
+        ),
+        _threshold(
+            "hrv_catch_up_nights",
+            2,
+            "nights back in his range",
+            "an engineering choice: one night swings about 5 ms; it departs from the trials, "
+            "which judge the same lagging 7-day mean, only in the 7 days after a holiday",
+            "After a holiday the 7-day mean lags his nights. Once his last this-many nights "
+            "are each at or above the line the reading uses (his normal, or recovery-week "
+            "normal, minus the smallest worthwhile change), last night was at home and the "
+            "week holds a night he slept away, a marked week counts as a little off, so a "
+            "hard session is held at its targets rather than eased (Batch 310, Craig, 4 Oct "
+            "2026). It never takes a little off to nothing, and one night under the line "
+            "ends it.",
         ),
         _threshold(
             "hrv_recovery_min_nights",
@@ -433,6 +451,14 @@ class GradingInputs:
     #: Batch 306: a tired Amber offers Mark his choices. A graded morning stored before
     #: it is replayed without them (``references.tiredMorningChoices``).
     tired_morning_choices: bool = True
+    #: Batch 310: after a holiday, a 7-day dip still catching up once his nights are back
+    #: is a little off. A graded morning stored before the rule is replayed without it
+    #: (``references.hrvHolidayCatchUp``).
+    hrv_holiday_catch_up: bool = True
+    #: Batch 310: the nights inside this morning's 7-night week that he slept away, each
+    #: dated by the morning after it (:func:`week_nights_away`). Stored with the morning
+    #: (``references.hrvWeekNightsAway``), so the replay sees what the morning saw.
+    hrv_nights_away: frozenset[date] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -711,10 +737,71 @@ def _hrv_persistent(
     return None
 
 
+def _hrv_catching_up(
+    inputs: GradingInputs, week: _HrvWeek, reading: SignalReading
+) -> SignalReading | None:
+    """After a holiday, a 7-day dip still catching up with his nights is mild (Batch 310).
+
+    The 7-day mean lags his nights: back from a holiday with his nights normal again,
+    it stays under his line for days. Craig's rule of 4 Oct 2026: when the seven nights
+    it averages include a night he slept away, last night was at home, and his last two
+    nights are each at or above the line this reading uses (his normal, or recovery-week
+    normal, minus the smallest worthwhile change), a marked week counts as a little off.
+    It applies whichever line marked the week, and a mild week takes the same words. It
+    never takes mild to none, and it leaves the 7-day rating alone, so 304's streak still
+    counts these mornings and one night under the line marks the week again.
+    """
+
+    if not inputs.hrv_holiday_catch_up or reading.rating == "none":
+        return None
+    # 304's low-night clause has last night under his acute floor, under this line, so
+    # it can never meet the rule; it is excluded here so that holds in every basis.
+    if reading.signal == "hrv_7_day_low_night":
+        return None
+    if week.centre is None or week.week_mean is None:
+        return None
+    day = inputs.subject_date
+    week_start = day - timedelta(days=int(_t("hrv_week_nights")) - 1)
+    averaged = [night for night, _ in inputs.hrv_nights if week_start <= night <= day]
+    if day in inputs.hrv_nights_away or not any(
+        night in inputs.hrv_nights_away for night in averaged
+    ):
+        return None
+    line = week.centre - _t("hrv_swc_sd") * week.spread
+    by_night = dict(inputs.hrv_nights)
+    recent = [
+        by_night.get(day - timedelta(days=offset))
+        for offset in range(int(_t("hrv_catch_up_nights")))
+    ]
+    # Missing data never makes the day better: a night without a reading is not back.
+    if any(value is None or value < line for value in recent):
+        return None
+    nights = " and ".join(_n(value) for value in reversed(recent))
+    return _reading(
+        DOMAIN_AUTONOMIC,
+        "hrv_7_day_catching_up",
+        "mild",
+        week.week_mean,
+        f"7-day HRV {week.week_mean:.1f} ms is still under {week.basis} {week.centre:.1f} ms "
+        f"after his holiday, but his last two nights ({nights} ms) are back at or above "
+        f"{line:.1f} ms: the average is catching up, so it counts as a little off.",
+        f"{week.basis} {week.centre:.1f} ms, SD {week.spread:.1f} ms",
+        usual=week.centre,
+    )
+
+
 def _hrv_week(inputs: GradingInputs) -> SignalReading:
-    """His 7-day mean HRV against his own normal (295.3), marked once it lasts (304)."""
+    """His 7-day mean HRV against his own normal (295.3), marked once it lasts (304).
+
+    After a holiday, a dip still catching up with his nights is a little off (310).
+    """
 
     week = _hrv_week_on(inputs, inputs.subject_date, in_recovery_week=inputs.in_recovery_week)
+    reading = _hrv_week_reading(inputs, week)
+    return _hrv_catching_up(inputs, week, reading) or reading
+
+
+def _hrv_week_reading(inputs: GradingInputs, week: _HrvWeek) -> SignalReading:
     if week.centre is None or week.week_mean is None:
         return _reading(
             DOMAIN_AUTONOMIC,
@@ -1177,6 +1264,9 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
             "yesterdayCountsOnHardDays": inputs.yesterday_counts_on_hard_days,
             # Batch 306: graded with a tired morning's choices.
             "tiredMorningChoices": inputs.tired_morning_choices,
+            # Batch 310: graded with the holiday catch-up, and the nights away it saw.
+            "hrvHolidayCatchUp": inputs.hrv_holiday_catch_up,
+            "hrvWeekNightsAway": sorted(night.isoformat() for night in inputs.hrv_nights_away),
         },
     )
     # Batch 300: a light week holds the session only when nothing is clearly off. A
@@ -1234,6 +1324,14 @@ def mark_facing_phrase(signal: SignalReading) -> str:
             f"your 7-day HRV average has been below your usual for {_n(signal.streak)} "
             f"mornings running "
             f"({_n(round(value) if value is not None else None)} ms against "
+            f"{_n(round(usual) if usual is not None else None)})"
+        )
+    if signal.signal == "hrv_7_day_catching_up":
+        # Batch 310: after a holiday, his nights back but the average still catching up
+        # (signed off by Craig on Mark's behalf, 4 Oct 2026).
+        return (
+            f"your HRV is back to normal, but your 7-day average is still catching up after "
+            f"your holiday ({_n(round(value) if value is not None else None)} ms against "
             f"{_n(round(usual) if usual is not None else None)})"
         )
     if signal.signal == "hrv_7_day_low_night":
@@ -1615,6 +1713,27 @@ def recovery_week_nights(blocks: Sequence[_Block]) -> frozenset[date]:
     return frozenset(nights)
 
 
+def week_nights_away(subject_date: date, windows: Sequence[HolidayWindow]) -> frozenset[date]:
+    """The nights of this morning's 7-night HRV week he slept away (Batch 310).
+
+    A night is dated by the morning after it, as his HRV reading is, and a holiday
+    window is read end-exclusive, as the bedroom reads it
+    (:func:`holiday_pause.holiday_windows_away_overnight`): the night dated ``D`` was
+    away when ``D - 1`` falls inside a window's ``[start, end)``. He is home on the
+    evening of the end date, and the morning he flies out follows a night at home, so
+    a holiday of 27 Sep-6 Oct is away on the nights dated 28 Sep-6 Oct. Reading the
+    morning itself inside ``[start, end]`` would count 27 Sep, a night at home.
+    """
+
+    week_start = subject_date - timedelta(days=int(_t("hrv_week_nights")) - 1)
+    nights = (week_start + timedelta(days=offset) for offset in range(int(_t("hrv_week_nights"))))
+    return frozenset(
+        night
+        for night in nights
+        if holiday_windows_away_overnight(windows, night - timedelta(days=1))
+    )
+
+
 def build_grading_inputs(
     *,
     subject_date: date,
@@ -1638,6 +1757,7 @@ def build_grading_inputs(
     blocks: Sequence[_Block],
     notes_feel_notch: int = 0,
     notes_feel_words: str | None = None,
+    holiday_windows: Sequence[HolidayWindow] = (),
 ) -> GradingInputs:
     """One morning's inputs, from its own readings and the rows dated before it.
 
@@ -1691,6 +1811,7 @@ def build_grading_inputs(
         rest_day=rest_day,
         notes_feel_notch=max(0, min(1, notes_feel_notch)),
         notes_feel_words=notes_feel_words,
+        hrv_nights_away=week_nights_away(day, holiday_windows),
     )
 
 

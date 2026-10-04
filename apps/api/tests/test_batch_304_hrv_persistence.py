@@ -65,7 +65,9 @@ def fixture() -> dict[str, Any]:
 
 @pytest.fixture(scope="module")
 def replayed(fixture: dict[str, Any]) -> dict[date, Any]:
-    return _replayed(fixture)
+    # Batch 310 holds 21 and 22 Jul at "a little off" again (his HRV back to normal a
+    # week after his July holiday), so 304's own rule is pinned without it.
+    return _replayed(fixture, before=310)
 
 
 @pytest.fixture(scope="module")
@@ -405,7 +407,12 @@ def test_the_table_states_the_new_line_with_its_sources() -> None:
 
 
 @pytest.mark.parametrize("key", ["hrv_week_marked_sd", "recovery_time_marked_hours"])
-def test_the_two_lines_that_never_fire_say_so(key: str) -> None:
+def test_the_two_lines_set_past_his_worst_value_say_so(key: str) -> None:
     line = THRESHOLDS[key]
     assert line.source.startswith("set just past his worst observed value")
-    assert "never fired" in line.reason
+
+
+def test_the_line_that_never_fires_says_so() -> None:
+    # The 7-day marked line first fired on 4 Oct 2026, his holiday week; Batch 310
+    # corrects its reason and pins it.
+    assert "never fired" in THRESHOLDS["recovery_time_marked_hours"].reason

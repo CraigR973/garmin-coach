@@ -19,7 +19,7 @@ from __future__ import annotations
 import itertools
 import json
 import uuid
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -30,6 +30,7 @@ import pytest
 
 from src.models.coaching import DailyMetric, PlanBlock, Sleep
 from src.services import verdict_replay as verdict_replay_module
+from src.services.holiday_pause import HolidayWindow
 from src.services.symptom_check import symptom_signal
 from src.services.verdict_grading import (
     ACTION_NO_TRAINING,
@@ -79,16 +80,35 @@ LATER_RULES: dict[int, dict[str, bool]] = {
     304: {"hrv_persistence": False},
     305: {"yesterday_counts_on_hard_days": False},
     306: {"tired_morning_choices": False},
+    310: {"hrv_holiday_catch_up": False},
 }
 
 
-def _replayed(fixture: Mapping[str, Any], *, before: int | None = None) -> dict[date, Any]:
+def _holiday_windows(fixture: Mapping[str, Any]) -> list[HolidayWindow]:
+    """His stored holiday windows (Batch 310), as the replay loads them."""
+    return [
+        HolidayWindow(
+            start_date=date.fromisoformat(start),
+            end_date=date.fromisoformat(end),
+            paused_at_utc=datetime.combine(date.fromisoformat(start), datetime.min.time()),
+        )
+        for start, end in fixture.get("holidayWindows", [])
+    ]
+
+
+def _replayed(
+    fixture: Mapping[str, Any],
+    *,
+    before: int | None = None,
+    rules_off: Collection[str] = (),
+) -> dict[date, Any]:
     """The fixture days through ``replay_morning``.
 
     The fixture's mornings were stored before the switch, so the replay grades them
     under today's rules. ``before=N`` grades them without the rules batch N and later
     added, as the engine stood when that batch began, for the tests that pin earlier
-    batches' own mechanics on the mornings they were written against.
+    batches' own mechanics on the mornings they were written against. ``rules_off`` is
+    the replay's own way of doing the same, for the rule comparison (Batch 310).
     """
     if before is not None:
         flags = {
@@ -126,6 +146,7 @@ def _replayed(fixture: Mapping[str, Any], *, before: int | None = None) -> dict[
         )
         for name, block_type, start, end in fixture["blocks"]
     ]
+    windows = _holiday_windows(fixture)
     out: dict[date, Any] = {}
     for morning in fixture["mornings"]:
         day = date.fromisoformat(morning["subjectDate"])
@@ -151,6 +172,8 @@ def _replayed(fixture: Mapping[str, Any], *, before: int | None = None) -> dict[
             sleeps=sleeps,
             feels=feels,
             blocks=blocks,
+            holiday_windows=windows,
+            rules_off=rules_off,
         )
     return out
 
