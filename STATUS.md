@@ -6,7 +6,16 @@
 
 ## Now
 
-**2026-10-04 — Batches 304, 305 and 306 are shipped; 291 is next (G7c brought forward by
+**2026-10-04 (early) — The run Craig approved on 3 Oct is complete: 304, 305 (without its
+load-ratio line), 306 and 291 are live.** 291: admin alerts reach Craig through Sentry with no
+operator profile, every one carries the tag `admin_alert`, the cron job runner now sends its
+errors to Sentry at all (it never had), and the monthly longitudinal analysis runs again: the
+October batch is submitted and pending (about $0.10 a month). Its first attempt exposed a save
+bug and orphaned one batch (about $0.10); fixed in PR #358. **Needs Craig: one Sentry alert
+rule** (below). Still to come, after 20 Oct: 305's load-ratio line and 308 (the ladder goes)
+once Craig has reviewed the 7–20 Oct disagreements; 276 only if Mark contests a figure.
+
+**Earlier, 4 Oct — Batches 304, 305 and 306 are shipped; 291 is next (G7c brought forward by
 Craig, 3 Oct).** 306: on a tired Amber (sleep or feel clearly off) Mark picks on Home how to
 ride the hard session, "Easy Zone 2" (nothing above 75% FTP) or "Tempo" (nothing above 85%),
 full length either way, and a long ride is offered shorter in one tap; until he picks, the
@@ -73,7 +82,7 @@ break), where a wrong hold is invisible to him.
 |---|---|---|
 | G7a, before 7 Oct | ~~309~~ → ~~301~~ → ~~298~~ → ~~299~~ → ~~300~~ | Complete, 2 Oct |
 | G7b | ~~302~~ → ~~303~~ → ~~307~~ | Complete, 2 Oct |
-| G7c, by Tue 6 Oct | ~~304~~ → ~~305~~ (without its load-ratio line) → ~~306~~, then 291 | Craig's go, 3 Oct; one not live by 6 Oct waits until 20 Oct |
+| G7c, by Tue 6 Oct | ~~304~~ → ~~305~~ (without its load-ratio line) → ~~306~~, then ~~291~~ | Complete, 4 Oct |
 | After 20 Oct | 305's load-ratio line → 308 | 308 after the side-by-side review |
 
 Batch 291's row is corrected in place (its alert list).
@@ -98,6 +107,10 @@ Batch 291's row is corrected in place (its alert list).
 the hard session eased while a chest question is open): a rollback turns both off. Home's
 one-tap answer and the breathlessness wording stay under either engine.
 
+**Since 304-306 a rollback also drops** the HRV persistence rule, the hard-yesterday rule and a
+tired morning's choices (all graded-only), but **keeps 305's 4 bpm off-the-bike corroboration**,
+which lives in the acute rail both engines share.
+
 Set the Railway variable `VERDICT_ENGINE=ladder` on the `api` service (Craig's: a hosting
 change). The redeploy restores the ladder's colour, its v50 prompt (byte-identical) and its
 delivery. Since 297 the ladder's packet also carries `notesReading`, and the notes reader still
@@ -108,25 +121,29 @@ v50 brief reads constraints the ladder does not follow.
 
 ### Needs Craig
 
-1. **306 shipped (4 Oct), on your 3 Oct answers:** on a tired Amber Mark picks how to ride
-   the hard session (two buttons on Home, "Easy Zone 2" at 75% FTP or "Tempo" at 85%, full
-   length; picking neither leaves the planned session on Zwift), and a long ride is offered
-   at 75% of its length in one tap. Words signed off. 291 follows, with a failed note reading
-   left as a warning; after it, one Sentry alert rule is yours. Your call on 305 (3 Oct): the
-   4 bpm corroboration stays, though it adds an off-the-bike day where a single morning is up
-   4 bpm (once in his history, 1 Aug).
-2. **Decision #378 (yours, 3 Oct):** the JS audit's new braces advisory is a reviewed
+1. **One Sentry alert rule (a console step, yours).** In Sentry, alert on a new issue that
+   has the tag `admin_alert` (any value), emailing you. Every admin alert now carries it:
+   billing, failed generations, the monthly analysis, cross-surface disagreements, contested
+   figures, and a graded verdict two steps less cautious than the ladder (the 7–20 Oct
+   comparison's alarm). A test alert reached Sentry on 4 Oct. A failed note reading stays a
+   warning, your call.
+2. **Shipped on your 3 Oct answers.** 306: on a tired Amber Mark picks "Easy Zone 2" (75%
+   FTP) or "Tempo" (85%), full length; picking neither leaves the planned session on Zwift;
+   a long ride is offered at 75% of its length. 305: the 4 bpm corroboration stays, though it
+   adds an off-the-bike day where a single morning is up 4 bpm (once in his history, 1 Aug).
+   Words signed off on Mark's behalf.
+3. **Decision #378 (yours, 3 Oct):** the JS audit's new braces advisory is a reviewed
    exception (build-time only, no fixed version yet). Revisit when a fixed braces ships.
-3. **Decisions made on your behalf in Batch 303 (Decision #375), each overrulable.** A chest
+4. **Decisions made on your behalf in Batch 303 (Decision #375), each overrulable.** A chest
    question lifts the colour to Amber only when a hard session is planned; otherwise Home
    only asks. Home asks only about something more serious than the answer he tapped. A week
    swap is withheld where it would undo the easing. The easy ride is the existing recovery
    spin (half length, capped at 60% FTP). The ladder is given neither easing. A stricter
    floor on the same morning (off the bike) is the only one reported.
-4. **After a chest or heart report nothing follows (your call, 2 Oct).** The next morning is
+5. **After a chest or heart report nothing follows (your call, 2 Oct).** The next morning is
    an ordinary day, VO₂ included. What was offered is kept in
    `docs/drafts/2026-10-02-batch-303-wording.md` §5.
-5. **Decisions made on your behalf in Batch 302 (Decision #374), each overrulable.** A morning
+6. **Decisions made on your behalf in Batch 302 (Decision #374), each overrulable.** A morning
    without its brief travels as its own field (`gradedMorning`), so an older cached client
    reads it as "no brief yet". A stored morning graded on today's inputs stands on a retry, so
    the brief is written for the colour he was shown. Home and the brief page re-read the day
@@ -134,15 +151,15 @@ v50 brief reads constraints the ladder does not follow.
    written, not when the morning was graded. No retry is offered for a day that is over. The
    symptom answer now counts as a change to the check-in, so changing only that answer
    regrades the morning. The failure events keep their names and gain a `stage` field.
-6. **Two decisions made on your behalf in Batch 300 (Decision #373), each a one-line change to
+7. **Two decisions made on your behalf in Batch 300 (Decision #373), each a one-line change to
    overrule.** A domain marked on Garmin's own sleep score counts as clearly off even where the
    age credit lifts it (Garmin's 55 lifted to 63 eases the session). And a Zone 2 ride on a
    clearly-off light-week morning reads as any other Amber ("Keep your Zone 2 ride at full
    length."), not as the hold; it is the same ride either way.
-7. The Vercel project's own Node setting still reads 20.x; `engines` overrides it, so changing
+8. The Vercel project's own Node setting still reads 20.x; `engines` overrides it, so changing
    it is tidiness only (a hosting change, yours).
-8. **From 7 to 20 Oct:** review every ladder-versus-graded disagreement in the table above.
-9. **Carried:** G4's free Neon database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment
+9. **From 7 to 20 Oct:** review every ladder-versus-graded disagreement in the table above.
+10. **Carried:** G4's free Neon database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment
    extractor's first paid run (Mark's own "Look for new memories" tap).
 
 ### Worth carrying
@@ -224,7 +241,7 @@ v50 brief reads constraints the ladder does not follow.
   minutes). One or two mild concerns hold the session, with the week named.
 - **The database is at 453 MB of the 500 MB free-plan cap**; `egress-budget` reports
   `storage_critical` every 15 minutes. Up about 5 MB a week since 24 Sep.
-- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #381.**
+- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #382.**
 
 ## Prior current-state snapshots
 
@@ -2059,6 +2076,13 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-04 (early)** — Batch 291 shipped as PR #357 / `4be099b` (Decision #381): with no
+  operator profile Sentry is the alert route, every admin alert is tagged `admin_alert`, and
+  the job runner now sets up logging so its errors reach Sentry (0 events before, measured).
+  The first monthly longitudinal run reached Anthropic but failed to save (the SDK's batch
+  object kept datetimes): fixed as PR #358 / `19c1afe`; the October batch is now submitted and
+  pending. One orphaned batch cost about $0.10. CI 16 of 16 on both waves for each. **The run
+  approved on 3 Oct is complete** (304, 305, 306, 291).
 - **2026-10-04** — Batch 306 shipped as PR #356 / `4b6e440` (Decision #380): a tired Amber
   lets Mark pick easy Zone 2 or tempo for the hard session (two buttons on Home) and offers a
   long ride shorter in one tap; nothing changes until he picks. Replayed: 4 of 104 past
