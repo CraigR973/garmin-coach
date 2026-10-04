@@ -6,6 +6,16 @@
 
 ## Now
 
+**2026-10-04 (midday) — Batch 312 is written up, not built (Craig's go, 4 Oct; no date).**
+Every Garmin and Hive call runs on the API's event loop, so while one runs nothing else does:
+about 3 s every 15 minutes (Hive), 9 s hourly (activity poll), about 25 s on each morning sync
+(on wake, every check-in and the 11:00 backstop), and minutes when Garmin is failing (27 Sep:
+three polls of about 2 minutes, and a 15-minute job skipped). The polls also hold a database
+connection across the call. 312 moves the calls to worker threads, keeps Garmin one call at a
+time, and ends the transaction before calling out. Found while checking Batch 210's trigger:
+no pooler refusal since 30 Aug, so 210 stays as it was, parked. Ledger: "A slow Garmin freezes
+the app".
+
 **2026-10-04 (morning) — Batches 310 and 311 are written up, not built (Craig's go, 4 Oct; he
 runs 310 with other batches).** 310: after a holiday, once his last two nights are back in his
 range, the 7-day HRV average that is still catching up counts as a little off, not clearly off,
@@ -2111,6 +2121,12 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-04 (midday)** — Authored Batch 312, docs only, from a session that checked Batch
+  210's trigger: no pooler refusal since 30 Aug (the pooler's 24 h log, about 20,000 API log
+  lines for 27 Sep–4 Oct, and the 15-minute job cadence back to 30 Aug). It found Garmin and
+  Hive calls blocking the event loop: job durations of about 3 s, 9 s and 25 s routinely, and
+  about 2 minutes per poll on 27 Sep, when a 15-minute job was skipped; the 20 Sep gap fits the
+  same stall. Mark's requests stalling is inferred, not seen. No code, no spend.
 - **2026-10-04 (morning)** — Authored Batches 310 and 311, docs only, finishing a session that
   stopped at its spend limit. Craig's go on all three asks: build 310 (not yet; he runs it with
   other batches, and it must be live by Tue 6 Oct), its words for Mark, and 311 after 20 Oct.
