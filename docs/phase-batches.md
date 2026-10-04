@@ -5441,3 +5441,100 @@ once approved: sequentially, one PR and one production verification per batch.
 
 **Batch 291's row is corrected** in place: its alert list now includes the events shipped
 since it was written.
+
+## Post-roadmap — 2026-10-04 — After the holiday, his HRV average catches up (Batches 310–311)
+
+Craig asked on 4 Oct how a week of low HRV, which since Batch 304 can make a morning clearly
+off, will treat Mark's return from holiday (away 27 Sep–6 Oct, first ride back Wed 7 Oct),
+when his numbers are down from rest, food and drink rather than training. Measured the same
+morning: a low-HRV week on its own makes a morning Amber, not Red; Red needs a second domain
+clearly off, a Rough check-in or a floor. Two things make his first week back more cautious
+than his own nights will justify, and these two batches answer them. **Every figure here was
+measured on 2026-10-04, read-only (production SQL, and the real engine functions run offline
+over his real nights); re-verify each row at `/batch-start`.** Decision numbers are assigned
+at `/batch-start`.
+
+### What was measured (4 Oct)
+
+- **His lowest HRV week since his data starts (11 Jun).** His nights on 1–4 Oct were 38, 36,
+  39 and 37 ms against a usual 47 (his 7-day mean 41.3 on 4 Oct); 2 Oct was about 1 ms above
+  his illness line. Drink, food and travel are the likely cause, but the engine cannot tell
+  that from a bug caught while away, so caution while his nights are low is right.
+- **The 7-day average lags his nights.** If his nights are back to 47 ms from Wed 7 Oct, his
+  7-day reading stays marked until Sat 10 Oct and clears on Sun 11 Oct: 7–8 Oct on the 1 SD
+  line, which this week crosses on its own for the first time (4 Oct: 41.3 against a line of
+  41.5), and 9–10 Oct on 304's persistence rule. It already happened after late September's
+  dip: after two low nights (21–22 Sep), five mornings of 44–48 ms nights (23–27 Sep) all
+  still counted as clearly off.
+- **The same dip is counted twice through readiness.** Garmin's readiness score includes its
+  own HRV factor, so the dip pulls readiness under his lower quartile, and since Batch 305 low
+  readiness confirms one mild sleep or load domain as marked. 3 Oct, a holiday rest day, went
+  Red this way: autonomic marked (the week low and last night under his acute floor), and a
+  fair night (sleep score 68) confirmed by readiness 50 against his lower quartile of 56.75.
+  Without the confirmation it would have been Amber. Garmin's own breakdown that morning (HRV factor 43%,
+  sleep score 40%, sleep history 39%, recovery time 99%, load 100%) shows his run of poor
+  sleep pulling readiness down as much as the dip did. When readiness was kept on 3 Oct, the
+  reasoning covered sleep (r 0.69) and recovery time (r −0.72), not this overlap with HRV.
+  Readiness was 52 on 4 Oct, with Garmin's HRV status Low.
+- **His first week back (W12, consolidation, a light week):** Wed 7 Z2 (60 min), Thu 8 Sweet
+  Spot (1 × 30 min @ 89%), Sat 10 Easy Z2 (45 min), Sun 11 Easy Z2 (90 min). In a light week a
+  clearly-off morning eases a hard session a zone and a morning with one mild concern holds it
+  at its targets (Batch 300); Red makes it a recovery spin.
+- **July as a check:** replaying 12–31 Jul under today's rules gives 1 Red (21 Jul) in his
+  first 15 mornings back, against 5 shown at the time. This dip is deeper, so expect more
+  Ambers than July had.
+- **No knock-on:** the two-Reds rule that proposes rearranging his week stays off, because his
+  next two weeks are already planned light (W12 consolidation, W13 taper).
+
+### Decided 2026-10-04 (Craig)
+
+- **Batch 310 is approved, and Mark's words with it, but not built yet.** Craig: "yes to all
+  but don't actually build yet as i have other batches to run together". He runs it with
+  batches of his choosing. **The 3 Oct rule binds it: live by Tue 6 Oct, or it waits until
+  after 20 Oct**, so the 7–20 Oct comparison judges one engine. By then this holiday's lag has
+  cleared (about 11 Oct), so a late 310 helps only the next holiday, and is built with 311,
+  whose question (b) decides how far it reaches.
+- **310 removes caution, knowingly.** Craig's rule of 3 Oct holds back a change that removes
+  caution, because its mistakes are invisible to Mark. 310 is approved as a bounded exception:
+  it acts only in the 7 days after a holiday, only once his own last two nights are back in
+  his range, and only from "clearly off" to "a little off"; every floor still runs. If it is
+  wrong (a bug caught while away, then two decent nights), Thu 8 Oct's Sweet Spot is held at
+  its targets instead of eased a zone. Rolling back is reverting one PR.
+- **Choices made on Craig's behalf, accepted with the batch:** "back in his range" is the line
+  the engine already uses for a real change (his normal minus the smallest worthwhile change,
+  about 44 ms now); it takes two nights, not one, because a single night swings about 5 ms;
+  and the average still counts as "a little off", not nothing, so a hard session is held at
+  its targets.
+- **Mark's words, signed off by Craig on his behalf:** "One thing is a little off: your HRV is
+  back to normal, but your 7-day average is still catching up after your holiday (41 ms
+  against 47)."
+- **The readiness double count stays for this return; Batch 311 decides it after 20 Oct,**
+  together with whether the catch-up should cover every dip, on a replay that includes his
+  return mornings. Once 310 is live, the dip and readiness together can no longer make a Red
+  on a morning his nights are back to normal (autonomic is mild then, so the dip and a
+  readiness-confirmed night make one marked domain, not two), and 3 Oct's breakdown shows poor sleep behind the low readiness as much as the
+  dip, so a fix needs the replay. Written up now, built later, no cost now.
+- **Rejected:** applying the catch-up to every dip now, because it would also undo 304 on late
+  September's training dip, where the trials say ease (that is 311's question); and leaving
+  holiday nights out of the average, because if he came home still run down, nights of
+  40–43 ms would count for nothing until he had four nights at home.
+
+### Open at `/batch-start`
+
+- **310: only once he is home.** Recommended: the rule applies only on a morning whose night
+  was at home, which is what Craig approved ("the days after a holiday") and what Mark's words
+  say. Computed: no difference in his history; during a holiday his sessions are skipped.
+- **310: a mild 7-day reading that meets both conditions.** Recommended: it takes the catch-up
+  words too, so every such morning reads the same; its rating stays mild.
+- **310: the names.** The signal (for example `hrv_7_day_catching_up`), its `references` key,
+  and what the packet records of the nights away.
+- **311: which candidates to replay**, and whether Garmin's readiness breakdown is stored for
+  enough mornings to replay the factor-based one.
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 310 — After a holiday, an HRV average still catching up is a little off | 🔴 High | Planned (approved 4 Oct; not built: Craig runs it with other batches) | 310.1 **Measured 2026-10-04 (computed with the real engine functions over his real nights).** The 7-day reading (`services/verdict_grading.py` `_hrv_week`, `:714`) rates his 7-day mean against his 84-night normal: marked past 1 SD (`hrv_week_marked_sd`), or since 304 when a dip under his smallest worthwhile change has lasted three mornings or comes with a night under his acute floor (`_hrv_persistent`, `:672`). Neither knows he was away. With his nights back to 47 ms from 7 Oct, it is marked 7–10 Oct and clear on 11 Oct. With the rule below, Wed 7 stays marked (in the computation his last night away, 6 Oct, is still low), Thu 8–Sat 10 are a little off and Sun 11 is clear; with a gradual return (41, 43, 45, then 47 ms from 7 Oct), 10–11 Oct change instead. Over his history (2 Jul–4 Oct) it changes 2 mornings, both from July's return: 21 Jul (Red → Amber, sleep still marked) and 22 Jul (Amber → Green, held), the colours read from the 4 Oct replay of 12–31 Jul. Both are ladder-era mornings, so only the replay restates them.<br>310.2 **The rule (Craig, 4 Oct).** On a morning after a holiday, a marked 7-day reading becomes mild ("a little off") when both hold: (a) the seven nights it averages include at least one night he slept away; (b) his last two nights are each at or above the line the reading itself uses that morning, his normal (or recovery-week normal) minus the smallest worthwhile change, about 44 ms now. It applies whichever line marked the week (the 1 SD line or 304's persistence rule; 304's low-night clause cannot meet (b)). It never takes mild to none, so a hard session is held at its targets rather than eased. One night under the line ends it: the next morning is marked again, since 304's streak counts the 7-day rating, which this rule leaves alone.<br>310.3 **A night away is dated by the morning after it, end-exclusive.** The HRV night dated D was spent away when D − 1 falls inside a window's [start, end), the reading `holiday_pause.holiday_windows_away_overnight` already gives the bedroom (home on the end date's evening). The windows are the ones the app already stores (knowledge base `holiday_windows`, `HolidayPauseService.get_windows`, already loaded beside `_rest_day_context`); an early Resume closes a window at his return. **Computed: the obvious reading (morning D inside [start, end]) is wrong:** it counts 27 Sep, a night at home (he flew out that morning), and also lifts 27 Sep, a morning of late September's training dip that 304 made Red. This holiday's nights away are dated 28 Sep–6 Oct; July's 13–16 Jul.<br>310.4 **Everything else still runs every morning:** last night's acute floor and illness line, resting heart rate, the symptom floors, a Rough check-in, readiness confirmation, and the light-week and tired-morning actions. Only the 7-day reading's rating and words change. If his nights stay low once he is home, nothing changes.<br>310.5 **Mark's words (signed off by Craig on his behalf, 4 Oct):** "One thing is a little off: your HRV is back to normal, but your 7-day average is still catching up after your holiday (41 ms against 47)." The phrase is "your HRV is back to normal, but your 7-day average is still catching up after your holiday (N ms against M)", with the 7-day mean and his normal rounded as the 7-day phrase rounds them (`mark_facing_phrase`, `:1218`); the count and lead come from `mark_facing_summary`. A new signal name carries it: graded signal names are read only in `verdict_grading.py` and its tests (checked 4 Oct), so no web or shared-schema change.<br>310.6 **From now on only, mechanically, as 304–306.** Each graded morning stores a `references` key saying it was graded with the rule, and the nights away the rule saw inside the week, so the replay reproduces it even if the holiday record is edited later; a morning stored without the key replays without the rule (the pattern at `services/verdict_replay.py:600-630`). No stored morning, colour, packet or review is rewritten.<br>310.7 **`THRESHOLDS` states the line and its source honestly:** two nights back, "an engineering choice: one night swings about 5 ms; it departs from the trials, which judge the same lagging 7-day mean, only in the 7 days after a holiday". `hrv_week_marked_sd`'s reason, that the line has never fired, stops being true this week and is corrected. No migration, no prompt bump and no paid regeneration expected: `GRADED_VERDICT_RULE` already covers "his HRV this week" and the reading states its own reason; confirm at `/batch-start`, and if the prompt changes, bump it with a written regeneration decision. Graded-only: a rollback to the ladder drops it (STATUS's rollback note gains it at close-out).<br>310.8 **Tests, each confirmed to fail first:** the 4 Oct computation (47 ms from 7 Oct: 7 Oct marked, 8–10 Oct mild with the new words, 11 Oct none); the gradual return; one night under the line at home re-marks the next morning; 27 Sep's dip (no night away on the end-exclusive reading) stays marked; 21 and 22 Jul through the replay; a mild reading stays mild; nights still low after the holiday stay marked; the floors unchanged; a stored morning without the key replays without the rule. | After a holiday, once his own nights are back to normal, the lag in his 7-day HRV average stops counting as clearly off: his first hard session back is held at its targets, not eased, when nothing else is off. | The rule, its words and its line; the full replay committed, with exactly 21 Jul (Red → Amber) and 22 Jul (Amber → Green, held) changed and nothing else; no stored morning changed; the rollback note. No migration, prompt change or spend. **Live by Tue 6 Oct, or after 20 Oct with 311** (the 3 Oct rule). **Not built on 4 Oct:** Craig runs it with other batches. |
+| Batch 311 — The HRV dip counted twice, decided on the replay | 🟢 Mid | Planned (approved 4 Oct; after 20 Oct) | 311.1 **Measured 2026-10-04 (read-only).** (a) **The readiness double count:** low readiness (Garmin's Low or Poor, or under his lower quartile) turns one mild sleep or load domain marked (`_domains`, `:978`, with `readiness_confirms_domains`), kept as deliberate extra weight by Batch 305 (Craig, 3 Oct; Decision #379). Garmin's readiness includes its own HRV factor, so a dip in his HRV also lowers readiness, which then confirms an ordinary fair night. 3 Oct went Red this way (above); its breakdown shows his run of poor sleep pulling readiness down as much as the dip, so not all of that confirmation was the overlap. (b) **The catch-up's reach:** 310 covers only the 7 days after a holiday. Covering every dip (two nights in a row back in his range, holiday or not) changes 4 mornings in his history (computed, autonomic only): 21 and 22 Jul as 310 does, plus 24 and 27 Sep, two mornings of late September's training dip (27 Sep is one 304 made Red), where the trials the engine cites say ease. They judge the same 7-day mean, so they carry the same lag.<br>311.2 **Replay first, read-only, after 20 Oct, over every stored morning including his return (7–20 Oct),** each candidate alone and together, with every changed morning, the Red rate and the key sessions: (a) readiness cannot confirm a fair night while Garmin's HRV status is below Balanced; (a′) readiness confirms only when Garmin's own sleep factors (its sleep score or sleep history factor) are low, whatever its HRV factor, if the breakdown is stored for enough mornings; (b) a 7-day dip stops counting as clearly off once two nights in a row are back in his range, holiday or not.<br>311.3 **Craig decides each on the replay.** Every candidate removes caution, so its mistakes would be invisible to Mark (his rule of 3 Oct). Record a new decision amending #379 (305's readiness call) or #377 (304) where either changes; a settled decision is not re-argued without one.<br>311.4 **Build what he approves, from now on only** (a `references` key, as 304–306; no stored morning rewritten), with his sign-off on any Mark-facing word. If 310 missed 6 Oct, it is built here, reaching as far as (b) decides.<br>311.5 **Tests, each confirmed to fail first:** 3 Oct's readings (if (a) or (a′) is approved: Amber, not Red); 24 and 27 Sep as (b) decides; a fair night with Garmin's HRV status Balanced still confirmed by low readiness; the replay's changed mornings pinned. | The same HRV dip is not counted twice, and the catch-up reaches as far as the evidence supports, decided on his real return mornings rather than in advance. | The candidates replayed over every stored morning including 7–20 Oct, the report committed; Craig's decision on each recorded; whatever is built changes only the mornings the replay listed, from now on only. **After 20 Oct,** after Craig's review of the 7–20 Oct disagreements and before 308, so the ladder (the rollback) is still there while caution comes out. No cost now. |
+
+**Not grouped.** Craig runs 310 with batches of his choosing (4 Oct); 311 joins the work after
+20 Oct, between 305's load-ratio line and 308.
