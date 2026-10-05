@@ -1138,6 +1138,7 @@ class MorningAnalysisService:
             rest_day=rest_day,
             recent_daily_metrics=recent_daily_metrics,
             notes_effects=notes_effects,
+            holiday_windows=holiday_windows,
         )
         _log_verdict_engines(
             player, subject_date, ladder_status=str(verdict["status"]), graded=graded
@@ -2189,12 +2190,14 @@ class MorningAnalysisService:
         rest_day: Mapping[str, Any],
         recent_daily_metrics: Sequence[DailyMetric],
         notes_effects: NotesEffects | None = None,
+        holiday_windows: Sequence[HolidayWindow] = (),
     ) -> GradedVerdict:
         """The graded verdict for this morning (Batch 296).
 
         Built by ``build_grading_inputs``, as the replay builds it, from this morning's
         readings and rows dated before it: his HRV nights (the acute rail's own wake
-        rows), his total sleep and morning feel over 84 days, and the plan blocks.
+        rows), his total sleep and morning feel over 84 days, the plan blocks, and since
+        Batch 310 his holiday windows (which of the week's nights he slept away).
         """
         window_start = subject_date - timedelta(days=HISTORY_WINDOW_DAYS)
         sleep_rows = (
@@ -2281,6 +2284,7 @@ class MorningAnalysisService:
                 blocks=blocks,
                 notes_feel_notch=notes_effects.feel_notch if notes_effects else 0,
                 notes_feel_words=notes_effects.feel_words if notes_effects else None,
+                holiday_windows=holiday_windows,
             )
         )
 

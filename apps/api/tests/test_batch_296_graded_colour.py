@@ -225,6 +225,9 @@ def test_a_graded_packet_carries_none_of_the_ladders_working(
         "yesterdayCountsOnHardDays",
         # Batch 306: whether a tired morning offered its choices.
         "tiredMorningChoices",
+        # Batch 310: whether the holiday catch-up graded it, and the nights away it saw.
+        "hrvHolidayCatchUp",
+        "hrvWeekNightsAway",
     }
     assert "graded_verdict" in packet["safetyRulesApplied"]
 

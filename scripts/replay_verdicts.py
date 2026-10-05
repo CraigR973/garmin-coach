@@ -7,7 +7,10 @@ writes nothing to the database. Run against production from a checkout:
         scripts/replay_verdicts.py --out docs/reviews/verdict-replay-YYYY-MM-DD.md
 
 With ``--start``/``--end`` it replays a window; with neither, every stored morning.
-Batch 296 uses the same service to compare the two verdicts each morning.
+Batch 296 uses the same service to compare the two verdicts each morning. With
+``--compare-without RULE`` (a ``GradingInputs`` flag, as Batch 310 used
+``hrv_holiday_catch_up``) it also grades every morning without that rule and appends
+the mornings the rule changes.
 """
 
 from __future__ import annotations
@@ -21,10 +24,16 @@ from sqlalchemy import select
 
 from src.database import AsyncSessionLocal
 from src.models.profile import Profile
-from src.services.verdict_replay import VerdictReplayService, render_markdown
+from src.services.verdict_replay import (
+    VerdictReplayService,
+    render_markdown,
+    render_rule_comparison,
+)
 
 
-async def main(start: date | None, end: date | None, out: Path | None) -> None:
+async def main(
+    start: date | None, end: date | None, out: Path | None, compare_without: list[str]
+) -> None:
     async with AsyncSessionLocal() as session:
         player = await session.scalar(
             select(Profile)
@@ -37,9 +46,18 @@ async def main(start: date | None, end: date | None, out: Path | None) -> None:
         report = await VerdictReplayService(session).replay(
             player, start=start, end=end
         )
+        without = (
+            await VerdictReplayService(session).replay(
+                player, start=start, end=end, rules_off=compare_without
+            )
+            if compare_without
+            else None
+        )
         await session.rollback()
     generated = datetime.now(UTC).strftime("Generated %-d %b %Y %H:%M UTC")
     text = render_markdown(report, generated=generated)
+    if without is not None:
+        text += "\n" + render_rule_comparison(report, without, rules_off=compare_without)
     if out is None:
         print(text)
     else:
@@ -52,5 +70,6 @@ if __name__ == "__main__":
     parser.add_argument("--start", type=date.fromisoformat, default=None)
     parser.add_argument("--end", type=date.fromisoformat, default=None)
     parser.add_argument("--out", type=Path, default=None)
+    parser.add_argument("--compare-without", action="append", default=[])
     args = parser.parse_args()
-    asyncio.run(main(args.start, args.end, args.out))
+    asyncio.run(main(args.start, args.end, args.out, args.compare_without))

@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import uuid
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from statistics import mean, median
@@ -51,6 +51,7 @@ from src.models.coaching import (
 from src.models.profile import Profile
 from src.services.daily_metric_phase import prefer_morning
 from src.services.delivered_verdict import delivered_rows
+from src.services.holiday_pause import HolidayPauseService, HolidayWindow
 from src.services.morning_verdict import morning_verdict
 from src.services.sleep_history import (
     BASELINE_SPECS,
@@ -66,6 +67,7 @@ from src.services.verdict_grading import (
     DOMAINS,
     THRESHOLDS,
     GradedVerdict,
+    GradingInputs,
     PlannedSession,
     block_flags,
     build_grading_inputs,
@@ -86,6 +88,15 @@ LADDER_BASELINE_KEYS = (
     "average_respiration",
 )
 HARD_WORKOUT_TYPES = frozenset({"bike_vo2", "bike_sweet_spot", "bike_threshold"})
+
+#: The graded rules added since the switch, by the ``GradingInputs`` flag that turns
+#: each off, so a replay can show what one rule changes (Batch 310's report).
+RULE_FLAGS: dict[str, str] = {
+    "hrv_persistence": "Batch 304, the HRV persistence rule",
+    "yesterday_counts_on_hard_days": "Batch 305, a hard yesterday only before a hard session",
+    "tired_morning_choices": "Batch 306, a tired morning's choices",
+    "hrv_holiday_catch_up": "Batch 310, the HRV average catching up after a holiday",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +208,7 @@ class VerdictReplayService:
         *,
         start: date | None = None,
         end: date | None = None,
+        rules_off: Collection[str] = (),
     ) -> ReplayReport:
         reads = await self._morning_reads(player.id, start=start, end=end)
         delivered = delivered_rows(reads, timezone_name=player.timezone)
@@ -212,6 +224,9 @@ class VerdictReplayService:
         sleeps = await self._sleeps(player.id, history_start, days[-1])
         feels = await self._morning_feels(player.id, history_start, days[-1])
         blocks = await self._plan_blocks(player.id, history_start, days[-1])
+        # Batch 310: his holiday windows as stored today. A graded morning stored with
+        # the catch-up carries the nights away it saw and is replayed from those.
+        windows = await HolidayPauseService(self.session).get_windows(player)
         for day in days:
             report.mornings.append(
                 replay_morning(
@@ -221,6 +236,8 @@ class VerdictReplayService:
                     sleeps=sleeps,
                     feels=feels,
                     blocks=blocks,
+                    holiday_windows=windows,
+                    rules_off=rules_off,
                 )
             )
         await self._outcome_proxies(player, report, metrics)
@@ -480,13 +497,19 @@ def replay_morning(
     feels: Mapping[date, int],
     blocks: Sequence[PlanBlock],
     baseline_metrics: Mapping[date, DailyMetric] | None = None,
+    holiday_windows: Sequence[HolidayWindow] = (),
+    rules_off: Collection[str] = (),
 ) -> ReplayedMorning:
     """One morning, from its stored packet and the rows dated before it.
 
     ``metrics`` are wake (morning-phase) rows only, as the live acute rail reads
     them; ``baseline_metrics`` prefer the wake row and fall back to the settled one,
-    as the nightly baseline job does.
+    as the nightly baseline job does. ``rules_off`` names :data:`RULE_FLAGS` to grade
+    without, whatever the morning stored, to show what a rule changes.
     """
+    unknown = set(rules_off) - set(RULE_FLAGS)
+    if unknown:
+        raise ValueError(f"unknown graded rules: {sorted(unknown)}")
     day = read.subject_date
     daily_metric = _daily_metric_from_packet(day, read.daily_metrics)
     sleep = _sleep_from_packet(day, read.sleep)
@@ -595,6 +618,7 @@ def replay_morning(
             if graded_morning and references.get("notesFeelWords")
             else None
         ),
+        holiday_windows=holiday_windows,
     )
     if graded_morning:
         # The plan blocks can be edited after the morning; the flags it was graded
@@ -627,8 +651,14 @@ def replay_morning(
             yesterday_counts_on_hard_days=references.get("yesterdayCountsOnHardDays") is True,
             # Batch 306: likewise for a tired morning's choices.
             tired_morning_choices=references.get("tiredMorningChoices") is True,
+            # Batch 310: likewise for the holiday catch-up, from the nights away the
+            # morning saw, so a holiday record edited later does not move it.
+            hrv_holiday_catch_up=references.get("hrvHolidayCatchUp") is True,
+            hrv_nights_away=_stored_nights(references.get("hrvWeekNightsAway")),
         )
         recovery_class = inputs.recovery_class_block
+    if rules_off:
+        inputs = _without_rules(inputs, rules_off)
     sessions = inputs.sessions
     graded = grade(inputs)
     hold = (
@@ -668,6 +698,36 @@ def replay_morning(
 
 
 # -- reconstruction ----------------------------------------------------------------------
+
+
+def _without_rules(inputs: GradingInputs, rules_off: Collection[str]) -> GradingInputs:
+    """``inputs`` with each named rule in :data:`RULE_FLAGS` turned off."""
+    return replace(
+        inputs,
+        hrv_persistence=inputs.hrv_persistence and "hrv_persistence" not in rules_off,
+        yesterday_counts_on_hard_days=(
+            inputs.yesterday_counts_on_hard_days
+            and "yesterday_counts_on_hard_days" not in rules_off
+        ),
+        tired_morning_choices=(
+            inputs.tired_morning_choices and "tired_morning_choices" not in rules_off
+        ),
+        hrv_holiday_catch_up=inputs.hrv_holiday_catch_up
+        and "hrv_holiday_catch_up" not in rules_off,
+    )
+
+
+def _stored_nights(value: Any) -> frozenset[date]:
+    """The dates a graded packet stored as ISO strings; anything else is ignored."""
+    if not isinstance(value, list):
+        return frozenset()
+    nights: set[date] = set()
+    for item in value:
+        try:
+            nights.add(date.fromisoformat(str(item)))
+        except ValueError:
+            continue
+    return frozenset(nights)
 
 
 def _int(value: Any) -> int | None:
@@ -1118,6 +1178,53 @@ def render_markdown(report: ReplayReport, *, generated: str) -> str:
         add(f"| `{item.key}` | {item.value:g} {item.units} | {item.source} | {item.reason} |")
     add("")
     return "\n".join(lines)
+
+
+def render_rule_comparison(
+    report: ReplayReport, without: ReplayReport, *, rules_off: Collection[str]
+) -> str:
+    """What the named rules change: each morning graded without them, then with them.
+
+    Both reports replay the same stored mornings; a morning changes when its graded
+    colour, its hold or any session's action differs.
+    """
+
+    names = "; ".join(RULE_FLAGS[name] for name in sorted(rules_off))
+    before = {m.subject_date: m for m in without.mornings}
+    changed = [
+        m
+        for m in report.mornings
+        if m.subject_date in before
+        and (
+            m.graded_label != before[m.subject_date].graded_label
+            or _action_list(m) != _action_list(before[m.subject_date])
+        )
+    ]
+    lines = [
+        f"## What the rule changes: {names}",
+        "",
+        f"- **Changed:** {len(changed)} of {len(report.mornings)} mornings",
+        f"- **Red, without → with:** {sum(m.graded.status == 'Red' for m in without.mornings)}"
+        f" → {sum(m.graded.status == 'Red' for m in report.mornings)}",
+        "",
+    ]
+    if changed:
+        lines += ["| Date | Without | With | Sessions without → with |", "|---|---|---|---|"]
+        for m in changed:
+            old = before[m.subject_date]
+            lines.append(
+                f"| {m.subject_date:%a %-d %b} | {old.graded_label} | {m.graded_label} | "
+                f"{', '.join(_action_list(old)) or '–'} → {', '.join(_action_list(m)) or '–'} |"
+            )
+        lines.append("")
+        for m in changed:
+            lines.append(f"**{m.subject_date:%a %-d %b}:** {m.graded.summary}")
+            lines.append("")
+    return "\n".join(lines)
+
+
+def _action_list(morning: ReplayedMorning) -> list[str]:
+    return [item.action for item in morning.graded.actions]
 
 
 def _on_target_share(records: Sequence[ExecutionRecord]) -> str:
