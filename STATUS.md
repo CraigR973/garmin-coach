@@ -6,6 +6,14 @@
 
 ## Now
 
+**2026-10-05 (late) — Batch 312 is live (PR #365, `7ec7c8d`, Decision #384); Craig's 310 → 313
+→ 312 run is complete.** A slow Garmin or Hive now delays only its own job: Garmin and Hive are
+called in a worker thread, one call at a time across the process, and no job holds a database
+connection while either answers (the hourly activity poll now saves each profile on its own).
+No migration, prompt or Mark-facing change. **Not yet seen:** a slow-Garmin hour. When Garmin
+next returns 5xx or times out, check that `coach.job_runs` keeps the 15-minute cadence and the
+logs carry no "was missed by" line.
+
 **2026-10-05 (evening) — Batch 313 is live (PR #364, `40a4690`, Decision #383); 312 is next
 and last in the run.** Each morning Mark reads today's call in a coach's words and how
 recovered he is (Recovered, Some fatigue, Still recovering), never a colour grade. Rest
@@ -329,7 +337,7 @@ v50 brief reads constraints the ladder does not follow.
   minutes). One or two mild concerns hold the session, with the week named.
 - **The database is at 453 MB of the 500 MB free-plan cap**; `egress-budget` reports
   `storage_critical` every 15 minutes. Up about 5 MB a week since 24 Sep.
-- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #384.**
+- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #385.**
 
 ## Prior current-state snapshots
 
@@ -2164,6 +2172,20 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-05 (late)** — Batch 312 shipped as PR #365 / `7ec7c8d` (Decision #384), the last of
+  Craig's 310 → 313 → 312 run. `retry_sync` runs each Garmin and Hive call in a worker thread;
+  one process-wide lock per service keeps calls one at a time (workout delivery included); each
+  job ends its transaction before calling Garmin, Hive or Open-Meteo, and the activity poll
+  commits per profile. All 16 CI checks green on both waves at `ec06711` (Postgres CI 2,545
+  passed, 0 skipped, the four database-backed 312 tests included). Merged at 23:20 BST, outside
+  his morning. Production serves `7ec7c8d`: health on Railway and through Vercel, the web and
+  `/login` 200, `daily-loop` 401. A smoke test in the deployed container (writing nothing,
+  calling neither service) saw the event loop tick 29 times through a 0.3 s blocking call, two
+  Garmin clients take turns and a release end its transaction. On the new code the Hive poll
+  ran at 23:22 (3.0 s) and 23:37 (2.6 s), the wake check at 23:23 and 23:38, and the hourly
+  activity poll at 23:25 (5.8 s, a real Garmin call), all succeeded, on the 15-minute rhythm;
+  no "was missed by" line and no error in the new deployment's logs, and no connection idle in
+  a transaction.
 - **2026-10-05 (evening)** — Batch 313 shipped as PR #364 / `40a4690` (Decision #383), the
   second of Craig's 310 → 313 → 312 run. One rule (`services/todays_call.py`) picks the
   morning's call from the stored morning and stores it with the morning before the paid brief;
