@@ -6,6 +6,16 @@
 
 ## Now
 
+**2026-10-05 (evening) — Batch 313 is live (PR #364, `40a4690`, Decision #383); 312 is next
+and last in the run.** Each morning Mark reads today's call in a coach's words and how
+recovered he is (Recovered, Some fatigue, Still recovering), never a colour grade. Rest
+days lead with "Rest day", and a day with nothing planned inside a plan week now is one;
+red is kept for the two health warnings; Home, the brief, chat, the calendar and the weekly
+review use the same words, from one rule stored with the morning. Replayed on production:
+the 16 empty plan-week mornings become rest days and no colour moves. Landed before his
+first ride back (Wed 7 Oct), so the 7-20 Oct trial sees one look. **Not yet seen on a real
+morning;** check his next check-in's Home and brief.
+
 **2026-10-05 — Batch 310 is live (PR #363, `9660add`, Decision #382); 313 is next, then 312
 (Craig's go of 4 Oct for the run).** After a holiday, once his last two nights are back at or
 above his line (his normal minus the smallest worthwhile change, about 44 ms), the 7-day HRV
@@ -150,6 +160,8 @@ wrongly lifted.
 - **A ladder-Red, graded-Green morning** logs `verdict_graded_two_steps_less_cautious` at
   error level (Sentry). Whether Sentry emails Craig is unverified (291 unbuilt).
 - After 20 Oct, delete the ladder in its own PR (now Batch 308, after 304–306).
+- **Batch 313 landed on 5 Oct (22:17 BST), before the trial,** so every morning of 7-20 Oct
+  shows today's call, not a colour; the table below still records the stored colours.
 - **Two causes to expect in his first week back (measured 4 Oct):**
   - **The 7-day HRV average lags his nights.** Even with his nights normal from Wed 7 Oct it
     stays clearly off until Sat 10 Oct (clear Sun 11 Oct), so expect about 4 Ambers. 310 is
@@ -172,6 +184,12 @@ one-tap answer and the breathlessness wording stay under either engine.
 
 **Since 310 a rollback also drops the holiday catch-up** (graded-only, like the three below).
 
+**Since 313 a rollback keeps today's call.** The call is read from whichever engine's packet
+is stored, so the words stay; under the ladder an Amber's call ("Take the edge off") says
+the full session while the ladder shortens it to 75%. Coach memory's `training_plan` is v4
+since 313 (the graded rules in the call's words); a rollback should write v2's content back
+as a new version, as below.
+
 **Since 304-306 a rollback also drops** the HRV persistence rule, the hard-yesterday rule and a
 tired morning's choices (all graded-only), but **keeps 305's 4 bpm off-the-bike corroboration**,
 which lives in the acute rail both engines share.
@@ -186,29 +204,34 @@ v50 brief reads constraints the ladder does not follow.
 
 ### Needs Craig
 
-1. **One Sentry alert rule (a console step, yours).** In Sentry, alert on a new issue that
+1. **Plan No. 3 (from Batch 313).** Plan No. 2's last week ends Sun 18 Oct; from Mon 19 Oct
+   Home shows "No session planned" each morning until the next plan is loaded.
+2. **Two colour words left on purpose (313, for your eye):** the symptom floors' plan lines
+   ("sets a Red floor", a health warning, unchanged as signed off), and "Amber-adjusted", a
+   ride name only the ladder uses.
+3. **One Sentry alert rule (a console step, yours).** In Sentry, alert on a new issue that
    has the tag `admin_alert` (any value), emailing you. Every admin alert now carries it:
    billing, failed generations, the monthly analysis, cross-surface disagreements, contested
    figures, and a graded verdict two steps less cautious than the ladder (the 7–20 Oct
    comparison's alarm). A test alert reached Sentry on 4 Oct. A failed note reading stays a
    warning, your call.
-2. **Shipped on your 3 Oct answers.** 306: on a tired Amber Mark picks "Easy Zone 2" (75%
+4. **Shipped on your 3 Oct answers.** 306: on a tired Amber Mark picks "Easy Zone 2" (75%
    FTP) or "Tempo" (85%), full length; picking neither leaves the planned session on Zwift;
    a long ride is offered at 75% of its length. 305: the 4 bpm corroboration stays, though it
    adds an off-the-bike day where a single morning is up 4 bpm (once in his history, 1 Aug).
    Words signed off on Mark's behalf.
-3. **Decision #378 (yours, 3 Oct):** the JS audit's new braces advisory is a reviewed
+5. **Decision #378 (yours, 3 Oct):** the JS audit's new braces advisory is a reviewed
    exception (build-time only, no fixed version yet). Revisit when a fixed braces ships.
-4. **Decisions made on your behalf in Batch 303 (Decision #375), each overrulable.** A chest
+6. **Decisions made on your behalf in Batch 303 (Decision #375), each overrulable.** A chest
    question lifts the colour to Amber only when a hard session is planned; otherwise Home
    only asks. Home asks only about something more serious than the answer he tapped. A week
    swap is withheld where it would undo the easing. The easy ride is the existing recovery
    spin (half length, capped at 60% FTP). The ladder is given neither easing. A stricter
    floor on the same morning (off the bike) is the only one reported.
-5. **After a chest or heart report nothing follows (your call, 2 Oct).** The next morning is
+7. **After a chest or heart report nothing follows (your call, 2 Oct).** The next morning is
    an ordinary day, VO₂ included. What was offered is kept in
    `docs/drafts/2026-10-02-batch-303-wording.md` §5.
-6. **Decisions made on your behalf in Batch 302 (Decision #374), each overrulable.** A morning
+8. **Decisions made on your behalf in Batch 302 (Decision #374), each overrulable.** A morning
    without its brief travels as its own field (`gradedMorning`), so an older cached client
    reads it as "no brief yet". A stored morning graded on today's inputs stands on a retry, so
    the brief is written for the colour he was shown. Home and the brief page re-read the day
@@ -216,15 +239,15 @@ v50 brief reads constraints the ladder does not follow.
    written, not when the morning was graded. No retry is offered for a day that is over. The
    symptom answer now counts as a change to the check-in, so changing only that answer
    regrades the morning. The failure events keep their names and gain a `stage` field.
-7. **Two decisions made on your behalf in Batch 300 (Decision #373), each a one-line change to
+9. **Two decisions made on your behalf in Batch 300 (Decision #373), each a one-line change to
    overrule.** A domain marked on Garmin's own sleep score counts as clearly off even where the
    age credit lifts it (Garmin's 55 lifted to 63 eases the session). And a Zone 2 ride on a
    clearly-off light-week morning reads as any other Amber ("Keep your Zone 2 ride at full
    length."), not as the hold; it is the same ride either way.
-8. The Vercel project's own Node setting still reads 20.x; `engines` overrides it, so changing
+10. The Vercel project's own Node setting still reads 20.x; `engines` overrides it, so changing
    it is tidiness only (a hosting change, yours).
-9. **From 7 to 20 Oct:** review every ladder-versus-graded disagreement in the table above.
-10. **Carried:** G4's free Neon database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment
+11. **From 7 to 20 Oct:** review every ladder-versus-graded disagreement in the table above.
+12. **Carried:** G4's free Neon database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment
    extractor's first paid run (Mark's own "Look for new memories" tap).
 
 ### Worth carrying
@@ -306,7 +329,7 @@ v50 brief reads constraints the ladder does not follow.
   minutes). One or two mild concerns hold the session, with the week named.
 - **The database is at 453 MB of the 500 MB free-plan cap**; `egress-budget` reports
   `storage_critical` every 15 minutes. Up about 5 MB a week since 24 Sep.
-- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #383.**
+- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #384.**
 
 ## Prior current-state snapshots
 
@@ -2141,6 +2164,20 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-05 (evening)** — Batch 313 shipped as PR #364 / `40a4690` (Decision #383), the
+  second of Craig's 310 → 313 → 312 run. One rule (`services/todays_call.py`) picks the
+  morning's call from the stored morning and stores it with the morning before the paid brief;
+  Home, the brief page, the written brief, chat, the calendar, the Sleep page and the weekly
+  review read the same words. Craig answered two states the draft did not cover (a
+  still-recovering morning with no ride; state 7's feel version). An empty plan-week day is a
+  rest day (16 past mornings; no colour moved, replayed on production). Morning v57, chat v19,
+  reviews v11. Regenerated the latest stored morning (5 Oct) once, about $0.13: v57, still
+  Amber, its call "Holiday" with "Some fatigue"; the brief's "Today's call" opens with those
+  words exactly and no colour word appears anywhere in it. One plan line's breathwork count
+  moved from 3 to 4, a session he logged after the morning; a free dry run in the container
+  showed the same before anything was spent. Coach memory's `training_plan` is v4
+  (`batch_313_coach_words`): the some-fatigue and still-recovering lines in the call's words,
+  the third line unchanged, v3 kept inactive.
 - **2026-10-05** — Batch 310 shipped as PR #363 / `9660add` (Decision #382), the first of
   Craig's 310 → 313 → 312 run. After a holiday, a 7-day HRV dip still catching up with his
   nights counts as a little off once his last two nights are back. A night away is dated by
