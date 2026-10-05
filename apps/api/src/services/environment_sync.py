@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import math
+import threading
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import settings
 from src.models.coaching import TemperatureReading, WeatherDaily
 from src.services.environment_freshness import HIVE_FRESHNESS_LIMIT
+from src.services.serialised_calls import one_at_a_time
 
 JsonDict = dict[str, Any]
 JsonList = list[Any]
@@ -27,6 +29,10 @@ OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 KILMARNOCK_LATITUDE = 55.6045
 KILMARNOCK_LONGITUDE = -4.5249
 DEFAULT_WEATHER_TIMEZONE = "Europe/London"
+#: Batch 312: one Hive call at a time across the process, as Garmin's
+#: ``GARMIN_CALLS``. The calls run in worker threads now, where nothing else
+#: keeps two of them apart.
+HIVE_CALLS = threading.RLock()
 
 
 class EnvironmentSyncError(RuntimeError):
@@ -121,6 +127,7 @@ class HiveClient:
         self.credentials = credentials or HiveCredentials.from_settings()
         self._api: Any | None = None
 
+    @one_at_a_time(HIVE_CALLS)
     def login(self) -> Any:
         if self._api is not None:
             return self._api
@@ -197,6 +204,7 @@ class HiveClient:
             raise EnvironmentSyncError("pyhiveapi is not installed.") from exc
         return API, Auth
 
+    @one_at_a_time(HIVE_CALLS)
     def fetch_payloads(self) -> HivePayloads:
         api = self.login()
         return HivePayloads(

@@ -25,6 +25,9 @@ Two rules follow, and they are different:
 This is a leaf on purpose. Both ``scheduler.py`` and ``routers/daily_loop.py``
 need it, and a router importing a private helper out of the scheduler is the
 coupling CR236-02/CR236-09 already flag.
+
+Batch 312 adds the other side of the same boundary, ``release_connection``:
+ending a transaction before an external call, by a commit, which expires nothing.
 """
 
 from __future__ import annotations
@@ -70,3 +73,19 @@ async def restore_after_rollback(session: AsyncSession, *instances: Any) -> None
                 "could not reload instance after rollback",
                 entity=type(instance).__name__,
             )
+
+
+async def release_connection(session: AsyncSession) -> None:
+    """End the session's transaction before an external call (Batch 312).
+
+    A Garmin, Hive or weather fetch made inside a transaction keeps its pooled
+    connection idle in that transaction for the whole call: over two minutes on
+    27 Sep, from a pool of 10. Ending it first hands the connection back, and the
+    write that follows the fetch opens a fresh one.
+
+    It commits rather than rolls back. Callers reach it with nothing pending, so
+    the commit writes nothing, while a rollback would expire every loaded
+    instance (``expire_on_commit=False`` protects only a commit) and the next
+    attribute read would reopen a transaction, the thing this exists to avoid.
+    """
+    await session.commit()

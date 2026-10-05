@@ -152,6 +152,7 @@ from src.services.profile_clock import (
     profile_today as _profile_today,
 )
 from src.services.retry import retry_sync as _retry_sync
+from src.services.session_recovery import release_connection as _release_connection
 from src.services.session_recovery import restore_after_rollback as _restore_after_rollback
 from src.services.state_change_coach import StateChangeCoachService
 from src.services.trends import BUCKET_MONTH, BUCKET_SEASON, TrendsService
@@ -732,6 +733,9 @@ async def run_hive_temperature_poll() -> JobResult:
                 log.info("hive temperature poll skipped", reason="no_hive_profiles")
                 return JobResult.skipped("no_hive_profiles", profiles=0, readings=0)
 
+            # Batch 312: hand the connection back before calling Hive, so it does
+            # not sit idle in this read's transaction for the whole fetch.
+            await _release_connection(session)
             client = HiveClient()
             payloads = await _retry_sync(client.fetch_payloads)
             service = EnvironmentSyncService(session)
@@ -1296,6 +1300,9 @@ async def run_wake_check() -> JobResult:
                 if client is None:
                     client = GarminConnectClient()
                 bound_client = client
+                # Batch 312: end the input read before calling Garmin, so no
+                # connection waits on it.
+                await _release_connection(session)
                 try:
                     sleep_payload = await _retry_sync(
                         lambda: bound_client.fetch_sleep(today),
@@ -1425,13 +1432,16 @@ async def run_garmin_activity_poll() -> JobResult:
                     continue
                 today = _profile_today(profile)
                 start_date = today - timedelta(days=3)
+                # Batch 312: nothing is pending here (the profile before this one
+                # committed), so hand the connection back before calling Garmin.
+                await _release_connection(session)
                 payloads = await _retry_sync(
                     lambda: client.fetch_activity_payloads(start_date, today),
                     backoff=2.0,
                 )
                 try:
-                    # The check runs before the first write, so a refusal leaves
-                    # this shared transaction exactly as the previous profile left it.
+                    # The check runs before the first write, so a refusal writes
+                    # nothing.
                     sync_result = await sync_service.sync_activities(
                         profile.id,
                         payloads,
@@ -1473,8 +1483,10 @@ async def run_garmin_activity_poll() -> JobResult:
                 checkin_nudges += await _push_pending_checkins(
                     session, nudge_service, profile, candidates
                 )
-
-            await session.commit()
+                # Batch 312: each profile commits its own sync and nudges (one
+                # transaction for the whole poll used to span every fetch), so the
+                # next profile's fetch starts with no transaction open.
+                await session.commit()
         log.info(
             "garmin activity poll complete",
             profiles=len(profiles),

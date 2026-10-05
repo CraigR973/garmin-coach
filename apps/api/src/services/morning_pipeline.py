@@ -111,7 +111,7 @@ from src.services.notes_reader import NotesReaderClient
 from src.services.nudge_alerts import NudgeAlertService
 from src.services.profile_clock import profile_now, profile_today
 from src.services.retry import retry_async, retry_sync
-from src.services.session_recovery import restore_after_rollback
+from src.services.session_recovery import release_connection, restore_after_rollback
 from src.services.tts_pregenerate import pregenerate_brief_audio
 from src.services.wake_detection import BACKSTOP
 
@@ -318,6 +318,11 @@ async def sync_garmin_daily(
             subject_date = today - timedelta(days=offset)
             phase = DAILY_METRIC_PHASE_MORNING if offset == 0 else DAILY_METRIC_PHASE_SETTLED
             try:
+                # Batch 312: no transaction is open while Garmin answers. The
+                # first date ends the read before it (the caller's, or the reload
+                # above); after that each date has committed or rolled back, and
+                # this writes nothing and costs no round trip.
+                await release_connection(session)
                 payloads: GarminDailyPayloads = await retry_sync(
                     lambda: client.fetch_daily_payloads(subject_date),
                     backoff=2.0,
@@ -434,6 +439,9 @@ class MorningBriefPipeline:
                     longitude=profile.longitude or settings.weather_longitude,
                     timezone=profile.timezone or settings.weather_timezone,
                 )
+                # Batch 312: the caller's profile read is still open here; end it
+                # so no connection waits on Open-Meteo.
+                await release_connection(session)
                 payload = await retry_async(lambda: client.fetch_daily_payload(request))
                 result = await service.sync_weather_daily(
                     profile_id,

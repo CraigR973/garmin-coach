@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import os
 import sys
+import threading
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -31,6 +32,7 @@ from src.services.garmin_identity import (
     daily_owner_ids,
     garmin_account,
 )
+from src.services.serialised_calls import one_at_a_time
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -47,6 +49,12 @@ STRIP_RAW_METRICS_TYPES = frozenset({"indoor_cycling", "walking"})
 # boundaries live behind ``get_activity_splits`` and are needed to grade a
 # shortened/edited structured ride on the steps that were really executed.
 CYCLING_ACTIVITY_TYPE_TOKENS = ("cycling", "bike", "biking")
+#: Batch 312: one Garmin call at a time across the process. The calls run in
+#: worker threads, so the activity poll, the wake check, a check-in's sync and a
+#: workout delivery could otherwise overlap, each logging in from the same token
+#: and refreshing it together, and Garmin would see double the rate. The event
+#: loop used to keep them apart by accident.
+GARMIN_CALLS = threading.RLock()
 
 
 class GarminSyncError(RuntimeError):
@@ -149,6 +157,7 @@ class GarminConnectClient:
         self.credentials = credentials or GarminCredentials.from_settings()
         self._client: Any | None = None
 
+    @one_at_a_time(GARMIN_CALLS)
     def login(self) -> Any:
         if self._client is not None:
             return self._client
@@ -249,6 +258,7 @@ class GarminConnectClient:
                 f"Garmin login failed; check credentials, MFA, and tokenstore {tokenstore}."
             ) from exc
 
+    @one_at_a_time(GARMIN_CALLS)
     def fetch_daily_payloads(
         self, calendar_date: date, lookback_days: int = 7
     ) -> GarminDailyPayloads:
@@ -268,6 +278,7 @@ class GarminConnectClient:
             stats=client.get_stats(target),
         )
 
+    @one_at_a_time(GARMIN_CALLS)
     def fetch_sleep(self, calendar_date: date) -> Any:
         """Fetch only today's sleep record — one Garmin call.
 
@@ -278,6 +289,7 @@ class GarminConnectClient:
         client = self.login()
         return client.get_sleep_data(calendar_date.isoformat())
 
+    @one_at_a_time(GARMIN_CALLS)
     def fetch_activity_payloads(
         self,
         start_date: date,
@@ -328,6 +340,7 @@ class GarminConnectClient:
             splits_by_activity_id=splits_by_activity_id,
         )
 
+    @one_at_a_time(GARMIN_CALLS)
     def upload_and_schedule_workout(
         self, workout_json: JsonDict, calendar_date: date
     ) -> GarminScheduledWorkout:
@@ -353,6 +366,7 @@ class GarminConnectClient:
             raw={"created": created, "scheduled": scheduled},
         )
 
+    @one_at_a_time(GARMIN_CALLS)
     def delete_scheduled_workout(self, workout_id: str | None, schedule_id: str | None) -> None:
         """Best-effort removal of a previously delivered Garmin workout (replace/edit).
 
