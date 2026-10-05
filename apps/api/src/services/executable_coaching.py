@@ -722,7 +722,7 @@ class ExecutableCoachingService:
             await self.session.commit()
             raise HTTPException(
                 status_code=409,
-                detail="Red verdict blocks VO2 delivery to Zwift",
+                detail="A still-recovering day blocks VO2 delivery to Zwift",
             )
 
         await self.session.commit()
@@ -1034,7 +1034,9 @@ class ExecutableCoachingService:
         classification = classify_bike_workout_steps(expanded_steps)
         verdict = await self._morning_verdict_for(player.id, current.workout_date)
         if blocks_red_vo2(verdict, {"steps": expanded_steps}):
-            raise HTTPException(status_code=409, detail="Red verdict blocks VO2 delivery to Zwift")
+            raise HTTPException(
+                status_code=409, detail="A still-recovering day blocks VO2 delivery to Zwift"
+            )
 
         live = await self.rail.latest_delivered_for_workout(player.id, current.id)
         if live is None:
@@ -1164,7 +1166,9 @@ class ExecutableCoachingService:
         if blocks_red_vo2(verdict, ir):
             await self._record_block_if_new(player, pending)
             await self.session.commit()
-            raise HTTPException(status_code=409, detail="Red verdict blocks VO2 delivery to Zwift")
+            raise HTTPException(
+                status_code=409, detail="A still-recovering day blocks VO2 delivery to Zwift"
+            )
         delivered = await self._resync_event(player, workout, ir)
         await self._seed_adjustment_adherence(
             player_id=player.id,

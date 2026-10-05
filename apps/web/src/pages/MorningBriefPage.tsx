@@ -2,8 +2,6 @@ import { useEffect } from 'react';
 import { Activity, BedDouble, ClipboardCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AcutePhysiologyNotice, MedicalBoundaryFooter } from '@/components/AcutePhysiologyNotice';
-import { gradedVerdictCopy, REST_DAY_LINE } from '@/lib/copy';
-import { restHeadline } from '@/lib/restHeadline';
 import { BriefListenControls } from '@/components/BriefListenControls';
 import { BriefPendingCta } from '@/components/BriefPendingCta';
 import { BriefStatusCard } from '@/components/BriefStatusCard';
@@ -18,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TodayActions } from '@/components/TodayActions';
-import { VerdictHero } from '@/components/VerdictHero';
+import { TodaysCallHero } from '@/components/TodaysCallHero';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
 import { useDailyLoopFreshness } from '@/hooks/useDailyLoopFreshness';
 import { useRetryBrief } from '@/hooks/useRetryBrief';
@@ -26,7 +24,6 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { markBriefReviewed } from '@/lib/briefReview';
 import { friendlyDate, writtenAt } from '@/lib/dailyFlow';
 import { briefState, noteUnread, storedMorning } from '@/lib/storedMorning';
-import { dayStateForWorkouts } from '@/lib/workoutCategories';
 import { dissentFromVerdict, VERDICT_DISSENT_COPY } from '@/lib/disputes';
 
 export function MorningBriefPage() {
@@ -91,16 +88,6 @@ export function MorningBriefPage() {
     analysis?.acutePhysiology?.dataSufficiency?.status === 'insufficient_data'
       ? (analysis.acutePhysiology.dataSufficiency.message ?? undefined)
       : undefined;
-  const rest = restHeadline(analysis?.acutePhysiology);
-  const graded = gradedVerdictCopy(
-    analysis?.verdict,
-    analysis?.verdictHeld,
-    analysis?.verdictEngine,
-    analysis?.verdictLightWeekHold,
-  );
-  // Batch 298: on a rest or holiday day the brief says what Home says. On 1 Oct's
-  // holiday it said "Ease the hard work" while Home said the day was for recovery.
-  const restOrHoliday = dayStateForWorkouts(data.plannedWorkouts).isRest || data.holiday.isActive;
 
   return (
     <div className="space-y-5">
@@ -128,11 +115,9 @@ export function MorningBriefPage() {
 
       {analysis ? (
         <>
-          <VerdictHero
-            verdict={analysis.verdict}
-            label={rest?.label ?? graded.label}
-            line={dataSufficiencyLine ?? rest?.line ?? (restOrHoliday ? REST_DAY_LINE : graded.line)}
-          />
+          {/* Batch 313: today's call, as the morning stored it: Home's words without
+              the greeting, and the opening of the written brief's "Today's call". */}
+          <TodaysCallHero call={analysis.todaysCall} line={dataSufficiencyLine} />
           {/* Batch 274: disagreement is recorded beside the day and changes nothing. */}
           <div className="px-1">
             <DisputeForm

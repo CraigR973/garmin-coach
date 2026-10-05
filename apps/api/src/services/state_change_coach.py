@@ -138,8 +138,8 @@ def _chronic_snapshot(action: dict[str, Any]) -> StateSnapshot | None:
     if kind == "rearrange_proposal":
         title = "A short recovery pattern has appeared"
         message = (
-            "**Something changed:** the recent Red-morning pattern now looks worth "
-            f"rearranging rather than ignoring. {reason} I have not changed the plan; "
+            "**Something changed:** the recent pattern of still-recovering mornings now looks "
+            f"worth rearranging rather than ignoring. {reason} I have not changed the plan; "
             "this is a prompt to look at the week and use the existing apply step if it fits."
         )
     else:

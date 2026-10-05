@@ -24,6 +24,9 @@ class MorningOutputSection:
         }
 
 
+#: Batch 313: the brief's call section, named as Home and the push name it.
+TODAYS_CALL_HEADING = "Today's call"
+
 _SLEEP_STAGE_FIELDS = {
     "remSleepMin": "REM",
     "deepSleepMin": "deep sleep",
@@ -115,13 +118,17 @@ def required_morning_output_sections(
         )
 
     if _mapping(context_packet.get("verdict")):
+        # Batch 313: the section is today's call, in the words Home shows. It opens with
+        # the stored headline and reading word for word and never names a colour or a
+        # verdict (signed off by Craig on Mark's behalf, 4 Oct 2026).
         sections.append(
             MorningOutputSection(
-                section_id="todays_verdict",
-                heading="Today's verdict",
+                section_id="todays_call",
+                heading=TODAYS_CALL_HEADING,
                 instruction=(
-                    "State and explain the deterministic Green/Amber/Red workout verdict without "
-                    "softening or relitigating it."
+                    "Open with todaysCall.headline and todaysCall.readingWords exactly as they "
+                    "are stored, then explain the deterministic call by his own numbers without "
+                    "softening or relitigating it. Never write Green, Amber, Red or verdict."
                 ),
             )
         )

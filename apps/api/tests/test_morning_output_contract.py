@@ -52,7 +52,7 @@ def test_contract_is_derived_from_the_sections_the_packet_carries() -> None:
         "thermal_environment",
         "experiment_update",
         "chronic_pattern_actions",
-        "todays_verdict",
+        "todays_call",
     ]
     sleep_instruction = contract[0]["instruction"]
     assert "REM" in sleep_instruction
@@ -73,7 +73,7 @@ def test_contract_omits_sections_the_packet_does_not_carry() -> None:
     assert [section["id"] for section in contract] == [
         "sleep_and_recovery",
         "metrics_vs_baselines",
-        "todays_verdict",
+        "todays_call",
     ]
 
 
@@ -105,6 +105,8 @@ Proceed with the planned workout.
         "sleep_and_recovery",
         "experiment_update",
         "chronic_pattern_actions",
+        # Batch 313: a colour headline no longer meets the call section.
+        "todays_call",
     )
 
 
@@ -124,8 +126,24 @@ The REM intervention comparison remains inconclusive.
 ## Chronic pattern actions
 Hold the room cool and protect the final sleep cycle.
 
-## Today's verdict: Green
-Proceed with the planned workout.
+## Today's call
+Green light. Recovered. Proceed with the planned workout.
 """
 
     assert missing_morning_output_sections(_september_packet(), complete_output) == ()
+
+
+def test_the_call_section_opens_with_the_stored_call_and_never_names_a_colour() -> None:
+    """Batch 313: the brief's section is "Today's call", in Home's words, word for word."""
+    [section] = [
+        item
+        for item in morning_output_contract_packet(_september_packet())
+        if item["id"] == "todays_call"
+    ]
+    assert section["heading"] == "Today's call"
+    assert "todaysCall.headline" in section["instruction"]
+    assert "todaysCall.readingWords" in section["instruction"]
+    assert "Never write Green, Amber, Red or verdict." in section["instruction"]
+    prompt = morning_output_contract_prompt(_september_packet())
+    assert "`## Today's call`" in prompt
+    assert "Today's verdict" not in prompt

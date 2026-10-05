@@ -166,3 +166,93 @@ async def test_sleep_verdict_range_rejects_invalid_order(db_conn: AsyncConnectio
 
     assert resp.status_code == 400, resp.text
     assert resp.json()["detail"] == "from must be on or before to"
+
+
+@pytest.mark.asyncio
+async def test_the_calendar_reads_each_morning_and_rest_day_as_the_call_does(
+    db_conn: AsyncConnection,
+) -> None:
+    """Batch 313: a reading per day, and an empty plan-week day stored before the rule
+    is read as a rest day; a day outside every plan week is not."""
+    from src.models.coaching import PlanBlock
+
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    user_id = uuid.uuid4()
+    async with session_factory() as session:
+        session.add(
+            Profile(
+                id=user_id,
+                display_name="Sleep Calendar Call Test",
+                role=UserRole.player,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+        session.add(
+            PlanBlock(
+                user_id=user_id,
+                name="W09 RECOVERY",
+                block_type="recovery",
+                start_date=date(2026, 3, 9),
+                end_date=date(2026, 3, 15),
+            )
+        )
+
+        def morning(day: date, verdict: str, packet: dict[str, object]) -> Analysis:
+            return Analysis(
+                user_id=user_id,
+                analysis_type="morning",
+                subject_date=day,
+                generated_at_utc=datetime.combine(day, datetime.min.time()),
+                prompt_version="morning-v1",
+                model_name="claude-sonnet",
+                verdict=verdict,
+                context_packet=packet,
+                output_markdown="",
+                raw_response={},
+            )
+
+        session.add_all(
+            [
+                # An empty day inside the plan week, stored before the rule: a rest day.
+                morning(date(2026, 3, 10), "Red", {"plannedWorkouts": [], "restDay": {}}),
+                # A ride that morning: not a rest day.
+                morning(
+                    date(2026, 3, 11),
+                    "Amber",
+                    {"plannedWorkouts": [{"id": "x", "status": "planned"}], "restDay": {}},
+                ),
+                # A holiday stored as rest.
+                morning(
+                    date(2026, 3, 12),
+                    "Green",
+                    {
+                        "plannedWorkouts": [{"id": "y", "status": "skipped"}],
+                        "restDay": {"isRestDay": True, "reason": "holiday"},
+                    },
+                ),
+                # An empty day outside every plan week: no session planned, not rest.
+                morning(date(2026, 3, 20), "Amber", {"plannedWorkouts": [], "restDay": {}}),
+                # A packet whose sessions are not a list reads as unknown, not empty.
+                morning(date(2026, 3, 13), "Green", {"plannedWorkouts": None}),
+            ]
+        )
+        await session.commit()
+
+    app.dependency_overrides[get_current_user] = _user_override(user_id)
+    app.dependency_overrides[get_db] = _db_override(session_factory)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/api/v1/sleep/verdicts?from=2026-03-09&to=2026-03-22")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["days"] == {
+        "2026-03-10": {"reading": "still_recovering", "restDay": True},
+        "2026-03-11": {"reading": "some_fatigue", "restDay": False},
+        "2026-03-12": {"reading": "recovered", "restDay": True},
+        "2026-03-13": {"reading": "recovered", "restDay": False},
+        "2026-03-20": {"reading": "some_fatigue", "restDay": False},
+    }

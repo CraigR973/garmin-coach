@@ -235,7 +235,9 @@ def propose_next_block(outcome: BlockOutcome) -> NextBlockProposal:
     if outcome.verdict_trend == "degraded":
         structural_nudge = "Bias the next block toward recovery spacing if fatigue appears early."
     elif outcome.verdict_counts.get("red", 0) >= 2:
-        structural_nudge = "Keep hard-session spacing conservative after repeated Red mornings."
+        structural_nudge = (
+            "Keep hard-session spacing conservative after repeated still-recovering mornings."
+        )
 
     recommended_ftp = max(1, int(recommended_ftp))
     return NextBlockProposal(

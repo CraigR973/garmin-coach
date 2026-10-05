@@ -131,6 +131,10 @@
     --warning-text: #F5B13D;
     --error: #EF4444;
     --error-text: #F87171;
+    /* Batch 313: recovery and rest days are a calm blue. In Zwift's zone colours, which
+       Mark rides by, blue is easy and red is all-out, so red is kept for health warnings. */
+    --recover: #3B82F6;
+    --recover-text: #93C5FD;
     --live: #EF4444;
     --live-text: #F87171;
     --locked: #7B859B;
@@ -213,6 +217,8 @@
     --warning-text: #92400E;
     --error: #DC2626;
     --error-text: #B91C1C;
+    --recover: #2563EB;
+    --recover-text: #1D4ED8;
     --live: #DC2626;
     --live-text: #B91C1C;
     --locked: #9CA3AF;

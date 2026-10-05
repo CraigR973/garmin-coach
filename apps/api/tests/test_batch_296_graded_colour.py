@@ -228,6 +228,8 @@ def test_a_graded_packet_carries_none_of_the_ladders_working(
         # Batch 310: whether the holiday catch-up graded it, and the nights away it saw.
         "hrvHolidayCatchUp",
         "hrvWeekNightsAway",
+        # Batch 313: what made a tired morning tired, for today's call's words.
+        "tiredBy",
     }
     assert "graded_verdict" in packet["safetyRulesApplied"]
 

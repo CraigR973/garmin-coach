@@ -724,10 +724,10 @@ async def test_red_vo2_is_blocked_inside_create_and_push_rails(
         )
         await session.commit()
 
-        with pytest.raises(HTTPException, match="Red verdict blocks VO2"):
+        with pytest.raises(HTTPException, match="A still-recovering day blocks VO2"):
             await service.create_event(proposal=proposal, ir=ir)
         await service.approve(player=user, proposal_id=proposal.id)
-        with pytest.raises(HTTPException, match="Red verdict blocks VO2"):
+        with pytest.raises(HTTPException, match="A still-recovering day blocks VO2"):
             await service.push(player=user, proposal_id=proposal.id)
 
         assert fake.payloads == []
@@ -763,7 +763,7 @@ async def test_red_vo2_is_blocked_inside_replace_rail(db_conn: AsyncConnection) 
         await session.commit()
 
         hard_ir = build_structured_workout_ir(await service._planned_workout(user_id, workout_id))
-        with pytest.raises(HTTPException, match="Red verdict blocks VO2"):
+        with pytest.raises(HTTPException, match="A still-recovering day blocks VO2"):
             await service.replace_event(proposal=proposal, ir=hard_ir)
 
         assert fake.updates == []

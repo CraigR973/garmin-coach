@@ -147,6 +147,7 @@ from src.services.morning_output_contract import (
 from src.services.morning_verdict import (  # noqa: F401 — compatibility re-exports
     ACWR_AMBER_CAP_THRESHOLD,
     ACWR_LOAD_DRIVEN_MAX,
+    PLANNED_REST_REASON,
     RECOVERY_TIME_AMBER_CAP_MIN,
     _breathwork_recommendation,
     _plan_adjustments,
@@ -195,6 +196,7 @@ from src.services.symptom_check import (
     fever_return_easing,
     illness_return,
 )
+from src.services.todays_call import TODAYS_CALL_RULE, todays_call
 from src.services.training_week import TrainingWeekService
 from src.services.verdict_grading import (
     ACTION_PICK_ZONE2_OR_TEMPO,
@@ -411,8 +413,14 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # must not call the ride eased or shortened. The ladder's v50 is unchanged. Self-healing:
 # nothing is withdrawn and nothing is regenerated; the next generation of any morning
 # writes v56.
+# Batch 313: the graded brief's call section is "Today's call", opening with the stored
+# headline and reading word for word (todaysCall, new in the packet), and TODAYS_CALL_RULE
+# tells it to speak to Mark in the call's words, never colours; a rest day is framed as
+# rest in the same words, an empty plan-week day now among them. The ladder's v50 is
+# unchanged. Self-healing: nothing is withdrawn, and the latest stored morning is
+# regenerated once after the merge, as the row decided; the next generation writes v57.
 LADDER_PROMPT_VERSION = "morning-analysis-v50-2026-09-28"
-GRADED_PROMPT_VERSION = "morning-analysis-v56-2026-10-03"
+GRADED_PROMPT_VERSION = "morning-analysis-v57-2026-10-05"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -846,6 +854,23 @@ Red-never-VO2.""",
         """what is needed to answer, say so plainly rather than guessing. Answering a question
 never overrides the graded colour, a floor, or Red-never-VO2.""",
     ),
+    # Batch 313: a rest day is today's call, in the call's words (an empty plan-week day
+    # is now one), and the read speaks to Mark in those words, never colours.
+    (
+        """When restDay.isRestDay is true, frame today's verdict as a rest day. Do not
+recommend, soften, rearrange, or relitigate a planned workout whose status is
+skipped, and do not narrate a session inside the holiday window as a live
+training decision. Recovery signals may still determine Green/Amber/Red, but
+that colour describes recovery on a rest day rather than permission to train.""",
+        f"""When restDay.isRestDay is true, today's call is a rest day: frame it as one, whether
+it is a holiday, a day whose sessions are all skipped, or a day with nothing planned inside
+a plan week (restDay.reason planned_rest). Do not recommend, soften, rearrange, or
+relitigate a planned workout whose status is skipped, and do not narrate a session inside
+the holiday window as a live training decision. Recovery signals still set the reading,
+which describes recovery on a rest day rather than permission to train.
+
+{TODAYS_CALL_RULE}""",
+    ),
     # Batch 299: the weekly mix follows each session's graded action. A shortfall now
     # means today's hard session is dropped, and an eased session is still in the week.
     (
@@ -1025,6 +1050,7 @@ class MorningAnalysisService:
             planned_workouts,
             holiday_windows,
             subject_date=subject_date,
+            inside_plan_week=await self._inside_plan_week(player.id, subject_date),
         )
         recent_walks = await self._recent_walks(player.id, subject_date)
         breathwork_brief = await BreathworkBriefService(self.session).brief(
@@ -1492,8 +1518,25 @@ class MorningAnalysisService:
             "verdict": verdict,
             "prompt": prompt_packet,
         }
+        # Batch 313: today's call, picked by one rule from the morning just assembled
+        # and stored with it, before the paid brief: Home, the brief page, the written
+        # brief and the coach chat read these words.
+        packet["todaysCall"] = todays_call(packet).to_packet()
         prompt_packet["requiredOutputSections"] = morning_output_contract_packet(packet)
         return packet
+
+    async def _inside_plan_week(self, user_id: uuid.UUID, subject_date: date) -> bool:
+        """Does a plan block cover this morning? (Batch 313's rest-day rule)"""
+        found = await self.session.scalar(
+            select(PlanBlock.id)
+            .where(
+                PlanBlock.user_id == user_id,
+                PlanBlock.start_date <= subject_date,
+                PlanBlock.end_date >= subject_date,
+            )
+            .limit(1)
+        )
+        return found is not None
 
     async def generate_and_store(
         self,
@@ -2482,26 +2525,40 @@ def _rest_day_context(
     holiday_windows: Sequence[HolidayWindow],
     *,
     subject_date: date,
+    inside_plan_week: bool = False,
 ) -> dict[str, Any]:
     """Describe whether today's plan is intentionally paused/resting.
 
     An explicit holiday window is authoritative even if a stale plan row was not
     versioned correctly. Outside a holiday, a non-empty day whose every active row
-    is already ``skipped`` is also rest. An empty plan remains ``unknown`` rather
-    than being silently promoted to an intended rest day, preserving the existing
-    conservative missing-plan behaviour.
+    is already ``skipped`` is also rest. Batch 313 (superseding Decision #171's
+    "an empty plan stays unknown" inside a plan week): a day with no active session
+    inside a week a plan block covers is a planned rest day. An empty day outside
+    every plan week stays unknown, so the call says "No session planned".
+    ``insidePlanWeek`` is stored so a reader knows the morning was graded with the
+    rule; a morning stored before it is read with the rule from the plan blocks.
     """
     matching_windows = holiday_windows_covering_date(holiday_windows, subject_date)
     inside_holiday = bool(matching_windows)
     all_skipped = bool(planned_workouts) and all(
         workout.status == "skipped" for workout in planned_workouts
     )
-    reason = "holiday" if inside_holiday else "all_skipped" if all_skipped else None
+    planned_rest = not planned_workouts and inside_plan_week
+    reason = (
+        "holiday"
+        if inside_holiday
+        else "all_skipped"
+        if all_skipped
+        else PLANNED_REST_REASON
+        if planned_rest
+        else None
+    )
     return {
         "isRestDay": reason is not None,
         "reason": reason,
         "insideHolidayWindow": inside_holiday,
         "allPlannedWorkoutsSkipped": all_skipped,
+        "insidePlanWeek": inside_plan_week,
         "holidayWindows": [
             {
                 "startDate": window.start_date.isoformat(),

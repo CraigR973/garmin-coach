@@ -150,6 +150,9 @@ class AnalysisOut(BaseModel):
     # morning was graded and first shown, which can be hours earlier after an outage.
     # Absent on a brief stored before the batch, and on a morning with no brief.
     briefWrittenAtUtc: str | None = None
+    # Batch 313: today's call (``services.todays_call``), stored with the morning, or
+    # read with the same rule from a morning stored before it.
+    todaysCall: dict[str, Any] | None = None
 
 
 class PostWorkoutAnalysisOut(BaseModel):

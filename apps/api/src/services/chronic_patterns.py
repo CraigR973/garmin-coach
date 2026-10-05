@@ -1272,7 +1272,8 @@ def _chronic_action_signal(
         kind = "rearrange_proposal"
         trigger_sources.append("red_morning_cluster")
         reasons.append(
-            f"{red_count} unexplained or systemically strained Red mornings occurred "
+            # Batch 313: this reason reaches Mark in the coach chat; in the call's words.
+            f"{red_count} unexplained or systemically strained still-recovering mornings occurred "
             f"inside the last {CHRONIC_ACTION_RED_WINDOW_DAYS} days; preserve the "
             "weekly mix by rearranging rather than reducing the week."
         )
@@ -1670,7 +1671,8 @@ def _actions_for(
         )
     elif metric_key in {"hrv_7_day_avg_ms", "readiness_score"}:
         actions.append(
-            "Pair the suggestion with the existing Green/Amber/Red read; do not chase load."
+            # Batch 313: Mark reads this beside last night's sleep; in the call's words.
+            "Pair the suggestion with today's call; do not chase load."
         )
     elif metric_key == "resting_heart_rate_bpm":
         actions.append("Bias the evening toward cooling, hydration, and a clean wind-down.")

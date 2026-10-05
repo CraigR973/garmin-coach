@@ -56,7 +56,7 @@ export function SleepSnapshotBody({
       <DetailLinkCard
         to={morningBriefLink}
         title="Full morning brief"
-        description="Open the complete coach read and verdict notes."
+        description="Open the complete coach read."
       />
     </div>
   );

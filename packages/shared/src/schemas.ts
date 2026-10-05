@@ -1200,6 +1200,22 @@ export const acutePhysiologySchema = z.object({
 });
 export type AcutePhysiology = z.infer<typeof acutePhysiologySchema>;
 
+// Batch 313: today's call — what to do today in a coach's words, and how recovered he
+// is. The server picks it from the stored morning by one rule (`services/todays_call`),
+// so Home, the brief page, the written brief and the coach chat read one copy. Any
+// string parses for `reading` and `look`, so a value added on the server first never
+// breaks the page that reads it.
+export const todaysCallSchema = z.object({
+  state: z.number().int(),
+  key: z.string(),
+  headline: z.string().min(1),
+  line: z.string(),
+  reading: z.string(),
+  readingWords: z.string().min(1),
+  look: z.string(),
+});
+export type TodaysCall = z.infer<typeof todaysCallSchema>;
+
 export const dailyLoopAnalysisSchema = z.object({
   id: z.string().uuid(),
   generatedAtUtc: isoDateTimeSchema,
@@ -1237,6 +1253,9 @@ export const dailyLoopAnalysisSchema = z.object({
   // was graded and first shown, which after an outage can be hours earlier. Absent on a
   // brief stored before the batch, and on a morning with no brief.
   briefWrittenAtUtc: isoDateTimeSchema.nullable().optional(),
+  // Batch 313: the call, stored with the morning (or read with the same rule from a
+  // morning stored before it). Absent only from a server older than the batch.
+  todaysCall: todaysCallSchema.nullable().optional(),
 });
 
 export const rideIntervalSchema = z.object({
@@ -1490,10 +1509,20 @@ export const bedroomOvernightEnvelopeSchema = z.object({
 // Sleep calendar verdict history (Batch 120) — GET /api/v1/sleep/verdicts.
 export const sleepCalendarVerdictMapSchema = z.record(isoDateSchema, verdictSchema);
 
+// Batch 313: each day's reading (Recovered, Some fatigue, Still recovering) and whether
+// it was a rest day, as today's call reads them. `verdicts` stays for a client cached
+// from before it.
+export const sleepCalendarDaySchema = z.object({
+  reading: z.string().nullable(),
+  restDay: z.boolean(),
+});
+export type SleepCalendarDay = z.infer<typeof sleepCalendarDaySchema>;
+
 export const sleepCalendarVerdictsSchema = z.object({
   from: isoDateSchema,
   to: isoDateSchema,
   verdicts: sleepCalendarVerdictMapSchema,
+  days: z.record(isoDateSchema, sleepCalendarDaySchema).optional(),
 });
 
 export const sleepCalendarVerdictsEnvelopeSchema = z.object({

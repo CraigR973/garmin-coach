@@ -170,6 +170,32 @@ describe('ReviewsPage', () => {
     expect(await screen.findByText(/Sleep improving across the week/)).toBeTruthy();
   });
 
+  // Batch 313: the week's mornings in the call's words (signed off by Craig on Mark's
+  // behalf, 4 Oct 2026), never a colour count.
+  it('counts the mornings as recovered, some fatigue and still recovering', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/api/v1/reviews/weekly') {
+        return Promise.resolve(envelope('weekly', false));
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ReviewsPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('Mornings')).toBeTruthy();
+    expect(
+      screen.getByText('4 recovered · 2 some fatigue · 1 still recovering'),
+    ).toBeTruthy();
+    expect(screen.queryByText('Verdicts')).toBeNull();
+    expect(screen.queryByText(/\b\d+G · \d+A · \d+R\b/)).toBeNull();
+  });
+
   it('explains the bedroom figures under the written review (Batch 273.2)', async () => {
     const withWorking = envelope('weekly', true);
     (withWorking.data.rollup.thermal as Record<string, unknown>).provenance = [

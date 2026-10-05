@@ -171,14 +171,26 @@ def _standing_habits_content() -> dict[str, Any]:
 #: Batch 298: the knowledge base stated the ladder's Amber, which the brief reads.
 LADDER_AMBER_CONSTRAINT = "Amber days cut duration 20-30 percent and remove HIT."
 LADDER_RED_CONSTRAINT = "Red days substitute recovery or rest and never keep VO2."
-TRAINING_PLAN_AMBER_CONSTRAINT = (
+#: Batch 313: the same rules in the call's words, since Mark reads them on Coach memory
+#: (Craig, 4 Oct 2026: "write the same rules in the signed-off words"). Batch 298's
+#: colour wording, which production held as training_plan v3, is kept for the record.
+GRADED_COLOUR_AMBER_CONSTRAINT = (
     "Amber days ease the hard intervals a zone and keep the ride's full length; Zone 2 rides "
     "stay as planned. In a consolidation, taper or recovery week a mild concern holds the "
     "session, targets held."
 )
-TRAINING_PLAN_RED_CONSTRAINT = (
+GRADED_COLOUR_RED_CONSTRAINT = (
     "Red days turn hard sessions into an easy recovery spin and keep Zone 2 rides, shorter; "
     "never VO2."
+)
+TRAINING_PLAN_AMBER_CONSTRAINT = (
+    "On a some-fatigue morning the hard efforts are eased a zone and the ride keeps its full "
+    "length; Zone 2 rides stay as planned. In a consolidation, taper or recovery week a mild "
+    "concern holds the session at its targets."
+)
+TRAINING_PLAN_RED_CONSTRAINT = (
+    "On a still-recovering morning a hard session becomes an easy recovery spin and a Zone 2 "
+    "ride is kept, just shorter; never VO2."
 )
 
 
@@ -210,8 +222,9 @@ def _training_plan_content(cycle_start: date) -> dict[str, Any]:
             "ergMode": "off",
         },
         # Batch 298: the Amber and Red lines say what the graded verdict does (signed off
-        # by Craig on Mark's behalf, 1 Oct 2026). A fresh seed only: a live row changes by
-        # read-modify-write through ``update_knowledge_base_section``.
+        # by Craig on Mark's behalf, 1 Oct 2026); Batch 313 says them in the call's words.
+        # A fresh seed only: a live row changes by read-modify-write through
+        # ``update_knowledge_base_section``.
         "constraints": [
             "Never stack VO2 and sweet spot back-to-back when fatigue is high.",
             TRAINING_PLAN_AMBER_CONSTRAINT,

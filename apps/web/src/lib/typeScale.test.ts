@@ -45,7 +45,7 @@ describe('type scale', () => {
     // The "Change" link in the verdict hero measured 49 x 20 px — the last
     // control under the app's own floor, inside its highest-traffic card, and it
     // is reached precisely when he has mis-tapped something already.
-    const hero = readFileSync(join(SRC, 'components/VerdictHero.tsx'), 'utf8');
+    const hero = readFileSync(join(SRC, 'components/TodaysCallHero.tsx'), 'utf8');
     const link = hero.slice(hero.indexOf('recap.ctaLabel && recap.ctaTo'));
     expect(link).toContain('tap-target');
   });

@@ -703,7 +703,7 @@ def adjust_ir_for_verdict(
         power_cap = red_power_cap_pct(base_ir, companion_session=companion_session)
         ease = None
         if red_holds_endurance(base_ir, companion_session=companion_session):
-            origin, name_prefix = "red_endurance_hold", "Red-adjusted"
+            origin, name_prefix = "red_endurance_hold", "Short and easy"
         else:
             origin, name_prefix = "red_substitution", "Recovery substitution"
     else:

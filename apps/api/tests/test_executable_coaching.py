@@ -394,7 +394,7 @@ def test_red_holds_an_already_endurance_ride_instead_of_gutting_it() -> None:
     assert adjusted["totalDurationSec"] == round(2700 * RED_ENDURANCE_DURATION_SCALE)
     assert adjusted["totalDurationSec"] > round(2700 * RED_DURATION_SCALE)
     assert adjusted["origin"] == "red_endurance_hold"
-    assert adjusted["name"].startswith("Red-adjusted: ")
+    assert adjusted["name"].startswith("Short and easy: ")
     assert adjusted["adjustment"]["enduranceHold"] is True
     assert adjusted["adjustment"]["powerCapPct"] == ENDURANCE_PRESCRIPTION_PCT
     # The safety rail is untouched — there was no hard work here to remove.
@@ -1651,7 +1651,7 @@ async def test_send_today_preserves_red_never_vo2_gate(
                 now_utc=datetime(2026, 6, 23, 8, 0, tzinfo=UTC),
             )
 
-        assert "Red verdict blocks VO2" in str(exc_info.value)
+        assert "A still-recovering day blocks VO2" in str(exc_info.value)
         assert fake.payloads == []
         blocks = (
             (
@@ -3118,7 +3118,7 @@ async def test_interval_edit_keeps_red_never_vo2_hard_before_versioning(
         assert user is not None
         service = ExecutableCoachingService(session, intervals_client=fake)
 
-        with pytest.raises(HTTPException, match="Red verdict blocks VO2"):
+        with pytest.raises(HTTPException, match="A still-recovering day blocks VO2"):
             await service.approve_interval_edit(
                 user,
                 planned_workout_id=workout_id,
@@ -3227,7 +3227,7 @@ async def test_approve_adjustment_blocks_red_vo2(db_conn: AsyncConnection) -> No
         with pytest.raises(HTTPException) as exc_info:
             await service.approve_adjustment(user, planned_workout_id=workout_id)
 
-        assert "Red verdict blocks VO2" in str(exc_info.value)
+        assert "A still-recovering day blocks VO2" in str(exc_info.value)
         assert fake.updates == []
         assert fake.payloads == []
         blocks = (

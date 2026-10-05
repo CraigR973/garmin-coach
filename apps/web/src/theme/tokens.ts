@@ -43,6 +43,7 @@ export const colors = {
   success: '#10B981',
   warning: '#F59E0B',
   error: '#EF4444',
+  recover: '#3B82F6',
   live: '#EF4444',
   locked: '#7B859B',
 

@@ -2,7 +2,9 @@
 
 Batch 120 adds one lightweight calendar read: a per-date verdict map over a
 small date range, so the Sleep calendar can tint a visible month without
-loading full daily-loop snapshots per cell.
+loading full daily-loop snapshots per cell. Batch 313 adds each day's reading
+(Recovered, Some fatigue, Still recovering) and whether it was a rest day, as
+today's call reads them, so the calendar never shows a colour grade.
 """
 
 from __future__ import annotations
@@ -11,12 +13,13 @@ from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import desc, select
+from sqlalchemy import case, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import CurrentUser
 from src.database import get_db
-from src.models.coaching import Analysis
+from src.models.coaching import Analysis, PlanBlock
+from src.services.todays_call import calendar_day
 
 router = APIRouter(prefix="/api/v1/sleep", tags=["sleep"])
 
@@ -27,6 +30,9 @@ class SleepCalendarVerdictsData(BaseModel):
     from_date: date = Field(alias="from")
     to_date: date = Field(alias="to")
     verdicts: dict[str, str | None]
+    #: Batch 313: ``{date: {reading, restDay}}``; ``verdicts`` stays for a client
+    #: cached from before it.
+    days: dict[str, dict[str, object]] = Field(default_factory=dict)
 
 
 class SleepCalendarVerdictsMeta(BaseModel):
@@ -68,9 +74,24 @@ async def get_sleep_calendar_verdicts(
             detail="from must be on or before to",
         )
 
+    # Batch 313: two small parts of each packet beside the colour, never the whole
+    # packet (the JSONB rule): the rest-day context and how many sessions it saw.
     rows = (
         await db.execute(
-            select(Analysis.subject_date, Analysis.verdict)
+            select(
+                Analysis.subject_date,
+                Analysis.verdict,
+                Analysis.context_packet["restDay"].label("rest_day"),
+                # A non-array (null, or a packet without the key) counts as unknown, not
+                # empty: jsonb_array_length raises on a scalar.
+                case(
+                    (
+                        func.jsonb_typeof(Analysis.context_packet["plannedWorkouts"]) == "array",
+                        func.jsonb_array_length(Analysis.context_packet["plannedWorkouts"]),
+                    ),
+                    else_=None,
+                ).label("planned_count"),
+            )
             .where(
                 Analysis.user_id == player.id,
                 Analysis.analysis_type == ANALYSIS_TYPE_MORNING,
@@ -85,12 +106,33 @@ async def get_sleep_calendar_verdicts(
         )
     ).all()
 
+    # A morning stored before Batch 313 is read with its rule: an empty day inside a
+    # week a plan block covers is a rest day.
+    blocks = (
+        await db.execute(
+            select(PlanBlock.start_date, PlanBlock.end_date).where(
+                PlanBlock.user_id == player.id,
+                PlanBlock.start_date <= to_date,
+                PlanBlock.end_date >= from_date,
+            )
+        )
+    ).all()
+
     verdicts: dict[str, str | None] = {}
-    for subject_date, verdict in rows:
+    days: dict[str, dict[str, object]] = {}
+    for subject_date, verdict, rest_day, planned_count in rows:
         key = subject_date.isoformat()
         if key in verdicts:
             continue
         verdicts[key] = verdict.strip().lower() if verdict else None
+        day = calendar_day(
+            verdict,
+            rest_day,
+            planned_count,
+            in_plan_week=any(start <= subject_date <= end for start, end in blocks),
+        )
+        if day is not None:
+            days[key] = day
 
     return SleepCalendarVerdictsEnvelope(
         data=SleepCalendarVerdictsData.model_validate(
@@ -98,6 +140,7 @@ async def get_sleep_calendar_verdicts(
                 "from": from_date,
                 "to": to_date,
                 "verdicts": verdicts,
+                "days": days,
             }
         ),
         meta=SleepCalendarVerdictsMeta(generatedAtUtc=_now()),

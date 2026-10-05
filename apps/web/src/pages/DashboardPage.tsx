@@ -29,7 +29,6 @@ import {
 } from '@coach/shared';
 import { toast } from 'sonner';
 import { AcutePhysiologyNotice } from '@/components/AcutePhysiologyNotice';
-import { restHeadline } from '@/lib/restHeadline';
 import type { AgeComparison, MetricBaselineRow } from '@/components/MetricComparisonTable';
 import { QuickAddSheet } from '@/components/QuickAddSheet';
 import { IntervalWorkoutEditor } from '@/components/IntervalWorkoutEditor';
@@ -50,7 +49,8 @@ import { ProvenancePanel } from '@/components/ProvenancePanel';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { VerdictHero } from '@/components/VerdictHero';
+import { TodaysCallHero } from '@/components/TodaysCallHero';
+import { NO_SESSION_PLANNED_STATE, greetsCall } from '@/lib/todaysCall';
 import { BriefPendingCta } from '@/components/BriefPendingCta';
 import { BriefStatusCard } from '@/components/BriefStatusCard';
 import { FeedbackControl } from '@/components/FeedbackControl';
@@ -79,7 +79,7 @@ import {
   remContextShort,
   sleepQualifierLabel,
 } from '@/lib/dailyFlow';
-import { gradedVerdictCopy, greetingForNow, personalStatusLine, verdictLabel } from '@/lib/copy';
+import { TOMORROW_CALL_LINE, greetingForNow } from '@/lib/copy';
 import { NotesAskCard } from '@/components/NotesAskCard';
 import { dayStateForWorkouts, workoutTypeLabel, type DayCategory } from '@/lib/workoutCategories';
 import { actionSection, nextAction, type NextAction } from '@/lib/homeActions';
@@ -573,13 +573,12 @@ export function DashboardPage() {
     isSaving: completedRideLogMutation.isPending,
   };
 
-  // Tomorrow's cue: the ride's forward look when we have one, else a verdict-shaped
-  // fallback. Shared by the section summary and body so they never disagree.
+  // Tomorrow's cue: the ride's forward look when we have one. Batch 313: otherwise it
+  // says where tomorrow's call comes from, never a colour. Shared by the section summary
+  // and body so they never disagree.
   const tomorrowText =
     postWorkouts[0]?.tomorrowImpact ??
-    (analysis?.verdict
-      ? `${verdictLabel(analysis.verdict)} tomorrow starts from today's recovery picture.`
-      : "Tomorrow's cue will show up here after the coach read.");
+    (analysis?.verdict ? TOMORROW_CALL_LINE : "Tomorrow's cue will show up here after the coach read.");
 
   // Batch 50: the one context-aware action drives both the Next strip and — via
   // its section override — which section is expanded, so a pending item is never
@@ -666,7 +665,12 @@ export function DashboardPage() {
       ),
     },
     today: {
-      title: `${dayState.label} day`,
+      // Batch 313: an empty day the plan does not cover is not a rest day; the title
+      // says what the call says ("No session planned") rather than "Rest day".
+      title:
+        dayState.isRest && analysis?.todaysCall?.state === NO_SESSION_PLANNED_STATE
+          ? analysis.todaysCall.headline
+          : `${dayState.label} day`,
       icon: <CalendarDays className="h-4 w-4 text-primary" aria-hidden />,
       summary: todaySummaryValue.text,
       tone: todaySummaryValue.tone,
@@ -779,30 +783,17 @@ export function DashboardPage() {
           usual path there), the invite is stale — swap it for a "writing your
           brief" state instead of still asking him to say good morning. */}
       {analysis ? (
-        <VerdictHero
-          verdict={analysis.verdict}
+        // Batch 313: today's call, as the morning stored it — the same words as the brief
+        // page, the written brief and the chat, with Home's greeting in front. A health
+        // warning keeps its signed-off line alone, as before, and so does the
+        // insufficient-data message.
+        <TodaysCallHero
+          call={analysis.todaysCall}
           dateLabel={friendlyDate(daily.subjectDate)}
-          label={
-            restHeadline(analysis.acutePhysiology)?.label ??
-            gradedVerdictCopy(
-              analysis.verdict,
-              analysis.verdictHeld,
-              analysis.verdictEngine,
-              analysis.verdictLightWeekHold,
-            ).label
+          lead={
+            dataSufficiencyLine || !greetsCall(analysis.todaysCall) ? undefined : `${greeting}.`
           }
-          line={
-            dataSufficiencyLine ??
-            restHeadline(analysis.acutePhysiology)?.line ??
-            personalStatusLine(
-              analysis.verdict,
-              player?.displayName,
-              undefined,
-              dayState.isRest || holiday.isActive,
-              analysis.verdictHeld === true,
-              { engine: analysis.verdictEngine, lightWeekHold: analysis.verdictLightWeekHold },
-            )
-          }
+          line={dataSufficiencyLine}
           recap={morningFeelRecap(daily.manualEntry ?? null)}
         />
       ) : (

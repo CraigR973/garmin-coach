@@ -27,7 +27,7 @@ import { markSleepReviewed } from '@/lib/sleepReview';
 import { friendlyDate } from '@/lib/dailyFlow';
 import { overnightDataReady } from '@/lib/homeActions';
 import { storedMorning } from '@/lib/storedMorning';
-import { verdictBadgeVariant, verdictLabel } from '@/lib/copy';
+import { readingBadgeVariant } from '@/lib/readings';
 import type { AgeComparison, MetricBaselineRow } from '@/components/MetricComparisonTable';
 
 type SleepView = 'last-night' | 'tonight';
@@ -97,6 +97,8 @@ export function SleepPage() {
   }, [displayMonth]);
   const verdictsQuery = useSleepCalendarVerdicts(verdictRange.from, verdictRange.to);
   const verdictsByDate = verdictsQuery.data?.data.verdicts ?? {};
+  // Batch 313: each day's reading and rest flag, as today's call reads them.
+  const daysByDate = verdictsQuery.data?.data.days ?? {};
 
   if (query.isLoading) {
     return (
@@ -163,6 +165,7 @@ export function SleepPage() {
                 onDisplayMonthChange={setDisplayMonth}
                 onSelectDate={setSelectedDate}
                 verdictsByDate={verdictsByDate}
+                daysByDate={daysByDate}
               />
               {!hasTodaySleepAccess && !showingHistoricalDate ? (
                 <TodaySleepLockedCard subjectDate={data.subjectDate} />
@@ -194,7 +197,7 @@ export function SleepPage() {
                           <DetailLinkCard
                             to="/brief"
                             title="Full morning brief"
-                            description="Open the complete coach read and verdict notes."
+                            description="Open the complete coach read."
                           />
                         ) : null}
                       </div>
@@ -380,8 +383,8 @@ function TodaySleepLockedCard({ subjectDate }: { subjectDate: string }) {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="rounded-2xl border border-dashed border-border px-4 py-4 text-sm text-text-secondary">
-          Today is {friendlyDate(subjectDate)}. Check in when you&apos;re ready and the full sleep, verdict, and room
-          read will land here.
+          Today is {friendlyDate(subjectDate)}. Check in when you&apos;re ready and today&apos;s call, with the full
+          sleep and room read, will land here.
         </div>
         <Button asChild variant="outline" className="w-full">
           <Link to="/check-in">
@@ -398,6 +401,7 @@ function HistoricalDayCard({ data }: { data: DailyLoopData | null }) {
   if (!data) return null;
 
   const analysis = storedMorning(data);
+  const call = analysis?.todaysCall ?? null;
   const workouts = data.plannedWorkouts ?? [];
   const readCount =
     (data.postWorkoutAnalyses?.length ?? 0) +
@@ -412,17 +416,22 @@ function HistoricalDayCard({ data }: { data: DailyLoopData | null }) {
           <CalendarDays className="h-4 w-4 text-primary" aria-hidden />
           The whole day
         </CardTitle>
-        <CardDescription>That date&apos;s verdict and planned sessions, alongside the sleep and room history above.</CardDescription>
+        <CardDescription>That date&apos;s call and planned sessions, alongside the sleep and room history above.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="rounded-2xl border border-border px-4 py-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-medium text-text-primary">Verdict</p>
-            <Badge variant={verdictBadgeVariant(analysis?.verdict)}>{verdictLabel(analysis?.verdict)}</Badge>
-          </div>
-          <p className="mt-2 text-sm text-text-secondary">
-            {analysis?.reasons?.[0] ?? 'No stored morning verdict was saved for this date.'}
-          </p>
+        {/* Batch 313: that morning's call and reading, in the words it was given. */}
+        <div className="rounded-2xl border border-border px-4 py-4" data-testid="day-call">
+          {call ? (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-medium text-text-primary">{call.headline}</p>
+                <Badge variant={readingBadgeVariant(call.reading)}>{call.readingWords}</Badge>
+              </div>
+              <p className="mt-2 text-sm text-text-secondary">{call.line}</p>
+            </>
+          ) : (
+            <p className="text-sm text-text-secondary">No morning call was saved for this date.</p>
+          )}
         </div>
 
         <div className="space-y-3">

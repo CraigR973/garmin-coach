@@ -75,7 +75,9 @@ describe('SleepDateCalendar', () => {
     expect(onDisplayMonthChange).toHaveBeenCalled();
   });
 
-  it('shows verdict tint cues and an accessible legend', () => {
+  // Batch 313: each day shows how recovered he was that morning, or that it was a rest
+  // day, never a colour grade; the legend matches.
+  it('shows each morning as a reading or a rest day, with a matching legend', () => {
     render(
       <SleepDateCalendar
         selectedDate="2026-07-14"
@@ -84,14 +86,42 @@ describe('SleepDateCalendar', () => {
         onDisplayMonthChange={vi.fn()}
         onSelectDate={vi.fn()}
         verdictsByDate={{ '2026-07-14': 'green', '2026-07-13': 'amber', '2026-07-12': 'red' }}
+        daysByDate={{
+          '2026-07-14': { reading: 'recovered', restDay: false },
+          '2026-07-13': { reading: 'some_fatigue', restDay: false },
+          '2026-07-12': { reading: 'still_recovering', restDay: false },
+          '2026-07-11': { reading: 'still_recovering', restDay: true },
+        }}
       />,
     );
 
     fireEvent.click(screen.getByText('Show calendar'));
 
-    expect(screen.getByLabelText('Verdict legend')).toBeTruthy();
-    expect(screen.getByLabelText('Tuesday 14 July 2026 - Green verdict')).toBeTruthy();
-    expect(screen.getByLabelText('Monday 13 July 2026 - Amber verdict')).toBeTruthy();
-    expect(screen.getByLabelText('Sunday 12 July 2026 - Red verdict')).toBeTruthy();
+    const legend = screen.getByLabelText('Calendar legend');
+    expect(legend.textContent).toBe('RecoveredSome fatigueStill recoveringRest day');
+    expect(screen.getByLabelText('Tuesday 14 July 2026 - Recovered')).toBeTruthy();
+    expect(screen.getByLabelText('Monday 13 July 2026 - Some fatigue')).toBeTruthy();
+    expect(screen.getByLabelText('Sunday 12 July 2026 - Still recovering')).toBeTruthy();
+    expect(screen.getByLabelText('Saturday 11 July 2026 - Rest day · Still recovering')).toBeTruthy();
+    expect(screen.getByLabelText('Friday 10 July 2026 - No morning saved')).toBeTruthy();
+    expect(document.body.textContent ?? '').not.toMatch(/\b(green|amber|red|verdict)\b/i);
+  });
+
+  it('reads the colour alone from a server older than Batch 313', () => {
+    render(
+      <SleepDateCalendar
+        selectedDate="2026-07-14"
+        maxDate="2026-07-14"
+        displayMonth={new Date(2026, 6, 1)}
+        onDisplayMonthChange={vi.fn()}
+        onSelectDate={vi.fn()}
+        verdictsByDate={{ '2026-07-14': 'green', '2026-07-12': 'red' }}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Show calendar'));
+
+    expect(screen.getByLabelText('Tuesday 14 July 2026 - Recovered')).toBeTruthy();
+    expect(screen.getByLabelText('Sunday 12 July 2026 - Still recovering')).toBeTruthy();
   });
 });

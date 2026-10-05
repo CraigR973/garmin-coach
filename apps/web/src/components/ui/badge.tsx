@@ -15,6 +15,8 @@ const badgeVariants = cva(
         success: 'bg-success/20 text-success-text border border-success/30',
         warning: 'bg-warning/20 text-warning-text border border-warning/30',
         error: 'bg-error/20 text-error-text border border-error/30',
+        // Batch 313: still recovering, and rest days.
+        recover: 'bg-recover/20 text-recover-text border border-recover/30',
         muted: 'bg-surface-elevated text-text-muted border border-border',
         live: 'bg-live/20 text-live-text border border-live/30 animate-pulse-live',
       },

@@ -5626,4 +5626,54 @@ to be built until he says go**. Decision numbers are assigned at `/batch-start`.
 - **Plan No. 3.** From Mon 19 Oct no plan week is loaded, so Home will show "No session planned"
   (state 16) until the next plan is in. Craig may want Mark to load it before then.
 
-**Not grouped;** no date attached. Craig said not to build it yet (4 Oct).
+### Corrections made at `/batch-start 313` (2026-10-05), before any code
+
+Every fact in 313.1-313.6 was re-checked against `main` and production, read-only. One count
+was stale; nothing changes what the batch builds.
+
+- **Corrected: the empty plan-week mornings are 16 by the stored mornings, not 15.** The row
+  counted against today's plan tables, which differ from what three mornings saw: 1 and 3 Jul
+  had no session in their packets but have rows today, and 7 Sep had a strength session that
+  morning that is no longer active. The replay reads each morning from its own packet, so its
+  set is 24, 26 and 29 Jun, 1 and 3 Jul, 24 and 31 Jul, 7, 14, 21 and 28 Aug, 4, 11, 18, 21 and
+  25 Sep: 16, of which 11 were Amber or Red. Confirmed: 10 rest days to the engine (14-16 Jul,
+  28 Sep-4 Oct) and 105 stored mornings to 4 Oct (106 with 5 Oct's); the four empty mornings
+  outside any plan week by today's tables are 6, 9, 17 and 19 Jul (only 17 Jul by its packet).
+- **Confirmed:** every surface and line the row lists (`copy.ts`'s `gradedVerdictCopy` and
+  `personalStatusLine`, `VerdictHero.tsx`'s chip and stop sign, the brief's "Today's verdict"
+  contract, the calendar's "Green verdict" and G/A/R, the Sleep page's "Verdict" card, the
+  review's "3G · 2A · 2R", `plan_actions.py:847`, `verdict_scaling.py:706`, the tomorrow
+  fallback, `_session_action`, both rest-day rules and `morning_verdict.py:1487-1489`); the
+  rest flag cannot move a colour on an empty day (no session reaches `_hard_ride_today` or the
+  session actions); `GRADED_PROMPT_VERSION` is v56, chat v18 and reviews v10.
+- **Checked what Mark can see (313.5):** the state-change coach's chat message ("the recent
+  Red-morning pattern") and the reason it quotes (`chronic_patterns.py`, "Red mornings
+  occurred"), the block generator's nudge ("after repeated Red mornings"), the 409 "Red verdict
+  blocks VO2 delivery to Zwift" (shown as the error toast) and a chronic suggestion's action
+  ("the existing Green/Amber/Red read", shown beside last night's sleep): all reworded in the
+  draft's words. `insights.py:484` reaches no screen (the reviews and the monthly analysis read
+  it as data), so it stays. "Amber-adjusted" names a ride only under the ladder (the graded
+  Amber names it "Hard work eased"), so it stays for the rollback.
+- **Coach memory is a 313.5 surface.** Mark opens it from More ("What your coach remembers");
+  it shows `training_plan`'s constraints, and production's v3 states the Amber and Red rules in
+  colour words. At close-out it gains v4 through `update_knowledge_base_section`, the same
+  rules in the call's words; the seed says the same for a fresh profile.
+- **What a bump withdraws:** nothing. The morning prompt self-heals (no stored morning is
+  withdrawn; the next generation writes v57), and chat and the reviews are read unfiltered.
+  Regeneration is the row's: the latest stored morning, once, after the merge.
+- **Settled as recommended:** the words live with the rule on the server
+  (`services/todays_call.py`), so Home, the brief page, the written brief and the chat read one
+  copy; the calendar's reading words are a copy pinned to the server by a parity test
+  (`readingWords.json`, as `symptomNotices.json` is). The tired line uses the sleep wording when
+  both domains are marked (`references.tiredBy`, stored from now on). Plan No. 3 is Craig's.
+- **Two states the draft did not cover, answered by Craig on 5 Oct:** a still-recovering
+  morning with no ride planned, only strength or mobility, reads "As planned — Your body's
+  still recovering, and today's plan already suits it. Keep it comfortable." (green, as state
+  4); and state 7, when how he feels made the morning tired, uses state 6's feel clause ("You're
+  feeling flat this morning. Ride it as planned, or take the shorter version in one tap.").
+- **`dayStateForWorkouts`' other caller:** Home's Today card title ("Cycle day", "Rest day")
+  keeps it, since it names the planned categories; an empty day outside every plan week now
+  titles it with the call's "No session planned" instead of "Rest day", so the two never
+  disagree after 18 Oct.
+
+**Not grouped;** no date attached. Built on 5 Oct on Craig's go of 4 Oct (the 310, 313, 312 run).

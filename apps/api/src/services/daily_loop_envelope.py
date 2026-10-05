@@ -23,6 +23,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import CurrentUser
@@ -33,6 +34,7 @@ from src.models.coaching import (
     DailyMetric,
     Feedback,
     ManualEntry,
+    PlanBlock,
     PlannedWorkout,
     Sleep,
 )
@@ -98,6 +100,7 @@ from src.services.sleep_projection import SleepProjectionResult
 from src.services.sleep_projection_context import SleepProjectionContextService
 from src.services.strength_brief import StrengthBriefResult
 from src.services.symptom_check import EASING_CHEST_QUESTION
+from src.services.todays_call import needs_plan_week, stored_call
 from src.services.verdict_grading import FLOOR_HARD_WORK_TO_EASY
 from src.services.walking_brief import WalkingBriefResult
 from src.services.workout_categories import (
@@ -237,7 +240,10 @@ def _normalize_api_verdict(verdict: str | None) -> str | None:
 
 
 def _serialize_analysis(
-    analysis: Analysis | None, feedback: Feedback | None = None
+    analysis: Analysis | None,
+    feedback: Feedback | None = None,
+    *,
+    in_plan_week: bool | None = None,
 ) -> AnalysisOut | None:
     if analysis is None:
         return None
@@ -326,7 +332,23 @@ def _serialize_analysis(
             else None
         ),
         briefWrittenAtUtc=brief_written_at(analysis.raw_response),
+        todaysCall=stored_call(analysis.context_packet, in_plan_week=in_plan_week).to_packet(),
     )
+
+
+async def _in_plan_week(db: AsyncSession, user_id: uuid.UUID, day: date) -> bool:
+    """Does a plan block cover ``day``? Batch 313's rest-day rule, for a morning stored
+    before it with nothing planned."""
+    found = await db.scalar(
+        select(PlanBlock.id)
+        .where(
+            PlanBlock.user_id == user_id,
+            PlanBlock.start_date <= day,
+            PlanBlock.end_date >= day,
+        )
+        .limit(1)
+    )
+    return found is not None
 
 
 def _chest_question_eases(verdict: Any) -> bool:
@@ -822,9 +844,15 @@ def split_stored_morning(
 async def build_envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> DailyLoopEnvelope:
     """Turn one daily-loop snapshot into the envelope the app reads."""
     feedback_map = snapshot.feedback
+    morning = snapshot.morning_analysis
     stored_morning = _serialize_analysis(
-        snapshot.morning_analysis,
-        feedback_map.get(snapshot.morning_analysis.id) if snapshot.morning_analysis else None,
+        morning,
+        feedback_map.get(morning.id) if morning else None,
+        in_plan_week=(
+            await _in_plan_week(db, player.id, morning.subject_date)
+            if morning is not None and needs_plan_week(morning.context_packet)
+            else None
+        ),
     )
     morning_analysis, graded_morning = split_stored_morning(
         snapshot.morning_analysis, stored_morning
