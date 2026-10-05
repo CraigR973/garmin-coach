@@ -305,7 +305,9 @@ async def test_the_activity_poll_skips_the_unbound_refuses_the_foreign_and_keeps
     assert result.counters["garmin_identity_mismatch"] == 1
     assert result.counters["activities"] == 2  # Mark's, and only Mark's
     assert len(fetched_for) == 2  # the unbound profile was never fetched for
-    session.commit.assert_awaited_once()
+    # Batch 312: a release before each of the two fetches, then Mark's own commit;
+    # the refused profile commits nothing of its own.
+    assert session.commit.await_count == 3
 
 
 async def test_the_backfill_refuses_an_unbound_profile_before_any_garmin_call() -> None:

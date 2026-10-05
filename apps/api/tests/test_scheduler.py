@@ -895,10 +895,12 @@ async def test_sync_garmin_daily_syncs_metrics_and_sleep() -> None:
         assert [call.args[:2] for call in profile_calls] == [
             (profile.id, subject_date) for subject_date in expected_dates
         ]
-    # Each date is committed independently after the service stages it.
+    # Each date is committed independently after the service stages it, and
+    # (Batch 312) each fetch is preceded by a commit ending any read, which on
+    # every date but a profile's first writes nothing: 8 dates, 16 commits.
     for call in sync_service.sync_daily.await_args_list:
         assert call.kwargs["commit"] is False
-    assert session.commit.await_count == 8
+    assert session.commit.await_count == 16
 
 
 @pytest.mark.asyncio
