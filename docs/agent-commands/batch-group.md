@@ -11,13 +11,13 @@ returning to the user between them.
 - Optionally an explicit batch list, for example `242,248` — a sub-run of a
   group, used when a group was interrupted and is being resumed.
 
-## What this command is, and what it overrides
+## What this command is
 
-The standing rule in the user's global instructions is that closeout is
-**explicit, never automatic** — the agent stops after `batch-start` and waits.
-**This command is the user's explicit, standing authorisation to run closeout
-for every batch in the named group**, given once at group level instead of
-thirteen times at batch level. That is the entire point of the command.
+The user's global default is that close-out is explicit, but **this project
+overrides it** (`AGENTS.md`, since 2026-09-03): every batch closes out
+automatically once its gate is green. What this command adds is the run itself:
+**one go covers every batch in the named group**, taken back to back without
+returning to the user between them, instead of one go per batch.
 
 It does **not** authorise anything else. Every guardrail in `batch-start.md`,
 `batch-verify.md` and `closeout.md` still applies in full, and the stop

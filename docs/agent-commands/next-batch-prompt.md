@@ -28,7 +28,12 @@ Generate the prompt for the next unshipped batch.
      pointers all decay between authoring and build, and a spec that names the
      wrong pattern will be followed faithfully into a broken result (see
      `batch-start.md` step 4)
-   - instruction to avoid `/closeout` until explicitly requested
+   - the close-out rule from `AGENTS.md`: close-out is automatic on this project,
+     so once the gate is green the session runs `closeout.md` straight through
+     (merge, deploy, verify production, docs, ledger) without waiting to be
+     asked, and stops only at the steps `AGENTS.md` keeps explicit (Mark-facing
+     copy Craig has not signed off, destructive or irreversible data operations,
+     credential and hosting changes, spend beyond what the close-out needs)
 5. Include any known previous-session notes from `STATUS.md` that affect the
    batch.
 6. Do not modify code or docs unless the user separately asks for edits.
