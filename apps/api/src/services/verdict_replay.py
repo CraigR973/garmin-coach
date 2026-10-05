@@ -52,12 +52,13 @@ from src.models.profile import Profile
 from src.services.daily_metric_phase import prefer_morning
 from src.services.delivered_verdict import delivered_rows
 from src.services.holiday_pause import HolidayPauseService, HolidayWindow
-from src.services.morning_verdict import morning_verdict
+from src.services.morning_verdict import PLANNED_REST_REASON, morning_verdict
 from src.services.sleep_history import (
     BASELINE_SPECS,
     BaselineSample,
     compute_metric_baselines,
 )
+from src.services.todays_call import rest_reason
 from src.services.verdict_grading import (
     ACTION_AS_PLANNED,
     ACTION_HOLD_TARGETS,
@@ -96,6 +97,8 @@ RULE_FLAGS: dict[str, str] = {
     "yesterday_counts_on_hard_days": "Batch 305, a hard yesterday only before a hard session",
     "tired_morning_choices": "Batch 306, a tired morning's choices",
     "hrv_holiday_catch_up": "Batch 310, the HRV average catching up after a holiday",
+    # Not a GradingInputs flag: the replay's own reading of a stored morning's rest day.
+    "planned_rest_day": "Batch 313, a day with nothing planned inside a plan week is a rest day",
 }
 
 
@@ -516,6 +519,17 @@ def replay_morning(
     manual_entries = _manual_entries_from_packet(day, read.manual_entries)
     planned = _planned_workouts_from_packet(day, read.planned_workouts)
     rest_day = read.rest_day if isinstance(read.rest_day, Mapping) else {}
+    # Batch 313: a morning stored before the rest-day rule is read with it: a day with
+    # nothing planned inside a week a plan block covers is a planned rest day. It moves
+    # no colour (an empty day has no session for the rest flag to touch).
+    if "planned_rest_day" not in rules_off and "insidePlanWeek" not in rest_day:
+        in_plan_week = any(block.start_date <= day <= block.end_date for block in blocks)
+        reason = rest_reason(
+            {"restDay": rest_day, "plannedWorkouts": read.planned_workouts},
+            in_plan_week=in_plan_week,
+        )
+        if reason == PLANNED_REST_REASON:
+            rest_day = {**rest_day, "isRestDay": True, "reason": PLANNED_REST_REASON}
     window_start = day - timedelta(days=HISTORY_DAYS)
     recent_metrics = [row for d, row in metrics.items() if window_start <= d < day]
     recent_sleeps = [row for d, row in sleeps.items() if window_start <= d < day]
@@ -1200,12 +1214,34 @@ def render_rule_comparison(
             or _action_list(m) != _action_list(before[m.subject_date])
         )
     ]
+    rest_flips = [
+        m
+        for m in report.mornings
+        if m.subject_date in before and m.rest_day != before[m.subject_date].rest_day
+    ]
     lines = [
         f"## What the rule changes: {names}",
         "",
         f"- **Changed:** {len(changed)} of {len(report.mornings)} mornings",
         f"- **Red, without → with:** {sum(m.graded.status == 'Red' for m in without.mornings)}"
         f" → {sum(m.graded.status == 'Red' for m in report.mornings)}",
+        "- **Ladder (the rollback) changed:** "
+        + str(
+            sum(
+                1
+                for m in report.mornings
+                if m.subject_date in before
+                and m.ladder_label != before[m.subject_date].ladder_label
+            )
+        )
+        + " mornings",
+        f"- **Rest days, without → with:** {sum(m.rest_day for m in without.mornings)}"
+        f" → {sum(m.rest_day for m in report.mornings)}"
+        + (
+            " (" + ", ".join(f"{m.subject_date:%-d %b}" for m in rest_flips) + ")"
+            if rest_flips
+            else ""
+        ),
         "",
     ]
     if changed:

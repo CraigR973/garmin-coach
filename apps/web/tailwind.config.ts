@@ -70,6 +70,11 @@ export default {
           DEFAULT: 'var(--error)',
           text: 'var(--error-text)',
         },
+        // Batch 313: recovery and rest days.
+        recover: {
+          DEFAULT: 'var(--recover)',
+          text: 'var(--recover-text)',
+        },
         locked: 'var(--locked)',
         live: {
           DEFAULT: 'var(--live)',

@@ -112,7 +112,10 @@ from src.services.workout_completion import WORKOUT_STATUS_COMPLETED
 # Batch 296: the packet gained keySessions and cautiousDays, the measure of whether
 # caution is costing him training, and the prompt tells the review to report them.
 # Unfiltered again: nothing is withdrawn.
-PROMPT_VERSION = "reviews-v10-2026-09-29"
+# Batch 313: the review names his mornings in today's call's words (recovered, some
+# fatigue, still recovering), never colours. Unfiltered: nothing is withdrawn, and no
+# past review is regenerated.
+PROMPT_VERSION = "reviews-v11-2026-10-05"
 PACKET_VERSION = 3
 
 PERIOD_WEEKLY = "weekly"
@@ -129,6 +132,15 @@ _ANALYSIS_TYPE_BY_PERIOD = {
 # Indoor temperature at/above this is treated as a thermal-disruption night
 # (matches the morning-analysis default; the sleep protocol KB can refine it).
 THERMAL_DISRUPTION_C = 20.0
+
+#: Batch 313: the review counts his mornings in the words Home and the brief use (signed
+#: off by Craig on Mark's behalf, 4 Oct 2026), never as colours.
+REVIEW_MORNINGS_RULE = """Speak to Mark about his mornings in today's call's words, never
+in colours. rollup.verdicts counts them: green mornings are recovered, amber some fatigue
+and red still recovering, so write, for example,
+"Mornings: 3 recovered · 2 some fatigue · 2 still recovering", and call a rest day a rest
+day. The same holds for rollup.cautiousDays. Never write Green, Amber, Red or verdict to
+him."""
 
 SYSTEM_PROMPT = f"""You are CheckMark, a private endurance and sleep coach \
 writing a periodic training-block review.
@@ -177,6 +189,8 @@ sessions (VO2, threshold-type and long rides) his plan held and how many he comp
 and rollup.cautiousDays how many mornings were Amber or Red and which domains of the \
 graded verdict caused them. Report both plainly — they measure whether caution is \
 costing him training — and never name a cause rollup.cautiousDays does not list.
+
+{REVIEW_MORNINGS_RULE}
 
 {CROSS_SURFACE_AGREEMENT_RULE}"""
 

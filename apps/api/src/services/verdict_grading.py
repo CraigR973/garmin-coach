@@ -1283,8 +1283,23 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
             for item in (*domains, *raw_domains)
         )
     )
+    # Batch 313: what made a tired morning tired, for today's call's words. Sleep leads
+    # when both are marked (313, settled at its start); Garmin's own score counts, as
+    # above, so a night the age credit lifted is still the sleep wording.
+    tired_by = (
+        None
+        if not tired
+        else "sleep"
+        if any(
+            item.rating == "marked" and item.domain == DOMAIN_SLEEP
+            for item in (*domains, *raw_domains)
+        )
+        else "feel"
+    )
     return replace(
-        verdict, actions=session_actions(verdict, inputs, clearly_off=clearly_off, tired=tired)
+        verdict,
+        actions=session_actions(verdict, inputs, clearly_off=clearly_off, tired=tired),
+        references={**verdict.references, "tiredBy": tired_by},
     )
 
 

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -253,6 +253,17 @@ const historicalSnapshot: DailyLoopEnvelope = {
       ...snapshot.data.morningAnalysis!,
       id: '33333333-3333-4333-8333-333333333333',
       outputMarkdown: '**Steadier night**',
+      verdict: 'amber',
+      // Batch 313: that morning's call, as stored.
+      todaysCall: {
+        state: 5,
+        key: 'take_the_edge_off',
+        headline: 'Take the edge off',
+        line: "There's some fatigue about. Ride the full session with the hard efforts eased a zone; easy riding stays as planned.",
+        reading: 'some_fatigue',
+        readingWords: 'Some fatigue',
+        look: 'adjust',
+      },
       metricsVsBaselines: [
         {
           metricKey: 'hrv_7_day_avg_ms',
@@ -388,6 +399,11 @@ function renderWithSnapshot(
               '2026-06-19': 'amber',
               '2026-06-20': 'green',
             },
+            // Batch 313: each day's reading and rest flag, as today's call reads them.
+            days: {
+              '2026-06-19': { reading: 'some_fatigue', restDay: false },
+              '2026-06-20': { reading: 'recovered', restDay: false },
+            },
           },
           meta: { generatedAtUtc: '2026-06-20T06:41:00Z' },
           errors: [],
@@ -512,7 +528,7 @@ describe('SleepPage', () => {
 
     await screen.findByText("Last night's sleep");
     await user.click(screen.getByRole('button', { name: /show calendar/i }));
-    await user.click(screen.getByRole('button', { name: 'Friday 19 June 2026 - Amber verdict' }));
+    await user.click(screen.getByRole('button', { name: 'Friday 19 June 2026 - Some fatigue' }));
 
     expect(
       await screen.findByRole('heading', {
@@ -523,7 +539,12 @@ describe('SleepPage', () => {
     expect(await screen.findByText('The whole day')).toBeTruthy();
     expect(screen.getByText('Tempo ride')).toBeTruthy();
     expect(screen.getByText('Mobility reset')).toBeTruthy();
-    expect(screen.getByText('Good to go')).toBeTruthy();
+    // Batch 313: that morning's call and reading, never a colour or "verdict".
+    const dayCall = screen.getByTestId('day-call');
+    expect(within(dayCall).getByText('Take the edge off')).toBeTruthy();
+    expect(within(dayCall).getByText('Some fatigue')).toBeTruthy();
+    expect(dayCall.textContent ?? '').not.toMatch(/\b(green|amber|red|verdict)\b/i);
+    expect(screen.queryByText('Good to go')).toBeNull();
     expect((await screen.findByTestId('overnight-room-verdict-badge')).textContent).toBe('Green');
     expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/daily-loop?subject_date=2026-06-19');
     expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/bedroom/overnight?date=2026-06-18');
@@ -548,7 +569,7 @@ describe('SleepPage', () => {
 
     await user.click(screen.getByRole('button', { name: /show calendar/i }));
     expect(screen.getByText('June 2026')).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: 'Friday 19 June 2026 - Amber verdict' }));
+    await user.click(screen.getByRole('button', { name: 'Friday 19 June 2026 - Some fatigue' }));
 
     expect(await screen.findByRole('heading', { name: /Sleep for Friday.*19/ })).toBeTruthy();
     expect(screen.getByText('The whole day')).toBeTruthy();

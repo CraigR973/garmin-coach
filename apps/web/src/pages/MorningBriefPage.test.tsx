@@ -26,6 +26,75 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
+// Batch 313: the calls the server stores with each morning, in the signed-off words
+// (docs/drafts/2026-10-04-morning-call-wording.md). The page renders them word for word;
+// which call a morning gets is pinned on the server (test_batch_313_todays_call.py).
+const CALLS = {
+  greenLight: {
+    state: 1,
+    key: 'green_light',
+    headline: 'Green light',
+    line: "You're recovered. Today's session is on as written. Make it count.",
+    reading: 'recovered',
+    readingWords: 'Recovered',
+    look: 'go',
+  },
+  holdTargets: {
+    state: 2,
+    key: 'hold_targets',
+    headline: 'Green light — hold the targets',
+    line: "One reading's a touch off. If there's a better day this week, move the hard session there; if not, ride it and hold the targets.",
+    reading: 'recovered',
+    readingWords: 'Recovered',
+    look: 'go',
+  },
+  lightWeek: {
+    state: 3,
+    key: 'light_week',
+    headline: 'As planned — hold the targets',
+    line: "It's your consolidation week, so the session's already light. Ride it as written and hold the targets.",
+    reading: 'some_fatigue',
+    readingWords: 'Some fatigue',
+    look: 'go',
+  },
+  takeTheEdgeOff: {
+    state: 5,
+    key: 'take_the_edge_off',
+    headline: 'Take the edge off',
+    line: "There's some fatigue about. Ride the full session with the hard efforts eased a zone; easy riding stays as planned.",
+    reading: 'some_fatigue',
+    readingWords: 'Some fatigue',
+    look: 'adjust',
+  },
+  noTraining: {
+    state: 11,
+    key: 'no_training',
+    headline: 'No training today',
+    line: "The symptoms you've reported rule out training today.",
+    reading: 'still_recovering',
+    readingWords: 'Still recovering',
+    look: 'warning',
+  },
+  offTheBike: {
+    state: 11,
+    key: 'off_the_bike',
+    headline: 'Take today off the bike',
+    line: 'An acute recovery signal rules out riding today.',
+    reading: 'recovered',
+    readingWords: 'Recovered',
+    look: 'warning',
+  },
+  holiday: {
+    state: 15,
+    key: 'holiday',
+    headline: 'Holiday',
+    line: "Enjoy the break. The plan picks up when you're home.",
+    reading: 'some_fatigue',
+    readingWords: 'Some fatigue',
+    look: 'recover',
+  },
+};
+
 const snapshot: DailyLoopEnvelope = {
   data: {
     subjectDate: '2026-06-20',
@@ -36,7 +105,8 @@ const snapshot: DailyLoopEnvelope = {
       verdict: 'green',
       promptVersion: 'morning-v1',
       modelName: 'claude-sonnet-4-6',
-      outputMarkdown: '**Green light**\n\nRested and ready.',
+      outputMarkdown: "## Today's call\n\nRested and ready.",
+      todaysCall: CALLS.greenLight,
       planAdjustments: ['Keep the scheduled ride.'],
       reasons: ['Sleep and HRV are in range.'],
       readinessInterpretation: 'load_driven',
@@ -176,7 +246,7 @@ describe('morning brief page', () => {
   it('renders the full morning brief page', async () => {
     renderWithQuery(<MorningBriefPage />);
     expect(await screen.findByText('Coach read')).toBeTruthy();
-    expect(screen.getByText('Green light')).toBeTruthy();
+    expect(screen.getByText('Rested and ready.')).toBeTruthy();
     expect(screen.getByRole('button', { name: /listen to brief/i })).toBeTruthy();
   });
 
@@ -269,7 +339,7 @@ describe('morning brief page', () => {
   it('puts the deterministic verdict before the supporting brief detail (Batch 244)', async () => {
     renderWithQuery(<MorningBriefPage />);
 
-    const verdict = await screen.findByRole('region', { name: /today.s verdict/i });
+    const verdict = await screen.findByRole('region', { name: /today.s call/i });
     const metrics = screen.getByText("Last night's metrics");
     const coachRead = screen.getByText('Coach read');
 
@@ -279,6 +349,7 @@ describe('morning brief page', () => {
 
   it('renders the deterministic acute escalation and standing medical boundary (Batch 246)', async () => {
     const withAcuteBoundary = structuredClone(snapshot);
+    withAcuteBoundary.data.morningAnalysis!.todaysCall = CALLS.offTheBike;
     withAcuteBoundary.data.morningAnalysis!.acutePhysiology = {
       status: 'triggered',
       standingLine:
@@ -319,6 +390,7 @@ describe('morning brief page', () => {
   it('says "No training today" when a reported symptom rules training out (Batch 294)', async () => {
     const withFloor = structuredClone(snapshot);
     withFloor.data.morningAnalysis!.verdict = 'red';
+    withFloor.data.morningAnalysis!.todaysCall = CALLS.noTraining;
     withFloor.data.morningAnalysis!.acutePhysiology = {
       status: 'triggered',
       standingLine:
@@ -354,11 +426,18 @@ describe('morning brief page', () => {
     expect(within(alert).getByText(/fever, aches or a chest infection/i)).toBeTruthy();
   });
 
-  it('shows the held headline when the graded verdict holds the targets (Batch 296)', async () => {
-    const held = withRide(structuredClone(snapshot));
-    held.data.morningAnalysis!.verdictEngine = 'graded';
-    held.data.morningAnalysis!.verdictHeld = true;
-    apiFetchMock.mockImplementation(() => Promise.resolve(held));
+  // Batch 313: the page renders the stored call word for word, with its reading, and
+  // never a colour or "verdict". Which call a morning gets is the server's one rule.
+  it.each([
+    ['a held morning with a hard session', CALLS.holdTargets],
+    ['a light week that holds the session', CALLS.lightWeek],
+    ['an eased hard session', CALLS.takeTheEdgeOff],
+    ['a holiday', CALLS.holiday],
+  ])('renders the call for %s word for word (Batch 313)', async (_name, call) => {
+    const morning = withRide(structuredClone(snapshot));
+    morning.data.morningAnalysis!.verdict = 'amber';
+    morning.data.morningAnalysis!.todaysCall = call;
+    apiFetchMock.mockImplementation(() => Promise.resolve(morning));
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={queryClient}>
@@ -368,90 +447,16 @@ describe('morning brief page', () => {
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByText('Good to go — hold your targets')).toBeTruthy();
-    expect(
-      screen.getByText(
-        'One thing is a little off: ride as planned, and hold your targets rather than pushing past them.',
-      ),
-    ).toBeTruthy();
-  });
-
-  // Batch 298: one story. Wording signed off by Craig on Mark's behalf, 1 Oct 2026.
-  it('says the session stands on a light-week Amber, naming the week (Batch 298)', async () => {
-    const lightWeek = withRide(structuredClone(snapshot));
-    lightWeek.data.morningAnalysis!.verdict = 'amber';
-    lightWeek.data.morningAnalysis!.verdictEngine = 'graded';
-    lightWeek.data.morningAnalysis!.verdictLightWeekHold = 'consolidation';
-    apiFetchMock.mockImplementation(() => Promise.resolve(lightWeek));
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
-          <MorningBriefPage />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-
-    expect(await screen.findByText('Ride as planned — hold your targets')).toBeTruthy();
-    expect(
-      screen.getByText(
-        "It's your consolidation week, so today's session stays as planned: hold your targets.",
-      ),
-    ).toBeTruthy();
+    const hero = await screen.findByRole('region', { name: "Today's call" });
+    expect(within(hero).getByText(call.headline)).toBeTruthy();
+    expect(within(hero).getByText(call.line)).toBeTruthy();
+    expect(within(hero).getByText(call.readingWords)).toBeTruthy();
+    expect(hero.getAttribute('data-look')).toBe(call.look);
+    // The brief page has no greeting; Home adds it.
+    expect(within(hero).queryByText(/good morning/i)).toBeNull();
+    expect(hero.textContent ?? '').not.toMatch(/\b(amber|red|verdict)\b/i);
     expect(screen.queryByText('Ease the hard work; easy riding stays as planned.')).toBeNull();
-  });
-
-  it('says what Home says on a rest or holiday day, as on 1 Oct (Batch 298)', async () => {
-    // 1 Oct: a graded Amber on a holiday rest day. Home said the day was for recovery
-    // and the brief said "Ease the hard work".
-    const holiday = structuredClone(snapshot);
-    holiday.data.morningAnalysis!.verdict = 'amber';
-    holiday.data.morningAnalysis!.verdictEngine = 'graded';
-    apiFetchMock.mockImplementation(() => Promise.resolve(holiday));
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
-          <MorningBriefPage />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-
-    expect(
-      await screen.findByText("Today's a rest day — recovery is the plan, not training."),
-    ).toBeTruthy();
-    expect(screen.queryByText('Ease the hard work; easy riding stays as planned.')).toBeNull();
-  });
-
-  it('eases only the hard work on a graded Amber, and keeps the old line for a ladder read (Batch 296)', async () => {
-    const graded = withRide(structuredClone(snapshot));
-    graded.data.morningAnalysis!.verdict = 'amber';
-    graded.data.morningAnalysis!.verdictEngine = 'graded';
-    apiFetchMock.mockImplementation(() => Promise.resolve(graded));
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const { unmount } = render(
-      <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
-          <MorningBriefPage />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-    expect(await screen.findByText('Ease the hard work; easy riding stays as planned.')).toBeTruthy();
-    unmount();
-
-    // A read stored before the switch carries no engine: the ladder's line stands.
-    const ladder = withRide(structuredClone(snapshot));
-    ladder.data.morningAnalysis!.verdict = 'amber';
-    apiFetchMock.mockImplementation(() => Promise.resolve(ladder));
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <MemoryRouter>
-          <MorningBriefPage />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-    expect(await screen.findByText('Ease back — shorter, and drop the hard stuff.')).toBeTruthy();
-    expect(screen.queryByText('Ease the hard work; easy riding stays as planned.')).toBeNull();
+    expect(screen.queryByText("Today's a rest day — recovery is the plan, not training.")).toBeNull();
   });
 
   it('shows the exact insufficient-data line instead of a Green interpretation (Batch 246)', async () => {
@@ -517,7 +522,7 @@ describe('morning brief page', () => {
     expect(within(block).getByText('Wind-down breathwork tonight')).toBeTruthy();
     // The coaching reasoning still renders below the action block.
     expect(screen.getByText('Coach read')).toBeTruthy();
-    expect(screen.getByText('Green light')).toBeTruthy();
+    expect(screen.getByText('Rested and ready.')).toBeTruthy();
   });
 
   it('plays, pauses, resumes, and stops the brief audio (Batch 106)', async () => {
@@ -527,7 +532,7 @@ describe('morning brief page', () => {
 
     await user.click(listen);
     expect(speechSynthesisMock.speak).toHaveBeenCalledTimes(1);
-    expect(speechSynthesisMock.speak.mock.calls[0]?.[0]?.text).toBe('Green light\n\nRested and ready.');
+    expect(speechSynthesisMock.speak.mock.calls[0]?.[0]?.text).toBe("Today's call\n\nRested and ready.");
     expect(screen.getByRole('button', { name: /pause brief audio/i })).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: /pause brief audio/i }));
@@ -732,6 +737,7 @@ describe('morning brief page', () => {
       return {
         ...snapshot.data.morningAnalysis!,
         verdict: 'red' as const,
+        todaysCall: CALLS.noTraining,
         modelName: null,
         outputMarkdown: '',
         todayActions: [{ kind: 'thermal' as const, title: 'Pre-cool the bedroom', href: '/sleep' }],
@@ -767,7 +773,7 @@ describe('morning brief page', () => {
       );
       renderBriefPage();
 
-      const hero = await screen.findByRole('region', { name: "Today's verdict" });
+      const hero = await screen.findByRole('region', { name: "Today's call" });
       expect(within(hero).getByText('No training today')).toBeTruthy();
       expect(screen.getByText(SYMPTOM_NOTICES.chest_heart.notice)).toBeTruthy();
       expect(within(screen.getByTestId('today-actions')).getByText('Pre-cool the bedroom')).toBeTruthy();
@@ -796,7 +802,7 @@ describe('morning brief page', () => {
       );
       renderBriefPage();
 
-      expect(await screen.findByRole('region', { name: "Today's verdict" })).toBeTruthy();
+      expect(await screen.findByRole('region', { name: "Today's call" })).toBeTruthy();
       const card = screen.getByRole('status', { name: 'Writing your brief' });
       expect(card.textContent).toContain(
         "Today's call and your plan are ready above. The written brief lands in a moment.",

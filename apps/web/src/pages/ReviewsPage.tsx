@@ -198,9 +198,11 @@ function ReviewBody({
             ['Total load', fmt(rollup.trainingLoad.totalLoad)],
             ['Total time', fmt(rollup.trainingLoad.totalDurationMin, ' min')],
             ['Plan source', sourceLabel(rollup.adherence.sourceState)],
+            // Batch 313: how recovered he was each morning, in the call's words (signed
+            // off by Craig on Mark's behalf, 4 Oct 2026), never a colour grade.
             [
-              'Verdicts',
-              `${rollup.verdicts.green}G · ${rollup.verdicts.amber}A · ${rollup.verdicts.red}R`,
+              'Mornings',
+              `${rollup.verdicts.green} recovered · ${rollup.verdicts.amber} some fatigue · ${rollup.verdicts.red} still recovering`,
             ],
           ]}
           note={planSourceNote ?? undefined}

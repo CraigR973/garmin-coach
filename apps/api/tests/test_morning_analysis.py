@@ -152,6 +152,8 @@ def test_holiday_all_skipped_day_is_framed_as_rest_without_reviving_ride() -> No
         "reason": "holiday",
         "insideHolidayWindow": True,
         "allPlannedWorkoutsSkipped": True,
+        # Batch 313: whether a plan week covers the day, for the planned-rest rule.
+        "insidePlanWeek": False,
         "holidayWindows": [
             {
                 "startDate": "2026-07-12",
@@ -380,7 +382,7 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
             "metrics_vs_baselines",
             "thermal_environment",
             "experiment_update",
-            "todays_verdict",
+            "todays_call",
         ]
         assert "`## Experiment update`" in fake_client.last_prompt
         assert packet["sleep"]["ageAdjustedScore"] == 71
@@ -460,7 +462,7 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
                 "metrics_vs_baselines",
                 "thermal_environment",
                 "experiment_update",
-                "todays_verdict",
+                "todays_call",
             ],
         )
 
@@ -1699,11 +1701,12 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v56")
+    assert PROMPT_VERSION.startswith("morning-analysis-v57")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
-    assert "status is\nskipped" in SYSTEM_PROMPT
+    # Batch 313 reflowed the graded rest-day paragraph; the rule is the words, not the wrap.
+    assert "status is skipped" in " ".join(SYSTEM_PROMPT.split())
     assert "experimentLoop.experiments" in SYSTEM_PROMPT
     assert "never ask Mark to notice" in SYSTEM_PROMPT
     assert 'Unknown application is unknown, never "not applied"' in SYSTEM_PROMPT

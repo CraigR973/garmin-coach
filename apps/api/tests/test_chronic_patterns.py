@@ -238,10 +238,7 @@ def test_non_rem_suggestion_carries_no_rotation() -> None:
     assert result.status == "active"
     readiness = next(item for item in result.items if item.metric_key == "readiness_score")
     assert readiness.rotation is None
-    assert (
-        "Pair the suggestion with the existing Green/Amber/Red read; do not chase load."
-        in readiness.actions
-    )
+    assert "Pair the suggestion with today's call; do not chase load." in readiness.actions
     assert result.action_signal.triggered is True
     assert result.action_signal.trigger_sources == ("sustained_recovery_marker",)
     assert result.action_signal.recovery_markers == ("readiness_score",)
@@ -893,7 +890,7 @@ def test_idle_chronic_action_is_not_narrated() -> None:
     where nothing was triggered. Pinned to the version bump that carries it."""
     from src.services.morning_analysis import PROMPT_VERSION, SYSTEM_PROMPT
 
-    assert PROMPT_VERSION.startswith("morning-analysis-v56")
+    assert PROMPT_VERSION.startswith("morning-analysis-v57")
     assert "chronicAction.triggered is false" in SYSTEM_PROMPT
     assert "internal bookkeeping with nothing to" in SYSTEM_PROMPT
     # The never-soften rule must survive the gate, not be replaced by it.

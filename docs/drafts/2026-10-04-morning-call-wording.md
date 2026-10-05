@@ -3,8 +3,8 @@
 **Status: signed off by Craig on Mark's behalf, 4 Oct 2026, as drafted** (no message to Mark),
 with three decisions: the words below; blue for recovery and rest days and red only for health
 warnings; and the rest-day rule (a day with nothing planned inside a week the plan covers is a
-rest day). To be built as Batch 313; not started, since Craig asked for it to be written up, not
-built yet.
+rest day). Built as Batch 313 (5 Oct), with two lines Craig added that morning for cases the draft
+did not cover (state 4's still-recovering version and state 7's feel version, below).
 Covers every Mark-facing line that names the morning's colour.
 
 ## The idea
@@ -64,6 +64,10 @@ Home puts "Good morning, Mark." in front of each line, as now.
 - Headline: As planned
 - Line: There's some fatigue about, and today's plan already suits it. Keep it comfortable.
 - Chip: Some fatigue · Look: green, tick
+- *Added by Craig, 5 Oct (Batch 313's start): still recovering with no ride planned, only
+  strength or mobility, which the engine keeps as planned.* Headline: As planned. Line: Your
+  body's still recovering, and today's plan already suits it. Keep it comfortable. Chip:
+  Still recovering · Look: green, tick
 
 **5. Some fatigue, hard session eased**
 - Headline: Take the edge off
@@ -83,6 +87,8 @@ Home puts "Good morning, Mark." in front of each line, as now.
 - Headline: Long ride — shorter if you like
 - Line: Sleep let you down last night. Ride it as planned, or take the shorter version in one
   tap.
+  - *When it's how he feels (Craig, 5 Oct):* You're feeling flat this morning. Ride it as
+    planned, or take the shorter version in one tap.
 - Chip: Some fatigue · Look: amber, gauge
 
 **8. Still recovering, hard session**

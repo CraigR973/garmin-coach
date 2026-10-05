@@ -104,6 +104,7 @@ from src.services.interval_workout_editor import (
 )
 from src.services.learned_context import LEARNED_CONTEXT_PROMPT_GUARDRAIL
 from src.services.prompt_metadata import prompt_system_hash
+from src.services.todays_call import TODAYS_CALL_RULE
 from src.services.workload_budget import workload_slot
 
 __all__ = [
@@ -162,7 +163,10 @@ QUESTION_MAX_LENGTH = 1000
 # Batch 297: v18 composes the new notes_only_add_caution floor, so the coach quotes
 # what his note said and never uses it to argue the colour down. UNFILTERED: nothing
 # withdrawn.
-PROMPT_VERSION = "coach-chat-v18-2026-09-30"
+# Batch 313: v19 speaks to Mark in today's call's words (TODAYS_CALL_RULE), the words
+# Home and the brief use, and answers in kind if he uses a colour. UNFILTERED: nothing
+# withdrawn, and no past answer is regenerated.
+PROMPT_VERSION = "coach-chat-v19-2026-10-05"
 #: Batch 264: the marker now carries the change. It was a bare flag meaning "I
 #: offered something"; the offer itself lived only in prose, so the app could
 #: never act on it. ``brief_chat`` is UNFILTERED in ``prompt_artifacts`` with no
@@ -217,6 +221,8 @@ a different day or a different session - carry them forward rather than
 pretending they did not happen.
 
 {GROUNDING_RULE}
+
+{TODAYS_CALL_RULE}
 
 Where the current state and a read disagree, the current state is the app's
 latest record and the read is the app's earlier record; say which is which

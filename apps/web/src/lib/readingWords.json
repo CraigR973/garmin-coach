@@ -1,0 +1,8 @@
+{
+  "readings": {
+    "recovered": "Recovered",
+    "some_fatigue": "Some fatigue",
+    "still_recovering": "Still recovering"
+  },
+  "restDay": "Rest day"
+}

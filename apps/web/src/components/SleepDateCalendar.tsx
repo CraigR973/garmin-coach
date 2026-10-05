@@ -8,36 +8,73 @@ import {
   parseISO,
   subDays,
 } from 'date-fns';
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  BatteryCharging,
+  BedDouble,
+  CalendarDays,
+  CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Gauge,
+  type LucideIcon,
+} from 'lucide-react';
+import type { SleepCalendarDay } from '@coach/shared';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import READINGS from '@/lib/readingWords.json';
 
 const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-type VerdictTone = 'green' | 'amber' | 'red';
+/** Batch 313: a day shows how recovered he was that morning (Recovered, Some fatigue,
+ *  Still recovering) and whether it was a rest day, never a colour grade. Recovery and
+ *  rest are a calm blue; red is kept for health warnings, which a calendar does not show. */
+type DayKind = 'recovered' | 'some_fatigue' | 'still_recovering' | 'rest';
 
-const VERDICT_STYLES: Record<VerdictTone, string> = {
-  green: 'border-emerald-500/40 bg-emerald-500/12 text-emerald-100 hover:border-emerald-400/60 hover:bg-emerald-500/18',
-  amber: 'border-amber-500/50 bg-amber-500/12 text-amber-100 hover:border-amber-400/70 hover:bg-amber-500/18',
-  red: 'border-rose-500/50 bg-rose-500/12 text-rose-100 hover:border-rose-400/70 hover:bg-rose-500/18',
+const DAY_STYLES: Record<DayKind, string> = {
+  recovered: 'border-emerald-500/40 bg-emerald-500/12 text-emerald-100 hover:border-emerald-400/60 hover:bg-emerald-500/18',
+  some_fatigue: 'border-amber-500/50 bg-amber-500/12 text-amber-100 hover:border-amber-400/70 hover:bg-amber-500/18',
+  still_recovering: 'border-sky-500/50 bg-sky-500/12 text-sky-100 hover:border-sky-400/70 hover:bg-sky-500/18',
+  rest: 'border-sky-500/50 bg-sky-500/12 text-sky-100 hover:border-sky-400/70 hover:bg-sky-500/18',
 };
 
-const VERDICT_SELECTED_STYLES: Record<VerdictTone, string> = {
-  green: 'border-emerald-400 bg-emerald-500 text-emerald-950',
-  amber: 'border-amber-300 bg-amber-400 text-amber-950',
-  red: 'border-rose-300 bg-rose-400 text-rose-950',
+const DAY_SELECTED_STYLES: Record<DayKind, string> = {
+  recovered: 'border-emerald-400 bg-emerald-500 text-emerald-950',
+  some_fatigue: 'border-amber-300 bg-amber-400 text-amber-950',
+  still_recovering: 'border-sky-300 bg-sky-400 text-sky-950',
+  rest: 'border-sky-300 bg-sky-400 text-sky-950',
 };
 
-const VERDICT_LABELS: Record<VerdictTone, string> = {
-  green: 'Green verdict',
-  amber: 'Amber verdict',
-  red: 'Red verdict',
+const DAY_ICONS: Record<DayKind, LucideIcon> = {
+  recovered: CheckCircle2,
+  some_fatigue: Gauge,
+  still_recovering: BatteryCharging,
+  rest: BedDouble,
 };
 
-const VERDICT_MARKS: Record<VerdictTone, string> = {
-  green: 'G',
-  amber: 'A',
-  red: 'R',
+const LEGEND: DayKind[] = ['recovered', 'some_fatigue', 'still_recovering', 'rest'];
+
+function dayWords(kind: DayKind): string {
+  return kind === 'rest' ? READINGS.restDay : READINGS.readings[kind];
+}
+
+/** One stored morning as the calendar reads it; a client older than Batch 313's API
+ *  falls back to the colour alone. */
+function dayKind(
+  day: SleepCalendarDay | undefined,
+  verdict: string | null | undefined,
+): { kind: DayKind; label: string } | null {
+  const reading = day?.reading ?? READING_BY_VERDICT[verdict ?? ''] ?? null;
+  if (!reading || !(reading in READINGS.readings)) return null;
+  const words = READINGS.readings[reading as Exclude<DayKind, 'rest'>];
+  if (day?.restDay) return { kind: 'rest', label: `${READINGS.restDay} · ${words}` };
+  return { kind: reading as DayKind, label: words };
+}
+
+const READING_BY_VERDICT: Record<string, string> = {
+  green: 'recovered',
+  amber: 'some_fatigue',
+  red: 'still_recovering',
 };
 
 export function SleepDateCalendar({
@@ -47,13 +84,15 @@ export function SleepDateCalendar({
   onDisplayMonthChange,
   onSelectDate,
   verdictsByDate = {},
+  daysByDate = {},
 }: {
   selectedDate: string;
   maxDate: string;
   displayMonth: Date;
   onDisplayMonthChange: (month: Date) => void;
   onSelectDate: (date: string) => void;
-  verdictsByDate?: Record<string, VerdictTone | null | undefined>;
+  verdictsByDate?: Record<string, string | null | undefined>;
+  daysByDate?: Record<string, SleepCalendarDay | undefined>;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -151,21 +190,22 @@ export function SleepDateCalendar({
                 </Button>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2 text-xs text-text-secondary" aria-label="Verdict legend">
-              {(['green', 'amber', 'red'] as const).map((tone) => (
-                <div
-                  key={tone}
-                  className={cn(
-                    'inline-flex items-center gap-2 rounded-full border px-2.5 py-1',
-                    VERDICT_STYLES[tone],
-                  )}
-                >
-                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-current/30 bg-bg/40 text-2xs font-semibold">
-                    {VERDICT_MARKS[tone]}
-                  </span>
-                  <span>{VERDICT_LABELS[tone].replace(' verdict', '')}</span>
-                </div>
-              ))}
+            <div className="flex flex-wrap gap-2 text-xs text-text-secondary" aria-label="Calendar legend">
+              {LEGEND.map((kind) => {
+                const Icon = DAY_ICONS[kind];
+                return (
+                  <div
+                    key={kind}
+                    className={cn(
+                      'inline-flex items-center gap-2 rounded-full border px-2.5 py-1',
+                      DAY_STYLES[kind],
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" aria-hidden />
+                    <span>{dayWords(kind)}</span>
+                  </div>
+                );
+              })}
             </div>
             <div className="grid grid-cols-7 gap-1 text-center text-2xs uppercase tracking-[0.2em] text-text-muted">
               {WEEKDAY_LABELS.map((label) => (
@@ -181,23 +221,24 @@ export function SleepDateCalendar({
                 const selected = isSameDay(day, selectedDateObj);
                 const inMonth = isSameMonth(day, displayMonth);
                 const isToday = isSameDay(day, maxDateObj);
-                const verdict = verdictsByDate[iso] ?? null;
-                const verdictLabel = verdict ? VERDICT_LABELS[verdict] : 'No stored verdict';
+                const shown = dayKind(daysByDate[iso], verdictsByDate[iso]);
+                const kind = shown?.kind ?? null;
+                const DayIcon = kind ? DAY_ICONS[kind] : null;
                 return (
                   <button
                     key={iso}
                     type="button"
-                    aria-label={`${format(day, 'EEEE d MMMM yyyy')} - ${verdictLabel}`}
+                    aria-label={`${format(day, 'EEEE d MMMM yyyy')} - ${shown?.label ?? 'No morning saved'}`}
                     disabled={disabled}
                     onClick={() => onSelectDate(iso)}
                     className={cn(
                       'flex min-h-12 flex-col items-center justify-center rounded-xl border px-1 py-2 text-sm transition',
                       selected
-                        ? verdict
-                          ? VERDICT_SELECTED_STYLES[verdict]
+                        ? kind
+                          ? DAY_SELECTED_STYLES[kind]
                           : 'border-primary bg-primary text-on-primary shadow-sm'
-                        : verdict
-                          ? VERDICT_STYLES[verdict]
+                        : kind
+                          ? DAY_STYLES[kind]
                           : 'border-border bg-bg text-text-primary hover:border-primary/40 hover:bg-surface-elevated',
                       !inMonth && !selected ? 'text-text-muted/60' : '',
                       disabled
@@ -209,20 +250,13 @@ export function SleepDateCalendar({
                     <div className="mt-1 flex items-center gap-1 text-2xs">
                       <span
                         className={cn(
-                          selected && !verdict ? 'text-on-primary/80' : 'text-text-muted',
-                          selected && verdict ? 'text-current/75' : '',
+                          selected && !kind ? 'text-on-primary/80' : 'text-text-muted',
+                          selected && kind ? 'text-current/75' : '',
                         )}
                       >
                         {isToday ? 'Today' : format(day, 'EEE')}
                       </span>
-                      {verdict ? (
-                        <span
-                          aria-hidden
-                          className="inline-flex min-h-4 min-w-4 items-center justify-center rounded-full border border-current/30 bg-bg/35 px-1 text-3xs font-semibold"
-                        >
-                          {VERDICT_MARKS[verdict]}
-                        </span>
-                      ) : null}
+                      {DayIcon ? <DayIcon aria-hidden className="h-3 w-3" data-testid={`day-mark-${kind}`} /> : null}
                     </div>
                   </button>
                 );

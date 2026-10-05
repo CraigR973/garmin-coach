@@ -496,7 +496,7 @@ class WorkoutDeliveryService:
         if blocks_red_vo2(verdict, ir):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Red verdict blocks VO2 delivery to Zwift",
+                detail="A still-recovering day blocks VO2 delivery to Zwift",
             )
         return verdict
 

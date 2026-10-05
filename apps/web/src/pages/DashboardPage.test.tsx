@@ -36,6 +36,46 @@ vi.mock('@/hooks/useOnlineStatus', () => ({
   useOnlineStatus: () => onlineStatus,
 }));
 
+// Batch 313: the calls the server stores with each morning, in the signed-off words
+// (docs/drafts/2026-10-04-morning-call-wording.md). Home renders them word for word.
+const GREEN_LIGHT_CALL = {
+  state: 1,
+  key: 'green_light',
+  headline: 'Green light',
+  line: "You're recovered. Today's session is on as written. Make it count.",
+  reading: 'recovered',
+  readingWords: 'Recovered',
+  look: 'go',
+};
+const OFF_THE_BIKE_CALL = {
+  state: 11,
+  key: 'off_the_bike',
+  headline: 'Take today off the bike',
+  line: 'An acute recovery signal rules out riding today.',
+  reading: 'some_fatigue',
+  readingWords: 'Some fatigue',
+  look: 'warning',
+};
+const RECOVERY_DAY_CALL = {
+  state: 8,
+  key: 'recovery_day',
+  headline: 'Recovery day',
+  line: "Your body's still recovering. The hard session will do more for you on a fresher day — today, rest or an easy spin.",
+  reading: 'still_recovering',
+  readingWords: 'Still recovering',
+  look: 'recover',
+};
+const HOLIDAY_CALL = {
+  state: 15,
+  key: 'holiday',
+  headline: 'Holiday',
+  line: "Enjoy the break. The plan picks up when you're home.",
+  reading: 'recovered',
+  readingWords: 'Recovered',
+  look: 'recover',
+};
+const GREEN_LIGHT_LINE = "Good morning, Mark. You're recovered. Today's session is on as written. Make it count.";
+
 const baseSnapshot: DailyLoopEnvelope = {
   data: {
     subjectDate: '2026-06-20',
@@ -53,6 +93,7 @@ const baseSnapshot: DailyLoopEnvelope = {
       promptVersion: 'morning-v1',
       modelName: 'claude-sonnet-4-6',
       outputMarkdown: '**Green light**',
+      todaysCall: GREEN_LIGHT_CALL,
       planAdjustments: ['Keep the scheduled ride.'],
       reasons: ['Sleep and HRV are in range.'],
       readinessInterpretation: 'load_driven',
@@ -458,7 +499,7 @@ describe('DashboardPage', () => {
 
     // Today is the primary → expanded: its body controls are live.
     expect(await screen.findByText('Cycle day')).toBeTruthy();
-    expect(screen.getByText('Good morning, Mark. You\'re good to go this morning.')).toBeTruthy();
+    expect(screen.getByText(GREEN_LIGHT_LINE)).toBeTruthy();
     expect(screen.getByText('Tempo ride')).toBeTruthy();
     // Batch 54: one primary (Edit) + one secondary (Swap day) visible directly;
     // Skip is tucked into the "More options" overflow.
@@ -467,12 +508,13 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('button', { name: /more options/i })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^skip$/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /approve & upload/i })).toBeNull();
-    // Batch 50: the verdict renders once (the VerdictHero) — the duplicated Today
-    // header badge was dropped.
-    expect(screen.getAllByText('Good to go').length).toBe(1);
+    // Batch 50: the call renders once (the hero) — the duplicated Today header badge
+    // was dropped. Batch 313: it is today's call, never a colour.
+    expect(screen.getAllByText('Green light').length).toBe(1);
+    expect(screen.queryByText('Good to go')).toBeNull();
     // Batch 115: the greeting/verdict line is folded into VerdictHero itself —
     // no separate paragraph restating it above the hero.
-    expect(screen.getAllByText('Good morning, Mark. You\'re good to go this morning.').length).toBe(1);
+    expect(screen.getAllByText(GREEN_LIGHT_LINE).length).toBe(1);
 
     // Object permanence: the other sections are present but collapsed — their
     // summaries are in the DOM, their (lazy) bodies are not.
@@ -494,6 +536,7 @@ describe('DashboardPage', () => {
   it('surfaces the deterministic acute rest instruction on Home (Batch 246)', async () => {
     const withAcuteBoundary = buildSnapshot((snapshot) => {
       snapshot.data.morningAnalysis!.verdict = 'amber';
+      snapshot.data.morningAnalysis!.todaysCall = OFF_THE_BIKE_CALL;
       snapshot.data.morningAnalysis!.acutePhysiology = {
         status: 'triggered',
         standingLine:
@@ -599,6 +642,7 @@ describe('DashboardPage', () => {
         modelName: null,
         outputMarkdown: '',
         reasons: ['A head cold: easy riding at most.'],
+        todaysCall: RECOVERY_DAY_CALL,
         todayActions: [{ kind: 'thermal', title: 'Pre-cool the bedroom', href: '/sleep' }],
       };
       snapshot.data.morningAnalysis = null;
@@ -613,8 +657,10 @@ describe('DashboardPage', () => {
   it('shows the colour and the day\'s actions while the brief is still being written (Batch 302)', async () => {
     renderPage(gradedSnapshot('generating'));
 
-    const hero = await screen.findByRole('region', { name: "Today's verdict" });
-    expect(within(hero).getByText('Rest or substitute')).toBeTruthy();
+    const hero = await screen.findByRole('region', { name: "Today's call" });
+    expect(within(hero).getByText('Recovery day')).toBeTruthy();
+    expect(within(hero).getByText('Still recovering')).toBeTruthy();
+    expect(within(hero).queryByText('Rest or substitute')).toBeNull();
     const card = screen.getByRole('status', { name: 'Writing your brief' });
     expect(card.textContent).toContain(
       "Today's call and your plan are ready above. The written brief lands in a moment.",
@@ -645,8 +691,8 @@ describe('DashboardPage', () => {
       return base(path, init);
     });
 
-    const hero = await screen.findByRole('region', { name: "Today's verdict" });
-    expect(within(hero).getByText('Rest or substitute')).toBeTruthy();
+    const hero = await screen.findByRole('region', { name: "Today's call" });
+    expect(within(hero).getByText('Recovery day')).toBeTruthy();
     const card = screen.getByRole('status', { name: 'Written brief did not finish' });
     expect(card.textContent).toContain("Couldn't finish your written brief");
     expect(card.textContent).toContain(
@@ -1296,9 +1342,9 @@ describe('DashboardPage', () => {
     expect(await screen.findByText('Cycle + Weights day')).toBeTruthy();
     expect(screen.getByText('Tempo ride')).toBeTruthy();
     expect(screen.getByText('Core strength')).toBeTruthy();
-    // Batch 50: the verdict renders once (the VerdictHero) — not per session, and
-    // no longer duplicated on the Today header.
-    expect(screen.getAllByText('Good to go').length).toBe(1);
+    // Batch 50: the call renders once (the hero) — not per session, and no longer
+    // duplicated on the Today header.
+    expect(screen.getAllByText('Green light').length).toBe(1);
     // Only the bike session gets an Edit control; the strength row has none.
     expect(screen.getAllByRole('button', { name: /^edit$/i }).length).toBe(1);
 
@@ -1901,10 +1947,17 @@ describe('DashboardPage', () => {
           isActive: true,
           activeWindow: { startDate: '2026-07-12', endDate: '2026-07-16' },
         };
+        // Batch 313: the server stores the holiday call with the morning.
+        snapshot.data.morningAnalysis!.todaysCall = HOLIDAY_CALL;
       }),
     );
 
-    await screen.findByText(/today's a rest day/i);
+    const hero = await screen.findByRole('region', { name: "Today's call" });
+    expect(within(hero).getByText('Holiday')).toBeTruthy();
+    expect(
+      within(hero).getByText("Good morning, Mark. Enjoy the break. The plan picks up when you're home."),
+    ).toBeTruthy();
+    expect(hero.getAttribute('data-look')).toBe('recover');
     expect(screen.queryByText(/you're good to go/i)).toBeNull();
   });
 
@@ -2112,7 +2165,7 @@ describe('DashboardPage', () => {
       }),
     );
 
-    const hero = await screen.findByRole('region', { name: "Today's verdict" });
+    const hero = await screen.findByRole('region', { name: "Today's call" });
     expect(within(hero).getByText('How you feel today')).toBeTruthy();
     expect(screen.getByText(/You said: OK · a bit more tired/i)).toBeTruthy();
     expect(screen.queryByText(/6\/10/)).toBeNull();
@@ -2123,7 +2176,7 @@ describe('DashboardPage', () => {
     const user = userEvent.setup();
     renderPage();
 
-    await screen.findByRole('region', { name: "Today's verdict" });
+    await screen.findByRole('region', { name: "Today's call" });
     expect(screen.queryByText('How does this land?')).toBeNull();
 
     await user.click(screen.getByRole('button', { name: /last night's sleep/i }));

@@ -844,7 +844,7 @@ class PlanActionService:
                 WorkoutWarning(
                     code="red_vo2",
                     detail=(
-                        "This is a VO2 session on a Red-readiness day — sending it "
+                        "This is a VO2 session on a still-recovering day — sending it "
                         "because you built it, but recovery would be the safer call."
                     ),
                 ),

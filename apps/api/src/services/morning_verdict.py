@@ -1340,6 +1340,7 @@ def morning_verdict(
             planned_workouts,
             is_rest_day=is_rest_day,
             hold_targets=hrv_graded_response["tier"] == "hold",
+            rest_reason=rest_day.get("reason"),
         )
     if status != "Green" and yesterday_hard and not is_rest_day and not requires_training_rest:
         plan_adjustments.append(
@@ -1472,18 +1473,27 @@ def _breathwork_recommendation(
     )
 
 
+#: Batch 313: the plan line of an ordinary rest day, a day with nothing planned inside a
+#: week the plan covers. A holiday and a day of skipped sessions keep the paused line.
+PLANNED_REST_PLAN_LINE = "Today is a planned rest day."
+PLANNED_REST_REASON = "planned_rest"
+
+
 def _plan_adjustments(
     status: str,
     planned_workouts: Sequence[PlannedWorkout],
     *,
     is_rest_day: bool = False,
     hold_targets: bool = False,
+    rest_reason: str | None = None,
 ) -> list[str]:
     live_workouts = [
         workout for workout in planned_workouts if workout.status not in {"completed", "skipped"}
     ]
     reset_week = any(_is_reset_week_workout(workout) for workout in live_workouts)
-    if is_rest_day:
+    if is_rest_day and rest_reason == PLANNED_REST_REASON:
+        adjustments = [PLANNED_REST_PLAN_LINE]
+    elif is_rest_day:
         adjustments = ["Today is an intentional rest day; keep paused or skipped sessions paused."]
     elif not planned_workouts:
         adjustments = ["No active planned workout found for today; keep advice conservative."]
@@ -1790,6 +1800,7 @@ def graded_plan_adjustments(
     is_rest_day: bool,
     acute: Mapping[str, Any],
     has_vo2: bool,
+    rest_reason: str | None = None,
 ) -> list[str]:
     """The day's plan lines under the graded verdict, one per session action."""
 
@@ -1803,7 +1814,9 @@ def graded_plan_adjustments(
     if acute.get("requiresBikeRest") is True and not is_rest_day:
         return [BIKE_REST_PLAN_LINE]
     if is_rest_day or not planned_workouts or not live:
-        return _plan_adjustments(graded.status, planned_workouts, is_rest_day=is_rest_day)
+        return _plan_adjustments(
+            graded.status, planned_workouts, is_rest_day=is_rest_day, rest_reason=rest_reason
+        )
     if graded.status == "Red":
         red_lines = _plan_adjustments("Red", planned_workouts)
         if has_vo2:
@@ -1909,7 +1922,14 @@ def graded_verdict_packet(
         reasons.append(str(trend["reason"]))
 
     plan = graded_plan_adjustments(
-        graded, planned_workouts, is_rest_day=is_rest_day, acute=acute, has_vo2=has_vo2
+        graded,
+        planned_workouts,
+        is_rest_day=is_rest_day,
+        acute=acute,
+        has_vo2=has_vo2,
+        rest_reason=(
+            str(ladder["restDayReason"]) if isinstance(ladder.get("restDayReason"), str) else None
+        ),
     )
     if breathwork_line is not None:
         plan.append(breathwork_line)
