@@ -553,7 +553,8 @@ and nothing before 21 Oct except E0 on Craig's go.
 **Added 6 Oct, on Craig's "yes to all":** these rows are now in `docs/phase-batches.md` as
 Batches 314–322 (group G8): the `multidict` fix is 314, E0 is 315, the load line is 316, 311
 and 308 are amended in place, "The call says why, first" is split into 317 (Home) and 318
-(the brief), and a recording batch (C.1's list) is 322.
+(the brief), and a recording batch (C.1's list) is 322. Plan No. 3 became Batch 323 the same
+day: the app proposes it to Mark from his data, and he accepts, changes or declines it.
 
 | Batch (draft) | When | Goal | Acceptance criteria |
 |---|---|---|---|
