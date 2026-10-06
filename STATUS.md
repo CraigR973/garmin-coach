@@ -6,6 +6,14 @@
 
 ## Now
 
+**2026-10-06 (afternoon) — Batch 314 is live (PR #367, `ce8eea7`, Decision #385); G8 is
+running under Craig's delegation of 6 Oct, and 315 is next.** CI's dependency audit is green
+again on every branch. `multidict` 6.9.1 and `source-map-js` 1.2.2 are taken, one package
+each. `postcss-selector-parser`'s advisory, published the same day, is a reviewed exception:
+its only fix is 7.x, which Tailwind 3.4 does not accept, and it runs only at build time on
+our own CSS. That exception was decided under the delegation (Needs Craig, item 0). No
+behaviour change.
+
 **2026-10-06 — The daily-verdict review is written up as Batches 314–323 (group G8), not
 built; all of it runs as one group, G8, from one go** (Craig, 6 Oct; review
 `docs/reviews/2026-10-06-daily-verdict-review.md`, PR #366, merging once the plan is
@@ -227,6 +235,9 @@ v50 brief reads constraints the ladder does not follow.
 
 ### Needs Craig
 
+0. **Decided under your delegation of 6 Oct (G8), each overrulable; details in each batch's
+   DECISIONS entry.** 314 (#385): the `postcss-selector-parser` advisory is a reviewed
+   exception, not a fix (its only fix is a major Tailwind 3.4 does not accept).
 1. **Plan No. 3 (from Batch 313; agreed 6 Oct).** Plan No. 2's last week ends Sun 18 Oct; from
    Mon 19 Oct Home shows "No session planned" each morning until the next plan is loaded.
    Since 6 Oct this is Batch 323: the app proposes it to Mark from his data, with an FTP or
@@ -2191,6 +2202,17 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-06 (afternoon)** — Batch 314 shipped as PR #367 / `ce8eea7` (Decision #385), the
+  first of G8. The Python lock takes `multidict` 6.9.1 (CVE-2026-104874) with one package
+  moving. The batch's first CI run found two JS advisories published the same day: `source-map-js`
+  1.2.2 is taken (its three lockfile lines only, because `pnpm update` also moved `react-is`),
+  and `postcss-selector-parser` (fixed only in 7.x) is a reviewed exception, decided under
+  Craig's delegation. The row is corrected in the ledger. All 16 CI checks were green on both
+  waves at `937fdea` (Postgres CI 2,545 passed, 0 skipped). Merged at 15:32 BST, outside his
+  morning. Production serves `ce8eea7`: health on Railway and through Vercel, Vercel's build
+  READY, the web and `/login` 200, `daily-loop` 401. The container runs `multidict` 6.9.1
+  (`aiohttp` 3.14.3, `yarl` 1.24.5). Railway answered 502 for a few seconds during the
+  switch-over.
 - **2026-10-06** — Daily-verdict review at `44274a1` (`docs/reviews/2026-10-06-daily-verdict-review.md`,
   read-only, no spend): the call is sound and safe (replay 5 of 5; status monotone over 33,000
   probes); not helping him progress (FTP untested since 27 Jan; nothing planned after 18 Oct);
