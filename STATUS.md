@@ -6,6 +6,16 @@
 
 ## Now
 
+**2026-10-06 (night) — Batch 315 is live (PR #368, `0a87bd0`, Decision #386); 323 is next,
+then the run waits for 20 Oct.** After a chest or heart report, from the next morning until Mark
+says the symptoms have gone and he has spoken to his GP or 111, a hard session is an easy ride
+("Easy day") and Home asks him each morning in one tap; "Still there" sets the chest-or-heart
+warning again that day. With no hard session the day is unchanged and Home only asks. It adds
+caution only and has never happened (every symptom answer on record is None). Migration `036`
+(`coach.symptom_follow_ups`), morning prompt v58 (self-healing: today's v57 morning is still
+served). Coach memory's profile now records his medication: none beyond vitamin D and fish
+oil (profile v3). Words and four design calls decided under the delegation (Needs Craig, 0).
+
 **2026-10-06 (afternoon) — Batch 314 is live (PR #367, `ce8eea7`, Decision #385); G8 is
 running under Craig's delegation of 6 Oct, and 315 is next.** CI's dependency audit is green
 again on every branch. `multidict` 6.9.1 and `source-map-js` 1.2.2 are taken, one package
@@ -237,7 +247,11 @@ v50 brief reads constraints the ladder does not follow.
 
 0. **Decided under your delegation of 6 Oct (G8), each overrulable; details in each batch's
    DECISIONS entry.** 314 (#385): the `postcss-selector-parser` advisory is a reviewed
-   exception, not a fix (its only fix is a major Tailwind 3.4 does not accept).
+   exception, not a fix (its only fix is a major Tailwind 3.4 does not accept). 315 (#386):
+   the words (`docs/drafts/2026-10-06-batch-315-wording.md`); only "Gone, and I've spoken to
+   my GP or 111" ends the follow-up; asked every morning with no time limit; a day with no
+   hard session is unchanged; "Still there" counts under either engine; the answer has its
+   own table (every column but the key nullable); prompt v58.
 1. **Plan No. 3 (from Batch 313; agreed 6 Oct).** Plan No. 2's last week ends Sun 18 Oct; from
    Mon 19 Oct Home shows "No session planned" each morning until the next plan is loaded.
    Since 6 Oct this is Batch 323: the app proposes it to Mark from his data, with an FTP or
@@ -266,9 +280,8 @@ v50 brief reads constraints the ladder does not follow.
    swap is withheld where it would undo the easing. The easy ride is the existing recovery
    spin (half length, capped at 60% FTP). The ladder is given neither easing. A stricter
    floor on the same morning (off the bike) is the only one reported.
-7. **After a chest or heart report nothing follows (your call, 2 Oct).** The next morning is
-   an ordinary day, VO₂ included. What was offered is kept in
-   `docs/drafts/2026-10-02-batch-303-wording.md` §5.
+7. ~~After a chest or heart report nothing follows (your call, 2 Oct).~~ Superseded by your
+   go of 6 Oct: Batch 315 (live 6 Oct) follows it up until he has spoken to his GP or 111.
 8. **Decisions made on your behalf in Batch 302 (Decision #374), each overrulable.** A morning
    without its brief travels as its own field (`gradedMorning`), so an older cached client
    reads it as "no brief yet". A stored morning graded on today's inputs stands on a retry, so
@@ -290,6 +303,12 @@ v50 brief reads constraints the ladder does not follow.
 
 ### Worth carrying
 
+- **The chest follow-up (Batch 315, PR #368, `0a87bd0`).** Nothing to see until he reports
+  chest or heart symptoms. Then, from the next morning: `select subject_date,
+  context_packet #> '{verdict,acutePhysiology,symptoms,chestFollowUp}' from coach.analyses
+  where analysis_type = 'morning' order by generated_at_utc desc limit 3`, and his answers:
+  `select * from coach.symptom_follow_ups`. A morning stored before 315 has no record, so a
+  report on the last v57 morning (6 Oct) still starts one on 7 Oct.
 - **What follows a symptom (Batch 303, PR #352, `8fdbe43`).** The two mornings after a
   fever-or-aches floor, and any morning with an unanswered chest question and a hard
   session, are at least Amber with the hard session swapped for the recovery spin
@@ -2202,6 +2221,19 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-06 (night)** — Batch 315 shipped as PR #368 / `0a87bd0` (Decision #386), the
+  second of G8. After a chest or heart report a hard session is an easy ride and Home asks
+  each morning until he says the symptoms have gone and he has spoken to his GP or 111
+  (`symptom_check.chest_follow_up`, migration `036`, prompt v58). Replayed read-only on
+  production before the merge: all 107 stored mornings identical to `main`'s replay,
+  reproducing production 6 of 6; 9 of 9 mutations of the rule failed a test. All 16 CI
+  checks green on both waves at `73de2a6` (Postgres CI 2,576 passed, 0 skipped). Merged at
+  23:31 BST, outside his morning. Production serves `0a87bd0`: health on Railway and through
+  Vercel, Vercel READY, web and `/login` 200, `daily-loop` 401, the new route 401 without a
+  token. In the container (read-only, rolled back): alembic 036, RLS on, 0 answers; v58 live;
+  today's v57 morning still served with no follow-up; none due on 7 Oct; the orphan report
+  blanks no surface. Coach memory's profile written once by read-modify-write (v3, his
+  medication; v2 kept). Nothing left idle in a transaction.
 - **2026-10-06 (afternoon)** — Batch 314 shipped as PR #367 / `ce8eea7` (Decision #385), the
   first of G8. The Python lock takes `multidict` 6.9.1 (CVE-2026-104874) with one package
   moving. The batch's first CI run found two JS advisories published the same day: `source-map-js`
