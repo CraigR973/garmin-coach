@@ -6,6 +6,15 @@
 
 ## Now
 
+**2026-10-07 (early) — Batch 323 is live (PR #369, `9a2dc47`, Decision #387): 314, 315 and 323
+are done, and G8 waits for Sun 20 Oct (the trial).** Plan No. 3 (Mon 19 Oct – Sun 17 Jan) is
+drafted for Mark from his own plan and waits in the plan builder. Home shows "Your next plan
+is ready" from Mon 12 Oct, his taper week, until he accepts or declines it. Accepting writes
+it into his plan and sends its rides to Zwift; declining writes nothing. Week 1 opens with an
+FTP ramp test on Tue 20 Oct (ERG on). Two loaded dumbbell sessions a week, build weeks that
+progress, no week longer than Plan No. 2's longest (453 minutes). Nothing else lands before
+Wed 21 Oct; the run resumes then, at the trial addendum (a scheduled task, 21 Oct 12:00).
+
 **2026-10-06 (night) — Batch 315 is live (PR #368, `0a87bd0`, Decision #386); 323 is next,
 then the run waits for 20 Oct.** After a chest or heart report, from the next morning until Mark
 says the symptoms have gone and he has spoken to his GP or 111, a hard session is an easy ride
@@ -32,8 +41,8 @@ explains it worst. **G8a, by Wed 14 Oct:** 314 (`multidict` 6.7.1 fails CI's dep
 audit on every branch, `main` included) → 315 (after a chest or heart report, ask before
 hard work; the one caution-only exception, amending #375) → 323 (Plan No. 3 proposed in the
 app from his data, for Mark to accept, change or decline; it changes no rule of the call,
-so the trial does not bind it). 315's and 323's words need Craig's sign-off before each
-merge. **Then** the trial addendum scores the review's predictions (section F, committed
+so the trial does not bind it). Since the run began (6 Oct) Craig's sign-offs are delegated
+to the agent, each judgement recorded in its batch's DECISIONS entry. **Then** the trial addendum scores the review's predictions (section F, committed
 `a4836d3` before his first morning back), and after 20 Oct: 316 (305's load-ratio line,
 plus recovery time only before a hard session) → 311, widened → 308, which also rewrites §4
 → 317, 318, 321 → 319, 320, 322. **His medication (Craig, 6 Oct): none beyond vitamin D and
@@ -251,13 +260,16 @@ v50 brief reads constraints the ladder does not follow.
    the words (`docs/drafts/2026-10-06-batch-315-wording.md`); only "Gone, and I've spoken to
    my GP or 111" ends the follow-up; asked every morning with no time limit; a day with no
    hard session is unchanged; "Still there" counts under either engine; the answer has its
-   own table (every column but the key nullable); prompt v58.
-1. **Plan No. 3 (from Batch 313; agreed 6 Oct).** Plan No. 2's last week ends Sun 18 Oct; from
-   Mon 19 Oct Home shows "No session planned" each morning until the next plan is loaded.
-   Since 6 Oct this is Batch 323: the app proposes it to Mark from his data, with an FTP or
-   20-minute test in week 1 (the last was 27 Jan) and two loaded, progressing strength
-   sessions a week, and he accepts, changes or declines it. Craig signs off the progressions
-   and the words first. Batch 319 needs it accepted.
+   own table (every column but the key nullable); prompt v58. 323 (#387): the progressions
+   (the ledger's table); a ramp test, not a 20-minute test (ERG on); VO₂ written for ERG;
+   his FTP kept at 280 W, the drift proposal not applied; strength Monday and Saturday,
+   both loaded; the card from his taper week; a decline writes nothing; the words.
+1. **Plan No. 3 is drafted and waits for Mark (Batch 323, live 7 Oct).** Home asks him from
+   Mon 12 Oct. If he declines it, or has not decided by 19 Oct, Home reads "No session
+   planned" from Mon 19 Oct. His decision: `select version, is_active, content->>'status' from
+   coach.knowledge_base where section = 'generated_block'`, and the `next_plan_*` log lines.
+   Coach memory's `training_schedule` is generic and already disagreed with Plan No. 2 (long
+   ride Saturday, rest Monday): left as it was, yours to correct.
 2. **Two colour words left on purpose (313, for your eye):** the symptom floors' plan lines
    ("sets a Red floor", a health warning, unchanged as signed off), and "Amber-adjusted", a
    ride name only the ladder uses.
@@ -297,7 +309,8 @@ v50 brief reads constraints the ladder does not follow.
    length."), not as the hold; it is the same ride either way.
 10. The Vercel project's own Node setting still reads 20.x; `engines` overrides it, so changing
    it is tidiness only (a hosting change, yours).
-11. **From 7 to 20 Oct:** review every ladder-versus-graded disagreement in the table above.
+11. **From 7 to 20 Oct:** the run reviews every ladder-versus-graded disagreement at the trial
+   addendum (resuming 21 Oct, under your delegation); yours to overrule.
 12. **Carried:** G4's free Neon database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment
    extractor's first paid run (Mark's own "Look for new memories" tap).
 
@@ -2221,6 +2234,17 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-07 (early)** — Batch 323 shipped as PR #369 / `9a2dc47` (Decision #387), the third
+  of G8. The plan builder now builds the next plan from his last one (`services/next_plan.py`):
+  his week read from Plan No. 2's authored sessions, the ledger's week-by-week table (written
+  before any code), a ramp test in week 1, no week past 453 minutes; lock keeps both of a
+  two-session day; Home's card from the 13th block. 8 of 8 mutations of the rules failed a
+  test. All 16 CI checks green on both waves. Merged at 00:16 BST, outside his morning.
+  Production serves `9a2dc47`: health on Railway and through Vercel, Vercel READY, web and
+  `/login` 200, `daily-loop` 401, the builder route 401 without a token. Plan No. 3's draft
+  was generated for Mark in the container and read back (19 Oct – 17 Jan, weeks 414–452,
+  324 recovery, 349 consolidation, 235 taper); no plan row written and nothing sent to Zwift;
+  the card is due from 12 Oct. Nothing left idle in a transaction. No spend.
 - **2026-10-06 (night)** — Batch 315 shipped as PR #368 / `0a87bd0` (Decision #386), the
   second of G8. After a chest or heart report a hard session is an easy ride and Home asks
   each morning until he says the symptoms have gone and he has spoken to his GP or 111

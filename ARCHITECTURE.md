@@ -182,6 +182,16 @@ Human-driven via `GET/POST /api/v1/block-generator/*` with a `/builder` PWA page
 `generate` refuses to clobber an unlocked draft so refinements are never silently lost
 (DECISIONS #69). No new migration.
 
+Since Batch 323 (DECISIONS #387) the draft is **the next plan, built from his last one**
+(`services/next_plan.py`, no model call): his week read from its authored sessions, the
+progressions from the ledger's table (an FTP ramp test in week 1, build weeks that
+progress, VO2 by the toolkit's protocol written for ERG, two loaded dumbbell sessions a
+week), no week longer than his last plan's longest, and his FTP as it stands. Lock writes
+each date once, so a two-session day keeps both, and names the blocks as his imported
+plans were (PN3 W01 …). Home shows `DailyLoopData.nextPlan` from the 13th block and on any
+day no plan covers, while a draft waits; accept is lock (push-on-plan-set), decline is
+discard and writes nothing.
+
 Batch 17 turns the accumulated history into proactive insight
 (`services/insights.py` + `services/experiment_tracker.py`), all deterministic
 (no LLM) and migration-free. **FTP-drift detection** reads the trend in ride
