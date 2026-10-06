@@ -5889,11 +5889,11 @@ the reps he could still do at the end of a set. Minutes in brackets.
 | 4 | 9 Nov | Build | 30/30 2×12 @130% (55) | Sweet spot 3×20 @90% (94) | 75 | Long 120 | 3×10, one weight up (25) | 452 |
 | 5 | 16 Nov | Build | 30/30 3×10 @130% (65) | Sweet spot 2×35 @90% (101) | 55 | Long 120 | 3×10 (25) | 449 |
 | 6 | 23 Nov | Recovery | as week 3 | as week 3 | 60 | Easy 90 | 2×8, light (20) | 324 |
-| 7 | 30 Nov | Build | 30/15 3×10 @125% (56) | Sweet spot 3×25 @90% (109) | 45 | Long 135 | 3×8, one weight up (25) | 453 |
-| 8 | 7 Dec | Build | 30/15 3×11 @125% (58) | Sweet spot 2×40 @90% (111) | 40 | Long 135 | 4×8 on the first three, 3×8 the rest (25) | 452 |
+| 7 | 30 Nov | Build | 30/15 2×16 @125% (54) | Sweet spot 3×25 @90% (109) | 45 | Long 135 | 3×8, one weight up (25) | 451 |
+| 8 | 7 Dec | Build | 30/15 3×12 @125% (60) | Sweet spot 2×40 @90% (111) | 35 | Long 135 | 4×8 on the first three, 3×8 the rest (25) | 449 |
 | 9 | 14 Dec | Recovery | as week 3 | as week 3 | 60 | Easy 90 | 2×8, light (20) | 324 |
-| 10 | 21 Dec | Build | 30/15 3×12 @125% (60) | Sweet spot 2×40 @91% (111) | 35 | Long 135 | 3×6–8, one weight up (25) | 449 |
-| 11 | 28 Dec | Build | 30/15 3×13 @125% (62) | Sweet spot 2×40 @92% (111) | 35 | Long 135 | 4×6–8 on the first three (25) | 451 |
+| 10 | 21 Dec | Build | 30/15 4×10 @125% (66) | Sweet spot 2×40 @91% (111) | 30 | Long 135 | 3×6–8, one weight up (25) | 450 |
+| 11 | 28 Dec | Build | 30/15 4×10 @128% (66) | Sweet spot 2×40 @92% (111) | 30 | Long 135 | 4×6–8 on the first three (25) | 450 |
 | 12 | 4 Jan | Consolidation | VO₂ light 4×2 @115% (46) | Sweet spot 1×30 @90% (58) | 60 | Easy 90 | 3×8, same weights (25) | 349 |
 | 13 | 11 Jan | Taper | VO₂ primer 3×1 @120% (30) | Sweet spot primer 1×12 @89% (35) | 45 | Optional 45, or rest | 2×8, lighter (20) | 235 |
 
@@ -5903,10 +5903,13 @@ the reps he could still do at the end of a set. Minutes in brackets.
 - **No week is longer than 453 minutes,** Plan No. 2's longest (week 5, 7 h 33, as authored
   and as it stands). The totals include both strength sessions.
 - **Each build week progresses on the last:** VO₂ work time 10 → 12 → 15 minutes on 30/30s,
-  then 15 → 16½ → 18 → 19½ on 30/15s (twice as much work as rest); sweet spot time at
+  then 16 → 18 → 20 minutes on 30/15s (twice as much work as rest), and 20 at 128% in week 11; sweet spot time at
   intensity 50 → 60 → 60 → 70 → 75 → 80 → 80 → 80 minutes, its target 89% → 92%; the long ride
   from 120 to 135 minutes in week 7, with Wednesday's ride shortening to keep the week inside
   453; strength from 2×12 to 4×6–8, a weight up at each step.
+- **Every session is a whole number of minutes,** as the delivery rail's own check asks (Batch
+  67: the planned minutes trace the summed steps), so a set of 30/15s is a multiple of four
+  reps (4 × 45 s = 3 min).
 - **The ramp test** (40): a warm-up, then one-minute steps from 50% of FTP rising 6% a minute,
   ridden in ERG until he cannot hold the step. His new FTP is three-quarters of the best
   minute he held; he sets it in Zwift.
