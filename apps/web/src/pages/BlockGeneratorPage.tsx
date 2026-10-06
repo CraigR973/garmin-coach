@@ -7,14 +7,27 @@ import {
   type GeneratedBlockDraft,
   type GeneratedBlockWorkout,
 } from '@coach/shared';
-import { Hammer, Lock, Pencil, Sparkles, Trash2, TrendingUp } from 'lucide-react';
+import { Check, Hammer, Lock, Pencil, Sparkles, Trash2, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
 import { apiFetch } from '@/lib/api';
+import {
+  ACCEPT_PLAN,
+  DECLINE_PLAN,
+  DECLINED,
+  MADE,
+  MAKE_PLAN_BUTTON,
+  MAKE_PLAN_LINE,
+  MAKE_PLAN_TITLE,
+  WHY_THIS_PLAN,
+  acceptedLine,
+  lockedTitle,
+  planSpan,
+  sessionDay,
+} from '@/lib/nextPlan';
 
 const BASE = '/api/v1/block-generator';
 
@@ -30,9 +43,16 @@ function formatDate(value: string): string {
   });
 }
 
+/** A draft made before Batch 323 has no plan name. */
+function planNameOf(draft: GeneratedBlockDraft): string {
+  return draft.planName ?? 'Your plan';
+}
+
 interface RefineState {
   weekNumber: number;
   dayOffset: number;
+  /** Batch 323: which of the day's sessions (his Saturday carries two). */
+  slot: number;
   title: string;
   plannedDurationMin: string;
   intensityTarget: string;
@@ -43,33 +63,33 @@ const inputClass =
 
 export function BlockGeneratorPage() {
   const queryClient = useQueryClient();
-  const [startDate, setStartDate] = useState('');
-  const [ftpWatts, setFtpWatts] = useState('');
   const [editing, setEditing] = useState<RefineState | null>(null);
 
   const query = useQuery({ queryKey: ['block-generator'], queryFn: fetchDraft });
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['block-generator'] });
+  // Batch 323: Home's next-plan card reads the daily loop, so a decision refreshes it.
+  const invalidate = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['block-generator'] }),
+      queryClient.invalidateQueries({ queryKey: ['daily-loop'] }),
+    ]);
 
+  // Batch 323: the next plan is built from his last one, starting the day after it ends
+  // with his FTP as it stands, so the builder asks for neither a start date nor an FTP.
   const generateMutation = useMutation({
     mutationFn: async () => {
-      const body: Record<string, unknown> = {};
-      if (startDate) body.startDate = startDate;
-      if (ftpWatts) body.ftpWatts = Number(ftpWatts);
       const response = await apiFetch<unknown>(`${BASE}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({}),
       });
       return blockGeneratorEnvelopeSchema.parse(response);
     },
     onSuccess: async () => {
       await invalidate();
-      setStartDate('');
-      setFtpWatts('');
-      toast.success('13-week block generated — refine the days, then lock it in.');
+      toast.success(MADE);
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Failed to generate block'),
+      toast.error(error instanceof Error ? error.message : 'Could not make the plan'),
   });
 
   const refineMutation = useMutation({
@@ -80,6 +100,7 @@ export function BlockGeneratorPage() {
         body: JSON.stringify({
           weekNumber: state.weekNumber,
           dayOffset: state.dayOffset,
+          slot: state.slot,
           title: state.title,
           plannedDurationMin: state.plannedDurationMin ? Number(state.plannedDurationMin) : null,
           intensityTarget: state.intensityTarget || null,
@@ -100,13 +121,13 @@ export function BlockGeneratorPage() {
       const response = await apiFetch<unknown>(`${BASE}/lock`, { method: 'POST' });
       return blockLockEnvelopeSchema.parse(response);
     },
-    onSuccess: async (data) => {
+    onSuccess: async () => {
+      const name = query.data?.data.draft ? planNameOf(query.data.data.draft) : 'Your plan';
       await invalidate();
-      toast.success(
-        `Block locked — ${data.data.workoutsWritten} workouts added to your plan.`,
-      );
+      toast.success(acceptedLine(name));
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Failed to lock block'),
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Could not accept the plan'),
   });
 
   const discardMutation = useMutation({
@@ -116,10 +137,10 @@ export function BlockGeneratorPage() {
     onSuccess: async () => {
       await invalidate();
       setEditing(null);
-      toast.success('Draft discarded.');
+      toast.success(DECLINED);
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Failed to discard draft'),
+      toast.error(error instanceof Error ? error.message : 'Could not decline the plan'),
   });
 
   if (query.isLoading) {
@@ -158,63 +179,24 @@ export function BlockGeneratorPage() {
     <div className="space-y-6">
       <PageHeader title="Plan builder" />
 
-      <Card className="bg-surface-elevated/60">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" aria-hidden />
-            Mould it, then lock it
-          </CardTitle>
-          <CardDescription>
-            The coach generates a 13-week 2121 block (2 build / 1 recovery, consolidation, taper).
-            Refine any day, then lock it — locked workouts feed your daily plan and deliver to Zwift
-            on approval.
-          </CardDescription>
-        </CardHeader>
-      </Card>
-
       {canGenerate && (
         <Card>
           <CardHeader>
-            <CardTitle>Generate a new block</CardTitle>
-            <CardDescription>
-              Defaults to next Monday and the last-block FTP proposal when enough history exists.
-              Override if you want.
-            </CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" aria-hidden />
+              {MAKE_PLAN_TITLE}
+            </CardTitle>
+            <CardDescription>{MAKE_PLAN_LINE}</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="start-date">Start date (optional)</Label>
-                <input
-                  id="start-date"
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className={inputClass}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ftp-watts">FTP watts (optional)</Label>
-                <input
-                  id="ftp-watts"
-                  type="number"
-                  min={1}
-                  value={ftpWatts}
-                  onChange={(e) => setFtpWatts(e.target.value)}
-                  className={inputClass}
-                />
-              </div>
-            </div>
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                onClick={() => generateMutation.mutate()}
-                disabled={generateMutation.isPending}
-              >
-                <Hammer className="mr-2 h-4 w-4" aria-hidden />
-                {generateMutation.isPending ? 'Generating…' : 'Generate block'}
-              </Button>
-            </div>
+          <CardContent className="flex justify-end">
+            <Button
+              type="button"
+              onClick={() => generateMutation.mutate()}
+              disabled={generateMutation.isPending}
+            >
+              <Hammer className="mr-2 h-4 w-4" aria-hidden />
+              {MAKE_PLAN_BUTTON}
+            </Button>
           </CardContent>
         </Card>
       )}
@@ -224,12 +206,9 @@ export function BlockGeneratorPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Lock className="h-4 w-4 text-success" aria-hidden />
-              Block locked
+              {lockedTitle(planNameOf(draft))}
             </CardTitle>
-            <CardDescription>
-              {formatDate(draft.startDate)} → {formatDate(draft.endDate)} is now part of your plan.
-              Generate a new block above when you are ready for the next cycle.
-            </CardDescription>
+            <CardDescription>{planSpan(draft.startDate, draft.endDate)}</CardDescription>
           </CardHeader>
         </Card>
       )}
@@ -283,23 +262,34 @@ function DraftView({
         <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <CardTitle>Draft — {draft.framework}</CardTitle>
+              <CardTitle>{planNameOf(draft)}</CardTitle>
               <CardDescription className="mt-1">
-                {formatDate(draft.startDate)} → {formatDate(draft.endDate)} · FTP {draft.ftpWatts}w
+                {planSpan(draft.startDate, draft.endDate)}
               </CardDescription>
             </div>
-            <Badge variant="warning">Draft</Badge>
           </div>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Button type="button" onClick={onLock} disabled={locking}>
-            <Lock className="mr-2 h-4 w-4" aria-hidden />
-            {locking ? 'Locking…' : 'Lock block'}
-          </Button>
-          <Button type="button" variant="outline" onClick={onDiscard} disabled={discarding}>
-            <Trash2 className="mr-2 h-4 w-4" aria-hidden />
-            {discarding ? 'Discarding…' : 'Discard'}
-          </Button>
+        <CardContent className="space-y-4">
+          {draft.whyThisPlan && draft.whyThisPlan.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-text-primary">{WHY_THIS_PLAN}</p>
+              <ul className="list-disc space-y-1 pl-5 text-sm leading-6 text-text-secondary">
+                {draft.whyThisPlan.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={onLock} disabled={locking}>
+              <Check className="mr-2 h-4 w-4" aria-hidden />
+              {ACCEPT_PLAN}
+            </Button>
+            <Button type="button" variant="outline" onClick={onDiscard} disabled={discarding}>
+              <Trash2 className="mr-2 h-4 w-4" aria-hidden />
+              {DECLINE_PLAN}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -322,12 +312,14 @@ function DraftView({
           <CardContent>
             <ul className="space-y-2">
               {week.workouts.map((workout) => {
+                const slot = workout.slot ?? 0;
                 const isEditing =
                   editing?.weekNumber === week.weekNumber &&
-                  editing?.dayOffset === workout.dayOffset;
+                  editing?.dayOffset === workout.dayOffset &&
+                  editing?.slot === slot;
                 return (
                   <li
-                    key={workout.dayOffset}
+                    key={`${workout.dayOffset}-${slot}`}
                     className="rounded-lg border border-border px-3 py-2 text-sm"
                   >
                     {isEditing && editing ? (
@@ -372,13 +364,12 @@ function DraftView({
                     ) : (
                       <div className="flex items-center justify-between gap-2">
                         <div>
+                          <p className="text-xs text-text-muted">{sessionDay(workout.workoutDate)}</p>
                           <p className="font-medium text-text-primary">{workout.title}</p>
                           <p className="text-xs text-text-muted">
-                            {workout.workoutType}
-                            {workout.plannedDurationMin
-                              ? ` · ${workout.plannedDurationMin} min`
-                              : ''}
-                            {workout.intensityTarget ? ` · ${workout.intensityTarget}` : ''}
+                            {workout.plannedDurationMin ? `${workout.plannedDurationMin} min` : ''}
+                            {workout.plannedDurationMin && workout.intensityTarget ? ' · ' : ''}
+                            {workout.intensityTarget ?? ''}
                           </p>
                         </div>
                         <Button
@@ -456,6 +447,7 @@ function toRefineState(weekNumber: number, workout: GeneratedBlockWorkout): Refi
   return {
     weekNumber,
     dayOffset: workout.dayOffset,
+    slot: workout.slot ?? 0,
     title: workout.title,
     plannedDurationMin: workout.plannedDurationMin ? String(workout.plannedDurationMin) : '',
     intensityTarget: workout.intensityTarget ?? '',

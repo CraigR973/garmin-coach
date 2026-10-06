@@ -7,12 +7,14 @@ mould individual days, fix errors, then lock. Locking writes the draft into the
 owned plan (``plan_blocks`` + ``planned_workouts``, active) so the block feeds
 the daily loop and the Zwift delivery rail under the existing approve → push gate.
 
-The draft is **deterministic** — it reuses the shared ``coaching_state`` block
-templates and the Batch 14 ``vo2_progression`` toolkit, not an LLM call — so the
-2121 shape, the VO2 30/15 progression, and the Red-never-VO2 guarantee are
-inspectable, unit-tested invariants that hold without ``ANTHROPIC_API_KEY``
-(Decision #69). Generated VO2 days draw from ``select_vo2_protocol`` automatically
-(30/30 early build, Rønnestad 30/15 from ~Week 7).
+The draft is **deterministic**, not an LLM call, so the 2121 shape, the VO2
+progression and the Red-never-VO2 guarantee are inspectable, unit-tested invariants
+that hold without ``ANTHROPIC_API_KEY`` (Decision #69). Since Batch 323 it is built by
+``services.next_plan`` from his last plan: his week, read from its authored sessions,
+an FTP ramp test in week 1, build weeks that progress (VO2 by ``select_vo2_protocol``,
+30/30 before week 7 and Rønnestad 30/15 from it, written for ERG), two loaded
+dumbbell sessions a week, and no week longer than his last plan's longest. The fixed
+``coaching_state`` templates it used before stay the seed of a profile with no plan.
 
 Storage: a ``knowledge_base`` row at ``section='generated_block'`` holds the
 working draft as JSONB. Each generate/refine/lock versions the row (existing
@@ -28,27 +30,36 @@ and is the only path that mutates ``planned_workouts``.
 from __future__ import annotations
 
 import copy
+import re
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+import structlog
 from fastapi import HTTPException, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import KnowledgeBase, PlanBlock, PlannedWorkout
 from src.models.profile import Profile
-from src.services.block_progression import BlockProgressionService, NextBlockProposal
-from src.services.coaching_state import (
-    _block_name,
-    _block_templates,
-    _current_cycle_start,
-)
+from src.services.coaching_state import _block_name, _current_cycle_start
 from src.services.holiday_pause import is_build1
-from src.services.plan_periodisation import BLOCK_SEQUENCE
+from src.services.next_plan import (
+    DEFAULT_LONGEST_WEEK_MIN,
+    PLAN_NO_2_RHYTHM,
+    PastSession,
+    default_start,
+    longest_week_minutes,
+    next_plan_draft,
+    rhythm_from,
+)
+from src.services.profile_clock import profile_today
 from src.services.workout_categories import normalise_workout_type
 from src.services.workout_delivery import IntervalsEventClient
+
+log = structlog.get_logger(__name__)
 
 GENERATED_BLOCK_SECTION = "generated_block"
 BLOCK_LOCK_SOURCE = "block_generator_lock"
@@ -93,56 +104,18 @@ def block_label(sequence_index: int, block_type: str) -> str:
     }.get(block_type, block_type.title())
 
 
-def generate_block_plan(
-    *,
-    start_date: date,
-    ftp_watts: int,
-    athlete_name: str,
-    generated_at_utc: datetime,
-    progression_proposal: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Build the draft content for a 13-week 2121 block (pure, deterministic)."""
-    weeks: list[dict[str, Any]] = []
-    for index, block_type in enumerate(BLOCK_SEQUENCE, start=1):
-        week_start = start_date + timedelta(days=(index - 1) * 7)
-        week_end = week_start + timedelta(days=6)
-        workouts: list[dict[str, Any]] = []
-        for template in _block_templates(block_type, index):
-            workouts.append(
-                {
-                    "dayOffset": template.day_offset,
-                    "workoutDate": (week_start + timedelta(days=template.day_offset)).isoformat(),
-                    "title": template.title,
-                    "workoutType": template.workout_type,
-                    "plannedDurationMin": template.planned_duration_min,
-                    "intensityTarget": template.intensity_target,
-                    "structuredWorkout": copy.deepcopy(template.structured_workout),
-                }
-            )
-        weeks.append(
-            {
-                "weekNumber": index,
-                "blockType": block_type,
-                "label": block_label(index, block_type),
-                "focus": _BLOCK_FOCUS.get(block_type, ""),
-                "startDate": week_start.isoformat(),
-                "endDate": week_end.isoformat(),
-                "workouts": workouts,
-            }
-        )
+#: A plan's block names carry its number: Plan No. 2 is "PN2 W01 BUILD".
+_PLAN_BLOCK_NAME = re.compile(r"^PN(\d+) W\d+")
 
-    return {
-        "status": STATUS_DRAFT,
-        "framework": "13-week 2121",
-        "startDate": start_date.isoformat(),
-        "endDate": (start_date + timedelta(days=len(BLOCK_SEQUENCE) * 7 - 1)).isoformat(),
-        "ftpWatts": ftp_watts,
-        "athleteName": athlete_name,
-        "generatedAtUtc": generated_at_utc.isoformat(),
-        "lockedAtUtc": None,
-        "progressionProposal": progression_proposal,
-        "weeks": weeks,
-    }
+
+@dataclass(frozen=True)
+class PreviousPlan:
+    """His last plan, as the next one is built from it (Batch 323)."""
+
+    number: int | None
+    end_date: date
+    sessions: list[PastSession]
+    longest_week_min: int | None
 
 
 @dataclass
@@ -266,6 +239,12 @@ class BlockGeneratorService:
         start_date: date | None = None,
         ftp_watts: int | None = None,
     ) -> dict[str, Any]:
+        """Build the next plan's draft from his last plan (Batch 323). No model call.
+
+        It starts the day after his last plan ends when that Monday is still to come,
+        otherwise next Monday; it uses his FTP as it stands, because the week-1 ramp test
+        sets the next one (the drift-based proposal Batch 16 used is no longer applied).
+        """
         existing, content = await self._load_kb(user.id)
         if content is not None and content.get("status") == STATUS_DRAFT:
             raise HTTPException(
@@ -273,29 +252,117 @@ class BlockGeneratorService:
                 detail="An unlocked draft already exists; lock or discard it before generating",
             )
 
+        previous = await self.previous_plan(user.id)
         if start_date is None:
-            start_date = next_cycle_start(date.today())
-        proposal: NextBlockProposal | None = None
-        if ftp_watts is None:
-            current_ftp = await self._ftp_watts(user.id)
-            proposal = await BlockProgressionService(self.session).proposal_for_next_block(
-                user,
-                start_date=start_date,
-                current_ftp_watts=current_ftp,
+            start_date = default_start(
+                profile_today(user), previous.end_date if previous is not None else None
             )
-            ftp_watts = proposal.recommended_ftp_watts
+        if start_date.weekday() != 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="A plan starts on a Monday",
+            )
+        if ftp_watts is None:
+            ftp_watts = await self._ftp_watts(user.id)
         athlete_name = await self._athlete_name(user)
-
-        plan = generate_block_plan(
+        number = previous.number if previous is not None else None
+        plan = next_plan_draft(
             start_date=start_date,
             ftp_watts=ftp_watts,
             athlete_name=athlete_name,
             generated_at_utc=_utcnow(),
-            progression_proposal=proposal.to_dict() if proposal is not None else None,
+            rhythm=rhythm_from(previous.sessions) if previous is not None else PLAN_NO_2_RHYTHM,
+            longest_week_min=(
+                previous.longest_week_min
+                if previous is not None and previous.longest_week_min
+                else DEFAULT_LONGEST_WEEK_MIN
+            ),
+            plan_number=number + 1 if number is not None else None,
+            previous_name=f"Plan No. {number}" if number is not None else None,
         )
         await self._save_draft(user, plan, existing)
         await self.session.commit()
+        log.info(
+            "next_plan_generated",
+            profile_id=str(user.id),
+            plan_name=plan["planName"],
+            start_date=plan["startDate"],
+        )
         return plan
+
+    async def previous_plan(self, user_id: uuid.UUID) -> PreviousPlan | None:
+        """His last plan: the 13 weeks ending at his latest plan block, and its sessions.
+
+        The authored sessions are those with the source of the plan's first row (Plan No.
+        2's import, or a lock), so a swap or an edit he made later does not move his week.
+        Only the columns read are loaded.
+        """
+        last = await self.session.scalar(
+            select(PlanBlock)
+            .where(PlanBlock.user_id == user_id)
+            .order_by(PlanBlock.end_date.desc(), PlanBlock.version.desc())
+            .limit(1)
+        )
+        if last is None:
+            return None
+        window_start = last.end_date - timedelta(days=13 * 7 - 1)
+        blocks = list(
+            (
+                await self.session.execute(
+                    select(PlanBlock).where(
+                        PlanBlock.user_id == user_id,
+                        PlanBlock.start_date >= window_start,
+                        PlanBlock.end_date <= last.end_date,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        by_id = {block.id: block for block in blocks}
+        rows = (
+            await self.session.execute(
+                select(
+                    PlannedWorkout.workout_date,
+                    PlannedWorkout.workout_type,
+                    PlannedWorkout.title,
+                    PlannedWorkout.planned_duration_min,
+                    PlannedWorkout.source,
+                    PlannedWorkout.created_at,
+                    PlannedWorkout.plan_block_id,
+                )
+                .where(
+                    PlannedWorkout.user_id == user_id,
+                    PlannedWorkout.plan_block_id.in_(list(by_id)),
+                )
+                .order_by(PlannedWorkout.created_at.asc())
+            )
+        ).all()
+        match = _PLAN_BLOCK_NAME.match(last.name or "")
+        number = int(match.group(1)) if match else None
+        if not rows:
+            return PreviousPlan(
+                number=number, end_date=last.end_date, sessions=[], longest_week_min=None
+            )
+        authored = rows[0].source
+        sessions = [
+            PastSession(
+                workout_date=row.workout_date,
+                workout_type=str(row.workout_type or ""),
+                title=str(row.title or ""),
+                minutes=int(row.planned_duration_min or 0),
+                block_type=str(by_id[row.plan_block_id].block_type or ""),
+                week_number=int(by_id[row.plan_block_id].sequence_index or 0),
+            )
+            for row in rows
+            if row.source == authored and row.plan_block_id in by_id
+        ]
+        return PreviousPlan(
+            number=number,
+            end_date=last.end_date,
+            sessions=sessions,
+            longest_week_min=longest_week_minutes(sessions),
+        )
 
     # ------------------------------------------------------------------
     # Refine
@@ -307,6 +374,7 @@ class BlockGeneratorService:
         *,
         week_number: int,
         day_offset: int,
+        slot: int = 0,
         title: str | None = None,
         workout_type: str | None = None,
         planned_duration_min: int | None = None,
@@ -331,11 +399,20 @@ class BlockGeneratorService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Week {week_number} is not in the draft",
             )
-        workout = next((w for w in week["workouts"] if w.get("dayOffset") == day_offset), None)
+        # Batch 323: a day can carry two sessions (his Saturday ride and strength), told
+        # apart by slot; a draft written before slots existed has one session a day.
+        workout = next(
+            (
+                w
+                for w in week["workouts"]
+                if w.get("dayOffset") == day_offset and int(w.get("slot") or 0) == slot
+            ),
+            None,
+        )
         if workout is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Day offset {day_offset} is not in week {week_number}",
+                detail=f"Day offset {day_offset} slot {slot} is not in week {week_number}",
             )
 
         if title is not None:
@@ -378,6 +455,13 @@ class BlockGeneratorService:
             .values(is_active=False)
         )
         await self.session.commit()
+        # Batch 323: a declined plan writes nothing; its row stays, inactive, as the record.
+        log.info(
+            "next_plan_declined",
+            profile_id=str(user.id),
+            plan_name=content.get("planName"),
+            start_date=content.get("startDate"),
+        )
 
     # ------------------------------------------------------------------
     # Lock
@@ -402,6 +486,13 @@ class BlockGeneratorService:
         content["lockedAtUtc"] = _utcnow().isoformat()
         await self._save_draft(user, content, existing)
         await self.session.commit()
+        log.info(
+            "next_plan_accepted",
+            profile_id=str(user.id),
+            plan_name=content.get("planName"),
+            start_date=content.get("startDate"),
+            workouts=result.workouts_written,
+        )
 
         # Push-on-plan-set (Decision #99): the locked block's bike sessions are
         # delivered to Zwift now, days ahead, with no per-workout approval — so by
@@ -419,21 +510,27 @@ class BlockGeneratorService:
     async def _write_plan(self, user_id: uuid.UUID, content: dict[str, Any]) -> LockResult:
         """Write the draft into ``plan_blocks`` + active ``planned_workouts``.
 
-        Plan-block names reuse the 2121 ``_block_name`` scheme, so the block name
-        is versioned (max + 1) to avoid colliding with an existing seed slate.
-        Each workout date is versioned: any active row on that date is deactivated
-        and a new active version inserted — the same pattern as the holiday
-        regenerator — so locking integrates with, rather than duplicates, history.
+        A numbered plan's blocks are named as Plan No. 2's were ("PN3 W01 TEST + BUILD");
+        an older draft keeps the 2121 ``_block_name`` scheme. Either name is versioned
+        (max + 1) so it never collides with an existing slate. Each workout date is
+        versioned once: its active rows are deactivated, then every session the draft has
+        on that date is inserted, in slot order, each with the next version. Batch 323:
+        deactivating before each session instead kept only the last of a two-session day.
         """
         blocks_created = 0
         workouts_written = 0
+        plan_number = content.get("planNumber")
 
         for week in content["weeks"]:
             block_type = str(week["blockType"])
             seq = int(week["weekNumber"])
             block_start = date.fromisoformat(week["startDate"])
             block_end = date.fromisoformat(week["endDate"])
-            name = _block_name(seq, block_type)
+            name = (
+                f"PN{int(plan_number)} W{seq:02d} {week.get('label') or block_type.upper()}"
+                if isinstance(plan_number, int)
+                else _block_name(seq, block_type)
+            )
 
             current_block_version = await self.session.scalar(
                 select(func.max(PlanBlock.version)).where(
@@ -459,14 +556,17 @@ class BlockGeneratorService:
                     "weekNumber": seq,
                     "blockType": block_type,
                     "source": "block_generator",
+                    "planName": content.get("planName"),
                 },
             )
             self.session.add(plan_block)
             await self.session.flush()
             blocks_created += 1
 
+            by_date: dict[date, list[dict[str, Any]]] = {}
             for workout in week["workouts"]:
-                workout_date = date.fromisoformat(workout["workoutDate"])
+                by_date.setdefault(date.fromisoformat(workout["workoutDate"]), []).append(workout)
+            for workout_date, sessions in sorted(by_date.items()):
                 current_version = await self.session.scalar(
                     select(func.max(PlannedWorkout.version)).where(
                         PlannedWorkout.user_id == user_id,
@@ -482,27 +582,32 @@ class BlockGeneratorService:
                     )
                     .values(is_active=False)
                 )
-                self.session.add(
-                    PlannedWorkout(
-                        user_id=user_id,
-                        plan_block_id=plan_block.id,
-                        workout_date=workout_date,
-                        version=(current_version or 0) + 1,
-                        title=str(workout["title"]),
-                        # Batch 253 (CR236-05): the model writes this column, so
-                        # it is normalised into the shared vocabulary before it
-                        # lands rather than classified differently by each
-                        # language afterwards.
-                        workout_type=normalise_workout_type(str(workout["workoutType"])),
-                        status="planned",
-                        is_active=True,
-                        planned_duration_min=workout.get("plannedDurationMin"),
-                        intensity_target=workout.get("intensityTarget"),
-                        structured_workout=workout.get("structuredWorkout") or {},
-                        source=BLOCK_LOCK_SOURCE,
-                    )
+                ordered: Sequence[dict[str, Any]] = sorted(
+                    sessions, key=lambda item: int(item.get("slot") or 0)
                 )
-                workouts_written += 1
+                for offset, workout in enumerate(ordered, start=1):
+                    self.session.add(
+                        PlannedWorkout(
+                            user_id=user_id,
+                            plan_block_id=plan_block.id,
+                            workout_date=workout_date,
+                            version=(current_version or 0) + offset,
+                            title=str(workout["title"]),
+                            # Batch 253 (CR236-05): the model writes this column, so
+                            # it is normalised into the shared vocabulary before it
+                            # lands rather than classified differently by each
+                            # language afterwards.
+                            workout_type=normalise_workout_type(str(workout["workoutType"])),
+                            status="planned",
+                            is_active=True,
+                            planned_duration_min=workout.get("plannedDurationMin"),
+                            intensity_target=workout.get("intensityTarget"),
+                            structured_workout=workout.get("structuredWorkout") or {},
+                            source=BLOCK_LOCK_SOURCE,
+                        )
+                    )
+                    workouts_written += 1
+                await self.session.flush()
 
         return LockResult(
             blocks_created=blocks_created,

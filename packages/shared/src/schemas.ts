@@ -1701,6 +1701,16 @@ export const dailyLoopSchema = z.object({
       trendReason: z.string(),
     })
     .optional(),
+  // Batch 323: his next plan is drafted and waiting for him, from his taper week and once
+  // his plan has ended, until he accepts or declines it. Absent from an older server.
+  nextPlan: z
+    .object({
+      planName: z.string().min(1),
+      startDate: isoDateSchema,
+      endDate: isoDateSchema,
+    })
+    .nullable()
+    .optional(),
 });
 
 export const dailyLoopEnvelopeSchema = z.object({
@@ -1816,6 +1826,10 @@ export const resumeEnvelopeSchema = z.object({
 
 export const generatedBlockWorkoutSchema = z.object({
   dayOffset: z.number().int(),
+  // Batch 323: which of a day's sessions (his Saturday carries the ride and strength) and
+  // what kind it is. Absent on a draft made before it, which has one session a day.
+  slot: z.number().int().nonnegative().optional(),
+  kind: z.string().optional(),
   workoutDate: isoDateSchema,
   title: z.string().min(1),
   workoutType: z.string().min(1),
@@ -1831,6 +1845,7 @@ export const generatedBlockWeekSchema = z.object({
   focus: z.string().optional(),
   startDate: isoDateSchema,
   endDate: isoDateSchema,
+  totalMin: z.number().int().optional(),
   workouts: z.array(generatedBlockWorkoutSchema),
 });
 
@@ -1857,6 +1872,11 @@ export const generatedBlockDraftSchema = z.object({
   generatedAtUtc: z.string().min(1),
   lockedAtUtc: z.string().nullable(),
   progressionProposal: blockProgressionProposalSchema.nullable().optional(),
+  // Batch 323: the next plan's name ("Plan No. 3") and its "why this plan" note, built
+  // from his last plan. Absent on a draft made before it.
+  planName: z.string().nullable().optional(),
+  planNumber: z.number().int().nullable().optional(),
+  whyThisPlan: z.array(z.string()).optional(),
   weeks: z.array(generatedBlockWeekSchema),
 });
 
@@ -1877,6 +1897,7 @@ export const generateBlockInputSchema = z.object({
 export const refineBlockInputSchema = z.object({
   weekNumber: z.number().int().positive(),
   dayOffset: z.number().int().nonnegative(),
+  slot: z.number().int().nonnegative().optional(),
   title: z.string().min(1).nullable().optional(),
   workoutType: z.string().min(1).nullable().optional(),
   plannedDurationMin: z.number().int().positive().nullable().optional(),

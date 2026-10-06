@@ -33,6 +33,7 @@ from src.models.coaching import (
     BriefGenerationStatus,
     DailyMetric,
     Feedback,
+    KnowledgeBase,
     ManualEntry,
     PlanBlock,
     PlannedWorkout,
@@ -57,6 +58,7 @@ from src.routers.daily_loop_schemas import (
     HolidayStateOut,
     LoopStateOut,
     ManualEntryOut,
+    NextPlanOut,
     PendingPostActivityOut,
     PlannedWorkoutOut,
     PostFlexibilityAnalysisOut,
@@ -75,6 +77,8 @@ from src.routers.daily_loop_schemas import (
     WindowStatsOut,
 )
 from src.routers.feedback import serialize_feedback
+from src.services.block_generator import GENERATED_BLOCK_SECTION
+from src.services.block_generator import STATUS_DRAFT as BLOCK_STATUS_DRAFT
 from src.services.breathwork_brief import BreathworkBriefResult
 from src.services.brief_generation_status import (
     STATUS_FAILED,
@@ -379,6 +383,39 @@ def _chest_question_eases(verdict: Any) -> bool:
         and graded.get("floor") == FLOOR_HARD_WORK_TO_EASY
         and graded.get("easing") == EASING_CHEST_QUESTION
     )
+
+
+async def _next_plan(
+    db: AsyncSession, user_id: uuid.UUID, day: date, *, at_block_boundary: bool
+) -> NextPlanOut | None:
+    """His next plan's draft, while it waits for him and his plan ends (Batch 323).
+
+    From the block boundary (the 13th block, his taper week) and on any day no plan block
+    covers, while the builder holds an unlocked draft. Only four fields of the draft are
+    read, so Home's poll never loads the plan itself.
+    """
+    if not at_block_boundary and await _in_plan_week(db, user_id, day):
+        return None
+    content = KnowledgeBase.content
+    row = (
+        await db.execute(
+            select(
+                content["status"].astext,
+                content["planName"].astext,
+                content["startDate"].astext,
+                content["endDate"].astext,
+            )
+            .where(
+                KnowledgeBase.user_id == user_id,
+                KnowledgeBase.section == GENERATED_BLOCK_SECTION,
+                KnowledgeBase.is_active.is_(True),
+            )
+            .limit(1)
+        )
+    ).first()
+    if row is None or row[0] != BLOCK_STATUS_DRAFT or not row[2] or not row[3]:
+        return None
+    return NextPlanOut(planName=row[1] or "Your next plan", startDate=row[2], endDate=row[3])
 
 
 def _chest_follow_up(verdict: Any) -> ChestFollowUpOut | None:
@@ -1152,6 +1189,12 @@ async def build_envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -
                 )
                 for warning in snapshot.data_quality_warnings
             ],
+            nextPlan=await _next_plan(
+                db,
+                player.id,
+                snapshot.subject_date,
+                at_block_boundary=snapshot.loop_state.at_block_boundary,
+            ),
             strengthBrief=_serialize_strength_brief(snapshot.strength_brief),
             walkingBrief=_serialize_walking_brief(snapshot.walking_brief),
             breathworkBrief=_serialize_breathwork_brief(snapshot.breathwork_brief),
