@@ -7,7 +7,7 @@
 ## Now
 
 **2026-10-06 — The daily-verdict review is written up as Batches 314–323 (group G8), not
-built; all of it runs as one plan from this session** (Craig, 6 Oct; review
+built; all of it runs as one group, G8, from one go** (Craig, 6 Oct; review
 `docs/reviews/2026-10-06-daily-verdict-review.md`, PR #366, merging once the plan is
 settled). The call is sound and safe; it is not helping Mark progress; the written brief
 explains it worst. **G8a, by Wed 14 Oct:** 314 (`multidict` 6.7.1 fails CI's dependency
@@ -18,7 +18,8 @@ so the trial does not bind it). 315's and 323's words need Craig's sign-off befo
 merge. **Then** the trial addendum scores the review's predictions (section F, committed
 `a4836d3` before his first morning back), and after 20 Oct: 316 (305's load-ratio line,
 plus recovery time only before a hard session) → 311, widened → 308, which also rewrites §4
-→ 317, 318, 321 → 319, 320, 322.
+→ 317, 318, 321 → 319, 320, 322. **His medication (Craig, 6 Oct): none beyond vitamin D and
+fish oil** (315 adds it to Coach memory's profile at close-out).
 
 **2026-10-05 (late) — Batch 312 is live (PR #365, `7ec7c8d`, Decision #384); Craig's 310 → 313
 → 312 run is complete.** A slow Garmin or Hive now delays only its own job: Garmin and Hive are

@@ -513,8 +513,8 @@ why, but last, in jargon, and with no "what would change it".
 - **Fitness coach:** non-bike work is protected; it needs load and progression (DV-10).
 - **Doctor:** the floors are sound and rare (one off-the-bike morning in 106); return after
   fever is shorter than the IOC's graded return but has a floor; the gaps are DV-3, the
-  medication question (no medication or medical history in the knowledge base, *observed*),
-  and the SpO₂ dips (Hypotheses).
+  medication question (no medication or medical history in the knowledge base, *observed*;
+  answered 6 Oct: none beyond vitamin D and fish oil), and the SpO₂ dips (Hypotheses).
 
 ---
 
@@ -791,9 +791,14 @@ Craig chose these knowingly (#377, #382) and the outcomes in C.1 show no harm fr
   measurement noise or sleep-disordered breathing.** Wrist oximetry overnight is unreliable;
   in men of his age sleep apnoea is common and linked to atrial fibrillation. A GP
   conversation, not the app, would settle it. Craig's call whether the app ever mentions it.
-- **His medication, if any, would change how his heart rate and HRV should be read** (beta
+- ~~**His medication, if any, would change how his heart rate and HRV should be read** (beta
   blockers lower both). The knowledge base records none (*observed*); whether that means
-  "none" or "never asked" is unknown.
+  "none" or "never asked" is unknown.~~ **Answered 6 Oct (Craig): no medication beyond
+  vitamin D and fish oil**, consistent with two of his check-ins (*observed*). Nothing changes
+  how the engine reads his heart rate or HRV. One point for his GP rather than the app: in
+  cardiovascular-outcome trials, marine omega-3 supplements carried a modestly higher
+  atrial-fibrillation risk, more at over 1 g a day (Gencer 2021, meta-analysis; cited from
+  memory, not re-read), and long-term endurance athletes start from a higher risk.
 - **The fall in long-ride drift (5.2% to 0.9%) is the cooler season, not fitness.**
 - **Heart rate at 249 W rising from 129 to 139 bpm through the August build was fatigue the
   morning call did not see**; heat or longer intervals are alternatives.
@@ -849,4 +854,5 @@ Craig chose these knowingly (#377, #382) and the outcomes in C.1 show no harm fr
 - Saw AE, Main LC, Gastin PB. Monitoring the athlete training response. *BJSM* 2016. doi:10.1136/bjsports-2015-094758
 - Schwellnus M, Adami PE, Bougault V, et al. IOC consensus statement on acute respiratory illness in athletes, part 1: acute respiratory infections. *BJSM* 2022;56:1066–88. doi:10.1136/bjsports-2022-105759
 - Vesterinen V, Nummela A, Heikura I, et al. Individual endurance training prescription with heart rate variability. *MSSE* 2016;48:1347–54. doi:10.1249/MSS.0000000000000910
+- Gencer B, Djousse L, Al-Ramady OT, et al. Effect of long-term marine omega-3 fatty acids supplementation on the risk of atrial fibrillation in randomized controlled trials of cardiovascular outcomes. *Circulation* 2021. doi:10.1161/CIRCULATIONAHA.121.055654 (from memory, not re-checked)
 - World Health Organization. Guidelines on physical activity and sedentary behaviour. 2020.
