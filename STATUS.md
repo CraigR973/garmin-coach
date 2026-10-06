@@ -2172,6 +2172,11 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-06** — Daily-verdict review at `44274a1` (`docs/reviews/2026-10-06-daily-verdict-review.md`,
+  read-only, no spend): the call is sound and safe (replay 5 of 5; status monotone over 33,000
+  probes); not helping him progress (FTP untested since 27 Jan; nothing planned after 18 Oct);
+  the brief buries the call; one caution-only gap after a chest or heart report (#375) for
+  Craig. Predictions for 7–20 Oct committed first (`a4836d3`). Nothing added to the ledger.
 - **2026-10-05 (late)** — Batch 312 shipped as PR #365 / `7ec7c8d` (Decision #384), the last of
   Craig's 310 → 313 → 312 run. `retry_sync` runs each Garmin and Hive call in a worker thread;
   one process-wide lock per service keeps calls one at a time (workout delivery included); each
