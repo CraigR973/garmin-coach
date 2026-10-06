@@ -6,6 +6,19 @@
 
 ## Now
 
+**2026-10-06 — The daily-verdict review is written up as Batches 314–322 (group G8), not
+built** (Craig: "yes to all … let's batch this up"; review `docs/reviews/2026-10-06-daily-verdict-review.md`,
+PR #366). The call is sound and safe; it is not helping Mark progress; the written brief
+explains it worst. **G8a, proposed to run now:** 314 (`multidict` 6.7.1 fails CI's
+dependency audit on every branch, `main` included) → 315 (after a chest or heart report,
+ask before hard work; the one caution-only exception to "nothing before 21 Oct", amending
+#375; its words need Craig's sign-off before the merge). **After 20 Oct:** 316 (305's
+load-ratio line, plus recovery time only before a hard session) → 311, widened with three
+candidates → 308, which also rewrites §4 → 317–322. **Plan No. 3 before Mon 19 Oct** (with
+an FTP test in week 1 and two loaded strength sessions a week) is Craig's. The review's
+predictions for 7–20 Oct (section F, committed `a4836d3` before his first morning back)
+are what the trial's addendum scores.
+
 **2026-10-05 (late) — Batch 312 is live (PR #365, `7ec7c8d`, Decision #384); Craig's 310 → 313
 → 312 run is complete.** A slow Garmin or Hive now delays only its own job: Garmin and Hive are
 called in a worker thread, one call at a time across the process, and no job holds a database
@@ -212,8 +225,10 @@ v50 brief reads constraints the ladder does not follow.
 
 ### Needs Craig
 
-1. **Plan No. 3 (from Batch 313).** Plan No. 2's last week ends Sun 18 Oct; from Mon 19 Oct
-   Home shows "No session planned" each morning until the next plan is loaded.
+1. **Plan No. 3 (from Batch 313; agreed 6 Oct).** Plan No. 2's last week ends Sun 18 Oct; from
+   Mon 19 Oct Home shows "No session planned" each morning until the next plan is loaded.
+   The 6 Oct review asks for an FTP or 20-minute test in its first week (the last was 27 Jan)
+   and two loaded, progressing strength sessions a week. Batch 319 needs it loaded.
 2. **Two colour words left on purpose (313, for your eye):** the symptom floors' plan lines
    ("sets a Red floor", a health warning, unchanged as signed off), and "Amber-adjusted", a
    ride name only the ladder uses.

@@ -550,6 +550,11 @@ batches of pinned behaviour for no gain shown here):
 Ordered around what is queued: 305's load-ratio line → 311 → 308, Plan No. 3 before 19 Oct,
 and nothing before 21 Oct except E0 on Craig's go.
 
+**Added 6 Oct, on Craig's "yes to all":** these rows are now in `docs/phase-batches.md` as
+Batches 314–322 (group G8): the `multidict` fix is 314, E0 is 315, the load line is 316, 311
+and 308 are amended in place, "The call says why, first" is split into 317 (Home) and 318
+(the brief), and a recording batch (C.1's list) is 322.
+
 | Batch (draft) | When | Goal | Acceptance criteria |
 |---|---|---|---|
 | **E0 — After a chest or heart report, ask before hard work** | Only on Craig's go; otherwise after 20 Oct | DV-3. The mornings after a "Chest or heart" answer ask one question and ease a hard session until he answers. Amends Decision #375 | The 303 easing applies after a chest answer until his one-tap reply; no change on any stored morning (none has a chest answer); wording signed off; replay unchanged on all 106 mornings |
