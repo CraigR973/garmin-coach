@@ -46,6 +46,7 @@ from src.routers.daily_loop_schemas import (
     BreathworkSessionOut,
     BreathworkWindowStatsOut,
     BriefGenerationStatusOut,
+    ChestFollowUpOut,
     ChronicSuggestionsOut,
     DailyLoopData,
     DailyLoopEnvelope,
@@ -99,7 +100,12 @@ from src.services.post_activity_analysis import (
 from src.services.sleep_projection import SleepProjectionResult
 from src.services.sleep_projection_context import SleepProjectionContextService
 from src.services.strength_brief import StrengthBriefResult
-from src.services.symptom_check import EASING_CHEST_QUESTION
+from src.services.symptom_check import (
+    EASING_CHEST_FOLLOW_UP,
+    EASING_CHEST_QUESTION,
+    FOLLOW_UP_ANSWERS,
+    SYMPTOMS_CHEST_HEART,
+)
 from src.services.todays_call import needs_plan_week, stored_call
 from src.services.verdict_grading import FLOOR_HARD_WORK_TO_EASY
 from src.services.walking_brief import WalkingBriefResult
@@ -333,6 +339,7 @@ def _serialize_analysis(
         ),
         briefWrittenAtUtc=brief_written_at(analysis.raw_response),
         todaysCall=stored_call(analysis.context_packet, in_plan_week=in_plan_week).to_packet(),
+        chestFollowUp=_chest_follow_up(verdict),
     )
 
 
@@ -371,6 +378,42 @@ def _chest_question_eases(verdict: Any) -> bool:
         and isinstance(graded, dict)
         and graded.get("floor") == FLOOR_HARD_WORK_TO_EASY
         and graded.get("easing") == EASING_CHEST_QUESTION
+    )
+
+
+def _chest_follow_up(verdict: Any) -> ChestFollowUpOut | None:
+    """Home's chest or heart follow-up for this stored morning, or ``None`` (Batch 315).
+
+    Shown while the follow-up the morning recorded is open, except on a morning that
+    carries the chest-or-heart floor itself: its own warning says what to do today, and
+    the next morning asks again.
+    """
+    if not isinstance(verdict, dict):
+        return None
+    acute = verdict.get("acutePhysiology")
+    symptoms = acute.get("symptoms") if isinstance(acute, dict) else None
+    if not isinstance(symptoms, dict):
+        return None
+    record = symptoms.get("chestFollowUp")
+    if not isinstance(record, dict) or record.get("open") is not True:
+        return None
+    if symptoms.get("triggered") is True and symptoms.get("answer") == SYMPTOMS_CHEST_HEART:
+        return None
+    try:
+        reported_on = date.fromisoformat(str(record.get("reportedOn")))
+    except ValueError:
+        return None
+    graded = verdict.get("graded")
+    answer = record.get("answer")
+    return ChestFollowUpOut(
+        reportedOn=reported_on.isoformat(),
+        reportedWeekday=reported_on.strftime("%A"),
+        answer=answer if answer in FOLLOW_UP_ANSWERS else None,
+        eases=bool(
+            isinstance(graded, dict)
+            and graded.get("floor") == FLOOR_HARD_WORK_TO_EASY
+            and graded.get("easing") == EASING_CHEST_FOLLOW_UP
+        ),
     )
 
 

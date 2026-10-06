@@ -148,7 +148,7 @@ def test_both_prompts_carry_the_one_rule_and_moved_their_versions() -> None:
     # is served as current: the brief self-heals, Trends is regenerated at close-out.
     # (Batch 269 moved the brief on again, to v48; Batch 272 to v49 and Trends to v12;
     # Batch 294 to v50; Batch 296 to v51.)
-    assert MORNING_PROMPT_VERSION == "morning-analysis-v57-2026-10-05"
+    assert MORNING_PROMPT_VERSION == "morning-analysis-v58-2026-10-06"
     assert PROMPT_VERSION_BY_BUCKET[BUCKET_MONTH] == "trends-month-v12-2026-09-27"
     assert PROMPT_VERSION_BY_BUCKET["season"] == "trends-season-v12-2026-09-27"
 

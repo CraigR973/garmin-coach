@@ -74,6 +74,26 @@ class SymptomAnswerBody(BaseModel):
     answer: Literal["none", "head_cold", "fever_aches", "chest_heart"]
 
 
+class ChestFollowUpAnswerBody(BaseModel):
+    """Batch 315: his answer to Home's chest or heart follow-up. One of three."""
+
+    answer: Literal["cleared", "not_seen", "still_there"]
+
+
+class ChestFollowUpOut(BaseModel):
+    """Batch 315: Home's chest or heart follow-up, while it is open.
+
+    ``answer`` is his answer this morning (``not_seen`` keeps it open; ``None`` means
+    Home is still asking). ``eases`` says today's hard session is an easy ride because
+    of it, so the card can say so.
+    """
+
+    reportedOn: str
+    reportedWeekday: str
+    answer: str | None = None
+    eases: bool = False
+
+
 class AdherenceBody(BaseModel):
     status: str
     rpe: float | None = None
@@ -153,6 +173,9 @@ class AnalysisOut(BaseModel):
     # Batch 313: today's call (``services.todays_call``), stored with the morning, or
     # read with the same rule from a morning stored before it.
     todaysCall: dict[str, Any] | None = None
+    # Batch 315: the chest or heart follow-up, while it is open and today does not
+    # carry the chest-or-heart warning itself. Absent on a morning stored before it.
+    chestFollowUp: ChestFollowUpOut | None = None
 
 
 class PostWorkoutAnalysisOut(BaseModel):

@@ -5815,6 +5815,34 @@ figure in these rows was measured on 2026-10-06, read-only; re-verify each row a
     reviewed exception (the #378 pattern), decided under Craig's delegation of 6 Oct
     (Decision #385).
 
+### Corrections made at `/batch-start 315` (2026-10-06), before any code
+
+- **Re-verified, unchanged:** a "Chest or heart" answer sets the no-training floor that day
+  only; 303's easing covers the two mornings after a fever and an unanswered chest mention
+  in his note; every symptom answer on record is None (30 Sep, 1 Oct, 5 Oct), and no
+  stored morning carries a symptom floor or an easing (observed, 6 Oct).
+- **The open questions, answered under Craig's delegation of 6 Oct (Decision #386):**
+  - *How long:* until he answers "Gone, and I've spoken to my GP or 111", asked each
+    morning, with no time limit.
+  - *The answers:* three, one tap each: that one, "Gone, but I haven't spoken to anyone
+    yet" (still eased, asked again tomorrow) and "Still there" (the chest-or-heart floor
+    that day).
+  - *Where the answer lives:* neither the check-in's symptom answer nor a column on the
+    check-in. Mornings are graded and shown with no check-in (2–4 Oct each have a stored
+    morning and none), Home's symptom-answer route refuses a day with no check-in, and a
+    check-in row is what "he has checked in" means on Home and the Sleep page. A new
+    table, `symptom_follow_ups` (migration `036`): additive, every column but the key
+    nullable, the run's rule for migrations.
+- **Two details the row did not settle.** "The day is at least Amber" applies only when
+  a hard session is eased, as for 303's chest question: with none planned the day is
+  unchanged and Home only asks (otherwise a Zone 2 day would read "There's some fatigue
+  about", which is not why). And the follow-up is read from the latest stored morning
+  before today, not from yesterday's, and every graded morning records it
+  (`symptoms.chestFollowUp`) even when a stricter floor that day drops its easing, so
+  neither a day without a stored morning nor a fever in between ends it.
+- **The replay of every stored morning changes none:** the branch's replay of all 107
+  stored mornings is identical to `main`'s, and reproduces production 6 of 6.
+
 ### Batch group — G8, the daily-verdict review (2026-10-06)
 
 **One group, run in this order from one go** (Craig, 6 Oct: every remaining batch planned

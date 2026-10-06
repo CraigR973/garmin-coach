@@ -8,7 +8,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import (
@@ -21,6 +21,7 @@ from src.models.coaching import (
     PlanBlock,
     PlannedWorkout,
     Sleep,
+    SymptomFollowUp,
     TemperatureReading,
     WeatherDaily,
     WorkoutDeliveryProposal,
@@ -307,6 +308,54 @@ class DailyLoopService:
         await self.session.commit()
         await self.session.refresh(entry)
         return entry
+
+    async def answer_chest_follow_up(
+        self,
+        player: Profile,
+        *,
+        subject_date: date,
+        answer: str,
+    ) -> SymptomFollowUp:
+        """Record his answer to Home's chest or heart follow-up, and nothing else (Batch 315).
+
+        The follow-up is the one the day's latest stored morning recorded. It is answered
+        on its own row, not the check-in, because a morning he has not checked in can
+        still ask, and a check-in row is what "he has checked in" means elsewhere. A
+        second answer the same morning replaces the first.
+        """
+        record = await self.session.scalar(
+            select(
+                Analysis.context_packet[("verdict", "acutePhysiology", "symptoms", "chestFollowUp")]
+            )
+            .where(
+                Analysis.user_id == player.id,
+                Analysis.analysis_type == "morning",
+                Analysis.subject_date == subject_date,
+            )
+            .order_by(desc(Analysis.generated_at_utc), desc(Analysis.created_at))
+            .limit(1)
+        )
+        reported_on = record.get("reportedOn") if isinstance(record, dict) else None
+        if not isinstance(reported_on, str):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No chest or heart follow-up to answer for this date",
+            )
+        row = await self.session.scalar(
+            select(SymptomFollowUp).where(
+                SymptomFollowUp.user_id == player.id,
+                SymptomFollowUp.subject_date == subject_date,
+            )
+        )
+        if row is None:
+            row = SymptomFollowUp(user_id=player.id, subject_date=subject_date)
+            self.session.add(row)
+        row.reported_on = date.fromisoformat(reported_on)
+        row.answer = answer
+        row.answered_at_utc = _utcnow()
+        await self.session.commit()
+        await self.session.refresh(row)
+        return row
 
     async def upsert_post_ride_checkin(
         self,

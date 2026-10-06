@@ -185,6 +185,22 @@ export const remInterventionFeedbackSchema = z.object({
 export const symptomAnswerSchema = z.enum(['none', 'head_cold', 'fever_aches', 'chest_heart']);
 export type SymptomAnswer = z.infer<typeof symptomAnswerSchema>;
 
+// Batch 315: his one-tap answers to Home's chest or heart follow-up. Only "cleared" (gone,
+// and he has spoken to his GP or 111) ends it; "still_there" sets the chest warning again.
+export const chestFollowUpAnswerSchema = z.enum(['cleared', 'not_seen', 'still_there']);
+export type ChestFollowUpAnswer = z.infer<typeof chestFollowUpAnswerSchema>;
+
+// Batch 315: the follow-up a stored morning is in, while it is open. `answer` is his answer
+// this morning (null while Home is still asking); `eases` says today's hard session is an
+// easy ride because of it. A value added on the server first parses as no answer.
+export const chestFollowUpSchema = z.object({
+  reportedOn: isoDateSchema,
+  reportedWeekday: z.string().min(1),
+  answer: chestFollowUpAnswerSchema.nullable().optional().catch(null),
+  eases: z.boolean().optional(),
+});
+export type ChestFollowUp = z.infer<typeof chestFollowUpSchema>;
+
 export const manualEntrySchema = z.object({
   id: z.string().uuid(),
   userId: z.string().uuid(),
@@ -1256,6 +1272,9 @@ export const dailyLoopAnalysisSchema = z.object({
   // Batch 313: the call, stored with the morning (or read with the same rule from a
   // morning stored before it). Absent only from a server older than the batch.
   todaysCall: todaysCallSchema.nullable().optional(),
+  // Batch 315: the chest or heart follow-up, while it is open. Absent on a morning
+  // stored before it, and from an older server.
+  chestFollowUp: chestFollowUpSchema.nullable().optional(),
 });
 
 export const rideIntervalSchema = z.object({

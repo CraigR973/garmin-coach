@@ -327,6 +327,8 @@ def _grading_service(
         return_value=None if reading_status is None else MagicMock(status=reading_status)
     )
     monkeypatch.setattr(service, "_manual_entries", AsyncMock(return_value=[entry]))
+    # Batch 315: no chest or heart follow-up answer on this morning.
+    monkeypatch.setattr(service, "_chest_follow_up_answer", AsyncMock(return_value=None))
     monkeypatch.setattr(service, "latest_analysis", AsyncMock(return_value=stored))
     monkeypatch.setattr(service, "assemble_context_packet", assemble)
     monkeypatch.setattr(

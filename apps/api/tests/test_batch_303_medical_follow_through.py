@@ -297,7 +297,8 @@ def test_the_nearest_fever_day_decides_so_the_count_restarts() -> None:
 
 @pytest.mark.parametrize("answer", [None, SYMPTOMS_NONE, SYMPTOMS_HEAD_COLD, SYMPTOMS_CHEST_HEART])
 def test_only_a_fever_starts_the_easy_days_back(answer: str | None) -> None:
-    # Craig, 2 Oct: no change after a chest or heart report; a head cold is above the neck.
+    # A head cold is above the neck. A chest or heart report starts a follow-up of its own
+    # since Batch 315 (Craig, 6 Oct, amending his 2 Oct "no change"), not easy days back.
     assert illness_return(FRIDAY, {THURSDAY: answer}) is None
 
 
@@ -766,7 +767,7 @@ async def test_a_week_swap_is_not_offered_where_it_would_undo_the_easing() -> No
 
 
 def test_the_brief_is_told_what_follows_a_symptom_and_the_version_moved() -> None:
-    assert GRADED_PROMPT_VERSION == "morning-analysis-v57-2026-10-05"
+    assert GRADED_PROMPT_VERSION == "morning-analysis-v58-2026-10-06"
     assert SYMPTOM_FOLLOW_THROUGH_RULE in GRADED_SYSTEM_PROMPT
     rule = " ".join(SYMPTOM_FOLLOW_THROUGH_RULE.split())
     assert "Never call the day Red for it" in rule

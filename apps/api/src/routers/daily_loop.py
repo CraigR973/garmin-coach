@@ -25,6 +25,7 @@ from src.rate_limit import paid_generation_limit
 from src.routers.daily_loop_schemas import (
     AdherenceBody,
     ApiError,
+    ChestFollowUpAnswerBody,
     DailyLoopEnvelope,
     ManualEntryBody,
     PostRideCheckInBody,
@@ -181,6 +182,33 @@ async def answer_symptom_question(
     regrades today on it, as a changed check-in does.
     """
     await DailyLoopService(db).answer_symptom_question(
+        player, subject_date=subject_date, answer=body.answer
+    )
+    if subject_date == local_today(player.timezone):
+        await BriefGenerationStatusService(db).mark_generating(player.id, subject_date, commit=True)
+        background_tasks.add_task(_generate_brief_after_checkin, player.id, subject_date)
+    snapshot = await DailyLoopService(db).get_snapshot(player, subject_date=subject_date)
+    return await build_envelope(player, snapshot, db)
+
+
+@router.post("/{subject_date}/symptom-follow-up", response_model=DailyLoopEnvelope)
+@paid_generation_limit
+async def answer_chest_follow_up(
+    subject_date: date,
+    body: ChestFollowUpAnswerBody,
+    request: Request,
+    player: CurrentUser,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+) -> DailyLoopEnvelope:
+    """Answer Home's chest or heart follow-up in one tap (Batch 315).
+
+    From the morning after a chest or heart report, Home asks whether the symptoms have
+    gone and whether he has spoken to his GP or 111, and a hard session is an easy ride
+    until he says both. This records the answer and regrades today on it, as Home's
+    symptom answer does; it saves nothing else.
+    """
+    await DailyLoopService(db).answer_chest_follow_up(
         player, subject_date=subject_date, answer=body.answer
     )
     if subject_date == local_today(player.timezone):

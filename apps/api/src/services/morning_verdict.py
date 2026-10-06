@@ -37,10 +37,12 @@ from src.services.provenance import (
 )
 from src.services.sleep_history import SPO2_HRV_RELIABLE_FROM
 from src.services.symptom_check import (
+    EASING_CHEST_FOLLOW_UP,
     EASING_CHEST_QUESTION,
     EASY_RIDING_PLAN_LINE,
     SYMPTOM_FLOORS,
     SYMPTOMS_CHEST_HEART,
+    ChestFollowUp,
     latest_symptom_answer,
     more_severe_symptom,
     reports_symptoms,
@@ -853,12 +855,14 @@ def _acute_physiology_rail(
     symptom_source: str | None = None,
     symptom_words: str | None = None,
     symptom_easing: Mapping[str, Any] | None = None,
+    chest_follow_up: ChestFollowUp | None = None,
 ) -> dict[str, Any]:
     # Batch 294: the symptom answer is a medical floor, and a second sign for the HRV
     # dip. It leads the notices because it is the one Mark gave the app himself.
     # Batch 303: ``symptom_easing`` is what follows a symptom on a morning with no
-    # floor of its own; a floor set today drops it.
-    symptoms = symptom_signal(symptom_answer, easing=symptom_easing)
+    # floor of its own; a floor set today drops it. Batch 315: ``chest_follow_up`` is
+    # recorded whatever today's floor is, so the next morning can carry it on.
+    symptoms = symptom_signal(symptom_answer, easing=symptom_easing, follow_up=chest_follow_up)
     # Batch 297: where the answer came from — his tap, or his note read by the reader —
     # and, for a note, his words.
     symptoms["source"] = symptom_source if symptom_answer is not None else None
@@ -1001,9 +1005,15 @@ def morning_verdict(
     notes_symptom_answer: str | None = None,
     notes_symptom_words: str | None = None,
     symptom_easing: Mapping[str, Any] | None = None,
+    follow_up_symptom_answer: str | None = None,
+    chest_follow_up: ChestFollowUp | None = None,
 ) -> dict[str, Any]:
     subjective_score = _latest_subjective_score(manual_entries)
-    tapped_answer = latest_symptom_answer(manual_entries)
+    # Batch 315: "Still there" on Home's chest or heart follow-up is his own answer that
+    # the symptoms are back, so it counts as a tapped "Chest or heart", under either engine.
+    tapped_answer = more_severe_symptom(
+        latest_symptom_answer(manual_entries), follow_up_symptom_answer
+    )
     # Batch 297: a symptom his note names sets the same floor as answering with it.
     # The more severe of the two stands, so the note can only add caution.
     symptom_answer = more_severe_symptom(tapped_answer, notes_symptom_answer)
@@ -1030,6 +1040,7 @@ def morning_verdict(
         symptom_source=symptom_source,
         symptom_words=notes_symptom_words,
         symptom_easing=symptom_easing,
+        chest_follow_up=chest_follow_up,
     )
     # Batch 271's signal. Batch 269 gates the HRV Red on it below and Batch 270
     # classifies a Red cluster with it; both read this one signal so they cannot
@@ -1947,6 +1958,8 @@ def graded_verdict_packet(
         safety.append(
             "chest_question_easy_riding"
             if graded.easing == EASING_CHEST_QUESTION
+            else "chest_follow_up_easy_riding"
+            if graded.easing == EASING_CHEST_FOLLOW_UP
             else "fever_return_easy_riding"
         )
     oxygen = acute.get("oxygenRespiration")

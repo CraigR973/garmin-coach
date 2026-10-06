@@ -80,6 +80,7 @@ import {
   sleepQualifierLabel,
 } from '@/lib/dailyFlow';
 import { TOMORROW_CALL_LINE, greetingForNow } from '@/lib/copy';
+import { ChestFollowUpCard } from '@/components/ChestFollowUpCard';
 import { NotesAskCard } from '@/components/NotesAskCard';
 import { dayStateForWorkouts, workoutTypeLabel, type DayCategory } from '@/lib/workoutCategories';
 import { actionSection, nextAction, type NextAction } from '@/lib/homeActions';
@@ -804,6 +805,15 @@ export function DashboardPage() {
       )}
 
       {analysis ? <AcutePhysiologyNotice boundary={analysis.acutePhysiology} /> : null}
+      {analysis ? (
+        // Batch 315: after a chest or heart report, Home asks before hard work, every
+        // morning until he says the symptoms have gone and he has spoken to his GP or 111.
+        <ChestFollowUpCard
+          key={`${analysis.id}-chest-follow-up`}
+          followUp={analysis.chestFollowUp}
+          subjectDate={daily.subjectDate}
+        />
+      ) : null}
       {analysis ? (
         <NotesAskCard
           // One card per stored morning: an answer given to this morning's question is
