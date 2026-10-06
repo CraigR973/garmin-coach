@@ -58,6 +58,7 @@ from src.services.sleep_history import (
     BaselineSample,
     compute_metric_baselines,
 )
+from src.services.symptom_check import follow_up_symptom_answer
 from src.services.todays_call import rest_reason
 from src.services.verdict_grading import (
     ACTION_AS_PLANNED,
@@ -544,7 +545,14 @@ def replay_morning(
         if isinstance(stored_symptoms, Mapping) and stored_symptoms.get("source") == "notes"
         else {}
     )
+    # Batch 315: "Still there" on Home's chest follow-up is not in the check-in rows.
+    follow_up = (
+        stored_symptoms.get("chestFollowUp") if isinstance(stored_symptoms, Mapping) else None
+    )
     ladder = morning_verdict(
+        follow_up_symptom_answer=follow_up_symptom_answer(
+            str(follow_up.get("answer")) if isinstance(follow_up, Mapping) else None
+        ),
         notes_symptom_answer=(
             str(notes_symptom["answer"]) if notes_symptom.get("answer") else None
         ),

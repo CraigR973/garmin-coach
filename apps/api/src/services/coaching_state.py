@@ -24,6 +24,20 @@ def _current_cycle_start(today: date) -> date:
     return today - timedelta(days=today.weekday())
 
 
+#: Batch 315 (Craig, 6 Oct 2026): what he takes, so the coach and the brief know that
+#: nothing alters how his heart rate or HRV read. Seeding fills missing sections only,
+#: so his live row gained it by read-modify-write at Batch 315's close-out.
+PROFILE_MEDICATION: dict[str, str] = {
+    "current": "none beyond vitamin D and fish oil",
+    "note": (
+        "Nothing he takes is a heart-rate medicine such as a beta-blocker, so his heart "
+        "rate and HRV can be read against his own normal at face value."
+    ),
+    "asOf": "2026-10-06",
+    "source": "Craig, 6 Oct 2026",
+}
+
+
 def _profile_content() -> dict[str, Any]:
     return {
         "athleteName": "Mark",
@@ -60,6 +74,7 @@ def _profile_content() -> dict[str, Any]:
                 "session in ERG and has accepted the slight softening of those surges."
             ),
         },
+        "medication": dict(PROFILE_MEDICATION),
     }
 
 

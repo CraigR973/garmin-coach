@@ -860,3 +860,36 @@ class CheckInReading(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     model_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
     prompt_version: Mapped[str] = mapped_column(String(80), nullable=False)
     error: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
+
+class SymptomFollowUp(Base, UUIDPrimaryKeyMixin):
+    """His answer to Home's chest or heart follow-up on one morning (Batch 315).
+
+    From the morning after a chest or heart report, until he says the symptoms have
+    gone and that he has spoken to his GP or 111, Home asks each morning and a hard
+    session is an easy ride (``services.symptom_check.chest_follow_up``). One row per
+    morning he answers, kept apart from the check-in because the follow-up can be
+    answered on a morning he has not checked in, and a check-in row is what "he has
+    checked in" means elsewhere. ``reported_on`` is the report it answers. Every column
+    but the key is nullable (the G8 run's rule for migrations, 6 Oct 2026); the service
+    always writes them.
+    """
+
+    __tablename__ = "symptom_follow_ups"
+    __table_args__ = (
+        UniqueConstraint("user_id", "subject_date", name="uq_symptom_follow_ups_user_day"),
+        CheckConstraint(
+            "answer IN ('cleared', 'not_seen', 'still_there')",
+            name="ck_symptom_follow_ups_answer",
+        ),
+    )
+
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=True
+    )
+    subject_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    reported_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    answer: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    answered_at_utc: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )

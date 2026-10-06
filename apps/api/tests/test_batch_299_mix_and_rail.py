@@ -340,7 +340,7 @@ def test_the_graded_prompt_reads_eased_and_dropped_and_the_ladder_keeps_its_sent
         "When verdict.weeklyMix.shortfall is present, today's hard session is being eased:"
     )
 
-    assert GRADED_PROMPT_VERSION == "morning-analysis-v57-2026-10-05"
+    assert GRADED_PROMPT_VERSION == "morning-analysis-v58-2026-10-06"
     assert ladder_sentence in LADDER_SYSTEM_PROMPT
     assert "weeklyMix.eased" not in LADDER_SYSTEM_PROMPT
     assert ladder_sentence not in GRADED_SYSTEM_PROMPT

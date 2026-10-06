@@ -247,6 +247,27 @@ def manual_entry_generation_version(entry: ManualEntry | None) -> str | None:
     return _identity(parts)
 
 
+def with_chest_follow_up(
+    input_version: str | None, answer: str | None, answered_at: datetime | None
+) -> str | None:
+    """The morning's input version once he has answered the chest follow-up (Batch 315).
+
+    The follow-up is answered on its own row, not the check-in, so its answer must join
+    the identity or answering would regrade nothing. Left as it was until he answers, so
+    every existing morning's identity is what it was.
+    """
+
+    if answer is None:
+        return input_version
+    return _identity(
+        {
+            "checkIn": input_version,
+            "chestFollowUp": answer,
+            "chestFollowUpAnsweredAt": answered_at.isoformat() if answered_at else None,
+        }
+    )
+
+
 def stamp_generation_identity(
     packet: dict[str, object],
     *,

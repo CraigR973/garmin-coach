@@ -53,7 +53,12 @@ from fastapi import HTTPException
 
 from src.services.holiday_pause import HolidayWindow, holiday_windows_away_overnight
 from src.services.sleep_history import SPO2_HRV_RELIABLE_FROM
-from src.services.symptom_check import EASING_CHEST_QUESTION, EASING_FEVER_RETURN, EASING_KINDS
+from src.services.symptom_check import (
+    EASING_CHEST_FOLLOW_UP,
+    EASING_CHEST_QUESTION,
+    EASING_FEVER_RETURN,
+    EASING_KINDS,
+)
 from src.services.verdict_scaling import (
     TRANSFORM_SHORTER,
     TRANSFORM_TIRED_ZONE2,
@@ -1181,6 +1186,7 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
     # Amber whatever is planned; an unanswered chest question eases a hard session and
     # otherwise only asks, so with none planned it changes nothing. Neither is Red. A
     # stricter floor today outranks it: "easy riding only" is not said beside "no riding".
+    # Batch 315: an open chest or heart follow-up behaves as the chest question does.
     easing = _easing(acute) if symptom_floor is None and not bike_rest else None
     easing_kind: str | None = None
     easing_reason: str | None = None
@@ -1491,6 +1497,13 @@ def _session_action(
                 ACTION_RECOVERY,
                 "His note may mean a chest or heart symptom and he has not answered: an "
                 "easy spin instead until he does.",
+            )
+        # Batch 315: after a chest or heart report, until he says he has been checked.
+        if verdict.easing == EASING_CHEST_FOLLOW_UP:
+            return (
+                ACTION_RECOVERY,
+                "Chest or heart symptoms reported and not yet checked: an easy spin instead "
+                "until he has spoken to his GP or 111.",
             )
         return ACTION_RECOVERY, "An easy day back after a fever: an easy spin instead."
     # Batch 300 (Craig, 1 Oct 2026): a light week holds the session on a mild concern,

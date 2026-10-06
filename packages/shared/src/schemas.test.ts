@@ -932,6 +932,49 @@ describe('v1 shared schemas', () => {
     expect(before.notesAskEases ?? false).toBe(false);
   });
 
+  it('reads the chest or heart follow-up, and its absence (Batch 315)', () => {
+    const asking = dailyLoopAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-10-14T07:01:00Z',
+      verdict: 'amber',
+      promptVersion: 'morning-analysis-v58-2026-10-06',
+      outputMarkdown: '',
+      chestFollowUp: {
+        reportedOn: '2026-10-13',
+        reportedWeekday: 'Tuesday',
+        answer: null,
+        eases: true,
+      },
+    });
+    expect(asking.chestFollowUp).toEqual({
+      reportedOn: '2026-10-13',
+      reportedWeekday: 'Tuesday',
+      answer: null,
+      eases: true,
+    });
+
+    // An answer the server learns first reads as no answer, so Home asks rather than breaks.
+    const newer = dailyLoopAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-10-14T07:01:00Z',
+      verdict: 'amber',
+      promptVersion: 'morning-analysis-v58-2026-10-06',
+      outputMarkdown: '',
+      chestFollowUp: { reportedOn: '2026-10-13', reportedWeekday: 'Tuesday', answer: 'later' },
+    });
+    expect(newer.chestFollowUp?.answer).toBeNull();
+
+    // A morning stored before the batch, or served by an older API, carries none.
+    const before = dailyLoopAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-10-05T07:01:00Z',
+      verdict: 'amber',
+      promptVersion: 'morning-analysis-v57-2026-10-05',
+      outputMarkdown: '',
+    });
+    expect(before.chestFollowUp ?? null).toBeNull();
+  });
+
   it('reads a morning stored without its brief, and a brief with its own time (Batch 302)', () => {
     const graded = dailyLoopAnalysisSchema.parse({
       id: rowId,
