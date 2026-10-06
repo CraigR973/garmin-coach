@@ -57,6 +57,18 @@ REVIEWED_ADVISORIES: dict[str, ReviewedAdvisory] = {
             "revisit when a fixed braces is published."
         ),
     ),
+    "GHSA-rj75-hqrm-r3gf": ReviewedAdvisory(
+        severity="moderate",
+        reason=(
+            "postcss-selector-parser quadratic parsing of flat selectors (< 7.1.6; fixed "
+            "only in 7.x, and tailwindcss 3.4 and postcss-nested require ^6, whose last "
+            "release, 6.1.4, is affected). Reached only through tailwindcss's build-time "
+            "selector parsing, via the tailwindcss-animate plugin, on the repo's own CSS; "
+            "the advisory itself says build-time use on trusted sources is not affected, "
+            "and nothing of it ships to the browser bundle. Batch 314, 6 Oct 2026, decided "
+            "under Craig's delegation of 6 Oct; revisit with a Tailwind 4 move or a 6.x fix."
+        ),
+    ),
 }
 
 FAIL_SEVERITIES = {"high", "critical"}
