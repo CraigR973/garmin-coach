@@ -6,6 +6,21 @@
 
 ## Now
 
+**2026-10-06 — The daily-verdict review is written up as Batches 314–323 (group G8), not
+built; all of it runs as one group, G8, from one go** (Craig, 6 Oct; review
+`docs/reviews/2026-10-06-daily-verdict-review.md`, PR #366, merging once the plan is
+settled). The call is sound and safe; it is not helping Mark progress; the written brief
+explains it worst. **G8a, by Wed 14 Oct:** 314 (`multidict` 6.7.1 fails CI's dependency
+audit on every branch, `main` included) → 315 (after a chest or heart report, ask before
+hard work; the one caution-only exception, amending #375) → 323 (Plan No. 3 proposed in the
+app from his data, for Mark to accept, change or decline; it changes no rule of the call,
+so the trial does not bind it). 315's and 323's words need Craig's sign-off before each
+merge. **Then** the trial addendum scores the review's predictions (section F, committed
+`a4836d3` before his first morning back), and after 20 Oct: 316 (305's load-ratio line,
+plus recovery time only before a hard session) → 311, widened → 308, which also rewrites §4
+→ 317, 318, 321 → 319, 320, 322. **His medication (Craig, 6 Oct): none beyond vitamin D and
+fish oil** (315 adds it to Coach memory's profile at close-out).
+
 **2026-10-05 (late) — Batch 312 is live (PR #365, `7ec7c8d`, Decision #384); Craig's 310 → 313
 → 312 run is complete.** A slow Garmin or Hive now delays only its own job: Garmin and Hive are
 called in a worker thread, one call at a time across the process, and no job holds a database
@@ -212,8 +227,12 @@ v50 brief reads constraints the ladder does not follow.
 
 ### Needs Craig
 
-1. **Plan No. 3 (from Batch 313).** Plan No. 2's last week ends Sun 18 Oct; from Mon 19 Oct
-   Home shows "No session planned" each morning until the next plan is loaded.
+1. **Plan No. 3 (from Batch 313; agreed 6 Oct).** Plan No. 2's last week ends Sun 18 Oct; from
+   Mon 19 Oct Home shows "No session planned" each morning until the next plan is loaded.
+   Since 6 Oct this is Batch 323: the app proposes it to Mark from his data, with an FTP or
+   20-minute test in week 1 (the last was 27 Jan) and two loaded, progressing strength
+   sessions a week, and he accepts, changes or declines it. Craig signs off the progressions
+   and the words first. Batch 319 needs it accepted.
 2. **Two colour words left on purpose (313, for your eye):** the symptom floors' plan lines
    ("sets a Red floor", a health warning, unchanged as signed off), and "Amber-adjusted", a
    ride name only the ladder uses.
@@ -2172,6 +2191,11 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-06** — Daily-verdict review at `44274a1` (`docs/reviews/2026-10-06-daily-verdict-review.md`,
+  read-only, no spend): the call is sound and safe (replay 5 of 5; status monotone over 33,000
+  probes); not helping him progress (FTP untested since 27 Jan; nothing planned after 18 Oct);
+  the brief buries the call; one caution-only gap after a chest or heart report (#375) for
+  Craig. Predictions for 7–20 Oct committed first (`a4836d3`). Nothing added to the ledger.
 - **2026-10-05 (late)** — Batch 312 shipped as PR #365 / `7ec7c8d` (Decision #384), the last of
   Craig's 310 → 313 → 312 run. `retry_sync` runs each Garmin and Hive call in a worker thread;
   one process-wide lock per service keeps calls one at a time (workout delivery included); each

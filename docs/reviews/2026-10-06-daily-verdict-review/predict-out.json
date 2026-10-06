@@ -1,0 +1,2130 @@
+{
+ "A_back_to_normal": [
+  {
+   "date": "2026-10-07",
+   "hrv": 47,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day",
+   "auto_reason": "7-day HRV 39.0 ms is more than 1 SD under his usual 46.0 ms.",
+   "acute_floor": 39.31,
+   "illness_line": 34.18,
+   "actions": [
+    [
+     "Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "As planned \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your HRV has been well below your usual this week (39 ms against 46)."
+  },
+  {
+   "date": "2026-10-08",
+   "hrv": 47,
+   "colour": "Green (held)",
+   "domains": {
+    "autonomic": "mild",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day_catching_up",
+   "auto_reason": "7-day HRV 40.3 ms is still under his usual 46.1 ms after his holiday, but his last two nights (47 and 47 ms) are back at or above 43.5 ms: the average is catching up, so it counts as a little off.",
+   "acute_floor": 39.31,
+   "illness_line": 34.18,
+   "actions": [
+    [
+     "Sweet Spot (1 \u00d7 30 min @ 89%)",
+     "hold_targets"
+    ]
+   ],
+   "call": "As planned \u2014 hold the targets \u00b7 Recovered",
+   "summary": "One thing is a little off: your HRV is back to normal, but your 7-day average is still catching up after your holiday (40 ms against 46)."
+  },
+  {
+   "date": "2026-10-09",
+   "hrv": 47,
+   "colour": "Green (held)",
+   "domains": {
+    "autonomic": "mild",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day_catching_up",
+   "auto_reason": "7-day HRV 41.9 ms is still under his usual 46.2 ms after his holiday, but his last two nights (47 and 47 ms) are back at or above 43.8 ms: the average is catching up, so it counts as a little off.",
+   "acute_floor": 39.61,
+   "illness_line": 34.69,
+   "actions": [],
+   "call": "Rest day \u00b7 Recovered",
+   "summary": "One thing is a little off: your HRV is back to normal, but your 7-day average is still catching up after your holiday (42 ms against 46)."
+  },
+  {
+   "date": "2026-10-10",
+   "hrv": 47,
+   "colour": "Green (held)",
+   "domains": {
+    "autonomic": "mild",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day_catching_up",
+   "auto_reason": "7-day HRV 43.0 ms is still under his usual 46.3 ms after his holiday, but his last two nights (47 and 47 ms) are back at or above 43.8 ms: the average is catching up, so it counts as a little off.",
+   "acute_floor": 39.65,
+   "illness_line": 34.74,
+   "actions": [
+    [
+     "Easy Z2",
+     "hold_targets"
+    ]
+   ],
+   "call": "As planned \u2014 hold the targets \u00b7 Recovered",
+   "summary": "One thing is a little off: your HRV is back to normal, but your 7-day average is still catching up after your holiday (43 ms against 46)."
+  },
+  {
+   "date": "2026-10-11",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.65,
+   "illness_line": 34.74,
+   "actions": [
+    [
+     "Easy Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-12",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.77,
+   "illness_line": 34.95,
+   "actions": [
+    [
+     "Dumbbells (full-body)",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-13",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.77,
+   "illness_line": 34.95,
+   "actions": [
+    [
+     "VO\u2082 Primer (3 \u00d7 1 min @ 120%)",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-14",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.77,
+   "illness_line": 34.95,
+   "actions": [
+    [
+     "Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-15",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.77,
+   "illness_line": 34.95,
+   "actions": [
+    [
+     "Sweet Spot Primer (1 \u00d7 12 min @ 89%)",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-16",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.77,
+   "illness_line": 34.95,
+   "actions": [],
+   "call": "Rest day \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-17",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.77,
+   "illness_line": 34.95,
+   "actions": [
+    [
+     "Easy Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-18",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.77,
+   "illness_line": 34.95,
+   "actions": [
+    [
+     "Optional Ride (45 min @ 60\u201365%) OR Rest",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-19",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.81,
+   "illness_line": 35.02,
+   "actions": [],
+   "call": "No session planned \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-20",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.99,
+   "illness_line": 35.31,
+   "actions": [],
+   "call": "No session planned \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  }
+ ],
+ "B_gradual": [
+  {
+   "date": "2026-10-07",
+   "hrv": 41,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day",
+   "auto_reason": "7-day HRV 38.1 ms is more than 1 SD under his usual 46.0 ms.",
+   "acute_floor": 39.31,
+   "illness_line": 34.18,
+   "actions": [
+    [
+     "Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "As planned \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your HRV has been well below your usual this week (38 ms against 46)."
+  },
+  {
+   "date": "2026-10-08",
+   "hrv": 43,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day",
+   "auto_reason": "7-day HRV 38.9 ms is more than 1 SD under his usual 46.0 ms.",
+   "acute_floor": 39.26,
+   "illness_line": 34.11,
+   "actions": [
+    [
+     "Sweet Spot (1 \u00d7 30 min @ 89%)",
+     "ease_hard"
+    ]
+   ],
+   "call": "Take the edge off \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your HRV has been well below your usual this week (39 ms against 46)."
+  },
+  {
+   "date": "2026-10-09",
+   "hrv": 45,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day",
+   "auto_reason": "7-day HRV 40.1 ms is more than 1 SD under his usual 46.1 ms.",
+   "acute_floor": 39.55,
+   "illness_line": 34.58,
+   "actions": [],
+   "call": "Rest day \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your HRV has been well below your usual this week (40 ms against 46)."
+  },
+  {
+   "date": "2026-10-10",
+   "hrv": 47,
+   "colour": "Green (held)",
+   "domains": {
+    "autonomic": "mild",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day_catching_up",
+   "auto_reason": "7-day HRV 41.3 ms is still under his usual 46.2 ms after his holiday, but his last two nights (45 and 47 ms) are back at or above 43.7 ms: the average is catching up, so it counts as a little off.",
+   "acute_floor": 39.58,
+   "illness_line": 34.63,
+   "actions": [
+    [
+     "Easy Z2",
+     "hold_targets"
+    ]
+   ],
+   "call": "As planned \u2014 hold the targets \u00b7 Recovered",
+   "summary": "One thing is a little off: your HRV is back to normal, but your 7-day average is still catching up after your holiday (41 ms against 46)."
+  },
+  {
+   "date": "2026-10-11",
+   "hrv": 47,
+   "colour": "Green (held)",
+   "domains": {
+    "autonomic": "mild",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day_catching_up",
+   "auto_reason": "7-day HRV 42.7 ms is still under his usual 46.2 ms after his holiday, but his last two nights (47 and 47 ms) are back at or above 43.7 ms: the average is catching up, so it counts as a little off.",
+   "acute_floor": 39.58,
+   "illness_line": 34.63,
+   "actions": [
+    [
+     "Easy Z2",
+     "hold_targets"
+    ]
+   ],
+   "call": "As planned \u2014 hold the targets \u00b7 Recovered",
+   "summary": "One thing is a little off: your HRV is back to normal, but your 7-day average is still catching up after your holiday (43 ms against 46)."
+  },
+  {
+   "date": "2026-10-12",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.7,
+   "illness_line": 34.83,
+   "actions": [
+    [
+     "Dumbbells (full-body)",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-13",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.7,
+   "illness_line": 34.83,
+   "actions": [
+    [
+     "VO\u2082 Primer (3 \u00d7 1 min @ 120%)",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-14",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.7,
+   "illness_line": 34.83,
+   "actions": [
+    [
+     "Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-15",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.7,
+   "illness_line": 34.83,
+   "actions": [
+    [
+     "Sweet Spot Primer (1 \u00d7 12 min @ 89%)",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-16",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.7,
+   "illness_line": 34.83,
+   "actions": [],
+   "call": "Rest day \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-17",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.7,
+   "illness_line": 34.83,
+   "actions": [
+    [
+     "Easy Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-18",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.7,
+   "illness_line": 34.83,
+   "actions": [
+    [
+     "Optional Ride (45 min @ 60\u201365%) OR Rest",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-19",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.74,
+   "illness_line": 34.89,
+   "actions": [],
+   "call": "No session planned \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-20",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.91,
+   "illness_line": 35.19,
+   "actions": [],
+   "call": "No session planned \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  }
+ ],
+ "C_slow_low_week": [
+  {
+   "date": "2026-10-07",
+   "hrv": 40,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day",
+   "auto_reason": "7-day HRV 38.0 ms is more than 1 SD under his usual 46.0 ms.",
+   "acute_floor": 39.31,
+   "illness_line": 34.18,
+   "actions": [
+    [
+     "Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "As planned \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your HRV has been well below your usual this week (38 ms against 46)."
+  },
+  {
+   "date": "2026-10-08",
+   "hrv": 40,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day",
+   "auto_reason": "7-day HRV 38.3 ms is more than 1 SD under his usual 46.0 ms.",
+   "acute_floor": 39.25,
+   "illness_line": 34.08,
+   "actions": [
+    [
+     "Sweet Spot (1 \u00d7 30 min @ 89%)",
+     "ease_hard"
+    ]
+   ],
+   "call": "Take the edge off \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your HRV has been well below your usual this week (38 ms against 46)."
+  },
+  {
+   "date": "2026-10-09",
+   "hrv": 40,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day",
+   "auto_reason": "7-day HRV 38.9 ms is more than 1 SD under his usual 46.1 ms.",
+   "acute_floor": 39.48,
+   "illness_line": 34.47,
+   "actions": [],
+   "call": "Rest day \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your HRV has been well below your usual this week (39 ms against 46)."
+  },
+  {
+   "date": "2026-10-10",
+   "hrv": 40,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day",
+   "auto_reason": "7-day HRV 39.0 ms is more than 1 SD under his usual 46.0 ms.",
+   "acute_floor": 39.44,
+   "illness_line": 34.41,
+   "actions": [
+    [
+     "Easy Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "As planned \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your HRV has been well below your usual this week (39 ms against 46)."
+  },
+  {
+   "date": "2026-10-11",
+   "hrv": 40,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day",
+   "auto_reason": "7-day HRV 39.4 ms is more than 1 SD under his usual 46.0 ms.",
+   "acute_floor": 38.88,
+   "illness_line": 33.8,
+   "actions": [
+    [
+     "Easy Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "As planned \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your HRV has been well below your usual this week (39 ms against 46)."
+  },
+  {
+   "date": "2026-10-12",
+   "hrv": 40,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day",
+   "auto_reason": "7-day HRV 39.7 ms is more than 1 SD under his recovery-week usual 45.3 ms.",
+   "acute_floor": 38.93,
+   "illness_line": 33.88,
+   "actions": [
+    [
+     "Dumbbells (full-body)",
+     "as_planned"
+    ]
+   ],
+   "call": "As planned \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your HRV has been well below your usual this week (40 ms against 45)."
+  },
+  {
+   "date": "2026-10-13",
+   "hrv": 40,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day",
+   "auto_reason": "7-day HRV 40.0 ms is more than 1 SD under his recovery-week usual 45.3 ms.",
+   "acute_floor": 38.37,
+   "illness_line": 33.28,
+   "actions": [
+    [
+     "VO\u2082 Primer (3 \u00d7 1 min @ 120%)",
+     "ease_hard"
+    ]
+   ],
+   "call": "Take the edge off \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your HRV has been well below your usual this week (40 ms against 45)."
+  },
+  {
+   "date": "2026-10-14",
+   "hrv": 44,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day_persistent",
+   "auto_reason": "7-day HRV 40.6 ms has been under his recovery-week usual 45.3 ms by more than the smallest worthwhile change for 13 mornings in a row.",
+   "acute_floor": 38.31,
+   "illness_line": 33.19,
+   "actions": [
+    [
+     "Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "As planned \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your 7-day HRV average has been below your usual for 13 mornings running (41 ms against 45)."
+  },
+  {
+   "date": "2026-10-15",
+   "hrv": 46,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day_persistent",
+   "auto_reason": "7-day HRV 41.4 ms has been under his recovery-week usual 45.3 ms by more than the smallest worthwhile change for 14 mornings in a row.",
+   "acute_floor": 38.31,
+   "illness_line": 33.18,
+   "actions": [
+    [
+     "Sweet Spot Primer (1 \u00d7 12 min @ 89%)",
+     "ease_hard"
+    ]
+   ],
+   "call": "Take the edge off \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your 7-day HRV average has been below your usual for 14 mornings running (41 ms against 45)."
+  },
+  {
+   "date": "2026-10-16",
+   "hrv": 47,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day_persistent",
+   "auto_reason": "7-day HRV 42.4 ms has been under his recovery-week usual 45.3 ms by more than the smallest worthwhile change for 15 mornings in a row.",
+   "acute_floor": 38.31,
+   "illness_line": 33.18,
+   "actions": [],
+   "call": "Rest day \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your 7-day HRV average has been below your usual for 15 mornings running (42 ms against 45)."
+  },
+  {
+   "date": "2026-10-17",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 38.3,
+   "illness_line": 33.17,
+   "actions": [
+    [
+     "Easy Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-18",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 38.3,
+   "illness_line": 33.17,
+   "actions": [
+    [
+     "Optional Ride (45 min @ 60\u201365%) OR Rest",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-19",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 38.35,
+   "illness_line": 33.25,
+   "actions": [],
+   "call": "No session planned \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-20",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 38.53,
+   "illness_line": 33.56,
+   "actions": [],
+   "call": "No session planned \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  }
+ ],
+ "D_back_but_poor_night_8_Oct": [
+  {
+   "date": "2026-10-07",
+   "hrv": 47,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day",
+   "auto_reason": "7-day HRV 39.0 ms is more than 1 SD under his usual 46.0 ms.",
+   "acute_floor": 39.31,
+   "illness_line": 34.18,
+   "actions": [
+    [
+     "Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "As planned \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your HRV has been well below your usual this week (39 ms against 46)."
+  },
+  {
+   "date": "2026-10-08",
+   "hrv": 47,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "mild",
+    "sleep": "marked",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day_catching_up",
+   "auto_reason": "7-day HRV 40.3 ms is still under his usual 46.1 ms after his holiday, but his last two nights (47 and 47 ms) are back at or above 43.5 ms: the average is catching up, so it counts as a little off.",
+   "acute_floor": 39.31,
+   "illness_line": 34.18,
+   "actions": [
+    [
+     "Sweet Spot (1 \u00d7 30 min @ 89%)",
+     "pick_zone2_or_tempo"
+    ]
+   ],
+   "call": "Easy or tempo \u2014 your call \u00b7 Some fatigue",
+   "summary": "One thing is clearly off, and one a little off: a fair night's sleep (score 62) (your readiness agrees), and your HRV is back to normal, but your 7-day average is still catching up after your holiday (40 ms against 46)."
+  },
+  {
+   "date": "2026-10-09",
+   "hrv": 47,
+   "colour": "Green (held)",
+   "domains": {
+    "autonomic": "mild",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day_catching_up",
+   "auto_reason": "7-day HRV 41.9 ms is still under his usual 46.2 ms after his holiday, but his last two nights (47 and 47 ms) are back at or above 43.8 ms: the average is catching up, so it counts as a little off.",
+   "acute_floor": 39.61,
+   "illness_line": 34.69,
+   "actions": [],
+   "call": "Rest day \u00b7 Recovered",
+   "summary": "One thing is a little off: your HRV is back to normal, but your 7-day average is still catching up after your holiday (42 ms against 46)."
+  },
+  {
+   "date": "2026-10-10",
+   "hrv": 47,
+   "colour": "Green (held)",
+   "domains": {
+    "autonomic": "mild",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day_catching_up",
+   "auto_reason": "7-day HRV 43.0 ms is still under his usual 46.3 ms after his holiday, but his last two nights (47 and 47 ms) are back at or above 43.8 ms: the average is catching up, so it counts as a little off.",
+   "acute_floor": 39.65,
+   "illness_line": 34.74,
+   "actions": [
+    [
+     "Easy Z2",
+     "hold_targets"
+    ]
+   ],
+   "call": "As planned \u2014 hold the targets \u00b7 Recovered",
+   "summary": "One thing is a little off: your HRV is back to normal, but your 7-day average is still catching up after your holiday (43 ms against 46)."
+  },
+  {
+   "date": "2026-10-11",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.65,
+   "illness_line": 34.74,
+   "actions": [
+    [
+     "Easy Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-12",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.77,
+   "illness_line": 34.95,
+   "actions": [
+    [
+     "Dumbbells (full-body)",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-13",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.77,
+   "illness_line": 34.95,
+   "actions": [
+    [
+     "VO\u2082 Primer (3 \u00d7 1 min @ 120%)",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-14",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.77,
+   "illness_line": 34.95,
+   "actions": [
+    [
+     "Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-15",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.77,
+   "illness_line": 34.95,
+   "actions": [
+    [
+     "Sweet Spot Primer (1 \u00d7 12 min @ 89%)",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-16",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.77,
+   "illness_line": 34.95,
+   "actions": [],
+   "call": "Rest day \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-17",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.77,
+   "illness_line": 34.95,
+   "actions": [
+    [
+     "Easy Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-18",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.77,
+   "illness_line": 34.95,
+   "actions": [
+    [
+     "Optional Ride (45 min @ 60\u201365%) OR Rest",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-19",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.81,
+   "illness_line": 35.02,
+   "actions": [],
+   "call": "No session planned \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-20",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.99,
+   "illness_line": 35.31,
+   "actions": [],
+   "call": "No session planned \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  }
+ ],
+ "E_fair_night_low_readiness_7_Oct": [
+  {
+   "date": "2026-10-07",
+   "hrv": 44,
+   "colour": "Red",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "marked",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day",
+   "auto_reason": "7-day HRV 38.6 ms is more than 1 SD under his usual 46.0 ms.",
+   "acute_floor": 39.31,
+   "illness_line": 34.18,
+   "actions": [
+    [
+     "Z2",
+     "shortened_zone2"
+    ]
+   ],
+   "call": "Short and easy \u00b7 Still recovering",
+   "summary": "Two things are clearly off: your HRV has been well below your usual this week (39 ms against 46), and a fair night's sleep (score 72) (your readiness agrees)."
+  },
+  {
+   "date": "2026-10-08",
+   "hrv": 47,
+   "colour": "Green (held)",
+   "domains": {
+    "autonomic": "mild",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day_catching_up",
+   "auto_reason": "7-day HRV 39.9 ms is still under his usual 46.0 ms after his holiday, but his last two nights (44 and 47 ms) are back at or above 43.5 ms: the average is catching up, so it counts as a little off.",
+   "acute_floor": 39.3,
+   "illness_line": 34.17,
+   "actions": [
+    [
+     "Sweet Spot (1 \u00d7 30 min @ 89%)",
+     "hold_targets"
+    ]
+   ],
+   "call": "As planned \u2014 hold the targets \u00b7 Recovered",
+   "summary": "One thing is a little off: your HRV is back to normal, but your 7-day average is still catching up after your holiday (40 ms against 46)."
+  },
+  {
+   "date": "2026-10-09",
+   "hrv": 47,
+   "colour": "Green (held)",
+   "domains": {
+    "autonomic": "mild",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day_catching_up",
+   "auto_reason": "7-day HRV 41.4 ms is still under his usual 46.2 ms after his holiday, but his last two nights (47 and 47 ms) are back at or above 43.7 ms: the average is catching up, so it counts as a little off.",
+   "acute_floor": 39.61,
+   "illness_line": 34.68,
+   "actions": [],
+   "call": "Rest day \u00b7 Recovered",
+   "summary": "One thing is a little off: your HRV is back to normal, but your 7-day average is still catching up after your holiday (41 ms against 46)."
+  },
+  {
+   "date": "2026-10-10",
+   "hrv": 47,
+   "colour": "Green (held)",
+   "domains": {
+    "autonomic": "mild",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day_catching_up",
+   "auto_reason": "7-day HRV 42.6 ms is still under his usual 46.3 ms after his holiday, but his last two nights (47 and 47 ms) are back at or above 43.8 ms: the average is catching up, so it counts as a little off.",
+   "acute_floor": 39.64,
+   "illness_line": 34.73,
+   "actions": [
+    [
+     "Easy Z2",
+     "hold_targets"
+    ]
+   ],
+   "call": "As planned \u2014 hold the targets \u00b7 Recovered",
+   "summary": "One thing is a little off: your HRV is back to normal, but your 7-day average is still catching up after your holiday (43 ms against 46)."
+  },
+  {
+   "date": "2026-10-11",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.64,
+   "illness_line": 34.73,
+   "actions": [
+    [
+     "Easy Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-12",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.76,
+   "illness_line": 34.94,
+   "actions": [
+    [
+     "Dumbbells (full-body)",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-13",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.76,
+   "illness_line": 34.94,
+   "actions": [
+    [
+     "VO\u2082 Primer (3 \u00d7 1 min @ 120%)",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-14",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.76,
+   "illness_line": 34.94,
+   "actions": [
+    [
+     "Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-15",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.76,
+   "illness_line": 34.94,
+   "actions": [
+    [
+     "Sweet Spot Primer (1 \u00d7 12 min @ 89%)",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-16",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.76,
+   "illness_line": 34.94,
+   "actions": [],
+   "call": "Rest day \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-17",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.76,
+   "illness_line": 34.94,
+   "actions": [
+    [
+     "Easy Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-18",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.76,
+   "illness_line": 34.94,
+   "actions": [
+    [
+     "Optional Ride (45 min @ 60\u201365%) OR Rest",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-19",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.8,
+   "illness_line": 35.0,
+   "actions": [],
+   "call": "No session planned \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-20",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.98,
+   "illness_line": 35.29,
+   "actions": [],
+   "call": "No session planned \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  }
+ ],
+ "A_with_acwr_1.35_12_15": [
+  {
+   "date": "2026-10-07",
+   "hrv": 47,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day",
+   "auto_reason": "7-day HRV 39.0 ms is more than 1 SD under his usual 46.0 ms.",
+   "acute_floor": 39.31,
+   "illness_line": 34.18,
+   "actions": [
+    [
+     "Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "As planned \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your HRV has been well below your usual this week (39 ms against 46)."
+  },
+  {
+   "date": "2026-10-08",
+   "hrv": 47,
+   "colour": "Green (held)",
+   "domains": {
+    "autonomic": "mild",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day_catching_up",
+   "auto_reason": "7-day HRV 40.3 ms is still under his usual 46.1 ms after his holiday, but his last two nights (47 and 47 ms) are back at or above 43.5 ms: the average is catching up, so it counts as a little off.",
+   "acute_floor": 39.31,
+   "illness_line": 34.18,
+   "actions": [
+    [
+     "Sweet Spot (1 \u00d7 30 min @ 89%)",
+     "hold_targets"
+    ]
+   ],
+   "call": "As planned \u2014 hold the targets \u00b7 Recovered",
+   "summary": "One thing is a little off: your HRV is back to normal, but your 7-day average is still catching up after your holiday (40 ms against 46)."
+  },
+  {
+   "date": "2026-10-09",
+   "hrv": 47,
+   "colour": "Green (held)",
+   "domains": {
+    "autonomic": "mild",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day_catching_up",
+   "auto_reason": "7-day HRV 41.9 ms is still under his usual 46.2 ms after his holiday, but his last two nights (47 and 47 ms) are back at or above 43.8 ms: the average is catching up, so it counts as a little off.",
+   "acute_floor": 39.61,
+   "illness_line": 34.69,
+   "actions": [],
+   "call": "Rest day \u00b7 Recovered",
+   "summary": "One thing is a little off: your HRV is back to normal, but your 7-day average is still catching up after your holiday (42 ms against 46)."
+  },
+  {
+   "date": "2026-10-10",
+   "hrv": 47,
+   "colour": "Green (held)",
+   "domains": {
+    "autonomic": "mild",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day_catching_up",
+   "auto_reason": "7-day HRV 43.0 ms is still under his usual 46.3 ms after his holiday, but his last two nights (47 and 47 ms) are back at or above 43.8 ms: the average is catching up, so it counts as a little off.",
+   "acute_floor": 39.65,
+   "illness_line": 34.74,
+   "actions": [
+    [
+     "Easy Z2",
+     "hold_targets"
+    ]
+   ],
+   "call": "As planned \u2014 hold the targets \u00b7 Recovered",
+   "summary": "One thing is a little off: your HRV is back to normal, but your 7-day average is still catching up after your holiday (43 ms against 46)."
+  },
+  {
+   "date": "2026-10-11",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.65,
+   "illness_line": 34.74,
+   "actions": [
+    [
+     "Easy Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-12",
+   "hrv": 47,
+   "colour": "Green (held)",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "mild",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.77,
+   "illness_line": 34.95,
+   "actions": [
+    [
+     "Dumbbells (full-body)",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u2014 hold the targets \u00b7 Recovered",
+   "summary": "One thing is a little off: your training load is climbing (ratio 1.35)."
+  },
+  {
+   "date": "2026-10-13",
+   "hrv": 47,
+   "colour": "Green (held)",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "mild",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.77,
+   "illness_line": 34.95,
+   "actions": [
+    [
+     "VO\u2082 Primer (3 \u00d7 1 min @ 120%)",
+     "hold_targets"
+    ]
+   ],
+   "call": "As planned \u2014 hold the targets \u00b7 Recovered",
+   "summary": "One thing is a little off: your training load is climbing (ratio 1.35)."
+  },
+  {
+   "date": "2026-10-14",
+   "hrv": 47,
+   "colour": "Green (held)",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "mild",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.77,
+   "illness_line": 34.95,
+   "actions": [
+    [
+     "Z2",
+     "hold_targets"
+    ]
+   ],
+   "call": "As planned \u2014 hold the targets \u00b7 Recovered",
+   "summary": "One thing is a little off: your training load is climbing (ratio 1.35)."
+  },
+  {
+   "date": "2026-10-15",
+   "hrv": 47,
+   "colour": "Green (held)",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "mild",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.77,
+   "illness_line": 34.95,
+   "actions": [
+    [
+     "Sweet Spot Primer (1 \u00d7 12 min @ 89%)",
+     "hold_targets"
+    ]
+   ],
+   "call": "As planned \u2014 hold the targets \u00b7 Recovered",
+   "summary": "One thing is a little off: your training load is climbing (ratio 1.35)."
+  },
+  {
+   "date": "2026-10-16",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.77,
+   "illness_line": 34.95,
+   "actions": [],
+   "call": "Rest day \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-17",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.77,
+   "illness_line": 34.95,
+   "actions": [
+    [
+     "Easy Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-18",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.77,
+   "illness_line": 34.95,
+   "actions": [
+    [
+     "Optional Ride (45 min @ 60\u201365%) OR Rest",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-19",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.81,
+   "illness_line": 35.02,
+   "actions": [],
+   "call": "No session planned \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-20",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 39.99,
+   "illness_line": 35.31,
+   "actions": [],
+   "call": "No session planned \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  }
+ ],
+ "C_with_acwr_1.55_12_15": [
+  {
+   "date": "2026-10-07",
+   "hrv": 40,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day",
+   "auto_reason": "7-day HRV 38.0 ms is more than 1 SD under his usual 46.0 ms.",
+   "acute_floor": 39.31,
+   "illness_line": 34.18,
+   "actions": [
+    [
+     "Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "As planned \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your HRV has been well below your usual this week (38 ms against 46)."
+  },
+  {
+   "date": "2026-10-08",
+   "hrv": 40,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day",
+   "auto_reason": "7-day HRV 38.3 ms is more than 1 SD under his usual 46.0 ms.",
+   "acute_floor": 39.25,
+   "illness_line": 34.08,
+   "actions": [
+    [
+     "Sweet Spot (1 \u00d7 30 min @ 89%)",
+     "ease_hard"
+    ]
+   ],
+   "call": "Take the edge off \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your HRV has been well below your usual this week (38 ms against 46)."
+  },
+  {
+   "date": "2026-10-09",
+   "hrv": 40,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day",
+   "auto_reason": "7-day HRV 38.9 ms is more than 1 SD under his usual 46.1 ms.",
+   "acute_floor": 39.48,
+   "illness_line": 34.47,
+   "actions": [],
+   "call": "Rest day \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your HRV has been well below your usual this week (39 ms against 46)."
+  },
+  {
+   "date": "2026-10-10",
+   "hrv": 40,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day",
+   "auto_reason": "7-day HRV 39.0 ms is more than 1 SD under his usual 46.0 ms.",
+   "acute_floor": 39.44,
+   "illness_line": 34.41,
+   "actions": [
+    [
+     "Easy Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "As planned \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your HRV has been well below your usual this week (39 ms against 46)."
+  },
+  {
+   "date": "2026-10-11",
+   "hrv": 40,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day",
+   "auto_reason": "7-day HRV 39.4 ms is more than 1 SD under his usual 46.0 ms.",
+   "acute_floor": 38.88,
+   "illness_line": 33.8,
+   "actions": [
+    [
+     "Easy Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "As planned \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your HRV has been well below your usual this week (39 ms against 46)."
+  },
+  {
+   "date": "2026-10-12",
+   "hrv": 40,
+   "colour": "Red",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "marked",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day",
+   "auto_reason": "7-day HRV 39.7 ms is more than 1 SD under his recovery-week usual 45.3 ms.",
+   "acute_floor": 38.93,
+   "illness_line": 33.88,
+   "actions": [
+    [
+     "Dumbbells (full-body)",
+     "as_planned"
+    ]
+   ],
+   "call": "As planned \u00b7 Still recovering",
+   "summary": "Two things are clearly off: your HRV has been well below your usual this week (40 ms against 45), and your training load is climbing fast (ratio 1.55)."
+  },
+  {
+   "date": "2026-10-13",
+   "hrv": 40,
+   "colour": "Red",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "marked",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day",
+   "auto_reason": "7-day HRV 40.0 ms is more than 1 SD under his recovery-week usual 45.3 ms.",
+   "acute_floor": 38.37,
+   "illness_line": 33.28,
+   "actions": [
+    [
+     "VO\u2082 Primer (3 \u00d7 1 min @ 120%)",
+     "recovery"
+    ]
+   ],
+   "call": "Recovery day \u00b7 Still recovering",
+   "summary": "Two things are clearly off: your HRV has been well below your usual this week (40 ms against 45), and your training load is climbing fast (ratio 1.55)."
+  },
+  {
+   "date": "2026-10-14",
+   "hrv": 44,
+   "colour": "Red",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "marked",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day_persistent",
+   "auto_reason": "7-day HRV 40.6 ms has been under his recovery-week usual 45.3 ms by more than the smallest worthwhile change for 13 mornings in a row.",
+   "acute_floor": 38.31,
+   "illness_line": 33.19,
+   "actions": [
+    [
+     "Z2",
+     "shortened_zone2"
+    ]
+   ],
+   "call": "Short and easy \u00b7 Still recovering",
+   "summary": "Two things are clearly off: your 7-day HRV average has been below your usual for 13 mornings running (41 ms against 45), and your training load is climbing fast (ratio 1.55)."
+  },
+  {
+   "date": "2026-10-15",
+   "hrv": 46,
+   "colour": "Red",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "marked",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day_persistent",
+   "auto_reason": "7-day HRV 41.4 ms has been under his recovery-week usual 45.3 ms by more than the smallest worthwhile change for 14 mornings in a row.",
+   "acute_floor": 38.31,
+   "illness_line": 33.18,
+   "actions": [
+    [
+     "Sweet Spot Primer (1 \u00d7 12 min @ 89%)",
+     "recovery"
+    ]
+   ],
+   "call": "Recovery day \u00b7 Still recovering",
+   "summary": "Two things are clearly off: your 7-day HRV average has been below your usual for 14 mornings running (41 ms against 45), and your training load is climbing fast (ratio 1.55)."
+  },
+  {
+   "date": "2026-10-16",
+   "hrv": 47,
+   "colour": "Amber",
+   "domains": {
+    "autonomic": "marked",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_7_day_persistent",
+   "auto_reason": "7-day HRV 42.4 ms has been under his recovery-week usual 45.3 ms by more than the smallest worthwhile change for 15 mornings in a row.",
+   "acute_floor": 38.31,
+   "illness_line": 33.18,
+   "actions": [],
+   "call": "Rest day \u00b7 Some fatigue",
+   "summary": "One thing is clearly off: your 7-day HRV average has been below your usual for 15 mornings running (42 ms against 45)."
+  },
+  {
+   "date": "2026-10-17",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 38.3,
+   "illness_line": 33.17,
+   "actions": [
+    [
+     "Easy Z2",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-18",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 38.3,
+   "illness_line": 33.17,
+   "actions": [
+    [
+     "Optional Ride (45 min @ 60\u201365%) OR Rest",
+     "as_planned"
+    ]
+   ],
+   "call": "Green light \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-19",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 38.35,
+   "illness_line": 33.25,
+   "actions": [],
+   "call": "No session planned \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  },
+  {
+   "date": "2026-10-20",
+   "hrv": 47,
+   "colour": "Green",
+   "domains": {
+    "autonomic": "none",
+    "sleep": "none",
+    "load": "none",
+    "subjective": "none"
+   },
+   "auto_signal": "hrv_overnight",
+   "auto_reason": "Last night's HRV is not low.",
+   "acute_floor": 38.53,
+   "illness_line": 33.56,
+   "actions": [],
+   "call": "No session planned \u00b7 Recovered",
+   "summary": "Your numbers are all within your usual range."
+  }
+ ]
+}
