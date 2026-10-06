@@ -7,6 +7,10 @@ Covers the acceptance pillars:
   3. Refine-then-lock versioning — edits are preserved and the draft is versioned.
   4. Locked blocks feed the owned plan (active planned_workouts) and are
      deliverable via the Zwift rail.
+
+Since Batch 323 the draft is the next plan built from his last one
+(``services.next_plan``; its own tests are ``test_batch_323_plan_no_3.py``), so the
+shape tests below read ``next_plan_draft``.
 """
 
 from __future__ import annotations
@@ -33,7 +37,6 @@ from src.services.block_generator import (
     GENERATED_BLOCK_SECTION,
     BlockGeneratorService,
     block_label,
-    generate_block_plan,
     next_cycle_start,
 )
 from src.services.block_progression import (
@@ -42,6 +45,7 @@ from src.services.block_progression import (
     execution_summary_from_packets,
     propose_next_block,
 )
+from src.services.next_plan import next_plan_draft
 from src.services.vo2_progression import (
     VO2_PROTOCOL_30_30,
     VO2_PROTOCOL_RONNESTAD_30_15,
@@ -85,7 +89,7 @@ def test_next_cycle_start_is_next_monday() -> None:
 
 
 def test_generate_block_plan_shape() -> None:
-    plan = generate_block_plan(
+    plan = next_plan_draft(
         start_date=START,
         ftp_watts=290,
         athlete_name="Mark",
@@ -110,7 +114,7 @@ def test_generate_block_plan_shape() -> None:
 
 
 def test_generated_bike_templates_expand_to_delivery_steps() -> None:
-    plan = generate_block_plan(
+    plan = next_plan_draft(
         start_date=START,
         ftp_watts=290,
         athlete_name="Mark",
@@ -131,7 +135,7 @@ def test_generated_bike_templates_expand_to_delivery_steps() -> None:
 
 
 def test_generate_block_plan_2121_block_types() -> None:
-    plan = generate_block_plan(
+    plan = next_plan_draft(
         start_date=START,
         ftp_watts=280,
         athlete_name="Mark",
@@ -162,20 +166,22 @@ def test_generate_block_plan_2121_block_types() -> None:
 def _vo2_protocol_for_week(plan: dict, week_number: int) -> str | None:
     week = next(w for w in plan["weeks"] if w["weekNumber"] == week_number)
     vo2 = next((w for w in week["workouts"] if w["workoutType"] == "bike_vo2"), None)
-    assert vo2 is not None
+    if vo2 is None:
+        return None
     structured = vo2["structuredWorkout"]
     return structured.get("vo2Protocol")
 
 
 def test_generated_vo2_days_use_progression() -> None:
-    plan = generate_block_plan(
+    plan = next_plan_draft(
         start_date=START,
         ftp_watts=280,
         athlete_name="Mark",
         generated_at_utc=datetime(2026, 7, 1, 6, 0, 0),
     )
-    # Early build weeks use 30/30; late build weeks (>=7) use Rønnestad 30/15.
-    assert _vo2_protocol_for_week(plan, 1) == VO2_PROTOCOL_30_30
+    # Early build weeks use 30/30; late build weeks (>=7) use Rønnestad 30/15. Since
+    # Batch 323 week 1's Tuesday is the FTP ramp test, so it has no VO2 session.
+    assert _vo2_protocol_for_week(plan, 1) is None
     assert _vo2_protocol_for_week(plan, 2) == VO2_PROTOCOL_30_30
     assert _vo2_protocol_for_week(plan, 4) == VO2_PROTOCOL_30_30
     assert _vo2_protocol_for_week(plan, 7) == VO2_PROTOCOL_RONNESTAD_30_15
@@ -598,9 +604,12 @@ async def test_generate_allowed_after_lock(db_conn: AsyncConnection) -> None:
 
 
 @pytest.mark.asyncio
-async def test_generate_seeds_from_completed_block_progression(
+async def test_generate_keeps_his_ftp_and_does_not_apply_the_drift_proposal(
     db_conn: AsyncConnection,
 ) -> None:
+    """Batch 323: the drift signal behind the progression proposal moved with the session
+    mix (295 W on 29 Jun, 272 W on 31 Aug), so the next plan keeps his FTP and its week-1
+    ramp test sets the next one. Before Batch 323 this block seeded an FTP above 280."""
     user_id = uuid.uuid4()
     await _seed_profile(db_conn, user_id)
     block_start = date(2026, 4, 27)
@@ -740,12 +749,11 @@ async def test_generate_seeds_from_completed_block_progression(
         assert user is not None
         draft = await BlockGeneratorService(session).generate(user, start_date=next_start)
 
-    assert draft["ftpWatts"] > 280
-    proposal = draft["progressionProposal"]
-    assert proposal["status"] == "ready"
-    assert proposal["source"] == "last_completed_block"
-    assert proposal["recommendedFtpWatts"] == draft["ftpWatts"]
-    assert proposal["outcome"]["weekCount"] == 13
+    assert draft["ftpWatts"] == 280
+    assert draft["progressionProposal"] is None
+    assert draft["startDate"] == next_start.isoformat()
+    # A last plan whose blocks are not named "PN<n>" has no number to follow.
+    assert draft["planName"] == "Your next plan"
 
 
 @pytest.mark.asyncio

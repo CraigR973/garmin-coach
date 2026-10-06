@@ -541,6 +541,14 @@ class RemInterventionCheckInOut(BaseModel):
     interventions: list[RemInterventionCheckInItemOut]
 
 
+class NextPlanOut(BaseModel):
+    """Batch 323: his next plan is drafted and waiting for him, as his plan ends."""
+
+    planName: str
+    startDate: str
+    endDate: str
+
+
 class DailyLoopData(BaseModel):
     subjectDate: str
     timezone: str
@@ -571,6 +579,9 @@ class DailyLoopData(BaseModel):
     strengthBrief: StrengthBriefOut
     walkingBrief: WalkingBriefOut
     breathworkBrief: BreathworkBriefOut
+    # Batch 323: the next plan's draft, from the block boundary (his taper week) and after
+    # his plan ends, until he accepts or declines it. Absent from an older server.
+    nextPlan: NextPlanOut | None = None
 
 
 class DailyLoopEnvelope(BaseModel):

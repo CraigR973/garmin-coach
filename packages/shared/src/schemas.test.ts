@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   activityTimeSeriesSchema,
+  generatedBlockDraftSchema,
   ageComparisonRowSchema,
   ageComparisonSchema,
   chronicSuggestionDriverSchema,
@@ -930,6 +931,51 @@ describe('v1 shared schemas', () => {
       notesAskWords: 'heartburn',
     });
     expect(before.notesAskEases ?? false).toBe(false);
+  });
+
+  it('reads the next plan waiting for him, and its absence (Batch 323)', () => {
+    const draft = generatedBlockDraftSchema.parse({
+      status: 'draft',
+      framework: '13-week 2121',
+      planName: 'Plan No. 3',
+      planNumber: 3,
+      whyThisPlan: ['It keeps your week from Plan No. 2.'],
+      startDate: '2026-10-19',
+      endDate: '2027-01-17',
+      ftpWatts: 280,
+      athleteName: 'Mark',
+      generatedAtUtc: '2026-10-07T07:00:00',
+      lockedAtUtc: null,
+      progressionProposal: null,
+      weeks: [
+        {
+          weekNumber: 1,
+          blockType: 'build',
+          label: 'TEST + BUILD',
+          startDate: '2026-10-19',
+          endDate: '2026-10-25',
+          totalMin: 414,
+          workouts: [
+            {
+              dayOffset: 5,
+              slot: 1,
+              kind: 'strength_b',
+              workoutDate: '2026-10-24',
+              title: 'Dumbbells B (upper body)',
+              workoutType: 'strength_maintenance',
+              plannedDurationMin: 20,
+              intensityTarget: 'Dumbbells 2 × 12',
+              structuredWorkout: { format: 'strength' },
+            },
+          ],
+        },
+      ],
+    });
+    expect(draft.planName).toBe('Plan No. 3');
+    expect(draft.weeks[0].workouts[0].slot).toBe(1);
+    // A draft made before the batch has neither, and still parses.
+    const older = generatedBlockDraftSchema.parse({ ...draft, planName: undefined, whyThisPlan: undefined });
+    expect(older.planName ?? null).toBeNull();
   });
 
   it('reads the chest or heart follow-up, and its absence (Batch 315)', () => {

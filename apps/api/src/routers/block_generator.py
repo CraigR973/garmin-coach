@@ -4,7 +4,7 @@ Refine-then-lock workflow (Decision #16), all human-driven so nothing reaches th
 plan or Zwift silently (Decision #29):
 
   GET  /api/v1/block-generator          — current draft (or null) + canGenerate
-  POST /api/v1/block-generator/generate — produce a fresh 13-week 2121 draft
+  POST /api/v1/block-generator/generate — the next plan's draft, from his last plan (Batch 323)
   POST /api/v1/block-generator/refine   — edit a single day in the draft
   POST /api/v1/block-generator/lock     — write the draft into the owned plan
   POST /api/v1/block-generator/discard  — drop an unlocked draft
@@ -58,6 +58,8 @@ class GenerateInput(BaseModel):
 class RefineInput(BaseModel):
     weekNumber: int = Field(gt=0)
     dayOffset: int = Field(ge=0)
+    # Batch 323: which of a day's sessions (his Saturday carries the ride and strength).
+    slot: int = Field(default=0, ge=0)
     title: str | None = None
     workoutType: str | None = None
     plannedDurationMin: int | None = Field(default=None, gt=0)
@@ -133,6 +135,7 @@ async def refine_block(
         player,
         week_number=body.weekNumber,
         day_offset=body.dayOffset,
+        slot=body.slot,
         title=body.title,
         workout_type=body.workoutType,
         planned_duration_min=body.plannedDurationMin,

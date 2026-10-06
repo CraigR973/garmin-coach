@@ -5843,6 +5843,77 @@ figure in these rows was measured on 2026-10-06, read-only; re-verify each row a
 - **The replay of every stored morning changes none:** the branch's replay of all 107
   stored mornings is identical to `main`'s, and reproduces production 6 of 6.
 
+### Corrections made at `/batch-start 323` (2026-10-06), before any code
+
+- **Re-verified, unchanged:** Plan No. 2's last block ends Sun 18 Oct and nothing follows it;
+  the generator has never been used (no `generated_block` row in production); its build
+  weeks are fixed (`coaching_state._build_templates`, now `:306`); the web reads
+  `atBlockBoundary` nowhere (`schemas.ts:1559`). That flag is true only on the 13th block
+  (`daily_loop_state.is_block_boundary`), so it turns false on 19 Oct, the day the plan runs
+  out (all observed or implemented, 6 Oct).
+- **Four facts the row did not have.** Each changes a detail, not what the batch is for:
+  1. The generator's VO₂ sessions say "ERG off" (`vo2_progression`: both micro-interval
+     protocols carry `ergMode: off`), and Coach memory says never to suggest switching ERG
+     off. Plan No. 3 takes the toolkit's choice of protocol (30/30 before week 7, Rønnestad
+     30/15 from week 7) and writes it for ERG, as he rides it.
+  2. The draft identifies a session by week and weekday, and lock deactivates every active row
+     on a date before writing each session, so a day with two sessions (his Saturday: the
+     sprint ride and strength) would keep only the last. The draft gains a slot per session,
+     and lock writes each date once.
+  3. The generator takes its FTP from the drift-based progression proposal, which DV-2 found
+     noisy (295 W on 29 Jun, 272 W on 31 Aug). Plan No. 3 uses his FTP as it stands (280 W),
+     and the week-1 test sets the next one.
+  4. A 20-minute test needs the trainer out of ERG for the effort, which his profile rules
+     out; a ramp test runs in ERG throughout. Week 1's test is a ramp test.
+- **The open questions, answered under Craig's delegation of 6 Oct (Decision #387):** the
+  progressions are the table below; the test is a ramp test; the card shows from the block
+  boundary (the taper week, from 12 Oct) while a draft exists, and after the plan ends; a
+  decline sets the draft aside (its row stays, inactive), logs `next_plan_declined`, leaves
+  Home reading "No session planned", and the builder offers to make a new plan.
+
+#### Plan No. 3, week by week (Mon 19 Oct 2026 – Sun 17 Jan 2027)
+
+His week, read from Plan No. 2's authored sessions: Mon dumbbells · Tue VO₂ · Wed Zone 2 ·
+Thu sweet spot · Fri rest · Sat Zone 2 with sprints, then dumbbells · Sun the long ride.
+Every target is a % of FTP, so a new FTP on Zwift carries through. **Strength A** (Mon):
+goblet squat, Romanian deadlift, reverse lunge, one-arm row, calf raise, side plank.
+**Strength B** (Sat): his dumbbell circuit as sets (shoulder press, reverse-grip row, floor
+press, pullover, curl, triceps extension) plus step-ups and a dead bug. "In reserve" means
+the reps he could still do at the end of a set. Minutes in brackets.
+
+| Wk | Starts | Type | Tue | Thu | Wed Z2 | Sun | Strength A and B | Week |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 19 Oct | Test + build | FTP ramp test (40) | Sweet spot 2×25 @89% (81) | 75 | Long 120 | 2×12, light, 3–4 in reserve (20 each) | 414 |
+| 2 | 26 Oct | Build | 30/30 2×10 @130% (51) | Sweet spot 2×30 @89% (91) | 75 | Long 120 | 3×12, 2–3 in reserve (25) | 445 |
+| 3 | 2 Nov | Recovery | VO₂ light 3×2 @115% (41) | Sweet spot light 1×20 @89% (48) | 60 | Easy 90 | 2×10, light (20) | 324 |
+| 4 | 9 Nov | Build | 30/30 2×12 @130% (55) | Sweet spot 3×20 @90% (94) | 75 | Long 120 | 3×10, one weight up (25) | 452 |
+| 5 | 16 Nov | Build | 30/30 3×10 @130% (65) | Sweet spot 2×35 @90% (101) | 55 | Long 120 | 3×10 (25) | 449 |
+| 6 | 23 Nov | Recovery | as week 3 | as week 3 | 60 | Easy 90 | 2×8, light (20) | 324 |
+| 7 | 30 Nov | Build | 30/15 2×16 @125% (54) | Sweet spot 3×25 @90% (109) | 45 | Long 135 | 3×8, one weight up (25) | 451 |
+| 8 | 7 Dec | Build | 30/15 3×12 @125% (60) | Sweet spot 2×40 @90% (111) | 35 | Long 135 | 4×8 on the first three, 3×8 the rest (25) | 449 |
+| 9 | 14 Dec | Recovery | as week 3 | as week 3 | 60 | Easy 90 | 2×8, light (20) | 324 |
+| 10 | 21 Dec | Build | 30/15 4×10 @125% (66) | Sweet spot 2×40 @91% (111) | 30 | Long 135 | 3×6–8, one weight up (25) | 450 |
+| 11 | 28 Dec | Build | 30/15 4×10 @128% (66) | Sweet spot 2×40 @92% (111) | 30 | Long 135 | 4×6–8 on the first three (25) | 450 |
+| 12 | 4 Jan | Consolidation | VO₂ light 4×2 @115% (46) | Sweet spot 1×30 @90% (58) | 60 | Easy 90 | 3×8, same weights (25) | 349 |
+| 13 | 11 Jan | Taper | VO₂ primer 3×1 @120% (30) | Sweet spot primer 1×12 @89% (35) | 45 | Optional 45, or rest | 2×8, lighter (20) | 235 |
+
+- **Saturday's ride:** Plan No. 2's Zone 2 with sprints (58) in build weeks; easy Zone 2 45 in
+  recovery and consolidation weeks, 40 in the taper. **Friday** is always rest; Christmas Day
+  and New Year's Day are Fridays.
+- **No week is longer than 453 minutes,** Plan No. 2's longest (week 5, 7 h 33, as authored
+  and as it stands). The totals include both strength sessions.
+- **Each build week progresses on the last:** VO₂ work time 10 → 12 → 15 minutes on 30/30s,
+  then 16 → 18 → 20 minutes on 30/15s (twice as much work as rest), and 20 at 128% in week 11; sweet spot time at
+  intensity 50 → 60 → 60 → 70 → 75 → 80 → 80 → 80 minutes, its target 89% → 92%; the long ride
+  from 120 to 135 minutes in week 7, with Wednesday's ride shortening to keep the week inside
+  453; strength from 2×12 to 4×6–8, a weight up at each step.
+- **Every session is a whole number of minutes,** as the delivery rail's own check asks (Batch
+  67: the planned minutes trace the summed steps), so a set of 30/15s is a multiple of four
+  reps (4 × 45 s = 3 min).
+- **The ramp test** (40): a warm-up, then one-minute steps from 50% of FTP rising 6% a minute,
+  ridden in ERG until he cannot hold the step. His new FTP is three-quarters of the best
+  minute he held; he sets it in Zwift.
+
 ### Batch group — G8, the daily-verdict review (2026-10-06)
 
 **One group, run in this order from one go** (Craig, 6 Oct: every remaining batch planned
