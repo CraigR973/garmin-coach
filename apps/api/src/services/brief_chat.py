@@ -103,6 +103,21 @@ from src.services.interval_workout_editor import (
     format_interval_block,
 )
 from src.services.learned_context import LEARNED_CONTEXT_PROMPT_GUARDRAIL
+from src.services.plan_conversation import (
+    APPLIED_ALREADY_WORDS,
+    NOTHING_TO_APPLY_WORDS,
+    OFFER_APPLIED,
+    OFFER_PROPOSED,
+    OFFER_STALE,
+    OFFER_UNAVAILABLE,
+    PLAN_GONE_WORDS,
+    STALE_WORDS,
+    extract_plan_change,
+    load_waiting_draft,
+    offer_is_current,
+    plan_capability_instruction,
+    plan_change_offer,
+)
 from src.services.prompt_metadata import prompt_system_hash
 from src.services.todays_call import TODAYS_CALL_RULE
 from src.services.workload_budget import workload_slot
@@ -166,7 +181,11 @@ QUESTION_MAX_LENGTH = 1000
 # Batch 313: v19 speaks to Mark in today's call's words (TODAYS_CALL_RULE), the words
 # Home and the brief use, and answers in kind if he uses a colour. UNFILTERED: nothing
 # withdrawn, and no past answer is regenerated.
-PROMPT_VERSION = "coach-chat-v19-2026-10-05"
+# Batch 324: v20 carries his proposed next plan while it waits (proposedPlan, a compact
+# view, never the raw draft), a tool to read any week of it, and a closed list of changes
+# the coach may offer him to apply with one tap (PROPOSE_PLAN_CHANGE). UNFILTERED: nothing
+# withdrawn, and no past answer is regenerated.
+PROMPT_VERSION = "coach-chat-v20-2026-10-07"
 #: Batch 264: the marker now carries the change. It was a bare flag meaning "I
 #: offered something"; the offer itself lived only in prose, so the app could
 #: never act on it. ``brief_chat`` is UNFILTERED in ``prompt_artifacts`` with no
@@ -711,6 +730,7 @@ class BriefChatService:
             local_today=local_today,
             app_state=context.app_state,
             adjustable_set=context.adjustable_interval_set,
+            plan_capability=plan_capability_instruction(context.proposed_plan, today=local_today),
         )
         chat_client = client or AnthropicBriefChatClient()
         async with workload_slot(workload="anthropic", user_id=player.id):
@@ -726,6 +746,22 @@ class BriefChatService:
                 toolbox=CoachToolbox(self.session, player),
             )
         answer_for_mark, payload, model_offered_proposal = _extract_proposal(answer)
+        # Batch 324: a change to his proposed plan, checked against the draft as it stands.
+        answer_for_mark, plan_payload, model_offered_plan_change = extract_plan_change(
+            answer_for_mark
+        )
+        plan_change = (
+            plan_change_offer(plan_payload, context.proposed_plan, today=local_today, now=now)
+            if model_offered_plan_change
+            else None
+        )
+        if plan_change is not None and plan_change["status"] == OFFER_UNAVAILABLE:
+            log.info(
+                "coach offered a plan change the app cannot carry",
+                profile_id=str(player.id),
+                reason=plan_change["reason"],
+                payload=plan_payload,
+            )
 
         # Batch 264 retires the keyword gate on Mark's own words. It was a proxy
         # for "he asked for a change" and it was wrong in both directions: on
@@ -776,6 +812,7 @@ class BriefChatService:
             content=answer_for_mark,
             proposed_planned_workout_id=proposed_id,
             proposed_interval_change=proposed_change,
+            proposed_plan_change=plan_change,
             created_utc=now,
         )
         self.session.add(user_message)
@@ -787,6 +824,72 @@ class BriefChatService:
         else:
             await self.session.flush()
         return BriefChatTurn(user_message=user_message, assistant_message=assistant_message)
+
+    async def apply_plan_change(self, player: Profile, message_id: uuid.UUID) -> BriefMessage:
+        """Apply the change a coach answer offered to his proposed plan (Batch 324).
+
+        His tap is the approval. The offer applies only to the draft, at the revision, it
+        was made against; otherwise it is marked stale and refused in words, so nothing is
+        applied to a plan he was no longer looking at. Nothing reaches Zwift here: the plan
+        goes there only when he accepts it.
+        """
+        from src.services.block_generator import BlockGeneratorService
+        from src.services.plan_changes import BY_COACH
+
+        message = await self.session.scalar(
+            select(BriefMessage).where(
+                BriefMessage.id == message_id,
+                BriefMessage.user_id == player.id,
+                BriefMessage.role == ROLE_ASSISTANT,
+            )
+        )
+        offer = message.proposed_plan_change if message is not None else None
+        if message is None or not isinstance(offer, dict):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=NOTHING_TO_APPLY_WORDS
+            )
+        if offer.get("status") == OFFER_APPLIED:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=APPLIED_ALREADY_WORDS)
+        if offer.get("status") != OFFER_PROPOSED:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=str(offer.get("words") or STALE_WORDS)
+            )
+        draft = await load_waiting_draft(self.session, player.id)
+        if not offer_is_current(offer, draft):
+            words = PLAN_GONE_WORDS if draft is None else STALE_WORDS
+            message.proposed_plan_change = {**offer, "status": OFFER_STALE, "words": words}
+            await self.session.commit()
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=words)
+        try:
+            changed = await BlockGeneratorService(self.session).change(
+                player,
+                offer["change"],
+                by=BY_COACH,
+                expected_revision=int(offer["revision"]),
+                commit=False,
+            )
+        except HTTPException as exc:
+            # The change met a rule today that it met no rule when offered (a start date
+            # that has since passed): his card says so, once, in the words he was refused in.
+            await self.session.rollback()
+            message = await self.session.get(BriefMessage, message_id)
+            if message is not None:
+                message.proposed_plan_change = {
+                    **offer,
+                    "status": OFFER_STALE,
+                    "words": str(exc.detail),
+                }
+                await self.session.commit()
+            raise
+        message.proposed_plan_change = {
+            **offer,
+            "status": OFFER_APPLIED,
+            "appliedAtUtc": _utcnow().isoformat(),
+            "appliedRevision": changed["revision"],
+        }
+        await self.session.commit()
+        await self.session.refresh(message)
+        return message
 
     async def _enforce_daily_cap(self, player: Profile, local_today: date) -> None:
         since = day_start_utc(local_today, player.timezone)
@@ -837,6 +940,7 @@ def _build_cached_system_prompt(
     local_today: date,
     app_state: dict[str, Any],
     adjustable_set: IntervalEditorSnapshot | None,
+    plan_capability: str | None = None,
 ) -> list[AnthropicSystemTextBlock]:
     return [
         {
@@ -846,6 +950,7 @@ def _build_cached_system_prompt(
                 origin=origin,
                 local_today=local_today,
                 adjustable_set=adjustable_set,
+                plan_capability=plan_capability,
             ),
             "cache_control": {"type": "ephemeral"},
         },
@@ -885,6 +990,7 @@ def _build_system_prompt_prefix(
     origin: CoachOrigin,
     local_today: date,
     adjustable_set: IntervalEditorSnapshot | None,
+    plan_capability: str | None = None,
 ) -> str:
     parts = [SYSTEM_PROMPT]
     if analysis is not None:
@@ -892,6 +998,9 @@ def _build_system_prompt_prefix(
     else:
         parts.append(_origin_description(origin, local_today=local_today))
     parts.append(_capability_instruction(adjustable_set))
+    # Batch 324: only while a proposed plan waits for him.
+    if plan_capability is not None:
+        parts.append(plan_capability)
     if analysis is not None and brief_is_written(analysis):
         parts.append(f"What you wrote in that read:\n{analysis.output_markdown}")
         parts.append(

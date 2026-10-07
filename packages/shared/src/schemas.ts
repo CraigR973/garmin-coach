@@ -954,6 +954,8 @@ export const coachOriginKindSchema = z.enum([
   'strength',
   'walking',
   'check_in',
+  // Batch 324: the plan builder, where his proposed next plan waits.
+  'next_plan',
 ]);
 
 // Origin kinds the coach itself writes rather than Mark asking from a surface
@@ -1000,6 +1002,41 @@ export const coachIntervalChangeSchema = z.discriminatedUnion('status', [
   }),
 ]);
 
+// Batch 324: the change to his proposed next plan an answer offers, checked server-side
+// against the draft as it stood (`plan_conversation.plan_change_offer`), and what became of
+// it. `summary` is the change in the signed-off words; `words` is why it was not made.
+export const coachPlanChangeSchema = z.discriminatedUnion('status', [
+  z
+    .object({
+      status: z.literal('proposed'),
+      change: jsonObjectSchema,
+      summary: z.string().min(1),
+      planName: z.string().nullable().optional(),
+      generatedAtUtc: z.string().nullable().optional(),
+      revision: z.number().int().nonnegative(),
+    })
+    .passthrough(),
+  z
+    .object({
+      status: z.literal('applied'),
+      summary: z.string().min(1),
+      appliedAtUtc: z.string().min(1),
+      appliedRevision: z.number().int().nonnegative(),
+    })
+    .passthrough(),
+  z
+    .object({
+      status: z.literal('stale'),
+      words: z.string().min(1),
+    })
+    .passthrough(),
+  z.object({
+    status: z.literal('unavailable'),
+    reason: z.string().min(1),
+    words: z.string().min(1),
+  }),
+]);
+
 export const briefMessageSchema = z.object({
   id: z.string().uuid(),
   analysisId: z.string().uuid().nullable(),
@@ -1009,7 +1046,14 @@ export const briefMessageSchema = z.object({
   content: z.string().min(1),
   proposedPlannedWorkoutId: z.string().uuid().nullable().optional(),
   proposedIntervalChange: coachIntervalChangeSchema.nullable().optional(),
+  proposedPlanChange: coachPlanChangeSchema.nullable().optional(),
   createdAtUtc: isoDateTimeSchema,
+});
+
+export const appliedPlanChangeEnvelopeSchema = z.object({
+  data: briefMessageSchema,
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
 });
 
 
@@ -1825,6 +1869,9 @@ export const resumeEnvelopeSchema = z.object({
 // --- Batch 16: app-generated 13-week blocks -------------------------------
 
 export const generatedBlockWorkoutSchema = z.object({
+  // Batch 324: the session's id, which survives a move; a change names it. The API gives
+  // every waiting draft's sessions one, so it is absent only on an old accepted plan.
+  id: z.string().min(1).optional(),
   dayOffset: z.number().int(),
   // Batch 323: which of a day's sessions (his Saturday carries the ride and strength) and
   // what kind it is. Absent on a draft made before it, which has one session a day.
@@ -1862,6 +1909,86 @@ export const blockProgressionProposalSchema = z.object({
   outcome: jsonObjectSchema.default({}),
 });
 
+// Batch 324: each kind of session's weekday in his week, Monday 0.
+export const planDayKeys = [
+  'strengthA',
+  'vo2',
+  'zone2',
+  'sweetSpot',
+  'rest',
+  'sprints',
+  'strengthB',
+  'longRide',
+] as const;
+const weekdayNumberSchema = z.number().int().min(0).max(6);
+export const planDaysSchema = z.object({
+  strengthA: weekdayNumberSchema,
+  vo2: weekdayNumberSchema,
+  zone2: weekdayNumberSchema,
+  sweetSpot: weekdayNumberSchema,
+  rest: weekdayNumberSchema,
+  sprints: weekdayNumberSchema,
+  strengthB: weekdayNumberSchema,
+  longRide: weekdayNumberSchema,
+});
+
+export const planChangeLogEntrySchema = z.object({
+  revision: z.number().int().positive(),
+  atUtc: z.string().min(1),
+  by: z.string().min(1),
+  summary: z.string().min(1),
+  change: jsonObjectSchema,
+});
+
+// The closed list of changes (`services/plan_changes.py`), one shape per kind.
+export const planChangeSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('days'), days: planDaysSchema }),
+  z.object({ kind: z.literal('start'), startDate: isoDateSchema }),
+  z.object({
+    kind: z.literal('intervals'),
+    session: z.string().min(1),
+    repeat: z.number().int(),
+    workSec: z.number().int(),
+    workPct: z.number().int(),
+    restSec: z.number().int(),
+    restPct: z.number().int(),
+  }),
+  z.object({ kind: z.literal('minutes'), session: z.string().min(1), minutes: z.number().int() }),
+  z.object({ kind: z.literal('title'), session: z.string().min(1), title: z.string().min(1) }),
+  z.object({ kind: z.literal('move'), session: z.string().min(1), toDate: isoDateSchema }),
+  z.object({ kind: z.literal('remove'), session: z.string().min(1) }),
+  z.object({
+    kind: z.literal('add'),
+    date: isoDateSchema,
+    sessionType: z.enum(['zone2', 'easy', 'long', 'strength_a', 'strength_b']),
+    minutes: z.number().int().nullable().optional(),
+  }),
+  z.object({ kind: z.literal('reset') }),
+]);
+
+export const blockChangeInputSchema = z.object({
+  change: planChangeSchema,
+  expectedRevision: z.number().int().nonnegative().nullable().optional(),
+});
+
+// What the builder offers on each session: a minutes range, its interval set's five
+// numbers, or the words for why it stays as it is.
+export const sessionEditsSchema = z.object({
+  minutes: z.object({ min: z.number().int(), max: z.number().int() }).nullable(),
+  intervals: z
+    .object({
+      repeat: z.number().int(),
+      workSec: z.number().int(),
+      workPct: z.number().int(),
+      restSec: z.number().int(),
+      restPct: z.number().int(),
+      label: z.string(),
+      matchingSets: z.number().int().min(1),
+    })
+    .nullable(),
+  fixed: z.string().nullable(),
+});
+
 export const generatedBlockDraftSchema = z.object({
   status: z.enum(['draft', 'locked']),
   framework: z.string().min(1),
@@ -1877,6 +2004,18 @@ export const generatedBlockDraftSchema = z.object({
   planName: z.string().nullable().optional(),
   planNumber: z.number().int().nullable().optional(),
   whyThisPlan: z.array(z.string()).optional(),
+  // Batch 324: his days (each kind's weekday, Monday 0), the revision each change raises,
+  // the change log, and what the plan was built from.
+  days: planDaysSchema.optional(),
+  revision: z.number().int().nonnegative().optional(),
+  changes: z.array(planChangeLogEntrySchema).optional(),
+  basis: z
+    .object({
+      previousPlan: z.string().nullable().optional(),
+      longestWeekMin: z.number().int().nullable().optional(),
+    })
+    .passthrough()
+    .optional(),
   weeks: z.array(generatedBlockWeekSchema),
 });
 
@@ -1884,6 +2023,11 @@ export const blockGeneratorEnvelopeSchema = z.object({
   data: z.object({
     draft: generatedBlockDraftSchema.nullable(),
     canGenerate: z.boolean(),
+    // Batch 324: what the builder offers on a waiting draft; empty otherwise.
+    sessionEdits: z.record(sessionEditsSchema).default({}),
+    startOptions: z.array(isoDateSchema).default([]),
+    sessionChangesSinceRebuild: z.number().int().nonnegative().default(0),
+    weeksOverLongest: z.array(z.number().int()).default([]),
   }),
   meta: apiMetaSchema,
   errors: z.array(apiErrorSchema),

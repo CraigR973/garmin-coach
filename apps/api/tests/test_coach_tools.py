@@ -71,7 +71,7 @@ def test_the_tool_list_is_deterministically_ordered() -> None:
     names = [tool["name"] for tool in COACH_TOOLS]
     assert names == sorted(names)
     assert tuple(names) == TOOL_NAMES
-    assert len(names) == 7
+    assert len(names) == 8  # Batch 324: get_proposed_plan_week
     assert json.dumps(COACH_TOOLS, sort_keys=True) == json.dumps(COACH_TOOLS, sort_keys=True)
 
 

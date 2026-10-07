@@ -80,6 +80,10 @@ class BriefMessageOut(BaseModel):
     #: what stays fixed — or the plain reason it carries none. Null on every turn
     #: that made no offer.
     proposedIntervalChange: dict[str, Any] | None
+    #: Batch 324: the change to his proposed next plan this answer offers, checked against
+    #: the draft as it stood, or the plain reason it carries none; then whether he applied
+    #: it. Null on every turn that offered no plan change.
+    proposedPlanChange: dict[str, Any] | None = None
     createdAtUtc: str
 
 
@@ -112,6 +116,7 @@ def serialize_message(row: BriefMessage) -> BriefMessageOut:
             str(row.proposed_planned_workout_id) if row.proposed_planned_workout_id else None
         ),
         proposedIntervalChange=row.proposed_interval_change,
+        proposedPlanChange=row.proposed_plan_change,
         createdAtUtc=row.created_utc.isoformat() + "Z",
     )
 

@@ -29,7 +29,7 @@ signed off under Craig's delegation of 6 Oct 2026
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Final
@@ -86,16 +86,37 @@ class WeeklyRhythm:
         )
 
     def to_packet(self) -> dict[str, str]:
-        return {
-            "strengthA": WEEKDAYS[self.strength_a],
-            "vo2": WEEKDAYS[self.vo2],
-            "zone2": WEEKDAYS[self.zone2],
-            "sweetSpot": WEEKDAYS[self.sweet_spot],
-            "rest": WEEKDAYS[self.rest],
-            "sprints": WEEKDAYS[self.sprints],
-            "strengthB": WEEKDAYS[self.strength_b],
-            "longRide": WEEKDAYS[self.long_ride],
-        }
+        return {key: WEEKDAYS[day] for key, day in self.to_days().items()}
+
+    def to_days(self) -> dict[str, int]:
+        """The week as the draft and the builder carry it: each kind's weekday, Monday 0."""
+
+        return {key: int(getattr(self, attribute)) for key, attribute in DAY_KEYS.items()}
+
+    @classmethod
+    def from_days(cls, days: Mapping[str, Any]) -> WeeklyRhythm:
+        """The week from the draft's ``days``; raises ``ValueError`` on a missing or bad day."""
+
+        values: dict[str, int] = {}
+        for key, attribute in DAY_KEYS.items():
+            raw = days.get(key)
+            if isinstance(raw, bool) or not isinstance(raw, int) or not 0 <= raw <= 6:
+                raise ValueError(f"{key} must be a weekday from 0 (Monday) to 6 (Sunday)")
+            values[attribute] = raw
+        return cls(**values)
+
+
+#: The draft's names for each kind of session in his week, and the field each one is.
+DAY_KEYS: Final = {
+    "strengthA": "strength_a",
+    "vo2": "vo2",
+    "zone2": "zone2",
+    "sweetSpot": "sweet_spot",
+    "rest": "rest",
+    "sprints": "sprints",
+    "strengthB": "strength_b",
+    "longRide": "long_ride",
+}
 
 
 #: Plan No. 2's week (observed in its authored sessions, 6 Oct 2026).
@@ -883,8 +904,14 @@ def why_this_plan(
     weeks: Sequence[dict[str, Any]],
     longest_week_min: int,
     start_date: date,
+    days_kept: bool = True,
 ) -> list[str]:
-    """The draft's "why this plan" note, in plain words (signed off under delegation)."""
+    """The draft's "why this plan" note, in plain words (signed off under delegation).
+
+    It explains the plan as proposed for his days and start date; changes he makes to single
+    sessions are listed beside it, not folded in (Batch 324). ``days_kept`` is false once he
+    has set his own days, so the note stops saying they are his last plan's.
+    """
 
     days = WEEKDAYS
     previous = previous_name or "your last plan"
@@ -895,9 +922,10 @@ def why_this_plan(
             f"Zone 2 with sprints on {days[rhythm.sprints]}, dumbbells on {days[rhythm.strength_b]}"
         )
     )
+    opening = f"It keeps your week from {previous}" if days_kept else "Your week, as you set it"
     lines = [
         (
-            f"It keeps your week from {previous}: dumbbells on {days[rhythm.strength_a]}, VO₂ "
+            f"{opening}: dumbbells on {days[rhythm.strength_a]}, VO₂ "
             f"on {days[rhythm.vo2]}, Zone 2 on {days[rhythm.zone2]}, sweet spot on "
             f"{days[rhythm.sweet_spot]}, {days[rhythm.rest]} off, {sprints_and_strength}, and "
             f"the long ride on {days[rhythm.long_ride]}."
@@ -962,23 +990,37 @@ def next_plan_draft(
     longest_week_min: int = DEFAULT_LONGEST_WEEK_MIN,
     plan_number: int | None = None,
     previous_name: str | None = None,
+    proposed_rhythm: WeeklyRhythm | None = None,
 ) -> dict[str, Any]:
-    """The next plan's draft content: the shape the builder, refine and lock read."""
+    """The next plan's draft content: the shape the builder, refine, change and lock read.
+
+    Batch 324: every session carries an id that survives a move, the draft a revision that
+    each change raises, his days as weekday numbers, the change log, and the proposal it was
+    first built from (``proposed_rhythm``, his last plan's week, defaults to ``rhythm``), so
+    "back to the plan as proposed" can rebuild it exactly.
+    """
 
     if start_date.weekday() != 0:
         raise ValueError("a plan starts on a Monday")
+    proposed = proposed_rhythm or rhythm
     weeks: list[dict[str, Any]] = []
+    session_number = 0
     for index, (block_type, planned) in enumerate(zip(BLOCK_SEQUENCE, WEEKS, strict=True), 1):
         week = fit_week(planned, longest_week_min)
         week_start = start_date + timedelta(days=(index - 1) * 7)
-        workouts = [
-            session.to_draft(
-                day_offset=day,
-                slot=slot,
-                workout_date=week_start + timedelta(days=day),
+        workouts = []
+        for day, slot, session in week_sessions(week, rhythm):
+            session_number += 1
+            workouts.append(
+                {
+                    "id": session_id(session_number),
+                    **session.to_draft(
+                        day_offset=day,
+                        slot=slot,
+                        workout_date=week_start + timedelta(days=day),
+                    ),
+                }
             )
-            for day, slot, session in week_sessions(week, rhythm)
-        ]
         weeks.append(
             {
                 "weekNumber": index,
@@ -1017,6 +1059,17 @@ def next_plan_draft(
             weeks=weeks,
             longest_week_min=longest_week_min,
             start_date=start_date,
+            days_kept=rhythm == proposed,
         ),
+        "days": rhythm.to_days(),
+        "revision": 0,
+        "changes": [],
+        "proposal": {"startDate": start_date.isoformat(), "days": proposed.to_days()},
         "weeks": weeks,
     }
+
+
+def session_id(number: int) -> str:
+    """A draft session's id: ``s001`` for the first session of the plan."""
+
+    return f"s{number:03d}"

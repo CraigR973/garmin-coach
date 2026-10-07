@@ -4,6 +4,7 @@ import {
   activitySchema,
   activityTimeSeriesSchema,
   analysisSchema,
+  blockChangeInputSchema,
   blockProgressionProposalSchema,
   briefMessageInputSchema,
   briefMessageRoleSchema,
@@ -12,6 +13,7 @@ import {
   coachIntervalChangeSchema,
   coachMessageInputSchema,
   coachOriginKindSchema,
+  coachPlanChangeSchema,
   conversationLearningEvidenceSchema,
   conversationLearningKindSchema,
   conversationLearningProposalSchema,
@@ -28,9 +30,13 @@ import {
   knowledgeBaseSchema,
   manualEntrySchema,
   planBlockSchema,
+  planChangeLogEntrySchema,
+  planChangeSchema,
+  planDaysSchema,
   plannedWorkoutSchema,
   profileSchema,
   roleSchema,
+  sessionEditsSchema,
   sleepSchema,
   temperatureReadingSchema,
   weatherDailySchema,
@@ -70,3 +76,11 @@ export type BlockProgressionProposal = z.infer<typeof blockProgressionProposalSc
 export type GeneratedBlockWorkout = z.infer<typeof generatedBlockWorkoutSchema>;
 export type GeneratedBlockWeek = z.infer<typeof generatedBlockWeekSchema>;
 export type GeneratedBlockDraft = z.infer<typeof generatedBlockDraftSchema>;
+/** Batch 324: one change to the proposed plan, from the closed list. */
+export type PlanChange = z.infer<typeof planChangeSchema>;
+export type PlanDays = z.infer<typeof planDaysSchema>;
+export type PlanChangeLogEntry = z.infer<typeof planChangeLogEntrySchema>;
+export type SessionEdits = z.infer<typeof sessionEditsSchema>;
+export type BlockChangeInput = z.infer<typeof blockChangeInputSchema>;
+/** Batch 324: the change to his proposed plan an assistant turn offers, if any. */
+export type CoachPlanChange = z.infer<typeof coachPlanChangeSchema>;

@@ -62,7 +62,7 @@ from src.services.analysis_currentness import (
     analysis_matches_packet_input,
     stamp_packet_input_version,
 )
-from src.services.coach_policy import RECORDED_DATA_HONESTY_RULE
+from src.services.coach_policy import MODEL_HIDDEN_SECTIONS, RECORDED_DATA_HONESTY_RULE
 from src.services.experiment_evaluation import ExperimentEvaluationService
 from src.services.experiment_tracker import ExperimentTrackerService
 from src.services.prompt_metadata import prompt_system_hash
@@ -701,6 +701,9 @@ class HandoverService:
                     select(KnowledgeBase).where(
                         KnowledgeBase.user_id == user_id,
                         KnowledgeBase.is_active.is_(True),
+                        # Batch 324: the export is the context the coach holds, and the
+                        # plan builder's draft is not part of it.
+                        KnowledgeBase.section.not_in(MODEL_HIDDEN_SECTIONS),
                     )
                 )
             )
