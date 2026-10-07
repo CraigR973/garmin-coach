@@ -543,6 +543,18 @@ INTERNAL_SOURCE_BASIS_EXEMPTIONS: dict[str, str] = {
 }
 
 
+#: The plan builder's draft of his next plan (Batch 16; built from his last plan since
+#: Batch 323). It is stored as a Coach-memory row but it is working state, not memory.
+GENERATED_BLOCK_SECTION = "generated_block"
+
+#: Batch 324: Coach-memory sections no model is given as memory. On 7 Oct 2026 the
+#: morning brief and the chat put every active row verbatim into
+#: ``knowledgeBase.sections``, so the 69,702-character Plan No. 3 draft would have gone
+#: whole into both. The coach reads a waiting draft only through the plan's own compact
+#: view and tool (``services.plan_conversation``); the brief never reads it.
+MODEL_HIDDEN_SECTIONS: tuple[str, ...] = (GENERATED_BLOCK_SECTION,)
+
+
 def source_basis(source: str | None) -> str | None:
     """A readable sentence for an internal provenance token, or ``None``.
 

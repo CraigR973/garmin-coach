@@ -90,6 +90,7 @@ from src.services.bulk_history_reads import (
     without_activity_raw_summary,
     without_sleep_raw_payload,
 )
+from src.services.coach_policy import MODEL_HIDDEN_SECTIONS
 from src.services.coach_sections import (
     activity_state as _activity_state_shape,
 )
@@ -853,7 +854,12 @@ class ChatContextService:
             (
                 await self.session.execute(
                     select(KnowledgeBase)
-                    .where(KnowledgeBase.user_id == user_id, KnowledgeBase.is_active.is_(True))
+                    .where(
+                        KnowledgeBase.user_id == user_id,
+                        KnowledgeBase.is_active.is_(True),
+                        # Batch 324: never the plan builder's draft.
+                        KnowledgeBase.section.not_in(MODEL_HIDDEN_SECTIONS),
+                    )
                     .order_by(KnowledgeBase.section.asc())
                 )
             )

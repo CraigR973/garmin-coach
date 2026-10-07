@@ -44,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import KnowledgeBase, PlanBlock, PlannedWorkout
 from src.models.profile import Profile
+from src.services.coach_policy import GENERATED_BLOCK_SECTION
 from src.services.coaching_state import _block_name, _current_cycle_start
 from src.services.holiday_pause import is_build1
 from src.services.next_plan import (
@@ -61,7 +62,6 @@ from src.services.workout_delivery import IntervalsEventClient
 
 log = structlog.get_logger(__name__)
 
-GENERATED_BLOCK_SECTION = "generated_block"
 BLOCK_LOCK_SOURCE = "block_generator_lock"
 DEFAULT_FTP_WATTS = 280
 

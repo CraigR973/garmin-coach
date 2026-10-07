@@ -46,7 +46,7 @@ from src.models.coaching import (
     TemperatureReading,
     WeatherDaily,
 )
-from src.services.coach_policy import source_basis
+from src.services.coach_policy import MODEL_HIDDEN_SECTIONS, source_basis
 from src.services.learned_context import learned_context_packet
 from src.services.personal_baselines import serialize_training_schedule
 from src.services.provenance import (
@@ -389,6 +389,9 @@ def knowledge_base_section(rows: Sequence[KnowledgeBase]) -> dict[str, Any]:
     ones prompts and output contracts reference by name, so they are resolved
     once here rather than at each call site.
     """
+    # Batch 324: the plan builder's draft never reaches a model as memory, even when a
+    # reader loads it; the coach sees a waiting draft through the plan's own view.
+    rows = [row for row in rows if row.section not in MODEL_HIDDEN_SECTIONS]
     knowledge_base = {row.section: row.content for row in rows}
     return {
         "sections": [knowledge_base_packet(row) for row in rows],

@@ -42,7 +42,7 @@ from src.services.bulk_post_activity_lookups import (
     latest_analyses_by_activity,
     latest_checkins_by_activity,
 )
-from src.services.coach_policy import RECORDED_DATA_HONESTY_RULE
+from src.services.coach_policy import MODEL_HIDDEN_SECTIONS, RECORDED_DATA_HONESTY_RULE
 from src.services.coaching_state import CoachingStateService
 from src.services.feedback import FeedbackService
 from src.services.learned_context import (
@@ -602,7 +602,12 @@ class PostWorkoutAnalysisService(PostActivityReadRunner[PostWorkoutAnalysisResul
             (
                 await self.session.execute(
                     select(KnowledgeBase)
-                    .where(KnowledgeBase.user_id == user_id, KnowledgeBase.is_active.is_(True))
+                    .where(
+                        KnowledgeBase.user_id == user_id,
+                        KnowledgeBase.is_active.is_(True),
+                        # Batch 324: never the plan builder's draft.
+                        KnowledgeBase.section.not_in(MODEL_HIDDEN_SECTIONS),
+                    )
                     .order_by(KnowledgeBase.section.asc())
                 )
             )
