@@ -70,6 +70,13 @@ move. Actually reclaiming it needs `VACUUM FULL`, `pg_repack` or
 dump/truncate/reload, and `VACUUM FULL` needs the live data's size free before
 it starts, which is precisely how 2026-06-28 went wrong (DECISIONS #93).
 
+**Retention is on since 2026-09-24 (DECISIONS #349), and the freed space was reclaimed
+once on 2026-10-07 (DECISIONS #388):** `VACUUM (FULL, ANALYZE) coach.activity_timeseries`
+with `lock_timeout = '5s'`, via `railway run`, took 9.6 s and took the database from
+458.1 to 171.0 MB. The storage meter in `egress-budget` sums every database
+(`all_databases_bytes`, Batch 325), because that is what Supabase's 500 MB limit is
+enforced on.
+
 ⭑ **`ledger-freshness` is external-only, on purpose (Batch 242.5).** It is the
 one job in this table that is **not** registered on the in-process APScheduler,
 and a test asserts that absence. It reads the newest `job_runs` row per job and

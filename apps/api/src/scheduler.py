@@ -533,6 +533,13 @@ def _log_operator_alert(kind: str, reason: str, **fields: Any) -> None:
     )
 
 
+# Batch 325: Supabase's own documented database-size query, which is what the
+# free plan's read-only limit is enforced on.
+_ALL_DATABASES_SIZE_SQL = text(
+    "select coalesce(sum(pg_database_size(datname)), 0)::bigint from pg_database"
+)
+
+
 async def run_egress_budget_check() -> JobResult:
     """Flush the response-byte counter, meter storage, and stage both alerts.
 
@@ -566,6 +573,14 @@ async def run_egress_budget_check() -> JobResult:
     session, already writes counters and already dedupes alerts, so measuring it
     here also builds the time series to project from, instead of the two anchors a
     month apart that the audit had to reason from.
+
+    Batch 325: the stage now reads ``all_databases_bytes``, the sum of
+    ``pg_database_size`` over every database in the cluster. That is the measure
+    Supabase documents for the free plan's 500 MB read-only limit, and it includes
+    the two template databases (~15 MB) that ``current_database()`` alone missed,
+    so the meter read lower than the number that actually enforces the cap.
+    ``database_bytes`` (this app's database only) stays in the counters so the
+    series in ``job_runs`` continues unbroken.
     """
 
     delta = response_byte_counter.drain()
@@ -606,6 +621,7 @@ async def run_egress_budget_check() -> JobResult:
         database_bytes = int(
             await session.scalar(select(func.pg_database_size(func.current_database()))) or 0
         )
+        all_databases_bytes = int(await session.scalar(_ALL_DATABASES_SIZE_SQL) or 0)
 
     def _sum_bytes(rows: Iterable[Any]) -> int:
         # The key was renamed in Batch 247; rows written before it carry the old
@@ -628,13 +644,13 @@ async def run_egress_budget_check() -> JobResult:
     total_month = prior_month + delta + backup_bytes_today
     stage = evaluate_egress_stage(total_month)
     ordinal = EGRESS_STAGE_ORDINAL[stage]
-    storage_stage = evaluate_storage_stage(database_bytes)
+    storage_stage = evaluate_storage_stage(all_databases_bytes)
     storage_ordinal = EGRESS_STAGE_ORDINAL[storage_stage]
 
     if ordinal > prior_max_ordinal:
         _log_egress_operator_alert(stage, total_month)
     if storage_ordinal > prior_max_storage_ordinal:
-        _log_storage_operator_alert(storage_stage, database_bytes)
+        _log_storage_operator_alert(storage_stage, all_databases_bytes, database_bytes)
 
     counters = {
         "http_response_bytes_delta": delta,
@@ -643,6 +659,7 @@ async def run_egress_budget_check() -> JobResult:
         "http_response_bytes_month": total_month,
         "alert_stage_ordinal": ordinal,
         "database_bytes": database_bytes,
+        "all_databases_bytes": all_databases_bytes,
         "storage_stage_ordinal": storage_ordinal,
     }
     if stage == "ok" and storage_stage == "ok":
@@ -651,20 +668,24 @@ async def run_egress_budget_check() -> JobResult:
     return JobResult.degraded(f"egress_budget_{worst}", **counters)
 
 
-def _log_storage_operator_alert(stage: str, database_bytes: int) -> None:
+def _log_storage_operator_alert(stage: str, all_databases_bytes: int, database_bytes: int) -> None:
     """Batch 247 (DS237-02). Same route as the egress and backup alerts.
 
     ``log.error`` is the delivery mechanism, because that is the level
     ``SENTRY_DSN_BACKEND`` captures — the same reasoning as Batch 242.5's ledger
-    check.
+    check. Batch 325: the fraction is of ``all_databases_bytes``, the figure the
+    cap is enforced on.
     """
 
     log.error(
         "operator storage alert",
         kind=f"database_storage_{stage}",
+        all_databases_bytes=all_databases_bytes,
         database_bytes=database_bytes,
         budget_bytes=STORAGE_BUDGET_BYTES,
-        used_fraction=round(database_bytes / STORAGE_BUDGET_BYTES, 4),
+        used_fraction=round(all_databases_bytes / STORAGE_BUDGET_BYTES, 4),
+        measures="sum of pg_database_size over pg_database, template databases "
+        "included (Supabase's documented free-plan database-size measure)",
         # The trap, carried on the alert itself rather than left in a runbook:
         # near a full disk, VACUUM FULL / CLUSTER / CTAS all need the new copy's
         # size free and cannot run. Only dump / truncate / reload works then.
