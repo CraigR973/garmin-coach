@@ -6,6 +6,18 @@
 
 ## Now
 
+**2026-10-07 (evening): Mark's rides stopped reaching Zwift, and Home said they were there.
+Written up as Batch 326, not built.** Mark found the "Intervals.icu" folder gone from
+Zwift's Custom workouts. intervals.icu paused his free account on 24 Sep (`status`
+`DORMANT`), 90 days after he last logged in to its website (26 Jun). A paused account is not
+processed, and the app's API calls do not count as logging in. That the pause stopped the
+Zwift upload is inferred (the date fits, nothing else changed). Every ride to 18 Oct is still
+on his intervals.icu calendar, and nothing in our code changed. **Craig logged in as Mark at
+18:42 BST: the account reads `ACTIVE` again and its Zwift link is connected.** Whether the
+folder is back is for Mark to see in Zwift (Needs Craig, item 0). Batch 326 makes the app read
+the account three times a day, say on Home when rides are not reaching Zwift, and warn Craig
+14 days before the next pause (5 Jan, unless Supporter). No code, migration or spend today.
+
 **2026-10-07 (late afternoon): Batch 325 is live (PR #370, `c3b93a9`, Decision #388). The
 database is back to 171 MB of the 500 MB free-plan limit, and the storage meter measures what
 Supabase enforces.** A Sentry storage alert this morning was the daily re-fire of
@@ -283,7 +295,13 @@ v50 brief reads constraints the ladder does not follow.
 
 ### Needs Craig
 
-0. **Decided under your delegation of 6 Oct (G8, and 324 by your 7 Oct answer), each
+0. **intervals.icu (7 Oct): you logged in as Mark at 18:42 BST, and the account reads
+   `ACTIVE` again with its Zwift link connected.** It had been paused since 24 Sep (90 days
+   without a website login). Left: Mark restarts Zwift before his next ride and checks Custom
+   for the "Intervals.icu" folder; if it is not back, reconnect Zwift in intervals.icu
+   (Settings, Connections). Supporter ($4 a month) is never paused; without it the next pause
+   falls on 5 Jan, in week 12 of Plan No. 3, and Batch 326 will warn 14 days ahead.
+1. **Decided under your delegation of 6 Oct (G8, and 324 by your 7 Oct answer), each
    overrulable; details in each batch's DECISIONS entry.** 324 (#389): leave the draft out
    of every prompt (not "public sections only", which would drop his holidays); his days
    rebuild the plan and his single-session changes go, said first; the start is any Monday
@@ -299,38 +317,38 @@ v50 brief reads constraints the ladder does not follow.
    (the ledger's table); a ramp test, not a 20-minute test (ERG on); VO₂ written for ERG;
    his FTP kept at 280 W, the drift proposal not applied; strength Monday and Saturday,
    both loaded; the card from his taper week; a decline writes nothing; the words.
-1. **Plan No. 3 is drafted and waits for Mark (Batches 323 and 324, live 7 Oct); he can
+2. **Plan No. 3 is drafted and waits for Mark (Batches 323 and 324, live 7 Oct); he can
    change any of it first, by hand or with the coach.** Home asks him from
    Mon 12 Oct. If he declines it, or has not decided by 19 Oct, Home reads "No session
    planned" from Mon 19 Oct. His decision: `select version, is_active, content->>'status' from
    coach.knowledge_base where section = 'generated_block'`, and the `next_plan_*` log lines.
    Coach memory's `training_schedule` is generic and already disagreed with Plan No. 2 (long
    ride Saturday, rest Monday): left as it was, yours to correct.
-2. **Two colour words left on purpose (313, for your eye):** the symptom floors' plan lines
+3. **Two colour words left on purpose (313, for your eye):** the symptom floors' plan lines
    ("sets a Red floor", a health warning, unchanged as signed off), and "Amber-adjusted", a
    ride name only the ladder uses.
-3. **One Sentry alert rule (a console step, yours).** In Sentry, alert on a new issue that
+4. **One Sentry alert rule (a console step, yours).** In Sentry, alert on a new issue that
    has the tag `admin_alert` (any value), emailing you. Every admin alert now carries it:
    billing, failed generations, the monthly analysis, cross-surface disagreements, contested
    figures, and a graded verdict two steps less cautious than the ladder (the 7–20 Oct
    comparison's alarm). A test alert reached Sentry on 4 Oct. A failed note reading stays a
    warning, your call.
-4. **Shipped on your 3 Oct answers.** 306: on a tired Amber Mark picks "Easy Zone 2" (75%
+5. **Shipped on your 3 Oct answers.** 306: on a tired Amber Mark picks "Easy Zone 2" (75%
    FTP) or "Tempo" (85%), full length; picking neither leaves the planned session on Zwift;
    a long ride is offered at 75% of its length. 305: the 4 bpm corroboration stays, though it
    adds an off-the-bike day where a single morning is up 4 bpm (once in his history, 1 Aug).
    Words signed off on Mark's behalf.
-5. **Decision #378 (yours, 3 Oct):** the JS audit's new braces advisory is a reviewed
+6. **Decision #378 (yours, 3 Oct):** the JS audit's new braces advisory is a reviewed
    exception (build-time only, no fixed version yet). Revisit when a fixed braces ships.
-6. **Decisions made on your behalf in Batch 303 (Decision #375), each overrulable.** A chest
+7. **Decisions made on your behalf in Batch 303 (Decision #375), each overrulable.** A chest
    question lifts the colour to Amber only when a hard session is planned; otherwise Home
    only asks. Home asks only about something more serious than the answer he tapped. A week
    swap is withheld where it would undo the easing. The easy ride is the existing recovery
    spin (half length, capped at 60% FTP). The ladder is given neither easing. A stricter
    floor on the same morning (off the bike) is the only one reported.
-7. ~~After a chest or heart report nothing follows (your call, 2 Oct).~~ Superseded by your
+8. ~~After a chest or heart report nothing follows (your call, 2 Oct).~~ Superseded by your
    go of 6 Oct: Batch 315 (live 6 Oct) follows it up until he has spoken to his GP or 111.
-8. **Decisions made on your behalf in Batch 302 (Decision #374), each overrulable.** A morning
+9. **Decisions made on your behalf in Batch 302 (Decision #374), each overrulable.** A morning
    without its brief travels as its own field (`gradedMorning`), so an older cached client
    reads it as "no brief yet". A stored morning graded on today's inputs stands on a retry, so
    the brief is written for the colour he was shown. Home and the brief page re-read the day
@@ -338,16 +356,16 @@ v50 brief reads constraints the ladder does not follow.
    written, not when the morning was graded. No retry is offered for a day that is over. The
    symptom answer now counts as a change to the check-in, so changing only that answer
    regrades the morning. The failure events keep their names and gain a `stage` field.
-9. **Two decisions made on your behalf in Batch 300 (Decision #373), each a one-line change to
+10. **Two decisions made on your behalf in Batch 300 (Decision #373), each a one-line change to
    overrule.** A domain marked on Garmin's own sleep score counts as clearly off even where the
    age credit lifts it (Garmin's 55 lifted to 63 eases the session). And a Zone 2 ride on a
    clearly-off light-week morning reads as any other Amber ("Keep your Zone 2 ride at full
    length."), not as the hold; it is the same ride either way.
-10. The Vercel project's own Node setting still reads 20.x; `engines` overrides it, so changing
+11. The Vercel project's own Node setting still reads 20.x; `engines` overrides it, so changing
    it is tidiness only (a hosting change, yours).
-11. **From 7 to 20 Oct:** the run reviews every ladder-versus-graded disagreement at the trial
+12. **From 7 to 20 Oct:** the run reviews every ladder-versus-graded disagreement at the trial
    addendum (resuming 21 Oct, under your delegation); yours to overrule.
-12. **Carried:** G4's free Neon database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment
+13. **Carried:** G4's free Neon database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment
    extractor's first paid run (Mark's own "Look for new memories" tap).
 
 ### Worth carrying
@@ -2270,6 +2288,13 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-07 (evening)**: Mark reported the Zwift "Intervals.icu" folder gone. Diagnosed
+  read-only: intervals.icu made his free account dormant on 24 Sep, 90 days after his last
+  website login (26 Jun). The app's API key does not count as a login, so the Zwift upload
+  very likely stopped there, while Home still said "Already in Zwift". Our side is intact: 15 rides to 18 Oct on
+  his calendar, unchanged since 11 Jul. Written up as Batch 326 (planned, docs only): read the
+  account, say it on Home, alert Craig. Craig logged in as Mark at 18:42 BST: `ACTIVE` again,
+  Zwift connected; Mark to confirm the folder. Supporter ($4 a month) is never paused.
 - **2026-10-07 (late afternoon)**: Batch 325 shipped as PR #370 / `c3b93a9` (Decision #388).
   It was found while checking a Sentry storage alert for Craig. On his go, a one-off `VACUUM
   FULL` on `coach.activity_timeseries` took the database from 458.1 to 171.0 MB in 9.6 s, with
