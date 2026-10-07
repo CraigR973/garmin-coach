@@ -243,4 +243,4 @@ def test_the_prompt_version_moved_with_the_capability() -> None:
     so this bump withdraws no stored artifact — a past answer stays what was said.
     Batch 289 moved it again (v16), for the same reason and with the same contract.
     """
-    assert PROMPT_VERSION == "coach-chat-v19-2026-10-05"
+    assert PROMPT_VERSION == "coach-chat-v20-2026-10-07"

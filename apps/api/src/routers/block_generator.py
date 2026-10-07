@@ -6,6 +6,7 @@ plan or Zwift silently (Decision #29):
   GET  /api/v1/block-generator          — current draft (or null) + canGenerate
   POST /api/v1/block-generator/generate — the next plan's draft, from his last plan (Batch 323)
   POST /api/v1/block-generator/refine   — edit a single day in the draft
+  POST /api/v1/block-generator/changes  — one change from the closed list (Batch 324)
   POST /api/v1/block-generator/lock     — write the draft into the owned plan
   POST /api/v1/block-generator/discard  — drop an unlocked draft
 """
@@ -22,6 +23,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth import CurrentUser
 from src.database import get_db
 from src.services.block_generator import STATUS_DRAFT, BlockGeneratorService
+from src.services.plan_changes import (
+    normalise_draft,
+    session_changes_since_rebuild,
+    session_edits,
+    start_options,
+    weeks_over_longest,
+)
+from src.services.profile_clock import profile_today
 
 router = APIRouter(prefix="/api/v1/block-generator", tags=["block-generator"])
 
@@ -42,6 +51,14 @@ class ApiMeta(BaseModel):
 class DraftData(BaseModel):
     draft: dict[str, Any] | None
     canGenerate: bool
+    # Batch 324: what the builder offers on a waiting draft. Each session's minutes range or
+    # its interval set (or the reason it is fixed), the Mondays it can start on, how many
+    # single-session changes a rebuild for his days would replace, and the weeks longer
+    # than his longest. Empty when no draft is waiting.
+    sessionEdits: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    startOptions: list[str] = Field(default_factory=list)
+    sessionChangesSinceRebuild: int = 0
+    weeksOverLongest: list[int] = Field(default_factory=list)
 
 
 class DraftEnvelope(BaseModel):
@@ -67,6 +84,12 @@ class RefineInput(BaseModel):
     structuredWorkout: dict[str, Any] | None = None
 
 
+class ChangeInput(BaseModel):
+    # Validated by ``plan_changes.parse_change``: the closed list, one shape per kind.
+    change: dict[str, Any]
+    expectedRevision: int | None = Field(default=None, ge=0)
+
+
 class LockData(BaseModel):
     blocksCreated: int
     workoutsWritten: int
@@ -90,13 +113,27 @@ class DiscardEnvelope(BaseModel):
     errors: list[ApiError]
 
 
-def _draft_envelope(draft: dict[str, Any] | None) -> DraftEnvelope:
+def _draft_envelope(draft: dict[str, Any] | None, today: date) -> DraftEnvelope:
     can_generate = draft is None or draft.get("status") != STATUS_DRAFT
-    return DraftEnvelope(
-        data=DraftData(draft=draft, canGenerate=can_generate),
-        meta=ApiMeta(generatedAtUtc=_generated_at()),
-        errors=[],
-    )
+    if draft is None or can_generate:
+        data = DraftData(draft=draft, canGenerate=can_generate)
+    else:
+        # A draft made before Batch 324 is given its session ids here, the same ids a
+        # change to it will find.
+        working = normalise_draft(draft)
+        data = DraftData(
+            draft=working,
+            canGenerate=False,
+            sessionEdits={
+                str(workout["id"]): session_edits(workout)
+                for week in working["weeks"]
+                for workout in week["workouts"]
+            },
+            startOptions=[day.isoformat() for day in start_options(today)],
+            sessionChangesSinceRebuild=session_changes_since_rebuild(working),
+            weeksOverLongest=weeks_over_longest(working),
+        )
+    return DraftEnvelope(data=data, meta=ApiMeta(generatedAtUtc=_generated_at()), errors=[])
 
 
 @router.get("", response_model=DraftEnvelope)
@@ -106,7 +143,7 @@ async def get_draft(
 ) -> DraftEnvelope:
     service = BlockGeneratorService(db)
     draft = await service.get_draft(player)
-    return _draft_envelope(draft)
+    return _draft_envelope(draft, profile_today(player))
 
 
 @router.post("/generate", response_model=DraftEnvelope)
@@ -121,7 +158,7 @@ async def generate_block(
         start_date=date.fromisoformat(body.startDate) if body.startDate else None,
         ftp_watts=body.ftpWatts,
     )
-    return _draft_envelope(draft)
+    return _draft_envelope(draft, profile_today(player))
 
 
 @router.post("/refine", response_model=DraftEnvelope)
@@ -142,7 +179,18 @@ async def refine_block(
         intensity_target=body.intensityTarget,
         structured_workout=body.structuredWorkout,
     )
-    return _draft_envelope(draft)
+    return _draft_envelope(draft, profile_today(player))
+
+
+@router.post("/changes", response_model=DraftEnvelope)
+async def change_block(
+    body: ChangeInput,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> DraftEnvelope:
+    service = BlockGeneratorService(db)
+    draft = await service.change(player, body.change, expected_revision=body.expectedRevision)
+    return _draft_envelope(draft, profile_today(player))
 
 
 @router.post("/lock", response_model=LockEnvelope)

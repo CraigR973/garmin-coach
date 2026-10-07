@@ -6,6 +6,21 @@
 
 ## Now
 
+**2026-10-07 (afternoon) — Batch 324 is live (PR #371, `689acf4`, Decision #389): Mark can change
+anything in the proposed plan before he accepts it, by hand or by talking it through with the
+coach.** The plan builder now has his days, the start Monday, and every day of every week.
+Each session has Change (its name, and its minutes or its interval set's five numbers), Move
+and Remove; each day has Add. Each week shows its time, with a warning past his longest week.
+The page lists his changes, has "Back to the plan as proposed", and "Talk it through with the
+coach". The coach sees a compact view of the plan (never the raw draft) and can read any week.
+It can offer one change per answer, which he applies with one tap, only at the plan revision it
+was made against. One ride a day, as Zwift and each morning take. **Found and contained first:**
+the morning brief and the chat had been about to read the whole 69,702-character draft; no
+prompt reads it now. Plan No. 3's draft was regenerated for Mark after the deploy (version 2,
+revision 0) and waits for him; Home asks from Mon 12 Oct. Coach prompt v20 (unfiltered:
+nothing withdrawn). Migration `037`. G8 still waits for 20 Oct; the run resumes 21 Oct at the
+trial addendum.
+
 **2026-10-07 (early) — Batch 323 is live (PR #369, `9a2dc47`, Decision #387): 314, 315 and 323
 are done, and G8 waits for Sun 20 Oct (the trial).** Plan No. 3 (Mon 19 Oct – Sun 17 Jan) is
 drafted for Mark from his own plan and waits in the plan builder. Home shows "Your next plan
@@ -254,8 +269,14 @@ v50 brief reads constraints the ladder does not follow.
 
 ### Needs Craig
 
-0. **Decided under your delegation of 6 Oct (G8), each overrulable; details in each batch's
-   DECISIONS entry.** 314 (#385): the `postcss-selector-parser` advisory is a reviewed
+0. **Decided under your delegation of 6 Oct (G8, and 324 by your 7 Oct answer), each
+   overrulable; details in each batch's DECISIONS entry.** 324 (#389): leave the draft out
+   of every prompt (not "public sections only", which would drop his holidays); his days
+   rebuild the plan and his single-session changes go, said first; the start is any Monday
+   up to eight weeks on; changed rides' minutes round up; minutes 20–240 (dumbbells
+   10–60); the ramp test only moves or goes; a long week warns, never blocks; one ride a
+   day; a stale coach offer is refused in words; one offer per answer; "why this plan"
+   stays as proposed; the words (`docs/drafts/2026-10-07-batch-324-wording.md`). 314 (#385): the `postcss-selector-parser` advisory is a reviewed
    exception, not a fix (its only fix is a major Tailwind 3.4 does not accept). 315 (#386):
    the words (`docs/drafts/2026-10-06-batch-315-wording.md`); only "Gone, and I've spoken to
    my GP or 111" ends the follow-up; asked every morning with no time limit; a day with no
@@ -264,7 +285,8 @@ v50 brief reads constraints the ladder does not follow.
    (the ledger's table); a ramp test, not a 20-minute test (ERG on); VO₂ written for ERG;
    his FTP kept at 280 W, the drift proposal not applied; strength Monday and Saturday,
    both loaded; the card from his taper week; a decline writes nothing; the words.
-1. **Plan No. 3 is drafted and waits for Mark (Batch 323, live 7 Oct).** Home asks him from
+1. **Plan No. 3 is drafted and waits for Mark (Batches 323 and 324, live 7 Oct); he can
+   change any of it first, by hand or with the coach.** Home asks him from
    Mon 12 Oct. If he declines it, or has not decided by 19 Oct, Home reads "No session
    planned" from Mon 19 Oct. His decision: `select version, is_active, content->>'status' from
    coach.knowledge_base where section = 'generated_block'`, and the `next_plan_*` log lines.
@@ -2233,6 +2255,24 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+- **2026-10-07 (afternoon)** — Batch 324 shipped as PR #371 / `689acf4` (Decision #389), on
+  Craig's 7 Oct go, outside G8. Mark can change anything in the proposed plan before he accepts
+  it, by hand in the builder or by tapping a change the coach offers. Each change is checked,
+  versioned and logged in his words. Before any of it, the draft was taken out of every prompt:
+  the brief and the chat had been about to read the whole 69,702-character draft, which was
+  contained at 09:10 BST. CI's first run caught a real bug in the batch: two rides on one day
+  pushed 64 of 65 rides, because the Zwift rail keeps one event per date. Fixed as one ride a
+  day, with words. 15 of 16 mutations of the change rules fail a test. All 16 CI checks green
+  on both waves (2687 passed with Postgres). Merged 14:17 BST. Production serves `689acf4`:
+  health on Railway and through Vercel, Vercel production deploy success, web, `/login` and
+  `/builder` 200, `daily-loop` 401, the builder, change and apply routes 401 without a token,
+  an unknown route 404, the live bundle carries the new words, and `alembic_version` is 037
+  with `brief_messages.proposed_plan_change` (nullable JSONB). Plan No. 3's draft was
+  regenerated for Mark (v2, revision 0, 91 sessions; plan rows unchanged at 16/174/124, so
+  nothing to his plan or Zwift). Both prompt readers load 11 sections, holidays included and
+  not the draft. Compact view 6,805 characters. Home's card from 12 Oct. Nothing idle in a
+  transaction. Coach prompt v20: unfiltered, nothing withdrawn, nothing regenerated. $0 spent.
 
 - **2026-10-07 (early)** — Batch 323 shipped as PR #369 / `9a2dc47` (Decision #387), the third
   of G8. The plan builder now builds the next plan from his last one (`services/next_plan.py`):

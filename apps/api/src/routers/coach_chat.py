@@ -2,6 +2,8 @@
 
   GET  /api/v1/coach/messages   — the rolling conversation
   POST /api/v1/coach/messages   — ask, from any surface, with or without a read
+  POST /api/v1/coach/messages/{id}/apply-plan-change — apply the change an answer offered
+                                   to his proposed plan, with one tap (Batch 324)
 
 ``/api/v1/briefs/{analysis_id}/messages`` (Batch 119) still exists and still
 returns only the turns asked from that read, because the inline chat on a read
@@ -30,8 +32,10 @@ from src.auth import CurrentUser
 from src.database import get_db
 from src.rate_limit import paid_generation_limit
 from src.routers.brief_chat import (
+    ApiError,
     ApiMeta,
     BriefMessageListEnvelope,
+    BriefMessageOut,
     BriefMessageTurnData,
     BriefMessageTurnEnvelope,
     generated_at,
@@ -157,4 +161,25 @@ async def ask_coach(
     )
 
 
-__all__ = ["CoachMessageInput", "router"]
+class AppliedPlanChangeEnvelope(BaseModel):
+    data: BriefMessageOut
+    meta: ApiMeta
+    errors: list[ApiError]
+
+
+@router.post("/messages/{message_id}/apply-plan-change", response_model=AppliedPlanChangeEnvelope)
+async def apply_plan_change(
+    message_id: uuid.UUID,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> AppliedPlanChangeEnvelope:
+    """His one tap on a change the coach offered: no model call, so no paid-generation limit."""
+    message = await BriefChatService(db).apply_plan_change(player, message_id)
+    return AppliedPlanChangeEnvelope(
+        data=serialize_message(message),
+        meta=ApiMeta(generatedAtUtc=generated_at()),
+        errors=[],
+    )
+
+
+__all__ = ["AppliedPlanChangeEnvelope", "CoachMessageInput", "router"]

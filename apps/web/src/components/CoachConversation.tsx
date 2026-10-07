@@ -4,6 +4,7 @@ import type { BriefMessage } from '@coach/shared';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { CoachIntervalChangeCard } from '@/components/CoachIntervalChangeCard';
+import { CoachPlanChangeCard } from '@/components/CoachPlanChangeCard';
 import { Markdown } from '@/components/Markdown';
 
 /** Three distinct presentations for the thread fetch — Batch 193.3 / UX192-03:
@@ -142,6 +143,7 @@ export function CoachConversation({
       content: pendingQuestion,
       proposedPlannedWorkoutId: null,
       proposedIntervalChange: null,
+      proposedPlanChange: null,
       createdAtUtc: new Date().toISOString(),
     };
     return [...messages, optimisticTurn];
@@ -265,6 +267,9 @@ export function CoachConversation({
                   )}
                   {message.role === 'assistant' && message.proposedIntervalChange ? (
                     <CoachIntervalChangeCard change={message.proposedIntervalChange} />
+                  ) : null}
+                  {message.role === 'assistant' && message.proposedPlanChange ? (
+                    <CoachPlanChangeCard messageId={message.id} change={message.proposedPlanChange} />
                   ) : null}
                   <time
                     dateTime={message.createdAtUtc}

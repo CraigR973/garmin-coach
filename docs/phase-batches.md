@@ -5937,6 +5937,75 @@ or a date has not arrived; every batch-start, batch-verify and close-out guardra
 | 12 | 320 🟢 Tonight's advice from today's reason | Craig's sign-off of the words |
 | 13 | 322 🟢 Record what he rode and how it went | A migration only on Craig's go |
 
+## Post-roadmap — 2026-10-07 — Plan No. 3, changed any way he likes and talked through with the coach (Batch 324)
+
+Craig, 7 Oct, after Batch 323 shipped: "we should give him maximum flexibility to change and
+also have a conversation with the coach about the upcoming proposed plan". His answers the same
+morning: the coach may **offer a change he applies with one tap**; the words come under **the
+same delegation as G8**; the morning brief **does not mention** the proposed plan (Home's card
+and the chat only). It lands before the 20 Oct wait, as a fix to 323 (Mark-facing, no rule of
+the call changes), outside his 06:00–11:00 morning, live before his card shows on Mon 12 Oct.
+
+**Found on 7 Oct, and contained (observed):** the morning brief and the coach chat load every
+active Coach-memory row (`MorningAnalysisService._active_knowledge_base`,
+`ChatContextService._active_knowledge_base`), so the Plan No. 3 draft generated at 323's
+close-out (69,702 characters) would have gone whole into both. No brief had been written on
+7 Oct and no chat turn had run since; the draft was set inactive at 09:10 BST and is
+regenerated once the readers are fixed.
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| ~~Batch 324 — Change anything in the proposed plan, and talk it through with the coach~~ | 🔴 High | **Shipped** (PR #371, squash `689acf4`, Decision #389; the draft regenerated for Mark, 7 Oct) | 324.1 **No prompt reads a raw draft:** every reader that loads active Coach-memory rows for a model (the morning brief, the chat, the four post-session reads and the handover export) leaves out the draft, `generated_block` (corrected at batch-start: the public-sections list would also have dropped `holiday_windows`); a test proves no packet carries `generated_block`.<br>324.2 **Change anything, on the draft itself** (each change versions the draft, as refine does): his days (VO₂, sweet spot, Zone 2, sprints, long ride, two strength days, rest), which rebuild the plan from the table; the start date (any of the next Mondays, keeping his changes); any session's intervals (the interval editor's five numbers, so Zwift gets exactly what he sees) or length (a steady ride's main block; strength minutes) or title; move a session to any day of the plan; remove one; add one (Zone 2, easy spin, long ride, either dumbbell session); and back to the plan as proposed. Rides stay deliverable, and a changed ride's minutes are its steps rounded up, as the session interval editor's are (corrected at batch-start); a week longer than his longest warns and never blocks.<br>324.3 **The builder** shows his days, the start date, every session with its day and Edit, Move and Remove, an Add on each day, the week's minutes with the warning, "Back to the plan as proposed", Accept and Decline, and "Talk it through with the coach".<br>324.4 **The coach knows the plan:** with a draft waiting, the chat carries a compact view (name, dates, "why this plan", one line a week, his changes so far; a few thousand characters, never the raw draft) and can read any week in full through a tool; opened from the builder its origin is the plan.<br>324.5 **The coach can offer a change he taps to apply:** the answer carries one change from the same closed list as 324.2, the app validates it deterministically against the draft as it stands, stores it with the message, and he applies it with one tap (or not); it reaches Zwift only when he accepts the plan. An offer the draft has moved past is refused, honestly.<br>324.6 The draft is regenerated for Mark after the deploy (never locked or discarded), so his card shows from Mon 12 Oct.<br>324.7 Words drafted in `docs/drafts/` and signed off under the G8 delegation; tests, each confirmed to fail first. | Mark can make Plan No. 3 his own before he accepts it, by hand or by talking it through with the coach, and what he accepts is exactly what reaches Zwift. | The readers fixed with a test; every change as stated, validated and versioned; the coach's compact view and tool; a coach offer applied in one tap on a test profile; the draft regenerated for Mark and read back; words signed off. A migration only if additive and nullable. |
+
+### Corrections made at `/batch-start 324` (2026-10-07), before any code
+
+- **Re-verified, unchanged:** the Plan No. 3 draft row is inactive (contained 09:10 BST);
+  the builder's `refine` edits a session's title, type, minutes, target and steps with no
+  validation; the session interval editor (Batch 147) changes "the five numbers" through
+  `interval_workout_editor.apply_interval_block`, and the coach's existing offer for today's
+  session uses the same five (`PROPOSED_BLOCK_FIELDS`, Batch 264); the chat's origin is chosen
+  from the route (`lib/coachOrigin.ts`), and the morning brief's identity does not include
+  Coach memory, so changing the draft never makes a brief regenerate (all implemented).
+- **Five facts the row did not have.** Each changes a detail, not what the batch is for:
+  1. `PUBLIC_KNOWLEDGE_BASE_SECTIONS` is the ten seeded sections, and production holds an
+     eleventh, `holiday_windows` (active, 272 characters). Reading "the public sections only"
+     would drop his holidays from the brief and the chat. The readers instead leave out the
+     one working section, the draft (`generated_block`): an exclusion, not that allow-list.
+  2. Two packets carry every row verbatim, not every reader: the morning brief and the chat
+     (`coach_sections.knowledge_base_section`, `knowledgeBase.sections`); the four
+     post-session reads take named sections only; the handover export also takes every row.
+     All seven readers leave the draft out, and `knowledge_base_section` drops it as well.
+     The chat's class is `ChatContextService`.
+  3. A changed ride's minutes cannot always stay whole: ten 30/15 reps are 7½ minutes. The
+     session interval editor already rounds a ride's minutes up from its steps
+     (`executable_coaching.approve_interval_edit`), and a changed draft session does the same;
+     Zwift gets the steps exactly. Generated sessions still trace their steps exactly.
+  4. A session that can be moved needs a name that survives the move, and an offer needs to
+     know what it was made against: every session in the draft gets an id, and the draft a
+     revision number that each change raises. A draft made before 324 is given both on load.
+  5. "Length" of a steady ride means its steady block: a ride with a warm-up ramp, one steady
+     block and a cool-down ramp. A ride whose intervals he changed is changed through its
+     intervals from then on.
+- **The open details, decided under Craig's delegation of 6 Oct (Decision #389):**
+  1. Changing his days rebuilds the plan from the table with the new days; changes he made to
+     single sessions go, and the builder says so, with the count, before he confirms.
+  2. The start date is any Monday from next Monday to eight weeks on; his changes move with it.
+  3. Minutes: any steady ride 20–240, as long as its steady block stays ten minutes or more;
+     dumbbells 10–60; an added long ride 60–240 (refined while building: one range for every
+     steady ride, since a recovery week's "long" ride is 90 minutes and the taper's 45).
+  4. Intervals: any ride with an interval set except the ramp test, within the interval
+     editor's own bounds; the changed ride must still pass the rail's deliverability check.
+  5. Move: to any day of the plan, his rest day included, but a ride only to a day with no
+     ride (corrected after CI: the delivery rail keeps one Zwift event per date, so a second
+     ride on a day replaced the first's; Batch 324's Postgres test pushed 64 of 65); the
+     session itself is unchanged. Add: Zone 2 (60 min), easy spin (45), long ride (120), or either
+     dumbbell session at that week's dose.
+  6. A coach offer applies only at the revision it was made against; after any other change it
+     is refused in words and he asks again. One offer per answer.
+  7. The compact view is never dropped for length (6,805 characters for Plan No. 3, bounded by
+     its 13 week lines and the last 20 changes); the coach's prompt version goes to v20, which
+     withdraws nothing (the chat is unfiltered).
+
 ## Post-roadmap — 2026-10-07 — The storage meter counts what Supabase counts (Batch 325)
 
 Found on 7 Oct, checking a Sentry storage alert for Craig. The alert was the daily re-fire of

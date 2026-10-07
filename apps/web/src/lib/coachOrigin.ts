@@ -16,6 +16,8 @@ const ROUTE_ORIGINS: Array<[string, CoachOriginKind]> = [
   ['/reviews', 'reviews'],
   ['/environment', 'environment'],
   ['/check-in', 'check_in'],
+  // Batch 324: the plan builder, where his proposed next plan waits.
+  ['/builder', 'next_plan'],
 ];
 
 export function originForPath(pathname: string): CoachOriginKind {
@@ -43,4 +45,16 @@ export const ORIGIN_PROMPTS: Record<CoachOriginKind, string> = {
   strength: 'Ask about your strength work',
   walking: 'Ask about your walking',
   check_in: 'Ask about your check-in',
+  next_plan: 'Ask about your next plan',
 };
+
+/**
+ * Batch 324: open the coach from a button on the page ("Talk it through with the coach").
+ * The launcher owns whether its sheet is open; this asks it to open, with the origin of the
+ * page he is on.
+ */
+export const OPEN_COACH_EVENT = 'coach:open';
+
+export function openCoach(): void {
+  window.dispatchEvent(new Event(OPEN_COACH_EVENT));
+}

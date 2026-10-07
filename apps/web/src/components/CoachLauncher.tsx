@@ -15,7 +15,7 @@ import { useCoachAnchor } from '@/contexts/CoachAnchorContext';
 import { apiFetch } from '@/lib/api';
 import { Sheet } from '@/components/ui/sheet';
 import { CoachConversation } from '@/components/CoachConversation';
-import { ORIGIN_PROMPTS, originForPath } from '@/lib/coachOrigin';
+import { OPEN_COACH_EVENT, ORIGIN_PROMPTS, originForPath } from '@/lib/coachOrigin';
 import { cn } from '@/lib/utils';
 
 const coachThreadSchema = z.object({
@@ -109,6 +109,13 @@ export function CoachLauncher({ userId, timeZone }: { userId?: string; timeZone?
   useEffect(() => {
     if (deepLinkedOpen) setOpen(true);
   }, [deepLinkedOpen]);
+
+  // Batch 324: a page's own "talk it through" button opens the coach here.
+  useEffect(() => {
+    const openSheet = () => setOpen(true);
+    window.addEventListener(OPEN_COACH_EVENT, openSheet);
+    return () => window.removeEventListener(OPEN_COACH_EVENT, openSheet);
+  }, []);
 
   const threadQuery = useQuery({
     queryKey: ['coach-thread'],

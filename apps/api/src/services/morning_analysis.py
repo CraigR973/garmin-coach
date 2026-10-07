@@ -65,6 +65,7 @@ from src.services.chronic_patterns import (
     ChronicPatternSuggestionService,
 )
 from src.services.coach_policy import (
+    MODEL_HIDDEN_SECTIONS,
     PACKET_FIELD_NAMES_RULE,
     RECORDED_DATA_HONESTY_RULE,
     source_basis,
@@ -1839,7 +1840,12 @@ class MorningAnalysisService:
             (
                 await self.session.execute(
                     select(KnowledgeBase)
-                    .where(KnowledgeBase.user_id == user_id, KnowledgeBase.is_active.is_(True))
+                    .where(
+                        KnowledgeBase.user_id == user_id,
+                        KnowledgeBase.is_active.is_(True),
+                        # Batch 324: never the plan builder's draft.
+                        KnowledgeBase.section.not_in(MODEL_HIDDEN_SECTIONS),
+                    )
                     .order_by(KnowledgeBase.section.asc())
                 )
             )

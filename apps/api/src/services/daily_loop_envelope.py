@@ -77,7 +77,6 @@ from src.routers.daily_loop_schemas import (
     WindowStatsOut,
 )
 from src.routers.feedback import serialize_feedback
-from src.services.block_generator import GENERATED_BLOCK_SECTION
 from src.services.block_generator import STATUS_DRAFT as BLOCK_STATUS_DRAFT
 from src.services.breathwork_brief import BreathworkBriefResult
 from src.services.brief_generation_status import (
@@ -86,6 +85,7 @@ from src.services.brief_generation_status import (
     BriefGenerationStatusService,
 )
 from src.services.chronic_patterns import ChronicPatternSuggestionService
+from src.services.coach_policy import GENERATED_BLOCK_SECTION
 from src.services.daily_loop import DeliveryState
 from src.services.dreo_fan import (
     DreoConnectionError,

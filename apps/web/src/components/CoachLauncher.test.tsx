@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { CoachLauncher } from './CoachLauncher';
-import { originForPath } from '@/lib/coachOrigin';
+import { ORIGIN_PROMPTS, openCoach, originForPath } from '@/lib/coachOrigin';
 import {
   CoachAnchorProvider,
   useCoachAnchor,
@@ -39,6 +39,9 @@ describe('originForPath', () => {
     expect(originForPath('/brief')).toBe('morning_brief');
     expect(originForPath('/delivery')).toBe('week');
     expect(originForPath('/settings')).toBe('general');
+    // Batch 324: the plan builder, where his proposed next plan waits.
+    expect(originForPath('/builder')).toBe('next_plan');
+    expect(ORIGIN_PROMPTS.next_plan).toBe('Ask about your next plan');
   });
 });
 
@@ -609,6 +612,27 @@ describe('CoachLauncher — the weekly-review latch (Batch 255)', () => {
     expect(await ask(user, 'And my REM last night?')).toMatchObject({
       analysisId: '11111111-1111-4111-8111-111111111111',
       originKind: 'home',
+    });
+  });
+
+  it('opens from the plan builder\u2019s own button and asks about the next plan', async () => {
+    const user = userEvent.setup();
+    apiFetchMock.mockResolvedValue({ data: [] });
+    renderLauncher('/builder');
+
+    act(() => openCoach());
+
+    const textarea = await screen.findByLabelText('Ask your coach a question');
+    expect(screen.getAllByText('Ask about your next plan').length).toBeGreaterThan(0);
+    await user.type(textarea, 'Is Saturday too much?');
+    await user.click(screen.getByRole('button', { name: /^ask$/i }));
+
+    await waitFor(() => {
+      const post = apiFetchMock.mock.calls.find((call) => call[1]?.method === 'POST');
+      expect(JSON.parse(post?.[1].body as string)).toEqual({
+        question: 'Is Saturday too much?',
+        originKind: 'next_plan',
+      });
     });
   });
 });

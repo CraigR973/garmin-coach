@@ -665,7 +665,7 @@ def test_the_chat_and_the_review_speak_in_the_calls_words() -> None:
     from src.services.reviews import SYSTEM_PROMPT as REVIEW_PROMPT
     from src.services.todays_call import TODAYS_CALL_RULE
 
-    assert CHAT_VERSION == "coach-chat-v19-2026-10-05"
+    assert CHAT_VERSION == "coach-chat-v20-2026-10-07"
     assert TODAYS_CALL_RULE in CHAT_PROMPT
     assert "answer in kind" in TODAYS_CALL_RULE
     assert REVIEW_VERSION == "reviews-v11-2026-10-05"
