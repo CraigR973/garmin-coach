@@ -262,6 +262,30 @@ describe('BlockGeneratorPage: change anything in the proposed plan (Batch 324)',
     );
   });
 
+  it('offers a ride only the days without one, since Zwift takes one ride a day', async () => {
+    const user = userEvent.setup();
+    respond(envelope());
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Move Long Z2 on Sun 25 Oct' }));
+    const days = Array.from(
+      (screen.getByLabelText(words.MOVE_TO) as HTMLSelectElement).options,
+    ).map((option) => option.value);
+    expect(days).toContain('2026-10-25');
+    expect(days).toContain('2026-10-26');
+    expect(days).not.toContain('2026-10-20'); // the ramp test's day
+    expect(days).not.toContain('2026-10-27'); // VO₂'s day
+    await user.click(screen.getByRole('button', { name: words.CANCEL }));
+
+    await user.click(screen.getByRole('button', { name: words.addTo('Tue 20 Oct') }));
+    const types = Array.from(
+      (screen.getByRole('combobox', { name: words.addTo('Tue 20 Oct') }) as HTMLSelectElement)
+        .options,
+    ).map((option) => option.textContent);
+    expect(types).toEqual(['Dumbbells A', 'Dumbbells B']);
+    expect((screen.getByLabelText(words.MINUTES) as HTMLInputElement).value).toBe('');
+  });
+
   it('removes a session only once he confirms', async () => {
     const user = userEvent.setup();
     respond(envelope(), changedEnvelope('Removed.'));

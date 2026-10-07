@@ -5995,8 +5995,10 @@ regenerated once the readers are fixed.
      steady ride, since a recovery week's "long" ride is 90 minutes and the taper's 45).
   4. Intervals: any ride with an interval set except the ramp test, within the interval
      editor's own bounds; the changed ride must still pass the rail's deliverability check.
-  5. Move: to any day of the plan, his rest day and a day with a ride included; the session
-     itself is unchanged. Add: Zone 2 (60 min), easy spin (45), long ride (120), or either
+  5. Move: to any day of the plan, his rest day included, but a ride only to a day with no
+     ride (corrected after CI: the delivery rail keeps one Zwift event per date, so a second
+     ride on a day replaced the first's; Batch 324's Postgres test pushed 64 of 65); the
+     session itself is unchanged. Add: Zone 2 (60 min), easy spin (45), long ride (120), or either
      dumbbell session at that week's dose.
   6. A coach offer applies only at the revision it was made against; after any other change it
      is refused in words and he asks again. One offer per answer.

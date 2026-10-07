@@ -408,7 +408,7 @@ def test_a_session_can_be_renamed() -> None:
 # -- move, remove, add -----------------------------------------------------------------------
 
 
-def test_a_session_moves_to_a_day_with_a_ride_rides_before_strength() -> None:
+def test_a_ride_moves_to_a_day_with_dumbbells_and_goes_first() -> None:
     applied = _apply(_plan(), {"kind": "move", "session": "s009", "toDate": "2026-10-26"})
     monday = [w for w in applied.draft["weeks"][1]["workouts"] if w["workoutDate"] == "2026-10-26"]
 
@@ -438,6 +438,45 @@ def test_a_move_outside_the_plan_or_to_the_same_day_is_refused() -> None:
     assert outside.words == "That day isn't in the plan: it runs from Mon 19 Oct to Sun 17 Jan."
     same = _refused(_plan(), {"kind": "move", "session": "s014", "toDate": "2026-11-01"})
     assert same.reason == REFUSED_UNCHANGED
+
+
+def test_a_ride_never_goes_on_a_day_that_has_one() -> None:
+    """Zwift takes one ride a day (the rail replaces a date's event), and so does each morning."""
+    moved = _refused(_plan(), {"kind": "move", "session": "s014", "toDate": "2026-10-31"})
+    assert (moved.reason, moved.words) == (
+        "ride_taken",
+        "Sat 31 Oct already has a ride, and Zwift takes one a day: move or remove that one first.",
+    )
+    added = _refused(_plan(), {"kind": "add", "date": "2026-10-28", "sessionType": "easy"})
+    assert added.reason == "ride_taken"
+    assert added.words.startswith("Wed 28 Oct already has a ride")
+    # Dumbbells can join a ride's day, and a ride can go where its own day's ride was removed.
+    _apply(_plan(), {"kind": "add", "date": "2026-10-28", "sessionType": "strength_b"})
+    cleared = _apply(_plan(), {"kind": "remove", "session": "s012"}).draft
+    _apply(cleared, {"kind": "move", "session": "s014", "toDate": "2026-10-31"})
+
+
+def test_no_change_ever_leaves_two_rides_on_a_day() -> None:
+    draft = _plan()
+    for change in (
+        {"kind": "move", "session": "s009", "toDate": "2026-10-28"},
+        {"kind": "add", "date": "2026-10-31", "sessionType": "zone2"},
+        {"kind": "move", "session": "s007", "toDate": "2026-10-24"},
+        {"kind": "add", "date": "2026-10-30", "sessionType": "long"},
+        {"kind": "move", "session": "s002", "toDate": "2026-10-23"},
+    ):
+        try:
+            draft = _apply(draft, change).draft
+        except PlanChangeRefused:
+            pass
+    rides_by_day: dict[str, int] = {}
+    for week in draft["weeks"]:
+        for workout in week["workouts"]:
+            if workout["structuredWorkout"].get("format") == "bike":
+                rides_by_day[workout["workoutDate"]] = (
+                    rides_by_day.get(workout["workoutDate"], 0) + 1
+                )
+    assert max(rides_by_day.values()) == 1
 
 
 def test_a_session_is_removed() -> None:
@@ -615,7 +654,7 @@ def test_every_change_in_a_long_session_of_changes_leaves_every_ride_deliverable
         },
         {"kind": "minutes", "session": "s003", "minutes": 90},
         {"kind": "minutes", "session": "s089", "minutes": 30},
-        {"kind": "move", "session": "s002", "toDate": "2026-10-21"},
+        {"kind": "move", "session": "s002", "toDate": "2026-10-23"},
         {"kind": "add", "date": "2027-01-15", "sessionType": "zone2", "minutes": 35},
         {"kind": "start", "startDate": "2026-11-02"},
     ):
@@ -746,7 +785,7 @@ async def test_on_postgres_accepting_a_changed_plan_writes_what_he_changed(
         for change in (
             {"kind": "remove", "session": "s005"},  # week 1's Saturday ride
             {"kind": "add", "date": "2026-06-05", "sessionType": "easy"},  # his Friday
-            {"kind": "move", "session": "s014", "toDate": "2026-06-13"},  # Sunday's to Saturday
+            {"kind": "move", "session": "s014", "toDate": "2026-06-12"},  # Sunday's to Friday
             {
                 "kind": "intervals",
                 "session": "s009",
@@ -778,12 +817,12 @@ async def test_on_postgres_accepting_a_changed_plan_writes_what_he_changed(
         }
         titles_on = {
             day: sorted(title for (row_day, title) in rows if row_day == day)
-            for day in (date(2026, 6, 5), date(2026, 6, 6), date(2026, 6, 13), date(2026, 6, 14))
+            for day in (date(2026, 6, 5), date(2026, 6, 6), date(2026, 6, 12), date(2026, 6, 14))
         }
         assert titles_on == {
             date(2026, 6, 5): ["Easy spin"],
             date(2026, 6, 6): ["Dumbbells B (upper body)"],
-            date(2026, 6, 13): ["Dumbbells B (upper body)", "Long Z2", "Z2 + Neuromuscular"],
+            date(2026, 6, 12): ["Long Z2"],
             date(2026, 6, 14): [],
         }
         vo2 = rows[(date(2026, 6, 9), "VO₂ (2 blocks of 12 × 30s/30s @ 130%/55%)")]

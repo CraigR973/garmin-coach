@@ -548,5 +548,6 @@ def test_the_change_log_lines_are_the_signed_off_examples() -> None:
         "Fri 23 Oct: Easy spin added, 45 min.",
         "Back to the plan as proposed.",
         "Your week, as you set it:",
+        "Sat 31 Oct already has a ride, and Zwift takes one a day: move or remove that one first.",
     ):
         assert example in text, example

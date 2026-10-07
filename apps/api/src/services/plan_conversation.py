@@ -304,11 +304,12 @@ def plan_capability_instruction(draft: dict[str, Any] | None, *, today: date) ->
         "from its intervals.\n"
         '- title: {"kind": "title", "session": "s003", "title": "..."}.\n'
         '- move: {"kind": "move", "session": "s014", "toDate": "YYYY-MM-DD"}, any day of the '
-        "plan.\n"
+        "plan; a ride only to a day with no ride of its own (Zwift takes one ride a day).\n"
         '- remove: {"kind": "remove", "session": "s012"}.\n'
         '- add: {"kind": "add", "date": "YYYY-MM-DD", "sessionType": "zone2", "minutes": 60}, '
         "sessionType one of zone2, easy, long, strength_a, strength_b (a long ride at least "
-        f"{LONG_RIDE_ADD_MIN_MINUTES} minutes; a dumbbell session takes that week's dose).\n"
+        f"{LONG_RIDE_ADD_MIN_MINUTES} minutes; a ride only on a day with no ride; a dumbbell "
+        "session takes that week's dose).\n"
         '- reset: {"kind": "reset"}, back to the plan as proposed.\n'
         "When your answer offers one of these, end it with the marker on its own line:\n"
         f'{PLAN_CHANGE_MARKER_OPEN}{{"kind": "remove", "session": "s012"}}'

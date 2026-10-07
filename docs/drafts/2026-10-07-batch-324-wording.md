@@ -66,6 +66,7 @@ in place of "It keeps your week from Plan No. 2: …".
 | Couldn't be read | That change couldn't be read. Try it again. |
 | The session has gone | That session isn't in the plan any more. |
 | A day outside the plan | That day isn't in the plan: it runs from Mon 19 Oct to Sun 17 Jan. |
+| A second ride on a day | Sat 31 Oct already has a ride, and Zwift takes one a day: move or remove that one first. |
 | A start that isn't allowed | The plan can start on any Monday from Monday 12 October to Monday 7 December. |
 | Days that don't make a week | Each ride needs a day of its own, your rest day has nothing on it, and the two dumbbell sessions go on different days. |
 | The ramp test | The ramp test stays as it is. You can move it or remove it. |
@@ -109,7 +110,9 @@ moved or scheduled anything; one change per answer.
 2. **The start is any Monday from the next one to eight weeks on,** and his changes move with it.
 3. **A changed ride's minutes are its steps rounded up,** as the session interval editor's are.
 4. **A week longer than his longest warns and never blocks.**
-5. **A coach offer applies only at the revision it was made against;** otherwise it is refused in
+5. **One ride a day.** A ride can't be moved or added to a day that already has one (dumbbells
+   can); the builder doesn't offer those days, and the coach is told the same.
+6. **A coach offer applies only at the revision it was made against;** otherwise it is refused in
    the words above and he asks again.
-6. **"Why this plan" explains the plan as proposed;** once he has changed it, its heading says so,
+7. **"Why this plan" explains the plan as proposed;** once he has changed it, its heading says so,
    and "Your changes" lists what changed.

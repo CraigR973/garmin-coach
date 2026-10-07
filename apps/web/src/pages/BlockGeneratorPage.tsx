@@ -38,7 +38,13 @@ import {
   lockedTitle,
   planSpan,
 } from '@/lib/nextPlan';
-import { TALK_TO_COACH, WHY_AS_PROPOSED, overLongest, weekDates } from '@/lib/planChanges';
+import {
+  TALK_TO_COACH,
+  WHY_AS_PROPOSED,
+  isRide,
+  overLongest,
+  weekDates,
+} from '@/lib/planChanges';
 
 const BASE = '/api/v1/block-generator';
 
@@ -282,6 +288,11 @@ function DraftView({
     label: week.label,
     dates: weekDates(week.startDate),
   }));
+  const rideDates = new Set(
+    draft.weeks.flatMap((week) =>
+      week.workouts.filter((workout) => isRide(workout)).map((workout) => workout.workoutDate),
+    ),
+  );
   const longest = draft.basis?.longestWeekMin ?? null;
   const previousPlan = draft.basis?.previousPlan ?? 'your last plan';
   return (
@@ -363,6 +374,7 @@ function DraftView({
           week={week}
           sessionEdits={sessionEdits}
           planDates={planDates}
+          rideDates={rideDates}
           overLongestLine={
             longest !== null && weeksOverLongest.includes(week.weekNumber)
               ? overLongest(previousPlan, longest)

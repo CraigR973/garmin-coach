@@ -139,6 +139,7 @@ REFUSED_NOT_EDITABLE: Final = "not_editable"
 REFUSED_OUT_OF_RANGE: Final = "out_of_range"
 REFUSED_NOT_DELIVERABLE: Final = "not_deliverable"
 REFUSED_UNCHANGED: Final = "unchanged"
+REFUSED_RIDE_TAKEN: Final = "ride_taken"
 
 MALFORMED_WORDS: Final = "That change couldn't be read. Try it again."
 NOT_FOUND_WORDS: Final = "That session isn't in the plan any more."
@@ -314,6 +315,35 @@ def _is_strength(workout: Mapping[str, Any]) -> bool:
     if isinstance(structured, dict) and structured.get("format") == "strength":
         return True
     return str(workout.get("workoutType") or "").startswith("strength")
+
+
+def _is_ride(workout: Mapping[str, Any]) -> bool:
+    structured = workout.get("structuredWorkout")
+    return isinstance(structured, dict) and structured.get("format") == "bike"
+
+
+def ride_taken_words(day: date) -> str:
+    """Why a second ride can't go on a day: Zwift, and every morning, take one ride a day."""
+
+    return (
+        f"{short_day(day)} already has a ride, and Zwift takes one a day: move or remove that "
+        "one first."
+    )
+
+
+def _refuse_a_second_ride(draft: Mapping[str, Any], day: date, *, moving: str | None) -> None:
+    """One ride a day: the delivery rail keeps one Zwift event per date (a second ride on the
+    same date replaces the first's), and the morning reads one ride a day. Found by Batch
+    324's own Postgres test, which accepted a plan with two Saturday rides and pushed 64 of
+    its 65 rides."""
+
+    for _week, workout in _sessions(draft):
+        if (
+            workout.get("workoutDate") == day.isoformat()
+            and _is_ride(workout)
+            and workout.get("id") != moving
+        ):
+            raise PlanChangeRefused(REFUSED_RIDE_TAKEN, ride_taken_words(day))
 
 
 def _renumber(week: dict[str, Any]) -> None:
@@ -739,6 +769,8 @@ def _change_move(
     target = _week_containing(draft, to_day)
     if to_day == from_day:
         raise PlanChangeRefused(REFUSED_UNCHANGED, UNCHANGED_WORDS)
+    if _is_ride(workout):
+        _refuse_a_second_ride(draft, to_day, moving=str(workout["id"]))
     week["workouts"].remove(workout)
     workout["workoutDate"] = to_day.isoformat()
     # After the day's own sessions; ``_renumber`` puts rides before strength.
@@ -799,6 +831,8 @@ def _change_add(
             raise PlanChangeRefused(REFUSED_OUT_OF_RANGE, LONG_RIDE_ADD_WORDS)
     elif not RIDE_MIN_MINUTES <= minutes <= RIDE_MAX_MINUTES:
         raise PlanChangeRefused(REFUSED_OUT_OF_RANGE, RIDE_MINUTES_WORDS)
+    if not is_strength:
+        _refuse_a_second_ride(draft, day, moving=None)
     session = _added_session(session_type, minutes, week_number)
     numbers = [
         int(match.group(1))

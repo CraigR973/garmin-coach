@@ -32,6 +32,7 @@ import {
   type AddType,
   addTo,
   hoursAndMinutes,
+  isRide,
   matchingSets,
   minutesLabel,
   removeQuestion,
@@ -56,6 +57,8 @@ interface PlanWeekCardProps {
   week: GeneratedBlockWeek;
   sessionEdits: Record<string, SessionEdits>;
   planDates: PlanWeekDates[];
+  /** Days of the plan that already have a ride: Zwift takes one ride a day. */
+  rideDates: ReadonlySet<string>;
   overLongestLine: string | null;
   openPanel: OpenPanel;
   onOpenPanel: (panel: OpenPanel) => void;
@@ -83,6 +86,7 @@ export function PlanWeekCard({
   week,
   sessionEdits,
   planDates,
+  rideDates,
   overLongestLine,
   openPanel,
   onOpenPanel,
@@ -130,6 +134,7 @@ export function PlanWeekCard({
                       workout={workout}
                       edits={workout.id ? sessionEdits[workout.id] : undefined}
                       planDates={planDates}
+                      rideDates={rideDates}
                       openPanel={openPanel}
                       onOpenPanel={onOpenPanel}
                       pending={pending}
@@ -140,6 +145,7 @@ export function PlanWeekCard({
                 {adding ? (
                   <AddPanel
                     date={date}
+                    dayHasRide={rideDates.has(date)}
                     pending={pending}
                     onCancel={() => onOpenPanel(null)}
                     onAdd={(sessionType, minutes) =>
@@ -173,6 +179,7 @@ function SessionRow({
   workout,
   edits,
   planDates,
+  rideDates,
   openPanel,
   onOpenPanel,
   pending,
@@ -181,6 +188,7 @@ function SessionRow({
   workout: GeneratedBlockWorkout;
   edits: SessionEdits | undefined;
   planDates: PlanWeekDates[];
+  rideDates: ReadonlySet<string>;
   openPanel: OpenPanel;
   onOpenPanel: (panel: OpenPanel) => void;
   pending: boolean;
@@ -250,6 +258,7 @@ function SessionRow({
           workout={workout}
           session={id}
           planDates={planDates}
+          rideDates={rideDates}
           pending={pending}
           onCancel={() => onOpenPanel(null)}
           onChanges={onChanges}
@@ -410,6 +419,7 @@ function MovePanel({
   workout,
   session,
   planDates,
+  rideDates,
   pending,
   onCancel,
   onChanges,
@@ -417,11 +427,15 @@ function MovePanel({
   workout: GeneratedBlockWorkout;
   session: string;
   planDates: PlanWeekDates[];
+  rideDates: ReadonlySet<string>;
   pending: boolean;
   onCancel: () => void;
   onChanges: (changes: PlanChange[]) => Promise<void>;
 }) {
   const [toDate, setToDate] = useState(workout.workoutDate);
+  // A ride goes only to a day without one: Zwift takes one ride a day.
+  const open = (date: string) =>
+    !isRide(workout) || date === workout.workoutDate || !rideDates.has(date);
   return (
     <div className="mt-2 space-y-2 border-t border-border pt-2">
       <label className="block space-y-1 text-xs text-text-secondary">
@@ -434,7 +448,7 @@ function MovePanel({
         >
           {planDates.map((week) => (
             <optgroup key={week.weekNumber} label={weekHeading(week.weekNumber, week.label)}>
-              {week.dates.map((date) => (
+              {week.dates.filter(open).map((date) => (
                 <option key={date} value={date}>
                   {sessionDay(date)}
                 </option>
@@ -462,17 +476,23 @@ function MovePanel({
 
 function AddPanel({
   date,
+  dayHasRide,
   pending,
   onCancel,
   onAdd,
 }: {
   date: string;
+  /** Zwift takes one ride a day, so a day with a ride offers dumbbells only. */
+  dayHasRide: boolean;
   pending: boolean;
   onCancel: () => void;
   onAdd: (sessionType: AddType, minutes: number | null) => Promise<void>;
 }) {
-  const [sessionType, setSessionType] = useState<AddType>('zone2');
-  const [minutes, setMinutes] = useState('60');
+  const options = ADD_TYPES.filter((option) => !dayHasRide || option.minutes === null);
+  const [sessionType, setSessionType] = useState<AddType>(options[0].type);
+  const [minutes, setMinutes] = useState(
+    options[0].minutes === null ? '' : String(options[0].minutes),
+  );
   const choose = (next: AddType) => {
     setSessionType(next);
     const preset = ADD_TYPES.find((option) => option.type === next)?.minutes ?? null;
@@ -488,7 +508,7 @@ function AddPanel({
           value={sessionType}
           onChange={(event) => choose(event.target.value as AddType)}
         >
-          {ADD_TYPES.map((option) => (
+          {options.map((option) => (
             <option key={option.type} value={option.type}>
               {option.label}
             </option>

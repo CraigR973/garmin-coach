@@ -1,4 +1,4 @@
-import type { PlanDays } from '@coach/shared';
+import type { GeneratedBlockWorkout, PlanDays } from '@coach/shared';
 
 /**
  * Batch 324: change anything in the proposed plan, and talk it through with the coach.
@@ -137,4 +137,9 @@ export function weekDates(startDate: string): string[] {
     const value = new Date(Date.UTC(year, month - 1, day + offset));
     return value.toISOString().slice(0, 10);
   });
+}
+
+/** A ride, as the delivery rail sees one: Zwift takes one ride a day. */
+export function isRide(workout: GeneratedBlockWorkout): boolean {
+  return workout.structuredWorkout?.format === 'bike';
 }
