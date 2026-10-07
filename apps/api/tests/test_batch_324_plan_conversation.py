@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import date, datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -496,3 +497,56 @@ async def test_on_postgres_an_offer_the_plan_has_moved_past_is_refused_honestly(
             "reason": "no_plan",
             "words": NO_PLAN_WORDS,
         }
+
+
+# -- the words are the signed-off words ------------------------------------------------------
+
+WORDING = Path(__file__).resolve().parents[3] / "docs/drafts/2026-10-07-batch-324-wording.md"
+
+
+def _wording() -> str:
+    return " ".join(WORDING.read_text(encoding="utf-8").replace("**", "").split())
+
+
+def test_every_refusal_and_reply_is_the_signed_off_words() -> None:
+    from src.services import block_generator, plan_changes, plan_conversation
+
+    text = _wording()
+    assert "signed off on Mark's behalf under Craig's delegation of 6 Oct 2026" in text
+    words = [
+        getattr(plan_changes, name)
+        for name in dir(plan_changes)
+        if name.endswith("_WORDS") and isinstance(getattr(plan_changes, name), str)
+    ]
+    words += [
+        getattr(plan_conversation, name)
+        for name in dir(plan_conversation)
+        if name.endswith("_WORDS") and isinstance(getattr(plan_conversation, name), str)
+    ]
+    words += [
+        block_generator.NO_PLAN_WAITING_WORDS,
+        block_generator.PLAN_ACCEPTED_WORDS,
+        block_generator.PLAN_MOVED_ON_WORDS,
+    ]
+    assert len(words) >= 20
+    for line in words:
+        assert line in text, line
+
+
+def test_the_change_log_lines_are_the_signed_off_examples() -> None:
+    text = _wording()
+    for example in (
+        "Rebuilt with your days: VO₂ on Wednesday and Zone 2 on Tuesday.",
+        "Your 2 earlier changes to single sessions went with it.",
+        "Now starts Monday 26 October (it was Monday 19 October).",
+        "Tue 27 Oct, VO₂ (30/30s, 2 × 10 @ 130%): each of its 2 sets, 10 × 30s/30s @ 130%/55% "
+        "becomes 12 × 30s/30s @ 130%/55%.",
+        "Sun 25 Oct, Long Z2: 120 min becomes 150 min.",
+        "Wed 21 Oct: “Z2” is now called “Z2 with Dave”.",
+        "VO₂ (30/30s, 2 × 10 @ 130%) moves from Tue 27 Oct to Mon 26 Oct.",
+        "Sat 31 Oct, Z2 + Neuromuscular: removed.",
+        "Fri 23 Oct: Easy spin added, 45 min.",
+        "Back to the plan as proposed.",
+        "Your week, as you set it:",
+    ):
+        assert example in text, example

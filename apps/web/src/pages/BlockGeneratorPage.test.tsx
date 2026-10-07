@@ -121,6 +121,7 @@ const planNo3 = {
           totalMin: 414,
           workouts: [
             {
+              id: 's005',
               dayOffset: 5,
               slot: 0,
               kind: 'sprints',
@@ -132,6 +133,7 @@ const planNo3 = {
               structuredWorkout: { format: 'bike', steps: [] },
             },
             {
+              id: 's006',
               dayOffset: 5,
               slot: 1,
               kind: 'strength_b',
@@ -269,32 +271,6 @@ describe('BlockGeneratorPage', () => {
     });
   });
 
-  it('refines a day through the inline editor', async () => {
-    const user = userEvent.setup();
-
-    apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
-      if (options?.method === 'POST' && path === '/api/v1/block-generator/refine') {
-        return Promise.resolve(draft);
-      }
-      return Promise.resolve(draft);
-    });
-
-    renderPage();
-    await screen.findByText('Week 1 · Build1');
-    await user.click(screen.getByRole('button', { name: /Edit VO2 Max 30\/30/ }));
-
-    const titleInput = await screen.findByLabelText('Workout title');
-    await user.clear(titleInput);
-    await user.type(titleInput, 'Custom VO2');
-    await user.click(screen.getByRole('button', { name: /^Save$/ }));
-
-    await waitFor(() => {
-      expect(apiFetchMock).toHaveBeenCalledWith(
-        '/api/v1/block-generator/refine',
-        expect.objectContaining({ method: 'POST' }),
-      );
-    });
-  });
   it('shows Plan No. 3: why this plan, each day, and both of Saturday\u2019s sessions', async () => {
     const user = userEvent.setup();
     apiFetchMock.mockResolvedValue(planNo3);
@@ -307,18 +283,22 @@ describe('BlockGeneratorPage', () => {
     expect(screen.getByText('Z2 + Neuromuscular')).toBeTruthy();
     expect(screen.getByText('Dumbbells B (upper body)')).toBeTruthy();
 
-    // Editing the second of Saturday's sessions names it by its slot.
-    await user.click(screen.getByRole('button', { name: /Edit Dumbbells B/ }));
+    // Batch 324: changing the second of Saturday's sessions names it by its id.
+    await user.click(
+      screen.getByRole('button', { name: 'Change Dumbbells B (upper body) on Sat 24 Oct' }),
+    );
+    const name = screen.getByLabelText('Name');
+    await user.clear(name);
+    await user.type(name, 'Dumbbells B with bands');
     await user.click(screen.getByRole('button', { name: /^Save$/ }));
     await waitFor(() => {
-      const refine = apiFetchMock.mock.calls.find(
-        ([path]) => path === '/api/v1/block-generator/refine',
+      const change = apiFetchMock.mock.calls.find(
+        ([path]) => path === '/api/v1/block-generator/changes',
       );
-      expect(refine).toBeTruthy();
-      expect(JSON.parse(String(refine?.[1]?.body))).toMatchObject({
-        weekNumber: 1,
-        dayOffset: 5,
-        slot: 1,
+      expect(change).toBeTruthy();
+      expect(JSON.parse(String(change?.[1]?.body))).toEqual({
+        change: { kind: 'title', session: 's006', title: 'Dumbbells B with bands' },
+        expectedRevision: null,
       });
     });
   });
