@@ -55,6 +55,7 @@ no jargon. Nothing reaches Zwift until he accepts the plan.
 | Remove | Sat 31 Oct, Z2 + Neuromuscular: removed. |
 | Add | Fri 23 Oct: Easy spin added, 45 min. |
 | Back to the plan as proposed | Back to the plan as proposed. |
+| An edit through the old hand-edit path (no longer used by the builder) | Wed 21 Oct, Z2: changed by hand. |
 
 When he changes his days, the first line of "why this plan" says "Your week, as you set it: …"
 in place of "It keeps your week from Plan No. 2: …".
