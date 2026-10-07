@@ -192,6 +192,31 @@ plans were (PN3 W01 …). Home shows `DailyLoopData.nextPlan` from the 13th bloc
 day no plan covers, while a draft waits; accept is lock (push-on-plan-set), decline is
 discard and writes nothing.
 
+Since Batch 324 (DECISIONS #389) he can **change anything in the draft before he accepts
+it**, by hand or through the coach. `services/plan_changes.py` is the closed list, pure and
+deterministic: his days (rebuilt from the table), the start Monday, a ride's interval set
+(the interval editor's five numbers), a steady ride's or dumbbell session's minutes, a name,
+move, remove, add, and back to the plan as proposed. Each change versions the draft row,
+raises its `revision` and logs itself in his words; sessions carry ids that survive a move.
+`POST /api/v1/block-generator/changes`. The draft never reaches a prompt as Coach memory
+(`coach_policy.MODEL_HIDDEN_SECTIONS`, honoured by all seven model-facing readers); the coach
+sees it only through `services/plan_conversation.py`: a compact `proposedPlan` view in the
+chat (about 6,800 characters), the `get_proposed_plan_week` tool, and an offer marker
+(`PROPOSE_PLAN_CHANGE`) checked against the draft, stored in nullable
+`brief_messages.proposed_plan_change` (migration `037`) and applied by his tap only at the
+revision it was made against. The builder is a chat origin (`next_plan`).
+
+```
+builder (his taps) ──┐                           ┌─ chat: proposedPlan view + week tool
+                     ├─ plan_changes.apply_change ┤
+coach offer (his tap)┘   validate · version ·    └─ never the raw draft (MODEL_HIDDEN_SECTIONS)
+                         log · revision+1
+                              │
+                    knowledge_base generated_block (draft)
+                              │ accept (lock)
+                    plan_blocks + planned_workouts → Zwift (#99)
+```
+
 Batch 17 turns the accumulated history into proactive insight
 (`services/insights.py` + `services/experiment_tracker.py`), all deterministic
 (no LLM) and migration-free. **FTP-drift detection** reads the trend in ride

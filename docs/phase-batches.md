@@ -5990,7 +5990,9 @@ regenerated once the readers are fixed.
   1. Changing his days rebuilds the plan from the table with the new days; changes he made to
      single sessions go, and the builder says so, with the count, before he confirms.
   2. The start date is any Monday from next Monday to eight weeks on; his changes move with it.
-  3. Minutes: Zone 2 and easy rides 20–180, the long ride 60–240, dumbbells 10–60.
+  3. Minutes: any steady ride 20–240, as long as its steady block stays ten minutes or more;
+     dumbbells 10–60; an added long ride 60–240 (refined while building: one range for every
+     steady ride, since a recovery week's "long" ride is 90 minutes and the taper's 45).
   4. Intervals: any ride with an interval set except the ramp test, within the interval
      editor's own bounds; the changed ride must still pass the rail's deliverability check.
   5. Move: to any day of the plan, his rest day and a day with a ride included; the session
@@ -5998,6 +6000,6 @@ regenerated once the readers are fixed.
      dumbbell session at that week's dose.
   6. A coach offer applies only at the revision it was made against; after any other change it
      is refused in words and he asks again. One offer per answer.
-  7. The compact view is never dropped for length (about 6,000 characters, bounded by its 13
-     week lines and the last 20 changes); the coach's prompt version goes to v20, which
+  7. The compact view is never dropped for length (6,805 characters for Plan No. 3, bounded by
+     its 13 week lines and the last 20 changes); the coach's prompt version goes to v20, which
      withdraws nothing (the chat is unfiltered).
